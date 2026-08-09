@@ -846,3 +846,134 @@ def test_build_analysis_raises_when_outbox_row_has_no_fingerprint(db):
             db=db,
             now=datetime(2024, 6, 15, tzinfo=UTC),
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 2.11 — _process_outbox_row chains build_analysis before status="done"
+# ---------------------------------------------------------------------------
+
+
+def test_process_outbox_row_chains_build_analysis_before_done(db, monkeypatch):
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    fingerprint = "fp-chain-test"
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-chain-test",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(row)
+    db.flush()
+
+    real_build_analysis = tasks.build_analysis
+    status_at_call_time: dict[str, str] = {}
+
+    def spy_build_analysis(**kwargs):
+        # Captured BEFORE delegating to the real implementation: proves
+        # the chain calls build_analysis while the row is still "pending",
+        # not after status="done" is already set (decision 1).
+        status_at_call_time["status"] = row.status
+        return real_build_analysis(**kwargs)
+
+    monkeypatch.setattr(tasks, "build_analysis", spy_build_analysis)
+
+    result = tasks._process_outbox_row(row, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    assert row.status == "done"
+    assert row.completed_at is not None
+    assert status_at_call_time["status"] == "pending"
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+
+
+def test_legacy_null_fingerprint_row_skips_compute(db, monkeypatch):
+    """decision 4b: a row whose interval bounds are NOT the year bounds
+    (a legacy or event-window shape) cannot safely derive a full-year
+    fingerprint. It must still reach "done" (ingest itself succeeded) but
+    skip compute entirely, writing no revision."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallOutbox
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-legacy-null-fp",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 3, 1, tzinfo=UTC),
+        interval_end=datetime(2024, 3, 2, tzinfo=UTC),
+        status="pending",
+    )
+    db.add(row)
+    db.flush()
+
+    result = tasks._process_outbox_row(row, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    assert row.status == "done"
+    assert row.completed_at is not None
+    assert row.request_fingerprint is None
+
+    count = db.scalar(select(func.count()).select_from(RainfallAnalysisRevision))
+    assert count == 0
+
+
+def test_full_year_null_fingerprint_row_derives_and_computes(db, monkeypatch):
+    """Triangulation: the OTHER branch of the same decision — a row whose
+    bounds ARE the year bounds derives its fingerprint and DOES compute."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.repository import RainfallRepository
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    batch = _fixture_batch()
+    monkeypatch.setattr(tasks, "_role_enabled", lambda role, db=None: True)
+    monkeypatch.setattr(tasks, "_concrete_fetch", lambda source_id: lambda **_kwargs: batch)
+
+    row = RainfallOutbox(
+        source_id="chirps-v3-final",
+        role="historical",
+        scope_kind="zone",
+        scope_id="zone-derive-fp",
+        scope_version="v1",
+        year=2024,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(2024, 1, 1, tzinfo=UTC),
+        interval_end=datetime(2025, 1, 1, tzinfo=UTC),
+        status="pending",
+    )
+    db.add(row)
+    db.flush()
+
+    result = tasks._process_outbox_row(row, db, datetime(2024, 6, 15, tzinfo=UTC))
+
+    assert result == "done"
+    expected_fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": "zone-derive-fp", "version": "v1"}, "year": 2024}
+    )
+    assert row.request_fingerprint == expected_fingerprint
+
+    revision = RainfallRepository().get_snapshot(db, expected_fingerprint)
+    assert revision is not None

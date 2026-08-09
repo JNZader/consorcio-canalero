@@ -316,16 +316,43 @@ def _backoff_seconds(retry_count: int) -> int:
     return min(2**retry_count * 60, 3600)
 
 
-def _process_outbox_row(row: RainfallOutbox, db: Session) -> str:
-    """Process one outbox row; return its new status."""
+def _derive_full_year_fingerprint(row: RainfallOutbox) -> str | None:
+    """Derive the full-year request fingerprint for a legacy null-fingerprint
+    row (decision 4b), but ONLY when it is safe: recomputation is exact only
+    while the row's interval bounds are exactly the year bounds (no
+    ``event_window``, which the outbox key does not otherwise disclose).
+    Returns ``None`` when the bounds do not match — the caller must then
+    skip compute rather than guess.
+    """
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    year_start = datetime(row.year, 1, 1, tzinfo=UTC)
+    year_end = datetime(row.year + 1, 1, 1, tzinfo=UTC)
+    if row.interval_start != year_start or row.interval_end != year_end:
+        return None
+    return analysis_request_fingerprint(
+        {
+            "scope": {"kind": row.scope_kind, "id": row.scope_id, "version": row.scope_version},
+            "year": row.year,
+        }
+    )
+
+
+def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
+    """Process one outbox row; return its new status.
+
+    ``now`` is the disclosure-date seam (design.md Interfaces), passed
+    through to ``build_analysis`` and nothing else here.
+    """
     try:
-        ingest_source_scope(
+        batch = ingest_source_scope(
             source_id=row.source_id,
             role=row.role,
             scope_kind=row.scope_kind,
             scope_id=row.scope_id,
             scope_version=row.scope_version,
             year=row.year,
+            db=db,
         )
     except Exception as exc:  # noqa: BLE001 — deliberate broad catch for durable retry
         row.retry_count += 1
@@ -338,6 +365,29 @@ def _process_outbox_row(row: RainfallOutbox, db: Session) -> str:
             seconds=_backoff_seconds(row.retry_count)
         )
         return row.status
+
+    # Compute chaining (decision 1): build_analysis runs in-process, in the
+    # SAME cycle and the same per-row transaction as ingest, before
+    # status="done" is ever set.
+    if row.request_fingerprint is None:
+        derived = _derive_full_year_fingerprint(row)
+        if derived is None:
+            record_event(
+                "rainfall.compute.skipped",
+                reason="fingerprint_unavailable",
+                source_id=row.source_id,
+                role=row.role,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                year=row.year,
+            )
+            row.status = "done"
+            row.completed_at = datetime.now(UTC)
+            row.last_error = None
+            return "done"
+        row.request_fingerprint = derived
+
+    build_analysis(outbox_id=str(row.id), batch=batch, db=db, now=now)
 
     row.status = "done"
     row.completed_at = datetime.now(UTC)
@@ -381,7 +431,9 @@ def _process_outbox_batch(db: Session) -> dict[str, int]:
             )
             skipped += 1
             continue
-        status = _process_outbox_row(row, db)
+        # TODO(task 2.13): thread the now seam down from process_outbox
+        # instead of reading the wall clock once per row here.
+        status = _process_outbox_row(row, db, datetime.now(UTC))
         if status == "done":
             record_event(
                 "rainfall.outbox.done",
