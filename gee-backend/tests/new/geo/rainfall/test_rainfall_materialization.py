@@ -3232,3 +3232,91 @@ def test_revisit_stale_beat_entry_is_registered():
     assert schedule.minute == {30}
     assert schedule.hour == {3}
     assert entry["options"] == {"queue": "celery"}
+
+
+# ---------------------------------------------------------------------------
+# Task 3.18 — validation source matches the manifest; concurrent identical
+# POST does not surface a 500
+# ---------------------------------------------------------------------------
+
+
+def test_validation_source_matches_manifest():
+    from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
+    from app.domains.geo.rainfall.service import RAINFALL_VALIDATION_SOURCE
+
+    validation_manifests = [m for m in CANDIDATE_MANIFESTS if m.role == "validation"]
+    assert validation_manifests
+    assert {m.source_id for m in validation_manifests} == {RAINFALL_VALIDATION_SOURCE}
+
+
+def test_concurrent_identical_post_does_not_surface_500(db, monkeypatch):
+    """decision 8's discipline extended to `queue_missing_analysis` itself
+    (task 3.18): a second identical POST whose own "existing pending"
+    pre-check raced past the first caller's not-yet-visible commit must
+    still return 202, not surface the resulting `IntegrityError` on
+    `ix_rainfall_outbox_pending_unique` as a 500.
+
+    Two independent `SessionLocal()` connections, not the shared `db`
+    fixture: `db.rollback()` on the fixture's single savepoint-scoped
+    session undoes the WHOLE test's prior commits, not just the failed
+    statement (empirically confirmed while writing this test -- the
+    first call's row vanished too), so the two-call-on-one-session
+    design cannot exercise this recovery path at all. A genuine race is
+    two DIFFERENT connections regardless.
+
+    Simulates the race deterministically (no thread timing luck): the
+    FIRST `db.query(RainfallOutbox)` call inside the second connection's
+    `queue_missing_analysis` invocation -- its own pre-existence check --
+    is hijacked to report an empty result, forcing its `INSERT` to be the
+    one that collides for real with the first connection's already-
+    committed row. Only that first call is hijacked; the recovery
+    re-SELECT task 3.18 adds runs unpatched and must find the real row.
+    """
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import queue_missing_analysis
+
+    _ = db  # guarantees test_engine's create_all() has run
+
+    scope = AnalysisScope(
+        kind="zone", id="zone-concurrent-post", version="v1", regional_estimate=False
+    )
+    year = 2022  # past year: deterministic historical/chirps-v3-final routing, no `now` dependency
+
+    try:
+        with SessionLocal() as first_session:
+            first = queue_missing_analysis(first_session, scope=scope, year=year)
+            assert first["status"] == "queued"
+
+        with SessionLocal() as second_session:
+            calls = {"n": 0}
+            real_query = second_session.query
+
+            def query_hijack(*args, **kwargs):
+                query = real_query(*args, **kwargs)
+                if args and args[0] is RainfallOutbox:
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        return query.filter(RainfallOutbox.id == None)  # noqa: E711
+
+                return query
+
+            monkeypatch.setattr(second_session, "query", query_hijack)
+
+            second = queue_missing_analysis(second_session, scope=scope, year=year)
+            assert second["status"] == "queued"
+            assert second["outbox_id"] == first["outbox_id"]
+
+        with SessionLocal() as verify:
+            pending_count = verify.scalar(
+                select(func.count())
+                .select_from(RainfallOutbox)
+                .where(RainfallOutbox.scope_id == "zone-concurrent-post")
+                .where(RainfallOutbox.status == "pending")
+            )
+            assert pending_count == 1
+    finally:
+        with SessionLocal() as cleanup:
+            cleanup.query(RainfallOutbox).filter_by(scope_id="zone-concurrent-post").delete()
+            cleanup.commit()

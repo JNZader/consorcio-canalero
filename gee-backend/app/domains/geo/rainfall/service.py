@@ -9,6 +9,7 @@ from math import isfinite
 from typing import Any
 
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallOutbox
@@ -242,8 +243,57 @@ def queue_missing_analysis(
         request_fingerprint=fingerprint,
     )
     db.add(outbox)
-    db.flush()
-    db.commit()
+    try:
+        db.flush()
+        db.commit()
+    except IntegrityError:
+        # decision 8's discipline (task 3.18): two identical requests can
+        # both pass the `existing` pre-check above before either commits --
+        # the race window the check alone cannot close. The loser's own
+        # INSERT collides with the winner's now-committed row on
+        # ix_rainfall_outbox_pending_unique; rolling back and re-reading
+        # that row is a reuse, not a failure, so both callers still get a
+        # 202 with the SAME outbox_id.
+        db.rollback()
+        reused = (
+            db.query(RainfallOutbox)
+            .filter_by(
+                source_id=source["source_id"],
+                role=source["role"],
+                scope_kind=scope.kind,
+                scope_id=scope.id,
+                scope_version=scope.version,
+                year=year,
+                status="pending",
+            )
+            .first()
+        )
+        if reused is None:
+            # The constraint guarantees a matching row exists; a lost race
+            # that skipped it would mean the constraint itself is wrong.
+            raise RuntimeError(
+                "queue_missing_analysis hit IntegrityError but found no matching "
+                f"pending row (source_id={source['source_id']!r}, role={source['role']!r}, "
+                f"scope={scope.kind}/{scope.id}/{scope.version}, year={year})"
+            ) from None
+        record_event(
+            "rainfall.outbox.reused",
+            source_id=source["source_id"],
+            role=source["role"],
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=year,
+            labels=reused.work_labels,
+        )
+        return {
+            "status": "queued",
+            "outbox_id": str(reused.id),
+            "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
+            "year": year,
+            "labels": reused.work_labels,
+        }
+
     record_event(
         "rainfall.outbox.queued",
         source_id=source["source_id"],
