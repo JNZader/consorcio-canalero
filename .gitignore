@@ -58,6 +58,18 @@ coverage.xml
 gee-backend/rag-junit.xml
 gee-backend/rag-corpus-junit.xml
 
+# RAG embedding artifacts (Makefile RAG_ARTIFACTS, default artifacts/rag).
+# `vectors-{sha8}.copy` is a multi-megabyte dump of the whole corpus, and its
+# sidecar `vectors-{sha8}.json` pins the model, the HF revision and the
+# over-ceiling exemptions of a specific GPU run. NEITHER may be committed: the
+# dump is a derived artifact of a SHA-pinned corpus (re-embeddable at will) and
+# the sidecar describes one machine's environment, so a committed copy goes
+# stale silently while still looking authoritative. `gee-backend/.gitignore`
+# already has a blanket `*.json`, but that only ever applies to UNTRACKED files
+# — it is not a safety net for a `git add -f`, which is why the directory itself
+# is ignored here.
+gee-backend/artifacts/
+
 # ===========================================
 # NODE / JAVASCRIPT
 # ===========================================
