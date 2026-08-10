@@ -38,6 +38,7 @@ from tests.new.geo.rainfall.test_rainfall_series_consistency import (
     _build_revision,
     _daily_rows,
     _days_through,
+    _fake_revision,
     _persist_zone_rows,
     _seed_full_baseline,
 )
@@ -399,6 +400,65 @@ def test_resumen_names_the_last_day_with_evidence_not_the_exclusive_end(db):
     # this fixture: the exclusive bound must not appear in the cell at all.
     assert served["available_through"][:10] != last_day_with_evidence
     assert served["available_through"] not in str(block[AVAILABLE_THROUGH_LABEL])
+
+
+def test_a_non_utc_available_through_still_names_the_same_last_day(db):
+    """JDB-101 -- the LI3A-005 defect class, re-opened on the disclosure
+    window itself.
+
+    ``available_through`` is ``_disclosure_window``'s ``window_end``
+    serialized, and under provider lag that value is ``max(interval_end)`` --
+    a ``timestamptz`` ``psycopg2`` renders in the database session's own
+    ``TimeZone``, which nothing in this repository pins. So the stored string
+    can legitimately carry a non-UTC offset for the very same instant, and
+    every consumer that reads a calendar day off its first ten characters
+    lands a day early: ``2024-03-02T21:00:00-03:00`` IS
+    ``2024-03-03T00:00:00+00:00``, but ``.date()`` on it says March 2, and
+    minus one day says March 1.
+
+    Both display consumers are covered by one instant here: the workbook cell
+    (asserted against the workbook's OWN last Serie diaria row, which is
+    driven by the same window and therefore does not move) and the ``/series``
+    echo the chart reads, which must leave the backend already normalized.
+    """
+    from app.domains.geo.rainfall.export import (
+        AVAILABLE_THROUGH_LABEL,
+        RESUMEN_SHEET,
+        SERIE_SHEET,
+        build_workbook,
+    )
+    from app.domains.geo.rainfall.series import build_series
+
+    revision = _seeded_revision(db, scope_id="zone-3b-available-through-tz")
+    # Same INSTANT as the built envelope (2024-03-03T00:00+00:00), rendered in
+    # UTC-3. Injected through the revision-shaped stand-in the slice-3a tests
+    # use, because a stored row is append-only and ORM-guarded against update.
+    shifted = {**revision.snapshot}
+    annual = {**shifted["annual"]}
+    selected = {**annual["selected"]}
+    provenance = {**selected["provenance"]}
+    assert provenance["available_through"] == datetime(2024, 3, 3, tzinfo=UTC).isoformat()
+    provenance["available_through"] = "2024-03-02T21:00:00-03:00"
+    selected["provenance"] = provenance
+    annual["selected"] = selected
+    shifted["annual"] = annual
+    stand_in = _fake_revision(shifted, data_revision=revision.data_revision)
+    # `build_workbook` also reads the policy revision the row was written
+    # under; the stand-in carries the real one so nothing else moves.
+    stand_in.policy_revision = revision.policy_revision
+
+    series = build_series(db, stand_in)
+    sheets = _sheets(build_workbook(db, stand_in).content)
+    block = _labelled(_rows(sheets[RESUMEN_SHEET]))
+    last_day_with_evidence = _rows(sheets[SERIE_SHEET])[-1][0]
+
+    # The window did not move -- only its rendering did.
+    assert last_day_with_evidence == "2024-03-02"
+    assert block[AVAILABLE_THROUGH_LABEL] == last_day_with_evidence
+    # The wire value leaves the backend in UTC, so the client's own day
+    # arithmetic (a slice of the first ten characters) cannot inherit the
+    # session's timezone from a string it has no way to normalize.
+    assert series["available_through"] == datetime(2024, 3, 3, tzinfo=UTC).isoformat()
 
 
 def test_a_snapshot_too_broken_to_export_is_refused_not_rendered(db):

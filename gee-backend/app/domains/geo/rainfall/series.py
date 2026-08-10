@@ -435,7 +435,19 @@ def build_series(db: Session, revision: RainfallAnalysisRevision) -> dict[str, A
         "year": analysis.year,
         "unit": analysis.unit,
         "comparison_end": analysis.comparison_end.isoformat(),
-        "available_through": analysis.available_through,
+        # The SAME instant the envelope stored, rendered in UTC (JDB-101, the
+        # LI3A-005 class). Under provider lag the stored value is
+        # `max(interval_end)` -- a `timestamptz` `psycopg2` rendered in the
+        # database session's own zone, which nothing in this repository pins --
+        # so `2024-03-03T00:00+00:00` can legitimately arrive as
+        # `2024-03-02T21:00-03:00`, and every consumer that reads a day off the
+        # first ten characters would then be a day early. Normalizing HERE,
+        # where the value leaves the backend, is what lets both display
+        # consumers keep a plain string operation: the xlsx cell
+        # (`export._last_evidence_day`) and the chart footer
+        # (`RainfallAccumulationChart.lastEvidenceDay`). The window itself is
+        # unchanged -- only its rendering is.
+        "available_through": analysis.window_end.isoformat(),
         # Speaks about the SELECTED scope's own intervals ONLY: it is
         # `data_revision_for` recomputed over the rows this build read for
         # `scope`, and the baseline store is not in that hash. A refused

@@ -45,6 +45,7 @@ from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 from sqlalchemy.orm import Session
 
+from app.domains.geo.rainfall import temporal
 from app.domains.geo.rainfall.models import RainfallAnalysisRevision
 from app.domains.geo.rainfall.series import (
     NORMAL_CURVE_AVAILABLE,
@@ -215,8 +216,19 @@ def _last_evidence_day(available_through: str) -> str:
     ``available_through`` is unparseable (``series._analysis`` ->
     ``SnapshotContractError`` -> 503), so this only ever sees a value that
     round-tripped through ``datetime.fromisoformat`` upstream.
+
+    The subtraction goes through ``temporal.as_utc``/``utc_day`` rather than a
+    bare ``.date()`` (JDB-101, the LI3A-005 class): under provider lag the
+    stored ``available_through`` is ``max(interval_end)``, a ``timestamptz``
+    ``psycopg2`` rendered in the database session's own zone, so the same
+    instant can arrive as ``2024-03-02T21:00:00-03:00`` and a bare ``.date()``
+    would stamp March 1 for a workbook whose last Serie diaria row is March 2.
+    ``build_series`` now normalizes the value it serves, so this is the second,
+    independently-failing layer of that guarantee -- the parameter is a plain
+    ``str`` and nothing in the type system says where it came from.
     """
-    return (datetime.fromisoformat(available_through).date() - timedelta(days=1)).isoformat()
+    moment = temporal.as_utc(datetime.fromisoformat(available_through))
+    return temporal.utc_day(moment - timedelta(days=1)).isoformat()
 
 
 def _consistency_value(consistent: bool, reason: str | None) -> str:
