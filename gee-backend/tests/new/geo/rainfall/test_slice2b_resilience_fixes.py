@@ -580,23 +580,107 @@ def test_duplicate_baseline_guard_still_raises_at_the_repository_boundary(db):
 # ===========================================================================
 
 
-def test_every_new_rainfall_event_is_documented_in_the_observability_workbook():
-    """metrics.py's docstring names the workbook as THE contract for what an
-    event means; an event that fires in production but appears nowhere in
-    that catalogue is undocumented by construction."""
+def _workbook_text() -> str:
     from pathlib import Path
 
     # tests/new/geo/rainfall/<this file> -> parents[4] is gee-backend,
     # parents[5] the repo root that owns docs/.
-    workbook = (
+    return (
         Path(__file__).resolve().parents[5] / "docs" / "lluvia-v2-observability-workbook.md"
     ).read_text(encoding="utf-8")
 
-    for event in (
-        "rainfall.analysis.policy_revision_stale",
-        "rainfall.analysis.requeue_failed",
-        "rainfall.baseline.duplicate_slots",
+
+def _section(workbook: str, heading: str) -> str:
+    """The body of one ``### `` section, up to the next heading of any level."""
+    lines = workbook.splitlines()
+    start = next(index for index, line in enumerate(lines) if line.startswith(f"### {heading}"))
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("#") and not lines[index].startswith("####")
+        ),
+        len(lines),
+    )
+    return "\n".join(lines[start + 1 : end])
+
+
+def _tables(section: str) -> list[list[list[str]]]:
+    """Every markdown table in *section*, as a list of rows of cells.
+
+    A table is one CONTIGUOUS run of ``|``-prefixed lines; a blank line or a
+    paragraph between two runs makes them two tables. That is exactly the
+    distinction this file needs: an event row pasted after a value table's
+    last row is inside THAT table, however plausible it looks in a diff.
+    """
+    tables: list[list[list[str]]] = []
+    current: list[list[str]] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            current.append([cell.strip() for cell in stripped.strip("|").split("|")])
+        elif current:
+            tables.append(current)
+            current = []
+    if current:
+        tables.append(current)
+    return tables
+
+
+def _table_with_header(section: str, first_header_cell: str) -> list[list[str]]:
+    """The one table in *section* whose header row starts with that cell."""
+    matches = [table for table in _tables(section) if table and table[0][0] == first_header_cell]
+    assert len(matches) == 1, (
+        f"expected exactly one table headed {first_header_cell!r}, found {len(matches)}"
+    )
+    return matches[0]
+
+
+def _data_rows(table: list[list[str]]) -> list[list[str]]:
+    """Rows below the header and its ``|---|`` separator."""
+    return [row for row in table[1:] if not set("".join(row)) <= set("- :")]
+
+
+def test_every_new_rainfall_event_is_documented_in_the_observability_workbook():
+    """metrics.py's docstring names the workbook as THE contract for what an
+    event means; an event that fires in production but appears nowhere in
+    that catalogue is undocumented by construction.
+
+    JDA-004 / JDB-002: a bare substring match is not enough to keep that
+    contract. ``rainfall.analysis.requeue_failed`` was documented for months
+    while sitting INSIDE the ``consistency_reason`` value table one section
+    below -- present to a substring search, absent from the event catalogue,
+    and rendered to a reader as a third enum value the API can never emit.
+    So the assertion is structural: the event must be a row of the EVENT
+    table of the section that owns it.
+    """
+    workbook = _workbook_text()
+
+    for event, heading in (
+        ("rainfall.analysis.policy_revision_stale", "2.1"),
+        ("rainfall.analysis.requeue_failed", "2.1"),
+        ("rainfall.baseline.duplicate_slots", "2.3"),
     ):
-        assert f"`{event}`" in workbook, f"{event} missing from the event catalogue"
+        table = _table_with_header(_section(workbook, heading), "Event")
+        assert any(row[0] == f"`{event}`" for row in _data_rows(table)), (
+            f"{event} is not a row of the §{heading} event table"
+        )
     # The gate-refusal marker's own semantics (LI2B-003), not just its event.
     assert "outcome:gate_refused" in workbook
+
+
+def test_the_consistency_reason_table_lists_only_consistency_reasons():
+    """The other half of the same defect (JDA-004 / JDB-002).
+
+    ``consistency_reason`` is a THREE-state enum (``null`` plus the two below)
+    and the table is the reader's list of what the field can hold. Anything
+    else in its first column reads as a fourth value -- an operator grepping
+    for a served ``consistency_reason`` would find an event name and go
+    looking for a state that does not exist.
+    """
+    table = _table_with_header(_section(_workbook_text(), "2.1"), "`consistency_reason`")
+
+    assert {row[0] for row in _data_rows(table)} == {
+        "`data_revision_moved`",
+        "`interval_family_ambiguous`",
+    }
