@@ -126,7 +126,9 @@ describe('useRainfallAnalysis', () => {
 
     await waitFor(() => expect(result.current.queued).toBe(true));
     // The queued answer keeps the poll alive.
-    await waitFor(() => expect(fetchRainfallAnalysis.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() =>
+      expect(vi.mocked(fetchRainfallAnalysis).mock.calls.length).toBeGreaterThanOrEqual(2)
+    );
 
     release({ type: 'ready', snapshot: { analysis_revision_id: 'r2' } as never });
     await waitFor(() => expect(result.current.data?.type).toBe('ready'));

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "node scripts/gen-version.mjs && tsc && vite build",
     "gen:version": "node scripts/gen-version.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "preview": "vite preview",
     "lint": "biome lint ./src",
     "lint:fix": "biome lint --write ./src",

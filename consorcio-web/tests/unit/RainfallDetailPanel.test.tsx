@@ -82,6 +82,10 @@ function metric(overrides: Partial<RainfallMetric> = {}): RainfallMetric {
 function snapshot(overrides: Partial<RainfallAnalysisSnapshot> = {}): RainfallAnalysisSnapshot {
   return {
     analysis_revision_id: 'rev-9',
+    // Required on the served envelope since task 3a.12 injects it at
+    // disclosure time; the fixture was missing it, and nothing compiled this
+    // file until LI3A-004 put `tests/` behind `npm run typecheck`.
+    data_revision: 'ab'.repeat(32),
     scope: ZONE,
     regional_estimate: true,
     year: 2025,
