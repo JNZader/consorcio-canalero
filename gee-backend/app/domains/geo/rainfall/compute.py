@@ -266,12 +266,22 @@ def _antecedent_metric(
     fallback_used: bool,
 ) -> dict[str, Any]:
     """One ``antecedents.{d7,d30,d90}`` entry (design.md D6): a
-    cadence-exact rolling total ending at *end* (== ``comparison_end``,
-    never the calendar-year boundary), read from *intervals* -- the
-    D6-widened ``[year_start - 90d, year_end)`` set the caller
+    cadence-exact rolling total ending at *end*, never at the calendar-year
+    boundary, read from *intervals* -- the D6-widened
+    ``[year_start - 90d, year_end)`` set the caller
     (``tasks._persist_analysis_revision``) reads, so a window that dips
     into the prior year still finds its rows here. Same *source_id* as
     ``annual.selected`` -- never mixing revision families (design.md D6).
+
+    *end* is the CLIPPED disclosure end
+    ``min(comparison_end_exclusive, last_interval_end)`` that
+    ``annual.selected`` already uses (design.md D6 amendment), NOT the raw
+    calendar ``comparison_end``: provider lag is the documented steady
+    state, so anchoring the window at a slot nobody has published yet
+    would fail the exact-slot-set check below and suppress all three
+    antecedents on every current-year build. ``provenance.available_through``
+    therefore discloses that same clipped end -- the honest value -- exactly
+    as ``annual.selected`` reports its own clipped ``window_end``.
 
     ``temporal.rolling_total`` requires an EXACT cadence-aligned match
     (design.md: "never a short sum"), so *intervals* is filtered down to
@@ -464,13 +474,25 @@ def build_snapshot(
     # [year_start - 90d, year_end) set the caller now reads -- a window
     # that dips into the prior year still finds its rows here, while
     # annual.selected above stayed scoped to the unwidened `in_window`.
+    #
+    # The windows END at `window_end` -- the SAME
+    # min(comparison_end_exclusive, last_interval_end) clip annual.selected
+    # applies above -- not at the calendar comparison_end (design.md D6
+    # amendment). Provider lag is the documented steady state, and
+    # temporal.rolling_total demands an exact slot set, so a rigid calendar
+    # anchor would demand a slot for TODAY and suppress all three
+    # antecedents on every current-year build. With no in-window intervals
+    # at all, `window_end` falls back to comparison_end_exclusive and the
+    # windows suppress anyway: their last expected slot (end - cadence) is
+    # never earlier than year_start, so it would have been in `in_window`
+    # had it existed.
     cadence = timedelta(seconds=cadence_seconds) if cadence_seconds > 0 else timedelta()
     antecedents = {
         name: _antecedent_metric(
             name=name,
             days=days,
             intervals=intervals,
-            end=comparison_end_exclusive,
+            end=window_end,
             cadence=cadence,
             source_id=source_id,
             scope=scope,

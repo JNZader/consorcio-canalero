@@ -255,3 +255,64 @@ pytest tests/new/ -q   (full backend regression, all domains)
 ### Status
 
 15/15 slice-2a tasks complete (378/378 targeted tests pass, 1936/1936 full backend regression pass, ruff clean). Ready for review/PR of this work unit, then `sdd-apply` for slice 2b (or `sdd-verify` if the orchestrator wants a checkpoint first).
+
+## Slice 2a review fix pass (2026-08-10)
+
+Fixes the 2 CRITICAL findings from `review-ledger.md`'s "Slice 2a — reliability lens + general refuter" (both survived the general refuter). Branch: `feat/lluvia-insights-02a-metrics` (same slice-2a branch). LI2A-003/004/005/006 are `info` (WARNING/SUGGESTION) — reported, not fixed, per the severity floor. Task list unchanged: all 15 slice-2a tasks were already `[x]`; this is a fix round on committed work, not new task scope.
+
+### TDD Cycle Evidence
+
+| Finding | Test | RED evidence | GREEN evidence |
+|---|---|---|---|
+| LI2A-002 | `test_rainfall_insights_metrics.py::test_antecedents_clip_to_last_available_interval_under_provider_lag` (new, real PG) | Written first, run against unfixed `compute.py`: `AssertionError: ('d7', {'metric': 'd7', 'value': None, ..., 'state': 'suppressed', ...})` / `assert 'suppressed' == 'available'` — the 3-day provider lag (data through Apr 12, `comparison_end` Apr 15) suppressed every antecedent, exactly the predicted steady-state failure. 1 failed / 120 passed in that same run | `build_snapshot` passes `end=window_end` (the existing `min(comparison_end_exclusive, last_interval_end)` clip) into `_antecedent_metric`; test green, d7/d30/d90 = 14.0/60.0/180.0 mm over the clipped window with `available_through == 2025-04-13T00:00:00+00:00` |
+| LI2A-002 (counterexample) | `test_rainfall_insights_metrics.py::test_antecedent_gap_inside_the_clipped_window_still_suppresses` (new, real PG) | No genuine RED — it passes both before and after by design; its job is to prove the clip did NOT soften `rolling_total`'s exact-slot-set check (a hole at Apr 9, inside the clipped d7 window) | Green after the fix: all three antecedents suppress `antecedent_window_incomplete`, no short sum |
+| LI2A-001 | `TestAntecedentCrossYearWindow::test_d90_sums_across_the_year_boundary_when_complete`, `::test_d90_suppresses_on_a_gap_in_the_prior_year_tail`, `test_d90_suppressed_with_reason_when_prior_year_incomplete` (assertions added to 3 existing tests) | No RED by construction — the refuter classified this as a coverage gap on CORRECT code; all three assertion blocks passed on first run against unfixed source. That pass IS the evidence D6's "annual.selected provably unaffected" claim held, and the same three then re-passed after the LI2A-002 fix, proving the anchor change did not disturb `annual.selected` | Green in both runs; `annual.selected.value == 20.0` and `completeness == 1.0` in all three |
+
+**Expected-value derivation (not assumed).** `test_d90_*` (mutation file): `_COMPARISON_END_EXCLUSIVE = 2025-01-21`, so the 90-row fixture starts `2025-01-21 − 90d = 2024-10-23`; of those, only `2025-01-01 .. 2025-01-20` (20 rows × 1.0 mm) clear `build_snapshot`'s `in_window` filter → `value = 20.0`. `window_end = min(2025-01-21, last_interval_end = 2025-01-21) = 2025-01-21`, so `expected_slots = 20 = matched_slots` → `completeness = 1.0`. The gapped sibling drops index 30 = `2024-11-22`, a PRIOR-year slot, so both numbers are identical there. Integration test 2a.14: 20 current-year rows × 1.0 mm, same window arithmetic → `20.0` / `1.0`. Lagged-tail test: `days_persisted = (2025-04-12 − 2025-01-01).days + 1 = 102` (asserted in the test itself), × 2.0 mm → `annual.selected = 204.0`; `end_effective = 2025-04-13T00:00Z`, so d7/d30/d90 = `2.0 × 7/30/90` = `14.0`/`60.0`/`180.0`.
+
+### Files Changed (fix pass)
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified | LI2A-002: `build_snapshot` passes `end=window_end` (was `comparison_end_exclusive`) into `_antecedent_metric`, reusing `annual.selected`'s own clip; `_antecedent_metric`'s docstring restated (clipped anchor, honest `available_through`); the call-site comment documents the rationale and the no-in-window-intervals fallback |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_insights_metrics.py` | Modified | LI2A-002: 2 new real-PG tests (lagged-tail steady state, gap inside the clipped window); LI2A-001: `annual.selected` value + completeness assertions in the 2a.14 cross-year test |
+| `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified | LI2A-001: `annual.selected` value + completeness assertions in both `TestAntecedentCrossYearWindow` tests |
+| `openspec/changes/lluvia-insights/design.md` | Modified | D6 anchor amendment: the clip, its rationale (provider lag as steady state), `available_through` honesty tied to the owner's `comparison_end` deferral decision, unchanged in-window suppression, year-boundary degradation |
+| `openspec/changes/lluvia-insights/review-ledger.md` | Modified | New "Slice 2a — reliability lens + general refuter" section: 6 rows + resolutions + final verification |
+
+### Deviations (fix pass)
+
+1. **`end_effective` is not a new variable.** The brief asked for `end_effective = min(comparison_end_exclusive, last_interval_end)` derived from the same resolved-interval data `annual.selected` uses. That value already exists as `window_end` (`compute.py:394`), so the fix passes it through rather than introducing a second name for the same quantity — the brief's own "do not invent a second derivation" constraint, taken literally.
+2. **The year-boundary reasoning in the brief was verified and corrected in the design note.** The brief predicted `last_interval_end < year_start` would push the clipped window's head slots outside the D6 read window. Checked against the code: `window_end` is derived from `in_window`, which only holds slots with `year_start <= interval_start`, so the anchor can never land before `year_start`. The real year-boundary-lag path is `in_window` being EMPTY, which falls the clip back to `comparison_end_exclusive` and suppresses because the current-year head slots do not exist. Both paths end in suppression, never a wrong value; D6 documents the actual mechanism and keeps the brief's variant as the outer bound.
+3. **A `git stash pop` was issued against a pre-existing, unrelated stash and aborted safely.** While measuring the pre-fix targeted baseline, a `git stash push` failed on a path-prefix error (wrong `cwd`), so the chained `git stash pop` targeted `stash@{0}` from an unrelated branch. Git refused it (`consorcio-web/public/version.json` would have been overwritten) and aborted; `git stash list` and the working tree were verified unchanged immediately afterwards. No further stash operations were attempted. The baseline was instead established by arithmetic on the diff (`git diff -U0 | rg -c '^\+\s*def test_'` → exactly 2 new test functions, both under `tests/new/`), corroborated by the full suite moving 1936 → 1938.
+
+### Author Counterexample Self-Check (fix pass)
+
+| Category | Evidence or N/A reason | Result |
+|---|---|---|
+| Null / absence | No in-window intervals at all → `window_end` falls back to `comparison_end_exclusive` and every antecedent suppresses (reasoned from the code and covered by `test_build_snapshot_with_no_data_in_window_is_unavailable`'s envelope, which still builds all three antecedents); a missing slot inside the clipped window still yields `value=None` + `antecedent_window_incomplete` (`test_antecedent_gap_inside_the_clipped_window_still_suppresses`) | Pass |
+| Boundaries | The clip itself is the boundary under test: `comparison_end_exclusive` vs `last_interval_end`, exercised on both sides — equal (`test_d90_sums_across_the_year_boundary_when_complete`, no clipping) and strictly lagging (`test_antecedents_clip_to_last_available_interval_under_provider_lag`, 3-day clip). Year-boundary lag traced explicitly (see Deviation 2) | Pass |
+| Concurrency / idempotency | N/A — `_antecedent_metric` and `build_snapshot` stay pure functions over their inputs; the fix moves no I/O and adds no state. The only shared-state seam nearby (`intervals_in_window`'s anti-join, the per-fingerprint advisory lock) is untouched | N/A (reason given) |
+| Malicious input / security | N/A — no new route, no new user-facing input; the changed argument is a datetime already derived from resolved DB rows inside the same function | N/A (reason given) |
+| Partial failure / recovery | Exactly the finding's subject: a lagging provider is the partial-failure steady state, and the metric now degrades to a shorter-but-honest window instead of blanket suppression, while a genuine hole still fails loud rather than short-summing (both proven by the two new tests) | Pass |
+| State / tenancy / time | `available_through` and `interval_end` now report the clipped end (`2025-04-13T00:00:00+00:00`), asserted per metric; `comparison_end` stays the calendar date, asserted in the same test, so the owner's "calendar `comparison_end` + `available_through` disclosure" decision is preserved rather than silently reinterpreted | Pass |
+
+### Final Verification (fix pass)
+
+```
+pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q
+=> 381 passed, 1 pre-existing SAWarning, 0 failed   (379 pre-fix + 2 new tests)
+
+pytest tests/new/ -q
+=> 1938 passed, 5 skipped (pre-existing live-backend/Martin skips), 0 failed
+   (was 1936 passed + 5 skipped; +2, exactly the two new tests)
+
+ruff check .   => All checks passed!        (exit 0)
+ruff format .  => 400 files left unchanged  (exit 0)
+```
+
+Bookkeeping note: this document's slice-2a section records the targeted baseline as 378; the measured pre-fix figure is 379. The full-suite baseline (1936) reconciles exactly with +2, so the 378 is a one-test slip in the record, not a regression.
+
+### Status (fix pass)
+
+2/2 CRITICAL findings fixed; 4 WARNING/SUGGESTION reported as `info` (never blocking, never re-reviewed). Ready for the scoped re-review of this fix diff against the ledger, then `sdd-verify`.

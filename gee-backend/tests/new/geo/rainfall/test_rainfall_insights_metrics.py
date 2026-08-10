@@ -245,3 +245,129 @@ def test_d90_suppressed_with_reason_when_prior_year_incomplete(db):
     d7 = snapshot["antecedents"]["d7"]
     assert d7["state"] == "available"
     assert d7["value"] == pytest.approx(7.0)
+
+    # LI2A-001: D6's "annual.selected provably unaffected by the widened
+    # read" claim, pinned by assertion rather than by argument. The 91
+    # prior-year rows persisted above are inside the D6-widened READ window
+    # but outside `build_snapshot`'s own `in_window` filter, so the annual
+    # total must stay exactly the 20 current-year days at 1.0mm, at
+    # completeness 1.0 (window_end == last_interval_end == Jan 21).
+    selected = snapshot["annual"]["selected"]
+    assert selected["state"] == "available"
+    assert selected["value"] == pytest.approx(20.0)
+    assert selected["completeness"] == pytest.approx(1.0)
+
+
+def test_antecedents_clip_to_last_available_interval_under_provider_lag(db):
+    """LI2A-002: the provider lags behind the calendar by design, so the
+    antecedent window anchors at ``min(comparison_end, last_interval_end)``
+    -- the SAME clip ``annual.selected`` already applies -- never at a
+    calendar day nobody has published yet. Anchored rigidly at
+    comparison_end, `temporal.rolling_total`'s exact-slot-set check would
+    suppress every antecedent on every current-year build, since the slot
+    for "today" does not exist while the provider lags."""
+    from app.domains.geo.rainfall import tasks
+
+    scope_id = "zone-li2a002-lagged-tail"
+    year = 2025
+    now = datetime(year, 4, 15, 12, 0, tzinfo=UTC)  # comparison_end = Apr 15
+    # Published only through Apr 12 -- a 3-day provider lag, the documented
+    # steady state (design.md D6 amendment).
+    days_persisted = (date(year, 4, 12) - date(year, 1, 1)).days + 1  # Jan 1 .. Apr 12
+    assert days_persisted == 102
+
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_daily_rows(date(year, 1, 1), days_persisted, 2.0, provider_revision="v3-nrt"),
+    )
+    db.flush()
+
+    outbox, batch, fingerprint = _build_outbox_and_batch(db, scope_id=scope_id, year=year)
+    tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=now)
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    snapshot = revision.snapshot
+
+    # The disclosed comparison_end stays the CALENDAR date (owner decision:
+    # calendar comparison_end + available_through disclosure) ...
+    assert snapshot["comparison_end"] == date(year, 4, 15).isoformat()
+    # ... while the effective end -- the last published day's interval_end,
+    # Apr 13T00:00Z -- is what the antecedent windows and their
+    # available_through actually disclose.
+    end_effective = datetime(year, 4, 13, tzinfo=UTC)
+
+    for name, days in (("d7", 7), ("d30", 30), ("d90", 90)):
+        metric = snapshot["antecedents"][name]
+        assert metric["state"] == "available", (name, metric)
+        assert metric["value"] == pytest.approx(2.0 * days), (name, metric)
+        assert metric["reason"] is None, (name, metric)
+        assert metric["interval_end"] == end_effective.isoformat(), (name, metric)
+        assert metric["interval_start"] == (end_effective - timedelta(days=days)).isoformat(), (
+            name,
+            metric,
+        )
+        # The honest availability disclosure: the clipped end, never the
+        # calendar comparison_end the provider has not reached.
+        assert metric["provenance"]["available_through"] == end_effective.isoformat(), (
+            name,
+            metric,
+        )
+
+    # annual.selected is measured over the same clipped window and is
+    # unaffected by the antecedent anchor change.
+    selected = snapshot["annual"]["selected"]
+    assert selected["state"] == "available"
+    assert selected["value"] == pytest.approx(2.0 * days_persisted)
+    assert selected["completeness"] == pytest.approx(1.0)
+    assert selected["provenance"]["available_through"] == end_effective.isoformat()
+
+
+def test_antecedent_gap_inside_the_clipped_window_still_suppresses(db):
+    """LI2A-002 counterexample: clipping the anchor must NOT soften the
+    exact-slot-set check. A genuine hole INSIDE the clipped window still
+    suppresses with ``antecedent_window_incomplete`` -- never a short sum
+    -- while a longer window unaffected by that hole stays available."""
+    from app.domains.geo.rainfall import tasks
+
+    scope_id = "zone-li2a002-clipped-gap"
+    year = 2025
+    now = datetime(year, 4, 15, 12, 0, tzinfo=UTC)  # comparison_end = Apr 15
+    days_persisted = (date(year, 4, 12) - date(year, 1, 1)).days + 1  # Jan 1 .. Apr 12
+
+    rows = _daily_rows(date(year, 1, 1), days_persisted, 2.0, provider_revision="v3-nrt")
+    # Apr 9 -- squarely inside the clipped d7 window [Apr 6, Apr 13).
+    gap_day = date(year, 4, 9)
+    rows = [row for row in rows if row.interval_start.date() != gap_day]
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox, batch, fingerprint = _build_outbox_and_batch(db, scope_id=scope_id, year=year)
+    tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=now)
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    snapshot = revision.snapshot
+
+    d7 = snapshot["antecedents"]["d7"]
+    assert d7["state"] == "suppressed"
+    assert d7["value"] is None
+    assert d7["reason"] == "antecedent_window_incomplete"
+    # The gap is inside d30/d90's windows too -- the exact-slot-set check is
+    # window-wide, so both suppress for the same reason rather than
+    # short-summing around the hole.
+    for name in ("d30", "d90"):
+        metric = snapshot["antecedents"][name]
+        assert metric["state"] == "suppressed", (name, metric)
+        assert metric["reason"] == "antecedent_window_incomplete", (name, metric)

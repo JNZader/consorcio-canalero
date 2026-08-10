@@ -299,6 +299,35 @@ missing, `rolling_total` raises `EventSuppressed` → suppressed with a specific
 short sum. Widening the read changes `data_revision_for`'s input, which is fine and expected:
 one new revision per key on the next build.
 
+**Anchor amendment (slice 2a fix round, LI2A-002).** The sentence above says the windows
+"end at `comparison_end`". Corrected: they end at
+`min(comparison_end_exclusive, last_interval_end)` — the *same* clip `annual.selected` already
+applies (`compute.py:394`) — not at the raw calendar `comparison_end`. Provider lag is the
+documented steady state: the owner's 2026-08-08 decision explicitly kept the calendar
+`comparison_end` **plus** `available_through` disclosure rather than redesigning the semantics
+(`openspec/changes/archive/2026-08-09-rainfall-materialization/review-ledger.md:86`), and that
+decision only holds if `available_through` is honest. A rigid calendar anchor is not:
+`temporal.rolling_total` demands an EXACT cadence-aligned slot set (`temporal.py:81-87` — it
+compares the fetched slot tuple against the expected one, so a single absent slot suppresses),
+so it would demand a slot for *today*, which a lagging provider has not published. With lag
+≥ 1 day, all three of `antecedents.{d7,d30,d90}` therefore suppressed as
+`antecedent_window_incomplete` on **every** current-year build — the feature was unrenderable
+in exactly its steady state. `provenance.available_through` and `interval_end` now disclose the
+clipped end, mirroring how `annual.selected` reports its own clipped `window_end`
+(`compute.py:429`), instead of overstating availability up to a calendar date the provider has
+not reached.
+
+Suppression semantics are unchanged: a missing slot *inside* the clipped window still raises
+`EventSuppressed` → `antecedent_window_incomplete`, never a short sum. Year-boundary lag
+degrades naturally, with no special path: the clip reuses `in_window`'s own
+`last_interval_end`, so when the lag reaches back past `year_start` there is no in-window
+interval at all, the clip falls back to `comparison_end_exclusive`, and the windows suppress
+because their current-year head slots do not exist (the last expected slot, `end - cadence`,
+is never earlier than `year_start`, so it would have been in `in_window` had it been
+published). Were the anchor ever to land before `year_start`, the window's head slots would
+fall outside the D6 read window `[year_start - 90d, …)` and the same exact-set check would
+suppress. Both are safe failures — suppression, never a wrong value.
+
 ### D7 — Export (xlsx)
 
 `GET /rainfall/analyses/{revision}.xlsx` beside the CSV route, inheriting the router-level

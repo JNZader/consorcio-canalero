@@ -1811,6 +1811,16 @@ class TestAntecedentCrossYearWindow:
         assert d90["value"] == pytest.approx(90.0)
         assert d90["reason"] is None
 
+        # LI2A-001: D6's "annual.selected provably unaffected by the widened
+        # read" claim, pinned by assertion rather than by argument. Of the 90
+        # daily rows (2024-10-23 .. 2025-01-20) only the 20 in 2025 are inside
+        # build_snapshot's own `in_window` filter, at completeness 1.0
+        # (window_end == last_interval_end == 2025-01-21).
+        selected = snapshot["annual"]["selected"]
+        assert selected["state"] == "available"
+        assert selected["value"] == pytest.approx(20.0)
+        assert selected["completeness"] == pytest.approx(1.0)
+
     def test_d90_suppresses_on_a_gap_in_the_prior_year_tail(self) -> None:
         from app.domains.geo.rainfall.compute import build_snapshot
 
@@ -1837,3 +1847,12 @@ class TestAntecedentCrossYearWindow:
         d7 = snapshot["antecedents"]["d7"]
         assert d7["state"] == "available"
         assert d7["value"] == pytest.approx(7.0)
+
+        # LI2A-001: the dropped 2024-11-22 row is a PRIOR-year slot, so
+        # annual.selected keeps the same 20 current-year days at 1.0 and the
+        # same completeness as the ungapped sibling test above -- the D6
+        # widening is provably invisible to it in both directions.
+        selected = snapshot["annual"]["selected"]
+        assert selected["state"] == "available"
+        assert selected["value"] == pytest.approx(20.0)
+        assert selected["completeness"] == pytest.approx(1.0)
