@@ -140,12 +140,25 @@ into a diff.
 
 | Stage | Design |
 |---|---|
-| Pre-flight | Tokenise every `texto_indexado` with the BGE-M3 (XLM-R) tokenizer; **abort loudly** if any exceeds 8192. MANIFEST forbids splitting long articles, so silent truncation is the only failure mode that could survive review. |
+| Pre-flight | Tokenise every `texto_indexado` with the BGE-M3 (XLM-R) tokenizer; **abort loudly** if any exceeds 8192. MANIFEST forbids splitting long articles, so silent truncation is the only failure mode that could survive review. The abort is scoped to the EMBEDDING leg — see the note below. |
 | Batch (GPU) | `scripts/rag_embed_batch.py` on the RTX 5060 Ti. `normalize_embeddings=True` (mandatory for cosine). **No query/document prefix** — BGE-M3 is symmetric, unlike BGE-v1.5/E5 which need one; adding a prefix silently degrades it. |
 | Artifact | `vectors-{sha8}.copy` — PostgreSQL COPY text format, columns `(corpus_sha, citation_key, embedding)` with the pgvector literal `[v1,v2,…]`, float32-cast, shortest round-trip repr (pgvector stores float4, so nothing is lost). Sidecar `vectors-{sha8}.json`: model id + **HF revision SHA**, dims, normalized, corpus_sha, n_vectors, sha256 of the dump, torch/transformers versions, device. |
 | Load | `scripts/rag_load_vectors.py`, **COPY into a staging table, never into `rag_unidad`**. Direct `COPY rag_unidad (corpus_sha, citation_key, embedding)` cannot execute: ingestion (D2) already created every row, the PK is `(corpus_sha, citation_key)`, and **`COPY` has no upsert** — there is no `ON CONFLICT` clause for `COPY`. It would attempt inserts and fail on the PK for all ~1,400 rows. So: (1) pre-checks — refuse unless the dump's sha256 matches the sidecar, `corpus_sha` is the active snapshot, `n_vectors == count(rag_unidad WHERE corpus_sha = …)` and dims == 1024; (2) `CREATE TEMP TABLE rag_embedding_staging (corpus_sha CHAR(40), citation_key TEXT, embedding vector(1024)) ON COMMIT DROP` and `COPY` the dump into it; (3) `UPDATE rag_unidad u SET embedding = s.embedding FROM rag_embedding_staging s WHERE u.corpus_sha = s.corpus_sha AND u.citation_key = s.citation_key`; (4) post-checks **in the same transaction** — the `UPDATE` rowcount MUST equal `n_vectors`, and the orphan anti-join (`SELECT s.citation_key FROM rag_embedding_staging s WHERE NOT EXISTS (SELECT 1 FROM rag_unidad u WHERE u.corpus_sha = s.corpus_sha AND u.citation_key = s.citation_key)`) MUST return zero rows; any unresolved staging key **aborts**. Single transaction, all-or-nothing: nothing commits unless every key resolved. |
 | Query-time (V0 only) | Local BGE-M3 on **CPU**, loaded once per harness process. `scripts/rag_query_latency.py` reports p50/p95 over the gold questions (3 warm-ups, 3 repeats) with CPU model, core count and thread settings. Candidate run: throwaway container on the CX33 (`docker run --rm`, nothing installed on the host — prod's *state* stays untouched, though its CPU and network do not; see the Open Question). Alternative: a CPU-only container locally with matching cpuset, **labelled ESTIMATE** in the report. Owner call, still open. No V1 serving decision is made here. |
 | API baseline | One extra eval leg over the same corpus with a hosted embedder, **gated** by `assert_public_domain(corpus_sha)`: it raises unless *zero* documents in the snapshot have `clasificacion <> 'publico'`. Default-deny, so the actas layer cannot ever fall through. |
+
+**Over-ceiling units in V0 — ingested whole, embedded never, disclosed always.** "Abort" above means
+*abort the embedding of that unit*, not abort ingestion. The two legs have different constraints and
+conflating them costs real capability: the ceiling belongs to BGE-M3, while FTS has no such limit, so
+refusing to ingest an over-ceiling unit would delete it from the lexical leg too — and the FTS-only leg
+is exactly what slices 1-2 are built to keep independently useful for the ablation. The ratified V0
+behaviour is therefore: **ingest whole** (never truncated — truncation would cite a fragment of a law as
+the law), **exclude from embedding** in slice 3, **report on every run**. Three real units exceed the
+ceiling at the pinned SHA (`10593#1`, `8560#5`, and one more), so this is a live path, not a hypothetical
+one. `--strict-token-ceiling` is the opt-in that promotes the report to a hard abort for operators who
+want ingestion to stop instead. The flag being opt-in is not itself disclosure: `GateReport.over_ceiling`
+was populated and documented as "always reported — never silently dropped" while nothing carried it to
+any output at all, so the default run disclosed nothing (ledger RAG2-004).
 
 Rejected: `.npy`/parquet dumps (extra dependency + column-order coupling), pickle (unsafe), API for
 corpus embeddings (privacy posture + the box is CPU-only anyway).
@@ -294,11 +307,20 @@ never gets created — a stranded volume with no path forward. **Recovery (runbo
 vector image running, `alembic downgrade -1 && alembic upgrade head`. The downgrade is a guarded no-op
 (nothing to drop), the upgrade re-runs the probe, this time finds the extension, and creates the
 objects. It is safe to repeat, and it destroys nothing: `rag_unidad` rows survive both steps because 002
-only ever touches the `embedding` column, which by construction is empty in this scenario. The `-1` form
-is valid **while `conocimiento_002` is head**, which it is for all of V0; once later migrations exist,
-do not walk the chain back past them — execute the guarded statements from
-`app/domains/conocimiento/ddl.py` directly instead. They are the same source of truth migration 002 and
-the test fixture import, and being `IF NOT EXISTS`-guarded they need no version-table surgery.
+only ever touches the `embedding` column, which by construction is empty in this scenario.
+
+**`-1` no longer lands on 002.** `conocimiento_003` is head as of slice 2, so `alembic downgrade -1`
+now walks back 003, not 002 — the recovery above needs `alembic downgrade conocimiento_002 && alembic
+upgrade head`, or the guarded statements from `app/domains/conocimiento/ddl.py` executed directly (they
+are the same source of truth migration 002 and the test fixture import, and being `IF NOT EXISTS`-guarded
+they need no version-table surgery). Walking back past 003 is *safe* but not free: 003's downgrade
+restores constraints the ingested corpus violates, so it DELETES the rows only 003 made legal — the
+three fuente-secundaria documents with a NULL `estado_vigencia` and every `anexo-normativo` unit. That
+is deliberate and lossless (`rag_*` is a derived artifact of a SHA-pinned corpus; `upgrade head` +
+`scripts/rag_ingest.py` rebuilds them byte-for-byte), but it means the recovery costs a re-ingestion.
+Before that remediation existed the downgrade did not merely cost something — it raised
+NotNullViolation and was unrunnable on any database that had been ingested even once, which took every
+documented rollback path down with it (ledger RAG2-002).
 
 This transition is **never exercised by CI** — CI runs `alembic upgrade head` against a fresh database
 on the vector-less image every time, so it only ever sees the no-op branch. That is why the recovery is
@@ -351,9 +373,29 @@ criteria are citation precision vs OCR+text, privacy, and VLM serving cost.
 |---|---|---|
 | Unit (no DB, runs in existing CI) | regex v3 + scoped rules; D-9/D-10/D-22 cases; RRF incl. ties and missing-leg; metrics; abstention policy; **LOOCV threshold selection** (a fixture where same-sample and held-out thresholds differ, so the two cannot be silently swapped); COPY-literal round-trip | pytest, table-driven fixtures from real corpus snippets |
 | Unit — named trap cases (no DB) | **Ley 5589 art. 276 dual redaction**: the block opens `DEROGADO.` and preserves the derogated text below (`MANIFEST.md:851-853`); the parser MUST emit **one** unit containing both halves — a split that returns only the lower half hands back dead law as live. Sibling cases in the same row: arts. 4/6/82/84 (`Texto vigente` + `Redacción anterior, sustituida`) and art. 193 ter (inciso 4 substituted, prior text in a footnote). **Ley 9750 art. 39**: body is the original 2010 wording, the footnote transcribes both substitutions (`MANIFEST.md:854-855`) — the footnote MUST stay inside the unit, it is the T-1 canary's third expected citation. **Ley 10679 `## Vigencia de los fondos`** ingested as `tipo_chunk = nota-vigencia`, keyed `10679#vigencia-de-los-fondos`, and **excluded** from the 1,383 article count | pytest over the real corpus snippets; each trap is its own named test, like every other MANIFEST trap |
-| Gate (no DB) | per-document **and** total unit counts for `tipo_chunk = 'articulo'` (1,383); the **separate** per-document inventory for non-article `tipo_chunk`s; verbatim substring; citation-key uniqueness; max-token pre-flight; every `rag_documento` carries `jurisdiccion` and, where the frontmatter has it, `relevancia_consorcio` | pytest over the SHA-pinned corpus; fails the build |
+| Gate (no DB) | per-document **and** total unit counts for `tipo_chunk = 'articulo'` (1,383); the **separate** per-document inventory for non-article `tipo_chunk`s (65); **heading coverage** — every `#`/`##` heading is captured, declared, or explicitly excluded under a declared class; **corpus file inventory** — every `.md` in the checkout is a declared document or a declared non-document; verbatim substring; citation-key uniqueness; max-token pre-flight; every `rag_documento` carries `jurisdiccion` and, where the frontmatter has it, `relevancia_consorcio` | pytest over the SHA-pinned corpus; **local gate, not CI** — see "What CI actually covers" below |
 | Integration (`@pytest.mark.pgvector`) | migration 001+002 apply/rollback; **002 guard symmetry** — upgrade twice and downgrade twice are both no-ops (`IF [NOT] EXISTS`), asserted on the vector image *and* on the vector-less default image where both directions must no-op without raising; generated tsvector; FTS leg; vector leg; **deterministic leg order** (two units tied on rank return in `citation_key` order across repeated runs); **vector staging load** — happy path updates every row, and a dump containing one unknown citation key aborts the transaction leaving every `embedding` NULL; `VectorSupportUnavailable` on a vector-less DB; idempotent re-ingest | testcontainers on `consorcio-postgres:16-vector` via `make test-rag` |
 | E2E (the deliverable) | full ingest → embed → load → 3-mode eval → report | `make rag-eval`; report artifact reviewed by the owner |
+
+**What CI actually covers, and what it does not.** The "Gate" row above runs over the SHA-pinned
+corpus, and **CI has no corpus**: `consorcio-corpus-legal` is private and V0 is all-local by owner rule,
+so CI never sets `RAG_CORPUS_PATH`. Every content assertion — the 35-document check, the 1383/65 counts,
+the vigencia canary, verbatim fidelity, determinism, pruning, idempotency, the heading-coverage and
+file-inventory gates — is therefore **skipped in CI, and the run is green**. That is the right call (the
+alternative is shipping a private legal corpus into a CI runner) but it was undisclosed, which made
+"CI is green" read as a claim about the corpus contract that it never was (ledger RAG2-005).
+
+Two things make it honest rather than merely true:
+
+* `make test-rag-corpus` selects exactly the `corpus`-marked tests and **fails on a SKIP**, mirroring
+  `make test-rag`'s image check. A green local run cannot mean "nothing ran".
+* a sentinel test fails — rather than skipping — when `RAG_CORPUS_PATH` is **set but wrong**: not a
+  directory, no `MANIFEST.md`, not a git checkout, or sitting on a revision other than the pinned SHA.
+  Set-but-wrong is the dangerous case, because `real_corpus_path()` returns `None` for it and the whole
+  content suite then skips exactly as it does when no corpus was configured at all.
+
+So: CI covers the **structural** tests; the corpus contract is a **local gate**, run via
+`make test-rag-corpus RAG_CORPUS_PATH=…` before any slice-2 merge.
 
 Mutation targets (per `openspec/config.yaml`): `parser.py`, `fusion.py`, `abstention.py`, `metrics.py`
 — the pure modules where a surviving mutant means the gate is decorative. Threshold: match the repo's
@@ -368,7 +410,9 @@ database on the shared dev volume. No production rollback exists because V0 make
 
 **Stranded-volume recovery (see D7).** If `alembic upgrade head` ran on the vector-less image, 002 is
 recorded as applied although it no-opped; opting into the vector image afterwards leaves no upgrade to
-run. With the vector image up: `alembic downgrade -1 && alembic upgrade head`. Both migrations are
+run. With the vector image up: `alembic downgrade conocimiento_002 && alembic upgrade head` (**not
+`-1`** — `conocimiento_003` is head as of slice 2, so `-1` walks back 003 and re-ingestion is then
+required; see D7). Both migrations are
 guarded with `IF [NOT] EXISTS` in both directions, so the downgrade is a no-op and the upgrade re-probes
 and creates the objects. Repeatable, and non-destructive to `rag_unidad` rows. CI never reaches this
 path (fresh database, vector-less image, always the no-op branch), which is exactly why it is written

@@ -57,3 +57,45 @@ carried the fixes.
 Severity floor honored: all three are WARNING, reported once, status `info`-class
 — they drove no fix loop and no re-review round. They were fixed opportunistically
 because Slice 2 was already editing all three files.
+
+---
+
+## Slice 2 — reliability lens + general refuter
+
+Range: `feat/consorcio-rag-02-ingestion` @ `83fd37c` (parser, gates, repository,
+service, ingestion CLI, migration `conocimiento_003`, corpus expectations).
+Standard tier escalated to a single deep lens — `review-reliability`, because the
+diff's whole risk surface is behaviour, state, determinism and regression: an
+ingestion pipeline whose correctness claim IS its gates. Sweep budget: 1
+exhaustive pass. Adversarial verification: ONE general refuter over the complete
+merged BLOCKER/CRITICAL candidate list; **all four CRITICALs STAND**, none
+refuted. Two WARNINGs were promoted into the fix round because they sit in the
+same code the CRITICALs touched, not because the severity floor demanded it.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| RAG2-001 | reliability | `app/domains/conocimiento/corpus_expectations.yaml:400-407` | CRITICAL | fixed | `no_articulos: []` for `resolucion-aprhi-3-2026`, whose `# ANEXO I` (line 162 of the source — 25 afectaciones with nomenclatura, titular and valuación, content that exists NOWHERE else in the indexed set) and `# ANEXO II` (line 218) its own art. 1° declares to "integrar el presente instrumento legal". Both were in no inventory, therefore in no index, with every count gate green. The parser's H1 branch (`parser.py:306-313`) already handled this exact class for the DNV-908 anexos. **Refuter: STANDS** — privacy is a non-issue *textually*, the document itself states "no hay aquí dato reservado alguno. No contiene D.N.I." |
+| RAG2-002 | reliability | `conocimiento_003_estado_vigencia_scoped.py::downgrade` | CRITICAL | fixed | `downgrade()` restored `SET NOT NULL` (and the narrower `tipo_chunk` CHECK) with no data remediation, while 3 secondary documents write `estado_vigencia = NULL` by design and 4 units are `anexo-normativo`. NotNullViolation / CheckViolation on any ingested database. **Refuter: STANDS** — downgrades run **newest-first**, so this fires before 001 drops the tables: it breaks `-1`, `base`, `proposal.md:89`, the compose header and the Makefile echo alike. |
+| RAG2-003 | reliability | `scripts/rag_ingest.py:137-146` | CRITICAL | fixed | `--verify-unchanged` computed divergence over the key INTERSECTION and returned early only `if divergentes`. Otherwise it fell through to the upserts and `prune_unidades`, which DELETED pre-existing keys absent from the new parse — then reported `divergencias: []`, committed, exit 0. The flag's documented contract is "REPORT the divergence instead of overwriting it". **Refuter: STANDS** — verified by execution, not inspection: RED probe printed `divergencias=[] committed=True eliminadas=1 ghost_row_survives=False`. |
+| RAG2-004 | reliability | `gates.py::GateReport.over_ceiling` → `schemas.py` → `rag_ingest.main` | CRITICAL | fixed | `over_ceiling` was populated and its own docstring promised "always reported — never silently dropped", while nothing carried it: not `GateOutcome`, not `IngestionSummary`, not `main()`'s printout. 3 real units exceed the ceiling at the pinned SHA. **Refuter: STANDS** — `--strict-token-ceiling` is opt-in, and an opt-in abort is not the same thing as reporting; the default path disclosed nothing at all. |
+| RAG2-005 | reliability | `tests/new/conocimiento/conftest.py::requires_real_corpus` | WARNING (promoted) | fixed | Every content test gates on `RAG_CORPUS_PATH`, which CI never sets, so the 35-document check, the 1383/65 counts, the canary, verbatim, determinism, prune and idempotency all skip green. (The corpus holds 35 documents; the "39/39" figure belongs to gate zero, a different check.) CI genuinely CANNOT hold the corpus (private repo, all-local V0 rule), so the fix is disclosure plus a real local gate, not heroics. |
+| RAG2-006 | reliability | `test_rag_ingest_cli.py::test_idempotent_rerun_same_sha`; `rag_ingest.main` | WARNING (promoted) | fixed | The determinism assertion projected 5 of 10 columns, so a re-run rewriting `epigrafe`, `documento_id` or `source_file` still passed. Separately, `main()` — argument handling, all abort branches, every exit code, the printed report — was invoked by no test at all. |
+| RAG2-007 | reliability | `parser.py::_parse_non_articles` (`seen` guard) | SUGGESTION | info | Latent duplicate-heading dedup: the `seen` set is keyed on `citation_key`, so a SECOND occurrence of an allow-listed heading in one document would be silently dropped rather than reported. Not reachable today — every duplicated heading in the pinned corpus (`Visto y considerandos` in `consorcio-10-de-mayo-registro-aprhi`) is unlisted, hence excluded on both occurrences. Recorded, not fixed: it would need a real second occurrence to specify the right behaviour. |
+
+**Clean checks — swept and found correct, recorded so they are not re-litigated:**
+
+| area | verdict |
+|---|---|
+| Unit boundaries incl. the T-1/T-2 canary span | Correct. `CLOSING_HEADING_RE` closes at the next SAME-OR-HIGHER heading, so `10679#vigencia-de-los-fondos` keeps its three `###` children and the "31 de diciembre de 2032" payload. |
+| Byte fidelity | Correct. `verbatim_substring_gate` checks at the unit's DECLARED offset rather than with `in`, so a text matching elsewhere still fails — `source_offset` is what provenance rests on. Enrichment is confined to `texto_indexado`. |
+| Prune ordering vs gates | Correct. Pin verification and every gate run BEFORE the transaction opens; `prune_unidades` cannot run on a corpus that failed a gate. (Its interaction with `--verify-unchanged` was the separate defect RAG2-003.) |
+| Determinism | Correct. Parse is byte-identical across runs; re-ingest yields an identical row set. Now asserted over the whole row, not a projection (RAG2-006). |
+| Migration upgrade direction | Correct. 001→002→003 applies cleanly on a fresh database; a single `alembic heads`. Only the DOWN direction was broken (RAG2-002). |
+| No half-write | Correct. One transaction, all-or-nothing; `test_bad_pin_writes_nothing` asserts an unchanged row count after an abort against real PostgreSQL. |
+
+**Fixes landed** (same branch, fix round from `83fd37c`) — see
+`apply-progress.md` § "Fix round" for the per-finding change table, the four
+explicit deviations (exclusion CLASSES instead of 248 free-text motives; 13
+headings recorded as `contenido-no-declarado` for the next round; RAG2-002's
+second instance in the same function; the two knowingly-uncovered branches) and
+the four-shape verification counts.

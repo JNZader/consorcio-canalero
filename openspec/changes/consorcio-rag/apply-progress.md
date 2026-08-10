@@ -155,7 +155,7 @@ Corpus: `12043582bf8016288a7e8084e85a4b713a97af2f` — verified equal to the pin
 - [x] **2.6** `test_rag_parser_traps.py` — GREEN, 5 tests. Ley 5589 art. 276 (`DEROGADO.` + preserved repealed body in ONE unit), arts. 4/6 dual redaction, art. 193 ter footnote substitution, `193ter`/`193quater` not fused (the D-8 v1 bug), Ley 9750 art. 39 footnote with both substitutions inside the unit (T-1 canary's third citation).
 - [x] **2.7** `test_relevancia_consorcio_carried_verbatim_res4_2026` + `test_jurisdiccion_not_null_missing_key_aborts` — GREEN. Res. 4/2026 keeps `es_secundaria=False` AND carries "NO DERECHO APLICABLE AL CONSORCIO CANALERO" verbatim; missing `jurisdiccion` raises `JurisdiccionFaltante` before any write; absent `relevancia_consorcio` stores NULL.
 - [x] **2.8** `test_ley8548_derogada_units_flagged_estado_vigencia` — GREEN, plus the two `estado_vigencia` scope tests (see Deviation #1).
-- [x] **2.9** `corpus_expectations.yaml` created — **gate zero re-run first, not inherited.** `_gate-consolidacion-final.py` → `GATE FINAL: 39/39 OK`. Then the counts were recomputed independently from the checkout with regex v3 + the scoped rule: **1383 = 1358 + 6 + 19 + 0**, matching the MANIFEST's per-class subtotals exactly. Both inventories pinned: per-document article counts, and a per-document non-article `tipo_chunk` + citation-key inventory (63 units).
+- [x] **2.9** `corpus_expectations.yaml` created — **gate zero re-run first, not inherited.** `_gate-consolidacion-final.py` → `GATE FINAL: 39/39 OK`. Then the counts were recomputed independently from the checkout with regex v3 + the scoped rule: **1383 = 1358 + 6 + 19 + 0**, matching the MANIFEST's per-class subtotals exactly. Both inventories pinned: per-document article counts, and a per-document non-article `tipo_chunk` + citation-key inventory (63 units → **65** after the fix round). A **third** inventory was added in the fix round: `excluidos`, the per-document list of every remaining `#`/`##` heading tagged with a declared exclusion class (245 entries). Inventories 1 and 2 say what must be indexed; the third is what makes them exhaustive.
 - [x] **2.10** `test_per_document_and_total_articulo_count_gate` + `test_all_counts_match_ingestion_succeeds` — GREEN. The compensating-pair case (one doc short, another long, total still 1383) is caught per document.
 - [x] **2.11** `test_non_article_inventory_gated_separately` + `test_secondary_types_es_secundaria_true_zero_contribution` — GREEN. Deleting the vigencia unit leaves article counts untouched and still fails, which is the whole point. The 6 secondary documents contribute 0 articles and are still indexed as `seccion-secundaria`.
 - [x] **2.12** `test_verbatim_substring_gate` + `test_citation_key_uniqueness_including_d9` + `test_token_ceiling_aborts_not_truncates` — GREEN. The verbatim gate checks the unit AT ITS DECLARED OFFSET, not with `in`, so a text that matches elsewhere still fails (`source_offset` is what provenance rests on).
@@ -169,12 +169,13 @@ Corpus: `12043582bf8016288a7e8084e85a4b713a97af2f` — verified equal to the pin
 corpus_sha           : 12043582bf8016288a7e8084e85a4b713a97af2f   (verified == pinned)
 documentos           : 35
 articulo units       : 1383      (= 1358 + 6 + 19 + 0, MANIFEST subtotals)
-non-article units    : 63
-total rows written   : 1446      (all citation keys unique)
+non-article units    : 65        (63 before the fix round; +2 APRHI 3/2026 anexos, RAG2-001)
+total rows written   : 1448      (all citation keys unique)
 10679#vigencia-de-los-fondos : PRESENT, tipo_chunk='nota-vigencia'
 ```
 
-Gate zero (`_gate-consolidacion-final.py`): 39/39 OK. All five ingestion gates pass.
+Gate zero (`_gate-consolidacion-final.py`): 39/39 OK. All **seven** ingestion gates pass
+(five original + heading coverage + corpus file inventory, both added in the fix round).
 
 ## Deviations from Design / Discoveries
 
@@ -239,6 +240,67 @@ tests/new/conocimiento/  ->  87 passed, 1 skipped    (the 1 is the pgvector-mark
 - Boundary: starts from a schema with no data path; ends with `rag_ingest.py` writing the full pinned corpus under five gates, idempotently.
 - **Review budget: OVER the ~400-line forecast, materially.** Production code ≈1529 lines (`parser` 347, `repository` 318, `rag_ingest` 244, `gates` 227, `service` 142, `expectations` 124, `migration 003` 70, `schemas` 57), tests ≈1020, plus `corpus_expectations.yaml` 483 lines and 1265 lines of fixtures — the last two are generated/extracted DATA, not review-weight prose, and the code carries the repo's heavy-docstring convention. If the orchestrator wants this split, the clean seam is **pure logic** (`parser` + `expectations` + `gates` + their tests, zero DB) vs **the write path** (`repository` + `service` + `rag_ingest` + migration 003 + their real-PG tests). Both halves verify independently.
 
+## Fix round — reliability lens + general refuter (Slice 2)
+
+Six findings applied on `feat/consorcio-rag-02-ingestion` (from `83fd37c`). Four CRITICAL, all
+upheld by the refuter; two WARNING promoted because they sit in the same area. Full ledger rows in
+`review-ledger.md`.
+
+| # | What was wrong | What changed |
+|---|---|---|
+| RAG2-001 | Res. APRHI 3/2026's `# ANEXO I` (25 afectaciones — nomenclatura, titular, valuación, content in no other document) and `# ANEXO II` were declared in NO inventory, so they were in no index, with every count gate green. Its own art. 1° declares both to "integrar el presente instrumento legal". | Both declared `anexo-normativo` (63 → **65** non-article units, 1446 → **1448** rows). Plus the structural fix: a **heading-coverage gate** that fails unless every `#`/`##` heading is captured, declared, or listed in a new per-document `excluidos` inventory under a corpus-level declared class; and a **corpus file inventory gate** that fails on any `.md` in the checkout declared neither as a document nor as a non-document. |
+| RAG2-002 | `conocimiento_003.downgrade()` was pure DDL and re-added constraints the ingested corpus violates. Unrunnable on any database ingested even once — and since downgrades run newest-first, it took `-1`, `base`, proposal.md's ordering, the compose header and the Makefile note down with it. | Remediation inside `downgrade()`: delete the rows only 003 made legal (units first — the FK has no CASCADE), then restore the constraints. DELETE, not a sentinel: `rag_*` is a derived artifact of a SHA-pinned corpus, so `upgrade head` + `rag_ingest.py` rebuilds it byte-for-byte, and any invented `estado_vigencia` is exactly what 003 exists to prevent. |
+| RAG2-003 | `--verify-unchanged` compared only the key INTERSECTION and returned early only on hash mismatch. A key in the snapshot and not in the parse produced no divergence, so the run fell through to the upserts and `prune_unidades` and **deleted it** — reporting `divergencias: []`, committing, exit 0. | Full symmetric difference — added / removed / content-changed, reported as three separate classes — evaluated before ANY write, including the prune. |
+| RAG2-004 | `GateReport.over_ceiling` documented itself as "always reported — never silently dropped" and nothing carried it: not `GateOutcome`, not `IngestionSummary`, not the printout. 3 real units exceed the ceiling at the pinned SHA and no operator could know. | Threaded through both schemas and printed as a visible block stating the units are ingested whole, stay FTS-retrievable, are excluded from embedding in V0, and are never truncated. Spec + design amended to the ratified V0 behaviour. |
+| RAG2-005 (promoted) | Every content test hides behind `RAG_CORPUS_PATH`, which CI never sets — so the 35-document check, the counts, the canary, verbatim, determinism, prune and idempotency all **skip green**. Correct for CI, undisclosed in the artifacts. | `make test-rag-corpus` (fails on exit≠0 OR any SKIP among `corpus`-marked tests) + a sentinel that FAILS, rather than skipping, when `RAG_CORPUS_PATH` is set but wrong (not a dir, no MANIFEST, not git, or off the pinned SHA) + the disclosure written into design.md's Testing Strategy. |
+| RAG2-006 (promoted) | The idempotency comparison projected 5 of 10 columns, so a re-run that rewrote `epigrafe`, `documento_id` or `source_file` still "proved" determinism. `main()` was never invoked by any test. | Projection widened to the whole row incl. `tsv`; `main()` now covered through the real argparse entry for exit 2 (no `--database-url`), exit 1 (bad pin, missing declared document, strict-ceiling gate failure, verification failure) and exit 0 (dry run). |
+
+### Deviations in this round (explicit)
+
+1. **`excluidos` uses a declared CLASS per entry, not free-text `motivo` per entry.** The fix request
+   anticipated ~6 exclusions; the gate flagged **248**. Enumerating 248 free-text reasons produces an
+   artifact nobody reads and re-rubber-stamps on the next corpus bump — the same failure class as a CI
+   gate that exits 0 without measuring. Instead `clases_excluidas` declares 7 classes with their reason
+   once, each entry names one, and loading rejects an entry whose class is undeclared. Every exclusion
+   still carries a stated reason, and now it is greppable by class.
+2. **13 headings are classed `contenido-no-declarado`, not justified away.** These carry substantive
+   content the MANIFEST v2 simply never declared as units — most notably
+   `consorcio-10-de-mayo-registro-aprhi`'s `II bis. Cronología registral` / `III.a–III.d Consorcios
+   linderos` (≈20 kB of registral fact) and `ley-8555`'s `Modificaciones posteriores — texto literal de
+   las leyes modificatorias` (≈10 kB of literal modifying-law text). They are excluded from the V0 index
+   exactly as before this round; what changed is that the exclusion is now **written down and
+   reviewable** instead of silent. Flagged for the next review round — indexing them would move the
+   ratified 1383/65 contract and is not a fix-round decision.
+3. **RAG2-002 had a second instance in the same function.** The finding named the `estado_vigencia`
+   NOT NULL restore; the RED run tripped first on `create_check_constraint(TIPO_CHUNK_OLD)`, which
+   `anexo-normativo` rows violate. Same bug class, same `downgrade()`; both remediated.
+4. **`main()`'s `--verify-unchanged` branch is tested with `ingest` stubbed.** The no-write guarantee
+   itself is asserted against real PostgreSQL at the `ingest()` level; the stub covers only `main()`'s
+   own wiring (exit code + three-class report) without committing rows into the shared test database
+   from a connection the `db` fixture cannot roll back.
+5. **The `corpus.corpus_sha != corpus_sha` branch in `ingest()` stays uncovered.** It is unreachable
+   from the CLI without doctoring the packaged YAML: a clean checkout whose HEAD equals `--corpus-sha`
+   aborts earlier, in `load_corpus`, on the first declared document it does not contain. Left as
+   defensive code rather than covered by a fabricated test.
+
+### Verification (this round)
+
+```
+tests/new/conocimiento/  no corpus             ->    86 passed, 29 skipped
+tests/new/conocimiento/  RAG_CORPUS_PATH set   ->   114 passed,  1 skipped  (the pgvector-marked one)
+make test-rag-corpus                           ->    28 passed, 87 deselected, ZERO skipped
+full suite, no corpus (the CI shape)           ->  2003 passed, 34 skipped   (was 1987 / 23)
+full suite, RAG_CORPUS_PATH set                ->  2031 passed,  6 skipped   (was 2004 /  6)
+```
+
+Both full-suite shapes total 2037 collected (2003+34 = 2031+6), +27 over the 2010 baseline. The CI
+shape's skip count rose 23 → 34 for the honest reason: 11 of the new tests are corpus-contract tests,
+which CI cannot run and which `make test-rag-corpus` now runs for real (RAG2-005).
+
+`ruff check .` and `ruff format .` exit 0; `mypy` on every touched module: no issues in 11 source files.
+
 ## Status
 
-15/15 Slice 2 tasks complete (2.1–2.15), plus O.1 resolved and the three Slice 1 ledger amendments. Ready for `sdd-verify` or the orchestrator's Slice 3 dispatch (base = this branch).
+15/15 Slice 2 tasks complete (2.1–2.15), plus O.1 resolved, the three Slice 1 ledger amendments, and
+the six-finding reliability fix round above. Ready for `sdd-verify` or the orchestrator's Slice 3
+dispatch (base = this branch).

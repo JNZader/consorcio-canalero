@@ -19,6 +19,16 @@ The pipeline MUST read from a corpus revision pinned by git SHA (or an equivalen
 - WHEN ingestion is invoked
 - THEN it fails before writing any row
 
+#### Scenario: `--verify-unchanged` reports every difference and writes nothing
+- GIVEN a stored snapshot under corpus SHA `X` and a re-run of `X` with `--verify-unchanged`
+- WHEN the stored key set and the parsed key set differ in ANY way — content changed under an existing key, a key added, or a key the parse no longer produces
+- THEN the run reports the three classes separately, writes nothing at all (no upsert and no prune), and exits non-zero
+
+#### Scenario: `--verify-unchanged` never prunes a key it did not examine
+- GIVEN a key present in the stored snapshot and absent from the new parse
+- WHEN ingestion runs with `--verify-unchanged`
+- THEN that key is reported as removed and the row still exists afterwards; comparing only the key intersection MUST NOT let it be deleted while the report claims no divergence
+
 ### Requirement: Type-Scoped Regex v3 Chunking and Section Exclusion
 The pipeline MUST implement the MANIFEST `UNIDAD` regex v3 (article plus optional `Anexo—/Decreto—/Resolutivo—/Anexo II—` compound prefixes) as the primary extractor, MUST apply the `norma-tecnica` point rule (`^## (\d)\. `) ONLY when `tipo == norma-tecnica`, and MUST exclude non-article `##` sections (procedencia, visto y considerando, guía-de-uso) from the article index or tag them with a distinct `tipo_chunk`.
 
@@ -112,15 +122,43 @@ Ingestion MUST assert both the corpus total AND each document's individual unit 
 - WHEN the gate runs
 - THEN ingestion is marked successful
 
+### Requirement: Exhaustive Inventory — No Silently Absent Section or File
+The count gates compare produced units against DECLARED ones, so anything declared nowhere escapes all of them. Ingestion MUST therefore additionally assert that every `#`/`##` heading in every corpus document is either inside a captured unit's span, declared in that document's non-article inventory, or listed in an explicit per-document exclusion inventory whose every entry carries a declared exclusion class; and that every `.md` file in the corpus checkout is either a declared document or an explicitly declared non-document. An undeclared heading or an unlisted file MUST abort ingestion.
+
+#### Scenario: A section in no inventory aborts instead of vanishing
+- GIVEN Res. APRHI 3/2026's `# ANEXO I` and `# ANEXO II`, which its own art. 1° declares to "integrar el presente instrumento legal" and which carry the 25 afectaciones found in no other document
+- WHEN they are in neither the non-article inventory nor the exclusion inventory
+- THEN ingestion fails naming them, rather than completing with every count gate green and the anexos absent from the index
+
+#### Scenario: Deliberate exclusions must state a reason
+- GIVEN a heading listed in a document's exclusion inventory
+- WHEN expectations are loaded
+- THEN its exclusion class MUST be one declared at corpus level with its reason; an exclusion under an undeclared class is rejected
+
+#### Scenario: An undeclared corpus file aborts instead of being skipped
+- GIVEN a `.md` file present in the pinned checkout and listed neither as a document nor as a non-document
+- WHEN ingestion runs
+- THEN it fails naming the file, rather than never opening it and reporting success
+
 ### Requirement: Integrity Gates — Verbatim Substring and Token Ceiling
-Every `rag_unidad.texto` MUST be a byte-exact substring of its source file, verified by an automated test; before embedding, every unit's token count MUST be measured against the embedding model's context ceiling (8192) and MUST fail loudly rather than silently truncate.
+Every `rag_unidad.texto` MUST be a byte-exact substring of its source file, verified by an automated test; every unit's token count MUST be measured against the embedding model's context ceiling (8192), and a unit over that ceiling MUST NEVER be truncated. The ceiling is an EMBEDDING constraint, not a storage one: an over-ceiling unit MUST still be ingested whole and MUST remain fully retrievable by FTS, MUST be excluded from embedding rather than truncated to fit, and MUST be disclosed in the ingestion output on every run. `--strict-token-ceiling` MUST promote it to a hard abort for operators who want ingestion to stop instead.
 
 #### Scenario: Full-corpus substring gate passes
 - GIVEN all ingested units
 - WHEN the substring gate runs
 - THEN 100% verify as literal substrings of their source file
 
-#### Scenario: Over-ceiling unit aborts instead of truncating
+#### Scenario: Over-ceiling unit is ingested whole, reported, and excluded from embedding
 - GIVEN a unit whose token count exceeds 8192 (e.g. an intentionally-unsplit long article)
 - WHEN the token-ceiling gate runs
-- THEN ingestion aborts for that unit instead of silently truncating its embedding input
+- THEN the unit is stored whole and stays retrievable by FTS, is listed in the run's printed report with its estimated token count, and the abort applies to the EMBEDDING leg — the unit is excluded from embedding in slice 3, never truncated to fit
+
+#### Scenario: Over-ceiling units are never silently dropped from the report
+- GIVEN a run over the pinned corpus, in which 3 real units exceed the ceiling
+- WHEN ingestion completes
+- THEN the printed output names every one of them, states that they will be FTS-only in V0, and says they were not truncated
+
+#### Scenario: Strict mode turns the report into a refusal
+- GIVEN `--strict-token-ceiling`
+- WHEN any unit exceeds the ceiling
+- THEN ingestion aborts before writing a single row

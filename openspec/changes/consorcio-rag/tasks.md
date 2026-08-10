@@ -96,7 +96,7 @@ Each PR targets the immediate previous PR's branch; only `feat/consorcio-rag` me
 
 ## Ops (cross-cutting prerequisites, not slice-blocking unless noted)
 
-- [x] O.1 **HARD prerequisite, blocks Slice 2's real-corpus run.** Create and push the `consorcio-corpus-legal` git repository (owner: Javier). RESOLVED 2026-08-10; Slice 2 ingested the pinned SHA `12043582bf8016288a7e8084e85a4b713a97af2f` for real (1383 articulo + 63 non-article units).
+- [x] O.1 **HARD prerequisite, blocks Slice 2's real-corpus run.** Create and push the `consorcio-corpus-legal` git repository (owner: Javier). RESOLVED 2026-08-10; Slice 2 ingested the pinned SHA `12043582bf8016288a7e8084e85a4b713a97af2f` for real (1383 articulo + 65 non-article units = 1448 rows; the non-article count moved 63 → 65 in the reliability fix round, when the heading-coverage gate surfaced Res. APRHI 3/2026's two anexos — ledger RAG2-001).
 - [ ] O.2 **Blocks the eval RUN (4.14), not the Slice 4 PR.** Owner validates/curates `docs/rag/eval-preguntas-oro-DRAFT-2026-08-10.md` (4.4) into `gold_set.yaml` (4.5): set `validado_por: owner` on every item, reach `answerable` ≥ 20.
 - [ ] O.3 **Blocks `rag-embed-load`/`rag-eval` execution, not Slice 3's code/tests.** Owner runs the one-shot BGE-M3 batch embedding on the RTX 5060 Ti workstation, producing `vectors-{sha8}.copy` + sidecar `.json` (3.2 uses synthetic fixtures for its own tests).
 - [ ] O.4 Owner call: CX33 latency-measurement approach — throwaway on-box container (low-traffic window, `--cpus`/`--memory` caps, pull-then-measure-as-separate-step) vs. cpuset-matched local proxy labeled `ESTIMATE`. Needed before 4.11's report finalizes its query-latency section.
