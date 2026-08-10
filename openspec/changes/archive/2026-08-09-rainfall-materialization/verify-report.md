@@ -33,7 +33,7 @@ Every BLOCKER/CRITICAL row across all rounds (JDA-001, JDA-002, JDB-101, JDB-201
 
 ## Open items
 
-- Phase 5 ops (post-merge, human): 5.1 DELETE failed sqpe-obs outbox rows in prod; 5.2 flags runbook note; 5.3 staging validation of comparison_end semantics with partner feedback before prod cutover.
+- Phase 5 ops (post-merge, human): 5.1 DELETE failed sqpe-obs outbox rows in prod; 5.2 flags runbook note; 5.3 validation of comparison_end semantics with the owner using real data in prod before considering the question closed.
 - Tracked follow-ups (out of scope, minted during review): scope-existence validation (quota-inflation vector — any authenticated operator can mint unbounded outbox keys); REREVIEW-001 frontend error-path.
 - WARNING #1 at verify time (uncommitted terminal ledger section) — resolved by the orchestrator's docs commit accompanying this report.
 - WARNING #2: the 2 adjacent-coverage scenarios above — disclosed, low risk, not new debt.
