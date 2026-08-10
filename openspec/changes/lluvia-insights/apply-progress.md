@@ -682,10 +682,19 @@ consorcio-web: npx vitest run        => 276 files, 3633 passed (unchanged — bo
 
 ### Author Counterexample Self-Check
 
+**Evidence convention (corrected in the 3b round, R3-001).** This table originally mixed
+executed assertions with by-inspection claims under one undifferentiated `Pass`, which is
+how the `stored_normal_unreadable` branch shipped with zero coverage while this row read as
+proven. Every clause is now labelled `[executed: <test>]` or `[by inspection]`, and the
+`Result` column distinguishes `Pass` (at least one executed assertion backs the row, and no
+clause in it is unexecuted) from `Pass (partly by inspection)`. A by-inspection clause is a
+reasoned claim, not a verified one — it is exactly the kind that a later round has to either
+execute or drop.
+
 | Category | Evidence | Result |
 |---|---|---|
-| Null / absence | A suppressed baseline still yields `normal_curve_state: "suppressed"` with no curve (asserted); an `annual.normal` marked available with a non-numeric value refuses rather than pretending to suppress; the zero-resolved-rows pin shape is now documented as a distinct, benign operator case (LI3A-002) | Pass |
-| Boundaries | The cross-check's tolerance is bounded from both sides and argued in the code: `rel_tol=1e-9` sits ~6 orders above accumulated float noise (30 years × 62 daily doubles, PostgreSQL `SUM` vs Python accumulation) and ~11 below the measured 16.7 mm defect; a missing last key (structurally impossible outside a Feb-29 cutoff, which suppresses `annual.normal` long before) is treated as unverifiable and refused, not as a pass | Pass |
+| Null / absence | A suppressed baseline still yields `normal_curve_state: "suppressed"` with no curve `[executed: test_no_normal_curve_when_the_baseline_is_suppressed]`; an `annual.normal` marked available with a non-numeric value refuses rather than pretending to suppress `[by inspection at the time — the branch had no test; EXECUTED in the 3b round by test_an_unreadable_stored_normal_refuses_rather_than_pretending_to_suppress, R3-001]`; the zero-resolved-rows pin shape is documented as a distinct, benign operator case `[executed: the workbook test, LI3A-002]` | Pass (partly by inspection at the time; closed in 3b) |
+| Boundaries | The cross-check's tolerance is bounded from both sides and argued in the code: `rel_tol=1e-9` sits ~6 orders above accumulated float noise (30 years × 62 daily doubles, PostgreSQL `SUM` vs Python accumulation) and ~11 below the measured 16.7 mm defect `[executed: the duplicate-slot probe measured the 16.7 mm side; the float-noise side is by inspection]`; a missing last key (structurally impossible outside a Feb-29 cutoff, which suppresses `annual.normal` long before) is treated as unverifiable and refused, not as a pass `[by inspection — the branch is unreachable from a valid envelope, so no fixture can reach it]` | Pass (partly by inspection) |
 | Concurrency / idempotency | The route stays strictly READ-ONLY — the guards add no write, no enqueue, no commit. The one-read property they sit beside is now actually measured (LI3A-003), which is the concurrency-relevant half: a split read would admit a correction landing between the two queries | Pass |
 | Malicious input / security | No new HTTP surface, no new user-controlled input: every query input still derives from the server-built snapshot. The refusal event logs only ids and enum reasons, no row values, so a corrupt baseline cannot exfiltrate itself through the log | Pass |
 | Partial failure / recovery | Both guards refuse the WHOLE curve rather than serving a partial one — a baseline line wrong anywhere is a comparison the reader cannot trust — and refusal degrades the chart, never the response: points, pin and echoes are asserted untouched in the duplicate test. LI3A-004's gate additions (`vite-env.d.ts`, `tests/setup.ts`) were driven by executed failures, so the gate reports defects and not missing-ambient noise | Pass |
@@ -694,3 +703,111 @@ consorcio-web: npx vitest run        => 276 files, 3633 passed (unchanged — bo
 ### Status (fix round)
 
 5/5 findings fixed. 2102/2102 backend (6 pre-existing skips), 20/20 in the series file, ruff check + format clean, frontend typecheck exit 0 **with `tests/` compiled for the first time**, vitest 3633 unchanged. Ready for the scoped re-review of this fix diff, then slice 3b.
+
+## Slice 3b: xlsx Export + TS Contract + Consistency Exposure (D7) — COMPLETE (11/11 tasks + 4 ledger amendments)
+
+**Branch**: `feat/lluvia-insights-03b-xlsx` (base: slice-3a tip `6b33ae9`).
+**Mode**: Strict TDD (RED → GREEN). Every RED below was executed against the source as it stood; for the two "remove the guard and watch it break" proofs (R3-001's refusal branch, R3-004's interface field) the change was applied in place, the targeted check re-run to capture the failure, and the source restored — verified by `git diff` on the restored file being empty.
+
+### Baseline (before slice-3b changes, same branch)
+
+```
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2102 passed, 6 skipped             (matches the slice-3a fix-round tip)
+
+pytest tests/new/geo/rainfall/test_rainfall_series_consistency.py -q
+=> 20 passed
+
+consorcio-web: npm run typecheck      => exit 0 (src + tsconfig.tests.json)
+consorcio-web: npx vitest run         => 276 files, 3633 passed
+```
+
+### Final (after slice-3b changes)
+
+```
+pytest tests/new/geo/rainfall/test_rainfall_export_xlsx.py -q
+=> 16 passed                          (new file)
+
+pytest tests/new/geo/rainfall/test_rainfall_series_consistency.py -q
+=> 21 passed                          (20 + R3-001's test)
+
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2119 passed, 6 skipped, 0 failed   (exit 0; +17 = 16 xlsx + 1 R3-001, exactly)
+
+ruff check .        => All checks passed!   (exit 0)
+ruff format .       => 2 files reformatted (this slice's own two files), 403 unchanged
+ruff format --check => 405 files already formatted (post-format re-run: 37 passed)
+
+consorcio-web: npm run typecheck      => exit 0
+consorcio-web: npx vitest run         => 276 files, 3641 passed  (+8, exactly the new tests)
+```
+
+### TDD Cycle Evidence
+
+| Task / finding | Test | RED evidence (executed) | GREEN evidence |
+|---|---|---|---|
+| 3b.1-3b.5, 3b.7 | `test_rainfall_export_xlsx.py` (5 briefed tests) | `ModuleNotFoundError: No module named 'app.domains.geo.rainfall.export'` (×9) + `assert 404 == 401` (unauthorized — the route did not exist) + `assert 404 == 503` (broken snapshot) + the workbook-catalogue assertion; **11 failed, 2 passed** | 16 passed. NOTE the 2 that passed at RED: `test_unknown_revision_...404` passed for the WRONG reason (no route ⇒ FastAPI 404) and `test_audit_csv_bytes_unchanged` passed because the CSV was genuinely untouched. Both are honest pins now; only the first was ever a false green, and it is disclosed rather than presented as coverage. |
+| 3b.6 (curve stamp) | `test_resumen_stamps_the_normal_curve_state`, `test_resumen_stamps_a_suppressed_normal_curve_distinctly` | Same `ModuleNotFoundError` RED | `integrity_refused` and `suppressed` labels asserted DIFFERENT, and the "Normal acumulada" column asserted empty in the refused case — so the stamp is the only thing distinguishing them, and it is present. |
+| 3b.6 (injection guard) | `test_text_that_looks_like_a_formula_is_written_as_text` | `AssertionError: ('=1+1', 'f')` — openpyxl typed the cell as a FORMULA. Measured separately: under `data_only=True` the same cell reads back as `None`, i.e. the stored value is GONE for a data-consuming reader. | Both hostile cells come back `data_type == "s"`, value intact. |
+| 3b.8-3b.9 (TS API) | `rainfallApi.test.ts` (4 new) | `TypeError: downloadRainfallXlsx is not a function`, `TypeError: fetchRainfallSeries is not a function` | 26 passed in the two touched files; typecheck exit 0. |
+| 3b.10-3b.11 (hook) | `useRainfallAnalysis.test.tsx` (4 new) | `TypeError: useRainfallSeries is not a function` (×4) | Consistency fields, `normalCurveState` and points surfaced; no polling; empty points while loading. |
+| R3-001 | `test_an_unreadable_stored_normal_refuses_rather_than_pretending_to_suppress` | `AssertionError: assert 'suppressed' == 'integrity_refused'` with the branch removed in place | Refused with the `stored_normal_unreadable` event reason; pin asserted unaffected. |
+| R3-004 | `npm run typecheck` (the command CI's `Typecheck` job runs) | With `consistency_reason` removed from `RainfallSeriesResponse`: exit **2**, `tests/unit/rainfallApi.test.ts(292,7): TS2353` + `(319,42): TS2339` + `tests/hooks/useRainfallAnalysis.test.tsx(263,7): TS2353` + `(285,9): TS2353` | Field restored → exit 0. The gate demonstrably covers the NEW contract, not only the 3a one. |
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/export.py` | Created | The two-sheet workbook builder (D7). Resumen = `metric_rows(normalize_snapshot(...))` + the disclosure block (summary, series-consistency stamp, `normal_curve_state` stamp); Serie diaria = `build_series`. `_append` forces every string cell to inline text (formula-injection guard). Returns `RainfallWorkbook` (bytes + the four fields the route logs). |
+| `gee-backend/app/domains/geo/rainfall/router.py` | Modified | `GET /analyses/{revision}.xlsx` beside the CSV route: same auth, same 404, `SnapshotContractError` → 503, `Content-Disposition` + xlsx media type, `rainfall.xlsx.served` event. |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_export_xlsx.py` | Created | 16 tests: the 5 briefed, 2 parity tests against SERVED artifacts (CSV + `/series` JSON), 2 curve-state tests, the summary test, the refusal-503 test, the authorized-404 test, and 4 counterexample tests (formula injection, a policy-reduced metric, an evidence-free analysis, the workbook catalogue). |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_series_consistency.py` | Modified | R3-001's test (+1); R3-002's assertion relaxed with its reasoning inline. |
+| `docs/lluvia-v2-observability-workbook.md` | Modified | `rainfall.xlsx.served` catalogue row: what the three disclosure fields mean INSIDE the file, when to worry, and why `bytes` is a useful floor signal. |
+| `consorcio-web/src/lib/api/rainfall.ts` | Modified | Series contract types (const-object + extracted union per the TS convention), `fetchRainfallSeries`, `downloadRainfallXlsx`, and a shared `downloadRainfallExport` the CSV now delegates to. |
+| `consorcio-web/src/hooks/useRainfallAnalysis.ts` | Modified | `useRainfallSeries(revisionId)` — pin fields, `normalCurveState` and points as first-class result fields; no polling. |
+| `consorcio-web/tests/unit/rainfallApi.test.ts` | Modified | +4 tests (xlsx download ×2, series fetch ×2), both typed against the contract. |
+| `consorcio-web/tests/hooks/useRainfallAnalysis.test.tsx` | Modified | +4 tests for `useRainfallSeries`. |
+| `consorcio-web/tsconfig.tests.json` | Modified | R3-004: the ENROLMENT RULE header. |
+| `openspec/changes/lluvia-insights/tasks.md` | Modified | 3b boxes + deviations; R3-003's slice-4 task 4.2b and the `normal_curve_state` traceability row; the slice-3b amendment block. |
+| `openspec/changes/lluvia-insights/review-ledger.md` | Modified | The slice-3a scoped re-review section (R3-001..R3-004) and its resolutions. |
+| `openspec/changes/lluvia-insights/apply-progress.md` | Modified | This section + the corrected slice-3a evidence table (R3-001). |
+
+### Deviations from Design/Tasks
+
+1. **The consistency stamp is two cells, not one sentence.** design.md D7 writes it as `"Serie diaria consistente con el análisis: sí | no — <motivo>"`. Implemented as label (col A) + value (col B) so the sheet stays a filterable label/value grid — which is what "más amigable" means in a spreadsheet — and the test asserts the design's literal sentence by reconstructing `f"{label}: {value}"`.
+2. **A `normal_curve_state` stamp row was added** beyond the briefed consistency stamp. Without it the workbook reproduces exactly the ambiguity LI3A-001 removed from the wire: `suppressed` and `integrity_refused` leave byte-identical empty columns. Pinned by two tests asserting the labels DIFFER.
+3. **`_append` (formula-injection guard) is new and unbriefed**, driven by an executed RED. openpyxl types a leading `=` as a formula; the vector is latent today (every string is server-built) but the fields most likely to change are provider-fed `discrepancies` and configuration-fed `scope.id`.
+4. **`downloadRainfallCsv` was refactored**, not just extended: both exports now share `downloadRainfallExport`. Behavior-preserving and covered by the CSV's pre-existing tests, which still pass unchanged. The shared half is the one carrying the bearer token, which is precisely the half that must not drift.
+5. **The test file imports slice 3a's fixture builders** rather than copying them (repo precedent: `test_ficha_canal_cuenca.py` → `test_generate_canal_catchments`). This file's claim is that the xlsx reads the same envelope and series the JSON does; two hand-copied fixtures could drift and the parity assertions would then be measuring the fixtures.
+6. **Parity is asserted between SERVED artifacts** (xlsx vs the CSV route body, xlsx vs the `/series` JSON), not against hand-built expectations — a hand-built expectation cannot catch the failure that matters, which is the friendly sheet rounding, recomputing or zero-filling a number the audit trail reports differently.
+7. **A new event `rainfall.xlsx.served`** with its workbook row, per LI2B-005's rule that an event firing in production must appear in its own contract document. Pinned by a test.
+8. **Two of the 16 tests were GREEN on first run** (`test_a_metric_the_policy_reduced_still_gets_a_row_with_empty_columns`, `test_an_analysis_with_no_evidence_still_exports_both_sheets`). They are REGRESSION PINS for counterexample categories the `.get()` discipline already handled, not RED→GREEN cycles, and are labelled as such here rather than counted as fixes.
+
+### Author Counterexample Self-Check
+
+Evidence convention as corrected in R3-001: each clause is labelled `[executed: <test>]` or `[by inspection]`, and `Result` is `Pass` only when every clause in the row is executed.
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | `None` is an EMPTY CELL and never `0`, asserted for metric values against the CSV's own blanks `[executed: test_xlsx_metric_values_match_the_served_csv_exactly]` and for every series column against the JSON `[executed: test_serie_diaria_matches_the_served_series_json_point_for_point]`; a metric the policy reduced to a 4-field dict still gets a row with the lost columns empty `[executed: test_a_metric_the_policy_reduced_still_gets_a_row_with_empty_columns]`; an unmapped label falls through to its own wire token instead of blanking — [by inspection: the mapped paths are exercised by the state and curve-state assertions above, but no fixture reaches an UNKNOWN key, so the fall-through branch itself is reasoned, not executed] | Pass (one clause by inspection) |
+| Boundaries | An analysis with NO interval evidence still exports both sheets, discloses `no — interval_family_ambiguous` and emits one row per disclosed day `[executed: test_an_analysis_with_no_evidence_still_exports_both_sheets]`; the series sheet's length is asserted equal to the JSON's point count, so neither can silently truncate `[executed: the point-for-point parity test]` | Pass |
+| Concurrency / idempotency | The route is strictly READ-ONLY — no write, no enqueue, no commit — so repeated downloads cannot create work; the CSV is byte-identical across an interleaved xlsx request `[executed: test_audit_csv_bytes_unchanged]`. Workbook BYTES are not stable across calls (openpyxl stamps a creation time in `docProps`), which is why parity is asserted on CONTENT and no byte-stability contract is claimed `[by inspection, and deliberately not asserted]` | Pass (one clause by inspection) |
+| Malicious input / security | Unauthorized is denied by the router-level dependency BEFORE the handler, proven with no override, and an unknown revision answers 401 as well, so the route is not an existence oracle `[executed: test_unauthorized_export_denied]`; a string that looks like a formula is written as text `[executed: test_text_that_looks_like_a_formula_is_written_as_text]`; the `Content-Disposition` filename interpolates a path param typed `UUID`, so header injection is unreachable `[by inspection — FastAPI rejects a non-UUID with 422 before the handler]` | Pass (one clause by inspection) |
+| Partial failure / recovery | A snapshot too broken to back a series refuses with 503 rather than shipping a half-built workbook — the CSV and `/series` answer — because a downloaded file has no error banner `[executed: test_a_snapshot_too_broken_to_export_is_refused_not_rendered]`; a refused normal curve degrades the CURVE only, with points, pin and metric rows intact `[executed: test_resumen_stamps_the_normal_curve_state]` | Pass |
+| State / tenancy / time | All dates are the ISO strings `build_series` already produced under slice 3a's `temporal.as_utc`/`utc_day` fix (LI3A-005); this module re-derives no date and re-parses none, so the LI1-002 class cannot reappear here — [executed: the point-for-point parity test compares every date cell against the JSON] + [by inspection: export.py contains no date arithmetic at all, confirmed by grep for date/timedelta constructors] | Pass (one clause by inspection) |
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (`feature-branch-chain`), unit 3b.
+- Base: `feat/lluvia-insights-03a-series` @ `6b33ae9`; PR target = that branch.
+- Boundary: starts at the slice-3a tip, ends with the xlsx route + TS series/xlsx contract + the four ledger amendments. Slice 4 (chart, campaign preset, staleness UI) is untouched.
+- Estimated review budget impact: production code is small (`export.py` + a router handler + ~120 TS lines); the bulk of the diff is tests and SDD documents.
+
+### Remaining Tasks (out of this batch's scope)
+
+- Slice 4 (4.1-4.10 + the new 4.2b) — frontend chart, campaign preset, staleness UI, `normal_curve_state` rendering.
+- Ops.1-Ops.6 — the backfill runbook execution and the doc-nit folds.
+
+### Status (slice 3b)
+
+11/11 slice-3b tasks + 4/4 ledger amendments complete. Backend 2119 passed / 6 pre-existing skips (+17 from a 2102 baseline, exactly the new tests). Frontend typecheck exit 0, vitest 276 files / 3641 passed (+8, exactly the new tests). `ruff check` clean, `ruff format --check` clean. Ready for the slice-3b pre-PR review, then slice 4.
