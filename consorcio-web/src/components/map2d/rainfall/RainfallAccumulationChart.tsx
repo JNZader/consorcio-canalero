@@ -30,6 +30,11 @@
  * · Read `available_through` as an inclusive day. It is the EXCLUSIVE end of
  *   the disclosure window — see {@link lastEvidenceDay}, which is the single
  *   place that conversion happens, and which both footer sentences use.
+ * · Claim evidence the series does not carry. `available_through` exists even
+ *   for an analysis that published nothing (the window falls back to
+ *   `comparison_end + 1 day`), so the evidence sentence and the lag notice are
+ *   gated on there being at least one point with an accumulation — see
+ *   {@link evidenceFooter}.
  * · Collapse `suppressed` and `integrity_refused` into "there is no line".
  *   Both arrive with every `normal_accumulated: null`, so the wire cannot tell
  *   them apart by shape — only by `normal_curve_state` (backend LI3A-001).
@@ -131,11 +136,50 @@ function isoDay(value: string): string {
  *
  * `Date.UTC` over the parsed parts, never `new Date(value)`: same reason
  * `isoDay` avoids the round trip, and it carries month and year rollover for
- * free (day 0 is the previous month's last day).
+ * free (day 0 is the previous month's last day). Slicing the first ten
+ * characters is only correct because the wire value is UTC-normalized where it
+ * leaves the backend (`series.build_series`, JDB-101): the stored envelope can
+ * carry the same instant under the database session's own offset, and the day
+ * of `2024-03-02T21:00:00-03:00` is March 3, not March 2.
+ *
+ * An unparseable value degrades to its own raw day rather than throwing
+ * (JDA-104): `toISOString()` on an invalid Date raises, and the exception
+ * would take down the whole panel subtree over one footnote. `build_series`
+ * refuses an unparseable `available_through` with a 503 long before it can
+ * reach a chart, so this is a guard against an unmodelled shape, not a
+ * reachable state — and the repo's rule for that is to show the untranslated
+ * fact (`export._label`, `metricLabel ?? key`), never to disappear.
  */
 function lastEvidenceDay(availableThrough: string): string {
-  const [year, month, day] = isoDay(availableThrough).split('-').map(Number);
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) - 1)).toISOString().slice(0, 10);
+  const day = isoDay(availableThrough);
+  const [year, month, dayOfMonth] = day.split('-').map(Number);
+  // NaN defaults on purpose: a missing part must reach the fallback below
+  // instead of being silently completed into a real, wrong date.
+  const shifted = Date.UTC(
+    year ?? Number.NaN,
+    (month ?? Number.NaN) - 1,
+    (dayOfMonth ?? Number.NaN) - 1
+  );
+  if (Number.isNaN(shifted)) return day;
+  return new Date(shifted).toISOString().slice(0, 10);
+}
+
+/**
+ * The evidence half of the footer — a CLAIM, so it is only made when the
+ * series carries evidence to back it.
+ *
+ * With zero published intervals `compute._disclosure_window` falls back to
+ * `comparison_end + 1 day`, so an analysis that published NOTHING still
+ * carries a plausible-looking `available_through`, and stamping it read as
+ * "evidence up to X" over a series whose every point is null (JDB-103). The
+ * lag notice is gated on the same fact, because "the provider has not yet
+ * published the days after X" is not a sentence about a series with no X.
+ */
+function evidenceFooter(evidenceDay: string | null, answered: boolean): string {
+  if (evidenceDay !== null) return `Evidencia publicada hasta el ${evidenceDay}`;
+  return answered
+    ? 'Sin días con evidencia publicada en este análisis'
+    : 'Evidencia publicada hasta el —';
 }
 
 /**
@@ -257,7 +301,12 @@ export function RainfallAccumulationChart({
   const stale = pinInconsistent || echoMismatch;
 
   const comparisonEndDay = isoDay(series.data?.comparison_end ?? snapshot.comparison_end);
-  const evidenceDay = series.data ? lastEvidenceDay(series.data.available_through) : null;
+  // The claim is about the SERIES, not about the campaign window: a preset
+  // that hides January does not unpublish it, so the gate reads every point
+  // the response carried, not the visible slice.
+  const hasEvidence = series.points.some((point) => point.accumulated !== null);
+  const evidenceDay =
+    series.data && hasEvidence ? lastEvidenceDay(series.data.available_through) : null;
   const lagging = evidenceDay !== null && evidenceDay < comparisonEndDay;
 
   const chartLabel = describePlottedWindow(visible, {
@@ -399,7 +448,8 @@ export function RainfallAccumulationChart({
       )}
 
       <Text size="xs" c="dimmed" data-testid="rainfall-accumulation-dates">
-        Comparación hasta el {comparisonEndDay} · Evidencia publicada hasta el {evidenceDay ?? '—'}
+        Comparación hasta el {comparisonEndDay} ·{' '}
+        {evidenceFooter(evidenceDay, series.data !== undefined)}
       </Text>
 
       {lagging && (

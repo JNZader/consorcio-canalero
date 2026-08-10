@@ -370,6 +370,73 @@ describe('RainfallAccumulationChart — the EXCLUSIVE available_through (4.1b)',
   });
 });
 
+describe('RainfallAccumulationChart — the footer degrades honestly (JDA-104, JDB-103)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series());
+  });
+
+  it('falls back to the raw value instead of crashing on an unparseable date', async () => {
+    // JDA-104. `lastEvidenceDay` did `new Date(Date.UTC(NaN, …)).toISOString()`
+    // on anything it could not parse, and `toISOString` on an invalid Date
+    // THROWS — taking the whole panel subtree with it. `build_series` refuses
+    // an unparseable `available_through` with a 503 upstream, so this is
+    // unreachable today; the repo's own convention for an unmodelled value is
+    // to degrade to the untranslated fact (`export._label`, `metricLabel ?? key`),
+    // never to remove the panel the operator was reading.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series({ available_through: 'no-es-fecha' }));
+    renderChart();
+
+    const footer = await screen.findByTestId('rainfall-accumulation-dates');
+    expect(footer.textContent).toContain('no-es-fec');
+    // The rest of the panel is still there: a bad date costs its own sentence,
+    // not the chart.
+    expect(screen.getByTestId('rainfall-accumulation-chart')).toBeInTheDocument();
+  });
+
+  it('does not claim published evidence when no day carries any', async () => {
+    // JDB-103. With zero published intervals `compute._disclosure_window`
+    // falls back to `comparison_end + 1 day`, so an analysis that published
+    // NOTHING still carries a plausible-looking `available_through` — and the
+    // footer stamped it as evidence for a series whose every point is null.
+    // The lag notice is gated the same way: "the provider has not published
+    // the days after X" is not a sentence about a series with no X.
+    const empty = points().map((point) => ({
+      ...point,
+      mm: null,
+      accumulated: null,
+      normal_accumulated: null,
+      state: 'unavailable' as const,
+    }));
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      series({ comparison_end: '2025-12-31', points: empty, normal_curve_state: 'suppressed' })
+    );
+    renderChart(snapshot({ comparison_end: '2025-12-31' }));
+
+    const footer = await screen.findByTestId('rainfall-accumulation-dates');
+    expect(footer.textContent).not.toContain(`Evidencia publicada hasta el ${LAST_EVIDENCE_DAY}`);
+    expect(footer.textContent).toContain('Sin días con evidencia publicada');
+    // The analysis window is still a fact and stays disclosed.
+    expect(footer.textContent).toContain('2025-12-31');
+    expect(screen.queryByTestId('rainfall-accumulation-lag')).toBeNull();
+  });
+
+  it('still names the evidence day when a single day carries evidence', async () => {
+    // The counterexample to the gate above: it must key on "is there any
+    // evidence", not on "are there trailing nulls" — a series whose tail is
+    // unpublished is the documented steady state and still has a last
+    // evidence day.
+    const tail = points().map((point, index) =>
+      index === 0 ? point : { ...point, mm: null, accumulated: point.accumulated, state: 'unavailable' as const }
+    );
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series({ points: tail }));
+    renderChart();
+
+    const footer = await screen.findByTestId('rainfall-accumulation-dates');
+    expect(footer.textContent).toContain(`Evidencia publicada hasta el ${LAST_EVIDENCE_DAY}`);
+  });
+});
+
 describe('RainfallAccumulationChart — staleness disclosure (4.2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
