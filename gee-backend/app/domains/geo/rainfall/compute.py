@@ -150,8 +150,17 @@ def _cutoff_date(window_end: datetime) -> date:
     ``window_end`` is daily-cadence-aligned for every source that reaches
     the annual metrics (``repository.baseline_cumulatives`` counts DAYS), so
     the last covered day is the day before it.
+
+    Normalized through ``temporal.utc_day`` rather than a bare ``.date()``
+    (LI3A-005). Under provider lag -- the documented steady state -- this
+    ``window_end`` is ``max(interval_end)``, a value ``psycopg2`` rendered in
+    the database session's zone, so a bare ``.date()`` cut the baseline a day
+    early under any non-UTC session. With no lag the two agreed by accident:
+    ``window_end`` was then ``comparison_end_exclusive``, built in UTC by
+    Python and therefore immune. Same helper ``series.py`` buckets its days
+    with, so the two paths cannot drift.
     """
-    return (window_end - timedelta(days=1)).date()
+    return temporal.utc_day(window_end - timedelta(days=1))
 
 
 # ---------------------------------------------------------------------------

@@ -183,6 +183,33 @@ across exactly the eligible-year set used by `annual.normal`, keyed by `(month, 
 day-of-year, which misaligns leap years); Feb-29 is omitted from the curve. Acceptance: the
 normal curve's last point equals `annual.normal.value`.
 
+**Normal-curve integrity amendment (slice 3a fix round, LI3A-001).** That acceptance rule is
+now enforced at **runtime**, not only by a test on one fixture, and the response says which
+of three states the curve is in: **`normal_curve_state: "available" | "suppressed" |
+"integrity_refused"`**. The reason is that the two sides of the rule age differently —
+`annual.normal.value` is computed once at build time and is immutable, while the curve is
+read live, and nothing rebuilds a finalized past year, so a divergence introduced after the
+build is permanent and invisible. Two guards:
+
+- *Sibling guard.* `repository.baseline_curve_rows` reads through the same supersession
+  anti-join as `baseline_cumulatives` and therefore inherits its "at most one non-superseded
+  row per `interval_start`" invariant. `baseline_cumulatives` raises
+  `DuplicateBaselineSlotError` on a breach (LI2A-005/LI2B-004) precisely because a duplicate
+  inflates the total while hiding itself; the curve simply summed duplicates, so the same
+  broken data the build path refuses to total was being drawn. It now refuses too — detected
+  per slot in the bucketing loop, which costs no extra round trip and sees every row consumed.
+- *Acceptance cross-check.* The curve's last point is compared against the STORED
+  `annual.normal.value` (`math.isclose`, `rel_tol=1e-9` — one side is summed by PostgreSQL and
+  the other in Python, so bit-exact equality would be a flaky gate). Any drift refuses the
+  whole curve.
+
+A refused curve emits `rainfall.series.normal_curve_refused` and renders every
+`normal_accumulated` as `null` — which is also what a structurally absent curve renders, and
+is exactly why the state field exists: without it the response cannot distinguish an honest
+absence from a curve that was computed and thrown away. Note that `consistent_with_snapshot`
+does **not** cover this: the pin hashes the SELECTED scope's intervals and the baseline store
+is not in that hash, so a true pin never vouched for the baseline.
+
 **Series/snapshot consistency — server-side pinning (authoritative).** The revision row is
 immutable and forever servable, while the series builder reads the interval store **live**
 through the same supersession anti-join (`repository.intervals_in_window`,

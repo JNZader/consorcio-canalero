@@ -247,11 +247,101 @@ def test_pin_uses_d6_widened_read_window(db):
     assert all(point["date"].startswith("2025-") for point in after["points"])
 
 
+def _interval_store_selects(db, scope_id: str, call) -> tuple[list[str], list[str]]:
+    """Run *call* while counting the SELECTs it executes against
+    ``rainfall_interval_value``, split into the ones bound to *scope_id* and
+    everything else (LI3A-003).
+
+    Observing the guarantee requires observing the DATABASE, not the answer:
+    a build that read the interval store twice and got the same rows both
+    times is indistinguishable, from the outside, from one that read it once.
+    Filtering by the bound ``scope_id`` separates the selected-scope read from
+    the baseline curve's read, which legitimately hits the same table under a
+    different key (``scope_kind='provider_asset'``).
+    """
+    from sqlalchemy import event
+
+    def _bound_values(parameters) -> list:
+        if isinstance(parameters, dict):
+            return list(parameters.values())
+        if isinstance(parameters, list | tuple):
+            flat: list = []
+            for item in parameters:
+                flat.extend(item.values()) if isinstance(item, dict) else flat.append(item)
+            return flat
+        return []
+
+    scoped: list[str] = []
+    other: list[str] = []
+
+    def _record(_conn, _cursor, statement, parameters, _context, _executemany) -> None:
+        if not statement.lstrip().upper().startswith("SELECT"):
+            return
+        if "rainfall_interval_value" not in statement.lower():
+            return
+        (scoped if scope_id in _bound_values(parameters) else other).append(statement)
+
+    db.flush()  # so no autoflush INSERT lands inside the observed window
+    bind = db.get_bind()
+    event.listen(bind, "before_cursor_execute", _record)
+    try:
+        call()
+    finally:
+        event.remove(bind, "before_cursor_execute", _record)
+    return scoped, other
+
+
+def test_build_series_reads_the_interval_store_exactly_once(db):
+    """LI3A-003: "ONE read backs both the pin and the displayed points" is a
+    claim about how many times ``build_series`` queries the interval store,
+    and only a count can falsify it. A split read is a real window: a
+    correction landing between the two queries makes the chart show data the
+    pin has already declared untouched, and every behavioral assertion still
+    passes because both reads return the same rows in a quiet test.
+
+    The baseline curve's own read is present in this fixture on purpose --
+    it hits the SAME table under the provider-asset key -- so the count is
+    proven to be scope-specific rather than "the only query there was"."""
+    from app.domains.geo.rainfall.series import build_series
+
+    scope_id = "zone-3a-one-read"
+    asset = asset_name_for("zone", scope_id)
+    now = datetime(_CURVE_YEAR, 3, 2, 12, 0, tzinfo=UTC)
+    _seed_full_baseline(db, asset=asset, cutoff=_CURVE_CUTOFF)
+    _persist_zone_rows(
+        db,
+        scope_id=scope_id,
+        rows=_daily_rows(
+            date(_CURVE_YEAR, 1, 1),
+            _days_through(_CURVE_CUTOFF, _CURVE_YEAR),
+            3.0,
+            provider_revision=_ZONE_FAMILY,
+        ),
+    )
+    revision = _build_revision(db, scope_id=scope_id, year=_CURVE_YEAR, now=now)
+
+    series: dict = {}
+    scoped, other = _interval_store_selects(
+        db, scope_id, lambda: series.update(build_series(db, revision))
+    )
+
+    assert len(scoped) == 1, scoped
+    # The baseline read is the deliberate SECOND read of a DIFFERENT key, and
+    # its presence is what proves the filter above is not matching nothing.
+    assert len(other) == 1, other
+    assert series["normal_curve_state"] == "available"
+    assert series["consistent_with_snapshot"] is True
+
+
 def test_series_points_and_pin_read_the_same_resolved_set(db):
-    """The series and its pin are projections of ONE read, so an interval
-    planted after the build cannot be visible to one and invisible to the
-    other. Also the gap contract: a day with no evidence is ``None``, never a
-    fabricated zero, and the running total stays flat across it."""
+    """The BEHAVIORAL half of the one-read guarantee: an interval planted
+    after the build is visible to the display AND to the pin. It cannot
+    falsify a split read on its own -- two reads of the same quiet database
+    return the same rows -- which is what
+    ``test_build_series_reads_the_interval_store_exactly_once`` above exists
+    to observe. What this one still pins is the gap contract: a day with no
+    evidence is ``None``, never a fabricated zero, and the running total stays
+    flat across it."""
     from app.domains.geo.rainfall.series import build_series
 
     scope_id = "zone-3a-same-source"
@@ -385,6 +475,9 @@ def test_normal_curve_last_point_equals_annual_normal_value(db):
     # 22 non-leap years reach 61 mm by Mar 2, 8 leap years reach 62.
     expected_normal = ((30 - _LEAP_BASELINE_YEARS) * 61.0 + _LEAP_BASELINE_YEARS * 62.0) / 30
     assert normal["value"] == pytest.approx(expected_normal)
+    # LI3A-001: the acceptance rule below is now also a runtime structural
+    # check, so a served curve says so.
+    assert series["normal_curve_state"] == "available"
     last = points["2024-03-02"]
     assert last["normal_accumulated"] == pytest.approx(normal["value"])
     assert last["accumulated"] == pytest.approx(revision.snapshot["annual"]["selected"]["value"])
@@ -407,7 +500,12 @@ def test_normal_curve_last_point_equals_annual_normal_value(db):
 def test_no_normal_curve_when_the_baseline_is_suppressed(db):
     """Counterexample to 3a.8: with no baseline persisted, ``annual.normal``
     suppresses -- and the curve must be ABSENT rather than a mean over the
-    empty set, which would draw a flat zero line beside a real year."""
+    empty set, which would draw a flat zero line beside a real year.
+
+    LI3A-001: absent for that reason is ``"suppressed"``, which the response
+    reports DISTINCTLY from ``"integrity_refused"``. Both render as
+    ``normal_accumulated: null``, so without the state field an operator
+    cannot tell an honest absence from a refused lie."""
     from app.domains.geo.rainfall.series import build_series
 
     scope_id = "zone-3a8-no-baseline"
@@ -424,6 +522,164 @@ def test_no_normal_curve_when_the_baseline_is_suppressed(db):
     series = build_series(db, revision)
 
     assert all(point["normal_accumulated"] is None for point in series["points"])
+    assert series["normal_curve_state"] == "suppressed"
+
+
+# ---------------------------------------------------------------------------
+# LI3A-001: the curve must not be able to lie while the pin stamps consistent
+# ---------------------------------------------------------------------------
+
+
+def _seed_full_baseline(db, *, asset: str, cutoff: date) -> None:
+    """1991-2020 daily baseline at 1.0 mm/day through *cutoff*'s month/day."""
+    for baseline_year in range(1991, 2021):
+        persist_intervals(
+            db,
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            rows=_daily_rows(date(baseline_year, 1, 1), _days_through(cutoff, baseline_year), 1.0),
+        )
+
+
+def _curve_refusal_event(caplog) -> dict:
+    """The single ``rainfall.series.normal_curve_refused`` payload."""
+    import json
+
+    payloads = [
+        json.loads(record.getMessage().split(" ", 1)[1])
+        for record in caplog.records
+        if record.getMessage().startswith("rainfall.series.normal_curve_refused ")
+    ]
+    assert len(payloads) == 1, payloads
+    return payloads[0]
+
+
+def test_a_duplicated_baseline_slot_refuses_the_curve_instead_of_inflating_it(db, caplog):
+    """LI3A-001, the sibling guard: ``baseline_cumulatives`` REFUSES a
+    duplicated ``interval_start`` (LI2A-005/LI2B-004) because a duplicate
+    inflates the total while hiding itself. ``baseline_curve_rows`` reads the
+    same rows through the same anti-join and simply summed them into the
+    curve, so a duplicate that lands AFTER a revision is stored inflates the
+    chart's normal line while the card's ``annual.normal.value`` -- computed
+    once, at build time -- stays put. Nothing rebuilds a finalized past year,
+    so that disagreement is permanent, and the pin would still stamp
+    ``consistent_with_snapshot: true`` because it hashes only the SELECTED
+    scope's intervals, not the baseline's."""
+    import logging
+
+    from app.domains.geo.rainfall.models import RainfallIntervalValue
+    from app.domains.geo.rainfall.series import build_series
+
+    scope_id = "zone-li3a001-duplicate-baseline"
+    asset = asset_name_for("zone", scope_id)
+    now = datetime(_CURVE_YEAR, 3, 2, 12, 0, tzinfo=UTC)
+    _seed_full_baseline(db, asset=asset, cutoff=_CURVE_CUTOFF)
+    _persist_zone_rows(
+        db,
+        scope_id=scope_id,
+        rows=_daily_rows(
+            date(_CURVE_YEAR, 1, 1),
+            _days_through(_CURVE_CUTOFF, _CURVE_YEAR),
+            3.0,
+            provider_revision=_ZONE_FAMILY,
+        ),
+    )
+    revision = _build_revision(db, scope_id=scope_id, year=_CURVE_YEAR, now=now)
+    stored_normal = revision.snapshot["annual"]["normal"]
+    assert stored_normal["state"] == "available"
+    clean = build_series(db, revision)
+    assert clean["normal_curve_state"] == "available"
+
+    # AFTER the build: a second non-superseded row for one baseline slot --
+    # the residue of a correction whose supersession link never landed (the
+    # same shape LI2B-004's fixture plants).
+    duplicated_day = datetime(1991, 1, 5, tzinfo=UTC)
+    db.add(
+        RainfallIntervalValue(
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            interval_start=duplicated_day,
+            interval_end=duplicated_day + timedelta(days=1),
+            provider_revision="v3-final+r1",
+            value=500.0,
+            unit="mm",
+        )
+    )
+    db.flush()
+
+    caplog.set_level(logging.INFO, logger="rainfall")
+    series = build_series(db, revision)
+
+    # Refused, and refused DISTINCTLY from an honest absence.
+    assert series["normal_curve_state"] == "integrity_refused"
+    assert all(point["normal_accumulated"] is None for point in series["points"])
+    event = _curve_refusal_event(caplog)
+    assert event["reason"] == "duplicate_baseline_slot"
+    assert event["revision_id"] == str(revision.id)
+
+    # Nothing else moves: the stored card value, the selected-year points and
+    # the pin are all untouched -- the baseline store is not what the pin
+    # hashes, which is exactly why the curve needed its own guard.
+    assert revision.snapshot["annual"]["normal"]["value"] == pytest.approx(stored_normal["value"])
+    assert [point["accumulated"] for point in series["points"]] == [
+        point["accumulated"] for point in clean["points"]
+    ]
+    assert series["consistent_with_snapshot"] is True
+    assert series["consistency_reason"] is None
+
+
+def test_a_curve_that_disagrees_with_the_stored_normal_is_refused(db, caplog):
+    """LI3A-001, the acceptance cross-check on its own: design.md D3's rule is
+    that the curve's last point EQUALS ``annual.normal.value``. That was an
+    acceptance criterion checked by one test on one fixture; here it becomes a
+    runtime structural check, so ANY future divergence -- a cutoff drift, a
+    baseline row superseded after the build, a fourth defect nobody has found
+    yet -- refuses the curve instead of drawing a line that contradicts the
+    card it sits beside."""
+    import logging
+
+    from app.domains.geo.rainfall.series import build_series
+
+    scope_id = "zone-li3a001-crosscheck"
+    asset = asset_name_for("zone", scope_id)
+    now = datetime(_CURVE_YEAR, 3, 2, 12, 0, tzinfo=UTC)
+    _seed_full_baseline(db, asset=asset, cutoff=_CURVE_CUTOFF)
+    _persist_zone_rows(
+        db,
+        scope_id=scope_id,
+        rows=_daily_rows(
+            date(_CURVE_YEAR, 1, 1),
+            _days_through(_CURVE_CUTOFF, _CURVE_YEAR),
+            3.0,
+            provider_revision=_ZONE_FAMILY,
+        ),
+    )
+    revision = _build_revision(db, scope_id=scope_id, year=_CURVE_YEAR, now=now)
+
+    # A stored row is append-only and ORM-guarded against update, so the
+    # corrupted envelope is injected through the same revision-shaped
+    # stand-in the runaway-window test uses -- with the REAL `data_revision`,
+    # so the pin still passes and the two checks are provably independent.
+    corrupted = {**revision.snapshot}
+    annual = {**corrupted["annual"]}
+    normal = {**annual["normal"]}
+    normal["value"] = normal["value"] + 10.0
+    annual["normal"] = normal
+    corrupted["annual"] = annual
+
+    caplog.set_level(logging.INFO, logger="rainfall")
+    series = build_series(db, _fake_revision(corrupted, data_revision=revision.data_revision))
+
+    assert series["normal_curve_state"] == "integrity_refused"
+    assert all(point["normal_accumulated"] is None for point in series["points"])
+    assert _curve_refusal_event(caplog)["reason"] == "last_point_disagrees_with_stored_normal"
+    # The pin speaks about the SELECTED scope and is unaffected: one response
+    # can honestly carry a valid pin and a refused curve at the same time.
+    assert series["consistent_with_snapshot"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -510,14 +766,77 @@ def test_series_dates_do_not_shift_under_a_non_utc_session_timezone(db):
     assert all(point["state"] == "available" for point in points)
 
 
-def _fake_revision(snapshot: dict):
+def test_baseline_cutoff_does_not_shift_under_a_non_utc_session_timezone(db):
+    """Time/state, on the COMPUTE side (LI3A-005): ``compute._cutoff_date``
+    reads the last covered day off ``window_end``, which under provider lag is
+    ``max(interval_end)`` -- a value ``psycopg2`` renders in the SESSION's
+    zone. Taking ``.date()`` of it under UTC-3 lands a day early, so the
+    baseline is cut one day before the day the selected year actually reaches.
+
+    The visible symptom is the acceptance rule itself: the normal curve
+    (cut at the series' own UTC-normalized end) no longer meets
+    ``annual.normal.value`` (cut at the build's shifted end). Latent in
+    production only because the deployment's Postgres runs UTC.
+    """
+    from sqlalchemy import text
+
+    from app.domains.geo.rainfall.series import build_series
+
+    scope_id = "zone-3a-compute-tz"
+    asset = asset_name_for("zone", scope_id)
+    cutoff = date(_CURVE_YEAR, 3, 2)
+    now = datetime(_CURVE_YEAR, 3, 5, 12, 0, tzinfo=UTC)  # comparison_end = Mar 5
+
+    # The session zone is set BEFORE the build, so the BUILD reads its
+    # intervals rendered at UTC-3 -- unlike the series-side test above, which
+    # only shifts the read path.
+    db.execute(text("SET TIME ZONE 'America/Argentina/Buenos_Aires'"))
+
+    for baseline_year in range(1991, 2021):
+        persist_intervals(
+            db,
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            rows=_daily_rows(date(baseline_year, 1, 1), _days_through(cutoff, baseline_year), 1.0),
+        )
+    # Published only through Mar 2 while the calendar end is Mar 5: the 3-day
+    # lag is what makes `window_end` come from the database instead of from
+    # Python's own UTC-constructed calendar end.
+    _persist_zone_rows(
+        db,
+        scope_id=scope_id,
+        rows=_daily_rows(
+            date(_CURVE_YEAR, 1, 1),
+            _days_through(cutoff, _CURVE_YEAR),
+            3.0,
+            provider_revision=_ZONE_FAMILY,
+        ),
+    )
+    revision = _build_revision(db, scope_id=scope_id, year=_CURVE_YEAR, now=now)
+    normal = revision.snapshot["annual"]["normal"]
+    assert normal["state"] == "available"
+
+    series = build_series(db, revision)
+    points = series["points"]
+
+    # 22 non-leap years reach 61 mm by Mar 2, 8 leap years reach 62 -- the same
+    # arithmetic as 3a.8. A cutoff shifted one day early yields 60/61 instead.
+    expected_normal = ((30 - _LEAP_BASELINE_YEARS) * 61.0 + _LEAP_BASELINE_YEARS * 62.0) / 30
+    assert normal["value"] == pytest.approx(expected_normal)
+    assert points[-1]["date"] == "2024-03-02"
+    assert points[-1]["normal_accumulated"] == pytest.approx(normal["value"])
+
+
+def _fake_revision(snapshot: dict, *, data_revision: str = "d" * 64):
     """A revision-shaped stand-in for states a REAL row cannot reach: rows are
     append-only and rejected by an ORM guard on update (models.py), so a
     corrupt or runaway envelope cannot be produced by writing one."""
     from types import SimpleNamespace
     from uuid import uuid4
 
-    return SimpleNamespace(id=uuid4(), data_revision="d" * 64, snapshot=snapshot)
+    return SimpleNamespace(id=uuid4(), data_revision=data_revision, snapshot=snapshot)
 
 
 def test_a_runaway_disclosure_window_is_clamped_to_the_analysis_year(db):
@@ -657,3 +976,13 @@ def test_series_served_event_is_documented_in_the_observability_workbook():
 
     assert "`rainfall.series.served`" in workbook
     assert "consistent_with_snapshot" in workbook
+    # LI3A-001's refusal event, and the state field that makes an honest
+    # absence distinguishable from a refused curve.
+    assert "`rainfall.series.normal_curve_refused`" in workbook
+    assert "normal_curve_state" in workbook
+    assert "integrity_refused" in workbook
+    # LI3A-002: the ambiguity row must describe BOTH shapes it fires for --
+    # the zero-evidence revision (benign) and two live families (a
+    # decision-7 invariant breach).
+    assert "Zero resolved rows" in workbook
+    assert "Two or more live families" in workbook

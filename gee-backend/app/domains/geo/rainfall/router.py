@@ -308,6 +308,7 @@ def read_analysis_series(revision: UUID, db: Session = Depends(get_db)) -> dict:
         data_revision=series["data_revision"],
         consistent_with_snapshot=series["consistent_with_snapshot"],
         consistency_reason=series["consistency_reason"],
+        normal_curve_state=series["normal_curve_state"],
         points=len(series["points"]),
         latency_ms=round((datetime.now() - started).total_seconds() * 1000),
     )

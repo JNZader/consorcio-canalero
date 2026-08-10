@@ -16,6 +16,17 @@ with the one stored on the row. Errors are one-directional by construction --
 an ambiguous family or an unequal digest reports INCONSISTENT, and nothing
 reports consistent unless the two digests are equal.
 
+That pin covers the SELECTED scope only. The normal curve is read live from a
+different key (the provider-asset baseline) that the digest never hashed, so
+it carries its own integrity guards and its own ``normal_curve_state``
+(LI3A-001): a duplicated baseline slot -- the invariant breach
+``baseline_cumulatives`` already refuses to total -- and a last point that
+disagrees with the stored ``annual.normal.value`` both REFUSE the curve
+rather than draw a line contradicting the card beside it. Refusal is reported
+distinctly from a structurally absent curve, because both render as
+``normal_accumulated: null`` and an operator has to be able to tell them
+apart.
+
 Boundary rule (design.md "Technical Approach"): ``repository.py`` owns SQL,
 ``compute.py`` stays pure, and this module owns the Session for one read-only
 request. It is READ-ONLY on purpose: it writes nothing, enqueues nothing and
@@ -24,6 +35,7 @@ has no side effect a caller could drive by polling.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, NamedTuple
 
@@ -31,10 +43,13 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.rainfall.adapters.gee_client import UnknownProviderScope, asset_name_for
 from app.domains.geo.rainfall.compute import data_revision_for, revision_family, served_state
+from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.models import RainfallAnalysisRevision
 from app.domains.geo.rainfall.repository import baseline_curve_rows, daily_series_rows
 from app.domains.geo.rainfall.scope import AnalysisScope
 from app.domains.geo.rainfall.service import RAINFALL_HISTORICAL_SOURCE, SnapshotContractError
+from app.domains.geo.rainfall.temporal import as_utc as _as_utc
+from app.domains.geo.rainfall.temporal import utc_day as _utc_day
 
 # The two reasons a series can fail to match the revision it illustrates
 # (design.md D3). `consistency_reason` is null in every other case, and a
@@ -60,6 +75,32 @@ _LEAP_DAY = (2, 29)
 POINT_AVAILABLE = "available"
 POINT_UNAVAILABLE = "unavailable"
 
+# Why the normal curve is (or is not) drawn (LI3A-001). A refused curve and a
+# structurally absent one both render every `normal_accumulated` as `null`, so
+# without this field the response cannot tell an operator -- or the chart --
+# whether the baseline simply is not disclosable for this analysis, or whether
+# a curve WAS computable and was thrown away because it contradicted the card
+# it would sit beside.
+NORMAL_CURVE_AVAILABLE = "available"
+NORMAL_CURVE_SUPPRESSED = "suppressed"
+NORMAL_CURVE_INTEGRITY_REFUSED = "integrity_refused"
+
+# The two refusals, reported on the event rather than in the response: an
+# operator needs to know WHICH invariant broke, a chart only needs to know
+# there is no line to draw.
+CURVE_REFUSAL_DUPLICATE_BASELINE_SLOT = "duplicate_baseline_slot"
+CURVE_REFUSAL_LAST_POINT_DISAGREES = "last_point_disagrees_with_stored_normal"
+CURVE_REFUSAL_STORED_NORMAL_UNREADABLE = "stored_normal_unreadable"
+
+# `annual.normal.value` is summed by PostgreSQL (`repository.baseline_cumulatives`'
+# per-year `SUM`) while the curve accumulates the same rows in Python, so the
+# two agree to within accumulated float rounding -- ~1e-15 relative over 30
+# years of daily values -- and never bit-for-bit. This tolerance is six orders
+# of magnitude above that noise and eleven below the smallest disagreement any
+# of the defects in this class produces (the measured duplicate-slot inflation
+# was 16.7 mm on a 61.3 mm normal).
+_CURVE_ACCEPTANCE_REL_TOL = 1e-9
+
 
 class _Analysis(NamedTuple):
     """Everything the series needs, taken from the served revision ALONE --
@@ -73,21 +114,6 @@ class _Analysis(NamedTuple):
     comparison_end: date
     available_through: str
     window_end: datetime
-
-
-def _as_utc(moment: datetime) -> datetime:
-    """*moment* in UTC, treating a naive value as UTC.
-
-    Day bucketing below MUST NOT depend on the database session's ``TimeZone``
-    setting: ``psycopg2`` renders a ``timestamptz`` in the session's zone, so
-    a UTC midnight boundary read under UTC-3 would bucket into the previous
-    day (the same class of defect as LI1-002's ``date_part`` grouping).
-    """
-    return moment.astimezone(UTC) if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
-
-
-def _utc_day(moment: datetime) -> date:
-    return _as_utc(moment).date()
 
 
 def _analysis(snapshot: Any) -> _Analysis:
@@ -182,9 +208,24 @@ def _pin(
     return True, None
 
 
+class _NormalCurve(NamedTuple):
+    """The curve and WHY it looks the way it does (LI3A-001)."""
+
+    points: dict[tuple[int, int], float]
+    state: str
+    refusal_reason: str | None = None
+
+
+_SUPPRESSED_CURVE = _NormalCurve({}, NORMAL_CURVE_SUPPRESSED)
+
+
+def _refused_curve(reason: str) -> _NormalCurve:
+    return _NormalCurve({}, NORMAL_CURVE_INTEGRITY_REFUSED, reason)
+
+
 def _normal_curve(
     db: Session, *, snapshot: dict[str, Any], scope: AnalysisScope, cutoff: date
-) -> dict[tuple[int, int], float]:
+) -> _NormalCurve:
     """Cumulative baseline normal keyed by ``(month, day)``, averaged over
     EXACTLY ``annual.normal``'s own eligible-year set (design.md D3).
 
@@ -195,15 +236,42 @@ def _normal_curve(
     served -- an unmapped scope, a thin baseline, invalid evidence -- there is
     no curve: an empty mapping, never a mean over an empty sample, which would
     draw a flat zero line beside a real year.
+
+    Two integrity guards make that "read at two resolutions" claim a property
+    of the code rather than of the fixtures (LI3A-001). Both refuse the whole
+    curve rather than serve a partial one, because a baseline line that is
+    wrong ANYWHERE is a comparison the reader cannot trust:
+
+    1. **The sibling guard.** ``baseline_cumulatives`` raises
+       ``DuplicateBaselineSlotError`` on two non-superseded rows for one
+       ``interval_start``, because a duplicate inflates the total AND the
+       matched-day count together and so hides itself. This read goes through
+       the same anti-join and inherits the same invariant, and simply summed
+       duplicates into the curve -- so the same broken data that the build
+       path refuses to total would have been drawn on the chart.
+    2. **The acceptance cross-check.** The curve's last point MUST equal the
+       STORED ``annual.normal.value``. That value was computed once, at build
+       time; the curve is read live, and nothing rebuilds a finalized past
+       year. Any drift between them -- a cutoff shifted by a session time
+       zone, a baseline row superseded after the build, a defect not yet
+       found -- would otherwise ship as a chart quietly disagreeing with the
+       card above it, under a pin that says "consistent" because the pin
+       hashes the SELECTED scope's intervals and never the baseline's.
     """
     annual = snapshot.get("annual")
     normal = annual.get("normal") if isinstance(annual, dict) else None
     if not isinstance(normal, dict) or normal.get("state") != "available":
-        return {}
+        return _SUPPRESSED_CURVE
     quality = normal.get("quality")
     eligible = quality.get("eligible_years") if isinstance(quality, dict) else None
     if not isinstance(eligible, list) or not eligible:
-        return {}
+        return _SUPPRESSED_CURVE
+    stored_value = normal.get("value")
+    if not isinstance(stored_value, int | float) or isinstance(stored_value, bool):
+        # A metric marked `available` with no readable value is a broken
+        # envelope, not an honest absence: the cross-check below cannot run,
+        # so the curve is refused rather than served unverified.
+        return _refused_curve(CURVE_REFUSAL_STORED_NORMAL_UNREADABLE)
     years = [int(year) for year in eligible]
 
     try:
@@ -212,12 +280,22 @@ def _normal_curve(
     except (UnknownProviderScope, ValueError):
         # A served `annual.normal` implies both resolved at build time; if
         # either stopped resolving, the honest answer is no curve.
-        return {}
+        return _SUPPRESSED_CURVE
 
     rows = baseline_curve_rows(db, source_id=RAINFALL_HISTORICAL_SOURCE, asset=asset, dates=cutoffs)
     by_year: dict[int, dict[date, float]] = {year: {} for year in years}
+    seen_slots: set[datetime] = set()
     for interval_start, value in rows:
-        day = _utc_day(interval_start)
+        # Keyed on the SLOT, exactly like `baseline_cumulatives`' COUNT vs
+        # COUNT DISTINCT guard -- not on the day, which would refuse a
+        # legitimately sub-daily baseline. Detecting it in this loop rather
+        # than in a second aggregate query costs no extra round trip and
+        # cannot miss: every row the curve consumes passes through here.
+        moment = _as_utc(interval_start)
+        if moment in seen_slots:
+            return _refused_curve(CURVE_REFUSAL_DUPLICATE_BASELINE_SLOT)
+        seen_slots.add(moment)
+        day = moment.date()
         bucket = by_year.get(day.year)
         if bucket is not None:
             bucket[day] = bucket.get(day, 0.0) + value
@@ -239,11 +317,23 @@ def _normal_curve(
     # Every eligible year walks its own full calendar above, so each key holds
     # one value per year; the guard exists so a future change cannot silently
     # start averaging a key over a subset of the sample.
-    return {
+    points = {
         key: sum(values) / len(values)
         for key, values in cumulative_by_key.items()
         if len(values) == len(years)
     }
+
+    last_point = points.get((cutoff.month, cutoff.day))
+    if last_point is None or not math.isclose(
+        last_point, float(stored_value), rel_tol=_CURVE_ACCEPTANCE_REL_TOL
+    ):
+        # `None` here means the curve did not even reach its own cutoff --
+        # structurally impossible for a non-leap-day cutoff, and a Feb-29
+        # cutoff suppresses `annual.normal` long before this point (only 8 of
+        # the 30 baseline years have that day). Either way it is unverifiable,
+        # which is refused for the same reason a disagreement is.
+        return _refused_curve(CURVE_REFUSAL_LAST_POINT_DISAGREES)
+    return _NormalCurve(points, NORMAL_CURVE_AVAILABLE)
 
 
 def _points(
@@ -324,6 +414,16 @@ def build_series(db: Session, revision: RainfallAnalysisRevision) -> dict[str, A
         scope=analysis.scope,
         cutoff=_utc_day(window_end - timedelta(days=1)),
     )
+    if curve.state == NORMAL_CURVE_INTEGRITY_REFUSED:
+        record_event(
+            "rainfall.series.normal_curve_refused",
+            revision_id=str(revision.id),
+            reason=curve.refusal_reason,
+            scope_kind=analysis.scope.kind,
+            scope_id=analysis.scope.id,
+            scope_version=analysis.scope.version,
+            year=analysis.year,
+        )
     return {
         "analysis_revision_id": str(revision.id),
         "data_revision": revision.data_revision,
@@ -336,7 +436,14 @@ def build_series(db: Session, revision: RainfallAnalysisRevision) -> dict[str, A
         "unit": analysis.unit,
         "comparison_end": analysis.comparison_end.isoformat(),
         "available_through": analysis.available_through,
+        # Speaks about the SELECTED scope's own intervals ONLY: it is
+        # `data_revision_for` recomputed over the rows this build read for
+        # `scope`, and the baseline store is not in that hash. A refused
+        # normal curve therefore does NOT make it false, and a true pin does
+        # NOT vouch for the baseline -- which is exactly why the curve needed
+        # its own integrity guards and its own state field (LI3A-001).
         "consistent_with_snapshot": consistent,
         "consistency_reason": reason,
-        "points": _points(rows, year_start=year_start, window_end=window_end, curve=curve),
+        "normal_curve_state": curve.state,
+        "points": _points(rows, year_start=year_start, window_end=window_end, curve=curve.points),
     }
