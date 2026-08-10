@@ -58,6 +58,15 @@ MINIMO_RESPONDIBLES = 20
 
 MODOS_ABLACION = ("fts", "vector", "hybrid")
 
+#: Which legs each mode actually runs. Mirrors `service.recuperar`'s own branches
+#: — the coverage diagnostic must not call a leg "degraded" that the mode never
+#: asked to run.
+LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
+    "fts": ("fts",),
+    "vector": ("vector",),
+    "hybrid": ("fts", "vector"),
+}
+
 #: The owner's ratified bars (retrieval spec, `Go/No-Go Thresholds`).
 BARRA_HIT_RATE = 0.85
 BARRA_MRR = 0.70
@@ -66,8 +75,31 @@ BARRA_SEPARACION = 1.0
 BARRA_VIGENCIA = 1.0
 
 
+#: The public gold set's own filename, which the owner-side private file names in
+#: its `para:` key. Checked rather than assumed: `RAG_GOLD_PRIVADO_PATH` is an
+#: environment variable pointing outside this repository, so the only thing
+#: stopping a stale or foreign file from resolving 26 questions is that the file
+#: says which set it belongs to and we read it.
+NOMBRE_GOLD_SET = "gold_set.yaml"
+
+
 class GoldSetInvalido(RuntimeError):
     """The committed gold set does not satisfy its own schema."""
+
+
+class CorpusShaMismatch(RuntimeError):
+    """The gold set and the snapshot being evaluated pin different corpus revisions.
+
+    The gold set's `citas_esperadas` are citation keys of ONE corpus revision.
+    Scored against a different snapshot, a key that simply does not exist there
+    reads as a retrieval miss, so every metric shifts down and the report names a
+    failure of the retriever instead of a mismatch of inputs.
+
+    The direction of the error is fail-safe — a spurious NO-GO, never a spurious
+    GO — which is why this is a refusal and not a warning: a NO-GO nobody can
+    explain costs a re-run of the whole batch, and the cause is one string
+    comparison away.
+    """
 
 
 @dataclass(frozen=True)
@@ -168,7 +200,21 @@ class GoldSet:
         )
 
 
-def _textos_privados(path: Path | None) -> Mapping[str, str]:
+def _textos_privados(path: Path | None, corpus_sha: str) -> Mapping[str, str]:
+    """Question text for the `origen: privado` items, or `{}` when unavailable.
+
+    The file declares `para:` and `corpus_sha:` and both are CHECKED here rather
+    than skipped, which is the whole difference between "the harness resolved 26
+    questions" and "the harness resolved 26 questions that belong to this set".
+    The file lives outside this repository at an operator-supplied path, so a
+    stale copy from a previous corpus revision, or the wrong file entirely, is a
+    plain configuration slip — and its symptom would be 26 questions silently
+    scored against citations that no longer exist.
+
+    A missing/unset path is NOT an error: unresolved items are already a hard
+    blocker in `precondicion()`. Only a file that IS there and contradicts the
+    set it claims to serve raises.
+    """
     if path is None:
         crudo = os.environ.get(ENV_PRIVADO)
         if not crudo:
@@ -176,15 +222,53 @@ def _textos_privados(path: Path | None) -> Mapping[str, str]:
         path = Path(crudo).expanduser()
     if not path.is_file():
         return {}
+
     datos = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    para = datos.get("para")
+    if para is not None and Path(str(para)).name != NOMBRE_GOLD_SET:
+        raise GoldSetInvalido(
+            f"{path}: declares `para: {para}` but it is being used to resolve "
+            f"{NOMBRE_GOLD_SET}. Refusing rather than pasting one gold set's "
+            "question text into another's items."
+        )
+
+    sha_privado = datos.get("corpus_sha")
+    if sha_privado is not None and str(sha_privado) != corpus_sha:
+        raise CorpusShaMismatch(
+            f"{path} is pinned to corpus_sha {sha_privado} but {NOMBRE_GOLD_SET} "
+            f"is pinned to {corpus_sha}. The 26 private items would be resolved "
+            "from a different corpus revision than the one their expected "
+            "citations were written against."
+        )
+
     return dict(datos.get("preguntas") or {})
+
+
+def verificar_corpus_sha(gold: GoldSet, corpus_sha: str) -> None:
+    """Refuse a gold set pinned to a different corpus revision than the snapshot.
+
+    Called at the CLI edge BEFORE the database is opened, the report directory is
+    created or an embedder is built: this is a pure string comparison and there is
+    no reason for it to cost anything.
+    """
+    if gold.corpus_sha != corpus_sha:
+        raise CorpusShaMismatch(
+            f"the gold set is pinned to corpus_sha {gold.corpus_sha} but the "
+            f"snapshot being evaluated is {corpus_sha}. Every `citas_esperadas` "
+            "key belongs to the first revision; scored against the second, a key "
+            "that does not exist there is indistinguishable from a retrieval "
+            "miss. Re-ingest the pinned corpus, or evaluate the snapshot this "
+            "gold set was written for."
+        )
 
 
 def cargar_gold_set(path: Path | None = None, privado_path: Path | None = None) -> GoldSet:
     """Load the committed gold set, resolving private question text if available."""
     path = path or GOLD_SET_PATH
     datos = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    privados = _textos_privados(privado_path)
+    corpus_sha = str(datos.get("corpus_sha", ""))
+    privados = _textos_privados(privado_path, corpus_sha)
 
     items: list[GoldItem] = []
     vistos: set[str] = set()
@@ -229,7 +313,7 @@ def cargar_gold_set(path: Path | None = None, privado_path: Path | None = None) 
 
     return GoldSet(
         version=int(datos.get("version", 1)),
-        corpus_sha=str(datos.get("corpus_sha", "")),
+        corpus_sha=corpus_sha,
         ratificado=str(datos.get("ratificado", "")),
         items=tuple(items),
     )
@@ -257,9 +341,17 @@ class CoberturaLegs:
 
     This exists because of a measured defect (ledger RAG4-001):
     `websearch_to_tsquery` builds a CONJUNCTION, so a colloquial gold question
-    compiles to a dozen ANDed lexemes and matches no legal article at all. The
-    FTS leg then contributes zero rows — and in `hybrid` that turns the fused
-    result into vector-only while the report keeps saying "hybrid".
+    compiled to a dozen ANDed lexemes and matched no legal article at all. The
+    FTS leg then contributed zero rows — and in `hybrid` that turned the fused
+    result into vector-only while the report kept saying "hybrid".
+
+    **The operator was fixed** (`repository.FTS_OPERADOR`: the leg now ORs its
+    lexemes), so the emptiness this counts should be rare. That is exactly why
+    the counter stays: it was the instrument that measured the defect, and
+    deleting the instrument once the reading improves is how the next regression
+    goes unnoticed. Vocabulary can still miss — gold D-7's article shares no
+    lexeme with its question, which is the vector leg's job, not the lexical
+    leg's — so an empty leg remains a real and reportable outcome.
 
     A metric computed over an empty leg is not wrong, it is about something
     else, so the fact travels beside it rather than in a footnote.
@@ -268,6 +360,13 @@ class CoberturaLegs:
     n_preguntas: int
     sin_candidatos_fts: int
     sin_candidatos_vector: int
+    #: Which legs this mode actually RAN. A leg that was never asked to run
+    #: trivially returned nothing for every question, and calling that
+    #: "degraded" is a warning that fires on every `--modo fts` run — which is
+    #: how the reader learns to skip the block that carries the RAG4-001 finding.
+    #: Measured on a real 52-question run before this was gated: `--modo fts`
+    #: printed `LEG DEGRADADA (vector)` next to a perfectly healthy lexical leg.
+    legs_corridas: tuple[str, ...] = ("fts", "vector")
 
     @property
     def fraccion_sin_candidatos_fts(self) -> float:
@@ -279,12 +378,16 @@ class CoberturaLegs:
 
     @property
     def leg_fts_degradada(self) -> bool:
-        """A strict majority of questions got nothing from the lexical leg."""
-        return self.fraccion_sin_candidatos_fts > 0.5
+        """A strict majority of questions got nothing from the lexical leg.
+
+        False when the mode did not run that leg: "it returned nothing" and "it
+        was never asked" are different facts, and only one of them is a finding.
+        """
+        return "fts" in self.legs_corridas and self.fraccion_sin_candidatos_fts > 0.5
 
     @property
     def leg_vector_degradada(self) -> bool:
-        return self.fraccion_sin_candidatos_vector > 0.5
+        return "vector" in self.legs_corridas and self.fraccion_sin_candidatos_vector > 0.5
 
 
 @dataclass(frozen=True)
@@ -309,22 +412,29 @@ class ResultadoModo:
                 n_preguntas=len(self.detalles),
                 sin_candidatos_fts=sum(1 for d in self.detalles if d.n_fts == 0),
                 sin_candidatos_vector=sum(1 for d in self.detalles if d.n_vector == 0),
+                legs_corridas=LEGS_POR_MODO.get(self.modo, ()),
             ),
         )
 
     @property
     def hibrido_degenerado(self) -> bool:
-        """`hybrid` where one leg contributed nothing at all is not hybrid.
+        """`hybrid` where a leg contributed nothing for MOST questions is not hybrid.
 
         Reporting it under that name would publish a comparison that was never
         made — the same failure `VectorSupportUnavailable` refuses loudly,
         reached instead through a query that simply matched nothing.
+
+        The threshold is the same strict majority `leg_fts_degradada` uses, and
+        that alignment is a fix rather than a tidy-up: this property used to fire
+        only at `all(...)`, i.e. 100 % empty. A `hybrid` run where the lexical leg
+        died on 49 of 52 questions is fused for three of them and vector-only for
+        the rest, and the old predicate called that a healthy hybrid. One
+        surviving question was enough to silence the flag, which made the loudest
+        warning in the report the easiest one to switch off by accident.
         """
         if self.modo != "hybrid":
             return False
-        return all(d.n_fts == 0 for d in self.detalles) or all(
-            d.n_vector == 0 for d in self.detalles
-        )
+        return self.cobertura.leg_fts_degradada or self.cobertura.leg_vector_degradada
 
 
 def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbstencion:
@@ -486,12 +596,23 @@ class Barra:
         return self.valor >= self.minimo
 
 
+#: How each leg is named in prose, so the qualified verdict can say which leg the
+#: reader is actually looking at rather than only which one failed.
+_ADJETIVO_LEG = {"FTS": "léxica", "vector": "vectorial"}
+
+
 @dataclass(frozen=True)
 class GoNoGo:
     modo: str
     evaluable: bool
     motivos_no_evaluable: tuple[str, ...]
     barras: tuple[Barra, ...]
+    #: The degraded legs of a FUSED mode, empty for a single-leg mode. A verdict
+    #: over `hybrid` whose lexical leg died on most questions is a real verdict —
+    #: the ablation still informs — but it is a verdict about one leg wearing a
+    #: fused label, and `GO` three words above a `LEG DEGRADADA` warning is a line
+    #: somebody will quote without the warning.
+    legs_degradadas: tuple[str, ...] = ()
 
     @property
     def pasa(self) -> bool:
@@ -502,6 +623,33 @@ class GoNoGo:
         if not self.evaluable:
             return "NO EVALUABLE"
         return "GO" if self.pasa else "NO-GO"
+
+    @property
+    def veredicto_calificado(self) -> bool:
+        """Does the verdict need its scope stated to be quotable on its own?
+
+        Deliberately NOT a reason to force `evaluable=False`: a degraded leg does
+        not invalidate the measurement, it narrows what the measurement is ABOUT.
+        Refusing to score would throw away the ablation's actual finding.
+        """
+        return self.evaluable and bool(self.legs_degradadas)
+
+    @property
+    def veredicto_con_alcance(self) -> str:
+        """The verdict word, plus its scope when a leg of a fused mode is degraded."""
+        if not self.veredicto_calificado:
+            return self.veredicto
+        degradadas = " y ".join(self.legs_degradadas)
+        plural = "s" if len(self.legs_degradadas) > 1 else ""
+        sanas = [
+            adjetivo for leg, adjetivo in _ADJETIVO_LEG.items() if leg not in self.legs_degradadas
+        ]
+        alcance = (
+            f"el veredicto refleja principalmente la pata {' y '.join(sanas)}"
+            if sanas
+            else "el veredicto no refleja ninguna pierna sana"
+        )
+        return f"{self.veredicto} (con leg {degradadas} degradada{plural} — {alcance})"
 
     @property
     def barras_fallidas(self) -> tuple[str, ...]:
@@ -556,11 +704,25 @@ def decidir_go_no_go(
         Barra("abstention precision", loocv.precision, PRECISION_MINIMA, ">=", "LOOCV held-out"),
     )
 
+    # Only a FUSED mode can have its verdict misread as being about both legs.
+    # In `fts` or `vector` the degradation is the measurement, not a caveat on it.
+    degradadas: tuple[str, ...] = ()
+    if corrida.modo == "hybrid":
+        degradadas = tuple(
+            nombre
+            for nombre, degradada in (
+                ("FTS", corrida.cobertura.leg_fts_degradada),
+                ("vector", corrida.cobertura.leg_vector_degradada),
+            )
+            if degradada
+        )
+
     return GoNoGo(
         modo=corrida.modo,
         evaluable=forzar_evaluable or precondicion.evaluable,
         motivos_no_evaluable=() if forzar_evaluable else precondicion.motivos,
         barras=barras,
+        legs_degradadas=degradadas,
     )
 
 

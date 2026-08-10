@@ -22,7 +22,13 @@ Needs, in this order and for reasons that are refusals rather than warnings:
   measurement wearing the ratified one's name.
 
 Exit codes: 0 success · 1 run refused (privacy gate, synthetic snapshot, missing
-snapshot) · 2 usage.
+snapshot) · 2 usage · 4 the gold set and the snapshot are not the same corpus
+revision, or the owner-side private file belongs to a different set.
+
+4 is its own code rather than another 1 because it is the one refusal that is
+never about the database: nothing was queried, nothing was written, and the fix
+is to correct an argument or an environment variable — not to load vectors or
+re-ingest.
 """
 
 from __future__ import annotations
@@ -45,9 +51,12 @@ from app.domains.conocimiento.embedding import (  # noqa: E402
 )
 from app.domains.conocimiento.eval.harness import (  # noqa: E402
     MODOS_ABLACION,
+    CorpusShaMismatch,
+    GoldSetInvalido,
     cargar_gold_set,
     decidir_go_no_go,
     evaluar,
+    verificar_corpus_sha,
 )
 from app.domains.conocimiento.eval.report import (  # noqa: E402
     EvalSinteticoNoEsEval,
@@ -56,6 +65,9 @@ from app.domains.conocimiento.eval.report import (  # noqa: E402
 from app.domains.conocimiento.service import procedencia_embeddings  # noqa: E402
 
 DESTINO_POR_DEFECTO = Path(__file__).resolve().parent.parent.parent / "docs" / "rag"
+
+#: Exit code for "these two inputs do not describe the same corpus revision".
+SALIDA_IDENTIDAD = 4
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,11 +138,24 @@ def main(argv: list[str] | None = None) -> int:
         else dt.datetime.now(dt.timezone.utc)
     )
 
-    gold = cargar_gold_set()
+    # Identity before anything else: this is a string comparison, it needs no
+    # database, no directory and no 2.2 GB model, and getting it wrong produces a
+    # NO-GO that looks like a retrieval failure. Same ordering principle as the
+    # snapshot checks below — cheapest refusal first — applied one step earlier
+    # because these two inputs must describe the same corpus revision before it
+    # is worth asking a database anything (ledger RAG4-003).
+    try:
+        gold = cargar_gold_set()
+        verificar_corpus_sha(gold, args.corpus_sha)
+    except (CorpusShaMismatch, GoldSetInvalido) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return SALIDA_IDENTIDAD
+
     precondicion = gold.precondicion()
     print(
         f"gold set: {len(gold.items)} ítems "
-        f"(respondibles {gold.n_respondibles} · abstención {gold.n_unanswerable})"
+        f"(respondibles {gold.n_respondibles} · abstención {gold.n_unanswerable}) "
+        f"· corpus_sha {gold.corpus_sha}"
     )
     if not precondicion.evaluable:
         print("gold set NO evaluable — el reporte saldrá sin veredicto:")
@@ -185,7 +210,9 @@ def main(argv: list[str] | None = None) -> int:
     for modo in resultado.modos:
         corrida = resultado.por_modo[modo]
         decision = decidir_go_no_go(corrida, gold)
-        veredicto = "NO EVALUABLE" if procedencia.sintetico else decision.veredicto
+        # The scoped form, not the bare word: a `GO` printed one line above a
+        # degraded-leg warning is the line that gets quoted without the warning.
+        veredicto = "NO EVALUABLE" if procedencia.sintetico else decision.veredicto_con_alcance
         print(f"  {modo:<7} {veredicto}", end="")
         if decision.barras_fallidas:
             print(f"  (fallan: {', '.join(decision.barras_fallidas)})", end="")

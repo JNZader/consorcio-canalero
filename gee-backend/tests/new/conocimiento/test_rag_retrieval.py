@@ -316,6 +316,122 @@ class TestFtsLeg:
         assert len(repository.fts_search(corpus_basico, SHA, "canal", limite=1)) == 1
 
 
+class TestFtsOperador:
+    """RAG4-001: the leg ORs its lexemes, and every shape of that is pinned here.
+
+    `websearch_to_tsquery` builds a CONJUNCTION. Against the real pinned corpus
+    that made six of six sampled gold questions return ZERO rows — the `&` sits
+    in the WHERE clause, so `ts_rank_cd` never runs and the FTS-only arm of the
+    ablation measured the query grammar rather than the index. The leg now
+    partitions that parse and ORs the positive terms.
+
+    These tests are the operator's contract. They exist because the transform is
+    string surgery on a tsquery, and string surgery that nobody pinned is one
+    refactor away from being silently wrong in a way no metric would show.
+    """
+
+    def test_a_multi_word_question_no_longer_needs_every_word_present(self, corpus_basico):
+        """The whole finding, in one assertion.
+
+        `9750#4` is one sentence about expropiación. The question adds five words
+        it does not contain, so under the conjunction the leg returned nothing at
+        all — not a low rank, no rows.
+        """
+        hits = repository.fts_search(
+            corpus_basico,
+            SHA,
+            "¿Quién paga la expropiación de la franja para el canal nuevo?",
+        )
+        assert {hit.citation_key for hit in hits} >= {"9750#4"}
+
+    def test_the_lexemes_are_not_stemmed_twice(self, corpus_basico):
+        """The trap in the obvious implementation, and it is silent.
+
+        Round-tripping the parse through `to_tsquery('spanish', …)` re-applies the
+        dictionary to already-stemmed lexemes, and the Snowball stemmer is not
+        idempotent: measured against the real corpus, `intervenir` indexes as
+        `interven` (13 units) and stems again to `interv` (ZERO). The cast to
+        `tsquery` applies no dictionary, so the round trip is exact.
+
+        `mantienen` → `manten` here: a second pass yields `mant`, which matches
+        nothing, so this assertion fails under the double-stemming construction
+        while every single-word test in this file still passes.
+        """
+        hits = repository.fts_search(corpus_basico, SHA, "quiénes mantienen el canal")
+        assert {hit.citation_key for hit in hits} >= {"9750#3"}
+
+        solo = repository.fts_search(corpus_basico, SHA, "mantienen")
+        assert {hit.citation_key for hit in solo} >= {"9750#3"}
+
+    @pytest.mark.parametrize(
+        "consulta",
+        ["", "   ", "de la y que el", "¿? . , !", "-canal"],
+        ids=["vacía", "espacios", "solo-stopwords", "solo-puntuación", "solo-exclusión"],
+    )
+    def test_a_question_that_reduces_to_nothing_returns_zero_rows_without_raising(
+        self, corpus_basico, consulta
+    ):
+        """Degrade to an empty answer, never to an exception and never to
+        everything. `-canal` alone is "everything except canal", which is not a
+        retrieval — ORing that in would have returned the whole corpus."""
+        assert repository.fts_search(corpus_basico, SHA, consulta) == []
+
+    def test_an_exclusion_still_excludes(self, corpus_basico):
+        """`websearch`'s `-palabra` survives the transform.
+
+        ORing the negation in would match every document NOT containing the word
+        — a recall explosion wearing the fix's name. The terms are partitioned:
+        positives ORed, exclusions kept ANDed.
+        """
+        con = {h.citation_key for h in repository.fts_search(corpus_basico, SHA, "canal riego")}
+        sin = {h.citation_key for h in repository.fts_search(corpus_basico, SHA, "canal -riego")}
+        assert "9750#3" in con
+        assert "9750#3" not in sin, "the ORed positives swallowed the exclusion"
+
+    @pytest.mark.parametrize(
+        "consulta",
+        [
+            '"zona de camino" canal',
+            "e-mail del consorcio",
+            "ver http://a.com/x?y&z ahora",
+            "canal'); DROP TABLE rag_unidad; --",
+            "l'eau del canal",
+            "canal \\ riego",
+            "canal or riego",
+            "canal or riego -lluvia",
+            "🚜 canal ñandú",
+            "canal " * 200,
+        ],
+        ids=[
+            "frase-entrecomillada",
+            "guionado",
+            "url",
+            "sql-ish",
+            "comilla-interna",
+            "backslash",
+            "operador-or",
+            "or-más-exclusión",
+            "unicode",
+            "muy-larga",
+        ],
+    )
+    def test_the_query_builder_never_raises_on_hostile_input(self, corpus_basico, consulta):
+        """The user's text reaches SQL only as the bound parameter of
+        `websearch_to_tsquery`, which is total and whose output is a quoted,
+        escaped lexeme list. Nothing that comes back out is user text — but the
+        transform then edits that output, so every shape it can produce is
+        exercised rather than reasoned about.
+        """
+        hits = repository.fts_search(corpus_basico, SHA, consulta)
+        assert isinstance(hits, list)
+        # And the table is still there, which is the point of the sql-ish case.
+        assert repository.count_unidades(corpus_basico, SHA) == 4
+
+    def test_the_operator_is_named_so_the_report_can_print_it(self):
+        assert "OR" in repository.FTS_OPERADOR
+        assert "websearch_to_tsquery" in repository.FTS_OPERADOR
+
+
 class TestProvenanceOnTheFtsPath:
     """3.8 on the default image — the spec's provenance scenarios, CI-covered."""
 

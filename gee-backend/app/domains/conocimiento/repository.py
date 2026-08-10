@@ -395,10 +395,33 @@ def require_vector_support(db: Session) -> None:
         )
 
 
+#: The lexical leg's query operator, named here so the eval report can print it.
+#: The ablation compares legs, and a leg whose operator is not disclosed is a
+#: measurement of something the reader cannot name (ledger RAG4-001).
+FTS_OPERADOR = "OR — disyunción de los lexemas que parsea websearch_to_tsquery"
+
 FTS_SEARCH_SQL = text(
     """
-    WITH consulta AS (
-        SELECT websearch_to_tsquery('spanish', :consulta) AS q
+    WITH terminos AS (
+        SELECT unnest(
+            string_to_array(websearch_to_tsquery('spanish', :consulta)::text, ' & ')
+        ) AS termino
+    ),
+    partes AS (
+        SELECT
+            string_agg(termino, ' | ') FILTER (WHERE left(termino, 1) <> '!') AS positivos,
+            string_agg(termino, ' & ') FILTER (WHERE left(termino, 1) = '!') AS exclusiones
+        FROM terminos
+    ),
+    consulta AS (
+        SELECT CAST(
+            CASE
+                WHEN positivos IS NULL OR positivos = '' THEN ''
+                WHEN exclusiones IS NULL THEN positivos
+                ELSE '(' || positivos || ') & ' || exclusiones
+            END AS tsquery
+        ) AS q
+        FROM partes
     )
     SELECT u.citation_key, ts_rank_cd(u.tsv, consulta.q, 32) AS valor
     FROM rag_unidad u, consulta
@@ -416,6 +439,57 @@ def fts_search(
     limite: int = LEG_LIMIT,
 ) -> list[LegHit]:
     """FTS-español leg. Runs on the CI-safe image — no pgvector anywhere near it.
+
+    **The leg ORs its lexemes, and that is the whole point of it (ledger
+    RAG4-001).** `websearch_to_tsquery` builds a CONJUNCTION, and a conjunction
+    over a colloquial question is not a weak ranking — it is an empty result set,
+    because the `&` sits in the `WHERE` clause and `ts_rank_cd` never runs.
+    Measured against the pinned corpus, six of six sampled gold questions
+    returned **zero rows**: gold item D-1 compiles to eleven ANDed lexemes and no
+    article in 1 448 units carries all eleven. Under that operator the FTS-only
+    arm of the ablation measures the query builder, `hybrid` silently degenerates
+    into vector-only while keeping the fused label, and the premise slices 1-2
+    were justified on ("FTS-only still works") is false. Same six questions under
+    the disjunction: a full 50-candidate leg every time, and the gold key inside
+    the candidate set for four of them.
+
+    **Why the parse is round-tripped through `::tsquery` and not through
+    `to_tsquery`.** The obvious construction — feed the parsed text back into
+    `to_tsquery('spanish', …)` — re-applies the Spanish dictionary to lexemes
+    that were already stemmed, and the Snowball stemmer is NOT idempotent.
+    Measured: `intervenir` indexes as `interven`, which matches 13 units; stem it
+    twice and it becomes `interv`, which matches **zero**. That construction
+    looks like a fix and silently loses recall on exactly the words the question
+    is about. `tsquery_in` (the `CAST(… AS tsquery)`) applies no dictionary at
+    all, so `websearch_to_tsquery(…)::text::tsquery` is a pure round trip:
+    tsquery_out wrote the text, tsquery_in reads it back, and the only edit in
+    between is which operator joins the top-level terms.
+
+    **Injection.** The user's question reaches SQL only as the bound parameter of
+    `websearch_to_tsquery`, which is total (it never raises on syntax) and whose
+    output is a tsquery whose lexemes are already quoted and escaped. Nothing
+    that comes back out is user text; it is a normalised lexeme list. The split
+    on `' & '` is safe because the default parser cannot emit a lexeme containing
+    a space, so the separator cannot occur inside a quoted term.
+
+    **Exclusions survive.** `websearch`'s `-palabra` compiles to `!'palabr'`, and
+    ORing that in would match every document NOT containing the word — a recall
+    explosion wearing the fix's name. The terms are partitioned instead: the
+    positives are ORed, the exclusions stay ANDed, so `canal -riego` keeps
+    meaning "canal, but not riego". When a question mixes `or` and `-` in a way
+    the top-level split cannot cleanly partition, the result is websearch's own
+    query unchanged — never invalid, never MORE restrictive than the conjunction
+    it replaces. Every one of those shapes is pinned in
+    `test_rag_retrieval.py::TestFtsOperador`.
+
+    **There is no retry and no fallback.** One operator runs, always, and the
+    report names it (`FTS_OPERADOR`). An automatic AND-then-OR retry would be the
+    silent degradation design D4 forbids for the vector leg, arriving on the
+    lexical side.
+
+    A question that reduces to nothing — empty, whitespace, only stopwords, only
+    an exclusion — builds the empty tsquery, which matches no row. Zero hits is a
+    legitimate answer here and stays distinguishable from a refusal.
 
     `citation_key ASC` is the secondary sort and it is load-bearing, not tidiness:
     PostgreSQL leaves tied rows unordered, and this corpus holds 45 articles whose

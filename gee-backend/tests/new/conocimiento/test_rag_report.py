@@ -24,7 +24,7 @@ from app.domains.conocimiento.eval.report import (
     nombre_de_archivo,
     renderizar_markdown,
 )
-from app.domains.conocimiento.repository import registrar_procedencia
+from app.domains.conocimiento.repository import FTS_OPERADOR, registrar_procedencia
 
 from .test_rag_eval_harness import PREGUNTAS, SHA, gold_item, gold_set, seed
 
@@ -194,20 +194,31 @@ class TestMethodologyDisclosure:
         db, _ = corrida
         from app.domains.conocimiento.eval.harness import evaluar
 
-        natural = gold_set(
-            gold_item(
-                "g-natural",
-                "Convocamos la asamblea y a la hora de arrancar no llegamos ni a la "
-                "mitad de los socios. ¿La podemos empezar igual o hay que suspenderla?",
-                "answerable",
-                ("9750#14",),
-            )
+        vacia = gold_set(
+            gold_item("g-hueco", "cuántos metros de ancho tiene la zona de camino", "answerable")
         )
-        resultado = evaluar(db, SHA, natural, modos=("fts",))
+        resultado = evaluar(db, SHA, vacia, modos=("fts",))
         proc = procedencia(db, sintetico=False)
         markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
         assert "LEG DEGRADADA" in markdown
         assert "RAG4-001" in markdown
+
+    def test_the_report_names_the_lexical_operator_it_used(self, corrida):
+        """An ablation whose lexical operator is not printed is a comparison the
+        reader cannot name. RAG4-001 was a change to that operator and nothing
+        else, so the operator belongs in the artifact beside the numbers."""
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
+        assert FTS_OPERADOR in markdown
+        assert "websearch_to_tsquery" in FTS_OPERADOR
+
+    def test_the_metric_table_states_each_bar_denominator(self, corrida):
+        """A mean over 3 questions and a mean over 29 must not look alike."""
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
+        assert "| métrica | valor | barra | fuente | n | ¿pasa? |" in markdown
 
 
 class TestArtifacts:

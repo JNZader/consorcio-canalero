@@ -27,6 +27,7 @@ from app.domains.conocimiento.eval import harness
 from app.domains.conocimiento.eval.harness import (
     GoldItem,
     GoldSet,
+    GoldSetInvalido,
     cargar_gold_set,
     correr_modo,
     decidir_go_no_go,
@@ -166,8 +167,8 @@ def gold_item(
     )
 
 
-def gold_set(*items: GoldItem) -> GoldSet:
-    return GoldSet(version=1, corpus_sha=SHA, ratificado="2026-08-10", items=tuple(items))
+def gold_set(*items: GoldItem, corpus_sha: str = SHA) -> GoldSet:
+    return GoldSet(version=1, corpus_sha=corpus_sha, ratificado="2026-08-10", items=tuple(items))
 
 
 PREGUNTAS = gold_set(
@@ -199,41 +200,94 @@ class TestServiceLayerBoundary:
     BGE-M3 corpus with the deterministic smoke embedder and publish the result.
     """
 
-    def test_the_eval_package_never_imports_the_repository(self):
+    @staticmethod
+    def _nombres_importados(nodo) -> list[str]:
+        """Every module path an import statement can name.
+
+        `from app.domains.conocimiento import repository` was the hole: the
+        `ImportFrom` branch only looked at `node.module`, which is
+        `app.domains.conocimiento` — it does not end in `.repository`, so the
+        check passed while the module was fully in scope under the plain name
+        `repository`. The bound aliases have to be joined onto the module for the
+        walk to see what the import actually brings in.
+        """
+        import ast
+
+        if isinstance(nodo, ast.Import):
+            return [alias.name for alias in nodo.names]
+        if isinstance(nodo, ast.ImportFrom) and nodo.module:
+            return [nodo.module] + [f"{nodo.module}.{alias.name}" for alias in nodo.names]
+        return []
+
+    def _modulos_importados_por_el_paquete_eval(self) -> list[tuple[str, int, str]]:
         import ast
 
         paquete = Path(harness.__file__).parent
-        ofensores: list[str] = []
+        encontrados: list[tuple[str, int, str]] = []
         for archivo in sorted(paquete.rglob("*.py")):
             arbol = ast.parse(archivo.read_text(encoding="utf-8"))
             for nodo in ast.walk(arbol):
-                nombres: list[str] = []
-                if isinstance(nodo, ast.Import):
-                    nombres = [alias.name for alias in nodo.names]
-                elif isinstance(nodo, ast.ImportFrom) and nodo.module:
-                    nombres = [nodo.module]
-                for nombre in nombres:
-                    if nombre.endswith("conocimiento.repository") or ".repository" in nombre:
-                        ofensores.append(f"{archivo.name}:{nodo.lineno} -> {nombre}")
+                for nombre in self._nombres_importados(nodo):
+                    encontrados.append((archivo.name, nodo.lineno, nombre))
+        return encontrados
+
+    def test_the_eval_package_never_imports_the_repository(self):
+        ofensores = [
+            f"{archivo}:{linea} -> {nombre}"
+            for archivo, linea, nombre in self._modulos_importados_por_el_paquete_eval()
+            if nombre.endswith("conocimiento.repository") or ".repository" in nombre
+        ]
+        assert ofensores == []
+
+    def test_the_eval_package_never_imports_importlib(self):
+        """The escape hatch the AST walk cannot follow, closed at the door.
+
+        `importlib.import_module("…repository")` builds the module name at run
+        time, so no static walk over import statements can see it. Nothing in
+        this package has a legitimate use for dynamic imports, so the honest
+        guard is to forbid the tool rather than to pretend the walk covers it.
+        """
+        ofensores = [
+            f"{archivo}:{linea} -> {nombre}"
+            for archivo, linea, nombre in self._modulos_importados_por_el_paquete_eval()
+            if nombre == "importlib" or nombre.startswith("importlib.")
+        ]
         assert ofensores == []
 
     def test_retrieval_really_goes_through_recuperar(self, snapshot, monkeypatch):
-        """Not just an import check: the call itself is observed.
+        """Not just an import check: the calls are observed, both ways round.
 
-        An import assertion alone is defeated by `importlib.import_module`, so
-        the boundary is also proven behaviourally — if `correr_modo` stopped
-        calling the service, this spy would never fire.
+        Two independent layers, and each covers what the other misses. The AST
+        walk catches a direct import of the leg; it cannot see
+        `importlib.import_module` (hence the test above). The spy catches a call
+        through the module attribute; it cannot see a call made through a name
+        imported at module load — which is what the AST walk is for.
+
+        The spy also asserts what the original version did NOT: that no
+        ADDITIONAL call reached `repository.vector_search`. Going through
+        `service.recuperar` and ALSO poking the leg directly would have satisfied
+        the old assertion perfectly, and the direct call is where both provenance
+        refusals are lost.
         """
+        from app.domains.conocimiento import repository
+
         llamadas: list[str] = []
+        legs: list[str] = []
         original = harness.service.recuperar
 
         def espia(*args, **kwargs):
             llamadas.append(kwargs.get("modo", "?"))
             return original(*args, **kwargs)
 
+        def espia_leg(*_args, **_kwargs):
+            legs.append("vector_search")
+            raise AssertionError("the harness reached the vector leg directly")
+
         monkeypatch.setattr(harness.service, "recuperar", espia)
+        monkeypatch.setattr(repository, "vector_search", espia_leg)
         correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
         assert llamadas == ["fts", "fts", "fts"]
+        assert legs == []
 
 
 # ---------------------------------------------------------------------------
@@ -334,32 +388,28 @@ class TestOneModeInTheCIShape:
         assert detalle.claves_devueltas == ()
         assert detalle.score_top1 == 0.0
 
-    def test_a_natural_language_gold_question_returns_nothing_from_the_fts_leg(self, snapshot):
-        """RAG4-001, pinned here because it decides what the ablation MEANS.
+    def test_a_natural_language_gold_question_reaches_the_fts_leg(self, snapshot):
+        """RAG4-001 FIXED, pinned here because it decides what the ablation MEANS.
 
-        `websearch_to_tsquery` ANDs. Measured against real PostgreSQL, gold item
-        D-1 — the easiest question in the whole set — compiles to ELEVEN
-        conjunctive lexemes:
+        This test used to assert the opposite, and the flip is the finding.
+        `websearch_to_tsquery` ANDs, so gold item D-1 — the easiest question in
+        the ratified set — compiled to ELEVEN conjunctive lexemes:
 
             'convoc' & 'asamble' & 'hor' & 'arranc' & 'lleg' & 'mit' & 'soci'
             & 'pod' & 'empez' & 'igual' & 'suspend'
 
-        `9750#14` is three lines about quórum. It contains 'asamble' and
-        'soci' and none of the other nine, so the leg returns ZERO — not a bad
-        ranking, no rows at all, because the conjunction is in the WHERE clause
-        and `ts_rank_cd` never runs.
+        `9750#14` is three lines about quórum: it carries 'asamble' and 'soci'
+        and none of the other nine, so the leg returned ZERO rows — not a bad
+        ranking, no rows at all, because the conjunction sits in the WHERE clause
+        and `ts_rank_cd` never runs. Measured against the real pinned corpus, six
+        of six sampled gold questions came back empty. The FTS-only arm of the
+        ablation therefore measured the query builder, and `hybrid` degenerated
+        into vector-only while keeping the fused label.
 
-        The consequence is not "FTS scores badly". It is that the FTS-only arm
-        of the ablation is near-vacuous for colloquial questions AND that
-        `hybrid` silently becomes vector-only while keeping the hybrid label —
-        the same fabricated comparison D4's no-silent-fallback rule exists to
-        prevent, arriving through the front door.
-
-        This test asserts the CURRENT behaviour on purpose. Changing the query
-        operator is a design decision (D4 names `websearch_to_tsquery`
-        explicitly) and not an apply-phase liberty, so the defect is pinned,
-        measured and reported rather than quietly patched. Whoever changes it
-        must come here and say so.
+        `repository.FTS_SEARCH_SQL` now ORs the lexemes (`FTS_OPERADOR`), so the
+        colloquial phrasing retrieves the article. Same question, same index,
+        same corpus — only the operator changed, which is what makes the leg a
+        measurement of the INDEX rather than of `websearch`'s grammar.
         """
         natural = gold_set(
             gold_item(
@@ -371,49 +421,112 @@ class TestOneModeInTheCIShape:
             )
         )
         corrida = correr_modo(snapshot, SHA, natural, modo="fts")
-        assert corrida.detalles[0].claves_devueltas == ()
-        assert corrida.detalles[0].n_fts == 0
+        assert "9750#14" in corrida.detalles[0].claves_devueltas
+        assert corrida.detalles[0].n_fts > 0
 
-        # And the same question with the article's own words does retrieve it —
-        # so this is the query builder, not the index, and not the corpus.
+        # The article's own words still retrieve it, and still rank it FIRST.
+        # The page is longer than it was — `informe-f3#sec-3` ("El informe comenta
+        # el quórum") now shares a lexeme and enters the candidate set — and that
+        # is the disjunction's real cost, stated rather than hidden: a wider net
+        # brings in secondary sources, which is precisely what
+        # `separacion_norma_secundaria` is a hard `== 1.00` bar about. Rank, not
+        # membership, is what the metric grades.
         recortada = gold_set(
             gold_item("g-recortada", "quórum de la asamblea", "answerable", ("9750#14",))
         )
-        assert correr_modo(snapshot, SHA, recortada, modo="fts").detalles[0].claves_devueltas == (
-            "9750#14",
-        )
+        devueltas = correr_modo(snapshot, SHA, recortada, modo="fts").detalles[0].claves_devueltas
+        assert devueltas[0] == "9750#14"
+        assert "informe-f3#sec-3" in devueltas
 
     def test_the_run_reports_per_leg_coverage_so_an_empty_leg_cannot_hide(self, snapshot):
         """A mode whose leg returned nothing for most questions is not a
         measurement of that leg, and the report must not be able to print its
-        metrics without printing that fact next to them."""
-        natural = gold_set(
-            gold_item(
-                "g-natural",
-                "Convocamos la asamblea y a la hora de arrancar no llegamos ni a la "
-                "mitad de los socios. ¿La podemos empezar igual o hay que suspenderla?",
-                "answerable",
-                ("9750#14",),
-            ),
+        metrics without printing that fact next to them.
+
+        The empty half is now a genuine VOCABULARY gap rather than an artefact of
+        the operator: nothing in this snapshot talks about metres or roadways, so
+        no lexeme of the question appears anywhere. That is the residue the OR fix
+        cannot remove and the vector leg exists to cover.
+        """
+        mezcla = gold_set(
+            gold_item("g-hueco", "cuántos metros de ancho tiene la zona de camino", "answerable"),
             gold_item("g-recortada", "quórum de la asamblea", "answerable", ("9750#14",)),
         )
-        cobertura = correr_modo(snapshot, SHA, natural, modo="fts").cobertura
+        cobertura = correr_modo(snapshot, SHA, mezcla, modo="fts").cobertura
         assert cobertura.n_preguntas == 2
         assert cobertura.sin_candidatos_fts == 1
         assert cobertura.fraccion_sin_candidatos_fts == 0.5
         assert cobertura.leg_fts_degradada is False  # 0.5 is not a majority
 
     def test_a_mode_whose_fts_leg_is_mostly_empty_is_flagged_degraded(self, snapshot):
-        natural = gold_set(
-            gold_item(
-                "g-natural",
-                "Convocamos la asamblea y a la hora de arrancar no llegamos ni a la "
-                "mitad de los socios. ¿La podemos empezar igual o hay que suspenderla?",
-                "answerable",
-                ("9750#14",),
-            )
+        vacia = gold_set(
+            gold_item("g-hueco", "cuántos metros de ancho tiene la zona de camino", "answerable")
         )
-        assert correr_modo(snapshot, SHA, natural, modo="fts").cobertura.leg_fts_degradada is True
+        assert correr_modo(snapshot, SHA, vacia, modo="fts").cobertura.leg_fts_degradada is True
+
+    def test_a_leg_the_mode_never_ran_is_not_called_degraded(self, snapshot):
+        """ "It returned nothing" and "it was never asked" are different facts.
+
+        Found on a real 52-question run against the pinned corpus: `--modo fts`
+        printed `LEG DEGRADADA (vector)` beside a perfectly healthy lexical leg,
+        because the vector leg trivially returned nothing for all 52 — it never
+        ran. A warning that fires on every single-leg run is how a reader learns
+        to skip the block that carries the RAG4-001 finding.
+        """
+        corrida = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
+        assert corrida.cobertura.legs_corridas == ("fts",)
+        assert corrida.cobertura.sin_candidatos_vector == 3  # every question, trivially
+        assert corrida.cobertura.fraccion_sin_candidatos_vector == 1.0
+        assert corrida.cobertura.leg_vector_degradada is False
+
+    def test_a_hybrid_whose_lexical_leg_died_on_most_questions_is_degenerate(self, snapshot):
+        """The `all(...)` hole, closed (lens finding on RAG4-001's mitigation).
+
+        `hibrido_degenerado` used to fire only when a leg contributed nothing on
+        EVERY question, so one surviving question out of fifty switched the
+        loudest warning in the report off. It now shares `leg_fts_degradada`'s
+        strict-majority threshold: two of three questions with an empty lexical
+        leg is a fused label over a single leg, and it says so.
+
+        Built directly rather than run, because the fused mode needs pgvector and
+        the predicate under test is arithmetic over the coverage counts.
+        """
+        detalles = [
+            harness.DetallePregunta(
+                id=id,
+                clase="answerable",
+                pregunta="…",
+                citas_esperadas=(),
+                claves_devueltas=(),
+                score_top1=0.0,
+                margen=0.0,
+                n_fts=n_fts,
+                n_vector=5,
+            )
+            for id, n_fts in (("a", 0), ("b", 0), ("c", 7))
+        ]
+        corrida = harness.ResultadoModo(
+            modo="hybrid",
+            k=10,
+            preguntas=(),
+            senales=(),
+            detalles=tuple(detalles),
+            metricas=harness.metricas_recuperacion([]),
+        )
+        assert corrida.cobertura.sin_candidatos_fts == 2
+        assert corrida.hibrido_degenerado is True
+
+        # One empty leg out of three is a miss, not a degenerate hybrid.
+        sano = harness.ResultadoModo(
+            modo="hybrid",
+            k=10,
+            preguntas=(),
+            senales=(),
+            detalles=tuple(detalles[1:]),
+            metricas=harness.metricas_recuperacion([]),
+        )
+        assert sano.cobertura.sin_candidatos_fts == 1
+        assert sano.hibrido_degenerado is False
 
     def test_the_run_is_deterministic_over_the_same_snapshot(self, snapshot):
         primera = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
@@ -537,6 +650,7 @@ class TestGoNoGo:
                 separacion_norma_secundaria=1.0,
                 vigencia_correctness=1.0,
                 n_vigencia=3,
+                n_separacion=25,
             ),
         )
         assert perfecta.loocv.recall == pytest.approx(5 / 6)
@@ -573,6 +687,7 @@ class TestGoNoGo:
                 separacion_norma_secundaria=1.0,
                 vigencia_correctness=1.0,
                 n_vigencia=3,
+                n_separacion=25,
             ),
         )
         decision = decidir_go_no_go(con_fuga, PREGUNTAS, forzar_evaluable=True)
@@ -585,6 +700,66 @@ class TestGoNoGo:
         recall = {barra.nombre: barra for barra in decision.barras}["abstention recall"]
         assert recall.valor == 0.5, "the bar must read the held-out figure, not the fit"
         assert recall.fuente == "LOOCV held-out"
+
+    def test_a_verdict_over_a_degraded_fused_leg_states_its_scope(self, snapshot):
+        """`GO` printed above a `LEG DEGRADADA` block is a line somebody quotes
+        without the block (lens finding on RAG4-001's mitigation).
+
+        A degraded leg does NOT make the run unevaluable — the ablation still
+        informs, and refusing to score would throw its finding away. What changes
+        is that the verdict can no longer travel context-free: it says which leg
+        it is really about, and the JSON carries a boolean so a machine reader
+        does not have to parse the sentence.
+        """
+        corrida = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
+        degradado = harness.ResultadoModo(
+            modo="hybrid",
+            k=10,
+            preguntas=corrida.preguntas,
+            senales=corrida.senales,
+            detalles=tuple(
+                harness.DetallePregunta(
+                    id=d.id,
+                    clase=d.clase,
+                    pregunta=d.pregunta,
+                    citas_esperadas=d.citas_esperadas,
+                    claves_devueltas=d.claves_devueltas,
+                    score_top1=d.score_top1,
+                    margen=d.margen,
+                    n_fts=0,
+                    n_vector=5,
+                )
+                for d in corrida.detalles
+            ),
+            metricas=corrida.metricas,
+        )
+        decision = decidir_go_no_go(degradado, PREGUNTAS, forzar_evaluable=True)
+
+        assert decision.evaluable is True, "a degraded leg narrows the scope, it does not void it"
+        assert decision.legs_degradadas == ("FTS",)
+        assert decision.veredicto_calificado is True
+        assert decision.veredicto in decision.veredicto_con_alcance
+        assert "FTS" in decision.veredicto_con_alcance
+        assert "vectorial" in decision.veredicto_con_alcance
+
+    def test_a_healthy_verdict_is_the_bare_word(self, snapshot):
+        corrida = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
+        decision = decidir_go_no_go(corrida, PREGUNTAS, forzar_evaluable=True)
+        assert decision.legs_degradadas == ()
+        assert decision.veredicto_calificado is False
+        assert decision.veredicto_con_alcance == decision.veredicto
+
+    def test_a_single_leg_mode_is_never_qualified(self, snapshot):
+        """In `fts` the degradation IS the measurement, not a caveat on it — the
+        mode never claimed to be about two legs."""
+        vacia = gold_set(
+            gold_item("g-hueco", "cuántos metros de ancho tiene la zona de camino", "answerable")
+        )
+        corrida = correr_modo(snapshot, SHA, vacia, modo="fts")
+        assert corrida.cobertura.leg_fts_degradada is True
+        decision = decidir_go_no_go(corrida, vacia, forzar_evaluable=True)
+        assert decision.legs_degradadas == ()
+        assert decision.veredicto_con_alcance == decision.veredicto
 
     def test_every_bar_is_named_with_its_source_so_the_report_cannot_mislabel_one(self, snapshot):
         corrida = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
@@ -747,6 +922,79 @@ class TestElGoldSetRatificado:
         conjunto = cargar_gold_set()
         assert len(conjunto.no_resueltas) == 26
         assert conjunto.precondicion().evaluable is False
+
+    def test_the_gold_set_and_the_snapshot_must_be_the_same_corpus_revision(self):
+        """RAG4-003: the reconciliation that had no code behind it.
+
+        `citas_esperadas` are keys of ONE corpus revision. Scored against a
+        different snapshot, a key that does not exist there looks exactly like a
+        retrieval miss — every metric drops and the report blames the retriever.
+        """
+        conjunto = cargar_gold_set()
+        harness.verificar_corpus_sha(conjunto, conjunto.corpus_sha)  # matching: silent
+
+        with pytest.raises(harness.CorpusShaMismatch) as abort:
+            harness.verificar_corpus_sha(conjunto, "0" * 40)
+        mensaje = str(abort.value)
+        assert conjunto.corpus_sha in mensaje
+        assert "0" * 40 in mensaje
+
+    def test_a_private_file_pinned_to_another_revision_refuses_to_resolve(
+        self, tmp_path, monkeypatch
+    ):
+        privado = tmp_path / "privado.yaml"
+        privado.write_text(
+            yaml.safe_dump(
+                {"version": 1, "para": "gold_set.yaml", "corpus_sha": "0" * 40, "preguntas": {}},
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("RAG_GOLD_PRIVADO_PATH", str(privado))
+        with pytest.raises(harness.CorpusShaMismatch, match="0" * 40):
+            cargar_gold_set()
+
+    def test_a_private_file_for_another_gold_set_refuses_to_resolve(self, tmp_path, monkeypatch):
+        """`para:` is the file saying which set it belongs to, and reading it is
+        the only thing between a stale owner-side copy and 26 questions resolved
+        from the wrong place."""
+        privado = tmp_path / "privado.yaml"
+        privado.write_text(
+            yaml.safe_dump(
+                {"version": 1, "para": "otro-gold-set.yaml", "preguntas": {}}, allow_unicode=True
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("RAG_GOLD_PRIVADO_PATH", str(privado))
+        with pytest.raises(GoldSetInvalido, match="otro-gold-set.yaml"):
+            cargar_gold_set()
+
+    def test_an_absent_private_file_is_not_an_error(self, tmp_path, monkeypatch):
+        """Unresolved items are already a hard blocker in `precondicion()`. Only a
+        file that IS there and contradicts the set it serves may raise."""
+        monkeypatch.setenv("RAG_GOLD_PRIVADO_PATH", str(tmp_path / "no-existe.yaml"))
+        conjunto = cargar_gold_set()
+        assert len(conjunto.no_resueltas) == 26
+
+    def test_the_committed_private_file_contract_matches_the_owner_side_one(
+        self, tmp_path, monkeypatch
+    ):
+        """A file declaring the right `para:` and the right `corpus_sha` resolves."""
+        privado = tmp_path / "privado.yaml"
+        privado.write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "para": "gold_set.yaml",
+                    "corpus_sha": cargar_gold_set().corpus_sha,
+                    "preguntas": {"A-1": "sólo una"},
+                },
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("RAG_GOLD_PRIVADO_PATH", str(privado))
+        assert "A-1" not in cargar_gold_set().no_resueltas
 
     def test_the_owner_side_file_resolves_them(self, tmp_path, monkeypatch):
         privado = tmp_path / "privado.yaml"

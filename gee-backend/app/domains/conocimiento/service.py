@@ -28,6 +28,12 @@ from app.domains.conocimiento.fusion import RRF_K, reciprocal_rank_fusion
 from app.domains.conocimiento.gates import GateReport, run_all_gates
 from app.domains.conocimiento.parser import Unidad, parse_document
 from app.domains.conocimiento.repository import (
+    # Deliberate re-export (the redundant alias is how ruff is told so). The eval
+    # package may not import `repository` (design.md D4) and still has to print
+    # WHICH operator produced the lexical leg it is reporting on — an ablation
+    # whose operator is not disclosed is a measurement of something the reader
+    # cannot name (ledger RAG4-001).
+    FTS_OPERADOR as FTS_OPERADOR,
     LEG_LIMIT,
     IngestionAbort,
     LegHit,

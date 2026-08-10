@@ -17,12 +17,20 @@ import json
 import pytest
 
 from app.domains.conocimiento.embedding import DETERMINISTIC_MODEL_ID
+from app.domains.conocimiento.eval.harness import cargar_gold_set as cargar_gold_set_real
 from app.domains.conocimiento.repository import registrar_procedencia
 from scripts import rag_eval
 
-from .test_rag_eval_harness import SHA, seed
+from .test_rag_eval_harness import PREGUNTAS, SHA, gold_item, gold_set, seed
 
 MOMENTO = "2026-08-10T16:30:00+00:00"
+
+#: A question whose lexemes appear nowhere in the seeded mini-snapshot, so the
+#: lexical leg genuinely comes back empty. Since the FTS leg ORs its lexemes
+#: (`repository.FTS_OPERADOR`), an empty leg is now a real vocabulary gap rather
+#: than an artefact of the query operator — which is what makes it the right
+#: fixture for the degraded-leg warning.
+SIN_VOCABULARIO = "cuántos metros de ancho tiene la zona de camino"
 
 
 class _SesionPrestada:
@@ -46,11 +54,44 @@ class _NullEngine:
         return None
 
 
+class _EspiaEmbedder:
+    """Records every attempt to build an embedder, and refuses to build one.
+
+    The point is the ORDER, not the object: `--embedder bge-m3` imports torch and
+    downloads 2.2 GB, so every refusal that can be decided without it MUST be
+    decided before it. That property used to depend on the test machine simply
+    not having torch installed, which is an environment coupling and not a test —
+    it would pass silently for the wrong reason on any box that does.
+    """
+
+    def __init__(self) -> None:
+        self.llamadas: list[str] = []
+
+    def __call__(self, nombre, *, device, model_id):
+        self.llamadas.append(nombre)
+        raise AssertionError(
+            f"the run built the {nombre!r} embedder before refusing; a cheap "
+            "refusal must never cost a model load"
+        )
+
+
+@pytest.fixture
+def espia_embedder(monkeypatch):
+    espia = _EspiaEmbedder()
+    monkeypatch.setattr(rag_eval, "_embedder", espia)
+    return espia
+
+
 @pytest.fixture
 def cli(db, monkeypatch):
     seed(db)
     monkeypatch.setattr(rag_eval, "create_engine", lambda url: _NullEngine())
     monkeypatch.setattr(rag_eval, "Session", _SesionPrestada(db))
+    # The seeded snapshot is `SHA`, so the gold set must pin `SHA` too — which is
+    # exactly the reconciliation `verificar_corpus_sha` now enforces. Loading the
+    # real 52-item set here would (correctly) be refused: it is pinned to the
+    # real corpus revision, and this fixture is five hand-written units.
+    monkeypatch.setattr(rag_eval, "cargar_gold_set", lambda *a, **k: PREGUNTAS)
     monkeypatch.delenv("RAG_GOLD_PRIVADO_PATH", raising=False)
     return db
 
@@ -73,12 +114,118 @@ class TestUsage:
         assert rag_eval.main(["--corpus-sha", SHA]) == 2
         assert "--database-url" in capsys.readouterr().err
 
-    def test_an_unknown_snapshot_exits_1_before_running_anything(self, cli, capsys):
+    def test_an_unknown_snapshot_exits_1_before_running_anything(
+        self, cli, monkeypatch, capsys, espia_embedder
+    ):
+        # The gold set pins the snapshot being asked for, so the identity check
+        # passes and the run reaches — and stops at — the missing-snapshot check.
+        monkeypatch.setattr(
+            rag_eval,
+            "cargar_gold_set",
+            lambda *a, **k: gold_set(*PREGUNTAS.items, corpus_sha="f" * 40),
+        )
         code = rag_eval.main(
             ["--corpus-sha", "f" * 40, "--database-url", "postgresql://unused/unused"]
         )
         assert code == 1
         assert "is not in rag_corpus" in capsys.readouterr().err
+        assert espia_embedder.llamadas == []
+
+
+class TestIdentidadDelCorpus:
+    """RAG4-003: the gold set and the snapshot must be the same corpus revision.
+
+    The gold set's `citas_esperadas` are citation keys of ONE revision. Scored
+    against another, a key that does not exist there is indistinguishable from a
+    retrieval miss — so every metric falls and the report blames the retriever.
+    The error is fail-safe in direction (a spurious NO-GO, never a spurious GO)
+    and that is precisely why it needed a check: an unexplainable NO-GO costs a
+    re-run of the whole GPU batch, and the cause is one string comparison away.
+    """
+
+    def test_a_gold_set_from_another_corpus_revision_is_refused(
+        self, cli, monkeypatch, tmp_path, capsys, espia_embedder
+    ):
+        monkeypatch.setattr(
+            rag_eval,
+            "cargar_gold_set",
+            lambda *a, **k: gold_set(*PREGUNTAS.items, corpus_sha="a" * 40),
+        )
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--destino",
+                str(tmp_path / "nunca"),
+            ]
+        )
+        assert code == rag_eval.SALIDA_IDENTIDAD
+        error = capsys.readouterr().err
+        # BOTH shas, because "they differ" without saying how is a message that
+        # sends the reader back to the shell to work out which one is wrong.
+        assert "a" * 40 in error
+        assert SHA in error
+        # Refused before scoring, before the report directory, before the model.
+        assert not (tmp_path / "nunca").exists()
+        assert espia_embedder.llamadas == []
+
+    def test_a_matching_gold_set_proceeds(self, cli, tmp_path):
+        marcar(cli, sintetico=False)
+        assert (
+            rag_eval.main(
+                [
+                    "--corpus-sha",
+                    SHA,
+                    "--database-url",
+                    "postgresql://unused/unused",
+                    "--modo",
+                    "fts",
+                    "--destino",
+                    str(tmp_path),
+                    "--generado-en",
+                    MOMENTO,
+                ]
+            )
+            == 0
+        )
+        assert (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").is_file()
+
+    def test_a_private_file_pinned_to_another_revision_is_refused(
+        self, cli, monkeypatch, tmp_path, capsys, espia_embedder
+    ):
+        """The owner-side file is resolved from an environment variable that
+        points OUTSIDE this repository, so a stale copy left over from a previous
+        corpus revision is an ordinary slip — and its only symptom would be 26
+        questions quietly scored against citations that moved."""
+        privado = tmp_path / "privado.yaml"
+        privado.write_text(
+            "version: 1\npara: gold_set.yaml\ncorpus_sha: " + "e" * 40 + "\npreguntas: {}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("RAG_GOLD_PRIVADO_PATH", str(privado))
+        monkeypatch.setattr(rag_eval, "cargar_gold_set", cargar_gold_set_real)
+
+        code = rag_eval.main(["--corpus-sha", SHA, "--database-url", "postgresql://unused/unused"])
+        assert code == rag_eval.SALIDA_IDENTIDAD
+        assert "e" * 40 in capsys.readouterr().err
+        assert espia_embedder.llamadas == []
+
+    def test_a_private_file_belonging_to_another_gold_set_is_refused(
+        self, cli, monkeypatch, tmp_path, capsys, espia_embedder
+    ):
+        privado = tmp_path / "privado.yaml"
+        privado.write_text(
+            "version: 1\npara: otro-gold-set.yaml\npreguntas: {}\n", encoding="utf-8"
+        )
+        monkeypatch.setenv("RAG_GOLD_PRIVADO_PATH", str(privado))
+        monkeypatch.setattr(rag_eval, "cargar_gold_set", cargar_gold_set_real)
+
+        code = rag_eval.main(["--corpus-sha", SHA, "--database-url", "postgresql://unused/unused"])
+        assert code == rag_eval.SALIDA_IDENTIDAD
+        assert "otro-gold-set.yaml" in capsys.readouterr().err
+        assert espia_embedder.llamadas == []
 
 
 class TestRun:
@@ -124,6 +271,32 @@ class TestRun:
         )
         assert code == 1
         assert "SYNTHETIC" in capsys.readouterr().err
+        assert list(tmp_path.glob("*")) == []
+
+    def test_the_synthetic_refusal_costs_no_model_load(self, cli, tmp_path, espia_embedder):
+        """4.12's ordering property, asserted instead of inherited from the box.
+
+        No `--modo`, so the run asks for the full three-mode ablation and WOULD
+        need an embedder. The refusal has to come first: a synthetic snapshot
+        used to spend two minutes and 2.2 GB loading BGE-M3 before the report
+        refused it, and the regression test for that was "this machine has no
+        torch" — which passes for the wrong reason on any machine that does.
+        """
+        marcar(cli, sintetico=True, modelo=DETERMINISTIC_MODEL_ID)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 1
+        assert espia_embedder.llamadas == []
         assert list(tmp_path.glob("*")) == []
 
     def test_the_smoke_flag_writes_a_labelled_artifact_instead(self, cli, tmp_path):
@@ -173,46 +346,35 @@ class TestRun:
             tmp_path / "b" / nombre
         ).read_text(encoding="utf-8")
 
-    def test_the_degraded_leg_warning_reaches_the_operator_on_stdout(self, cli, tmp_path, capsys):
+    def test_the_degraded_leg_warning_reaches_the_operator_on_stdout(
+        self, cli, monkeypatch, tmp_path, capsys
+    ):
         """The eval's most misleading outcome must be visible without opening
-        the report: a mode whose lexical leg matched nothing at all."""
+        the report: a mode whose lexical leg matched nothing at all.
+
+        The fixture question is a vocabulary gap, not a query-operator artefact —
+        since RAG4-001 was fixed the lexical leg ORs its lexemes, so an empty leg
+        now means the question and the corpus share no word at all. That is the
+        residue the fix cannot remove, and it is still worth shouting about.
+        """
         marcar(cli, sintetico=False)
-        from app.domains.conocimiento.eval import harness
+        conjunto = gold_set(gold_item("g-hueco", SIN_VOCABULARIO, "answerable"))
+        monkeypatch.setattr(rag_eval, "cargar_gold_set", lambda *a, **k: conjunto)
 
-        natural = harness.cargar_gold_set  # keep the symbol used, see below
-        assert callable(natural)
-
-        # Swap in a one-item gold set whose question is a full sentence, which is
-        # what every real gold item looks like (ledger RAG4-001).
-        from .test_rag_eval_harness import gold_item, gold_set
-
-        conjunto = gold_set(
-            gold_item(
-                "g-natural",
-                "Convocamos la asamblea y a la hora de arrancar no llegamos ni a la "
-                "mitad de los socios. ¿La podemos empezar igual o hay que suspenderla?",
-                "answerable",
-                ("9750#14",),
-            )
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
         )
-        rag_eval.cargar_gold_set = lambda *a, **k: conjunto  # type: ignore[assignment]
-        try:
-            code = rag_eval.main(
-                [
-                    "--corpus-sha",
-                    SHA,
-                    "--database-url",
-                    "postgresql://unused/unused",
-                    "--modo",
-                    "fts",
-                    "--destino",
-                    str(tmp_path),
-                    "--generado-en",
-                    MOMENTO,
-                ]
-            )
-        finally:
-            rag_eval.cargar_gold_set = harness.cargar_gold_set  # type: ignore[assignment]
         assert code == 0
         assert "LEG FTS DEGRADADA" in capsys.readouterr().out
 

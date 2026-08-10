@@ -50,7 +50,7 @@ from app.domains.conocimiento.eval.harness import (
     resumen_metodologico,
 )
 from app.domains.conocimiento.fusion import RRF_K
-from app.domains.conocimiento.service import LEG_LIMIT, ProcedenciaEmbeddings
+from app.domains.conocimiento.service import FTS_OPERADOR, LEG_LIMIT, ProcedenciaEmbeddings
 
 NO_REGISTRADO = "no registrado en la base"
 ETIQUETA_SMOKE = "SMOKE RUN — NOT AN EVAL"
@@ -102,16 +102,32 @@ def _fmt(valor: float | None, decimales: int = 3) -> str:
     return f"{valor:.{decimales}f}"
 
 
+#: Metrics whose denominator is narrower than `n_respondibles`. A mean over a
+#: subset and a mean over the whole answerable set are different claims, so the
+#: table states the `n` beside the value rather than letting them look alike.
+_DENOMINADOR_PROPIO = {
+    "norma-vs-secundaria": "n_separacion",
+    "vigencia-correctness": "n_vigencia",
+}
+
+
 def _tabla_metricas(corrida: ResultadoModo, go_no_go) -> list[str]:
     lineas = [
-        "| métrica | valor | barra | fuente | ¿pasa? |",
-        "|---|---:|---:|---|---|",
+        "| métrica | valor | barra | fuente | n | ¿pasa? |",
+        "|---|---:|---:|---|---:|---|",
     ]
     for barra in go_no_go.barras:
         comparador = "=" if barra.comparador == "==" else "≥"
+        atributo = _DENOMINADOR_PROPIO.get(barra.nombre)
+        if atributo is not None:
+            n = str(getattr(corrida.metricas, atributo))
+        elif barra.fuente == "LOOCV held-out":
+            n = str(corrida.loocv.n)
+        else:
+            n = str(corrida.metricas.n_respondibles)
         lineas.append(
             f"| {barra.nombre} | {_fmt(barra.valor)} | {comparador} {barra.minimo:.2f} "
-            f"| {barra.fuente} | {'sí' if barra.pasa else 'NO'} |"
+            f"| {barra.fuente} | {n} | {'sí' if barra.pasa else 'NO'} |"
         )
     return lineas
 
@@ -138,26 +154,39 @@ def _bloque_metodologia(corrida: ResultadoModo) -> list[str]:
     ]
 
 
+def _no_corrio(cobertura, leg: str) -> str:
+    """Annotate a count that is 100 % only because the leg was never asked to run.
+
+    Without it the `fts` block reads "sin candidatos vector: 52 (100.0%)", which
+    is true and says nothing — and a reader who has learned that the coverage
+    block states the obvious stops reading the one line that carries RAG4-001.
+    """
+    return "" if leg in cobertura.legs_corridas else "  — esta pierna no corre en este modo"
+
+
 def _bloque_cobertura(corrida: ResultadoModo) -> list[str]:
     cobertura = corrida.cobertura
     lineas = [
         "**Cobertura de las piernas**",
         "",
+        f"- operador de la pierna léxica: {FTS_OPERADOR}",
+        f"- piernas que corrieron en este modo: {', '.join(cobertura.legs_corridas) or '—'}",
         f"- preguntas corridas: {cobertura.n_preguntas}",
         f"- sin candidatos FTS: {cobertura.sin_candidatos_fts} "
-        f"({cobertura.fraccion_sin_candidatos_fts:.1%})",
+        f"({cobertura.fraccion_sin_candidatos_fts:.1%}){_no_corrio(cobertura, 'fts')}",
         f"- sin candidatos vector: {cobertura.sin_candidatos_vector} "
-        f"({cobertura.fraccion_sin_candidatos_vector:.1%})",
+        f"({cobertura.fraccion_sin_candidatos_vector:.1%}){_no_corrio(cobertura, 'vector')}",
     ]
     if cobertura.leg_fts_degradada:
         lineas += [
             "",
             "> ⚠️ **LEG DEGRADADA (FTS)** — la mayoría de las preguntas no obtuvo "
-            "ningún candidato léxico. `websearch_to_tsquery` arma una CONJUNCIÓN, "
-            "así que una pregunta coloquial compila a una decena de lexemas unidos "
-            "por `&` y no hay artículo que los contenga a todos (ledger RAG4-001). "
-            "Las métricas de este modo describen esa propiedad de la consulta, no "
-            "la calidad del índice.",
+            "ningún candidato léxico. Con el operador CONJUNTIVO original esto era "
+            "el estado normal y no decía nada del índice (ledger RAG4-001); con la "
+            "disyunción vigente significa que las preguntas y los artículos no "
+            "comparten ni un lexema, que es una brecha de vocabulario real. En "
+            "cualquiera de los dos casos las métricas de este modo describen la "
+            "consulta antes que la calidad del índice.",
         ]
     if cobertura.leg_vector_degradada:
         lineas += [
@@ -169,8 +198,8 @@ def _bloque_cobertura(corrida: ResultadoModo) -> list[str]:
         lineas += [
             "",
             "> ⚠️ **HÍBRIDO DEGENERADO** — una de las dos piernas no aportó nada en "
-            "ninguna pregunta, así que este bloque NO es una fusión: es la otra "
-            "pierna sola, con etiqueta de híbrido.",
+            "la mayoría de las preguntas, así que este bloque NO es una fusión: es "
+            "mayormente la otra pierna sola, con etiqueta de híbrido.",
         ]
     return lineas
 
@@ -288,7 +317,7 @@ def renderizar_markdown(
     for modo in resultado.modos:
         corrida = resultado.por_modo[modo]
         go_no_go = decidir_go_no_go(corrida, gold)
-        veredicto = "NO EVALUABLE" if sintetico else go_no_go.veredicto
+        veredicto = "NO EVALUABLE" if sintetico else go_no_go.veredicto_con_alcance
         lineas += [
             f"## Modo `{modo}`",
             "",
@@ -328,11 +357,14 @@ def _a_json(
                 "mrr": corrida.metricas.mrr,
                 "citation_precision": corrida.metricas.citation_precision,
                 "separacion_norma_secundaria": corrida.metricas.separacion_norma_secundaria,
+                "n_separacion": corrida.metricas.n_separacion,
                 "vigencia_correctness": corrida.metricas.vigencia_correctness,
                 "n_vigencia": corrida.metricas.n_vigencia,
             },
             "metodologia": resumen_metodologico(corrida),
             "cobertura": {
+                "operador_fts": FTS_OPERADOR,
+                "legs_corridas": list(corrida.cobertura.legs_corridas),
                 "n_preguntas": corrida.cobertura.n_preguntas,
                 "sin_candidatos_fts": corrida.cobertura.sin_candidatos_fts,
                 "sin_candidatos_vector": corrida.cobertura.sin_candidatos_vector,
@@ -342,6 +374,13 @@ def _a_json(
             },
             "go_no_go": {
                 "veredicto": "NO EVALUABLE" if sintetico else go_no_go.veredicto,
+                "veredicto_con_alcance": (
+                    "NO EVALUABLE" if sintetico else go_no_go.veredicto_con_alcance
+                ),
+                # A machine reader must be able to tell a bare GO from one whose
+                # scope is a single leg WITHOUT parsing the Spanish sentence.
+                "veredicto_calificado": go_no_go.veredicto_calificado and not sintetico,
+                "legs_degradadas": list(go_no_go.legs_degradadas),
                 "evaluable": go_no_go.evaluable and not sintetico,
                 "motivos_no_evaluable": list(go_no_go.motivos_no_evaluable),
                 "barras": [
@@ -374,8 +413,14 @@ def _a_json(
     return {
         "generado_en": generado_en.isoformat(),
         "corpus_sha": resultado.corpus_sha,
+        # The gold set's OWN pin, next to the snapshot's, so a reader of the JSON
+        # alone can see they agree. `verificar_corpus_sha` refuses at the CLI when
+        # they do not; this is the record that the check had something to compare
+        # (ledger RAG4-003).
+        "gold_corpus_sha": resultado.gold.corpus_sha,
         "sintetico": sintetico,
         "minimo_respondibles": MINIMO_RESPONDIBLES,
+        "operador_fts": FTS_OPERADOR,
         "rrf_k": RRF_K,
         "leg_limit": LEG_LIMIT,
         "procedencia": {

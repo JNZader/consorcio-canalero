@@ -18,7 +18,7 @@ definition is not a gate, so:
 | hit-rate@5 | 1 if any expected key is among the first 5 fused hits | — |
 | MRR | `1/(rank+1)` of the FIRST expected key in the returned page, 0 if absent | averaging over all expected keys turns a complete composite answer into a worse score than a partial one |
 | citation-precision | **R-precision**: precision at rank `|gold|` — `\\|top_m ∩ gold\\| / m` with `m = \\|gold\\|` | any fixed window >= m makes "= 1.00" unreachable for a 1-key question on a 10-hit page, i.e. a decorative bar. At rank `m`, precision and recall coincide, so one number carries both "did it bring them all" and "did it bring junk" |
-| norma-vs-secundaria | 1 unless the top hit is `es_secundaria`, or any hit lacks an explicit flag | the gold set's own rule: citing the informe instead of the article is a failure even when the content is right |
+| norma-vs-secundaria | 1 unless the top hit is `es_secundaria`, or any hit lacks an explicit flag; `None` when the page is empty | the gold set's own rule: citing the informe instead of the article is a failure even when the content is right. Scoring an empty page 1.0 would let a mode that retrieved nothing at all clear a hard `== 1.00` bar |
 | vigencia-correctness | over trap questions only: every caveat-bearing key retrieved AND every norma hit carrying a vigencia state | scoring it over all questions would inflate the mean with free points from questions that never claimed the property |
 
 **Scope.** The five are computed over `respondibles` (every item whose `clase` is
@@ -101,6 +101,11 @@ class MetricasRecuperacion:
     separacion_norma_secundaria: float | None
     vigencia_correctness: float | None
     n_vigencia: int
+    #: How many answerable questions actually returned a page, i.e. the
+    #: denominator `separacion_norma_secundaria` was averaged over. Printed for
+    #: the same reason `n_vigencia` is: a mean over 3 of 29 questions and a mean
+    #: over 29 are different claims and must not look alike.
+    n_separacion: int = 0
     k_hit_rate: int = HIT_RATE_K
 
 
@@ -138,8 +143,8 @@ def citation_precision(pregunta: PreguntaEvaluada) -> float:
     return len(esperadas.intersection(pregunta.claves[:m])) / m
 
 
-def separacion_norma_secundaria(pregunta: PreguntaEvaluada) -> float:
-    """1.0 unless a secundaria hit leads the page, or a flag is missing.
+def separacion_norma_secundaria(pregunta: PreguntaEvaluada) -> float | None:
+    """1.0 unless a secundaria hit leads the page. `None` when nothing came back.
 
     Two halves, both load-bearing:
 
@@ -151,10 +156,22 @@ def separacion_norma_secundaria(pregunta: PreguntaEvaluada) -> float:
       como fallo aunque el contenido sea correcto"*. Every answerable gold item
       cites norms only, so a secundaria at rank 0 is a commentary presented as
       grounds.
+
+    **A question that returned NO hits scores `None`, not 1.0** — the same
+    denominator rule `vigencia_correctness` already follows, and it was the one
+    metric in this module that broke it. "The top hit was not a secondary source"
+    is vacuously true of a page with no top hit, so a total retrieval failure
+    used to score PERFECTLY here, and this metric feeds a hard `== 1.00` bar. A
+    mode whose legs came back empty for every question would have cleared it
+    unanimously — a bar passed BY failing, which is the exact shape of an
+    unfalsifiable gate. Absence is not a measurement; it stays out of the
+    denominator and shows up in `n_separacion`.
     """
+    if not pregunta.hits:
+        return None
     if any(hit.es_secundaria is None for hit in pregunta.hits):
         return 0.0
-    if pregunta.hits and pregunta.hits[0].es_secundaria:
+    if pregunta.hits[0].es_secundaria:
         return 0.0
     return 1.0
 
@@ -194,15 +211,19 @@ def metricas_recuperacion(
         for valor in (vigencia_correctness(pregunta) for pregunta in respondibles)
         if valor is not None
     ]
+    separaciones = [
+        valor
+        for valor in (separacion_norma_secundaria(pregunta) for pregunta in respondibles)
+        if valor is not None
+    ]
     return MetricasRecuperacion(
         n_respondibles=len(respondibles),
         hit_rate_at_5=_media([hit_rate_at_k(pregunta, k) for pregunta in respondibles]),
         mrr=_media([reciprocal_rank(pregunta) for pregunta in respondibles]),
         citation_precision=_media([citation_precision(pregunta) for pregunta in respondibles]),
-        separacion_norma_secundaria=_media(
-            [separacion_norma_secundaria(pregunta) for pregunta in respondibles]
-        ),
+        separacion_norma_secundaria=_media(separaciones),
         vigencia_correctness=_media(vigencias),
         n_vigencia=len(vigencias),
+        n_separacion=len(separaciones),
         k_hit_rate=k,
     )

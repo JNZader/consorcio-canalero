@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.domains.conocimiento.eval.harness import BARRA_SEPARACION, Barra
 from app.domains.conocimiento.eval.metrics import (
     HitEvaluado,
     PreguntaEvaluada,
@@ -191,6 +192,52 @@ class TestCitationPrecisionAndSeparation:
             ),
         )
         assert separacion_norma_secundaria(sin_flag) == 0.0
+
+    def test_separation_is_none_when_nothing_was_retrieved(self):
+        """The one metric that used to award PERFECTION to total failure.
+
+        "The top hit was not a secondary source" is vacuously true of a page with
+        no top hit, so an empty result scored 1.0 — into a hard `== 1.00` bar. A
+        mode whose legs came back empty on every question cleared that bar
+        unanimously: a gate passed BY failing, which is a gate that cannot be
+        falsified. Absence leaves the denominator, exactly as
+        `vigencia_correctness` already did for a question that declares no caveat.
+        """
+        vacia = pregunta("S4", ("9750#3",), ())
+        assert vacia.hits == ()
+        assert separacion_norma_secundaria(vacia) is None
+
+    def test_an_all_empty_run_cannot_clear_the_separation_bar(self):
+        """The aggregate half of the same defect, and the reason it was CRITICAL.
+
+        Three answerable questions, every one of them retrieving nothing. Before
+        the fix the mean was 1.00 and `norma-vs-secundaria` passed; now there is
+        no denominator, the aggregate is `None`, and `Barra.pasa` is False for a
+        `None` — a metric nobody could compute never counts as a metric that was
+        met.
+        """
+        vacias = [pregunta(f"E{i}", ("9750#3",), ()) for i in range(3)]
+        metricas = metricas_recuperacion(vacias)
+        assert metricas.n_respondibles == 3
+        assert metricas.n_separacion == 0
+        assert metricas.separacion_norma_secundaria is None
+
+        barra = Barra(
+            "norma-vs-secundaria",
+            metricas.separacion_norma_secundaria,
+            BARRA_SEPARACION,
+            "==",
+            "answerable subset",
+        )
+        assert barra.pasa is False
+
+    def test_the_separation_denominator_counts_only_answered_questions(self):
+        con_hits = pregunta("S5", ("9750#3",), (), hits=(norma("9750#3"),))
+        vacia = pregunta("S6", ("9750#3",), ())
+        metricas = metricas_recuperacion([con_hits, vacia])
+        assert metricas.n_respondibles == 2
+        assert metricas.n_separacion == 1
+        assert metricas.separacion_norma_secundaria == 1.0
 
     def test_vigencia_correctness_needs_the_caveat_unit_retrieved(self):
         """T-1/T-2: the article alone is the historic text; the caveat unit is
