@@ -529,6 +529,13 @@ def test_text_that_looks_like_a_formula_is_written_as_text(db):
     fields most likely to change are exactly the ones fed from provider batches
     (``discrepancies``) and from zoning configuration (``scope.id``) -- and a
     guard that depends on today's data being benign is not a guard.
+
+    TWO LAYERS since LI3B-001. The value-level one is the sanitizer the audit
+    CSV route shares (`service.neutralize_spreadsheet_formula`), so one hostile
+    value renders identically in both exports of a revision; the structural
+    ``data_type = "s"`` stays underneath it. They are asserted separately below
+    because they fail independently: dropping ``WriteOnlyCell`` loses the
+    second, and a prefix the sanitizer has not learned loses the first.
     """
     from app.domains.geo.rainfall.export import RESUMEN_SHEET, build_workbook
 
@@ -548,17 +555,30 @@ def test_text_that_looks_like_a_formula_is_written_as_text(db):
     # server stored a value -- injection AND silent data loss in one cell.
     book = load_workbook(BytesIO(workbook.content), read_only=True)
     rows = _cells(book[RESUMEN_SHEET])
+    all_cells = [(cell.value, cell.data_type) for row in rows for cell in row]
 
+    # Layer 1: neither hostile string reaches the file with its trigger
+    # character in the leading position a reader evaluates.
+    assert not [
+        value for value, _type in all_cells if isinstance(value, str) and value.startswith("=")
+    ], all_cells
+
+    # Both are still THERE, whole, carrying the standard text marker -- an
+    # export is evidence, so the value is prefixed, never stripped or rewritten.
     hostile_cells = [
         cell
         for row in rows
         for cell in row
-        if isinstance(cell.value, str) and cell.value.startswith("=")
+        if isinstance(cell.value, str) and cell.value.startswith("'=")
     ]
-    assert len(hostile_cells) == 2, [(cell.value, cell.data_type) for row in rows for cell in row]
+    assert len(hostile_cells) == 2, all_cells
+    assert {cell.value for cell in hostile_cells} == {
+        "'=1+1",
+        '\'=HYPERLINK("http://evil.example/x","ver")',
+    }
+    # Layer 2: inline text, NOT a formula. Independent of layer 1 -- this is
+    # what still holds if a future trigger character slips past the sanitizer.
     for cell in hostile_cells:
-        # Inline text, NOT a formula: the workbook shows the reader exactly
-        # what the server stored, and nothing runs when the file is opened.
         assert cell.data_type == "s", (cell.value, cell.data_type)
 
 

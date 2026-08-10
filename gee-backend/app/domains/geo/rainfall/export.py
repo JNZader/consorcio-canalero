@@ -55,6 +55,7 @@ from app.domains.geo.rainfall.service import (
     SUMMARY_METRIC_LABELS,
     SUMMARY_STATE_LABELS,
     metric_rows,
+    neutralize_spreadsheet_formula,
     normalize_snapshot,
 )
 
@@ -161,11 +162,21 @@ def _append(sheet: Any, values: list[Any]) -> None:
 
     Numbers, ``None`` and dates are passed through untouched: forcing them to
     text would make the workbook unusable for the arithmetic it exists for.
+
+    TWO LAYERS, and they are lost independently (LI3B-001). The value-level
+    guard is ``service.neutralize_spreadsheet_formula`` -- the SAME sanitizer
+    the audit CSV route uses, so the same hostile value renders identically in
+    both exports of one revision instead of two files of the same analysis
+    disagreeing. ``data_type = "s"`` stays as the second layer: it is what makes
+    the guarantee structural here, and it survives a value the sanitizer's
+    prefix set has not learned about yet. Conversely the sanitizer survives a
+    refactor away from ``WriteOnlyCell``, which is the only thing holding the
+    structural layer up.
     """
     row: list[Any] = []
     for value in values:
         if isinstance(value, str):
-            cell = WriteOnlyCell(sheet, value=value)
+            cell = WriteOnlyCell(sheet, value=neutralize_spreadsheet_formula(value))
             cell.data_type = "s"
             row.append(cell)
         else:

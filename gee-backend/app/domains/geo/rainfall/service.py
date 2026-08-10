@@ -660,6 +660,59 @@ def metric_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+# The characters a spreadsheet reads as "this cell is an expression" on
+# import. `=` is the obvious one; `+`/`-`/`@` open the same door in Excel and
+# LibreOffice, and a leading tab or CR slips a trigger past a naive
+# `startswith("=")` check because the reader strips the whitespace first.
+SPREADSHEET_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+# Prefixing with an apostrophe is the neutralization both readers honour: the
+# cell renders as text and is never evaluated. Deliberately NOT stripping or
+# rewriting the value -- an export is evidence, and silently mutating what the
+# provider sent would be a worse defect than the one being closed.
+SPREADSHEET_TEXT_MARKER = "'"
+
+
+def neutralize_spreadsheet_formula(text: str) -> str:
+    """Make one cell's TEXT inert for a spreadsheet reader.
+
+    ONE definition of "text a spreadsheet would execute", shared by both export
+    formats (the `temporal.utc_day` precedent), so the audit CSV and the xlsx
+    workbook can never disagree about the same value.
+
+    The two formats need it for different reasons and lose it in different
+    ways. The xlsx has a structural lever -- ``cell.data_type = "s"``
+    (`export._append`) types the cell as a string in the file itself, and Excel
+    never evaluates a string cell. A CSV has no types at all: the READER decides
+    what each cell is, which is why the audit CSV is the MORE exposed of the two
+    exports (LI3B-001) even though it is the one nobody thought of as a
+    document. Applying this at value level in both keeps the structural guard as
+    a second layer rather than a single point of failure, and keeps the same
+    hostile value rendering identically in both files.
+
+    Only ``str`` is ever passed here by either caller: a negative FLOAT is a
+    number, not executable text, and quoting it would break every consumer that
+    parses the column.
+    """
+    return (
+        f"{SPREADSHEET_TEXT_MARKER}{text}"
+        if text.startswith(SPREADSHEET_FORMULA_PREFIXES)
+        else text
+    )
+
+
+def _csv_cell(value: Any) -> Any:
+    """Nested evidence stays JSON; the formula guard runs on the FINAL text.
+
+    Order matters: a `discrepancies` entry fed from a provider batch is encoded
+    first, so guarding before `json.dumps` would inspect a value that is not
+    what lands in the cell.
+    """
+    if isinstance(value, (dict, list, tuple)):
+        return neutralize_spreadsheet_formula(json.dumps(value, sort_keys=True))
+    return neutralize_spreadsheet_formula(value) if isinstance(value, str) else value
+
+
 def metric_rows_csv(rows: list[dict[str, Any]]) -> str:
     """Serialize every displayed field; null stays blank and nested evidence stays JSON."""
     fields = tuple(sorted({key for row in rows for key in row}))
@@ -667,12 +720,5 @@ def metric_rows_csv(rows: list[dict[str, Any]]) -> str:
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     for row in rows:
-        writer.writerow(
-            {
-                key: json.dumps(value, sort_keys=True)
-                if isinstance(value, (dict, list, tuple))
-                else value
-                for key, value in row.items()
-            }
-        )
+        writer.writerow({key: _csv_cell(value) for key, value in row.items()})
     return output.getvalue()

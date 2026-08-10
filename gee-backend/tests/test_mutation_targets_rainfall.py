@@ -65,6 +65,7 @@ from app.domains.geo.rainfall.service import (
     analysis_request_fingerprint,
     metric_rows,
     metric_rows_csv,
+    neutralize_spreadsheet_formula,
     normalize_snapshot,
     queue_missing_analysis,
     resolve_missing_work_source,
@@ -933,6 +934,63 @@ class TestMetricRowsCsv:
         assert lines[0].startswith("completeness,coverage,")
         assert "fallback_used" in lines[0]
         assert len(lines) == 3  # header + two rows
+
+
+class TestSpreadsheetFormulaNeutralization:
+    """A CSV cell has no type, so the READER decides what it is.
+
+    Excel and LibreOffice both evaluate a cell whose text starts with ``=``,
+    ``+``, ``-``, ``@`` or a leading tab/CR on import, which is the CSV-injection
+    class (LI3B-001). The xlsx export already refuses the same shape structurally
+    (``cell.data_type = "s"``, export.py) -- the audit CSV is the MORE exposed of
+    the two exports precisely because it has no such lever. One sanitizer, two
+    consumers: the definition of "text a spreadsheet would execute" lives in one
+    place so the two files can never disagree about the same value.
+    """
+
+    def test_every_owasp_trigger_prefix_is_neutralized(self) -> None:
+        for hostile in ("=1+1", "+1", "-1", "@SUM(A1)", "\t=1+1", "\r=1+1"):
+            assert neutralize_spreadsheet_formula(hostile) == f"'{hostile}"
+
+    def test_benign_text_is_returned_verbatim(self) -> None:
+        # Neutralizing indiscriminately would corrupt every unit, reason and
+        # date the exports carry -- the guard must be invisible on real data.
+        for benign in ("mm", "percentil", "quality_below_threshold", "2026-01-01", "", "0.5"):
+            assert neutralize_spreadsheet_formula(benign) == benign
+
+    def test_provider_fed_unit_reaches_the_csv_neutralized(self) -> None:
+        # `unit` is the field the finding named: it is provider-fed and lands in
+        # the file verbatim. A negative-looking unit is enough to make Excel
+        # treat the cell as an expression.
+        normalized = normalize_snapshot(
+            _snapshot(annual={"a1": _metric_raw(unit="=cmd|'/c calc'!A1")}),
+            expected_policy_revision="v1",
+        )
+        csv_row = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))
+        assert csv_row["unit"] == "'=cmd|'/c calc'!A1"
+
+    def test_json_encoded_discrepancies_are_neutralized_too(self) -> None:
+        # `discrepancies` is fed from provider batches and is serialized through
+        # `json.dumps` first, so the guard must run on the FINAL cell text --
+        # after encoding, not before, or the encoded form escapes it.
+        normalized = normalize_snapshot(
+            _snapshot(annual={"a1": _metric_raw(discrepancies=["=1+1"])}),
+            expected_policy_revision="v1",
+        )
+        csv_row = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))
+        assert json.loads(csv_row["discrepancies"]) == ["=1+1"]
+        assert not csv_row["discrepancies"].startswith("=")
+
+    def test_numbers_are_never_quoted_into_text(self) -> None:
+        # The CSV exists to be re-read as data. A negative FLOAT is a number,
+        # not executable text, and prefixing it would break every consumer that
+        # parses the column.
+        normalized = normalize_snapshot(
+            _snapshot(annual={"a1": _metric_raw(value=-3.5, coverage=1.0)}),
+            expected_policy_revision="v1",
+        )
+        csv_row = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))
+        assert csv_row["value"] == "-3.5"
 
 
 # ===========================================================================
