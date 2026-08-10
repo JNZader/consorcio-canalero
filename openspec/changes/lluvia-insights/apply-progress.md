@@ -918,3 +918,23 @@ Evidence convention as corrected in R3-001: each clause is labelled `[executed: 
 ### Status (slice 4)
 
 10/10 slice-4 tasks (incl. 4.2b) + 1/1 ledger amendment complete. **This closes the apply phase for `lluvia-insights`: every coding task in slices 1 → 2a → 2b → 3a → 3b → 4 is `[x]`.** Backend 2124 passed / 6 pre-existing skips (+5 from a 2119 baseline, exactly the new tests); `ruff check` and `ruff format --check` clean. Frontend typecheck exit 0 with both new test files enrolled, vitest 278 files / 3666 passed (+25, exactly the new tests), lint exit 0 with no new warning, format:check unchanged from baseline. The Playwright spec is extended and collects but could not be executed here. Next: the phase-level Judgment Day for apply.
+
+## Judgment Day — apply phase, Round 1 fix (2026-08-10)
+
+Owner decision: **fix completo**. Four findings applied on `feat/lluvia-insights-04-chart` (from `40da53d9`), TDD RED-first, no `--no-verify`. Full detail — convergence map, RED evidence, cleared surfaces, deviations — lives in `review-ledger.md` § "Judgment Day — apply phase (Round 1)"; this section records only what changed in the apply artifacts.
+
+| Finding | What changed | Files |
+|---|---|---|
+| JDA-001 ≡ JDB-001 (CRITICAL) | `available_through` is the EXCLUSIVE window end; both display surfaces now convert it once to the last day WITH evidence. Chart footer, lag detection and the xlsx Resumen cell agree. Chart fixtures rebuilt to the shape the backend can actually emit (no point ON `available_through`). | `RainfallAccumulationChart.tsx`, `RainfallAccumulationChart.test.tsx`, `export.py`, `test_rainfall_export_xlsx.py` |
+| JDA-003 ≡ JDB-003 (WARNING) | The "Volver a pedir el análisis" button and its whole `rerequest()` machinery removed; the staleness alert and its two distinct sentences stay. No backend enqueue path added (out of scope by owner decision). | `RainfallAccumulationChart.tsx`, `RainfallAccumulationChart.test.tsx` |
+| JDA-004 ≡ JDB-002 (WARNING) | `rainfall.analysis.requeue_failed` moved back into §2.1's event table; the `consistency_reason` table stands alone with its two values. Pin test upgraded from substring to markdown-table parsing, plus a second test pinning the enum table's contents. | `docs/lluvia-v2-observability-workbook.md`, `test_slice2b_resilience_fixes.py` |
+| JDA-002 (WARNING, owner-approved) | Tooltip guards `null`/`undefined` BEFORE the `Number` coercion, so an unknown value prints "—" instead of `0.0 mm`. Asserted through the `formatter` prop the component actually wires, because happy-dom can never activate a recharts tooltip. | `RainfallAccumulationChart.tsx`, `RainfallAccumulationChart.test.tsx` |
+
+**Superseded self-check clauses.** Two rows of the slice-4 self-check table above describe behavior this round deleted, and are corrected here rather than rewritten in place (that table records the state at apply time):
+
+- *Concurrency / idempotency* — "the re-request button is `loading`-gated while in flight" no longer applies; there is no button. The stronger property replaces it and is now **executed**, not by inspection: `fetchRainfallAnalysis` is never called from the chart at all (test "never re-POSTs /analyses from the chart at all").
+- *Partial failure / recovery* — the two clauses about a failed re-request and the honest 200-same-revision no-op are gone with the control they described. The surviving recovery clauses (labelled `/series` error state, curve-only degradation) are unchanged.
+
+**Verification.** Backend `pytest tests/new/ tests/test_mutation_targets_rainfall.py`: 2126 passed / 6 skipped (baseline 2124 / 6; +2 = the two new tests). `ruff check` exit 0, `ruff format --check` exit 0. Frontend `npm run typecheck` exit 0 (both projects); `npx vitest run`: 3672 passed / 278 files (baseline 3666 / 278; +6 net, chart file 16 → 22 executed). The Playwright spec is untouched by this round and still could not be executed here.
+
+**Status.** Round 1 fixes applied; `JDA-005` stays `info` by the severity floor. Next: the orchestrator's scoped re-judge against the ledger and the fix diff.
