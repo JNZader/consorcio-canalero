@@ -6,7 +6,8 @@
         backend-install frontend-install backend-dev frontend-dev backend-test \
         frontend-test backend-lint frontend-lint docker-build docker-logs \
         docker-restart docker-clean format security-scan db-upgrade db-downgrade \
-        ci-quick ci-full install-hooks rag-db test-rag test-rag-corpus
+        ci-quick ci-full install-hooks rag-db test-rag test-rag-corpus \
+        rag-ingest rag-embed-load rag-eval
 
 # Default target
 .DEFAULT_GOAL := help
@@ -334,6 +335,49 @@ test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinne
 			exit 1; \
 		fi; \
 		echo "$(GREEN)test-rag-corpus: the whole corpus contract ran for real against the pinned checkout, zero skipped.$(NC)"
+
+# ----------------------------------------------
+# The V0 pipeline: ingest -> embed+load -> eval
+# ----------------------------------------------
+# Three targets, run in this order, on a database started with `make rag-db`.
+# Each one refuses rather than degrades, so a skipped step surfaces at the next
+# one instead of quietly producing a smaller number.
+#
+#   RAG_CORPUS_PATH        checkout of consorcio-corpus-legal at the pinned SHA
+#   RAG_CORPUS_SHA         the pinned SHA (defaults to the ratified one)
+#   DATABASE_URL           target database
+#   RAG_GOLD_PRIVADO_PATH  owner-side YAML with the private gold questions
+RAG_CORPUS_SHA ?= 12043582bf8016288a7e8084e85a4b713a97af2f
+RAG_DATABASE_URL ?= $(or $(DATABASE_URL),postgresql://consorcio:consorcio_dev@localhost:5432/consorcio)
+RAG_ARTIFACTS ?= artifacts/rag
+
+rag-ingest: ## Ingest the SHA-pinned corpus into rag_corpus/rag_documento/rag_unidad
+	@if [ -z "$$RAG_CORPUS_PATH" ]; then \
+		echo "$(RED)rag-ingest: RAG_CORPUS_PATH is not set.$(NC)"; \
+		echo "$(YELLOW)  make rag-ingest RAG_CORPUS_PATH=~/path/to/consorcio-corpus-legal$(NC)"; \
+		exit 1; \
+	fi
+	@cd $(BACKEND_DIR) && venv/bin/python scripts/rag_ingest.py \
+		--corpus-path $$RAG_CORPUS_PATH \
+		--corpus-sha $(RAG_CORPUS_SHA) \
+		--database-url "$(RAG_DATABASE_URL)"
+
+rag-embed-load: ## Load a vectors-{sha8}.copy artifact produced by the GPU batch (Ops O.3)
+# The BATCH itself is NOT here: it needs torch + the 2.2 GB BGE-M3 on the RTX
+# workstation (requirements-rag.txt, a separate venv). This target is the LOAD,
+# which runs anywhere and is the step with the gates.
+	@cd $(BACKEND_DIR) && venv/bin/python scripts/rag_load_vectors.py \
+		--vectors $(RAG_ARTIFACTS)/vectors-$(shell echo $(RAG_CORPUS_SHA) | cut -c1-8).copy \
+		--database-url "$(RAG_DATABASE_URL)"
+
+rag-eval: ## Run the three-mode ablation and write docs/rag/retrieval-eval-*.md
+	@if [ -z "$$RAG_GOLD_PRIVADO_PATH" ]; then \
+		echo "$(YELLOW)rag-eval: RAG_GOLD_PRIVADO_PATH is not set — the 26 items whose text lives outside this public repo will be unresolved, and the report will refuse to emit a go/no-go. See gold_set.yaml's header.$(NC)"; \
+	fi
+	@cd $(BACKEND_DIR) && venv/bin/python scripts/rag_eval.py \
+		--corpus-sha $(RAG_CORPUS_SHA) \
+		--database-url "$(RAG_DATABASE_URL)" \
+		$(RAG_EVAL_FLAGS)
 
 # ==============================================
 # UTILITY COMMANDS

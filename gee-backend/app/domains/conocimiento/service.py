@@ -31,6 +31,7 @@ from app.domains.conocimiento.repository import (
     LEG_LIMIT,
     IngestionAbort,
     LegHit,
+    ProcedenciaEmbeddings,
     fts_search,
     hydrate_citations,
     leer_procedencia,
@@ -212,6 +213,19 @@ class EmbedderMismatch(RuntimeError):
 
 def _leg_map(hits: Sequence[LegHit]) -> dict[str, LegHit]:
     return {hit.citation_key: hit for hit in hits}
+
+
+def procedencia_embeddings(db: Session, corpus_sha: str) -> ProcedenciaEmbeddings | None:
+    """What produced this snapshot's vectors, read from `rag_corpus`.
+
+    A thin pass-through, and it exists for a structural reason rather than a
+    stylistic one: the eval package may not import `repository` (design.md D4),
+    because a module that can reach the repository can reach `vector_search` and
+    thereby skip the two provenance refusals that make a published measurement
+    honest. The report needs this data — it pins the model the corpus was
+    embedded with — so the service layer exposes it and the boundary holds.
+    """
+    return leer_procedencia(db, corpus_sha)
 
 
 def verificar_embedder(db: Session, corpus_sha: str, embedder: Embedder) -> None:
