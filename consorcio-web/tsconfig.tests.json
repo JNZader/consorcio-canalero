@@ -45,6 +45,8 @@
     "tests/setup.ts",
     "tests/unit/rainfallApi.test.ts",
     "tests/unit/RainfallDetailPanel.test.tsx",
+    "tests/unit/RainfallAccumulationChart.test.tsx",
+    "tests/unit/RainfallMetricList.test.tsx",
     "tests/hooks/useRainfallAnalysis.test.tsx"
   ]
 }

@@ -811,3 +811,110 @@ Evidence convention as corrected in R3-001: each clause is labelled `[executed: 
 ### Status (slice 3b)
 
 11/11 slice-3b tasks + 4/4 ledger amendments complete. Backend 2119 passed / 6 pre-existing skips (+17 from a 2102 baseline, exactly the new tests). Frontend typecheck exit 0, vitest 276 files / 3641 passed (+8, exactly the new tests). `ruff check` clean, `ruff format --check` clean. Ready for the slice-3b pre-PR review, then slice 4.
+
+## Slice 4: Frontend Chart (D8) — COMPLETE (10/10 tasks incl. 4.2b + 1 ledger amendment) — CLOSES THE APPLY PHASE
+
+**Branch**: `feat/lluvia-insights-04-chart` (base: slice-3b tip `8705a2e`).
+**Mode**: Strict TDD (RED → GREEN). Every RED below was executed. Two of them are "break it and watch the test catch it" probes (the 4.2b collapse, the typecheck-enrolment probe): the change was applied in place, the targeted check re-run to capture the failure, and the source restored from a copy taken beforehand — with the restored state re-verified green.
+
+### Baseline (before slice-4 changes, same branch)
+
+```
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2119 passed, 6 skipped             (matches the slice-3b tip)
+
+consorcio-web: npm run typecheck      => exit 0 (src + tsconfig.tests.json)
+consorcio-web: npx vitest run         => 276 files, 3641 passed
+consorcio-web: npm run lint           => exit 0, 3 pre-existing warnings
+consorcio-web: npm run format:check   => exit 1, 3 pre-existing files (altimetria json, FichaResumen.tsx, lib/auth.ts)
+```
+
+### Final (after slice-4 changes)
+
+```
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2124 passed, 6 skipped, 0 failed   (exit 0; +5 = exactly the new sanitizer tests)
+
+pytest tests/new/geo/rainfall/test_rainfall_export_xlsx.py -q
+=> 16 passed                          (unchanged count; the formula test now asserts BOTH layers)
+
+ruff check .        => All checks passed!   (exit 0)
+ruff format --check => 405 files already formatted (exit 0, after formatting this round's own test file)
+
+consorcio-web: npm run typecheck      => exit 0 (2 new test files enrolled in tsconfig.tests.json)
+consorcio-web: npx vitest run         => 278 files, 3666 passed  (+25 = 16 chart + 5 metric list + 4 panel, exactly)
+consorcio-web: npm run lint           => exit 0, the SAME 3 pre-existing warnings (no 4th added)
+consorcio-web: npm run format:check   => exit 1, the SAME 3 pre-existing files (verified by re-running on a stashed tree)
+
+consorcio-web: playwright rainfall-v2-detail.spec.ts  => NOT EXECUTED (see Deviations)
+                                                         --list collects 9 tests (was 7)
+```
+
+### TDD Cycle Evidence
+
+| Task / finding | Test | RED evidence (executed) | GREEN evidence |
+|---|---|---|---|
+| A1 (LI3B-001) | `test_mutation_targets_rainfall.py::TestSpreadsheetFormulaNeutralization` (5 tests) | `ImportError: cannot import name 'neutralize_spreadsheet_formula' from 'app.domains.geo.rainfall.service'` — collection-level, the honest RED for a symbol that does not exist | 10 passed in the CSV classes; 16 passed in the xlsx suite; full backend 2124. |
+| 4.1, 4.2, 4.2b, 4.3, 4.5 | `tests/unit/RainfallAccumulationChart.test.tsx` (16 tests) | `Failed to resolve import ".../RainfallAccumulationChart"` — the whole file failed to transform, 0 tests collected | 16 passed. |
+| **4.2b (falsification probe)** | `"renders integrity_refused DISTINCTLY from suppressed, in copy and in state"` | With the two `NORMAL_CURVE_NOTICE` entries collapsed to the same title+body in place: `AssertionError: expected 'Sin línea normalNo hay normal 1991-20…' to not deeply equal 'Sin línea normalNo hay normal 1991-20…'` — the test fails exactly when the two states collapse, which is the property 4.2b demands | Source restored → 16 passed. |
+| 4.7, 4.8 | `tests/unit/RainfallMetricList.test.tsx` (5 tests) | **4 failed, 1 passed**; first failure `AssertionError: expected 'Año 2025: 850.2 mm' to contain '—'`. The 1 that passed at RED is the *omission* case (`no percentile ⇒ no phrase`), which is vacuously true before the feature exists — disclosed rather than counted as coverage. | 12 passed across the two format/list files. |
+| 4.9 | `tests/unit/RainfallDetailPanel.test.tsx` (4 new) | The panel mounting the chart is new behavior; the mock factory had to move to `importActual` first, otherwise `RAINFALL_NORMAL_CURVE_STATE` is `undefined` at module scope and the failure reads as a chart bug rather than a mock bug | 26 passed in the panel + ficha-mount files. |
+| Enrolment gate (R3-004 discipline) | `npx tsc --noEmit -p tsconfig.tests.json` | With `normal_curve_state` removed from `RainfallSeriesResponse`: exit **2**, `tests/unit/RainfallAccumulationChart.test.tsx(167,5): TS2353` + `(302,16)` + `(311,16)` + `(332,16)` + `tests/unit/RainfallDetailPanel.test.tsx(150,5): TS2353` | Field restored → `npm run typecheck` exit 0. The two NEW test files are inside the gate, proven rather than assumed. |
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified | A1: `SPREADSHEET_FORMULA_PREFIXES`, `SPREADSHEET_TEXT_MARKER`, `neutralize_spreadsheet_formula`, `_csv_cell`; `metric_rows_csv` routes every cell through the guard, applied to the FINAL text (after `json.dumps`). |
+| `gee-backend/app/domains/geo/rainfall/export.py` | Modified | A1: `_append` applies the same shared sanitizer and keeps `cell.data_type = "s"` as the second layer, with the "they fail independently" reasoning in the docstring. |
+| `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified | A1: `TestSpreadsheetFormulaNeutralization` (5 tests — the full trigger set, benign text untouched, the provider-fed `unit` case the finding named, the post-`json.dumps` ordering case, the negative-float counterexample). |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_export_xlsx.py` | Modified | A1: the formula test now asserts the two layers SEPARATELY (no cell starts with a trigger; both hostile values present, whole, marked; both still `data_type == "s"`). |
+| `consorcio-web/src/components/map2d/rainfall/RainfallAccumulationChart.tsx` | Created | 4.4/4.6: the year-vs-normal chart on `recharts` directly, fed by `useRainfallSeries`; staleness alert (pin + echo cross-check) with the re-request action; `NormalCurveNotice`; campaign preset; `role="img"` textual equivalent; both-dates footer + provider-lag notice. |
+| `consorcio-web/src/components/map2d/rainfall/rainfallFormat.ts` | Modified | 4.8: `formatAccumulated` (the chart's counterpart to `formatMetricValue`, same null-is-never-zero rule) and `percentilePhrase(metric, baseline)`. |
+| `consorcio-web/src/components/map2d/rainfall/RainfallMetricList.tsx` | Modified | 4.8: `AnnualText` gains the percentile phrase; the group's own `!selected && !normal` early return widened to include the percentile. |
+| `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx` | Modified | 4.9: mounts the chart for a ready snapshot; adds the "Exportar Excel" button slice 3b built the client for; export state keyed by FORMAT. |
+| `consorcio-web/src/hooks/useRainfallAnalysis.ts` | Modified | 4.3: `rainfallAnalysisQueryKey(scope, year)` exported and used by the hook itself — one definition, two consumers. |
+| `consorcio-web/tests/unit/RainfallAccumulationChart.test.tsx` | Created | 16 tests across 5 describes (4.1, 4.2, 4.2b, 4.3, 4.5). |
+| `consorcio-web/tests/unit/RainfallMetricList.test.tsx` | Created | 5 tests (4.7). |
+| `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx` | Modified | 4.9: `importActual` mock + a `/series` fixture + 4 tests (chart mounted, no chart while queued, xlsx export, denied xlsx export). |
+| `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts` | Modified | 4.10: `/series` + `.xlsx` route fixtures, `data_revision` on the ready body, 2 new tests. |
+| `consorcio-web/tsconfig.tests.json` | Modified | ENROLMENT RULE honored: both new test files added in the same commit that creates them. |
+| `openspec/changes/lluvia-insights/{tasks,review-ledger,apply-progress}.md` | Modified | Slice-4 boxes, the slice-3b risk-lens ledger section + LI3B-001 resolution, this record. |
+
+### Deviations from Design/Tasks
+
+1. **A1 changes xlsx BYTES for hostile payloads** (the amendment said "xlsx behavior unchanged"). Reported in full in the ledger's LI3B-001 resolution. Real payloads are unaffected — the whole 16-test export suite is green — but `=1+1` in a `unit` now renders `'=1+1` in the workbook too, and the existing formula test was updated to assert both layers. Rejected alternative: CSV-only neutralization, which makes two exports of one revision disagree about the same value and leaves the xlsx's guarantee resting on one deletable line.
+2. **The `ReferenceLine` is not the primary date disclosure.** Design D8 says "ReferenceLine at `comparison_end`". Under provider lag — the documented steady state — that day is outside the plotted window and recharts draws nothing, so the mark would disappear exactly when the two dates differ. Implemented as `ifOverflow="hidden"` PLUS a text footer that always states both dates, plus a lag notice naming the gap. The mark is the nicety; the text is the disclosure.
+3. **The normal `Line` is not rendered at all when the curve is unavailable.** A `Line` over all-null data still produces a legend entry and an axis series, i.e. a promise of a comparison the response explicitly refused. One line + a stated reason is the honest rendering.
+4. **The campaign preset does not re-base the accumulations.** The window starts September 1 (spec's own definition) but the values stay counted from January 1, and the note says so. Re-basing would break the acceptance property that the last point equals `annual.selected.value` and would silently turn a display preset into a different measurement.
+5. **The xlsx export button is slice-4 work that tasks.md filed under 4.10.** Slice 3b shipped `downloadRainfallXlsx` with nothing mounting it; 4.10 requires the link to be visible end-to-end, so the button landed in 4.9's panel wiring.
+6. **4.10 was NOT executed.** `tests/e2e/global-setup.ts` throws without `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD` (seeded per-environment credentials), and the backend is not running here (`curl` on the API → `000`; the Vite dev server answers 200). Both new tests seed auth offline and mock the network, but global setup fails before any test starts. Evidence of correctness is limited to `playwright test --list` collecting 9 tests (was 7) with both new titles present — a compile/collection check, NOT an execution. Stated as such rather than reported as coverage.
+7. **The `ResponsiveContainer` mock needed an explicit generic** (`ReactElement<{ width?: number; height?: number }>`) that `PrecipChart.test.tsx`'s identical seam does not have. That file is outside the typecheck project; the new one is inside it. Not a behavior difference — a first sighting of what the LI3A-004 gate does when a file joins it.
+
+### Author Counterexample Self-Check
+
+Evidence convention as corrected in R3-001: each clause is labelled `[executed: <test>]` or `[by inspection]`, and `Result` is `Pass` only when every clause in the row is executed.
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | A `null` accumulated/normal point prints "—" and never "0" via the shared `formatAccumulated` `[executed: the chart's aria-label assertions and RainfallMetricList's suppressed-percentile test]`; a served percentile of **0** survives as "0" rather than being read as missing `[executed: test "keeps a served percentile of 0 as a number"]`; a snapshot with no percentile renders no phrase instead of an empty slot `[executed: test "omits the phrase entirely"]`; an empty plotted window renders the honest empty state and no chart `[by inspection: `visible.length === 0` branch — reachable only through the campaign preset on a series that stops before September, which no fixture builds] | Pass (one clause by inspection) |
+| Boundaries | The campaign preset boundary is inclusive of September 1 and asserted by the aria-label moving from `2025-01-01` to `2025-09-01` `[executed: test "windows the SAME series"]`; the last-valued scan walks backwards and tolerates trailing nulls `[executed: the aria-label carries a value with a curveless tail in the 4.2b fixtures]`; Feb-29 interior nulls are why the normal line carries `connectNulls` `[by inspection: the backend omits the Feb-29 curve key by construction (3a.8); no leap-year fixture is built at this layer]` | Pass (one clause by inspection) |
+| Concurrency / idempotency | The chart issues exactly ONE `/series` read and no polling — the route is read-only server-side and must stay cheap on the client `[executed: test "windows the SAME series" asserts `fetchRainfallSeries` called once across a preset toggle]`; toggling the preset issues no `/analyses` call `[executed: same test]`; the re-request button is `loading`-gated while in flight `[by inspection: `rerequesting` drives Mantine's `loading`, which disables the button] | Pass (one clause by inspection) |
+| Malicious input / security | A1: provider-fed `unit` and `discrepancies` cannot become executable content in either export `[executed: the 5 CSV tests + the two-layer xlsx test]`; the trigger set covers the tab/CR variants a naive `startswith("=")` misses `[executed: test_every_owasp_trigger_prefix_is_neutralized]`; the chart renders only server-provided strings into text nodes (React escapes them) and no `dangerouslySetInnerHTML` exists in the new component `[by inspection: grep]`; the xlsx download shares the CSV's credential body, so the bearer stays in the header `[executed: the e2e assertion — COLLECTED, NOT RUN; the unit-level proof is that both call one function]` | Pass (two clauses by inspection) |
+| Partial failure / recovery | A failed re-request reports its message instead of failing silently `[executed: test "reports a failed re-request"]`; a 200 answering with the SAME revision says so rather than looking like a dead button `[executed: test "an honest no-op"]`; a `/series` error renders a labelled error state, not an empty chart `[by inspection: the `series.isError` early return; no fixture forces it]`; a refused curve degrades the CURVE only — the year line and both dates still render `[executed: test "draws no normal line at all when the curve is refused"]` | Pass (one clause by inspection) |
+| State / tenancy / time | Every displayed date is a SLICE of the server's ISO string (`isoDay`), never a `new Date(...)` round trip — which is the LI1-002/LI3A-005 defect class, and here it would shift a UTC day to the previous day in any browser west of Greenwich `[executed: the footer and aria-label assertions compare against the exact server strings]`; the campaign boundary is a lexicographic compare on `YYYY-MM-DD`, correct by the format's own ordering and free of any timezone `[executed: the preset test]`; the panel keys the chart off `analysis_revision_id`, so switching scope/year cannot show the previous selection's series `[by inspection: the query key is the revision id, and `useRainfallAnalysis` has no keepPreviousData] | Pass (one clause by inspection) |
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (`feature-branch-chain`), unit 4 — the LAST slice.
+- Base: `feat/lluvia-insights-03b-xlsx` @ `8705a2e`; PR target = that branch.
+- Boundary: starts at the slice-3b tip, ends with the chart, the percentile phrase, the panel wiring and the LI3B-001 amendment. Nothing after this belongs to apply.
+- Estimated review budget impact: production code ~380 lines (one new component + four small edits); the rest is tests and SDD documents.
+
+### Remaining Tasks (out of this batch's scope)
+
+- Ops.1-Ops.6 — the backfill runbook execution and the doc-nit folds. These are OPERATIONAL (a real 1991-2020 GEE backfill, a production SQL count, an open-question resolution), not code, and none of them is an apply task.
+
+### Status (slice 4)
+
+10/10 slice-4 tasks (incl. 4.2b) + 1/1 ledger amendment complete. **This closes the apply phase for `lluvia-insights`: every coding task in slices 1 → 2a → 2b → 3a → 3b → 4 is `[x]`.** Backend 2124 passed / 6 pre-existing skips (+5 from a 2119 baseline, exactly the new tests); `ruff check` and `ruff format --check` clean. Frontend typecheck exit 0 with both new test files enrolled, vitest 278 files / 3666 passed (+25, exactly the new tests), lint exit 0 with no new warning, format:check unchanged from baseline. The Playwright spec is extended and collects but could not be executed here. Next: the phase-level Judgment Day for apply.

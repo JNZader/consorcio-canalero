@@ -59,6 +59,20 @@ export function useRainfallScopes(nomenclatura: string | null): UseRainfallScope
   };
 }
 
+/**
+ * The cache key one scope/year analysis lives under.
+ *
+ * Exported because the chart's re-request action writes the server's answer
+ * straight into it (`queryClient.setQueryData`), so a 200 carrying a newer
+ * revision moves the WHOLE panel and a labelled 202 lands on the poll path
+ * `useRainfallAnalysis` already owns. Two consumers, ONE definition: a key
+ * rebuilt by hand at the second call site is a cache write that silently
+ * lands nowhere the first one reads.
+ */
+export function rainfallAnalysisQueryKey(scope: RainfallScopeChoice, year: number) {
+  return ['rainfall-analysis', scope.kind, scope.id, scope.version, year] as const;
+}
+
 export interface UseRainfallAnalysisOptions {
   /** Test seam: shorten the queued poll cadence. Defaults to 5 s. */
   pollIntervalMs?: number;
@@ -103,7 +117,7 @@ export function useRainfallAnalysis(
 
   const query = useQuery({
     queryKey: scope
-      ? (['rainfall-analysis', scope.kind, scope.id, scope.version, year] as const)
+      ? rainfallAnalysisQueryKey(scope, year)
       : (['rainfall-analysis', 'idle'] as const),
     queryFn: async ({ signal }) => {
       const response = await fetchRainfallAnalysis(scope as RainfallScopeChoice, year, signal);

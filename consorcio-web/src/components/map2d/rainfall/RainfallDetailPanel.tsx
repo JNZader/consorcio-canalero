@@ -27,8 +27,13 @@ import {
 import { useEffect, useState } from 'react';
 
 import { useRainfallAnalysis, useRainfallScopes } from '../../../hooks/useRainfallAnalysis';
-import { type RainfallScopeChoice, downloadRainfallCsv } from '../../../lib/api/rainfall';
+import {
+  type RainfallScopeChoice,
+  downloadRainfallCsv,
+  downloadRainfallXlsx,
+} from '../../../lib/api/rainfall';
 import { useCanAccess } from '../../../stores/authStore';
+import { RainfallAccumulationChart } from './RainfallAccumulationChart';
 import { RainfallMetricList } from './RainfallMetricList';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -104,17 +109,24 @@ export function RainfallDetailPanel({
     }
   }, [analysis.data, analysis.gaveUp, analysis.isError, snapshot, year]);
 
-  const [exporting, setExporting] = useState(false);
+  // One in-flight export at a time, tracked by FORMAT: two independent
+  // booleans would let both buttons spin at once and a shared one would spin
+  // the wrong button.
+  const [exportingFormat, setExportingFormat] = useState<'csv' | 'xlsx' | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  async function exportCsv(revisionId: string) {
-    setExporting(true);
+  async function exportAnalysis(revisionId: string, format: 'csv' | 'xlsx') {
+    setExportingFormat(format);
     setExportError(null);
     try {
-      await downloadRainfallCsv(revisionId);
+      await (format === 'csv' ? downloadRainfallCsv(revisionId) : downloadRainfallXlsx(revisionId));
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : 'No se pudo exportar el CSV.');
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : `No se pudo exportar el ${format === 'csv' ? 'CSV' : 'Excel'}.`
+      );
     } finally {
-      setExporting(false);
+      setExportingFormat(null);
     }
   }
 
@@ -228,15 +240,31 @@ export function RainfallDetailPanel({
       {snapshot && (
         <>
           <RainfallMetricList snapshot={snapshot} />
-          <Button
-            size="xs"
-            variant="light"
-            loading={exporting}
-            onClick={() => void exportCsv(snapshot.analysis_revision_id)}
-            data-testid="rainfall-export-csv"
-          >
-            Exportar CSV
-          </Button>
+          {/* The year-vs-normal comparison the owner asked for. Mounted here
+              rather than inside the metric list because it owns its own
+              request (`/series`) and its own disclosures; `AnnualText` above
+              stays its textual equivalent. */}
+          <RainfallAccumulationChart snapshot={snapshot} />
+          <Group gap="xs" wrap="nowrap">
+            <Button
+              size="xs"
+              variant="light"
+              loading={exportingFormat === 'csv'}
+              onClick={() => void exportAnalysis(snapshot.analysis_revision_id, 'csv')}
+              data-testid="rainfall-export-csv"
+            >
+              Exportar CSV
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              loading={exportingFormat === 'xlsx'}
+              onClick={() => void exportAnalysis(snapshot.analysis_revision_id, 'xlsx')}
+              data-testid="rainfall-export-xlsx"
+            >
+              Exportar Excel
+            </Button>
+          </Group>
           {exportError && (
             <Text size="xs" c="red" data-testid="rainfall-export-error">
               {exportError}
