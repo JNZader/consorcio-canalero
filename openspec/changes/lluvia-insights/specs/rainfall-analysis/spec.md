@@ -142,7 +142,7 @@ The system MUST provide a staff-gated xlsx export with a Resumen sheet and a Ser
 
 ### Requirement: Chart Discloses Comparison Date and Freshness
 
-The year-vs-normal chart MUST visibly disclose both the comparison end date and `available_through` alongside the plotted series.
+The year-vs-normal chart MUST visibly disclose both the comparison end date and the freshness of the evidence alongside the plotted series. Freshness MUST be disclosed as the **last day with evidence** — `available_through − 1 day` — because `available_through` is the EXCLUSIVE end of the disclosure window and no daily point is ever emitted on it; the raw exclusive value MUST NOT be presented as a day the analysis has evidence for.
 
 The daily series served for a stored analysis revision MUST either match that revision's data (`data_revision`) or disclose the inconsistency deterministically in the response, and the revision's own `data_revision` MUST be disclosed with the analysis so the mismatch is detectable by the consumer. A series that no longer matches its revision MUST NOT be presented as if it did, in the chart or in the exported file.
 
@@ -150,7 +150,8 @@ The daily series served for a stored analysis revision MUST either match that re
 
 - GIVEN staff view the year-vs-normal chart for the current year
 - WHEN it renders
-- THEN it displays the comparison end date and `available_through` together with the plotted totals
+- THEN it displays the comparison end date and the last day with evidence (`available_through − 1 day`) together with the plotted totals
+- AND the raw exclusive `available_through` value is not shown
 
 #### Scenario: Daily data was corrected after the analysis was stored
 

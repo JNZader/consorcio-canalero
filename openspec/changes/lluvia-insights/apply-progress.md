@@ -938,3 +938,53 @@ Owner decision: **fix completo**. Four findings applied on `feat/lluvia-insights
 **Verification.** Backend `pytest tests/new/ tests/test_mutation_targets_rainfall.py`: 2126 passed / 6 skipped (baseline 2124 / 6; +2 = the two new tests). `ruff check` exit 0, `ruff format --check` exit 0. Frontend `npm run typecheck` exit 0 (both projects); `npx vitest run`: 3672 passed / 278 files (baseline 3666 / 278; +6 net, chart file 16 → 22 executed). The Playwright spec is untouched by this round and still could not be executed here.
 
 **Status.** Round 1 fixes applied; `JDA-005` stays `info` by the severity floor. Next: the orchestrator's scoped re-judge against the ledger and the fix diff.
+
+## Pre-verify artifact-coherence tidy (2026-08-10)
+
+Re-judge outcome: **RE-JUDGE A CLEAN, RE-JUDGE B CLEAN, JUDGMENT: APPROVED.** This pass is **housekeeping, not a review round** — no lens ran, no refuter was spawned, no finding was re-opened, and the convergence budget stays closed at one fix round. It exists because the Round 1 fix left seams `/sdd-verify` would trip on: artifacts still specifying a control that was deleted, a delta spec still requiring the raw value the fix stopped rendering, an e2e fixture in a shape the backend cannot emit, and the two latent code signals the re-judges recorded as `info`. Full per-finding detail lives in `review-ledger.md` § "Round 1 scoped re-judge — verdict" and § "Pre-verify artifact-coherence tidy"; this section records what moved in the apply artifacts and how it was verified.
+
+| Item | What changed | Files |
+|---|---|---|
+| T1 (JDA-101) | `design.md` D3 quotes the original re-request paragraph for the record and states the JD decision beside it; D8, the File Changes row and the Testing Strategy Vitest row now say "disclosure only — no re-request action". `tasks.md` 4.2 / 4.3 / 4.4 annotated, **never un-checked** — 4.3 struck through and labelled SUPERSEDED with the 3 absence tests that replaced its 4. | `design.md`, `tasks.md` |
+| T2 (JDA-102) | The delta spec's MUST and its "Chart shows both dates" scenario name the **last day with evidence (`available_through − 1 day`)** and add "AND the raw exclusive `available_through` value is not shown". `tasks.md` 4.1 follows. | `specs/rainfall-analysis/spec.md`, `tasks.md` |
+| T3 (JDB-101) | **Code.** `build_series` serves `available_through` UTC-normalized (`analysis.window_end.isoformat()` — same instant, canonical rendering); `export._last_evidence_day` subtracts through `temporal.as_utc`/`utc_day` as a second, independently-failing layer. One new real-PG test carries both consumers on one instant. | `series.py`, `export.py`, `test_rainfall_export_xlsx.py`, `design.md` (D3 amendment) |
+| T4 (JDA-103 ≡ JDB-102) | **Test fixture.** `seriesBody` moved to `available_through: ${year}-02-10T00:00:00+00:00` with the last point on `02-09` (backend-producible, zero lag); the journey names both footer sentences separately, asserts the exclusive bound never appears, and asserts the lag notice's ABSENCE. | `tests/e2e/rainfall-v2-detail.spec.ts` |
+| T5 (JDA-104, JDB-103) | **Code.** `lastEvidenceDay` returns the raw `isoDay(value)` when the parts do not make a date instead of throwing; the evidence sentence and the lag notice are gated on `series.points.some(point => point.accumulated !== null)`. | `RainfallAccumulationChart.tsx`, `RainfallAccumulationChart.test.tsx` |
+| T6 | Ledger appended: the re-judge verdict, the 7 `info` rows (JDA-101..104, JDB-101..103 — all `fixed` by T1-T5, none left open), and the statement that this commit is pre-verify housekeeping. | `review-ledger.md` |
+
+**RED evidence** (behavior changes only; artifact edits need none).
+
+| Change | RED |
+|---|---|
+| T3, layer 2 (workbook cell) | `AssertionError: assert '2024-03-01' == '2024-03-02'` |
+| T3, layer 1 (wire echo) — same test, after fixing layer 2 | `AssertionError: assert '2024-03-02T21:00:00-03:00' == '2024-03-03T00:00:00+00:00'` |
+| T5a (unparseable date) | `RangeError: Invalid time value` |
+| T5b (no-evidence footer) | `expected 'Comparación hasta el 2025-12-31 · Evi…' not to contain 'Evidencia publicada hasta el 2025-10-…'` |
+
+**Which T3 variant, and why.** ONE normalization at the seam where the value leaves the backend, plus one defensive layer — NOT a client-side ISO parser. The client is fed exclusively by `build_series`, so normalizing there closes the class for both display consumers (chart footer, xlsx Resumen) and for any future consumer of `/series`; teaching the chart to parse offsets would add a second path production never exercises, in the one place the component deliberately keeps a plain string operation. The dependency is named in `lastEvidenceDay`'s docstring and pinned by the backend test rather than left implicit. `export._last_evidence_day` still normalizes on its own because its parameter is a bare `str` and nothing in the type system says where it came from — the same "two layers fail independently" rule the A1 spreadsheet sanitizer follows.
+
+**Verification.**
+
+- Backend `pytest tests/new/ tests/test_mutation_targets_rainfall.py` → **2127 passed / 6 skipped** (baseline 2126 / 6; +1 = exactly the one new backend test). `ruff check .` exit 0; `ruff format --check .` exit 0 (405 files already formatted).
+- Frontend `npm run typecheck` exit 0 (both projects); `npx vitest run` → **3675 passed / 278 files** (baseline 3672 / 278; +3 = exactly the three new chart tests). `npm run lint` exit 0 with the SAME 3 pre-existing warnings; `npm run format:check` unchanged from baseline — the same 3 pre-existing files (`src/assets/overlays/altimetria_ign_consorcio.json`, `src/components/map2d/FichaResumen.tsx`, `src/lib/auth.ts`), none of them touched here.
+- Playwright: **collection only, NOT execution** — `npx playwright test -c tests/e2e/playwright.config.ts --list tests/e2e/rainfall-v2-detail.spec.ts` → 9 tests, exit 0. `global-setup.ts` still hard-fails without `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD` and the backend is down, so the rebuilt fixture's assertions are compiled and collected, never run.
+
+**Gotchas worth carrying forward.**
+
+1. **The e2e spec is a BINARY file to git** (`LI4-006`, still `info`): `XLSX_BODY` holds literal `PK\x05\x06` + NUL bytes. Every edit to it went through byte-level replacement and was verified afterwards (`PK\x05\x06` present, NUL count unchanged); a text-mode rewrite would silently destroy the zip magic number the download test depends on.
+2. **`npx playwright test --list` from `consorcio-web/` collects NOTHING useful.** There is no root playwright config, so it falls back to a default that walks the whole `tests/` tree and chokes on the vitest files (exit 1, "Total: 0 tests in 0 files"). The e2e config is `tests/e2e/playwright.config.ts` (see `package.json`'s `test:e2e:*` scripts) and must be passed with `-c`.
+3. **Biome rejects the bare `NaN` global** (`lint/style/useNumberNamespace`): `Number.NaN`. The `npm run lint` gate catches it, `tsc` does not.
+4. **Normalizing a wire value is safe here only because no fixture flows a `Z`-suffixed `available_through` into `build_series`** — checked before changing it (`datetime.fromisoformat("…Z").isoformat()` renders `+00:00`, so a hand-built `Z` fixture reaching the echo would have failed an equality test). The real-build fixtures already emit `+00:00`.
+
+**Author Counterexample Self-Check (this pass's code changes only).** Convention as in R3-001: `[executed: <test>]` or `[by inspection]`.
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | Zero-evidence series: footer names the no-data state and the lag notice stays away `[executed: "does not claim published evidence when no day carries any"]`; a partially-published series still names its last evidence day `[executed: "still names the evidence day when a single day carries evidence"]`; `series.data` undefined keeps the "—" rendering `[by inspection: `evidenceFooter`'s `answered` argument — unreachable after the isLoading/isError guards]` | Pass (one clause by inspection) |
+| Boundaries | Non-UTC offset on the exclusive bound resolves to the SAME last day as the workbook's own last Serie diaria row `[executed: test_a_non_utc_available_through_still_names_the_same_last_day]`; the zero-lag / one-day-lag / finalized-past-year boundaries are unchanged by this pass `[executed: the four 4.1b tests still green]` | Pass |
+| Concurrency / idempotency | N/A — no new write, no new request, no new scheduling; `/series` stays read-only and the chart still issues exactly one read `[executed: the campaign-preset test's call count]` | N/A |
+| Malicious input / security | Unparseable `available_through` degrades to text instead of throwing, and the raw value is rendered as TEXT into a React node (escaped) `[executed: "falls back to the raw value instead of crashing on an unparseable date"]`; no new field, route, join or provenance widened `[by inspection: the diff]` | Pass (one clause by inspection) |
+| Partial failure / recovery | A bad date now costs its own sentence rather than the whole panel subtree `[executed: same test asserts the chart is still mounted]` | Pass |
+| State / tenancy / time | THE timezone clause: the wire value is normalized through `temporal.as_utc` at one seam and the export normalizes again independently, so a session-TZ-rendered `timestamptz` cannot shift a disclosed day `[executed: the new real-PG test, which fails on each layer separately]`; the campaign boundary and every other displayed date remain lexicographic operations on `YYYY-MM-DD` `[executed: the preset and footer tests]` | Pass |
+
+**Status.** Tidy complete: 6/6 items. All 7 re-judge `info` rows resolved; `JDA-005` and the slice-4 `LI4-00x` rows stay `info` and untouched. Next: `/sdd-verify`.

@@ -257,12 +257,33 @@ The response carries two deterministic fields: **`consistent_with_snapshot: bool
 family or a moved digest reports *inconsistent*; nothing reports consistent unless the
 digests are equal. Silent divergence is impossible.
 
+*Wire normalization amendment (JD round 1 re-judge, JDB-101 — the LI3A-005 class).* The
+echoed **`available_through` is served UTC-normalized**, not as the raw stored string. Under
+provider lag the stored value is `max(interval_end)`, a `timestamptz` `psycopg2` renders in
+the database session's own `TimeZone` — which nothing in this repository pins — so the same
+instant can be stored as `2024-03-02T21:00:00-03:00` and every consumer reading a calendar
+day off its first ten characters lands a day early. `build_series` therefore serves
+`_as_utc(...)`'s rendering of the identical instant (the window is unchanged; only its
+rendering is), which is what allows BOTH display consumers — the chart footer and the xlsx
+Resumen cell — to keep a plain day operation. `export._last_evidence_day` applies
+`temporal.as_utc`/`utc_day` anyway, as a second, independently-failing layer: its parameter
+is a bare `str` and nothing in the type system says where it came from.
+
 **Behavior when `consistent_with_snapshot` is false (defined, not left to the caller).**
 - Chart: `RainfallAccumulationChart` **still renders** the series — the data is the fresher
   evidence, not garbage — above a Mantine `Alert` stating the daily data was corrected after
-  this analysis, plus a re-request action that re-POSTs `/analyses` for the same scope/year.
-  That call returns either the newer revision (200) or a labelled 202 the panel already
-  knows how to poll (`rainfall.ts:88-99`). A silent redraw is prohibited.
+  this analysis. **Disclosure only, no remedy** (amended by Judgment Day round 1,
+  JDA-003 ≡ JDB-003; the paragraph originally specified "plus a re-request action that
+  re-POSTs `/analyses` for the same scope/year", returning either the newer revision (200)
+  or a labelled 202 the panel already knows how to poll, `rainfall.ts:88-99`). That control
+  was **removed as structurally inert**: the only path that enqueues a rebuild is a
+  superseded *policy* revision (`router.read_analysis` → `_requeue_stale_revision`), never a
+  moved `data_revision`, and revisions are immutable — so the re-POST returned the same
+  revision every time and the labelled-202 branch was unreachable from this flow. A control
+  that reliably does nothing turns an accurate disclosure into an instruction the reader
+  follows and blames themselves for. No new backend enqueue path was added (owner decision,
+  explicitly out of scope). A silent redraw remains prohibited; the panel's own poll is what
+  eventually moves a tab to a newer analysis.
 - xlsx: the **Resumen** sheet stamps the flag (`Serie diaria consistente con el análisis:
   sí | no — <motivo>`), because the workbook outlives the screen that showed the notice.
 
@@ -498,11 +519,15 @@ normal, `ReferenceLine` at `comparison_end`) fed by `useRainfallSeries(revisionI
 `lib/api/rainfall.ts:81-83` types groups as `Record<string, RainfallMetric>` — so activation
 costs no type or label churn. `AnnualText` (`RainfallMetricList.tsx:63-75`) gains the
 percentile phrase and stays the chart's textual equivalent. Both dates are disclosed in the
-chart footer (owner decision 4). The chart also owns the **staleness notice** defined in D3:
-when the series response reports `consistent_with_snapshot: false` (or its echoed
-`data_revision` differs from the snapshot's newly typed `data_revision`,
-`rainfall.ts:74-86`), it renders the curve *plus* an `Alert` and a re-request action — never
-a silent redraw. The **campaign preset** is a display `SegmentedControl` that
+chart footer (owner decision 4) — as the **last day with evidence**, i.e.
+`available_through − 1 day`, because `available_through` is the EXCLUSIVE end of the
+disclosure window (JD round 1, JDA-001 ≡ JDB-001; the raw value never reaches the reader).
+The chart also owns the **staleness notice** defined in D3: when the series response reports
+`consistent_with_snapshot: false` (or its echoed `data_revision` differs from the snapshot's
+newly typed `data_revision`, `rainfall.ts:74-86`), it renders the curve *plus* an `Alert` —
+never a silent redraw, and **never a re-request action** (removed in JD round 1 as
+structurally inert, JDA-003 ≡ JDB-003 — see D3). The **campaign preset** is a display
+`SegmentedControl` that
 windows the x-axis of the same calendar-year series and **must not alter the request payload**
 — asserted by a test that no `/analyses` call fires on toggle, which is what keeps spec.md:67
 intact.
@@ -545,7 +570,7 @@ intact.
 | `geo/rainfall/series.py` | Create | one series contract: points + echoed `data_revision` + `consistent_with_snapshot`/`consistency_reason` pin recomputed over the build's read window (D3) |
 | `geo/rainfall/router.py` | Modify | `.xlsx` + `/series` routes; stale-policy requeue; inject `data_revision` post-normalize from the served row (mirrors `analysis_revision_id`, `router.py:148-156`) |
 | `geo/rainfall/backfill_cli.py` | Create | `__main__` one-shot runner; labelled stop + recovery-window note in its `--help`/runbook text |
-| `web/…/rainfall/RainfallAccumulationChart.tsx` | Create | year-vs-normal curve + campaign preset + staleness notice and re-request action (D3/D8) |
+| `web/…/rainfall/RainfallAccumulationChart.tsx` | Create | year-vs-normal curve + campaign preset + staleness notice, **disclosure only — no re-request action** (JD round 1, JDA-003 ≡ JDB-003) (D3/D8) |
 | `web/…/rainfall/RainfallMetricList.tsx` | Modify | percentile phrase in `AnnualText` |
 | `web/src/lib/api/rainfall.ts`, `hooks/useRainfallAnalysis.ts` | Modify | `data_revision: string` on `RainfallAnalysisSnapshot` (`rainfall.ts:74-86`); series fetch/hook incl. consistency fields; xlsx download |
 | `openspec/specs/rainfall-analysis/spec.md` | Delta | xlsx export requirement + campaign-display clarification + series/snapshot consistency scenario + summary-coherence requirement (`summary` dropped from the threshold list) |
@@ -563,7 +588,7 @@ intact.
 | Integration (real PG) | **series pin (D3)**: untouched intervals → `consistent_with_snapshot: true` / `reason: null`; supersede one slot inside the build window → `false` + `data_revision_moved`; two revision families non-superseded in the window → `false` + `interval_family_ambiguous`; the pin recompute uses the D6-widened window (a display-window recompute would mismatch a consistent case) | `test_rainfall_series_consistency.py` (new) |
 | Integration (real PG) | 30 checkpoints, re-run `already_complete` + 0 inserts, resume after interruption; **backfill stops labelled, not raw**: a pre-opened Redis circuit for the role yields a `circuit_open` stop result (no traceback, no provider call), an `AdapterError` yields `adapter_error` | `test_rainfall_backfill.py` (new), `FakeGeeClient` — CI never touches GEE (`gee_client.py:4-5`) |
 | Integration (real PG) | xlsx sheets/states/blank-not-zero, 401/403, filename; **Resumen stamps the series-consistency flag in both directions**; `data_revision` present on the served snapshot JSON | `test_rainfall_export_xlsx.py` (new) |
-| Vitest | chart renders both series, both dates disclosed, campaign toggle fires no request; **staleness notice renders and offers re-request when `consistent_with_snapshot` is false, and is absent when true** | `tests/unit/RainfallAccumulationChart.test.tsx` (new, `ResponsiveContainer` mock recipe from `tests/unit/PrecipChart.test.tsx:41-42`); extend `RainfallDetailPanel.test.tsx`, `rainfallApi.test.ts` |
+| Vitest | chart renders both series, both dates disclosed (the second as the last day WITH evidence, JDA-001 ≡ JDB-001), campaign toggle fires no request; **staleness notice renders when `consistent_with_snapshot` is false and is absent when true — and offers NO re-request action** (the three absence tests replace the four 200/202 tests, JD round 1, JDA-003 ≡ JDB-003) | `tests/unit/RainfallAccumulationChart.test.tsx` (new, `ResponsiveContainer` mock recipe from `tests/unit/PrecipChart.test.tsx:41-42`); extend `RainfallDetailPanel.test.tsx`, `rainfallApi.test.ts` |
 | E2E | xlsx download + chart visible | extend `tests/e2e/rainfall-v2-detail.spec.ts` |
 | Mutation | new pure code lands in the rainfall target file; `policy.py`/`service.py`/`compute.py` stay **registered-commented** in `.cosmic-ray.toml:78-90` — including `rainfall_summary`, which D4 places in `service.py` (already in that same commented block) | repo rule: no wiring an unmeasured module into the gate (blocked on a Python-3.11 cosmic-ray, not on tests) |
 
