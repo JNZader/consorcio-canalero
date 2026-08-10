@@ -267,7 +267,10 @@ def _interval_store_selects(db, scope_id: str, call) -> tuple[list[str], list[st
         if isinstance(parameters, list | tuple):
             flat: list = []
             for item in parameters:
-                flat.extend(item.values()) if isinstance(item, dict) else flat.append(item)
+                if isinstance(item, dict):
+                    flat.extend(item.values())
+                else:
+                    flat.append(item)
             return flat
         return []
 
