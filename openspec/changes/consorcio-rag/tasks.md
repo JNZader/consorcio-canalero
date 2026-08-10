@@ -86,6 +86,12 @@ Each PR targets the immediate previous PR's branch; only `feat/consorcio-rag` me
 - [x] A5 (R3-105) `Makefile` `test-rag-corpus` — backticks inside double quotes replaced with single quotes; the diagnostic no longer runs `corpus` as a command.
 - [x] A6 (R3-106) two stale counts corrected: migration `conocimiento_003` says five `anexo-normativo` units (was four/three), apply-progress says 12 `contenido-no-declarado` headings (was 13).
 
+### Slice 3 fix round (reliability lens + general refuter on the slice-3 diff)
+
+- [x] F1 (RAG3-001, CRITICAL, refuter STANDS) Embedding provenance survives the load. New migration `conocimiento_004_embedding_provenance.py` — five nullable columns on `rag_corpus` (`embedding_modelo`, `embedding_revision_hf`, `embedding_sintetico`, `embedding_artifact_sha256`, `embeddings_loaded_at`), mapped in `models.RagCorpus`, written by `repository.registrar_procedencia` **inside the load transaction**. `rag_load_vectors.puerta_de_modelo` + `--replace-model` (own exit code 3) gate every model transition; `service.verificar_embedder` refuses a mismatched query embedder in both directions and refuses a never-loaded snapshot (`EmbeddingsNoCargadas`). `Embedder.model_id` is now contract, and `DeterministicEmbedder.model_id` is `deterministic`.
+- [x] F2 (RAG3-002, WARNING promoted) The vector leg's plan and depth are pinned by measurement, not by claim. `EXPLAIN (ANALYZE)` over 1 400 seeded vectors on `consorcio-postgres:16-vector` recorded in the ledger and in `design.md` D4; the D1 Vector row no longer claims both "exact scan" and "V1 inherits the plan shape". `repository.vector_search` pins `hnsw.ef_search = 2 × LEG_LIMIT` per transaction and refuses an `ef_search` below the leg limit; corpus-scale pgvector tests assert the leg returns exactly `LEG_LIMIT` and that the pin is live.
+- [x] F3 (RAG3-003, SUGGESTION) `verificar_post_carga` reports BOTH set differences (`sin vector y sin exención`, `exentas pero embebidas`), each capped at 10 keys with an explicit `(+N more)`.
+
 ## Slice 4 — Eval Harness + Gold Set + Report (PR4, base = PR3 branch)
 
 - [ ] 4.1 RED→GREEN: `gee-backend/tests/new/conocimiento/test_rag_metrics.py::test_hit_rate_at_5_and_mrr` + `test_citation_precision_norma_secundaria_vigencia_correctness` — create `gee-backend/app/domains/conocimiento/eval/metrics.py`: pure set-comparison functions against gold citation keys, no LLM-as-judge.
@@ -142,6 +148,9 @@ Each PR targets the immediate previous PR's branch; only `feat/consorcio-rag` me
 | RET: Confidence-Threshold Abstention | Unanswerable question triggers abstention | 4.7 | `test_unanswerable_question_triggers_abstention` |
 | RET: Confidence-Threshold Abstention | Answerable question above threshold returns a hit | 4.7 | `test_answerable_question_above_threshold_returns_hit` |
 | RET: No User-Facing Surface in V0 | No retrieval route mounted | 3.9 | `test_no_conocimiento_router_mounted` |
+| RET: Independent FTS/Vector Fusion by RRF | Vector leg is not silently shallower than its own LIMIT | F2 | `test_the_leg_returns_exactly_leg_limit_candidates_at_corpus_scale` |
+| RET: Provenance and Norma/Secundaria Separation | Query embedder must be the one that wrote the vectors | F1 | `TestEmbedderProvenanceGate` (4 cases) + `test_hybrid_refuses_a_mismatched_embedder_end_to_end` |
+| RET: Provenance and Norma/Secundaria Separation | A never-embedded snapshot refuses instead of answering empty | F1 | `test_a_never_embedded_snapshot_is_refused_not_silently_empty` |
 | RET: Three-Mode Ablation Eval Harness | Same gold set scored across all three modes | 4.7 | `test_three_modes_same_questions_separate_metric_blocks` |
 | RET: Three-Mode Ablation Eval Harness | Vigencia trap surfaces the correct state | 4.8 | `test_vigencia_trap_surfaces_true_current_state` |
 | RET: Go/No-Go Thresholds and Precondition | n<20 blocks scoring | 4.6 | `test_n_lt_20_blocks_scoring` |

@@ -26,7 +26,7 @@ V0 ships no HTTP surface. Every entry point is a script; the deliverable is a ma
 | PK of `rag_unidad` | Natural composite `(corpus_sha, citation_key)` | `UUIDMixin` (house default); bare `citation_key` | Immutable externally-keyed snapshot, referenced by nothing. The natural key makes idempotent upsert and the uniqueness gate free, and lets two snapshots coexist for A/B. Deliberate, documented deviation from `app/db/base.py:33`. |
 | Snapshot isolation | `rag_corpus(corpus_sha PK, repo_url, manifest_version, unidades_declaradas, ingested_at, activo)`; every repository method takes `corpus_sha` as a **required positional argument** | Implicit "latest" / a global | A forgotten snapshot filter is a `TypeError`, not silent double results. |
 | FTS | `tsv GENERATED ALWAYS AS (setweight(to_tsvector('spanish', coalesce(epigrafe,'')),'A') \|\| setweight(to_tsvector('spanish', texto_indexado),'B')) STORED` + GIN | Trigger-maintained column; runtime `to_tsvector` | Generated columns require IMMUTABLE: the **2-arg** `to_tsvector(regconfig, text)` is immutable (the 1-arg form is only STABLE and would be rejected) — the literal `'spanish'` is load-bearing, not style. |
-| Vector | `vector(1024)` (BGE-M3 dense), HNSW `vector_cosine_ops`, **default** `m=16, ef_construction=64` | Tuned HNSW; IVFFlat; no index | At n≈1,400 an exact scan is sub-10 ms and 100 % recall. The index exists so V1 inherits the identical query plan shape, not for speed. Tuning here would be measuring noise. |
+| Vector | `vector(1024)` (BGE-M3 dense), HNSW `vector_cosine_ops`, **default** `m=16, ef_construction=64`; `hnsw.ef_search` pinned to `2 × LEG_LIMIT` per transaction on the leg | Tuned HNSW; IVFFlat; no index | **Measured, not assumed** (see "The vector leg's plan, measured" under D4): at n≈1,400 the leg plans as `Seq Scan` + top-N heapsort — exact, 100 % recall, ~11 ms. The index is **not** what produces that plan and V0 never touches it, because D4's `citation_key ASC` tie-break is an ordering no HNSW index scan can supply. It is built for V1, not inherited by V0. The `ef_search` pin is there because the default (40) is BELOW `LEG_LIMIT` (50): the day the plan does become an index scan, the leg would silently return 40. |
 | Legal metadata | `rag_documento`: `tipo` (12 values, `ley`≡`ley-provincial` per D-22), `es_secundaria` (derived, NOT NULL), `jurisdiccion` (Text, NOT NULL), `estado_vigencia`, `relevancia_consorcio` (Text, NULL), `verificacion`, `clasificacion` (`publico`/`privado`, **default `privado`**), `fuente_url`, `fecha_sancion/bo` | Loose JSONB | `tipo` + `estado_vigencia` travel with **every** hit (proposal Success Criteria), and so do `jurisdiccion` + `relevancia_consorcio` — see the carriage rule below; `clasificacion` default-deny is the mechanical form of the privacy boundary (D3). |
 | Provenance | `corpus_sha CHAR(40)` on both tables; `rag_unidad.source_file`, `source_offset` | Trusting the file tree | The verbatim gate needs the exact source bytes it claims to be a substring of. |
 
@@ -183,6 +183,42 @@ directions before it opens the transaction:
 The post-check closes the same loop from the database side: after the `UPDATE`, the set of units still
 carrying `embedding IS NULL` must equal the `over_ceiling` set exactly.
 
+**The sidecar is RECORDED, not just consulted — migration `conocimiento_004` (ledger RAG3-001).**
+As first written, the load read the sidecar, gated on parts of it, and then discarded all of it: what
+reached the database was `rag_unidad.embedding` and nothing else. Three consequences, and none of
+them has a symptom at the query surface, which is what makes them the same failure class as R3-104:
+
+1. **The surviving model check is `dims == 1024`, which is not a check on the model.**
+   `intfloat/multilingual-e5-large` is also 1024 dimensions — and it is already in
+   `requirements-rag.txt` as the O.5 baseline leg, so it is a dump this repository really can produce
+   by accident. It is also prefix-asymmetric (`query:` / `passage:`), where BGE-M3 takes no prefix at
+   all. An e5 dump loaded over a BGE-M3 corpus passes every gate and turns the vector leg into noise
+   that still returns 50 confident, fully attributed hits.
+2. **`sintetico` lived only in argv.** `--allow-synthetic` let hash noise into the column, and
+   nothing on the machine then recorded that the vectors *in the database* were noise. The whole
+   "closed by construction" claim for `DeterministicEmbedder` rested on one CLI flag.
+3. **The artifact is not a recovery path.** The dump path is `vectors-{sha[:8]}.copy`, so a second
+   batch over the same corpus revision overwrites both the dump and its sidecar. "Read the sidecar"
+   answers nothing once the file that described the load no longer exists.
+
+So five nullable columns land on `rag_corpus` — `embedding_modelo`, `embedding_revision_hf`,
+`embedding_sintetico`, `embedding_artifact_sha256`, `embeddings_loaded_at` — written **in the same
+transaction as the `UPDATE`**, so provenance and vectors commit together or not at all. A stamp that
+outlived a rolled-back load would be worse than none: it would name a model for vectors that do not
+exist. All five NULL is meaningful and is the normal post-slice-2 state: ingested, never embedded.
+
+Three gates fall out of it, and the point is that they are symmetric:
+
+| where | rule |
+|---|---|
+| `preflight` (load) | same model → allowed, and `--replace-model` is REFUSED (a flag accepted when it changes nothing decays into runbook boilerplate). Synthetic → real → always allowed, no flag: friction belongs on the damage, not on the fix. Real → a different real → `--replace-model`, and the refusal names both models. Real → synthetic → BOTH `--allow-synthetic` and `--replace-model`. Its own exit code (3), because it is the one abort an operator may legitimately override. |
+| `recuperar` (query) | refuses when `embedder.model_id` ≠ the recorded model, in **both** directions. Refusing only "real embedder over synthetic rows" would leave the mirror image — the smoke embedder over real vectors — producing a ranked list of pure noise, which is the same fabricated measurement with the operands swapped. |
+| `recuperar` (query) | refuses a snapshot with no vectors at all (`EmbeddingsNoCargadas`) instead of letting the leg return `[]`, which is indistinguishable from "nothing matched". |
+
+`Embedder.model_id` is therefore part of the contract, not metadata: BGE-M3 reports its HF id,
+`DeterministicEmbedder` reports `deterministic`. The loudness lives in `sintetico`, which sits beside
+the id in both the sidecar and `rag_corpus` — not in the id string.
+
 Rejected: `.npy`/parquet dumps (extra dependency + column-order coupling), pickle (unsafe), API for
 corpus embeddings (privacy posture + the box is CPU-only anyway).
 
@@ -224,7 +260,49 @@ question ──┬─► FTS leg    : tsv @@ websearch_to_tsquery('spanish', q)
   cannot: a document that **is** derecho aplicable by `tipo` and still must not be cited as grounds for a
   canalero obligation (D1).
 - `vector_search()` raises `VectorSupportUnavailable` when the extension/column is absent — it never
-  falls back to FTS. Silent degradation would make the ablation meaningless.
+  falls back to FTS. Silent degradation would make the ablation meaningless. It raises for two more
+  reasons since RAG3-001: `EmbeddingsNoCargadas` when the snapshot has no vectors at all (the state
+  slices 1-2 ship, where the leg would contribute `[]` and the fused answer would be FTS under a
+  hybrid label) and `EmbedderMismatch` when the query embedder is not the one that wrote the column
+  (D3).
+
+**The vector leg's plan, measured.** The original text here claimed both "at n≈1,400 an exact scan is
+sub-10 ms and 100 % recall" *and* "the index exists so V1 inherits the identical query plan shape".
+Those cannot both be true — an exact scan and an HNSW index scan are different plans — and the second
+one was wrong. `EXPLAIN (ANALYZE)` over 1,400 seeded vectors on `consorcio-postgres:16-vector`
+(pgvector 0.8.6, PostgreSQL 16.14), running the leg's real query:
+
+```
+Limit (actual time=11.062..11.070 rows=50 loops=1)
+  ->  Sort (actual time=11.061..11.063 rows=50 loops=1)
+        Sort Key: ((rag_unidad.embedding <=> $0)), rag_unidad.citation_key
+        Sort Method: top-N heapsort  Memory: 28kB
+        ->  Seq Scan on rag_unidad (actual time=0.096..10.648 rows=1400 loops=1)
+              Filter: ((embedding IS NOT NULL) AND ((corpus_sha)::text = '…'))
+              Rows Removed by Filter: 3
+```
+
+So the first half holds: V0's vector leg is an exact scan, 100 % recall, ~11 ms — and 50 of 50
+candidates. The second half does not, and the reason is this design's own determinism rule: an HNSW
+index can order by distance and nothing else, so `citation_key ASC` as the secondary sort key puts
+the plan permanently out of its reach. Forcing it (`enable_seqscan = off`) did not change the plan;
+only dropping the tie-break *and* removing the sort node does. **V0 therefore never uses the index,
+and V1 will not inherit V0's plan — it will trade the exact tie-break for it.**
+
+**`hnsw.ef_search` is pinned anyway, and that is not superstition.** With the tie-break dropped and
+the index scan forced, the same query returns **`rows=40`** at pgvector's default `ef_search = 40`
+and `rows=50` once it is raised. `ef_search` is a candidate ceiling, not a filter, and `LEG_LIMIT`
+is 50 — so the moment the plan becomes an index scan, the leg silently loses 20 % of its depth while
+the eval report keeps printing 50. `repository.vector_search` sets it per transaction via
+`set_config('hnsw.ef_search', …, true)` (bound parameter; `SET LOCAL` takes none), derived as
+`2 × LEG_LIMIT` so raising the leg depth cannot outgrow the budget. Under today's sequential-scan
+plan it is a no-op that costs one round trip.
+
+**Determinism caveat for the ablation.** Because V0's plan is exact, the ranked list is a pure
+function of the data — index rebuilds cannot move it. That property belongs to the plan, not to the
+system: if a later run does take the index scan, results become approximate and an HNSW graph rebuilt
+between runs can rank differently over identical data. The eval runbook already embeds and loads
+**once** per corpus revision (D3), and must keep doing so: no re-indexing mid-ablation.
 
 ### D5 — Abstention (tunable by construction)
 
@@ -332,8 +410,9 @@ vector image running, `alembic downgrade -1 && alembic upgrade head`. The downgr
 objects. It is safe to repeat, and it destroys nothing: `rag_unidad` rows survive both steps because 002
 only ever touches the `embedding` column, which by construction is empty in this scenario.
 
-**`-1` no longer lands on 002.** `conocimiento_003` is head as of slice 2, so `alembic downgrade -1`
-now walks back 003, not 002 — the recovery above needs `alembic downgrade conocimiento_002 && alembic
+**`-1` no longer lands on 002.** `conocimiento_004` is head as of slice 3 (`conocimiento_003` was head
+at slice 2), so `alembic downgrade -1` now walks back 004 — the recovery above needs `alembic downgrade
+conocimiento_002 && alembic
 upgrade head`, or the guarded statements from `app/domains/conocimiento/ddl.py` executed directly (they
 are the same source of truth migration 002 and the test fixture import, and being `IF NOT EXISTS`-guarded
 they need no version-table surgery). Walking back past 003 is *safe* but not free: 003's downgrade
@@ -379,6 +458,7 @@ criteria are citation precision vs OCR+text, privacy, and VLM serving cost.
 | `Makefile` | Modify | `rag-db`, `rag-ingest`, `rag-embed-load`, `rag-eval`, `test-rag` |
 | `gee-backend/app/db/migrations/versions/conocimiento_001_rag_corpus_schema.py` | Create | 3 tables + generated tsvector + GIN |
 | `gee-backend/app/db/migrations/versions/conocimiento_002_pgvector_embeddings.py` | Create | Conditional extension + embedding column + HNSW |
+| `gee-backend/app/db/migrations/versions/conocimiento_004_embedding_provenance.py` | Create | Five nullable embedding-provenance columns on `rag_corpus` (RAG3-001) |
 | `gee-backend/app/domains/conocimiento/{models,schemas,ddl,parser,fusion,abstention,repository,service}.py` | Create | Domain; no router |
 | `gee-backend/app/domains/conocimiento/corpus_expectations.yaml` | Create | Per-document + per-class MANIFEST counts |
 | `gee-backend/app/domains/conocimiento/eval/{gold_set.yaml,harness.py,metrics.py,report.py}` | Create | Gold set + 3-mode runner + metrics + report writer |

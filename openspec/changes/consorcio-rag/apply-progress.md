@@ -407,6 +407,28 @@ venv/bin/python scripts/rag_load_vectors.py --vectors artifacts/rag/vectors-1204
 Step 3 refuses the artifact unless the sidecar's sha256 matches, the snapshot is the active one, dims
 are 1024, and the units left without a vector are **exactly** the ones the sidecar declares exempt.
 
+**The commands are unchanged after the RAG3-001 fix round; three refusals are new.** On a first load
+into a never-embedded snapshot — which is what step 3 above is — nothing changes at all. What changed
+is what happens the SECOND time:
+
+* loading an artifact from a **different model** than the snapshot already holds is refused, with a
+  message naming both models and **exit code 3** (distinct from 1, so a wrapper can tell "the
+  artifact is broken" from "the artifact is fine but it is a different model"). Deliberate model
+  changes take `--replace-model`, which itself refuses when the models already match;
+* going from a **synthetic** load back to a real one is always allowed with no extra flag (the heal
+  path). Going the other way — real vectors overwritten by synthetic ones — needs BOTH
+  `--allow-synthetic` and `--replace-model`;
+* after the load, `rag_corpus` records the model, HF revision, `sintetico`, the dump's sha256 and the
+  timestamp, in the same transaction as the vectors. `service.recuperar` then refuses any vector or
+  hybrid query whose embedder is not the one recorded — so a query against these vectors must use
+  BGE-M3, and a query against a smoke-test load must use the deterministic embedder.
+
+Useful after step 3, no flags needed:
+
+```
+psql "$DATABASE_URL" -c "SELECT corpus_sha, embedding_modelo, embedding_sintetico, embeddings_loaded_at FROM rag_corpus"
+```
+
 ## Deviations from Design / Discoveries
 
 1. **`DeterministicEmbedder` and the `sintetico` marker — beyond the design text, and the reason
@@ -538,9 +560,123 @@ inspection. The 14 `pgvector`-marked tests all ran for real against the built
   `test_rag_fusion.py` + `test_rag_retrieval.py` + `test_rag_no_router.py` (needs no artifact). The
   A1–A6 amendments are a third, independently reviewable group touching only slice-1/2 files.
 
+## Fix round — reliability lens + general refuter (Slice 3)
+
+Three findings against the slice-3 diff (`48c60f7`): one CRITICAL with the refuter
+STANDING, one WARNING promoted after this round MEASURED what the lens could not,
+one SUGGESTION. All fixed on the same branch. Ledger rows: `review-ledger.md`
+§ "Slice 3 — reliability lens + general refuter".
+
+| id | What was wrong | Fix | Evidence |
+|---|---|---|---|
+| **RAG3-001** (CRITICAL, refuter STANDS) | The load READ the sidecar and then DISCARDED it. Three links: the only surviving model check is `dims == 1024`, which any 1024-dim model passes — including `intfloat/multilingual-e5-large`, which is prefix-asymmetric and already sits in `requirements-rag.txt` as the O.5 baseline leg; `sintetico` existed only as a CLI flag, so a synthetic load left no trace in the database; and the artifact path `vectors-{sha[:8]}.copy` means a later real batch overwrites the synthetic dump AND its sidecar while the noise stays in the column. `recuperar` accepted any `Embedder` unchecked. | Three symmetric gates, all schema-backed. **(a)** Migration `conocimiento_004`: five nullable provenance columns on `rag_corpus`, mapped on `RagCorpus`, written by `repository.registrar_procedencia` in the SAME transaction as the `UPDATE`. **(b)** `puerta_de_modelo` in the loader: same model → allowed and `--replace-model` REFUSED; synthetic→real → always allowed (heal path); real→different real → `--replace-model`, refusal names both models; real→synthetic → BOTH flags. Own exit code 3. **(c)** `service.verificar_embedder`: refuses when `embedder.model_id` ≠ the recorded model in EITHER direction, and refuses a never-loaded snapshot with `EmbeddingsNoCargadas` rather than letting the leg answer `[]`. | RED: with the implementation stashed, the new suites fail at import (`cannot import name 'DETERMINISTIC_MODEL_ID'`) and the migration test fails with `UndefinedColumn: column "embedding_modelo" of relation "rag_corpus" does not exist`. Behavioural: removing the load gate fails 4 tests (`DID NOT RAISE ModelMismatch`), removing the query gate fails 2 (`DID NOT RAISE EmbedderMismatch` / `EmbeddingsNoCargadas`), removing the provenance write fails `test_load_records_provenance_in_the_load_transaction` (`assert None == 'BAAI/bge-m3'`). |
+| **RAG3-002** (WARNING → promoted) | `design.md` claimed BOTH "at n≈1,400 an exact scan is sub-10 ms and 100 % recall" AND "the index exists so V1 inherits the identical query plan shape" — two different plans, and the second one false. Separately `LEG_LIMIT = 50` > pgvector's default `hnsw.ef_search = 40`, which is a candidate ceiling, not a filter. | `vector_search` pins `hnsw.ef_search = 2 × LEG_LIMIT` per transaction (`set_config(…, true)`, bound parameter — `SET LOCAL` takes none) and refuses an `ef_search` below the leg limit. `design.md`'s D1 Vector row states the measured plan; D4 carries the plan verbatim plus the cross-rebuild determinism caveat. | The EXPLAIN below, run here. Plus: removing the pin fails `test_the_leg_pins_hnsw_ef_search_for_the_transaction` with `assert 40 == 100`. |
+| **RAG3-003** (SUGGESTION) | The post-load NULL-set diagnostic named one direction ("Unexpectedly empty") of a set difference that has two. | Both directions reported and counted, capped at 10 keys each with an explicit `(+N more)`. | Reverting to the single direction fails `test_post_load_mismatch_names_both_directions`. |
+
+### The EXPLAIN verdict (RAG3-002), verbatim
+
+1 400 seeded vectors + 3 deliberately left NULL, `consorcio-postgres:16-vector`,
+pgvector 0.8.6, PostgreSQL 16.14 (Debian), HNSW `m=16, ef_construction=64`,
+`ANALYZE`d. The leg's real query, `LIMIT 50`, default `hnsw.ef_search = 40`:
+
+```
+Limit (actual time=11.062..11.070 rows=50 loops=1)
+  Buffers: shared hit=4736, local hit=2802
+  ->  Sort (actual time=11.061..11.063 rows=50 loops=1)
+        Sort Key: ((rag_unidad.embedding <=> $0)), rag_unidad.citation_key
+        Sort Method: top-N heapsort  Memory: 28kB
+        ->  Seq Scan on rag_unidad (actual time=0.096..10.648 rows=1400 loops=1)
+              Filter: ((embedding IS NOT NULL) AND ((corpus_sha)::text = '…'))
+              Rows Removed by Filter: 3
+Planning Time: 0.362 ms
+Execution Time: 11.104 ms
+```
+
+**Sequential scan and a top-N heapsort — the index is not used.** The design's
+first claim is therefore TRUE (exact, 100 % recall, 50 of 50 candidates, ~11 ms)
+and its second is FALSE, for a reason the design itself created: `citation_key
+ASC` — D4's determinism tie-break, the one that keeps the 45 "Sin Reglamentar"
+units from reordering between runs — is an ordering no HNSW index scan can
+supply. `enable_seqscan = off` did not change the plan; it only moved to a bitmap
+scan over `ix_rag_unidad_documento` plus the same sort. Only dropping the
+tie-break AND removing the sort node reaches the index:
+
+```
+Limit (actual time=0.255..0.440 rows=40 loops=1)
+  ->  Index Scan using ix_rag_unidad_embedding_hnsw on rag_unidad (actual time=0.254..0.436 rows=40 loops=1)
+        Order By: (embedding <=> $0)
+```
+
+**`rows=40` against `LIMIT 50`.** That is the truncation, reproduced: `ef_search`
+is a hard candidate ceiling, and raising it to 100 returns 50. Under today's plan
+the pin is a no-op costing one round trip; the day the plan changes it is the
+difference between a leg that is 50 deep and a leg that is 40 deep while the eval
+report keeps printing 50. `test_pgvectors_default_ef_search_really_does_truncate_an_index_scan`
+asserts the plan is really the HNSW scan before believing its own count.
+
+### The four `recuperar` cases (RAG3-001), as measured
+
+| snapshot's recorded vectors | query embedder | result |
+|---|---|---|
+| synthetic (`deterministic`) | real (`BAAI/bge-m3`) | **REFUSED** — `EmbedderMismatch`, message names both. The fabricated-eval path is dead. |
+| synthetic (`deterministic`) | deterministic | **WORKS** — the smoke path is intact. |
+| real (`BAAI/bge-m3`) | deterministic | **REFUSED** — symmetric. A gate that only caught the first direction would leave a ranked list of pure noise with full provenance attached. |
+| real (`BAAI/bge-m3`) | real (`BAAI/bge-m3`) | **WORKS**. |
+| never loaded (`embedding_modelo IS NULL`) | any | **REFUSED** — `EmbeddingsNoCargadas`, not an empty result. This is the state slices 1-2 ship, so it is the likeliest of the five. |
+
+Run twice: unmarked against `verificar_embedder` (so CI covers the scenario this
+initiative exists for) and pgvector-marked end to end through `service.recuperar`.
+The "real embedder" is a double reporting BGE-M3's `model_id` and delegating the
+arithmetic to the deterministic fake — the model is not installable here
+(deviation #1), and `model_id` is exactly and only what the gate compares.
+
+### Deviations in this round (explicit)
+
+1. **`DeterministicEmbedder.model_id` changed** from `deterministic-fake-NOT-A-MODEL`
+   to `deterministic`. It stopped being a label and became a KEY: the loader writes
+   it into `rag_corpus.embedding_modelo` and `recuperar` compares against it. The
+   loudness moved to where it belongs — `sintetico`, which now sits beside the id in
+   the sidecar AND in the database. One existing assertion (`"NOT-A-MODEL" in
+   manifest.modelo`) was rewritten to assert the identity instead of the warning.
+2. **`ProcedenciaEmbeddings` distinguishes "unknown snapshot" (`None`) from
+   "snapshot exists, never embedded" (`modelo is None`).** Collapsing them would let
+   a typo in a corpus SHA read as "not embedded yet".
+3. **The provenance gate runs AFTER `require_vector_support`.** Capability before
+   content: on a vector-less database the useful answer is "this database cannot run
+   a vector query", not "its non-existent column was built with model X". This also
+   keeps `test_hybrid_mode_raises_rather_than_silently_becoming_fts` meaning what it
+   has always meant.
+4. **`verificar_post_carga` was extracted from `load_vectors`.** Not cosmetic: it is
+   what makes "a crash after the writes" reachable in a test without corrupting an
+   artifact, which is how the provenance/vector atomicity claim is verified
+   (`test_a_crash_after_the_writes_rolls_back_vectors_AND_provenance`, savepoint +
+   injected failure). Honest scope note: that test witnesses the ROLLBACK; the write
+   itself is witnessed by `test_load_records_provenance_in_the_load_transaction`.
+5. **The corpus-scale fixture seeds 1 400 vectors with one shared 1023-value tail**
+   and a per-row leading component, via a single `UPDATE … row_number()`. Sending
+   1 400 full literals would be ~10 MB of SQL text for a count assertion.
+
+### Verification (this round)
+
+```
+make test-rag                          ->  24 passed, 2149 deselected, ZERO skipped, exit 0
+make test-rag-corpus                   ->  30 passed,  221 deselected, ZERO skipped, exit 0
+tests/new/conocimiento/  no corpus     -> 197 passed,  54 skipped   (was 172 / 44)
+full suite, no corpus (the CI shape)   -> 2114 passed, 59 skipped   (was 2089 / 49)
+full suite, RAG_CORPUS_PATH set        -> 2144 passed, 29 skipped   (was 2118 / 19)
+ruff check / ruff format               -> clean
+mypy (6 touched modules)               -> Success: no issues found
+```
+
+Both full-suite shapes now collect **2173** (2114+59 = 2144+29 = 2173), **+35**
+over slice 3: 25 unmarked and 10 `pgvector`-marked, which is exactly what this
+round added. The pre-existing `test_run_blocking` timing flake did not fire in the
+corpus-shape run above; it remains someone else's open item, untouched.
+
 ## Status
 
-10/10 Slice 3 tasks complete (3.1–3.10) plus the six ledger amendments A1–A6. O.3 (the RTX batch run)
-remains with the owner, unblocked — the command is above and the pipeline is proven end to end against
-real PostgreSQL with a synthetic embedder. Ready for `sdd-verify` or the orchestrator's Slice 4
+10/10 Slice 3 tasks complete (3.1–3.10), the six ledger amendments A1–A6, and the
+three fix-round findings F1–F3 (RAG3-001/002/003). O.3 (the RTX batch run) remains
+with the owner, unblocked — the command is above, unchanged, with its three new
+refusal behaviours documented. Ready for `sdd-verify` or the orchestrator's Slice 4
 dispatch (base = this branch).
