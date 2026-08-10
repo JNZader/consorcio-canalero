@@ -36,6 +36,7 @@ from app.domains.geo.rainfall.tasks import backfill_baseline_range
 
 EXIT_OK = 0
 EXIT_STOPPED = 1
+EXIT_INVALID_RANGE = 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,6 +75,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    # LI1-004 (review-ledger.md): an inverted range silently becomes an
+    # empty `range()` -- `backfill_baseline_range` would report a clean,
+    # non-stopped, empty completion (exit 0, "completed years: []") on the
+    # one-shot production runbook, which reads as "nothing to do" rather
+    # than "you swapped the flags." Reject it loudly instead of ever
+    # delegating to the orchestrator.
+    if args.start_year > args.end_year:
+        print(
+            f"invalid range: --start-year {args.start_year} is after "
+            f"--end-year {args.end_year} (must be start-year <= end-year, "
+            "inclusive).",
+            file=sys.stderr,
+        )
+        return EXIT_INVALID_RANGE
 
     result = backfill_baseline_range(
         args.asset,

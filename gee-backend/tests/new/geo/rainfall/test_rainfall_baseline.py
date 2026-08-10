@@ -53,6 +53,8 @@ def test_provider_asset_scope_key_persists_and_reads_back(db):
 
 
 def test_baseline_cumulatives_returns_per_year_totals(db):
+    from sqlalchemy import text
+
     from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
     from app.domains.geo.rainfall.ports import SourceInterval
     from app.domains.geo.rainfall.repository import baseline_cumulatives, persist_intervals
@@ -80,9 +82,43 @@ def test_baseline_cumulatives_returns_per_year_totals(db):
             rows=_rows(year, values),
         )
 
+    # LI1-002 (review-ledger.md): a row landing exactly on the year
+    # boundary (1991-01-01T00:00Z) is the case `date_part('year',
+    # timestamptz)` mis-groups under a non-UTC session TZ -- Postgres
+    # converts a `timestamptz` to the session's `TimeZone` setting BEFORE
+    # extracting the field. Under America/Argentina/Buenos_Aires (UTC-3)
+    # that instant is 1990-12-31T21:00 local, so the un-pinned expression
+    # would file it under 1990 -- a year outside `expected_days_by_year`,
+    # which is exactly the `KeyError` every real backfill row hits at
+    # repository.py:305 (a real backfill always writes a Jan-1 row).
+    boundary_value = 100.0
+    boundary_start = datetime(1991, 1, 1, tzinfo=UTC)
+    persist_intervals(
+        db,
+        source_id=source_id,
+        scope_kind="provider_asset",
+        scope_id=asset,
+        scope_version=BASELINE_ASSET_VERSION,
+        rows=[
+            SourceInterval(
+                boundary_start, boundary_start + timedelta(days=1), boundary_value, "mm", "v3-final"
+            )
+        ],
+    )
+    values_by_year = {**values_by_year, 1991: [*values_by_year[1991], boundary_value]}
+
     # One cutoff date per baseline year, past every persisted row so they
     # all fall inside the window (matches temporal.baseline_dates' shape).
     dates = [date(year, 3, 10) for year in values_by_year]
+
+    # Non-UTC session TZ, scoped to this test's transaction: the `db`
+    # fixture wraps the whole test in one transaction that gets rolled
+    # back afterward, and per Postgres semantics a plain `SET` issued
+    # inside a transaction that later rolls back reverts with it -- this
+    # cannot leak into other tests sharing the pooled connection. Only the
+    # boundary row above can move: every other persisted row sits in
+    # March, safely mid-year in both UTC and Buenos Aires local time.
+    db.execute(text("SET TIME ZONE 'America/Argentina/Buenos_Aires'"))
 
     result = baseline_cumulatives(db, source_id=source_id, asset=asset, dates=dates)
 

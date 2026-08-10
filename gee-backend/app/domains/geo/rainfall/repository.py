@@ -290,7 +290,15 @@ def baseline_cumulatives(
             )
         )
 
-    year_expr = func.date_part("year", RainfallIntervalValue.interval_start)
+    # LI1-002 (review-ledger.md): `date_part('year', timestamptz)` converts
+    # to the session's `TimeZone` setting BEFORE extracting the field, so
+    # grouping is silently session-TZ-dependent (nothing in this codebase
+    # pins the connection's TZ). Pinning `AT TIME ZONE 'UTC'` first makes
+    # the extraction deterministic regardless of session TZ -- verified
+    # emitted SQL: "date_part('year', ... AT TIME ZONE 'UTC')".
+    year_expr = func.date_part(
+        "year", RainfallIntervalValue.interval_start.op("AT TIME ZONE")("UTC")
+    )
     query = (
         select(year_expr.label("year"), func.sum(RainfallIntervalValue.value), func.count())
         .where(RainfallIntervalValue.source_id == source_id)

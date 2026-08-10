@@ -104,3 +104,62 @@ pytest tests/new/ -q   (full backend regression, all domains)
 ### Status
 
 17/17 slice-1 tasks complete (365/365 targeted tests pass, 1931/1931 full backend regression pass, ruff clean). Ready for review/PR of this work unit, then `sdd-apply` for slice 2a (or `sdd-verify` if the orchestrator wants a checkpoint first).
+
+## Slice 1 review fix pass (2026-08-10)
+
+Fixes 4 findings from `review-ledger.md`'s "Pre-PR review — slice 1 baseline" (review-reliability, standard tier): LI1-001 (CRITICAL), LI1-002/003/004 (WARNING/SUGGESTION, folded). Branch: `feat/lluvia-insights-01-baseline` (same slice-1 branch). Strict TDD: RED captured for every genuine RED (LI1-001, LI1-002, LI1-004); LI1-003 is a test-hygiene fix with no behavior change, so no RED exists for it.
+
+### TDD Cycle Evidence
+
+| Finding | Test | RED evidence | GREEN evidence |
+|---|---|---|---|
+| LI1-001 | `test_backfill_dedupes_shared_asset_one_fetch_per_year`, `test_backfill_resumes_after_interruption_no_refetch`, `test_backfill_stops_labelled_on_circuit_open`, `test_backfill_stops_labelled_on_adapter_error` | Standalone `pytest tests/new/geo/rainfall/test_rainfall_backfill.py -v` → 4 failed / 4 passed, `UndefinedTable: relation "rainfall_backfill_checkpoint" does not exist` (reproduced twice) | Added `db` fixture param ×4 (comment style matches `test_rainfall_materialization.py:461-464`). Surfaced an adjacent pre-existing landmine (see Deviations) fixed at `tests/new/conftest.py`. Final: 9/9 (8 + LI1-004's new test) standalone green |
+| LI1-002 | `test_baseline_cumulatives_returns_per_year_totals` | Added a `1991-01-01T00:00Z` boundary row + `db.execute(text("SET TIME ZONE 'America/Argentina/Buenos_Aires'"))` before the call, run against unfixed `repository.py` → `KeyError: 1990` | `repository.py:293`: `year_expr` wraps `interval_start` in `.op("AT TIME ZONE")("UTC")`; verified emitted SQL via standalone compile probe (`date_part('year', ... AT TIME ZONE 'UTC')`); same test green after the fix |
+| LI1-003 | `test_backfill_stops_labelled_on_adapter_error` | No genuine RED — behavior unchanged, this closes a real-Redis-write test-hygiene gap | Monkeypatches `resilience.RedisCircuitStore` to `_FakeCircuitStore(MemoryCircuitStore)` (fresh non-shared `_memory={}`, same call-time-import seam as its `circuit_open` sibling); still green, no Redis touched |
+| LI1-004 | `test_backfill_cli_main_rejects_inverted_year_range` (new) | Against unfixed `backfill_cli.py` → `AttributeError: ... has no attribute 'EXIT_INVALID_RANGE'`, captured stdout showed the actual bug: `completed years: []`, exit 0 | `backfill_cli.py`: `EXIT_INVALID_RANGE = 2` + `main()` guard rejecting `start_year > end_year` with a stderr message before calling `backfill_baseline_range`; new test green |
+
+### Files Changed (fix pass)
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified | LI1-002: `baseline_cumulatives`'s `year_expr` pinned to `AT TIME ZONE 'UTC'` before `date_part` |
+| `gee-backend/app/domains/geo/rainfall/backfill_cli.py` | Modified | LI1-004: `EXIT_INVALID_RANGE` constant + inverted-range guard in `main()` |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_backfill.py` | Modified | LI1-001: `db` fixture param ×4; LI1-003: `_FakeCircuitStore` substitution in the adapter_error test; LI1-004: new `test_backfill_cli_main_rejects_inverted_year_range` |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_baseline.py` | Modified | LI1-002: boundary row + non-UTC `SET TIME ZONE` demonstration in `test_baseline_cumulatives_returns_per_year_totals` |
+| `gee-backend/tests/new/conftest.py` | Modified | Necessary adjacent fix (see Deviations): added `app.domains.geo.intelligence.models` to the eager-import block |
+| `openspec/changes/lluvia-insights/review-ledger.md` | Modified | LI1-001 → fixed; LI1-002/003/004 → Addressed; fix-pass resolutions table added |
+
+### Deviations (fix pass)
+
+1. **`tests/new/conftest.py` eager-import list gained `app.domains.geo.intelligence.models` — not one of the 4 assigned findings, but load-bearing for LI1-001's own proof requirement.** Adding the `db` fixture param to the 4 tests (LI1-001's literal fix) makes `test_engine`'s session-scoped `create_all()` fire at the file's *second* test — but its *first* test (still `db`-free, runs first in file order) imports `tasks` → `repository` → `app.domains.geo.models` in its own body, registering `FloodLabel`'s FK to `zonas_operativas` (a table defined only in `app.domains.geo.intelligence.models`, never imported by this chain). `Base.metadata.create_all()`'s dependency sort then raised `NoReferencedTableError`, deterministically (testcontainers gives a fresh, empty container per session — confirmed not state leakage by 2 identical repro runs). This is a pre-existing crack in conftest's own documented eager-import mechanism (its comment already exists to prevent exactly this bug class for `EmailCode`), just never tripped before because no rainfall-backfill test file previously requested `db` standalone. Fixed at the root: one import line in `conftest.py`, matching the established pattern and its own stated rationale — not a per-test workaround. Verified against the full `tests/new/` suite (1933/1933 passed, no regressions) to confirm this doesn't collide with anything importing `intelligence.models` elsewhere.
+2. **LI1-003 has no RED** (documented above) — included per the fix brief's literal instruction ("the adapter_error test substitutes MemoryCircuitStore exactly like its circuit_open sibling") even though it is a test-hygiene fix, not a behavior fix.
+
+### Author Counterexample Self-Check (fix pass)
+
+| Category | Evidence or N/A reason | Result |
+|---|---|---|
+| Null / absence | LI1-002's `expected_days_by_year[int(year)]` lookup is exactly the null/missing-key path the bug hit (`KeyError` on a year absent from the dict) — now unreachable since the group key can never diverge from the Python-side year | Pass |
+| Boundaries | LI1-002 is itself a year-boundary (`1991-01-01T00:00Z`, exact midnight) probe; LI1-004 is itself a boundary probe (`start_year == end_year` still allowed — only `>` rejected, verified by the existing CLI tests still passing with equal/ascending ranges) | Pass |
+| Concurrency / idempotency | LI1-003's fix specifically prevents cross-test circuit-state leakage (a concurrency/shared-state hazard) via a non-shared `_memory={}` dict instead of `MemoryCircuitStore`'s class-level `_shared` default | Pass |
+| Malicious input / security | N/A — all 4 findings are backend test-infra/CLI-operator-input fixes; no new user-facing input surface | N/A (reason given) |
+| Partial failure / recovery | LI1-004 guards a runbook misuse (inverted range) before any provider call is ever attempted — `called is False` asserted in the new test, so the fix fails fast before any partial work | Pass |
+| State / tenancy / time | LI1-002 is exactly a time/TZ-state fix; verified the `SET TIME ZONE` scoping cannot leak into other tests (Postgres transactional `SET` semantics, confirmed via the full 260-test rainfall suite passing with no order-dependent failures) | Pass |
+
+### Final Verification (fix pass)
+
+```
+pytest tests/new/geo/rainfall/test_rainfall_backfill.py -v   (standalone)
+=> 9 passed (was 4 failed / 4 passed pre-fix)
+
+pytest tests/new/geo/rainfall/ -v
+=> 260 passed, 1 pre-existing unrelated warning (was 259 pre-fix-pass; +1 for LI1-004's new test)
+
+pytest tests/new/ -q
+=> 1933 passed, 5 skipped (pre-existing live-backend/Martin skips), 0 failed (was 1932 passed baseline; +1)
+
+ruff check + ruff format --check on all 5 touched files: clean
+```
+
+### Status (fix pass)
+
+4/4 findings addressed (1 fixed as CRITICAL, 3 addressed as folded WARNING/SUGGESTION). Ready for re-review or `sdd-verify`.

@@ -29,7 +29,16 @@ def test_backfill_baseline_range_with_empty_years_is_a_safe_no_op(monkeypatch):
     assert calls == []
 
 
-def test_backfill_dedupes_shared_asset_one_fetch_per_year(monkeypatch):
+def test_backfill_dedupes_shared_asset_one_fetch_per_year(db, monkeypatch):
+    # `db` is unused directly here (this test asserts through the
+    # monkeypatched `ingest_source_scope`, never touching a session
+    # directly) but requesting it guarantees test_engine's create_all() has
+    # run -- see the note on test_ingest_source_scope_opens_own_session_and_
+    # commits_when_db_is_none in test_rainfall_materialization.py:461-464.
+    # `backfill_baseline_range` -> `backfill_missing` always opens its OWN
+    # `SessionLocal()` and queries `RainfallBackfillCheckpoint` regardless of
+    # what this test monkeypatches, so without the `db` fixture the table
+    # may not exist yet (LI1-001).
     from app.domains.geo.rainfall import tasks
     from app.domains.geo.rainfall.adapters.gee_client import asset_name_for
 
@@ -56,7 +65,9 @@ def test_backfill_dedupes_shared_asset_one_fetch_per_year(monkeypatch):
     assert all(call["scope_id"] == zone_a_asset for call in calls)
 
 
-def test_backfill_resumes_after_interruption_no_refetch(monkeypatch):
+def test_backfill_resumes_after_interruption_no_refetch(db, monkeypatch):
+    # `db` is unused directly here -- see the note on
+    # test_backfill_dedupes_shared_asset_one_fetch_per_year above (LI1-001).
     from app.domains.geo.rainfall import tasks
 
     calls = []
@@ -81,7 +92,9 @@ def test_backfill_resumes_after_interruption_no_refetch(monkeypatch):
     assert calls[0]["year"] == 1996
 
 
-def test_backfill_stops_labelled_on_circuit_open(monkeypatch):
+def test_backfill_stops_labelled_on_circuit_open(db, monkeypatch):
+    # `db` is unused directly here -- see the note on
+    # test_backfill_dedupes_shared_asset_one_fetch_per_year above (LI1-001).
     from app.domains.geo.rainfall import tasks
     from app.domains.geo.rainfall.adapters import resilience
     from app.domains.geo.rainfall.adapters.resilience import CircuitState, ResilientAdapterState
@@ -123,8 +136,28 @@ def test_backfill_stops_labelled_on_circuit_open(monkeypatch):
     }
 
 
-def test_backfill_stops_labelled_on_adapter_error(monkeypatch):
+def test_backfill_stops_labelled_on_adapter_error(db, monkeypatch):
+    # `db` is unused directly here -- see the note on
+    # test_backfill_dedupes_shared_asset_one_fetch_per_year above (LI1-001).
     from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters import resilience
+    from app.domains.geo.rainfall.adapters.resilience import MemoryCircuitStore
+
+    class _FakeCircuitStore(MemoryCircuitStore):
+        """Drop-in ``CircuitStore`` matching ``RedisCircuitStore.__init__``'s
+        single ``redis_url`` positional arg (``tasks.py`` constructs it as
+        ``RedisCircuitStore(settings.redis_url)``), backed by a fresh,
+        non-shared in-memory dict instead of ``MemoryCircuitStore``'s class-
+        level ``_shared`` default. This is the same call-time-import
+        substitution seam ``test_backfill_stops_labelled_on_circuit_open``
+        uses above (LI1-003): without it, the 3 real failures below open
+        the REAL Redis breaker for role="historical" (no TTL there),
+        leaking into any later real-store test."""
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            super().__init__(_memory={})
+
+    monkeypatch.setattr(resilience, "RedisCircuitStore", _FakeCircuitStore)
 
     def failing_fetch(**_kwargs):
         raise RuntimeError("simulated provider failure")
@@ -195,3 +228,30 @@ def test_backfill_cli_help_documents_the_recovery_window_wait_out_rule(capsys):
     out = capsys.readouterr().out
     assert "300s" in out
     assert "recovery" in out.lower()
+
+
+def test_backfill_cli_main_rejects_inverted_year_range(monkeypatch, capsys):
+    """LI1-004 (review-ledger.md): an inverted range (start > end) must not
+    silently become an empty `range()` that exits 0 with "completed years:
+    []" on the one-shot production runbook -- reject it loudly instead."""
+    from app.domains.geo.rainfall import backfill_cli
+
+    called = False
+
+    def fake_backfill_baseline_range(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return {"stopped": False, "completed_years": []}
+
+    monkeypatch.setattr(backfill_cli, "backfill_baseline_range", fake_backfill_baseline_range)
+
+    exit_code = backfill_cli.main(["--start-year", "2000", "--end-year", "1999"])
+
+    assert exit_code == backfill_cli.EXIT_INVALID_RANGE
+    assert exit_code != 0
+    assert called is False  # never delegates to the orchestrator with an empty/inverted range
+    err = capsys.readouterr().err
+    assert "--start-year" in err
+    assert "--end-year" in err
+    assert "2000" in err
+    assert "1999" in err
