@@ -608,3 +608,89 @@ consorcio-web: full vitest run => see Final Verification below
 ### Status
 
 14/14 slice-3a tasks complete + 1 addition (3a.15). 2098/2098 backend (6 pre-existing skips), 16/16 in the new file, ruff check + format clean, frontend typecheck exit 0 and vitest green. Ready for review/PR of this work unit, then `sdd-apply` for slice 3b.
+
+## Slice 3a reliability fix round (2026-08-10) — COMPLETE (5/5 findings)
+
+**Branch**: `feat/lluvia-insights-03a-series` (base for this round: slice-3a tip `903ab9a`).
+**Mode**: Strict TDD (RED → GREEN). Every RED was executed against the untouched source; for the two "remove the guard and watch it break" proofs (LI3A-003's split read, LI3A-004's interface field) the change was applied in place, the targeted check re-run to capture the failure, and the source restored — verified afterwards by `rg "TEMP RED probe"` returning no matches and by `git diff` on the restored file being empty.
+
+### Baseline (before fix-round changes, same branch)
+
+```
+pytest tests/new/ -q
+=> 1969 passed, 6 skipped            (exit 0)
+
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2098 passed, 6 skipped            (matches slice-3a apply-progress)
+
+consorcio-web: npx vitest run        => 276 files, 3633 passed
+consorcio-web: npm run typecheck     => exit 0 (src only — the LI3A-004 gap itself)
+```
+
+### Final (after fix-round changes)
+
+```
+pytest tests/new/geo/rainfall/test_rainfall_series_consistency.py -q
+=> 20 passed                         (16 pre-round + 4 new)
+
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2102 passed, 6 skipped, 0 failed  (exit 0; +4, exactly the new tests)
+
+ruff check .   => All checks passed!  (exit 0)
+ruff format .  => 1 file reformatted (this round's own test file), 402 unchanged
+
+consorcio-web: npm run typecheck     => exit 0, now compiling tests/ as well
+consorcio-web: npx vitest run        => 276 files, 3633 passed (unchanged — both
+                                        frontend edits are type-level)
+```
+
+### TDD Cycle Evidence
+
+| Finding | Test / check | RED evidence (executed, against unfixed source) | GREEN evidence |
+|---|---|---|---|
+| LI3A-001 (a+b) | `test_a_duplicated_baseline_slot_refuses_the_curve_instead_of_inflating_it`, `test_a_curve_that_disagrees_with_the_stored_normal_is_refused`, + 2 extended | 4 × `KeyError: 'normal_curve_state'`. Plus a deleted throwaway probe that measured the defect itself against the unfixed `_normal_curve`: `PROBE: stored annual.normal.value=61.266666666666666 \| curve last point=77.93333333333334 \| delta=16.66666666666667` — one duplicated 500.0 mm baseline slot, silently averaged into the curve | Refused with `normal_curve_state == "integrity_refused"`, event `rainfall.series.normal_curve_refused` carrying its reason, and the pin/points/stored value all asserted untouched |
+| LI3A-002 | `test_series_served_event_is_documented_in_the_observability_workbook` (extended) | `assert 'Zero resolved rows' in <workbook text>` failed | The `consistency_reason` shape table added under §2.1 |
+| LI3A-003 | `test_build_series_reads_the_interval_store_exactly_once` (new) | With `build_series` split into two `daily_series_rows` calls: `AssertionError: ['SELECT rainfall_interval_value...', 'SELECT rainfall_interval_value...']` on `assert len(scoped) == 1` — **while `test_series_points_and_pin_read_the_same_resolved_set` passed unchanged in the same run**, which is the finding executed rather than argued | Split restored; 1 scoped SELECT + 1 baseline SELECT, both asserted |
+| LI3A-004 | `npm run typecheck` (the command `.github/workflows/frontend.yml`'s `Typecheck` job runs) | With `data_revision` removed from `RainfallAnalysisSnapshot`: exit **2**, `tests/unit/rainfallApi.test.ts(44,5): error TS2353` + `(147,19): error TS2339` + `RainfallDetailPanel.test.tsx(88,5): TS2353`, and **zero `src` errors** — the proof the pre-round gate was blind to all three | Field restored → exit 0. The gate also surfaced two real pre-existing defects, both fixed (see Files Changed) |
+| LI3A-005 | `test_baseline_cutoff_does_not_shift_under_a_non_utc_session_timezone` (new) | `assert 60.266666666666666 == 61.266666666666666 ± 6.1e-05` under `SET TIME ZONE 'America/Argentina/Buenos_Aires'` set BEFORE the build, with a 3-day provider lag — the baseline cut at Mar 1 instead of Mar 2 | Both paths cut at Mar 2; the pre-existing series-side TZ test still passes |
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/temporal.py` | Modified | LI3A-005: `as_utc` / `utc_day` — THE one UTC normalization, next to `buenos_aires_date`, so `compute` and `series` cannot drift apart again |
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified | LI3A-005: `_cutoff_date` returns `temporal.utc_day(window_end - 1d)` instead of a bare `.date()` |
+| `gee-backend/app/domains/geo/rainfall/series.py` | Modified | LI3A-001: `_NormalCurve` NamedTuple (points + state + refusal reason), the slot-duplicate guard, the `math.isclose` acceptance cross-check, `normal_curve_state` in the response, the refusal event; LI3A-005: private TZ helpers deleted in favour of `temporal`'s; `consistent_with_snapshot`'s selected-scope-only meaning documented in place |
+| `gee-backend/app/domains/geo/rainfall/router.py` | Modified | `normal_curve_state` added to the `rainfall.series.served` event fields |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_series_consistency.py` | Modified | +4 tests, 3 extended, 1 docstring corrected to claim only what it proves; `_fake_revision` gained a `data_revision` parameter |
+| `docs/lluvia-v2-observability-workbook.md` | Modified | LI3A-001: `rainfall.series.normal_curve_refused` catalogue row with a per-reason repair procedure; LI3A-002: the `consistency_reason` shape table; `rainfall.series.served` updated for `normal_curve_state` and for the pin's selected-scope-only meaning |
+| `consorcio-web/tsconfig.tests.json` | Created | LI3A-004: the typecheck project for the rainfall contract test surface, with its scope decision documented inline |
+| `consorcio-web/package.json` | Modified | LI3A-004: `typecheck` = `tsc --noEmit && tsc --noEmit -p tsconfig.tests.json` |
+| `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx` | Modified | Defect the new gate caught: `snapshot()` built a `RainfallAnalysisSnapshot` with no `data_revision` — a fixture the server cannot produce |
+| `consorcio-web/tests/hooks/useRainfallAnalysis.test.tsx` | Modified | Defect the new gate caught: `.mock` reached on the unmocked function type (line 129 was the only site missing `vi.mocked(...)`) |
+| `openspec/changes/lluvia-insights/design.md` | Modified | D3 "Normal-curve integrity amendment": the acceptance rule promoted to a runtime check, both guards, the tolerance rationale, and the three-valued `normal_curve_state` |
+| `openspec/changes/lluvia-insights/review-ledger.md` | Modified | Slice 3a lens + refuter section, the 5 rows, the cleared surfaces, and the resolutions |
+
+### Deviations
+
+1. **`normal_curve_state` is a NEW response field**, not in tasks.md or the pre-round design. Without it a refused curve and a structurally absent one are byte-identical on the wire (`normal_accumulated: null` everywhere), so the fix would have been unobservable by the very operator it exists for. design.md D3 amended.
+2. **The refusal REASON is on the event, not in the response.** A chart only needs to know there is no line to draw; an operator needs to know which invariant broke. Keeping the reason off the wire avoids widening a client contract that slice 3b and slice 4 will consume.
+3. **A third refusal reason exists beyond the two briefed**: `stored_normal_unreadable`, for a snapshot marking `annual.normal` available with a non-numeric value. Returning `"suppressed"` there would be a lie (nothing suppressed it — the check could not run), and the whole point of the state field is that absence and refusal are different facts.
+4. **The duplicate guard keys on `interval_start`, not on the day.** The brief said "detects >1 row per (year, day)". That mirrors nothing: `baseline_cumulatives` guards `COUNT` vs `COUNT DISTINCT interval_start`, and a per-day rule would falsely refuse a legitimately sub-daily baseline while claiming to be its sibling. Detection is in the bucket loop rather than SQL — no extra round trip, and it sees every row the curve consumes, so it cannot miss.
+5. **The LI3A-004 gate is scoped to the rainfall contract surface, not to all of `tests/`.** Measured: compiling the whole tests tree reports pre-existing errors in 62 other files, none related to this contract. The tsconfig documents this and says to add files as their errors clear. Shipping a real gate over the contract this SDD owns beats shipping none until an unrelated backlog is paid — which is precisely how the gap survived.
+6. **`test_series_points_and_pin_read_the_same_resolved_set` was kept, not deleted or renamed.** Its behavioral assertions (the gap contract) retain value and are referenced from tasks.md 3a.6; what was wrong was its docstring's claim, which now points at the counting test for the structural half.
+
+### Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | A suppressed baseline still yields `normal_curve_state: "suppressed"` with no curve (asserted); an `annual.normal` marked available with a non-numeric value refuses rather than pretending to suppress; the zero-resolved-rows pin shape is now documented as a distinct, benign operator case (LI3A-002) | Pass |
+| Boundaries | The cross-check's tolerance is bounded from both sides and argued in the code: `rel_tol=1e-9` sits ~6 orders above accumulated float noise (30 years × 62 daily doubles, PostgreSQL `SUM` vs Python accumulation) and ~11 below the measured 16.7 mm defect; a missing last key (structurally impossible outside a Feb-29 cutoff, which suppresses `annual.normal` long before) is treated as unverifiable and refused, not as a pass | Pass |
+| Concurrency / idempotency | The route stays strictly READ-ONLY — the guards add no write, no enqueue, no commit. The one-read property they sit beside is now actually measured (LI3A-003), which is the concurrency-relevant half: a split read would admit a correction landing between the two queries | Pass |
+| Malicious input / security | No new HTTP surface, no new user-controlled input: every query input still derives from the server-built snapshot. The refusal event logs only ids and enum reasons, no row values, so a corrupt baseline cannot exfiltrate itself through the log | Pass |
+| Partial failure / recovery | Both guards refuse the WHOLE curve rather than serving a partial one — a baseline line wrong anywhere is a comparison the reader cannot trust — and refusal degrades the chart, never the response: points, pin and echoes are asserted untouched in the duplicate test. LI3A-004's gate additions (`vite-env.d.ts`, `tests/setup.ts`) were driven by executed failures, so the gate reports defects and not missing-ambient noise | Pass |
+| State / tenancy / time | LI3A-005 closes the third appearance of the LI1-002 class and closes it in ONE place both modules import, so a fourth cannot be introduced by copy-drift. Proven by a build executed under a Buenos Aires session zone WITH provider lag — the only combination that reaches it — and the pre-existing series-side TZ test still passes | Pass |
+
+### Status (fix round)
+
+5/5 findings fixed. 2102/2102 backend (6 pre-existing skips), 20/20 in the series file, ruff check + format clean, frontend typecheck exit 0 **with `tests/` compiled for the first time**, vitest 3633 unchanged. Ready for the scoped re-review of this fix diff, then slice 3b.
