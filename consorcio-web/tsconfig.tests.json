@@ -21,6 +21,15 @@
  * it is a separate one — the alternative was shipping no gate at all until that
  * backlog is paid, which is how the gap survived in the first place. ADD FILES
  * HERE as their type errors are cleared.
+ *
+ * ENROLMENT RULE (R3-004, slice 3b) — `include` below is a HAND-MAINTAINED list,
+ * not a glob, so a new test file is outside the gate until someone adds it here.
+ * Every new rainfall contract test (`tests/**` touching `src/lib/api/rainfall.ts`,
+ * `src/hooks/useRainfallAnalysis.ts` or the rainfall components) MUST be added to
+ * `include` in the same commit that creates it, and must remain listed until the
+ * 62-file widening lands and this list is replaced by `tests/**`. A contract test
+ * that is not enrolled is decorative in exactly the way LI3A-004 described:
+ * deleting the field it claims to pin keeps every check green.
  */
 {
   "extends": "./tsconfig.json",

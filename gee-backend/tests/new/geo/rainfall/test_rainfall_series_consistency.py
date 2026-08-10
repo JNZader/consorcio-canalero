@@ -331,7 +331,11 @@ def test_build_series_reads_the_interval_store_exactly_once(db):
     assert len(scoped) == 1, scoped
     # The baseline read is the deliberate SECOND read of a DIFFERENT key, and
     # its presence is what proves the filter above is not matching nothing.
-    assert len(other) == 1, other
+    # Asserted as NON-EMPTY rather than as an exact count (R3-002): the count
+    # that carries the guarantee is `scoped`, and pinning the baseline read at
+    # exactly one statement would turn a legitimate batching change on a read
+    # this test does not govern into a false red.
+    assert other, other
     assert series["normal_curve_state"] == "available"
     assert series["consistent_with_snapshot"] is True
 
@@ -683,6 +687,62 @@ def test_a_curve_that_disagrees_with_the_stored_normal_is_refused(db, caplog):
     # The pin speaks about the SELECTED scope and is unaffected: one response
     # can honestly carry a valid pin and a refused curve at the same time.
     assert series["consistent_with_snapshot"] is True
+
+
+def test_an_unreadable_stored_normal_refuses_rather_than_pretending_to_suppress(db, caplog):
+    """R3-001 (slice 3a re-review): the THIRD refusal reason had no test.
+
+    ``annual.normal`` marked ``available`` with a non-numeric value is a
+    corrupt envelope, not an honest absence: the acceptance cross-check cannot
+    run at all, so there is nothing to compare the curve against. Returning
+    ``"suppressed"`` there would be a lie -- nothing suppressed it -- and
+    serving the curve unverified is exactly what LI3A-001 exists to prevent.
+    The branch existed and was reasoned about in prose; this makes it a fact
+    the suite can lose.
+
+    Same fixture shape as the cross-check above, and for the same reason: the
+    stand-in carries the REAL ``data_revision``, so the pin still passes and
+    the refusal is proven to be the curve's own verdict rather than a
+    side-effect of an inconsistent series."""
+    import logging
+
+    from app.domains.geo.rainfall.series import build_series
+
+    scope_id = "zone-r3001-unreadable-normal"
+    asset = asset_name_for("zone", scope_id)
+    now = datetime(_CURVE_YEAR, 3, 2, 12, 0, tzinfo=UTC)
+    _seed_full_baseline(db, asset=asset, cutoff=_CURVE_CUTOFF)
+    _persist_zone_rows(
+        db,
+        scope_id=scope_id,
+        rows=_daily_rows(
+            date(_CURVE_YEAR, 1, 1),
+            _days_through(_CURVE_CUTOFF, _CURVE_YEAR),
+            3.0,
+            provider_revision=_ZONE_FAMILY,
+        ),
+    )
+    revision = _build_revision(db, scope_id=scope_id, year=_CURVE_YEAR, now=now)
+    assert revision.snapshot["annual"]["normal"]["state"] == "available"
+
+    corrupted = {**revision.snapshot}
+    annual = {**corrupted["annual"]}
+    # `available` with no value: the eligible-year set is still there, so the
+    # curve IS computable -- it is the verification that is not.
+    normal = {**annual["normal"], "value": None}
+    assert normal["quality"]["eligible_years"]
+    annual["normal"] = normal
+    corrupted["annual"] = annual
+
+    caplog.set_level(logging.INFO, logger="rainfall")
+    series = build_series(db, _fake_revision(corrupted, data_revision=revision.data_revision))
+
+    assert series["normal_curve_state"] == "integrity_refused"
+    assert series["normal_curve_state"] != "suppressed"
+    assert all(point["normal_accumulated"] is None for point in series["points"])
+    assert _curve_refusal_event(caplog)["reason"] == "stored_normal_unreadable"
+    assert series["consistent_with_snapshot"] is True
+    assert series["consistency_reason"] is None
 
 
 # ---------------------------------------------------------------------------
