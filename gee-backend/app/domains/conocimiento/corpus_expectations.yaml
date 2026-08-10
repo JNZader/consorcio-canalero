@@ -1,0 +1,483 @@
+articulos_declarados: 1383
+corpus_sha: 12043582bf8016288a7e8084e85a4b713a97af2f
+documentos:
+  auditoria-obras-zona-10-de-mayo:
+    archivo: auditoria-obras-zona-10-de-mayo.md
+    articulos: 0
+    es_secundaria: true
+    key_prefix: auditoria-10-de-mayo
+    key_style: articulo
+    no_articulos:
+    - citation_key: auditoria-10-de-mayo#0-como-leer-este-documento
+      heading: §0. Cómo leer este documento
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#1-cronologia-maestra-2014-2026
+      heading: §1. Cronología maestra 2014-2026
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#2-inventario-de-obras-identificadas
+      heading: §2. Inventario de obras identificadas
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#3-el-contraste-con-el-caso-testigo-tres-colonias
+      heading: §3. El contraste con el caso testigo Tres Colonias
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#4-huecos-declarados-lo-que-se-busco-y-no-esta
+      heading: §4. Huecos declarados — lo que se buscó y no está
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#5-preguntas-para-la-comision
+      heading: §5. Preguntas para la comisión
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#6-recomendaciones-operativas
+      heading: §6. Recomendaciones operativas
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#7-metodo-y-artefactos
+      heading: §7. Método y artefactos
+      tipo_chunk: seccion-secundaria
+    - citation_key: auditoria-10-de-mayo#8-como-se-relaciona-con-el-resto-del-corpus
+      heading: §8. Cómo se relaciona con el resto del corpus
+      tipo_chunk: seccion-secundaria
+    tipo: informe-auditoria
+  caso-testigo-tres-colonias-canal-santa-cecilia:
+    archivo: caso-testigo-tres-colonias-canal-santa-cecilia.md
+    articulos: 0
+    es_secundaria: true
+    key_prefix: caso-testigo-tres-colonias
+    key_style: articulo
+    no_articulos:
+    - citation_key: caso-testigo-tres-colonias#como-se-reconstruyo-y-que-tan-lejos-llega
+      heading: Cómo se reconstruyó, y qué tan lejos llega
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#antecedente-por-que-se-hizo
+      heading: 'Antecedente: por qué se hizo'
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#los-hitos-fechados
+      heading: Los hitos, fechados
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#coordenadas-y-encuadre-tecnico
+      heading: Coordenadas y encuadre técnico
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#1-como-sujeto-del-expediente-no-existe
+      heading: '1. Como sujeto del expediente: no existe'
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#2-como-destinatario-de-la-carga-futura-si-existe-y-por-escrito
+      heading: '2. Como destinatario de la carga futura: sí existe, y por escrito'
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#3-el-item-que-resuelve-el-problema-practico-de-la-traza
+      heading: 3. El ítem que resuelve el problema práctico de la traza
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#las-cuatro-lecciones-que-no-estan-en-ninguna-tabla
+      heading: Las cuatro lecciones que no están en ninguna tabla
+      tipo_chunk: seccion-secundaria
+    - citation_key: caso-testigo-tres-colonias#relacion-con-el-resto-del-corpus
+      heading: Relación con el resto del corpus
+      tipo_chunk: seccion-secundaria
+    tipo: caso-testigo
+  consorcio-10-de-mayo-registro-aprhi:
+    archivo: consorcio-10-de-mayo-registro-aprhi.md
+    articulos: 7
+    es_secundaria: false
+    key_prefix: 10demayo
+    key_style: articulo
+    no_articulos:
+    - citation_key: 10demayo#ficha-registral-aprhi
+      heading: Ficha registral APRHI
+      tipo_chunk: ficha-registral
+    tipo: registro-administrativo
+  decreto-1315-2012-reglamentario-ley-9750:
+    archivo: decreto-1315-2012-reglamentario-ley-9750.md
+    articulos: 8
+    es_secundaria: false
+    key_prefix: 1315-2012
+    key_style: numero
+    no_articulos: []
+    tipo: decreto-provincial
+  decreto-280-2025-facultades-bioagroindustria:
+    archivo: decreto-280-2025-facultades-bioagroindustria.md
+    articulos: 4
+    es_secundaria: false
+    key_prefix: 280-2025
+    key_style: numero
+    no_articulos: []
+    tipo: decreto
+  decreto-318-2007-reglamentario-ley-8560:
+    archivo: decreto-318-2007-reglamentario-ley-8560.md
+    articulos: 132
+    es_secundaria: false
+    key_prefix: 318-2007
+    key_style: numero
+    no_articulos: []
+    tipo: decreto
+  decreto-3780-c-65-obras-cursos-naturales-artificiales:
+    archivo: decreto-3780-c-65-obras-cursos-naturales-artificiales.md
+    articulos: 6
+    es_secundaria: false
+    key_prefix: 3780-C-65
+    key_style: punto
+    no_articulos: []
+    tipo: decreto-provincial
+  informe-f3-sujeto-expropiante:
+    archivo: informe-f3-sujeto-expropiante.md
+    articulos: 0
+    es_secundaria: true
+    key_prefix: informe-f3
+    key_style: articulo
+    no_articulos:
+    - citation_key: informe-f3#la-respuesta-en-tres-lineas
+      heading: La respuesta en tres líneas
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#1-el-consorcio-no-expropia-la-evidencia-es-negativa-y-es-concluyente
+      heading: '1. El consorcio no expropia: la evidencia es negativa y es concluyente'
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#2-quien-si-expropia-la-provincia-a-traves-de-la-aprhi
+      heading: '2. Quién sí expropia: la Provincia, a través de la APRHI'
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#3-la-via-que-conviene-mirar-primero-servidumbre-administrativa
+      heading: '3. La vía que conviene mirar primero: servidumbre administrativa'
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#4-la-practica-documentada-la-provincia-efectivamente-expropia-por-falta-de-permiso-de-paso
+      heading: '4. La práctica documentada: la Provincia efectivamente expropia por falta de permiso de
+        paso'
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#5-practica-administrativa-documentada-prensa-y-actos-2015-2019
+      heading: 5. Práctica administrativa documentada (prensa y actos, 2015-2019)
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#6-el-circuito-de-punta-a-punta
+      heading: 6. El circuito, de punta a punta
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#7-que-es-norma-que-es-practica-que-es-interpretacion-y-que-no-se-verifico
+      heading: 7. Qué es norma, qué es práctica, qué es interpretación y qué no se verificó
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-f3#8-nota-de-metodo-sobre-las-citas-de-articulos
+      heading: 8. Nota de método sobre las citas de artículos
+      tipo_chunk: seccion-secundaria
+    tipo: informe-operativo
+  informe-zona-de-camino-cordoba:
+    archivo: informe-zona-de-camino-cordoba.md
+    articulos: 0
+    es_secundaria: true
+    key_prefix: informe-zona-camino
+    key_style: articulo
+    no_articulos:
+    - citation_key: informe-zona-camino#las-tres-respuestas-en-corto
+      heading: Las tres respuestas en corto
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#1-las-definiciones-que-dice-la-ley-que-es-cada-cosa
+      heading: 1. Las definiciones — qué dice la ley que es cada cosa
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#2-antes-de-preguntar-nada-que-camino-es
+      heading: '2. Antes de preguntar nada: ¿QUÉ camino es?'
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#3-pregunta-1-limpiar-una-cuneta-existente
+      heading: 3. Pregunta 1 — limpiar una cuneta existente
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#4-pregunta-2-abrir-un-canal-nuevo-dentro-de-la-zona-de-camino
+      heading: 4. Pregunta 2 — abrir un canal NUEVO dentro de la zona de camino
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#5-la-cuneta-que-desagua-en-un-canal-del-consorcio
+      heading: 5. La cuneta que desagua en un canal del consorcio
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#6-que-se-busco-y-no-se-encontro
+      heading: 6. Qué se buscó y no se encontró
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#7-el-caso-de-la-ruta-nacional-aca-si-hay-procedimiento-y-con-numeros
+      heading: 7. El caso de la RUTA NACIONAL — acá sí hay procedimiento, y con números
+      tipo_chunk: seccion-secundaria
+    - citation_key: informe-zona-camino#8-checklist-para-el-consorcio
+      heading: 8. Checklist para el consorcio
+      tipo_chunk: seccion-secundaria
+    tipo: informe-operativo
+  jurisprudencia-potrerillo-larreta-2017:
+    archivo: jurisprudencia-potrerillo-larreta-2017.md
+    articulos: 0
+    es_secundaria: true
+    key_prefix: jurisprudencia-potrerillo-2017
+    key_style: articulo
+    no_articulos:
+    - citation_key: jurisprudencia-potrerillo-2017#1-que-se-discutia
+      heading: 1. Qué se discutía
+      tipo_chunk: seccion-secundaria
+    - citation_key: jurisprudencia-potrerillo-2017#2-la-resolucion-dph-n-11821-85-aplicada-al-caso
+      heading: 2. La Resolución DPH N° 11821/85 aplicada al caso
+      tipo_chunk: seccion-secundaria
+    - citation_key: jurisprudencia-potrerillo-2017#3-la-resolucion-dph-n-1225-54-exigida-como-condicion-de-la-autorizacion
+      heading: 3. La Resolución DPH N° 1225/54 exigida como condición de la autorización
+      tipo_chunk: seccion-secundaria
+    - citation_key: jurisprudencia-potrerillo-2017#4-la-resolucion-dipas-n-395-2004-los-retiros-de-15-m-y-12-m
+      heading: 4. La Resolución DiPAS N° 395/2004 — los retiros de 15 m y 12 m
+      tipo_chunk: seccion-secundaria
+    - citation_key: jurisprudencia-potrerillo-2017#5-los-otros-quince-metros-el-camino-de-sirga-no-es-el-retiro
+      heading: '5. Los otros quince metros: el camino de sirga NO es el retiro'
+      tipo_chunk: seccion-secundaria
+    - citation_key: jurisprudencia-potrerillo-2017#6-parte-dispositiva
+      heading: 6. Parte dispositiva
+      tipo_chunk: seccion-secundaria
+    - citation_key: jurisprudencia-potrerillo-2017#7-que-se-puede-y-que-no-se-puede-sacar-de-este-fallo
+      heading: 7. Qué se puede y qué no se puede sacar de este fallo
+      tipo_chunk: seccion-secundaria
+    tipo: jurisprudencia
+  ley-10593-fondo-consorcios-canaleros:
+    archivo: ley-10593-fondo-consorcios-canaleros.md
+    articulos: 45
+    es_secundaria: false
+    key_prefix: '10593'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-10679-modificatoria-ctp-fda:
+    archivo: ley-10679-modificatoria-ctp-fda.md
+    articulos: 63
+    es_secundaria: false
+    key_prefix: '10679'
+    key_style: numero
+    no_articulos:
+    - citation_key: 10679#vigencia-de-los-fondos
+      heading: Vigencia de los fondos
+      tipo_chunk: nota-vigencia
+    tipo: ley-provincial
+  ley-10936-consorcios-gestion-integrada-cuencas:
+    archivo: ley-10936-consorcios-gestion-integrada-cuencas.md
+    articulos: 17
+    es_secundaria: false
+    key_prefix: '10936'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-11059-consorcios-camineros:
+    archivo: ley-11059-consorcios-camineros.md
+    articulos: 76
+    es_secundaria: false
+    key_prefix: '11059'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-25506-firma-digital:
+    archivo: ley-25506-firma-digital.md
+    articulos: 53
+    es_secundaria: false
+    key_prefix: '25506'
+    key_style: numero
+    no_articulos:
+    - citation_key: 25506#anexo
+      heading: Anexo
+      tipo_chunk: anexo-normativo
+    tipo: ley-nacional
+  ley-5589-codigo-aguas-cordoba:
+    archivo: ley-5589-codigo-aguas-cordoba.md
+    articulos: 292
+    es_secundaria: false
+    key_prefix: '5589'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-6604-consorcios-riego:
+    archivo: ley-6604-consorcios-riego.md
+    articulos: 44
+    es_secundaria: false
+    key_prefix: '6604'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-8548-organica-agua-saneamiento:
+    archivo: ley-8548-organica-agua-saneamiento.md
+    articulos: 19
+    es_secundaria: false
+    key_prefix: '8548'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-8555-regimen-legal-direccion-vialidad:
+    archivo: ley-8555-regimen-legal-direccion-vialidad.md
+    articulos: 30
+    es_secundaria: false
+    key_prefix: '8555'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-8560-transito-cordoba:
+    archivo: ley-8560-transito-cordoba.md
+    articulos: 137
+    es_secundaria: false
+    key_prefix: '8560'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-8803-acceso-informacion-cordoba:
+    archivo: ley-8803-acceso-informacion-cordoba.md
+    articulos: 11
+    es_secundaria: false
+    key_prefix: '8803'
+    key_style: numero
+    no_articulos:
+    - citation_key: 8803#el-pedido-que-cumple-la-ley
+      heading: El pedido que cumple la ley
+      tipo_chunk: guia-de-uso
+    - citation_key: 8803#el-reloj
+      heading: El reloj
+      tipo_chunk: guia-de-uso
+    - citation_key: 8803#los-tres-frentes-de-pelea-previsibles
+      heading: Los tres frentes de pelea previsibles
+      tipo_chunk: guia-de-uso
+    - citation_key: 8803#contra-quien-se-puede-usar-en-este-expediente
+      heading: Contra quién se puede usar, en este expediente
+      tipo_chunk: guia-de-uso
+    tipo: ley
+  ley-9750-consorcios-canaleros:
+    archivo: ley-9750-consorcios-canaleros.md
+    articulos: 51
+    es_secundaria: false
+    key_prefix: '9750'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-9867-aprhi-recursos-hidricos:
+    archivo: ley-9867-aprhi-recursos-hidricos.md
+    articulos: 38
+    es_secundaria: false
+    key_prefix: '9867'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-expropiaciones-cordoba:
+    archivo: ley-expropiaciones-cordoba.md
+    articulos: 64
+    es_secundaria: false
+    key_prefix: '6394'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-procedimiento-administrativo-cordoba:
+    archivo: ley-procedimiento-administrativo-cordoba.md
+    articulos: 130
+    es_secundaria: false
+    key_prefix: '5350'
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  normas-srh-2013-presentacion-proyectos:
+    archivo: normas-srh-2013-presentacion-proyectos.md
+    articulos: 6
+    es_secundaria: false
+    key_prefix: srh-2013
+    key_style: punto
+    no_articulos: []
+    tipo: norma-tecnica
+  obra-tres-colonias-canal-santa-cecilia.kmz:
+    archivo: obra-tres-colonias-canal-santa-cecilia.kmz.md
+    articulos: 0
+    es_secundaria: true
+    key_prefix: kmz-tres-colonias
+    key_style: articulo
+    no_articulos:
+    - citation_key: kmz-tres-colonias#que-se-busco-primero-y-por-que-no-alcanzo
+      heading: Qué se buscó primero y por qué no alcanzó
+      tipo_chunk: seccion-secundaria
+    - citation_key: kmz-tres-colonias#lo-que-si-rindio-el-parcelario-abierto-de-idecor
+      heading: 'Lo que sí rindió: el parcelario abierto de IDECOR'
+      tipo_chunk: seccion-secundaria
+    - citation_key: kmz-tres-colonias#capas-del-kmz-y-su-procedencia
+      heading: Capas del KMZ y su procedencia
+      tipo_chunk: seccion-secundaria
+    - citation_key: kmz-tres-colonias#controles-corridos-sobre-el-resultado
+      heading: Controles corridos sobre el resultado
+      tipo_chunk: seccion-secundaria
+    - citation_key: kmz-tres-colonias#faltantes-declarados
+      heading: Faltantes declarados
+      tipo_chunk: seccion-secundaria
+    - citation_key: kmz-tres-colonias#datos-de-la-obra-embebidos-en-la-capa-1
+      heading: Datos de la obra embebidos en la capa 1
+      tipo_chunk: seccion-secundaria
+    - citation_key: kmz-tres-colonias#insumos-locales
+      heading: Insumos locales
+      tipo_chunk: seccion-secundaria
+    tipo: artefacto-geoespacial-derivado
+  resolucion-4-2026-bioagroindustria-reglamento-11059:
+    archivo: resolucion-4-2026-bioagroindustria-reglamento-11059.md
+    articulos: 78
+    es_secundaria: false
+    key_prefix: res4-2026
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-ministerial
+  resolucion-aprhi-3-2026-individualizacion-cuenca-tres-colonias:
+    archivo: resolucion-aprhi-3-2026-individualizacion-cuenca-tres-colonias.md
+    articulos: 5
+    es_secundaria: false
+    key_prefix: res-aprhi-3-2026
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-administrativa
+  resolucion-dipas-395-2004-linea-ribera-provisoria:
+    archivo: resolucion-dipas-395-2004-linea-ribera-provisoria.md
+    articulos: 7
+    es_secundaria: false
+    key_prefix: res-dipas-395-2004
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-administrativa
+  resolucion-dnv-1898-2025-aranceles-permisos:
+    archivo: resolucion-dnv-1898-2025-aranceles-permisos.md
+    articulos: 7
+    es_secundaria: false
+    key_prefix: res-dnv-1898-2025
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-nacional
+  resolucion-dnv-908-2026-permisos-zona-camino:
+    archivo: resolucion-dnv-908-2026-permisos-zona-camino.md
+    articulos: 39
+    es_secundaria: false
+    key_prefix: res-dnv-908-2026
+    key_style: articulo
+    no_articulos:
+    - citation_key: res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino
+      heading: Anexo I — Nuevo procedimiento para la tramitación de Permisos Precarios de Uso de la Zona
+        de Camino
+      tipo_chunk: anexo-normativo
+    - citation_key: res-dnv-908-2026#anexo-xi-modelo-de-resolucion-aprobatoria-particular-de-permisos-precarios-de-uso-de-la-zona-de-camino
+      heading: Anexo XI — Modelo de Resolución Aprobatoria particular de Permisos Precarios de Uso de
+        la Zona de Camino
+      tipo_chunk: anexo-normativo
+    tipo: resolucion-nacional
+  resolucion-dph-11821-1985-visacion-planos-linea-ribera:
+    archivo: resolucion-dph-11821-1985-visacion-planos-linea-ribera.md
+    articulos: 7
+    es_secundaria: false
+    key_prefix: res-dph-11821-1985
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-administrativa
+  resolucion-general-aprhi-004-2026-leones-villa-elisa:
+    archivo: resolucion-general-aprhi-004-2026-leones-villa-elisa.md
+    articulos: 3
+    es_secundaria: false
+    key_prefix: res-aprhi-004-2026
+    key_style: articulo
+    no_articulos:
+    - citation_key: res-aprhi-004-2026#encabezado-visto
+      heading: Encabezado (VISTO)
+      tipo_chunk: considerando
+    - citation_key: res-aprhi-004-2026#considerandos-pasajes-verificables
+      heading: Considerandos — pasajes verificables
+      tipo_chunk: considerando
+    tipo: resolucion-administrativa
+  resolucion-srh-157-2013-constitucion-leones-villa-elisa:
+    archivo: resolucion-srh-157-2013-constitucion-leones-villa-elisa.md
+    articulos: 4
+    es_secundaria: false
+    key_prefix: res-srh-157-2013
+    key_style: articulo
+    no_articulos:
+    - citation_key: res-srh-157-2013#encabezado-visto
+      heading: Encabezado (VISTO)
+      tipo_chunk: considerando
+    - citation_key: res-srh-157-2013#considerandos-pasajes-verificables
+      heading: Considerandos — pasajes verificables
+      tipo_chunk: considerando
+    tipo: resolucion-administrativa
+manifest_integracion: 5
+manifest_version: 2
+no_articulos_declarados: 63
+subtotales_articulo:
+  actos-particulares: 19
+  guia-tecnica: 6
+  normas-generales: 1358
+  secundarios: 0

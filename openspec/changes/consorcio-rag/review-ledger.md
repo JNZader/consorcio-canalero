@@ -32,3 +32,28 @@ Both re-judges CLEAN, unanimous. Judge A: all 6 resolutions verified with indepe
 Round-2 micro-fix candidates recorded WARNING/SUGGESTION/info (below severity floor — folded as doc tasks, no fix loop): CRA-101/CRB-101 (parameterize abstention denominator from gold_set.yaml — the literal 18 goes stale the moment curation lands; candidate pool is 29+23=52), CRA-102/CRB-102 (rename/split unidades_declaradas for article-only clarity), CRA-103 ("both tables" vs 3 wording at design:365), plus B's info note (the ingestion base requirement's "exclude OR tag" disjunction is closed at the gate level by the per-document non-article inventory — dedicated scenarios exist for nota-vigencia and guia-de-uso; considerando/ficha-registral/seccion-secundaria rely on the generic gate).
 
 Round 1 closed within budget; no round 2 needed. Next: sdd-tasks (fold the micro-fixes as explicit doc tasks; slices 3/4 split seams named, decision at apply time).
+
+## Slice 1 — resilience lens (PR1 diff, `feat/consorcio-rag-01-infra` @ `e76747a`)
+
+**Verdict: PASS — no BLOCKER, no CRITICAL.** Standard tier, one lens
+(`review-resilience`: the diff is shell/process integration — Docker image,
+compose overlay, Makefile guard, conditional migration — with partial-failure and
+degraded-dependency surface). Sweep budget: 1 exhaustive pass. The reviewer was
+read-only; the rows below are persisted here by the Slice 2 apply, which also
+carried the fixes.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| RAG1-001 | resilience | `Makefile` (`test-rag` recipe) | WARNING | fixed | `test-rag` exported `TEST_POSTGRES_IMAGE` but `conftest._resolve_database_url()` honors `TEST_DATABASE_URL` FIRST. With that variable exported, the target built the vector image, never touched it, ran against the developer's own database and still printed "all pgvector tests ran for real against consorcio-postgres:16-vector" — the exact false-green the `skipped == 0` guard exists to prevent, one layer up. |
+| RAG1-002 | resilience | `docker-compose.pgvector.yml` header; `Makefile` (`rag-db`) | WARNING | fixed | The overlay swaps the server binary over the SAME persistent dev volume. Reverting to the vector-less image while vector objects exist leaves an unloadable database. `design.md` names the hazard and mandates `alembic downgrade` first, but neither the overlay nor `rag-db` said so at the point of use, which is where the mistake is made. |
+| RAG1-003 | resilience | `app/domains/conocimiento/ddl.py::extension_available` | WARNING | fixed | Docstring claimed "Never raises" with no `try/except`; a broken connection propagates. A contract that is documented backwards is worse than an undocumented one — slice 3 consumes this to decide whether to raise `VectorSupportUnavailable`. |
+| RAG1-004 | resilience | stamp workaround / `deploy.yml` full-chain replay | — | info | **Cleared attack surface, recorded so it is not re-litigated.** Slice 1's `throwaway_db` fixture stamps `lluvia_v2_005` instead of replaying from empty (the pre-existing `pgrouting` gap). Verified this does NOT hide a broken chain: `alembic heads` reports a SINGLE head, and CI's `alembic upgrade head` (`.github/workflows/deploy.yml:103`) still replays the FULL chain on a fresh database, which is the prod-shaped case. The workaround is scoped to one test fixture, not to the migration graph. |
+
+**Fixes (all landed in Slice 2, `feat/consorcio-rag-02-ingestion`):**
+- RAG1-001 → `TEST_DATABASE_URL=` cleared inside the `test-rag` recipe, so image selection is the only DB path; comment states why.
+- RAG1-002 → rollback-order warning in the `docker-compose.pgvector.yml` header AND an echo on `make rag-db`.
+- RAG1-003 → docstring corrected to state that connection/query errors PROPAGATE, with the reasoning: converting an unreachable database into `False` would surface an infrastructure failure as a *capability* signal, which is the same silent degradation D4 forbids for the vector leg. `conftest._probe_pgvector` remains the deliberately never-raising wrapper, because there a failure legitimately means "this environment cannot run the pgvector suite".
+
+Severity floor honored: all three are WARNING, reported once, status `info`-class
+— they drove no fix loop and no re-review round. They were fixed opportunistically
+because Slice 2 was already editing all three files.

@@ -270,12 +270,21 @@ rag-db: ## Build + start the pgvector-enabled Postgres service (opt-in, dev only
 	@echo "$(BLUE)Starting consorcio-postgres:16-vector...$(NC)"
 	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.pgvector.yml up -d postgres
 	@echo "$(GREEN)consorcio-postgres:16-vector is up.$(NC)"
+	@echo "$(YELLOW)Antes de volver a la imagen sin vector: alembic downgrade (primero), si no el volumen compartido queda ilegible.$(NC)"
 
 test-rag: ## Run the pgvector-marked test suite against consorcio-postgres:16-vector
 	@echo "$(BLUE)Building consorcio-postgres:16-vector...$(NC)"
 	docker build -f docker/postgres/Dockerfile -t consorcio-postgres:16-vector docker/postgres
 	@echo "$(BLUE)Running pgvector-marked tests...$(NC)"
+# `TEST_DATABASE_URL=` is load-bearing, not tidiness. conftest's
+# `_resolve_database_url()` honors TEST_DATABASE_URL BEFORE testcontainers, so a
+# developer with that variable exported would run this target against their own
+# database while the success message still claims "ran for real against
+# consorcio-postgres:16-vector" — the image would be built and never touched.
+# Clearing it here makes image selection the only possible DB path (ledger
+# RAG1-001).
 	@cd $(BACKEND_DIR) && \
+		TEST_DATABASE_URL= \
 		TEST_POSTGRES_IMAGE=consorcio-postgres:16-vector \
 		venv/bin/pytest -m pgvector --junitxml=rag-junit.xml tests/new/; \
 		pytest_status=$$?; \

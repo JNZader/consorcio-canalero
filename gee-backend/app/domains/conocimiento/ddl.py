@@ -56,8 +56,22 @@ def extension_available(connection: Connection) -> bool:
 
     True if `CREATE EXTENSION vector` would succeed (the extension is
     present in `pg_available_extensions`); False on the default, CI-safe
-    pgrouting image where the PGDG package was never installed. Never
-    raises — a probe that could fail defeats the point of probing.
+    pgrouting image where the PGDG package was never installed.
+
+    **Connection and query errors PROPAGATE.** This function only answers
+    "is this server capable of vector"; it deliberately does NOT convert a
+    broken connection into `False`. Slice 3's runtime capability check
+    consumes this result to decide whether to raise
+    `VectorSupportUnavailable` (design.md D4: the vector leg "never falls
+    back to FTS — silent degradation would make the ablation meaningless").
+    Swallowing an infrastructure failure here would surface it downstream as
+    a *capability* signal, which is that same silent degradation wearing a
+    different hat: an unreachable database would read as "this image has no
+    pgvector" and the ablation would quietly compare FTS against nothing.
+    Callers that genuinely want a never-raising probe wrap it themselves —
+    `tests/new/conftest.py::_probe_pgvector` is the one that does, because
+    there a failure legitimately means "this environment cannot run the
+    pgvector suite".
     """
     row = connection.execute(
         text(PROBE_EXTENSION_AVAILABLE_SQL), {"extension_name": EXTENSION_NAME}

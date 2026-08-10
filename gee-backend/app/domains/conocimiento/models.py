@@ -56,6 +56,14 @@ RAG_UNIDAD_TSV_EXPRESSION = (
 )
 
 # The non-article `tipo_chunk` taxonomy, plus `articulo` itself (design.md D2).
+#
+# `anexo-normativo` is the one addition to D2's six-value table, added when the
+# real corpus was parsed. Three units in the pinned snapshot are normative
+# content that is not articulado and belongs to no other class: the `## Anexo`
+# of Ley 25.506 (the law's own definitions annex) and Anexos I and XI of Res.
+# DNV 908/2026 (an un-articled procedure and a form). The MANIFEST names all
+# three as content that must be indexed, and none is `seccion-secundaria` —
+# they belong to derecho aplicable. They contribute 0 to the 1383 article count.
 TIPO_CHUNK_VALUES = (
     "articulo",
     "considerando",
@@ -63,6 +71,7 @@ TIPO_CHUNK_VALUES = (
     "nota-vigencia",
     "ficha-registral",
     "seccion-secundaria",
+    "anexo-normativo",
 )
 
 CLASIFICACION_VALUES = ("publico", "privado")
@@ -116,6 +125,13 @@ class RagDocumento(Base):
             "clasificacion IN ('publico', 'privado')",
             name="ck_rag_documento_clasificacion",
         ),
+        # Scoped NOT NULL (migration conocimiento_003): every document that IS
+        # derecho aplicable must carry its vigencia state; only fuente
+        # secundaria may omit it, because vigencia is a property of a norm.
+        CheckConstraint(
+            "es_secundaria OR estado_vigencia IS NOT NULL",
+            name="ck_rag_documento_estado_vigencia_derecho_aplicable",
+        ),
     )
 
     corpus_sha: Mapped[str] = mapped_column(CHAR(40), primary_key=True)
@@ -129,9 +145,15 @@ class RagDocumento(Base):
     # document (MANIFEST.md:230-233). A document missing it aborts
     # ingestion instead of defaulting (spec: Frontmatter Field Carriage).
     jurisdiccion: Mapped[str] = mapped_column(Text, nullable=False)
-    # NOT NULL: "Ingestion MUST carry estado_vigencia per document" (spec:
-    # Vigencia State and Dual-Redaction Preservation).
-    estado_vigencia: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable at the column level, NOT NULL for derecho aplicable — enforced
+    # by `ck_rag_documento_estado_vigencia_derecho_aplicable` (migration
+    # conocimiento_003). Three fuente-secundaria documents in the pinned corpus
+    # carry no `estado_vigencia` frontmatter key at all (the two informes
+    # operativos and the fallo), because vigencia is a property of a norm.
+    # Inventing a placeholder for them would be exactly the fabrication the
+    # ingestion spec forbids; the guarantee that matters — a norm always travels
+    # with its vigencia state — is kept by the scoped CHECK.
+    estado_vigencia: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Nullable: the schema must not lie about a document whose frontmatter
     # has no do-not-cite warning to carry. Carried verbatim, never derived
     # or summarized (design.md D1 — "carried, never interpreted").
@@ -163,8 +185,7 @@ class RagUnidad(Base):
             name="fk_rag_unidad_documento",
         ),
         CheckConstraint(
-            "tipo_chunk IN ('articulo','considerando','guia-de-uso',"
-            "'nota-vigencia','ficha-registral','seccion-secundaria')",
+            "tipo_chunk IN (" + ",".join(f"'{value}'" for value in TIPO_CHUNK_VALUES) + ")",
             name="ck_rag_unidad_tipo_chunk",
         ),
         Index("ix_rag_unidad_tsv", "tsv", postgresql_using="gin"),

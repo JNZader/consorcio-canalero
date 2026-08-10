@@ -17,6 +17,12 @@
 #
 # Prod is unreachable by this file by construction: the Hetzner box runs a
 # compose file outside this repository entirely (design.md D7 "Prod").
+#
+# ⚠️ ROLLBACK ORDER MATTERS. This overlay swaps the server binary over the SAME
+# persistent dev volume `docker-compose.yml` already uses. Before going back to
+# the image without vector, run `alembic downgrade` FIRST — reverting the image
+# while vector objects still exist leaves an unloadable database (design.md
+# "Migration / Rollout").
 services:
   postgres:
     image: consorcio-postgres:16-vector
