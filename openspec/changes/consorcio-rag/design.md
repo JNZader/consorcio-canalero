@@ -259,12 +259,26 @@ question ──┬─► FTS leg    : tsv @@ websearch_to_tsquery('spanish', q)
   never as norm. `relevancia_consorcio` travels for the same reason and covers what `es_secundaria`
   cannot: a document that **is** derecho aplicable by `tipo` and still must not be cited as grounds for a
   canalero obligation (D1).
-- `vector_search()` raises `VectorSupportUnavailable` when the extension/column is absent — it never
-  falls back to FTS. Silent degradation would make the ablation meaningless. It raises for two more
-  reasons since RAG3-001: `EmbeddingsNoCargadas` when the snapshot has no vectors at all (the state
-  slices 1-2 ship, where the leg would contribute `[]` and the fused answer would be FTS under a
-  hybrid label) and `EmbedderMismatch` when the query embedder is not the one that wrote the column
-  (D3).
+- **The refusals live at two different layers, and mixing them up is how a caller loses two of
+  them.** `repository.vector_search()` raises `VectorSupportUnavailable` when the extension or the
+  column is absent — it never falls back to FTS, because silent degradation would make the ablation
+  meaningless. It raises **nothing else**, and cannot: it receives a query *vector*, not an embedder,
+  so it has no way to know which model produced the column it is searching. The two refusals added by
+  RAG3-001 belong to the service layer and are raised by `service.verificar_embedder`, which
+  `service.recuperar` calls **before either leg runs**: `EmbeddingsNoCargadas` when the snapshot has
+  no vectors at all (the state slices 1-2 ship, where the leg would contribute `[]` and the fused
+  answer would be FTS under a hybrid label) and `EmbedderMismatch` when the query embedder is not the
+  one that wrote the column (D3). An earlier revision of this bullet credited all three to
+  `vector_search()`; that was false, and false in the direction that invites the mistake below
+  (ledger RAG3-R01).
+- **Design rule: every retrieval consumer goes through `service.recuperar`, never a repository leg.**
+  A caller that reaches for `repository.vector_search` directly still gets the capability check and
+  loses BOTH provenance gates — it would cheerfully rank a real BGE-M3 corpus with the deterministic
+  smoke embedder and hand back 50 confident, fully attributed, entirely fabricated hits. The eval
+  harness (D6) is the caller this rule exists for, because its output is a *published measurement*:
+  `app/domains/conocimiento/eval/` imports the service layer and nothing below it, and
+  `test_rag_eval_harness.py::TestServiceLayerBoundary` asserts that mechanically over the eval
+  package's own import graph instead of trusting the convention.
 
 **The vector leg's plan, measured.** The original text here claimed both "at n≈1,400 an exact scan is
 sub-10 ms and 100 % recall" *and* "the index exists so V1 inherits the identical query plan shape".
@@ -313,7 +327,7 @@ three thresholds are calibrated, not one — conflating them is how an ablation 
 
 **Threshold selection is leave-one-out cross-validated; scoring never reuses the fitting sample.**
 Sweeping `min_score` on the gold set and then reporting precision/recall *on that same set* fits the
-threshold to the 38 items it is about to be graded on. The resulting numbers are a training fit read as
+threshold to the very items it is about to be graded on. The resulting numbers are a training fit read as
 a measurement — post-hoc overfit wearing the costume of rigour, and the smaller the set the louder the
 lie. So, per mode: for each gold item *i*, select the threshold by sweeping over the **other n−1** items
 (same rule: highest precision among thresholds achieving recall 1.00; ties broken by the lower
@@ -321,8 +335,8 @@ threshold, deterministically — and if **no** threshold on that fold reaches re
 back to the highest-recall threshold, ties by precision, and is counted: a fallback that fires often is
 itself a no-go signal and the report states the count), then classify item *i* with that held-out
 threshold. The reported
-precision/recall are computed over the n **held-out** predictions. At n≈38 this is 38 sweeps over a grid
-of ≤38 candidate scores — milliseconds, fully deterministic, no sampling. The **shipped** threshold is
+precision/recall are computed over the n **held-out** predictions. At the ratified n = 52 this is 52
+sweeps over a grid of ≤52 candidate scores — milliseconds, fully deterministic, no sampling. The **shipped** threshold is
 the one selected over the full set; LOOCV measures how that selection rule generalises, and the two are
 reported side by side.
 
@@ -333,8 +347,14 @@ but it is labelled **upper bound** wherever it appears, and it never decides go/
 mutation-testing target set.
 
 Definitions, fixed here so the report cannot be argued with later:
-`abstention recall = correct abstentions / unanswerable(18)`;
+`abstention recall = correct abstentions / |{items with clase == 'unanswerable'}|`;
 `abstention precision = correct abstentions / all abstentions`.
+The denominator is **read from `gold_set.yaml`, never written down here** — it was the literal `18`
+until curation landed and made it 23, which is exactly the staleness CRA-101/CRB-101 predicted. It is
+`None` rather than `1.00` when a sample holds no unanswerable item, because "nothing to miss" is the
+most flattering possible way to report having measured nothing; and `precision` is `0.0` rather than a
+vacuous `1.00` when a policy never abstains, so a never-abstaining policy cannot print a success next
+to a recall of zero.
 
 The owner set **recall = 1.00**. Recall alone is trivially gamed by always abstaining, so the pass
 condition is the **pair**: recall 1.00 **with** precision ≥ 0.80, measured on the held-out predictions
@@ -349,13 +369,40 @@ that clears the bar does not overturn it — and the report states it as such an
   `validado_por` (`draft|owner`). A scored run **refuses to emit go/no-go** unless every item is
   `owner` and `answerable` count ≥ 20 — the n≥20 precondition and owner-validation decision become
   mechanical, not procedural.
-- **Runner**: `--mode fts|vector|hybrid`, same questions, same k, one code path.
+- **Runner**: `--mode fts|vector|hybrid`, same questions, same k, one code path — and that code path
+  is `service.recuperar`, never a repository leg directly (the D4 rule; the harness's own imports are
+  asserted, not assumed).
 - **Metrics** (`metrics.py`, pure functions): hit-rate@5, MRR, citation-precision, norma-vs-secundaria,
   vigencia-correctness, abstention precision/recall. All are set comparisons against gold citation
   keys — **no LLM-as-judge in V0**. That removes the "judge leaks text" risk by construction rather
   than mitigating it, and keeps the harness deterministic (retrieval has no sampling). The abstention
   pair is computed over the **LOOCV-held-out** predictions of D5; the retrieval metrics have no fitted
   parameter and so have no leakage surface.
+
+  **Metric definitions, fixed here for the same reason D5 fixes the abstention ones.** The spec sets
+  seven BARS and defines exactly one of them (abstention recall). Three of the seven are `= 1.00`,
+  which is unreachable under the obvious reading — `|top_k ∩ gold| / k` maxes out at 0.3 for a
+  three-key question on a ten-hit page — so a bar without a definition is not a gate:
+
+  | metric | definition | why not the obvious alternative |
+  |---|---|---|
+  | hit-rate@5 | 1 if any expected key is among the first 5 fused hits, averaged over the answerable subset | — |
+  | MRR | `1/(rank+1)` of the **first** expected key in the returned page, 0 if absent | averaging over all expected keys scores a complete composite answer *below* a partial one |
+  | citation-precision | **R-precision**: `\|top_m ∩ gold\| / m` with `m = \|gold\|` | any fixed window ≥ m makes "= 1.00" unreachable for a one-key question, i.e. a decorative bar. At rank m precision and recall coincide, so one number carries both coverage and noise |
+  | norma-vs-secundaria | 1 unless the top hit is `es_secundaria`, or any hit lacks an explicit flag | the gold set's own rule — citing the informe instead of the article is a failure even when the content is right |
+  | vigencia-correctness | over trap questions only: every caveat-bearing key retrieved **and** every norma hit carrying a vigencia state | scoring it over all questions inflates the mean with free points from questions that never claimed the property |
+
+  Scope: the five are computed over `respondibles` (`clase != 'unanswerable'`, so the `trampa-vigencia`
+  items count toward the ratified 29). An unanswerable question has `|gold| = 0`, so each of these
+  would be a division by zero wearing a score's clothes; those items are measured by the abstention
+  pair, which was designed for them. An aggregate over an empty denominator is `None`, never `0.0` —
+  zero is a measurement and its absence is not.
+
+  **Consequence, stated rather than engineered around: the bar set is NESTED.** A run at
+  citation-precision 1.00 necessarily clears hit-rate@5 ≥ 0.85 and MRR ≥ 0.70, because R-precision 1.00
+  on every question puts a gold key at rank 0 everywhere. Those two therefore behave as diagnostics —
+  they say how far a failing run sits from the bar — rather than as independent gates. That is a
+  property of the ratified bars, not of these definitions.
 - **Methodology disclosure is part of the report contract, not a footnote.** The template states, per
   mode: the threshold-selection rule, that selection was leave-one-out cross-validated, `n`, the
   shipped full-set threshold, the LOOCV-held-out precision/recall (the go/no-go figures), and the

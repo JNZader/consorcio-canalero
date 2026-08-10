@@ -502,13 +502,23 @@ make test-rag-corpus              ->  30 passed, 186 deselected, ZERO skipped, e
 tests/new/conocimiento/  no corpus            ->  172 passed,  44 skipped   (was  86 /  29)
 tests/new/conocimiento/  RAG_CORPUS_PATH set  ->  202 passed,  14 skipped   (was 114 /   1)
 full suite, no corpus (the CI shape)          -> 2089 passed,  49 skipped   (was 2003 /  34)
-full suite, RAG_CORPUS_PATH set               -> 2118 passed,  19 skipped + the pre-existing timing
-                                                 flake above (was 2031 / 6)
+full suite, RAG_CORPUS_PATH set               -> 2118 passed,  19 skipped, 1 FAILED   (was 2031 / 6)
+                                                 the 1 failure is the pre-existing `test_run_blocking`
+                                                 timing flake documented above — not a green run
 ```
 
 Both full-suite shapes total **2138** collected (2089+49 = 2118+19+1), **+101** over the 2037 baseline.
 Skip arithmetic checks out in every shape: 49 − 19 = 30 corpus-marked, 44 − 14 = 30, and the 14
 pgvector-marked tests skip on the default image and all run under `make test-rag`.
+
+> **Corrected by the Slice 4 apply — ledger RAG3-R02 / amendment A2.** As first written, the corpus
+> shape's line read `2118 passed, 19 skipped + the pre-existing timing flake above`, and the only
+> place the failure was *counted* was the `+1` inside the reconciliation sentence below it. A reader
+> comparing the two shape lines saw 2137 against the CI shape's 2138 and had no way to close the gap
+> from the table itself. The slip is one of format, not of measurement — the run really did have one
+> failure and the prose really did say so — but a shape line that omits its own failure count is the
+> same failure class as a CI gate that exits 0 without measuring anything: it reads as green at a
+> glance. Every shape line in this artifact now states passed / skipped / failed explicitly.
 
 `ruff check .`, `ruff format --check .` and `mypy --ignore-missing-imports` on all 9 touched modules
 exit 0.
@@ -680,3 +690,289 @@ three fix-round findings F1–F3 (RAG3-001/002/003). O.3 (the RTX batch run) rem
 with the owner, unblocked — the command is above, unchanged, with its three new
 refusal behaviours documented. Ready for `sdd-verify` or the orchestrator's Slice 4
 dispatch (base = this branch).
+
+---
+
+# Apply Progress: Slice 4 — Eval Harness + Gold Set + Report (PR4)
+
+Branch: `feat/consorcio-rag-04-eval` (base: `feat/consorcio-rag-03-retrieval` @ `90d4acf`)
+Worktree: `/home/javier/programacion/consorcio-canalero/.claude/worktrees/agent-a6b0996d5b8538919`
+Mode: **Strict TDD** for the four contracts the orchestrator named (scoring math on a
+hand-computed fixture, the abstention recall-1.00 boundary, the `sintetico` report
+refusal, the LOOCV fold logic); standard-with-real-execution elsewhere, disclosed per
+task below.
+
+## Baseline — RE-MEASURED on this tree at `90d4acf`, before any Slice 4 change (amendment A2)
+
+```
+full suite, no corpus (the CI shape)   -> 2114 passed, 59 skipped,  0 failed   exit 0
+full suite, RAG_CORPUS_PATH set        -> 2144 passed, 29 skipped,  0 failed   exit 0
+make test-rag                          ->   24 passed,  0 skipped              exit 0
+make test-rag-corpus                   ->   30 passed,  0 skipped              exit 0
+```
+
+Both shapes collect **2173** (2114+59 = 2144+29). The record matches the slice-3
+fix-round numbers exactly, and the pre-existing `test_run_blocking` timing flake did
+not fire in either run.
+
+## Ledger amendments (A1–A2, done FIRST)
+
+| id | What was wrong | What changed | Evidence |
+|---|---|---|---|
+| **A1** (RAG3-R01) | `design.md` D4 claimed `vector_search()` raises `EmbeddingsNoCargadas` and `EmbedderMismatch`. It does not and cannot: it receives a query VECTOR, not an embedder, so it cannot know which model wrote the column. Verified at `repository.py:466-508` — its only refusal is `VectorSupportUnavailable`. Both provenance refusals live in `service.verificar_embedder`. The misattribution reads as a licence to call the leg directly and still be protected; a caller that does keeps the capability check and loses BOTH provenance gates. | D4's bullet split by layer, with the correction named. New stated design rule: every retrieval consumer goes through `service.recuperar`. `service.procedencia_embeddings` added so the report can read provenance without the eval package importing `repository`. D6's Runner bullet now names the code path. | `TestServiceLayerBoundary` — an AST walk over every `.py` in the eval package asserting no `repository` import, PLUS a behavioural spy proving `correr_modo` really calls `service.recuperar` three times. An import assertion alone is defeated by `importlib.import_module`. |
+| **A2** (RAG3-R02) | The slice-3 corpus-shape line read `2118 passed, 19 skipped + the pre-existing timing flake above`; the failure was COUNTED only inside the next sentence's `+1`. From the table alone that reads 2137 against the CI shape's 2138. | Re-measured before touching anything (above), corrected the historical line to state `1 FAILED` explicitly, and added a standing note that every shape line in this artifact reports passed / skipped / failed. | The re-measurement itself: 2114/59 and 2144/29, both exit 0, matching the slice-3 fix-round record. |
+
+## Task-by-task evidence
+
+- [x] **4.1** `eval/metrics.py` + `test_rag_metrics.py` — **17 passed.** Genuine RED
+  (`ModuleNotFoundError: app.domains.conocimiento.eval`). Four-question fixture whose
+  aggregates are checkable on paper: hit-rate@5 0.75, MRR 0.625, R-precision 0.375.
+  The MRR assertion produced a REAL failure first — `1 + 1/3 + 1 + 1/6` sums to
+  `2.4999999999999996`, so the mean is `0.6249999999999999`. Kept as `approx` with the
+  arithmetic explained, and a companion test pins the exact `repr` so a change in
+  summation order (e.g. a refactor to `statistics.fmean`) shows up as a diff instead of
+  a moved last digit.
+- [x] **4.2** `abstention.py` + `test_rag_abstention.py` — **21 passed.** Genuine RED
+  (`ModuleNotFoundError: app.domains.conocimiento.abstention`). The leakage fixture is
+  traced fold by fold in the test file: same-sample reads (recall 1.00, precision 2/3)
+  and the held-out pair reads (0.50, 0.33). Two of my own hand-traces were WRONG and the
+  implementation was right — both times because I forgot that the held-out item's own
+  score leaves the fold's grid, which is precisely the mechanism LOOCV exists for. Both
+  expectations were corrected against the measured behaviour, not the other way round.
+- [x] **4.3** `test_abstention_denominator_from_gold_set_not_literal` — the denominator
+  is `ParAbstencion.n_unanswerable`, counted from the sample. design.md D5's own literal
+  `18` was corrected to the ratified 23 in the same pass, along with its stale `n≈38`.
+- [x] **4.4** `docs/rag/gold-set-provenance.md` — O.2 closed before this slice ran, so
+  the draft already existed and was ratified verbatim; what this task produced is the
+  traceability record instead. See deviation #1 for why the draft itself is not copied
+  into this repository.
+- [x] **4.5** `eval/gold_set.yaml` — 52 items, 29 respondibles + 23 abstención, every one
+  `validado_por: owner`. **Every expected citation key was verified against the real
+  pinned corpus** (`test_every_expected_citation_key_exists_in_the_pinned_corpus`, 32
+  passed under `make test-rag-corpus`).
+- [x] **4.6** `eval/harness.py` + `test_n_lt_20_blocks_scoring` — genuine RED
+  (`ImportError: cannot import name 'harness'`). `Precondicion` has three hard
+  conditions: n≥20 respondibles, every item `owner`, every item resolved. Not-evaluable
+  is a distinct verdict from NO-GO, because "measured and failed" and "could not
+  measure" are different facts.
+- [x] **4.7** three-mode ablation — the pgvector-marked `TestThreeModesForReal` runs all
+  three modes over a seeded snapshot with real vectors and asserts the blocks are
+  independent (`hybrid` sees both legs, `fts` sees none from the vector side). A CI-shape
+  companion asserts the block structure without pgvector.
+- [x] **4.8** `test_vigencia_trap_surfaces_true_current_state` + the Ley 8548 derogada
+  case + a negative (a run that misses the caveat unit scores 0.0).
+- [x] **4.9** `decidir_go_no_go` — seven bars, each carrying its own `fuente`
+  (`answerable subset` or `LOOCV held-out`), so a report cannot mislabel which number
+  decided. The false-confident fixture is built so that recall is the ONLY failing bar.
+- [x] **4.10** `eval/privacy.py` — **7 passed.** Two independent guarantees: the
+  default-deny assert (which also refuses an unknown snapshot, because "zero private
+  documents" is trivially true of one that does not exist) and a payload query that
+  selects `clasificacion='publico'` in SQL. A test bypasses the assert to prove the
+  second holds alone.
+- [x] **4.11** `eval/report.py` + `test_rag_report.py` — **18 passed.** Genuine RED
+  (`ImportError`), then a real `SyntaxError` (`{expr!r if cond else …}` is invalid —
+  the conversion must apply to the whole expression). Determinism is asserted twice:
+  byte-identical renders, and an AST walk proving the module never calls `now`/`utcnow`/
+  `today`/`time`.
+- [x] **4.12** `scripts/rag_eval.py` + three Makefile targets — **9 passed** against real
+  PostgreSQL. `main()` had a REAL ordering defect found by its own test: it built the
+  embedder before checking the snapshot existed, so a mistyped `--corpus-sha` reported
+  "install torch" instead of "that snapshot does not exist", and a synthetic snapshot
+  spent minutes loading BGE-M3 before the report refused it. Reordered so every cheap
+  refusal runs first, mirroring `rag_ingest.py`'s own discipline.
+- [x] **4.13** `.cosmic-ray.toml` — four modules registered COMMENTED and unmeasured,
+  with their test files, case counts and the exact measurement command. Not wired to CI.
+- [ ] **4.14** BLOCKED on O.3 (the RTX batch run). Command sequence below.
+
+## The owner command sequence (O.3 → the real eval)
+
+Everything below runs on the workstation. Steps 1–2 need the ingestion extra in a
+SEPARATE virtualenv (torch + CUDA, ~6 GB); steps 3–5 run in the normal `venv`.
+
+```
+# 0. the vector-capable database, and the corpus at the pinned SHA
+make rag-db
+export RAG_CORPUS_PATH=~/Escritorio/consorcio/corpus-legal
+export DATABASE_URL=postgresql://consorcio:consorcio_dev@localhost:5432/consorcio
+export RAG_GOLD_PRIVADO_PATH=~/Escritorio/consorcio/gold-privado-2026-08-10.yaml
+
+# 1. ingest (idempotent; skip if rag_unidad already holds the 1448 rows)
+make rag-ingest RAG_CORPUS_PATH=$RAG_CORPUS_PATH
+
+# 2. EMBED — the RTX step, in its own venv
+cd gee-backend && python -m venv venv-rag && venv-rag/bin/pip install -r requirements-rag.txt
+venv-rag/bin/python scripts/rag_embed_batch.py --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f --database-url "$DATABASE_URL" --device cuda --preflight-only
+venv-rag/bin/python scripts/rag_embed_batch.py --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f --database-url "$DATABASE_URL" --output-dir artifacts/rag --device cuda --batch-size 8
+
+# 3. LOAD (gates: sha256 vs sidecar, active snapshot, dims, exemption identity, model transition)
+cd .. && make rag-embed-load
+
+# 4. EVAL — writes docs/rag/retrieval-eval-12043582-YYYY-MM-DD.md + .results.json
+make rag-eval
+
+# 5. verify what the database says produced those vectors
+psql "$DATABASE_URL" -c "SELECT corpus_sha, embedding_modelo, embedding_sintetico, embeddings_loaded_at FROM rag_corpus"
+```
+
+Notes that will save a round trip:
+
+* **`RAG_GOLD_PRIVADO_PATH` is required for a verdict.** Without it, 26 of the 52 items
+  have no question text, the run still produces per-mode diagnostics, and the report
+  refuses to emit go/no-go. That file is `~/Escritorio/consorcio/gold-privado-2026-08-10.yaml`
+  and it is written and ready.
+* **`--allow-synthetic` is for smoke runs only.** Without real vectors loaded,
+  `make rag-eval` exits 1 rather than producing a document that looks like an eval.
+* **Expect `LEG FTS DEGRADADA` on the first real run** — see RAG4-001 below. It is
+  printed on stdout and in the report; it is a property of the query operator, not of
+  the corpus, and it is the first thing to decide about before reading the ablation.
+
+## Deviations from Design / Discoveries
+
+1. **The gold set is split by the corpus's own `clasificacion`, and 26 of 52 questions
+   are NOT committed here.** This repository is public; `consorcio-corpus-legal` is
+   private and every document in it is ingested `clasificacion='privado'` under
+   default-deny. Twenty-six questions were transcribed verbatim from such documents —
+   the audit's 18 questions for the commission (`¿Dónde están las actas 3 a 7?`,
+   `¿Alguno de esos permisos se inscribió como servidumbre…?`), the seven canal N°5
+   items, and X-4. The rule applied is the corpus's own, one layer up: a question
+   inherits the classification of the document it was transcribed from. Committing them
+   would be a larger and more permanent disclosure than the external API call
+   `assert_public_domain` already refuses by default. **This is a safe default, not a
+   ratified decision** — the owner ratified the SET; publication surface was never put
+   to him and no artifact mentions repo visibility. Flipping it is a data move with no
+   code change. An unresolved item blocks go/no-go, so the split cannot quietly shrink
+   the denominator.
+2. **The retrieval metrics had no definitions anywhere, so this slice fixed them.** The
+   spec fixes seven BARS and defines exactly one of them (abstention recall). Three bars
+   are `= 1.00`, which is unreachable under the obvious readings — `|top_k ∩ gold| / k`
+   maxes at 0.3 for a 3-key question on a 10-hit page. Definitions are now written in
+   `metrics.py` and mirrored in design.md D6, the way D5 already fixes the abstention
+   ones "so the report cannot be argued with later". citation-precision is **R-precision**
+   (precision at rank `|gold|`), which is the textbook metric for this shape, can reach
+   1.00, and captures both coverage and noise. **Disclosed consequence:** the owner's bar
+   set is NESTED — a run at citation-precision 1.00 necessarily clears hit-rate@5 ≥ 0.85
+   and MRR ≥ 0.70. Those two are therefore diagnostics that say how far a failing run is
+   from the bar, not independent gates. That is a property of the ratified bars, not of
+   the definition, and it is stated rather than engineered around.
+3. **`clase: trampa-vigencia` is a SUBSET of answerable, not a third bucket.** The design
+   lists three values and the ratified denominators are 29/23, so the traps have to count
+   toward the 29. `es_respondible` is `clase != 'unanswerable'`. Only T-1, T-2 and T-5 are
+   vigencia traps; T-3 (días hábiles) and T-4 (applicability) are `answerable` with
+   `subclase: trampa-superada`, because marking T-4 `trampa-vigencia` would be false in
+   the data — the draft says explicitly it is "una trampa de recuperación, no de vigencia".
+4. **Two gold-set caveats recorded, neither resolved unilaterally.** The draft's
+   Descartes §1 calls Q-1 "zona gris real" while the count table lists it as answerable,
+   and Q-4 asks for a reglamentación the corpus does not hold. Both are kept answerable
+   on the reading that V0 measures RETRIEVAL, not legal certainty (the deciding units
+   exist and are retrievable). If the owner disagrees, both move to `unanswerable` and
+   the denominators become 27/25 — one line each.
+5. **One citation key corrected against the corpus.** The draft cites
+   `res-dnv-908-2026#anexo2#norma10`; the corpus keys it `#anexo-ii#norma10`. The corpus
+   wins. This is a key correction, not a rewording, and it is exactly what
+   `test_every_expected_citation_key_exists_in_the_pinned_corpus` exists to catch.
+6. **`grilla_de_umbrales` deliberately appends nothing above the maximum observed score.**
+   With a synthetic "abstain on everything" candidate, recall 1.00 is always reachable
+   and D5's fallback branch becomes unreachable code that the report would nevertheless
+   claim to count. Without it, recall 1.00 is unreachable in exactly one situation — an
+   unanswerable question outscoring every other item — which is the pathology the
+   fallback count exists to surface.
+7. **`CoberturaLegs` and `hibrido_degenerado` are beyond the task list**, and exist
+   because of RAG4-001: a mode whose leg returned nothing for most questions is not a
+   measurement of that leg, and a `hybrid` block whose FTS leg contributed nothing
+   everywhere is vector-only wearing a hybrid label. Both travel beside the metrics they
+   explain rather than in a footnote.
+8. **`ResultadoModo` computes its own LOOCV and coverage in `__post_init__`.** A caller
+   cannot hand it a LOOCV result or a coverage count belonging to different signals,
+   which is the cheapest way to make "these numbers came from this run" structural.
+
+## Findings raised BY this apply (not in this diff — see review-ledger.md)
+
+* **RAG4-001 (CRITICAL, reported not fixed).** `websearch_to_tsquery` builds a
+  CONJUNCTION. Measured against real PostgreSQL: gold item D-1 compiles to ELEVEN ANDed
+  lexemes and `9750#14` carries two of them, so the FTS leg returns **zero rows** — the
+  conjunction is in the WHERE clause and `ts_rank_cd` never runs. The FTS-only arm of the
+  ablation is therefore near-vacuous for the questions the gold set is made of, and
+  `hybrid` degenerates to vector-only under a hybrid label. Not fixed here because D4
+  names the operator explicitly and changing it would move slice-3's determinism fixture;
+  pinned by a named test, measured by `CoberturaLegs`, surfaced in the report and on
+  stdout. Recommended fix is an explicit OR-of-lexemes query for the eval path, disclosed
+  as the operator in the report — never an automatic AND→OR retry, which is the silent
+  degradation D4 forbids.
+* **RAG4-002 (WARNING, info).** `conocimiento_004` records model / revision / sintetico /
+  artifact sha / timestamp and NOT the batch's torch version or device, so D6's "pin torch
+  version and device for both legs" is unsatisfiable from the database. The report prints
+  `no registrado en la base` for the corpus leg rather than this process's values, because
+  printing those would attribute a CPU box's environment to vectors produced on a CUDA one.
+
+## Verification
+
+```
+full suite, no corpus (the CI shape)   -> 2219 passed, 62 skipped, 0 failed   exit 0   (was 2114 / 59 / 0)
+full suite, RAG_CORPUS_PATH set        -> 2251 passed, 30 skipped, 0 failed   exit 0   (was 2144 / 29 / 0)
+make test-rag                          ->   25 passed,  0 skipped             exit 0   (was 24 / 0)
+make test-rag-corpus                   ->   32 passed,  0 skipped             exit 0   (was 30 / 0)
+tests/new/conocimiento/ (no corpus)    ->  302 passed, 57 skipped             exit 0   (was 197 / 54)
+ruff check / ruff format --check       -> exit 0
+mypy --ignore-missing-imports (7 mods) -> Success: no issues found
+```
+
+Both full-suite shapes collect **2281** (2219+62 = 2251+30), **+108** over the 2173
+baseline: 105 unmarked, 1 `pgvector`-marked, 2 `corpus`-marked. The pre-existing
+`test_run_blocking` timing flake did not fire in either shape.
+
+## TDD Cycle Evidence
+
+| Task | Test | RED | GREEN | REFACTOR |
+|---|---|---|---|---|
+| 4.1 | `test_rag_metrics.py` | ✅ Real — `ModuleNotFoundError: app.domains.conocimiento.eval` | ✅ 17 passed, after a REAL failure on the MRR float (`0.6249999999999999` vs `0.625`) | ✅ Added the exact-`repr` determinism guard rather than rounding the metric |
+| 4.2 / 4.3 | `test_rag_abstention.py` | ✅ Real — `ModuleNotFoundError: …abstention` | ✅ 21 passed, after TWO of my own hand-traces proved wrong against the implementation | ✅ Fold assertion changed from a bare float list to `(id, umbral)` pairs — a list of five floats is the assertion that passes for the wrong reason |
+| 4.6-4.9 | `test_rag_eval_harness.py` | ✅ Real — `ImportError: cannot import name 'harness'` | ✅ 33 passed, after a real zero-hit failure that turned into RAG4-001 | ✅ Coverage diagnostic extracted into `CoberturaLegs`; the false-confident fixture rebuilt so recall is the ONLY failing bar |
+| 4.10 | `test_rag_privacy.py` | ➖ Written against the D3 contract; all 7 executed against real PostgreSQL | ✅ 7 passed | ✅ Added the bypass test so the SQL guarantee is proven independently of the assert |
+| 4.11 | `test_rag_report.py` | ✅ Real — `ImportError`, then a real `SyntaxError` in my own f-string | ✅ 18 passed | ✅ Test scaffolding kept OUT of the domain module (dropped a planned `gold_set_para_test` helper in favour of the existing test helpers) |
+| 4.12 | `test_rag_eval_cli.py` | ✅ **Behavioural** — the first run failed with `ModuleNotFoundError: torch`, exposing that `main()` built the embedder before checking the snapshot existed | ✅ 9 passed after reordering | ✅ Clock read once, at the edge, asserted by AST |
+
+**Honest note on RED.** Genuine module-level RED for 4.1, 4.2/4.3, 4.6-4.9 and 4.11, and
+genuine *behavioural* RED for 4.12 — the strongest kind here, because the defect was
+reproduced by the test before it was understood. 4.10 was written after its contract but
+every case executed against real PostgreSQL. No GREEN above is claimed from inspection.
+Three of my own expectations were wrong and were corrected against measured behaviour
+(the MRR float, two LOOCV fold traces); none of the implementation was changed to match
+a wrong expectation.
+
+## Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | A metric with no denominator returns `None`, never `0.0` (`vigencia_correctness` on a non-trap question, every aggregate over an empty set, `recall` with zero unanswerable items); a question that returned nothing scores `score_top1 = 0.0` deliberately, because an empty page IS a below-threshold signal; `procedencia is None` (unknown snapshot) stays distinct from `modelo is None` (never embedded) and the report prints different text for each. | Pass |
+| Boundaries | Recall exactly 1.00 vs 0.999 (strict, both directions); precision exactly at 0.80 (`>=`, not `>`); `abstiene` strictly below the threshold with the AT-threshold case asserted; hit-rate@5 with the gold key at 0-based rank 5 (outside) and rank 6 with `k=6` (inside); the grid with a single distinct score; an empty gold set; `n = 20` exactly. | Pass |
+| Concurrency / idempotency | The harness is read-only. Two `correr_modo` calls over the same snapshot return identical keys and identical scores; two renders with the same timestamp are byte-identical; two `escribir_reporte` runs produce identical JSON. Determinism is asserted on the float `repr`, not on the rounded print. | Pass |
+| Malicious input / security | The privacy gate is default-deny and refuses an unknown snapshot; the payload SQL cannot emit a non-public row even with the assert bypassed (asserted separately); the gold set's private split is asserted by a test that fails if question text is pasted in; all SQL is parameterized; nothing in this slice makes an external call. | Pass |
+| Partial failure / recovery | `main()` refuses before doing expensive work — unknown snapshot exits 1 before the embedder loads, synthetic exits 1 before BGE-M3 loads (this was a REAL defect found by the test and fixed); the synthetic gate runs before `mkdir`, so a refused run leaves nothing behind (asserted: `list(tmp_path.glob("*")) == []`); an unresolved gold item degrades to diagnostics-without-verdict rather than a smaller denominator. | Pass |
+| State / tenancy / time | Every harness entry point takes `corpus_sha` positionally and passes it to `service.recuperar`; the report reads provenance for THAT snapshot from the database; the timestamp is an argument everywhere and the modules are asserted (by AST) never to read a clock, `rag_eval.main` excepted where it is read once at the edge. | Pass |
+
+## Workload / PR Boundary
+
+- Mode: chained PR slice (feature-branch-chain)
+- Current work unit: Slice 4 — Eval harness + gold set + report (PR4, base = `feat/consorcio-rag-03-retrieval`)
+- Boundary: starts from a retrievable snapshot with no way to measure it; ends with a
+  runnable three-mode ablation, an owner-ratified 52-question gold set validated against
+  the real corpus, LOOCV-honest abstention thresholds, and a report that refuses to
+  publish a fabricated measurement. Only the E2E run (4.14) remains, blocked on O.3.
+- **Review budget: OVER the ~440-line forecast, materially — the same as slices 2 and 3.**
+  Production code ≈1933 lines (`harness` 595, `report` 447, `abstention` 349, `metrics`
+  208, `rag_eval` 202, `privacy` 115, `__init__` 17), tests ≈2086, plus `gold_set.yaml`
+  630 lines and `gold-set-provenance.md` 100 — the last two are ratified DATA and its
+  provenance record, not review-weight prose. The design named the split seam in advance
+  — **harness/metrics vs report writer** — and both halves verify independently:
+  `test_rag_metrics.py` + `test_rag_abstention.py` + `test_rag_eval_harness.py` (pure
+  scoring and the ablation, no report) and `test_rag_report.py` + `test_rag_eval_cli.py`
+  (the writer and its CLI, which consume a `ResultadoEval` and nothing else). The A1/A2
+  amendments plus the gold set are a third, independently reviewable group.
+
+## Status
+
+13/14 Slice 4 tasks complete (4.1–4.13) plus the two ledger amendments A1–A2. **4.14 is
+blocked on O.3** (the owner's RTX batch run) — the exact command sequence is above, and
+the only genuinely new prerequisite is `RAG_GOLD_PRIVADO_PATH`, which is written and
+ready. Two findings (RAG4-001, RAG4-002) are reported for a decision rather than fixed.
+Ready for `sdd-verify`.
