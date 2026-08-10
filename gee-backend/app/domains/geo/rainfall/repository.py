@@ -2,15 +2,16 @@
 
 import json
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
 
 from app.domains.geo.models import GeoApprovedZoning
+from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
 from app.domains.geo.rainfall.compute import correction_revision, revision_family
 from app.domains.geo.rainfall.models import (
     RainfallAnalysisRevision,
@@ -244,6 +245,66 @@ def intervals_in_window(
         .order_by(RainfallIntervalValue.interval_start)
     )
     return list(db.scalars(query).all())
+
+
+def baseline_cumulatives(
+    db: Session,
+    *,
+    source_id: str,
+    asset: str,
+    dates: Sequence[date],
+) -> dict[int, tuple[float, int, int]]:
+    """Per-baseline-year cumulative totals through each given calendar date
+    (design.md D1).
+
+    Reads under the fixed provider-asset key -- ``scope_kind="provider_asset"``,
+    ``scope_id=asset``, ``scope_version=BASELINE_ASSET_VERSION`` (never a
+    zoning version, so a zone republication can never orphan this read) --
+    anti-joined on supersession exactly like :func:`intervals_in_window`.
+
+    For each *date* in *dates* (one per baseline year, typically
+    :func:`temporal.baseline_dates`), sums the matching year's
+    ``[<year>-01-01, date + 1 day)`` window in one SQL ``GROUP BY``
+    aggregate ("window SUM" in design.md D1). Returns ``{year: (total_mm,
+    matched_days, expected_days)}``; a year with zero matched rows is
+    simply absent from the result -- never a fabricated zero total.
+    """
+    if not dates:
+        return {}
+
+    superseded = select(RainfallIntervalLifecycle.interval_value_id).where(
+        RainfallIntervalLifecycle.event_type == "superseded",
+        RainfallIntervalLifecycle.interval_value_id == RainfallIntervalValue.id,
+    )
+
+    expected_days_by_year: dict[int, int] = {}
+    windows = []
+    for cutoff in dates:
+        window_start = datetime(cutoff.year, 1, 1, tzinfo=UTC)
+        window_end = datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=UTC) + timedelta(days=1)
+        expected_days_by_year[cutoff.year] = (window_end - window_start).days
+        windows.append(
+            and_(
+                RainfallIntervalValue.interval_start >= window_start,
+                RainfallIntervalValue.interval_start < window_end,
+            )
+        )
+
+    year_expr = func.date_part("year", RainfallIntervalValue.interval_start)
+    query = (
+        select(year_expr.label("year"), func.sum(RainfallIntervalValue.value), func.count())
+        .where(RainfallIntervalValue.source_id == source_id)
+        .where(RainfallIntervalValue.scope_kind == "provider_asset")
+        .where(RainfallIntervalValue.scope_id == asset)
+        .where(RainfallIntervalValue.scope_version == BASELINE_ASSET_VERSION)
+        .where(or_(*windows))
+        .where(~superseded.exists())
+        .group_by(year_expr)
+    )
+    return {
+        int(year): (float(total), int(matched), expected_days_by_year[int(year)])
+        for year, total, matched in db.execute(query).all()
+    }
 
 
 def persist_intervals(

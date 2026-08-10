@@ -78,9 +78,18 @@ def build_snapshot(
     batch: dict[str, Any],
     now: datetime,
     fallback_used: bool = False,
+    baseline: dict[int, tuple[float, int, int]] | None = None,
 ) -> dict[str, Any]:
     """Build the v1 snapshot envelope: root keys are a subset of
     ``SNAPSHOT_ROOT_KEYS``, shipping only ``annual.selected`` (decision 5).
+
+    ``baseline`` is the caller's resolved historical baseline
+    (``repository.baseline_cumulatives``, design.md D1): ``{year: (total_mm,
+    matched_days, expected_days)}``, or ``None`` when the scope has no known
+    provider asset. Accepted here starting in slice 1 (the caller-side
+    resolution and ``UnknownProviderScope`` suppression wiring); consumed to
+    emit ``annual.normal``/``annual.percentile`` starting in slice 2a — this
+    parameter is otherwise unused for now.
 
     Coverage/completeness/quality are recomputed here, at build time, over
     ``[year_start, min(comparison_end, last_interval_end))`` — the

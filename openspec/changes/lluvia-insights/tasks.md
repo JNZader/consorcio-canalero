@@ -31,23 +31,23 @@ Only the tracker (`feat/lluvia-insights`) merges to `main`.
 
 ## Slice 1: Historical Baseline Backfill (D1, D2)
 
-- [ ] 1.1 RED `gee-backend/tests/new/geo/rainfall/test_rainfall_baseline.py::test_provider_asset_scope_key_persists_and_reads_back` — persist intervals under `scope_kind="provider_asset", scope_id="zona_cc_ampliada", scope_version="v1"`, assert readback. Files: new test file.
-- [ ] 1.2 GREEN `adapters/gee_client.py::asset_name_for` — add `scope_kind == "provider_asset"` branch returning `scope_id` unchanged; export `BASELINE_ASSET_VERSION = "v1"`. Makes 1.1 pass.
-- [ ] 1.3 RED `test_rainfall_baseline.py::test_baseline_cumulatives_returns_per_year_totals` — 3 baseline years persisted for one asset; `repository.baseline_cumulatives(db, source_id=..., asset=..., dates=[...])` returns `{year: (total_mm, matched_days, expected_days)}` matching a manual SQL sum.
-- [ ] 1.4 GREEN `repository.py::baseline_cumulatives` — SQL window `SUM` per baseline year, anti-joined on supersession (pattern of `intervals_in_window`, `repository.py:213-246`).
-- [ ] 1.5 RED `test_rainfall_baseline.py::test_zoning_republication_does_not_orphan_baseline` — bump a zone `scope_version`; `baseline_cumulatives` for the unchanged asset still returns the same rows.
-- [ ] 1.6 GREEN — assert-only: the asset key never includes `scope_version` (1.2/1.4); confirm 1.5 passes with no further code.
-- [ ] 1.7 RED `test_rainfall_baseline.py::test_unmapped_basin_raises_unknown_provider_scope` — a basin id absent from `BASIN_ASSET_NAMES` raises `UnknownProviderScope` when the baseline asset is resolved.
-- [ ] 1.8 GREEN `tasks.py::_persist_analysis_revision` — catch `UnknownProviderScope`, pass `baseline=None` to `build_snapshot` (full suppression wiring completes in 2a.7).
-- [ ] 1.9 RED `gee-backend/tests/new/geo/rainfall/test_rainfall_backfill.py::test_backfill_dedupes_shared_asset_one_fetch_per_year` — two zone scopes sharing one asset; the provider is fetched once per year (30 total), not per scope.
-- [ ] 1.10 GREEN `tasks.py::backfill_baseline_range(asset, years=range(1991, 2021))` — loop years, reuse `backfill_missing` verbatim per key (`tasks.py:947-972`), sleep `RAINFALL_BACKFILL_PACE_SECONDS` (default 5s), `record_event("rainfall.backfill.year", ...)`.
-- [ ] 1.11 RED `test_rainfall_backfill.py::test_backfill_resumes_after_interruption_no_refetch` — checkpoint stops at year N; rerun starts at N+1, 0 provider calls for years ≤N.
-- [ ] 1.12 GREEN — assert-only against 1.10's inherited `already_complete` short-circuit; no new code.
-- [ ] 1.13 RED `test_rainfall_backfill.py::test_backfill_stops_labelled_on_circuit_open` — `FakeGeeClient` forcing a pre-opened Redis circuit for role `historical` yields `{"stopped": True, "reason": "circuit_open"}`, no traceback, no further provider call.
-- [ ] 1.14 RED `test_rainfall_backfill.py::test_backfill_stops_labelled_on_adapter_error` — same shape, `reason: "adapter_error"`.
-- [ ] 1.15 GREEN `tasks.py::backfill_baseline_range` — wrap the per-year ingest in `except (AdapterError, CircuitOpen):`, `record_event("rainfall.backfill.stopped", reason=...)`, return the stop result instead of raising. Makes 1.13/1.14 pass.
-- [ ] 1.16 Create `backfill_cli.py` — `__main__` one-shot runner calling `backfill_baseline_range(DEFAULT_ZONE_ASSET)`; `--help` states the ~300s recovery-window wait-out rule (D2).
-- [ ] 1.17 Confirm no new pure-logic module is wired uncommented into `.cosmic-ray.toml:78-90` — `baseline_cumulatives` is SQL, out of the pure-target set.
+- [x] 1.1 RED `gee-backend/tests/new/geo/rainfall/test_rainfall_baseline.py::test_provider_asset_scope_key_persists_and_reads_back` — persist intervals under `scope_kind="provider_asset", scope_id="zona_cc_ampliada", scope_version="v1"`, assert readback. Files: new test file.
+- [x] 1.2 GREEN `adapters/gee_client.py::asset_name_for` — add `scope_kind == "provider_asset"` branch returning `scope_id` unchanged; export `BASELINE_ASSET_VERSION = "v1"`. Makes 1.1 pass.
+- [x] 1.3 RED `test_rainfall_baseline.py::test_baseline_cumulatives_returns_per_year_totals` — 3 baseline years persisted for one asset; `repository.baseline_cumulatives(db, source_id=..., asset=..., dates=[...])` returns `{year: (total_mm, matched_days, expected_days)}` matching a manual SQL sum.
+- [x] 1.4 GREEN `repository.py::baseline_cumulatives` — SQL window `SUM` per baseline year, anti-joined on supersession (pattern of `intervals_in_window`, `repository.py:213-246`).
+- [x] 1.5 RED `test_rainfall_baseline.py::test_zoning_republication_does_not_orphan_baseline` — bump a zone `scope_version`; `baseline_cumulatives` for the unchanged asset still returns the same rows.
+- [x] 1.6 GREEN — assert-only: the asset key never includes `scope_version` (1.2/1.4); confirm 1.5 passes with no further code.
+- [x] 1.7 RED `test_rainfall_baseline.py::test_unmapped_basin_raises_unknown_provider_scope` — a basin id absent from `BASIN_ASSET_NAMES` raises `UnknownProviderScope` when the baseline asset is resolved.
+- [x] 1.8 GREEN `tasks.py::_persist_analysis_revision` — catch `UnknownProviderScope`, pass `baseline=None` to `build_snapshot` (full suppression wiring completes in 2a.7). Deviation: also proven for the MAPPED-scope happy path (`test_persist_analysis_revision_resolves_mapped_baseline_and_passes_it_through`, RED-then-GREEN verified), beyond the unmapped-basin case the task literally names — see apply-progress.
+- [x] 1.9 RED `gee-backend/tests/new/geo/rainfall/test_rainfall_backfill.py::test_backfill_dedupes_shared_asset_one_fetch_per_year` — two zone scopes sharing one asset; the provider is fetched once per year (30 total), not per scope.
+- [x] 1.10 GREEN `tasks.py::backfill_baseline_range(asset, years=range(1991, 2021))` — loop years, reuse `backfill_missing` verbatim per key (`tasks.py:947-972`), sleep `RAINFALL_BACKFILL_PACE_SECONDS` (default 5s), `record_event("rainfall.backfill.year", ...)`.
+- [x] 1.11 RED `test_rainfall_backfill.py::test_backfill_resumes_after_interruption_no_refetch` — checkpoint stops at year N; rerun starts at N+1, 0 provider calls for years ≤N.
+- [x] 1.12 GREEN — assert-only against 1.10's inherited `already_complete` short-circuit; no new code.
+- [x] 1.13 RED `test_rainfall_backfill.py::test_backfill_stops_labelled_on_circuit_open` — `FakeGeeClient` forcing a pre-opened Redis circuit for role `historical` yields `{"stopped": True, "reason": "circuit_open"}`, no traceback, no further provider call. Deviation: implemented as a drop-in fake `CircuitStore` (`RedisCircuitStore` monkeypatched at its class seam, `test_resilience.py`'s pattern) rather than a `FakeGeeClient` — `can_attempt()` raises before any adapter/`ee` call is ever reached, so GEE is equally untouched; see apply-progress.
+- [x] 1.14 RED `test_rainfall_backfill.py::test_backfill_stops_labelled_on_adapter_error` — same shape, `reason: "adapter_error"`.
+- [x] 1.15 GREEN `tasks.py::backfill_baseline_range` — wrap the per-year ingest in `except (AdapterError, CircuitOpen):`, `record_event("rainfall.backfill.stopped", reason=...)`, return the stop result instead of raising. Makes 1.13/1.14 pass.
+- [x] 1.16 Create `backfill_cli.py` — `__main__` one-shot runner calling `backfill_baseline_range(DEFAULT_ZONE_ASSET)`; `--help` states the ~300s recovery-window wait-out rule (D2).
+- [x] 1.17 Confirm no new pure-logic module is wired uncommented into `.cosmic-ray.toml:78-90` — `baseline_cumulatives` is SQL, out of the pure-target set.
 
 ## Slice 2a: Metric Core — Normal, Percentile, Antecedents, Thresholds (D4 rows, D5, D6, LIB-102 fold)
 
