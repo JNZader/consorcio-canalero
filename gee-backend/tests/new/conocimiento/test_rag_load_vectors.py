@@ -3,8 +3,9 @@
 Two layers, deliberately split so the important one runs everywhere:
 
 * the COPY-literal round-trip and the **pre-flight** (which units are exempt from
-  embedding, and are those the ones actually missing?) need no `vector` column at
-  all, so they run on the DEFAULT vector-less image alongside the rest of CI;
+  embedding, are those the ones actually missing, and is this artifact even from
+  the model this snapshot already holds?) need no `vector` column at all, so they
+  run on the DEFAULT vector-less image alongside the rest of CI;
 * the staging `COPY` + `UPDATE … FROM` needs pgvector and is marked accordingly.
 """
 
@@ -19,6 +20,8 @@ import pytest
 from sqlalchemy import text
 
 from app.domains.conocimiento.embedding import (
+    DEFAULT_MODEL_ID,
+    DETERMINISTIC_MODEL_ID,
     EMBEDDING_DIMENSIONS,
     VectorsManifest,
     copy_line,
@@ -26,6 +29,15 @@ from app.domains.conocimiento.embedding import (
     sha256_file,
     vector_literal,
 )
+from app.domains.conocimiento.repository import leer_procedencia, registrar_procedencia
+
+#: `intfloat/multilingual-e5-large` is the artifact that makes RAG3-001 concrete
+#: rather than theoretical: 1024 dimensions exactly like BGE-M3, so every
+#: dimension check passes, and prefix-asymmetric (`query:` / `passage:`), so
+#: loading it over a BGE-M3 corpus destroys retrieval without a single error.
+#: It is also already in `requirements-rag.txt` as the O.5 baseline leg, so it is
+#: a dump this repository can really produce by accident.
+E5_MODEL_ID = "intfloat/multilingual-e5-large"
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "rag_load_vectors.py"
 
@@ -71,6 +83,19 @@ def seed_snapshot(db, claves: list[str], *, activo: bool = True) -> None:
             "(:sha, :key, 'ley-x', 'articulo', 'e', :texto, :texto, 'l.md', 0)"
         ),
         [{"sha": SHA, "key": key, "texto": f"texto de {key}"} for key in claves],
+    )
+    db.flush()
+
+
+def registrar(db, *, modelo: str = DEFAULT_MODEL_ID, sintetico: bool = False) -> None:
+    """Pretend a previous load already stamped this snapshot's provenance."""
+    registrar_procedencia(
+        db,
+        SHA,
+        modelo=modelo,
+        revision_hf=None if sintetico else "c" * 40,
+        sintetico=sintetico,
+        artifact_sha256="9" * 64,
     )
     db.flush()
 
@@ -303,6 +328,193 @@ class TestPreflightExemptionIdentity:
         )
 
 
+class TestEmbeddingProvenanceRecord:
+    """conocimiento_004: the sidecar stops being read-and-discarded.
+
+    No `vector` column is involved — provenance lives on `rag_corpus` — so these
+    run in the shape CI actually executes.
+    """
+
+    def test_a_never_embedded_snapshot_reports_no_provenance(self, db):
+        seed_snapshot(db, ["9750#1"])
+        procedencia = leer_procedencia(db, SHA)
+
+        assert procedencia is not None
+        assert procedencia.modelo is None
+        assert procedencia.cargado is False
+
+    def test_unknown_snapshot_and_unembedded_snapshot_are_different_answers(self, db):
+        """A typo in a corpus SHA must not read as "ingested but not embedded"."""
+        seed_snapshot(db, ["9750#1"])
+        assert leer_procedencia(db, "0" * 40) is None
+        assert leer_procedencia(db, SHA) is not None
+
+    def test_registering_provenance_records_every_field(self, db):
+        seed_snapshot(db, ["9750#1"])
+
+        filas = registrar_procedencia(
+            db,
+            SHA,
+            modelo=DEFAULT_MODEL_ID,
+            revision_hf="c" * 40,
+            sintetico=False,
+            artifact_sha256="a" * 64,
+        )
+        db.flush()
+        procedencia = leer_procedencia(db, SHA)
+
+        assert filas == 1
+        assert procedencia is not None
+        assert procedencia.modelo == DEFAULT_MODEL_ID
+        assert procedencia.revision_hf == "c" * 40
+        assert procedencia.sintetico is False
+        assert procedencia.artifact_sha256 == "a" * 64
+        assert procedencia.loaded_at is not None
+        assert procedencia.cargado is True
+
+    def test_registering_an_unknown_snapshot_touches_nothing(self, db):
+        """The loader turns this into an abort; here it must simply be 0 rows."""
+        seed_snapshot(db, ["9750#1"])
+        assert (
+            registrar_procedencia(
+                db,
+                "0" * 40,
+                modelo=DEFAULT_MODEL_ID,
+                revision_hf=None,
+                sintetico=False,
+                artifact_sha256="a" * 64,
+            )
+            == 0
+        )
+
+
+class TestDiagnosticSample:
+    """The key samples in every abort message are bounded and say so."""
+
+    def test_a_short_set_is_printed_whole(self):
+        assert rag_load_vectors._muestra(["9750#1", "9750#2"]) == "['9750#1', '9750#2']"
+
+    def test_a_long_set_is_capped_and_declares_the_remainder(self):
+        muestra = rag_load_vectors._muestra([f"k{i:02d}" for i in range(25)])
+
+        assert "k09" in muestra
+        assert "k10" not in muestra, "the cap is 10 keys"
+        assert "(+15 more)" in muestra, "…and a truncated list must never look complete"
+
+
+class TestModelReplacementGate:
+    """RAG3-001: which model wrote these vectors, and did anyone authorise a swap?
+
+    The gate the loader used to have was `dims == 1024`, which is not a check on
+    the model. Every case below passes that check.
+    """
+
+    def test_first_load_into_a_never_embedded_snapshot_is_allowed(self, db):
+        seed_snapshot(db, ["9750#1"])
+        rag_load_vectors.preflight(db, make_manifest(n_vectors=1), {"9750#1"})
+
+    def test_replace_model_on_a_never_embedded_snapshot_is_refused(self, db):
+        """There is no model to replace, so the flag is a misunderstanding."""
+        seed_snapshot(db, ["9750#1"])
+
+        with pytest.raises(rag_load_vectors.ModelMismatch, match="nothing to replace"):
+            rag_load_vectors.preflight(
+                db, make_manifest(n_vectors=1), {"9750#1"}, reemplazar_modelo=True
+            )
+
+    def test_reloading_the_same_model_needs_no_flag(self, db):
+        seed_snapshot(db, ["9750#1"])
+        registrar(db)
+        rag_load_vectors.preflight(db, make_manifest(n_vectors=1), {"9750#1"})
+
+    def test_replace_model_is_refused_when_the_models_already_match(self, db):
+        """The anti-cargo-cult half: a flag accepted when it changes nothing
+        stops being a gate and becomes boilerplate in somebody's runbook."""
+        seed_snapshot(db, ["9750#1"])
+        registrar(db)
+
+        with pytest.raises(rag_load_vectors.ModelMismatch, match="no model change"):
+            rag_load_vectors.preflight(
+                db, make_manifest(n_vectors=1), {"9750#1"}, reemplazar_modelo=True
+            )
+
+    def test_e5_artifact_over_a_bge_snapshot_is_refused(self, db):
+        """The concrete RAG3-001 scenario: same dims, different geometry.
+
+        1024 dimensions, so the surviving pre-check passes; asymmetric prefixes,
+        so the retrieval it produces is noise. Nothing but the recorded model id
+        can tell the two apart.
+        """
+        seed_snapshot(db, ["9750#1"])
+        registrar(db, modelo=DEFAULT_MODEL_ID)
+        manifest = make_manifest(n_vectors=1, modelo=E5_MODEL_ID, dims=EMBEDDING_DIMENSIONS)
+
+        with pytest.raises(rag_load_vectors.ModelMismatch) as abort:
+            rag_load_vectors.preflight(db, manifest, {"9750#1"})
+
+        mensaje = str(abort.value)
+        assert DEFAULT_MODEL_ID in mensaje, "the refusal must name the model in the database"
+        assert E5_MODEL_ID in mensaje, "…and the model in the artifact"
+        assert manifest.dims == EMBEDDING_DIMENSIONS, "the dims check cannot see this"
+
+    def test_e5_artifact_loads_when_the_replacement_is_explicit(self, db):
+        seed_snapshot(db, ["9750#1"])
+        registrar(db, modelo=DEFAULT_MODEL_ID)
+        rag_load_vectors.preflight(
+            db,
+            make_manifest(n_vectors=1, modelo=E5_MODEL_ID),
+            {"9750#1"},
+            reemplazar_modelo=True,
+        )
+
+    def test_synthetic_to_real_is_the_heal_path_and_needs_no_flag(self, db):
+        """Replacing hash noise with a real model is the one direction that
+        needs no permission: friction belongs on the damage, not on the fix."""
+        seed_snapshot(db, ["9750#1"])
+        registrar(db, modelo=DETERMINISTIC_MODEL_ID, sintetico=True)
+
+        rag_load_vectors.preflight(
+            db, make_manifest(n_vectors=1, modelo=DEFAULT_MODEL_ID, sintetico=False), {"9750#1"}
+        )
+
+    def test_real_to_synthetic_is_refused_with_allow_synthetic_alone(self, db):
+        seed_snapshot(db, ["9750#1"])
+        registrar(db, modelo=DEFAULT_MODEL_ID, sintetico=False)
+        manifest = make_manifest(n_vectors=1, modelo=DETERMINISTIC_MODEL_ID, sintetico=True)
+
+        with pytest.raises(rag_load_vectors.ModelMismatch, match="--replace-model"):
+            rag_load_vectors.preflight(db, manifest, {"9750#1"}, permitir_sintetico=True)
+
+    def test_real_to_synthetic_is_refused_with_replace_model_alone(self, db):
+        """`--allow-synthetic` still guards the artifact itself, first."""
+        seed_snapshot(db, ["9750#1"])
+        registrar(db, modelo=DEFAULT_MODEL_ID, sintetico=False)
+        manifest = make_manifest(n_vectors=1, modelo=DETERMINISTIC_MODEL_ID, sintetico=True)
+
+        with pytest.raises(rag_load_vectors.PreflightFailure, match="SINTÉTICO"):
+            rag_load_vectors.preflight(db, manifest, {"9750#1"}, reemplazar_modelo=True)
+
+    def test_real_to_synthetic_needs_both_flags(self, db):
+        seed_snapshot(db, ["9750#1"])
+        registrar(db, modelo=DEFAULT_MODEL_ID, sintetico=False)
+
+        rag_load_vectors.preflight(
+            db,
+            make_manifest(n_vectors=1, modelo=DETERMINISTIC_MODEL_ID, sintetico=True),
+            {"9750#1"},
+            permitir_sintetico=True,
+            reemplazar_modelo=True,
+        )
+
+    def test_the_cli_exposes_replace_model_with_its_own_exit_code(self):
+        """A wrapper must be able to tell "broken artifact" from "other model"."""
+        args = rag_load_vectors.build_parser().parse_args(
+            ["--vectors", "v.copy", "--database-url", "postgresql:///x", "--replace-model"]
+        )
+        assert args.replace_model is True
+        assert issubclass(rag_load_vectors.ModelMismatch, rag_load_vectors.PreflightFailure)
+
+
 @pytest.mark.pgvector
 class TestStagingLoad:
     """3.4: COPY → staging → `UPDATE … FROM`, all-or-nothing."""
@@ -378,6 +590,93 @@ class TestStagingLoad:
 
         with pytest.raises(rag_load_vectors.ArtifactMismatch, match="sha256"):
             rag_load_vectors.load_vectors(pgvector_db, copy_path)
+
+    def test_load_records_provenance_in_the_load_transaction(self, pgvector_db, tmp_path):
+        """RAG3-001: the sidecar reaches the database instead of being discarded."""
+        claves = ["9750#1", "9750#2"]
+        seed_snapshot(pgvector_db, claves)
+        copy_path, manifest = self._artifact(tmp_path, claves)
+
+        rag_load_vectors.load_vectors(pgvector_db, copy_path)
+
+        procedencia = leer_procedencia(pgvector_db, SHA)
+        assert procedencia is not None
+        assert procedencia.modelo == manifest.modelo
+        assert procedencia.revision_hf == manifest.revision_hf
+        assert procedencia.sintetico is False
+        assert procedencia.artifact_sha256 == manifest.sha256
+        assert procedencia.loaded_at is not None
+
+    def test_a_crash_after_the_writes_rolls_back_vectors_AND_provenance(
+        self, pgvector_db, tmp_path, monkeypatch
+    ):
+        """The two writes are one fact, so they must fail as one.
+
+        Provenance that outlived a rolled-back load would be the worst of both
+        states: `rag_corpus` claiming a model for a column that is still NULL,
+        and `service.recuperar` cheerfully accepting an embedder for vectors
+        that do not exist. Simulated at the last possible moment — after the
+        `UPDATE` and after the stamp — because that is where the window is.
+        """
+        claves = ["9750#1", "9750#2"]
+        seed_snapshot(pgvector_db, claves)
+        copy_path, _ = self._artifact(tmp_path, claves)
+
+        def estallar(*_args, **_kwargs):
+            raise RuntimeError("simulated crash after the UPDATE and the provenance stamp")
+
+        monkeypatch.setattr(rag_load_vectors, "verificar_post_carga", estallar)
+
+        punto = pgvector_db.begin_nested()
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            rag_load_vectors.load_vectors(pgvector_db, copy_path)
+        punto.rollback()
+
+        con_vector = pgvector_db.execute(
+            text(
+                "SELECT count(*) FROM rag_unidad WHERE corpus_sha = :sha AND embedding IS NOT NULL"
+            ),
+            {"sha": SHA},
+        ).scalar_one()
+        procedencia = leer_procedencia(pgvector_db, SHA)
+
+        assert con_vector == 0, "the vectors must not survive the rollback"
+        assert procedencia is not None and procedencia.cargado is False, (
+            "…and neither must the provenance stamp"
+        )
+
+    def test_post_load_mismatch_names_both_directions(self, pgvector_db, tmp_path):
+        """RAG3-003: two different accidents share this symptom.
+
+        `sin vector y sin exención` is a dropped shard or a mis-slice;
+        `exentas pero embebidas` is a ceiling applied to a different set than the
+        one disclosed. The old message printed only the first, so the second
+        rendered as an empty list next to prose about a set difference.
+        """
+        seed_snapshot(pgvector_db, ["9750#1", "9750#2", "10593#1"])
+        pgvector_db.execute(
+            text(
+                "CREATE TEMP TABLE " + rag_load_vectors.STAGING_TABLE + " (corpus_sha CHAR(40), "
+                f"citation_key TEXT, embedding vector({EMBEDDING_DIMENSIONS})) ON COMMIT DROP"
+            )
+        )
+        pgvector_db.execute(
+            text(
+                "UPDATE rag_unidad SET embedding = CAST(:v AS vector) WHERE corpus_sha = :sha "
+                "AND citation_key = '9750#1'"
+            ),
+            {"v": vector_literal(_vector(0.5)), "sha": SHA},
+        )
+        # Declares 9750#1 exempt (it was embedded anyway) and says nothing about
+        # 9750#2 (which came out without a vector).
+        manifest = make_manifest(n_vectors=1, over_ceiling=("9750#1", "10593#1"))
+
+        with pytest.raises(rag_load_vectors.PreflightFailure) as abort:
+            rag_load_vectors.verificar_post_carga(pgvector_db, manifest, actualizadas=1)
+
+        mensaje = str(abort.value)
+        assert "sin vector y sin exención (1): ['9750#2']" in mensaje
+        assert "exentas pero embebidas (1): ['9750#1']" in mensaje
 
     def test_loaded_vector_round_trips_out_of_postgres(self, pgvector_db, tmp_path):
         seed_snapshot(pgvector_db, ["9750#1"])

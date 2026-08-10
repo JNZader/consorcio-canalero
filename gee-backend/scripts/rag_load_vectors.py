@@ -14,6 +14,14 @@ fail on the primary key for every one of them. So the dump lands in a
 Everything is one transaction and every check is a refusal, not a warning:
 nothing commits unless every key in the dump resolved to a unit AND every unit
 that ends up without a vector is one the artifact declared exempt.
+
+**The sidecar is recorded, not just consulted.** Migration `conocimiento_004`
+adds five provenance columns to `rag_corpus`, written in the same transaction as
+the `UPDATE`. That is what lets the loader refuse a model change and lets
+`service.recuperar` refuse a query embedder that does not match the rows
+(ledger RAG3-001). Deliberately changing the model is `--replace-model`, which
+in turn refuses to run when the models already agree, so it cannot decay into a
+flag people paste in by habit.
 """
 
 from __future__ import annotations
@@ -35,11 +43,19 @@ from app.domains.conocimiento.embedding import (  # noqa: E402
     sha256_file,
 )
 from app.domains.conocimiento.repository import (  # noqa: E402
+    ProcedenciaEmbeddings,
     VectorSupportUnavailable,
+    leer_procedencia,
+    registrar_procedencia,
     require_vector_support,
 )
 
 STAGING_TABLE = "rag_embedding_staging"
+
+#: How many keys a diagnostic prints per set before it stops. Enough to
+#: recognise a pattern, few enough that the message stays readable when the
+#: answer is "the whole batch".
+MAX_CLAVES_EN_MENSAJE = 10
 
 
 class ArtifactMismatch(RuntimeError):
@@ -48,6 +64,23 @@ class ArtifactMismatch(RuntimeError):
 
 class PreflightFailure(RuntimeError):
     """A pre- or post-check refused the load. Nothing was written."""
+
+
+class ModelMismatch(PreflightFailure):
+    """The artifact was produced by a different embedder than the snapshot holds.
+
+    Its own class, and its own exit code, because it is the one refusal an
+    operator can legitimately override — and the override (`--replace-model`)
+    means "re-embed this snapshot with a different model", which is a decision,
+    not a retry.
+    """
+
+
+def _muestra(claves: list[str]) -> str:
+    """`['a', 'b', … (+3 more)]` — a bounded, honest sample of a key set."""
+    visibles = claves[:MAX_CLAVES_EN_MENSAJE]
+    resto = len(claves) - len(visibles)
+    return f"{visibles}" + (f" (+{resto} more)" if resto else "")
 
 
 def leer_claves(copy_path: Path) -> set[str]:
@@ -86,12 +119,90 @@ def verificar_dump(copy_path: Path, manifest: VectorsManifest) -> None:
         )
 
 
+def puerta_de_modelo(
+    procedencia: ProcedenciaEmbeddings,
+    manifest: VectorsManifest,
+    *,
+    permitir_sintetico: bool = False,
+    reemplazar_modelo: bool = False,
+) -> None:
+    """Refuse an embedder change that nobody asked for (ledger RAG3-001).
+
+    The check that used to guard this was `dims == 1024`, which is not a check
+    on the model at all: `intfloat/multilingual-e5-large` is also 1024
+    dimensions, and it is prefix-asymmetric — an e5 dump loaded over a BGE-M3
+    corpus passes every existing gate and turns the vector leg into noise
+    dressed as a measurement. Only the recorded model id can see that, and only
+    because migration `conocimiento_004` made the loader write it down.
+
+    Four transitions, three answers:
+
+    * **same model** — a reload. Allowed, and `--replace-model` is REFUSED here:
+      a flag that is accepted when it changes nothing becomes a flag people
+      paste in by habit, and then it is not a gate any more.
+    * **synthetic → real** — the heal path. Always allowed, no flag: replacing
+      hash noise with a real model is the direction nobody needs protecting
+      from, and requiring a flag would put friction on the fix rather than on
+      the damage.
+    * **real → synthetic** — requires BOTH `--allow-synthetic` and
+      `--replace-model`. It overwrites measured vectors with noise while leaving
+      an eval report that looks identical; one flag is not enough of a sentence
+      to say that out loud.
+    * **real → a different real** — requires `--replace-model`, and the refusal
+      names both models, because "which model is in there" is exactly the
+      question the operator cannot otherwise answer.
+    """
+    registrado = procedencia.modelo
+    entrante = manifest.modelo
+
+    if registrado is None:
+        if reemplazar_modelo:
+            raise ModelMismatch(
+                f"--replace-model was passed, but snapshot {procedencia.corpus_sha} has "
+                "no embeddings loaded (embedding_modelo IS NULL) — there is nothing to "
+                "replace. Drop the flag: a first load needs no override."
+            )
+        return
+
+    registrado_sintetico = bool(procedencia.sintetico)
+    curacion = registrado_sintetico and not manifest.sintetico
+    degradacion = procedencia.sintetico is False and manifest.sintetico
+    hay_transicion = registrado != entrante or registrado_sintetico != manifest.sintetico
+
+    if reemplazar_modelo and not hay_transicion:
+        raise ModelMismatch(
+            f"--replace-model was passed, but the snapshot already holds vectors from "
+            f"{registrado!r} and the artifact declares the same model. There is no "
+            "model change to authorise; re-loading the same model needs no flag."
+        )
+
+    if degradacion and not (permitir_sintetico and reemplazar_modelo):
+        raise ModelMismatch(
+            f"snapshot {procedencia.corpus_sha} holds REAL vectors from {registrado!r} "
+            f"and this artifact is SINTÉTICO ({entrante!r}: hash noise, not embeddings). "
+            "Overwriting measurements with noise needs BOTH --allow-synthetic and "
+            "--replace-model, because afterwards nothing in an eval report would look "
+            "any different."
+        )
+
+    if registrado != entrante and not curacion and not reemplazar_modelo:
+        raise ModelMismatch(
+            f"snapshot {procedencia.corpus_sha} holds vectors from {registrado!r}; this "
+            f"artifact was produced by {entrante!r}. Same dimensions is not the same "
+            "model — an asymmetric model (e5 needs `query:`/`passage:` prefixes) loaded "
+            "over a symmetric one (BGE-M3 takes none) degrades retrieval totally and "
+            "reports nothing. Pass --replace-model if you mean to re-embed this "
+            "snapshot with a different model."
+        )
+
+
 def preflight(
     session: Session,
     manifest: VectorsManifest,
     claves_dump: set[str],
     *,
     permitir_sintetico: bool = False,
+    reemplazar_modelo: bool = False,
 ) -> None:
     """Refuse the load unless the artifact matches this snapshot EXACTLY.
 
@@ -139,6 +250,15 @@ def preflight(
             f"snapshot {manifest.corpus_sha} exists but is not activo. Loading "
             "vectors into a retired snapshot would embed a corpus nothing queries."
         )
+
+    procedencia = leer_procedencia(session, manifest.corpus_sha)
+    assert procedencia is not None  # the row exists — checked immediately above
+    puerta_de_modelo(
+        procedencia,
+        manifest,
+        permitir_sintetico=permitir_sintetico,
+        reemplazar_modelo=reemplazar_modelo,
+    )
 
     if len(claves_dump) != manifest.n_vectors:
         raise PreflightFailure(
@@ -195,11 +315,72 @@ def _dims_esperadas() -> int:
     return EMBEDDING_DIMENSIONS
 
 
+def verificar_post_carga(session: Session, manifest: VectorsManifest, actualizadas: int) -> None:
+    """The in-transaction post-checks (design.md D3). Raises to roll the load back.
+
+    Split out of `load_vectors` so the "what if this fails after the writes?"
+    case is reachable in a test without corrupting an artifact: everything the
+    load writes — the vectors AND the provenance stamp — has already happened
+    when this runs, so a failure here is exactly the crash-after-write scenario
+    the single-transaction claim exists to cover.
+    """
+    if actualizadas != manifest.n_vectors:
+        raise PreflightFailure(
+            f"the UPDATE touched {actualizadas} rows, the sidecar declares "
+            f"n_vectors={manifest.n_vectors}. Rolling back."
+        )
+
+    huerfanas = [
+        row[0]
+        for row in session.execute(
+            text(
+                f"SELECT s.citation_key FROM {STAGING_TABLE} s WHERE NOT EXISTS ("
+                "SELECT 1 FROM rag_unidad u WHERE u.corpus_sha = s.corpus_sha "
+                "AND u.citation_key = s.citation_key) ORDER BY s.citation_key"
+            )
+        ).all()
+    ]
+    if huerfanas:
+        raise PreflightFailure(
+            f"{len(huerfanas)} staging key(s) resolved to no unit: {_muestra(huerfanas)}. "
+            "Rolling back."
+        )
+
+    sin_vector = {
+        row[0]
+        for row in session.execute(
+            text(
+                "SELECT citation_key FROM rag_unidad WHERE corpus_sha = :sha AND embedding IS NULL"
+            ),
+            {"sha": manifest.corpus_sha},
+        ).all()
+    }
+    exentas = set(manifest.over_ceiling)
+    if sin_vector != exentas:
+        # BOTH directions, because they are different accidents with the same
+        # symptom and naming one hides the other: units that ended up without a
+        # vector nobody exempted (a dropped shard, a mis-slice) versus units the
+        # artifact declared exempt that came out embedded anyway (the ceiling was
+        # applied to a different set than the one disclosed). Reporting only the
+        # first would print an empty list for the second and leave the operator
+        # reading "the sets differ … Unexpectedly empty: []" (ledger RAG3-003).
+        sin_exencion = sorted(sin_vector - exentas)
+        exentas_embebidas = sorted(exentas - sin_vector)
+        raise PreflightFailure(
+            "after the load, the units without a vector are not the units the "
+            "artifact declared exempt. Rolling back.\n"
+            f"  sin vector y sin exención ({len(sin_exencion)}): {_muestra(sin_exencion)}\n"
+            f"  exentas pero embebidas ({len(exentas_embebidas)}): "
+            f"{_muestra(exentas_embebidas)}"
+        )
+
+
 def load_vectors(
     session: Session,
     copy_path: Path,
     *,
     permitir_sintetico: bool = False,
+    reemplazar_modelo: bool = False,
 ) -> int:
     """Load one artifact. Returns the number of rows updated, or raises.
 
@@ -213,7 +394,13 @@ def load_vectors(
     claves_dump = leer_claves(copy_path)
 
     require_vector_support(session)
-    preflight(session, manifest, claves_dump, permitir_sintetico=permitir_sintetico)
+    preflight(
+        session,
+        manifest,
+        claves_dump,
+        permitir_sintetico=permitir_sintetico,
+        reemplazar_modelo=reemplazar_modelo,
+    )
 
     session.execute(
         text(
@@ -246,43 +433,25 @@ def load_vectors(
     )
     actualizadas = getattr(resultado, "rowcount", 0) or 0
 
-    if actualizadas != manifest.n_vectors:
+    # Same transaction as the UPDATE above, deliberately. A provenance stamp that
+    # could outlive a rolled-back load would be worse than none: it would name a
+    # model for vectors that were never written (migration conocimiento_004).
+    filas_procedencia = registrar_procedencia(
+        session,
+        manifest.corpus_sha,
+        modelo=manifest.modelo,
+        revision_hf=manifest.revision_hf,
+        sintetico=manifest.sintetico,
+        artifact_sha256=manifest.sha256,
+    )
+    if filas_procedencia != 1:
         raise PreflightFailure(
-            f"the UPDATE touched {actualizadas} rows, the sidecar declares "
-            f"n_vectors={manifest.n_vectors}. Rolling back."
+            f"the provenance stamp touched {filas_procedencia} rag_corpus row(s), "
+            "expected exactly 1. Rolling back: vectors whose origin is unrecorded "
+            "are vectors nothing can later refuse to trust."
         )
 
-    huerfanas = [
-        row[0]
-        for row in session.execute(
-            text(
-                f"SELECT s.citation_key FROM {STAGING_TABLE} s WHERE NOT EXISTS ("
-                "SELECT 1 FROM rag_unidad u WHERE u.corpus_sha = s.corpus_sha "
-                "AND u.citation_key = s.citation_key) ORDER BY s.citation_key"
-            )
-        ).all()
-    ]
-    if huerfanas:
-        raise PreflightFailure(
-            f"{len(huerfanas)} staging key(s) resolved to no unit: {huerfanas[:5]}. Rolling back."
-        )
-
-    sin_vector = {
-        row[0]
-        for row in session.execute(
-            text(
-                "SELECT citation_key FROM rag_unidad WHERE corpus_sha = :sha AND embedding IS NULL"
-            ),
-            {"sha": manifest.corpus_sha},
-        ).all()
-    }
-    if sin_vector != set(manifest.over_ceiling):
-        inesperadas = sorted(sin_vector - set(manifest.over_ceiling))
-        raise PreflightFailure(
-            "after the load, the units without a vector are not the units the "
-            f"artifact declared exempt. Unexpectedly empty: {inesperadas[:5]}. "
-            "Rolling back."
-        )
+    verificar_post_carga(session, manifest, actualizadas)
 
     return actualizadas
 
@@ -303,6 +472,16 @@ def build_parser() -> argparse.ArgumentParser:
             "For pipeline smoke tests ONLY — the vectors are hash noise."
         ),
     )
+    parser.add_argument(
+        "--replace-model",
+        action="store_true",
+        help=(
+            "authorise loading vectors from a DIFFERENT model than the one this "
+            "snapshot already holds. Refused when the models already match, so it "
+            "cannot become a flag you paste in by habit. Going from real vectors "
+            "back to synthetic ones needs this AND --allow-synthetic."
+        ),
+    )
     return parser
 
 
@@ -316,9 +495,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with Session(engine) as session, session.begin():
             actualizadas = load_vectors(
-                session, args.vectors, permitir_sintetico=args.allow_synthetic
+                session,
+                args.vectors,
+                permitir_sintetico=args.allow_synthetic,
+                reemplazar_modelo=args.replace_model,
             )
             manifest = VectorsManifest.load(manifest_path_for(args.vectors))
+    except ModelMismatch as abort:
+        # Its own exit code: this is the one abort an operator may legitimately
+        # override, and a script wrapping this loader must be able to tell "the
+        # artifact is broken" (1) from "the artifact is fine but it is a
+        # different model than what is loaded" (3) without parsing prose.
+        print(f"\nLOAD ABORTED — nothing was written.\n{abort}", file=sys.stderr)
+        return 3
     except (ArtifactMismatch, PreflightFailure, VectorSupportUnavailable) as abort:
         print(f"\nLOAD ABORTED — nothing was written.\n{abort}", file=sys.stderr)
         return 1
@@ -328,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"corpus_sha           : {manifest.corpus_sha}")
     print(f"modelo               : {manifest.modelo} (rev {manifest.revision_hf})")
     print(f"dims                 : {manifest.dims}")
+    print(f"sintetico            : {str(manifest.sintetico).lower()}")
+    print(f"artifact sha256      : {manifest.sha256}")
     print(f"vectores cargados    : {actualizadas}")
     print(f"unidades exentas     : {len(manifest.over_ceiling)}")
     for clave in manifest.over_ceiling:
@@ -350,10 +541,13 @@ if __name__ == "__main__":
 # exactly the escaping that produced it.
 __all__ = [
     "ArtifactMismatch",
+    "ModelMismatch",
     "PreflightFailure",
     "escape_copy_field",
     "leer_claves",
     "load_vectors",
     "main",
     "preflight",
+    "puerta_de_modelo",
+    "verificar_post_carga",
 ]

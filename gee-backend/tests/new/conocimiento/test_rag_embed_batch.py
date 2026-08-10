@@ -18,6 +18,8 @@ import pytest
 from sqlalchemy import text
 
 from app.domains.conocimiento.embedding import (
+    DEFAULT_MODEL_ID,
+    DETERMINISTIC_MODEL_ID,
     EMBEDDING_DIMENSIONS,
     TOKEN_CEILING,
     DeterministicEmbedder,
@@ -204,12 +206,17 @@ class TestArtifactProduction:
         """The smoke-test escape hatch must announce itself in the artifact.
 
         A retrieval eval run over hash noise would produce a report shaped
-        exactly like a real one, so the marker travels with the dump and the
-        loader refuses it by default.
+        exactly like a real one, so the marker travels with the dump, the loader
+        refuses it by default, and — since migration `conocimiento_004` — the
+        model id it records is what `service.recuperar` compares the query
+        embedder against. `modelo` therefore has to be the fake's REAL identity,
+        not a warning label: the warning is `sintetico`, which sits beside it in
+        the sidecar and in `rag_corpus`.
         """
         _, manifest = self._run(db, tmp_path, {"9750#1": CORTO})
         assert manifest.sintetico is True
-        assert "NOT-A-MODEL" in manifest.modelo
+        assert manifest.modelo == DETERMINISTIC_MODEL_ID
+        assert manifest.modelo != DEFAULT_MODEL_ID
 
         raw = json.loads((tmp_path / f"vectors-{SHA[:8]}.json").read_text(encoding="utf-8"))
         assert raw["sintetico"] is True

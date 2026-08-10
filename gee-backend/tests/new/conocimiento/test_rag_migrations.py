@@ -301,6 +301,67 @@ def test_downgrade_003_runs_against_an_ingested_database(throwaway_db):
         assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 2
 
 
+def _stamp_provenance(engine) -> None:
+    """Write what migration 004's columns exist to hold."""
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE rag_corpus SET embedding_modelo = 'BAAI/bge-m3', "
+                "embedding_revision_hf = 'cafe', embedding_sintetico = false, "
+                "embedding_artifact_sha256 = 'deadbeef', embeddings_loaded_at = now()"
+            )
+        )
+
+
+def test_downgrade_004_drops_provenance_and_deletes_nothing(throwaway_db):
+    """RAG3-001's migration, both directions, with its own witnesses.
+
+    Migration 003's downgrade had to DELETE the rows its upgrade legalized, and
+    the seed that proved it needed one witness per DELETE (ledger R3-101). This
+    one adds five nullable columns and no constraint, so the correct remediation
+    is *none* — which is a claim, not an axiom. The witnesses here are therefore
+    the rows: every `rag_corpus`, `rag_documento` and `rag_unidad` row present
+    before the downgrade must still be there after it, and each of the five
+    columns must be individually gone.
+    """
+    import importlib
+
+    cfg, engine = throwaway_db
+    command.upgrade(cfg, "head")
+    _seed_003_shaped_rows(engine)
+    _stamp_provenance(engine)
+
+    modulo_004 = importlib.import_module(
+        "app.db.migrations.versions.conocimiento_004_embedding_provenance"
+    )
+    nombres = [nombre for nombre, _ in modulo_004.PROVENANCE_COLUMNS]
+    assert len(nombres) == 5
+
+    columnas_antes = {c["name"] for c in inspect(engine).get_columns("rag_corpus")}
+    assert set(nombres) <= columnas_antes
+
+    command.downgrade(cfg, "conocimiento_003")  # must not raise
+
+    columnas = {c["name"] for c in inspect(engine).get_columns("rag_corpus")}
+    for nombre in nombres:
+        assert nombre not in columnas, f"{nombre} survived the downgrade"
+
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM rag_corpus")).scalar_one() == 1
+        assert conn.execute(text("SELECT count(*) FROM rag_documento")).scalar_one() == 2
+        assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 2
+
+    # And back up: the columns return, empty. The provenance record itself is
+    # gone — recoverable only by re-running the loader, which is exactly what the
+    # migration docstring promises rather than pretending otherwise.
+    command.upgrade(cfg, "head")
+    with engine.connect() as conn:
+        vuelta = conn.execute(
+            text("SELECT embedding_modelo, embeddings_loaded_at FROM rag_corpus")
+        ).first()
+    assert vuelta == (None, None)
+
+
 def test_downgrade_003_to_base_drops_everything_after_ingestion(throwaway_db):
     """The documented full rollback (`downgrade base`) on a used database."""
     cfg, engine = throwaway_db

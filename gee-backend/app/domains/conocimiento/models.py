@@ -105,6 +105,37 @@ class RagCorpus(Base):
     )
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # ------------------------------------------------------------------
+    # Embedding provenance (migration conocimiento_004, design.md D3)
+    # ------------------------------------------------------------------
+    # Which embedder produced the vectors currently sitting in
+    # `rag_unidad.embedding` for THIS snapshot. All five are nullable and all
+    # five are NULL together: NULL means "no vector artifact was ever loaded
+    # into this snapshot", which is a real and common state (slices 1-2 ship a
+    # fully ingested, fully un-embedded corpus).
+    #
+    # These columns exist because the sidecar used to be read, gated on, and
+    # then THROWN AWAY. The dimension check that survived accepts any 1024-dim
+    # model — e5-large is also 1024 and is prefix-asymmetric, so loading it
+    # against a BGE-M3 corpus is a silent, total retrieval degradation — and
+    # `sintetico` survived only as a CLI flag on the load, so a synthetic load
+    # left no trace at all once the artifact file was overwritten. A guarantee
+    # that lives only in an argv flag is one `--allow-synthetic` deep; written
+    # here it survives the process, and `service.recuperar` can refuse an
+    # embedder that does not match what the rows were built with (ledger
+    # RAG3-001).
+    embedding_modelo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_revision_hf: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_sintetico: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # sha256 of the `vectors-{sha8}.copy` dump these vectors came from. The
+    # artifact path is `vectors-{sha[:8]}.copy`, so a second batch over the same
+    # snapshot OVERWRITES the first one's file and its sidecar; the hash is the
+    # only record of which bytes were actually loaded.
+    embedding_artifact_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embeddings_loaded_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
 
 class RagDocumento(Base):
     """Legal-metadata row for one document inside a pinned corpus snapshot.

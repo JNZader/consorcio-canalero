@@ -21,10 +21,56 @@ import pytest
 from sqlalchemy import text
 
 from app.domains.conocimiento import repository, service
-from app.domains.conocimiento.embedding import EMBEDDING_DIMENSIONS, DeterministicEmbedder
-from app.domains.conocimiento.repository import VectorSupportUnavailable
+from app.domains.conocimiento.embedding import (
+    DEFAULT_MODEL_ID,
+    DETERMINISTIC_MODEL_ID,
+    EMBEDDING_DIMENSIONS,
+    DeterministicEmbedder,
+    vector_literal,
+)
+from app.domains.conocimiento.repository import VectorSupportUnavailable, registrar_procedencia
 
 SHA = "e" * 40
+
+
+class EmbedderRealSimulado:
+    """A stand-in that reports BGE-M3's identity and computes fake numbers.
+
+    BGE-M3 is a 2.2 GB download and its stack is not installable here (slice
+    deviation #1), so the only thing a test can honestly exercise about "the real
+    embedder" is the part the provenance gate actually compares: `model_id`. The
+    arithmetic is delegated to the deterministic fake, and every test that uses
+    this double asserts a REFUSAL or an identity — never a retrieval quality,
+    which this object has no standing to say anything about.
+    """
+
+    model_id = DEFAULT_MODEL_ID
+    revision = "c" * 40
+    sintetico = False
+
+    def __init__(self) -> None:
+        self._fake = DeterministicEmbedder()
+        self.dims = self._fake.dims
+
+    def count_tokens(self, texto: str) -> int:
+        return self._fake.count_tokens(texto)
+
+    def encode(self, textos):
+        return self._fake.encode(textos)
+
+
+def registrar_modelo(db, *, modelo: str, sintetico: bool) -> None:
+    """Stamp the snapshot as if `rag_load_vectors.py` had loaded that model."""
+    registrar_procedencia(
+        db,
+        SHA,
+        modelo=modelo,
+        revision_hf=None if sintetico else "c" * 40,
+        sintetico=sintetico,
+        artifact_sha256="9" * 64,
+    )
+    db.flush()
+
 
 #: A near-verbatim slice of the collision class the design names: 45 articles of
 #: the Anexo of Res. 4/2026 whose entire body is the words "Sin Reglamentar"
@@ -174,6 +220,68 @@ class TestVectorSupportContract:
         """An FTS query matching nothing returns [], and that is an ANSWER."""
         resultado = service.recuperar(corpus_basico, SHA, "criptomonedas", modo="fts")
         assert resultado.hits == []
+
+
+class TestEmbedderProvenanceGate:
+    """RAG3-001, in the shape CI runs: does the query embedder match the rows?
+
+    `verificar_embedder` reads `rag_corpus` and nothing else, so the whole
+    four-case matrix is exercisable without pgvector — which matters, because the
+    scenario it kills (an eval report computed over hash noise) is the reason
+    this initiative exists, and leaving it covered only under `make test-rag`
+    would leave it uncovered in the shape that actually gates merges.
+    """
+
+    def test_synthetic_rows_refuse_a_real_embedder(self, corpus_basico):
+        """The fabricated-eval path: real questions, real model, noise vectors."""
+        registrar_modelo(corpus_basico, modelo=DETERMINISTIC_MODEL_ID, sintetico=True)
+
+        with pytest.raises(service.EmbedderMismatch) as abort:
+            service.verificar_embedder(corpus_basico, SHA, EmbedderRealSimulado())
+
+        mensaje = str(abort.value)
+        assert DETERMINISTIC_MODEL_ID in mensaje
+        assert DEFAULT_MODEL_ID in mensaje
+
+    def test_synthetic_rows_accept_the_synthetic_embedder(self, corpus_basico):
+        """The smoke path stays open: the pipeline must be exercisable end to end."""
+        registrar_modelo(corpus_basico, modelo=DETERMINISTIC_MODEL_ID, sintetico=True)
+        service.verificar_embedder(corpus_basico, SHA, DeterministicEmbedder())
+
+    def test_real_rows_refuse_the_synthetic_embedder(self, corpus_basico):
+        """The mirror image, and the one an asymmetric gate would have missed.
+
+        Querying real BGE-M3 vectors with the hash fake produces a ranked list of
+        pure noise with full provenance attached — the same fabricated
+        measurement as the first case, with the operands swapped.
+        """
+        registrar_modelo(corpus_basico, modelo=DEFAULT_MODEL_ID, sintetico=False)
+
+        with pytest.raises(service.EmbedderMismatch):
+            service.verificar_embedder(corpus_basico, SHA, DeterministicEmbedder())
+
+    def test_real_rows_accept_the_real_embedder(self, corpus_basico):
+        registrar_modelo(corpus_basico, modelo=DEFAULT_MODEL_ID, sintetico=False)
+        service.verificar_embedder(corpus_basico, SHA, EmbedderRealSimulado())
+
+    def test_a_never_embedded_snapshot_is_refused_not_silently_empty(self, corpus_basico):
+        """Slices 1-2 ship exactly this state, so it is the likeliest of all.
+
+        The vector leg over an unembedded snapshot returns `[]` — indistinguish-
+        able from "nothing matched" — and a hybrid run would then publish an FTS
+        result under a fused label.
+        """
+        with pytest.raises(service.EmbeddingsNoCargadas, match="never embedded"):
+            service.verificar_embedder(corpus_basico, SHA, DeterministicEmbedder())
+
+    def test_an_unknown_snapshot_is_refused(self, corpus_basico):
+        with pytest.raises(service.EmbeddingsNoCargadas, match="not in rag_corpus"):
+            service.verificar_embedder(corpus_basico, "0" * 40, DeterministicEmbedder())
+
+    def test_fts_mode_is_unaffected_by_embedding_provenance(self, corpus_basico):
+        """The FTS leg never touched a vector and must not start needing one."""
+        resultado = service.recuperar(corpus_basico, SHA, "canal", modo="fts")
+        assert resultado.hits
 
 
 class TestFtsLeg:
@@ -326,7 +434,11 @@ class TestVectorAndHybrid:
                     "key": citation_key,
                 },
             )
-        pgvector_db.flush()
+        # The fixture writes vectors, so it must also record what wrote them —
+        # exactly as `rag_load_vectors.py` does inside its load transaction. A
+        # fixture that skipped this would be simulating a state the loader can no
+        # longer produce (migration conocimiento_004).
+        registrar_modelo(pgvector_db, modelo=DETERMINISTIC_MODEL_ID, sintetico=True)
         return pgvector_db
 
     def test_fts_and_vector_legs_sort_deterministically(self, pgvector_db):
@@ -428,3 +540,181 @@ class TestVectorAndHybrid:
     def test_wrong_dimension_query_vector_is_refused(self, corpus_embebido):
         with pytest.raises(ValueError, match="dimensions"):
             repository.vector_search(corpus_embebido, SHA, [0.0, 1.0])
+
+    def test_hybrid_refuses_a_mismatched_embedder_end_to_end(self, corpus_embebido):
+        """The gate on the real path, not just on the helper.
+
+        `corpus_embebido` holds synthetic vectors, so a query with the real
+        model's identity must be refused before either leg runs — including the
+        FTS one, which would otherwise hand back a lexical result set for a
+        question that asked to be fused.
+        """
+        with pytest.raises(service.EmbedderMismatch):
+            service.recuperar(
+                corpus_embebido, SHA, "canal", modo="hybrid", embedder=EmbedderRealSimulado()
+            )
+
+    def test_hybrid_runs_when_the_embedder_matches_the_stored_vectors(self, corpus_embebido):
+        resultado = service.recuperar(
+            corpus_embebido, SHA, "canal", modo="hybrid", embedder=DeterministicEmbedder()
+        )
+        assert resultado.n_vector > 0
+
+    def test_vector_mode_on_an_unembedded_snapshot_refuses(self, pgvector_db):
+        """pgvector present, column present, corpus ingested, no artifact loaded.
+
+        Everything about the DATABASE is fine; it is the snapshot that has no
+        vectors. Returning `[]` here would be a retrieval answer to a question
+        about capability.
+        """
+        seed_corpus(pgvector_db, [("ley-9750", "9750#3", CANAL)])
+
+        with pytest.raises(service.EmbeddingsNoCargadas):
+            service.recuperar(
+                pgvector_db, SHA, "canal", modo="vector", embedder=DeterministicEmbedder()
+            )
+
+
+@pytest.mark.pgvector
+class TestVectorLegDepth:
+    """RAG3-002: the leg's depth is `LEG_LIMIT`, not whatever the index budgets.
+
+    Measured on this image before the pin was written (1 400 seeded vectors,
+    `consorcio-postgres:16-vector`, pgvector 0.8.6):
+
+    * the leg's real query — `ORDER BY embedding <=> $1, citation_key` — plans as
+      `Seq Scan` + `top-N heapsort`, 1 400 rows scanned, 50 returned, ~11 ms. The
+      HNSW index is not used and cannot be: `citation_key` as a secondary sort
+      key is not something an ordered index scan can supply, and even
+      `enable_seqscan = off` did not switch it;
+    * the same query WITHOUT the tie-break, forced onto the index, returns
+      **`rows=40`** at pgvector's default `hnsw.ef_search = 40` and `rows=50`
+      once it is raised. That is the truncation this pin exists for, reproduced
+      below rather than asserted from the documentation.
+    """
+
+    UNIDADES_A_ESCALA = 1400
+
+    @pytest.fixture
+    def corpus_a_escala(self, pgvector_db):
+        """~1,400 embedded units — the pinned corpus's real order of magnitude."""
+        seed_corpus(
+            pgvector_db,
+            [
+                ("ley-9750", f"9750#{i:05d}", f"Artículo {i} sobre el canal y la obra de riego.")
+                for i in range(self.UNIDADES_A_ESCALA)
+            ],
+        )
+        # One shared 1023-value tail sent once, plus a per-row leading component,
+        # so seeding 1 400 vectors costs one statement and ~7 kB instead of 1 400
+        # literals of 1 024 values each.
+        (base,) = DeterministicEmbedder().encode(["semilla de escala"])
+        cola = ",".join(repr(x) for x in base[1:])
+        pgvector_db.execute(
+            text(
+                "WITH numeradas AS (SELECT citation_key, row_number() OVER "
+                "(ORDER BY citation_key) AS n FROM rag_unidad WHERE corpus_sha = :sha) "
+                "UPDATE rag_unidad u SET embedding = CAST("
+                "'[' || (numeradas.n::float8 / 10000)::text || ',' || :cola || ']' AS vector) "
+                "FROM numeradas WHERE u.corpus_sha = :sha "
+                "AND u.citation_key = numeradas.citation_key"
+            ),
+            {"sha": SHA, "cola": cola},
+        )
+        pgvector_db.flush()
+        return pgvector_db
+
+    def test_the_leg_returns_exactly_leg_limit_candidates_at_corpus_scale(self, corpus_a_escala):
+        (qvec,) = DeterministicEmbedder().encode(["canal de riego"])
+
+        hits = repository.vector_search(corpus_a_escala, SHA, qvec)
+
+        assert len(hits) == repository.LEG_LIMIT
+        assert [hit.rango for hit in hits] == list(range(repository.LEG_LIMIT))
+
+    def test_the_leg_pins_hnsw_ef_search_for_the_transaction(self, corpus_a_escala):
+        """The pin itself, asserted where it is observable.
+
+        Without the `set_config` call this reads pgvector's default 40 — below
+        `LEG_LIMIT`, and therefore a leg that would be silently 20 % shallower
+        than the number the eval report prints the moment the plan changes.
+        """
+        (qvec,) = DeterministicEmbedder().encode(["canal de riego"])
+        repository.vector_search(corpus_a_escala, SHA, qvec)
+
+        pinned = corpus_a_escala.execute(
+            text("SELECT current_setting('hnsw.ef_search')")
+        ).scalar_one()
+
+        assert int(pinned) == repository.HNSW_EF_SEARCH
+        assert repository.HNSW_EF_SEARCH >= repository.LEG_LIMIT
+
+    def test_an_ef_search_below_the_leg_limit_is_refused(self, corpus_a_escala):
+        (qvec,) = DeterministicEmbedder().encode(["canal de riego"])
+
+        with pytest.raises(ValueError, match="ef_search"):
+            repository.vector_search(corpus_a_escala, SHA, qvec, ef_search=repository.LEG_LIMIT - 1)
+
+    #: pgvector's own default. Written out rather than read from the server so a
+    #: silent upstream change to the default is a FAILURE here, not an
+    #: automatically-absorbed shift in what the test believes it is proving.
+    EF_SEARCH_POR_DEFECTO = 40
+
+    def test_pgvectors_default_ef_search_really_does_truncate_an_index_scan(self, corpus_a_escala):
+        """The external contract the pin depends on, pinned by a test.
+
+        This asserts pgvector's behaviour, not ours, on purpose: the pin is only
+        worth its round trip if `ef_search` really is a hard candidate ceiling.
+        If a future pgvector changes that — or ships `hnsw.iterative_scan` on by
+        default — this is where we find out, instead of discovering it as an
+        unexplained recall change in an eval report.
+
+        Getting the index scan requires forcing it, and the forcing is itself
+        evidence. `enable_seqscan = off` alone is NOT enough: the planner then
+        picks a bitmap scan over `ix_rag_unidad_documento` plus a top-N sort and
+        still returns all 50. Only with `enable_sort = off` — no sort node
+        available, so the ordering must come from the index — does the HNSW scan
+        run, and it returns 40. The plan is asserted below rather than assumed,
+        because a test that silently measured a sort instead of an index scan
+        would "pass" while proving nothing.
+        """
+        (qvec,) = DeterministicEmbedder().encode(["canal de riego"])
+        # Distance-only ORDER BY: the leg's `citation_key` tie-break is precisely
+        # what an ordered index scan cannot supply, so reproducing the truncation
+        # means asking for the plan the tie-break excludes.
+        consulta = text(
+            "SELECT citation_key FROM rag_unidad WHERE corpus_sha = :sha "
+            "AND embedding IS NOT NULL ORDER BY embedding <=> CAST(:qvec AS vector) "
+            "LIMIT :limite"
+        )
+        params = {"sha": SHA, "qvec": vector_literal(qvec), "limite": repository.LEG_LIMIT}
+
+        corpus_a_escala.execute(text("SET LOCAL enable_seqscan = off"))
+        corpus_a_escala.execute(text("SET LOCAL enable_sort = off"))
+        try:
+            plan = "\n".join(
+                fila[0]
+                for fila in corpus_a_escala.execute(text("EXPLAIN " + str(consulta)), params).all()
+            )
+            corpus_a_escala.execute(
+                text("SELECT set_config('hnsw.ef_search', :ef, true)"),
+                {"ef": str(self.EF_SEARCH_POR_DEFECTO)},
+            )
+            con_default = corpus_a_escala.execute(consulta, params).all()
+
+            corpus_a_escala.execute(
+                text("SELECT set_config('hnsw.ef_search', :ef, true)"),
+                {"ef": str(repository.HNSW_EF_SEARCH)},
+            )
+            con_pin = corpus_a_escala.execute(consulta, params).all()
+        finally:
+            corpus_a_escala.execute(text("SET LOCAL enable_seqscan = on"))
+            corpus_a_escala.execute(text("SET LOCAL enable_sort = on"))
+
+        assert "ix_rag_unidad_embedding_hnsw" in plan, (
+            f"this test only means something over an HNSW index scan; got:\n{plan}"
+        )
+        assert len(con_default) == self.EF_SEARCH_POR_DEFECTO, (
+            "pgvector's default ef_search is a hard candidate ceiling, below LEG_LIMIT"
+        )
+        assert len(con_pin) == repository.LEG_LIMIT, "…and the pin is what lifts it"

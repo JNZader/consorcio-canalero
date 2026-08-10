@@ -33,6 +33,8 @@ from app.domains.conocimiento.repository import (
     LegHit,
     fts_search,
     hydrate_citations,
+    leer_procedencia,
+    require_vector_support,
     vector_search,
 )
 from app.domains.conocimiento.schemas import CitaRecuperada, ResultadoRecuperacion
@@ -179,8 +181,69 @@ class EmbedderRequerido(RuntimeError):
     """
 
 
+class EmbeddingsNoCargadas(RuntimeError):
+    """The snapshot has no vectors at all, so the vector leg has nothing to search.
+
+    A sibling of `VectorSupportUnavailable`, one level up: that one means "this
+    DATABASE cannot run a vector query", this one means "this SNAPSHOT was never
+    embedded". Both are refusals rather than empty results for the same reason —
+    an empty hit list is a legitimate answer to a query that matched nothing, and
+    a corpus that was never embedded must never be mistaken for one.
+    """
+
+
+class EmbedderMismatch(RuntimeError):
+    """The query embedder is not the one that produced the stored vectors.
+
+    Cosine distance between vectors from two different models is arithmetic, not
+    similarity: it computes, it ranks, and it means nothing. The failure has no
+    symptom at the query surface — the leg returns 50 confident hits either way
+    — so it can only be caught by comparing identities, which is why
+    `rag_corpus` records the model that wrote the column (migration
+    `conocimiento_004`, ledger RAG3-001).
+
+    The check is symmetric on purpose. Refusing only the synthetic-rows/real-
+    embedder direction would leave the mirror image — a deterministic smoke
+    embedder queried against real BGE-M3 vectors — silently producing a ranked
+    list of pure noise, which is the same fabricated-measurement failure with
+    the operands swapped.
+    """
+
+
 def _leg_map(hits: Sequence[LegHit]) -> dict[str, LegHit]:
     return {hit.citation_key: hit for hit in hits}
+
+
+def verificar_embedder(db: Session, corpus_sha: str, embedder: Embedder) -> None:
+    """Refuse a vector query whose embedder did not produce this snapshot's vectors.
+
+    Runs BEFORE either leg, so a mismatch costs nothing and, more importantly,
+    cannot half-answer: a `hybrid` call that ran FTS and then refused would leave
+    the caller holding a lexical result set for a question they asked to be
+    fused.
+    """
+    procedencia = leer_procedencia(db, corpus_sha)
+    if procedencia is None:
+        raise EmbeddingsNoCargadas(
+            f"snapshot {corpus_sha} is not in rag_corpus. There is nothing to "
+            "retrieve from, let alone to embed against."
+        )
+    if not procedencia.cargado:
+        raise EmbeddingsNoCargadas(
+            f"snapshot {corpus_sha} has no embeddings loaded (rag_corpus."
+            "embedding_modelo IS NULL) — it was ingested but never embedded. The "
+            "vector leg would silently contribute nothing and the fused result "
+            "would be FTS wearing a hybrid label. Run scripts/rag_embed_batch.py "
+            "and scripts/rag_load_vectors.py, or ask for modo='fts'."
+        )
+    if procedencia.modelo != embedder.model_id:
+        raise EmbedderMismatch(
+            f"snapshot {corpus_sha} holds vectors produced by "
+            f"{procedencia.modelo!r} (sintetico={procedencia.sintetico}), but the "
+            f"query embedder is {embedder.model_id!r}. Distances across two "
+            "different models are arithmetic without meaning: the leg would "
+            "return a confident, fully attributed, entirely fabricated ranking."
+        )
 
 
 def recuperar(
@@ -204,7 +267,11 @@ def recuperar(
 
     The vector leg RAISES `VectorSupportUnavailable` where it cannot run. There
     is no fallback here and there must not be one: a `hybrid` run that quietly
-    became `fts` would publish a comparison it never made.
+    became `fts` would publish a comparison it never made. For the same reason it
+    raises `EmbeddingsNoCargadas` on a snapshot that was never embedded and
+    `EmbedderMismatch` when the query embedder is not the one that wrote the
+    column: both are ways for the vector leg to contribute nothing, or nonsense,
+    while the result still looks fused.
     """
     if modo not in MODOS:
         raise ValueError(f"unknown modo {modo!r} (expected one of {MODOS})")
@@ -214,6 +281,14 @@ def recuperar(
             "vector. Falling back to FTS would answer a different question than "
             "the one asked."
         )
+
+    if modo in ("vector", "hybrid"):
+        assert embedder is not None  # guarded above; keeps mypy honest
+        # Capability first, then content. A vector-less database cannot answer at
+        # all, and saying so is more useful than reporting which model its (non-
+        # existent) column was built with.
+        require_vector_support(db)
+        verificar_embedder(db, corpus_sha, embedder)
 
     hits_fts: list[LegHit] = []
     hits_vector: list[LegHit] = []

@@ -43,6 +43,13 @@ TOKEN_CEILING = 8192
 #: — the failure would look like "the vector leg is mediocre", not like a bug.
 DEFAULT_MODEL_ID = "BAAI/bge-m3"
 
+#: `model_id` of the deterministic fake. It is not decoration: the loader writes
+#: it into `rag_corpus.embedding_modelo` and `service.recuperar` refuses to run
+#: a vector query whose embedder reports a different one, in BOTH directions
+#: (real embedder over synthetic rows, synthetic embedder over real rows). See
+#: migration `conocimiento_004` and ledger RAG3-001.
+DETERMINISTIC_MODEL_ID = "deterministic"
+
 #: FLT_DECIMAL_DIG: nine significant digits is the shortest decimal form that
 #: recovers a float32 exactly. pgvector stores float4, so writing the float64
 #: repr instead would be ~2x bigger and buy nothing — PostgreSQL narrows it on
@@ -185,6 +192,13 @@ class Embedder(Protocol):
     and turn text into unit-norm vectors is a valid embedder — which is what
     lets the tests inject a deterministic fake, and what will let V1 swap the
     model without touching the pipeline.
+
+    `model_id` is the identity the whole provenance chain turns on: the batch
+    script stamps it into the sidecar, the loader writes it into
+    `rag_corpus.embedding_modelo`, and `service.recuperar` refuses to query a
+    snapshot whose recorded model is not the one the query embedder reports. An
+    implementation that returns a vague or shared `model_id` breaks that chain
+    silently, so it is part of the contract, not metadata.
     """
 
     model_id: str
@@ -219,7 +233,7 @@ class DeterministicEmbedder:
     module, whose stream is an implementation detail.
     """
 
-    model_id = "deterministic-fake-NOT-A-MODEL"
+    model_id = DETERMINISTIC_MODEL_ID
     revision = None
     sintetico = True
 

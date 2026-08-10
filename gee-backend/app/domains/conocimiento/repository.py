@@ -442,12 +442,33 @@ VECTOR_SEARCH_SQL = text(
     """
 )
 
+#: HNSW query-time search width, pinned per transaction on the vector leg.
+#:
+#: pgvector's default is 40. It is a CANDIDATE budget, not a filter: an HNSW
+#: index scan returns at most `ef_search` rows, so `LIMIT 50` against
+#: `ef_search = 40` silently yields 40 — a leg that is 20 % shallower than the
+#: number the eval report prints, with no error and no warning anywhere.
+#: Measured, not assumed (ledger RAG3-002): 1 400 seeded vectors, forced index
+#: scan, `LIMIT 50` → `rows=40` at the default and `rows=50` at 100.
+#:
+#: Derived from `LEG_LIMIT` rather than hardcoded so raising the leg depth
+#: cannot silently outgrow the budget. 2x is headroom, not superstition: HNSW is
+#: approximate, and a budget merely EQUAL to the requested k is the worst place
+#: on the recall curve to sit.
+HNSW_EF_SEARCH = 2 * LEG_LIMIT
+
+#: `SET LOCAL` takes no bind parameters; `set_config(..., is_local => true)` is
+#: the same thing as a function call, so the value stays a bound parameter and
+#: the pin dies with the transaction instead of leaking into a pooled session.
+SET_EF_SEARCH_SQL = text("SELECT set_config('hnsw.ef_search', :ef, true)")
+
 
 def vector_search(
     db: Session,
     corpus_sha: str,
     qvec: Sequence[float],
     limite: int = LEG_LIMIT,
+    ef_search: int = HNSW_EF_SEARCH,
 ) -> list[LegHit]:
     """Vector leg — raw SQL with an explicit `::vector` cast (the column is unmapped).
 
@@ -455,13 +476,29 @@ def vector_search(
     It NEVER returns an empty list to mean "no vector support": an empty result
     is a legitimate answer (no unit has an embedding yet) and must stay
     distinguishable from "this database cannot answer".
+
+    **`hnsw.ef_search` is pinned for the transaction, whatever plan runs.**
+    At the pinned corpus's scale this query plans as a sequential scan plus a
+    top-N heapsort — exact, 100 % recall, and the pin is a no-op. That is a
+    property of TODAY's plan, not of the query: it holds because the `LIMIT`
+    sits above a full scan, and the moment the planner picks the HNSW index
+    instead, `ef_search` becomes the leg's real depth. Setting it here costs one
+    round trip and removes the difference between "the leg returned 50" and "the
+    leg returned whatever the index budget allowed" (ledger RAG3-002).
     """
     require_vector_support(db)
     if len(qvec) != EMBEDDING_DIMENSIONS:
         raise ValueError(
             f"query vector has {len(qvec)} dimensions, the column is vector({EMBEDDING_DIMENSIONS})"
         )
+    if ef_search < limite:
+        raise ValueError(
+            f"hnsw.ef_search={ef_search} is below the leg limit {limite}: an index "
+            "scan would return at most ef_search rows and the leg would be "
+            "silently truncated."
+        )
 
+    db.execute(SET_EF_SEARCH_SQL, {"ef": str(ef_search)})
     filas = db.execute(
         VECTOR_SEARCH_SQL,
         {"qvec": vector_literal(qvec), "corpus_sha": corpus_sha, "limite": limite},
@@ -469,6 +506,104 @@ def vector_search(
     return [
         LegHit(citation_key=fila[0], rango=i, valor=float(fila[1])) for i, fila in enumerate(filas)
     ]
+
+
+# ---------------------------------------------------------------------------
+# Embedding provenance (migration conocimiento_004, design.md D3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ProcedenciaEmbeddings:
+    """What produced the vectors currently in this snapshot's `embedding` column.
+
+    `modelo is None` means no artifact was ever loaded — the normal state of a
+    freshly ingested corpus, and a state the vector leg must refuse to answer
+    from rather than return an empty list that reads like "nothing matched".
+    """
+
+    corpus_sha: str
+    modelo: str | None
+    revision_hf: str | None
+    sintetico: bool | None
+    artifact_sha256: str | None
+    loaded_at: datetime.datetime | None
+
+    @property
+    def cargado(self) -> bool:
+        return self.modelo is not None
+
+
+LEER_PROCEDENCIA_SQL = text(
+    """
+    SELECT corpus_sha, embedding_modelo, embedding_revision_hf, embedding_sintetico,
+           embedding_artifact_sha256, embeddings_loaded_at
+    FROM rag_corpus
+    WHERE corpus_sha = :corpus_sha
+    """
+)
+
+REGISTRAR_PROCEDENCIA_SQL = text(
+    """
+    UPDATE rag_corpus
+    SET embedding_modelo = :modelo,
+        embedding_revision_hf = :revision_hf,
+        embedding_sintetico = :sintetico,
+        embedding_artifact_sha256 = :artifact_sha256,
+        embeddings_loaded_at = now()
+    WHERE corpus_sha = :corpus_sha
+    """
+)
+
+
+def leer_procedencia(db: Session, corpus_sha: str) -> ProcedenciaEmbeddings | None:
+    """Provenance of this snapshot's vectors, or None if the snapshot is unknown.
+
+    None (no snapshot row) and a row with `modelo IS NULL` (snapshot exists, was
+    never embedded) are different facts and stay different: conflating them
+    would let a typo in a corpus SHA read as "not embedded yet".
+    """
+    fila = db.execute(LEER_PROCEDENCIA_SQL, {"corpus_sha": corpus_sha}).first()
+    if fila is None:
+        return None
+    return ProcedenciaEmbeddings(
+        corpus_sha=fila[0],
+        modelo=fila[1],
+        revision_hf=fila[2],
+        sintetico=fila[3],
+        artifact_sha256=fila[4],
+        loaded_at=fila[5],
+    )
+
+
+def registrar_procedencia(
+    db: Session,
+    corpus_sha: str,
+    *,
+    modelo: str,
+    revision_hf: str | None,
+    sintetico: bool,
+    artifact_sha256: str,
+) -> int:
+    """Stamp the snapshot with what produced its vectors. Returns rows updated.
+
+    Called by `scripts/rag_load_vectors.py` **inside the load transaction**, so
+    the provenance and the vectors it describes commit together or not at all. A
+    provenance row that outlived a rolled-back load would be worse than no row:
+    it would claim a model for vectors that were never written.
+    """
+    resultado = db.execute(
+        REGISTRAR_PROCEDENCIA_SQL,
+        {
+            "corpus_sha": corpus_sha,
+            "modelo": modelo,
+            "revision_hf": revision_hf,
+            "sintetico": sintetico,
+            "artifact_sha256": artifact_sha256,
+        },
+    )
+    # `rowcount` lives on CursorResult (same accommodation as `prune_unidades`).
+    return getattr(resultado, "rowcount", 0) or 0
 
 
 HYDRATE_SQL = text(
