@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
+from app.domains.geo.rainfall.export import XLSX_MEDIA_TYPE, build_workbook
 from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
 from app.domains.geo.rainfall.series import build_series
@@ -334,3 +335,41 @@ def export_analysis(revision: UUID, db: Session = Depends(get_db)) -> Response:
         latency_ms=round((datetime.now() - started).total_seconds() * 1000),
     )
     return Response(csv_body, media_type="text/csv")
+
+
+@router.get("/analyses/{revision}.xlsx")
+def export_analysis_xlsx(revision: UUID, db: Session = Depends(get_db)) -> Response:
+    """The friendly two-sheet export (design.md D7).
+
+    Beside the CSV route and modelled on it: resolved from the revision id, so
+    it inherits the same 404 semantics and the same router-level
+    `require_admin_or_operator` gate without restating either. The audit CSV is
+    untouched -- this is an ADDITIONAL view of the same projection, never a
+    redefinition of the audit artifact.
+    """
+    stored = RainfallRepository().get_revision(db, revision)
+    if stored is None:
+        raise HTTPException(404, detail="rainfall analysis is unavailable")
+    started = datetime.now()
+    try:
+        workbook = build_workbook(db, stored)
+    except SnapshotContractError as exc:
+        # Same answer the CSV and /series routes give a snapshot that cannot
+        # describe itself. A downloaded file has no error banner, so a
+        # half-built workbook would be read as a complete one.
+        raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+    record_event(
+        "rainfall.xlsx.served",
+        revision_id=str(revision),
+        consistent_with_snapshot=workbook.consistent_with_snapshot,
+        consistency_reason=workbook.consistency_reason,
+        normal_curve_state=workbook.normal_curve_state,
+        points=workbook.points,
+        bytes=len(workbook.content),
+        latency_ms=round((datetime.now() - started).total_seconds() * 1000),
+    )
+    return Response(
+        workbook.content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="lluvia_{revision}.xlsx"'},
+    )

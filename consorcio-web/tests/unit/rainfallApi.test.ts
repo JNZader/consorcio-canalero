@@ -24,8 +24,11 @@ vi.mock('../../src/lib/api/core', async (importOriginal) => {
 import { apiFetch, getAuthToken } from '../../src/lib/api/core';
 import {
   type RainfallAnalysisSnapshot,
+  type RainfallSeriesResponse,
   downloadRainfallCsv,
+  downloadRainfallXlsx,
   fetchRainfallAnalysis,
+  fetchRainfallSeries,
   resolveRainfallScopes,
 } from '../../src/lib/api/rainfall';
 
@@ -212,5 +215,127 @@ describe('downloadRainfallCsv', () => {
       ) as unknown as typeof fetch;
 
     await expect(downloadRainfallCsv('rev-x')).rejects.toThrow('No autorizado');
+  });
+});
+
+describe('downloadRainfallXlsx', () => {
+  // Task 3b.8 (backend design.md D7): the friendly two-sheet export sits beside
+  // the audit CSV under the SAME authorization boundary, so it travels the same
+  // way — bearer token in the header, never in the URL, where it would end up in
+  // browser history and server access logs.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getAuthToken).mockResolvedValue('token-123');
+  });
+
+  function xlsxResponse(ok: boolean, body: unknown, status = 200): Response {
+    return {
+      ok,
+      status,
+      json: async () => body,
+      blob: async () => new Blob(['PK'], { type: 'application/octet-stream' }),
+    } as unknown as Response;
+  }
+
+  it('downloads xlsx with the bearer token in the header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(xlsxResponse(true, {}));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const clicked: string[] = [];
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:xlsx');
+    const revokeObjectURL = vi.fn();
+    window.URL.revokeObjectURL = revokeObjectURL;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      clicked.push(this.download);
+    });
+
+    await downloadRainfallXlsx('rev-1');
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/api/v2/geo/rainfall/analyses/rev-1.xlsx');
+    expect(String(url)).not.toContain('token');
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer token-123');
+    expect(clicked).toEqual(['lluvia_rev-1.xlsx']);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:xlsx');
+    clickSpy.mockRestore();
+  });
+
+  it('throws the server detail on a denied export', async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        xlsxResponse(false, { detail: 'No autorizado' }, 403)
+      ) as unknown as typeof fetch;
+
+    await expect(downloadRainfallXlsx('rev-x')).rejects.toThrow('No autorizado');
+  });
+});
+
+describe('fetchRainfallSeries', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function seriesBody(): RainfallSeriesResponse {
+    // Annotated on purpose, like `snapshot()` above: this literal is the wire
+    // contract, so a field the interface does not declare — or a missing one —
+    // is a compile error under `tsconfig.tests.json`, not a silent extra.
+    return {
+      analysis_revision_id: '11111111-2222-3333-4444-555555555555',
+      data_revision: 'ab'.repeat(32),
+      scope: ZONE,
+      year: 2025,
+      unit: 'mm',
+      comparison_end: '2025-03-02',
+      available_through: '2025-03-02T00:00:00+00:00',
+      consistent_with_snapshot: false,
+      consistency_reason: 'data_revision_moved',
+      normal_curve_state: 'integrity_refused',
+      points: [
+        { date: '2025-01-01', mm: 3, accumulated: 3, normal_accumulated: 1, state: 'available' },
+        {
+          date: '2025-01-02',
+          mm: null,
+          accumulated: 3,
+          normal_accumulated: null,
+          state: 'unavailable',
+        },
+      ],
+    };
+  }
+
+  it('GETs the series for one revision and types the consistency fields', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(seriesBody());
+
+    const series = await fetchRainfallSeries('rev-1');
+
+    expect(apiFetch).toHaveBeenCalledWith('/geo/rainfall/analyses/rev-1/series', {
+      signal: undefined,
+    });
+    // The two deterministic pin fields (backend design.md D3). `string | null`
+    // at minimum: a narrower union still satisfies these annotations, an
+    // untyped `any` would not survive the typecheck project.
+    const consistent: boolean = series.consistent_with_snapshot;
+    const reason: string | null = series.consistency_reason;
+    const curveState: string = series.normal_curve_state;
+    expect(consistent).toBe(false);
+    expect(reason).toBe('data_revision_moved');
+    // Suppressed and refused are DIFFERENT facts and the client keeps them
+    // apart (backend LI3A-001): both arrive with every `normal_accumulated`
+    // null, so collapsing them would erase the distinction on the way in.
+    expect(curveState).toBe('integrity_refused');
+  });
+
+  it('keeps an unknown daily value as null, never as zero', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(seriesBody());
+
+    const series = await fetchRainfallSeries('rev-1');
+
+    const gap = series.points[1];
+    expect(gap.mm).toBeNull();
+    expect(gap.state).toBe('unavailable');
+    // The running total carries ACROSS the gap unchanged; a chart that read
+    // the missing day as 0 would draw a dry day that was never measured.
+    expect(gap.accumulated).toBe(3);
   });
 });
