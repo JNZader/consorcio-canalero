@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -113,6 +114,67 @@ def resolve_scope(
     return {"scope": scope, "regional_estimate": scope.regional_estimate}
 
 
+def _requeue_stale_revision(db: Session, *, payload, scope, fingerprint: str) -> None:
+    """Enqueue the stale-policy refresh WITHOUT letting it break the read
+    (LI2B-002).
+
+    The snapshot is already in memory by the time this runs, so a failing
+    enqueue must never turn a serveable 200 into a 500. A bare ``try/except``
+    is not enough: a statement that fails mid-transaction leaves the session
+    ABORTED (SQLSTATE 25P02) and poisons everything that touches it
+    afterwards, so the enqueue gets its own SAVEPOINT to roll back to.
+
+    The savepoint is driven MANUALLY rather than through
+    ``with db.begin_nested():`` on purpose, and the reason is empirical:
+    ``queue_missing_analysis`` owns its own transaction boundary -- it
+    ``commit()``s on success and ``rollback()``s to recover the
+    ``IntegrityError`` race (decision 8, a spec-covered scenario). Inside the
+    context-manager form, that inner ``rollback()`` closes the block's
+    transaction and the very next statement -- the race recovery's own
+    re-read -- raises ``InvalidRequestError: Can't operate on closed
+    transaction inside context manager``. The manual form has no such guard,
+    so both of the callee's paths keep working; ``is_active`` then tells us
+    whether the savepoint is still ours to roll back or the callee already
+    resolved it.
+
+    ``record_event`` writes to the logger, never the session, but it is still
+    emitted AFTER the rollback so the ordering never depends on that.
+    """
+    savepoint = db.begin_nested()
+    try:
+        queue_missing_analysis(
+            db,
+            scope=scope,
+            year=payload.year,
+            labels=("policy_revision_stale",),
+            event_window=(
+                payload.event_window.model_dump(mode="json") if payload.event_window else None
+            ),
+            request_fingerprint=fingerprint,
+        )
+    except (SQLAlchemyError, RuntimeError) as exc:
+        if savepoint.is_active:
+            savepoint.rollback()
+        else:
+            # The callee already committed or rolled back this savepoint and
+            # then failed. Nothing else in this read path holds uncommitted
+            # work, so a session-level rollback is the equally safe fallback
+            # that still clears an aborted transaction.
+            db.rollback()
+        record_event(
+            "rainfall.analysis.requeue_failed",
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=payload.year,
+            error_type=type(exc).__name__,
+            error_message=str(exc)[:200],
+        )
+    else:
+        if savepoint.is_active:
+            savepoint.commit()
+
+
 @router.post("/analyses", openapi_extra=_request_body(AnalysisRequest))
 def read_analysis(
     payload: AnalysisRequest = Depends(parse_analysis_request), db: Session = Depends(get_db)
@@ -155,12 +217,24 @@ def read_analysis(
         # its OWN policy_revision below, so it stays self-consistent -- and a
         # refresh is enqueued so the enriched envelope eventually lands.
         # Neither sweep revisits a past-year key that is already `done`, so
-        # the request path is the only place this is noticed. Cost is bounded
-        # by queue_missing_analysis's own recent_done cooldown plus the
-        # pending-row pre-check: one refresh per key per cooldown window,
-        # never one per poll. Enqueued BEFORE normalization so a stale row
-        # that also fails its contract still gets its healing refresh
-        # instead of only a 503.
+        # the request path is the only place this is noticed. Enqueued BEFORE
+        # normalization so a stale row that also fails its contract still
+        # gets its healing refresh instead of only a 503.
+        #
+        # Bounded cost, corrected (LI2B-001 -- the earlier text here named
+        # only the `done` cooldown and the pending pre-check, and was
+        # therefore FALSE for the third state a key can be in). Every
+        # terminal state a key's own history can reach now has a window, all
+        # of them applied by service._requeue_cooldown:
+        #   - newest row `done` (productive)  -> 10 min  (decision 6)
+        #   - newest row `done` but its build REFUSED to write
+        #     ("latched"/"gate_refused")      -> 24 h    (LI2B-003)
+        #   - newest row terminal `failed`    -> 6 h     (LI2B-001)
+        #   - a `pending` row already exists  -> reused, never duplicated
+        # so a poll loop costs at most one refresh per key per window, never
+        # one per poll, in EVERY state -- which is what the spec delta's
+        # "Stale Policy Revision Refresh on Poll" MODIFIED requirement
+        # promises.
         record_event(
             "rainfall.analysis.policy_revision_stale",
             revision_id=revision_id,
@@ -171,16 +245,7 @@ def read_analysis(
             served_policy_revision=stored_policy_revision,
             current_policy_revision=RAINFALL_METRIC_POLICY_REVISION,
         )
-        queue_missing_analysis(
-            db,
-            scope=scope,
-            year=payload.year,
-            labels=("policy_revision_stale",),
-            event_window=(
-                payload.event_window.model_dump(mode="json") if payload.event_window else None
-            ),
-            request_fingerprint=fingerprint,
-        )
+        _requeue_stale_revision(db, payload=payload, scope=scope, fingerprint=fingerprint)
 
     try:
         normalized = normalize_snapshot(

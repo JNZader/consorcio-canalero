@@ -38,6 +38,42 @@ class ScopeConfigurationError(ValueError):
     """Approved zoning geometry cannot safely serve a rainfall scope."""
 
 
+class DuplicateBaselineSlotError(ValueError):
+    """One baseline year holds two non-superseded rows for one interval slot.
+
+    LI2B-004 (review-ledger.md "Slice 2b -- resilience lens + general
+    refuter"): :func:`baseline_cumulatives` has raised on this broken
+    invariant since LI2A-005, but as a BARE ``ValueError`` -- which
+    ``tasks._persist_analysis_revision`` could not catch selectively without
+    also swallowing every unrelated ``ValueError`` from the same block. A
+    dedicated subclass lets the task degrade exactly the two metrics that
+    read the baseline (``annual.normal``/``annual.percentile``) instead of
+    losing the whole build to data it cannot repair by retrying. Still a
+    ``ValueError``, so every existing caller and contract test that expects
+    one keeps working.
+
+    Carries the numbers the guard measured so the caller's event payload does
+    not have to re-parse the message.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        source_id: str,
+        asset: str,
+        year: int,
+        matched: int,
+        distinct_slots: int,
+    ) -> None:
+        super().__init__(message)
+        self.source_id = source_id
+        self.asset = asset
+        self.year = year
+        self.matched = matched
+        self.distinct_slots = distinct_slots
+
+
 class RainfallRepository:
     def get_revision(self, db: Session, revision_id: UUID) -> RainfallAnalysisRevision | None:
         return db.get(RainfallAnalysisRevision, revision_id)
@@ -269,8 +305,9 @@ def baseline_cumulatives(
     matched_days, expected_days)}``; a year with zero matched rows is
     simply absent from the result -- never a fabricated zero total.
 
-    Raises ``ValueError`` when a year's read holds two non-superseded rows
-    for one ``interval_start`` (LI2A-005): that is the same broken invariant
+    Raises :class:`DuplicateBaselineSlotError` (a ``ValueError``) when a
+    year's read holds two non-superseded rows for one ``interval_start``
+    (LI2A-005): that is the same broken invariant
     :func:`compute.build_snapshot` refuses to sum, and here it would inflate
     the total AND the matched-day count together, hiding itself.
     """
@@ -330,10 +367,15 @@ def baseline_cumulatives(
             # would inflate BOTH the total AND matched_days, leaving the year
             # looking complete while quietly biasing annual.normal and every
             # percentile ranked against it. Loud, not quietly wrong.
-            raise ValueError(
+            raise DuplicateBaselineSlotError(
                 "baseline_cumulatives received duplicated interval_start slots "
                 f"(source_id={source_id!r}, asset={asset!r}, year={int(year)}: "
-                f"{int(matched)} rows over {int(distinct_slots)} slots)"
+                f"{int(matched)} rows over {int(distinct_slots)} slots)",
+                source_id=source_id,
+                asset=asset,
+                year=int(year),
+                matched=int(matched),
+                distinct_slots=int(distinct_slots),
             )
         totals[int(year)] = (float(total), int(matched), expected_days_by_year[int(year)])
     return totals
@@ -536,6 +578,62 @@ def recent_done(
         .where(RainfallOutbox.completed_at.is_not(None))
         .where(RainfallOutbox.completed_at >= since)
         .order_by(RainfallOutbox.completed_at.desc())
+        .limit(1)
+    )
+    return db.scalar(query)
+
+
+def latest_terminal_attempt(
+    db: Session,
+    *,
+    source_id: str,
+    role: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    year: int,
+) -> RainfallOutbox | None:
+    """The key's newest TERMINAL row -- ``done`` or ``failed`` -- whatever its
+    age. Sibling of :func:`recent_done`, not a replacement: that one answers
+    "did this key finish inside the recompute window", this one answers "what
+    was this key's last outcome", which is the question LI2B-001 (terminal
+    ``failed``) and LI2B-003 (a ``done`` row whose build refused to write)
+    both need and neither of the two pre-existing reads could answer.
+
+    Ordered by ``COALESCE(completed_at, updated_at) DESC`` because the two
+    terminal states are dated by different columns:
+
+    - ``done`` stamps ``completed_at`` (``tasks._process_outbox_row``);
+    - ``failed`` never does -- the failure path
+      (``tasks._process_outbox_batch``) writes ``status``/``retry_count``/
+      ``last_error``/``next_attempt_at``, and ``TimestampMixin``'s
+      ``onupdate=func.now()`` (``db/base.py``) advances ``updated_at`` on
+      EVERY attempt including the final one. That is the column that dates a
+      terminal failure. ``next_attempt_at`` is deliberately NOT used: it is
+      the failure instant PLUS ``_backoff_seconds`` (up to an hour), so it
+      would date the failure into the future and shorten every cooldown
+      measured from it.
+
+    Returning the newest row rather than filtering by a window is what keeps
+    the cooldowns honest: a key that FAILED and was later healed reports its
+    ``done`` row, so a stale failure can never suppress a healthy key.
+
+    Seeks the same six-column prefix of ``ix_rainfall_outbox_done_lookup``
+    (``models.py``) ``recent_done`` uses; only the trailing ``completed_at``
+    cannot serve the ``COALESCE`` ordering, which sorts one key's own rows,
+    never a scan.
+    """
+    attempted_at = func.coalesce(RainfallOutbox.completed_at, RainfallOutbox.updated_at)
+    query = (
+        select(RainfallOutbox)
+        .where(RainfallOutbox.source_id == source_id)
+        .where(RainfallOutbox.role == role)
+        .where(RainfallOutbox.scope_kind == scope_kind)
+        .where(RainfallOutbox.scope_id == scope_id)
+        .where(RainfallOutbox.scope_version == scope_version)
+        .where(RainfallOutbox.year == year)
+        .where(RainfallOutbox.status.in_(("done", "failed")))
+        .order_by(attempted_at.desc())
         .limit(1)
     )
     return db.scalar(query)

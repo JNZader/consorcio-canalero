@@ -1,5 +1,64 @@
 # Delta for rainfall-analysis
 
+## MODIFIED Requirements
+
+### Requirement: GEE Quota Guards on Request-Path Re-enqueue and Poll
+
+This requirement governs the **request path only**. `queue_missing_analysis` — the enqueue path reached from `POST /api/v2/geo/rainfall/analyses` — MUST NOT enqueue new work when a recent `done` row already exists for the same key. A poll for a key that already has a materialized `rainfall_analysis_revision` MUST be served from that stored revision.
+
+A poll MAY additionally trigger **one asynchronous refresh** for that key when the stored revision's `policy_revision` no longer matches the current approved metric policy. The poll itself MUST still be served from the stored revision, normalized under that revision's own `policy_revision`; the refresh is background work and MUST NOT change, delay or fail the served response. This is the only request-path exception to "no new GEE fetch" and exists because neither scheduled sweep revisits a past-year key that is already `done`, so the request path is the only place a superseded policy revision is ever noticed.
+
+That refresh MUST be bounded per key by the terminal state of the key's own most recent outbox row, so that repeated polling can never cost more than one refresh per key per window:
+
+- a productive `done` row within the recompute cooldown (10 minutes) suppresses it;
+- a `done` row whose build refused to write (a latched or gate-refused decision) suppresses it for a daily window, because such a refusal cannot be resolved by retrying sooner;
+- a terminal `failed` row suppresses it for a six-hour window, because a key that exhausted its retries would otherwise begin a fresh retry cycle on every poll;
+- a `pending` row for the same key is reused rather than duplicated.
+
+A failure to enqueue that refresh MUST NOT fail the poll: the stored revision MUST still be served, and the failure MUST be recorded as an observable event.
+
+#### Scenario: Repeated POST skips re-enqueue after recent done
+- GIVEN a recent `done` outbox row exists for a key
+- WHEN the same key is POSTed again through the request path
+- THEN no new outbox row is enqueued and no new GEE fetch occurs
+
+#### Scenario: A scheduled sweep is not bound by the request-path cooldown
+- GIVEN a `done` outbox row exists for a key that a scheduled sweep is due to re-enqueue
+- WHEN that sweep runs
+- THEN it enqueues its work item under its own per-run per-key bound
+- AND the request-path cooldown does not suppress it
+
+#### Scenario: Repeated poll serves the stored revision
+- GIVEN a `rainfall_analysis_revision` already exists for a key
+- WHEN that key is polled again
+- THEN the stored revision is returned
+- AND no new GEE fetch is triggered, unless the stored revision's `policy_revision` is superseded and no cooldown for that key is in force
+
+#### Scenario: Poll of a key whose stored revision is on a superseded policy revision
+- GIVEN a stored revision for a key was written under a superseded `policy_revision`
+- AND no cooldown is in force for that key
+- WHEN that key is polled
+- THEN the stored revision is served, normalized under its own `policy_revision`
+- AND exactly one refresh is enqueued for that key
+
+#### Scenario: Poll of a key whose last attempt failed terminally
+- GIVEN the most recent outbox row for a key is terminal `failed` within the failed-requeue cooldown
+- WHEN that key is polled, with or without a superseded stored revision
+- THEN no new outbox row is enqueued and no new GEE fetch occurs
+- AND the stored revision, if any, is still served
+
+#### Scenario: Poll of a key whose last build refused to write
+- GIVEN the most recent outbox row for a key is `done` and its build refused to write
+- AND that row completed within the daily refused-requeue cooldown
+- WHEN that key is polled
+- THEN no new outbox row is enqueued and no new GEE fetch occurs
+
+#### Scenario: The refresh enqueue fails
+- GIVEN a stored revision on a superseded `policy_revision` is being served
+- WHEN enqueueing its refresh raises a database error
+- THEN the stored revision is still returned to the caller
+- AND the enqueue failure is recorded as an observable event
+
 ## ADDED Requirements
 
 ### Requirement: Historical Baseline Backfill

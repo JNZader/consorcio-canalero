@@ -429,3 +429,68 @@ ruff format --check . => 400 files already formatted   (exit 0)
 ### Status
 
 12/12 slice-2b tasks complete + 3 ledger amendments (LI2A-101/003/005) fixed. 401/401 targeted, 1945/1945 full backend regression (5 pre-existing skips), ruff check + format clean. Ready for review/PR of this work unit, then `sdd-apply` for slice 3a (or `sdd-verify` if the orchestrator wants a checkpoint first).
+
+## Slice 2b resilience fix round (2026-08-10) — COMPLETE (5/5 findings)
+
+Branch `feat/lluvia-insights-02b-summary`, base `592a57a`. Surgical round over the slice-2b diff: `review-resilience` + 1 general refuter produced LI2B-001 (CRITICAL, adjudicated WARNING after refutation) and LI2B-002..005 (WARNING, promoted rather than deferred). Ledger rows and full evidence: `review-ledger.md`, section "Slice 2b — resilience lens + general refuter".
+
+### Baseline (before fix-round changes, same branch)
+
+- `pytest tests/new/ -q` → **1944 passed, 6 skipped** (measured on this environment; the slice-2b entry records 1945/5 — `tests/new/test_martin_reader_grants.py` skips here for lack of an isolated superuser DB, so both totals are 1950 collected)
+- `pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q` → **401 passed**
+
+### Final (after fix-round changes)
+
+- `pytest tests/new/ tests/test_mutation_targets_rainfall.py -q` → **2081 passed, 6 skipped**, 0 failed
+- `pytest tests/new/ -q` → **1952 passed, 6 skipped** (+8 = exactly the eight new tests)
+- `pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q` → **409 passed** (+8)
+- `ruff check .` → All checks passed · `ruff format .` → 401 files left unchanged
+
+### TDD Cycle Evidence
+
+| Finding | RED (executed, against unfixed source) | GREEN | REFACTOR |
+|---|---|---|---|
+| LI2B-001 | `assert [<app.domains...RainfallOutbox>] == []` — a key whose retries were exhausted seconds earlier enqueued a fresh full-year work item on the next poll | 3-rung cooldown ladder; both the in-cooldown and cooldown-expired tests pass | `_requeue_cooldown` extracted so `queue_missing_analysis` reads as one guard, and both `pending_row_for_key` call sites now share the one `key` dict instead of re-spelling six kwargs |
+| LI2B-002 | `sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedTable)` propagating out of `read_analysis` (500 on a read whose snapshot was in memory) | 200 + `requeue_failed` event + a working `SELECT 1` on the same session | enqueue extracted to `router._requeue_stale_revision`, keeping `read_analysis` linear |
+| LI2B-003 | `ImportError: cannot import name 'outcome_label'` (marker vocabulary did not exist); the behavioral gap is pinned by the CONTROL half — an unmarked same-age `done` row still enqueues | marker stamped, stripped on carry-over, 24-h read-path backoff | marker vocabulary (`outcome_label`/`carryover_labels`/`non_write_outcome`) centralized in `service.py` so `tasks.py` has no literal `outcome:` strings |
+| LI2B-004 | `ValueError: baseline_cumulatives received duplicated interval_start slots (... year=1991: 2 rows over 1 slots)` aborting the entire build | build lands, `annual.selected` available at 153.0 mm, only normal/percentile suppress | reason strings promoted to `BASELINE_SCOPE_UNMAPPED`/`BASELINE_EVIDENCE_INVALID` constants so the caller cannot typo an undocumented reason |
+| LI2B-005 | `AssertionError: rainfall.analysis.policy_revision_stale missing from the event catalogue` | all three events + marker semantics catalogued; test green | cooldown reasons documented as one table rather than three prose mentions |
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified | `DuplicateBaselineSlotError` (carries source/asset/year/counts); `baseline_cumulatives` raises it; new `latest_terminal_attempt` read |
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified | `RAINFALL_FAILED_REQUEUE_COOLDOWN` (6 h) + `RAINFALL_REFUSED_REQUEUE_COOLDOWN` (24 h); `outcome:` marker vocabulary; `_requeue_cooldown` ladder; `rainfall.outbox.cooldown` gains `reason`/`cooldown_seconds` |
+| `gee-backend/app/domains/geo/rainfall/router.py` | Modified | `_requeue_stale_revision` (manual SAVEPOINT + `rainfall.analysis.requeue_failed`); corrected bounded-cost comment covering all four states |
+| `gee-backend/app/domains/geo/rainfall/tasks.py` | Modified | non-write decision stamps the `done` row; `carryover_labels` in both sweep stages; `DuplicateBaselineSlotError` degradation + `rainfall.baseline.duplicate_slots` |
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified | `baseline_unavailable_reason` threaded through `build_snapshot` → `_normal_and_percentile_metrics`; two named reason constants |
+| `gee-backend/tests/new/geo/rainfall/test_slice2b_resilience_fixes.py` | Created | 8 real-PG regressions, one per finding (LI2B-001 gets two: in-cooldown and cooldown-expired; LI2B-004 gets two: task degradation and repository boundary) |
+| `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified | `_FakeSession` models the third `scalar()` read (`latest_terminal_attempt`) |
+| `docs/lluvia-v2-observability-workbook.md` | Modified | 3 new event rows, the cooldown-ladder table, the `outcome:` marker section |
+| `openspec/changes/lluvia-insights/specs/rainfall-analysis/spec.md` | Modified | `MODIFIED` "GEE Quota Guards on Request-Path Re-enqueue and Poll" + 4 new scenarios |
+| `openspec/changes/lluvia-insights/design.md` | Modified | D3 "Cooldown ladder amendment" + the best-effort-refresh paragraph |
+| `openspec/changes/lluvia-insights/review-ledger.md` | Modified | Slice 2b resilience section: 5 rows, resolutions, cleared surfaces |
+
+### Deviations
+
+1. **Constant naming** — briefed as `FAILED_REQUEUE_COOLDOWN`, shipped as `RAINFALL_FAILED_REQUEUE_COOLDOWN` to match the module's existing `RAINFALL_RECOMPUTE_COOLDOWN` convention.
+2. **Manual SAVEPOINT instead of `with db.begin_nested():`** (LI2B-002) — forced by evidence, not preference: `queue_missing_analysis` rolls back internally to recover the `IntegrityError` race, and inside the context-manager form the next statement raises `InvalidRequestError: Can't operate on closed transaction inside context manager`. Probed before choosing; the manual form was verified against all three callee paths.
+3. **`latest_terminal_attempt` instead of a `failed`-only `recent_terminal_attempt`** — the brief suggested a `status='failed'` sibling; one read that returns the NEWEST terminal row (`done` OR `failed`) serves both LI2B-001 and LI2B-003, and is what makes "a key healed after a failure is not suppressed by its own history" true by construction rather than by a second query.
+4. **`baseline_evidence_invalid` reason added** (LI2B-004) — beyond the brief. Reusing `baseline_scope_unmapped` for a duplicate would ship a knowingly-false reason on a suppressed metric, the same defect class LI2A-003 fixed. Verified no consumer enumerates reason strings.
+5. **`rainfall.outbox.cooldown` extended rather than split** — three reasons on one event (`reason` + `cooldown_seconds`) instead of three event names, so existing dashboards keep working and the ladder reads as one thing.
+
+### Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | `latest_terminal_attempt` returns `None` for a key with no terminal history → ladder falls through to the pending pre-check (the default path every pre-existing test exercises); `non_write_outcome` handles `work_labels` being `None` or empty; `build_analysis` returning `None`/no `decision` is tolerated by `(built or {}).get(...)` | Pass |
+| Boundaries | Both cooldown-expiry directions asserted for LI2B-001 (inside → zero enqueues; backdated past the window → exactly one); the `_backdate` helper asserts the timestamp actually moved, so an expiry test cannot pass vacuously; the daily rung is paired with a same-age unmarked CONTROL row that still enqueues | Pass |
+| Concurrency / idempotency | The `IntegrityError` race recovery (decision 8) is preserved through the savepoint — the exact reason the context-manager form was rejected — and the pending pre-check still makes repeated polls idempotent (asserted in the cooldown-expired test's second poll); marker stamping is idempotent (`if marker not in row.work_labels`) | Pass |
+| Malicious input / security | No new route, field or auth surface. The new cooldowns only ever REDUCE work a caller can trigger; a poll loop is now bounded in every terminal state instead of two of three | Pass |
+| Partial failure / recovery | This round IS the partial-failure work: enqueue failure degrades to a served 200 + event with the session verifiably usable afterwards (`SELECT 1` asserted); a corrupt baseline degrades to two suppressed metrics instead of an unbuildable key; a terminal `failed` key still SERVES its stored revision while its retries back off | Pass |
+| State / tenancy / time | The failed rung is dated by `updated_at` (advances on the final retry) not `next_attempt_at` (failure instant + backoff, i.e. the future); `latest_terminal_attempt` orders by `COALESCE(completed_at, updated_at)` so `done` and `failed` rows are comparable; `outcome:` markers are stripped on carry-over so a stale refusal cannot leak into a new attempt's state; the test key is derived from `resolve_missing_work_source` rather than hardcoded, so it does not rot when the real clock rolls over | Pass |
+
+### Status (fix round)
+
+5/5 findings fixed with executed RED evidence for every genuine RED. 2081/2081 (6 pre-existing skips), ruff clean. Next: `sdd-verify`, or a scoped re-review of this fix diff against the ledger.

@@ -112,6 +112,50 @@ serve it **and** enqueue a refresh labelled `policy_revision_stale`; `recent_don
 (`service.py:238-248`) bounds the resulting GEE cost. Rejected: a bulk requeue command
 (unbounded fetches for keys nobody views) and doing nothing (stale envelope forever).
 
+**Cooldown ladder amendment (slice 2b resilience round, LI2B-001 + LI2B-003).** The
+sentence above — "`recent_done`'s cooldown bounds the resulting GEE cost" — was only true
+for one of the three terminal states a key's own outbox history can be in, and the code
+matched the sentence rather than the intent. A key whose newest row is terminal `failed`
+matched neither `recent_done` (it has no `completed_at`) nor the `pending` pre-check, so
+every poll started a fresh `MAX_RETRIES` cycle; for a *deterministic* compute-time failure
+that never terminates, because ingest succeeds and the adapter's circuit breaker therefore
+never trips — each attempt is a real full-year GEE fetch. A key whose newest row is `done`
+but whose build **refused to write** (`latched`/`gate_refused`, `compute.revision_write_decision`)
+was equally unbounded in a different way: it stayed permanently stale *and* was re-enqueued
+every 10 minutes forever, with no progress possible until upstream published adequate data.
+
+The bound is therefore stated per terminal state, all three applied by
+`service._requeue_cooldown` over `repository.latest_terminal_attempt` (the key's NEWEST
+`done`/`failed` row, so a key that has since been healed is never suppressed by its own
+history):
+
+| newest terminal row | window | constant |
+|---|---|---|
+| `done`, productive | 10 min | `RAINFALL_RECOMPUTE_COOLDOWN` (decision 6, unchanged) |
+| `done`, build refused to write | 24 h | `RAINFALL_REFUSED_REQUEUE_COOLDOWN` |
+| `failed` (terminal) | 6 h | `RAINFALL_FAILED_REQUEUE_COOLDOWN` |
+
+6 hours is chosen against both failure shapes at once: a transient failure heals on the
+first read after the cooldown lapses (well inside one working day), while a deterministic
+one is capped at ≤ 4 retry cycles per day. A shorter window buys nothing for the transient
+case — nothing that fails deterministically becomes fixable in minutes — and multiplies the
+deterministic burn. 24 h for a refusal aligns the retry cadence with the write gate's own
+daily sweep, which is the only thing that can actually change the answer. A refusal is
+recorded on the row itself as an `outcome:` label in `work_labels` (`RainfallOutbox` has no
+result/note column), stripped by `service.carryover_labels` whenever either sweep copies
+labels onto a fresh `pending` row so a marker can never outlive the build it describes.
+
+**The refresh is best-effort, and says so (LI2B-002).** The snapshot is already in memory
+when the stale-policy enqueue runs, so `router._requeue_stale_revision` wraps it in a
+SAVEPOINT and degrades to `rainfall.analysis.requeue_failed` + a normal 200. A bare
+`try/except` would not do: a statement that fails mid-transaction leaves the session aborted
+(SQLSTATE 25P02) and poisons everything that touches it afterwards. The savepoint is driven
+manually rather than with `with db.begin_nested():` because `queue_missing_analysis` owns
+its own transaction boundary (it commits, and rolls back to recover the `IntegrityError`
+race of decision 8) — inside the context-manager form that inner rollback closes the block
+and the race recovery's own re-read raises `InvalidRequestError`, verified empirically
+before choosing the shape.
+
 *Caveat (LIA-003, info):* that cooldown is **per key**, not a global rate limit —
 `RAINFALL_RECOMPUTE_COOLDOWN` is 10 minutes (`service.py:71`) and `recent_done` filters
 source/role/scope/year (`service.py:238-248`), so it bounds re-enqueue *per key*, not the

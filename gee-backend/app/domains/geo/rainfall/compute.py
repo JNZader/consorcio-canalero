@@ -180,6 +180,13 @@ _BASELINE_YEAR_COMPLETENESS_THRESHOLD = 0.95
 # orchestration layer above it.
 _BASELINE_SOURCE_ID = "chirps-v3-final"
 
+# The two reasons a baseline can be absent at disclosure time (LI2B-004).
+# Named constants rather than inline literals because the caller
+# (`tasks._persist_analysis_revision`) has to pick between them and a typo
+# there would silently ship an undocumented reason string.
+BASELINE_SCOPE_UNMAPPED = "baseline_scope_unmapped"
+BASELINE_EVIDENCE_INVALID = "baseline_evidence_invalid"
+
 
 def weibull_percentile(baseline_values: Sequence[float], selected_value: float) -> float:
     """Empirical Weibull plotting-position rank (design.md D5) -- pure, no
@@ -212,11 +219,21 @@ def _normal_and_percentile_metrics(
     nominal_resolution: str,
     scope: AnalysisScope,
     now: datetime,
+    baseline_unavailable_reason: str = BASELINE_SCOPE_UNMAPPED,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """``annual.normal``/``annual.percentile`` (design.md D4/D5): ALWAYS
     present in the envelope -- an unmapped or thin baseline suppresses
     these two metrics rather than dropping them, so a served analysis has
     a stable metric shape regardless of baseline coverage.
+
+    *baseline_unavailable_reason* is the reason disclosed when *baseline* is
+    ``None``. It defaults to the original ``"baseline_scope_unmapped"`` and
+    exists because ``None`` now reaches here for TWO distinct causes
+    (LI2B-004): a scope with no provider asset, and a baseline read the
+    repository refused to return because the evidence is duplicated. Naming
+    the second one "scope unmapped" would be the same wrong-explanation
+    defect LI2A-003 fixed on the sample-size side -- a suppressed metric's
+    reason is the only thing the reader gets, so it has to be true.
 
     *baseline_cutoff* is the EFFECTIVE end (:func:`baseline_cutoff_for`),
     not the calendar ``comparison_end`` -- the same date the caller used to
@@ -253,8 +270,8 @@ def _normal_and_percentile_metrics(
     ) + timedelta(days=1)
 
     if baseline is None:
-        normal_state, normal_reason = "suppressed", "baseline_scope_unmapped"
-        percentile_state, percentile_reason = "suppressed", "baseline_scope_unmapped"
+        normal_state, normal_reason = "suppressed", baseline_unavailable_reason
+        percentile_state, percentile_reason = "suppressed", baseline_unavailable_reason
         normal_value = percentile_value = None
     elif len(eligible_years) < MIN_BASELINE_YEARS:
         # design.md D5: the per-year completeness floor already trimmed
@@ -458,6 +475,7 @@ def build_snapshot(
     now: datetime,
     fallback_used: bool = False,
     baseline: dict[int, tuple[float, int, int]] | None = None,
+    baseline_unavailable_reason: str = BASELINE_SCOPE_UNMAPPED,
 ) -> dict[str, Any]:
     """Build the snapshot envelope: root keys are a subset of
     ``SNAPSHOT_ROOT_KEYS``. v1 shipped only ``annual.selected`` (decision
@@ -469,9 +487,12 @@ def build_snapshot(
 
     ``baseline`` is the caller's resolved historical baseline
     (``repository.baseline_cumulatives``, design.md D1): ``{year: (total_mm,
-    matched_days, expected_days)}``, or ``None`` when the scope has no known
-    provider asset -- in which case ``annual.normal``/``annual.percentile``
-    both suppress with reason ``"baseline_scope_unmapped"`` (design.md D5).
+    matched_days, expected_days)}``, or ``None`` when the caller could not
+    resolve one -- in which case ``annual.normal``/``annual.percentile`` both
+    suppress with ``baseline_unavailable_reason`` (design.md D5), which
+    defaults to ``"baseline_scope_unmapped"`` (no provider asset for the
+    scope) and is ``"baseline_evidence_invalid"`` when the baseline read
+    itself refused to answer (LI2B-004).
 
     Coverage/completeness/quality are recomputed here, at build time, over
     ``[year_start, min(comparison_end, last_interval_end))`` — the
@@ -566,6 +587,7 @@ def build_snapshot(
         nominal_resolution=nominal_resolution,
         scope=scope,
         now=now,
+        baseline_unavailable_reason=baseline_unavailable_reason,
     )
 
     # design.md D6 (slice 2a): *intervals* is the D6-widened

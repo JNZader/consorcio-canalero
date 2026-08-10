@@ -209,6 +209,8 @@ def _persist_analysis_revision(
     from app.domains.geo.rainfall import temporal
     from app.domains.geo.rainfall.adapters.gee_client import UnknownProviderScope, asset_name_for
     from app.domains.geo.rainfall.compute import (
+        BASELINE_EVIDENCE_INVALID,
+        BASELINE_SCOPE_UNMAPPED,
         baseline_cutoff_for,
         build_snapshot,
         data_revision_for,
@@ -223,6 +225,7 @@ def _persist_analysis_revision(
         RAINFALL_METRIC_POLICY_REVISION,
     )
     from app.domains.geo.rainfall.repository import (
+        DuplicateBaselineSlotError,
         RainfallRepository,
         acquire_fingerprint_lock,
         baseline_cumulatives,
@@ -306,19 +309,46 @@ def _persist_analysis_revision(
     # selected year short by the lag against baselines totalled through
     # today. With no lag the two dates are identical.
     comparison_end_date = temporal.comparison_end(row.year, temporal.buenos_aires_date(now))
+    baseline_unavailable_reason = BASELINE_SCOPE_UNMAPPED
     try:
         baseline_asset = asset_name_for(scope.kind, scope.id)
     except UnknownProviderScope:
         baseline = None
     else:
-        baseline = baseline_cumulatives(
-            db,
-            source_id=RAINFALL_HISTORICAL_SOURCE,
-            asset=baseline_asset,
-            dates=temporal.baseline_dates(
-                baseline_cutoff_for(year=row.year, now=now, intervals=resolved)
-            ),
-        )
+        try:
+            baseline = baseline_cumulatives(
+                db,
+                source_id=RAINFALL_HISTORICAL_SOURCE,
+                asset=baseline_asset,
+                dates=temporal.baseline_dates(
+                    baseline_cutoff_for(year=row.year, now=now, intervals=resolved)
+                ),
+            )
+        except DuplicateBaselineSlotError as exc:
+            # LI2B-004: a duplicated slot in ONE baseline year used to abort
+            # the whole build -- annual, antecedents and intensity with it --
+            # and no retry could fix it, because a retry cannot un-duplicate
+            # persisted data. That made the key PERMANENTLY unbuildable and
+            # made it the sharpest feeder of LI2B-001's re-enqueue loop.
+            # Degrade instead: only the two metrics that actually read the
+            # baseline lose their evidence, and they suppress with their own
+            # honest reason while the rest of the snapshot still builds and
+            # lands. The event is the loud part -- suppression alone would
+            # look like an ordinary thin baseline to an operator.
+            baseline = None
+            baseline_unavailable_reason = BASELINE_EVIDENCE_INVALID
+            record_event(
+                "rainfall.baseline.duplicate_slots",
+                source_id=exc.source_id,
+                asset=exc.asset,
+                baseline_year=exc.year,
+                matched_rows=exc.matched,
+                distinct_slots=exc.distinct_slots,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                scope_version=row.scope_version,
+                year=row.year,
+            )
 
     snapshot = build_snapshot(
         scope=scope,
@@ -333,6 +363,7 @@ def _persist_analysis_revision(
         # service.RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE.
         fallback_used=fallback_used_for(row.role, row.source_id),
         baseline=baseline,
+        baseline_unavailable_reason=baseline_unavailable_reason,
     )
 
     family = revision_family(batch["provider_revision"])
@@ -477,6 +508,7 @@ def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
     from sqlalchemy.exc import IntegrityError
 
     from app.domains.geo.rainfall.repository import current_year_done_keys, pending_row_for_key
+    from app.domains.geo.rainfall.service import carryover_labels
 
     scanned = 0
     enqueued = 0
@@ -503,7 +535,11 @@ def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
         db.add(
             RainfallOutbox(
                 **key,
-                work_labels=list(row.work_labels),
+                # LI2B-003: `outcome:` markers describe ONE build's decision,
+                # not the work -- a fresh attempt must not inherit the
+                # previous one's refusal, or the read path would back off on
+                # a key that has since been rebuilt.
+                work_labels=carryover_labels(row.work_labels),
                 interval_start=row.interval_start,
                 interval_end=row.interval_end,
                 status="pending",
@@ -545,6 +581,7 @@ def _revisit_stage2(db: Session, *, now: datetime) -> dict[str, int]:
     )
     from app.domains.geo.rainfall.service import (
         RAINFALL_HISTORICAL_SOURCE,
+        carryover_labels,
         resolve_missing_work_source,
     )
 
@@ -629,7 +666,13 @@ def _revisit_stage2(db: Session, *, now: datetime) -> dict[str, int]:
         db.add(
             RainfallOutbox(
                 **key,
-                work_labels=list({*row.work_labels, f"role:{work['role']}", "finalization"}),
+                # LI2B-003: `outcome:` markers are stripped here for the same
+                # reason as in stage 1 -- a finalization retry is a NEW
+                # attempt, not an inheritance of the refusal that made this
+                # key a candidate in the first place.
+                work_labels=list(
+                    {*carryover_labels(row.work_labels), f"role:{work['role']}", "finalization"}
+                ),
                 interval_start=work["interval_start"],
                 interval_end=work["interval_end"],
                 status="pending",
@@ -801,6 +844,8 @@ def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
     ``now`` is the disclosure-date seam (design.md Interfaces), passed
     through to ``build_analysis`` and nothing else here.
     """
+    from app.domains.geo.rainfall.service import NON_WRITE_DECISIONS, outcome_label
+
     batch = ingest_source_scope(
         source_id=row.source_id,
         role=row.role,
@@ -829,7 +874,24 @@ def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
             return "done"
         row.request_fingerprint = derived
 
-    build_analysis(outbox_id=str(row.id), batch=batch, db=db, now=now)
+    built = build_analysis(outbox_id=str(row.id), batch=batch, db=db, now=now)
+
+    # LI2B-003: `revision_write_decision` can refuse to write ("latched" or
+    # "gate_refused", both instrumented as events inside
+    # _persist_analysis_revision) while this row still finishes cleanly --
+    # the work RAN, it just produced no new revision. Marking the row `done`
+    # with nothing else to show for it left the served snapshot stale AND
+    # indistinguishable from a productive `done`, so the request path had no
+    # way to back its re-enqueue off (service._requeue_cooldown) and the key
+    # stayed permanently stale and permanently hot. `work_labels` is the only
+    # schema-compatible place to stamp this (RainfallOutbox has no
+    # result/note column); the list is REBOUND, never mutated in place, so
+    # the JSON column is actually marked dirty.
+    decision = (built or {}).get("decision")
+    if decision in NON_WRITE_DECISIONS:
+        marker = outcome_label(decision)
+        if marker not in row.work_labels:
+            row.work_labels = [*row.work_labels, marker]
 
     row.status = "done"
     row.completed_at = datetime.now(UTC)

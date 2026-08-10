@@ -674,22 +674,30 @@ class _FakeSession:
     """Session double exposing exactly the surface ``queue_missing_analysis``
     uses: ``query``, ``add``, ``flush``, ``commit``, ``scalar``. No real DB.
 
-    ``scalar`` backs TWO distinct ``select(...)``-based repository reads,
+    ``scalar`` backs THREE distinct ``select(...)``-based repository reads,
     called in this fixed order by ``queue_missing_analysis``: task 3.1's
-    ``recent_done`` cooldown lookup first, then R2-003's
-    ``repository.pending_row_for_key`` (the single "is there already a
-    pending row for this key" check, replacing what used to be a
-    ``db.query(...).filter_by(...).first()`` this fake answered via
-    ``query`` below). Positional, not query-inspecting -- good enough for
-    this fake's one caller and its fixed call order; the default
-    ``recent_done=None``/``existing=None`` keeps every pre-existing test's
-    behavior unchanged (no cooldown row, no reusable pending row -> the
-    enqueue path runs as before).
+    ``recent_done`` cooldown lookup, then LI2B-001/LI2B-003's
+    ``repository.latest_terminal_attempt`` (the key's newest ``done``/
+    ``failed`` row, which drives the failed and gate-refused cooldowns),
+    then R2-003's ``repository.pending_row_for_key`` (the single "is there
+    already a pending row for this key" check, replacing what used to be a
+    ``db.query(...).filter_by(...).first()`` this fake answered via ``query``
+    below). Positional, not query-inspecting -- good enough for this fake's
+    one caller and its fixed call order; the defaults
+    (``recent_done=None``/``terminal=None``/``existing=None``) keep every
+    pre-existing test's behavior unchanged (no cooldown row, no terminal
+    history, no reusable pending row -> the enqueue path runs as before).
     """
 
-    def __init__(self, existing: Any | None = None, recent_done: Any | None = None) -> None:
+    def __init__(
+        self,
+        existing: Any | None = None,
+        recent_done: Any | None = None,
+        terminal: Any | None = None,
+    ) -> None:
         self._existing = existing
         self._recent_done = recent_done
+        self._terminal = terminal
         self._scalar_calls = 0
         self.added: list[Any] = []
         self.flushed = 0
@@ -700,10 +708,15 @@ class _FakeSession:
 
     def scalar(self, _query: Any) -> Any | None:
         self._scalar_calls += 1
-        # 1st call: recent_done's cooldown lookup. 2nd+: pending_row_for_key
-        # (queue_missing_analysis's pre-check, and again after a simulated
-        # IntegrityError re-read -- neither existing test drives that far).
-        return self._recent_done if self._scalar_calls == 1 else self._existing
+        # 1st call: recent_done's cooldown lookup. 2nd: latest_terminal_attempt.
+        # 3rd+: pending_row_for_key (queue_missing_analysis's pre-check, and
+        # again after a simulated IntegrityError re-read -- neither existing
+        # test drives that far).
+        if self._scalar_calls == 1:
+            return self._recent_done
+        if self._scalar_calls == 2:
+            return self._terminal
+        return self._existing
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)

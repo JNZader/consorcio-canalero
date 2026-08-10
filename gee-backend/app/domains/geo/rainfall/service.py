@@ -70,6 +70,65 @@ def fallback_used_for(role: str, source_id: str) -> bool:
 # frontend poll; confirm against real GEE quota headroom (Open Questions).
 RAINFALL_RECOMPUTE_COOLDOWN = timedelta(minutes=10)
 
+# LI2B-001 (review-ledger.md "Slice 2b -- resilience lens + general
+# refuter"): a key whose newest terminal row is `failed` matched NEITHER the
+# recent-`done` cooldown above NOR the pending pre-check below, so every poll
+# started a fresh MAX_RETRIES cycle. For a TRANSIENT failure that is merely
+# wasteful; for a DETERMINISTIC compute-time failure (ingest succeeds, so the
+# adapter's circuit breaker never trips and each attempt is a real full-year
+# GEE fetch) it never terminates on its own -- neither sweep resurrects a
+# `failed` key, so the request path is the only thing that can, and the only
+# thing that must be bounded.
+#
+# 6 hours is chosen against BOTH failure shapes: a transient failure heals on
+# the first read after the cooldown lapses (well inside one working day), and
+# a deterministic one is capped at <= 4 retry cycles per day instead of one
+# per poll. Shorter would not meaningfully speed up the transient case --
+# nothing that fails deterministically becomes fixable in minutes -- while
+# multiplying the deterministic burn.
+RAINFALL_FAILED_REQUEUE_COOLDOWN = timedelta(hours=6)
+
+# LI2B-003: a `done` row whose build returned a NON-WRITE decision
+# ("latched"/"gate_refused", compute.revision_write_decision) served nothing
+# new and cannot be healed by retrying sooner -- only by upstream data
+# improving. Its re-enqueue therefore backs off to the cadence of the write
+# gate's own daily sweep (celery_app.py's `rainfall.revisit_stale` beat)
+# rather than the 10-minute recompute cooldown that governs a PRODUCTIVE
+# `done`. Without this, a post-rollover key sat permanently stale AND
+# permanently hot: one full-year ingest every ten minutes, forever, with no
+# progress possible until the provider published adequate Final data.
+RAINFALL_REFUSED_REQUEUE_COOLDOWN = timedelta(days=1)
+
+# LI2B-003: the outbox row's own record of a build that refused to write.
+# `work_labels` is the only schema-compatible place to stamp it (RainfallOutbox
+# has no result/note column, models.py), so outcome markers live in their own
+# `outcome:` namespace and are STRIPPED whenever the sweeps copy a row's labels
+# forward (tasks._carryover_labels) -- a marker describes ONE build's outcome,
+# never the work itself, and a healed key must not inherit it.
+OUTCOME_LABEL_PREFIX = "outcome:"
+NON_WRITE_DECISIONS = ("latched", "gate_refused")
+
+
+def outcome_label(decision: str) -> str:
+    """The `work_labels` marker for a build *decision* (LI2B-003)."""
+    return f"{OUTCOME_LABEL_PREFIX}{decision}"
+
+
+def carryover_labels(labels: Any) -> list[str]:
+    """*labels* minus every `outcome:` marker -- what a NEW outbox row may
+    inherit from an older row for the same key."""
+    return [label for label in labels if not str(label).startswith(OUTCOME_LABEL_PREFIX)]
+
+
+def non_write_outcome(row: RainfallOutbox) -> str | None:
+    """The non-write decision *row*'s build recorded, or ``None`` when it
+    recorded none (a productive `done`, or a row written before LI2B-003)."""
+    labels = set(row.work_labels or ())
+    for decision in NON_WRITE_DECISIONS:
+        if outcome_label(decision) in labels:
+            return decision
+    return None
+
 
 def _parse_event_window(event_window: dict[str, Any] | None) -> tuple[datetime, datetime] | None:
     if event_window is None:
@@ -214,6 +273,55 @@ def _reused_outbox_response(
     }
 
 
+def _requeue_cooldown(
+    db: Any, *, key: dict[str, Any], now: datetime
+) -> tuple[RainfallOutbox, str, timedelta] | None:
+    """The request path's re-enqueue cooldowns, in precedence order, or
+    ``None`` when this key may be enqueued.
+
+    Three windows, one per terminal shape a key's history can be in:
+
+    1. ``recent_done`` within ``RAINFALL_RECOMPUTE_COOLDOWN`` (10 min,
+       decision 6) -- the hot path, unchanged, evaluated first because it is
+       the cheapest and by far the most common.
+    2. the key's newest terminal row is ``failed`` and went terminal within
+       ``RAINFALL_FAILED_REQUEUE_COOLDOWN`` (6 h, LI2B-001).
+    3. the key's newest terminal row is a ``done`` whose build REFUSED to
+       write, within ``RAINFALL_REFUSED_REQUEUE_COOLDOWN`` (24 h, LI2B-003).
+
+    2 and 3 read the NEWEST terminal row rather than "any row in the window"
+    (``repository.latest_terminal_attempt``), so a key that failed or was
+    refused and has since been healed reports its healthy ``done`` row and is
+    not suppressed by its own history.
+    """
+    from app.domains.geo.rainfall.repository import latest_terminal_attempt, recent_done
+
+    # decision 6: a recent `done` row for this key skips re-enqueue
+    # REGARDLESS of whether a revision exists -- a time-bounded skip stops
+    # the per-poll GEE burn while letting a done-without-revision heal
+    # itself once the cooldown lapses.
+    recent = recent_done(db, **key, since=now - RAINFALL_RECOMPUTE_COOLDOWN)
+    if recent is not None:
+        return recent, "recent_done", RAINFALL_RECOMPUTE_COOLDOWN
+
+    terminal = latest_terminal_attempt(db, **key)
+    if terminal is None:
+        return None
+    # `done` rows are dated by completed_at, `failed` rows only by updated_at
+    # -- see latest_terminal_attempt's docstring for why not next_attempt_at.
+    attempted_at = terminal.completed_at or terminal.updated_at
+
+    if terminal.status == "failed":
+        if attempted_at >= now - RAINFALL_FAILED_REQUEUE_COOLDOWN:
+            return terminal, "terminal_failed", RAINFALL_FAILED_REQUEUE_COOLDOWN
+        return None
+
+    decision = non_write_outcome(terminal)
+    if decision is not None and attempted_at >= now - RAINFALL_REFUSED_REQUEUE_COOLDOWN:
+        return terminal, f"non_write_{decision}", RAINFALL_REFUSED_REQUEUE_COOLDOWN
+    return None
+
+
 def queue_missing_analysis(
     db: Any,
     *,
@@ -224,55 +332,40 @@ def queue_missing_analysis(
     requested_role: str | None = None,
     request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    from app.domains.geo.rainfall.repository import pending_row_for_key, recent_done
+    from app.domains.geo.rainfall.repository import pending_row_for_key
 
     fingerprint = request_fingerprint or _default_request_fingerprint(
         scope=scope, year=year, event_window=event_window
     )
     source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
+    key = {
+        "source_id": source["source_id"],
+        "role": source["role"],
+        "scope_kind": scope.kind,
+        "scope_id": scope.id,
+        "scope_version": scope.version,
+        "year": year,
+    }
 
-    # decision 6: a recent `done` row for this key skips re-enqueue
-    # REGARDLESS of whether a revision exists -- a time-bounded skip stops
-    # the per-poll GEE burn while letting a done-without-revision heal
-    # itself once the cooldown lapses.
-    recent = recent_done(
-        db,
-        source_id=source["source_id"],
-        role=source["role"],
-        scope_kind=scope.kind,
-        scope_id=scope.id,
-        scope_version=scope.version,
-        year=year,
-        since=datetime.now(UTC) - RAINFALL_RECOMPUTE_COOLDOWN,
-    )
-    if recent is not None:
+    cooldown = _requeue_cooldown(db, key=key, now=datetime.now(UTC))
+    if cooldown is not None:
+        row, reason, window = cooldown
         record_event(
             "rainfall.outbox.cooldown",
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-            outbox_id=str(recent.id),
+            **key,
+            outbox_id=str(row.id),
+            reason=reason,
+            cooldown_seconds=int(window.total_seconds()),
         )
         return {
             "status": "queued",
-            "outbox_id": str(recent.id),
+            "outbox_id": str(row.id),
             "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
             "year": year,
-            "labels": recent.work_labels,
+            "labels": row.work_labels,
         }
 
-    existing = pending_row_for_key(
-        db,
-        source_id=source["source_id"],
-        role=source["role"],
-        scope_kind=scope.kind,
-        scope_id=scope.id,
-        scope_version=scope.version,
-        year=year,
-    )
+    existing = pending_row_for_key(db, **key)
     if existing is not None:
         return _reused_outbox_response(existing, source=source, scope=scope, year=year)
 
@@ -302,15 +395,7 @@ def queue_missing_analysis(
         # that row is a reuse, not a failure, so both callers still get a
         # 202 with the SAME outbox_id.
         db.rollback()
-        reused = pending_row_for_key(
-            db,
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-        )
+        reused = pending_row_for_key(db, **key)
         if reused is None:
             # The constraint guarantees a matching row exists; a lost race
             # that skipped it would mean the constraint itself is wrong.
