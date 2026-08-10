@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -48,6 +49,17 @@ def tiny_repo(tmp_path: Path) -> Path:
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "initial")
     return repo
+
+
+def _key_set(db) -> set[str]:
+    """Every citation key of the pinned snapshot — the thing a write would change."""
+    return {
+        row[0]
+        for row in db.execute(
+            text("SELECT citation_key FROM rag_unidad WHERE corpus_sha = :sha"),
+            {"sha": PINNED_CORPUS_SHA},
+        ).all()
+    }
 
 
 def head_of(repo: Path) -> str:
@@ -92,6 +104,157 @@ class TestCorpusPinning:
         assert db.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == before
 
 
+class TestMainEntryPoint:
+    """`main()` through the real argparse entry — the surface an operator uses.
+
+    Every exit code below was previously unexercised: the suite called `ingest()`
+    directly, so argument handling, the abort branches, the exit codes and the
+    printed report were all untested (ledger RAG2-006).
+    """
+
+    def test_missing_database_url_exits_2(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        code = rag_ingest.main(["--corpus-path", str(tmp_path), "--corpus-sha", "0" * 40])
+        assert code == 2
+        assert "--database-url" in capsys.readouterr().err
+
+    def test_pin_mismatch_exits_1_without_touching_a_database(self, tiny_repo, capsys):
+        """A wrong pin aborts before the transaction — `--dry-run` proves no DB
+        is even reachable when it does."""
+        code = rag_ingest.main(
+            ["--corpus-path", str(tiny_repo), "--corpus-sha", "0" * 40, "--dry-run"]
+        )
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "INGESTION ABORTED — nothing was written." in err
+
+    def test_missing_declared_document_exits_1(self, tiny_repo, capsys):
+        """HEAD resolves and the tree is clean, but it is not the pinned corpus.
+
+        `load_corpus` iterates the declared documents and aborts on the first one
+        the checkout does not contain — so this is the branch a clean-but-wrong
+        checkout actually takes, ahead of the `corpus_sha` comparison.
+        """
+        code = rag_ingest.main(
+            ["--corpus-path", str(tiny_repo), "--corpus-sha", head_of(tiny_repo), "--dry-run"]
+        )
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "INGESTION ABORTED — nothing was written." in err
+        assert "declared in expectations but missing" in err
+
+    def test_verify_unchanged_difference_exits_1_and_names_all_three_classes(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The report must distinguish modified, added and removed keys.
+
+        `ingest` is stubbed here on purpose: the no-write guarantee itself is
+        asserted against a real database in `TestFullCorpusIngestion`, while what
+        this test owns is `main()`'s own wiring — that a failed verification
+        becomes exit 1 and a report naming each class, rather than exit 0.
+        """
+        summary = SimpleNamespace(
+            corpus_sha="a" * 40,
+            gates=SimpleNamespace(
+                documentos=1, articulos_total=1, no_articulos_total=0, over_ceiling=[]
+            ),
+            unidades_escritas=0,
+            unidades_eliminadas=0,
+            committed=False,
+            divergencias=["d#1"],
+            claves_agregadas=["d#2"],
+            claves_eliminadas=["d#3"],
+            verificacion_fallida=True,
+        )
+        monkeypatch.setattr(rag_ingest, "ingest", lambda *a, **k: summary)
+        monkeypatch.setattr(rag_ingest, "create_engine", lambda url: _NullEngine())
+
+        code = rag_ingest.main(
+            [
+                "--corpus-path",
+                str(tmp_path),
+                "--corpus-sha",
+                "a" * 40,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--verify-unchanged",
+            ]
+        )
+
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "VERIFICACIÓN FALLIDA" in err
+        assert "contenido modificado" in err and "d#1" in err
+        assert "claves agregadas" in err and "d#2" in err
+        assert "claves eliminadas" in err and "d#3" in err
+
+
+class _NullEngine:
+    """Stands in for a SQLAlchemy Engine in `main()` tests that never query."""
+
+    def dispose(self) -> None:
+        return None
+
+
+@requires_real_corpus
+class TestMainAgainstRealCorpus:
+    """`main()` over the pinned corpus, `--dry-run` so no database is needed."""
+
+    def test_dry_run_over_the_real_corpus_exits_0(self, capsys):
+        code = rag_ingest.main(
+            [
+                "--corpus-path",
+                str(real_corpus_path()),
+                "--corpus-sha",
+                PINNED_CORPUS_SHA,
+                "--dry-run",
+            ]
+        )
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "articulo units       : 1383" in out
+        assert "committed            : False" in out
+
+    def test_over_ceiling_units_reach_the_printed_report(self, capsys):
+        """RAG2-004: `over_ceiling` was populated and then reached no output.
+
+        Its own docstring promised "always reported — never silently dropped",
+        while nothing carried it out of the dataclass: not `GateOutcome`, not
+        `IngestionSummary`, not this printout.
+        """
+        rag_ingest.main(
+            [
+                "--corpus-path",
+                str(real_corpus_path()),
+                "--corpus-sha",
+                PINNED_CORPUS_SHA,
+                "--dry-run",
+            ]
+        )
+        out = capsys.readouterr().out
+        assert "SOBRE EL CEILING DE EMBEDDING" in out
+        assert "10593#1" in out and "8560#5" in out
+        assert "FTS" in out, "the report must say these units stay retrievable"
+        assert "nunca truncadas" in out
+
+    def test_strict_token_ceiling_turns_them_into_a_hard_abort(self, capsys):
+        """The opt-in flag is the only thing that promotes reporting to failing."""
+        code = rag_ingest.main(
+            [
+                "--corpus-path",
+                str(real_corpus_path()),
+                "--corpus-sha",
+                PINNED_CORPUS_SHA,
+                "--dry-run",
+                "--strict-token-ceiling",
+            ]
+        )
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "INGESTION ABORTED — nothing was written." in err
+        assert "truncate" in err
+
+
 @requires_real_corpus
 class TestFullCorpusIngestion:
     def test_ingests_every_declared_unit(self, db):
@@ -116,10 +279,20 @@ class TestFullCorpusIngestion:
         assert row[0] == "nota-vigencia"
 
     def test_idempotent_rerun_same_sha(self, db):
-        """Same SHA in, byte-identical DB state out (modulo timestamps)."""
+        """Same SHA in, byte-identical DB state out.
+
+        The projection is the WHOLE row, not a chosen subset: `epigrafe`,
+        `documento_id` and `source_file` were outside the old comparison, so a
+        re-run that rewrote any of them satisfied the determinism assertion
+        while changing the database (ledger RAG2-006). `tsv` is included because
+        it is what FTS actually searches — a generated column that drifted would
+        change retrieval with every other column identical. `rag_unidad` carries
+        no timestamp or serial, so nothing has to be excluded.
+        """
         first = rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
         snapshot_sql = text(
-            "SELECT citation_key, tipo_chunk, texto, texto_indexado, source_offset "
+            "SELECT corpus_sha, citation_key, documento_id, tipo_chunk, epigrafe, "
+            "texto, texto_indexado, source_file, source_offset, tsv "
             "FROM rag_unidad WHERE corpus_sha = :sha ORDER BY citation_key"
         )
         before = db.execute(snapshot_sql, {"sha": PINNED_CORPUS_SHA}).all()
@@ -130,7 +303,9 @@ class TestFullCorpusIngestion:
         assert second.unidades_escritas == first.unidades_escritas
         assert second.unidades_eliminadas == 0
         assert after == before
-        assert len(after) == len({row[0] for row in after})
+        assert len(after) == 1383 + second.gates.no_articulos_total == 1448
+        citation_keys = [row[1] for row in after]
+        assert len(citation_keys) == len(set(citation_keys))
 
     def test_removed_unit_is_pruned_not_left_stale(self, db):
         """`ON CONFLICT DO UPDATE` alone is additive; a vanished unit would
@@ -178,6 +353,102 @@ class TestFullCorpusIngestion:
             {"sha": PINNED_CORPUS_SHA},
         ).scalar_one()
         assert texto == "CONTENIDO DIVERGENTE"
+
+    def test_verify_unchanged_reports_removed_keys_and_writes_nothing(self, db):
+        """RAG2-003: the flag compared only the key INTERSECTION.
+
+        A key present in the database and absent from the new parse is not a
+        hash mismatch, so it produced no divergence — and the run fell straight
+        through to the upserts and `prune_unidades`, which DELETED it. The
+        report then said `divergencias: []`, the transaction committed and the
+        exit code was 0: the one operation the flag exists to prevent, performed
+        silently, on rows it never even examined.
+        """
+        rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
+        db.execute(
+            text(
+                "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, "
+                "tipo_chunk, texto, texto_indexado, source_file, source_offset) "
+                "VALUES (:sha, 'ghost#1', 'ley-9750-consorcios-canaleros', "
+                "'articulo', 'stale', 'stale', 'ghost.md', 0)"
+            ),
+            {"sha": PINNED_CORPUS_SHA},
+        )
+        before = _key_set(db)
+
+        summary = rag_ingest.ingest(
+            db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
+        )
+
+        assert summary.claves_eliminadas == ["ghost#1"]
+        assert summary.divergencias == []
+        assert summary.claves_agregadas == []
+        assert summary.verificacion_fallida
+        assert not summary.committed
+        assert summary.unidades_eliminadas == 0, "nothing may be pruned under the flag"
+        assert _key_set(db) == before, "the row set must be untouched"
+
+    def test_verify_unchanged_reports_added_keys_and_writes_nothing(self, db):
+        """The mirror case: a key the parse produces that the snapshot lacks."""
+        rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
+        db.execute(
+            text("DELETE FROM rag_unidad WHERE corpus_sha = :sha AND citation_key = '9750#3'"),
+            {"sha": PINNED_CORPUS_SHA},
+        )
+        before = _key_set(db)
+
+        summary = rag_ingest.ingest(
+            db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
+        )
+
+        assert summary.claves_agregadas == ["9750#3"]
+        assert summary.claves_eliminadas == []
+        assert summary.divergencias == []
+        assert not summary.committed
+        assert _key_set(db) == before
+
+    def test_verify_unchanged_reports_the_three_classes_separately(self, db):
+        """Added, removed and content-changed are distinct facts, not one blob."""
+        rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
+        db.execute(
+            text(
+                "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, "
+                "tipo_chunk, texto, texto_indexado, source_file, source_offset) "
+                "VALUES (:sha, 'ghost#1', 'ley-9750-consorcios-canaleros', "
+                "'articulo', 'stale', 'stale', 'ghost.md', 0)"
+            ),
+            {"sha": PINNED_CORPUS_SHA},
+        )
+        db.execute(
+            text("DELETE FROM rag_unidad WHERE corpus_sha = :sha AND citation_key = '9750#3'"),
+            {"sha": PINNED_CORPUS_SHA},
+        )
+        db.execute(
+            text(
+                "UPDATE rag_unidad SET texto = 'CONTENIDO DIVERGENTE' "
+                "WHERE corpus_sha = :sha AND citation_key = '9750#4'"
+            ),
+            {"sha": PINNED_CORPUS_SHA},
+        )
+        before = _key_set(db)
+
+        summary = rag_ingest.ingest(
+            db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
+        )
+
+        assert summary.claves_eliminadas == ["ghost#1"]
+        assert summary.claves_agregadas == ["9750#3"]
+        assert summary.divergencias == ["9750#4"]
+        assert _key_set(db) == before
+
+    def test_verify_unchanged_on_an_identical_snapshot_still_commits(self, db):
+        """The flag must not turn a genuinely unchanged re-run into a failure."""
+        rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
+        summary = rag_ingest.ingest(
+            db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
+        )
+        assert not summary.verificacion_fallida
+        assert summary.committed
 
     def test_verify_unchanged_is_off_by_default(self, db):
         rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)

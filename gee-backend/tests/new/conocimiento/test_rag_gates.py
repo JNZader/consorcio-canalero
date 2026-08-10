@@ -9,14 +9,23 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+import yaml
 
-from app.domains.conocimiento.expectations import CorpusExpectations, load_expectations
+from app.domains.conocimiento.expectations import (
+    CorpusExpectations,
+    DocumentPolicy,
+    ExcludedHeading,
+    NonArticleUnit,
+    load_expectations,
+)
 from app.domains.conocimiento.gates import (
     TOKEN_CEILING,
     GateReport,
     article_count_gate,
     citation_key_uniqueness_gate,
+    corpus_file_inventory_gate,
     estimate_tokens,
+    heading_coverage_gate,
     non_article_inventory_gate,
     run_all_gates,
     token_ceiling_gate,
@@ -157,6 +166,163 @@ class TestNonArticleInventoryGate:
         assert sum(subtotals.values()) == EXPECTATIONS.articulos_declarados == 1383
 
 
+def make_expectations(policy: DocumentPolicy, **overrides) -> CorpusExpectations:
+    """A one-document corpus contract, for gates that need a policy but no corpus."""
+    defaults = dict(
+        corpus_sha="0" * 40,
+        manifest_version=2,
+        articulos_declarados=policy.articulos,
+        subtotales_articulo={},
+        no_articulos_declarados=len(policy.no_articulos),
+        documentos={policy.documento_id: policy},
+        clases_excluidas={"editorial": "corpus commentary, not the norm"},
+        archivos_no_documento=frozenset({"MANIFEST.md"}),
+    )
+    defaults.update(overrides)
+    return CorpusExpectations(**defaults)  # type: ignore[arg-type]
+
+
+def make_policy(**overrides) -> DocumentPolicy:
+    defaults = dict(
+        documento_id="d",
+        archivo="d.md",
+        tipo="ley-provincial",
+        es_secundaria=False,
+        key_prefix="d",
+        key_style="numero",
+        articulos=0,
+        no_articulos=(),
+        excluidos=(),
+    )
+    defaults.update(overrides)
+    return DocumentPolicy(**defaults)  # type: ignore[arg-type]
+
+
+class TestHeadingCoverageGate:
+    """RAG2-001: the count gates only check what the YAML claims.
+
+    A section declared in no inventory is invisible to every one of them, which
+    is how Res. APRHI 3/2026's two anexos stayed out of the index with a green
+    run.
+    """
+
+    SOURCE = "---\ntitulo: D\n---\n\n# Título\n\n## Art. 1\n\ncuerpo\n\n## Huérfana\n\ntexto\n"
+
+    def test_heading_in_no_inventory_fails(self):
+        report = GateReport()
+        policy = make_policy()
+        heading_coverage_gate({"d": []}, {"d": self.SOURCE}, make_expectations(policy), report)
+        assert not report.ok
+        assert any("Huérfana" in failure for failure in report.failures)
+
+    def test_heading_inside_a_captured_unit_passes(self):
+        """A `##` sub-heading of a captured unit is part of it, not a new one."""
+        start = self.SOURCE.index("## Art. 1")
+        unidad = replace(make_unidad("d#1", texto=self.SOURCE[start:]), source_offset=start)
+        report = GateReport()
+        policy = make_policy(excluidos=(ExcludedHeading(heading="Título", clase="editorial"),))
+        heading_coverage_gate(
+            {"d": [unidad]}, {"d": self.SOURCE}, make_expectations(policy), report
+        )
+        assert report.ok, report.failures
+
+    def test_declared_exclusion_passes(self):
+        report = GateReport()
+        policy = make_policy(
+            excluidos=(
+                ExcludedHeading(heading="Título", clase="editorial"),
+                ExcludedHeading(heading="Art. 1", clase="editorial"),
+                ExcludedHeading(heading="Huérfana", clase="editorial"),
+            )
+        )
+        heading_coverage_gate({"d": []}, {"d": self.SOURCE}, make_expectations(policy), report)
+        assert report.ok, report.failures
+
+    def test_declared_non_article_heading_passes(self):
+        report = GateReport()
+        policy = make_policy(
+            no_articulos=(
+                NonArticleUnit(heading="Huérfana", tipo_chunk="nota-vigencia", citation_key="d#h"),
+            ),
+            excluidos=(
+                ExcludedHeading(heading="Título", clase="editorial"),
+                ExcludedHeading(heading="Art. 1", clase="editorial"),
+            ),
+        )
+        heading_coverage_gate({"d": []}, {"d": self.SOURCE}, make_expectations(policy), report)
+        assert report.ok, report.failures
+
+    def test_hash_line_inside_frontmatter_is_not_a_heading(self):
+        """`#` is legal YAML comment syntax; only the body carries headings."""
+        source = "---\n# no soy un heading\ntitulo: D\n---\n\ncuerpo\n"
+        report = GateReport()
+        heading_coverage_gate({"d": []}, {"d": source}, make_expectations(make_policy()), report)
+        assert report.ok, report.failures
+
+
+class TestCorpusFileInventoryGate:
+    """A corpus `.md` nobody declared is never opened, parsed, counted or reported."""
+
+    def _corpus_dir(self, tmp_path, *names: str):
+        for name in names:
+            (tmp_path / name).write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        return tmp_path
+
+    def test_unlisted_md_file_fails(self, tmp_path):
+        path = self._corpus_dir(tmp_path, "d.md", "MANIFEST.md", "ley-fantasma.md")
+        report = GateReport()
+        corpus_file_inventory_gate(path, make_expectations(make_policy()), report)
+        assert not report.ok
+        assert any("ley-fantasma.md" in failure for failure in report.failures)
+
+    def test_declared_document_and_declared_non_document_pass(self, tmp_path):
+        path = self._corpus_dir(tmp_path, "d.md", "MANIFEST.md")
+        report = GateReport()
+        corpus_file_inventory_gate(path, make_expectations(make_policy()), report)
+        assert report.ok, report.failures
+
+    def test_missing_corpus_directory_fails(self, tmp_path):
+        report = GateReport()
+        corpus_file_inventory_gate(tmp_path / "nope", make_expectations(make_policy()), report)
+        assert not report.ok
+
+
+class TestExclusionVocabulary:
+    def test_every_declared_exclusion_class_exists(self):
+        used = {
+            item.clase for policy in EXPECTATIONS.documentos.values() for item in policy.excluidos
+        }
+        assert used, "the exclusion inventory must not be empty"
+        assert used <= set(EXPECTATIONS.clases_excluidas)
+
+    def test_undeclared_exclusion_class_is_rejected(self, tmp_path):
+        """An exclusion with no declared class is an exclusion with no reason."""
+        raw = {
+            "corpus_sha": "0" * 40,
+            "manifest_version": 2,
+            "articulos_declarados": 0,
+            "subtotales_articulo": {},
+            "no_articulos_declarados": 0,
+            "clases_excluidas": {"editorial": "…"},
+            "documentos": {
+                "d": {
+                    "archivo": "d.md",
+                    "articulos": 0,
+                    "es_secundaria": False,
+                    "key_prefix": "d",
+                    "key_style": "numero",
+                    "no_articulos": [],
+                    "excluidos": [{"heading": "H", "clase": "inventada"}],
+                    "tipo": "ley-provincial",
+                }
+            },
+        }
+        path = tmp_path / "expectations.yaml"
+        path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+        with pytest.raises(ValueError, match="undeclared class"):
+            load_expectations(path)
+
+
 class TestIntegrityGates:
     def test_verbatim_substring_gate(self):
         source = "prefix ARTICULO UNO suffix"
@@ -294,6 +460,40 @@ class TestAgainstRealCorpus:
             (u.citation_key, u.texto, u.source_offset) for d in again.documentos for u in d.unidades
         ]
         assert first == second
+
+    def test_every_heading_is_captured_declared_or_excluded(self, corpus):
+        """No heading may be silently absent from all three inventories.
+
+        The count gates compare produced units against *declared* ones, so a
+        section declared nowhere is invisible to both. This is the gate that
+        would have caught RAG2-001 on the day the resolution was added.
+        """
+        report = GateReport()
+        heading_coverage_gate(corpus.parsed, corpus.sources, corpus.expectations, report)
+        assert report.ok, report.failures[:10]
+
+    def test_aprhi_3_2026_anexos_are_indexed(self, corpus):
+        """RAG2-001: art. 1° declares both anexos to integrate the instrument.
+
+        ANEXO I carries the 25 afectaciones (nomenclatura, titular, valuación) —
+        content that exists in no other document of the corpus — and ANEXO II
+        the cajetín of the plano. Neither was in any inventory, so neither was
+        retrievable, while every count gate reported success.
+        """
+        unidades = {u.citation_key: u for doc in corpus.documentos for u in doc.unidades}
+
+        anexo_i = unidades["res-aprhi-3-2026#anexo-i-planilla-de-individualizacion-de-terrenos"]
+        assert anexo_i.tipo_chunk == "anexo-normativo"
+        assert "25" in anexo_i.texto and "SISTEMATIZACION DE CUENCA TRES COLONIAS" in anexo_i.texto
+
+        anexo_ii = unidades["res-aprhi-3-2026#anexo-ii-planos-de-afectacion-parcelaria-cajetin"]
+        assert anexo_ii.tipo_chunk == "anexo-normativo"
+
+    def test_every_corpus_md_file_is_declared(self, corpus):
+        """A corpus file nobody listed is never opened and never reported."""
+        report = GateReport()
+        corpus_file_inventory_gate(real_corpus_path(), corpus.expectations, report)
+        assert report.ok, report.failures
 
     def test_run_all_gates_reports_the_known_over_ceiling_units(self, corpus):
         """Three real units genuinely exceed the embedding ceiling.

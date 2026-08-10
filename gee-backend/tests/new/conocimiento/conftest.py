@@ -51,7 +51,18 @@ def real_corpus_path() -> Path | None:
     return path if (path / "MANIFEST.md").is_file() else None
 
 
-requires_real_corpus = pytest.mark.skipif(
-    real_corpus_path() is None,
-    reason="set RAG_CORPUS_PATH to a checkout of consorcio-corpus-legal at the pinned SHA",
-)
+def requires_real_corpus(obj):
+    """Mark a test as part of the corpus contract AND skip it without a corpus.
+
+    The `corpus` marker is what makes the skipping *visible*: `make
+    test-rag-corpus` selects exactly these tests and fails when any of them is
+    skipped, so "the corpus suite passed" can never again mean "the corpus suite
+    did not run". Plain `pytest tests/new/` (the CI shape) still skips them, by
+    design and now on the record — CI genuinely cannot hold the private corpus
+    (ledger RAG2-005).
+    """
+    obj = pytest.mark.corpus(obj)
+    return pytest.mark.skipif(
+        real_corpus_path() is None,
+        reason="set RAG_CORPUS_PATH to a checkout of consorcio-corpus-legal at the pinned SHA",
+    )(obj)

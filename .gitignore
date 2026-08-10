@@ -56,6 +56,7 @@ coverage.xml
 *.cover
 .hypothesis/
 gee-backend/rag-junit.xml
+gee-backend/rag-corpus-junit.xml
 
 # ===========================================
 # NODE / JAVASCRIPT

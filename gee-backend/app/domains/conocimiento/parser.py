@@ -98,6 +98,19 @@ class Unidad:
     ubicacion_estructural: str | None = None
 
 
+def body_offset(text: str) -> int:
+    """Offset of the first byte after the YAML frontmatter block.
+
+    Only the body is heading-bearing. A `#`-prefixed line is legal YAML comment
+    syntax, so a gate that scans headings over the whole file would read a
+    frontmatter comment as a document section.
+    """
+    if not text.startswith("---\n"):
+        return 0
+    end = text.find("\n---\n", 3)
+    return 0 if end == -1 else end + len("\n---\n")
+
+
 def slugify(text: str) -> str:
     """Lowercase, strip accents, collapse everything else to single hyphens.
 

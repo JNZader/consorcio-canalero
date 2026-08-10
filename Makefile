@@ -6,7 +6,7 @@
         backend-install frontend-install backend-dev frontend-dev backend-test \
         frontend-test backend-lint frontend-lint docker-build docker-logs \
         docker-restart docker-clean format security-scan db-upgrade db-downgrade \
-        ci-quick ci-full install-hooks rag-db test-rag
+        ci-quick ci-full install-hooks rag-db test-rag test-rag-corpus
 
 # Default target
 .DEFAULT_GOAL := help
@@ -301,6 +301,39 @@ test-rag: ## Run the pgvector-marked test suite against consorcio-postgres:16-ve
 			exit 1; \
 		fi; \
 		echo "$(GREEN)test-rag: all pgvector tests ran for real against consorcio-postgres:16-vector, zero skipped.$(NC)"
+
+test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinned checkout (LOCAL ONLY — CI cannot hold the private corpus)
+# CI covers the STRUCTURAL tests only. Every content assertion — the 35-document
+# check, the 1383/65 counts, the vigencia canary, verbatim fidelity, determinism,
+# pruning, idempotency — hides behind RAG_CORPUS_PATH, which CI never sets
+# because the corpus repository is private and V0 is all-local by owner rule.
+# Those tests therefore report SKIPPED and the CI run is green (ledger RAG2-005).
+# This target is where that contract actually gets exercised, and like `test-rag`
+# it treats a SKIP as a failure: "the corpus suite passed" must never be able to
+# mean "the corpus suite did not run".
+	@if [ -z "$$RAG_CORPUS_PATH" ]; then \
+		echo "$(RED)test-rag-corpus: RAG_CORPUS_PATH is not set. Point it at a checkout of consorcio-corpus-legal at the pinned SHA, e.g.$(NC)"; \
+		echo "$(YELLOW)  make test-rag-corpus RAG_CORPUS_PATH=~/path/to/consorcio-corpus-legal$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Running RAG corpus-contract tests against $$RAG_CORPUS_PATH...$(NC)"
+	@cd $(BACKEND_DIR) && \
+		RAG_CORPUS_PATH=$$RAG_CORPUS_PATH \
+		venv/bin/pytest -m corpus --junitxml=rag-corpus-junit.xml tests/new/conocimiento/; \
+		pytest_status=$$?; \
+		if [ $$pytest_status -eq 5 ]; then \
+			echo "$(RED)test-rag-corpus: exit code 5 — zero corpus tests were collected. Check the `corpus` marker and the -m expression.$(NC)"; \
+			exit 1; \
+		elif [ $$pytest_status -ne 0 ]; then \
+			echo "$(RED)test-rag-corpus: pytest failed (exit $$pytest_status).$(NC)"; \
+			exit $$pytest_status; \
+		fi; \
+		skipped=$$(venv/bin/python -c "import xml.etree.ElementTree as ET; root = ET.parse('rag-corpus-junit.xml').getroot(); suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]; print(sum(int(s.attrib.get('skipped', 0)) for s in suites))"); \
+		if [ "$$skipped" != "0" ]; then \
+			echo "$(RED)test-rag-corpus: $$skipped corpus test(s) skipped despite RAG_CORPUS_PATH being set — the checkout is wrong or degraded, and a green run would have covered nothing.$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$(GREEN)test-rag-corpus: the whole corpus contract ran for real against the pinned checkout, zero skipped.$(NC)"
 
 # ==============================================
 # UTILITY COMMANDS

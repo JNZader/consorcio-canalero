@@ -1,10 +1,33 @@
+archivos_no_documento:
+- MANIFEST.md
+- README.md
 articulos_declarados: 1383
+clases_excluidas:
+  comentario-del-corpus: 'Comentario del corpus SOBRE la norma (relevancia, advertencias, notas de vigencia,
+    discrepancias, índices, «qué prueba y qué no»). Excluido a propósito: citarlo devolvería la opinión
+    del corpus con cara de norma, que es exactamente el fallo que este diseño existe para impedir.'
+  contenedor-estructural: Encabezado que sólo agrupa unidades ya indexadas (LIBRO/TÍTULO/CAPÍTULO, «Articulado»,
+    «Parte resolutiva», anexos articulados). Indexarlo duplicaría a sus hijos.
+  contenido-no-declarado: Contenido sustantivo presente en el archivo que el MANIFEST v2 no declara como
+    unidad. Excluido del índice V0 y anotado aquí para que la decisión sea explícita y revisable — no
+    silenciosa (ledger RAG2-001).
+  encabezado-y-preambulo: 'Encabezado, VISTO, CONSIDERANDO, POR ELLO y fórmula del acto: preámbulo, no
+    parte dispositiva. Los dos actos donde el MANIFEST sí los declara los indexan como `considerando`.'
+  firma-y-promulgacion: Firmas, pie y bloque de promulgación. Identifican quién firmó; no crean regla
+    citable.
+  procedencia-y-verificacion: Cadena de obtención y verificación de la fuente, escrita por el corpus.
+    Es metadato de procedencia, no texto de la norma.
+  titulo-documento: 'Título raíz del documento. No es una unidad: su contenido son las secciones hijas,
+    que se indexan por separado.'
 corpus_sha: 12043582bf8016288a7e8084e85a4b713a97af2f
 documentos:
   auditoria-obras-zona-10-de-mayo:
     archivo: auditoria-obras-zona-10-de-mayo.md
     articulos: 0
     es_secundaria: true
+    excluidos:
+    - clase: titulo-documento
+      heading: Auditoría de obras hídricas — zona del Consorcio Canalero «10 de Mayo»
     key_prefix: auditoria-10-de-mayo
     key_style: articulo
     no_articulos:
@@ -40,6 +63,23 @@ documentos:
     archivo: caso-testigo-tres-colonias-canal-santa-cecilia.md
     articulos: 0
     es_secundaria: true
+    excluidos:
+    - clase: contenedor-estructural
+      heading: II. Cronología
+    - clase: contenedor-estructural
+      heading: VI. El consorcio canalero en este caso
+    - clase: contenido-no-declarado
+      heading: I. Mapa de actores
+    - clase: contenido-no-declarado
+      heading: III. Los números
+    - clase: contenido-no-declarado
+      heading: 'IV. Financiamiento: lo que se buscó y lo que se encontró'
+    - clase: contenido-no-declarado
+      heading: V. Huecos declarados — «no consta públicamente que…»
+    - clase: contenido-no-declarado
+      heading: VII. Lecciones para el canal Nº 5 del Consorcio 10 de Mayo
+    - clase: titulo-documento
+      heading: Caso testigo — «Sistematización de Cuenca Tres Colonias y Canal Santa Cecilia»
     key_prefix: caso-testigo-tres-colonias
     key_style: articulo
     no_articulos:
@@ -75,6 +115,39 @@ documentos:
     archivo: consorcio-10-de-mayo-registro-aprhi.md
     articulos: 7
     es_secundaria: false
+    excluidos:
+    - clase: contenedor-estructural
+      heading: I. Resolución SRHyC N° 189/2014 — aprobación de la constitución
+    - clase: contenedor-estructural
+      heading: II. Resolución General APRHI N° 005/2026 — autoridades electas el 18-09-2025
+    - clase: contenedor-estructural
+      heading: III. Consorcios linderos
+    - clase: contenido-no-declarado
+      heading: II bis. Cronología registral — actos del consorcio publicados en el B.O.
+    - clase: contenido-no-declarado
+      heading: III.a — Por geometría (frontera compartida en la capa oficial)
+    - clase: contenido-no-declarado
+      heading: III.b — Por texto de las resoluciones (corroboración cruzada)
+    - clase: contenido-no-declarado
+      heading: III.c — Ficha de cada lindero
+    - clase: contenido-no-declarado
+      heading: III.d — Todos los consorcios con territorio en el Departamento Unión
+    - clase: encabezado-y-preambulo
+      heading: Visto y considerandos
+    - clase: firma-y-promulgacion
+      heading: Pie y firmas (Res. 189/2014)
+    - clase: firma-y-promulgacion
+      heading: Pie y firmas (Res. Gral. APRHI 005/2026)
+    - clase: procedencia-y-verificacion
+      heading: Crudos
+    - clase: procedencia-y-verificacion
+      heading: Cómo se obtuvo
+    - clase: procedencia-y-verificacion
+      heading: IV. Verificación
+    - clase: procedencia-y-verificacion
+      heading: Lo que NO se pudo verificar
+    - clase: titulo-documento
+      heading: Consorcio Canalero 10 de Mayo — expediente público en el registro de la APRHI
     key_prefix: 10demayo
     key_style: articulo
     no_articulos:
@@ -86,6 +159,13 @@ documentos:
     archivo: decreto-1315-2012-reglamentario-ley-9750.md
     articulos: 8
     es_secundaria: false
+    excluidos:
+    - clase: encabezado-y-preambulo
+      heading: Visto y considerando
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Decreto 1315/2012 — Reglamentación parcial de la Ley 9750 (Consorcios Canaleros)
     key_prefix: 1315-2012
     key_style: numero
     no_articulos: []
@@ -94,6 +174,21 @@ documentos:
     archivo: decreto-280-2025-facultades-bioagroindustria.md
     articulos: 4
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué hace y por qué importa la fecha
+    - clase: encabezado-y-preambulo
+      heading: Considerandos
+    - clase: encabezado-y-preambulo
+      heading: Fórmula
+    - clase: encabezado-y-preambulo
+      heading: Visto
+    - clase: firma-y-promulgacion
+      heading: Firma
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto
+    - clase: titulo-documento
+      heading: Decreto N° 280/2025 (Córdoba)
     key_prefix: 280-2025
     key_style: numero
     no_articulos: []
@@ -102,6 +197,23 @@ documentos:
     archivo: decreto-318-2007-reglamentario-ley-8560.md
     articulos: 132
     es_secundaria: false
+    excluidos:
+    - clase: contenedor-estructural
+      heading: Anexo Único — Reglamentación de la Ley 8560 (T.O. 2004)
+    - clase: contenedor-estructural
+      heading: Decreto — parte dispositiva
+    - clase: encabezado-y-preambulo
+      heading: Considerandos
+    - clase: encabezado-y-preambulo
+      heading: Fórmula
+    - clase: encabezado-y-preambulo
+      heading: Visto
+    - clase: procedencia-y-verificacion
+      heading: Cómo leerlo
+    - clase: procedencia-y-verificacion
+      heading: Por qué estaba en la lista de faltantes y qué lo destrabó
+    - clase: titulo-documento
+      heading: Decreto N° 318/2007 (Córdoba) — Reglamentación de la Ley 8560 (T.O. 2004)
     key_prefix: 318-2007
     key_style: numero
     no_articulos: []
@@ -110,6 +222,16 @@ documentos:
     archivo: decreto-3780-c-65-obras-cursos-naturales-artificiales.md
     articulos: 6
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Búsqueda de segundo testigo — 2026-08-05 (NO CONSEGUIDO)
+    - clase: procedencia-y-verificacion
+      heading: Encabezado de la fuente
+    - clase: procedencia-y-verificacion
+      heading: Nota de extracción y anomalías de la fuente
+    - clase: titulo-documento
+      heading: Normas técnicas para la ejecución de obras sobre cursos naturales y artificiales por parte
+        de particulares
     key_prefix: 3780-C-65
     key_style: punto
     no_articulos: []
@@ -118,6 +240,9 @@ documentos:
     archivo: informe-f3-sujeto-expropiante.md
     articulos: 0
     es_secundaria: true
+    excluidos:
+    - clase: titulo-documento
+      heading: F-3 — Quién expropia cuando el productor no da el paso
     key_prefix: informe-f3
     key_style: articulo
     no_articulos:
@@ -154,6 +279,9 @@ documentos:
     archivo: informe-zona-de-camino-cordoba.md
     articulos: 0
     es_secundaria: true
+    excluidos:
+    - clase: titulo-documento
+      heading: Régimen de la zona de camino en Córdoba — informe operativo
     key_prefix: informe-zona-camino
     key_style: articulo
     no_articulos:
@@ -189,6 +317,13 @@ documentos:
     archivo: jurisprudencia-potrerillo-larreta-2017.md
     articulos: 0
     es_secundaria: true
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Carátula
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: El Potrerillo de Larreta Country Club S.A. c/ Provincia de Córdoba
     key_prefix: jurisprudencia-potrerillo-2017
     key_style: articulo
     no_articulos:
@@ -218,6 +353,16 @@ documentos:
     archivo: ley-10593-fondo-consorcios-canaleros.md
     articulos: 45
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Precisión sobre los arts. 30 y 31 (derogados por el art. 52 de la Ley 10679)
+    - clase: comentario-del-corpus
+      heading: Qué artículo de la Ley 9750 modificó — respuesta
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 10593 — Modificaciones al Código Tributario Provincial y otras normas. Creación de
+        Fondos (incluido el Fondo de Consorcios Canaleros y de Obras Hídricas en General)
     key_prefix: '10593'
     key_style: numero
     no_articulos: []
@@ -226,6 +371,14 @@ documentos:
     archivo: ley-10679-modificatoria-ctp-fda.md
     articulos: 63
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Relevancia para consorcios canaleros
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 10679 — Modificaciones al Código Tributario Provincial. Creación de la Contribución
+        Especial FDA, FODEP, Fideicomiso para el Desarrollo Agropecuario (FDA) y FISAP
     key_prefix: '10679'
     key_style: numero
     no_articulos:
@@ -237,6 +390,7 @@ documentos:
     archivo: ley-10936-consorcios-gestion-integrada-cuencas.md
     articulos: 17
     es_secundaria: false
+    excluidos: []
     key_prefix: '10936'
     key_style: numero
     no_articulos: []
@@ -245,6 +399,12 @@ documentos:
     archivo: ley-11059-consorcios-camineros.md
     articulos: 76
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 11059 — Sistema de Gestión Integral de Caminos Rurales No Pavimentados de la Provincia
+        de Córdoba
     key_prefix: '11059'
     key_style: numero
     no_articulos: []
@@ -253,6 +413,7 @@ documentos:
     archivo: ley-25506-firma-digital.md
     articulos: 53
     es_secundaria: false
+    excluidos: []
     key_prefix: '25506'
     key_style: numero
     no_articulos:
@@ -264,6 +425,179 @@ documentos:
     archivo: ley-5589-codigo-aguas-cordoba.md
     articulos: 292
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Las reformas encontradas
+    - clase: comentario-del-corpus
+      heading: Lo que NO cambió — y es lo que le importa al consorcio
+    - clase: contenedor-estructural
+      heading: ANEXO — Historial post-2010 (auditoría del 2026-08-05)
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO I — AMBITO DE VIGENCIA. OBJETO DE LA REGULACION Y AUTORIDAD DE APLICACION
+        DE ESTE CODIGO
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO II — PRINCIPIOS DE POLITICA HIDRICA
+    - clase: contenedor-estructural
+      heading: 'LIBRO I · TÍTULO III — AGUAS INTERPROVINCIALES: SU APROVECHAMIENTO'
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO IV — REGIMEN DE LAS AGUAS PRIVADAS
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO V · CAPÍTULO I — Registro
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO V · CAPÍTULO II — Catastro
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO V — REGISTRO Y CATASTRO DE AGUAS
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO VI · CAPÍTULO I · SECCIÓN 1 — DISPOSICIONES GENERALES
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO VI · CAPÍTULO I · SECCIÓN 2 — SISTEMAS EN EXPLOTACION
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO VI · CAPÍTULO I · SECCIÓN 3 — SISTEMAS NO EXPLOTADOS
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO VI · CAPÍTULO I — SISTEMAS DE APROVECHAMIENTOS DE AGUAS
+    - clase: contenedor-estructural
+      heading: LIBRO I · TÍTULO VI — LOS SISTEMAS PARA USO Y APROVECHAMIENTO DE LAS AGUAS PUBLICAS. SU
+        DEMARCACION Y TIPOS
+    - clase: contenedor-estructural
+      heading: LIBRO I — DISPOSICIONES GENERALES
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO I — USOS COMUNES
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO I — Disposiciones Generales
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO II — El Permiso
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO III · SECCIÓN 2 — CLASIFICACION Y VIGENCIA DE LAS CONCESIONES
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO III · SECCIÓN 3 — DERECHOS Y OBLIGACIONES DEL CONCESIONARIO
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO III · SECCIÓN 4 — RESTRICCION, SUSPENSION TEMPORARIA Y
+        EXTINCION DE LAS CONCESIONES
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO III · SECCIÓN I — DISPOSICIONES GENERALES
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II · CAPÍTULO III — La Concesión
+    - clase: contenedor-estructural
+      heading: LIBRO II · TÍTULO II — USOS ESPECIALES
+    - clase: contenedor-estructural
+      heading: LIBRO II — USO DEL AGUA CON RELACION A LAS PERSONAS
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO I — BEBIDA, USO DOMESTICO Y MUNICIPAL Y ABASTECIMIENTO DE POBLACIONES
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO II — USO INDUSTRIAL
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO III — USO AGRICOLA
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO IV — USO PECUARIO
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO IX — USO PISCICOLA
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO V — USO ENERGETICO
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO VI — USO RECREATIVO
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO VII — USO MINERO
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO VIII — USO MEDICINAL
+    - clase: contenedor-estructural
+      heading: LIBRO III · TÍTULO X — CONCESION EMPRESARIA
+    - clase: contenedor-estructural
+      heading: LIBRO III — NORMAS PARA CIERTOS USOS ESPECIALES Y CONCESION EMPRESARIA
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO I · CAPÍTULO I — Cursos De Agua
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO I · CAPÍTULO II — Aguas Lacustres
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO I — CURSOS DE AGUA Y AGUAS LACUSTRES
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO II — AGUAS DE VERTIENTE
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO III — AGUAS DE FUENTE
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO IV — AGUAS QUE TENGAN O ADQUIERAN APTITUD PARA SATISFACER USOS DE INTERES
+        GENERAL
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO V — AGUAS PLUVIALES
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO VI — AGUAS ATMOSFERICAS
+    - clase: contenedor-estructural
+      heading: LIBRO IV · TÍTULO VII — AGUAS SUBTERRANEAS
+    - clase: contenedor-estructural
+      heading: LIBRO IV — NORMAS RELATIVAS A CATEGORIAS ESPECIALES DE AGUAS
+    - clase: contenedor-estructural
+      heading: LIBRO IX · TÍTULO I — DISPOSICIONES TRANSITORIAS
+    - clase: contenedor-estructural
+      heading: LIBRO IX · TÍTULO II — DISPOSICIONES FINALES
+    - clase: contenedor-estructural
+      heading: LIBRO IX — DISPOSICIONES TRANSITORIAS Y FINALES
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO I — DISPOSICIONES GENERALES
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO II — CONTAMINACION
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO III — INUNDACION O EROSION DE MARGENES
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO IV — DESECACION DE PANTANOS
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO V · CAPÍTULO I — Avenamiento Y Desagües Particulares
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO V · CAPÍTULO II — Avenamiento Y Desagües Generales
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO V — DESAGUES Y AVENAMIENTO
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO VI — FILTRACIONES
+    - clase: contenedor-estructural
+      heading: LIBRO V · TÍTULO VII — DEFENSA CONTRA EFECTOS NOCIVOS DE LAS AGUAS ATMOSFERICAS
+    - clase: contenedor-estructural
+      heading: LIBRO V — DEFENSA CONTRA EFECTOS DAÑOSOS DE LAS AGUAS
+    - clase: contenedor-estructural
+      heading: LIBRO VI · TÍTULO I — DISPOSICIONES GENERALES
+    - clase: contenedor-estructural
+      heading: LIBRO VI · TÍTULO II — OBRAS HIDRAULICAS PÚBLICAS
+    - clase: contenedor-estructural
+      heading: LIBRO VI · TÍTULO III — OBRAS HIDRAULICAS PRIVADAS
+    - clase: contenedor-estructural
+      heading: LIBRO VI — OBRAS HIDRAULICAS
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO I — RESTRICCIONES AL DOMINIO
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO II — OCUPACION TEMPORAL
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO III · CAPÍTULO I — Disposiciones Generales
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO III · CAPÍTULO II — Disposiciones Especiales Con Respecto A La Servidumbre
+        De Acueducto
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO III · CAPÍTULO III — Disposiciones Especiales Con Respecto a la Servidumbre
+        de Desagüe y Avenamiento
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO III · CAPÍTULO IV — Disposiciones Especiales Con Respecto A La Servidumbre
+        De Abrevadero Y Saca De Agua
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO III · CAPÍTULO V — Extinción De Las Servidumbres
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO III — SERVIDUMBRES ADMINISTRATIVAS
+    - clase: contenedor-estructural
+      heading: LIBRO VII · TÍTULO IV — EXPROPIACION
+    - clase: contenedor-estructural
+      heading: LIBRO VII — RESTRICCIONES AL DOMINIO; OCUPACION TEMPORAL; SERVIDUMBRES ADMINISTRATIVAS
+        Y EXPROPIACION IMPUESTA EN RAZON DEL USO DE LAS AGUAS O DEFENSA CONTRA SUS EFECTOS NOCIVOS
+    - clase: contenedor-estructural
+      heading: LIBRO VIII · TÍTULO I — JURISDICCION Y COMPETENCIA
+    - clase: contenedor-estructural
+      heading: LIBRO VIII · TÍTULO II — REGIMEN CONTRAVENCIONAL
+    - clase: contenedor-estructural
+      heading: LIBRO VIII — JURISDICCION, COMPETENCIA Y REGIMEN CONTRAVENCIONAL
+    - clase: contenido-no-declarado
+      heading: ANEXO — Historial de reformas según la fuente oficial
+    - clase: procedencia-y-verificacion
+      heading: ANEXO — Notas de extracción
+    - clase: procedencia-y-verificacion
+      heading: Qué se barrió (evidencia del barrido, no sólo del hallazgo)
+    - clase: procedencia-y-verificacion
+      heading: Reparaciones aplicadas con testigo de la tercera fuente (9)
+    - clase: titulo-documento
+      heading: Ley 5589 — Código de Aguas para la Provincia de Córdoba
     key_prefix: '5589'
     key_style: numero
     no_articulos: []
@@ -272,6 +606,11 @@ documentos:
     archivo: ley-6604-consorcios-riego.md
     articulos: 44
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 6604 — Consorcios de Usuarios de Riego y Otros Usos del Agua
     key_prefix: '6604'
     key_style: numero
     no_articulos: []
@@ -280,6 +619,11 @@ documentos:
     archivo: ley-8548-organica-agua-saneamiento.md
     articulos: 19
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 8548 — Ley Orgánica de la Dirección de Agua y Saneamiento
     key_prefix: '8548'
     key_style: numero
     no_articulos: []
@@ -288,6 +632,15 @@ documentos:
     archivo: ley-8555-regimen-legal-direccion-vialidad.md
     articulos: 30
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Nota de alcance — lo que esta ley NO resuelve
+    - clase: contenido-no-declarado
+      heading: Modificaciones posteriores — texto literal de las leyes modificatorias
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 8555 — Régimen Legal de la Dirección de Vialidad (Córdoba)
     key_prefix: '8555'
     key_style: numero
     no_articulos: []
@@ -296,6 +649,11 @@ documentos:
     archivo: ley-8560-transito-cordoba.md
     articulos: 137
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 8560 (T.O. 2004) — Ley Provincial de Tránsito de Córdoba
     key_prefix: '8560'
     key_style: numero
     no_articulos: []
@@ -304,6 +662,17 @@ documentos:
     archivo: ley-8803-acceso-informacion-cordoba.md
     articulos: 11
     es_secundaria: false
+    excluidos:
+    - clase: contenedor-estructural
+      heading: Cómo usarla — guía operativa para el consorcio
+    - clase: contenedor-estructural
+      heading: Texto de la ley
+    - clase: firma-y-promulgacion
+      heading: Firma y promulgación
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 8803 — Derecho al Acceso al Conocimiento de los Actos del Estado
     key_prefix: '8803'
     key_style: numero
     no_articulos:
@@ -324,6 +693,11 @@ documentos:
     archivo: ley-9750-consorcios-canaleros.md
     articulos: 51
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 9750 — Promoción y Fomento para la Creación y Organización de los Consorcios Canaleros
     key_prefix: '9750'
     key_style: numero
     no_articulos: []
@@ -332,6 +706,11 @@ documentos:
     archivo: ley-9867-aprhi-recursos-hidricos.md
     articulos: 38
     es_secundaria: false
+    excluidos:
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 9867 — Creación de la Administración Provincial de Recursos Hídricos (APRHI)
     key_prefix: '9867'
     key_style: numero
     no_articulos: []
@@ -340,6 +719,45 @@ documentos:
     archivo: ley-expropiaciones-cordoba.md
     articulos: 64
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: 'El circuito: servidumbre no aceptada → depósito + 30% → juicio expropiatorio'
+    - clase: comentario-del-corpus
+      heading: Mapa de reformas verificadas
+    - clase: comentario-del-corpus
+      heading: Nota sobre la aplicación supletoria
+    - clase: contenedor-estructural
+      heading: TÍTULO I — La Calificación
+    - clase: contenedor-estructural
+      heading: TÍTULO II — Sujeto Expropiante
+    - clase: contenedor-estructural
+      heading: TÍTULO III — Objeto de la Expropiación
+    - clase: contenedor-estructural
+      heading: TÍTULO IV — Ejecución Directa de la Ley
+    - clase: contenedor-estructural
+      heading: TÍTULO IX — De la Ocupación Temporánea
+    - clase: contenedor-estructural
+      heading: TÍTULO V — La Indemnización
+    - clase: contenedor-estructural
+      heading: TÍTULO VI — Normas de Procedimiento
+    - clase: contenedor-estructural
+      heading: TÍTULO VII — Expropiación Irregular
+    - clase: contenedor-estructural
+      heading: TÍTULO VIII — Acción de Retrocesión
+    - clase: contenedor-estructural
+      heading: TÍTULO X — Plazo de la Expropiación
+    - clase: contenedor-estructural
+      heading: TÍTULO XI — Disposiciones Complementarias
+    - clase: firma-y-promulgacion
+      heading: Bloque de promulgación (no es artículo)
+    - clase: firma-y-promulgacion
+      heading: Pie oficial "NOTICIAS ACCESORIAS" (transcripción literal de la fuente)
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: procedencia-y-verificacion
+      heading: Verificación empírica de vigencia
+    - clase: titulo-documento
+      heading: Ley 6394 — Régimen de Expropiación de la Provincia de Córdoba
     key_prefix: '6394'
     key_style: numero
     no_articulos: []
@@ -348,6 +766,19 @@ documentos:
     archivo: ley-procedimiento-administrativo-cordoba.md
     articulos: 130
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Advertencias sobre el texto
+    - clase: comentario-del-corpus
+      heading: Estado de vigencia y cadena de reformas
+    - clase: comentario-del-corpus
+      heading: Relevancia para el consorcio — mapa de artículos
+    - clase: comentario-del-corpus
+      heading: Índice de capítulos
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Ley 5350 (T.O. Ley 6658) — Ley de Procedimiento Administrativo de la Provincia de Córdoba
     key_prefix: '5350'
     key_style: numero
     no_articulos: []
@@ -356,6 +787,16 @@ documentos:
     archivo: normas-srh-2013-presentacion-proyectos.md
     articulos: 6
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Cómo se conecta con el resto del corpus
+    - clase: procedencia-y-verificacion
+      heading: Búsqueda de una versión posterior (APRHI, post-2013)
+    - clase: procedencia-y-verificacion
+      heading: Nota de extracción
+    - clase: titulo-documento
+      heading: Normas para la presentación y diseño de sistemas y obras hidráulicas en la Provincia de
+        Córdoba
     key_prefix: srh-2013
     key_style: punto
     no_articulos: []
@@ -364,6 +805,9 @@ documentos:
     archivo: obra-tres-colonias-canal-santa-cecilia.kmz.md
     articulos: 0
     es_secundaria: true
+    excluidos:
+    - clase: titulo-documento
+      heading: Procedencia del KMZ — obra Tres Colonias / Canal Santa Cecilia
     key_prefix: kmz-tres-colonias
     key_style: articulo
     no_articulos:
@@ -393,6 +837,23 @@ documentos:
     archivo: resolucion-4-2026-bioagroindustria-reglamento-11059.md
     articulos: 78
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Cadena reglamentaria de la Ley 11.059
+    - clase: comentario-del-corpus
+      heading: Nota de vigencia sobre el art. 75 del Anexo
+    - clase: contenedor-estructural
+      heading: Anexo Único — Reglamentación de la Ley N° 11.059
+    - clase: contenedor-estructural
+      heading: Cuerpo resolutivo
+    - clase: encabezado-y-preambulo
+      heading: Preámbulo — Visto y Considerando
+    - clase: encabezado-y-preambulo
+      heading: Reglamentación de la Ley N° 11.059
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución N° 4/2026 — Ministerio de Bioagroindustria (Córdoba)
     key_prefix: res4-2026
     key_style: articulo
     no_articulos: []
@@ -401,14 +862,63 @@ documentos:
     archivo: resolucion-aprhi-3-2026-individualizacion-cuenca-tres-colonias.md
     articulos: 5
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: 1. El circuito completo, y quién ocupa cada casillero
+    - clase: comentario-del-corpus
+      heading: 2. La respuesta incómoda a la pregunta del sujeto expropiante (F-3)
+    - clase: comentario-del-corpus
+      heading: 3. El beneficiario de la obra
+    - clase: comentario-del-corpus
+      heading: 4. El número que sirve de baremo
+    - clase: comentario-del-corpus
+      heading: 5. Lo que este documento NO prueba
+    - clase: comentario-del-corpus
+      heading: Normas citadas por la resolución
+    - clase: contenedor-estructural
+      heading: Lectura para el Consorcio Canalero 10 de Mayo
+    - clase: contenedor-estructural
+      heading: Parte resolutiva
+    - clase: encabezado-y-preambulo
+      heading: CONSIDERANDO
+    - clase: encabezado-y-preambulo
+      heading: Encabezado
+    - clase: encabezado-y-preambulo
+      heading: POR ELLO
+    - clase: encabezado-y-preambulo
+      heading: VISTO
+    - clase: firma-y-promulgacion
+      heading: Firma
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución General APRHI Nº 3 - Letra:D (08-ene-2026) — Individualización de bienes, obra
+        «Sistematización de Cuenca Tres Colonias y Canal Santa Cecilia»
     key_prefix: res-aprhi-3-2026
     key_style: articulo
-    no_articulos: []
+    no_articulos:
+    - citation_key: res-aprhi-3-2026#anexo-i-planilla-de-individualizacion-de-terrenos
+      heading: ANEXO I — Planilla de Individualización de Terrenos
+      tipo_chunk: anexo-normativo
+    - citation_key: res-aprhi-3-2026#anexo-ii-planos-de-afectacion-parcelaria-cajetin
+      heading: ANEXO II — Planos de Afectación Parcelaria (cajetín)
+      tipo_chunk: anexo-normativo
     tipo: resolucion-administrativa
   resolucion-dipas-395-2004-linea-ribera-provisoria:
     archivo: resolucion-dipas-395-2004-linea-ribera-provisoria.md
     articulos: 7
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: La resolución modificatoria — Res. Di.P.A.S. N° 025/2005
+    - clase: comentario-del-corpus
+      heading: Qué es norma, qué es práctica y qué es interpretación
+    - clase: encabezado-y-preambulo
+      heading: Visto y Considerando
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución Di.P.A.S. N° 395/2004 — retiros mínimos y deslinde provisorio
     key_prefix: res-dipas-395-2004
     key_style: articulo
     no_articulos: []
@@ -417,6 +927,13 @@ documentos:
     archivo: resolucion-dnv-1898-2025-aranceles-permisos.md
     articulos: 7
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué resuelve, en una línea
+    - clase: contenedor-estructural
+      heading: Articulado
+    - clase: titulo-documento
+      heading: Resolución DNV N° 1898/2025 — aranceles de permisos de uso de zona de camino
     key_prefix: res-dnv-1898-2025
     key_style: articulo
     no_articulos: []
@@ -425,6 +942,17 @@ documentos:
     archivo: resolucion-dnv-908-2026-permisos-zona-camino.md
     articulos: 39
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué deroga y qué lo reemplaza
+    - clase: contenedor-estructural
+      heading: Anexo II — Normas Técnicas aplicables a los Permisos Precarios de Uso de la Zona de Camino
+    - clase: contenedor-estructural
+      heading: Articulado
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto
+    - clase: titulo-documento
+      heading: Resolución DNV N° 908/2026 — Permisos Precarios de Uso de la Zona de Camino
     key_prefix: res-dnv-908-2026
     key_style: articulo
     no_articulos:
@@ -441,6 +969,17 @@ documentos:
     archivo: resolucion-dph-11821-1985-visacion-planos-linea-ribera.md
     articulos: 7
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué es norma, qué es práctica y qué es interpretación
+    - clase: encabezado-y-preambulo
+      heading: Visto y Considerando
+    - clase: procedencia-y-verificacion
+      heading: Constancia de aprobación
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución DPH N° 11.821/1985 — visación de planos y límite provisorio
     key_prefix: res-dph-11821-1985
     key_style: articulo
     no_articulos: []
@@ -449,6 +988,19 @@ documentos:
     archivo: resolucion-general-aprhi-004-2026-leones-villa-elisa.md
     articulos: 3
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Discrepancias del original (registradas, no corregidas)
+    - clase: comentario-del-corpus
+      heading: Nota editorial sobre datos personales
+    - clase: comentario-del-corpus
+      heading: Qué prueba y qué no prueba este documento
+    - clase: firma-y-promulgacion
+      heading: Firmantes
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución General APRHI Nº 004 (05-may-2026) — Consorcio Canalero Leones – Villa Elisa
     key_prefix: res-aprhi-004-2026
     key_style: articulo
     no_articulos:
@@ -463,6 +1015,20 @@ documentos:
     archivo: resolucion-srh-157-2013-constitucion-leones-villa-elisa.md
     articulos: 4
     es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Continuidad con la Res. General APRHI 004/2026
+    - clase: comentario-del-corpus
+      heading: Discrepancia menor del original
+    - clase: comentario-del-corpus
+      heading: Nota editorial sobre datos personales
+    - clase: firma-y-promulgacion
+      heading: Firmante
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución SRH Nº 157 (17-jun-2013) — constitución del Consorcio Canalero Leones – Villa
+        Elisa
     key_prefix: res-srh-157-2013
     key_style: articulo
     no_articulos:
@@ -475,7 +1041,7 @@ documentos:
     tipo: resolucion-administrativa
 manifest_integracion: 5
 manifest_version: 2
-no_articulos_declarados: 63
+no_articulos_declarados: 65
 subtotales_articulo:
   actos-particulares: 19
   guia-tecnica: 6

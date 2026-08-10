@@ -29,11 +29,12 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.domains.conocimiento import repository  # noqa: E402
-from app.domains.conocimiento.gates import GateFailure  # noqa: E402
+from app.domains.conocimiento.gates import TOKEN_CEILING, GateFailure  # noqa: E402
 from app.domains.conocimiento.schemas import (  # noqa: E402
     DocumentoIngestado,
     GateOutcome,
     IngestionSummary,
+    UnidadSobreCeiling,
 )
 from app.domains.conocimiento.service import (  # noqa: E402
     gate_corpus,
@@ -114,6 +115,10 @@ def ingest(
             no_articulos_total=report.no_articulos_total,
             documentos=report.documentos,
             failures=list(report.failures),
+            over_ceiling=[
+                UnidadSobreCeiling(citation_key=key, tokens=tokens)
+                for key, tokens in report.over_ceiling
+            ],
         ),
         documentos=[
             DocumentoIngestado(
@@ -130,19 +135,33 @@ def ingest(
 
     # 3. `--verify-unchanged`: a re-emitted corpus that reused a SHA is the one
     #    case `ON CONFLICT DO UPDATE` would rewrite without leaving a trace.
-    #    Report the divergence instead of overwriting it.
+    #    Report the difference instead of overwriting it.
+    #
+    #    The comparison is the FULL symmetric difference, not the intersection.
+    #    An intersection-only check sees hash mismatches and nothing else, so a
+    #    key the snapshot has and the parse does not produce raised no
+    #    divergence — and the run then fell through to the upserts and
+    #    `prune_unidades`, which DELETED exactly that key, reported
+    #    "divergencias: []", committed and exited 0 (RAG2-003). The flag's
+    #    contract is to report instead of overwriting; deleting is the strongest
+    #    form of overwriting there is.
     if verify_unchanged:
         previous = repository.existing_text_hashes(session, corpus_sha)
         if previous:
-            divergentes = [
-                unidad.citation_key
+            actuales = {
+                unidad.citation_key: texto_sha256(unidad.texto)
                 for doc in corpus.documentos
                 for unidad in doc.unidades
-                if unidad.citation_key in previous
-                and previous[unidad.citation_key] != texto_sha256(unidad.texto)
-            ]
-            if divergentes:
-                summary.divergencias = sorted(divergentes)
+            }
+            summary.claves_agregadas = sorted(set(actuales) - set(previous))
+            summary.claves_eliminadas = sorted(set(previous) - set(actuales))
+            summary.divergencias = sorted(
+                key
+                for key, digest in actuales.items()
+                if key in previous and previous[key] != digest
+            )
+            if summary.verificacion_fallida:
+                # Return BEFORE any write, including the prune.
                 return summary
 
     if dry_run:
@@ -208,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
                     strict_token_ceiling=args.strict_token_ceiling,
                     dry_run=args.dry_run,
                 )
-                if summary.divergencias:
+                if summary.verificacion_fallida:
                     # Roll back rather than overwrite a divergent snapshot.
                     session.rollback()
     except (repository.IngestionAbort, GateFailure) as abort:
@@ -228,16 +247,55 @@ def main(argv: list[str] | None = None) -> int:
     print(f"unidades eliminadas  : {summary.unidades_eliminadas}")
     print(f"committed            : {summary.committed}")
 
-    if summary.divergencias:
+    _print_over_ceiling(summary)
+
+    if summary.verificacion_fallida:
         print(
-            f"\nDIVERGENCIA: {len(summary.divergencias)} unit(s) changed content "
-            f"under an unchanged corpus_sha. Nothing was written.",
+            "\nVERIFICACIÓN FALLIDA (--verify-unchanged): the stored snapshot and "
+            "this parse differ under an unchanged corpus_sha. Nothing was written.",
             file=sys.stderr,
         )
-        for key in summary.divergencias[:20]:
-            print(f"  - {key}", file=sys.stderr)
+        _print_keys("contenido modificado", summary.divergencias)
+        _print_keys("claves agregadas (en el parse, no en el snapshot)", summary.claves_agregadas)
+        _print_keys(
+            "claves eliminadas (en el snapshot, no en el parse — un run normal las PODARÍA)",
+            summary.claves_eliminadas,
+        )
         return 1
     return 0
+
+
+def _print_keys(label: str, keys: list[str], limit: int = 20) -> None:
+    if not keys:
+        return
+    print(f"\n  {label}: {len(keys)}", file=sys.stderr)
+    for key in keys[:limit]:
+        print(f"    - {key}", file=sys.stderr)
+    if len(keys) > limit:
+        print(f"    … +{len(keys) - limit} more", file=sys.stderr)
+
+
+def _print_over_ceiling(summary: IngestionSummary) -> None:
+    """Surface the over-ceiling units. Never silent, never truncated.
+
+    `GateReport.over_ceiling` documented itself as "always reported — never
+    silently dropped", and then nothing carried it: not the schema, not the
+    summary, not this printout. Three real units exceed the ceiling at the
+    pinned SHA and no operator had any way to know (RAG2-004).
+    """
+    if not summary.gates.over_ceiling:
+        return
+    print(
+        f"\nSOBRE EL CEILING DE EMBEDDING ({TOKEN_CEILING} tokens): "
+        f"{len(summary.gates.over_ceiling)} unidad(es)."
+    )
+    print(
+        "  Se ingestan ENTERAS y siguen siendo recuperables por FTS. En V0 quedan "
+        "FUERA del embedding (slice 3) — nunca truncadas. Use "
+        "--strict-token-ceiling para abortar en su lugar."
+    )
+    for unidad in summary.gates.over_ceiling:
+        print(f"    - {unidad.citation_key} (~{unidad.tokens} tokens)")
 
 
 if __name__ == "__main__":

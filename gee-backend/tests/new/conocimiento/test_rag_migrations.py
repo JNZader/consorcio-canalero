@@ -196,6 +196,95 @@ def test_unresolvable_head_does_not_apply_partial_state(throwaway_db):
     assert "rag_unidad" not in table_names
 
 
+def _seed_003_shaped_rows(engine, *, with_corpus: bool = True) -> None:
+    """Seed exactly the two row shapes migration 003's upgrade made legal.
+
+    Both are things the real pinned corpus writes: three fuente-secundaria
+    documents carry no `estado_vigencia`, and four units are `anexo-normativo`.
+
+    `with_corpus=False` is for re-seeding after a downgrade: 003's remediation
+    removes documents and units, never the `rag_corpus` snapshot row, which no
+    restored constraint touches.
+    """
+    with engine.begin() as conn:
+        if with_corpus:
+            conn.execute(
+                text(
+                    "INSERT INTO rag_corpus (corpus_sha, repo_url, manifest_version, "
+                    "articulos_declarados, activo) VALUES (:sha, 'u', '2', 0, true)"
+                ),
+                {"sha": "a" * 40},
+            )
+        conn.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'informe', 'informe-operativo', true, 'provincial', NULL, 'privado')"
+            ),
+            {"sha": "a" * 40},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
+                "texto, texto_indexado, source_file, source_offset) VALUES "
+                "(:sha, 'informe#anexo', 'informe', 'anexo-normativo', 't', 't', 'f.md', 0)"
+            ),
+            {"sha": "a" * 40},
+        )
+
+
+def test_downgrade_003_runs_against_an_ingested_database(throwaway_db):
+    """RAG2-002: `alembic downgrade` must work on a database that was USED.
+
+    003's upgrade relaxed `estado_vigencia` to nullable and widened the
+    `tipo_chunk` CHECK; the corpus then wrote rows that only the relaxed schema
+    admits. Restoring both constraints with those rows still present raises
+    NotNullViolation / CheckViolation, so every documented rollback path —
+    `downgrade -1`, `downgrade base`, proposal.md's ordering, the compose
+    header, `make` — was unrunnable the moment the corpus had been ingested
+    once. Downgrades run newest-first, so this fires before 001 drops the
+    tables and takes the whole chain with it.
+    """
+    cfg, engine = throwaway_db
+    command.upgrade(cfg, "head")
+    _seed_003_shaped_rows(engine)
+
+    command.downgrade(cfg, "conocimiento_002")  # must not raise
+
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM rag_documento")).scalar_one() == 0
+        assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 0
+        # The snapshot row survives: no restored constraint touches rag_corpus,
+        # so remediation must not widen into deleting what it does not have to.
+        assert conn.execute(text("SELECT count(*) FROM rag_corpus")).scalar_one() == 1
+        nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns WHERE "
+                "table_name = 'rag_documento' AND column_name = 'estado_vigencia'"
+            )
+        ).scalar_one()
+    assert nullable == "NO", "the blanket NOT NULL must be back after downgrading past 003"
+
+    # And the round trip closes: re-upgrading restores the relaxed schema, so
+    # re-ingesting the pinned corpus rebuilds what the downgrade deleted.
+    command.upgrade(cfg, "head")
+    _seed_003_shaped_rows(engine, with_corpus=False)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 1
+
+
+def test_downgrade_003_to_base_drops_everything_after_ingestion(throwaway_db):
+    """The documented full rollback (`downgrade base`) on a used database."""
+    cfg, engine = throwaway_db
+    command.upgrade(cfg, "head")
+    _seed_003_shaped_rows(engine)
+
+    command.downgrade(cfg, _PRIOR_HEAD)  # must not raise
+
+    remaining = set(inspect(engine).get_table_names())
+    assert {"rag_corpus", "rag_documento", "rag_unidad"}.isdisjoint(remaining)
+
+
 def test_create_all_unaffected_by_conocimiento_models(test_engine):
     """1.9: `Base.metadata.create_all` on the vector-less test image succeeds
     and never creates an `embedding` column anywhere.

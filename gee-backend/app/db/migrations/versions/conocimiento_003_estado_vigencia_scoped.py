@@ -27,6 +27,7 @@ Revises: conocimiento_002
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "conocimiento_003"
@@ -61,6 +62,42 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore the pre-003 schema, remediating the rows only 003 made legal.
+
+    This upgrade did not merely widen a type: it made two row shapes legal that
+    the previous schema forbids, and the pinned corpus writes both of them
+    (three fuente-secundaria documents with a NULL `estado_vigencia`, four
+    `anexo-normativo` units). Re-adding the constraints on top of those rows
+    raises NotNullViolation / CheckViolation, so a downgrade written as pure DDL
+    is unrunnable the moment the corpus has been ingested once — and because
+    Alembic downgrades newest-first, it fails here and takes every documented
+    rollback with it (`downgrade -1`, `downgrade base`, proposal.md's ordering,
+    the compose header's "alembic downgrade FIRST", the Makefile note).
+
+    The offending rows are DELETED rather than back-filled with a sentinel.
+    Below 003 those rows cannot exist by definition, so any value written into
+    `estado_vigencia` would be invented — precisely what migration 003 exists to
+    avoid, and what the ingestion spec forbids for carried frontmatter fields.
+    Deleting is safe here in a way it almost never is: `rag_*` is a DERIVED
+    artifact of a SHA-pinned corpus, so `alembic upgrade head` followed by
+    `scripts/rag_ingest.py` reconstructs the deleted rows byte-for-byte from the
+    checkout. Nothing that only exists in the database is lost, because nothing
+    only exists in the database (ledger RAG2-002).
+    """
+    bind = op.get_bind()
+
+    # rag_unidad first: FK (corpus_sha, documento_id) -> rag_documento has no
+    # ON DELETE CASCADE, so removing a document before its units is an FK error.
+    bind.execute(sa.text("DELETE FROM rag_unidad WHERE tipo_chunk = 'anexo-normativo'"))
+    bind.execute(
+        sa.text(
+            "DELETE FROM rag_unidad u USING rag_documento d "
+            "WHERE u.corpus_sha = d.corpus_sha AND u.documento_id = d.documento_id "
+            "AND d.estado_vigencia IS NULL"
+        )
+    )
+    bind.execute(sa.text("DELETE FROM rag_documento WHERE estado_vigencia IS NULL"))
+
     op.drop_constraint(TIPO_CHUNK_NAME, "rag_unidad", type_="check")
     op.create_check_constraint(TIPO_CHUNK_NAME, "rag_unidad", TIPO_CHUNK_OLD)
 

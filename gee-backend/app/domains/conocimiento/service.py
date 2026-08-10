@@ -39,6 +39,9 @@ class LoadedCorpus:
     corpus_sha: str
     documentos: tuple[LoadedDocument, ...]
     expectations: CorpusExpectations
+    #: The checkout this was read from. Carried so the file inventory gate can
+    #: compare the declared document list against what is actually on disk.
+    corpus_path: Path
 
     @property
     def sources(self) -> dict[str, str]:
@@ -126,6 +129,7 @@ def load_corpus(
         corpus_sha=expectations.corpus_sha,
         documentos=tuple(documentos),
         expectations=expectations,
+        corpus_path=corpus_path,
     )
 
 
@@ -135,6 +139,7 @@ def gate_corpus(corpus: LoadedCorpus, strict_token_ceiling: bool = False) -> Gat
         corpus.sources,
         corpus.expectations,
         strict_token_ceiling=strict_token_ceiling,
+        corpus_path=corpus.corpus_path,
     )
 
 
