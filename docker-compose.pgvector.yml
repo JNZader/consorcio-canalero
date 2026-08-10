@@ -1,0 +1,25 @@
+# Opt-in dev override for pgvector (design.md D7). Adds `vector(1024)` +
+# HNSW support to the `postgres` service by BUILDING the derivative image
+# (`docker/postgres/Dockerfile`) instead of pulling the plain
+# `pgrouting/pgrouting:...` image `docker-compose.yml` uses by default.
+#
+# NEVER auto-merged — always invoke explicitly with `-f`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.pgvector.yml up -d postgres
+#
+# or `make rag-db`, which does exactly that.
+#
+# Rejected alternative: `docker-compose.override.yml`, which Compose
+# merges automatically on every `docker compose up`, forcing an image
+# BUILD on every developer's machine for a feature most of them are not
+# using yet. Opt-in via `-f` makes the dev-only boundary explicit instead
+# of ambient.
+#
+# Prod is unreachable by this file by construction: the Hetzner box runs a
+# compose file outside this repository entirely (design.md D7 "Prod").
+services:
+  postgres:
+    image: consorcio-postgres:16-vector
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile

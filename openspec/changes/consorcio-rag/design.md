@@ -362,7 +362,7 @@ existing cosmic-ray gate.
 ## Migration / Rollout
 
 Dev only. Rollback order is unchanged from the proposal and matters: `alembic downgrade` **first**
-(drops both tables, the embedding column, then `DROP EXTENSION vector`), then stop using
+(drops all three tables, the embedding column, then `DROP EXTENSION vector`), then stop using
 `docker-compose.pgvector.yml`. Reverting the image while vector objects exist leaves an unloadable
 database on the shared dev volume. No production rollback exists because V0 makes no production change.
 

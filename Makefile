@@ -6,7 +6,7 @@
         backend-install frontend-install backend-dev frontend-dev backend-test \
         frontend-test backend-lint frontend-lint docker-build docker-logs \
         docker-restart docker-clean format security-scan db-upgrade db-downgrade \
-        ci-quick ci-full install-hooks
+        ci-quick ci-full install-hooks rag-db test-rag
 
 # Default target
 .DEFAULT_GOAL := help
@@ -260,6 +260,38 @@ clean-all: clean ## Deep clean including node_modules and virtual environments
 	rm -rf $(FRONTEND_DIR)/node_modules 2>/dev/null || true
 	rm -rf $(BACKEND_DIR)/.venv $(BACKEND_DIR)/venv 2>/dev/null || true
 	@echo "$(GREEN)Deep cleanup complete!$(NC)"
+
+# ==============================================
+# RAG (pgvector, dev-only — see openspec/changes/consorcio-rag/design.md D7)
+# ==============================================
+rag-db: ## Build + start the pgvector-enabled Postgres service (opt-in, dev only)
+	@echo "$(BLUE)Building consorcio-postgres:16-vector...$(NC)"
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.pgvector.yml build postgres
+	@echo "$(BLUE)Starting consorcio-postgres:16-vector...$(NC)"
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.pgvector.yml up -d postgres
+	@echo "$(GREEN)consorcio-postgres:16-vector is up.$(NC)"
+
+test-rag: ## Run the pgvector-marked test suite against consorcio-postgres:16-vector
+	@echo "$(BLUE)Building consorcio-postgres:16-vector...$(NC)"
+	docker build -f docker/postgres/Dockerfile -t consorcio-postgres:16-vector docker/postgres
+	@echo "$(BLUE)Running pgvector-marked tests...$(NC)"
+	@cd $(BACKEND_DIR) && \
+		TEST_POSTGRES_IMAGE=consorcio-postgres:16-vector \
+		venv/bin/pytest -m pgvector --junitxml=rag-junit.xml tests/new/; \
+		pytest_status=$$?; \
+		if [ $$pytest_status -eq 5 ]; then \
+			echo "$(RED)test-rag: exit code 5 — zero pgvector tests were collected. Check the marker and -m expression.$(NC)"; \
+			exit 1; \
+		elif [ $$pytest_status -ne 0 ]; then \
+			echo "$(RED)test-rag: pytest failed (exit $$pytest_status).$(NC)"; \
+			exit $$pytest_status; \
+		fi; \
+		skipped=$$(venv/bin/python -c "import xml.etree.ElementTree as ET; root = ET.parse('rag-junit.xml').getroot(); suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]; print(sum(int(s.attrib.get('skipped', 0)) for s in suites))"); \
+		if [ "$$skipped" != "0" ]; then \
+			echo "$(RED)test-rag: $$skipped pgvector test(s) skipped despite the vector image — the image is silently degraded (exit code 5 alone cannot catch this; see design.md D7).$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$(GREEN)test-rag: all pgvector tests ran for real against consorcio-postgres:16-vector, zero skipped.$(NC)"
 
 # ==============================================
 # UTILITY COMMANDS

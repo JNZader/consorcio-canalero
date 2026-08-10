@@ -18,15 +18,22 @@ from sqlalchemy.orm import Session, sessionmaker
 
 
 def _try_testcontainers() -> tuple[str | None, object | None]:
-    """Try to start a PostGIS container. Returns (url, container) or (None, None)."""
+    """Try to start a PostGIS container. Returns (url, container) or (None, None).
+
+    Honors ``TEST_POSTGRES_IMAGE`` so `make test-rag` can point the whole
+    session at ``consorcio-postgres:16-vector`` instead — default is
+    unchanged (`postgis/postgis:16-3.4`), so every other test target keeps
+    running on the CI-safe, vector-less image (design.md D7).
+    """
     try:
         from testcontainers.postgres import PostgresContainer
     except ImportError:
         return None, None
 
     try:
+        image = os.environ.get("TEST_POSTGRES_IMAGE", "postgis/postgis:16-3.4")
         container = PostgresContainer(
-            image="postgis/postgis:16-3.4",
+            image=image,
             username="test",
             password="test",
             dbname="test_consorcio",
@@ -72,6 +79,51 @@ def _resolve_database_url() -> tuple[str, object | None]:
 # Resolve DB URL and set env vars BEFORE importing app modules
 # ---------------------------------------------------------------------------
 _db_url, _container = _resolve_database_url()
+
+
+def _probe_pgvector(url: str) -> bool:
+    """Attempt ``CREATE EXTENSION vector`` against ``url``. Never raises.
+
+    Distinct from `app.domains.conocimiento.ddl.extension_available`, which
+    only checks `pg_available_extensions` (non-mutating, used inside
+    migration 002 to decide whether to skip). This probe actually installs
+    the extension when possible, so `HAS_PGVECTOR` reflects real usability,
+    not just package presence (design.md D7).
+    """
+    try:
+        probe_engine = create_engine(url, isolation_level="AUTOCOMMIT")
+        try:
+            with probe_engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        finally:
+            probe_engine.dispose()
+        return True
+    except Exception:
+        return False
+
+
+HAS_PGVECTOR = _probe_pgvector(_db_url)
+
+
+def pytest_collection_modifyitems(config, items):  # noqa: ARG001 — pytest hook signature
+    """Skip every ``pgvector``-marked test when the extension is unavailable.
+
+    `--strict-markers` requires the marker to be registered (pytest.ini);
+    this hook is what actually makes it behave like a capability gate
+    instead of just documentation. Under `make test-rag`
+    (TEST_POSTGRES_IMAGE=consorcio-postgres:16-vector) HAS_PGVECTOR is
+    True and every pgvector test runs for real — that asymmetry is exactly
+    what the `skipped == 0` JUnit assertion in `make test-rag` checks for.
+    """
+    if HAS_PGVECTOR:
+        return
+    skip_pgvector = pytest.mark.skip(
+        reason="pgvector extension not available on this test image; "
+        "run `make test-rag` to build and use consorcio-postgres:16-vector."
+    )
+    for item in items:
+        if "pgvector" in item.keywords:
+            item.add_marker(skip_pgvector)
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 — pytest hook signature
@@ -172,3 +224,24 @@ def db_session_factory(test_engine):
 
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture
+def pgvector_db(db):
+    """A `db` session with the pgvector extension + embedding column ensured.
+
+    Only reached when the ``pgvector`` marker's collection-time skip
+    (`pytest_collection_modifyitems` above) let the test through, so
+    `HAS_PGVECTOR` is known True by the time this fixture body runs.
+    Applies `ddl.py`'s upgrade statements directly against the ambient
+    `db` session rather than through Alembic — `db`'s per-test transaction
+    is rolled back after every test, so this is safe (and cheap) to repeat
+    every time: every statement is `IF NOT EXISTS`-guarded.
+    """
+    from app.domains.conocimiento import ddl
+
+    for statement in ddl.UPGRADE_STATEMENTS:
+        db.execute(text(statement))
+    db.flush()
+
+    yield db
