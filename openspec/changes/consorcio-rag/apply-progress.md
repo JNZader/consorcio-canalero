@@ -969,10 +969,269 @@ a wrong expectation.
   (the writer and its CLI, which consume a `ResultadoEval` and nothing else). The A1/A2
   amendments plus the gold set are a third, independently reviewable group.
 
+## Fix round — reliability lens + general refuter (Slice 4)
+
+Six findings on top of `a9cffe21`: two CRITICALs, **both refuter-STANDS**, and four
+WARNING/SUGGESTION rows promoted because they sit in the code and the artifact the
+CRITICALs touched. Per-finding tables below; the ledger rows are in
+`review-ledger.md` § "Slice 4 — reliability lens + general refuter".
+
+### G1 / RAG4-001 — the FTS leg ANDed, so the lexical arm of the ablation was near-vacuous
+
+This is the finding the slice-4 apply raised about itself and declined to fix, on the
+grounds that D4 named `websearch_to_tsquery` explicitly. The orchestrator took the
+decision, the owner was notified, and it is reversible — the change is one SQL statement
+and one constant.
+
+**RED, and it is a measurement rather than an argument.** A scratch database at the pinned
+corpus (`alembic upgrade head` → `rag_ingest.py` → 35 documents / 1 383 articulo /
+65 non-article / **1 448 rows**), then the leg's own query, verbatim, for six gold
+questions:
+
+| gold | expected key | AND rows | AND: gold in top-50 | OR rows | OR: gold in top-50 | OR: gold rank / rows matched |
+|---|---|---:|---|---:|---|---|
+| D-1 | `9750#14` | **0** | no | 50 | **yes @34** | 34 / 310 |
+| D-2 | `9750#15` | **0** | no | 50 | **yes @12** | 12 / 304 |
+| D-3 | `9750#24` | 1 | no | 50 | **yes @40** | 40 / 181 |
+| D-5 | `9750#42` | **0** | no | 50 | no | 127 / 349 |
+| D-6 | `9867#24` | 3 | no | 50 | **yes @25** | 25 / 287 |
+| D-7 | `8803#6`  | **0** | no | 50 | no | never matched / 319 |
+
+Under the conjunction: four of six returned NO ROWS, and the gold key was in the candidate
+set for **zero of six**. Under the disjunction: a full 50-candidate leg every time, gold
+in the candidate set for **four of six**. Rank 1 is the fusion's job; membership in the
+candidate set is the precondition fusion has nothing to work with without.
+
+The two remaining misses are stated rather than smoothed. D-5's key is matched but sits at
+127 of 349 — a `LEG_LIMIT` question. D-7's key never matches at all: `8803#6` shares no
+lexeme with its question, which is a vocabulary gap no lexical operator can close and
+precisely what the vector leg is in the design for.
+
+**A trap in the suggested construction, found by measuring instead of trusting.** The
+obvious implementation — round-trip the parse through `to_tsquery('spanish', …)` — re-runs
+the Spanish dictionary over lexemes that are already stemmed, and Snowball is **not
+idempotent**:
+
+```
+intervenir  ->  to_tsvector('spanish')  ->  'interven'   =>  13 units match
+'interven'  ->  to_tsquery('spanish')   ->  'interv'     =>   0 units match
+```
+
+That construction looks exactly like the fix and silently loses recall on the question's
+own keywords — and every single-word test in the suite still passes under it. The shipped
+version casts (`CAST(… AS tsquery)`, i.e. `tsquery_in`), which applies no dictionary, so
+`websearch_to_tsquery(…)::text::tsquery` is a proven round trip. `test_the_lexemes_are_not_stemmed_twice`
+fails under the `to_tsquery` variant and passes under the cast.
+
+| change | file |
+|---|---|
+| `FTS_SEARCH_SQL` partitions the parse: positives ORed, `!`-terms kept ANDed, cast back to `tsquery`; `FTS_OPERADOR` names the operator | `app/domains/conocimiento/repository.py` |
+| `FTS_OPERADOR` re-exported for the eval package, which may not import `repository` (D4) | `app/domains/conocimiento/service.py` |
+| `hibrido_degenerado` re-thresholded from `all(...)` to `leg_*_degradada`'s strict majority | `app/domains/conocimiento/eval/harness.py` |
+| operator printed in the markdown coverage block, at JSON top level and per mode | `app/domains/conocimiento/eval/report.py` |
+| pinning test flipped: `…returns_nothing_from_the_fts_leg` → `…reaches_the_fts_leg` | `tests/new/conocimiento/test_rag_eval_harness.py` |
+| `TestFtsOperador` — 12 cases: double-stemming, exclusion preservation, five degrade-to-empty inputs, ten hostile inputs | `tests/new/conocimiento/test_rag_retrieval.py` |
+| D4 amended with the operator decision, the table above and the construction's three properties | `openspec/changes/consorcio-rag/design.md` |
+
+**Edge cases measured, not reasoned about.** Empty, whitespace-only, stopwords-only,
+punctuation-only and exclusion-only questions all build the empty tsquery and return zero
+rows without raising — `-canal` alone is "everything except canal", which ORed in would
+have returned the whole corpus. Quoted phrases, hyphenated words, URLs (which re-introduce
+`&` under `to_tsquery('simple')` and are the reason that variant was rejected too),
+embedded quotes, backslashes, `or`, emoji and a 200-word query were each run against the
+real seeded corpus; none raises and the table is still there after the SQL-shaped one.
+
+**Slice-3 determinism fixture: NOT moved.** The disclosed cost did not materialise. The
+"Sin Reglamentar" tie class is exercised with the single-word query `reglamentar`, and a
+one-lexeme question is identical under AND and OR — verified by inspecting every query
+string in `test_rag_retrieval.py` (all single-word) and by the suite passing untouched.
+One assertion elsewhere did move and it is a real observation: with the leg widened,
+`informe-f3#sec-3` ("El informe comenta el quórum") now enters a quórum page. The gold key
+still ranks FIRST, and the test says so — a wider net brings secondary sources in, which is
+exactly what the `norma-vs-secundaria = 1.00` bar grades, by rank and not by membership.
+
+### G2 / RAG4-003 — the gold set's `corpus_sha` was never reconciled with the snapshot
+
+| change | file |
+|---|---|
+| `verificar_corpus_sha(gold, corpus_sha)` — refuses, naming both SHAs | `eval/harness.py` |
+| `_textos_privados` verifies the owner-side file's `para:` and `corpus_sha:` before resolving any private question | `eval/harness.py` |
+| exit code **4** (`SALIDA_IDENTIDAD`), raised before `create_engine`, before `destino.mkdir`, before `_embedder` | `scripts/rag_eval.py` |
+| `gold_corpus_sha` written into the report JSON | `eval/report.py` |
+
+`4` is its own code rather than another `1` because it is the one refusal that is never
+about the database: nothing was queried, nothing was written, and the fix is to correct an
+argument or an environment variable. The refuter called the severity borderline and both
+sides are on the record: fail-safe direction and ingestion's own pin bound reachability,
+against a guard that only existed in a CI-skipped `corpus` test and a private file fetched
+from an env var pointing outside this repository.
+
+An honest consequence, disclosed: the CLI tests now had to pin the fixture gold set to the
+seeded snapshot, because loading the real 52-item set against a five-unit fixture is
+exactly what the new check (correctly) refuses.
+
+### G3 / RAG4-004 — the only metric that scored total failure as perfect
+
+`separacion_norma_secundaria` returned `1.0` for an empty page: "the top hit is not a
+secondary source" is vacuously true when there is no top hit. It feeds a hard `== 1.00`
+bar, so a mode whose legs came back empty on every question cleared `norma-vs-secundaria`
+unanimously — a gate passed BY failing. Now `None`, leaving the denominator exactly as
+`vigencia_correctness` already did; `Barra.pasa` is already `False` for a `None` and
+`test_an_all_empty_run_cannot_clear_the_separation_bar` asserts that whole path.
+`n_separacion` exposes the denominator in the dataclass, in the JSON and as a new `n`
+column in the report's metric table.
+
+### G4 / RAG4-005 — the A1 boundary guard had two holes and a soft spot
+
+RED-probed by planting BOTH bypasses in `eval/privacy.py` at once:
+
+```
+OLD predicate catches: []                                        <- blind
+NEW predicate catches: ['31 -> app.domains.conocimiento.repository']
+FAILED …TestServiceLayerBoundary::test_the_eval_package_never_imports_the_repository
+FAILED …TestServiceLayerBoundary::test_the_eval_package_never_imports_importlib
+```
+
+`from app.domains.conocimiento import repository` — the most natural way to write the
+bypass — was invisible because the `ImportFrom` branch inspected only `node.module`
+(`app.domains.conocimiento`, which does not end in `.repository`). `importlib` was
+unguarded, which the class docstring itself named as the walk's blind spot while doing
+nothing about it. And the behavioural spy proved `service.recuperar` WAS called, never
+that the leg was not — going through the service AND poking `repository.vector_search`
+satisfied it perfectly, and the direct call is where both provenance refusals are lost.
+All three closed; the probe was removed and the file verified byte-identical afterwards.
+
+### G5 / RAG4-006 — the verdict could be quoted without its scope
+
+`GoNoGo` carries `legs_degradadas` (fused modes only) and exposes `veredicto_calificado` +
+`veredicto_con_alcance`. The report and the CLI print the scoped form; the JSON carries the
+boolean and the leg list so a machine reader never parses the Spanish. A degraded leg
+deliberately does **not** force `evaluable=False`: the ablation still informs, and refusing
+to score would discard its finding. Single-leg modes are never qualified, because there the
+degradation IS the measurement.
+
+### G6 / RAG4-007 — 4.12's ordering property was inherited from the box, not tested
+
+`rag_eval._embedder` is now a spy that records and refuses. Asserted uncalled on all three
+refusal paths — unknown snapshot, SHA mismatch, synthetic snapshot — each exercised with
+the **default three-mode ablation**, so an embedder would genuinely be required. The old
+evidence was a `ModuleNotFoundError: torch`, which passes for the wrong reason on any
+machine that has torch installed.
+
+### Deviations in this round (explicit)
+
+1. **Neither construction the orchestrator suggested was used**, and the reason is
+   measured, not stylistic: both go through `to_tsquery('spanish', …)`, which re-stems and
+   silently loses recall (`interven` → `interv`, 13 units → 0). The `::tsquery` cast is the
+   only one of the three that is a true round trip. `to_tsquery('simple', …)` was also
+   rejected: it does not re-stem, but it re-parses, and on a URL it re-introduces `&` —
+   the exact operator the fix exists to remove.
+2. **Negation handling was added beyond the brief.** ORing `!'lex'` in would match every
+   document *without* the word — a recall explosion wearing the fix's name — so terms are
+   partitioned rather than blanket-replaced. When a question mixes `or` and `-` in a shape
+   the top-level split cannot cleanly partition, the result is websearch's own query
+   unchanged: never invalid, never MORE restrictive than the conjunction it replaces. Each
+   of those shapes is pinned.
+3. **`n_separacion` and the metric table's `n` column** were not requested. A `None`-able
+   metric without a visible denominator is the same defect one level up: a mean over 3 of
+   29 questions and a mean over 29 must not look alike.
+4. **`hibrido_degenerado` was re-thresholded rather than dropped.** The brief allowed
+   either; the majority threshold keeps a fused-mode-specific signal that the per-leg flags
+   do not carry on their own (`hybrid` is the only mode whose LABEL can be false).
+5. **`FTS_OPERADOR` is re-exported through `service`** with a redundant alias. The eval
+   package may not import `repository` (D4) and must still print the operator; the
+   redundant-alias form is how ruff is told the re-export is deliberate.
+6. **A seventh defect was found by the end-to-end run and fixed in the same round**, because
+   it directly undermines the signal G1 and G5 just made load-bearing. `CoberturaLegs`
+   flagged a leg "degraded" that the mode never ran: the real 52-question `--modo fts` run
+   printed `⚠️ LEG DEGRADADA (vector)` beside a perfectly healthy lexical leg, since the
+   vector leg trivially returned nothing for all 52. A warning that fires on every
+   single-leg run is how a reader learns to skip the block that carries RAG4-001.
+   `legs_corridas` (mirroring `service.recuperar`'s own branches) now gates both per-leg
+   flags, the JSON records it, and the coverage line annotates a count that is 100 % only
+   because nobody asked.
+
+### The end-to-end run — the fix, measured on the real thing
+
+Not a unit test: `scripts/rag_eval.py` against a scratch database holding the real ingested
+corpus, with `RAG_GOLD_PRIVADO_PATH` set to the owner-side file, `--modo fts`.
+
+```
+gold set: 52 ítems (respondibles 29 · abstención 23) · corpus_sha 12043582bf8016288a7e8084e85a4b713a97af2f
+  fts     NO-GO  (fallan: hit-rate@5, MRR, citation-precision, norma-vs-secundaria,
+                  vigencia-correctness, abstention recall, abstention precision)
+exit 0
+```
+
+| what the JSON says | value |
+|---|---|
+| `sin_candidatos_fts` | **0 of 52** — every gold question got a non-empty lexical leg |
+| `leg_fts_degradada` | `false` |
+| `operador_fts` | `OR — disyunción de los lexemas que parsea websearch_to_tsquery` |
+| `gold_corpus_sha` / `corpus_sha` | identical, and the identity check had two values to compare |
+| hit-rate@5 · MRR · citation-precision | 0.138 · 0.091 · 0.040 |
+| norma-vs-secundaria (`n_separacion`) | 0.724 (**29**) |
+| vigencia-correctness (`n_vigencia`) | 0.667 (**3**) |
+| answerable questions with a gold key anywhere in the page | 5 / 29 |
+
+Three things this establishes that nothing before it could:
+
+1. **The whole 52-item gold set resolved**, so the owner-side private file passed the new
+   `para:` and `corpus_sha:` checks in the shape they will actually be used.
+2. **`proposal.md:32`'s premise is now falsifiable, and it is FALSE.** "If FTS-only clears
+   the bar, the prod image swap never has to happen" — FTS-only does not clear the bar, and
+   the report now says so with numbers instead of with an empty leg. That is a finding for
+   the owner, produced by the fix, and it is the thing the ablation existed to produce.
+3. `separacion_norma_secundaria` reads 0.724 over a denominator of 29. Before G3 the empty
+   pages in that set would have scored 1.0 and lifted it for free.
+
+The scratch database was created for this measurement and is disposable; nothing in the
+repository depends on it, and neither the main working tree nor the dev database was
+touched.
+
+### Verification (this round)
+
+```
+full suite, no corpus (the CI shape)   -> 2259 passed, 62 skipped, 0 failed   exit 0   (was 2219 / 62 / 0)
+full suite, RAG_CORPUS_PATH set        -> 2291 passed, 30 skipped, 0 failed   exit 0   (was 2251 / 30 / 0)
+make test-rag                          ->   25 passed,  0 skipped, 0 failed   exit 0   (was 25 / 0 / 0)
+make test-rag-corpus                   ->   32 passed,  0 skipped, 0 failed   exit 0   (was 32 / 0 / 0)
+tests/new/conocimiento/ (no corpus)    ->  342 passed, 57 skipped, 0 failed   exit 0   (was 302 / 57 / 0)
+ruff check / ruff format --check       -> exit 0
+mypy (18 source files)                 -> Success: no issues found
+```
+
+Both full-suite shapes collect **2321** (2259+62 = 2291+30), **+40** over the slice-4
+baseline's 2281, and the delta reconciles exactly — no renamed or flipped test is counted
+as new:
+
+| file | new cases | what |
+|---|---:|---|
+| `test_rag_retrieval.py` | 19 | `TestFtsOperador`: 2 semantic + 5 parametrized degrade-to-empty + 1 exclusion + 10 parametrized hostile inputs + 1 operator name |
+| `test_rag_eval_harness.py` | 11 | 1 importlib guard, 1 hybrid-degenerate threshold, 1 leg-never-ran, 3 verdict scope, 5 corpus/private-file identity |
+| `test_rag_eval_cli.py` | 5 | 4 identity refusals + 1 embedder-ordering spy |
+| `test_rag_metrics.py` | 3 | empty-page `None`, the all-empty aggregate against the bar, the denominator |
+| `test_rag_report.py` | 2 | operator disclosed, per-bar `n` column |
+| **total** | **40** | = 2321 − 2281 |
+
+`make test-rag` and `make test-rag-corpus` are unchanged in count because every new test is
+unmarked: they run in the shape CI gates on, which is where a query-operator regression
+would actually be caught. The pre-existing `test_run_blocking` timing flake did not fire in
+either shape.
+
+RED evidence for this round, in order: five pinned tests went red on the operator change
+(`assert ('9750#14',) == ()` — the D-1 question now returns the gold key as its TOP hit in
+the mini-snapshot); the A1 probe above; and `test_an_all_empty_run_cannot_clear_the_separation_bar`,
+which fails against the pre-fix metric. Two of my own expectations were wrong and corrected
+against measured behaviour rather than by weakening the assertion: the "recortada" page is
+now two hits rather than one, and my first `veredicto_con_alcance` named the DEGRADED leg
+where it should have named the surviving one.
+
 ## Status
 
-13/14 Slice 4 tasks complete (4.1–4.13) plus the two ledger amendments A1–A2. **4.14 is
-blocked on O.3** (the owner's RTX batch run) — the exact command sequence is above, and
-the only genuinely new prerequisite is `RAG_GOLD_PRIVADO_PATH`, which is written and
-ready. Two findings (RAG4-001, RAG4-002) are reported for a decision rather than fixed.
+13/14 Slice 4 tasks complete (4.1–4.13), the two ledger amendments A1–A2, and the six
+fix-round items G1–G6. **4.14 is blocked on O.3** (the owner's RTX batch run) — the exact
+command sequence is above, and the only genuinely new prerequisite is
+`RAG_GOLD_PRIVADO_PATH`, which is written and ready. RAG4-001 and RAG4-003 are now FIXED
+(both refuter-STANDS); RAG4-002 remains `info` and belongs to whoever owns the migration.
 Ready for `sdd-verify`.

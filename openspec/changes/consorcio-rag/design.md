@@ -225,7 +225,7 @@ corpus embeddings (privacy posture + the box is CPU-only anyway).
 ### D4 — Retrieval and RRF
 
 ```
-question ──┬─► FTS leg    : tsv @@ websearch_to_tsquery('spanish', q)
+question ──┬─► FTS leg    : tsv @@ OR-of-lexemes(websearch_to_tsquery('spanish', q))
            │               ORDER BY ts_rank_cd(tsv, q, 32) DESC,
            │                        citation_key ASC              LIMIT 50 ──┐
            │                                                                 ├─► rrf(k=60) ─► top-10
@@ -238,6 +238,68 @@ question ──┬─► FTS leg    : tsv @@ websearch_to_tsquery('spanish', q)
                                                                         │
                                                               AbstentionPolicy ─► answer | abstain
 ```
+
+**The lexical leg ORs its lexemes. It used to AND them, and that made the FTS arm of the ablation
+near-vacuous (ledger RAG4-001).** This bullet is an amendment: the original text named
+`websearch_to_tsquery` as the operator, full stop, and `websearch_to_tsquery` builds a CONJUNCTION.
+
+*The evidence, measured against the pinned corpus rather than reasoned about.* Six gold questions, the
+real 1 448-unit snapshot at `12043582…`, the leg's own query:
+
+| gold | expected key | AND: rows | AND: gold in top-50 | OR: rows | OR: gold in top-50 | OR: gold rank / rows matched |
+|---|---|---:|---|---:|---|---|
+| D-1 | `9750#14` | **0** | no | 50 | **yes @34** | 34 / 310 |
+| D-2 | `9750#15` | **0** | no | 50 | **yes @12** | 12 / 304 |
+| D-3 | `9750#24` | 1 | no | 50 | **yes @40** | 40 / 181 |
+| D-5 | `9750#42` | **0** | no | 50 | no | 127 / 349 |
+| D-6 | `9867#24` | 3 | no | 50 | **yes @25** | 25 / 287 |
+| D-7 | `8803#6`  | **0** | no | 50 | no | never matched / 319 |
+
+Under the conjunction the gold key was in the candidate set for **zero of six**, and four of the six
+questions returned no rows at all — the `&` sits in the `WHERE` clause, so `ts_rank_cd` never runs. D-1
+compiles to eleven ANDed lexemes (`'convoc' & 'asamble' & 'hor' & 'arranc' & 'lleg' & 'mit' & 'soci' &
+'pod' & 'empez' & 'igual' & 'suspend'`) and `9750#14` — three lines about quórum — carries two of them.
+Under the disjunction every question gets a full 50-candidate leg and the gold key is inside the
+candidate set for four of six. Landing it at **rank 1** is the fusion's job, not this leg's; getting it
+into the candidate set at all is the precondition fusion has nothing to work with without.
+
+The two remaining misses are honest and worth naming. D-5's key sits at rank 127 of 349 — matched, out-ranked,
+a `LEG_LIMIT` question. D-7's key never matches at all: its article shares no lexeme with the question,
+which is a vocabulary gap no lexical operator can close and exactly what the vector leg is in the
+design for. **That is the ablation finally being able to say something.**
+
+*Why this was not "just tune the query".* `proposal.md:32` justified slices 1-2 on "if FTS-only clears
+the bar, the prod image swap never has to happen". Under the conjunction that premise was
+unfalsifiable: the FTS-only arm measured `websearch`'s grammar, and `hybrid` degenerated into
+vector-only while keeping the fused label — the same "publish a comparison it never made" failure this
+section's no-silent-fallback rule exists to prevent, arriving through the front door.
+
+*The construction, and the trap inside the obvious one.* `websearch_to_tsquery('spanish', :q)::text`
+is split on its top-level `' & '`; positive terms are re-joined with `' | '`, `!`-terms stay ANDed, and
+the result is `CAST(… AS tsquery)`. Three properties, each load-bearing:
+
+- **No second stemming.** Feeding the text back through `to_tsquery('spanish', …)` re-applies the
+  dictionary to already-stemmed lexemes and the Snowball stemmer is **not idempotent**: measured,
+  `intervenir` indexes as `interven` (13 units) and stems again to `interv` (**zero**). That
+  construction looks like the fix and silently loses recall on the very words the question is about.
+  `tsquery_in` — the cast — applies no dictionary, so the round trip is exact.
+- **Exclusions survive.** ORing `!'rieg'` in would match every document *without* the word: a recall
+  explosion wearing the fix's name. `canal -riego` still means "canal, not riego".
+- **Injection-free by construction.** User text reaches SQL only as the bound parameter of
+  `websearch_to_tsquery`, which is total and whose output is a quoted, escaped lexeme list. Nothing
+  that returns from it is user text. The `' & '` split is safe because the default parser cannot emit a
+  lexeme containing a space.
+
+*No retry, ever.* One operator runs, always, and the report prints its name (`repository.FTS_OPERADOR`,
+surfaced in the markdown, in the JSON and beside the coverage counters). An automatic AND-then-OR retry
+would be exactly the silent degradation this section forbids for the vector leg, moved to the lexical
+side. A question that reduces to nothing — empty, stopwords only, only an exclusion — builds the empty
+tsquery and matches no row, which is an answer and stays distinguishable from a refusal.
+
+*Residual cost, disclosed.* A wider net brings secondary sources into pages that previously held none
+(`informe-f3#sec-3` now enters a quórum query), which is what the `norma-vs-secundaria = 1.00` bar
+grades — by RANK, not by membership. And `CoberturaLegs` keeps counting empty legs: the instrument that
+measured this defect is not removed because the reading improved.
 
 - `fusion.py` is a pure function `reciprocal_rank_fusion(lists, k=60) -> [(key, score)]`, `1/(k+rank+1)`,
   identical to the rag-advanced formula. Fusing in Python (not SQL) keeps it unit-testable with zero DB
@@ -389,7 +451,7 @@ that clears the bar does not overturn it — and the report states it as such an
   | hit-rate@5 | 1 if any expected key is among the first 5 fused hits, averaged over the answerable subset | — |
   | MRR | `1/(rank+1)` of the **first** expected key in the returned page, 0 if absent | averaging over all expected keys scores a complete composite answer *below* a partial one |
   | citation-precision | **R-precision**: `\|top_m ∩ gold\| / m` with `m = \|gold\|` | any fixed window ≥ m makes "= 1.00" unreachable for a one-key question, i.e. a decorative bar. At rank m precision and recall coincide, so one number carries both coverage and noise |
-  | norma-vs-secundaria | 1 unless the top hit is `es_secundaria`, or any hit lacks an explicit flag | the gold set's own rule — citing the informe instead of the article is a failure even when the content is right |
+  | norma-vs-secundaria | 1 unless the top hit is `es_secundaria`, or any hit lacks an explicit flag; **`None` when the page is empty** | the gold set's own rule — citing the informe instead of the article is a failure even when the content is right. It returned `1.0` for a page with no hits at all until the slice-4 fix round: "the top hit was not a secondary source" is vacuously true of a page with no top hit, so a mode that retrieved NOTHING cleared a hard `= 1.00` bar unanimously — a gate passed by failing. Absence now leaves the denominator, exactly as `vigencia-correctness` already did, and the report prints `n_separacion` beside the value |
   | vigencia-correctness | over trap questions only: every caveat-bearing key retrieved **and** every norma hit carrying a vigencia state | scoring it over all questions inflates the mean with free points from questions that never claimed the property |
 
   Scope: the five are computed over `respondibles` (`clase != 'unanswerable'`, so the `trampa-vigencia`
@@ -408,6 +470,31 @@ that clears the bar does not overturn it — and the report states it as such an
   shipped full-set threshold, the LOOCV-held-out precision/recall (the go/no-go figures), and the
   same-sample figures **explicitly labelled `upper bound (fit on the scoring sample)`**. A report that
   cannot state which of its numbers were fitted is not evidence.
+- **The lexical operator is disclosed** (`repository.FTS_OPERADOR`), in the markdown beside the leg
+  coverage counters and in the JSON at both the top level and per mode. RAG4-001 was a change to that
+  operator and nothing else, and it moved the FTS arm from "zero candidates on six of six gold
+  questions" to "a full leg on all six" — a report that prints leg metrics without naming the operator
+  that produced them describes a comparison the reader cannot identify.
+- **A verdict over a degraded fused leg states its scope.** `hybrid` whose lexical or vector leg came
+  back empty for a strict majority of questions still gets a real verdict — the ablation informs and
+  refusing to score would discard its finding — but the verdict line reads `GO (con leg FTS degradada —
+  el veredicto refleja principalmente la pata vectorial)`, and the JSON carries
+  `veredicto_calificado: bool` plus `legs_degradadas` so a machine reader does not parse Spanish. A bare
+  `GO` printed three lines above a `LEG DEGRADADA` warning is the line that gets quoted without the
+  warning. `hibrido_degenerado` uses the same strict-majority threshold as `leg_fts_degradada`: it
+  previously fired only at 100 % empty, so one surviving question out of fifty switched the loudest
+  warning in the report off.
+- **The gold set and the snapshot must pin the same corpus revision, and the run refuses when they do
+  not** (exit code 4, both SHAs named). `citas_esperadas` are keys of ONE revision; scored against
+  another, a key that does not exist there is indistinguishable from a retrieval miss, so every metric
+  drops and the report blames the retriever. The error direction is fail-safe — a spurious NO-GO, never
+  a spurious GO — which is exactly why it needed a check rather than a warning: an unexplainable NO-GO
+  costs a re-run of the whole GPU batch and the cause is one string comparison away. The owner-side
+  private file is held to the same rule: it declares `para:` and `corpus_sha:` and both are verified
+  before its 26 questions are allowed to resolve, because it is fetched from an environment variable
+  pointing outside this repository and a stale copy is an ordinary slip. `gold_corpus_sha` is written
+  into the report JSON so the record shows the check had two values to compare. All of it runs before
+  the database is opened, before the report directory exists and before an embedder is built.
 - **Determinism**: report pins corpus SHA, model HF revision, torch version and device for both legs.
   Both retrieval legs sort by `citation_key` as secondary key (D4), so tied units cannot reorder between
   runs; without it the pinned SHAs would guarantee reproducible *inputs* to a non-reproducible ranking.
