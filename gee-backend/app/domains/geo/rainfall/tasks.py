@@ -255,13 +255,23 @@ def _persist_analysis_revision(
 
     year_start = datetime(row.year, 1, 1, tzinfo=UTC)
     year_end = datetime(row.year + 1, 1, 1, tzinfo=UTC)
+    # design.md D6: widened from [year_start, year_end) so
+    # antecedents.d90 (compute.py) can read up to 90 days into the PRIOR
+    # year when comparison_end falls early in the analysis year --
+    # year_start - 90d is the worst case across the whole year
+    # (comparison_end == Jan 1), so it covers every d7/d30/d90 window for
+    # any comparison_end within [Jan 1, Dec 31]. build_snapshot's own
+    # in_window filter keeps annual.selected scoped to
+    # [year_start, comparison_end) unchanged. Widening the read changes
+    # data_revision_for's input, which is fine and expected: one new
+    # revision per key on the next build.
     persisted = intervals_in_window(
         db,
         source_id=row.source_id,
         scope_kind=row.scope_kind,
         scope_id=row.scope_id,
         scope_version=row.scope_version,
-        start=year_start,
+        start=year_start - timedelta(days=90),
         end=year_end,
     )
     resolved = [

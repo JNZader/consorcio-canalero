@@ -163,3 +163,95 @@ ruff check + ruff format --check on all 5 touched files: clean
 ### Status (fix pass)
 
 4/4 findings addressed (1 fixed as CRITICAL, 3 addressed as folded WARNING/SUGGESTION). Ready for re-review or `sdd-verify`.
+
+## Slice 2a: Metric Core — Normal, Percentile, Antecedents, Thresholds (D4 rows, D5, D6) — COMPLETE (15/15 tasks)
+
+**Branch**: `feat/lluvia-insights-02a-metrics` (base: `feat/lluvia-insights-01-baseline`, tip `0ed4d70` verified present at branch time).
+**Mode**: Strict TDD (RED → GREEN → REFACTOR), enforced via git-stash isolation per cycle (same protocol as slice 1).
+
+### Baseline (before slice-2a changes, same branch, source at slice-1 tip)
+
+```
+pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q
+=> 366 passed, 0 failed, 1 warning (pre-existing SAWarning, unrelated)
+```
+
+### Final (after slice-2a changes)
+
+```
+pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q
+=> 378 passed, 0 failed, 1 warning (same pre-existing warning)
+   (366 baseline + 12 new tests, 0 regressions)
+
+pytest tests/new/ -q   (full backend regression, all domains)
+=> 1936 passed, 5 skipped (pre-existing, live-backend/Martin-only skips), 0 failed
+```
+
+`ruff check` and `ruff format --check` both clean on every changed/created file.
+
+### TDD Cycle Evidence
+
+| Task | Test | RED evidence | GREEN evidence |
+|---|---|---|---|
+| 2a.1/2a.2 | `TestWeibullPercentile` (3 tests) | `ImportError: cannot import name 'weibull_percentile'` against slice-1 code | passes after `compute.py::weibull_percentile` + `MIN_BASELINE_YEARS` |
+| 2a.3/2a.4/2a.5 | `TestNormalAndPercentileBaselineFloor` (3 tests, incl. the `selected_value=None` counterexample), `TestPercentileFeb29SmallSample` | `ImportError: cannot import name '_normal_and_percentile_metrics'` | pass after `compute.py::_normal_and_percentile_metrics` (per-year 0.95 completeness filter + `MIN_BASELINE_YEARS=20` floor); Feb-29 suppresses structurally (8 leap years < 20), no special-case code |
+| 2a.6 | `TestAnnualNormalAndPercentileEnvelopeShape` | `KeyError: 'normal'` against slice-1 `build_snapshot` | passes: `provenance.source_id` fixed to `chirps-v3-final` regardless of the selected year's own source, `unit="percentil"`, interval bounds = the 1991-01-01→last-baseline-year+1d envelope |
+| 2a.7 | `TestBuildSnapshotEnvelope::test_build_snapshot_envelope_contract` (updated) | `AssertionError: assert {'selected'} == {'normal', 'percentile', 'selected'}` against slice-1 code | passes after `build_snapshot` wires `_normal_and_percentile_metrics`; `baseline=None` → both suppress `baseline_scope_unmapped` |
+| 2a.9 | `TestAntecedentCrossYearWindow` (2 tests) | `KeyError: 'antecedents'` | pass after `compute.py::_antecedent_metric` (`temporal.rolling_total` wired for the first time in production code) + the `_ANTECEDENT_WINDOWS` loop in `build_snapshot` |
+| 2a.10 | (covered by 2a.9's production-path proof, task 2a.14 below) | N/A — pure `tasks.py` window-widen, proven via the real-PG cross-year test | `tasks.py::_persist_analysis_revision`'s read start moved to `year_start - timedelta(days=90)` |
+| 2a.11 | `TestRainfallMetricPolicyConstants` (pre-existing, still green) + `test_no_metric_suppressed_as_policy_threshold_unset` (2a.12) | N/A — additive dict entries, proven by 2a.12's acceptance test | `policy.py::RAINFALL_METRIC_POLICY` gains 5 entries (`annual_normal`, `annual_percentile`, `d7`, `d30`, `d90`) |
+| 2a.12/2a.13/2a.14 | `test_rainfall_insights_metrics.py` (3 new real-PG tests) | `KeyError: 'normal'` / `KeyError: 'antecedents'` — captured via `git stash push -u -- compute.py policy.py tasks.py`, running the new test file against the stashed-out (slice-1) source, then `git stash pop` | pass after the full slice-2a implementation; 2a.13 additionally caught and fixed a LEAP-YEAR bug in the test's OWN fixture (see Deviations) before reaching genuine green |
+
+**RED verification method**: for 2a.1–2a.9 (pure, `test_mutation_targets_rainfall.py`), tests were written first and run against the untouched slice-1 source to capture the failure (`ImportError`/`AssertionError`/`KeyError`, recorded above), then the implementation was added and the suite re-run to confirm GREEN. For 2a.12–2a.14 (real-PG, new file `test_rainfall_insights_metrics.py`), the same git-stash isolation protocol slice 1 established was used: `git stash push -u -- app/domains/geo/rainfall/{compute,policy,tasks}.py` (keeping the new test file in the working tree), `pytest` run to capture the RED failure, `git stash pop` to restore, then the full suite re-run to confirm GREEN.
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified | `weibull_percentile` (pure, empirical Weibull plotting-position rank) + `MIN_BASELINE_YEARS=20` + `_BASELINE_YEAR_COMPLETENESS_THRESHOLD=0.95`; `_normal_and_percentile_metrics` (builds `annual.normal`/`annual.percentile` from the baseline dict alone, two-layer suppression); `_antecedent_metric` + `_ANTECEDENT_WINDOWS` (builds `antecedents.{d7,d30,d90}` via `temporal.rolling_total`, wired for the first time); `build_snapshot` now returns `annual.{selected,normal,percentile}` + `antecedents.{d7,d30,d90}` (was `annual.selected` only) |
+| `gee-backend/app/domains/geo/rainfall/policy.py` | Modified | `RAINFALL_METRIC_POLICY` gains 5 threshold entries (`annual_normal`, `annual_percentile`, `d7`, `d30`, `d90`, all 0.9/0.8) — no `summary` entry (D4) |
+| `gee-backend/app/domains/geo/rainfall/tasks.py` | Modified | `_persist_analysis_revision`'s resolved-interval read widened from `[year_start, year_end)` to `[year_start - 90d, year_end)` (D6); `annual.selected`'s own `in_window` filter inside `build_snapshot` is unaffected |
+| `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified | Updated `TestBuildSnapshotEnvelope::test_build_snapshot_envelope_contract` for the new envelope shape; added `TestWeibullPercentile`, `TestNormalAndPercentileBaselineFloor`, `TestPercentileFeb29SmallSample`, `TestAnnualNormalAndPercentileEnvelopeShape`, `TestAntecedentCrossYearWindow` (12 new tests total) |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_insights_metrics.py` | Created | 3 real-PG integration tests: 2a.12 (no `policy_threshold_unset`), 2a.13 (shared `comparison_end`, post-cutoff-tail non-leak), 2a.14 (cross-year `d90` suppression on a prior-year gap) |
+| `openspec/changes/lluvia-insights/tasks.md` | Modified | Slice 2a (2a.1-2a.15) marked `[x]`, with inline deviation notes |
+
+### Deviations from Design/Tasks
+
+1. **Task literal test names implemented as test CLASSES with multiple focused tests, not single functions.** Every `test_mutation_targets_rainfall.py` addition (2a.1, 2a.3, 2a.4, 2a.6, 2a.9) follows the file's own established convention (e.g., `TestApplyMetricPolicy`, `TestRevisionWriteDecision`) of one class per concern with several small, precisely-named tests, rather than one monolithic test per literal task name. Every literal task's acceptance criterion is still covered; the extra tests are additional counterexample coverage (e.g., the exact 19-vs-20 boundary as two separate tests, not one).
+2. **2a.3/2a.4 test the private `compute._normal_and_percentile_metrics` helper directly**, not the full `build_snapshot`. This matches the repo's own precedent (`repository._values_equal_at_6dp` is tested directly in the same file) and keeps the MIN_BASELINE_YEARS floor tests independent of unrelated `build_snapshot` machinery (batch evidence, cadence, etc.).
+3. **`_BASELINE_SOURCE_ID = "chirps-v3-final"` is a NEW local constant in `compute.py`**, duplicating `service.py`'s existing `RAINFALL_HISTORICAL_SOURCE` string value rather than importing it. `compute.py`'s import graph currently points only at `policy.py`/`scope.py`/`temporal.py`/`adapters.manifests` (never at `service.py`, the orchestration layer above it); importing a constant from `service.py` would add a new, architecturally-backwards edge. The literal string is duplicated (documented inline) rather than the import boundary being crossed.
+4. **2a.11 added 5 threshold entries, not the "4" the task line's own prose states** — the task's own body text explicitly names all 5 (`annual_normal`, `annual_percentile`, `d7`, `d30`, `d90`), and all 5 are required for 2a.12's "no metric suppressed as `policy_threshold_unset`" acceptance test to pass. Read as a minor miscount in the tasks doc, not a scope signal; no threshold was omitted.
+5. **`RAINFALL_METRIC_POLICY_REVISION` was NOT bumped, and `router.py`'s stale-policy requeue was NOT touched in this slice**, even though the design.md D3 narrative (and the orchestrator's own context-recovery framing) discusses both. `tasks.md`'s own slice boundary is unambiguous: the revision bump is task 2b.6 and the requeue is 2b.7/2b.8, both explicitly under "## Slice 2b" — this batch's assigned task list is 2a.1-2a.15 only. Practically: every 2a/2a-integration-test build is a BRAND NEW revision (no pre-existing incumbent row for these fresh test fixtures), so `persist_revision`'s `ON CONFLICT DO NOTHING` never discards the enriched envelope in this slice's own tests — the load-bearing bump only matters for a REBUILD of an already-`done` key, which is 2b's concern.
+6. **Own test-fixture bug caught and fixed before reaching genuine green (2a.13).** The first draft of `test_normal_and_percentile_share_selected_comparison_end` used a hand-rolled, YEAR-INVARIANT day-count (`cutoff_days=105`, intended as "Jan 1 through Apr 15 inclusive") to build both the "counted" and "must-not-leak" baseline windows for all 30 baseline years. This silently breaks for the 8 LEAP years in 1991-2020: a fixed 105-day offset from Jan 1 lands on Apr 14 in a leap year (the extra Feb 29 pushes everything back one day), so the "must-not-leak" tail (1000.0mm/day) actually STARTED on Apr 15 for those 8 years — squarely inside the intended `[Jan 1, Apr 16)` counted window — and its value leaked into `baseline_cumulatives`'s per-year totals for those years. First run of the test against the FINISHED implementation failed with `791.67 != 525.0 ± 0.0005` (not a `KeyError`/`ImportError` — a genuine wrong-number bug, in the test's own fixture, not the production code). Root-caused via the debugging-discipline loop (reproduce → trace → hypothesize → fix → verify): traced to the 8-leap-year subset, hypothesized the day-count/leap interaction, verified by recomputing the leap-contaminated total by hand. Fixed by moving the test's `comparison_end` to Jan 20 (before every possible Feb 29 in any calendar), making the day-count genuinely year-invariant across leap and non-leap baseline years alike — not a workaround, a correct fixture. Re-verified green; the identical scenario was ALSO re-run through the mandatory git-stash RED check to confirm it remains genuinely RED against slice-1 code (see TDD Cycle Evidence table).
+7. **Locked in one additional counterexample regression test beyond the assigned task list**: `test_selected_value_unavailable_suppresses_only_percentile` (Author Counterexample Self-Check, Null/absence category) — proves that a RESOLVED, ELIGIBLE baseline still yields an `available` `annual.normal` even when the selected year's own value is `None` (only `annual.percentile` suppresses, with `reason="annual_selected_value_unavailable"`, a reason not named anywhere in tasks.md/design.md but structurally required — the rank needs a value to rank against, the baseline average does not). This code path was reachable but untested by the literal task list; verified first via an inline probe, then locked in as a permanent test per the self-check's "if a probe reveals real behavior, lock it in" spirit.
+
+### Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | `baseline=None` → both metrics suppress `baseline_scope_unmapped` (`test_build_snapshot_envelope_contract`, updated); `selected_value=None` with a resolved, eligible baseline → `annual.normal` stays `available`, only `annual.percentile` suppresses (`test_selected_value_unavailable_suppresses_only_percentile`, new); an empty/absent baseline dict for a given year is never fabricated as a zero (falls out of `eligible_years` naturally via the `year in possible_years` + `expected > 0` guard) | Pass |
+| Boundaries | `MIN_BASELINE_YEARS` exact 19-vs-20 boundary (`TestNormalAndPercentileBaselineFloor`, both directions); `weibull_percentile`'s lowest/highest rank bounds (i=1, i=N -- the 3.1/96.9 range at n=30); Feb-29's structural 8-leap-year boundary (`TestPercentileFeb29SmallSample`); `antecedents.d90`'s exact-window boundary (90 complete days available vs. one dropped day, real-PG `test_d90_suppressed_with_reason_when_prior_year_incomplete`) | Pass |
+| Concurrency / idempotency | N/A — `_normal_and_percentile_metrics`/`_antecedent_metric`/`weibull_percentile` are pure functions with no shared or mutable state and no I/O; the only concurrency-relevant seam this slice touches (`tasks._persist_analysis_revision`'s read window) is a plain `SELECT`, already covered by `intervals_in_window`'s existing anti-join and the pre-existing per-fingerprint advisory lock upstream of it (both unchanged in this slice) | N/A (reason given) |
+| Malicious input / security | N/A — no new HTTP route, no new user-facing input surface in this slice; every new function is fed exclusively by the caller's own resolved DB rows (`repository.baseline_cumulatives`, `repository.intervals_in_window`), never directly by request input | N/A (reason given) |
+| Partial failure / recovery | A genuine data gap inside `antecedents.d90`'s window fails LOUD — suppressed with `reason="antecedent_window_incomplete"` — never a silently-short sum, proven at both the pure level (`TestAntecedentCrossYearWindow::test_d90_suppresses_on_a_gap_in_the_prior_year_tail`) and the real-PG production-path level (`test_d90_suppressed_with_reason_when_prior_year_incomplete`, with `d7` unaffected in the same build) | Pass |
+| State / tenancy / time | `annual.normal`/`annual.percentile` genuinely share `annual.selected`'s own `comparison_end` cutoff end-to-end — proven by persisting data AFTER the cutoff and confirming it does NOT leak into the baseline average (`test_normal_and_percentile_share_selected_comparison_end`, real PG, after fixing the fixture's own leap-year bug, deviation 6); the D6-widened read window correctly crosses the calendar-year boundary in both directions (complete cross-year sum + gapped cross-year suppression) | Pass |
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (`feature-branch-chain`, per tasks.md's Review Workload Forecast)
+- Current work unit: Unit 2a — "`annual.normal`/`percentile`/antecedents metrics + threshold entries (D4 rows, D5, D6)"
+- Boundary: starts at `feat/lluvia-insights-01-baseline`'s tip (`0ed4d70`), ends at this commit — slice 2a is a complete, independently mergeable, independently verifiable unit (378/378 rainfall+mutation tests, 1936/1936 full backend regression)
+- Estimated review budget impact: ~240 production lines forecast (tasks.md); actual diff is source (`compute.py`, `policy.py`, `tasks.py`) + 1 modified test file + 1 new test file — within the forecast slice budget. `summary`/cross-source-caveat/revision-bump/stale-requeue explicitly deferred to slice 2b, per tasks.md's own slice boundary.
+
+### Remaining Tasks (out of this batch's scope)
+
+- [ ] Slice 2b: Summary Mechanism, Revision Bump, Cross-Source Caveat, Stale Requeue (2b.1-2b.12)
+- [ ] Slice 3a: Series Module — Consistency Pin + `data_revision` Exposure (3a.1-3a.14)
+- [ ] Slice 3b: xlsx Export + TS Contract + Consistency Exposure (3b.1-3b.11)
+- [ ] Slice 4: Frontend Chart (4.1-4.10)
+- [ ] Ops.1-3: real 1991-2020 backfill runbook execution (owner-run, explicitly NOT this agent's scope)
+- [ ] Ops.4-6: doc-nit folds
+
+### Status
+
+15/15 slice-2a tasks complete (378/378 targeted tests pass, 1936/1936 full backend regression pass, ruff clean). Ready for review/PR of this work unit, then `sdd-apply` for slice 2b (or `sdd-verify` if the orchestrator wants a checkpoint first).

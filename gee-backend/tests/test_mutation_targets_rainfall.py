@@ -1077,9 +1077,13 @@ def _daily_intervals(*, start: date, values: list[float]) -> list[tuple[datetime
 
 
 class TestBuildSnapshotEnvelope:
-    """Task 2.4: root keys are a subset of SNAPSHOT_ROOT_KEYS, v1 ships only
-    annual.selected, and the metric carries the full extra="forbid" field
-    set with quality["score"] in [0, 1] (decision 5b)."""
+    """Task 2.4 (v1) / task 2a.7 (v2 slice 2a): root keys are a subset of
+    SNAPSHOT_ROOT_KEYS. v1 shipped only annual.selected; slice 2a grows the
+    envelope with annual.{normal,percentile} (design.md D4/D5) -- ALWAYS
+    present, suppressed rather than omitted when no baseline is resolved --
+    and antecedents.{d7,d30,d90} (design.md D6). Every metric carries the
+    full extra="forbid" field set with quality["score"] in [0, 1]
+    (decision 5b)."""
 
     def test_build_snapshot_envelope_contract(self) -> None:
         from app.domains.geo.rainfall.compute import build_snapshot
@@ -1098,7 +1102,15 @@ class TestBuildSnapshotEnvelope:
         )
 
         assert set(snapshot) <= SNAPSHOT_ROOT_KEYS
-        assert set(snapshot["annual"]) == {"selected"}
+        # No baseline was given (default None) -- normal/percentile are
+        # PRESENT (never omitted from the envelope) but suppressed, task
+        # 2a.7's baseline_scope_unmapped branch.
+        assert set(snapshot["annual"]) == {"selected", "normal", "percentile"}
+        assert set(snapshot["antecedents"]) == {"d7", "d30", "d90"}
+        assert snapshot["annual"]["normal"]["state"] == "suppressed"
+        assert snapshot["annual"]["normal"]["reason"] == "baseline_scope_unmapped"
+        assert snapshot["annual"]["percentile"]["state"] == "suppressed"
+        assert snapshot["annual"]["percentile"]["reason"] == "baseline_scope_unmapped"
 
         metric = snapshot["annual"]["selected"]
         expected_fields = {
@@ -1126,6 +1138,16 @@ class TestBuildSnapshotEnvelope:
         provenance = metric["provenance"]
         assert provenance["source_id"] == "chirps-v3-final"
         assert provenance["spatial_scope"] == "zone"
+
+        # Every new metric shares the SAME MetricResult field contract.
+        for group_name, member_name in (
+            ("annual", "normal"),
+            ("annual", "percentile"),
+            ("antecedents", "d7"),
+            ("antecedents", "d30"),
+            ("antecedents", "d90"),
+        ):
+            assert set(snapshot[group_name][member_name]) == expected_fields
 
     def test_build_snapshot_raises_on_duplicate_interval_start(self) -> None:
         """Task 2.7: a duplicated slot is a broken invariant, not a sum —
@@ -1543,3 +1565,275 @@ class TestValidationSourceMatchesManifest:
 
         manifest = next(m for m in CANDIDATE_MANIFESTS if m.role == "validation")
         assert RAINFALL_VALIDATION_SOURCE == manifest.source_id == "smn-gauge"
+
+
+# ===========================================================================
+# compute.py — weibull_percentile (lluvia-insights slice 2a, task 2a.1/D5)
+# ===========================================================================
+
+
+class TestWeibullPercentile:
+    """Task 2a.1/D5: empirical Weibull plotting-position rank over the
+    baseline PLUS the selected year (N = n+1); ties take the MEAN of their
+    tied 1-based positions."""
+
+    def test_lowest_and_highest_selected_value_bound_the_range_at_n30(self) -> None:
+        from app.domains.geo.rainfall.compute import weibull_percentile
+
+        baseline = [float(value) for value in range(1, 31)]  # 30 distinct baseline years
+        lowest = weibull_percentile(baseline, 0.0)  # below every baseline year
+        highest = weibull_percentile(baseline, 999.0)  # above every baseline year
+        assert lowest == pytest.approx(100 * 1 / 32)
+        assert highest == pytest.approx(100 * 31 / 32)
+        assert 3.0 < lowest < 3.2
+        assert 96.8 < highest < 97.0
+
+    def test_median_selected_value_lands_exactly_at_the_middle(self) -> None:
+        from app.domains.geo.rainfall.compute import weibull_percentile
+
+        baseline = [float(value) for value in range(1, 31)]
+        # No tie: 15.5 sits strictly between the 15th and 16th baseline
+        # values, so it is unambiguously the combined sample's 16th (1-based).
+        result = weibull_percentile(baseline, 15.5)
+        assert result == pytest.approx(50.0)
+
+    def test_tied_values_share_the_mean_position(self) -> None:
+        from app.domains.geo.rainfall.compute import weibull_percentile
+
+        # combined sorted: [10, 20, 20, 20] -- the THREE 20s (2 baseline +
+        # the tied selected value) occupy 1-based positions 2, 3, 4 -- mean 3.
+        baseline = [10.0, 20.0, 20.0]
+        result = weibull_percentile(baseline, 20.0)
+        assert result == pytest.approx(100 * 3 / (4 + 1))
+
+
+# ===========================================================================
+# compute.py — annual.normal/annual.percentile 20-year floor (lluvia-insights
+# slice 2a, tasks 2a.3/2a.4/2a.5/D5)
+# ===========================================================================
+
+
+class TestNormalAndPercentileBaselineFloor:
+    """Task 2a.3/2a.5: MIN_BASELINE_YEARS=20 is a SAMPLE-SIZE gate
+    apply_metric_policy cannot express (it only sees fractions) -- below
+    it, both metrics suppress with their own reason, distinct from any
+    coverage/quality threshold outcome."""
+
+    _COMPARISON_END = date(2026, 8, 7)  # not Feb 29 -> full 30-year family
+
+    @staticmethod
+    def _complete_baseline(years: range) -> dict[int, tuple[float, int, int]]:
+        return {year: (10.0, 365, 365) for year in years}
+
+    def test_19_eligible_years_suppresses_below_minimum(self) -> None:
+        from app.domains.geo.rainfall.compute import _normal_and_percentile_metrics
+
+        normal, percentile = _normal_and_percentile_metrics(
+            baseline=self._complete_baseline(range(1991, 1991 + 19)),
+            comparison_end_date=self._COMPARISON_END,
+            selected_value=12.0,
+            selected_temporal_state="final",
+            nominal_resolution="1000m",
+            scope=_ZONE_SCOPE,
+            now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
+        )
+        assert normal["state"] == "suppressed"
+        assert normal["reason"] == "baseline_years_below_minimum"
+        assert normal["value"] is None
+        assert percentile["state"] == "suppressed"
+        assert percentile["reason"] == "baseline_years_below_minimum"
+        assert percentile["value"] is None
+
+    def test_20_eligible_years_is_not_suppressed_by_the_floor(self) -> None:
+        from app.domains.geo.rainfall.compute import _normal_and_percentile_metrics
+
+        normal, percentile = _normal_and_percentile_metrics(
+            baseline=self._complete_baseline(range(1991, 1991 + 20)),
+            comparison_end_date=self._COMPARISON_END,
+            selected_value=12.0,
+            selected_temporal_state="final",
+            nominal_resolution="1000m",
+            scope=_ZONE_SCOPE,
+            now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
+        )
+        assert normal["state"] == "available"
+        assert normal["reason"] is None
+        assert normal["value"] == pytest.approx(10.0)
+        assert percentile["state"] == "available"
+        assert percentile["reason"] is None
+
+    def test_selected_value_unavailable_suppresses_only_percentile(self) -> None:
+        """Author counterexample self-check (Null/absence): the RANK needs
+        a selected-year total to rank AGAINST; the normal (a pure baseline
+        average) does not -- a resolved, eligible baseline still yields an
+        `available` normal even when the selected year itself has no value."""
+        from app.domains.geo.rainfall.compute import _normal_and_percentile_metrics
+
+        normal, percentile = _normal_and_percentile_metrics(
+            baseline=self._complete_baseline(range(1991, 2021)),
+            comparison_end_date=self._COMPARISON_END,
+            selected_value=None,
+            selected_temporal_state="provisional",
+            nominal_resolution="1000m",
+            scope=_ZONE_SCOPE,
+            now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
+        )
+        assert normal["state"] == "available"
+        assert normal["value"] == pytest.approx(10.0)
+        assert percentile["state"] == "suppressed"
+        assert percentile["reason"] == "annual_selected_value_unavailable"
+        assert percentile["value"] is None
+
+
+class TestPercentileFeb29SmallSample:
+    """Task 2a.4/D5: February 29 has only 8 leap years in 1991-2020
+    (temporal.baseline_years_for) -- structurally below MIN_BASELINE_YEARS,
+    with no special-case code needed (spec: "February 29 rank on a small
+    sample")."""
+
+    def test_feb_29_baseline_has_only_8_leap_years_and_suppresses(self) -> None:
+        from app.domains.geo.rainfall.compute import _normal_and_percentile_metrics
+        from app.domains.geo.rainfall.temporal import baseline_years_for
+
+        comparison_end = date(2028, 2, 29)
+        leap_years = baseline_years_for(comparison_end)
+        assert len(leap_years) == 8  # 1992, 1996, ..., 2020
+
+        # Even a FULLY complete baseline for all 8 leap years cannot clear
+        # MIN_BASELINE_YEARS=20.
+        baseline = {year: (10.0, 366, 366) for year in leap_years}
+        normal, percentile = _normal_and_percentile_metrics(
+            baseline=baseline,
+            comparison_end_date=comparison_end,
+            selected_value=11.0,
+            selected_temporal_state="final",
+            nominal_resolution="1000m",
+            scope=_ZONE_SCOPE,
+            now=datetime(2028, 2, 29, 12, 0, tzinfo=UTC),
+        )
+        assert normal["state"] == "suppressed"
+        assert normal["reason"] == "baseline_years_below_minimum"
+        assert percentile["state"] == "suppressed"
+        assert percentile["reason"] == "baseline_years_below_minimum"
+
+
+# ===========================================================================
+# compute.py — annual.normal/annual.percentile envelope shape (lluvia-insights
+# slice 2a, task 2a.6/D5)
+# ===========================================================================
+
+
+class TestAnnualNormalAndPercentileEnvelopeShape:
+    """Task 2a.6: normal/percentile carry provenance.source_id ==
+    "chirps-v3-final" REGARDLESS of the selected year's own source
+    (design.md D5), percentile's unit is "percentil" (not "%"), and both
+    share the baseline envelope interval bounds (1991-01-01 -> last
+    baseline comparison_end + 1 day)."""
+
+    def test_normal_and_percentile_envelope_shape(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        now = datetime(2024, 8, 7, 12, 0, tzinfo=UTC)
+        intervals = _daily_intervals(start=date(2024, 1, 1), values=[5.0] * 220)
+        baseline = {year: (10.0, 365, 365) for year in range(1991, 2021)}  # all 30 complete
+
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="daily",
+            source_id="chirps-v3-sat",  # the SELECTED year's own source -- daily/NRT
+            intervals=intervals,
+            batch=_fixture_batch_evidence(
+                source_id="chirps-v3-sat",
+                provider_revision="v3-nrt",
+                quality={
+                    "catalog_id": "UCSB-CHC/CHIRPS/V3/DAILY_SAT",
+                    "band": "precipitation",
+                    "reduction": "mean",
+                    "scale_m": 5500,
+                    "provider_revision": "v3-nrt",
+                },
+            ),
+            now=now,
+            baseline=baseline,
+        )
+
+        normal = snapshot["annual"]["normal"]
+        percentile = snapshot["annual"]["percentile"]
+
+        # NOT the selected year's chirps-v3-sat -- the baseline is always
+        # Final, regardless of what sourced the selected year.
+        assert normal["provenance"]["source_id"] == "chirps-v3-final"
+        assert percentile["provenance"]["source_id"] == "chirps-v3-final"
+        assert percentile["unit"] == "percentil"
+        assert normal["unit"] == "mm"
+
+        expected_start = datetime(1991, 1, 1, tzinfo=UTC).isoformat()
+        expected_end = (datetime(2020, 8, 7, tzinfo=UTC) + timedelta(days=1)).isoformat()
+        assert normal["interval_start"] == expected_start
+        assert normal["interval_end"] == expected_end
+        assert percentile["interval_start"] == expected_start
+        assert percentile["interval_end"] == expected_end
+
+
+# ===========================================================================
+# compute.py — antecedents.{d7,d30,d90} cross-year window (lluvia-insights
+# slice 2a, task 2a.9/D6)
+# ===========================================================================
+
+
+class TestAntecedentCrossYearWindow:
+    """Task 2a.9/D6: d7/d30/d90 end at comparison_end and may read into the
+    PRIOR year; a gap anywhere in the window suppresses with its own
+    reason, never a short sum."""
+
+    _COMPARISON_END_EXCLUSIVE = datetime(2025, 1, 21, tzinfo=UTC)  # comparison_end = Jan 20, 2025
+    _NOW = datetime(2025, 1, 20, 12, 0, tzinfo=UTC)
+
+    def test_d90_sums_across_the_year_boundary_when_complete(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        window_start_date = (self._COMPARISON_END_EXCLUSIVE - timedelta(days=90)).date()
+        assert window_start_date.year == 2024  # genuinely crosses the year boundary
+        intervals = _daily_intervals(start=window_start_date, values=[1.0] * 90)
+
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2025,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=intervals,
+            batch=_fixture_batch_evidence(source_id="chirps-v3-sat"),
+            now=self._NOW,
+        )
+        d90 = snapshot["antecedents"]["d90"]
+        assert d90["state"] == "available"
+        assert d90["value"] == pytest.approx(90.0)
+        assert d90["reason"] is None
+
+    def test_d90_suppresses_on_a_gap_in_the_prior_year_tail(self) -> None:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        window_start_date = (self._COMPARISON_END_EXCLUSIVE - timedelta(days=90)).date()
+        full = _daily_intervals(start=window_start_date, values=[1.0] * 90)
+        gapped = full[:30] + full[31:]  # drop one day -- a hole in the prior-year tail
+
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2025,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=gapped,
+            batch=_fixture_batch_evidence(source_id="chirps-v3-sat"),
+            now=self._NOW,
+        )
+        d90 = snapshot["antecedents"]["d90"]
+        assert d90["state"] == "suppressed"
+        assert d90["value"] is None
+        assert d90["reason"] == "antecedent_window_incomplete"
+
+        # d7 -- entirely within the complete tail -- must stay unaffected by
+        # d90's own gap.
+        d7 = snapshot["antecedents"]["d7"]
+        assert d7["state"] == "available"
+        assert d7["value"] == pytest.approx(7.0)

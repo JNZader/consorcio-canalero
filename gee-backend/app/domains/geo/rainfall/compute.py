@@ -68,6 +68,267 @@ def _source_class_for(source_id: str) -> str:
         ) from exc
 
 
+# ---------------------------------------------------------------------------
+# annual.normal / annual.percentile (design.md D4/D5, slice 2a)
+# ---------------------------------------------------------------------------
+
+# design.md D5: eligible baseline years must clear this SAMPLE-SIZE floor
+# before normal/percentile are disclosed at all -- a floor, not a
+# policy.RAINFALL_METRIC_POLICY threshold entry, since apply_metric_policy
+# only speaks fractions (coverage/quality) and cannot see absolute n.
+# February 29 has only 8 leap years in 1991-2020
+# (temporal.baseline_years_for), well below this floor -- so a Feb 29
+# comparison suppresses structurally, with no special-case code below.
+MIN_BASELINE_YEARS = 20
+
+# design.md D5: a baseline year's OWN day-completeness must clear this
+# floor to count toward MIN_BASELINE_YEARS -- a year with a data gap must
+# not silently participate as if it were whole.
+_BASELINE_YEAR_COMPLETENESS_THRESHOLD = 0.95
+
+# design.md D5: normal/percentile always carry the HISTORICAL baseline's
+# own source_id, regardless of what sourced the selected year (role
+# assignment, not blending) -- a bare literal (not service.py's
+# RAINFALL_HISTORICAL_SOURCE) to keep compute.py's import graph pointed
+# only at policy.py/scope.py/temporal.py/adapters.manifests, never at the
+# orchestration layer above it.
+_BASELINE_SOURCE_ID = "chirps-v3-final"
+
+
+def weibull_percentile(baseline_values: Sequence[float], selected_value: float) -> float:
+    """Empirical Weibull plotting-position rank (design.md D5) -- pure, no
+    suppression logic; the caller applies the two-layer floor (per-year
+    completeness, then :data:`MIN_BASELINE_YEARS`) before ever calling this.
+
+    Sample = *baseline_values* plus *selected_value* (``N = n + 1``);
+    returns ``p = 100 * i / (N + 1)`` where ``i`` is the 1-based ascending
+    rank of *selected_value* within the combined sample, ties taking the
+    MEAN of their tied positions. Including the selected year in its own
+    sample avoids a degenerate 0/100 rank and keeps the range 3.1-96.9 at
+    n=30 baseline years (the lowest/highest possible ranks, i=1 and i=N).
+    """
+    combined = sorted([*baseline_values, selected_value])
+    n = len(combined)
+    tied_positions = [
+        position + 1 for position, value in enumerate(combined) if value == selected_value
+    ]
+    mean_rank = sum(tied_positions) / len(tied_positions)
+    return 100 * mean_rank / (n + 1)
+
+
+def _normal_and_percentile_metrics(
+    *,
+    baseline: dict[int, tuple[float, int, int]] | None,
+    comparison_end_date: date,
+    selected_value: float | None,
+    selected_temporal_state: str,
+    nominal_resolution: str,
+    scope: AnalysisScope,
+    now: datetime,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``annual.normal``/``annual.percentile`` (design.md D4/D5): ALWAYS
+    present in the envelope -- an unmapped or thin baseline suppresses
+    these two metrics rather than dropping them, so a served analysis has
+    a stable metric shape regardless of baseline coverage.
+
+    Both are built from the historical baseline alone
+    (``repository.baseline_cumulatives``, D1), never from an adapter
+    ``batch`` -- there is no adapter batch behind a SQL aggregate to
+    inherit ``quality``/``discrepancies`` from (task 2a.8, LIB-102 fold).
+    ``Provenance`` and ``MetricResult`` both set ``extra="forbid"``
+    (schemas.py:11,25), so every field below is built explicitly from
+    scratch rather than assumed from a partial source.
+    """
+    possible_years = temporal.baseline_years_for(comparison_end_date)
+    eligible_years = sorted(
+        year
+        for year, (_total, matched, expected) in (baseline or {}).items()
+        if year in possible_years
+        and expected > 0
+        and (matched / expected) >= _BASELINE_YEAR_COMPLETENESS_THRESHOLD
+    )
+    completeness = (len(eligible_years) / len(possible_years)) if possible_years else 0.0
+    coverage = (
+        min((baseline[year][1] / baseline[year][2]) for year in eligible_years)
+        if eligible_years
+        else 0.0
+    )
+
+    last_baseline_year = max(possible_years)
+    envelope_start = datetime(1991, 1, 1, tzinfo=UTC)
+    envelope_end = datetime(
+        last_baseline_year, comparison_end_date.month, comparison_end_date.day, tzinfo=UTC
+    ) + timedelta(days=1)
+
+    if baseline is None:
+        normal_state, normal_reason = "suppressed", "baseline_scope_unmapped"
+        percentile_state, percentile_reason = "suppressed", "baseline_scope_unmapped"
+        normal_value = percentile_value = None
+    elif len(eligible_years) < MIN_BASELINE_YEARS:
+        # design.md D5: the per-year completeness floor already trimmed
+        # `eligible_years` above; Feb 29 (only 8 leap years in 1991-2020)
+        # suppresses HERE, unconditionally -- 8 < MIN_BASELINE_YEARS.
+        normal_state, normal_reason = "suppressed", "baseline_years_below_minimum"
+        percentile_state, percentile_reason = "suppressed", "baseline_years_below_minimum"
+        normal_value = percentile_value = None
+    else:
+        normal_value = sum(baseline[year][0] for year in eligible_years) / len(eligible_years)
+        normal_state, normal_reason = "available", None
+        if selected_value is None:
+            # The rank needs a selected-year total to rank AGAINST; the
+            # normal (a pure baseline average) does not.
+            percentile_value = None
+            percentile_state, percentile_reason = (
+                "suppressed",
+                "annual_selected_value_unavailable",
+            )
+        else:
+            eligible_totals = [baseline[year][0] for year in eligible_years]
+            percentile_value = weibull_percentile(eligible_totals, selected_value)
+            percentile_state, percentile_reason = "available", None
+
+    quality = {
+        "score": completeness,
+        "eligible_years": eligible_years,
+        "baseline_years_possible": len(possible_years),
+    }
+
+    def _provenance(method: str) -> dict[str, Any]:
+        return {
+            "source_id": _BASELINE_SOURCE_ID,
+            "source_class": _source_class_for(_BASELINE_SOURCE_ID),
+            "method": method,
+            "nominal_resolution": nominal_resolution,
+            "aggregation": "daily",
+            "spatial_scope": scope.kind,
+            "freshness": now.isoformat(),
+            "available_through": envelope_end.isoformat(),
+        }
+
+    normal_metric = {
+        "metric": "annual_normal",
+        "value": normal_value,
+        "unit": "mm",
+        "state": normal_state,
+        "reason": normal_reason,
+        "interval_start": envelope_start.isoformat(),
+        "interval_end": envelope_end.isoformat(),
+        "coverage": coverage,
+        "completeness": completeness,
+        "quality": quality,
+        "discrepancies": [],
+        "temporal_state": "final",
+        "revision": RAINFALL_METRIC_POLICY_REVISION,
+        "provenance": _provenance("mean"),
+        "fallback_used": False,
+    }
+    percentile_metric = {
+        "metric": "annual_percentile",
+        "value": percentile_value,
+        "unit": "percentil",
+        "state": percentile_state,
+        "reason": percentile_reason,
+        "interval_start": envelope_start.isoformat(),
+        "interval_end": envelope_end.isoformat(),
+        "coverage": coverage,
+        "completeness": completeness,
+        "quality": dict(quality),
+        "discrepancies": [],
+        "temporal_state": "provisional" if selected_temporal_state == "provisional" else "final",
+        "revision": RAINFALL_METRIC_POLICY_REVISION,
+        "provenance": _provenance("weibull_rank"),
+        "fallback_used": False,
+    }
+    return normal_metric, percentile_metric
+
+
+# ---------------------------------------------------------------------------
+# antecedents.{d7,d30,d90} (design.md D6, slice 2a)
+# ---------------------------------------------------------------------------
+
+_ANTECEDENT_WINDOWS: tuple[tuple[str, int], ...] = (("d7", 7), ("d30", 30), ("d90", 90))
+
+
+def _antecedent_metric(
+    *,
+    name: str,
+    days: int,
+    intervals: Sequence[tuple[datetime, datetime, float]],
+    end: datetime,
+    cadence: timedelta,
+    source_id: str,
+    scope: AnalysisScope,
+    now: datetime,
+    aggregation: str,
+    nominal_resolution: str,
+    batch: dict[str, Any],
+    temporal_state: str,
+    fallback_used: bool,
+) -> dict[str, Any]:
+    """One ``antecedents.{d7,d30,d90}`` entry (design.md D6): a
+    cadence-exact rolling total ending at *end* (== ``comparison_end``,
+    never the calendar-year boundary), read from *intervals* -- the
+    D6-widened ``[year_start - 90d, year_end)`` set the caller
+    (``tasks._persist_analysis_revision``) reads, so a window that dips
+    into the prior year still finds its rows here. Same *source_id* as
+    ``annual.selected`` -- never mixing revision families (design.md D6).
+
+    ``temporal.rolling_total`` requires an EXACT cadence-aligned match
+    (design.md: "never a short sum"), so *intervals* is filtered down to
+    precisely ``[end - days, end)`` before the call; a gap anywhere in
+    that window raises ``EventSuppressed``, suppressed here with its own
+    reason rather than a partial sum.
+    """
+    window = timedelta(days=days)
+    window_start = end - window
+    window_pairs = tuple(
+        (interval_start, value)
+        for interval_start, _interval_end, value in intervals
+        if window_start <= interval_start < end
+    )
+    expected_slots = int(window / cadence) if cadence > timedelta() else 0
+    matched_slots = len(window_pairs)
+    completeness = (matched_slots / expected_slots) if expected_slots > 0 else 0.0
+
+    try:
+        total = temporal.rolling_total(
+            end=end, window=window, cadence=cadence, intervals=window_pairs
+        )
+    except temporal.EventSuppressed:
+        value, state, reason = None, "suppressed", "antecedent_window_incomplete"
+    else:
+        value, state, reason = total, "available", None
+
+    quality = {**batch["quality"], "score": completeness, "checksum": batch["checksum"]}
+    provenance = {
+        "source_id": source_id,
+        "source_class": _source_class_for(source_id),
+        "method": "sum",
+        "nominal_resolution": nominal_resolution,
+        "aggregation": aggregation,
+        "spatial_scope": scope.kind,
+        "freshness": now.isoformat(),
+        "available_through": end.isoformat(),
+    }
+    return {
+        "metric": name,
+        "value": value,
+        "unit": "mm",
+        "state": state,
+        "reason": reason,
+        "interval_start": window_start.isoformat(),
+        "interval_end": end.isoformat(),
+        "coverage": completeness,
+        "completeness": completeness,
+        "quality": quality,
+        "discrepancies": list(batch["discrepancies"]),
+        "temporal_state": temporal_state,
+        "revision": RAINFALL_METRIC_POLICY_REVISION,
+        "provenance": provenance,
+        "fallback_used": fallback_used,
+    }
+
+
 def build_snapshot(
     *,
     scope: AnalysisScope,
@@ -80,16 +341,19 @@ def build_snapshot(
     fallback_used: bool = False,
     baseline: dict[int, tuple[float, int, int]] | None = None,
 ) -> dict[str, Any]:
-    """Build the v1 snapshot envelope: root keys are a subset of
-    ``SNAPSHOT_ROOT_KEYS``, shipping only ``annual.selected`` (decision 5).
+    """Build the snapshot envelope: root keys are a subset of
+    ``SNAPSHOT_ROOT_KEYS``. v1 shipped only ``annual.selected`` (decision
+    5); slice 2a (design.md D3/D4/D5/D6) grows it with
+    ``annual.{normal,percentile}`` and ``antecedents.{d7,d30,d90}`` --
+    ALWAYS present, suppressed (never omitted) when their evidence is
+    insufficient, so a served analysis has a stable metric shape
+    regardless of baseline coverage.
 
     ``baseline`` is the caller's resolved historical baseline
     (``repository.baseline_cumulatives``, design.md D1): ``{year: (total_mm,
     matched_days, expected_days)}``, or ``None`` when the scope has no known
-    provider asset. Accepted here starting in slice 1 (the caller-side
-    resolution and ``UnknownProviderScope`` suppression wiring); consumed to
-    emit ``annual.normal``/``annual.percentile`` starting in slice 2a — this
-    parameter is otherwise unused for now.
+    provider asset -- in which case ``annual.normal``/``annual.percentile``
+    both suppress with reason ``"baseline_scope_unmapped"`` (design.md D5).
 
     Coverage/completeness/quality are recomputed here, at build time, over
     ``[year_start, min(comparison_end, last_interval_end))`` — the
@@ -152,12 +416,13 @@ def build_snapshot(
 
     aggregation = "daily" if cadence_seconds == 86400 else f"{int(cadence_seconds)}s"
     scale_m = batch["quality"].get("scale_m", "unknown")
+    nominal_resolution = f"{scale_m}m"
 
     provenance = {
         "source_id": source_id,
         "source_class": _source_class_for(source_id),
         "method": "sum",
-        "nominal_resolution": f"{scale_m}m",
+        "nominal_resolution": nominal_resolution,
         "aggregation": aggregation,
         "spatial_scope": scope.kind,
         "freshness": now.isoformat(),
@@ -182,6 +447,43 @@ def build_snapshot(
         "fallback_used": fallback_used,
     }
 
+    # design.md D4/D5 (slice 2a): built from the SAME comparison_end_date
+    # annual.selected just used, so both metrics are cut off at exactly
+    # that date -- never a different, independently-derived cutoff.
+    normal_metric, percentile_metric = _normal_and_percentile_metrics(
+        baseline=baseline,
+        comparison_end_date=comparison_end_date,
+        selected_value=total_value,
+        selected_temporal_state=annual_metric["temporal_state"],
+        nominal_resolution=nominal_resolution,
+        scope=scope,
+        now=now,
+    )
+
+    # design.md D6 (slice 2a): *intervals* is the D6-widened
+    # [year_start - 90d, year_end) set the caller now reads -- a window
+    # that dips into the prior year still finds its rows here, while
+    # annual.selected above stayed scoped to the unwidened `in_window`.
+    cadence = timedelta(seconds=cadence_seconds) if cadence_seconds > 0 else timedelta()
+    antecedents = {
+        name: _antecedent_metric(
+            name=name,
+            days=days,
+            intervals=intervals,
+            end=comparison_end_exclusive,
+            cadence=cadence,
+            source_id=source_id,
+            scope=scope,
+            now=now,
+            aggregation=aggregation,
+            nominal_resolution=nominal_resolution,
+            batch=batch,
+            temporal_state=annual_metric["temporal_state"],
+            fallback_used=fallback_used,
+        )
+        for name, days in _ANTECEDENT_WINDOWS
+    }
+
     return {
         "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
         "regional_estimate": scope.regional_estimate,
@@ -194,7 +496,12 @@ def build_snapshot(
             "minimum_quality_by_metric": dict(RAINFALL_METRIC_POLICY.minimum_quality_by_metric),
             "duration_threshold": RAINFALL_METRIC_POLICY.duration_threshold,
         },
-        "annual": {"selected": annual_metric},
+        "annual": {
+            "selected": annual_metric,
+            "normal": normal_metric,
+            "percentile": percentile_metric,
+        },
+        "antecedents": antecedents,
     }
 
 

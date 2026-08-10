@@ -186,9 +186,30 @@ def apply_metric_policy(
 # definition of "good enough to show".
 RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08"
 
+# lluvia-insights slice 2a, task 2a.11 (design.md D4): five new metric
+# entries -- annual_normal/annual_percentile (0.9/0.8, a reference
+# climatology is not time-pressured, so it demands more than the
+# in-progress "annual" year) and d7/d30/d90 (0.9/0.8 each, a floor above
+# temporal.rolling_total's own exact-window refusal). Deliberately NO
+# "summary" entry (D4): the report summary is a root-level Spanish string,
+# not a MetricResult, and can never be policy_threshold_unset.
 RAINFALL_METRIC_POLICY = MetricThresholdPolicy(
     revision=RAINFALL_METRIC_POLICY_REVISION,
-    minimum_coverage_by_metric={"annual": 0.8},
-    minimum_quality_by_metric={"annual": 0.8},
+    minimum_coverage_by_metric={
+        "annual": 0.8,
+        "annual_normal": 0.9,
+        "annual_percentile": 0.9,
+        "d7": 0.9,
+        "d30": 0.9,
+        "d90": 0.9,
+    },
+    minimum_quality_by_metric={
+        "annual": 0.8,
+        "annual_normal": 0.8,
+        "annual_percentile": 0.8,
+        "d7": 0.8,
+        "d30": 0.8,
+        "d90": 0.8,
+    },
     duration_threshold=None,
 )
