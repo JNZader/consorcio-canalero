@@ -86,3 +86,62 @@ class IngestionSummary(BaseModel):
         one of them must stop the run before it writes.
         """
         return bool(self.divergencias or self.claves_agregadas or self.claves_eliminadas)
+
+
+class CitaRecuperada(BaseModel):
+    """One retrieval hit, with everything needed to cite it responsibly.
+
+    The provenance block is not decoration. `tipo` and `es_secundaria` separate
+    norm from evidence; `estado_vigencia` is what keeps a derogated article from
+    being read as live law; and `relevancia_consorcio` covers the case the other
+    two cannot — a document that IS derecho aplicable by `tipo` and still must
+    not be cited as grounds for a canalero obligation (design.md D1/D4).
+
+    `texto` is the verbatim, byte-exact unit text. It is the ONLY field ever
+    shown as a citation: `texto_indexado` (title + structural path + text) is
+    what the legs search, and it deliberately never appears here.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    citation_key: str
+    documento_id: str
+    tipo_chunk: str
+    epigrafe: str | None = None
+    texto: str
+
+    tipo: str
+    es_secundaria: bool
+    jurisdiccion: str
+    estado_vigencia: str | None = None
+    relevancia_consorcio: str | None = None
+    verificacion: str | None = None
+    fuente_url: str | None = None
+    source_file: str
+    source_offset: int
+
+    #: Fused RRF score. A sum of `1/(k+rank+1)` terms — NOT a blend of the legs'
+    #: own metrics, which are not commensurable and are never combined.
+    score_rrf: float
+    #: Per-leg position and raw metric, `None` when the leg did not return the
+    #: unit at all. Carried so the eval report can show what each leg actually
+    #: saw rather than only the fused outcome (design.md D6).
+    rango_fts: int | None = None
+    valor_fts: float | None = None
+    rango_vector: int | None = None
+    distancia_vector: float | None = None
+
+
+class ResultadoRecuperacion(BaseModel):
+    """One retrieval run: the fused page plus how each leg contributed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    corpus_sha: str
+    pregunta: str
+    modo: str
+    k: int
+    hits: list[CitaRecuperada] = Field(default_factory=list)
+    #: Candidates each leg returned BEFORE fusion and before `k` truncation.
+    n_fts: int = 0
+    n_vector: int = 0

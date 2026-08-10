@@ -197,15 +197,33 @@ def test_unresolvable_head_does_not_apply_partial_state(throwaway_db):
 
 
 def _seed_003_shaped_rows(engine, *, with_corpus: bool = True) -> None:
-    """Seed exactly the two row shapes migration 003's upgrade made legal.
+    """Seed the two row shapes migration 003's upgrade made legal, SEPARATELY.
 
     Both are things the real pinned corpus writes: three fuente-secundaria
-    documents carry no `estado_vigencia`, and four units are `anexo-normativo`.
+    documents carry no `estado_vigencia`, and five units are `anexo-normativo`.
+    Migration 003's `downgrade()` remediates them with two different DELETEs, and
+    the seed deliberately gives each one its **own witness**:
+
+    * `informe` — fuente secundaria, `estado_vigencia` NULL — owns a
+      `seccion-secundaria` unit, a `tipo_chunk` that is legal under the OLD
+      CHECK too. Only the "units of NULL-vigencia documents" DELETE can remove
+      it, so dropping that DELETE raises NotNullViolation on the document.
+    * `ley-x` — derecho aplicable, `estado_vigencia` present — owns the
+      `anexo-normativo` unit. Only the `tipo_chunk` DELETE can remove it, so
+      dropping that DELETE raises CheckViolation when the narrower constraint
+      comes back.
+
+    The previous seed put both properties on ONE document + ONE unit, which made
+    either DELETE sufficient on its own: removing the `tipo_chunk` DELETE left
+    the tests green, and the finding it was written to lock down was therefore
+    only incidentally covered (ledger R3-101). Verified by removing each DELETE
+    in turn and watching exactly one test fail.
 
     `with_corpus=False` is for re-seeding after a downgrade: 003's remediation
     removes documents and units, never the `rag_corpus` snapshot row, which no
     restored constraint touches.
     """
+    sha = "a" * 40
     with engine.begin() as conn:
         if with_corpus:
             conn.execute(
@@ -213,23 +231,26 @@ def _seed_003_shaped_rows(engine, *, with_corpus: bool = True) -> None:
                     "INSERT INTO rag_corpus (corpus_sha, repo_url, manifest_version, "
                     "articulos_declarados, activo) VALUES (:sha, 'u', '2', 0, true)"
                 ),
-                {"sha": "a" * 40},
+                {"sha": sha},
             )
         conn.execute(
             text(
                 "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
                 "jurisdiccion, estado_vigencia, clasificacion) VALUES "
-                "(:sha, 'informe', 'informe-operativo', true, 'provincial', NULL, 'privado')"
+                "(:sha, 'informe', 'informe-operativo', true, 'provincial', NULL, 'privado'), "
+                "(:sha, 'ley-x', 'ley-provincial', false, 'provincial', 'vigente', 'privado') "
+                "ON CONFLICT (corpus_sha, documento_id) DO NOTHING"
             ),
-            {"sha": "a" * 40},
+            {"sha": sha},
         )
         conn.execute(
             text(
                 "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
                 "texto, texto_indexado, source_file, source_offset) VALUES "
-                "(:sha, 'informe#anexo', 'informe', 'anexo-normativo', 't', 't', 'f.md', 0)"
+                "(:sha, 'informe#sec-1', 'informe', 'seccion-secundaria', 't', 't', 'i.md', 0), "
+                "(:sha, 'ley-x#anexo', 'ley-x', 'anexo-normativo', 't', 't', 'l.md', 0)"
             ),
-            {"sha": "a" * 40},
+            {"sha": sha},
         )
 
 
@@ -252,8 +273,15 @@ def test_downgrade_003_runs_against_an_ingested_database(throwaway_db):
     command.downgrade(cfg, "conocimiento_002")  # must not raise
 
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM rag_documento")).scalar_one() == 0
+        # Both units go: `informe#sec-1` because its document has no vigencia,
+        # `ley-x#anexo` because `anexo-normativo` is illegal below 003.
         assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 0
+        # …but `ley-x` itself is perfectly legal below 003 and MUST survive:
+        # remediation deletes what the restored constraints forbid, never more.
+        surviving = conn.execute(
+            text("SELECT documento_id FROM rag_documento ORDER BY documento_id")
+        ).scalars()
+        assert list(surviving) == ["ley-x"]
         # The snapshot row survives: no restored constraint touches rag_corpus,
         # so remediation must not widen into deleting what it does not have to.
         assert conn.execute(text("SELECT count(*) FROM rag_corpus")).scalar_one() == 1
@@ -270,7 +298,7 @@ def test_downgrade_003_runs_against_an_ingested_database(throwaway_db):
     command.upgrade(cfg, "head")
     _seed_003_shaped_rows(engine, with_corpus=False)
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 1
+        assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 2
 
 
 def test_downgrade_003_to_base_drops_everything_after_ingestion(throwaway_db):

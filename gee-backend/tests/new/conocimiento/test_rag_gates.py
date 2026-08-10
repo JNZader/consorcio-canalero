@@ -286,6 +286,64 @@ class TestCorpusFileInventoryGate:
         corpus_file_inventory_gate(tmp_path / "nope", make_expectations(make_policy()), report)
         assert not report.ok
 
+    def test_unlisted_md_in_a_subdirectory_fails(self, tmp_path):
+        """A subdirectory must not be a hiding place (ledger R3-102).
+
+        The gate's whole claim is "every `.md` in the checkout is declared". A
+        top-level-only glob makes that claim false the moment anyone adds a
+        folder — and the real corpus already has one: eleven `.md` files live
+        under `fuentes-crudas/`, none of which the gate could see.
+        """
+        (tmp_path / "d.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        (tmp_path / "MANIFEST.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        nested = tmp_path / "fuentes-crudas" / "hondo"
+        nested.mkdir(parents=True)
+        (nested / "ley-fantasma.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+
+        report = GateReport()
+        corpus_file_inventory_gate(tmp_path, make_expectations(make_policy()), report)
+
+        assert not report.ok
+        assert any("fuentes-crudas/hondo/ley-fantasma.md" in f for f in report.failures)
+
+    def test_nested_file_declared_by_relative_path_passes(self, tmp_path):
+        """Declaring a nested non-document uses its path, not its bare name.
+
+        Matching on `Path.name` would let `fuentes-crudas/README.md` ride in on
+        a top-level `README.md` declaration — the inventory has to name the file
+        it actually means.
+        """
+        (tmp_path / "d.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        (tmp_path / "MANIFEST.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        (tmp_path / "fuentes-crudas").mkdir()
+        (tmp_path / "fuentes-crudas" / "cruda.md").write_text(
+            "---\ntitulo: x\n---\n", encoding="utf-8"
+        )
+
+        expectations = make_expectations(make_policy())
+        object.__setattr__(
+            expectations,
+            "archivos_no_documento",
+            frozenset({"MANIFEST.md", "fuentes-crudas/cruda.md"}),
+        )
+
+        report = GateReport()
+        corpus_file_inventory_gate(tmp_path, expectations, report)
+
+        assert report.ok, report.failures
+
+    def test_dot_directories_are_not_scanned(self, tmp_path):
+        """`.git` and friends are plumbing, not corpus content."""
+        (tmp_path / "d.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        (tmp_path / "MANIFEST.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        (tmp_path / ".git" / "objects").mkdir(parents=True)
+        (tmp_path / ".git" / "objects" / "NOTES.md").write_text("x", encoding="utf-8")
+
+        report = GateReport()
+        corpus_file_inventory_gate(tmp_path, make_expectations(make_policy()), report)
+
+        assert report.ok, report.failures
+
 
 class TestExclusionVocabulary:
     def test_every_declared_exclusion_class_exists(self):

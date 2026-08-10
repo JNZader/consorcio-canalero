@@ -1,4 +1,4 @@
-"""Data access for the conocimiento (RAG) domain: the ingestion write path.
+"""Data access for the conocimiento (RAG) domain: ingestion write path + retrieval.
 
 Two rules govern everything here.
 
@@ -11,17 +11,25 @@ double results (design.md D1).
 frontmatter and surfaced as-is. V0 derives no boolean from
 `relevancia_consorcio`: a regex over legal prose is exactly the silent
 misclassification this design refuses.
+
+The retrieval half adds a third: **the vector leg fails loudly or not at all**
+(design.md D4). It never falls back to FTS, because a hybrid mode that quietly
+became FTS-only would make the whole three-mode ablation a comparison of FTS
+against itself.
 """
 
 from __future__ import annotations
 
 import datetime
 import hashlib
+from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.domains.conocimiento.ddl import EMBEDDING_COLUMN, EMBEDDING_DIMENSIONS, EMBEDDING_TABLE
+from app.domains.conocimiento.embedding import vector_literal
 from app.domains.conocimiento.parser import Unidad
 
 # D-22, registered in the MANIFEST and deliberately NOT fixed in the corpus:
@@ -316,3 +324,179 @@ def count_unidades(db: Session, corpus_sha: str, tipo_chunk: str | None = None) 
         sql += " AND tipo_chunk = :tipo_chunk"
         params["tipo_chunk"] = tipo_chunk
     return int(db.execute(text(sql), params).scalar_one())
+
+
+# ---------------------------------------------------------------------------
+# Retrieval — two independent legs (design.md D4)
+# ---------------------------------------------------------------------------
+
+#: Per-leg candidate depth. Deep enough that RRF has something to fuse, shallow
+#: enough that the fused list stays interpretable in the eval report.
+LEG_LIMIT = 50
+
+
+class VectorSupportUnavailable(RuntimeError):
+    """The vector leg cannot run here — and that is an error, never a fallback.
+
+    Raised when the `vector` extension is not installed or `rag_unidad.embedding`
+    does not exist (the CI-safe, vector-less image, or a database where migration
+    002 took its no-op branch). Degrading to FTS instead would make `--mode
+    hybrid` silently identical to `--mode fts`, and the ablation would report a
+    comparison it never ran (design.md D4).
+    """
+
+
+@dataclass(frozen=True)
+class LegHit:
+    """One leg's opinion about one unit.
+
+    `valor` is the leg's OWN metric — `ts_rank_cd` for FTS (higher is better),
+    cosine distance for the vector leg (lower is better). The two are not
+    commensurable and are never combined: only `rango` reaches fusion. `valor`
+    is carried purely so the eval report can show what each leg actually saw
+    (design.md D6).
+    """
+
+    citation_key: str
+    rango: int
+    valor: float
+
+
+def vector_support(db: Session) -> bool:
+    """Is the vector leg runnable in THIS database right now?
+
+    Checks both halves, because either one alone is a false positive: the
+    extension can be installed while the column is missing (migration 002
+    no-opped on an earlier boot), and the column cannot exist without the
+    extension but the reverse is exactly the stranded-volume case design D7
+    documents.
+    """
+    return bool(
+        db.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') "
+                "AND EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = :tabla AND column_name = :columna)"
+            ),
+            {"tabla": EMBEDDING_TABLE, "columna": EMBEDDING_COLUMN},
+        ).scalar_one()
+    )
+
+
+def require_vector_support(db: Session) -> None:
+    if not vector_support(db):
+        raise VectorSupportUnavailable(
+            "the `vector` extension or `rag_unidad.embedding` is missing from this "
+            "database, so the vector leg cannot run. This is NOT a reason to fall "
+            "back to FTS: a hybrid run that silently became FTS-only would report "
+            "an ablation it never performed. Start the dev database with "
+            "`make rag-db` (consorcio-postgres:16-vector) and re-run "
+            "`alembic upgrade head`."
+        )
+
+
+FTS_SEARCH_SQL = text(
+    """
+    WITH consulta AS (
+        SELECT websearch_to_tsquery('spanish', :consulta) AS q
+    )
+    SELECT u.citation_key, ts_rank_cd(u.tsv, consulta.q, 32) AS valor
+    FROM rag_unidad u, consulta
+    WHERE u.corpus_sha = :corpus_sha AND u.tsv @@ consulta.q
+    ORDER BY ts_rank_cd(u.tsv, consulta.q, 32) DESC, u.citation_key ASC
+    LIMIT :limite
+    """
+)
+
+
+def fts_search(
+    db: Session,
+    corpus_sha: str,
+    consulta: str,
+    limite: int = LEG_LIMIT,
+) -> list[LegHit]:
+    """FTS-español leg. Runs on the CI-safe image — no pgvector anywhere near it.
+
+    `citation_key ASC` is the secondary sort and it is load-bearing, not tidiness:
+    PostgreSQL leaves tied rows unordered, and this corpus holds 45 articles whose
+    entire body is the words "Sin Reglamentar" (`MANIFEST.md:658-660`). They tie
+    on `ts_rank_cd`, so at the `LIMIT` boundary an arbitrary order decides which
+    of them enters fusion at all.
+    """
+    filas = db.execute(
+        FTS_SEARCH_SQL,
+        {"consulta": consulta, "corpus_sha": corpus_sha, "limite": limite},
+    ).all()
+    return [
+        LegHit(citation_key=fila[0], rango=i, valor=float(fila[1])) for i, fila in enumerate(filas)
+    ]
+
+
+VECTOR_SEARCH_SQL = text(
+    """
+    SELECT citation_key, embedding <=> CAST(:qvec AS vector) AS valor
+    FROM rag_unidad
+    WHERE corpus_sha = :corpus_sha AND embedding IS NOT NULL
+    ORDER BY embedding <=> CAST(:qvec AS vector) ASC, citation_key ASC
+    LIMIT :limite
+    """
+)
+
+
+def vector_search(
+    db: Session,
+    corpus_sha: str,
+    qvec: Sequence[float],
+    limite: int = LEG_LIMIT,
+) -> list[LegHit]:
+    """Vector leg — raw SQL with an explicit `::vector` cast (the column is unmapped).
+
+    Raises `VectorSupportUnavailable` when the extension or the column is absent.
+    It NEVER returns an empty list to mean "no vector support": an empty result
+    is a legitimate answer (no unit has an embedding yet) and must stay
+    distinguishable from "this database cannot answer".
+    """
+    require_vector_support(db)
+    if len(qvec) != EMBEDDING_DIMENSIONS:
+        raise ValueError(
+            f"query vector has {len(qvec)} dimensions, the column is vector({EMBEDDING_DIMENSIONS})"
+        )
+
+    filas = db.execute(
+        VECTOR_SEARCH_SQL,
+        {"qvec": vector_literal(qvec), "corpus_sha": corpus_sha, "limite": limite},
+    ).all()
+    return [
+        LegHit(citation_key=fila[0], rango=i, valor=float(fila[1])) for i, fila in enumerate(filas)
+    ]
+
+
+HYDRATE_SQL = text(
+    """
+    SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,
+           u.source_file, u.source_offset,
+           d.tipo, d.es_secundaria, d.jurisdiccion, d.estado_vigencia,
+           d.relevancia_consorcio, d.verificacion, d.fuente_url
+    FROM rag_unidad u
+    JOIN rag_documento d
+      ON d.corpus_sha = u.corpus_sha AND d.documento_id = u.documento_id
+    WHERE u.corpus_sha = :corpus_sha AND u.citation_key = ANY(:claves)
+    """
+)
+
+
+def hydrate_citations(
+    db: Session,
+    corpus_sha: str,
+    claves: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """Full provenance for a set of citation keys, keyed by citation key.
+
+    One query for the whole page rather than one per hit, and an INNER JOIN on
+    `(corpus_sha, documento_id)` so a hit can only ever carry the metadata of a
+    document from its OWN snapshot.
+    """
+    if not claves:
+        return {}
+    filas = db.execute(HYDRATE_SQL, {"corpus_sha": corpus_sha, "claves": list(claves)}).all()
+    return {fila[0]: dict(fila._mapping) for fila in filas}

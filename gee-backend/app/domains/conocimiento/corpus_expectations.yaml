@@ -1,6 +1,17 @@
 archivos_no_documento:
 - MANIFEST.md
 - README.md
+- fuentes-crudas/_front_10593.md
+- fuentes-crudas/_front_10679.md
+- fuentes-crudas/_front_srh2013.md
+- fuentes-crudas/_swarm-t2/fda_dim01.md
+- fuentes-crudas/_swarm-t2/fda_dim02.md
+- fuentes-crudas/_swarm-t2/fda_dim03.md
+- fuentes-crudas/_swarm-t2/fda_dim04.md
+- fuentes-crudas/_swarm-t2/plan.md
+- fuentes-crudas/_swarm-t2/resultado_caza_segunda_tanda.md
+- fuentes-crudas/_tail_srh2013.md
+- fuentes-crudas/audit2010/_pre-audit-backup-ley-5589.md
 articulos_declarados: 1383
 clases_excluidas:
   comentario-del-corpus: 'Comentario del corpus SOBRE la norma (relevancia, advertencias, notas de vigencia,

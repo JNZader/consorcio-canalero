@@ -263,7 +263,8 @@ upheld by the refuter; two WARNING promoted because they sit in the same area. F
    gate that exits 0 without measuring. Instead `clases_excluidas` declares 7 classes with their reason
    once, each entry names one, and loading rejects an entry whose class is undeclared. Every exclusion
    still carries a stated reason, and now it is greppable by class.
-2. **13 headings are classed `contenido-no-declarado`, not justified away.** These carry substantive
+2. **12 headings are classed `contenido-no-declarado`, not justified away.** (Recorded as 13 in the
+   first draft of this section; the inventory holds 12 — corrected per ledger R3-106 / A6.) These carry substantive
    content the MANIFEST v2 simply never declared as units — most notably
    `consorcio-10-de-mayo-registro-aprhi`'s `II bis. Cronología registral` / `III.a–III.d Consorcios
    linderos` (≈20 kB of registral fact) and `ley-8555`'s `Modificaciones posteriores — texto literal de
@@ -278,10 +279,18 @@ upheld by the refuter; two WARNING promoted because they sit in the same area. F
    itself is asserted against real PostgreSQL at the `ingest()` level; the stub covers only `main()`'s
    own wiring (exit code + three-class report) without committing rows into the shared test database
    from a connection the `db` fixture cannot roll back.
-5. **The `corpus.corpus_sha != corpus_sha` branch in `ingest()` stays uncovered.** It is unreachable
-   from the CLI without doctoring the packaged YAML: a clean checkout whose HEAD equals `--corpus-sha`
-   aborts earlier, in `load_corpus`, on the first declared document it does not contain. Left as
-   defensive code rather than covered by a fabricated test.
+5. ~~**The `corpus.corpus_sha != corpus_sha` branch in `ingest()` stays uncovered.** It is unreachable
+   from the CLI without doctoring the packaged YAML.~~ **CORRECTED in slice 3 (ledger R3-103 / A4).**
+   The claim was wrong, and wrong in the direction that matters: it reasoned only about an *unrelated*
+   checkout, where `load_corpus` does abort first on a missing declared document. The branch's actual
+   trigger is the opposite and far more likely case — **the corpus repository gained a commit**. The
+   operator passes the NEW SHA, the tree is clean, HEAD matches, every declared document is still
+   right there, so `load_corpus` succeeds and the `corpus_sha` comparison is precisely what stops the
+   run. That is the classic operator error, not an exotic one. It is now covered by
+   `test_rag_ingest_cli.py::TestCorpusAdvancedPastThePin`, which clones the real pinned corpus and
+   advances it by an EMPTY commit — the minimal form of "the corpus moved", leaving every document
+   byte-identical so nothing but the SHA can be what aborts. Both `ingest()` and `main()` (exit 1,
+   "INGESTION ABORTED") are asserted.
 
 ### Verification (this round)
 
@@ -303,4 +312,235 @@ which CI cannot run and which `make test-rag-corpus` now runs for real (RAG2-005
 
 15/15 Slice 2 tasks complete (2.1–2.15), plus O.1 resolved, the three Slice 1 ledger amendments, and
 the six-finding reliability fix round above. Ready for `sdd-verify` or the orchestrator's Slice 3
+dispatch (base = this branch).
+
+---
+
+# Apply Progress: Slice 3 — Embeddings + Hybrid Retrieval (PR3)
+
+Branch: `feat/consorcio-rag-03-retrieval` (base: `feat/consorcio-rag-02-ingestion` @ `82d859f`)
+Worktree: `/home/javier/programacion/consorcio-canalero/.claude/worktrees/agent-a6b0996d5b8538919`
+Mode: **Strict TDD** for the four contracts the orchestrator named (RRF math, tiebreaker determinism,
+`VectorSupportUnavailable`, the A1 loader pre-check); standard-with-real-execution elsewhere, disclosed
+per task below.
+
+## Baseline (before any Slice 3 change)
+
+```
+full suite, no corpus (CI shape)   ->  2003 passed, 34 skipped
+full suite, RAG_CORPUS_PATH set    ->  2031 passed,  6 skipped
+```
+
+## Ledger amendments (A1–A6, done FIRST)
+
+| id | What was wrong | What changed | Evidence |
+|---|---|---|---|
+| **A1** (R3-104) | `design.md` D3's Load pre-check said `n_vectors == count(rag_unidad …)`, which **contradicts the ratified over-ceiling decision** — three units are never embedded, so a correct dump is always short and the check would reject every real artifact. Relaxing it to `count − \|over_ceiling\|` fixes the arithmetic and opens a worse hole: any three arbitrary missing vectors then pass. | D3 rewritten: the sidecar **pins the exempt keys**, and `rag_load_vectors.preflight` verifies identity in both directions — every exempt key is a real unit, no exempt key is in the dump, and `dump ∪ exempt == every unit key of the snapshot` (which subsumes the count). The in-transaction post-check closes the same loop from the database side: the set of `embedding IS NULL` units must EQUAL the exempt set. | `test_arbitrary_missing_vector_is_rejected_where_a_count_would_pass` asserts the naive check would have accepted the artifact, then asserts the real one rejects it. Plus `test_uncovered_unit_is_rejected_even_with_a_consistent_dump`, `test_exempt_key_that_is_not_a_unit_is_rejected`, `test_exempt_key_present_in_the_dump_is_rejected`. |
+| **A2** (R3-101) | `_seed_003_shaped_rows` put both row shapes on ONE document + ONE unit, so either of `downgrade()`'s two DELETEs was sufficient alone. The `tipo_chunk` DELETE the finding exists to lock down was only incidentally covered. | Two documents, two units, one witness each: `informe` (NULL vigencia) owns a `seccion-secundaria` unit that only the NULL-vigencia DELETE can remove; `ley-x` (vigencia present) owns the `anexo-normativo` unit that only the `tipo_chunk` DELETE can remove. Assertions widened — `ley-x` MUST survive, because remediation deletes what the restored constraints forbid and never more. | **Behavioural RED both ways.** With the `tipo_chunk` DELETE removed: old seed → 2 passed (the bug); new seed → `CheckViolation`. With the NULL-vigencia DELETE removed: new seed → `ForeignKeyViolation`. Restored: 6 passed / 1 skipped. |
+| **A3** (R3-102) | The docstring claimed "every `.md` in the checkout" while the glob was `*.md` — top level only. Not hypothetical: the real corpus has **11 `.md` files under `fuentes-crudas/`** that no gate could see. | `rglob` + matching by path RELATIVE to the checkout root (so `fuentes-crudas/README.md` cannot ride in on a top-level `README.md` declaration) + dot-directory skip. The 11 raw-source files are now declared in `archivos_no_documento`. | RED: `test_unlisted_md_in_a_subdirectory_fails` failed on the old glob. GREEN: 38 gate tests pass against the real corpus. Probe: removing one of the 11 declarations flips the real-corpus gate to a failure naming that file. |
+| **A4** (R3-103) | Fix-round deviation #5 claimed the `corpus.corpus_sha != corpus_sha` branch was "unreachable from the CLI". Wrong: it reasoned only about an *unrelated* checkout. **A corpus advanced by one commit** — clean tree, HEAD matches `--corpus-sha`, every declared document present — reaches it. That is the classic operator error. | Deviation #5 struck through and corrected in place. `TestCorpusAdvancedPastThePin` covers it for real, asserting that both earlier guards genuinely pass first, and covering `ingest()` and `main()` (exit 1). | 2 passed against the real corpus. |
+| **A5** (R3-105) | `make test-rag-corpus`'s exit-5 diagnostic had backticks inside double quotes — sh command substitution would run `corpus` as a command and corrupt the message. | Single quotes. | `make test-rag-corpus` runs clean: 30 passed, zero skipped. |
+| **A6** (R3-106) | Two stale counts: migration `conocimiento_003` said "three"/"four" `anexo-normativo` units, and this file said 13 `contenido-no-declarado` headings. | Corrected to **five** and **12**, both counted from `corpus_expectations.yaml` rather than re-copied. | `rg -c "tipo_chunk: anexo-normativo"` → 5; `rg -c "clase: contenido-no-declarado"` → 12. |
+
+## Task-by-task evidence
+
+- [x] **3.1** `requirements-rag.txt` — `torch`/`transformers`/`FlagEmbedding`, mirroring
+  `requirements-ml.txt`'s "never in the server image" header, plus `sentence-transformers` for the
+  local multilingual-e5-large baseline that replaced the hosted provider (O.5). Nothing in the app
+  runtime imports any of it.
+- [x] **3.2** `scripts/rag_embed_batch.py` + `embedding.py`. Reads `rag_unidad` ordered by
+  `citation_key` (reproducibility), pre-flights every `texto_indexado` with the embedder's own
+  tokenizer and `truncation=False`, embeds in batches, writes `vectors-{sha8}.copy` + sidecar.
+  **19 passed.** `test_preflight_aborts_over_ceiling` (strict) and
+  `test_default_mode_exempts_and_reports_instead_of_aborting` (the ratified V0 rule) are both real.
+  `test_dump_is_byte_identical_across_runs` and `test_batch_size_does_not_change_the_output` pin
+  reproducibility.
+- [x] **3.3** `test_copy_literal_roundtrip` — the pgvector COPY-text literal round-trips at float32
+  precision, no DB. `%.9g` is FLT_DECIMAL_DIG, the shortest decimal form that recovers a float4
+  exactly; the test pins `vector_literal([0.1]) == "[0.100000001]"` so a "tidy-up" to `repr()` shows
+  up as a diff.
+- [x] **3.4** `scripts/rag_load_vectors.py` — sha256 vs sidecar, active snapshot, dims, the A1
+  exemption identity check, then `CREATE TEMP TABLE … ON COMMIT DROP` → `COPY` → `UPDATE … FROM` →
+  three in-transaction post-checks. **23 passed + 5 pgvector** (`test_load_updates_every_row`,
+  `test_over_ceiling_units_are_left_null_on_purpose`,
+  `test_load_aborts_on_orphan_key_leaves_embeddings_null`,
+  `test_tampered_dump_is_refused_before_the_database_is_touched`,
+  `test_loaded_vector_round_trips_out_of_postgres`).
+- [x] **3.5** `fusion.py` — pure `reciprocal_rank_fusion(listas, k=60)`, `1/(k+rank+1)`, tie-break
+  `(-score, citation_key)`. **12 passed.** Genuine RED (`ModuleNotFoundError`). Expected scores are
+  hand-computed decimal literals, never re-derived from the formula under test.
+- [x] **3.6** `repository.fts_search` / `vector_search` — both legs carry `citation_key ASC` as the
+  secondary sort. `test_fts_and_vector_legs_sort_deterministically` uses the real collision class
+  (six units whose entire body is "Sin Reglamentar"), which ties `ts_rank_cd` AND produces
+  bit-identical vectors — the hardest possible tie. 5 repeated runs, identical order, both legs.
+- [x] **3.7** `test_vector_leg_raises_when_unsupported` + `test_hybrid_mode_raises_rather_than_silently_becoming_fts`
+  — unmarked, so they run in the CI shape where the contract is actually load-bearing.
+  `VectorSupportUnavailable` checks BOTH the extension and the column, because either alone is a
+  false positive (the stranded-volume case in D7 is exactly extension-present/column-absent).
+- [x] **3.8** `service.recuperar` + `schemas.CitaRecuperada` — one code path for all three modes.
+  Provenance surface asserted in both shapes: `fts` mode on the default image (so CI covers the
+  do-not-cite scenario) and again through the fused hybrid path under the vector image.
+- [x] **3.9** `test_rag_no_router.py` — no `router.py`, no `app/api/v2/` reference, and the
+  **assembled** route table contains no `conocimiento`/`rag` path (a grep is defeated by an import
+  alias; the mounted routes are not).
+- [x] **3.10** `scripts/rag_query_latency.py` + 8 harness tests. Reads a plain question file (or
+  slice 4's `gold_set.yaml` when it exists), one query at a time — the shape a request has, not a
+  throughput batch. Every report line carries its conditions (device, `cpu_count`, torch threads,
+  warm-ups, repeats, label).
+
+## The RTX batch command (Ops O.3 — for the owner, NOT run here)
+
+```
+cd gee-backend
+python -m venv venv-rag && venv-rag/bin/pip install -r requirements-rag.txt
+
+# 1. rehearsal — loads the model + REAL tokenizer, reports the ceiling, writes nothing
+venv-rag/bin/python scripts/rag_embed_batch.py --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f --database-url postgresql://consorcio:consorcio_dev@localhost:5432/consorcio --device cuda --preflight-only
+
+# 2. the batch (~1445 vectors; 3 units are exempt and disclosed)
+venv-rag/bin/python scripts/rag_embed_batch.py --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f --database-url postgresql://consorcio:consorcio_dev@localhost:5432/consorcio --output-dir artifacts/rag --device cuda --batch-size 8
+
+# 3. load it (needs the vector image: make rag-db)
+venv/bin/python scripts/rag_load_vectors.py --vectors artifacts/rag/vectors-12043582.copy --database-url postgresql://consorcio:consorcio_dev@localhost:5432/consorcio
+```
+
+Step 3 refuses the artifact unless the sidecar's sha256 matches, the snapshot is the active one, dims
+are 1024, and the units left without a vector are **exactly** the ones the sidecar declares exempt.
+
+## Deviations from Design / Discoveries
+
+1. **`DeterministicEmbedder` and the `sintetico` marker — beyond the design text, and the reason
+   matters.** The design assumes the real model is present. It is not installable in this environment
+   (torch/transformers absent, model ~2.2 GB), so the `Embedder` seam takes an injectable
+   implementation and a hash-derived deterministic fake covers everything around the model. That
+   creates a new hazard the design never had to consider: a retrieval eval run over hash noise would
+   produce a report shaped exactly like a real one. Closed by construction — every artifact the fake
+   produces is stamped `sintetico: true`, `rag_load_vectors` **refuses** it unless
+   `--allow-synthetic`, and both CLIs print a loud warning. `test_synthetic_artifact_is_refused_without_the_flag`
+   is a pgvector test, so the refusal is proven against a real database.
+2. **`--preflight-only` instead of `--limit N`.** A row limit is the obvious GPU rehearsal knob and is
+   deliberately absent: it emits a PARTIAL artifact, which is precisely the shape A1's exemption check
+   exists to reject. Measuring without writing has no such failure mode.
+3. **3.8's provenance tests run UNMARKED as well as marked.** The task specified `pgvector`. They do
+   not need it — `fts` mode exercises the same citation assembly — and leaving them marked would have
+   left the do-not-cite scenario (the one this whole initiative exists for) uncovered in the shape CI
+   actually runs. Both variants exist; the marked one asserts the same provenance survives fusion.
+4. **`repository.py` grew the retrieval half (185 lines).** Design D4 explicitly places the legs in
+   `repository.py`, so this is the design's own placement, not drift. The file is now ~500 lines.
+5. **`embedding.py` uses `struct`, not numpy, for the float32 narrowing.** numpy is only a transitive
+   lock dependency of this backend, and the artifact-format functions must import cleanly in every
+   environment. `struct.pack/unpack` gives the identical result with no new dependency.
+6. **`service.recuperar` raises when a ranked key cannot be hydrated.** Not in the design. Skipping it
+   would return a ranked list shorter than its own scores claim, which is a quiet corruption of a
+   number the eval report publishes.
+
+## Known open item — NOT introduced by this slice, NOT papered over
+
+`tests/new/test_run_blocking.py::test_run_blocking_runs_concurrent_calls_in_parallel` (pre-existing,
+untouched by this slice) fails intermittently in the **local corpus-enabled full-suite shape**. It
+asserts that two parallel 0.1 s blocking calls finish in under 0.18 s — an 80 ms absolute wall-clock
+margin.
+
+Measured, not assumed:
+
+| shape | runs | failures | wall clock |
+|---|---|---|---|
+| full suite, **no corpus** (the CI shape) | 4 | **0** | ~36 s |
+| full suite, corpus set, with these 2 new tests | 9 | 6 | ~56 s |
+| full suite, corpus set, these 2 tests deselected | 4 | 0 | ~55 s |
+| `test_run_blocking.py` alone | 5 | 0 | — |
+
+Observed failing values: 0.294 / 0.265 / 0.257 s — roughly serialized, not marginally over budget.
+
+Three hypotheses were tested and **falsified**: tmpfs/memory pressure (the tmp root is ext4 on a
+1.9 TB device with 17 GiB free), a background `git gc` fired by the fixture (`count-objects` shows 755
+loose objects, 0 packs, far under `gc.auto`; no `gc.log`/`gc.pid`, no lingering process), and fixture
+I/O weight — shrinking the fixture from a 310 MB clone to a 2 MB copy left the rate unchanged (3/5 →
+3/4). Per the debugging rule I stopped after the third failed hypothesis rather than trying a fourth
+variant.
+
+What is established: **the shape is the variable, not this slice.** The CI shape is green 4/4, and
+`make test-rag-corpus` — the target that IS the corpus contract gate — is green with 30 passed and
+zero skipped. The corpus shape adds ~20 s of full-corpus parsing and 1448-row ingests, and the
+correlation with the 2 new tests is real but unexplained and survived a 150× reduction in their cost.
+
+Deliberately NOT done: relaxing or rewriting the pre-existing assertion to make this run green. That
+is someone else's test and someone else's invariant. The recommended fix, for whoever owns it, is to
+assert the PARALLELISM RATIO rather than an absolute budget (`elapsed < sum(durations) * 0.75`), which
+measures the property the test actually cares about and is immune to machine load. Handed to
+`sdd-verify` / the orchestrator as an open item.
+
+## Verification
+
+```
+make test-rag                     ->  14 passed, 2124 deselected, ZERO skipped, exit 0
+                                      "all pgvector tests ran for real against consorcio-postgres:16-vector"
+make test-rag-corpus              ->  30 passed, 186 deselected, ZERO skipped, exit 0
+
+tests/new/conocimiento/  no corpus            ->  172 passed,  44 skipped   (was  86 /  29)
+tests/new/conocimiento/  RAG_CORPUS_PATH set  ->  202 passed,  14 skipped   (was 114 /   1)
+full suite, no corpus (the CI shape)          -> 2089 passed,  49 skipped   (was 2003 /  34)
+full suite, RAG_CORPUS_PATH set               -> 2118 passed,  19 skipped + the pre-existing timing
+                                                 flake above (was 2031 / 6)
+```
+
+Both full-suite shapes total **2138** collected (2089+49 = 2118+19+1), **+101** over the 2037 baseline.
+Skip arithmetic checks out in every shape: 49 − 19 = 30 corpus-marked, 44 − 14 = 30, and the 14
+pgvector-marked tests skip on the default image and all run under `make test-rag`.
+
+`ruff check .`, `ruff format --check .` and `mypy --ignore-missing-imports` on all 9 touched modules
+exit 0.
+
+## TDD Cycle Evidence
+
+| Task | Test | RED | GREEN | REFACTOR |
+|---|---|---|---|---|
+| A2 | `test_downgrade_003_*` | ✅ **Behavioural, both directions** — removed each DELETE in turn; old seed passed with the bug present, new seed raised `CheckViolation` / `ForeignKeyViolation` | ✅ 6 passed / 1 skipped | ✅ Assertions widened to prove `ley-x` survives |
+| A3 | `test_unlisted_md_in_a_subdirectory_fails` | ✅ Real — failed against the top-level glob | ✅ 38 passed incl. real corpus | ✅ Dot-dir skip + relative-path matching |
+| A4 | `TestCorpusAdvancedPastThePin` | ➖ Written against a branch already present; the RED is the CLAIM it disproves (deviation #5 said it was unreachable) | ✅ 2 passed against the real corpus | ✅ Fixture reduced 310 MB → 2 MB |
+| 3.5 | `test_rag_fusion.py` | ✅ Real — `ModuleNotFoundError: app.domains.conocimiento.fusion` | ✅ 12 passed | ✅ Clean |
+| 3.3/3.4 | `test_rag_load_vectors.py` | ✅ Real — `ModuleNotFoundError: app.domains.conocimiento.embedding`; then 4 genuine assertion failures on first execution, one of which (`test_arbitrary_missing_vector_is_rejected…`) exposed that my own test named the WRONG rejection, and was split into two tests | ✅ 23 + 5 pgvector | ✅ Split the count case from the identity case |
+| 3.2 | `test_rag_embed_batch.py` | ✅ Real — `FileNotFoundError: scripts/rag_embed_batch.py` | ✅ 19 passed | ✅ `main()` covered through the real argparse entry for exits 0/1/2 |
+| 3.6-3.8 | `test_rag_retrieval.py` | ➖ Written before `service.recuperar` existed but after `repository`; all 24 executed against real PostgreSQL | ✅ 18 + 6 pgvector | ✅ Provenance tests duplicated into the unmarked shape |
+| 3.9 | `test_rag_no_router.py` | ➖ Absence-by-design, no GREEN counterpart by task definition | ✅ 3 passed | ✅ Added the assembled-route check beyond the static grep |
+| 3.10 | `test_rag_query_latency.py` | ➖ Written after the script | ✅ 8 passed | ✅ Clean |
+
+**Honest note on RED.** Genuine module-level RED for 3.5, 3.3/3.4 and 3.2, and genuine *behavioural*
+RED for A2 (the strongest kind here — the bug was reproduced before the fix and the fix was proven to
+be what catches it) and A3. 3.6-3.8, 3.9 and 3.10 were written after their module existed; every one of
+them executed against real PostgreSQL or the real filesystem, and no GREEN above is claimed from
+inspection. The 14 `pgvector`-marked tests all ran for real against the built
+`consorcio-postgres:16-vector` image, with `make test-rag`'s `skipped == 0` guard proving it.
+
+## Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | Over-ceiling units end as `embedding IS NULL` and the loader asserts that set EQUALS the declared exemption; `relevancia_consorcio`/`estado_vigencia`/`fuente_url` NULL flow through `CitaRecuperada` as `None`; a manifest missing `over_ceiling` is refused rather than defaulted; empty legs, empty dumps and empty snapshots each have a named test. | Pass |
+| Boundaries | RRF at rank 0 (`1/(k+1)`), `k=1`, three legs, duplicate key in one leg, both legs empty; `LIMIT` honoured; `k` truncates the fused list not the legs; token ceiling above/below; wrong-dimension query vector and wrong-dimension COPY line both refused at the point of writing rather than at load. | Pass |
+| Concurrency / idempotency | `embed_snapshot` is byte-identical across runs and across batch sizes; the load runs in ONE transaction whose post-checks abort before commit (`test_load_aborts_on_orphan_key_leaves_embeddings_null` asserts every embedding is still NULL after the abort, against real PostgreSQL); retrieval is read-only and 5 repeated runs return an identical ranked list. | Pass |
+| Malicious input / security | All SQL is parameterized including the `::vector` cast (the literal is built by `vector_literal`, never interpolated user text); COPY fields are escaped for the format's metacharacters so a crafted citation key cannot shift columns; `clasificacion` stays default-deny and nothing in this slice makes an external call — O.5 resolved to a LOCAL baseline, so V0 still has zero egress. | Pass |
+| Partial failure / recovery | sha256 mismatch, orphan key, uncovered unit, inactive snapshot and synthetic artifact each abort BEFORE or INSIDE the transaction with nothing committed; `--strict-token-ceiling` exits 1 without writing even a sidecar; the vector leg raises rather than degrading, which is the whole point of D4. | Pass |
+| State / tenancy / time | Every retrieval and load function takes `corpus_sha` positionally; hydration INNER JOINs on `(corpus_sha, documento_id)` so a hit cannot carry another snapshot's metadata; `test_fts_leg_is_snapshot_scoped` proves a wrong SHA returns nothing; the loader refuses a non-`activo` snapshot; `generado_en` is timezone-aware UTC. | Pass |
+
+## Workload / PR Boundary
+
+- Mode: chained PR slice (feature-branch-chain)
+- Current work unit: Slice 3 — Embedding batch/load + retrieval (PR3, base = `feat/consorcio-rag-02-ingestion`)
+- Boundary: starts from an ingested corpus with no vectors and no query path; ends with a runnable
+  GPU batch command, a verifying loader, both retrieval legs, RRF fusion and fully attributed
+  citations. Slice 4 (eval harness) consumes `service.recuperar` and nothing else.
+- **Review budget: OVER the ~430-line forecast.** 25 files, +3474/−39. Production code ≈1275 lines
+  (`rag_load_vectors` 359, `embedding` 339, `rag_embed_batch` 306, `repository` +185, `rag_query_latency`
+  181, `service` +126, `fusion` 65, `schemas` +59), tests ≈1600, artifacts ≈60. The design named the
+  split seam in advance — **embed/load vs retrieval** — and both halves verify independently:
+  `test_rag_embed_batch.py` + `test_rag_load_vectors.py` (artifact + loader, needs no retrieval) and
+  `test_rag_fusion.py` + `test_rag_retrieval.py` + `test_rag_no_router.py` (needs no artifact). The
+  A1–A6 amendments are a third, independently reviewable group touching only slice-1/2 files.
+
+## Status
+
+10/10 Slice 3 tasks complete (3.1–3.10) plus the six ledger amendments A1–A6. O.3 (the RTX batch run)
+remains with the owner, unblocked — the command is above and the pipeline is proven end to end against
+real PostgreSQL with a synthetic embedder. Ready for `sdd-verify` or the orchestrator's Slice 4
 dispatch (base = this branch).

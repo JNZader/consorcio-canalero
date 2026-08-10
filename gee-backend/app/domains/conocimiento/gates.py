@@ -224,17 +224,33 @@ def corpus_file_inventory_gate(
     never reported: it is simply absent, and every gate stays green. That is the
     same failure shape as RAG2-001 one level up — the inventory is only
     exhaustive if something compares it against reality.
+
+    The scan is **recursive**, and files are matched by their path RELATIVE to
+    the checkout root. A top-level-only glob made the docstring's claim false
+    the moment anyone added a folder, and the real corpus already had one:
+    eleven `.md` files live under `fuentes-crudas/` and no gate could see them
+    (ledger R3-102). Relative paths rather than bare names, because
+    `fuentes-crudas/README.md` must not ride in on a top-level `README.md`
+    declaration — the inventory has to name the file it actually means.
+
+    Dot-directories (`.git/`, `.github/`, …) are skipped: they are plumbing that
+    ships with a checkout, not corpus content, and nothing in them is ever
+    ingestable.
     """
     if not corpus_path.is_dir():
         report.failures.append(f"corpus path {corpus_path} is not a directory")
         return
 
     declared = {policy.archivo for policy in expectations.documentos.values()}
-    for path in sorted(corpus_path.glob("*.md")):
-        if path.name in declared or path.name in expectations.archivos_no_documento:
+    for path in sorted(corpus_path.rglob("*.md")):
+        relative = path.relative_to(corpus_path)
+        if any(part.startswith(".") for part in relative.parts[:-1]):
+            continue
+        nombre = relative.as_posix()
+        if nombre in declared or nombre in expectations.archivos_no_documento:
             continue
         report.failures.append(
-            f"{path.name} is present in the corpus checkout but declared neither "
+            f"{nombre} is present in the corpus checkout but declared neither "
             "in `documentos` nor in `archivos_no_documento`. An unlisted file is "
             "never ingested and never reported."
         )

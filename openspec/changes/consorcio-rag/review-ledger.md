@@ -95,7 +95,37 @@ same code the CRITICALs touched, not because the severity floor demanded it.
 
 **Fixes landed** (same branch, fix round from `83fd37c`) — see
 `apply-progress.md` § "Fix round" for the per-finding change table, the four
-explicit deviations (exclusion CLASSES instead of 248 free-text motives; 13
+explicit deviations (exclusion CLASSES instead of 248 free-text motives; 12
 headings recorded as `contenido-no-declarado` for the next round; RAG2-002's
 second instance in the same function; the two knowingly-uncovered branches) and
 the four-shape verification counts.
+
+---
+
+## Slice 2 scoped re-review → amendments carried by the Slice 3 apply
+
+Six rows raised against the slice-2 fix diff and its artifacts. All **fixed** on
+`feat/consorcio-rag-03-retrieval` before any slice-3 code was written, per the
+orchestrator's instruction. R3-104 is the load-bearing one: it is a contradiction
+between two ratified decisions, not a defect in either.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| R3-101 | reliability | `tests/new/conocimiento/test_rag_migrations.py::_seed_003_shaped_rows` | WARNING | fixed | The seed put both row shapes migration 003 legalized on ONE document and ONE unit, so either of `downgrade()`'s two DELETEs removed it. The `tipo_chunk` DELETE — the instance the RAG2-002 fix round discovered SECOND and which the finding never named — had no independent witness. **Reproduced behaviourally**: with that DELETE commented out, both downgrade tests still passed. Fixed by giving each DELETE its own witness (a `seccion-secundaria` unit under the NULL-vigencia document, an `anexo-normativo` unit under a document that has vigencia); removing either DELETE now raises `CheckViolation` or `ForeignKeyViolation` respectively. |
+| R3-102 | reliability | `app/domains/conocimiento/gates.py::corpus_file_inventory_gate` | WARNING | fixed | Docstring claimed "every `.md` in the checkout"; the glob was `*.md`, top level only. The real corpus already had 11 `.md` files under `fuentes-crudas/` that the gate could not see — the same class of blind spot as RAG2-001, one directory level down. Fixed with `rglob` + relative-path matching (so a nested `README.md` cannot ride in on the top-level declaration) + a dot-directory skip; the 11 raw sources are now declared. RED test first: `test_unlisted_md_in_a_subdirectory_fails`. |
+| R3-103 | reliability | `apply-progress.md` fix-round deviation #5 | WARNING | fixed | The disclosure claimed the `corpus.corpus_sha != corpus_sha` branch was "unreachable from the CLI without doctoring the packaged YAML". It reasoned only about an *unrelated* checkout. A corpus **advanced by one commit** — clean tree, HEAD equal to `--corpus-sha`, every declared document present — reaches it, and that is the classic operator error. Disclosure struck through and corrected; `TestCorpusAdvancedPastThePin` now covers `ingest()` and `main()` against the real corpus. |
+| R3-104 | reliability | `design.md` D3 (Load row) → `scripts/rag_load_vectors.py` | CRITICAL | fixed | D3 required `n_vectors == count(rag_unidad WHERE corpus_sha=…)`, which **contradicts the ratified V0 over-ceiling decision**: three units are ingested whole and never embedded, so a correct artifact is always three vectors short and the stated check rejects every real dump. The obvious repair (`count − \|over_ceiling\|`) is worse than the bug: it accepts **any** three missing vectors, so a batch that lost a shard loads clean and leaves three unrelated articles silently unreachable through the vector leg while every eval number looks right. Fixed by pinning the exempt KEYS in the sidecar and checking identity in both directions (`dump ∪ exempt == every unit key`), plus an in-transaction post-check that the `embedding IS NULL` set EQUALS the exempt set. `test_arbitrary_missing_vector_is_rejected_where_a_count_would_pass` asserts the naive check would have passed the same artifact. |
+| R3-105 | resilience | `Makefile` (`test-rag-corpus` recipe) | WARNING | fixed | Backticks inside double quotes in the exit-code-5 diagnostic: sh would run `corpus` as a command substitution and corrupt the message an operator reads at the moment the target is telling them their marker expression is wrong. Single-quoted. |
+| R3-106 | readability | `conocimiento_003_estado_vigencia_scoped.py`; `apply-progress.md` | SUGGESTION | fixed | Two counts left stale by the RAG2-001 fix, which added two `anexo-normativo` units: the migration said "three"/"four" (actual **5**) and apply-progress said 13 `contenido-no-declarado` headings (actual **12**). Both recounted from `corpus_expectations.yaml`, not re-copied. |
+
+### Open item recorded here so it is not re-discovered
+
+`tests/new/test_run_blocking.py::test_run_blocking_runs_concurrent_calls_in_parallel`
+(pre-existing, untouched) flakes in the **local corpus-enabled** full-suite shape
+only. Measured: CI shape 4/4 green; corpus shape 6 failures in 9 runs; the test
+alone 5/5 green; `make test-rag-corpus` green. Three hypotheses falsified
+(tmpfs/memory, background `git gc`, fixture I/O weight — a 150× fixture
+reduction left the rate unchanged). Not root-caused, and deliberately not
+papered over by editing someone else's assertion. Recommended fix for its owner:
+assert the parallelism RATIO (`elapsed < sum(durations) * 0.75`) instead of an
+absolute 0.18 s wall-clock budget. Full measurement table in `apply-progress.md`.

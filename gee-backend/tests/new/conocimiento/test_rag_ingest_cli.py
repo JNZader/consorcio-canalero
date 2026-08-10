@@ -8,6 +8,7 @@ need `RAG_CORPUS_PATH`.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import text
 
+from app.domains.conocimiento.expectations import load_expectations
 from app.domains.conocimiento.repository import count_unidades
 from app.domains.conocimiento.service import CorpusPinMismatch, verify_corpus_pin
 
@@ -102,6 +104,96 @@ class TestCorpusPinning:
         with pytest.raises(CorpusPinMismatch):
             rag_ingest.ingest(db, tiny_repo, "0" * 40)
         assert db.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == before
+
+
+@requires_real_corpus
+class TestCorpusAdvancedPastThePin:
+    """The `corpus_expectations.yaml` pin vs `--corpus-sha` mismatch is REACHABLE.
+
+    Apply-progress once recorded this branch as "unreachable from the CLI without
+    doctoring the packaged YAML", reasoning that a clean checkout whose HEAD
+    equals `--corpus-sha` aborts earlier in `load_corpus` on the first declared
+    document it lacks. That holds only for an *unrelated* checkout. The classic
+    operator error is the opposite one: the corpus repository gained a commit,
+    the operator dutifully passes the NEW SHA, the tree is clean, HEAD matches,
+    and every declared document is still right there — so `load_corpus` succeeds
+    and the comparison is exactly what stops the run (ledger R3-104/A4).
+
+    Reproduced with the real corpus documents in a repository advanced past the
+    pin, which keeps every document byte-identical so nothing but the SHA can be
+    what aborts.
+    """
+
+    @pytest.fixture
+    def advanced_repo(self, tmp_path: Path) -> Path:
+        """The real corpus documents, in a repository whose HEAD is past the pin.
+
+        Built by COPYING the declared documents (~2 MB) into a fresh repository
+        rather than by cloning the corpus (310 MB, 755 loose objects). The
+        content under test is identical — these are the real files, byte for
+        byte — and so is the branch reached, because `ingest()` stops at the
+        `corpus_sha` comparison before any gate opens anything else.
+
+        The clone version was dropped on its own merits, and the honest record
+        of why is worth keeping: it was FIRST dropped as a suspected cause of an
+        intermittent failure in the pre-existing wall-clock test
+        `test_run_blocking.py::test_run_blocking_runs_concurrent_calls_in_parallel`,
+        and **that suspicion was wrong** — the rate was unchanged (3/5 with the
+        clone, 3/4 with this 2 MB copy). The real control turned out to be the
+        SHAPE, not this fixture: the CI shape (no `RAG_CORPUS_PATH`, ~36 s) is
+        4/4 green, while the local corpus shape (~56 s of full-corpus parses and
+        1448-row ingests) flakes regardless. See apply-progress.md for the full
+        measurement table. This fixture stays lightweight because 2 MB and 50 ms
+        is simply the right cost for what it tests, not because it fixed
+        anything.
+
+        The trailing empty commit is kept although the first commit's SHA
+        already differs from the pin: it is what makes the scenario legible as
+        "the corpus moved past the revision the YAML pins", which is the
+        operator error under test.
+        """
+        origen = real_corpus_path()
+        assert origen is not None
+
+        repo = tmp_path / "corpus-advanced"
+        repo.mkdir()
+        git(repo, "init", "-q")
+        git(repo, "config", "user.email", "test@example.com")
+        git(repo, "config", "user.name", "test")
+
+        shutil.copy2(origen / "MANIFEST.md", repo / "MANIFEST.md")
+        for policy in load_expectations().documentos.values():
+            shutil.copy2(origen / policy.archivo, repo / policy.archivo)
+
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "snapshot of the declared documents")
+        git(repo, "commit", "-q", "--allow-empty", "-m", "advance the corpus by one commit")
+        return repo
+
+    def test_clean_checkout_one_commit_ahead_aborts_on_the_pin(self, advanced_repo):
+        nueva_sha = head_of(advanced_repo)
+        assert nueva_sha != PINNED_CORPUS_SHA
+
+        # The two earlier guards genuinely pass, which is the whole point.
+        assert verify_corpus_pin(advanced_repo, nueva_sha) == nueva_sha
+
+        with pytest.raises(Exception, match="corpus_expectations.yaml pins"):
+            rag_ingest.ingest(None, advanced_repo, nueva_sha, dry_run=True)
+
+    def test_main_reports_it_as_a_refusal_not_a_crash(self, advanced_repo, capsys):
+        code = rag_ingest.main(
+            [
+                "--corpus-path",
+                str(advanced_repo),
+                "--corpus-sha",
+                head_of(advanced_repo),
+                "--dry-run",
+            ]
+        )
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "INGESTION ABORTED — nothing was written." in err
+        assert "corpus_expectations.yaml pins" in err
 
 
 class TestMainEntryPoint:

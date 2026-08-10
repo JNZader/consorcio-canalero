@@ -322,7 +322,7 @@ test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinne
 		venv/bin/pytest -m corpus --junitxml=rag-corpus-junit.xml tests/new/conocimiento/; \
 		pytest_status=$$?; \
 		if [ $$pytest_status -eq 5 ]; then \
-			echo "$(RED)test-rag-corpus: exit code 5 — zero corpus tests were collected. Check the `corpus` marker and the -m expression.$(NC)"; \
+			echo "$(RED)test-rag-corpus: exit code 5 — zero corpus tests were collected. Check the 'corpus' marker and the -m expression.$(NC)"; \
 			exit 1; \
 		elif [ $$pytest_status -ne 0 ]; then \
 			echo "$(RED)test-rag-corpus: pytest failed (exit $$pytest_status).$(NC)"; \

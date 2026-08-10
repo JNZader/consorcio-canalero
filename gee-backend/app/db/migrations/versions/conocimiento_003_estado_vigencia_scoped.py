@@ -38,10 +38,12 @@ depends_on: Union[str, Sequence[str], None] = None
 CHECK_NAME = "ck_rag_documento_estado_vigencia_derecho_aplicable"
 CHECK_CONDITION = "es_secundaria OR estado_vigencia IS NOT NULL"
 
-# Same ingestion pass, second discovered gap: three units in the pinned corpus
+# Same ingestion pass, second discovered gap: five units in the pinned corpus
 # are normative content that is not articulado and fits none of D2's six
-# `tipo_chunk` values — the `## Anexo` of Ley 25.506 and Anexos I and XI of Res.
-# DNV 908/2026. See `models.TIPO_CHUNK_VALUES` for the reasoning.
+# `tipo_chunk` values — the `## Anexo` of Ley 25.506, Anexos I and XI of Res.
+# DNV 908/2026, and Anexos I and II of Res. APRHI 3/2026 (the last two were
+# declared in no inventory at all until ledger RAG2-001). See
+# `models.TIPO_CHUNK_VALUES` for the reasoning.
 TIPO_CHUNK_NAME = "ck_rag_unidad_tipo_chunk"
 TIPO_CHUNK_OLD = (
     "tipo_chunk IN ('articulo','considerando','guia-de-uso',"
@@ -66,7 +68,7 @@ def downgrade() -> None:
 
     This upgrade did not merely widen a type: it made two row shapes legal that
     the previous schema forbids, and the pinned corpus writes both of them
-    (three fuente-secundaria documents with a NULL `estado_vigencia`, four
+    (three fuente-secundaria documents with a NULL `estado_vigencia`, five
     `anexo-normativo` units). Re-adding the constraints on top of those rows
     raises NotNullViolation / CheckViolation, so a downgrade written as pure DDL
     is unrunnable the moment the corpus has been ingested once — and because

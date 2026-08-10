@@ -142,8 +142,8 @@ into a diff.
 |---|---|
 | Pre-flight | Tokenise every `texto_indexado` with the BGE-M3 (XLM-R) tokenizer; **abort loudly** if any exceeds 8192. MANIFEST forbids splitting long articles, so silent truncation is the only failure mode that could survive review. The abort is scoped to the EMBEDDING leg — see the note below. |
 | Batch (GPU) | `scripts/rag_embed_batch.py` on the RTX 5060 Ti. `normalize_embeddings=True` (mandatory for cosine). **No query/document prefix** — BGE-M3 is symmetric, unlike BGE-v1.5/E5 which need one; adding a prefix silently degrades it. |
-| Artifact | `vectors-{sha8}.copy` — PostgreSQL COPY text format, columns `(corpus_sha, citation_key, embedding)` with the pgvector literal `[v1,v2,…]`, float32-cast, shortest round-trip repr (pgvector stores float4, so nothing is lost). Sidecar `vectors-{sha8}.json`: model id + **HF revision SHA**, dims, normalized, corpus_sha, n_vectors, sha256 of the dump, torch/transformers versions, device. |
-| Load | `scripts/rag_load_vectors.py`, **COPY into a staging table, never into `rag_unidad`**. Direct `COPY rag_unidad (corpus_sha, citation_key, embedding)` cannot execute: ingestion (D2) already created every row, the PK is `(corpus_sha, citation_key)`, and **`COPY` has no upsert** — there is no `ON CONFLICT` clause for `COPY`. It would attempt inserts and fail on the PK for all ~1,400 rows. So: (1) pre-checks — refuse unless the dump's sha256 matches the sidecar, `corpus_sha` is the active snapshot, `n_vectors == count(rag_unidad WHERE corpus_sha = …)` and dims == 1024; (2) `CREATE TEMP TABLE rag_embedding_staging (corpus_sha CHAR(40), citation_key TEXT, embedding vector(1024)) ON COMMIT DROP` and `COPY` the dump into it; (3) `UPDATE rag_unidad u SET embedding = s.embedding FROM rag_embedding_staging s WHERE u.corpus_sha = s.corpus_sha AND u.citation_key = s.citation_key`; (4) post-checks **in the same transaction** — the `UPDATE` rowcount MUST equal `n_vectors`, and the orphan anti-join (`SELECT s.citation_key FROM rag_embedding_staging s WHERE NOT EXISTS (SELECT 1 FROM rag_unidad u WHERE u.corpus_sha = s.corpus_sha AND u.citation_key = s.citation_key)`) MUST return zero rows; any unresolved staging key **aborts**. Single transaction, all-or-nothing: nothing commits unless every key resolved. |
+| Artifact | `vectors-{sha8}.copy` — PostgreSQL COPY text format, columns `(corpus_sha, citation_key, embedding)` with the pgvector literal `[v1,v2,…]`, float32-cast, `%.9g` (FLT_DECIMAL_DIG — the shortest form that round-trips a float4 exactly; pgvector stores float4, so nothing is lost). Sidecar `vectors-{sha8}.json`: model id + **HF revision SHA**, dims, normalized, corpus_sha, n_vectors, sha256 of the dump, torch/transformers versions, device, and the **`over_ceiling` key list** — see the Load row. |
+| Load | `scripts/rag_load_vectors.py`, **COPY into a staging table, never into `rag_unidad`**. Direct `COPY rag_unidad (corpus_sha, citation_key, embedding)` cannot execute: ingestion (D2) already created every row, the PK is `(corpus_sha, citation_key)`, and **`COPY` has no upsert** — there is no `ON CONFLICT` clause for `COPY`. It would attempt inserts and fail on the PK for all ~1,400 rows. So: (1) pre-checks — refuse unless the dump's sha256 matches the sidecar, `corpus_sha` is the active snapshot, dims == 1024, and the **exemption identity check** below holds; (2) `CREATE TEMP TABLE rag_embedding_staging (corpus_sha CHAR(40), citation_key TEXT, embedding vector(1024)) ON COMMIT DROP` and `COPY` the dump into it; (3) `UPDATE rag_unidad u SET embedding = s.embedding FROM rag_embedding_staging s WHERE u.corpus_sha = s.corpus_sha AND u.citation_key = s.citation_key`; (4) post-checks **in the same transaction** — the `UPDATE` rowcount MUST equal `n_vectors`, the orphan anti-join (`SELECT s.citation_key FROM rag_embedding_staging s WHERE NOT EXISTS (SELECT 1 FROM rag_unidad u WHERE u.corpus_sha = s.corpus_sha AND u.citation_key = s.citation_key)`) MUST return zero rows, and the set of units left with `embedding IS NULL` MUST equal the sidecar's `over_ceiling` set **exactly**; any unresolved staging key or any unexpected NULL **aborts**. Single transaction, all-or-nothing: nothing commits unless every key resolved. |
 | Query-time (V0 only) | Local BGE-M3 on **CPU**, loaded once per harness process. `scripts/rag_query_latency.py` reports p50/p95 over the gold questions (3 warm-ups, 3 repeats) with CPU model, core count and thread settings. Candidate run: throwaway container on the CX33 (`docker run --rm`, nothing installed on the host — prod's *state* stays untouched, though its CPU and network do not; see the Open Question). Alternative: a CPU-only container locally with matching cpuset, **labelled ESTIMATE** in the report. Owner call, still open. No V1 serving decision is made here. |
 | API baseline | One extra eval leg over the same corpus with a hosted embedder, **gated** by `assert_public_domain(corpus_sha)`: it raises unless *zero* documents in the snapshot have `clasificacion <> 'publico'`. Default-deny, so the actas layer cannot ever fall through. |
 
@@ -159,6 +159,29 @@ one. `--strict-token-ceiling` is the opt-in that promotes the report to a hard a
 want ingestion to stop instead. The flag being opt-in is not itself disclosure: `GateReport.over_ceiling`
 was populated and documented as "always reported — never silently dropped" while nothing carried it to
 any output at all, so the default run disclosed nothing (ledger RAG2-004).
+
+**The load pre-check counts the exemption, and pins WHICH units are exempt.** The obvious pre-check —
+`n_vectors == count(rag_unidad WHERE corpus_sha = …)` — contradicts the ratified over-ceiling decision
+one paragraph above: three units are deliberately never embedded, so a correct artifact is always three
+vectors short and the check would reject every real dump. Relaxing it to
+`n_vectors == count(…) − |over_ceiling|` fixes the arithmetic and opens a worse hole: **any** three
+missing vectors would then pass, so a batch that silently dropped three arbitrary units — an OOM on the
+last shard, a mis-slice, a resumed run — would load clean and leave three unrelated articles
+unretrievable by the vector leg, invisibly (ledger R3-104).
+
+So the sidecar pins the exempt **keys**, not just their count, and the loader verifies identity in both
+directions before it opens the transaction:
+
+1. every key in `over_ceiling` exists as a unit of that snapshot (an exemption naming a non-existent key
+   is a lie about the corpus, not a rounding difference);
+2. no key in `over_ceiling` appears in the dump (an "exempt" unit that was embedded anyway means the
+   ceiling was applied to a different set than the one disclosed);
+3. `dump keys ∪ over_ceiling == every unit key of the snapshot` — which subsumes the count check and is
+   what actually makes "three are missing, and these are the three" a verified statement instead of a
+   coincidence.
+
+The post-check closes the same loop from the database side: after the `UPDATE`, the set of units still
+carrying `embedding IS NULL` must equal the `over_ceiling` set exactly.
 
 Rejected: `.npy`/parquet dumps (extra dependency + column-order coupling), pickle (unsafe), API for
 corpus embeddings (privacy posture + the box is CPU-only anyway).
