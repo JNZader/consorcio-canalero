@@ -17,8 +17,19 @@
  * · Redraw silently when the daily data moved under the analysis. The server
  *   pin (`consistent_with_snapshot`) is authoritative and the echoed
  *   `data_revision` is the client cross-check that also catches a snapshot left
- *   open in a tab; either one renders the curve PLUS an alert and a re-request
- *   action (design D3).
+ *   open in a tab; either one renders the curve PLUS an alert (design D3).
+ * · Offer a re-request button beside that alert. It was there, and it was a
+ *   FAKE REMEDY (JDA-003 ≡ JDB-003): the only path that enqueues a rebuild is
+ *   a superseded policy revision (`router.read_analysis` →
+ *   `_requeue_stale_revision`), never a moved `data_revision`, and revisions
+ *   are immutable — so re-POSTing `/analyses` returned the same revision every
+ *   time. A control that reliably does nothing is worse than none: it turns an
+ *   accurate disclosure into an instruction the reader follows and blames
+ *   themselves for. The disclosure stays; the button is gone. The panel's own
+ *   poll is what eventually moves this tab to a newer analysis.
+ * · Read `available_through` as an inclusive day. It is the EXCLUSIVE end of
+ *   the disclosure window — see {@link lastEvidenceDay}, which is the single
+ *   place that conversion happens, and which both footer sentences use.
  * · Collapse `suppressed` and `integrity_refused` into "there is no line".
  *   Both arrive with every `normal_accumulated: null`, so the wire cannot tell
  *   them apart by shape — only by `normal_curve_state` (backend LI3A-001).
@@ -32,9 +43,8 @@
  *   display preset's clothes.
  */
 
-import { Alert, Box, Button, Group, SegmentedControl, Stack, Text } from '@mantine/core';
+import { Alert, Box, Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   CartesianGrid,
@@ -48,13 +58,12 @@ import {
   YAxis,
 } from 'recharts';
 
-import { rainfallAnalysisQueryKey, useRainfallSeries } from '../../../hooks/useRainfallAnalysis';
+import { useRainfallSeries } from '../../../hooks/useRainfallAnalysis';
 import {
   RAINFALL_NORMAL_CURVE_STATE,
   type RainfallAnalysisSnapshot,
   type RainfallNormalCurveState,
   type RainfallSeriesPoint,
-  fetchRainfallAnalysis,
 } from '../../../lib/api/rainfall';
 import { formatAccumulated } from './rainfallFormat';
 
@@ -100,6 +109,48 @@ const NORMAL_CURVE_NOTICE: Record<
  *  before in a browser west of Greenwich). */
 function isoDay(value: string): string {
   return value.slice(0, 10);
+}
+
+/**
+ * The last day the provider actually published, read off `available_through`.
+ *
+ * `available_through` is the EXCLUSIVE end of the disclosure window, not a
+ * day the analysis has evidence for: `compute._disclosure_window` builds it as
+ * `min(comparison_end + 1 day, max(interval_end))`, and `series._points` stops
+ * at `window_end - 1 day`, so NO point is ever emitted on it. The backend pins
+ * the pair literally (`test_rainfall_series_consistency.py`:
+ * `available_through == 2025-01-21`, last point `2025-01-20`).
+ *
+ * Every INCLUSIVE sentence below is therefore about the day before it. Reading
+ * the raw value as inclusive was wrong three times over: it claimed evidence
+ * for a day with none, it hid a one-day provider lag completely (with a lag of
+ * exactly one day the exclusive end EQUALS `comparison_end`, so a `<` test on
+ * the raw value is false and the missing day reads as a day without rain), and
+ * on a finalized past year it printed January 1 of the NEXT year under a chart
+ * titled with this one.
+ *
+ * `Date.UTC` over the parsed parts, never `new Date(value)`: same reason
+ * `isoDay` avoids the round trip, and it carries month and year rollover for
+ * free (day 0 is the previous month's last day).
+ */
+function lastEvidenceDay(availableThrough: string): string {
+  const [year, month, day] = isoDay(availableThrough).split('-').map(Number);
+  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * A tooltip value — with the null guard BEFORE the numeric coercion.
+ *
+ * recharts hands the formatter the raw datum, `null` included, and
+ * `Number(null)` is `0`: coercing first turns "no evidence" into a measured
+ * 0.0 mm. Two real shapes carry `null` here — February 29, which the backend
+ * omits from the normal curve by construction, and any day before the first
+ * published one — so this is the same rule `formatAccumulated` exists to
+ * enforce, applied one step earlier than the coercion that would defeat it.
+ */
+function tooltipValue(value: unknown, unit: string): string {
+  if (value === null || value === undefined) return formatAccumulated(null, unit);
+  return formatAccumulated(Number(value), unit);
 }
 
 /** The last point that actually carries a value for `key`, or undefined. */
@@ -183,11 +234,7 @@ export function RainfallAccumulationChart({
   readonly snapshot: RainfallAnalysisSnapshot;
 }) {
   const series = useRainfallSeries(snapshot.analysis_revision_id);
-  const queryClient = useQueryClient();
   const [preset, setPreset] = useState<CampaignPreset>(CAMPAIGN_PRESET.CALENDAR);
-  const [rerequesting, setRerequesting] = useState(false);
-  const [rerequestResult, setRerequestResult] = useState<string | null>(null);
-  const [rerequestError, setRerequestError] = useState<string | null>(null);
 
   const unit = series.data?.unit ?? 'mm';
   const campaignStart = `${snapshot.year}-${CAMPAIGN_START_MONTH_DAY}`;
@@ -210,8 +257,8 @@ export function RainfallAccumulationChart({
   const stale = pinInconsistent || echoMismatch;
 
   const comparisonEndDay = isoDay(series.data?.comparison_end ?? snapshot.comparison_end);
-  const availableThroughDay = series.data ? isoDay(series.data.available_through) : null;
-  const lagging = availableThroughDay !== null && availableThroughDay < comparisonEndDay;
+  const evidenceDay = series.data ? lastEvidenceDay(series.data.available_through) : null;
+  const lagging = evidenceDay !== null && evidenceDay < comparisonEndDay;
 
   const chartLabel = describePlottedWindow(visible, {
     year: snapshot.year,
@@ -220,41 +267,6 @@ export function RainfallAccumulationChart({
     curveAvailable,
     curveTitle,
   });
-
-  async function rerequest() {
-    setRerequesting(true);
-    setRerequestResult(null);
-    setRerequestError(null);
-    try {
-      const response = await fetchRainfallAnalysis(snapshot.scope, snapshot.year);
-      // Written into the PANEL's own query rather than kept here: a newer
-      // revision has to move the card, the metric list and this chart together,
-      // and a labelled 202 has to land on the poll path `useRainfallAnalysis`
-      // already owns instead of a second one growing here.
-      queryClient.setQueryData(rainfallAnalysisQueryKey(snapshot.scope, snapshot.year), response);
-      if (response.type === 'queued') {
-        const labels = response.queued.labels.join(', ');
-        setRerequestResult(
-          `Se pidió un análisis nuevo${labels ? `: ${labels}` : ''}. El panel lo sigue automáticamente.`
-        );
-      } else if (response.snapshot.analysis_revision_id !== snapshot.analysis_revision_id) {
-        setRerequestResult('Se actualizó al análisis más reciente.');
-      } else {
-        // Without this the button is indistinguishable from a broken one:
-        // nothing on screen changes and the reader cannot tell whether the
-        // request even happened.
-        setRerequestResult(
-          'El servidor sigue sirviendo este mismo análisis: todavía no hay una revisión más nueva.'
-        );
-      }
-    } catch (error) {
-      setRerequestError(
-        error instanceof Error ? error.message : 'No se pudo volver a pedir el análisis.'
-      );
-    } finally {
-      setRerequesting(false);
-    }
-  }
 
   if (series.isLoading) {
     return (
@@ -303,32 +315,11 @@ export function RainfallAccumulationChart({
           }
           data-testid="rainfall-series-stale"
         >
-          <Stack gap={4}>
-            <Text size="xs">
-              {pinInconsistent
-                ? `Los datos diarios se corrigieron después de que se guardó este análisis (${series.consistencyReason}). La serie de abajo es la evidencia más fresca; los números de la ficha son los del análisis guardado.`
-                : 'La serie que sirve el servidor pertenece a otra revisión de los datos que la del análisis anterior que está mostrando esta pestaña.'}
-            </Text>
-            <Button
-              size="xs"
-              variant="light"
-              loading={rerequesting}
-              onClick={() => void rerequest()}
-              data-testid="rainfall-series-rerequest"
-            >
-              Volver a pedir el análisis
-            </Button>
-            {rerequestResult && (
-              <Text size="xs" data-testid="rainfall-series-rerequest-result">
-                {rerequestResult}
-              </Text>
-            )}
-            {rerequestError && (
-              <Text size="xs" c="red" data-testid="rainfall-series-rerequest-error">
-                {rerequestError}
-              </Text>
-            )}
-          </Stack>
+          <Text size="xs">
+            {pinInconsistent
+              ? `Los datos diarios se corrigieron después de que se guardó este análisis (${series.consistencyReason}). La serie de abajo es la evidencia más fresca; los números de la ficha son los del análisis guardado.`
+              : 'La serie que sirve el servidor pertenece a otra revisión de los datos que la del análisis anterior que está mostrando esta pestaña.'}
+          </Text>
         </Alert>
       )}
 
@@ -346,7 +337,7 @@ export function RainfallAccumulationChart({
               <XAxis dataKey="date" fontSize={9} tickLine={false} minTickGap={28} />
               <YAxis fontSize={9} width={36} tickLine={false} axisLine={false} />
               <Tooltip
-                formatter={(value: unknown) => formatAccumulated(Number(value), unit)}
+                formatter={(value: unknown) => tooltipValue(value, unit)}
                 isAnimationActive={false}
               />
               <Legend
@@ -408,14 +399,13 @@ export function RainfallAccumulationChart({
       )}
 
       <Text size="xs" c="dimmed" data-testid="rainfall-accumulation-dates">
-        Comparación hasta el {comparisonEndDay} · Evidencia publicada hasta el{' '}
-        {availableThroughDay ?? '—'}
+        Comparación hasta el {comparisonEndDay} · Evidencia publicada hasta el {evidenceDay ?? '—'}
       </Text>
 
       {lagging && (
         <Text size="xs" c="dimmed" fs="italic" data-testid="rainfall-accumulation-lag">
-          El proveedor todavía no publicó los días posteriores al {availableThroughDay}: la serie
-          termina donde termina la evidencia, no en un período sin lluvia.
+          El proveedor todavía no publicó los días posteriores al {evidenceDay}: la serie termina
+          donde termina la evidencia, no en un período sin lluvia.
         </Text>
       )}
     </Stack>

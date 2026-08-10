@@ -6,40 +6,62 @@
  * histórico". Locks the disclosures that make that comparison honest:
  *   - 4.1 BOTH SERIES AND BOTH DATES: the selected year's accumulation and the
  *     1991-2020 normal curve are two separate lines, a `ReferenceLine` marks
- *     `comparison_end`, and the footer states `comparison_end` AND
- *     `available_through` — under provider lag those are different days, and a
- *     chart that shows only the first reads as a dry spell.
+ *     `comparison_end`, and the footer states `comparison_end` AND the last day
+ *     evidence was published — under provider lag those are different days, and
+ *     a chart that shows only the first reads as a dry spell.
+ *   - 4.1b THE EXCLUSIVE BOUNDARY: the wire `available_through` is the
+ *     EXCLUSIVE end of the published window (`compute._disclosure_window`), so
+ *     the last day that HAS evidence is the day before it. Rendering the raw
+ *     value as an inclusive claim overstates the evidence by one day, hides a
+ *     one-day provider lag entirely, and on a finalized past year names a day
+ *     outside the analyzed year (JDA-001 ≡ JDB-001).
  *   - 4.2 STALENESS: `consistent_with_snapshot: false` renders the curve PLUS
- *     an alert and a re-request action (design D3: "a silent redraw is
- *     prohibited"); absent when the pin is true.
+ *     an alert (design D3: "a silent redraw is prohibited"); absent when the
+ *     pin is true.
  *   - 4.2b NORMAL-CURVE STATE: `integrity_refused` MUST read differently from
  *     `suppressed` — both arrive with every `normal_accumulated: null`, so a
  *     chart that keys on "is there a curve?" erases the observable half of
  *     LI3A-001. Asserted on TEXT and on a state attribute, never on colour:
  *     a colour-only distinction is not a distinction for the operator this
  *     disclosure exists for.
- *   - 4.3 RE-REQUEST: the action re-POSTs `/analyses` and handles a newer
- *     revision (200), a labelled queued answer (202) through the panel's
- *     existing poll path, and the honest no-op (200 with the SAME revision).
+ *   - 4.3 NO FAKE REMEDY: the staleness alert offers no re-request action.
+ *     `data_revision_moved` is not something a re-POST can fix — the only
+ *     enqueue path is policy staleness — so a button there promised a remedy
+ *     the backend cannot deliver (JDA-003 ≡ JDB-003). The disclosure stays;
+ *     the button is gone.
+ *   - 4.4 TOOLTIP: `null` is UNKNOWN, never `0.0 mm`. recharts hands the
+ *     formatter the raw datum, `null` included, and `Number(null) === 0`
+ *     (JDA-002).
  *   - 4.5 CAMPAIGN PRESET: a display window over the SAME series — no
  *     `/analyses` request may fire, which is what keeps spec.md:117-125 intact.
  *
  * HOW THE CHART IS MADE ASSERTABLE: same seam as `PrecipChart.test.tsx` —
  * recharts' `ResponsiveContainer` measures through `ResizeObserver` and
  * happy-dom reports 0x0, so it is swapped for a fixed-size pass-through. The
- * rest of recharts is the real library.
+ * rest of recharts is the real library. `Tooltip` is a pass-through that ALSO
+ * records the props it was handed: recharts only renders tooltip content for
+ * an active pointer position, which happy-dom (0x0 rects) can never produce,
+ * so capturing the `formatter` the component wires in is the only way to
+ * assert it WITHOUT re-implementing it in the test — verified to leave the
+ * real chart intact (both `.recharts-line` nodes still render).
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { type ReactElement, cloneElement } from 'react';
+import { type ComponentProps, type ReactElement, cloneElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** The `formatter` the component hands recharts' `Tooltip` (see 4.4). */
+const tooltip = vi.hoisted(() => ({
+  formatter: null as null | ((value: unknown, ...rest: unknown[]) => unknown),
+}));
 
 // Hoisted before the component import: the component pulls `ResponsiveContainer`
 // in at module scope.
 vi.mock('recharts', async () => {
   const actual = await vi.importActual<typeof import('recharts')>('recharts');
+  const RealTooltip = actual.Tooltip;
   return {
     ...actual,
     // The generic on `ReactElement` is what lets `cloneElement` accept the
@@ -51,6 +73,16 @@ vi.mock('recharts', async () => {
     }: {
       children: ReactElement<{ width?: number; height?: number }>;
     }) => cloneElement(children, { width: 600, height: 300 }),
+    // Records and forwards. The real Tooltip still mounts, so nothing else in
+    // this file changes shape; what it renders is another matter — recharts
+    // only fills the tooltip for an ACTIVE pointer index, and happy-dom's 0x0
+    // bounding rects mean no `mousemove` ever produces one (measured: the
+    // wrapper mounts `visibility: hidden` with an empty payload). The prop is
+    // therefore the only honest place to assert the formatter.
+    Tooltip: (props: ComponentProps<typeof RealTooltip>) => {
+      tooltip.formatter = props.formatter as never;
+      return <RealTooltip {...props} />;
+    },
   };
 });
 
@@ -73,12 +105,27 @@ import type {
 } from '../../src/lib/api/rainfall';
 import { fetchRainfallAnalysis, fetchRainfallSeries } from '../../src/lib/api/rainfall';
 import { RainfallAccumulationChart } from '../../src/components/map2d/rainfall/RainfallAccumulationChart';
-import { rainfallAnalysisQueryKey } from '../../src/hooks/useRainfallAnalysis';
 
 const ZONE = { kind: 'zone' as const, id: 'zona-ne', version: '3' };
 const YEAR = 2025;
-/** The last day the provider published — deliberately BEFORE `comparison_end`. */
-const AVAILABLE_THROUGH = '2025-10-05';
+/**
+ * The wire `available_through`, EXCLUSIVE — exactly what the backend emits.
+ *
+ * `compute._disclosure_window` builds it as `min(comparison_end + 1 day,
+ * max(interval_end))`, and `series._points` stops at `window_end - 1 day`:
+ * NO point is ever emitted on this day, and the pin test
+ * `test_rainfall_series_consistency.py:412-414` states the pair literally
+ * (`available_through == 2025-01-21`, last point `2025-01-20`).
+ *
+ * The fixtures below encoded the opposite shape — a point ON
+ * `available_through`, with `AVAILABLE_THROUGH == COMPARISON_END` — which is a
+ * series the backend cannot produce, and which is what let the display bug in
+ * 4.1b pass as correct. Rebuilt to the real contract.
+ */
+const AVAILABLE_THROUGH_EXCLUSIVE = '2025-10-06';
+/** …so THIS is the last day that carries evidence, and the last plotted point. */
+const LAST_EVIDENCE_DAY = '2025-10-05';
+/** The default fixture is at ZERO lag: the provider reached `comparison_end`. */
 const COMPARISON_END = '2025-10-05';
 
 function metric(overrides: Partial<RainfallMetric> = {}): RainfallMetric {
@@ -104,7 +151,7 @@ function metric(overrides: Partial<RainfallMetric> = {}): RainfallMetric {
       aggregation: 'daily',
       spatial_scope: 'zone',
       freshness: '2025-10-06T00:00:00Z',
-      available_through: `${AVAILABLE_THROUGH}T00:00:00Z`,
+      available_through: `${AVAILABLE_THROUGH_EXCLUSIVE}T00:00:00Z`,
     },
     fallback_used: false,
     ...overrides,
@@ -129,15 +176,20 @@ function snapshot(overrides: Partial<RainfallAnalysisSnapshot> = {}): RainfallAn
 }
 
 /**
- * A daily series spanning Jan 1 → `AVAILABLE_THROUGH`, so the September window
- * of the campaign preset has real points on both sides of its boundary.
+ * A daily series from January 1 through the last day WITH evidence, inclusive
+ * — so the September window of the campaign preset has real points on both
+ * sides of its boundary, and so the series stops one day short of the
+ * exclusive `available_through`, as the backend's does.
  */
-function points(): RainfallSeriesPoint[] {
+function points({
+  from = `${YEAR}-01-01`,
+  through = LAST_EVIDENCE_DAY,
+}: { readonly from?: string; readonly through?: string } = {}): RainfallSeriesPoint[] {
   const built: RainfallSeriesPoint[] = [];
   let accumulated = 0;
   let normal = 0;
-  const cursor = new Date(Date.UTC(YEAR, 0, 1));
-  const last = new Date(`${AVAILABLE_THROUGH}T00:00:00Z`);
+  const cursor = new Date(`${from}T00:00:00Z`);
+  const last = new Date(`${through}T00:00:00Z`);
   while (cursor <= last) {
     accumulated += 3;
     normal += 3.5;
@@ -161,7 +213,7 @@ function series(overrides: Partial<RainfallSeriesResponse> = {}): RainfallSeries
     year: YEAR,
     unit: 'mm',
     comparison_end: COMPARISON_END,
-    available_through: `${AVAILABLE_THROUGH}T00:00:00+00:00`,
+    available_through: `${AVAILABLE_THROUGH_EXCLUSIVE}T00:00:00+00:00`,
     consistent_with_snapshot: true,
     consistency_reason: null,
     normal_curve_state: 'available',
@@ -175,10 +227,8 @@ function curvelessPoints(): RainfallSeriesPoint[] {
   return points().map((point) => ({ ...point, normal_accumulated: null }));
 }
 
-let client: QueryClient;
-
 function renderChart(snap: RainfallAnalysisSnapshot = snapshot()) {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = (
     <QueryClientProvider client={client}>
       <MantineProvider env="test">
@@ -214,21 +264,19 @@ describe('RainfallAccumulationChart — both series and both dates (4.1)', () =>
 
     const footer = screen.getByTestId('rainfall-accumulation-dates');
     expect(footer.textContent).toContain(COMPARISON_END);
-    expect(footer.textContent).toContain(AVAILABLE_THROUGH);
+    expect(footer.textContent).toContain(LAST_EVIDENCE_DAY);
   });
 
   it('says so when the provider has not published up to comparison_end', async () => {
     // Provider lag is the documented steady state (design D5/D6). The series
     // stops where the evidence does, and a reader who is not told that will
     // read the missing tail as a dry spell.
-    vi.mocked(fetchRainfallSeries).mockResolvedValue(
-      series({ comparison_end: '2025-12-31', available_through: `${AVAILABLE_THROUGH}T00:00:00Z` })
-    );
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series({ comparison_end: '2025-12-31' }));
     renderChart(snapshot({ comparison_end: '2025-12-31' }));
 
     const footer = await screen.findByTestId('rainfall-accumulation-dates');
     expect(footer.textContent).toContain('2025-12-31');
-    expect(footer.textContent).toContain(AVAILABLE_THROUGH);
+    expect(footer.textContent).toContain(LAST_EVIDENCE_DAY);
     expect(screen.getByTestId('rainfall-accumulation-lag')).toBeInTheDocument();
   });
 
@@ -241,8 +289,84 @@ describe('RainfallAccumulationChart — both series and both dates (4.1)', () =>
     expect(chart).toHaveAttribute('role', 'img');
     const label = chart.getAttribute('aria-label') ?? '';
     expect(label).toContain('2025-01-01');
-    expect(label).toContain(AVAILABLE_THROUGH);
+    expect(label).toContain(LAST_EVIDENCE_DAY);
     expect(label).toMatch(/mm/);
+  });
+});
+
+describe('RainfallAccumulationChart — the EXCLUSIVE available_through (4.1b)', () => {
+  // JDA-001 ≡ JDB-001. `available_through` is the exclusive end of the
+  // published window; the last day that HAS evidence is the day before it.
+  // Truncating the wire value to a day and printing it as an inclusive claim
+  // is wrong in three separate ways, one per test below.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series());
+  });
+
+  it('names the last day WITH evidence, not the exclusive end', async () => {
+    renderChart();
+
+    const footer = await screen.findByTestId('rainfall-accumulation-dates');
+    expect(footer.textContent).toContain(`Evidencia publicada hasta el ${LAST_EVIDENCE_DAY}`);
+    // The exclusive end is an implementation detail of the window, and there
+    // is no evidence for that day at all — it must never reach the reader.
+    expect(footer.textContent).not.toContain(AVAILABLE_THROUGH_EXCLUSIVE);
+    // Zero lag: the provider reached `comparison_end`, so there is nothing to
+    // disclose and the notice must stay away.
+    expect(screen.queryByTestId('rainfall-accumulation-lag')).toBeNull();
+  });
+
+  it('discloses a lag of exactly ONE day', async () => {
+    // The boundary the bug hid completely: with a one-day lag the exclusive
+    // `available_through` EQUALS `comparison_end`, so a `<` comparison on the
+    // raw value is false and the reader is told nothing — the missing day
+    // reads as a day without rain.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series({ comparison_end: '2025-10-06' }));
+    renderChart(snapshot({ comparison_end: '2025-10-06' }));
+
+    // Asserted FIRST on purpose: the missing notice is the defect, and an
+    // assertion order that trips on the footer string instead would leave the
+    // suppression itself unproven.
+    const lag = await screen.findByTestId('rainfall-accumulation-lag');
+    expect(lag.textContent).toContain(`posteriores al ${LAST_EVIDENCE_DAY}`);
+    const footer = screen.getByTestId('rainfall-accumulation-dates');
+    expect(footer.textContent).toContain('Comparación hasta el 2025-10-06');
+    expect(footer.textContent).toContain(`Evidencia publicada hasta el ${LAST_EVIDENCE_DAY}`);
+  });
+
+  it('stays inside the analyzed year on a finalized past year', async () => {
+    // A finalized 2024 reaches December 31, so its exclusive window end is
+    // 2025-01-01 — a day in ANOTHER year, and one the analysis says nothing
+    // about. Printing it makes the footer contradict the title above it.
+    const finalized = { from: '2024-01-01', through: '2024-12-31' };
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      series({
+        year: 2024,
+        comparison_end: '2024-12-31',
+        available_through: '2025-01-01T00:00:00+00:00',
+        points: points(finalized),
+      })
+    );
+    renderChart(snapshot({ year: 2024, comparison_end: '2024-12-31' }));
+
+    const footer = await screen.findByTestId('rainfall-accumulation-dates');
+    expect(footer.textContent).toContain('Evidencia publicada hasta el 2024-12-31');
+    expect(footer.textContent).not.toContain('2025-01-01');
+    expect(screen.queryByTestId('rainfall-accumulation-lag')).toBeNull();
+  });
+
+  it('agrees with the textual equivalent about the last plotted day', async () => {
+    // `describePlottedWindow` reports the real last POINT; the footer reports
+    // the disclosure window. They describe the same edge of the same series,
+    // so a reader comparing the caption with the footnote must not find two
+    // different days.
+    renderChart();
+
+    const chart = await screen.findByTestId('rainfall-accumulation-chart');
+    const footer = screen.getByTestId('rainfall-accumulation-dates');
+    expect(chart.getAttribute('aria-label')).toContain(`y el ${LAST_EVIDENCE_DAY}`);
+    expect(footer.textContent).toContain(`Evidencia publicada hasta el ${LAST_EVIDENCE_DAY}`);
   });
 });
 
@@ -252,7 +376,7 @@ describe('RainfallAccumulationChart — staleness disclosure (4.2)', () => {
     vi.mocked(fetchRainfallSeries).mockResolvedValue(series());
   });
 
-  it('renders the curve PLUS an alert and a re-request action when the pin is false', async () => {
+  it('renders the curve PLUS an alert when the pin is false', async () => {
     vi.mocked(fetchRainfallSeries).mockResolvedValue(
       series({ consistent_with_snapshot: false, consistency_reason: 'data_revision_moved' })
     );
@@ -263,7 +387,6 @@ describe('RainfallAccumulationChart — staleness disclosure (4.2)', () => {
     expect(container.querySelectorAll('.recharts-line')).toHaveLength(2);
     expect(alert.textContent).toMatch(/corrigieron/i);
     expect(alert.textContent).toContain('data_revision_moved');
-    expect(screen.getByTestId('rainfall-series-rerequest')).toBeInTheDocument();
   });
 
   it('shows no staleness alert when the pin is true', async () => {
@@ -271,7 +394,6 @@ describe('RainfallAccumulationChart — staleness disclosure (4.2)', () => {
 
     await screen.findByTestId('rainfall-accumulation-chart');
     expect(screen.queryByTestId('rainfall-series-stale')).toBeNull();
-    expect(screen.queryByTestId('rainfall-series-rerequest')).toBeNull();
   });
 
   it('catches a stale tab: the series echo disagreeing with the snapshot in hand', async () => {
@@ -283,7 +405,6 @@ describe('RainfallAccumulationChart — staleness disclosure (4.2)', () => {
 
     const alert = await screen.findByTestId('rainfall-series-stale');
     expect(alert.textContent).toMatch(/pestaña|anterior/i);
-    expect(screen.getByTestId('rainfall-series-rerequest')).toBeInTheDocument();
   });
 });
 
@@ -348,81 +469,87 @@ describe('RainfallAccumulationChart — normal-curve state (4.2b)', () => {
   });
 });
 
-describe('RainfallAccumulationChart — re-request action (4.3)', () => {
+describe('RainfallAccumulationChart — no fake remedy (4.3)', () => {
+  // JDA-003 ≡ JDB-003. The alert used to carry a "Volver a pedir el análisis"
+  // button that could not remedy what the alert describes: the only path that
+  // enqueues a rebuild is a SUPERSEDED policy revision (`router.py`
+  // `read_analysis` → `_requeue_stale_revision`), never a moved
+  // `data_revision`, and the revision the tab holds is immutable. Re-POSTing
+  // returns the same revision every time. A button that reliably does nothing
+  // is worse than no button: it converts an accurate disclosure into an
+  // instruction the reader will follow, repeatedly, and blame themselves for.
+  //
+  // The tests it replaces asserted a labelled `202` and a newer-revision `200`
+  // from this flow — wire states the backend cannot produce here — so they
+  // were pinning a fiction rather than protecting a behavior.
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('offers no re-request action for data_revision_moved, and keeps saying why', async () => {
     vi.mocked(fetchRainfallSeries).mockResolvedValue(
       series({ consistent_with_snapshot: false, consistency_reason: 'data_revision_moved' })
     );
-  });
-
-  it('re-POSTs /analyses for the same scope and year and adopts a newer revision (200)', async () => {
-    const newer = snapshot({ analysis_revision_id: 'rev-10', data_revision: 'cd'.repeat(32) });
-    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: newer });
     renderChart();
 
-    fireEvent.click(await screen.findByTestId('rainfall-series-rerequest'));
-
-    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalledWith(ZONE, YEAR));
-    // The answer lands on the panel's OWN query, so the whole panel moves to
-    // the newer revision instead of the chart redrawing behind the card.
-    await waitFor(() =>
-      expect(client.getQueryData(rainfallAnalysisQueryKey(ZONE, YEAR))).toEqual({
-        type: 'ready',
-        snapshot: newer,
-      })
-    );
-    expect((await screen.findByTestId('rainfall-series-rerequest-result')).textContent).toMatch(
-      /actualiz/i
-    );
+    // The disclosure is the whole point and it stays, in full.
+    const alert = await screen.findByTestId('rainfall-series-stale');
+    expect(alert.textContent).toMatch(/corrigieron/i);
+    expect(alert.textContent).toContain('data_revision_moved');
+    expect(screen.queryByTestId('rainfall-series-rerequest')).toBeNull();
   });
 
-  it('hands a labelled 202 to the existing poll path', async () => {
-    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
-      type: 'queued',
-      queued: {
-        status: 'queued',
-        outbox_id: 'ob-1',
-        scope: ZONE,
-        year: YEAR,
-        labels: ['data_revision_moved'],
-      },
-    });
+  it('offers no re-request action on the echo cross-check either', async () => {
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series({ data_revision: 'cd'.repeat(32) }));
     renderChart();
 
-    fireEvent.click(await screen.findByTestId('rainfall-series-rerequest'));
-
-    const result = await screen.findByTestId('rainfall-series-rerequest-result');
-    expect(result.textContent).toContain('data_revision_moved');
-    await waitFor(() =>
-      expect(
-        (client.getQueryData(rainfallAnalysisQueryKey(ZONE, YEAR)) as { type: string } | undefined)
-          ?.type
-      ).toBe('queued')
-    );
+    await screen.findByTestId('rainfall-series-stale');
+    expect(screen.queryByTestId('rainfall-series-rerequest')).toBeNull();
   });
 
-  it('says so when the server answers with the SAME revision (an honest no-op)', async () => {
-    // Otherwise the button is indistinguishable from a broken one: nothing on
-    // screen changes and the reader cannot tell whether the request happened.
-    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: snapshot() });
+  it('never re-POSTs /analyses from the chart at all', async () => {
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      series({ consistent_with_snapshot: false, consistency_reason: 'data_revision_moved' })
+    );
     renderChart();
 
-    fireEvent.click(await screen.findByTestId('rainfall-series-rerequest'));
+    await screen.findByTestId('rainfall-series-stale');
+    // The panel owns the analysis query; the chart reads a series and nothing
+    // else. Without this, a re-request could grow back on another control.
+    expect(fetchRainfallAnalysis).not.toHaveBeenCalled();
+  });
+});
 
-    const result = await screen.findByTestId('rainfall-series-rerequest-result');
-    expect(result.textContent).toMatch(/mismo an[áa]lisis/i);
+describe('RainfallAccumulationChart — the tooltip never invents a zero (4.4)', () => {
+  // JDA-002. recharts hands the formatter the raw datum value, `null`
+  // included, and `Number(null)` is `0` — so coercing first turns "no
+  // evidence" into a measured 0.0 mm. Two real shapes carry `null` here:
+  // February 29, which the backend omits from the normal curve by
+  // construction, and any day before the first published one.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tooltip.formatter = null;
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(series());
   });
 
-  it('reports a failed re-request instead of failing silently', async () => {
-    vi.mocked(fetchRainfallAnalysis).mockRejectedValue(new Error('429 demasiadas solicitudes'));
+  it.each([
+    ['a Feb-29-style point with no curve key', null],
+    ['a day before the first published evidence', undefined],
+  ])('renders the unknown marker for %s', async (_case, value) => {
     renderChart();
+    await screen.findByTestId('rainfall-accumulation-chart');
 
-    fireEvent.click(await screen.findByTestId('rainfall-series-rerequest'));
+    expect(tooltip.formatter).not.toBeNull();
+    expect(tooltip.formatter?.(value)).toBe('—');
+  });
 
-    expect((await screen.findByTestId('rainfall-series-rerequest-error')).textContent).toContain(
-      '429 demasiadas solicitudes'
-    );
+  it('still formats a served value, zero included', async () => {
+    renderChart();
+    await screen.findByTestId('rainfall-accumulation-chart');
+
+    // A served 0 IS data — the rule `rainfallFormat` states for every surface.
+    expect(tooltip.formatter?.(0)).toBe('0.0 mm');
+    expect(tooltip.formatter?.(12.34)).toBe('12.3 mm');
   });
 });
 
