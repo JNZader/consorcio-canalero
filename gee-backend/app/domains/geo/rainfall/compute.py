@@ -12,7 +12,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from app.domains.geo.rainfall import temporal
 from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
@@ -69,6 +69,92 @@ def _source_class_for(source_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# The disclosure window: ONE derivation of the end everything is measured to
+# (design.md D5 amendment / D6 amendment, slice 2b)
+# ---------------------------------------------------------------------------
+
+
+class _DisclosureWindow(NamedTuple):
+    """The single derivation of "how far this analysis actually reaches"."""
+
+    comparison_end_date: date
+    year_start: datetime
+    in_window: list[tuple[datetime, datetime, float]]
+    window_end: datetime
+
+
+def _disclosure_window(
+    *,
+    year: int,
+    now: datetime,
+    intervals: Sequence[tuple[datetime, datetime, float]],
+) -> _DisclosureWindow:
+    """Resolve the disclosure window from the calendar and the evidence.
+
+    ``comparison_end_date`` is the CALENDAR end the snapshot discloses (the
+    owner's accepted "calendar ``comparison_end`` + ``available_through``"
+    decision); ``window_end`` is the EXCLUSIVE end everything is actually
+    measured to, clipped to the last published interval because provider lag
+    is the documented steady state (design.md D6 amendment). One derivation,
+    two call sites -- :func:`build_snapshot` and :func:`baseline_cutoff_for`
+    -- so the baseline can never be cut somewhere the selected year is not.
+    """
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    comparison_end_date = temporal.comparison_end(year, temporal.buenos_aires_date(now))
+    comparison_end_exclusive = datetime(
+        comparison_end_date.year, comparison_end_date.month, comparison_end_date.day, tzinfo=UTC
+    ) + timedelta(days=1)
+
+    in_window = [
+        (interval_start, interval_end, value)
+        for interval_start, interval_end, value in intervals
+        if year_start <= interval_start < comparison_end_exclusive
+    ]
+    window_end = (
+        min(comparison_end_exclusive, max(interval_end for _s, interval_end, _v in in_window))
+        if in_window
+        else comparison_end_exclusive
+    )
+    return _DisclosureWindow(comparison_end_date, year_start, in_window, window_end)
+
+
+def baseline_cutoff_for(
+    *,
+    year: int,
+    now: datetime,
+    intervals: Sequence[tuple[datetime, datetime, float]],
+) -> date:
+    """The calendar date the 1991-2020 baseline MUST be cut at, for a build
+    over *intervals* (design.md D5 amendment, LI2A-101).
+
+    Same-date comparison is D5's whole premise, so the baseline is cut at the
+    end the selected year actually reaches -- ``window_end``'s last covered
+    day -- not at the raw calendar ``comparison_end``. With no provider lag
+    the two are provably the same date (``window_end ==
+    comparison_end_exclusive == comparison_end + 1 day``); under lag, cutting
+    at the calendar date would rank a selected year that is short by the lag
+    against baselines totalled through today, biasing the percentile low.
+
+    ``tasks._persist_analysis_revision`` calls this to pick
+    ``temporal.baseline_dates(...)`` BEFORE :func:`build_snapshot`, which
+    then re-derives the identical window from the identical inputs -- the
+    same "computed once ahead, recomputed identically inside" shape the
+    caller already uses for ``comparison_end``.
+    """
+    return _cutoff_date(_disclosure_window(year=year, now=now, intervals=intervals).window_end)
+
+
+def _cutoff_date(window_end: datetime) -> date:
+    """The last day *window_end* (exclusive) actually covers.
+
+    ``window_end`` is daily-cadence-aligned for every source that reaches
+    the annual metrics (``repository.baseline_cumulatives`` counts DAYS), so
+    the last covered day is the day before it.
+    """
+    return (window_end - timedelta(days=1)).date()
+
+
+# ---------------------------------------------------------------------------
 # annual.normal / annual.percentile (design.md D4/D5, slice 2a)
 # ---------------------------------------------------------------------------
 
@@ -119,9 +205,10 @@ def weibull_percentile(baseline_values: Sequence[float], selected_value: float) 
 def _normal_and_percentile_metrics(
     *,
     baseline: dict[int, tuple[float, int, int]] | None,
-    comparison_end_date: date,
+    baseline_cutoff: date,
     selected_value: float | None,
     selected_temporal_state: str,
+    selected_source_id: str,
     nominal_resolution: str,
     scope: AnalysisScope,
     now: datetime,
@@ -131,6 +218,11 @@ def _normal_and_percentile_metrics(
     these two metrics rather than dropping them, so a served analysis has
     a stable metric shape regardless of baseline coverage.
 
+    *baseline_cutoff* is the EFFECTIVE end (:func:`baseline_cutoff_for`),
+    not the calendar ``comparison_end`` -- the same date the caller used to
+    build the *baseline* dict itself, so the year set, the disclosed
+    envelope and the summed evidence all agree (design.md D5 amendment).
+
     Both are built from the historical baseline alone
     (``repository.baseline_cumulatives``, D1), never from an adapter
     ``batch`` -- there is no adapter batch behind a SQL aggregate to
@@ -139,7 +231,7 @@ def _normal_and_percentile_metrics(
     (schemas.py:11,25), so every field below is built explicitly from
     scratch rather than assumed from a partial source.
     """
-    possible_years = temporal.baseline_years_for(comparison_end_date)
+    possible_years = temporal.baseline_years_for(baseline_cutoff)
     eligible_years = sorted(
         year
         for year, (_total, matched, expected) in (baseline or {}).items()
@@ -157,7 +249,7 @@ def _normal_and_percentile_metrics(
     last_baseline_year = max(possible_years)
     envelope_start = datetime(1991, 1, 1, tzinfo=UTC)
     envelope_end = datetime(
-        last_baseline_year, comparison_end_date.month, comparison_end_date.day, tzinfo=UTC
+        last_baseline_year, baseline_cutoff.month, baseline_cutoff.day, tzinfo=UTC
     ) + timedelta(days=1)
 
     if baseline is None:
@@ -193,6 +285,22 @@ def _normal_and_percentile_metrics(
         "baseline_years_possible": len(possible_years),
     }
 
+    # design.md D5 (LIB-003, slice 2b): a current-year comparison ranks an
+    # NRT-sourced total against a Final-sourced baseline -- a methodological
+    # caveat the reader cannot infer from the numbers. The baseline has no
+    # disclosure channel of its own (it is a SQL aggregate, so there is no
+    # adapter batch whose `discrepancies` it could inherit), so the caveat
+    # goes into these two metrics' OWN `discrepancies` -- the same channel,
+    # carried through `_normalize_metric`'s passthrough into JSON, the audit
+    # CSV rows and the xlsx sheet. Flat `key=value`, no spaces
+    # (adapters/zonal.py's convention). Emitted only where it is true: a
+    # completed year sourced from Final emits nothing.
+    discrepancies = (
+        []
+        if selected_source_id == _BASELINE_SOURCE_ID
+        else [f"cross_source_baseline={_BASELINE_SOURCE_ID}_vs_{selected_source_id}"]
+    )
+
     def _provenance(method: str) -> dict[str, Any]:
         return {
             "source_id": _BASELINE_SOURCE_ID,
@@ -216,7 +324,7 @@ def _normal_and_percentile_metrics(
         "coverage": coverage,
         "completeness": completeness,
         "quality": quality,
-        "discrepancies": [],
+        "discrepancies": list(discrepancies),
         "temporal_state": "final",
         "revision": RAINFALL_METRIC_POLICY_REVISION,
         "provenance": _provenance("mean"),
@@ -233,7 +341,7 @@ def _normal_and_percentile_metrics(
         "coverage": coverage,
         "completeness": completeness,
         "quality": dict(quality),
-        "discrepancies": [],
+        "discrepancies": list(discrepancies),
         "temporal_state": "provisional" if selected_temporal_state == "provisional" else "final",
         "revision": RAINFALL_METRIC_POLICY_REVISION,
         "provenance": _provenance("weibull_rank"),
@@ -387,25 +495,10 @@ def build_snapshot(
         # invariant that must be loud, not a quietly inflated total.
         raise ValueError("build_snapshot received a duplicated interval_start slot")
 
-    year_start = datetime(year, 1, 1, tzinfo=UTC)
-    comparison_end_date = temporal.comparison_end(year, temporal.buenos_aires_date(now))
-    comparison_end_exclusive = datetime(
-        comparison_end_date.year, comparison_end_date.month, comparison_end_date.day, tzinfo=UTC
-    ) + timedelta(days=1)
-
-    in_window = [
-        (interval_start, interval_end, value)
-        for interval_start, interval_end, value in intervals
-        if year_start <= interval_start < comparison_end_exclusive
-    ]
-
-    if in_window:
-        last_interval_end = max(interval_end for _s, interval_end, _v in in_window)
-        window_end = min(comparison_end_exclusive, last_interval_end)
-        total_value: float | None = sum(value for _s, _e, value in in_window)
-    else:
-        window_end = comparison_end_exclusive
-        total_value = None
+    comparison_end_date, year_start, in_window, window_end = _disclosure_window(
+        year=year, now=now, intervals=intervals
+    )
+    total_value: float | None = sum(value for _s, _e, value in in_window) if in_window else None
 
     cadence_seconds = batch["cadence_seconds"]
     expected_slots = (
@@ -457,14 +550,19 @@ def build_snapshot(
         "fallback_used": fallback_used,
     }
 
-    # design.md D4/D5 (slice 2a): built from the SAME comparison_end_date
-    # annual.selected just used, so both metrics are cut off at exactly
-    # that date -- never a different, independently-derived cutoff.
+    # design.md D4/D5 (slice 2a) + D5 amendment (slice 2b, LI2A-101): cut at
+    # the SAME EFFECTIVE end annual.selected just totalled through -- the
+    # last covered day of `window_end`, not the raw calendar comparison_end
+    # -- so a lagging provider cannot rank a short selected year against
+    # baselines totalled through today. Identical to the calendar date when
+    # there is no lag. The caller resolved the `baseline` dict itself at this
+    # same cutoff (tasks._persist_analysis_revision via baseline_cutoff_for).
     normal_metric, percentile_metric = _normal_and_percentile_metrics(
         baseline=baseline,
-        comparison_end_date=comparison_end_date,
+        baseline_cutoff=_cutoff_date(window_end),
         selected_value=total_value,
         selected_temporal_state=annual_metric["temporal_state"],
+        selected_source_id=source_id,
         nominal_resolution=nominal_resolution,
         scope=scope,
         now=now,

@@ -192,12 +192,32 @@ and an absent entry force-suppresses as `policy_threshold_unset` (`policy.py:160
 | group key | `metric` name | min coverage | min quality | rationale |
 |---|---|---|---|---|
 | `annual.selected` | `annual` | 0.8 | 0.8 | **unchanged** — renaming would break `served_state`, `revision_write_decision` (`compute.py:318`) and the raw JSON path in `repository.py:586-590` |
-| `annual.normal` | `annual_normal` | 0.9 | 0.8 | a reference climatology is not time-pressured; demand more than the in-progress year. `completeness` = eligible years used / years `baseline_years_for` yields; `coverage` = worst used year's day-completeness |
-| `annual.percentile` | `annual_percentile` | 0.9 | 0.8 | same sample, same evidence |
+| `annual.normal` | `annual_normal` | 20/30 | 20/30 | see the threshold note below. `completeness` = eligible years used / years `baseline_years_for` yields; `coverage` = worst used year's day-completeness |
+| `annual.percentile` | `annual_percentile` | 20/30 | 20/30 | same sample, same evidence |
 | `antecedents.d7/d30/d90` | `d7`/`d30`/`d90` | 0.9 | 0.8 | `rolling_total` already refuses an incomplete window (`temporal.py:78-88`), so this is a floor, not the gate |
 
 `quality["score"]` is set to the metric's own completeness (same convention as
-`compute.py:137`). `summary` is a **root-level Spanish string**, not a metric: the frontend
+`compute.py:137`).
+
+**Threshold note — the baseline metrics' two thresholds are `20/30` (slice 2b fix
+round, LI2A-003).** They were `0.9`/`0.8`, which made `MIN_BASELINE_YEARS = 20` dead
+code at disclosure time. `annual_normal`/`annual_percentile` carry
+`completeness = eligible baseline years / 30`, and their `quality["score"]` is *that same
+number* (the convention above), so a 0.9 coverage threshold moved the effective floor to
+**27** eligible years, and every sample in the reachable 20-26 band was suppressed as
+`coverage_below_threshold` — a sample-size shortfall wearing a coverage label, which is
+exactly the misattribution D5's two-layer suppression exists to prevent. Both entries are
+now `MIN_BASELINE_YEARS / 30`, written as that literal division so the boundary case
+compares *equal* (a hand-rounded `0.6667` would suppress a 20-year sample, since
+`20/30 = 0.666…`). Consequence, and the point: the compute-level floor — the layer that
+owns the distinct `baseline_years_below_minimum` reason — is the binding gate, and the
+policy entries are the structural backstop they were meant to be (an absent entry still
+force-suppresses as `policy_threshold_unset`). **Both** thresholds moved, not only
+coverage: with `quality["score"] == completeness`, leaving quality at 0.8 re-suppressed
+the identical band under `quality_below_threshold` (verified by probe during the fix).
+Every other metric's thresholds are untouched.
+
+`summary` is a **root-level Spanish string**, not a metric: the frontend
 renderer already keys on `typeof snapshot.summary === 'string'`
 (`RainfallMetricList.tsx:95-99`) and spec.md:92 asks it to *distinguish states*, which a
 `MetricResult` with no value/unit/interval cannot honestly do. It therefore has no
@@ -227,9 +247,15 @@ metric's `state` / `reason` / `value`. Three reasons this is the only coherent s
    (`service.py:399-400`), `policy_unavailable` (`service.py:403-404`),
    `metric_quality_invalid` (`service.py:405-412`), plus every threshold outcome
    (`service.py:413-426`).
-3. `normalize_snapshot` is the single funnel for all three disclosures — JSON
+3. `normalize_snapshot` is the single funnel every disclosure passes through — JSON
    (`router.py:145-147`), audit CSV (`router.py:176-183`) and the xlsx Resumen sheet (D7) —
    so one assembly point keeps the narrative identical across them with no duplication.
+   **Precisely (LIA-102 fold):** the two disclosures that actually *carry* `summary` are the
+   JSON body and the xlsx Resumen sheet. The audit CSV route serializes
+   `metric_rows(normalized)` (`service.py:451-459`), which iterates
+   `METRIC_GROUPS = ("annual", "antecedents", "intensity")` and never reads a root key, so
+   `summary` is structurally outside its row projection — the CSV's byte contract is
+   unchanged by this decision, which is what D7's regression test pins.
 
 Contract safety: writing `normalized["summary"]` after the loop is safe for the same reason
 the router injects `analysis_revision_id` post-normalize (`router.py:148-156`) —
@@ -267,6 +293,30 @@ last baseline comparison_end + 1d) with per-year windows disclosed in `quality`;
 `temporal_state` of percentile follows its weakest input (provisional if the selected year is);
 normal/percentile carry `provenance.source_id = "chirps-v3-final"` per spec.md:435 while
 `annual.selected` keeps its own — role assignment, not blending.
+
+**Same-date anchor amendment (slice 2b fix round, LI2A-101).** "Same date" above means
+the date the *selected year actually reaches*, not the calendar `comparison_end`. The
+baseline windows are cut at `baseline_cutoff_for(...)` — the last day covered by
+`window_end = min(comparison_end_exclusive, last_interval_end)`, the same clip
+`annual.selected` applies (`compute.py`) and the same one D6's anchor amendment adopted
+for the antecedents. Provider lag is the documented steady state, and under lag the old
+calendar cut compared unlike things: `annual.selected` totalled through
+`comparison_end − lag` while every baseline year totalled through `comparison_end`, so the
+selected year entered its own rank sample short by the lag and the percentile was biased
+low — a violation of this decision's own premise, not merely of D6's. With a 3-day lag and
+a baseline whose tail days are large, the reproduction moved the rank from the 50th
+percentile to the 3rd. `annual.normal`'s disclosed `interval_end`/`available_through` now
+end at that same effective cutoff, so the envelope tells the same truth `available_through`
+already told for the selected year after the D6 fix. With no lag the two dates are
+provably identical (`window_end == comparison_end_exclusive`), so the no-lag path is
+unchanged. Mechanism: one derivation, `compute._disclosure_window`, called by
+`build_snapshot` for its own window and by `tasks._persist_analysis_revision` (through
+`baseline_cutoff_for`) to pick `temporal.baseline_dates(...)` *before* the build — the same
+"computed once ahead, recomputed identically inside" shape the caller already uses for
+`comparison_end`, never a second independent derivation. Note the Feb-29 interaction is
+resolved consistently rather than special-cased: under lag the effective cutoff is not
+Feb 29, so the 30-year family applies and the rank is honest; without lag the 8-leap-year
+family still trips `MIN_BASELINE_YEARS`.
 
 **Cross-source caveat (Judgment Day round 1, LIB-003, info).** That role assignment means a
 current-year comparison ranks an NRT-sourced total against a Final-sourced baseline — a
@@ -392,10 +442,10 @@ intact.
 | File | Action | Description |
 |---|---|---|
 | `geo/rainfall/adapters/gee_client.py` | Modify | `asset_name_for` accepts `provider_asset`; export `BASELINE_ASSET_VERSION` |
-| `geo/rainfall/repository.py` | Modify | `baseline_cumulatives`, `daily_series_rows`, `baseline_curve_rows` (all anti-joined) |
+| `geo/rainfall/repository.py` | Modify | `baseline_cumulatives` (anti-joined, TZ-pinned year key, + the duplicated-slot guard `build_snapshot` already applies — LI2A-005), `daily_series_rows`, `baseline_curve_rows` (all anti-joined) |
 | `geo/rainfall/compute.py` | Modify | normal/percentile/antecedents in `build_snapshot` (**not** `summary` — D4 moves it to disclosure time); fixed `cross_source_baseline=…` discrepancy entry (D5); `weibull_percentile`, `MIN_BASELINE_YEARS` |
 | `geo/rainfall/service.py` | Modify | `data_revision` added to `SNAPSHOT_ROOT_KEYS` (`service.py:142-155`); pure `rainfall_summary(...)` assembled at the end of `normalize_snapshot` from post-policy states (D4) |
-| `geo/rainfall/policy.py` | Modify | 5 threshold entries (`annual_normal`, `annual_percentile`, `d7`, `d30`, `d90` — **no `summary` entry**, D4) + revision bump |
+| `geo/rainfall/policy.py` | Modify | 5 threshold entries (`annual_normal`, `annual_percentile`, `d7`, `d30`, `d90` — **no `summary` entry**, D4; the two baseline entries at `20/30`, D4 threshold note) + revision bump to `rainfall-v2-2026-08-insights` |
 | `geo/rainfall/tasks.py` | Modify | widened interval read, baseline resolution + `UnknownProviderScope` guard, `backfill_baseline_range` with `except (AdapterError, CircuitOpen)` (D2) |
 | `geo/rainfall/export.py` | Create | xlsx workbook + Spanish metric labels + series-consistency stamp in Resumen (D7) |
 | `geo/rainfall/series.py` | Create | one series contract: points + echoed `data_revision` + `consistent_with_snapshot`/`consistency_reason` pin recomputed over the build's read window (D3) |

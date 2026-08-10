@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, distinct, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
@@ -268,6 +268,11 @@ def baseline_cumulatives(
     aggregate ("window SUM" in design.md D1). Returns ``{year: (total_mm,
     matched_days, expected_days)}``; a year with zero matched rows is
     simply absent from the result -- never a fabricated zero total.
+
+    Raises ``ValueError`` when a year's read holds two non-superseded rows
+    for one ``interval_start`` (LI2A-005): that is the same broken invariant
+    :func:`compute.build_snapshot` refuses to sum, and here it would inflate
+    the total AND the matched-day count together, hiding itself.
     """
     if not dates:
         return {}
@@ -300,7 +305,12 @@ def baseline_cumulatives(
         "year", RainfallIntervalValue.interval_start.op("AT TIME ZONE")("UTC")
     )
     query = (
-        select(year_expr.label("year"), func.sum(RainfallIntervalValue.value), func.count())
+        select(
+            year_expr.label("year"),
+            func.sum(RainfallIntervalValue.value),
+            func.count(),
+            func.count(distinct(RainfallIntervalValue.interval_start)),
+        )
         .where(RainfallIntervalValue.source_id == source_id)
         .where(RainfallIntervalValue.scope_kind == "provider_asset")
         .where(RainfallIntervalValue.scope_id == asset)
@@ -309,10 +319,24 @@ def baseline_cumulatives(
         .where(~superseded.exists())
         .group_by(year_expr)
     )
-    return {
-        int(year): (float(total), int(matched), expected_days_by_year[int(year)])
-        for year, total, matched in db.execute(query).all()
-    }
+
+    totals: dict[int, tuple[float, int, int]] = {}
+    for year, total, matched, distinct_slots in db.execute(query).all():
+        if matched != distinct_slots:
+            # LI2A-005: the same broken invariant `build_snapshot` already
+            # refuses to sum (compute.py's duplicated-slot guard). Both read
+            # through the same supersession anti-join, so both inherit "at
+            # most one non-superseded row per slot" -- but here a duplicate
+            # would inflate BOTH the total AND matched_days, leaving the year
+            # looking complete while quietly biasing annual.normal and every
+            # percentile ranked against it. Loud, not quietly wrong.
+            raise ValueError(
+                "baseline_cumulatives received duplicated interval_start slots "
+                f"(source_id={source_id!r}, asset={asset!r}, year={int(year)}: "
+                f"{int(matched)} rows over {int(distinct_slots)} slots)"
+            )
+        totals[int(year)] = (float(total), int(matched), expected_days_by_year[int(year)])
+    return totals
 
 
 def persist_intervals(

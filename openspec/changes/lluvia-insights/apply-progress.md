@@ -316,3 +316,116 @@ Bookkeeping note: this document's slice-2a section records the targeted baseline
 ### Status (fix pass)
 
 2/2 CRITICAL findings fixed; 4 WARNING/SUGGESTION reported as `info` (never blocking, never re-reviewed). Ready for the scoped re-review of this fix diff against the ledger, then `sdd-verify`.
+
+## Slice 2b: Summary Mechanism, Revision Bump, Cross-Source Caveat, Stale Requeue (D3, D4, D5) — COMPLETE (12/12 tasks + 3 amendments)
+
+**Branch**: `feat/lluvia-insights-02b-summary` (base: `feat/lluvia-insights-02a-metrics`, tip `7677327` verified present at branch time).
+**Mode**: Strict TDD (RED → GREEN → REFACTOR). RED captured by running each new test against the untouched source before writing the implementation; where the source change was a single line, it was disabled in place and restored rather than stashed (see Deviations 5).
+
+### Baseline (before slice-2b changes, same branch, source at slice-2a tip)
+
+```
+pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q
+=> 381 passed, 1 warning (pre-existing SAWarning, unrelated)
+```
+
+### Final (after slice-2b changes)
+
+```
+pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q
+=> 401 passed, 0 failed, 1 warning (same pre-existing warning)
+   (381 baseline + 20 new tests, 0 regressions)
+
+pytest tests/new/ -q   (full backend regression, all domains)
+=> 1945 passed, 5 skipped (pre-existing live-backend/Martin skips), 0 failed
+   (was 1938 + 5; +7 -- the new tests that live UNDER tests/new/. The other
+    13 new tests are in tests/test_mutation_targets_rainfall.py, which sits
+    outside that tree and is therefore not counted by this command.)
+
+pytest tests/new/geo/rainfall/test_backend_api.py -q   (standalone)
+=> 52 passed
+   (LI1-001's collection-order rule re-checked on purpose: this slice makes
+    that file request the `db` fixture for the first time.)
+
+ruff check .          => All checks passed!            (exit 0)
+ruff format --check . => 400 files already formatted   (exit 0)
+```
+
+### TDD Cycle Evidence
+
+| Task | Test | RED evidence | GREEN evidence |
+|---|---|---|---|
+| A1 (LI2A-101) | `test_rainfall_insights_metrics.py::test_baseline_is_cut_at_the_effective_end_not_the_calendar_comparison_end` (new, real PG) | `assert 3144.0 == 144.0 ± 1.4e-04` against unfixed `compute.py` — a 3-day lag admitted 3 × 1000.0 mm of post-cutoff baseline tail into every one of the 30 baseline years | `compute._disclosure_window` + `compute.baseline_cutoff_for`, consumed by `tasks._persist_analysis_revision` for `temporal.baseline_dates(...)`; normal = 144.0, percentile = 50.0 (was 3.125 — the measured bias), envelope end 2020-02-18 |
+| A1 (no-regression half) | `::test_baseline_cutoff_equals_the_calendar_comparison_end_when_there_is_no_lag` (new, real PG) | No RED by construction — with the provider caught up `window_end == comparison_end_exclusive`, so the effective cutoff IS the calendar date; it passed against unfixed source, which IS the proof the amendment changes nothing without lag | Still green after the change: normal = 3144.0 (tail counted), percentile = 3.125, envelope end 2020-02-21 |
+| A1 (pure) | `TestNormalAndPercentileBaselineFloor` / `TestPercentileFeb29SmallSample` (4 call sites) | N/A — keyword rename `comparison_end_date` → `baseline_cutoff` | Same assertions, renamed keyword; the parameter can no longer be read as the calendar date |
+| A2 (LI2A-003) | `TestBaselineFloorBindsAtDisclosure` (5 tests, pure end-to-end through `normalize_snapshot`) | `assert 'coverage_below_threshold' != 'coverage_below_threshold'` at 21 eligible years; `assert 0.9 == 0.6666666666666666` on the drift test | `policy._BASELINE_SAMPLE_FRACTION = 20 / 30` on BOTH the coverage and quality entries; 19 → `baseline_years_below_minimum`, 20 → available (float boundary), 21 → available |
+| A2 (intermediate probe) | — | After changing ONLY coverage, an executed probe returned `normal -> suppressed quality_below_threshold \| completeness 0.7 \| quality 0.7` — the same band, a different label | Quality entry moved too; see Deviations 1 |
+| A3 (LI2A-005) | `test_rainfall_baseline.py::test_baseline_cumulatives_raises_on_a_duplicated_interval_slot` (new, real PG) | `Failed: DID NOT RAISE ValueError`; a temporary probe of the same fixture returned `{1991: (20.0, 2, 122)}` for a single 10.0 mm slot — total AND matched_days inflated together, so the year still looked complete | `count(DISTINCT interval_start)` vs `count()` per year → `ValueError` naming source/asset/year and both counts |
+| 2b.1/2b.2/2b.4 | `TestRainfallSummary` (4 tests) | `ImportError: cannot import name 'rainfall_summary' from 'app.domains.geo.rainfall.service'` (and the same for `SUMMARY_AVAILABLE_PREFIX`/`SUMMARY_METRIC_LABELS`); the stale-summary case additionally showed the old narrative passing through untouched | `service.rainfall_summary(...)` + `normalized["summary"] = rainfall_summary(normalized)` at the end of `normalize_snapshot` |
+| 2b.3 | `TestBuildSnapshotEnvelope::test_build_snapshot_emits_no_summary_key` | No RED — already true; an assert-only pin in the same sense as tasks 1.6/1.12, and now a regression guard against a future build-time narrative | Green on first run, before and after the service change |
+| 2b.5 | `test_backend_api.py::test_summary_disagrees_from_build_time_completeness_end_to_end` (new, real PG) | `KeyError: 'summary'` with the single `normalize_snapshot` assembly line disabled in place | Stored envelope says `available` / 33.0; served JSON says `suppressed` / `coverage_below_threshold`; the narrative agrees with the served state and never prints 33.0 |
+| 2b.6 | `test_backend_api.py::test_revision_bump_lands_enriched_envelope_not_conflict_skipped` (new, real PG) | `assert 'rainfall-v2-2026-08' != 'rainfall-v2-2026-08'` — the bump itself was missing, and without it the rest collides by construction | `RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08-insights"`; 2 rows for one fingerprint, ONE data_revision, two policy revisions, enriched envelope in the new row |
+| 2b.7/2b.8 | `test_backend_api.py::test_stale_policy_revision_served_and_requeued` (new, real PG) | `assert 0 == 1` — the row was already served (200), but no refresh was enqueued | `router.read_analysis` serves the row and enqueues `policy_revision_stale`; second poll adds nothing (pending pre-check), and a `done` refresh inside the cooldown window adds nothing either |
+| 2b.8 (counterexample) | `::test_current_policy_revision_serves_without_enqueueing_anything` (new, real PG) | No RED — pins that the trigger is the revision DIFFERING, not every 200 | Zero outbox rows for a current-revision key |
+| 2b.9/2b.10/2b.11 | `TestCrossSourceBaselineCaveat` (3 tests) | `AssertionError: ('normal', [])` — no caveat emitted for an NRT selected year | `cross_source_baseline=chirps-v3-final_vs_chirps-v3-sat` on normal + percentile; absent when both sides are Final; survives `_normalize_metric` into `metric_rows` |
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/compute.py` | Modified | A1: `_DisclosureWindow`/`_disclosure_window` (the single derivation, extracted from `build_snapshot`'s inline math) + public `baseline_cutoff_for` + `_cutoff_date`; `_normal_and_percentile_metrics`'s `comparison_end_date` → `baseline_cutoff`, and the envelope end follows it. 2b.11: `selected_source_id` parameter + the fixed `cross_source_baseline=...` discrepancy entry on both baseline metrics |
+| `gee-backend/app/domains/geo/rainfall/policy.py` | Modified | 2b.6: `RAINFALL_METRIC_POLICY_REVISION` bumped to `rainfall-v2-2026-08-insights` with the load-bearing rationale inline. A2: `_BASELINE_SAMPLE_FRACTION = 20 / 30` on `annual_normal`/`annual_percentile`'s coverage AND quality entries; every other metric untouched |
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified | 2b.4: `SUMMARY_METRIC_LABELS`/`SUMMARY_STATE_LABELS`/the three bucket prefixes, pure `_summary_entry` + `rainfall_summary`, and the one assembly line at the end of `normalize_snapshot` |
+| `gee-backend/app/domains/geo/rainfall/router.py` | Modified | 2b.8: `read_analysis` reads the row's fields into locals first (the enqueue commits and would otherwise expire the ORM instance), emits `rainfall.analysis.policy_revision_stale`, and enqueues the labelled refresh before normalizing |
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified | A3: `baseline_cumulatives` gained `count(DISTINCT interval_start)` and the loud duplicate-slot guard |
+| `gee-backend/app/domains/geo/rainfall/tasks.py` | Modified | A1: the baseline dates now come from `compute.baseline_cutoff_for(year, now, intervals=resolved)` instead of the calendar `comparison_end_date` |
+| `gee-backend/tests/test_mutation_targets_rainfall.py` | Modified | +13 tests: `TestRainfallSummary` (4), `TestBaselineFloorBindsAtDisclosure` (5), `TestCrossSourceBaselineCaveat` (3), `test_build_snapshot_emits_no_summary_key` (1); 4 keyword renames; LI2A-102 docstring fold |
+| `gee-backend/tests/new/geo/rainfall/test_backend_api.py` | Modified | +4 real-PG tests (2b.5/2b.6/2b.7/2b.8 counterexample) + local helpers; first `db`-fixture tests in this file |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_insights_metrics.py` | Modified | +2 real-PG tests (A1 lagged + no-lag) and the shared A1 baseline fixture |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_baseline.py` | Modified | +1 real-PG test (A3 duplicate-slot guard) |
+| `gee-backend/tests/new/geo/rainfall/test_prepr_contract_fixes.py` | Modified | Route-contract fixture moved onto the CURRENT policy revision (see Deviations 3) |
+| `openspec/changes/lluvia-insights/design.md` | Modified | D5 "Same-date anchor amendment" (A1); D4 threshold note + table rows (A2); D4 mechanism reason 3 corrected (2b.12/LIA-102); File Changes rows for `repository.py` and `policy.py` |
+| `openspec/changes/lluvia-insights/review-ledger.md` | Modified | LI2A-003/LI2A-005 → `fixed`; new LI2A-101 row; "Slice 2b" section with resolutions and verification |
+| `openspec/changes/lluvia-insights/tasks.md` | Modified | 2b.1-2b.12 marked `[x]` with inline deviation notes; a new amendments block (A1/A2/A3) |
+
+### Deviations from Design/Tasks
+
+1. **A2 moved BOTH thresholds, not only coverage.** The brief said "set the coverage threshold ... to 20/30". Applying that alone leaves the exact 20-26 band suppressed as `quality_below_threshold`, because `quality["score"]` for these two metrics IS `completeness` (design.md D4's own convention) — verified by executed probe, recorded in the ledger. The brief's own acceptance criterion ("21 years → available") is unreachable without moving the quality entry too, so both moved and D4's threshold note states why.
+2. **The threshold is written `20 / 30`, not `0.6667`.** `completeness` is `len(eligible_years) / len(possible_years)`, the identical float division, so the boundary case (exactly 20 eligible years) compares EQUAL and passes. A hand-rounded `0.6667` would suppress it, which is a silently wrong floor. Pinned by `test_exactly_the_floor_is_served_at_the_float_equality_boundary` and by a drift test tying the entries to `MIN_BASELINE_YEARS / len(baseline_years_for(...))`.
+3. **`test_prepr_contract_fixes.py::test_analysis_route_server_resolves_fingerprint_and_revision` needed a fixture update.** It injects `object()` as the session and a fake revision on `policy_revision="v1"`, which after 2b.8 is a STALE revision and now takes a DB-touching enqueue branch (`AttributeError: 'object' object has no attribute 'scalar'`). The test's subject is fingerprint resolution + `analysis_revision_id` injection, not stale serving, so its fake row was moved onto the current policy revision (restamping `metric_policy.revision` and the metric's own `revision` together, as a real row does). The stale branch has its own real-PG coverage. The feature was not weakened to keep a fake-session test green.
+4. **`build_snapshot` had no `summary` emission to remove** (task 2b.4's literal wording). It never emitted one — slice 2a's envelope is `annual`/`antecedents` only — so 2b.3 is an assert-only pin (same shape as tasks 1.6/1.12) that now guards against a future build-time narrative rather than removing an existing one.
+5. **RED for single-line changes was captured by disabling the line in place, not by `git stash`.** Slice 2a's fix pass recorded a stash mishap against an unrelated pre-existing stash (its Deviation 3). For `normalized["summary"] = rainfall_summary(normalized)` the line was replaced with `pass  # TEMP`, the test run captured (`KeyError: 'summary'`), and the line restored in the same command — no stash, no cross-branch risk. The multi-line REDs (A1, A3, A2, the caveat) needed no isolation at all: the tests were written before the implementation existed.
+6. **`rainfall_summary` reads `unit` in addition to `state`/`reason`/`value`** (task 2b.4 says "reads only `state`/`reason`/`value`"). D4's coherence invariant is about STATES: `unit` is static disclosure metadata that `apply_metric_policy` never rewrites and `_normalize_metric` passes through untouched, so it cannot make the narrative disagree with a badge. Without it the same sentence would print "204.0" for millimetres and "50.0" for a percentile with nothing to tell them apart. Guarded: a missing or non-string unit degrades to the bare number rather than printing `None`.
+7. **The caveat is built inside `_normal_and_percentile_metrics`, not bolted onto `build_snapshot`'s return value** (task 2b.11 names `build_snapshot`). Both metrics are constructed in one place; emitting the entry there keeps a single construction site instead of mutating returned dicts, and `build_snapshot` still owns the decision by passing `selected_source_id` in.
+8. **2b.5's disagreement comes from real evidence, not hand-tuned thresholds** (the task says "thresholds chosen so build-time and post-policy state disagree"). A gapped fixture (10 days, a 21-day hole, then 1 day) produces `completeness = 11/32` under the REAL shipped policy while `build_snapshot` still reports `available` — a genuine end-to-end disagreement rather than a fixture-only one, and one that survives future threshold edits as long as `annual` stays above 0.34.
+9. **`policy.py` defines its own `20 / 30` literal instead of importing `compute.MIN_BASELINE_YEARS`.** `compute.py` imports `policy.py`, so the reverse import would be circular. The drift risk this creates (LI2A-004's bug class) is closed by a test asserting the two are equal, not by a comment.
+
+### Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | `rainfall_summary({})` returns the explicit "no metrics disclosed" sentence rather than an empty string; a metric with `value=None` in an `available`-like state falls to the "sin dato" bucket via `_is_finite_metric_value`; a missing/non-string `unit` degrades to the bare number; `baseline=None` still suppresses `baseline_scope_unmapped` (unchanged, `test_build_snapshot_envelope_contract`) | Pass |
+| Boundaries | A2's float-equality boundary at exactly `MIN_BASELINE_YEARS` (20 → available, 19 → suppressed with the DISTINCT reason, 21 → available); A1's zero-lag boundary (`window_end == comparison_end_exclusive` ⇒ the effective cutoff IS the calendar date, own test); the A1 fixtures are deliberately confined to Jan 1 - Feb 20 so the day count is identical in leap and non-leap years (the leap-year fixture bug slice 2a hit in its own 2a.13, avoided by construction here) | Pass |
+| Concurrency / idempotency | The stale requeue is idempotent under repeated polls, asserted in both directions: a second poll hits `pending_row_for_key` and adds nothing, and a `done` refresh inside `RAINFALL_RECOMPUTE_COOLDOWN` hits `recent_done` and adds nothing — one refresh per key per cooldown window, never one per poll. 2b.6 asserts the bump produces exactly ONE new row (not a duplicate per rebuild) since a third build would collide on the same (fingerprint, policy_revision, data_revision) | Pass |
+| Malicious input / security | No new route, no new request field, no widened auth: the requeue reuses the router-level `require_admin_or_operator` and the SAME server-derived fingerprint the read used, so a caller cannot steer which key gets enqueued beyond the scope/year it may already request. The enqueue is bounded by the pre-existing cooldown, so a poll loop cannot turn into a GEE-quota amplifier | Pass |
+| Partial failure / recovery | The stale refresh is enqueued BEFORE normalization, so a stale row that ALSO fails its contract still gets its healing refresh instead of only a 503; `queue_missing_analysis` commits, so the row's fields are read into locals first and no post-commit ORM refresh can fail mid-response. A3's guard turns a corrupted (duplicated-slot) baseline read into a loud failure instead of a quietly biased normal | Pass |
+| State / tenancy / time | A1 is itself a time-boundary fix, asserted on both sides of the lag; the disclosed `comparison_end` stays the CALENDAR date (the owner's decision) while only the comparison cutoff follows the evidence, asserted in the same test. Old snapshot rows keep their own `policy_revision` and are still served self-consistently after the bump (2b.7), so the bump is not a retroactive rewrite | Pass |
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (`feature-branch-chain`, per tasks.md's Review Workload Forecast)
+- Current work unit: Unit 2b — "disclosure-time `summary` + revision bump + cross-source caveat + stale requeue (D3, D4, D5)", plus the three ledger-driven amendments the orchestrator folded in
+- Boundary: starts at `feat/lluvia-insights-02a-metrics`'s tip (`7677327`), ends at this commit — independently mergeable and independently verifiable (401 targeted, 1945 full-suite, ruff clean)
+- Estimated review budget impact: ~210 production lines forecast for the slice; actual production diff is 6 files, with the amendments adding roughly 60 further production lines (the `_disclosure_window` extraction, the policy fraction, the SQL guard). Test and doc lines carry the rest.
+
+### Remaining Tasks (out of this batch's scope)
+
+- [ ] Slice 3a: Series Module — Consistency Pin + `data_revision` Exposure (3a.1-3a.14)
+- [ ] Slice 3b: xlsx Export + TS Contract + Consistency Exposure (3b.1-3b.11)
+- [ ] Slice 4: Frontend Chart (4.1-4.10)
+- [ ] Ops.1-3: real 1991-2020 backfill runbook execution (owner-run, explicitly NOT this agent's scope)
+- [ ] Ops.4-6: doc-nit folds
+
+### Status
+
+12/12 slice-2b tasks complete + 3 ledger amendments (LI2A-101/003/005) fixed. 401/401 targeted, 1945/1945 full backend regression (5 pre-existing skips), ruff check + format clean. Ready for review/PR of this work unit, then `sdd-apply` for slice 3a (or `sdd-verify` if the orchestrator wants a checkpoint first).

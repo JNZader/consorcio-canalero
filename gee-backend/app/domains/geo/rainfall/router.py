@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
 from app.domains.geo.rainfall.metrics import record_event
+from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
 from app.domains.geo.rainfall.service import (
     SnapshotContractError,
     analysis_request_fingerprint,
@@ -141,9 +142,49 @@ def read_analysis(
             request_fingerprint=fingerprint,
         )
         return JSONResponse(queued, status_code=202)
+    # Read the row's fields BEFORE any enqueue below: queue_missing_analysis
+    # commits, which expires the ORM instance and would make every later
+    # attribute access a fresh SELECT.
+    stored_snapshot = revision.snapshot
+    stored_policy_revision = revision.policy_revision
+    revision_id = str(revision.id)
+
+    if stored_policy_revision != RAINFALL_METRIC_POLICY_REVISION:
+        # Task 2b.8 (design.md D3): the stored row was written under a
+        # SUPERSEDED policy revision. It is still served -- normalized with
+        # its OWN policy_revision below, so it stays self-consistent -- and a
+        # refresh is enqueued so the enriched envelope eventually lands.
+        # Neither sweep revisits a past-year key that is already `done`, so
+        # the request path is the only place this is noticed. Cost is bounded
+        # by queue_missing_analysis's own recent_done cooldown plus the
+        # pending-row pre-check: one refresh per key per cooldown window,
+        # never one per poll. Enqueued BEFORE normalization so a stale row
+        # that also fails its contract still gets its healing refresh
+        # instead of only a 503.
+        record_event(
+            "rainfall.analysis.policy_revision_stale",
+            revision_id=revision_id,
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=payload.year,
+            served_policy_revision=stored_policy_revision,
+            current_policy_revision=RAINFALL_METRIC_POLICY_REVISION,
+        )
+        queue_missing_analysis(
+            db,
+            scope=scope,
+            year=payload.year,
+            labels=("policy_revision_stale",),
+            event_window=(
+                payload.event_window.model_dump(mode="json") if payload.event_window else None
+            ),
+            request_fingerprint=fingerprint,
+        )
+
     try:
         normalized = normalize_snapshot(
-            revision.snapshot, expected_policy_revision=revision.policy_revision
+            stored_snapshot, expected_policy_revision=stored_policy_revision
         )
         # JDB-301 (review-ledger.md "Judgment Day -- APPLY-PHASE completion"):
         # build_snapshot never sets this field (it does not know its own
@@ -153,10 +194,10 @@ def read_analysis(
         # envelope via `dict(snapshot)` and never strips extra/missing root
         # keys, so setting it post-normalize is safe and does not need to
         # touch normalize_snapshot itself.
-        normalized["analysis_revision_id"] = str(revision.id)
+        normalized["analysis_revision_id"] = revision_id
         record_event(
             "rainfall.analysis.served",
-            revision_id=str(getattr(revision, "id", "")),
+            revision_id=revision_id,
             scope_kind=scope.kind,
             scope_id=scope.id,
             scope_version=scope.version,

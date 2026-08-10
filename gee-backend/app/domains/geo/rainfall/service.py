@@ -426,6 +426,107 @@ def _normalize_metric(
     return {**raw, "value": applied.value, "state": state, "reason": applied.reason}
 
 
+# ---------------------------------------------------------------------------
+# The disclosure-time summary (design.md D4, lluvia-insights slice 2b)
+# ---------------------------------------------------------------------------
+
+# Same vocabulary the panel prints beside the narrative
+# (consorcio-web/.../rainfall/rainfallFormat.ts): the coherence invariant is
+# about what a reader sees, so the summary must name a metric the way its own
+# badge does. An unknown key falls back to the key itself, exactly as
+# `metricLabel` does on the client.
+SUMMARY_METRIC_LABELS: dict[str, str] = {
+    "selected": "Acumulado del año",
+    "normal": "Normal 1991–2020",
+    "percentile": "Percentil histórico",
+    "d7": "Antecedente 7 días",
+    "d30": "Antecedente 30 días",
+    "d90": "Antecedente 90 días",
+    "p30": "P30",
+    "p60": "P60",
+    "p3h": "P3h",
+    "p24h": "P24h",
+    "i30": "I30",
+    "i60": "I60",
+    "peak": "Pico del evento",
+    "duration": "Duración del evento",
+}
+
+SUMMARY_STATE_LABELS: dict[str, str] = {
+    "available": "disponible",
+    "partial": "parcial",
+    "suppressed": "suprimida",
+    "unavailable": "no disponible",
+}
+
+SUMMARY_AVAILABLE_PREFIX = "Disponibles:"
+SUMMARY_PARTIAL_PREFIX = "Parciales:"
+SUMMARY_MISSING_PREFIX = "Sin dato:"
+SUMMARY_EMPTY = "Este análisis no divulga métricas."
+
+
+def _summary_entry(name: str, metric: dict[str, Any]) -> str:
+    """One metric's phrase. Reads ``state``/``reason``/``value`` -- the three
+    fields the policy owns -- plus ``unit``, which policy never rewrites and
+    without which "204.0" and "50.0" would be indistinguishable millimetres
+    and percentiles in the same sentence."""
+    label = SUMMARY_METRIC_LABELS.get(name, name)
+    state = metric.get("state")
+    if state in {"available", "partial"} and _is_finite_metric_value(metric.get("value")):
+        unit = metric.get("unit")
+        measured = f"{metric['value']:.1f}"
+        return (
+            f"{label} {measured} {unit}"
+            if isinstance(unit, str) and unit
+            else f"{label} {measured}"
+        )
+    state_label = SUMMARY_STATE_LABELS.get(state, "estado desconocido")
+    reason = metric.get("reason")
+    if isinstance(reason, str) and reason:
+        return f"{label} ({state_label}: {reason})"
+    return f"{label} ({state_label})"
+
+
+def rainfall_summary(groups: dict[str, Any]) -> str:
+    """The served narrative, derived from ALREADY-NORMALIZED metric groups
+    (design.md D4).
+
+    Pure and total: it reads only what ``_normalize_metric`` decided --
+    ``state``, ``reason``, ``value`` (and the untouched ``unit``) -- never
+    build-time ``completeness``/``quality``, which survive normalization
+    unchanged and would describe states that were never served. Membership
+    is structural rather than narrated: a metric appears under
+    ``Disponibles`` if and only if its DISCLOSED state is ``available``, so
+    the summary cannot call available something the policy suppressed.
+
+    Metric order follows the envelope's own group/metric order, which
+    ``build_snapshot`` fixes and the JSON round-trip preserves, so the same
+    stored revision always narrates identically.
+    """
+    buckets: dict[str, list[str]] = {"available": [], "partial": [], "missing": []}
+    for group_name in METRIC_GROUPS:
+        group = groups.get(group_name)
+        if not isinstance(group, dict):
+            continue
+        for name, metric in group.items():
+            if not isinstance(metric, dict):
+                continue
+            state = metric.get("state")
+            bucket = state if state in {"available", "partial"} else "missing"
+            buckets[bucket].append(_summary_entry(name, metric))
+
+    sentences = [
+        f"{prefix} {'; '.join(entries)}."
+        for prefix, entries in (
+            (SUMMARY_AVAILABLE_PREFIX, buckets["available"]),
+            (SUMMARY_PARTIAL_PREFIX, buckets["partial"]),
+            (SUMMARY_MISSING_PREFIX, buckets["missing"]),
+        )
+        if entries
+    ]
+    return " ".join(sentences) if sentences else SUMMARY_EMPTY
+
+
 def normalize_snapshot(snapshot: object, *, expected_policy_revision: str) -> dict[str, Any]:
     """Validate and apply one approved policy before JSON or CSV disclosure."""
     if not isinstance(snapshot, dict) or not set(snapshot) <= SNAPSHOT_ROOT_KEYS:
@@ -445,6 +546,14 @@ def normalize_snapshot(snapshot: object, *, expected_policy_revision: str) -> di
             name: _normalize_metric(metric, policy, expected_policy_revision)
             for name, metric in group.items()
         }
+    # design.md D4: the narrative is assembled HERE, after the loop above
+    # decided every served state, and it OVERWRITES anything the stored
+    # envelope carried -- `build_snapshot` emits no summary, and a legacy
+    # build-time one would describe states this policy revision may never
+    # serve. Safe for the same reason the router injects
+    # `analysis_revision_id` post-normalize: the root-key set is validated on
+    # INPUT, and `summary` is already allow-listed.
+    normalized["summary"] = rainfall_summary(normalized)
     return normalized
 
 

@@ -371,3 +371,159 @@ def test_antecedent_gap_inside_the_clipped_window_still_suppresses(db):
         metric = snapshot["antecedents"][name]
         assert metric["state"] == "suppressed", (name, metric)
         assert metric["reason"] == "antecedent_window_incomplete", (name, metric)
+
+
+# ---------------------------------------------------------------------------
+# LI2A-101 (slice 2b amendment A1): the baseline comparison is cut at the
+# SAME effective end annual.selected totals through, not at the raw calendar
+# comparison_end. Both fixtures below deliberately avoid February 29 (the
+# whole window sits inside Jan 1 - Feb 20), so every baseline year -- leap or
+# not -- has exactly the same day count and the expected totals are
+# year-invariant arithmetic rather than a per-year leap adjustment.
+# ---------------------------------------------------------------------------
+
+_A1_LOW_YEARS = range(1991, 2006)  # 15 baseline years at 1.0 mm/day
+_A1_HIGH_YEARS = range(2006, 2021)  # 15 baseline years at 5.0 mm/day
+_A1_DAYS_TO_FEB_17 = 48  # Jan 1 .. Feb 17 inclusive, in EVERY year
+_A1_TAIL_DAYS = 3  # Feb 18, 19, 20 -- past a 3-day-lagged effective end
+_A1_TAIL_VALUE = 1000.0  # deliberately huge: leaking it is unmissable
+
+
+def _seed_a1_baseline(db, *, asset: str) -> None:
+    """30 baseline years, each complete Jan 1 - Feb 17 at its own tier value,
+    plus a Feb 18-20 tail so heavy that including it dwarfs everything else."""
+    for years, value in ((_A1_LOW_YEARS, 1.0), (_A1_HIGH_YEARS, 5.0)):
+        for baseline_year in years:
+            persist_intervals(
+                db,
+                source_id="chirps-v3-final",
+                scope_kind="provider_asset",
+                scope_id=asset,
+                scope_version=BASELINE_ASSET_VERSION,
+                rows=_daily_rows(date(baseline_year, 1, 1), _A1_DAYS_TO_FEB_17, value),
+            )
+            persist_intervals(
+                db,
+                source_id="chirps-v3-final",
+                scope_kind="provider_asset",
+                scope_id=asset,
+                scope_version=BASELINE_ASSET_VERSION,
+                rows=_daily_rows(date(baseline_year, 2, 18), _A1_TAIL_DAYS, _A1_TAIL_VALUE),
+            )
+
+
+def test_baseline_is_cut_at_the_effective_end_not_the_calendar_comparison_end(db):
+    """LI2A-101 (amendment A1): under provider lag -- the documented steady
+    state -- ``annual.selected`` totals through the CLIPPED window end while
+    the baseline used to be cut at the raw calendar ``comparison_end``. That
+    ranks a short selected year against full-through-today baselines and
+    biases the percentile low, violating D5's own same-date principle. The
+    baseline cutoff now follows the same effective end the selected total
+    uses."""
+    from app.domains.geo.rainfall import tasks
+
+    scope_id = "zone-a1-lagged-baseline-cutoff"
+    asset = asset_name_for("zone", scope_id)
+    year = 2025
+    now = datetime(year, 2, 20, 12, 0, tzinfo=UTC)  # comparison_end = Feb 20
+
+    _seed_a1_baseline(db, asset=asset)
+    # The selected year lags 3 days behind the calendar: published through
+    # Feb 17, so window_end == Feb 18T00:00Z and the effective end is Feb 17.
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_daily_rows(date(year, 1, 1), _A1_DAYS_TO_FEB_17, 2.0, provider_revision="v3-nrt"),
+    )
+    db.flush()
+
+    outbox, batch, fingerprint = _build_outbox_and_batch(db, scope_id=scope_id, year=year)
+    tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=now)
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    snapshot = revision.snapshot
+
+    # The DISCLOSED comparison_end stays the calendar date (the owner's
+    # 2026-08-08 decision, unchanged) -- only the cutoff the comparison is
+    # actually made at follows the evidence.
+    assert snapshot["comparison_end"] == date(year, 2, 20).isoformat()
+
+    selected = snapshot["annual"]["selected"]
+    assert selected["value"] == pytest.approx(2.0 * _A1_DAYS_TO_FEB_17)  # 96.0
+    assert (
+        selected["provenance"]["available_through"] == datetime(year, 2, 18, tzinfo=UTC).isoformat()
+    )
+
+    # Baseline totals through Feb 17: 48 x 1.0 = 48.0 (15 years) and
+    # 48 x 5.0 = 240.0 (15 years) -> mean 144.0. Cut at the CALENDAR Feb 20
+    # instead, every year would also carry the 3 x 1000.0 tail (3048.0 /
+    # 3240.0 -> mean 3144.0).
+    normal = snapshot["annual"]["normal"]
+    assert normal["state"] == "available"
+    assert normal["value"] == pytest.approx(144.0)
+
+    # The rank is the load-bearing half: against Feb-17 baselines the
+    # selected 96.0 sits 16th of the 31-value combined sample -> exactly the
+    # median, 100 * 16 / 32. Against calendar-Feb-20 baselines (every one of
+    # them >= 3048.0) it would rank LAST, 100 * 1 / 32 = 3.125 -- the low
+    # bias this amendment exists to remove.
+    percentile = snapshot["annual"]["percentile"]
+    assert percentile["state"] == "available"
+    assert percentile["value"] == pytest.approx(50.0)
+
+    # The disclosed baseline envelope ends at the same effective cutoff.
+    expected_envelope_end = datetime(2020, 2, 18, tzinfo=UTC).isoformat()
+    assert normal["interval_end"] == expected_envelope_end
+    assert normal["provenance"]["available_through"] == expected_envelope_end
+    assert percentile["interval_end"] == expected_envelope_end
+
+
+def test_baseline_cutoff_equals_the_calendar_comparison_end_when_there_is_no_lag(db):
+    """A1's no-regression half: with the provider caught up,
+    ``window_end == comparison_end_exclusive``, so the effective cutoff IS
+    the calendar ``comparison_end`` and the baseline behaves exactly as it
+    did before the amendment -- the tail through Feb 20 is counted."""
+    from app.domains.geo.rainfall import tasks
+
+    scope_id = "zone-a1-no-lag-baseline-cutoff"
+    asset = asset_name_for("zone", scope_id)
+    year = 2025
+    now = datetime(year, 2, 20, 12, 0, tzinfo=UTC)  # comparison_end = Feb 20
+    days_to_feb_20 = _A1_DAYS_TO_FEB_17 + _A1_TAIL_DAYS  # 51, in every year
+
+    _seed_a1_baseline(db, asset=asset)
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_daily_rows(date(year, 1, 1), days_to_feb_20, 2.0, provider_revision="v3-nrt"),
+    )
+    db.flush()
+
+    outbox, batch, fingerprint = _build_outbox_and_batch(db, scope_id=scope_id, year=year)
+    tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=now)
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    snapshot = revision.snapshot
+
+    selected = snapshot["annual"]["selected"]
+    assert selected["value"] == pytest.approx(2.0 * days_to_feb_20)  # 102.0
+    assert (
+        selected["provenance"]["available_through"] == datetime(year, 2, 21, tzinfo=UTC).isoformat()
+    )
+
+    # Both tiers now include the 3 x 1000.0 tail: 3048.0 and 3240.0 -> 3144.0.
+    normal = snapshot["annual"]["normal"]
+    assert normal["state"] == "available"
+    assert normal["value"] == pytest.approx(3144.0)
+    assert normal["interval_end"] == datetime(2020, 2, 21, tzinfo=UTC).isoformat()
+
+    percentile = snapshot["annual"]["percentile"]
+    assert percentile["value"] == pytest.approx(100 * 1 / 32)

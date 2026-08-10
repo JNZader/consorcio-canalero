@@ -209,6 +209,7 @@ def _persist_analysis_revision(
     from app.domains.geo.rainfall import temporal
     from app.domains.geo.rainfall.adapters.gee_client import UnknownProviderScope, asset_name_for
     from app.domains.geo.rainfall.compute import (
+        baseline_cutoff_for,
         build_snapshot,
         data_revision_for,
         fingerprint_lock_key,
@@ -297,6 +298,13 @@ def _persist_analysis_revision(
     # not become a build crash: UnknownProviderScope is caught and
     # build_snapshot receives baseline=None (full suppression wiring
     # completes in slice 2a's annual.normal/percentile builder).
+    #
+    # design.md D5 amendment (slice 2b, LI2A-101): the baseline windows are
+    # cut at the EFFECTIVE end this build reaches (compute.baseline_cutoff_for
+    # over the same intervals build_snapshot is about to read), never at the
+    # calendar comparison_end -- otherwise a lagging provider would rank a
+    # selected year short by the lag against baselines totalled through
+    # today. With no lag the two dates are identical.
     comparison_end_date = temporal.comparison_end(row.year, temporal.buenos_aires_date(now))
     try:
         baseline_asset = asset_name_for(scope.kind, scope.id)
@@ -307,7 +315,9 @@ def _persist_analysis_revision(
             db,
             source_id=RAINFALL_HISTORICAL_SOURCE,
             asset=baseline_asset,
-            dates=temporal.baseline_dates(comparison_end_date),
+            dates=temporal.baseline_dates(
+                baseline_cutoff_for(year=row.year, now=now, intervals=resolved)
+            ),
         )
 
     snapshot = build_snapshot(

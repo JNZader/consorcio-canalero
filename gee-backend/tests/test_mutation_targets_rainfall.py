@@ -923,6 +923,184 @@ class TestMetricRowsCsv:
 
 
 # ===========================================================================
+# service — the disclosure-time summary (lluvia-insights slice 2b, D4)
+# ===========================================================================
+
+
+def _post_policy_metric(name: str, **overrides: Any) -> dict[str, Any]:
+    """What ``_normalize_metric`` actually hands the summary: the RAW build
+    dict with ``value``/``state``/``reason`` overwritten by the policy
+    outcome (``{**raw, ...}``, service.py). Build-time ``completeness`` and
+    ``quality`` survive UNTOUCHED at 1.0 -- which is exactly the trap: a
+    summary derived from completeness would call a policy-suppressed metric
+    available."""
+    payload: dict[str, Any] = {
+        "metric": name,
+        "value": 12.0,
+        "unit": "mm",
+        "state": "available",
+        "reason": None,
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {"score": 1.0},
+    }
+    payload.update(overrides)
+    return payload
+
+
+class TestRainfallSummary:
+    """Tasks 2b.1/2b.2/2b.4 (design.md D4 coherence invariant): the summary
+    is assembled at DISCLOSURE time from post-``apply_metric_policy`` states,
+    never from build-time completeness, so the narrative can never contradict
+    the badges printed beside it."""
+
+    def test_summary_never_describes_a_policy_suppressed_metric_as_available(self) -> None:
+        """Spec: "Policy suppresses a metric the raw data would have
+        supported"."""
+        from app.domains.geo.rainfall.service import (
+            SUMMARY_AVAILABLE_PREFIX,
+            SUMMARY_MISSING_PREFIX,
+            rainfall_summary,
+        )
+
+        summary = rainfall_summary(
+            {
+                "annual": {
+                    "selected": _post_policy_metric("annual", value=204.0),
+                    # Build-time completeness still reads 1.0; the policy
+                    # suppressed it at disclosure.
+                    "normal": _post_policy_metric(
+                        "annual_normal",
+                        value=None,
+                        state="suppressed",
+                        reason="coverage_below_threshold",
+                    ),
+                }
+            }
+        )
+
+        assert "Normal 1991–2020 (suprimida: coverage_below_threshold)" in summary
+        available, _, missing = summary.partition(SUMMARY_MISSING_PREFIX)
+        assert available.startswith(SUMMARY_AVAILABLE_PREFIX)
+        # The suppressed metric is named ONLY in the "sin dato" sentence, and
+        # the served value (204.0) belongs to the metric that really has one.
+        assert "Normal 1991–2020" not in available
+        assert "Acumulado del año 204.0 mm" in available
+        assert "204.0" not in missing
+
+    @staticmethod
+    def _sections(summary: str) -> dict[str, list[str]]:
+        """``{bucket prefix: [entry, ...]}``. One sentence per bucket,
+        entries separated by "; ". The sentence terminator is a period
+        followed by a space or end-of-string, so a decimal point inside a
+        value (204.0) never splits an entry."""
+        import re
+
+        from app.domains.geo.rainfall.service import (
+            SUMMARY_AVAILABLE_PREFIX,
+            SUMMARY_MISSING_PREFIX,
+            SUMMARY_PARTIAL_PREFIX,
+        )
+
+        sections: dict[str, list[str]] = {}
+        for prefix in (SUMMARY_AVAILABLE_PREFIX, SUMMARY_PARTIAL_PREFIX, SUMMARY_MISSING_PREFIX):
+            match = re.search(rf"{re.escape(prefix)} (.*?)\.(?:\s|$)", summary)
+            if match is not None:
+                sections[prefix] = match.group(1).split("; ")
+        return sections
+
+    def test_summary_states_match_disclosed_metric_states(self) -> None:
+        """Spec: "Summary and badges cannot disagree" -- every state the
+        narrative names for a metric is that metric's own disclosed state."""
+        from app.domains.geo.rainfall.service import (
+            SUMMARY_AVAILABLE_PREFIX,
+            SUMMARY_METRIC_LABELS,
+            SUMMARY_MISSING_PREFIX,
+            SUMMARY_PARTIAL_PREFIX,
+            SUMMARY_STATE_LABELS,
+            rainfall_summary,
+        )
+
+        groups = {
+            "annual": {
+                "selected": _post_policy_metric("annual", value=204.0),
+                "normal": _post_policy_metric(
+                    "annual_normal",
+                    value=None,
+                    state="suppressed",
+                    reason="baseline_years_below_minimum",
+                ),
+                "percentile": _post_policy_metric(
+                    "annual_percentile",
+                    value=None,
+                    state="unavailable",
+                    reason="policy_revision_mismatch",
+                ),
+            },
+            "antecedents": {
+                "d7": _post_policy_metric("d7", value=14.0, state="partial"),
+                "d90": _post_policy_metric(
+                    "d90", value=None, state="suppressed", reason="antecedent_window_incomplete"
+                ),
+            },
+        }
+        summary = rainfall_summary(groups)
+        sections = self._sections(summary)
+        bucket_for_state = {
+            "available": SUMMARY_AVAILABLE_PREFIX,
+            "partial": SUMMARY_PARTIAL_PREFIX,
+        }
+
+        entries = [entry for section in sections.values() for entry in section]
+        assert len(entries) == 5  # every disclosed metric is narrated exactly once
+
+        for group in groups.values():
+            for name, metric in group.items():
+                label = SUMMARY_METRIC_LABELS[name]
+                expected_bucket = bucket_for_state.get(metric["state"], SUMMARY_MISSING_PREFIX)
+                matching = [
+                    (prefix, entry)
+                    for prefix, section in sections.items()
+                    for entry in section
+                    if entry.startswith(label)
+                ]
+                assert len(matching) == 1, (label, matching)
+                prefix, entry = matching[0]
+                # Membership in the "Disponibles" sentence IS the state
+                # claim, so a suppressed metric cannot be narrated as served.
+                assert prefix == expected_bucket, (label, prefix, expected_bucket)
+                if metric["state"] in {"available", "partial"}:
+                    # A metric with a value states it, and names no state
+                    # word that could disagree with its own badge.
+                    assert entry == f"{label} {metric['value']:.1f} {metric['unit']}"
+                else:
+                    # "no disponible" CONTAINS "disponible", so the state is
+                    # pinned as the whole token, never as a substring search.
+                    expected_state = SUMMARY_STATE_LABELS[metric["state"]]
+                    assert entry == f"{label} ({expected_state}: {metric['reason']})"
+
+    def test_summary_of_an_empty_envelope_claims_nothing(self) -> None:
+        from app.domains.geo.rainfall.service import rainfall_summary
+
+        assert rainfall_summary({}) == "Este análisis no divulga métricas."
+
+    def test_summary_is_written_at_disclosure_and_overwrites_a_stale_one(self) -> None:
+        """``normalize_snapshot`` OWNS the root ``summary`` key: a narrative
+        that somehow reached the stored envelope is replaced by the one
+        derived from the states actually being served, never merged with it."""
+        normalized = normalize_snapshot(
+            _snapshot(
+                annual={"selected": _metric_raw(quality={"score": 0.1})},
+                summary="una narrativa vieja que ya no describe lo servido",
+            ),
+            expected_policy_revision="v1",
+        )
+        assert normalized["annual"]["selected"]["reason"] == "quality_below_threshold"
+        assert "una narrativa vieja" not in normalized["summary"]
+        assert "quality_below_threshold" in normalized["summary"]
+
+
+# ===========================================================================
 # compute.py — pure NRT-correction revision helpers (rainfall-materialization PR1)
 # ===========================================================================
 
@@ -1148,6 +1326,25 @@ class TestBuildSnapshotEnvelope:
             ("antecedents", "d90"),
         ):
             assert set(snapshot[group_name][member_name]) == expected_fields
+
+    def test_build_snapshot_emits_no_summary_key(self) -> None:
+        """Task 2b.3 (design.md D4): the narrative is assembled at
+        DISCLOSURE time, from post-policy states. ``compute.py`` is pure and
+        never applies policy, so any summary it emitted would describe
+        states that may never be the ones served -- it must emit none."""
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="historical",
+            source_id="chirps-v3-final",
+            intervals=_daily_intervals(start=date(2024, 1, 1), values=[1.0, 2.0, 3.0]),
+            batch=_fixture_batch_evidence(),
+            now=datetime(2024, 6, 15, tzinfo=UTC),
+            baseline={year: (10.0, 365, 365) for year in range(1991, 2021)},
+        )
+        assert "summary" not in snapshot
 
     def test_build_snapshot_raises_on_duplicate_interval_start(self) -> None:
         """Task 2.7: a duplicated slot is a broken invariant, not a sum —
@@ -1630,9 +1827,10 @@ class TestNormalAndPercentileBaselineFloor:
 
         normal, percentile = _normal_and_percentile_metrics(
             baseline=self._complete_baseline(range(1991, 1991 + 19)),
-            comparison_end_date=self._COMPARISON_END,
+            baseline_cutoff=self._COMPARISON_END,
             selected_value=12.0,
             selected_temporal_state="final",
+            selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
             scope=_ZONE_SCOPE,
             now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
@@ -1649,9 +1847,10 @@ class TestNormalAndPercentileBaselineFloor:
 
         normal, percentile = _normal_and_percentile_metrics(
             baseline=self._complete_baseline(range(1991, 1991 + 20)),
-            comparison_end_date=self._COMPARISON_END,
+            baseline_cutoff=self._COMPARISON_END,
             selected_value=12.0,
             selected_temporal_state="final",
+            selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
             scope=_ZONE_SCOPE,
             now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
@@ -1671,9 +1870,10 @@ class TestNormalAndPercentileBaselineFloor:
 
         normal, percentile = _normal_and_percentile_metrics(
             baseline=self._complete_baseline(range(1991, 2021)),
-            comparison_end_date=self._COMPARISON_END,
+            baseline_cutoff=self._COMPARISON_END,
             selected_value=None,
             selected_temporal_state="provisional",
+            selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
             scope=_ZONE_SCOPE,
             now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
@@ -1683,6 +1883,91 @@ class TestNormalAndPercentileBaselineFloor:
         assert percentile["state"] == "suppressed"
         assert percentile["reason"] == "annual_selected_value_unavailable"
         assert percentile["value"] is None
+
+
+class TestBaselineFloorBindsAtDisclosure:
+    """LI2A-003 (slice 2b amendment A2): ``MIN_BASELINE_YEARS`` was DEAD
+    CODE at disclosure time. ``annual_normal``/``annual_percentile`` carry
+    ``completeness = eligible_years / 30`` (and ``quality["score"]`` is the
+    same number, D4), so a 0.9 threshold made the effective floor 27
+    eligible years -- and in the reachable 20-26 band the served reason was
+    ``coverage_below_threshold``, misattributing a sample-size shortfall as
+    a coverage problem. Both thresholds are now ``MIN_BASELINE_YEARS / 30``,
+    so the compute-level floor -- the one with the distinct reason D5
+    promises -- is the binding gate."""
+
+    _NOW = datetime(2024, 8, 7, 12, 0, tzinfo=UTC)
+
+    @staticmethod
+    def _normalized_annual(eligible_years: int) -> dict[str, Any]:
+        from app.domains.geo.rainfall.compute import build_snapshot
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+        from app.domains.geo.rainfall.service import normalize_snapshot
+
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=_daily_intervals(start=date(2024, 1, 1), values=[5.0] * 220),
+            batch=_fixture_batch_evidence(source_id="chirps-v3-sat"),
+            now=TestBaselineFloorBindsAtDisclosure._NOW,
+            # Every year complete, so the per-year 0.95 filter keeps all of
+            # them: `eligible_years` is exactly the sample size under test.
+            baseline={year: (10.0, 365, 365) for year in range(1991, 1991 + eligible_years)},
+        )
+        normalized = normalize_snapshot(
+            snapshot, expected_policy_revision=RAINFALL_METRIC_POLICY_REVISION
+        )
+        return normalized["annual"]
+
+    def test_19_years_suppresses_with_the_distinct_sample_size_reason(self) -> None:
+        annual = self._normalized_annual(19)
+        for name in ("normal", "percentile"):
+            assert annual[name]["state"] == "suppressed", (name, annual[name])
+            assert annual[name]["reason"] == "baseline_years_below_minimum", (name, annual[name])
+            assert annual[name]["value"] is None, (name, annual[name])
+
+    def test_21_years_is_served_instead_of_misreported_as_a_coverage_shortfall(self) -> None:
+        annual = self._normalized_annual(21)
+        for name in ("normal", "percentile"):
+            # Pre-amendment this was suppressed `coverage_below_threshold`
+            # (21/30 = 0.7 < 0.9) -- a sample-size shortfall wearing a
+            # coverage label, for a sample the floor itself accepts.
+            assert annual[name]["reason"] != "coverage_below_threshold", (name, annual[name])
+            assert annual[name]["state"] == "available", (name, annual[name])
+            assert annual[name]["value"] is not None, (name, annual[name])
+
+    def test_exactly_the_floor_is_served_at_the_float_equality_boundary(self) -> None:
+        """The threshold IS ``MIN_BASELINE_YEARS / 30`` -- the same float
+        division ``completeness`` performs -- so the boundary case compares
+        equal and passes. A hand-rounded 0.6667 would suppress it."""
+        annual = self._normalized_annual(20)
+        for name in ("normal", "percentile"):
+            assert annual[name]["state"] == "available", (name, annual[name])
+
+    def test_thresholds_track_the_compute_floor_rather_than_drifting_from_it(self) -> None:
+        from app.domains.geo.rainfall.compute import MIN_BASELINE_YEARS
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+        from app.domains.geo.rainfall.temporal import baseline_years_for
+
+        baseline_years = len(baseline_years_for(date(2026, 8, 7)))  # 30, non-Feb-29
+        expected = MIN_BASELINE_YEARS / baseline_years
+        for metric in ("annual_normal", "annual_percentile"):
+            assert RAINFALL_METRIC_POLICY.minimum_coverage_by_metric[metric] == expected
+            # `quality["score"]` for these two IS `completeness` (D4), so a
+            # higher quality threshold would re-suppress the same band under
+            # a different reason.
+            assert RAINFALL_METRIC_POLICY.minimum_quality_by_metric[metric] == expected
+
+    def test_other_metrics_keep_their_own_thresholds(self) -> None:
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        coverage = RAINFALL_METRIC_POLICY.minimum_coverage_by_metric
+        quality = RAINFALL_METRIC_POLICY.minimum_quality_by_metric
+        assert (coverage["annual"], quality["annual"]) == (0.8, 0.8)
+        for window in ("d7", "d30", "d90"):
+            assert (coverage[window], quality[window]) == (0.9, 0.8)
 
 
 class TestPercentileFeb29SmallSample:
@@ -1704,9 +1989,10 @@ class TestPercentileFeb29SmallSample:
         baseline = {year: (10.0, 366, 366) for year in leap_years}
         normal, percentile = _normal_and_percentile_metrics(
             baseline=baseline,
-            comparison_end_date=comparison_end,
+            baseline_cutoff=comparison_end,
             selected_value=11.0,
             selected_temporal_state="final",
+            selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
             scope=_ZONE_SCOPE,
             now=datetime(2028, 2, 29, 12, 0, tzinfo=UTC),
@@ -1777,15 +2063,86 @@ class TestAnnualNormalAndPercentileEnvelopeShape:
 
 
 # ===========================================================================
+# compute.py — cross-source baseline caveat (lluvia-insights slice 2b,
+# tasks 2b.9/2b.10/2b.11, design.md D5 / LIB-003)
+# ===========================================================================
+
+
+class TestCrossSourceBaselineCaveat:
+    """A current-year comparison ranks an NRT-sourced total against a
+    Final-sourced baseline -- a methodological caveat the reader cannot infer
+    from the numbers, and one the baseline has no channel of its own to carry
+    (it comes from a SQL aggregate, so there is no adapter batch to inherit
+    ``discrepancies`` from). ``build_snapshot`` therefore emits a fixed entry
+    into normal's and percentile's OWN ``discrepancies``, and only where the
+    caveat is actually true."""
+
+    _CAVEAT = "cross_source_baseline=chirps-v3-final_vs_chirps-v3-sat"
+    _NOW = datetime(2024, 8, 7, 12, 0, tzinfo=UTC)
+
+    @classmethod
+    def _snapshot_for(cls, source_id: str, provider_revision: str) -> dict[str, Any]:
+        from app.domains.geo.rainfall.compute import build_snapshot
+
+        return build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="daily" if source_id != "chirps-v3-final" else "historical",
+            source_id=source_id,
+            intervals=_daily_intervals(start=date(2024, 1, 1), values=[5.0] * 220),
+            batch=_fixture_batch_evidence(source_id=source_id, provider_revision=provider_revision),
+            now=cls._NOW,
+            baseline={year: (10.0, 365, 365) for year in range(1991, 2021)},
+        )
+
+    def test_caveat_is_present_for_an_nrt_selected_year(self) -> None:
+        snapshot = self._snapshot_for("chirps-v3-sat", "v3-nrt")
+
+        for name in ("normal", "percentile"):
+            metric = snapshot["annual"][name]
+            assert metric["discrepancies"] == [self._CAVEAT], (name, metric["discrepancies"])
+            # It belongs to the two metrics it biases, not to the selected
+            # year (whose own discrepancies stay the adapter batch's).
+            assert metric["state"] == "available", (name, metric)
+        assert self._CAVEAT not in snapshot["annual"]["selected"]["discrepancies"]
+
+    def test_caveat_is_absent_when_both_sides_are_final(self) -> None:
+        snapshot = self._snapshot_for("chirps-v3-final", "v3-final")
+
+        for name in ("normal", "percentile"):
+            assert snapshot["annual"][name]["discrepancies"] == [], name
+
+    def test_caveat_survives_policy_normalization_into_the_served_metric(self) -> None:
+        """design.md D5: ``discrepancies`` is carried through
+        ``_normalize_metric``'s ``{**raw, ...}`` passthrough, so the caveat
+        reaches the JSON, the audit CSV rows and the xlsx sheet -- not only
+        the panel."""
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+
+        normalized = normalize_snapshot(
+            self._snapshot_for("chirps-v3-sat", "v3-nrt"),
+            expected_policy_revision=RAINFALL_METRIC_POLICY_REVISION,
+        )
+        served = {row["metric"]: row for row in metric_rows(normalized)}
+        assert served["annual_normal"]["discrepancies"] == [self._CAVEAT]
+        assert served["annual_percentile"]["discrepancies"] == [self._CAVEAT]
+
+
+# ===========================================================================
 # compute.py — antecedents.{d7,d30,d90} cross-year window (lluvia-insights
 # slice 2a, task 2a.9/D6)
 # ===========================================================================
 
 
 class TestAntecedentCrossYearWindow:
-    """Task 2a.9/D6: d7/d30/d90 end at comparison_end and may read into the
-    PRIOR year; a gap anywhere in the window suppresses with its own
-    reason, never a short sum."""
+    """Task 2a.9/D6: d7/d30/d90 end at the CLIPPED disclosure end
+    ``min(comparison_end_exclusive, last_interval_end)`` -- not at the raw
+    calendar ``comparison_end`` (D6 anchor amendment, LI2A-002) -- and may
+    read into the PRIOR year; a gap anywhere in the window suppresses with
+    its own reason, never a short sum. The fixtures below publish data
+    through the comparison date, so the two anchors coincide here; the
+    lagging case has its own real-PG coverage in
+    ``test_rainfall_insights_metrics.py``."""
 
     _COMPARISON_END_EXCLUSIVE = datetime(2025, 1, 21, tzinfo=UTC)  # comparison_end = Jan 20, 2025
     _NOW = datetime(2025, 1, 20, 12, 0, tzinfo=UTC)

@@ -145,6 +145,56 @@ def test_baseline_cumulatives_omits_years_with_no_persisted_rows(db):
     assert result == {}
 
 
+def test_baseline_cumulatives_raises_on_a_duplicated_interval_slot(db):
+    """LI2A-005 (slice 2b amendment A3): ``build_snapshot`` treats a
+    duplicated ``interval_start`` as a broken invariant worth raising on,
+    because ``intervals_in_window``'s anti-join is supposed to guarantee at
+    most one non-superseded row per slot. ``baseline_cumulatives`` reads
+    through the SAME anti-join and inherits the SAME invariant, but had no
+    guard -- so a duplicate silently inflated BOTH ``total_mm`` and
+    ``matched_days`` (the year still looked complete), quietly biasing
+    ``annual.normal`` and every percentile ranked against it."""
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+    from app.domains.geo.rainfall.models import RainfallIntervalValue
+    from app.domains.geo.rainfall.ports import SourceInterval
+    from app.domains.geo.rainfall.repository import baseline_cumulatives, persist_intervals
+
+    asset = "baseline-test-asset-duplicated-slot"
+    source_id = "chirps-v3-final"
+    day = datetime(1991, 5, 1, tzinfo=UTC)
+    persist_intervals(
+        db,
+        source_id=source_id,
+        scope_kind="provider_asset",
+        scope_id=asset,
+        scope_version=BASELINE_ASSET_VERSION,
+        rows=[SourceInterval(day, day + timedelta(days=1), 10.0, "mm", "v3-final")],
+    )
+
+    # A SECOND non-superseded row for the same slot. `uq_rainfall_interval_
+    # revision` permits it (provider_revision is part of the key), and no
+    # `rainfall_interval_lifecycle` row marks either side superseded -- the
+    # exact residue of a correction whose supersession link never landed
+    # (persist_intervals only records the link for ids RETURNING reports).
+    db.add(
+        RainfallIntervalValue(
+            source_id=source_id,
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            interval_start=day,
+            interval_end=day + timedelta(days=1),
+            provider_revision="v3-final+r1",
+            value=10.0,
+            unit="mm",
+        )
+    )
+    db.flush()
+
+    with pytest.raises(ValueError, match="duplicat"):
+        baseline_cumulatives(db, source_id=source_id, asset=asset, dates=[date(1991, 5, 2)])
+
+
 def test_zoning_republication_does_not_orphan_baseline(db):
     """A zone's own scope_version bump (a republished zoning) is invisible
     to the baseline key: it is never part of it (1.2/1.4)."""
