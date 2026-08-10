@@ -37,6 +37,7 @@ nothing and enqueues nothing.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any, NamedTuple
 
@@ -71,6 +72,8 @@ SCOPE_LABEL = "Ámbito"
 REGIONAL_LABEL = "Estimación regional"
 YEAR_LABEL = "Año analizado"
 COMPARISON_END_LABEL = "Fecha de comparación"
+# An INCLUSIVE claim, so it is stamped with an inclusive day -- see
+# `_last_evidence_day`, which is why the raw wire value never reaches this cell.
 AVAILABLE_THROUGH_LABEL = "Datos disponibles hasta"
 BASELINE_LABEL = "Período de referencia"
 DATA_REVISION_LABEL = "Revisión de datos (data_revision)"
@@ -192,6 +195,30 @@ def _label(mapping: dict[str, str], key: object) -> str:
     return mapping.get(key, str(key)) if isinstance(key, str) else str(key)
 
 
+def _last_evidence_day(available_through: str) -> str:
+    """The INCLUSIVE last day the provider published, from the EXCLUSIVE bound.
+
+    JDA-001 / JDB-001. ``series["available_through"]`` is the exclusive end of
+    the disclosure window -- ``compute._disclosure_window`` builds it as
+    ``min(comparison_end + 1 day, max(interval_end))`` and ``series._points``
+    stops one day short of it, so the Serie diaria sheet in this same workbook
+    has no row for that day. Stamping it under an inclusive label ("Datos
+    disponibles hasta") therefore claims evidence the file itself contradicts,
+    and on a finalized past year it names January 1 of the FOLLOWING year,
+    which the analysis says nothing about.
+
+    A workbook outlives the screen that could have qualified it, so the cell
+    has to be right on its own. The chart's footer converts the same value the
+    same way, so the two surfaces keep telling one story.
+
+    Parsing cannot fail here: ``build_series`` already refused a snapshot whose
+    ``available_through`` is unparseable (``series._analysis`` ->
+    ``SnapshotContractError`` -> 503), so this only ever sees a value that
+    round-tripped through ``datetime.fromisoformat`` upstream.
+    """
+    return (datetime.fromisoformat(available_through).date() - timedelta(days=1)).isoformat()
+
+
 def _consistency_value(consistent: bool, reason: str | None) -> str:
     if consistent:
         return CONSISTENCY_CONSISTENT
@@ -267,7 +294,7 @@ def build_workbook(db: Session, revision: RainfallAnalysisRevision) -> RainfallW
         (REGIONAL_LABEL, "sí" if snapshot.get("regional_estimate") else "no"),
         (YEAR_LABEL, series["year"]),
         (COMPARISON_END_LABEL, series["comparison_end"]),
-        (AVAILABLE_THROUGH_LABEL, series["available_through"]),
+        (AVAILABLE_THROUGH_LABEL, _last_evidence_day(series["available_through"])),
         (BASELINE_LABEL, snapshot.get("baseline")),
         (DATA_REVISION_LABEL, series["data_revision"]),
         (POLICY_REVISION_LABEL, revision.policy_revision),

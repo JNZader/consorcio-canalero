@@ -361,6 +361,46 @@ def test_serie_diaria_matches_the_served_series_json_point_for_point(db):
                 assert row[column] == pytest.approx(point[field]), (row, point)
 
 
+def test_resumen_names_the_last_day_with_evidence_not_the_exclusive_end(db):
+    """JDA-001 / JDB-001 -- "Datos disponibles hasta" is an INCLUSIVE claim
+    and ``available_through`` is an EXCLUSIVE bound.
+
+    ``compute._disclosure_window`` builds ``available_through`` as
+    ``min(comparison_end + 1 day, max(interval_end))`` and ``series._points``
+    stops one day short of it, so stamping the raw value under this label
+    claims a day the workbook itself has no row for -- and on a finalized past
+    year it names a day in the NEXT year, which the analysis says nothing
+    about. The reader keeps this file, so the sentence has to survive without
+    the screen that would have qualified it.
+
+    Asserted against the workbook's OWN last Serie diaria row rather than
+    against a recomputed date: the two cells must tell one story, and a test
+    that re-derived the subtraction here would pass on any arithmetic the
+    export happened to use.
+    """
+    from app.domains.geo.rainfall.export import (
+        AVAILABLE_THROUGH_LABEL,
+        RESUMEN_SHEET,
+        SERIE_SHEET,
+    )
+
+    revision = _seeded_revision(db, scope_id="zone-3b-available-through")
+    client = _client(db)
+    content = client.get(f"/rainfall/analyses/{revision.id}.xlsx").content
+    sheets = _sheets(content)
+
+    block = _labelled(_rows(sheets[RESUMEN_SHEET]))
+    serie = _rows(sheets[SERIE_SHEET])
+    last_day_with_evidence = serie[-1][0]
+    served = client.get(f"/rainfall/analyses/{revision.id}/series").json()
+
+    assert block[AVAILABLE_THROUGH_LABEL] == last_day_with_evidence
+    # …and it is genuinely the day BEFORE the wire value, not a coincidence of
+    # this fixture: the exclusive bound must not appear in the cell at all.
+    assert served["available_through"][:10] != last_day_with_evidence
+    assert served["available_through"] not in str(block[AVAILABLE_THROUGH_LABEL])
+
+
 def test_a_snapshot_too_broken_to_export_is_refused_not_rendered(db):
     """Divergence, the other direction: when the stored envelope cannot back a
     series at all, the xlsx REFUSES with the same 503 the CSV and `/series`
