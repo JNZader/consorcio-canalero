@@ -73,6 +73,15 @@ export interface RainfallMetric {
 /** Immutable analysis snapshot (200). Metric groups are keyed dicts. */
 export interface RainfallAnalysisSnapshot {
   analysis_revision_id: string;
+  /**
+   * Content address of the daily evidence this revision was built from
+   * (backend design.md D3). Injected server-side at disclosure time from the
+   * revision row, so it identifies WHICH data the card is showing, not just
+   * which row served it. The `/series` response echoes the same digest: the
+   * server-side pin is authoritative, and comparing these two is the cheap
+   * cross-check that also catches a stale snapshot held open in a tab.
+   */
+  data_revision: string;
   scope: RainfallScopeChoice;
   regional_estimate: boolean;
   year: number;
@@ -100,9 +109,7 @@ export type RainfallAnalysisResponse =
 
 function isQueuedBody(body: unknown): body is RainfallQueued {
   return (
-    typeof body === 'object' &&
-    body !== null &&
-    (body as { status?: unknown }).status === 'queued'
+    typeof body === 'object' && body !== null && (body as { status?: unknown }).status === 'queued'
   );
 }
 
@@ -152,13 +159,12 @@ export async function fetchRainfallAnalysis(
   year: number,
   signal?: AbortSignal
 ): Promise<RainfallAnalysisResponse> {
-  const body = await apiFetch<RainfallAnalysisSnapshot | RainfallQueued>(
-    '/geo/rainfall/analyses',
-    { method: 'POST', body: JSON.stringify({ scope, year }), signal }
-  );
-  return isQueuedBody(body)
-    ? { type: 'queued', queued: body }
-    : { type: 'ready', snapshot: body };
+  const body = await apiFetch<RainfallAnalysisSnapshot | RainfallQueued>('/geo/rainfall/analyses', {
+    method: 'POST',
+    body: JSON.stringify({ scope, year }),
+    signal,
+  });
+  return isQueuedBody(body) ? { type: 'queued', queued: body } : { type: 'ready', snapshot: body };
 }
 
 /**

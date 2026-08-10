@@ -23,6 +23,7 @@ vi.mock('../../src/lib/api/core', async (importOriginal) => {
 
 import { apiFetch, getAuthToken } from '../../src/lib/api/core';
 import {
+  type RainfallAnalysisSnapshot,
   downloadRainfallCsv,
   fetchRainfallAnalysis,
   resolveRainfallScopes,
@@ -31,9 +32,16 @@ import {
 const ZONE = { kind: 'zone' as const, id: 'zona-ne', version: '3' };
 const BASIN = { kind: 'basin' as const, id: 'zo-12', version: 'abc123' };
 
-function snapshot() {
+// Annotated on purpose: the return type is the contract under test, so an
+// object literal carrying a field the interface does not declare is a
+// compile-time error rather than an untyped extra that silently survives.
+function snapshot(): RainfallAnalysisSnapshot {
   return {
     analysis_revision_id: '11111111-2222-3333-4444-555555555555',
+    // The revision's own content address (backend design.md D3): the /series
+    // response echoes it, so a tab holding this snapshot can detect that the
+    // daily data moved underneath the analysis it drew.
+    data_revision: 'ab'.repeat(32),
     scope: ZONE,
     regional_estimate: true,
     year: 2025,
@@ -125,6 +133,20 @@ describe('fetchRainfallAnalysis', () => {
     expect(result.snapshot.regional_estimate).toBe(true);
   });
 
+  it('snapshot type carries data_revision', async () => {
+    // Task 3a.14: the server-side pin on /series is authoritative, but the
+    // cheap client cross-check ("does the series I just fetched still belong
+    // to the snapshot this tab is holding?") needs the snapshot's own
+    // `data_revision` to be part of the typed contract, not an untyped extra.
+    vi.mocked(apiFetch).mockResolvedValue(snapshot());
+
+    const result = await fetchRainfallAnalysis(ZONE, 2025);
+
+    if (result.type !== 'ready') throw new Error('expected ready');
+    const served: RainfallAnalysisSnapshot = result.snapshot;
+    expect(served.data_revision).toBe('ab'.repeat(32));
+  });
+
   it('maps a 202 queued body to a labelled queued result (never silent)', async () => {
     const queued = {
       status: 'queued',
@@ -165,11 +187,11 @@ describe('downloadRainfallCsv', () => {
     const revokeObjectURL = vi.fn();
     window.URL.createObjectURL = createObjectURL;
     window.URL.revokeObjectURL = revokeObjectURL;
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        clicked.push(this.download);
-      });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      clicked.push(this.download);
+    });
 
     await downloadRainfallCsv('rev-1');
 
@@ -185,7 +207,9 @@ describe('downloadRainfallCsv', () => {
   it('throws the server detail on a denied export without disclosing data', async () => {
     global.fetch = vi
       .fn()
-      .mockResolvedValue(csvResponse(false, { detail: 'No autorizado' }, 403)) as unknown as typeof fetch;
+      .mockResolvedValue(
+        csvResponse(false, { detail: 'No autorizado' }, 403)
+      ) as unknown as typeof fetch;
 
     await expect(downloadRainfallCsv('rev-x')).rejects.toThrow('No autorizado');
   });

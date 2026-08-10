@@ -381,6 +381,91 @@ def baseline_cumulatives(
     return totals
 
 
+def daily_series_rows(
+    db: Session,
+    *,
+    source_id: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    start: datetime,
+    end: datetime,
+) -> list[tuple[datetime, datetime, float, str]]:
+    """The resolved rows a series is drawn from, as ORM-free tuples
+    ``(interval_start, interval_end, value, provider_revision)`` (design.md
+    D3, slice 3a).
+
+    DELEGATES to :func:`intervals_in_window` rather than re-expressing its
+    supersession anti-join: the series and its consistency pin exist to prove
+    that what a chart draws is the same evidence a stored revision was built
+    from, so a second, independently-maintained read of the same thing is the
+    one shape that could quietly make that claim false. The projection is the
+    only difference -- ``provider_revision`` comes along because the pin
+    derives the revision FAMILY from the rows themselves
+    (``compute.revision_family``), which is the input ``build_snapshot``'s
+    caller took from the adapter batch instead.
+    """
+    return [
+        (row.interval_start, row.interval_end, row.value, row.provider_revision)
+        for row in intervals_in_window(
+            db,
+            source_id=source_id,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            scope_version=scope_version,
+            start=start,
+            end=end,
+        )
+    ]
+
+
+def baseline_curve_rows(
+    db: Session,
+    *,
+    source_id: str,
+    asset: str,
+    dates: Sequence[date],
+) -> list[tuple[datetime, float]]:
+    """The DAILY baseline rows behind :func:`baseline_cumulatives`, ordered by
+    ``interval_start`` (design.md D3, slice 3a).
+
+    Same fixed provider-asset key and same supersession anti-join as
+    :func:`baseline_cumulatives`, over exactly the same per-year windows
+    ``[<year>-01-01, date + 1 day)`` -- this is that function's aggregate,
+    unrolled day by day, so a curve built here and the ``annual.normal`` value
+    built there are the same sum read at two resolutions. That is what makes
+    the acceptance rule ("the normal curve's last point equals
+    ``annual.normal.value``") a property of the code rather than a
+    coincidence of the fixtures.
+    """
+    if not dates:
+        return []
+
+    superseded = select(RainfallIntervalLifecycle.interval_value_id).where(
+        RainfallIntervalLifecycle.event_type == "superseded",
+        RainfallIntervalLifecycle.interval_value_id == RainfallIntervalValue.id,
+    )
+    windows = [
+        and_(
+            RainfallIntervalValue.interval_start >= datetime(cutoff.year, 1, 1, tzinfo=UTC),
+            RainfallIntervalValue.interval_start
+            < datetime(cutoff.year, cutoff.month, cutoff.day, tzinfo=UTC) + timedelta(days=1),
+        )
+        for cutoff in dates
+    ]
+    query = (
+        select(RainfallIntervalValue.interval_start, RainfallIntervalValue.value)
+        .where(RainfallIntervalValue.source_id == source_id)
+        .where(RainfallIntervalValue.scope_kind == "provider_asset")
+        .where(RainfallIntervalValue.scope_id == asset)
+        .where(RainfallIntervalValue.scope_version == BASELINE_ASSET_VERSION)
+        .where(or_(*windows))
+        .where(~superseded.exists())
+        .order_by(RainfallIntervalValue.interval_start)
+    )
+    return [(interval_start, float(value)) for interval_start, value in db.execute(query).all()]
+
+
 def persist_intervals(
     db: Session,
     *,

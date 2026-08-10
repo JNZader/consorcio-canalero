@@ -138,7 +138,14 @@ def test_analysis_route_server_resolves_fingerprint_and_revision(monkeypatch):
     def get_snapshot(self, db, request_fingerprint):
         captured.append(request_fingerprint)
         return SimpleNamespace(
-            id=revision_id, policy_revision=RAINFALL_METRIC_POLICY_REVISION, snapshot=served
+            id=revision_id,
+            policy_revision=RAINFALL_METRIC_POLICY_REVISION,
+            # Slice 3a: `data_revision` is a NOT NULL column on every real
+            # `RainfallAnalysisRevision` row (models.py) and the route now
+            # discloses it, so the double models it too. A real row could not
+            # exist without one.
+            data_revision="c" * 64,
+            snapshot=served,
         )
 
     monkeypatch.setattr(RainfallRepository, "get_snapshot", get_snapshot)
@@ -152,6 +159,11 @@ def test_analysis_route_server_resolves_fingerprint_and_revision(monkeypatch):
     # JDB-301: the served envelope must carry the revision id the CSV export
     # contract keys off (router.py read_analysis).
     assert response.json()["analysis_revision_id"] == str(revision_id)
+    # Slice 3a (design.md D3): and the content address of the evidence that
+    # revision was built from, injected from the same served row -- the two
+    # identities the client needs to cross-check a /series response against
+    # the snapshot it is holding.
+    assert response.json()["data_revision"] == "c" * 64
 
 
 def test_chunked_oversized_malformed_analysis_body_is_rejected_before_json_parsing():

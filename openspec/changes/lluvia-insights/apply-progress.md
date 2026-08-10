@@ -494,3 +494,117 @@ Branch `feat/lluvia-insights-02b-summary`, base `592a57a`. Surgical round over t
 ### Status (fix round)
 
 5/5 findings fixed with executed RED evidence for every genuine RED. 2081/2081 (6 pre-existing skips), ruff clean. Next: `sdd-verify`, or a scoped re-review of this fix diff against the ledger.
+
+## Slice 3a: Series Module — Consistency Pin + `data_revision` Exposure (D3, LIB-101 fold) — COMPLETE (14/14 tasks + 1 addition)
+
+**Branch**: `feat/lluvia-insights-03a-series` (base: `feat/lluvia-insights-02b-summary`, tip `3314c83` verified present at branch time).
+**Mode**: Strict TDD (RED → GREEN → REFACTOR). Every RED was executed against the untouched source before the implementation existed; for the two single-line source changes (3a.10/3a.12) the line was disabled in place and restored in the same command, per slice 2b's Deviation 5 protocol (no `git stash`, no cross-branch risk).
+
+### Baseline (before slice-3a changes, same branch, source at slice-2b tip)
+
+```
+pytest tests/new/geo/rainfall/ tests/test_mutation_targets_rainfall.py -q
+=> 409 passed, 1 warning (pre-existing SAWarning, unrelated)
+
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2081 passed, 6 skipped   (the 6th skip is test_martin_reader_grants, which
+   needs an isolated superuser DB on this environment)
+```
+
+### Final (after slice-3a changes)
+
+```
+pytest tests/new/geo/rainfall/test_rainfall_series_consistency.py -q
+=> 16 passed   (the new file: 11 task tests + 5 counterexample probes)
+
+pytest tests/new/ tests/test_mutation_targets_rainfall.py -q
+=> 2098 passed, 6 skipped, 0 failed   (2081 + 17 new tests, 0 regressions)
+
+pytest tests/new/ -q
+=> 1969 passed, 6 skipped, 0 failed   (was 1952 + 6)
+
+ruff check .   => All checks passed!         (exit 0)
+ruff format .  => 2 files reformatted, 401 files left unchanged (the 2 are this
+                  slice's own new files; re-run after: 403 unchanged)
+
+consorcio-web: npm run typecheck => exit 0
+consorcio-web: npx vitest run tests/unit/rainfallApi.test.ts => 9 passed
+consorcio-web: full vitest run => see Final Verification below
+```
+
+### TDD Cycle Evidence
+
+| Task | Test | RED evidence (executed, against unfixed source) | GREEN evidence |
+|---|---|---|---|
+| 3a.1-3a.4, 3a.8 | `test_rainfall_series_consistency.py` (8 tests) | `ModuleNotFoundError: No module named 'app.domains.geo.rainfall.series'` — the whole file, 8 failures, before `series.py` existed | All pass after `repository.daily_series_rows`/`baseline_curve_rows` + `series.py`. 3a.8's equality (`curve last point == annual.normal.value`) passed on the FIRST run, which is the evidence the curve is `baseline_cumulatives`' own aggregate at daily resolution rather than a second derivation that happens to agree |
+| 3a.13 (route) | `test_series_route_serves_the_pin_and_404s_on_an_unknown_revision` | `assert 404 == 200` — the path did not exist | 200 with the pin fields, the three echoes and 20 points; an unknown revision still 404s |
+| 3a.13 (auth) | `test_series_route_requires_authentication` | `assert 404 == 401` — with no route registered, FastAPI 404s BEFORE any router dependency, so the auth claim was unprovable | 401 once the route exists: the router-level `require_admin_or_operator` runs before the handler, exactly as it does for the CSV export |
+| 3a.15 (workbook) | `test_series_served_event_is_documented_in_the_observability_workbook` | `assert '`rainfall.series.served`' in <workbook text>` failed | Catalogue row added to `docs/lluvia-v2-observability-workbook.md` §2.1 |
+| 3a.12 | `test_backend_api.py::test_analyses_response_discloses_data_revision` | `KeyError: 'data_revision'` with `normalized["data_revision"] = ...` replaced by `pass  # TEMP RED probe` and restored in the same command | Served JSON carries the row's own column value |
+| 3a.10 | same test's `assert set(body) <= SNAPSHOT_ROOT_KEYS` | `AssertionError: assert {'analysis_re...evision', ...} <= {...}` with the `"data_revision"` entry removed from `SNAPSHOT_ROOT_KEYS` and restored in the same command | The declared disclosure envelope names every field the router injects |
+| 3a.14 | `rainfallApi.test.ts::"snapshot type carries data_revision"` | `tsc` probe: `tests/unit/rainfallApi.test.ts(44,5): error TS2353: Object literal may only specify known properties, and 'data_revision' does not exist in type 'RainfallAnalysisSnapshot'` + `(147,19): error TS2339` | Both errors gone after the interface gains the field; `npm run typecheck` exit 0; vitest 9/9 |
+| counterexample (TZ) | `test_series_dates_do_not_shift_under_a_non_utc_session_timezone` | Guard removed (`_utc_day` → bare `.date()`), test re-run: `assert False` — under `SET TIME ZONE 'America/Argentina/Buenos_Aires'` every UTC-midnight row buckets into the previous day | Restored: dates unchanged, all 20 days `available` |
+| counterexample (clamp) | `test_a_runaway_disclosure_window_is_clamped_to_the_analysis_year` | Clamp removed, test re-run: `AssertionError: assert 356111 == 365` — a corrupt `available_through` produced 356,111 points from one GET | Restored: exactly 365, last point `2025-12-31` |
+
+**RED verification method**: the new test file was written and executed in full against the slice-2b source before any implementation existed (`ModuleNotFoundError`, captured). For the two single-line source changes and for the two defensive guards, the line was disabled in place, the targeted test re-run to capture the failure, and the source restored in the SAME command — verified afterwards by `rg "TEMP probe"` returning no matches and by the full suite passing.
+
+### Files Changed
+
+| File | Action | What |
+|---|---|---|
+| `gee-backend/app/domains/geo/rainfall/series.py` | Created | The one series contract (3a.6/3a.9): `build_series(db, revision)` → echoes + `consistent_with_snapshot`/`consistency_reason` + daily points. ONE read (`daily_series_rows` over the D6-widened window) backs both the pin and the displayed points; `_pin` (family rule then digest compare, one-directional); `_normal_curve` (per-year cumulative keyed by `(month, day)`, Feb-29 skipped as a KEY but still accumulated); `_points` (clipped window, `null` never `0.0`, cumulative carried across gaps); `_as_utc`/`_utc_day` (session-TZ-proof day bucketing) |
+| `gee-backend/app/domains/geo/rainfall/repository.py` | Modified | 3a.5: `daily_series_rows` (delegates to `intervals_in_window`, projects to ORM-free tuples + `provider_revision`) and `baseline_curve_rows` (the daily rows behind `baseline_cumulatives`, same key, same anti-join, same per-year windows) |
+| `gee-backend/app/domains/geo/rainfall/router.py` | Modified | 3a.12: `data_revision` read into a local with the other row fields (before the enqueue that expires the ORM instance) and injected post-normalize; 3a.13: `GET /analyses/{revision}/series` + the `rainfall.series.served` event |
+| `gee-backend/app/domains/geo/rainfall/service.py` | Modified | 3a.10: `"data_revision"` added to `SNAPSHOT_ROOT_KEYS` with the reason inline |
+| `gee-backend/tests/new/geo/rainfall/test_rainfall_series_consistency.py` | Created | 16 real-PG tests: 3a.1-3a.4, 3a.8 + same-source, lagged-tail, suppressed-baseline, route, auth, workbook + 5 counterexample probes |
+| `gee-backend/tests/new/geo/rainfall/test_backend_api.py` | Modified | +1 real-PG test (3a.11 + 3a.10's allow-list half) |
+| `gee-backend/tests/new/geo/rainfall/test_prepr_contract_fixes.py` | Modified | Test double updated, not weakened (see Deviations 3) |
+| `consorcio-web/src/lib/api/rainfall.ts` | Modified | 3a.14: `data_revision: string` on `RainfallAnalysisSnapshot`, with the cross-check rationale in TSDoc |
+| `consorcio-web/tests/unit/rainfallApi.test.ts` | Modified | 3a.14: `snapshot()` annotated `: RainfallAnalysisSnapshot` (so an undeclared field is a compile error) + the new test |
+| `docs/lluvia-v2-observability-workbook.md` | Modified | 3a.15: `rainfall.series.served` catalogue row incl. what each `consistency_reason` means and what to do when each dominates |
+| `openspec/changes/lluvia-insights/design.md` | Modified | 3a.7: D3 step 2 asymmetry note (extended with the zero-family case and the parity-not-normalization rule); D3 curve-points paragraph gained the read-only and clipped-window statements |
+| `openspec/changes/lluvia-insights/tasks.md` | Modified | 3a.1-3a.14 marked `[x]` with inline deviation notes; 3a.15 added |
+
+### Deviations from Design/Tasks
+
+1. **`daily_series_rows` DELEGATES to `intervals_in_window` instead of re-expressing its anti-join** (task 3a.5 says "both anti-joined on supersession (pattern of `intervals_in_window`)"). Following the *pattern* would produce a second, independently-maintained copy of the read whose entire job is to prove that a chart shows the same evidence a stored revision was built from — the one shape that could make that claim quietly false as the two copies drift. The delegation makes "same resolved set as the build" true by construction rather than by review vigilance; the only difference is the projection (ORM-free tuples plus `provider_revision`, which the pin needs and the build took from the adapter batch). `baseline_curve_rows` IS a new query, because no existing read returns per-day baseline rows.
+2. **ONE read backs both the pin and the displayed points.** tasks.md describes them as separate concerns. Reading twice would admit a window where a correction lands between the two reads and the chart shows data the pin declared untouched. `build_series` reads the D6-widened set once; the display window is a filter over it. Pinned by `test_series_points_and_pin_read_the_same_resolved_set`, which plants a row into a gap and asserts BOTH halves move.
+3. **`test_prepr_contract_fixes.py::test_analysis_route_server_resolves_fingerprint_and_revision` needed its double updated** — the same fixture slice 2b already had to restamp (its Deviation 3). It injects a `SimpleNamespace` revision carrying only `id`/`policy_revision`/`snapshot`; `data_revision` is a NOT NULL column on every real row, so once the route discloses it the double raised `AttributeError`. Added the field AND an assertion that the served body carries it — the double gained coverage rather than a silencer. This was the only regression in the full suite.
+4. **The series window is the analysis' own CLIPPED disclosure window**, taken from `annual.selected.provenance.available_through`, not the calendar `comparison_end` and not a live re-derivation. Consequence, asserted: under a 5-day provider lag the series stops at the last published day (20 points, ending Jan 20) instead of trailing 5 empty days a chart would read as a dry spell, and the last cumulative equals `annual.selected.value` exactly. One field, one meaning: the same string is echoed as `available_through` and used as the window bound, so the two cannot drift.
+5. **`consistency_reason` was NOT extended for the zero-rows case.** With nothing left to read, the build's family cannot be reconstructed at all. The design fixes the enum at three values, so rather than adding a fourth the exactly-one-family rule is read as written — "not exactly one" covers zero as well as two — and `interval_family_ambiguous` is reported. Documented in both the design note (3a.7) and `_pin`'s docstring, and pinned by `test_no_resolved_rows_report_ambiguous_rather_than_guessing_a_family`.
+6. **Feb-29 is omitted from the CURVE, not from the data.** Design says "Feb-29 is omitted from the curve". Implemented as: no curve KEY at `(2, 29)` — that day's point carries `normal_accumulated: null` — while the leap years' own Feb-29 rain still accumulates into their running totals. Any other reading breaks the design's own acceptance rule, since `baseline_cumulatives` (the source of `annual.normal.value`) sums whole `[Jan 1, cutoff]` windows including Feb 29. Proven at both ends by 3a.8: the last point matches `annual.normal.value`, AND the Feb-28 → Mar-1 step is larger than one day's mean, which is exactly the 8 leap years' extra day showing up.
+7. **A new event, `rainfall.series.served`, is catalogued in the observability workbook (3a.15, not in tasks.md).** LI2B-005 established the rule that an event firing in production must appear in its own contract document, and pinned it with a test. Rather than extend slice 2b's test file, this slice pins its own event in its own file — same rule, no cross-slice edit.
+8. **Two counterexample guards were added beyond the task list and then PROVEN load-bearing by removing them**: UTC-normalized day bucketing (removing it: `assert False` under a Buenos Aires session TZ — the LI1-002 defect class) and a clamp of the day loop to the analysis year (removing it: 356,111 points from one GET on a corrupt `available_through`).
+
+### Observation for a later slice (NOT fixed here — no assigned task, and a fix needs its own RED)
+
+`compute._cutoff_date` and `compute._disclosure_window` call `.date()` / compare against datetimes that come back from `psycopg2` rendered in the **session's** `TimeZone`, so under a non-UTC session TZ `baseline_cutoff_for` can pick a cutoff one day off (the LI1-002 defect class, on the slice-2b code path rather than this one). It is latent today because the deployment's Postgres `TimeZone` is UTC and both the worker and the API inherit it, and because the pin deliberately does NOT normalize (parity with the build is what keeps the digests comparable — Deviation/design note above). Series-side code is defended (`_as_utc`, with an executed proof); the compute-side path is untouched by this slice and is left to a slice that can give it its own RED.
+
+### Author Counterexample Self-Check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | A day with no evidence is `mm: null` + `state: "unavailable"`, never `0.0`, and the cumulative carries across it (`test_series_points_and_pin_read_the_same_resolved_set`); a window opening before the first published day carries NO cumulative at all (`test_window_before_the_first_published_day_has_no_cumulative`); a suppressed `annual.normal` yields no curve rather than a mean over the empty set (`test_no_normal_curve_when_the_baseline_is_suppressed`); zero resolved rows report ambiguous rather than guessing a family (`test_no_resolved_rows_report_ambiguous_rather_than_guessing_a_family`) | Pass |
+| Boundaries | The exclusive `window_end` boundary (last point is `window_end − 1 day`, asserted on both the untouched and the lagged fixtures); the leap-year boundary (Feb-29 point present with a null normal, curve continuous across it, 3a.8); the D6 window's own boundary — a row at `year_start − 17d` moves the pin and does NOT enter the display (`test_pin_uses_d6_widened_read_window`); the runaway-window clamp, measured at 356,111 points without it | Pass |
+| Concurrency / idempotency | N/A — the route is strictly READ-ONLY: no INSERT, no enqueue, no commit, no marker. `build_series` is a pure function of (the immutable revision row, the rows resolved at read time), so two concurrent calls on the same state return the same answer, and unlike `read_analysis` no polling loop can create work. That is also why LI2B-001's cooldown ladder has nothing to bound here | N/A (reason given) |
+| Malicious input / security | Route sits under the router-level `require_admin_or_operator` and returns 401 without it (`test_series_route_requires_authentication`, the ONLY new HTTP surface in this slice); `{revision}` is typed `UUID`, so a non-UUID is rejected at validation and nothing user-controlled reaches SQL — every other query input is derived from the server-built snapshot and bound as a parameter; the response is bounded to at most one year of daily points by the clamp (proven above), so a corrupt row cannot be turned into an unbounded response | Pass |
+| Partial failure / recovery | A snapshot too broken to describe itself raises `SnapshotContractError` and the route maps it to **503**, not a 500 — the same refusal the CSV export already makes (`test_a_snapshot_too_broken_to_describe_itself_is_refused_not_charted`, asserted at both the function and the HTTP level). Note the deliberate asymmetry with LI2B-002: there the failing operation was a SIDE EFFECT while the answer was already in memory, so it degraded to a 200; here the read IS the answer, so a failed read must not be dressed up as a chart | Pass |
+| State / tenancy / time | Day bucketing is UTC-normalized and proven session-TZ-proof by removing the guard (`assert False` under `SET TIME ZONE 'America/Argentina/Buenos_Aires'`); the pin deliberately does NOT normalize its hashed rows, because parity with the build — not normalization — is what keeps the two digests comparable, and the residual risk is bounded to a false *inconsistent* (design note 3a.7); the displayed window follows the evidence (clipped) while `comparison_end` stays the calendar date, so the owner's disclosure decision is preserved rather than reinterpreted | Pass |
+
+### Workload / PR Boundary
+
+- Mode: chained PR slice (`feature-branch-chain`, per tasks.md's Review Workload Forecast)
+- Current work unit: Unit 3a — "series module + consistency pin + `data_revision` exposure (D3)"
+- Boundary: starts at `feat/lluvia-insights-02b-summary`'s tip (`3314c83`), ends at this commit — independently mergeable and independently verifiable. Slice 3b (xlsx + TS series/hook contract) consumes `series.build_series` and adds nothing to it
+- Estimated review budget impact: ~240 production lines forecast; the actual production diff is 1 new module (~290 lines including its docstrings), 2 repository reads, 3 router lines + one route, 1 service allow-list entry and 1 TS field. Tests and docs carry the rest
+
+### Remaining Tasks (out of this batch's scope)
+
+- [ ] Slice 3b: xlsx Export + TS Contract + Consistency Exposure (3b.1-3b.11)
+- [ ] Slice 4: Frontend Chart (4.1-4.10)
+- [ ] Ops.1-3: real 1991-2020 backfill runbook execution (owner-run, explicitly NOT this agent's scope)
+- [ ] Ops.4-6: doc-nit folds
+
+### Status
+
+14/14 slice-3a tasks complete + 1 addition (3a.15). 2098/2098 backend (6 pre-existing skips), 16/16 in the new file, ruff check + format clean, frontend typecheck exit 0 and vitest green. Ready for review/PR of this work unit, then `sdd-apply` for slice 3b.

@@ -171,7 +171,13 @@ inflates an immutable *audit* table ~15× with display data the interval store a
 verbatim, and expands the contract at `archive/2026-08-07-lluvia-v2/design.md:22`. Chosen:
 `GET /rainfall/analyses/{revision}/series`, resolved **from the revision id** so it inherits
 the CSV route's auth and 404 semantics, echoing `data_revision`, `comparison_end` and
-`available_through` so the UI can detect drift from the snapshot it drew. One series builder,
+`available_through` so the UI can detect drift from the snapshot it drew. It is **strictly
+read-only** — no enqueue, no write, no side effect (unlike `read_analysis`, which owns the
+stale-policy refresh) — so the cooldown ladder above has nothing to bound here: a chart
+polling this route cannot create GEE work at all. The displayed window is the analysis'
+own clipped disclosure window (`annual.selected`'s `available_through`), not the calendar
+`comparison_end`, so under provider lag the series stops where the evidence does instead of
+trailing empty days a chart would read as a dry spell (D5/D6 amendments). One series builder,
 two consumers: this endpoint and the xlsx "Serie diaria" sheet. The normal curve is averaged
 across exactly the eligible-year set used by `annual.normal`, keyed by `(month, day)` (not
 day-of-year, which misaligns leap years); Feb-29 is omitted from the curve. Acceptance: the
@@ -197,6 +203,23 @@ theoretical, for current-year keys. The builder therefore **pins**:
    (`compute.py:30-38`) over `RainfallIntervalValue.provider_revision` (`models.py:66`).
    `intervals_in_window` deliberately does not filter by revision family
    (`repository.py:227-229`), so the rule is: the read rows MUST map to exactly one family.
+
+   *Asymmetry note (LIB-101 fold, slice 3a).* The two sides derive that family
+   differently and cannot be made identical: at **build** time it comes from the adapter
+   batch's single reported `provider_revision` (`tasks.py`, `revision_family(batch[...])`)
+   — one value, available even when the read returned no rows; at **pin** time there is no
+   batch, so it is derived per row from the persisted
+   `RainfallIntervalValue.provider_revision` across possibly-many rows. The asymmetry is
+   bounded to the conservative direction by the exactly-one rule: "not exactly one" —
+   **two or more** families live in the window, or **zero** because nothing is left to read
+   — reports `interval_family_ambiguous` and never attempts a comparison, so the failure
+   mode is a false *inconsistent*, never a false consistent. The same bound covers the
+   other input the two sides share by convention rather than by construction: `rows` are
+   handed to `data_revision_for` exactly as the read returned them, with no normalization,
+   because any transformation applied at pin time and not at build time would flip a
+   healthy pin (this includes datetime rendering — `psycopg2` renders a `timestamptz` in
+   the session's `TimeZone`, so parity, not normalization, is what keeps the two digests
+   comparable).
 3. Compare the recomputed digest with the row's stored `data_revision`
    (`models.py:96`; `RainfallRepository.get_revision` returns the ORM row,
    `repository.py:41-42`, so both the `/series` and the `.xlsx` route have it).

@@ -1085,3 +1085,57 @@ def test_current_policy_revision_serves_without_enqueueing_anything(db):
 
     assert response.status_code == 200
     assert db.scalars(select(RainfallOutbox).where(RainfallOutbox.scope_id == scope_id)).all() == []
+
+
+# ===========================================================================
+# lluvia-insights slice 3a (real PG): the revision's own content address is
+# disclosed, so the client half of the series consistency check can exist
+# ===========================================================================
+
+
+def test_analyses_response_discloses_data_revision(db):
+    """3a.11 (design.md D3) -- `data_revision` is a COLUMN on the revision
+    row, computed after `build_snapshot` returns, and was disclosed nowhere.
+    Without it the promised client-side drift check ("compare the /series echo
+    against the snapshot this tab is holding") is impossible to write. The
+    router injects it post-normalize from the served row, exactly as it
+    already does for `analysis_revision_id`."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.repository import RainfallRepository, persist_intervals
+    from app.domains.geo.rainfall.service import SNAPSHOT_ROOT_KEYS
+
+    scope_id = "zone-3a11-data-revision"
+    year = 2025
+    now = datetime(year, 2, 20, 12, 0, tzinfo=UTC)
+
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_daily_source_rows(date(year, 1, 1), 51, 3.0),
+    )
+    db.flush()
+
+    outbox, batch, fingerprint, scope = _seed_outbox_for_request(db, scope_id=scope_id, year=year)
+    tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=now)
+    stored = RainfallRepository().get_snapshot(db, fingerprint)
+    assert stored is not None
+    # It is NOT part of the stored envelope -- that is the whole reason it
+    # needs injecting rather than reading through.
+    assert "data_revision" not in stored.snapshot
+
+    response = _rainfall_client(db).post("/rainfall/analyses", json={"scope": scope, "year": year})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data_revision"] == stored.data_revision
+    # The two identities travel together: which row was served, and which
+    # evidence that row was built from.
+    assert body["analysis_revision_id"] == str(stored.id)
+    # 3a.10: SNAPSHOT_ROOT_KEYS is the DECLARED disclosure envelope, so a
+    # field the router injects but the allow-list does not name would make
+    # that declaration a lie -- and would 503 the moment anything re-validated
+    # a served body through `normalize_snapshot`.
+    assert set(body) <= SNAPSHOT_ROOT_KEYS

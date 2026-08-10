@@ -200,6 +200,13 @@ def resolve_missing_work_source(
 
 SNAPSHOT_ROOT_KEYS = {
     "analysis_revision_id",
+    # design.md D3 (slice 3a): the revision's own content address, injected at
+    # disclosure time from the served row exactly as `analysis_revision_id` is
+    # -- `build_snapshot` cannot set it, since it is computed AFTER the
+    # snapshot exists (`tasks._persist_analysis_revision`). Disclosing it is
+    # what makes the client half of the series consistency check possible: the
+    # /series echo compared against the snapshot the tab is holding.
+    "data_revision",
     "scope",
     "regional_estimate",
     "year",

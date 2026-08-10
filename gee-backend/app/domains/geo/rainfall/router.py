@@ -14,6 +14,7 @@ from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
 from app.domains.geo.rainfall.metrics import record_event
 from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+from app.domains.geo.rainfall.series import build_series
 from app.domains.geo.rainfall.service import (
     SnapshotContractError,
     analysis_request_fingerprint,
@@ -209,6 +210,7 @@ def read_analysis(
     # attribute access a fresh SELECT.
     stored_snapshot = revision.snapshot
     stored_policy_revision = revision.policy_revision
+    stored_data_revision = revision.data_revision
     revision_id = str(revision.id)
 
     if stored_policy_revision != RAINFALL_METRIC_POLICY_REVISION:
@@ -260,6 +262,14 @@ def read_analysis(
         # keys, so setting it post-normalize is safe and does not need to
         # touch normalize_snapshot itself.
         normalized["analysis_revision_id"] = revision_id
+        # design.md D3 (slice 3a): same mechanism, same reason -- the row's
+        # `data_revision` column is computed after `build_snapshot` returns
+        # (`tasks._persist_analysis_revision`), so disclosure time is the only
+        # place it can be truthfully injected. It closes the client half of the
+        # series consistency loop: the /series response echoes this digest, so
+        # a tab holding an older snapshot can detect the drift itself. The
+        # server-side pin stays authoritative; this is the cheap cross-check.
+        normalized["data_revision"] = stored_data_revision
         record_event(
             "rainfall.analysis.served",
             revision_id=revision_id,
@@ -272,6 +282,36 @@ def read_analysis(
         return normalized
     except SnapshotContractError as exc:
         raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+
+
+@router.get("/analyses/{revision}/series")
+def read_analysis_series(revision: UUID, db: Session = Depends(get_db)) -> dict:
+    """The daily series for one stored revision, pinned to it (design.md D3).
+
+    Resolved FROM the revision id, like the CSV export beside it, so it
+    inherits that route's 404 semantics and the router-level
+    `require_admin_or_operator` dependency without restating either. Strictly
+    read-only: unlike `read_analysis`, it enqueues nothing, so no amount of
+    polling can turn a chart into GEE work.
+    """
+    stored = RainfallRepository().get_revision(db, revision)
+    if stored is None:
+        raise HTTPException(404, detail="rainfall analysis is unavailable")
+    started = datetime.now()
+    try:
+        series = build_series(db, stored)
+    except SnapshotContractError as exc:
+        raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+    record_event(
+        "rainfall.series.served",
+        revision_id=str(revision),
+        data_revision=series["data_revision"],
+        consistent_with_snapshot=series["consistent_with_snapshot"],
+        consistency_reason=series["consistency_reason"],
+        points=len(series["points"]),
+        latency_ms=round((datetime.now() - started).total_seconds() * 1000),
+    )
+    return series
 
 
 @router.get("/analyses/{revision}.csv")
