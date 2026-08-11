@@ -581,24 +581,16 @@ def _seed_gap_baseline(db, *, asset: str) -> None:
         )
 
 
-def _materialize_with_internal_gap(db, *, scope_id: str, missing_days: int) -> tuple[dict, dict]:
+def _seed_gap_evidence(db, *, scope_id: str, missing_days: int):
     """Seed the shared baseline plus a selected year whose window is complete
-    at BOTH ends and holed in the middle, then return
-    ``(stored_snapshot, served_snapshot)``.
+    at BOTH ends and holed in the middle, and return the
+    ``(outbox, batch, fingerprint)`` a build for that key needs.
 
     The hole starts on February 1 and never touches January 1 or February 20,
     so ``window_end`` still lands on February 21 and ``expected_slots`` stays
     at the full 51: this is an evidence GAP, not the trailing provider lag
     LI2A-101 already clips for.
-
-    Both snapshots are returned because the gate under test lives at BUILD
-    time: the stored envelope is what every reader (JSON, audit CSV, xlsx)
-    projects from, and the served one is what the policy finally discloses.
     """
-    from app.domains.geo.rainfall import tasks
-    from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
-    from app.domains.geo.rainfall.service import normalize_snapshot
-
     asset = asset_name_for("zone", scope_id)
     _seed_gap_baseline(db, asset=asset)
 
@@ -622,7 +614,24 @@ def _materialize_with_internal_gap(db, *, scope_id: str, missing_days: int) -> t
     )
     db.flush()
 
-    outbox, batch, fingerprint = _build_outbox_and_batch(db, scope_id=scope_id, year=_GAP_YEAR)
+    return _build_outbox_and_batch(db, scope_id=scope_id, year=_GAP_YEAR)
+
+
+def _materialize_with_internal_gap(db, *, scope_id: str, missing_days: int) -> tuple[dict, dict]:
+    """Seed :func:`_seed_gap_evidence`, build the revision, and return
+    ``(stored_snapshot, served_snapshot)``.
+
+    Both snapshots are returned because the gate under test lives at BUILD
+    time: the stored envelope is what every reader (JSON, audit CSV, xlsx)
+    projects from, and the served one is what the policy finally discloses.
+    """
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+    from app.domains.geo.rainfall.service import normalize_snapshot
+
+    outbox, batch, fingerprint = _seed_gap_evidence(
+        db, scope_id=scope_id, missing_days=missing_days
+    )
     tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=_GAP_NOW)
 
     revision = RainfallRepository().get_snapshot(db, fingerprint)
@@ -739,3 +748,225 @@ def test_summary_narrates_the_suppressed_percentile_coherently(db):
     # told the accumulation IS available -- which is exactly why a silently
     # biased rank beside it was the dangerous case.
     assert SUMMARY_METRIC_LABELS["selected"] in available_sentence
+
+
+# ---------------------------------------------------------------------------
+# PEG-001: the Ops.6 gate above is decided at BUILD time, so it reaches a
+# reader only through a NEW revision row. `data_revision` hashes
+# source/family/scope/year/comparison_end/intervals only -- it does NOT hash
+# the envelope -- so on a key already materialized under the previous policy
+# revision with unmoved evidence the corrected snapshot would hit
+# `persist_revision`'s ON CONFLICT DO NOTHING and be discarded, permanently
+# for a completed year (neither scheduled sweep revisits a past-year `done`
+# key; only the request path notices, and only via the policy revision).
+# `policy.RAINFALL_METRIC_POLICY_REVISION` is bumped for exactly that reason,
+# and this is the test that the bump is what makes the correction land.
+# ---------------------------------------------------------------------------
+
+# The value RAINFALL_METRIC_POLICY_REVISION carried while the percentile was
+# still ranked without an evidence gate. A literal on purpose: a future slice
+# that changes the built envelope and forgets the bump must fail HERE rather
+# than ship a correction the ON CONFLICT silently drops.
+_PRE_OPS6_POLICY_REVISION = "rainfall-v2-2026-08-insights"
+
+# What the pre-Ops.6 build served for the 5-of-51 band: 46 present days
+# (649.75 mm) outrank 11 of the 30 baseline totals, so the sum is the combined
+# sample's 12th of 31 -> 100 * 12 / 32. The same year on complete evidence
+# earns 56.25, and that ~19-point gap IS the defect.
+_GAP_BIASED_PERCENTILE = 37.5
+
+
+def _as_pre_ops6_envelope(snapshot: dict) -> dict:
+    """The corrected envelope rewritten as the PRE-Ops.6 build wrote it.
+
+    Two edits, both required for the row to be a faithful incumbent. Every
+    revision stamp moves to the superseded policy revision -- an older row is
+    normalized with its OWN ``policy_revision`` and ``_normalize_metric``
+    rejects any metric whose revision disagrees with it, so a half-restamped
+    row would serve as ``policy_revision_mismatch`` and prove nothing. And
+    ``annual.percentile`` goes back to ``available`` at the biased rank, which
+    is the state the gate did not yet exist to refuse.
+    """
+    restamped = {
+        **snapshot,
+        "metric_policy": {**snapshot["metric_policy"], "revision": _PRE_OPS6_POLICY_REVISION},
+    }
+    for group in ("annual", "antecedents"):
+        restamped[group] = {
+            name: {**metric, "revision": _PRE_OPS6_POLICY_REVISION}
+            for name, metric in snapshot[group].items()
+        }
+    restamped["annual"] = {
+        **restamped["annual"],
+        "percentile": {
+            **restamped["annual"]["percentile"],
+            "value": _GAP_BIASED_PERCENTILE,
+            "state": "available",
+            "reason": None,
+        },
+    }
+    return restamped
+
+
+def _pre_ops6_incumbent(db, *, scope_id: str, fingerprint: str, batch: dict) -> tuple[str, dict]:
+    """INSERT the revision row the pre-Ops.6 build left behind for this key,
+    and return its ``(data_revision, snapshot)``.
+
+    The build inputs are re-derived here exactly as
+    ``tasks._persist_analysis_revision`` derives them -- the D6-widened
+    interval read, the baseline cut at the effective end, the same
+    ``data_revision_for`` arguments -- because the point of the fixture is a
+    row whose ``data_revision`` is EXACTLY the one the rebuild will recompute.
+    If that duplication ever drifts from tasks.py the run ends with two
+    DIFFERENT data revisions, which the caller asserts against.
+
+    Written through a plain INSERT rather than by materializing and then
+    editing a row: ``rainfall_analysis_revision`` is append-only (models.py
+    ``_prevent_rainfall_audit_mutation``), and a fixture has no business being
+    the one exception. ``created_at`` is passed explicitly for the same
+    reason it cannot be left to the default: PG's ``now()`` is frozen at
+    TRANSACTION start and this whole test runs inside one, so both rows would
+    tie on the ``created_at DESC, id DESC`` ordering ``get_snapshot`` uses and
+    a random UUID would decide the winner. In production the incumbent really
+    is older -- the two writes are separate transactions there.
+    """
+    from app.domains.geo.rainfall import temporal
+    from app.domains.geo.rainfall.compute import (
+        baseline_cutoff_for,
+        build_snapshot,
+        data_revision_for,
+        revision_family,
+    )
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+    from app.domains.geo.rainfall.repository import baseline_cumulatives, intervals_in_window
+    from app.domains.geo.rainfall.scope import AnalysisScope
+    from app.domains.geo.rainfall.service import RAINFALL_HISTORICAL_SOURCE, fallback_used_for
+
+    scope = AnalysisScope(kind="zone", id=scope_id, version="v1", regional_estimate=False)
+    year_start = datetime(_GAP_YEAR, 1, 1, tzinfo=UTC)
+    resolved = [
+        (interval.interval_start, interval.interval_end, interval.value)
+        for interval in intervals_in_window(
+            db,
+            source_id="chirps-v3-sat",
+            scope_kind="zone",
+            scope_id=scope_id,
+            scope_version="v1",
+            start=year_start - timedelta(days=90),
+            end=datetime(_GAP_YEAR + 1, 1, 1, tzinfo=UTC),
+        )
+    ]
+    baseline = baseline_cumulatives(
+        db,
+        source_id=RAINFALL_HISTORICAL_SOURCE,
+        asset=asset_name_for("zone", scope_id),
+        dates=temporal.baseline_dates(
+            baseline_cutoff_for(year=_GAP_YEAR, now=_GAP_NOW, intervals=resolved)
+        ),
+    )
+    snapshot = _as_pre_ops6_envelope(
+        build_snapshot(
+            scope=scope,
+            year=_GAP_YEAR,
+            role="daily",
+            source_id="chirps-v3-sat",
+            intervals=resolved,
+            batch=batch,
+            now=_GAP_NOW,
+            fallback_used=fallback_used_for("daily", "chirps-v3-sat"),
+            baseline=baseline,
+        )
+    )
+    data_revision = data_revision_for(
+        "chirps-v3-sat",
+        revision_family(batch["provider_revision"]),
+        scope,
+        _GAP_YEAR,
+        temporal.comparison_end(_GAP_YEAR, temporal.buenos_aires_date(_GAP_NOW)),
+        [(interval_start, value) for interval_start, _end, value in resolved],
+    )
+
+    db.add(
+        RainfallAnalysisRevision(
+            request_fingerprint=fingerprint,
+            policy_revision=_PRE_OPS6_POLICY_REVISION,
+            data_revision=data_revision,
+            snapshot=snapshot,
+            created_at=_GAP_NOW - timedelta(days=1),
+        )
+    )
+    db.flush()
+    return data_revision, snapshot
+
+
+def test_policy_bump_lands_the_corrected_envelope_over_a_pre_fix_incumbent(db):
+    """PEG-001: the corrected envelope LANDS on an already-materialized key
+    whose evidence has not moved, and is the one served afterwards."""
+    from sqlalchemy import select
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision
+    from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+    from app.domains.geo.rainfall.service import normalize_snapshot
+
+    # The bump itself. Without it every assertion below collides by
+    # construction: one policy revision, one data revision, one row.
+    assert RAINFALL_METRIC_POLICY_REVISION != _PRE_OPS6_POLICY_REVISION
+
+    scope_id = "zone-peg1-bump-lands"
+    outbox, batch, fingerprint = _seed_gap_evidence(db, scope_id=scope_id, missing_days=5)
+
+    # The incumbent the pre-fix code left behind: SAME key and SAME
+    # data_revision (the evidence has not moved -- that is the whole premise),
+    # the superseded policy revision, and the biased rank served as available.
+    unmoved_data_revision, incumbent_snapshot = _pre_ops6_incumbent(
+        db, scope_id=scope_id, fingerprint=fingerprint, batch=batch
+    )
+
+    # It is a usable answer, and that is the trap: it serves the biased rank
+    # to every reader, with no policy edit able to take it back.
+    stale_served = normalize_snapshot(
+        incumbent_snapshot, expected_policy_revision=_PRE_OPS6_POLICY_REVISION
+    )
+    assert stale_served["annual"]["percentile"]["state"] == "available"
+    assert stale_served["annual"]["percentile"]["value"] == pytest.approx(_GAP_BIASED_PERCENTILE)
+
+    # The rebuild the stale-policy requeue triggers (workbook §2.1,
+    # `rainfall.analysis.policy_revision_stale`).
+    rebuilt = tasks._persist_analysis_revision(
+        db, outbox_id=str(outbox.id), batch=batch, now=_GAP_NOW
+    )
+    assert rebuilt["decision"] == "write"
+    assert rebuilt["data_revision"] == unmoved_data_revision
+
+    stored = db.scalars(
+        select(RainfallAnalysisRevision).where(
+            RainfallAnalysisRevision.request_fingerprint == fingerprint
+        )
+    ).all()
+    assert len(stored) == 2, [(row.policy_revision, row.data_revision) for row in stored]
+    # Identical evidence -- the policy revision is provably the only
+    # difference, which is precisely what the unique constraint would have
+    # collapsed into a discarded duplicate without the bump.
+    assert {row.data_revision for row in stored} == {unmoved_data_revision}
+    assert {row.policy_revision for row in stored} == {
+        _PRE_OPS6_POLICY_REVISION,
+        RAINFALL_METRIC_POLICY_REVISION,
+    }
+    landed = next(row for row in stored if row.policy_revision == RAINFALL_METRIC_POLICY_REVISION)
+
+    # ... and it is the row a reader now gets, carrying the refusal.
+    served_row = RainfallRepository().get_snapshot(db, fingerprint)
+    assert served_row is not None
+    assert served_row.id == landed.id
+    served = normalize_snapshot(
+        served_row.snapshot, expected_policy_revision=RAINFALL_METRIC_POLICY_REVISION
+    )
+    percentile = served["annual"]["percentile"]
+    assert percentile["state"] == "suppressed"
+    assert percentile["value"] is None
+    assert percentile["reason"] == "selected_evidence_below_threshold"
+    # The total is untouched by the correction: it cleared its own gate before
+    # the bump and still does, so the bump costs the reader nothing it had.
+    assert served["annual"]["selected"]["state"] == "available"
+    assert served["annual"]["selected"]["value"] == pytest.approx(46 * _GAP_SELECTED_DAILY)
