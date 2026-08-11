@@ -62,14 +62,19 @@ export function useRainfallScopes(nomenclatura: string | null): UseRainfallScope
 /**
  * The cache key one scope/year analysis lives under.
  *
- * Exported because the chart's re-request action writes the server's answer
- * straight into it (`queryClient.setQueryData`), so a 200 carrying a newer
- * revision moves the WHOLE panel and a labelled 202 lands on the poll path
- * `useRainfallAnalysis` already owns. Two consumers, ONE definition: a key
- * rebuilt by hand at the second call site is a cache write that silently
- * lands nowhere the first one reads.
+ * MODULE-PRIVATE, and that is the post-JD state rather than an oversight. It
+ * was exported for the chart's re-request action, which wrote the server's
+ * answer straight into this key (`queryClient.setQueryData`) — a genuine
+ * second consumer. JD round 1 (JDA-003 ≡ JDB-003) removed that action: a moved
+ * `data_revision` enqueues nothing and revisions are immutable, so the button
+ * promised a remedy the backend cannot deliver. With it went the only caller
+ * outside this file, so the `export` kept a public surface nothing imported
+ * and a docstring that claimed two consumers when one was left (V-004).
+ *
+ * Still a named function rather than an inline literal: the key is built in
+ * one place so the `enabled: false` idle branch below cannot drift from it.
  */
-export function rainfallAnalysisQueryKey(scope: RainfallScopeChoice, year: number) {
+function rainfallAnalysisQueryKey(scope: RainfallScopeChoice, year: number) {
   return ['rainfall-analysis', scope.kind, scope.id, scope.version, year] as const;
 }
 
