@@ -210,7 +210,7 @@ function seriesBody(year: number, revision = 'rev-e2e-01'): Record<string, unkno
 
 /** A minimal but REAL zip container, so the browser downloads bytes an xlsx
  *  reader would at least recognise by magic number ("PK"). */
-const XLSX_BODY = Buffer.from('PK' + ' '.repeat(18), 'latin1');
+const XLSX_BODY = Buffer.from('PK\x05\x06' + '\x00'.repeat(18), 'latin1');
 
 interface RainfallMocks {
   analysisRequests: Array<Record<string, unknown>>;
@@ -237,7 +237,15 @@ function mockRainfallApi(
 
   // Match ANY origin: the SPA's API base is baked per build (VITE_API_URL).
   page.route(/api\/v2\/geo\/rainfall\/.*/, async (route) => {
-    const { method, url } = route.request();
+    // `method`/`url` are METHODS on Playwright's Request, not properties.
+    // Destructuring them bound the functions themselves: `method === 'POST'`
+    // was permanently false and `url.includes(...)` a TypeError on the first
+    // intercepted call, so this router matched nothing it was written to
+    // match. Invisible until the file was enrolled in `tsconfig.tests.json`
+    // (V-005) — the suite only ever ran as `--list` collection, which type-
+    // checks nothing and executes no route handler.
+    const method = route.request().method();
+    const url = route.request().url();
 
     if (method === 'POST' && url.includes('scopes:resolve')) {
       await route.fulfill({
