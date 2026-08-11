@@ -1900,6 +1900,7 @@ class TestNormalAndPercentileBaselineFloor:
             baseline=self._complete_baseline(range(1991, 1991 + 19)),
             baseline_cutoff=self._COMPARISON_END,
             selected_value=12.0,
+            selected_evidence_rankable=True,
             selected_temporal_state="final",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
@@ -1920,6 +1921,7 @@ class TestNormalAndPercentileBaselineFloor:
             baseline=self._complete_baseline(range(1991, 1991 + 20)),
             baseline_cutoff=self._COMPARISON_END,
             selected_value=12.0,
+            selected_evidence_rankable=True,
             selected_temporal_state="final",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
@@ -1943,6 +1945,11 @@ class TestNormalAndPercentileBaselineFloor:
             baseline=self._complete_baseline(range(1991, 2021)),
             baseline_cutoff=self._COMPARISON_END,
             selected_value=None,
+            # Ops.6: the evidence gate is deliberately NOT the thing under
+            # test here -- it is set permissive so the absent-total branch is
+            # the only reason the percentile can suppress, which is exactly
+            # the ordering this counterexample pins.
+            selected_evidence_rankable=True,
             selected_temporal_state="provisional",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
@@ -2062,6 +2069,7 @@ class TestPercentileFeb29SmallSample:
             baseline=baseline,
             baseline_cutoff=comparison_end,
             selected_value=11.0,
+            selected_evidence_rankable=True,
             selected_temporal_state="final",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",

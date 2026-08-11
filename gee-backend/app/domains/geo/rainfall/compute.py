@@ -196,6 +196,84 @@ _BASELINE_SOURCE_ID = "chirps-v3-final"
 BASELINE_SCOPE_UNMAPPED = "baseline_scope_unmapped"
 BASELINE_EVIDENCE_INVALID = "baseline_evidence_invalid"
 
+# Ops.6 (archive-report.md 2026-08-11 section 10): the percentile ranks the
+# SELECTED year's total, so it inherits that total's evidence problems. Its
+# own reason string, distinct from `coverage_below_threshold` (which speaks
+# for `annual.selected` itself) and from the two baseline reasons above,
+# because the shortfall is in neither the baseline nor the policy: the
+# selected year is missing days INSIDE the window it is ranked over.
+SELECTED_EVIDENCE_BELOW_THRESHOLD = "selected_evidence_below_threshold"
+
+
+def _selected_metric_disclosable(
+    policy: MetricThresholdPolicy, annual_selected: dict[str, Any]
+) -> bool:
+    """Does ``annual.selected`` clear its OWN policy gate?
+
+    One derivation, two callers -- :func:`build_snapshot`, which refuses to
+    RANK a total the reader will never be shown, and
+    :func:`revision_write_decision`, which refuses to overwrite a final
+    incumbent with one -- so "good enough to disclose" cannot come to mean
+    two different things inside one module.
+
+    Reads the built metric's own ``value``/``coverage``/``completeness``/
+    ``quality["score"]`` instead of re-deriving them from the intervals, so
+    it measures exactly the four numbers the disclosure path
+    (``service._normalize_metric``) will measure, through exactly the same
+    function. A threshold moved in ``RAINFALL_METRIC_POLICY`` therefore moves
+    both gates together, which is the whole point: a percentile that outlives
+    the total it ranks is the defect this closes.
+    """
+    applied = apply_metric_policy(
+        policy,
+        annual_selected["metric"],
+        value=annual_selected["value"],
+        coverage=annual_selected["coverage"],
+        quality_score=annual_selected["quality"]["score"],
+        completeness=annual_selected["completeness"],
+    )
+    return applied.state == "available"
+
+
+def _selected_metric_rankable(
+    policy: MetricThresholdPolicy, annual_selected: dict[str, Any]
+) -> bool:
+    """May ``annual.selected``'s total be RANKED against the baseline (Ops.6)?
+
+    Two conditions, both about the selected year's OWN evidence inside the
+    clipped disclosure window:
+
+    1. it clears its own disclosure gate
+       (:func:`_selected_metric_disclosable`). A total too incomplete to SHOW
+       is certainly too incomplete to RANK, and coupling the two gates is
+       what stops the rank outliving the number it ranks. Before Ops.6 they
+       were decoupled -- ``annual`` thresholded on its own coverage while
+       ``annual_percentile`` thresholded on the BASELINE's eligible-year
+       fraction, a different quantity entirely -- so a suppressed
+       accumulation still shipped a percentile beside it.
+    2. its day-completeness clears
+       :data:`_BASELINE_YEAR_COMPLETENESS_THRESHOLD` -- deliberately the SAME
+       floor every baseline year had to clear to enter the sample, not a
+       second number that could drift from it. This is the condition (1)
+       alone cannot express: ``weibull_percentile`` does not merely compare
+       the selected year to the sample, it ranks the year INSIDE it
+       (``[*baseline_values, selected_value]``), so the year being ranked is
+       a member on the same terms as every other member. Holding the
+       members to 0.95 and the ranked year to nothing is what let a year
+       short by 10% of its days -- comfortably above ``annual``'s own 0.8
+       gate -- rank ~19 points low with nothing suppressed and no caveat.
+
+    Only the trailing edge is already handled: ``_disclosure_window`` clips
+    to the last published interval, so a lagging provider leaves nothing
+    missing INSIDE the window and its completeness is a flat 1.0. A hole in
+    the middle is what this refuses, and refusing is the only honest answer
+    -- the missing days' rain is exactly the quantity that is unknown, so
+    there is no correction to apply.
+    """
+    return _selected_metric_disclosable(policy, annual_selected) and (
+        annual_selected["completeness"] >= _BASELINE_YEAR_COMPLETENESS_THRESHOLD
+    )
+
 
 def weibull_percentile(baseline_values: Sequence[float], selected_value: float) -> float:
     """Empirical Weibull plotting-position rank (design.md D5) -- pure, no
@@ -223,6 +301,7 @@ def _normal_and_percentile_metrics(
     baseline: dict[int, tuple[float, int, int]] | None,
     baseline_cutoff: date,
     selected_value: float | None,
+    selected_evidence_rankable: bool,
     selected_temporal_state: str,
     selected_source_id: str,
     nominal_resolution: str,
@@ -248,6 +327,17 @@ def _normal_and_percentile_metrics(
     not the calendar ``comparison_end`` -- the same date the caller used to
     build the *baseline* dict itself, so the year set, the disclosed
     envelope and the summed evidence all agree (design.md D5 amendment).
+
+    *selected_evidence_rankable* is :func:`_selected_metric_rankable`'s
+    verdict on ``annual.selected`` (Ops.6). It gates the PERCENTILE only, and
+    only in the ``else`` branch below, AFTER the ``selected_value is None``
+    case: an absent total keeps its own ``annual_selected_value_unavailable``
+    reason rather than being relabelled as an evidence shortfall, since
+    "there is no total" and "the total is built on too few days" are
+    different things to tell a reader.
+    The ``normal`` never consults it -- a baseline average ranks nothing, so
+    the selected year's holes cannot bias it (the same asymmetry the
+    ``selected_value is None`` branch already encodes).
 
     Both are built from the historical baseline alone
     (``repository.baseline_cumulatives``, D1), never from an adapter
@@ -299,6 +389,20 @@ def _normal_and_percentile_metrics(
             percentile_state, percentile_reason = (
                 "suppressed",
                 "annual_selected_value_unavailable",
+            )
+        elif not selected_evidence_rankable:
+            # Ops.6: `total_value` sums only the slots that are PRESENT, so a
+            # selected year holed inside its window is short by exactly those
+            # days' rain -- and `weibull_percentile` ranks that short total
+            # against baselines that each had to be ~whole to participate.
+            # The NORMAL above is deliberately still served: it is a pure
+            # baseline average, so it ranks nothing and the selected year's
+            # holes cannot bias it (the same asymmetry the `selected_value is
+            # None` branch encodes).
+            percentile_value = None
+            percentile_state, percentile_reason = (
+                "suppressed",
+                SELECTED_EVIDENCE_BELOW_THRESHOLD,
             )
         else:
             eligible_totals = [baseline[year][0] for year in eligible_years]
@@ -587,10 +691,18 @@ def build_snapshot(
     # baselines totalled through today. Identical to the calendar date when
     # there is no lag. The caller resolved the `baseline` dict itself at this
     # same cutoff (tasks._persist_analysis_revision via baseline_cutoff_for).
+    #
+    # Ops.6: clipping fixed only the TRAILING edge. A hole in the MIDDLE of
+    # the window biases the rank low by exactly the missing days' rain, so
+    # the percentile is additionally coupled to the selected year's own
+    # evidence (:func:`_selected_metric_rankable`). `annual_metric` is
+    # finished just above, so that verdict reads the metric's own numbers
+    # instead of re-deriving coverage/completeness a second time here.
     normal_metric, percentile_metric = _normal_and_percentile_metrics(
         baseline=baseline,
         baseline_cutoff=_cutoff_date(window_end),
         selected_value=total_value,
+        selected_evidence_rankable=_selected_metric_rankable(RAINFALL_METRIC_POLICY, annual_metric),
         selected_temporal_state=annual_metric["temporal_state"],
         selected_source_id=source_id,
         nominal_resolution=nominal_resolution,
@@ -760,9 +872,10 @@ def revision_write_decision(
     - Cross-source, candidate ``provisional``, incumbent ``final`` ->
       ``"latched"``. Never write -- see "The latch" in design.md.
     - Cross-source otherwise (the finalization case) -> ``"write"`` iff
-      ``apply_metric_policy`` -- the SAME function the disclosure path
-      already runs -- reports ``state == "available"``; otherwise
-      ``"gate_refused"``.
+      :func:`_selected_metric_disclosable` -- which runs
+      ``apply_metric_policy``, the SAME function the disclosure path already
+      runs, over the candidate's own ``annual.selected`` -- says yes;
+      otherwise ``"gate_refused"``.
     """
     incumbent_state = served_state(incumbent) if incumbent is not None else None
     if incumbent_state is None:
@@ -782,13 +895,5 @@ def revision_write_decision(
     if candidate_temporal_state == "provisional" and incumbent_temporal_state == "final":
         return "latched"
 
-    metric = candidate["annual"]["selected"]
-    applied = apply_metric_policy(
-        policy,
-        metric["metric"],
-        value=metric["value"],
-        coverage=metric["coverage"],
-        quality_score=metric["quality"]["score"],
-        completeness=metric["completeness"],
-    )
-    return "write" if applied.state == "available" else "gate_refused"
+    disclosable = _selected_metric_disclosable(policy, candidate["annual"]["selected"])
+    return "write" if disclosable else "gate_refused"

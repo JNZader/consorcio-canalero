@@ -457,6 +457,13 @@ def test_baseline_is_cut_at_the_effective_end_not_the_calendar_comparison_end(db
     assert (
         selected["provenance"]["available_through"] == datetime(year, 2, 18, tzinfo=UTC).isoformat()
     )
+    # Load-bearing for the Ops.6 evidence gate below: a trailing provider lag
+    # leaves NOTHING missing inside the clipped window, so completeness is a
+    # flat 1.0 and the rank keeps its full standing. Only an INTERNAL hole
+    # (the block at the end of this module) shortens the total the percentile
+    # ranks. If this assertion ever breaks, the lag clipping regressed -- the
+    # evidence gate must not reach it.
+    assert selected["completeness"] == pytest.approx(1.0)
 
     # Baseline totals through Feb 17: 48 x 1.0 = 48.0 (15 years) and
     # 48 x 5.0 = 240.0 (15 years) -> mean 144.0. Cut at the CALENDAR Feb 20
@@ -527,3 +534,208 @@ def test_baseline_cutoff_equals_the_calendar_comparison_end_when_there_is_no_lag
 
     percentile = snapshot["annual"]["percentile"]
     assert percentile["value"] == pytest.approx(100 * 1 / 32)
+
+
+# ---------------------------------------------------------------------------
+# Ops.6 (archive-report.md 2026-08-11 §10): the percentile is coupled to the
+# SELECTED year's own evidence inside the clipped window.
+#
+# `total_value` sums only the slots that are PRESENT, and `weibull_percentile`
+# ranks that sum against COMPLETE baselines -- so a selected year holed in the
+# middle is short by exactly those days' rain and ranks low for a reason that
+# has nothing to do with rainfall. The trailing-lag half of this bias was
+# already closed by LI2A-101 above (the window is clipped, so nothing is
+# missing inside it); an INTERNAL hole produces the identical bias with no
+# guard, and the two disclosure gates were decoupled -- `annual` thresholds on
+# its own coverage while `annual_percentile` thresholds on the BASELINE's
+# eligible-year fraction, a different quantity entirely -- so the rank
+# outlived the total it ranks.
+#
+# One shared fixture, three evidence bands. The window is Jan 1 - Feb 20, so
+# it sits entirely before February 29 and every baseline year -- leap or not
+# -- has exactly the same 51-day span (same reason as the A1 block above).
+#
+# Baseline year 1991+j carries a flat 10.0 + 0.25*j mm/day, so its 51-day
+# total is 510 + 12.75*j (510.0 .. 879.75, mean 694.875). The selected year
+# carries 14.125 mm/day, a value that falls strictly BETWEEN two baseline
+# tiers so no rank is ever decided by a tie. Every quantity here is a dyadic
+# fraction, so the arithmetic is exact rather than approximately exact.
+# ---------------------------------------------------------------------------
+
+_GAP_YEAR = 2025
+_GAP_NOW = datetime(_GAP_YEAR, 2, 20, 12, 0, tzinfo=UTC)  # comparison_end = Feb 20
+_GAP_WINDOW_DAYS = 51  # Jan 1 .. Feb 20 inclusive, in EVERY year
+_GAP_SELECTED_DAILY = 14.125
+_GAP_BASELINE_MEAN = 694.875  # mean(510 + 12.75*j for j in range(30))
+
+
+def _seed_gap_baseline(db, *, asset: str) -> None:
+    for offset, baseline_year in enumerate(range(1991, 2021)):
+        persist_intervals(
+            db,
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            rows=_daily_rows(date(baseline_year, 1, 1), _GAP_WINDOW_DAYS, 10.0 + 0.25 * offset),
+        )
+
+
+def _materialize_with_internal_gap(db, *, scope_id: str, missing_days: int) -> tuple[dict, dict]:
+    """Seed the shared baseline plus a selected year whose window is complete
+    at BOTH ends and holed in the middle, then return
+    ``(stored_snapshot, served_snapshot)``.
+
+    The hole starts on February 1 and never touches January 1 or February 20,
+    so ``window_end`` still lands on February 21 and ``expected_slots`` stays
+    at the full 51: this is an evidence GAP, not the trailing provider lag
+    LI2A-101 already clips for.
+
+    Both snapshots are returned because the gate under test lives at BUILD
+    time: the stored envelope is what every reader (JSON, audit CSV, xlsx)
+    projects from, and the served one is what the policy finally discloses.
+    """
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+    from app.domains.geo.rainfall.service import normalize_snapshot
+
+    asset = asset_name_for("zone", scope_id)
+    _seed_gap_baseline(db, asset=asset)
+
+    rows = _daily_rows(
+        date(_GAP_YEAR, 1, 1),
+        _GAP_WINDOW_DAYS,
+        _GAP_SELECTED_DAILY,
+        provider_revision="v3-nrt",
+    )
+    gap_start = date(_GAP_YEAR, 2, 1)
+    gap_end = gap_start + timedelta(days=missing_days)  # exclusive
+    rows = [row for row in rows if not (gap_start <= row.interval_start.date() < gap_end)]
+    assert len(rows) == _GAP_WINDOW_DAYS - missing_days
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=rows,
+    )
+    db.flush()
+
+    outbox, batch, fingerprint = _build_outbox_and_batch(db, scope_id=scope_id, year=_GAP_YEAR)
+    tasks._persist_analysis_revision(db, outbox_id=str(outbox.id), batch=batch, now=_GAP_NOW)
+
+    revision = RainfallRepository().get_snapshot(db, fingerprint)
+    assert revision is not None
+    return revision.snapshot, normalize_snapshot(
+        revision.snapshot, expected_policy_revision=RAINFALL_METRIC_POLICY_REVISION
+    )
+
+
+def test_complete_selected_year_still_ranks(db):
+    """The unchanged half: with every slot present the percentile is served
+    exactly as before -- 720.375 mm outranks 17 of the 30 baseline totals, so
+    it is the combined sample's 18th of 31 -> 100 * 18 / 32."""
+    _stored, served = _materialize_with_internal_gap(
+        db, scope_id="zone-ops6-complete", missing_days=0
+    )
+
+    selected = served["annual"]["selected"]
+    assert selected["state"] == "available"
+    assert selected["value"] == pytest.approx(_GAP_WINDOW_DAYS * _GAP_SELECTED_DAILY)  # 720.375
+    assert selected["completeness"] == pytest.approx(1.0)
+
+    normal = served["annual"]["normal"]
+    assert normal["state"] == "available"
+    assert normal["value"] == pytest.approx(_GAP_BASELINE_MEAN)
+
+    percentile = served["annual"]["percentile"]
+    assert percentile["state"] == "available"
+    assert percentile["reason"] is None
+    assert percentile["value"] == pytest.approx(56.25)  # 100 * 18 / 32
+
+
+def test_ten_percent_internal_gap_suppresses_the_percentile_while_annual_survives(db):
+    """The silent band. 5 of 51 days missing -> completeness 0.902, which
+    CLEARS ``annual``'s own 0.8 gate, so the total is still disclosed. The
+    percentile must not be: 46 days of rain (649.75 mm) ranked against
+    51-day baselines lands at 100 * 12 / 32 = 37.5 -- roughly 19 points below
+    the 56.25 the same year earns on complete evidence, with nothing
+    suppressed and no caveat anywhere on the panel."""
+    stored, served = _materialize_with_internal_gap(
+        db, scope_id="zone-ops6-gap-10pct", missing_days=5
+    )
+
+    selected = served["annual"]["selected"]
+    assert selected["state"] == "available"
+    assert selected["value"] == pytest.approx(46 * _GAP_SELECTED_DAILY)  # 649.75
+    assert selected["completeness"] == pytest.approx(46 / 51)
+
+    # The normal is a pure baseline average -- it ranks nothing, so the
+    # selected year's evidence cannot bias it and it stays available.
+    normal = served["annual"]["normal"]
+    assert normal["state"] == "available"
+    assert normal["value"] == pytest.approx(_GAP_BASELINE_MEAN)
+
+    percentile = served["annual"]["percentile"]
+    assert percentile["state"] == "suppressed"
+    assert percentile["value"] is None
+    assert percentile["reason"] == "selected_evidence_below_threshold"
+
+    # The gate belongs to `compute.build_snapshot`, so the STORED envelope
+    # already carries the refusal: every reader of that revision -- JSON, the
+    # audit CSV, the xlsx sheet -- projects the same suppression, and no
+    # disclosure-time policy edit can resurrect a rank built on evidence that
+    # was never good enough to rank.
+    stored_percentile = stored["annual"]["percentile"]
+    assert stored_percentile["state"] == "suppressed"
+    assert stored_percentile["value"] is None
+    assert stored_percentile["reason"] == "selected_evidence_below_threshold"
+
+
+def test_twenty_one_percent_internal_gap_suppresses_the_percentile_with_the_total(db):
+    """The loud band. 11 of 51 days missing -> completeness 0.784, below
+    ``annual``'s 0.8 gate, so the total is suppressed as
+    ``coverage_below_threshold``. The rank used to outlive it and report a
+    normal year at 100 * 6 / 32 = 18.75 -- one of the driest on record --
+    directly beside the admission that the underlying total was too
+    incomplete to show."""
+    _stored, served = _materialize_with_internal_gap(
+        db, scope_id="zone-ops6-gap-21pct", missing_days=11
+    )
+
+    selected = served["annual"]["selected"]
+    assert selected["state"] == "suppressed"
+    assert selected["reason"] == "coverage_below_threshold"
+    assert selected["completeness"] == pytest.approx(40 / 51)
+
+    percentile = served["annual"]["percentile"]
+    assert percentile["state"] == "suppressed"
+    assert percentile["value"] is None
+    assert percentile["reason"] == "selected_evidence_below_threshold"
+
+
+def test_summary_narrates_the_suppressed_percentile_coherently(db):
+    """The summary is derived from the states the policy actually served, so
+    the coherence invariant carries the new reason for free: the percentile
+    can never appear under ``Disponibles`` once its evidence gate refuses."""
+    from app.domains.geo.rainfall.service import (
+        SUMMARY_AVAILABLE_PREFIX,
+        SUMMARY_METRIC_LABELS,
+        SUMMARY_MISSING_PREFIX,
+    )
+
+    _stored, served = _materialize_with_internal_gap(
+        db, scope_id="zone-ops6-summary", missing_days=5
+    )
+    summary = served["summary"]
+    label = SUMMARY_METRIC_LABELS["percentile"]
+
+    available_sentence, _, missing_sentence = summary.partition(SUMMARY_MISSING_PREFIX)
+    assert available_sentence.startswith(SUMMARY_AVAILABLE_PREFIX)
+    assert label not in available_sentence
+    assert f"{label} (suprimida: selected_evidence_below_threshold)" in missing_sentence
+    # The total itself cleared its own gate in this band, so the reader is
+    # told the accumulation IS available -- which is exactly why a silently
+    # biased rank beside it was the dangerous case.
+    assert SUMMARY_METRIC_LABELS["selected"] in available_sentence
