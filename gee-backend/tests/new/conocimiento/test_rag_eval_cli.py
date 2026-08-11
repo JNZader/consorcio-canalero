@@ -401,3 +401,83 @@ def test_the_cli_reads_the_clock_only_at_the_edge():
     ]
     assert len(lecturas) == 1
     assert isinstance(dt.datetime.now, object)
+
+
+class TestDependenciaFaltante:
+    """RJDA-002: the DEFAULT venv has no torch, and that is by design.
+
+    `requirements-rag.txt` pulls the whole CUDA stack and is deliberately kept
+    out of the app image (design.md D8), so `venv/` cannot build a real embedder
+    — and the default ablation includes `vector` and `hybrid`, both of which
+    need one on the QUERY side. `make rag-eval` therefore hit this path on the
+    most ordinary invocation there is, and answered with a raw ImportError
+    traceback: an environment problem presented as a crash, with the one-line
+    fix buried inside the exception it did not catch.
+    `scripts/rag_query_latency.py` had handled it correctly since slice 3.
+    """
+
+    #: The message `BGEM3Embedder.__init__` raises, verbatim in the part that
+    #: matters. Reproduced here rather than imported so that deleting the
+    #: instructions from the embedder breaks this test.
+    FALTA_TORCH = (
+        "BGE-M3 needs the ingestion extra. Install it into a SEPARATE "
+        "virtualenv (it pulls the whole CUDA stack, ~6 GB) and never into "
+        "the app image:\n"
+        "    python -m venv venv-rag\n"
+        "    venv-rag/bin/pip install -r requirements-rag.txt"
+    )
+
+    def _sin_torch(self, monkeypatch):
+        def explota(nombre, *, device, model_id):
+            raise RuntimeError(self.FALTA_TORCH)
+
+        monkeypatch.setattr(rag_eval, "_embedder", explota)
+
+    def test_a_missing_embedding_dependency_exits_2_with_instructions(
+        self, cli, monkeypatch, tmp_path, capsys
+    ):
+        marcar(cli, sintetico=False)
+        self._sin_torch(monkeypatch)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == rag_eval.SALIDA_SIN_DEPENDENCIA == 2
+        error = capsys.readouterr().err
+        # The fix, not just the symptom: the file to install and the venv to
+        # install it into.
+        assert "requirements-rag.txt" in error
+        assert "venv-rag" in error
+        # And the escape hatch that needs no torch at all.
+        assert "--modo fts" in error
+        # Nothing was written: a refusal must not leave a half-built docs/rag entry.
+        assert not (tmp_path / "nunca").exists()
+
+    def test_the_fts_only_ablation_never_needs_an_embedder(self, cli, monkeypatch, tmp_path):
+        """The escape hatch the error message offers has to actually work."""
+        marcar(cli, sintetico=False)
+        self._sin_torch(monkeypatch)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        assert (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").is_file()

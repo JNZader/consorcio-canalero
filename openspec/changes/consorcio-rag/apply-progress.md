@@ -786,8 +786,15 @@ not fire in either run.
 
 ## The owner command sequence (O.3 → the real eval)
 
-Everything below runs on the workstation. Steps 1–2 need the ingestion extra in a
-SEPARATE virtualenv (torch + CUDA, ~6 GB); steps 3–5 run in the normal `venv`.
+Everything below runs on the workstation. Steps 1–2 **and 4** need the ingestion extra
+in a SEPARATE virtualenv (torch + CUDA, ~6 GB); steps 3 and 5 run in the normal `venv`.
+
+**Step 4 was documented as a `venv` step and it is not** (RJDA-002). The default
+ablation includes `vector` and `hybrid`, both of which build a real BGE-M3 embedder to
+turn each question into a query vector — the same torch dependency the batch needs, on
+the query side. Hence `RAG_EVAL_PYTHON` below. Run under the plain `venv`, `rag_eval.py`
+now exits **2** naming `requirements-rag.txt`; before this fix it died on a raw
+ImportError traceback.
 
 ```
 # 0. the vector-capable database, and the corpus at the pinned SHA
@@ -808,7 +815,9 @@ venv-rag/bin/python scripts/rag_embed_batch.py --corpus-sha 12043582bf8016288a7e
 cd .. && make rag-embed-load
 
 # 4. EVAL — writes docs/rag/retrieval-eval-12043582-YYYY-MM-DD.md + .results.json
-make rag-eval
+#    NEEDS venv-rag: `vector` and `hybrid` embed each question on the query side.
+#    (`make rag-eval RAG_EVAL_FLAGS="--modo fts"` is the one variant that does not.)
+make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python
 
 # 5. verify what the database says produced those vectors
 psql "$DATABASE_URL" -c "SELECT corpus_sha, embedding_modelo, embedding_sintetico, embeddings_loaded_at FROM rag_corpus"

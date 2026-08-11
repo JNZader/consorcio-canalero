@@ -22,13 +22,25 @@ Needs, in this order and for reasons that are refusals rather than warnings:
   measurement wearing the ratified one's name.
 
 Exit codes: 0 success · 1 run refused (privacy gate, synthetic snapshot, missing
-snapshot) · 2 usage · 4 the gold set and the snapshot are not the same corpus
-revision, or the owner-side private file belongs to a different set.
+snapshot) · 2 usage, INCLUDING "this interpreter has no torch" · 4 the gold set
+and the snapshot are not the same corpus revision, or the owner-side private
+file belongs to a different set.
 
 4 is its own code rather than another 1 because it is the one refusal that is
 never about the database: nothing was queried, nothing was written, and the fix
 is to correct an argument or an environment variable — not to load vectors or
 re-ingest.
+
+**Which interpreter to run this with.** `vector` and `hybrid` build a real
+embedder, which needs `requirements-rag.txt` — the CUDA stack, deliberately kept
+out of the app venv (D8). So the three-mode ablation runs under `venv-rag`:
+
+    venv-rag/bin/python scripts/rag_eval.py --corpus-sha … --database-url …
+
+`make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python` is the same thing. Under the
+default `venv` the run exits **2** naming `requirements-rag.txt` instead of
+dying on an ImportError traceback; `--modo fts` needs no torch and runs
+anywhere.
 """
 
 from __future__ import annotations
@@ -68,6 +80,13 @@ DESTINO_POR_DEFECTO = Path(__file__).resolve().parent.parent.parent / "docs" / "
 
 #: Exit code for "these two inputs do not describe the same corpus revision".
 SALIDA_IDENTIDAD = 4
+
+#: Exit code for "this interpreter cannot build the requested embedder". Shares
+#: 2 with the usage errors, and that is the right bucket rather than a laxity:
+#: nothing was queried and nothing was written, and the fix is to invoke the
+#: script differently (`venv-rag/bin/python`, or `--modo fts`) — exactly what an
+#: argument error means. `scripts/rag_query_latency.py` already used 2 for it.
+SALIDA_SIN_DEPENDENCIA = 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -190,7 +209,26 @@ def main(argv: list[str] | None = None) -> int:
 
         embedder = None
         if any(modo in ("vector", "hybrid") for modo in modos):
-            embedder = _embedder(args.embedder, device=args.device, model_id=args.model_id)
+            try:
+                embedder = _embedder(args.embedder, device=args.device, model_id=args.model_id)
+            except RuntimeError as falta:
+                # `BGEM3Embedder.__init__` raises this when torch/transformers are
+                # absent, which is the DEFAULT state of `venv/` by design: the
+                # ingestion extra pulls the whole CUDA stack and is deliberately
+                # kept out of the app image (design.md D8). So the common way to
+                # run this script is also the way that hits this branch, and
+                # before it existed the CLI answered with a raw ImportError
+                # traceback — an environment problem presented as a crash, with
+                # the one-line fix buried in the exception's own message.
+                # `scripts/rag_query_latency.py` already handled it this way.
+                print(f"\nERROR: {falta}", file=sys.stderr)
+                print(
+                    "\nO bien corré la ablación sólo con la pierna léxica, que no "
+                    "necesita torch:\n"
+                    "    python scripts/rag_eval.py --modo fts …",
+                    file=sys.stderr,
+                )
+                return SALIDA_SIN_DEPENDENCIA
 
         resultado = evaluar(db, args.corpus_sha, gold, modos=modos, k=args.k, embedder=embedder)
 

@@ -347,9 +347,22 @@ test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinne
 #   RAG_CORPUS_SHA         the pinned SHA (defaults to the ratified one)
 #   DATABASE_URL           target database
 #   RAG_GOLD_PRIVADO_PATH  owner-side YAML with the private gold questions
+#   RAG_EVAL_PYTHON        interpreter for rag-eval (see below)
 RAG_CORPUS_SHA ?= 12043582bf8016288a7e8084e85a4b713a97af2f
 RAG_DATABASE_URL ?= $(or $(DATABASE_URL),postgresql://consorcio:consorcio_dev@localhost:5432/consorcio)
 RAG_ARTIFACTS ?= artifacts/rag
+
+# `rag-eval`'s interpreter, overridable because the DEFAULT one cannot run the
+# whole ablation. `vector` and `hybrid` build a real embedder, which needs
+# `requirements-rag.txt` — the CUDA stack, deliberately kept out of the app venv
+# (design.md D8). So the default is the app venv (it runs `--modo fts` and every
+# refusal path), and the three-mode ablation is:
+#
+#   make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python
+#
+# Under the default the script exits 2 naming `requirements-rag.txt`; it does not
+# die on an ImportError traceback.
+RAG_EVAL_PYTHON ?= venv/bin/python
 
 rag-ingest: ## Ingest the SHA-pinned corpus into rag_corpus/rag_documento/rag_unidad
 	@if [ -z "$$RAG_CORPUS_PATH" ]; then \
@@ -374,7 +387,11 @@ rag-eval: ## Run the three-mode ablation and write docs/rag/retrieval-eval-*.md
 	@if [ -z "$$RAG_GOLD_PRIVADO_PATH" ]; then \
 		echo "$(YELLOW)rag-eval: RAG_GOLD_PRIVADO_PATH is not set — the 26 items whose text lives outside this public repo will be unresolved, and the report will refuse to emit a go/no-go. See gold_set.yaml's header.$(NC)"; \
 	fi
-	@cd $(BACKEND_DIR) && venv/bin/python scripts/rag_eval.py \
+	@if [ ! -x "$(BACKEND_DIR)/$(RAG_EVAL_PYTHON)" ]; then \
+		echo "$(RED)rag-eval: $(RAG_EVAL_PYTHON) does not exist under $(BACKEND_DIR).$(NC)"; \
+		exit 2; \
+	fi
+	@cd $(BACKEND_DIR) && $(RAG_EVAL_PYTHON) scripts/rag_eval.py \
 		--corpus-sha $(RAG_CORPUS_SHA) \
 		--database-url "$(RAG_DATABASE_URL)" \
 		$(RAG_EVAL_FLAGS)
