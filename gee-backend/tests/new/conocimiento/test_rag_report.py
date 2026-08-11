@@ -221,6 +221,65 @@ class TestMethodologyDisclosure:
         assert "| métrica | valor | barra | fuente | n | ¿pasa? |" in markdown
 
 
+class TestExencionOverCeilingEnElReporte:
+    """RJDA-003 / RJDB-006: the exemption must never be silent.
+
+    A denominator that shrinks without an explanation is worse than one that
+    does not shrink at all: the number still looks like a measurement and the
+    reason it stopped being one is nowhere in the artifact.
+    """
+
+    def test_a_mode_with_a_lexical_leg_states_that_nothing_is_exempt(self, corrida):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
+        assert "Exención por ceiling de embedding" in markdown
+        assert "no aplica en este modo" in markdown
+
+    def test_the_json_carries_the_exemption_for_a_machine_reader(self, corrida, tmp_path):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        escrito = escribir_reporte(
+            resultado, proc, destino=tmp_path, generado_en=MOMENTO, device_consulta="cpu"
+        )
+        datos = json.loads(escrito.json.read_text(encoding="utf-8"))
+        exencion = datos["modos"]["fts"]["exencion_over_ceiling"]
+        assert exencion["aplica"] is False
+        assert exencion["claves_sin_vector"] == []
+        assert exencion["preguntas_exentas"] == []
+        assert exencion["metrica_afectada"] == "citation-precision"
+        assert "FTS" in exencion["motivo"] or "recuperables por FTS" in exencion["motivo"]
+        # And the shrinkable denominator is published next to its value.
+        assert "n_citation_precision" in datos["modos"]["fts"]["metricas"]
+
+    def test_an_exempting_run_names_the_keys_the_items_and_the_reason(self, corrida):
+        """Rendered from a hand-built `ResultadoModo`: the exemption only ever
+        arises in a `vector` run, which needs pgvector, and this assertion is
+        about the REPORT rather than about the query."""
+        import dataclasses
+
+        from app.domains.conocimiento.eval.harness import ExencionOverCeiling
+
+        db, resultado = corrida
+        corrida_fts = resultado.por_modo["fts"]
+        exenta = dataclasses.replace(
+            corrida_fts,
+            modo="vector",
+            exencion=ExencionOverCeiling(
+                aplica=True,
+                claves=("8560#5",),
+                preguntas=("D-8",),
+            ),
+        )
+        alterado = dataclasses.replace(resultado, modos=("vector",), por_modo={"vector": exenta})
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(alterado, proc, generado_en=MOMENTO, device_consulta="cpu")
+        assert "`8560#5`" in markdown
+        assert "D-8" in markdown
+        assert "FTS-only by design" in markdown
+        assert "nunca se truncan" in markdown
+
+
 class TestArtifacts:
     def test_writes_markdown_and_json_side_by_side(self, corrida, tmp_path):
         db, resultado = corrida

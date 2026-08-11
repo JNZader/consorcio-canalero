@@ -193,6 +193,66 @@ class TestCitationPrecisionAndSeparation:
         )
         assert separacion_norma_secundaria(sin_flag) == 0.0
 
+    def test_citation_precision_is_none_when_the_mode_cannot_reach_the_citation(self):
+        """The D-8 case: `8560#5` is over the 8192-token embedding ceiling.
+
+        It is ingested whole and stays FTS-retrievable, and by ratified design it
+        is never embedded — so a single-leg `vector` run has nothing to rank for
+        it. Scoring 0.0 would put a permanent floor under the vector arm's hard
+        `= 1.00` bar: the bar could then never be cleared no matter how good
+        retrieval got, which is the RAG4-004 defect with the sign flipped.
+        """
+        exenta = PreguntaEvaluada(
+            id="D-8",
+            clase="answerable",
+            citas_esperadas=("8560#5",),
+            citas_vigencia=(),
+            hits=(norma("8560#28"), norma("5589#207")),
+            precision_no_evaluable=True,
+        )
+        alcanzable = PreguntaEvaluada(
+            id="D-8-fts",
+            clase="answerable",
+            citas_esperadas=("8560#5",),
+            citas_vigencia=(),
+            hits=(norma("8560#28"), norma("5589#207")),
+        )
+        assert citation_precision(exenta) is None
+        # The SAME question, same hits, in a mode that can reach the unit: a real
+        # 0.0. The flag must not be a way to make a genuine miss disappear.
+        assert citation_precision(alcanzable) == 0.0
+
+    def test_an_exempt_item_leaves_the_precision_denominator_and_says_so(self):
+        exenta = PreguntaEvaluada(
+            id="D-8",
+            clase="answerable",
+            citas_esperadas=("8560#5",),
+            citas_vigencia=(),
+            hits=(norma("8560#28"),),
+            precision_no_evaluable=True,
+        )
+        agregado = metricas_recuperacion((Q1, exenta))
+        # Q1 alone: 1.0 / 1, not 1.0 / 2. And the shrunk denominator is visible.
+        assert agregado.citation_precision == 1.0
+        assert agregado.n_citation_precision == 1
+        assert agregado.n_respondibles == 2
+
+    def test_every_answerable_item_exempt_leaves_no_measurement_at_all(self):
+        """`None`, never 1.00 — the bar must fail, not pass vacuously."""
+        exenta = PreguntaEvaluada(
+            id="D-8",
+            clase="answerable",
+            citas_esperadas=("8560#5",),
+            citas_vigencia=(),
+            hits=(),
+            precision_no_evaluable=True,
+        )
+        agregado = metricas_recuperacion((exenta,))
+        assert agregado.citation_precision is None
+        assert agregado.n_citation_precision == 0
+        barra = Barra("citation-precision", agregado.citation_precision, 1.0, "==", "answerable")
+        assert barra.pasa is False
+
     def test_separation_is_none_when_nothing_was_retrieved(self):
         """The one metric that used to award PERFECTION to total failure.
 

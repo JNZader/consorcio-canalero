@@ -852,6 +852,133 @@ def _literal(embedder, texto: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# The over-ceiling exemption (RJDA-003 / RJDB-006)
+# ---------------------------------------------------------------------------
+
+#: `8548#1` stands in for gold D-8's `8560#5`: the item's ONLY expected citation
+#: is a unit that, by ratified design, has no vector. Everything else is embedded.
+SIN_VECTOR = "8548#1"
+
+GOLD_D8 = gold_set(
+    gold_item("g-quorum", "quórum de la asamblea consorcistas", "answerable", ("9750#14",)),
+    gold_item(
+        "d8-shaped",
+        "organización del servicio de agua y saneamiento provincial",
+        "answerable",
+        (SIN_VECTOR,),
+    ),
+    gold_item("g-hueco", "cuántos metros de ancho tiene la zona de camino", "unanswerable"),
+)
+
+
+class TestExencionOverCeilingEnModoLexico:
+    """`fts` exempts NOTHING, and never asks the database whether it should.
+
+    This runs in the CI shape on the vector-less image, where the `embedding`
+    column does not exist at all — so it is also the proof that the exemption
+    query is scoped to the modes that need it. A `correr_modo(modo='fts')` that
+    reached for `embedding IS NULL` would not merely mis-score here, it would
+    raise `UndefinedColumn`.
+    """
+
+    def test_fts_scores_the_unreachable_item_normally(self, snapshot):
+        corrida = correr_modo(snapshot, SHA, GOLD_D8, modo="fts")
+        assert corrida.exencion.aplica is False
+        assert corrida.exencion.claves == ()
+        assert corrida.exencion.preguntas == ()
+        # BOTH answerable items are in the denominator: the lexical leg reaches
+        # the unit, so whatever it scored is a measurement.
+        assert corrida.metricas.n_respondibles == 2
+        assert corrida.metricas.n_citation_precision == 2
+        assert all(p.precision_no_evaluable is False for p in corrida.preguntas)
+
+
+@pytest.mark.pgvector
+class TestExencionOverCeiling:
+    """The vector arm cannot rank a unit that has no vector — and says so.
+
+    Gold D-8's only expected citation `8560#5` is one of the three units over
+    the 8192-token ceiling: ingested whole, FTS-retrievable, never embedded
+    (design.md D3). Left in the denominator it pinned the vector arm's
+    citation-precision below the hard `= 1.00` bar permanently, and the report
+    explained nothing — a bar that can never be cleared is as unfalsifiable as
+    one that can never be failed (the RAG4-004 defect, sign flipped).
+    """
+
+    def _snapshot_parcialmente_embebido(self, snapshot):
+        embedder = DeterministicEmbedder()
+        registrar_procedencia(
+            snapshot,
+            SHA,
+            modelo=DETERMINISTIC_MODEL_ID,
+            revision_hf=None,
+            sintetico=True,
+            artifact_sha256="0" * 64,
+        )
+        snapshot.execute(
+            text(
+                "UPDATE rag_unidad SET embedding = CAST(:v AS vector) "
+                "WHERE corpus_sha = :sha AND citation_key = :k"
+            ),
+            [
+                {"sha": SHA, "k": citation_key, "v": _literal(embedder, texto)}
+                for _, citation_key, _, texto in UNIDADES
+                if citation_key != SIN_VECTOR
+            ],
+        )
+        snapshot.flush()
+        return embedder
+
+    def test_vector_mode_drops_the_unreachable_item_and_discloses_why(self, snapshot, pgvector_db):
+        embedder = self._snapshot_parcialmente_embebido(snapshot)
+        corrida = correr_modo(snapshot, SHA, GOLD_D8, modo="vector", embedder=embedder)
+
+        assert corrida.exencion.aplica is True
+        assert corrida.exencion.claves == (SIN_VECTOR,)
+        assert corrida.exencion.preguntas == ("d8-shaped",)
+        assert corrida.exencion.n_preguntas_exentas == 1
+
+        por_id = {p.id: p for p in corrida.preguntas}
+        assert por_id["d8-shaped"].precision_no_evaluable is True
+        # The reachable item stays in, and so does the unanswerable one's status:
+        # the exemption is about ONE metric's denominator, not about the run.
+        assert por_id["g-quorum"].precision_no_evaluable is False
+        assert por_id["g-hueco"].precision_no_evaluable is False
+
+        assert corrida.metricas.n_respondibles == 2
+        assert corrida.metricas.n_citation_precision == 1
+
+    def test_hybrid_scores_the_same_item_normally(self, snapshot, pgvector_db):
+        """The mode difference IS the ablation's finding, not noise."""
+        embedder = self._snapshot_parcialmente_embebido(snapshot)
+        corrida = correr_modo(snapshot, SHA, GOLD_D8, modo="hybrid", embedder=embedder)
+
+        assert corrida.exencion.aplica is False
+        assert corrida.exencion.claves == ()
+        assert corrida.metricas.n_citation_precision == 2
+        assert all(p.precision_no_evaluable is False for p in corrida.preguntas)
+
+    def test_a_partially_reachable_item_is_never_exempt(self, snapshot, pgvector_db):
+        """Two expected keys, one embedded: the score is capped but REAL.
+
+        Exempting it would hide a genuine half-miss behind a design decision.
+        """
+        embedder = self._snapshot_parcialmente_embebido(snapshot)
+        parcial = gold_set(
+            gold_item(
+                "compuesta",
+                "organización del servicio y quórum de la asamblea",
+                "answerable",
+                (SIN_VECTOR, "9750#14"),
+            ),
+        )
+        corrida = correr_modo(snapshot, SHA, parcial, modo="vector", embedder=embedder)
+        assert corrida.exencion.preguntas == ()
+        assert corrida.metricas.n_citation_precision == 1
+        assert corrida.preguntas[0].precision_no_evaluable is False
+
+
+# ---------------------------------------------------------------------------
 # The committed gold set itself
 # ---------------------------------------------------------------------------
 

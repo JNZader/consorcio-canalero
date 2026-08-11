@@ -67,6 +67,12 @@ LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
     "hybrid": ("fts", "vector"),
 }
 
+#: Modes whose ONLY leg is the vector one, and therefore the only modes in which
+#: an over-the-ceiling unit is unreachable rather than merely badly ranked. In
+#: `fts` and `hybrid` the lexical leg reaches those units, so nothing is exempt
+#: there and every item stays in every denominator.
+MODOS_SIN_ALCANCE_LEXICO = ("vector",)
+
 #: The owner's ratified bars (retrieval spec, `Go/No-Go Thresholds`).
 BARRA_HIT_RATE = 0.85
 BARRA_MRR = 0.70
@@ -391,6 +397,37 @@ class CoberturaLegs:
 
 
 @dataclass(frozen=True)
+class ExencionOverCeiling:
+    """Which units this mode cannot reach at all, and whom that silences.
+
+    The three units over the 8192-token ceiling are ingested whole, stay
+    FTS-retrievable and are never embedded — a ratified design decision, not a
+    defect (design.md D3). But gold D-8's ONLY expected citation is one of them
+    (`8560#5`), so in a single-leg `vector` run its citation-precision is 0 by
+    construction, and citation-precision feeds a hard `== 1.00` bar. Left in the
+    denominator that item alone made the vector arm's bar unreachable while the
+    report said nothing about why; taken out silently, the report would show a
+    denominator shrinking for no stated reason. So it leaves the denominator AND
+    this block travels with the number.
+
+    `aplica` is False for `fts` and `hybrid`: there the lexical leg reaches the
+    unit, so the score is a real measurement and nothing is exempt.
+    """
+
+    aplica: bool
+    #: Every unit of the snapshot with no vector, sorted. Empty when `aplica` is
+    #: False — the set is not even queried for a mode that has a lexical leg.
+    claves: tuple[str, ...] = ()
+    #: Gold ids whose expected citations are ALL in `claves`, i.e. the items this
+    #: mode cannot answer with a citation no matter how good the ranking is.
+    preguntas: tuple[str, ...] = ()
+
+    @property
+    def n_preguntas_exentas(self) -> int:
+        return len(self.preguntas)
+
+
+@dataclass(frozen=True)
 class ResultadoModo:
     modo: str
     k: int
@@ -398,6 +435,7 @@ class ResultadoModo:
     senales: tuple[SenalAbstencion, ...]
     detalles: tuple[DetallePregunta, ...]
     metricas: MetricasRecuperacion
+    exencion: ExencionOverCeiling = field(default_factory=lambda: ExencionOverCeiling(False))
     #: Computed from `senales`/`detalles` at construction time so a caller cannot
     #: pass a LOOCV result or a coverage count that does not belong to this run.
     loocv: ResultadoLOOCV = field(init=False)
@@ -463,7 +501,12 @@ def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbst
     )
 
 
-def _pregunta_evaluada(item: GoldItem, resultado: ResultadoRecuperacion) -> PreguntaEvaluada:
+def _pregunta_evaluada(
+    item: GoldItem,
+    resultado: ResultadoRecuperacion,
+    *,
+    precision_no_evaluable: bool = False,
+) -> PreguntaEvaluada:
     return PreguntaEvaluada(
         id=item.id,
         clase=item.clase,
@@ -477,7 +520,20 @@ def _pregunta_evaluada(item: GoldItem, resultado: ResultadoRecuperacion) -> Preg
             )
             for hit in resultado.hits
         ),
+        precision_no_evaluable=precision_no_evaluable,
     )
+
+
+def item_fuera_de_alcance(item: GoldItem, claves_exentas: frozenset[str]) -> bool:
+    """Is every expected citation of this item unreachable by the running mode?
+
+    Requires a non-empty expected set on purpose: an `unanswerable` item has no
+    citations, and `set() <= anything` is vacuously true — which would mark the
+    whole abstention half of the gold set exempt from a metric it is not scored
+    by anyway. A partial overlap is NOT exempt either: an item that can still
+    reach one of its two expected keys has a real, if capped, score.
+    """
+    return bool(item.citas_esperadas) and set(item.citas_esperadas).issubset(claves_exentas)
 
 
 def correr_modo(
@@ -500,6 +556,15 @@ def correr_modo(
     senales: list[SenalAbstencion] = []
     detalles: list[DetallePregunta] = []
 
+    # Queried ONLY for a mode with no lexical leg, and only there because it is
+    # only there that "no vector" means "unreachable". It also reads the dev-only
+    # `embedding` column, which does not exist on the CI image — a mode that
+    # never asks the vector leg for anything must not need it.
+    claves_exentas: frozenset[str] = frozenset()
+    if modo in MODOS_SIN_ALCANCE_LEXICO:
+        claves_exentas = service.claves_sin_vector(db, corpus_sha)
+    exentas_ids: list[str] = []
+
     for item in gold.resueltas:
         assert item.pregunta is not None  # guarded by `resueltas`; keeps mypy honest
         resultado = service.recuperar(
@@ -510,8 +575,13 @@ def correr_modo(
             k=k,
             embedder=embedder,
         )
+        fuera_de_alcance = item_fuera_de_alcance(item, claves_exentas)
+        if fuera_de_alcance:
+            exentas_ids.append(item.id)
         senal = senales_desde(item, resultado)
-        preguntas.append(_pregunta_evaluada(item, resultado))
+        preguntas.append(
+            _pregunta_evaluada(item, resultado, precision_no_evaluable=fuera_de_alcance)
+        )
         senales.append(senal)
         detalles.append(
             DetallePregunta(
@@ -534,6 +604,11 @@ def correr_modo(
         senales=tuple(senales),
         detalles=tuple(detalles),
         metricas=metricas_recuperacion(preguntas, k=HIT_RATE_K),
+        exencion=ExencionOverCeiling(
+            aplica=modo in MODOS_SIN_ALCANCE_LEXICO,
+            claves=tuple(sorted(claves_exentas)),
+            preguntas=tuple(exentas_ids),
+        ),
     )
 
 

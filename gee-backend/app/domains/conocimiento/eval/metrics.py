@@ -17,7 +17,7 @@ definition is not a gate, so:
 |---|---|---|
 | hit-rate@5 | 1 if any expected key is among the first 5 fused hits | — |
 | MRR | `1/(rank+1)` of the FIRST expected key in the returned page, 0 if absent | averaging over all expected keys turns a complete composite answer into a worse score than a partial one |
-| citation-precision | **R-precision**: precision at rank `|gold|` — `\\|top_m ∩ gold\\| / m` with `m = \\|gold\\|` | any fixed window >= m makes "= 1.00" unreachable for a 1-key question on a 10-hit page, i.e. a decorative bar. At rank `m`, precision and recall coincide, so one number carries both "did it bring them all" and "did it bring junk" |
+| citation-precision | **R-precision**: precision at rank `|gold|` — `\\|top_m ∩ gold\\| / m` with `m = \\|gold\\|`; `None` for an item the running mode cannot reach by construction | any fixed window >= m makes "= 1.00" unreachable for a 1-key question on a 10-hit page, i.e. a decorative bar. At rank `m`, precision and recall coincide, so one number carries both "did it bring them all" and "did it bring junk". The `None` case is the over-ceiling exemption — see `citation_precision` |
 | norma-vs-secundaria | 1 unless the top hit is `es_secundaria`, or any hit lacks an explicit flag; `None` when the page is empty | the gold set's own rule: citing the informe instead of the article is a failure even when the content is right. Scoring an empty page 1.0 would let a mode that retrieved nothing at all clear a hard `== 1.00` bar |
 | vigencia-correctness | over trap questions only: every caveat-bearing key retrieved AND every norma hit carrying a vigencia state | scoring it over all questions would inflate the mean with free points from questions that never claimed the property |
 
@@ -80,6 +80,13 @@ class PreguntaEvaluada:
     #: a vigencia trap.
     citas_vigencia: tuple[str, ...]
     hits: tuple[HitEvaluado, ...]
+    #: True when EVERY expected citation of this item is a unit the running mode
+    #: cannot reach BY CONSTRUCTION rather than by ranking badly — today, the
+    #: over-the-8192-token units of a single-leg `vector` run, which have no
+    #: vector at all and are FTS-only by design. Set by the harness, which is the
+    #: only layer that knows both the mode and the snapshot; this module stays
+    #: mode-agnostic and simply honours the flag.
+    precision_no_evaluable: bool = False
 
     @property
     def es_respondible(self) -> bool:
@@ -106,6 +113,10 @@ class MetricasRecuperacion:
     #: the same reason `n_vigencia` is: a mean over 3 of 29 questions and a mean
     #: over 29 are different claims and must not look alike.
     n_separacion: int = 0
+    #: The denominator `citation_precision` was averaged over — smaller than
+    #: `n_respondibles` exactly when the mode cannot reach some item's citations
+    #: by construction (the over-ceiling exemption of a single-leg `vector` run).
+    n_citation_precision: int = 0
     k_hit_rate: int = HIT_RATE_K
 
 
@@ -128,14 +139,29 @@ def reciprocal_rank(pregunta: PreguntaEvaluada) -> float:
     return 0.0
 
 
-def citation_precision(pregunta: PreguntaEvaluada) -> float:
-    """R-precision: precision at rank `|gold|`.
+def citation_precision(pregunta: PreguntaEvaluada) -> float | None:
+    """R-precision: precision at rank `|gold|`. `None` when the mode cannot reach it.
 
     For a one-citation question this is "is the top hit the right one". For C-2
     (`9750#11` AND `9750#22`, where the corpus offers two removal procedures with
     different majorities and answering with one of them is wrong even though the
     citation is real) it is "are both of them the answer, and nothing else".
+
+    **`precision_no_evaluable` leaves the denominator**, the same rule
+    `separacion_norma_secundaria` and `vigencia_correctness` already follow. The
+    case is gold D-8, whose single expected citation `8560#5` is one of the three
+    units over the 8192-token embedding ceiling: by ratified design it is
+    ingested whole, stays FTS-retrievable and is never embedded. A single-leg
+    `vector` run therefore CANNOT return it — not because the ranking is bad but
+    because the vector leg has nothing to rank — and this metric feeds a hard
+    `== 1.00` bar. Scoring the item 0.0 would put a permanent, unreachable floor
+    under the vector arm of the ablation and make its citation-precision bar
+    unfalsifiable in the failing direction, which is the mirror image of the
+    RAG4-004 defect (a bar passed BY failing). `hybrid` and `fts` are unaffected:
+    the lexical leg reaches the unit, so there the score is a real measurement.
     """
+    if pregunta.precision_no_evaluable:
+        return None
     esperadas = set(pregunta.citas_esperadas)
     if not esperadas:
         return 0.0
@@ -216,14 +242,20 @@ def metricas_recuperacion(
         for valor in (separacion_norma_secundaria(pregunta) for pregunta in respondibles)
         if valor is not None
     ]
+    precisiones = [
+        valor
+        for valor in (citation_precision(pregunta) for pregunta in respondibles)
+        if valor is not None
+    ]
     return MetricasRecuperacion(
         n_respondibles=len(respondibles),
         hit_rate_at_5=_media([hit_rate_at_k(pregunta, k) for pregunta in respondibles]),
         mrr=_media([reciprocal_rank(pregunta) for pregunta in respondibles]),
-        citation_precision=_media([citation_precision(pregunta) for pregunta in respondibles]),
+        citation_precision=_media(precisiones),
         separacion_norma_secundaria=_media(separaciones),
         vigencia_correctness=_media(vigencias),
         n_vigencia=len(vigencias),
         n_separacion=len(separaciones),
+        n_citation_precision=len(precisiones),
         k_hit_rate=k,
     )

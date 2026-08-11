@@ -650,6 +650,36 @@ def leer_procedencia(db: Session, corpus_sha: str) -> ProcedenciaEmbeddings | No
     )
 
 
+CLAVES_SIN_EMBEDDING_SQL = text(
+    """
+    SELECT citation_key
+    FROM rag_unidad
+    WHERE corpus_sha = :corpus_sha AND embedding IS NULL
+    ORDER BY citation_key ASC
+    """
+)
+
+
+def claves_sin_embedding(db: Session, corpus_sha: str) -> frozenset[str]:
+    """Units of this snapshot the vector leg cannot reach: they have no vector.
+
+    On a LOADED snapshot this set is exactly the artifact's declared
+    `over_ceiling` exemptions — `rag_load_vectors.verificar_post_carga` rolls the
+    whole load back, in both directions, unless the units without a vector are
+    precisely the units the sidecar declared exempt. So this query reads a fact
+    the loader already guaranteed rather than re-deriving one, which is why it
+    can be a plain `IS NULL` and not a join against a manifest that, by design,
+    does not survive a second batch (design.md D3).
+
+    Requires the dev-only `embedding` column, so callers must have established
+    vector capability first (`require_vector_support`). Ordered for determinism,
+    like every other leg in this module.
+    """
+    return frozenset(
+        fila[0] for fila in db.execute(CLAVES_SIN_EMBEDDING_SQL, {"corpus_sha": corpus_sha}).all()
+    )
+
+
 def registrar_procedencia(
     db: Session,
     corpus_sha: str,

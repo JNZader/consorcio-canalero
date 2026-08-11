@@ -38,6 +38,7 @@ from app.domains.conocimiento.repository import (
     IngestionAbort,
     LegHit,
     ProcedenciaEmbeddings,
+    claves_sin_embedding,
     fts_search,
     hydrate_citations,
     leer_procedencia,
@@ -232,6 +233,20 @@ def procedencia_embeddings(db: Session, corpus_sha: str) -> ProcedenciaEmbedding
     embedded with — so the service layer exposes it and the boundary holds.
     """
     return leer_procedencia(db, corpus_sha)
+
+
+def claves_sin_vector(db: Session, corpus_sha: str) -> frozenset[str]:
+    """Which units the vector leg cannot reach at all, for the eval to disclose.
+
+    Same structural reason as `procedencia_embeddings`: the eval package may not
+    import `repository` (design.md D4), and it needs this set to tell "the vector
+    leg ranked badly" apart from "the vector leg had nothing to rank". Those are
+    different findings and only one of them is about retrieval quality.
+
+    Callers must have established vector capability first — this reads the
+    dev-only `embedding` column, which does not exist on the CI image.
+    """
+    return claves_sin_embedding(db, corpus_sha)
 
 
 def verificar_embedder(db: Session, corpus_sha: str, embedder: Embedder) -> None:

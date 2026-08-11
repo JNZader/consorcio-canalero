@@ -108,6 +108,7 @@ def _fmt(valor: float | None, decimales: int = 3) -> str:
 _DENOMINADOR_PROPIO = {
     "norma-vs-secundaria": "n_separacion",
     "vigencia-correctness": "n_vigencia",
+    "citation-precision": "n_citation_precision",
 }
 
 
@@ -201,6 +202,52 @@ def _bloque_cobertura(corrida: ResultadoModo) -> list[str]:
             "la mayoría de las preguntas, así que este bloque NO es una fusión: es "
             "mayormente la otra pierna sola, con etiqueta de híbrido.",
         ]
+    return lineas
+
+
+def _bloque_exencion(corrida: ResultadoModo) -> list[str]:
+    """Disclose the over-ceiling exemption, in every mode, including "none".
+
+    Printed even when nothing is exempt, and that is the point: a block that only
+    appears when it changed a number is a block a reader learns to expect to be
+    absent, so its absence stops being informative. Here absence and "0 items"
+    are different facts — `fts` and `hybrid` never exempt anything by design,
+    `vector` may exempt and happen not to — and both are stated.
+    """
+    exencion = corrida.exencion
+    if not exencion.aplica:
+        return [
+            "**Exención por ceiling de embedding**",
+            "",
+            "- no aplica en este modo: la pierna léxica alcanza las unidades sin "
+            "vector, así que ningún ítem sale del denominador.",
+        ]
+
+    lineas = [
+        "**Exención por ceiling de embedding**",
+        "",
+        f"- unidades del snapshot SIN vector: {len(exencion.claves)}",
+    ]
+    for clave in exencion.claves:
+        lineas.append(f"  - `{clave}`")
+    lineas += [
+        f"- ítems del gold cuyas citas esperadas están TODAS sin vector: "
+        f"{exencion.n_preguntas_exentas}",
+    ]
+    for id_pregunta in exencion.preguntas:
+        lineas.append(f"  - {id_pregunta}")
+    lineas += [
+        "",
+        "> Estas unidades superan el ceiling de 8192 tokens del modelo. Por "
+        "decisión de diseño (design.md D3) se ingieren ENTERAS, **nunca se "
+        "truncan**, siguen siendo recuperables por FTS y no se embeben: son "
+        "**FTS-only by design**. En un modo de una sola pierna vectorial no hay "
+        "ranking posible para ellas, así que los ítems de arriba salen del "
+        "denominador de `citation-precision` (columna `n`) en lugar de puntuar "
+        "0.00 contra una barra dura de `= 1.00`. En `fts` y `hybrid` se puntúan "
+        "normalmente, y esa diferencia entre modos es un resultado de la "
+        "ablación, no ruido.",
+    ]
     return lineas
 
 
@@ -331,6 +378,7 @@ def renderizar_markdown(
         lineas += _tabla_metricas(corrida, go_no_go)
         lineas += ["", *_bloque_metodologia(corrida)]
         lineas += ["", *_bloque_cobertura(corrida)]
+        lineas += ["", *_bloque_exencion(corrida)]
         lineas += ["", "**Por pregunta**", "", *_tabla_preguntas(corrida), ""]
 
     return "\n".join(lineas) + "\n"
@@ -356,10 +404,23 @@ def _a_json(
                 "hit_rate_at_5": corrida.metricas.hit_rate_at_5,
                 "mrr": corrida.metricas.mrr,
                 "citation_precision": corrida.metricas.citation_precision,
+                "n_citation_precision": corrida.metricas.n_citation_precision,
                 "separacion_norma_secundaria": corrida.metricas.separacion_norma_secundaria,
                 "n_separacion": corrida.metricas.n_separacion,
                 "vigencia_correctness": corrida.metricas.vigencia_correctness,
                 "n_vigencia": corrida.metricas.n_vigencia,
+            },
+            "exencion_over_ceiling": {
+                "aplica": corrida.exencion.aplica,
+                "motivo": (
+                    "unidades sobre el ceiling de 8192 tokens: ingeridas enteras, "
+                    "recuperables por FTS, nunca embebidas (FTS-only by design, "
+                    "design.md D3)"
+                ),
+                "claves_sin_vector": list(corrida.exencion.claves),
+                "preguntas_exentas": list(corrida.exencion.preguntas),
+                "n_preguntas_exentas": corrida.exencion.n_preguntas_exentas,
+                "metrica_afectada": "citation-precision",
             },
             "metodologia": resumen_metodologico(corrida),
             "cobertura": {
