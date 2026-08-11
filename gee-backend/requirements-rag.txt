@@ -1,0 +1,33 @@
+# Dependencias de EMBEDDING — solo para la maquina que embebe, jamas para la
+# imagen del servidor.
+#
+# Mismo patron que requirements-ml.txt: torch trae el stack CUDA completo
+# (~6 GB) y el box de produccion (CX33, 2 vCPU compartidas, sin GPU) no tiene
+# que verlo nunca. La aplicacion NO importa nada de aca: la columna `embedding`
+# no esta mapeada en SQLAlchemy y la pierna vectorial es SQL crudo, asi que el
+# runtime no necesita ni siquiera el paquete `pgvector` de Python
+# (openspec/changes/consorcio-rag/design.md D7/D8).
+#
+# Los consumidores son:
+#   scripts/rag_embed_batch.py     — el batch en la RTX 5060 Ti (Ops O.3)
+#   scripts/rag_query_latency.py   — la medicion de latencia de query en CPU
+#
+# Uso local, en un virtualenv APARTE del de la app:
+#   python -m venv venv-rag
+#   venv-rag/bin/pip install -r requirements-rag.txt
+#   venv-rag/bin/python scripts/rag_embed_batch.py --help
+#
+# El modelo (BAAI/bge-m3, ~2.2 GB) se descarga en el primer uso al cache de
+# HuggingFace. Fijar --model y la revision HF en el manifiesto del artefacto es
+# lo que hace reproducible la corrida; ver el sidecar vectors-{sha8}.json.
+torch>=2.0.0
+transformers>=4.40.0
+# FlagEmbedding es el paquete de referencia de BAAI para BGE-M3. El batch usa
+# transformers directamente (CLS + normalizacion L2, que es la representacion
+# densa de BGE-M3), asi que FlagEmbedding queda como camino alternativo y para
+# las utilidades de tokenizacion del modelo.
+FlagEmbedding>=1.2.0
+# El baseline local que reemplazo al proveedor hosted (Ops O.5, resuelto:
+# multilingual-e5-large, cero llamadas externas en V0). E5 NO es simetrico:
+# necesita los prefijos "query: " / "passage: ", al reves que BGE-M3.
+sentence-transformers>=2.7.0

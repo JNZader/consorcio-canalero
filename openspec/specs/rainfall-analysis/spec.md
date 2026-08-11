@@ -97,6 +97,17 @@ The system MUST suppress `annual.percentile` when baseline years available for t
 - WHEN percentile is computed
 - THEN the system suppresses it for insufficient sample size, not as a misleading rank
 
+### Requirement: Percentile Requires the Selected Year's Own Evidence
+
+The system MUST suppress `annual.percentile` when the selected year's evidence inside the disclosed comparison window is itself incomplete — the rank sums only the intervals that are present and places the selected year inside a sample whose baseline years each had to clear their own completeness floor to participate — and MUST disclose a reason distinct from the baseline sample-size and baseline-evidence reasons. Suppression MUST NOT depend on `annual.selected` remaining suppressed: a selected-year total that still clears its own disclosure threshold can be short by enough days to move the rank materially. `annual.normal` is unaffected, being a baseline average that ranks nothing.
+
+#### Scenario: Selected year is missing days inside the comparison window
+
+- GIVEN the selected year is missing days inside the disclosed comparison window
+- WHEN the percentile is computed
+- THEN the system suppresses it with a selected-evidence reason, even when the selected-year cumulative total is still presented
+- AND still presents the 1991–2020 normal
+
 ### Requirement: Campaign Display Preset
 
 The system MAY offer a "campaign since September 1" display preset that reformats an existing calendar-year analysis for viewing. It MUST NOT be offered or accepted as an analysis period, and results MUST remain labelled as derived from the underlying calendar-year analysis.

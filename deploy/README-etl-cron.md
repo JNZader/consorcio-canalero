@@ -25,7 +25,34 @@ Not in the refresh, on purpose:
   exists on the box.
 - `generate_chirps_normals` — static reference data (1991-2020 normals). Its own
   docstring: *"There is no scheduled job and none is wanted."* Regenerate by hand
-  only when the normals period or the consorcio extent changes.
+  only when the normals period changes, the consorcio extent changes, or **the
+  pipeline itself is fixed** — see the pending run below.
+
+### PENDING one-off: regenerate the CHIRPS normals
+
+The 13 rasters on the production volume were baked by the pre-fix pipeline, which
+clipped each normal to the zona outline. Earth Engine serialises a masked pixel as
+`0.0` with no nodata tag and the warp lacked `src_nodata`, so those zeros survived
+as measurements: zones on the eastern edge of the extent averaged real millimetres
+together with them (LT B read 0.0 mm every month, LT16 697.5 against 930, GRUPO35
+611.2 against 916.8). The export and the warp are fixed in code; **the bytes on
+disk only change on a re-run.**
+
+Requires Earth Engine credentials, so it runs on the prod box:
+
+```
+docker compose exec backend python -m app.domains.geo.etl.generate_chirps_normals
+```
+
+Exit 0 = 13 rasters written and registered under a fresh `version` (the previous
+rows stay, the ficha's month-scoped lookup takes the newest). Exit 1 = credentials
+/ extent resolution failed and NOTHING was written. Exit 3 = the batch rolled back.
+
+After a successful run, verify one edge parcel in the ficha (LT B should report
+real millimetres, not `sin_cobertura`), then RETIRE the stop-gap in
+`ficha_service._perfil_precip` — the `treat_zero_as_nodata=True` call — which
+treats `0.0` as no-data for precipitation only while the baked rasters carry the
+clip's zeros.
 
 ## Why no `--force`
 

@@ -1972,6 +1972,7 @@ class TestNormalAndPercentileBaselineFloor:
             baseline=self._complete_baseline(range(1991, 1991 + 19)),
             baseline_cutoff=self._COMPARISON_END,
             selected_value=12.0,
+            selected_evidence_rankable=True,
             selected_temporal_state="final",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
@@ -1992,6 +1993,7 @@ class TestNormalAndPercentileBaselineFloor:
             baseline=self._complete_baseline(range(1991, 1991 + 20)),
             baseline_cutoff=self._COMPARISON_END,
             selected_value=12.0,
+            selected_evidence_rankable=True,
             selected_temporal_state="final",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
@@ -2015,6 +2017,11 @@ class TestNormalAndPercentileBaselineFloor:
             baseline=self._complete_baseline(range(1991, 2021)),
             baseline_cutoff=self._COMPARISON_END,
             selected_value=None,
+            # Ops.6: the evidence gate is deliberately NOT the thing under
+            # test here -- it is set permissive so the absent-total branch is
+            # the only reason the percentile can suppress, which is exactly
+            # the ordering this counterexample pins.
+            selected_evidence_rankable=True,
             selected_temporal_state="provisional",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",
@@ -2113,6 +2120,121 @@ class TestBaselineFloorBindsAtDisclosure:
             assert (coverage[window], quality[window]) == (0.9, 0.8)
 
 
+class TestSelectedEvidenceRankGate:
+    """Ops.6 (archive-report.md 2026-08-11 section 10):
+    ``compute._selected_metric_rankable`` is a CONJUNCTION -- the selected
+    year's total clears its own disclosure gate, AND its day-completeness
+    clears the same floor every baseline year had to clear to enter the
+    sample. Pure, no DB: the real-PG block in
+    ``tests/new/geo/rainfall/test_rainfall_insights_metrics.py`` pins the
+    end-to-end suppression; what lives here is the decision boundary itself,
+    where a flipped operator or a dropped conjunct has to fail immediately.
+    """
+
+    @staticmethod
+    def _annual_selected(completeness: float, **overrides: Any) -> dict[str, Any]:
+        """``build_snapshot``'s ``annual.selected`` shape, reduced to the four
+        numbers the gate reads. ``coverage`` and ``quality["score"]`` are
+        ALIASES of ``completeness`` there (compute.py:645,647 -- there is no
+        independent QC signal for a satellite zonal mean, decision 5b), so
+        they follow it by default; passing one explicitly is a deliberate
+        statement that they diverged."""
+        metric: dict[str, Any] = {
+            "metric": "annual",
+            "value": 720.375,
+            "coverage": completeness,
+            "completeness": completeness,
+            "quality": {"score": completeness},
+        }
+        metric.update(overrides)
+        return metric
+
+    def test_exactly_the_baseline_year_floor_still_ranks(self) -> None:
+        """The ``>=`` boundary, at the smallest sample that can express it:
+        19 of 20 days present is the SAME fraction a baseline year needs to
+        enter the sample, so the year being ranked clears the bar on exactly
+        the terms every other member of that sample did.
+
+        Written as ``19 / 20``, not ``0.95``: the two are bit-identical
+        doubles, which is what makes the boundary decidable rather than a
+        coin flip on representation error -- the same reasoning
+        ``_BASELINE_SAMPLE_FRACTION = 20 / 30`` uses in policy.py. A ``>``
+        mutant flips this case to False."""
+        from app.domains.geo.rainfall.compute import (
+            _BASELINE_YEAR_COMPLETENESS_THRESHOLD,
+            _selected_metric_rankable,
+        )
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        # Bit-identical, so `==` is the right comparison and `approx` would
+        # hide the very drift this pins.
+        assert 19 / 20 == _BASELINE_YEAR_COMPLETENESS_THRESHOLD
+        assert (
+            _selected_metric_rankable(RAINFALL_METRIC_POLICY, self._annual_selected(19 / 20))
+            is True
+        )
+
+    def test_just_below_the_floor_is_disclosed_but_not_ranked(self) -> None:
+        """The asymmetry Ops.6 introduced, in one place: 18 of 20 present is
+        0.9, which clears ``annual``'s own 0.8 gate comfortably -- so the
+        accumulated total is still SHOWN -- while the rank refuses. A mutant
+        that drops the completeness conjunct returns True here, which is the
+        exact silent band the fix closed."""
+        from app.domains.geo.rainfall.compute import (
+            _selected_metric_disclosable,
+            _selected_metric_rankable,
+        )
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        metric = self._annual_selected(18 / 20)
+        assert _selected_metric_disclosable(RAINFALL_METRIC_POLICY, metric) is True
+        assert _selected_metric_rankable(RAINFALL_METRIC_POLICY, metric) is False
+
+    def test_the_disclosure_conjunct_is_load_bearing_under_a_stricter_policy(self) -> None:
+        """The FIRST conjunct, isolated -- and why isolating it needs a
+        policy the deployment does not currently ship.
+
+        Under ``RAINFALL_METRIC_POLICY`` the two conjuncts overlap and this
+        case is unreachable: ``build_snapshot`` aliases coverage and
+        ``quality["score"]`` to completeness, ``annual``'s floor is 0.8, and
+        ``value`` is ``None`` only when zero slots matched (completeness 0.0)
+        -- so completeness >= 0.95 implies disclosable, always. That overlap
+        is precisely why the composition needs a pin of its own: what
+        ``_selected_metric_rankable``'s docstring promises is FORWARD
+        coupling -- "a threshold moved in RAINFALL_METRIC_POLICY moves both
+        gates together" -- and it starts binding the moment ``annual``'s
+        floor moves above 0.95, or ``quality["score"]`` gets the independent
+        QC signal decision 5b says it does not yet have.
+
+        The policy is a PARAMETER of the function, so that future is
+        expressible today rather than only after the fact: at a 0.98 floor a
+        0.96-complete year clears the rank floor and fails its own disclosure
+        gate, and must not rank. A mutant that drops the conjunct returns
+        True."""
+        from app.domains.geo.rainfall.compute import (
+            _BASELINE_YEAR_COMPLETENESS_THRESHOLD,
+            _selected_metric_disclosable,
+            _selected_metric_rankable,
+        )
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+
+        stricter = MetricThresholdPolicy(
+            revision="annual-floor-above-the-rank-floor",
+            minimum_coverage_by_metric={"annual": 0.98},
+            minimum_quality_by_metric={"annual": 0.8},
+            duration_threshold=None,
+        )
+        metric = self._annual_selected(0.96)
+
+        assert metric["completeness"] >= _BASELINE_YEAR_COMPLETENESS_THRESHOLD
+        assert _selected_metric_disclosable(stricter, metric) is False
+        assert _selected_metric_rankable(stricter, metric) is False
+        # ... and the SAME metric ranks under the shipped policy, which is
+        # what makes this a statement about the composition rather than about
+        # this particular number.
+        assert _selected_metric_rankable(RAINFALL_METRIC_POLICY, metric) is True
+
+
 class TestPercentileFeb29SmallSample:
     """Task 2a.4/D5: February 29 has only 8 leap years in 1991-2020
     (temporal.baseline_years_for) -- structurally below MIN_BASELINE_YEARS,
@@ -2134,6 +2256,7 @@ class TestPercentileFeb29SmallSample:
             baseline=baseline,
             baseline_cutoff=comparison_end,
             selected_value=11.0,
+            selected_evidence_rankable=True,
             selected_temporal_state="final",
             selected_source_id="chirps-v3-sat",
             nominal_resolution="1000m",

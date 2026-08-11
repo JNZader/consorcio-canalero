@@ -185,18 +185,36 @@ def apply_metric_policy(
 # finalization reuses verbatim (decision 9b) — the two consumers share one
 # definition of "good enough to show".
 #
-# lluvia-insights slice 2b, task 2b.6 (design.md D3): bumped from
-# "rainfall-v2-2026-08". The bump is LOAD-BEARING, not cosmetic --
-# `data_revision` hashes source/family/scope/year/comparison_end/intervals
-# only, so for a key whose evidence has not moved the enriched envelope
-# (annual.normal/percentile + antecedents) would hit `persist_revision`'s
+# The bump is LOAD-BEARING, not cosmetic -- `data_revision` hashes
+# source/family/scope/year/comparison_end/intervals only, so for a key whose
+# evidence has not moved a corrected envelope would hit `persist_revision`'s
 # ON CONFLICT DO NOTHING and never land. `policy_revision` is the second
-# column of `uq_rainfall_analysis_snapshot`, so bumping it makes the
-# enriched snapshot a distinct row instead of a discarded duplicate. Old
-# rows stay self-consistent: the router normalizes each row with the
-# row's OWN policy_revision, so no migration and no snapshot backfill --
-# `router.read_analysis` serves them and enqueues a labelled refresh.
-RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08-insights"
+# column of `uq_rainfall_analysis_snapshot`, so bumping it makes the corrected
+# snapshot a distinct row instead of a discarded duplicate. Old rows stay
+# self-consistent: the router normalizes each row with the row's OWN
+# policy_revision, so no migration and no snapshot backfill --
+# `router.read_analysis` serves them and enqueues a labelled refresh
+# (`rainfall.analysis.policy_revision_stale`, workbook §2.1).
+#
+# History of this constant, newest first -- every entry is a build-time
+# envelope change that had to REACH already-materialized keys:
+#
+# - `-insights-r2` (Ops.6, archive-report.md 2026-08-11 §10): the evidence
+#   gate coupling `annual.percentile` to the selected year's own day
+#   completeness (`compute._selected_metric_rankable`) is decided at BUILD
+#   time, so it only reaches a reader through a NEW revision row. Without
+#   this bump the correction is envelope-only: a key already materialized
+#   under `-insights` with unmoved evidence keeps serving the biased rank
+#   forever, and a completed year -- which neither scheduled sweep revisits
+#   -- would never get another chance. The prod population at the time of
+#   the bump was zero (all 8 insights revisions sat at selected completeness
+#   1.0, so no served rank was actually biased); it is bumped anyway, as
+#   cheap insurance for future ingest gaps and for other deployments.
+# - `-insights` (lluvia-insights slice 2b, task 2b.6, design.md D3): bumped
+#   from "rainfall-v2-2026-08" so the enriched envelope
+#   (annual.normal/percentile + antecedents) could land on keys whose
+#   evidence had not moved.
+RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08-insights-r2"
 
 # LI2A-003 (lluvia-insights slice 2b, design.md D4 note): annual_normal and
 # annual_percentile carry `completeness = eligible baseline years / 30`, and

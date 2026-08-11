@@ -206,6 +206,45 @@ def _raster_grueso(tmp_path: Any, name: str, value: float) -> str:
     )
 
 
+def _raster_borde_este(
+    tmp_path: Any,
+    name: str,
+    value: float,
+    *,
+    col_cero_desde: int = 8,
+) -> str:
+    """A fine raster covering the parcel whose EASTERN columns are a literal 0.0.
+
+    THE PRODUCTION DEFECT, reproduced byte-for-byte in miniature. The GEE export
+    ``.clip``s each normal to the zona asset and Earth Engine writes the masked
+    pixels as ``0.0`` with NO nodata tag; the ETL warp stamps ``dst_nodata =
+    -9999`` but never passes ``src_nodata``, so those zeros survive as
+    measurements. The file therefore declares a nodata value NO pixel carries,
+    while its eastern edge reads as "it rained nothing here".
+
+    ``col_cero_desde`` is the first zeroed column of the 16-wide grid; the parcel
+    spans columns 3..13, so the default 8 leaves it straddling the fake edge.
+    """
+    npix = 16
+    data = np.full((npix, npix), value, dtype="float32")
+    data[:, col_cero_desde:] = 0.0
+    path = tmp_path / name
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=npix,
+        width=npix,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(LON0 - 0.003, LAT0 + D + 0.003, 0.001, 0.001),
+        nodata=NODATA,  # declared, and carried by NOT ONE pixel — as in prod
+    ) as dst:
+        dst.write(data, 1)
+    return str(path)
+
+
 def _registrar_precip(
     db: Session,
     mes: Any,
@@ -418,6 +457,74 @@ def test_precip_zona_fuera_de_cobertura_sin_cobertura_sin_ceros(ficha_db, monkey
                 npix=8,
             ),
         )
+
+    rs = _post(ficha_db)
+
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    assert precip["cobertura"] == "sin_cobertura"
+    assert precip["serie"] == []  # NOT twelve mm:0 rows
+    assert precip["anual_mm"] is None
+
+
+# ── the CLIP-ZERO defect: fake zeros must not be averaged as rainfall ────────
+
+
+def test_precip_ceros_del_clip_no_contaminan_la_media(ficha_db, monkeypatch, tmp_path):
+    """A parcel straddling the fake eastern edge reports the REAL mm, as ``parcial``.
+
+    Before the fix this parcel averaged ~900 mm together with the clip's zeros
+    and served the diluted number under ``cobertura: total`` — an authoritative
+    "the whole zone gets X" where X was fiction. Two assertions carry the
+    contract: the mean is the raster's real value (no zero in the average) and
+    the coverage says the number does not speak for the whole parcel.
+    """
+    _preparar(ficha_db, monkeypatch)
+    for mes in range(1, 13):
+        _registrar_precip(
+            ficha_db, mes, _raster_borde_este(tmp_path, f"precip_{mes:02d}.tif", float(mes * 10))
+        )
+    _registrar_precip(ficha_db, "anual", _raster_borde_este(tmp_path, "precip_anual.tif", 1234.0))
+
+    rs = _post(ficha_db)
+
+    assert rs.status_code == 200, rs.text
+    precip = rs.json()["precipitacion_mensual"]
+    # The twelve months resolve — half the parcel really does have data…
+    assert [e["mes"] for e in precip["serie"]] == list(range(1, 13))
+    # …and every value is the raster's own, undiluted by the clip's zeros.
+    for e in precip["serie"]:
+        assert e["mm"] == pytest.approx(e["mes"] * 10.0, abs=0.01)
+    assert precip["anual_mm"] == pytest.approx(1234.0, abs=0.01)
+    # …reported as what it is: a number for the part of the parcel with data.
+    assert precip["cobertura"] == "parcial"
+    assert precip["cobertura_ratio"] < 1.0
+
+
+def test_precip_parcela_toda_sobre_ceros_del_clip_es_sin_cobertura(ficha_db, monkeypatch, tmp_path):
+    """A parcel entirely inside the fake zone reports NO data, never ``0.0 mm``.
+
+    This is the LT B case from production: every cell of the parcel is a clip
+    zero, and the ficha served a full twelve-month series of ``0.0 mm`` under
+    ``cobertura: total`` — the most confident possible way to be wrong. The
+    honest path already existed for a zone outside the extent; the zeros just
+    kept it from ever being reached.
+    """
+    _preparar(ficha_db, monkeypatch)
+    # col_cero_desde=0 → the whole raster is the clip's zero fill.
+    for mes in range(1, 13):
+        _registrar_precip(
+            ficha_db,
+            mes,
+            _raster_borde_este(
+                tmp_path, f"precip_{mes:02d}.tif", float(mes * 10), col_cero_desde=0
+            ),
+        )
+    _registrar_precip(
+        ficha_db,
+        "anual",
+        _raster_borde_este(tmp_path, "precip_anual.tif", 1234.0, col_cero_desde=0),
+    )
 
     rs = _post(ficha_db)
 
