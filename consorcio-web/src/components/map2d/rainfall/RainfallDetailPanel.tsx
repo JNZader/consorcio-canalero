@@ -35,16 +35,12 @@ import {
 import { useCanAccess } from '../../../stores/authStore';
 import { RainfallAccumulationChart } from './RainfallAccumulationChart';
 import { RainfallMetricList } from './RainfallMetricList';
+import { RAINFALL_SCOPE_LABELS } from './rainfallFormat';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 1990 }, (_, i) =>
   String(CURRENT_YEAR - i)
 );
-
-const SCOPE_LABELS: Record<RainfallScopeChoice['kind'], string> = {
-  zone: 'Zona',
-  basin: 'Cuenca',
-};
 
 function scopeKey(scope: RainfallScopeChoice): string {
   return `${scope.kind}:${scope.id}:${scope.version}`;
@@ -102,7 +98,7 @@ export function RainfallDetailPanel({
       }
     } else if (snapshot) {
       setAnnouncement(
-        `Análisis de lluvia disponible para ${SCOPE_LABELS[snapshot.scope.kind]} ${year}`
+        `Análisis de lluvia disponible para ${RAINFALL_SCOPE_LABELS[snapshot.scope.kind]} ${year}`
       );
     } else if (analysis.isError) {
       setAnnouncement('No se pudo obtener el análisis de lluvia.');
@@ -165,7 +161,7 @@ export function RainfallDetailPanel({
           onChange={setSelectedKey}
           data={choices.map((choice) => ({
             value: scopeKey(choice),
-            label: SCOPE_LABELS[choice.kind],
+            label: RAINFALL_SCOPE_LABELS[choice.kind],
           }))}
           aria-label="Ámbito regional"
           data-testid="rainfall-scope-switch"

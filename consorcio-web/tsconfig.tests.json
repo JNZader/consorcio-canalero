@@ -48,6 +48,7 @@
     "tests/unit/RainfallDetailPanel.test.tsx",
     "tests/unit/RainfallAccumulationChart.test.tsx",
     "tests/unit/RainfallMetricList.test.tsx",
+    "tests/unit/RainfallAnswerCard.test.tsx",
     "tests/hooks/useRainfallAnalysis.test.tsx",
     // The e2e journey builds the SAME wire shapes as the unit fixtures above
     // (analysis snapshot, series envelope), so it drifts from the contract in

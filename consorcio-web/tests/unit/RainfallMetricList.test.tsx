@@ -124,40 +124,24 @@ function renderList(snap: RainfallAnalysisSnapshot): ReturnType<typeof render> {
   return render(ui);
 }
 
-describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
-  it('states the percentile beside the year and the normal', () => {
-    renderList(snapshot());
-
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
-    expect(text).toHaveTextContent('Normal 1991-2020: 1013.8 mm');
-    // Whole percentiles: a Weibull rank over 31 samples moves in steps of ~3,
-    // so a tenth of a percentile is precision the number does not have.
-    expect(text).toHaveTextContent('Percentil 27 de 1991-2020');
-  });
-
-  it('prints the baseline period AS SERVED, on every surface of the panel', () => {
+describe('RainfallMetricList — the served baseline on the badged surfaces (4.7)', () => {
+  it('prints the baseline period AS SERVED, on every surface of the list', () => {
     // RISK-001 all over again: regenerating the normals over another period
-    // must change this panel by itself, with no frontend edit involved.
+    // must change this list by itself, with no frontend edit involved.
     const snap = snapshot({ baseline: '2001-2030' });
     renderList(snap);
 
-    // The three surfaces that name a period, asserted one by one so a failure
-    // says WHICH one regressed.
-    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
-      'Percentil 27 de 2001-2030'
-    );
-    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
-      'Normal 2001-2030: 1013.8 mm'
-    );
+    // The two surfaces the LIST names a period on, asserted one by one so a
+    // failure says WHICH one regressed. The phrase's own half of this contract
+    // moved to `RainfallAnswerCard.test.tsx` with `AnnualText`.
     expect(screen.getByTestId('rainfall-metric-normal')).toHaveTextContent('Normal 2001-2030');
     expect(screen.getByTestId('rainfall-summary')).toHaveTextContent('Normal 2001-2030 1013.8 mm');
 
-    // …and the sweep that catches the FOURTH surface nobody thought of. It
-    // compares against `snapshot.baseline` rather than excluding the literal
-    // 1991-2020, because a detector written as a denylist only ever catches the
-    // one constant it was written for: this one fires on ANY period the server
-    // did not serve, in either dash spelling.
+    // …and the sweep that catches the surface nobody thought of. It compares
+    // against `snapshot.baseline` rather than excluding the literal 1991-2020,
+    // because a detector written as a denylist only ever catches the one
+    // constant it was written for: this one fires on ANY period the server did
+    // not serve, in either dash spelling.
     //
     // Two failure modes of the previous version, both real (LI4-004 / CC-002):
     // it was scoped to the annual-text node while the hardcode lived in the
@@ -170,26 +154,13 @@ describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
       ),
     ].map(([period]) => period);
 
-    expect(periods.length).toBeGreaterThanOrEqual(4);
+    expect(periods.length).toBeGreaterThanOrEqual(2);
     expect([...new Set(periods)]).toEqual([snap.baseline]);
   });
 
-  it('keeps a served percentile of 0 as a number, never as a missing value', () => {
-    // The driest year on record ranks at the bottom. That is DATA — the single
-    // most expensive thing this UI could round away into "—".
-    renderList(
-      snapshot({
-        annual: {
-          selected: metric({ metric: 'selected', value: 12.5 }),
-          percentile: metric({ metric: 'percentile', value: 0, unit: 'percentil' }),
-        },
-      })
-    );
-
-    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent('Percentil 0 de 1991-2020');
-  });
-
-  it('renders no value for a suppressed percentile, and never a zero', () => {
+  it('keeps a suppressed percentile reachable by state and reason in its row', () => {
+    // The badged row is where the reason survives once the phrase above it
+    // prints only "—" (the card carries it too, on the always-visible surface).
     renderList(
       snapshot({
         annual: {
@@ -205,24 +176,8 @@ describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
       })
     );
 
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text.textContent).toContain('—');
-    expect(text.textContent).not.toMatch(/Percentil 0\b/);
-    // The reason is not lost: the badged row below still carries it verbatim.
-    expect(screen.getByTestId('rainfall-metric-percentile').textContent).toContain(
-      'baseline_years_below_minimum'
-    );
-  });
-
-  it('omits the phrase entirely when the analysis carries no percentile', () => {
-    renderList(
-      snapshot({
-        annual: { selected: metric({ metric: 'selected', value: 850.24 }) },
-      })
-    );
-
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
-    expect(text.textContent).not.toMatch(/Percentil/i);
+    const row = screen.getByTestId('rainfall-metric-percentile');
+    expect(row.textContent).toContain('baseline_years_below_minimum');
+    expect(row.textContent).not.toMatch(/\b0 percentil\b/);
   });
 });

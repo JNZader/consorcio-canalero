@@ -12,6 +12,7 @@ import type {
   RainfallAnalysisSnapshot,
   RainfallMetric,
   RainfallMetricState,
+  RainfallScopeChoice,
 } from '../../../lib/api/rainfall';
 
 /**
@@ -39,6 +40,19 @@ const RAINFALL_METRIC_LABELS: Record<string, string> = {
   i60: 'I60 (mm/h)',
   peak: 'Pico del evento',
   duration: 'Duración del evento',
+};
+
+/**
+ * How a resolved analysis scope is NAMED on screen.
+ *
+ * One map, two readers (the panel's live announcement and the card's scope
+ * line): the spec requires two normals of different spatial scope to be
+ * labelled with their own scope, and two copies of the vocabulary is how one
+ * of them ends up saying something the other does not.
+ */
+export const RAINFALL_SCOPE_LABELS: Record<RainfallScopeChoice['kind'], string> = {
+  zone: 'Zona',
+  basin: 'Cuenca',
 };
 
 const RAINFALL_STATE_LABELS: Record<RainfallMetricState, string> = {
