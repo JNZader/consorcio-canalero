@@ -51,7 +51,6 @@
 
 import { Alert, Box, Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
-import { useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -74,12 +73,12 @@ import {
 import { evidenceFooter, formatAccumulated, isoDay, lastEvidenceDay } from './rainfallFormat';
 
 /** Display window over one calendar-year series. Never a request parameter. */
-const CAMPAIGN_PRESET = {
+export const CAMPAIGN_PRESET = {
   CALENDAR: 'calendario',
   CAMPAIGN: 'campana',
 } as const;
 
-type CampaignPreset = (typeof CAMPAIGN_PRESET)[keyof typeof CAMPAIGN_PRESET];
+export type CampaignPreset = (typeof CAMPAIGN_PRESET)[keyof typeof CAMPAIGN_PRESET];
 
 /** spec "Campaign Display Preset": the preset is defined as *since September 1*. */
 const CAMPAIGN_START_MONTH_DAY = '09-01';
@@ -258,13 +257,28 @@ function NormalCurveNotice({
   );
 }
 
+export interface RainfallAccumulationChartProps {
+  readonly snapshot: RainfallAnalysisSnapshot;
+  /**
+   * The display window, owned by `RainfallDetailPanel` (design D6).
+   *
+   * REQUIRED, with no uncontrolled fallback. The first draft made these
+   * optional and kept an internal `useState` for callers that passed neither —
+   * two behaviours in one component of which only one would ever ship, and the
+   * untested path is the one that rots. An optional prop would also let a
+   * future caller silently acquire a SECOND source of truth for the same
+   * window.
+   */
+  readonly preset: CampaignPreset;
+  readonly onPresetChange: (preset: CampaignPreset) => void;
+}
+
 export function RainfallAccumulationChart({
   snapshot,
-}: {
-  readonly snapshot: RainfallAnalysisSnapshot;
-}) {
+  preset,
+  onPresetChange,
+}: RainfallAccumulationChartProps) {
   const series = useRainfallSeries(snapshot.analysis_revision_id);
-  const [preset, setPreset] = useState<CampaignPreset>(CAMPAIGN_PRESET.CALENDAR);
 
   const unit = series.data?.unit ?? 'mm';
   const campaignStart = `${snapshot.year}-${CAMPAIGN_START_MONTH_DAY}`;
@@ -330,7 +344,7 @@ export function RainfallAccumulationChart({
         <SegmentedControl
           size="xs"
           value={preset}
-          onChange={(value) => setPreset(value as CampaignPreset)}
+          onChange={(value) => onPresetChange(value as CampaignPreset)}
           data={[
             { value: CAMPAIGN_PRESET.CALENDAR, label: 'Año calendario' },
             { value: CAMPAIGN_PRESET.CAMPAIGN, label: 'Campaña' },

@@ -1,22 +1,21 @@
 /**
  * RainfallMetricList.tsx (Lluvia v2 — Phase 3)
  *
- * Metric groups of one snapshot as state-badged rows with full provenance,
- * plus the annual TEXTUAL comparison that serves as the chart's accessible
- * equivalent (design: "charts have textual equivalents"). Nominal grid
- * resolution is stated as such — never as parcel-level accuracy (spec
- * "Metric Provenance and State Metadata").
+ * Metric groups of one snapshot as state-badged rows with full provenance.
+ * Nominal grid resolution is stated as such — never as parcel-level accuracy
+ * (spec "Metric Provenance and State Metadata").
+ *
+ * `AnnualText` — the chart's accessible textual equivalent — used to live here
+ * and now lives on `RainfallAnswerCard`. It had to move: this list renders
+ * inside a COLLAPSED `CollapsibleSection`, which unmounts its body, so an
+ * equivalent left here would disappear from the accessibility tree for exactly
+ * the readers it exists for (proposal R7).
  */
 
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../../lib/api/rainfall';
-import {
-  describeMetricState,
-  formatMetricValue,
-  metricLabel,
-  percentilePhrase,
-} from './rainfallFormat';
+import { describeMetricState, formatMetricValue, metricLabel } from './rainfallFormat';
 
 const STATE_COLORS: Record<RainfallMetric['state'], string> = {
   available: 'green',
@@ -73,26 +72,6 @@ export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowP
   );
 }
 
-/** Textual annual comparison — the chart's accessible equivalent. */
-function AnnualText({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot }) {
-  const selected = snapshot.annual?.selected;
-  const normal = snapshot.annual?.normal;
-  // Task 4.8: the percentile is what answers "wet or dry against the record?"
-  // — the question the chart's two lines answer visually. Without it here, a
-  // reader who cannot see the chart gets two absolute numbers and no ranking.
-  const percentile = snapshot.annual?.percentile;
-  if (!selected && !normal && !percentile) return null;
-  const parts: string[] = [];
-  if (selected) parts.push(`Año ${snapshot.year}: ${formatMetricValue(selected)}`);
-  if (normal) parts.push(`Normal ${snapshot.baseline}: ${formatMetricValue(normal)}`);
-  if (percentile) parts.push(percentilePhrase(percentile, snapshot.baseline));
-  return (
-    <Text size="sm" fw={600} data-testid="rainfall-annual-text">
-      {parts.join(' · ')}
-    </Text>
-  );
-}
-
 export interface RainfallMetricGroupProps {
   /** The group's metrics, keyed by metric name exactly as the wire sent them. */
   readonly group: Record<string, RainfallMetric> | undefined;
@@ -145,7 +124,6 @@ export interface RainfallMetricListProps {
 export function RainfallMetricList({ snapshot, exclude }: RainfallMetricListProps) {
   return (
     <Stack gap="xs" data-testid="rainfall-metrics">
-      <AnnualText snapshot={snapshot} />
       {GROUP_TITLES.filter(({ key }) => !exclude?.includes(key)).map(({ key, title }) => (
         <RainfallMetricGroup
           key={key}

@@ -11,6 +11,19 @@
  * kept (RESILIENCE-001/002). All state changes go through an aria-live region;
  * parcel-originated results keep the "Estimación regional" label (spec
  * "Supported Analysis Scope and Parcel Semantics").
+ *
+ * ANSWER-FIRST HIERARCHY (design D1/D2/D6, spec delta "Answer-First Rainfall
+ * Presentation Hierarchy"). This is the ONLY stateful node of the surface —
+ * scope, year, campaign preset, export, announcer, render gate — and the only
+ * place a derived fact is computed. Everything below it is a pure function of
+ * its props, which is what makes a future `/lluvia` page a re-mount rather than
+ * a rewrite.
+ *
+ * The order is the hierarchy: announcer, header, the two controls that
+ * RE-QUERY, the answer card, the chart, the export row — and only then two
+ * collapsed folds. `CollapsibleSection` UNMOUNTS its body when closed
+ * (`CollapsibleSection.tsx:113`), so anything a reader must keep is above the
+ * first fold, never inside one.
  */
 
 import {
@@ -28,22 +41,89 @@ import { useEffect, useState } from 'react';
 
 import { useRainfallAnalysis, useRainfallScopes } from '../../../hooks/useRainfallAnalysis';
 import {
+  type RainfallMetric,
   type RainfallScopeChoice,
   downloadRainfallCsv,
   downloadRainfallXlsx,
 } from '../../../lib/api/rainfall';
 import { useCanAccess } from '../../../stores/authStore';
-import { RainfallAccumulationChart } from './RainfallAccumulationChart';
-import { RainfallMetricList } from './RainfallMetricList';
-import { RAINFALL_SCOPE_LABELS } from './rainfallFormat';
+import { CollapsibleSection } from '../../ui/CollapsibleSection';
+import {
+  CAMPAIGN_PRESET,
+  type CampaignPreset,
+  RainfallAccumulationChart,
+} from './RainfallAccumulationChart';
+import { RainfallAnswerCard } from './RainfallAnswerCard';
+import { RainfallMetricGroup, RainfallMetricList } from './RainfallMetricList';
+import {
+  RAINFALL_SCOPE_LABELS,
+  compactAntecedent,
+  deriveFreshness,
+  describeMetricState,
+} from './rainfallFormat';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 1990 }, (_, i) =>
   String(CURRENT_YEAR - i)
 );
 
+/** The antecedent windows, in the order the collapsed header states them. A
+ *  FIXED order: a header whose items move with the data is a header nobody can
+ *  learn to scan. */
+const ANTECEDENT_ORDER: ReadonlyArray<{ readonly key: string; readonly label: string }> = [
+  { key: 'd7', label: '7d' },
+  { key: 'd30', label: '30d' },
+  { key: 'd90', label: '90d' },
+];
+
 function scopeKey(scope: RainfallScopeChoice): string {
   return `${scope.kind}:${scope.id}:${scope.version}`;
+}
+
+/**
+ * The collapsed `Antecedentes` header's values (design D2a).
+ *
+ * The spec delta makes this a CONTRACT, not a decoration: "a collapsed section
+ * MUST show its key values in the collapsed header". So:
+ *
+ *  - whole millimetres through `compactAntecedent` — `formatAccumulated` would
+ *    yield `31.0 mm`, a decimal nobody reads off a header and a unit repeated
+ *    once per value inside a ~26-character string at 348 px;
+ *  - the unit stated ONCE, at the END. Dropping it when the last item is
+ *    unavailable would make its POSITION depend on the data, so `… 90d — mm`
+ *    reads oddly and is accepted deliberately;
+ *  - a non-available antecedent prints `—`, never `0`, and carries its reason
+ *    in `title` + `aria-label`, so what a screen reader hears is the STATE, not
+ *    a dash — and the state is reachable without expanding anything.
+ */
+function AntecedentAccessory({ group }: { readonly group: Record<string, RainfallMetric> }) {
+  const items: ReadonlyArray<{ key: string; label: string; metric: RainfallMetric }> =
+    ANTECEDENT_ORDER.flatMap(({ key, label }) => {
+      const metric = group[key];
+      return metric === undefined ? [] : [{ key, label, metric }];
+    });
+  if (items.length === 0) return null;
+
+  return (
+    <Text size="xs" c="dimmed" truncate data-testid="rainfall-antecedents-summary">
+      {items.map(({ key, label, metric }, index) => {
+        const value = compactAntecedent(metric);
+        const reason = value === '—' ? (metric.reason ?? describeMetricState(metric)) : null;
+        return (
+          <Text
+            component="span"
+            key={key}
+            size="xs"
+            title={reason ?? undefined}
+            aria-label={reason !== null ? `${label}: ${describeMetricState(metric)}` : undefined}
+          >
+            {`${index > 0 ? ' · ' : ''}${label} ${value}`}
+          </Text>
+        );
+      })}
+      {' mm'}
+    </Text>
+  );
 }
 
 function LoadingRow({ label }: { readonly label: string }) {
@@ -80,6 +160,10 @@ export function RainfallDetailPanel({
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [year, setYear] = useState(CURRENT_YEAR);
+  // The chart's display window, owned HERE (design D6): the chart is
+  // controlled-only, so there is one source of truth for it and a URL could
+  // carry it the day this content moves to a page.
+  const [preset, setPreset] = useState<CampaignPreset>(CAMPAIGN_PRESET.CALENDAR);
   const selected = choices.find((c) => scopeKey(c) === selectedKey) ?? choices[0] ?? null;
 
   const analysis = useRainfallAnalysis(canAccess ? selected : null, year, {
@@ -153,32 +237,47 @@ export function RainfallDetailPanel({
         </Text>
       )}
 
-      {choices.length > 1 && (
-        <SegmentedControl
-          size="xs"
-          fullWidth
-          value={selected ? scopeKey(selected) : undefined}
-          onChange={setSelectedKey}
-          data={choices.map((choice) => ({
-            value: scopeKey(choice),
-            label: RAINFALL_SCOPE_LABELS[choice.kind],
-          }))}
-          aria-label="Ámbito regional"
-          data-testid="rainfall-scope-switch"
-        />
-      )}
+      {/* The two controls that RE-QUERY, together, directly under the header
+          and OUTSIDE the snapshot gate — they are how a reader moves while the
+          analysis is loading, queued or unavailable. The campaign preset is
+          NOT here on purpose (D6): it windows a series, so it lives with the
+          chart, inside the gate, where it cannot become a live control over a
+          series that does not exist yet. */}
+      <Stack gap="xs" data-testid="rainfall-controls">
+        {choices.length > 1 && (
+          <SegmentedControl
+            size="xs"
+            fullWidth
+            value={selected ? scopeKey(selected) : undefined}
+            onChange={setSelectedKey}
+            data={choices.map((choice) => ({
+              value: scopeKey(choice),
+              label: RAINFALL_SCOPE_LABELS[choice.kind],
+            }))}
+            aria-label="Ámbito regional"
+            data-testid="rainfall-scope-switch"
+          />
+        )}
 
-      {selected && (
-        <NativeSelect
-          size="xs"
-          label="Año de análisis"
-          aria-label="Año de análisis"
-          value={String(year)}
-          onChange={(event) => setYear(Number(event.currentTarget.value))}
-          data={YEAR_OPTIONS}
-          data-testid="rainfall-year-select"
-        />
-      )}
+        {selected && (
+          <Group gap="xs" wrap="wrap">
+            <NativeSelect
+              size="xs"
+              label="Año de análisis"
+              aria-label="Año de análisis"
+              value={String(year)}
+              onChange={(event) => setYear(Number(event.currentTarget.value))}
+              data={YEAR_OPTIONS}
+              data-testid="rainfall-year-select"
+              // Container-driven, never viewport-driven: Mantine breakpoints
+              // read the VIEWPORT, and inside a 380 px card on a 1920 px screen
+              // they would claim columns that do not fit. This degrades by
+              // stacking, never by overflowing.
+              style={{ flex: '1 1 160px', minWidth: 0 }}
+            />
+          </Group>
+        )}
+      </Stack>
 
       {analysis.isLoading && <LoadingRow label="Consultando análisis…" />}
       {analysis.isError && (
@@ -235,12 +334,20 @@ export function RainfallDetailPanel({
 
       {snapshot && (
         <>
-          <RainfallMetricList snapshot={snapshot} />
+          {/* THE ANSWER, always visible: percentile headline, derived
+              adjective, the textual equivalent and the freshness of THIS
+              analysis — derived ONCE, here, and passed down (D1a). Nothing
+              below re-derives it. */}
+          <RainfallAnswerCard snapshot={snapshot} freshness={deriveFreshness(snapshot)} />
           {/* The year-vs-normal comparison the owner asked for. Mounted here
               rather than inside the metric list because it owns its own
-              request (`/series`) and its own disclosures; `AnnualText` above
-              stays its textual equivalent. */}
-          <RainfallAccumulationChart snapshot={snapshot} />
+              request (`/series`) and its own disclosures; the card's
+              `AnnualText` above stays its textual equivalent. */}
+          <RainfallAccumulationChart
+            snapshot={snapshot}
+            preset={preset}
+            onPresetChange={setPreset}
+          />
           <Group gap="xs" wrap="nowrap">
             <Button
               size="xs"
@@ -266,6 +373,34 @@ export function RainfallDetailPanel({
               {exportError}
             </Text>
           )}
+
+          {/* Below here the reader has to ask. Both folds start CLOSED at every
+              size (owner-ratified 2026-08-11) and both keep their key values
+              reachable while closed: the antecedents in the header itself, the
+              technical detail one click away. */}
+          {snapshot.antecedents && Object.keys(snapshot.antecedents).length > 0 && (
+            <CollapsibleSection
+              title="Antecedentes"
+              defaultOpen={false}
+              testId="rainfall-antecedents"
+              titleSize="xs"
+              rightAccessory={<AntecedentAccessory group={snapshot.antecedents} />}
+            >
+              <RainfallMetricGroup group={snapshot.antecedents} baseline={snapshot.baseline} />
+            </CollapsibleSection>
+          )}
+
+          <CollapsibleSection
+            title="Detalle técnico"
+            defaultOpen={false}
+            testId="rainfall-technical"
+            titleSize="xs"
+          >
+            {/* `exclude`, not `include`: this fold means "everything the card
+                and the antecedents fold did not already show", so a group the
+                server starts serving tomorrow lands HERE instead of nowhere. */}
+            <RainfallMetricList snapshot={snapshot} exclude={['antecedents']} />
+          </CollapsibleSection>
         </>
       )}
     </Stack>

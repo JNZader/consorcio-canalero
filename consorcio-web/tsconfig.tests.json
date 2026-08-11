@@ -38,6 +38,15 @@
     // or every `import.meta.env` read in the src files these tests pull in
     // fails to compile.
     "src/vite-env.d.ts",
+    // Ambient wildcard for `@tabler/icons-react/dist/esm/icons/*.mjs`, for the
+    // same reason and with the same failure mode as the line above: nothing
+    // IMPORTS it, so this project would not pick it up, and every deep icon
+    // import inside `src/components/ui/icons.tsx` becomes a TS7016 the moment a
+    // test in this list reaches that module. It does now —
+    // `RainfallDetailPanel` mounts `CollapsibleSection`, which imports
+    // `./icons`. The errors point at `icons.tsx`, which is nowhere near the
+    // code under test, so the trail is worth writing down once.
+    "src/types/tabler-icons.d.ts",
     // The vitest setup file: it is what imports `@testing-library/jest-dom`,
     // whose module augmentation adds `toBeInTheDocument` and friends to
     // vitest's `Assertion`. Outside the program, every DOM matcher below is a

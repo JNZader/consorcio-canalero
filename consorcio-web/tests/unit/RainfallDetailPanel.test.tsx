@@ -179,6 +179,22 @@ function renderPanel(
   return render(ui);
 }
 
+/**
+ * Expand a fold before reaching what it contains, and hand back its body.
+ *
+ * `CollapsibleSection` UNMOUNTS its body when closed (`CollapsibleSection.tsx:113`),
+ * so the queries below have to ask for these rows the way a reader does. That
+ * is the POINT of the reorder, not an inconvenience of it: the datum is one
+ * click away, never gone — and a test that could still find it without the
+ * click would be proving the fold does not fold.
+ */
+async function expandFold(
+  testId: 'rainfall-antecedents' | 'rainfall-technical'
+): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByTestId(`${testId}-header`));
+  return screen.findByTestId(`${testId}-body`);
+}
+
 // File-scoped: the panel mounts the chart for every ready snapshot, so every
 // describe below needs a `/series` answer. The per-describe `clearAllMocks`
 // wipes call history, not implementations, so this survives them.
@@ -265,7 +281,7 @@ describe('RainfallDetailPanel — resolve and scope switch', () => {
   it('never claims parcel-level accuracy from nominal grid resolution', async () => {
     renderPanel();
     const detail = await screen.findByTestId('rainfall-detail');
-    await screen.findByTestId('rainfall-metrics');
+    await expandFold('rainfall-technical');
     expect(detail.textContent).toContain('0.05°');
     expect(detail.textContent).not.toMatch(/precisi[oó]n de parcela|a nivel parcela/i);
   });
@@ -300,40 +316,51 @@ describe('RainfallDetailPanel — metric states, badges and reasons', () => {
       }),
     });
     renderPanel();
-    const metrics = await screen.findByTestId('rainfall-metrics');
+    // The four states are spread across BOTH folds now: partial and suppressed
+    // are antecedents, available and unavailable are annual/intensity. Each one
+    // is still one click from the answer.
+    const antecedents = await expandFold('rainfall-antecedents');
+    const technical = await expandFold('rainfall-technical');
+    const metrics = within(technical).getByTestId('rainfall-metrics');
 
     expect(within(metrics).getAllByText('Disponible').length).toBeGreaterThan(0);
-    expect(within(metrics).getByText('Parcial')).toBeInTheDocument();
-    expect(within(metrics).getByText(/Suprimida/)).toBeInTheDocument();
-    expect(within(metrics).getByText(/coverage_below_threshold/)).toBeInTheDocument();
+    expect(within(antecedents).getByText('Parcial')).toBeInTheDocument();
+    expect(within(antecedents).getByText(/Suprimida/)).toBeInTheDocument();
+    expect(within(antecedents).getByText(/coverage_below_threshold/)).toBeInTheDocument();
     expect(within(metrics).getByText(/No disponible/)).toBeInTheDocument();
     expect(within(metrics).getByText(/sin fuente elegible/)).toBeInTheDocument();
   });
 
   it('never renders a suppressed or unavailable metric as zero', async () => {
     renderPanel();
-    const metrics = await screen.findByTestId('rainfall-metrics');
+    const antecedents = await expandFold('rainfall-antecedents');
 
-    const suppressedRow = screen.getByTestId('rainfall-metric-d30');
+    const suppressedRow = within(antecedents).getByTestId('rainfall-metric-d30');
     // The value renders "—". NB: the assertion targets the VALUE slot — the
     // provenance line legitimately contains "0.05°" (nominal resolution).
     expect(suppressedRow.textContent).not.toContain('0.0 mm');
     expect(suppressedRow.textContent).not.toMatch(/\b0 mm\b/);
-    expect(metrics).toBeInTheDocument();
+    // …and the COLLAPSED header the reader saw before clicking did not invent
+    // one either. The fold changed where the value lives, not the rule.
+    expect(screen.getByTestId('rainfall-antecedents').textContent).not.toMatch(/30d 0\b/);
   });
 
   it('shows a provisional badge only for provisional metrics', async () => {
     renderPanel();
-    const peakRow = await screen.findByTestId('rainfall-metric-peak');
+    const technical = await expandFold('rainfall-technical');
+
+    const peakRow = within(technical).getByTestId('rainfall-metric-peak');
     expect(within(peakRow).getByText('Provisional')).toBeInTheDocument();
 
-    const selectedRow = screen.getByTestId('rainfall-metric-selected');
+    const selectedRow = within(technical).getByTestId('rainfall-metric-selected');
     expect(within(selectedRow).queryByText('Provisional')).toBeNull();
   });
 
   it('exposes provenance: source, nominal resolution and revision', async () => {
     renderPanel();
-    const row = await screen.findByTestId('rainfall-metric-selected');
+    const technical = await expandFold('rainfall-technical');
+
+    const row = within(technical).getByTestId('rainfall-metric-selected');
     expect(row.textContent).toContain('chirps-v3-final');
     expect(row.textContent).toContain('0.05°');
     expect(row.textContent).toContain('policy-v1');
@@ -539,5 +566,173 @@ describe('RainfallDetailPanel — accumulation chart and xlsx export (4.9)', () 
 
     const error = await screen.findByTestId('rainfall-export-error');
     expect(error.textContent).toContain('no está autorizada');
+  });
+});
+
+/**
+ * The answer-first hierarchy (design D2/D2a/D1a, spec delta "Answer-First
+ * Rainfall Presentation Hierarchy" + "Progressive Disclosure Without Data
+ * Loss").
+ *
+ * jsdom has NO LAYOUT — every box is 0×0 — so this file asserts STRUCTURE and
+ * never pretends to measure a viewport: document order, fold state on first
+ * paint, and which node the freshness date came from. The zero-scroll criterion
+ * itself is an e2e case with a real browser (design D13); a unit test with a
+ * faked `innerWidth` would be a criterion measuring nothing.
+ */
+describe('RainfallDetailPanel — answer-first hierarchy', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setAuth('operador');
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE],
+      regional_estimate: true,
+    });
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(seriesAnswer());
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: snapshot() });
+  });
+  afterEach(() => setAuth(null));
+
+  /** True when `first` precedes `second` in document order. */
+  function precedes(first: HTMLElement, second: HTMLElement): boolean {
+    return (
+      (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) ===
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  }
+
+  it('(a) puts the answer before the chart, and both before every fold', async () => {
+    renderPanel();
+
+    const card = await screen.findByTestId('rainfall-answer-card');
+    const chart = screen.getByTestId('rainfall-accumulation');
+    const antecedents = screen.getByTestId('rainfall-antecedents');
+    const technical = screen.getByTestId('rainfall-technical');
+
+    expect(precedes(card, chart)).toBe(true);
+    expect(precedes(chart, antecedents)).toBe(true);
+    expect(precedes(antecedents, technical)).toBe(true);
+    // The plot itself is inside the chart block, not a sibling of it.
+    expect(within(chart).getByTestId('rainfall-accumulation-chart')).toBeInTheDocument();
+    // The controls that re-query sit above the answer they change.
+    expect(precedes(screen.getByTestId('rainfall-controls'), card)).toBe(true);
+  });
+
+  it('(b) opens with BOTH folds collapsed, at every size', async () => {
+    // Owner-ratified 2026-08-11: collapsed on desktop too. One behaviour is one
+    // thing to test, and a 380 px floating card pays the same scroll cost as
+    // the 390 px sheet.
+    renderPanel();
+
+    await screen.findByTestId('rainfall-answer-card');
+    expect(screen.getByTestId('rainfall-antecedents-header')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByTestId('rainfall-technical-header')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    // Collapsed means UNMOUNTED here (`CollapsibleSection.tsx:113`), which is
+    // exactly why R7's witness below matters.
+    expect(screen.queryByTestId('rainfall-metrics')).toBeNull();
+  });
+
+  it("(c) R7 witness — the chart's textual equivalent survives every fold being closed", async () => {
+    renderPanel();
+
+    await screen.findByTestId('rainfall-answer-card');
+    // Both folds closed, the chart visible: the equivalent MUST still be in the
+    // accessibility tree. It is on the card, above the first fold, so no fold
+    // state can remove it — structure, not discipline.
+    expect(screen.getByTestId('rainfall-antecedents-header')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByTestId('rainfall-technical-header')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByTestId('rainfall-accumulation')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-annual-text')).toBeInTheDocument();
+  });
+
+  it('(d) derives the freshness of the ANALYSIS, not of the series', async () => {
+    // D1a: two SUBJECTS, one derivation each. The card describes the stored
+    // analysis; the chart footer describes the line it drew. Moving only the
+    // series must move only the footer — if the card followed it, the card
+    // would be restating the chart instead of stating the analysis, and the
+    // disclosed divergence would silently disappear.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      seriesAnswer({ available_through: '2025-06-15T00:00:00+00:00' })
+    );
+    renderPanel();
+
+    const freshness = await screen.findByTestId('rainfall-freshness');
+    // snapshot.annual.selected.provenance.available_through = 2025-12-31 →
+    // the last day WITH evidence is the day before it.
+    expect(freshness).toHaveTextContent('Evidencia publicada hasta el 2025-12-30');
+    expect(freshness.textContent).not.toContain('2025-06-14');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('rainfall-accumulation-dates').textContent).toContain(
+        'Evidencia publicada hasta el 2025-06-14'
+      )
+    );
+  });
+
+  it('(e) states the antecedent values in the COLLAPSED header, unit once, reason reachable', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({
+        antecedents: {
+          d7: metric({ metric: 'd7', value: 31 }),
+          d30: metric({ metric: 'd30', value: 83.7 }),
+          d90: metric({
+            metric: 'd90',
+            value: null,
+            state: 'unavailable',
+            reason: 'sin fuente elegible',
+          }),
+        },
+      }),
+    });
+    renderPanel();
+
+    const section = await screen.findByTestId('rainfall-antecedents');
+    // Fixed d7 → d30 → d90 order, whole millimetres, unit stated exactly ONCE
+    // at the end. Three units inside a ~26-character string is what makes the
+    // header unreadable at 348 px, and a unit whose POSITION depends on the
+    // data is a header a reader cannot learn to scan.
+    expect(section.textContent).toContain('7d 31 · 30d 84 · 90d — mm');
+    expect((section.textContent?.match(/mm/g) ?? []).length).toBe(1);
+    // Never a zero for an unavailable antecedent; the state is reachable
+    // WITHOUT expanding, which is what the collapsed-header requirement buys.
+    expect(section.textContent).not.toMatch(/90d 0\b/);
+    expect(within(section).getByTitle('sin fuente elegible')).toBeInTheDocument();
+    // …and the body is still closed while all of that is true.
+    expect(screen.getByTestId('rainfall-antecedents-header')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+  });
+
+  it('reveals the antecedent rows on ONE click, and the technical detail on one more', async () => {
+    renderPanel();
+
+    fireEvent.click(await screen.findByTestId('rainfall-antecedents-header'));
+    const antecedentsBody = await screen.findByTestId('rainfall-antecedents-body');
+    expect(within(antecedentsBody).getByTestId('rainfall-metric-d30')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('rainfall-technical-header'));
+    const technicalBody = await screen.findByTestId('rainfall-technical-body');
+    const metrics = within(technicalBody).getByTestId('rainfall-metrics');
+    // The antecedents are NOT repeated in the technical fold — they have their
+    // own, and `exclude` is what keeps one datum in one place.
+    expect(within(metrics).queryByTestId('rainfall-metric-d30')).toBeNull();
+    expect(within(metrics).getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+    // The badged percentile row lives HERE now, one click from the headline.
+    expect(within(metrics).getByTestId('rainfall-metric-percentile')).toBeInTheDocument();
   });
 });
