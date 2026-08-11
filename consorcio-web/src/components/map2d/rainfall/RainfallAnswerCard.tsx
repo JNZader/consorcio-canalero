@@ -41,6 +41,7 @@ import {
   formatMetricValue,
   metricLabel,
   percentilePhrase,
+  wetnessColor,
   wetnessFromPercentile,
   wetnessLabel,
 } from './rainfallFormat';
@@ -127,7 +128,11 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
       )}
 
       {wetness !== null && readable !== undefined && (
-        <Text size="sm" data-testid="rainfall-wetness">
+        // The colour ACCOMPANIES the word; it never replaces it. The full
+        // sentence — adjective, percentile and baseline — is always rendered,
+        // so greyscale, colour-blindness and a screen reader all still deliver
+        // the whole fact.
+        <Text size="sm" c={wetnessColor(wetness)} data-testid="rainfall-wetness">
           {`Año ${wetnessLabel(wetness)} · categoría derivada del percentil ${Math.round(
             readable.value ?? 0
           )} de ${snapshot.baseline}`}

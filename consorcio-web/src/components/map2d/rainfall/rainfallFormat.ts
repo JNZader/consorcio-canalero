@@ -356,6 +356,29 @@ export function wetnessLabel(wetness: RainfallWetness): string {
 }
 
 /**
+ * A Mantine colour for the derived category — ACCOMPANYING the word, never
+ * replacing it.
+ *
+ * The word is always rendered, in full, inside a sentence that also names the
+ * percentile and the baseline it was derived from. This map only tints that
+ * sentence, so a colour-blind reader, a greyscale printout and a screen reader
+ * all still get the whole fact. Colour as the sole carrier of meaning is the
+ * thing this repo already refuses in the chart's solid-vs-dashed rule; nothing
+ * here is allowed to become the exception.
+ */
+const RAINFALL_WETNESS_COLORS: Record<RainfallWetness, string> = {
+  [RAINFALL_WETNESS.VERY_DRY]: 'red',
+  [RAINFALL_WETNESS.DRY]: 'orange',
+  [RAINFALL_WETNESS.NORMAL]: 'dimmed',
+  [RAINFALL_WETNESS.WET]: 'blue',
+  [RAINFALL_WETNESS.VERY_WET]: 'indigo',
+};
+
+export function wetnessColor(wetness: RainfallWetness): string {
+  return RAINFALL_WETNESS_COLORS[wetness];
+}
+
+/**
  * The collapsed-header value of one antecedent (design D2a).
  *
  * NOT `formatAccumulated`: that one is `toFixed(1)` plus the unit, so it yields

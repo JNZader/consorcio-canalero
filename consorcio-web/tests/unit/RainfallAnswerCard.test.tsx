@@ -274,6 +274,26 @@ describe('RainfallAnswerCard — the derived adjective (R2)', () => {
     renderCard(snapshot({ annual: { selected: metric({ value: 850.24 }) } }));
     expect(screen.queryByTestId('rainfall-wetness')).toBeNull();
   });
+
+  it.each([
+    [5, 'muy seco'],
+    [20, 'seco'],
+    [50, 'normal'],
+    [80, 'húmedo'],
+    [95, 'muy húmedo'],
+  ])('carries the WORD at percentile %s, whatever the colour does', (value, word) => {
+    // The adjective may be tinted, and the tint is never the carrier: the word
+    // is rendered in full, inside a sentence naming the percentile and the
+    // baseline it came from. A greyscale printout and a screen reader get the
+    // same fact a colour display does — the same rule the chart's
+    // solid-versus-dashed distinction exists for.
+    renderCard(snapshot({ annual: { percentile: metric({ value, unit: 'percentil' }) } }));
+
+    const label = screen.getByTestId('rainfall-wetness');
+    expect(label.textContent).toContain(`Año ${word}`);
+    expect(label.textContent).toContain(`percentil ${value}`);
+    expect(label.textContent).toContain('1991-2020');
+  });
 });
 
 describe('RainfallAnswerCard — freshness on the answer surface (D1a)', () => {
