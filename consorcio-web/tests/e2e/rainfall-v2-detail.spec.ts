@@ -112,6 +112,8 @@ const SNAPSHOT_METRICS = {
   normal: 98.2,
   d7: 31.0,
   p24h: 12.5,
+  /** The card's headline branch — and the number the zero-scroll case is about. */
+  percentile: 72,
 } as const;
 
 /**
@@ -140,6 +142,12 @@ function readyBody(
     annual: {
       selected: mockMetric('selected', SNAPSHOT_METRICS.annual),
       normal: mockMetric('normal', SNAPSHOT_METRICS.normal),
+      // The answer card's HEADLINE branch is the percentile, and the
+      // zero-scroll criterion is about that headline — a fixture without one
+      // would exercise the fallback and measure a different card. `CSV_BODY`
+      // is an independent fixture asserted with `toContain`, so parity is
+      // unaffected by the extra metric.
+      percentile: mockMetric('percentile', SNAPSHOT_METRICS.percentile),
     },
     antecedents: {
       d7: mockMetric('d7', SNAPSHOT_METRICS.d7),
@@ -413,16 +421,29 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await expect(page.getByTestId('rainfall-scope-switch')).toBeVisible();
     await expect(page.getByTestId('rainfall-year-select')).toBeVisible();
 
-    // Ready snapshot renders the metric groups with their textual values. The
+    // The ANSWER is on the always-visible surface: headline, the derived
+    // adjective and the textual equivalent, with no control operated. The
     // snapshot year is derived from the current calendar year (the fixture's
     // readyBody echoes the requested `year`), so the expectation must follow
     // suit instead of hardcoding 2026 (RELI3C-004).
-    await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
+    const card = page.getByTestId('rainfall-answer-card');
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId('rainfall-headline')).toContainText(
+      `Percentil ${SNAPSHOT_METRICS.percentile}`
+    );
     const currentYear = new Date().getFullYear();
     await expect(page.getByTestId('rainfall-annual-text')).toContainText(`Año ${currentYear}`);
     await expect(page.getByTestId('rainfall-annual-text')).toContainText(
       `${SNAPSHOT_METRICS.annual} mm`
     );
+
+    // The badged rows are one click away, not gone (R4). Asserting them
+    // WITHOUT the click would prove the fold does not fold.
+    await expect(page.getByTestId('rainfall-metrics')).toHaveCount(0);
+    await page.getByTestId('rainfall-technical-header').click();
+    const technical = page.getByTestId('rainfall-technical-body');
+    await expect(technical.getByTestId('rainfall-metrics')).toBeVisible();
+    await expect(technical.getByTestId('rainfall-metric-selected')).toBeVisible();
   });
 
   test('cambio de ámbito (scope switch) reconsulta con el ámbito elegido', async ({ page }) => {
@@ -456,8 +477,11 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await expect(queuedAlert).toBeVisible();
     await expect(queuedAlert).toContainText('Análisis en preparación');
 
-    // Then auto-polls to a ready snapshot within the bounded budget.
-    await expect(page.getByTestId('rainfall-metrics')).toBeVisible({ timeout: 20_000 });
+    // Then auto-polls to a ready snapshot within the bounded budget. The
+    // readiness sentinel is the ANSWER CARD: it renders for every ready
+    // snapshot and, unlike `rainfall-metrics`, is not inside a fold that
+    // starts closed.
+    await expect(page.getByTestId('rainfall-answer-card')).toBeVisible({ timeout: 20_000 });
     await expect(queuedAlert).toHaveCount(0);
   });
 
@@ -468,7 +492,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await seedAuth(page, makeUser('admin', 'admin@e2e.local'));
     await gotoAndOpenFicha(page);
 
-    await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
+    await expect(page.getByTestId('rainfall-answer-card')).toBeVisible();
 
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('rainfall-export-csv').click();
@@ -509,7 +533,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await seedAuth(page, makeUser('operador', 'operador@e2e.local'));
     await gotoAndOpenFicha(page);
 
-    await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
+    await expect(page.getByTestId('rainfall-answer-card')).toBeVisible();
 
     // The chart is fed from the READ-ONLY /series route of the served
     // revision, not from a second analysis request.
@@ -557,7 +581,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await seedAuth(page, makeUser('admin', 'admin@e2e.local'));
     await gotoAndOpenFicha(page);
 
-    await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
+    await expect(page.getByTestId('rainfall-answer-card')).toBeVisible();
     const xlsxButton = page.getByTestId('rainfall-export-xlsx');
     await expect(xlsxButton).toBeVisible();
     // The audit CSV is still there: the friendly workbook is an addition.
@@ -589,5 +613,69 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await expect(page.getByTestId('rainfall-export-error')).toContainText(
       'La descarga del CSV no está autorizada'
     );
+  });
+
+  /**
+   * Success criterion 1: the answer is readable WITHOUT scrolling on a phone.
+   *
+   * A real browser is the only place this can be asked — jsdom has no layout,
+   * so the unit suite asserts the structural precondition (order + both folds
+   * collapsed) and stops there rather than faking a viewport.
+   *
+   * The box measured against is `ficha-territorial-panel-sheet-body`, the
+   * sheet's own SCROLLING element (`MapPanelShell.tsx`). Not the sheet root:
+   * that one is capped by `max-height` while this is what actually overflows,
+   * so it is the only element whose visible height the assertion can honestly
+   * compare a card's box against.
+   *
+   * Gated with `requireCondition`, NOT `skipForMissingData`: a missing sheet
+   * body means the layout under test is not there, and a criterion that skips
+   * itself when the thing it measures is absent measures nothing. The gate
+   * only BITES when `E2E_APP_URL` is set (`strictGate.ts`), which is exactly
+   * the declared local environment design D13 specifies — this criterion is
+   * not gated by CI and this spec does not pretend it is.
+   */
+  test.describe('respuesta sin scroll en teléfono', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('la tarjeta de respuesta entra en el alto visible de la hoja (390×844)', async ({
+      page,
+    }) => {
+      await seedAuth(page, makeUser('operador', 'operador@e2e.local'));
+      mockRainfallApi(page);
+      await gotoAndOpenFicha(page);
+
+      const card = page.getByTestId('rainfall-answer-card');
+      await expect(card).toBeVisible();
+
+      // Both folds closed is what makes the measurement meaningful: an open
+      // fold would push the card nowhere, but a card measured with the folds
+      // open would not be measuring the DEFAULT the reader lands on.
+      await expect(page.getByTestId('rainfall-technical-header')).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      );
+
+      const sheetBody = page.getByTestId('ficha-territorial-panel-sheet-body');
+      requireCondition(
+        (await sheetBody.count()) === 1,
+        'La hoja de la ficha no expuso su caja de scroll'
+      );
+
+      const cardBox = await card.boundingBox();
+      const bodyBox = await sheetBody.boundingBox();
+      if (cardBox === null || bodyBox === null) {
+        requireCondition(false, 'No se pudo medir la tarjeta o la caja de scroll de la hoja');
+        return;
+      }
+
+      // The whole card — headline, adjective, textual equivalent, freshness and
+      // scope — inside the visible height, with nothing scrolled.
+      expect(cardBox.y).toBeGreaterThanOrEqual(bodyBox.y - 1);
+      expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(bodyBox.y + bodyBox.height + 1);
+      // …and the reader did not have to scroll to get there.
+      const scrolled = await sheetBody.evaluate((element) => element.scrollTop);
+      expect(scrolled).toBe(0);
+    });
   });
 });
