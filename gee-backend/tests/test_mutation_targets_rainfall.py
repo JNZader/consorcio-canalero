@@ -1063,6 +1063,10 @@ class TestRainfallSummary:
 
         summary = rainfall_summary(
             {
+                # A REAL envelope carries its baseline at the root, and the
+                # `normal` label is derived from it -- see
+                # `test_summary_names_the_served_baseline_period`.
+                "baseline": "1991-2020",
                 "annual": {
                     "selected": _post_policy_metric("annual", value=204.0),
                     # Build-time completeness still reads 1.0; the policy
@@ -1073,18 +1077,54 @@ class TestRainfallSummary:
                         state="suppressed",
                         reason="coverage_below_threshold",
                     ),
-                }
+                },
             }
         )
 
-        assert "Normal 1991–2020 (suprimida: coverage_below_threshold)" in summary
+        assert "Normal 1991-2020 (suprimida: coverage_below_threshold)" in summary
         available, _, missing = summary.partition(SUMMARY_MISSING_PREFIX)
         assert available.startswith(SUMMARY_AVAILABLE_PREFIX)
         # The suppressed metric is named ONLY in the "sin dato" sentence, and
         # the served value (204.0) belongs to the metric that really has one.
-        assert "Normal 1991–2020" not in available
+        assert "Normal 1991-2020" not in available
         assert "Acumulado del año 204.0 mm" in available
         assert "204.0" not in missing
+
+    def test_summary_names_the_served_baseline_period(self) -> None:
+        """LI4-004, backend half: the narrative prints the period the ENVELOPE
+        carries, never a constant compiled into this module.
+
+        The panel renders this sentence inside the same `rainfall-metrics`
+        subtree as the badged rows, so a constant here reproduces exactly the
+        defect the frontend just closed -- one number under two different
+        periods, in one screenshot.
+        """
+        from app.domains.geo.rainfall.service import rainfall_summary
+
+        summary = rainfall_summary(
+            {
+                "baseline": "2001-2030",
+                "annual": {"normal": _post_policy_metric("annual_normal", value=1013.8)},
+            }
+        )
+
+        assert "Normal 2001-2030 1013.8 mm" in summary
+        assert "1991" not in summary
+
+    def test_summary_names_the_metric_without_a_period_when_none_is_served(self) -> None:
+        """Honest degradation, the same rule the client's `metricLabel`
+        follows: naming the metric without a period states what it IS, while
+        defaulting to a constant period asserts a baseline nobody served."""
+        from app.domains.geo.rainfall.service import rainfall_summary
+
+        for baseline in ({}, {"baseline": ""}, {"baseline": None}, {"baseline": 1991}):
+            # A non-string baseline is an unmodelled shape, not a period: the
+            # last case must degrade like an absent one, never paste `1991` in.
+            envelope = {
+                **baseline,
+                "annual": {"normal": _post_policy_metric("annual_normal", value=1013.8)},
+            }
+            assert rainfall_summary(envelope) == "Disponibles: Normal 1013.8 mm.", baseline
 
     @staticmethod
     def _sections(summary: str) -> dict[str, list[str]]:
@@ -1112,13 +1152,16 @@ class TestRainfallSummary:
         narrative names for a metric is that metric's own disclosed state."""
         from app.domains.geo.rainfall.service import (
             SUMMARY_AVAILABLE_PREFIX,
-            SUMMARY_METRIC_LABELS,
             SUMMARY_MISSING_PREFIX,
             SUMMARY_PARTIAL_PREFIX,
             SUMMARY_STATE_LABELS,
             rainfall_summary,
+            summary_metric_label,
         )
 
+        # NOT 1991-2020: the expected labels below are derived from this value,
+        # so a label that ignored the envelope would fail to match at all.
+        baseline = "2001-2030"
         groups = {
             "annual": {
                 "selected": _post_policy_metric("annual", value=204.0),
@@ -1142,7 +1185,9 @@ class TestRainfallSummary:
                 ),
             },
         }
-        summary = rainfall_summary(groups)
+        # The groups are spread into a root envelope rather than passed as one,
+        # so `groups.values()` below stays a pure group iteration.
+        summary = rainfall_summary({"baseline": baseline, **groups})
         sections = self._sections(summary)
         bucket_for_state = {
             "available": SUMMARY_AVAILABLE_PREFIX,
@@ -1154,7 +1199,7 @@ class TestRainfallSummary:
 
         for group in groups.values():
             for name, metric in group.items():
-                label = SUMMARY_METRIC_LABELS[name]
+                label = summary_metric_label(name, baseline)
                 expected_bucket = bucket_for_state.get(metric["state"], SUMMARY_MISSING_PREFIX)
                 matching = [
                     (prefix, entry)

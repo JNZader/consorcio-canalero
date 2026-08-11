@@ -54,11 +54,12 @@ from app.domains.geo.rainfall.series import (
     build_series,
 )
 from app.domains.geo.rainfall.service import (
-    SUMMARY_METRIC_LABELS,
     SUMMARY_STATE_LABELS,
     metric_rows,
     neutralize_spreadsheet_formula,
     normalize_snapshot,
+    snapshot_baseline,
+    summary_metric_label,
 )
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -88,7 +89,13 @@ SUMMARY_LABEL = "Resumen del análisis"
 CONSISTENCY_LABEL = "Serie diaria consistente con el análisis"
 CONSISTENCY_CONSISTENT = "sí"
 
-NORMAL_CURVE_LABEL = "Curva normal 1991–2020"
+# Period-LESS, like `SUMMARY_METRIC_LABELS["normal"]`: the served period is
+# appended by `normal_curve_label`. The constant this replaced named 1991-2020
+# two rows below a "Período de referencia" cell read straight off the envelope,
+# so regenerating the normals over another period made the same sheet state two
+# periods at once (LI4-004) — and a downloaded file has no poll that ever
+# corrects it.
+NORMAL_CURVE_LABEL = "Curva normal"
 
 # The three wire states, in the reader's language. They MUST read differently
 # from one another (LI3A-001): the columns they describe are byte-identical in
@@ -117,17 +124,38 @@ METRIC_TABLE_HEADER: tuple[str, ...] = (
     "Observaciones",
 )
 
+
+def normal_curve_label(baseline: str | None = None) -> str:
+    """The normal-curve stamp's label, carrying the SERVED period.
+
+    Same shape and same honesty rule as `service.summary_metric_label`: with no
+    baseline the label names the row without a period rather than asserting one
+    the envelope never carried.
+    """
+    return f"{NORMAL_CURVE_LABEL} {baseline}" if baseline else NORMAL_CURVE_LABEL
+
+
 # `metric_rows` flattens the groups away, so the label is keyed on the wire
-# `metric` name rather than on the group key `rainfall_summary` uses. Layered
-# on top of that vocabulary rather than beside it: the same metric must be
+# `metric` name rather than on the group key `rainfall_summary` uses. Aliased
+# onto that vocabulary rather than copied beside it: the same metric must be
 # named the same way in the narrative, on the badge and in this sheet, which is
-# the coherence rule the summary requirement states (spec delta, D4).
-EXPORT_METRIC_LABELS: dict[str, str] = {
-    **SUMMARY_METRIC_LABELS,
-    "annual": SUMMARY_METRIC_LABELS["selected"],
-    "annual_normal": SUMMARY_METRIC_LABELS["normal"],
-    "annual_percentile": SUMMARY_METRIC_LABELS["percentile"],
+# the coherence rule the summary requirement states (spec delta, D4) -- and the
+# baseline period has to travel with it, which a flattened label dict cannot do.
+EXPORT_METRIC_ALIASES: dict[str, str] = {
+    "annual": "selected",
+    "annual_normal": "normal",
+    "annual_percentile": "percentile",
 }
+
+
+def export_metric_label(name: object, baseline: str | None = None) -> str:
+    """One metric's sheet label. Never blank: an unmapped key falls through to
+    its own wire value via `summary_metric_label`, the same rule `_label` and
+    `metricLabel` follow. A missing translation must degrade to an untranslated
+    fact, never to an empty cell that reads as "nothing to report"."""
+    if not isinstance(name, str):
+        return str(name)
+    return summary_metric_label(EXPORT_METRIC_ALIASES.get(name, name), baseline)
 
 
 def series_table_header(unit: str) -> tuple[str, ...]:
@@ -240,7 +268,7 @@ def _consistency_value(consistent: bool, reason: str | None) -> str:
     return f"no — {reason}" if reason else "no"
 
 
-def _metric_sheet_row(metric: dict[str, Any]) -> list[Any]:
+def _metric_sheet_row(metric: dict[str, Any], baseline: str | None) -> list[Any]:
     """One flattened metric, as the reader sees it.
 
     Every lookup is a ``.get``: a metric the policy downgraded is rewritten by
@@ -251,7 +279,7 @@ def _metric_sheet_row(metric: dict[str, Any]) -> list[Any]:
     provenance = metric.get("provenance")
     discrepancies = metric.get("discrepancies")
     return [
-        _label(EXPORT_METRIC_LABELS, metric.get("metric")),
+        export_metric_label(metric.get("metric"), baseline),
         metric.get("value"),
         metric.get("unit"),
         _label(SUMMARY_STATE_LABELS, metric.get("state")),
@@ -289,6 +317,11 @@ def build_workbook(db: Session, revision: RainfallAnalysisRevision) -> RainfallW
     snapshot = revision.snapshot
     normalized = normalize_snapshot(snapshot, expected_policy_revision=revision.policy_revision)
     series = build_series(db, revision)
+    # ONE read of the served period for all three surfaces that name it below —
+    # the "Período de referencia" cell, the normal-curve stamp label and the
+    # metric table's `annual_normal` row — so this sheet cannot state two
+    # periods for one revision (LI4-004).
+    baseline = snapshot_baseline(normalized)
 
     workbook = Workbook(write_only=True)
     resumen = workbook.create_sheet(title=RESUMEN_SHEET)
@@ -307,7 +340,7 @@ def build_workbook(db: Session, revision: RainfallAnalysisRevision) -> RainfallW
         (YEAR_LABEL, series["year"]),
         (COMPARISON_END_LABEL, series["comparison_end"]),
         (AVAILABLE_THROUGH_LABEL, _last_evidence_day(series["available_through"])),
-        (BASELINE_LABEL, snapshot.get("baseline")),
+        (BASELINE_LABEL, baseline),
         (DATA_REVISION_LABEL, series["data_revision"]),
         (POLICY_REVISION_LABEL, revision.policy_revision),
         (SUMMARY_LABEL, normalized.get("summary")),
@@ -315,13 +348,16 @@ def build_workbook(db: Session, revision: RainfallAnalysisRevision) -> RainfallW
             CONSISTENCY_LABEL,
             _consistency_value(series["consistent_with_snapshot"], series["consistency_reason"]),
         ),
-        (NORMAL_CURVE_LABEL, _label(NORMAL_CURVE_STATE_LABELS, series["normal_curve_state"])),
+        (
+            normal_curve_label(baseline),
+            _label(NORMAL_CURVE_STATE_LABELS, series["normal_curve_state"]),
+        ),
     ):
         _append(resumen, [label, value])
     _append(resumen, [])
     _append(resumen, list(METRIC_TABLE_HEADER))
     for metric in metric_rows(normalized):
-        _append(resumen, _metric_sheet_row(metric))
+        _append(resumen, _metric_sheet_row(metric, baseline))
 
     serie = workbook.create_sheet(title=SERIE_SHEET)
     _append(serie, list(series_table_header(series["unit"])))
