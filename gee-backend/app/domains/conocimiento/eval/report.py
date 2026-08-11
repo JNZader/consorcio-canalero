@@ -135,9 +135,10 @@ def _tabla_metricas(corrida: ResultadoModo, go_no_go) -> list[str]:
 
 def _bloque_metodologia(corrida: ResultadoModo) -> list[str]:
     resumen = resumen_metodologico(corrida)
-    return [
+    lineas = [
         "**Metodología (divulgación obligatoria — design.md D6)**",
         "",
+        f"- Señal de abstención: {resumen['senal']}",
         f"- Regla de selección: {resumen['regla_de_seleccion']}",
         f"- Validación: {resumen['validacion']} (leave-one-out)",
         f"- n = {resumen['n']}",
@@ -153,6 +154,15 @@ def _bloque_metodologia(corrida: ResultadoModo) -> list[str]:
         f"({resumen['fraccion_fallback']:.1%}) — un fallback frecuente es en sí mismo "
         "una señal de no-go",
     ]
+    if resumen["senal_constante"]:
+        lineas += [
+            "",
+            "> ⚠️ **SEÑAL CONSTANTE** — todas las preguntas produjeron el mismo "
+            "valor, así que la grilla tiene un solo candidato y el barrido de "
+            "umbrales no barrió nada: el resultado quedó fijado antes de mirar los "
+            "datos. Las cifras de abstención de este modo no son una medición.",
+        ]
+    return lineas
 
 
 def _no_corrio(cobertura, leg: str) -> str:

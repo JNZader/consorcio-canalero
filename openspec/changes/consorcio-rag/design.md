@@ -383,9 +383,45 @@ between runs can rank differently over identical data. The eval runbook already 
 ### D5 — Abstention (tunable by construction)
 
 `AbstentionPolicy(min_score, min_margin, require_both_legs)`. The eval sweeps `min_score` over the
-observed fused-score grid **per mode** and reports the full precision/recall curve.
-**Scores are not comparable across modes** (hybrid top-1 can reach 2/61, a single leg only 1/61), so
-three thresholds are calibrated, not one — conflating them is how an ablation silently lies.
+observed signal grid **per mode** and reports the full precision/recall curve.
+**Signals are not comparable across modes**, so three thresholds are calibrated, not one — conflating
+them is how an ablation silently lies.
+
+**AMENDMENT (apply-phase JD round 1, RJDB-002) — the signal is per mode, and a single-leg mode does
+not use RRF.** The original wording above said "the observed fused-score grid", and taken literally it
+made the `fts` and `vector` arms unmeasurable. RRF gives the top hit `1/(k + rango + 1)`; with ONE leg
+that is `1/61` for every question whose leg returned anything and `0.0` for every question whose leg
+returned nothing. The "grid" therefore holds at most two values, the LOOCV sweep explores an outcome
+fixed before any data is read, and what the single-leg abstention bars actually measure is whether the
+leg matched at all — a property of the query operator, not of confidence. Both single-leg bars were
+predetermined to fail. The parenthetical "hybrid top-1 can reach 2/61, a single leg only 1/61" was a
+correct observation whose consequence was missed: `1/61` is not a low ceiling, it is a CONSTANT.
+
+The data to fix it was already carried and then discarded — `CitaRecuperada` holds `valor_fts`
+(`ts_rank_cd`) and `distancia_vector` (cosine distance) per hit, and `senales_desde` read neither. So:
+
+| mode | signal | transform | why |
+|---|---|---|---|
+| `fts` | `valor_fts` of the top hit | none — `ts_rank_cd` is already increasing in relevance with floor 0 | the leg's own ranking metric is the only real confidence it has |
+| `vector` | `distancia_vector` of the top hit | `1 − d/2` | `<=>` is `1 − cos`, so it runs `[0, 2]` and *decreases* with relevance — the wrong direction for "abstain below". `1 − d/2 = (1 + cos)/2` is order-preserving and bounded in `[0, 1]` |
+| `hybrid` | RRF top-1 | none | the only signal a fused mode HAS: `ts_rank_cd` and cosine distance are not commensurable and are never blended (D4) |
+
+**The `/2` is load-bearing rather than cosmetic.** The obvious `1 − d` yields `cos`, which is negative
+for any hit more than 90° from the query — and an empty page scores a flat `0.0`. A negative-similarity
+hit would then rank BELOW "we retrieved nothing at all", so the weakest real answer would look less
+confident than no answer, and a threshold between them would abstain on the real hit while answering the
+empty one. Every scale used for a signal is therefore bounded below by 0, which is what makes the
+empty-page `0.0` a genuine floor.
+
+The two scales are never mixed inside one run: a missing leg value (structurally impossible in a
+single-leg mode, where every fused key came from that leg) falls the WHOLE run back to RRF rather than
+putting two incommensurable numbers in one grid. The scale in force is recorded on every
+`SenalAbstencion` (`fuente_senal`), disclosed in the report's methodology block and in the JSON, and the
+report raises a **SEÑAL CONSTANTE** warning whenever a mode's signals are all equal — the pathology this
+amendment removes, kept visible in case it returns by another route.
+
+Per-mode thresholds were already selected per mode by LOOCV, so nothing about the selection rule
+changes; what changes is that the `fts` and `vector` grids are now real.
 
 **Threshold selection is leave-one-out cross-validated; scoring never reuses the fitting sample.**
 Sweeping `min_score` on the gold set and then reporting precision/recall *on that same set* fits the

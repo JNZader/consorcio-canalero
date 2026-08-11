@@ -358,3 +358,69 @@ class TestRecallBoundaryIsStrict:
         assert par.recall == 1.0
         assert par.precision == 0.80
         assert par.pasa_el_par(recall_minimo=1.0, precision_minima=0.80) is True
+
+
+class TestUnaSenalConstanteNoBarreNada:
+    """RJDB-002, pinned as a regression: the collapse the fix removed.
+
+    A single-leg RRF top-1 is `1/(k + 0 + 1)` for every question that returned
+    anything. These tests fix the CONSEQUENCE in place, so that if the signal
+    ever collapses to one value again the failure is loud arithmetic here rather
+    than a plausible-looking threshold in a published report.
+    """
+
+    RRF_TOP1_DE_UNA_PIERNA = 1 / 61
+
+    def test_an_all_equal_grid_has_exactly_one_candidate(self):
+        colapsada = tuple(
+            senal(f"q{i}", unanswerable=(i % 3 == 0), score=self.RRF_TOP1_DE_UNA_PIERNA)
+            for i in range(9)
+        )
+        assert grilla_de_umbrales(colapsada) == (self.RRF_TOP1_DE_UNA_PIERNA,)
+
+    def test_a_constant_signal_forces_the_fallback_branch(self):
+        """One candidate, and the rule is "abstain when strictly below".
+
+        Every item sits exactly AT the only threshold, so nothing abstains,
+        recall is 0.00, no threshold reaches 1.00 and the selection falls back —
+        an outcome fixed before any retrieval quality was looked at.
+        """
+        colapsada = tuple(
+            senal(f"q{i}", unanswerable=(i % 3 == 0), score=self.RRF_TOP1_DE_UNA_PIERNA)
+            for i in range(9)
+        )
+        seleccion = seleccionar_umbral(colapsada)
+        assert seleccion.fallback is True
+        assert seleccion.recall == 0.0
+        assert seleccion.precision == 0.0
+
+    def test_the_two_valued_presence_absence_grid_is_barely_better(self):
+        """The other half of the defect: questions whose leg matched nothing get
+        0.0, so the "grid" is `{0.0, 1/61}` — a flag, not a score. Recall 1.00 is
+        then reachable only if EVERY unanswerable item happened to match nothing,
+        which is a property of the query operator and not of confidence."""
+        presencia = (
+            senal("u1", unanswerable=True, score=0.0),
+            senal("u2", unanswerable=True, score=self.RRF_TOP1_DE_UNA_PIERNA),
+            senal("a1", unanswerable=False, score=self.RRF_TOP1_DE_UNA_PIERNA),
+            senal("a2", unanswerable=False, score=self.RRF_TOP1_DE_UNA_PIERNA),
+        )
+        assert grilla_de_umbrales(presencia) == (0.0, self.RRF_TOP1_DE_UNA_PIERNA)
+        seleccion = seleccionar_umbral(presencia)
+        # u2 can never be separated from a1/a2 — they are the same number.
+        assert seleccion.fallback is True
+        assert seleccion.recall == 0.5
+
+    def test_a_varied_signal_actually_sweeps(self):
+        """The contrast, so the two tests above cannot both pass vacuously."""
+        variada = (
+            senal("u1", unanswerable=True, score=0.05),
+            senal("u2", unanswerable=True, score=0.12),
+            senal("a1", unanswerable=False, score=0.40),
+            senal("a2", unanswerable=False, score=0.55),
+        )
+        assert len(grilla_de_umbrales(variada)) == 4
+        seleccion = seleccionar_umbral(variada)
+        assert seleccion.fallback is False
+        assert seleccion.recall == 1.0
+        assert seleccion.precision == 1.0

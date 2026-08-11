@@ -48,14 +48,21 @@ class SenalAbstencion:
 
     id: str
     debe_abstenerse: bool
-    #: Fused RRF score of the top hit. 0.0 when the run returned nothing at all,
-    #: which is itself a below-any-threshold signal and therefore an abstention.
+    #: Confidence of the top hit, on the scale named by `fuente_senal`. 0.0 when
+    #: the run returned nothing at all, which is itself a below-any-threshold
+    #: signal and therefore an abstention — every scale used here is bounded
+    #: below by 0, so an empty page can never outrank a real weak hit.
     score_top1: float
-    #: `score_top1 - score_top2`, 0.0 when there is at most one hit.
+    #: `score_top1 - score_top2`, 0.0 when there is at most one hit. Same scale.
     margen: float
     #: Did the top hit come from BOTH legs? False for every item of a
     #: single-leg mode, by construction.
     ambas_piernas: bool
+    #: WHICH scale `score_top1` and `margen` are on. Not decoration: a fused RRF
+    #: score and a leg-native one are different numbers with different grids, and
+    #: a threshold reported without its scale is a number nobody can reproduce.
+    #: `harness.senales_desde` is the only thing that sets it; see FUENTE_* there.
+    fuente_senal: str = "RRF fusionado"
 
 
 @dataclass(frozen=True)
@@ -216,7 +223,7 @@ class ResultadoLOOCV:
 
 
 def grilla_de_umbrales(senales: Sequence[SenalAbstencion]) -> tuple[float, ...]:
-    """The observed fused-score grid: sorted, deduplicated, and nothing added.
+    """The observed signal grid: sorted, deduplicated, and nothing added.
 
     No synthetic candidate above the maximum is appended, and that omission is
     the design. With one, "abstain on everything" is always available, recall
@@ -225,6 +232,14 @@ def grilla_de_umbrales(senales: Sequence[SenalAbstencion]) -> tuple[float, ...]:
     one, recall 1.00 is unreachable in exactly one situation — an unanswerable
     question outscoring every other item in the sample — which is the pathology
     the fallback count exists to surface.
+
+    **This is why the signal must not be constant.** A grid is only a sweep if
+    its values differ: a sample whose signals are all equal collapses to ONE
+    candidate, every item lands on the same side of it, and the selection reaches
+    the fallback branch with the outcome fixed before any data was looked at.
+    That is precisely what a single-leg RRF top-1 did — `1/(k+0+1)` for every
+    question — and `senales_desde` now reads the leg's own score there instead
+    (design.md D5).
     """
     return tuple(sorted({senal.score_top1 for senal in senales}))
 

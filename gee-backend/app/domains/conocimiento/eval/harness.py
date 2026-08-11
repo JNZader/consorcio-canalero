@@ -455,6 +455,26 @@ class ResultadoModo:
         )
 
     @property
+    def fuente_senal(self) -> str:
+        """The scale this mode's abstention grid was swept over.
+
+        Read off the signals themselves rather than re-derived from `modo`, so
+        the report can never name a scale the numbers were not on.
+        """
+        return self.senales[0].fuente_senal if self.senales else FUENTE_RRF
+
+    @property
+    def senal_constante(self) -> bool:
+        """Did every question produce the SAME signal? Then nothing was swept.
+
+        A one-value grid means the threshold selection had exactly one candidate
+        and the outcome was fixed before the data was read — the RJDB-002
+        pathology. Surfaced rather than swallowed, next to the fallback count it
+        would otherwise be indistinguishable from.
+        """
+        return len({senal.score_top1 for senal in self.senales}) <= 1 and bool(self.senales)
+
+    @property
     def hibrido_degenerado(self) -> bool:
         """`hybrid` where a leg contributed nothing for MOST questions is not hybrid.
 
@@ -475,6 +495,78 @@ class ResultadoModo:
         return self.cobertura.leg_fts_degradada or self.cobertura.leg_vector_degradada
 
 
+FUENTE_RRF = "RRF fusionado (1/(k+rango+1) sumado sobre las dos piernas)"
+FUENTE_FTS = "ts_rank_cd de la pierna léxica (mayor = mejor, piso 0)"
+FUENTE_VECTOR = "similitud coseno reescalada (1 - distancia/2) de la pierna vectorial"
+
+
+def _similitud_desde_distancia(distancia: float) -> float:
+    """pgvector cosine distance -> a [0, 1] similarity, monotonically INCREASING.
+
+    `<=>` returns `1 - cos(θ)`, so its range is `[0, 2]` and *smaller* means more
+    similar — the wrong direction for a threshold whose rule is "abstain below".
+    `1 - d/2` is `(1 + cos)/2`: order-preserving in `cos`, and bounded in
+    `[0, 1]`.
+
+    The `/2` is the load-bearing half and NOT cosmetic rescaling. The obvious
+    transform `1 - d` gives `cos`, which is NEGATIVE for any hit more than 90°
+    from the query — and an empty page scores a flat `0.0`. A negative-similarity
+    hit would then rank BELOW "we retrieved absolutely nothing", so the weakest
+    real answer would look less confident than no answer at all, and a threshold
+    between the two would abstain on the real hit while answering the empty one.
+    With `/2` the floor is a true floor: `0.0` is reachable only by a
+    diametrically opposed vector, which no retrieved unit is.
+    """
+    return 1.0 - distancia / 2.0
+
+
+def _lector_nativo(modo: str):
+    """The per-mode reader of a hit's own leg score, or None for a fused mode."""
+    if modo == "fts":
+        return lambda hit: hit.valor_fts
+    if modo == "vector":
+        return lambda hit: (
+            None
+            if hit.distancia_vector is None
+            else _similitud_desde_distancia(hit.distancia_vector)
+        )
+    return None
+
+
+def _escala_de_senal(resultado: ResultadoRecuperacion) -> tuple[list[float], str]:
+    """The confidence series this run's abstention grid is built from, and its name.
+
+    **Why a single-leg mode may not use the fused score (RJDB-002).** RRF gives
+    the top hit `1/(k + 0 + 1)` from whichever legs returned it. With one leg
+    that is `1/61` for EVERY question that returned anything, and `0.0` for every
+    question that returned nothing — a two-valued presence/absence flag wearing a
+    score's clothes. `grilla_de_umbrales` then has at most two candidates, the
+    LOOCV sweep explores an outcome fixed before any data was read, and the `fts`
+    and `vector` arms' abstention bars are decided by whether their leg matched
+    at all. The data to do better is already carried and was being thrown away:
+    `CitaRecuperada` holds `valor_fts` (ts_rank_cd) and `distancia_vector`
+    (cosine distance) per hit.
+
+    So a single-leg mode reads its own leg, transformed onto a scale that is
+    monotonically increasing in relevance and bounded below by 0 (see
+    `_similitud_desde_distancia`). `hybrid` keeps RRF, which is the only signal
+    that exists for it: `ts_rank_cd` and cosine distance are not commensurable
+    and this codebase never blends them (design.md D4).
+
+    The two scales are never mixed inside one run. If a leg value were missing —
+    structurally impossible, since in a single-leg mode every fused key came from
+    that leg — the WHOLE run falls back to RRF rather than putting two
+    incommensurable numbers in one grid.
+    """
+    lector = _lector_nativo(resultado.modo)
+    if lector is not None:
+        crudos = [lector(hit) for hit in resultado.hits]
+        if not any(valor is None for valor in crudos):
+            nombre = FUENTE_FTS if resultado.modo == "fts" else FUENTE_VECTOR
+            return [float(valor) for valor in crudos if valor is not None], nombre
+    return [hit.score_rrf for hit in resultado.hits], FUENTE_RRF
+
+
 def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbstencion:
     """Reduce one retrieval result to its abstention signal.
 
@@ -482,9 +574,13 @@ def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbst
     confident enough to cite" is exactly what an empty page means, and it is the
     same decision the policy makes for a weak hit. Modelling it as missing data
     would put an `if` in front of every threshold comparison, and that `if` is
-    where an empty page quietly becomes an answer.
+    where an empty page quietly becomes an answer. Every scale used here is
+    bounded below by 0, so that `0.0` is genuinely under every real hit rather
+    than merely under most of them.
+
+    Which scale, and why it depends on the mode, is `_escala_de_senal`.
     """
-    scores = [hit.score_rrf for hit in resultado.hits]
+    scores, fuente = _escala_de_senal(resultado)
     top1 = scores[0] if scores else 0.0
     margen = (scores[0] - scores[1]) if len(scores) > 1 else 0.0
     ambas = bool(
@@ -498,6 +594,7 @@ def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbst
         score_top1=top1,
         margen=margen,
         ambas_piernas=ambas,
+        fuente_senal=fuente,
     )
 
 
@@ -814,10 +911,12 @@ def resumen_metodologico(corrida: ResultadoModo) -> dict[str, Any]:
     return {
         "modo": corrida.modo,
         "n": loocv.n,
+        "senal": corrida.fuente_senal,
+        "senal_constante": corrida.senal_constante,
         "regla_de_seleccion": (
             "highest precision among thresholds reaching abstention recall 1.00; "
-            "ties broken by the lower threshold. Grid = the observed fused-score "
-            "values, with nothing appended."
+            "ties broken by the lower threshold. Grid = the observed values of "
+            "the signal named above, with nothing appended."
         ),
         "validacion": "leave-one-out cross-validation, one fold per gold item",
         "umbral_shipped": loocv.umbral_shipped,

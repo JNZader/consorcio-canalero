@@ -1170,6 +1170,72 @@ class TestSenalesDesde:
         assert callable(senales_desde)
 
 
+class TestSenalDeUnaSolaPierna:
+    """RJDB-002: a single-leg run's abstention signal must be a SCORE.
+
+    RRF gives the top hit `1/(k + 0 + 1)`. With one leg that is `1/61` for every
+    question that returned anything and `0.0` for every question that did not —
+    a presence/absence flag with a score's type. The grid then holds at most two
+    candidates, the LOOCV sweep explores an outcome fixed before any data was
+    read, and the `fts`/`vector` abstention bars are decided by whether the leg
+    matched at all rather than by how well.
+    """
+
+    def test_the_fts_signal_varies_with_relevance(self, snapshot):
+        corrida = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
+        valores = {senal.score_top1 for senal in corrida.senales}
+        # The defect's exact shape: `{1/61, 0.0}` — at most two values, and the
+        # non-zero one identical for every question that matched anything.
+        assert 1 / 61 not in valores
+        assert len(valores) > 1
+        assert corrida.senal_constante is False
+
+    def test_the_fts_signal_is_named_as_the_legs_own_score(self, snapshot):
+        corrida = correr_modo(snapshot, SHA, PREGUNTAS, modo="fts")
+        assert corrida.fuente_senal == harness.FUENTE_FTS
+        assert all(s.fuente_senal == harness.FUENTE_FTS for s in corrida.senales)
+
+    def test_an_empty_page_stays_below_every_real_hit(self, snapshot):
+        """Both single-leg scales are bounded below by 0, so `0.0` is a floor.
+
+        This is what makes "the run returned nothing" an abstention rather than
+        a confident one: on the naive `1 - distancia` scale a hit more than 90°
+        from the query scores NEGATIVE, i.e. below the empty page, and the
+        weakest real answer would look less confident than no answer at all.
+        """
+        sin_respuesta = gold_set(
+            gold_item("vacia", "zzzzz qqqqq xxxxx", "answerable", ("9750#14",)),
+            gold_item("g-quorum", "quórum de la asamblea consorcistas", "answerable", ("9750#14",)),
+        )
+        corrida = correr_modo(snapshot, SHA, sin_respuesta, modo="fts")
+        por_id = {s.id: s for s in corrida.senales}
+        assert por_id["vacia"].score_top1 == 0.0
+        assert por_id["g-quorum"].score_top1 > 0.0
+
+    def test_the_cosine_transform_is_monotonic_and_floored_at_zero(self):
+        """The `/2` is load-bearing, not cosmetic — see `_similitud_desde_distancia`."""
+        from app.domains.conocimiento.eval.harness import _similitud_desde_distancia
+
+        # pgvector `<=>` is `1 - cos`, so its range is [0, 2].
+        assert _similitud_desde_distancia(0.0) == 1.0  # identical vectors
+        assert _similitud_desde_distancia(1.0) == 0.5  # orthogonal
+        assert _similitud_desde_distancia(2.0) == 0.0  # opposed: the true floor
+        # Monotonically increasing in similarity, i.e. decreasing in distance.
+        assert _similitud_desde_distancia(0.3) > _similitud_desde_distancia(0.9)
+        # And never negative, which is what keeps the empty page at the bottom.
+        assert min(_similitud_desde_distancia(d / 10) for d in range(21)) >= 0.0
+
+    def test_hybrid_keeps_the_fused_score(self, snapshot):
+        """RRF is the only signal a fused mode has: `ts_rank_cd` and cosine
+        distance are not commensurable and are never blended (design.md D4)."""
+        from app.domains.conocimiento.eval.harness import _escala_de_senal
+        from app.domains.conocimiento.schemas import ResultadoRecuperacion
+
+        vacio = ResultadoRecuperacion(corpus_sha=SHA, pregunta="q", modo="hybrid", k=10)
+        _, fuente = _escala_de_senal(vacio)
+        assert fuente == harness.FUENTE_RRF
+
+
 @requires_real_corpus
 class TestGoldSetContraElCorpusReal:
     """Every expected citation key must be a unit that actually exists.
