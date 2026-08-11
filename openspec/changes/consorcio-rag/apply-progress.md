@@ -1255,3 +1255,124 @@ command sequence is above, and the only genuinely new prerequisite is
 `RAG_GOLD_PRIVADO_PATH`, which is written and ready. RAG4-001 and RAG4-003 are now FIXED
 (both refuter-STANDS); RAG4-002 remains `info` and belongs to whoever owns the migration.
 Ready for `sdd-verify`.
+
+---
+
+# Judgment Day — apply phase, Round 1 (2026-08-10)
+
+Two blind judges over the slice 1-4 apply. Owner approved **"fix completo"**, so
+the single-judge CRITICALs and all four WARNINGs were fixed rather than filed as
+`info`. Per-finding evidence is in `review-ledger.md` § "Judgment Day — apply
+phase (Round 1)"; this section records the execution.
+
+## F0 — the PII history rewrite (RJDA-001 ≡ RJDB-001, BLOCKER)
+
+Done first, alone, and verified before any other edit was made.
+
+Twelve real full-name + D.N.I. pairs of the consorcio's sitting Comisión
+Directiva were committed in slice 2's fixture. The names are in public APRHI
+resolutions; the pairing with a national ID number is the leak, and the sibling
+fixture `resolucion-aprhi-004-2026-fragmento.md` had already set the standard by
+redacting every number to `` `[DNI-OMITIDO]` `` while keeping the names.
+
+`git ls-remote` was re-verified empty for all three `feat/consorcio-rag-*`
+branches before starting, so this could be a HISTORY rewrite and not a tip
+commit. `git log --follow` confirmed `83fd37c1` is the ONLY commit that ever
+touched the fixture, so the three replays were plain, conflict-free rebases.
+
+**Purge evidence, measured rather than asserted:**
+
+* each of the 12 redacted numbers returns **0 commits** from
+  `git log <3 new tips> --oneline -S '<dni>' -- gee-backend/tests/new/conocimiento/fixtures/`;
+* `git grep -c -E '\b[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}\b'` over the fixtures tree of
+  **all 12 commits** reachable from the three new tips: CLEAN on every one;
+* the old objects survive locally as unreachable and are never pushed. No `gc`
+  was run — this repo is shared with several live worktrees.
+
+**Redaction broke nothing** (run at the new 04 tip, before any fix commit):
+conocimiento **342 passed / 57 skipped** (CI shape) and **374 / 25** (corpus
+shape). The tests assert citation keys and unit counts, never DNI text.
+
+The sha remapping table is in the ledger.
+
+## Fix commits
+
+| commit | finding(s) | RED evidence |
+|---|---|---|
+| `63a21333` | RJDA-008 ≡ RJDB-004 | `git check-ignore -v` on a `.copy` and a `.json` under `artifacts/rag/` |
+| `43313bac` | RJDA-003 ≡ RJDB-006 | flag ignored → 3 metric tests fail; `MODOS_SIN_ALCANCE_LEXICO` emptied → vector mode reports `n_citation_precision=2, citation_precision=0.5` |
+| `3ece5c47` | RJDB-002 | native reader disabled → fts signal set collapses to `{0.0, 0.01639344262295082}` = `{0.0, 1/61}` |
+| `4425a26d` | RJDA-002 | try/except removed → raw `RuntimeError: BGE-M3 needs the ingestion extra…` propagates out of `main()` |
+| `e79d17bd` | RJDB-003 | all three recovery paths EXECUTED against a throwaway vector container — table below |
+| `e1de41de` | RJDA-005 ≡ RJDB-005, RJDA-004, RJDA-006, RJDA-007 | E5 prefixes emptied → 4 tests fail; `fsum` reverted → pinned repr + order-independence fail |
+
+## RJDB-003 — the recovery paths, executed
+
+Throwaway `consorcio-postgres:16-vector` container, alembic 1.18.5, this
+revision chain, three seeded units, starting from `embedding` absent with
+`alembic_version = conocimiento_004`:
+
+| path | `embedding` column | `rag_unidad` | `rag_documento` | provenance | verdict |
+|---|---|---|---|---|---|
+| (stranded) | absent | 3 | 2 | — | the starting state |
+| **A** `downgrade conocimiento_002 && upgrade head` | **still absent** | **1** | **1** | — | destructive AND ineffective |
+| **B** `ddl.UPGRADE_STATEMENTS` directly | **present** | unchanged | unchanged | untouched | **the recovery** |
+| **C** `downgrade conocimiento_001 && upgrade head` | present | unchanged | unchanged | `'BAAI/bge-m3'` → **NULL** | effective, expensively |
+
+A is what two revisions of the runbook prescribed. `alembic downgrade <rev>`
+reverts *to* that revision, so 002's `upgrade()` never re-runs — while 003's
+downgrade deletes rows on the way past. C's provenance wipe is the price the old
+text never named: the model gate re-arms from None, so recovery costs a vector
+re-load on top of the re-ingestion.
+
+## RJDA-004 — the interpreter divergence, measured
+
+`1 + 1/3 + 1 + 1/6`, the metrics module's own fixture:
+
+| interpreter | builtin `sum` mean | `math.fsum` mean | `sum` order-independent |
+|---|---|---|---|
+| CPython 3.11.15 (worktree venv) | `0.6249999999999999` | `0.625` | **no** |
+| CPython 3.14.6 (repo venv) | `0.625` | `0.625` | yes |
+
+CPython 3.12 switched `sum()` to Neumaier compensated summation for floats, so
+the OLD pinned repr `"0.6249999999999999"` was true on one of this repo's two
+venvs and false on the other. `test_rag_metrics.py` now runs **24 passed under
+BOTH** interpreters.
+
+A first draft of the new test asserted the contrast (`builtin sum disagrees with
+itself`) and FAILED under 3.14 — an interpreter-dependent assertion, i.e. the
+exact defect class being removed. It was replaced by a docstring recording the
+measurement, and only `fsum`'s property is asserted. Running both interpreters
+is what caught it; code inspection would not have.
+
+## Verification at the final tip
+
+| gate | result |
+|---|---|
+| `ruff check .` | exit 0 |
+| `ruff format --check .` | exit 0 |
+| `mypy app/auth app/domains/padron app/domains/denuncias` (the enforced CI scope) | exit 0, 20 files |
+| `mypy app/domains/conocimiento/ scripts/rag_*.py` | exit 0, 21 files |
+| conocimiento, CI shape | 381 passed / 60 skipped / 0 failed |
+| conocimiento, corpus shape | 413 passed / 28 skipped / 0 failed |
+| FULL suite, CI shape | **2298 passed / 65 skipped / 0 failed** (baseline 2259/62/0) |
+| FULL suite, corpus shape | **2330 passed / 33 skipped / 0 failed** (baseline 2291/30/0) |
+
+Both shapes moved by exactly **+39 passed and +3 skipped** — the 39 tests this
+round added, of which 3 are `pgvector`-marked and therefore skip in the default
+image. The history rewrite itself moved neither baseline.
+
+Whole-`app/` mypy reports 148 pre-existing errors in 35 files. That is NOT the
+repo's gate — `backend.yml:101` and `deploy.yml:120` both run
+`mypy app/auth app/domains/padron app/domains/denuncias`, which passes — and
+**zero of the 25 files this round touched appear in those 148**, checked
+file-by-file rather than assumed.
+
+## Open after this round
+
+* **RAG4-002** stays `info`, unchanged: `conocimiento_004` cannot record the
+  batch's torch build or device, and adding two columns belongs to whoever owns
+  the migration.
+* **4.14 / O.3** still blocked on the owner's RTX batch run. The command
+  sequence above now has the `RAG_EVAL_PYTHON=venv-rag/bin/python` correction
+  and the new latency step 3b.
