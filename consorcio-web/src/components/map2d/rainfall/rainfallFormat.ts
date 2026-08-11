@@ -10,10 +10,19 @@
 
 import type { RainfallMetric, RainfallMetricState } from '../../../lib/api/rainfall';
 
-/** Human label per metric key (the server sends machine keys only). */
+/**
+ * Human label per metric key (the server sends machine keys only).
+ *
+ * `normal` deliberately carries NO period: the baseline is server-driven and
+ * gets appended from `snapshot.baseline` by {@link metricLabel}. A period
+ * frozen here is the RISK-001 defect — the panel kept asserting 1991-2020
+ * after the normals were regenerated over another period, and the badged row
+ * then contradicted the annual phrase beside it, which reads the value AS
+ * SERVED (LI4-004).
+ */
 const RAINFALL_METRIC_LABELS: Record<string, string> = {
   selected: 'Acumulado del año',
-  normal: 'Normal 1991–2020',
+  normal: 'Normal',
   percentile: 'Percentil histórico',
   d7: 'Antecedente 7 días',
   d30: 'Antecedente 30 días',
@@ -35,8 +44,19 @@ const RAINFALL_STATE_LABELS: Record<RainfallMetricState, string> = {
   unavailable: 'No disponible',
 };
 
-export function metricLabel(key: string): string {
-  return RAINFALL_METRIC_LABELS[key] ?? key;
+/**
+ * The human label for a metric key, with the served baseline where the metric
+ * is ABOUT a baseline.
+ *
+ * `baseline` is optional and the fallback is deliberately period-less
+ * ("Normal"): naming the metric without a period is honest, while defaulting
+ * to a constant period is the exact claim this signature exists to prevent.
+ * An unknown key still degrades to the raw key, the repo's standing rule for
+ * an untranslated fact (`export._label`).
+ */
+export function metricLabel(key: string, baseline?: string | null): string {
+  const label = RAINFALL_METRIC_LABELS[key] ?? key;
+  return key === 'normal' && baseline ? `${label} ${baseline}` : label;
 }
 
 /** Value with unit; unknown stays "—", never "0". */
@@ -84,12 +104,4 @@ export function describeMetricState(metric: RainfallMetric): string {
     return `${label}: ${metric.reason}`;
   }
   return label;
-}
-
-/** One full textual line per metric — the textual-chart row. */
-export function describeMetricLine(key: string, metric: RainfallMetric): string {
-  const base = `${metricLabel(key)}: ${formatMetricValue(metric)} — ${describeMetricState(metric)}`;
-  return metric.state === 'partial'
-    ? `${base} (cobertura ${Math.round(metric.coverage * 100)}%)`
-    : base;
 }

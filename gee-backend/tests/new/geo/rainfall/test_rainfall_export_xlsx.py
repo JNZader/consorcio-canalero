@@ -499,20 +499,21 @@ def test_resumen_stamps_the_normal_curve_state(db):
     -- the exact ambiguity `normal_curve_state` was added to the wire contract
     to remove. The two labels must therefore differ."""
     from app.domains.geo.rainfall.export import (
-        NORMAL_CURVE_LABEL,
         NORMAL_CURVE_STATE_LABELS,
         RESUMEN_SHEET,
         SERIE_SHEET,
+        normal_curve_label,
     )
     from app.domains.geo.rainfall.models import RainfallIntervalValue
 
     revision = _seeded_revision(db, scope_id="zone-3b-curve-refused")
+    curve_label = normal_curve_label(revision.snapshot["baseline"])
     client = _client(db)
 
     available = _labelled(
         _rows(_sheets(client.get(f"/rainfall/analyses/{revision.id}.xlsx").content)[RESUMEN_SHEET])
     )
-    assert available[NORMAL_CURVE_LABEL] == NORMAL_CURVE_STATE_LABELS["available"]
+    assert available[curve_label] == NORMAL_CURVE_STATE_LABELS["available"]
 
     # A duplicated baseline slot lands AFTER the build: the curve is computed
     # and then refused (the sibling of `baseline_cumulatives`' own guard).
@@ -535,7 +536,7 @@ def test_resumen_stamps_the_normal_curve_state(db):
     book = _sheets(client.get(f"/rainfall/analyses/{revision.id}.xlsx").content)
     refused = _labelled(_rows(book[RESUMEN_SHEET]))
 
-    assert refused[NORMAL_CURVE_LABEL] == NORMAL_CURVE_STATE_LABELS["integrity_refused"]
+    assert refused[curve_label] == NORMAL_CURVE_STATE_LABELS["integrity_refused"]
     assert NORMAL_CURVE_STATE_LABELS["integrity_refused"] != NORMAL_CURVE_STATE_LABELS["suppressed"]
     # ... and the columns it governs really are blank, so the stamp is the ONLY
     # thing standing between the reader and an unexplained empty column.
@@ -547,9 +548,9 @@ def test_resumen_stamps_a_suppressed_normal_curve_distinctly(db):
     means `annual.normal` suppresses, and the workbook says so in its own
     words rather than reusing the refusal wording."""
     from app.domains.geo.rainfall.export import (
-        NORMAL_CURVE_LABEL,
         NORMAL_CURVE_STATE_LABELS,
         RESUMEN_SHEET,
+        normal_curve_label,
     )
 
     revision = _seeded_revision(db, scope_id="zone-3b-curve-suppressed", baseline=False)
@@ -563,7 +564,62 @@ def test_resumen_stamps_a_suppressed_normal_curve_distinctly(db):
         )
     )
 
-    assert block[NORMAL_CURVE_LABEL] == NORMAL_CURVE_STATE_LABELS["suppressed"]
+    assert (
+        block[normal_curve_label(revision.snapshot["baseline"])]
+        == NORMAL_CURVE_STATE_LABELS["suppressed"]
+    )
+
+
+def test_the_workbook_names_the_served_baseline_period_never_a_constant(db):
+    """LI4-004 in the artifact that outlives the screen.
+
+    Three surfaces of this one file named the baseline period, and two of them
+    named it from a constant compiled into `export.py`: the normal-curve stamp
+    label ("Curva normal 1991-2020") and the `annual_normal` row of the metric
+    table, both beside a "Período de referencia" cell read straight off the
+    envelope. Regenerate the normals over another period and the workbook
+    contradicts itself in three cells a reader sees at once -- and unlike the
+    panel, a downloaded file has no poll that eventually corrects it.
+
+    So the assertion is not "the labels are right" but "no LABEL in this file
+    still asserts the old period": every surface that NAMES the baseline is
+    swept, not just the two that were wrong.
+
+    Scoped to labels on purpose. The `annual_normal` row's `Desde` cell really
+    does read `1991-01-01` here, because the fixture seeds a genuine 1991-2020
+    baseline and only the envelope's `baseline` STRING is doctored. That cell is
+    evidence, not a claim about the period, and a sweep that failed on it would
+    be pinning the fixture's fiction rather than the defect.
+    """
+    from app.domains.geo.rainfall.export import (
+        BASELINE_LABEL,
+        RESUMEN_SHEET,
+        SUMMARY_LABEL,
+        build_workbook,
+        normal_curve_label,
+    )
+
+    revision = _seeded_revision(db, scope_id="zone-3b-baseline-served")
+    assert revision.snapshot["baseline"] == "1991-2020"
+    # The build hardcodes 1991-2020 today (`compute.py`), so the only way to
+    # serve another period is a doctored envelope -- the same reason
+    # `_revision_stand_in` exists for every other unreachable-by-build shape.
+    retargeted = {**revision.snapshot, "baseline": "2001-2030"}
+
+    book = _sheets(build_workbook(db, _revision_stand_in(retargeted, revision=revision)).content)
+    # A read-only sheet iterates ONCE, so every assertion below reads this list.
+    resumen = _rows(book[RESUMEN_SHEET])
+
+    block = _labelled(resumen)
+    metric_labels = [row["Métrica"] for row in _metric_table(resumen)]
+    assert block[BASELINE_LABEL] == "2001-2030"
+    assert block[normal_curve_label("2001-2030")] == "disponible"
+    assert "Normal 2001-2030" in metric_labels
+    # The narrative is the third surface, and the one a reader quotes.
+    assert "Normal 2001-2030" in str(block[SUMMARY_LABEL])
+
+    labels = list(block) + metric_labels + [str(block[SUMMARY_LABEL])]
+    assert not [label for label in labels if "1991" in label], labels
 
 
 def test_resumen_carries_the_disclosure_time_summary(db):

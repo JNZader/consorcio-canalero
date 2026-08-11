@@ -527,9 +527,16 @@ def _normalize_metric(
 # about what a reader sees, so the summary must name a metric the way its own
 # badge does. An unknown key falls back to the key itself, exactly as
 # `metricLabel` does on the client.
+#
+# `normal` deliberately carries NO period: the baseline is server-driven and is
+# appended from the envelope's own `baseline` by `summary_metric_label`. A
+# period frozen here is the RISK-001 defect (LI4-004) -- the panel renders this
+# narrative INSIDE the same `rainfall-metrics` subtree as the badged rows, so a
+# constant would print one number under two different periods in one screenshot,
+# which is precisely what the client-side fix removed.
 SUMMARY_METRIC_LABELS: dict[str, str] = {
     "selected": "Acumulado del año",
-    "normal": "Normal 1991–2020",
+    "normal": "Normal",
     "percentile": "Percentil histórico",
     "d7": "Antecedente 7 días",
     "d30": "Antecedente 30 días",
@@ -556,13 +563,45 @@ SUMMARY_PARTIAL_PREFIX = "Parciales:"
 SUMMARY_MISSING_PREFIX = "Sin dato:"
 SUMMARY_EMPTY = "Este análisis no divulga métricas."
 
+# The metric keys whose label NAMES a baseline period rather than merely being
+# derived from one. `percentile` is deliberately absent: its period belongs to
+# the sentence that states the rank ("Percentil 27 de 1991-2020",
+# `percentilePhrase` on the client), not to the metric's name.
+BASELINE_LABELED_METRICS: frozenset[str] = frozenset({"normal"})
 
-def _summary_entry(name: str, metric: dict[str, Any]) -> str:
+
+def snapshot_baseline(snapshot: dict[str, Any]) -> str | None:
+    """The SERVED baseline period, or ``None`` when the envelope has none.
+
+    One reader for a root key three surfaces name (the narrative, the xlsx
+    "Período de referencia" cell and the xlsx labels), so they cannot disagree
+    about the period of one revision. A non-string value is an unmodelled shape
+    rather than a period and degrades like an absent one -- pasting it in raw
+    would put ``Normal 1991`` in front of a reader as though it were served.
+    """
+    baseline = snapshot.get("baseline")
+    return baseline if isinstance(baseline, str) and baseline else None
+
+
+def summary_metric_label(name: str, baseline: str | None = None) -> str:
+    """The metric's human label, with the served period where it names one.
+
+    The counterpart of `metricLabel(key, baseline)` on the client, down to the
+    fallbacks: an unknown key degrades to the raw key, and a missing baseline
+    yields a period-LESS label. Naming the metric without a period is honest;
+    defaulting to a constant period is the exact claim this signature exists to
+    prevent.
+    """
+    label = SUMMARY_METRIC_LABELS.get(name, name)
+    return f"{label} {baseline}" if baseline and name in BASELINE_LABELED_METRICS else label
+
+
+def _summary_entry(name: str, metric: dict[str, Any], baseline: str | None) -> str:
     """One metric's phrase. Reads ``state``/``reason``/``value`` -- the three
     fields the policy owns -- plus ``unit``, which policy never rewrites and
     without which "204.0" and "50.0" would be indistinguishable millimetres
     and percentiles in the same sentence."""
-    label = SUMMARY_METRIC_LABELS.get(name, name)
+    label = summary_metric_label(name, baseline)
     state = metric.get("state")
     if state in {"available", "partial"} and _is_finite_metric_value(metric.get("value")):
         unit = metric.get("unit")
@@ -594,7 +633,12 @@ def rainfall_summary(groups: dict[str, Any]) -> str:
     Metric order follows the envelope's own group/metric order, which
     ``build_snapshot`` fixes and the JSON round-trip preserves, so the same
     stored revision always narrates identically.
+
+    *groups* is the whole normalized ENVELOPE, not just the metric groups: the
+    root ``baseline`` is what names the period in the `normal` label (LI4-004),
+    so the narrative moves with the served period and never with a constant.
     """
+    baseline = snapshot_baseline(groups)
     buckets: dict[str, list[str]] = {"available": [], "partial": [], "missing": []}
     for group_name in METRIC_GROUPS:
         group = groups.get(group_name)
@@ -605,7 +649,7 @@ def rainfall_summary(groups: dict[str, Any]) -> str:
                 continue
             state = metric.get("state")
             bucket = state if state in {"available", "partial"} else "missing"
-            buckets[bucket].append(_summary_entry(name, metric))
+            buckets[bucket].append(_summary_entry(name, metric, baseline))
 
     sentences = [
         f"{prefix} {'; '.join(entries)}."
@@ -702,14 +746,26 @@ def neutralize_spreadsheet_formula(text: str) -> str:
 
 
 def _csv_cell(value: Any) -> Any:
-    """Nested evidence stays JSON; the formula guard runs on the FINAL text.
+    """Nested evidence stays JSON; the formula guard runs on plain text cells.
 
-    Order matters: a `discrepancies` entry fed from a provider batch is encoded
-    first, so guarding before `json.dumps` would inspect a value that is not
-    what lands in the cell.
+    The JSON envelope is itself the containment for nested evidence: a dict, a
+    list or a tuple encodes to a cell that ALWAYS starts with ``{`` or ``[``,
+    and neither is in ``SPREADSHEET_FORMULA_PREFIXES``, so a hostile string
+    nested inside can never begin the cell. Running the guard over the encoded
+    text was therefore a no-op for every possible input (LI4-002) -- and it
+    documented a defence that does not exist, which is the more expensive half:
+    the next reader trusts it instead of checking that the envelope holds.
+
+    ``json.dumps`` is NOT decorative here and must stay. Handing the csv writer
+    a bare list makes it write Python's ``repr`` (``['=1+1']``, single quotes),
+    which no consumer can parse back as JSON.
+
+    A plain ``str`` cell has no envelope -- it is the caller's raw text -- so it
+    is the one shape that still needs the guard (`unit`, `reason`, ... are
+    provider-fed).
     """
     if isinstance(value, (dict, list, tuple)):
-        return neutralize_spreadsheet_formula(json.dumps(value, sort_keys=True))
+        return json.dumps(value, sort_keys=True)
     return neutralize_spreadsheet_formula(value) if isinstance(value, str) else value
 
 

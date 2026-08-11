@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { RainfallMetric } from '../../src/lib/api/rainfall';
 import {
-  describeMetricLine,
   describeMetricState,
   formatMetricValue,
   metricLabel,
@@ -50,9 +49,24 @@ function metric(overrides: Partial<RainfallMetric> = {}): RainfallMetric {
 describe('metricLabel', () => {
   it('labels the known metrics in Spanish', () => {
     expect(metricLabel('selected')).toBe('Acumulado del año');
-    expect(metricLabel('normal')).toBe('Normal 1991–2020');
     expect(metricLabel('d30')).toBe('Antecedente 30 días');
     expect(metricLabel('duration')).toBe('Duración del evento');
+  });
+
+  it('appends the SERVED baseline to the normal label, never a constant', () => {
+    // RISK-001/LI4-004: regenerating the normals over another period must move
+    // this label with no frontend edit involved.
+    expect(metricLabel('normal', '1991-2020')).toBe('Normal 1991-2020');
+    expect(metricLabel('normal', '2001-2030')).toBe('Normal 2001-2030');
+  });
+
+  it('names the metric without a period when no baseline is served', () => {
+    // Honest degradation: a period-less "Normal" states what the metric IS.
+    // Defaulting to a hardcoded period would assert a baseline the server
+    // never sent — the defect itself, wearing a fallback's clothes.
+    expect(metricLabel('normal')).toBe('Normal');
+    expect(metricLabel('normal', '')).toBe('Normal');
+    expect(metricLabel('normal', null)).toBe('Normal');
   });
 
   it('falls back to the raw key for an unknown metric', () => {
@@ -63,9 +77,9 @@ describe('metricLabel', () => {
 describe('formatMetricValue', () => {
   it('formats value and unit, never inventing a zero for null', () => {
     expect(formatMetricValue(metric())).toBe('850.2 mm');
-    expect(formatMetricValue(metric({ value: null, state: 'unavailable', reason: 'sin fuente' }))).toBe(
-      '—'
-    );
+    expect(
+      formatMetricValue(metric({ value: null, state: 'unavailable', reason: 'sin fuente' }))
+    ).toBe('—');
     // A SERVED zero is data and must survive.
     expect(formatMetricValue(metric({ value: 0 }))).toBe('0.0 mm');
   });
@@ -75,32 +89,21 @@ describe('describeMetricState', () => {
   it('distinguishes the four states, carrying the reason where applicable', () => {
     expect(describeMetricState(metric())).toBe('Disponible');
     expect(describeMetricState(metric({ state: 'partial', coverage: 0.8 }))).toBe('Parcial');
-    expect(describeMetricState(metric({ state: 'suppressed', value: null, reason: 'coverage_below_threshold' }))).toBe(
-      'Suprimida: coverage_below_threshold'
-    );
-    expect(describeMetricState(metric({ state: 'unavailable', value: null, reason: 'sin fuente' }))).toBe(
-      'No disponible: sin fuente'
-    );
+    expect(
+      describeMetricState(
+        metric({ state: 'suppressed', value: null, reason: 'coverage_below_threshold' })
+      )
+    ).toBe('Suprimida: coverage_below_threshold');
+    expect(
+      describeMetricState(metric({ state: 'unavailable', value: null, reason: 'sin fuente' }))
+    ).toBe('No disponible: sin fuente');
   });
 
   it('never renders suppressed or unavailable as zero or as a bare label', () => {
-    const text = describeMetricState(metric({ state: 'suppressed', value: null, reason: 'cadence_unsupported' }));
+    const text = describeMetricState(
+      metric({ state: 'suppressed', value: null, reason: 'cadence_unsupported' })
+    );
     expect(text).not.toContain('0');
     expect(text).toContain('cadence_unsupported');
-  });
-});
-
-describe('describeMetricLine', () => {
-  it('composes label, value and state in one textual line (textual chart row)', () => {
-    expect(describeMetricLine('selected', metric())).toBe(
-      'Acumulado del año: 850.2 mm — Disponible'
-    );
-  });
-
-  it('exposes coverage on a partial metric', () => {
-    const line = describeMetricLine('d7', metric({ state: 'partial', coverage: 0.8 }));
-    expect(line).toContain('Antecedente 7 días');
-    expect(line).toContain('Parcial');
-    expect(line).toContain('80%');
   });
 });

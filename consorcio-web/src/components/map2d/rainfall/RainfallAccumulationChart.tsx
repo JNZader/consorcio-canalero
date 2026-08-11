@@ -3,7 +3,8 @@
  *
  * The comparison the owner asked for: "si selecciono un año podría mostrarse
  * además en el gráfico de arriba como comparando con el histórico". The
- * selected year's accumulated rainfall and the 1991-2020 normal curve, drawn
+ * selected year's accumulated rainfall and the normal curve of the SERVED
+ * baseline (`snapshot.baseline`, never a period frozen here — LI4-004), drawn
  * from `GET /rainfall/analyses/{revision}/series` — the SAME builder the xlsx
  * "Serie diaria" sheet uses, so the screen and the workbook cannot tell
  * different stories.
@@ -84,30 +85,80 @@ type CampaignPreset = (typeof CAMPAIGN_PRESET)[keyof typeof CAMPAIGN_PRESET];
 const CAMPAIGN_START_MONTH_DAY = '09-01';
 
 /**
+ * How the normal is NAMED inside a sentence, with the SERVED period.
+ *
+ * `metricLabel`'s rule in prose form (LI4-004): the period is server-driven, so
+ * it comes from `snapshot.baseline`, and with none served the phrase names the
+ * metric without a period rather than asserting one. The chart title and the
+ * legend beside this notice already read the same field — a constant here would
+ * put two different periods on one screen, in the one state where there is no
+ * curve for the reader to check the claim against.
+ */
+function normalPhrase(baseline: string | null | undefined): string {
+  return baseline ? `normal ${baseline}` : 'normal de referencia';
+}
+
+/**
  * What a reader is told when there is no normal line, per state.
  *
  * The two entries MUST stay different sentences. They describe different
  * facts and the operator who needs the second one is reading a screenshot or a
  * printout where a colour never survives.
+ *
+ * `body` takes the phrase from {@link normalPhrase} rather than being a plain
+ * string, so the period cannot be re-frozen here by the next editor. The
+ * refusal copy ignores its argument on purpose: it is about an inconsistency
+ * between two computed curves, not about which period they cover.
  */
 const NORMAL_CURVE_NOTICE: Record<
   Exclude<RainfallNormalCurveState, 'available'>,
-  { readonly title: string; readonly body: string }
+  { readonly title: string; readonly body: (normal: string) => string }
 > = {
   suppressed: {
     title: 'Sin línea normal',
-    body:
-      'No hay normal 1991-2020 para este análisis, así que no hay línea histórica ' +
-      'con la cual comparar el año.',
+    body: (normal) =>
+      `No hay ${normal} para este análisis, así que no hay línea histórica con la cual comparar el año.`,
   },
   integrity_refused: {
     title: 'Línea normal descartada',
-    body:
+    body: () =>
       'La línea normal se calculó y se descartó por una inconsistencia de datos: no ' +
       'coincidía con la normal del análisis. No es una ausencia de datos. El motivo ' +
       'exacto queda en el evento rainfall.series.normal_curve_refused.',
   },
 };
+
+/**
+ * The notice for a state with no normal line — with an honest fallback.
+ *
+ * The map above is keyed by the states this client knows TODAY, but
+ * `normal_curve_state` is the BACKEND's field to extend. A state added there
+ * and not here indexes to `undefined`, and reading `.title` off it is a
+ * TypeError that unmounts the whole panel subtree — a reader loses the chart,
+ * the metrics and the provenance over one footnote (LI4-005).
+ *
+ * So an unmodelled state degrades to the untranslated fact: the title states
+ * what is true of EVERY non-`available` state (there is no line), and the body
+ * carries the raw state so an operator can name what the server actually said.
+ * Same rule as `metricLabel`'s raw-key fallback and `export._label` — show it,
+ * never disappear. The cast is confined here: widening the map to a `Partial`
+ * would trade this one guarded lookup for the loss of the compile-time check
+ * that every KNOWN state has copy.
+ */
+function normalCurveNotice(
+  state: RainfallNormalCurveState,
+  baseline?: string | null
+): {
+  readonly title: string;
+  readonly body: string;
+} {
+  const known = NORMAL_CURVE_NOTICE[state as Exclude<RainfallNormalCurveState, 'available'>] as
+    | { readonly title: string; readonly body: (normal: string) => string }
+    | undefined;
+  return known === undefined
+    ? { title: 'Sin línea normal', body: state }
+    : { title: known.title, body: known.body(normalPhrase(baseline)) };
+}
 
 /** ISO day of a date or datetime string, without re-parsing it into a Date
  *  (a `new Date(...)` round trip is where a UTC day silently becomes the day
@@ -254,9 +305,17 @@ function describePlottedWindow(
  * and `data-normal-curve-state` — never by the colour alone, which does not
  * survive a printed screenshot or a colour-blind reader.
  */
-function NormalCurveNotice({ state }: { readonly state: RainfallNormalCurveState | undefined }) {
+function NormalCurveNotice({
+  state,
+  baseline,
+}: {
+  readonly state: RainfallNormalCurveState | undefined;
+  /** Served period, so this notice names the SAME baseline as the chart title
+   *  and the legend beside it — never a constant (LI4-004). */
+  readonly baseline: string;
+}) {
   if (state === undefined || state === RAINFALL_NORMAL_CURVE_STATE.AVAILABLE) return null;
-  const notice = NORMAL_CURVE_NOTICE[state];
+  const notice = normalCurveNotice(state, baseline);
   const refused = state === RAINFALL_NORMAL_CURVE_STATE.INTEGRITY_REFUSED;
   return (
     <Alert
@@ -290,7 +349,9 @@ export function RainfallAccumulationChart({
   const curveState = series.normalCurveState;
   const curveAvailable = curveState === RAINFALL_NORMAL_CURVE_STATE.AVAILABLE;
   const curveTitle =
-    curveState !== undefined && !curveAvailable ? NORMAL_CURVE_NOTICE[curveState].title : null;
+    curveState !== undefined && !curveAvailable
+      ? normalCurveNotice(curveState, snapshot.baseline).title
+      : null;
 
   // The pin is authoritative; the echo comparison is the cheap cross-check that
   // ALSO catches a snapshot this tab has been holding while the server moved on
@@ -372,7 +433,7 @@ export function RainfallAccumulationChart({
         </Alert>
       )}
 
-      <NormalCurveNotice state={curveState} />
+      <NormalCurveNotice state={curveState} baseline={snapshot.baseline} />
 
       {visible.length === 0 ? (
         <Text size="xs" c="dimmed" fs="italic" data-testid="rainfall-accumulation-empty">
