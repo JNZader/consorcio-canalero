@@ -99,7 +99,14 @@ describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
 
     const text = screen.getByTestId('rainfall-annual-text');
     expect(text).toHaveTextContent('Percentil 27 de 2001-2030');
-    expect(text.textContent).not.toContain('1991-2020');
+    expect(text).toHaveTextContent('Normal 2001-2030: 1013.8 mm');
+    // Scoped to the WHOLE metrics subtree, and dash-agnostic. The previous
+    // version asserted on the annual-text node alone and spelled the period
+    // with a HYPHEN while the hardcoded label used an EN-DASH, so it could not
+    // fire against the one label it was written to catch: the badged row's
+    // `metricLabel('normal')` (LI4-004). Both spellings are excluded because
+    // either one is the same defect — a period the server did not serve.
+    expect(screen.getByTestId('rainfall-metrics').textContent).not.toMatch(/1991[-–]2020/);
   });
 
   it('keeps a served percentile of 0 as a number, never as a missing value', () => {

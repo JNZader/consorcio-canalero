@@ -32,12 +32,22 @@ const GROUP_TITLES: ReadonlyArray<{ key: 'annual' | 'antecedents' | 'intensity';
     { key: 'intensity', title: 'Intensidad y evento' },
   ];
 
-function MetricRow({ name, metric }: { readonly name: string; readonly metric: RainfallMetric }) {
+function MetricRow({
+  name,
+  metric,
+  baseline,
+}: {
+  readonly name: string;
+  readonly metric: RainfallMetric;
+  /** Served period, so the `normal` row names the SAME baseline as the phrase
+   *  above it — never a constant frozen in the frontend (LI4-004). */
+  readonly baseline: string;
+}) {
   const provenance = metric.provenance;
   return (
     <Stack gap={2} data-testid={`rainfall-metric-${name}`}>
       <Group gap="xs" wrap="nowrap" justify="space-between">
-        <Text size="xs">{metricLabel(name)}</Text>
+        <Text size="xs">{metricLabel(name, baseline)}</Text>
         <Group gap={4} wrap="nowrap">
           {metric.temporal_state === 'provisional' && (
             <Badge size="xs" variant="outline" color="violet">
@@ -97,7 +107,7 @@ export function RainfallMetricList({ snapshot }: { readonly snapshot: RainfallAn
               {title}
             </Text>
             {Object.entries(group).map(([name, metric]) => (
-              <MetricRow key={name} name={name} metric={metric} />
+              <MetricRow key={name} name={name} metric={metric} baseline={snapshot.baseline} />
             ))}
           </Stack>
         );
