@@ -53,7 +53,54 @@ function metric(overrides: Partial<RainfallMetric> = {}): RainfallMetric {
   };
 }
 
+/** The Spanish labels `service.SUMMARY_METRIC_LABELS` carries for the annual
+ *  group. `normal` is period-LESS here for the same reason it is there: the
+ *  period comes from the envelope. */
+const SUMMARY_LABELS: Record<string, string> = {
+  selected: 'Acumulado del año',
+  normal: 'Normal',
+  percentile: 'Percentil histórico',
+};
+
+/**
+ * The narrative the BACKEND would serve for this envelope
+ * (`service.rainfall_summary`), derived from the same metrics and the same
+ * baseline the panel is about to render.
+ *
+ * Derived rather than hardcoded, and it is not decoration: the panel renders
+ * `snapshot.summary` INSIDE `rainfall-metrics`, so without it the period sweep
+ * below is blind to a whole third of its own subtree — and a hardcoded string
+ * would go stale against the `baseline` override the sweep exists to test,
+ * making the fixture itself the finding.
+ */
+function servedSummary(annual: Record<string, RainfallMetric>, baseline: string): string {
+  const label = (name: string) =>
+    name === 'normal' ? `Normal ${baseline}` : (SUMMARY_LABELS[name] ?? name);
+  const available: string[] = [];
+  const missing: string[] = [];
+  for (const [name, entry] of Object.entries(annual)) {
+    if (entry.state === 'available' && entry.value !== null) {
+      available.push(`${label(name)} ${entry.value.toFixed(1)} ${entry.unit}`);
+    } else {
+      const state = entry.state === 'suppressed' ? 'suprimida' : 'no disponible';
+      missing.push(`${label(name)} (${state}: ${entry.reason})`);
+    }
+  }
+  return [
+    available.length > 0 ? `Disponibles: ${available.join('; ')}.` : '',
+    missing.length > 0 ? `Sin dato: ${missing.join('; ')}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function snapshot(overrides: Partial<RainfallAnalysisSnapshot> = {}): RainfallAnalysisSnapshot {
+  const baseline = overrides.baseline ?? '1991-2020';
+  const annual = overrides.annual ?? {
+    selected: metric({ metric: 'selected', value: 850.24 }),
+    normal: metric({ metric: 'normal', value: 1013.8 }),
+    percentile: metric({ metric: 'percentile', value: 27.4, unit: 'percentil' }),
+  };
   return {
     analysis_revision_id: 'rev-9',
     data_revision: 'ab'.repeat(32),
@@ -61,12 +108,9 @@ function snapshot(overrides: Partial<RainfallAnalysisSnapshot> = {}): RainfallAn
     regional_estimate: true,
     year: 2025,
     comparison_end: '2025-12-31',
-    baseline: '1991-2020',
-    annual: {
-      selected: metric({ metric: 'selected', value: 850.24 }),
-      normal: metric({ metric: 'normal', value: 1013.8 }),
-      percentile: metric({ metric: 'percentile', value: 27.4, unit: 'percentil' }),
-    },
+    baseline,
+    annual,
+    summary: servedSummary(annual, baseline),
     ...overrides,
   };
 }
@@ -92,21 +136,42 @@ describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
     expect(text).toHaveTextContent('Percentil 27 de 1991-2020');
   });
 
-  it('prints the baseline period AS SERVED, in the phrase too', () => {
+  it('prints the baseline period AS SERVED, on every surface of the panel', () => {
     // RISK-001 all over again: regenerating the normals over another period
-    // must change this line by itself, with no frontend edit involved.
-    renderList(snapshot({ baseline: '2001-2030' }));
+    // must change this panel by itself, with no frontend edit involved.
+    const snap = snapshot({ baseline: '2001-2030' });
+    renderList(snap);
 
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Percentil 27 de 2001-2030');
-    expect(text).toHaveTextContent('Normal 2001-2030: 1013.8 mm');
-    // Scoped to the WHOLE metrics subtree, and dash-agnostic. The previous
-    // version asserted on the annual-text node alone and spelled the period
-    // with a HYPHEN while the hardcoded label used an EN-DASH, so it could not
-    // fire against the one label it was written to catch: the badged row's
-    // `metricLabel('normal')` (LI4-004). Both spellings are excluded because
-    // either one is the same defect — a period the server did not serve.
-    expect(screen.getByTestId('rainfall-metrics').textContent).not.toMatch(/1991[-–]2020/);
+    // The three surfaces that name a period, asserted one by one so a failure
+    // says WHICH one regressed.
+    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
+      'Percentil 27 de 2001-2030'
+    );
+    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
+      'Normal 2001-2030: 1013.8 mm'
+    );
+    expect(screen.getByTestId('rainfall-metric-normal')).toHaveTextContent('Normal 2001-2030');
+    expect(screen.getByTestId('rainfall-summary')).toHaveTextContent('Normal 2001-2030 1013.8 mm');
+
+    // …and the sweep that catches the FOURTH surface nobody thought of. It
+    // compares against `snapshot.baseline` rather than excluding the literal
+    // 1991-2020, because a detector written as a denylist only ever catches the
+    // one constant it was written for: this one fires on ANY period the server
+    // did not serve, in either dash spelling.
+    //
+    // Two failure modes of the previous version, both real (LI4-004 / CC-002):
+    // it was scoped to the annual-text node while the hardcode lived in the
+    // badged row, and it spelled the period with a HYPHEN against a constant
+    // that used an EN-DASH — so it could not fire against the one label it
+    // existed to catch.
+    const periods = [
+      ...(screen.getByTestId('rainfall-metrics').textContent ?? '').matchAll(
+        /\d{4}\s*[-–]\s*\d{4}/g
+      ),
+    ].map(([period]) => period);
+
+    expect(periods.length).toBeGreaterThanOrEqual(4);
+    expect([...new Set(periods)]).toEqual([snap.baseline]);
   });
 
   it('keeps a served percentile of 0 as a number, never as a missing value', () => {
