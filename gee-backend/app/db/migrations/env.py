@@ -26,14 +26,33 @@ from app.domains.geo.intelligence.models import (  # noqa: F401
 )
 from app.domains.reuniones.models import Reunion, AgendaItem, AgendaReferencia  # noqa: F401
 from app.domains.settings.models import SystemSettings  # noqa: F401
+from app.domains.conocimiento.models import RagCorpus, RagDocumento, RagUnidad  # noqa: F401
 from app.shared.celery_outbox import CeleryTaskOutbox  # noqa: F401
 
 # Alembic Config object
 config = context.config
 
-# Setup loggers
+# Setup loggers.
+#
+# `disable_existing_loggers=False` is NOT a preference. `fileConfig`'s default is
+# True, which sets `disabled = True` on every logger that already exists —
+# silently, process-wide, and for the rest of the process's life. From the
+# alembic CLI that is harmless: the process exists to run one migration and then
+# exits. In-process it is a grenade, and this repo now pulls the pin on it:
+# `tests/new/conocimiento/test_rag_migrations.py` builds an alembic `Config`,
+# which imports this module, which disabled every application logger created
+# before it — so two `tests/unit/test_celery_outbox.py` tests that assert on
+# `caplog.text` saw an EMPTY log and failed, in a file the RAG change never
+# touched, only when the whole `tests/` tree ran in one session. That is the
+# command CI runs (`.github/workflows/backend.yml:129`), so the suite was red
+# for a logging side effect nobody had reason to look for.
+#
+# Fixed here rather than in the test because the hazard belongs to this call:
+# every future in-process alembic caller inherits it, and a test-side workaround
+# would have to be remembered each time. alembic.ini's levels and handlers still
+# apply exactly as before — only the mass-disable is dropped.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Target metadata for autogenerate
 target_metadata = Base.metadata
