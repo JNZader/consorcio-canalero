@@ -61,6 +61,7 @@ from app.domains.geo.rainfall.service import (
     RAINFALL_HISTORICAL_SOURCE,
     RAINFALL_INTENSITY_SOURCE,
     RAINFALL_VALIDATION_SOURCE,
+    SPREADSHEET_FORMULA_PREFIXES,
     SnapshotContractError,
     analysis_request_fingerprint,
     metric_rows,
@@ -969,17 +970,43 @@ class TestSpreadsheetFormulaNeutralization:
         csv_row = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))
         assert csv_row["unit"] == "'=cmd|'/c calc'!A1"
 
-    def test_json_encoded_discrepancies_are_neutralized_too(self) -> None:
-        # `discrepancies` is fed from provider batches and is serialized through
-        # `json.dumps` first, so the guard must run on the FINAL cell text --
-        # after encoding, not before, or the encoded form escapes it.
+    def test_the_json_envelope_is_what_makes_nested_evidence_inert(self) -> None:
+        # `discrepancies` is provider-fed, so a hostile entry gets in. What
+        # keeps the CELL inert is the JSON envelope, not the formula guard: the
+        # encoded text always opens with `[` or `{`, which no spreadsheet reads
+        # as an expression. This pins BOTH halves of that claim, because they
+        # are what justify `_csv_cell` not guarding the encoded form (LI4-002).
+        #
+        # The previous version of this test asserted `not startswith("=")` on a
+        # cell that opens with `[` by construction, so it passed whether or not
+        # the guard ran and proved nothing about either.
         normalized = normalize_snapshot(
             _snapshot(annual={"a1": _metric_raw(discrepancies=["=1+1"])}),
             expected_policy_revision="v1",
         )
-        csv_row = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))
-        assert json.loads(csv_row["discrepancies"]) == ["=1+1"]
-        assert not csv_row["discrepancies"].startswith("=")
+        cell = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))[
+            "discrepancies"
+        ]
+        # 1. The envelope holds: the cell opens with a character no reader
+        #    evaluates. Drop `json.dumps` and this is Python's repr instead.
+        assert cell.startswith("[")
+        assert not cell.startswith(SPREADSHEET_FORMULA_PREFIXES)
+        # 2. …and the payload survives VERBATIM inside it. An export is
+        #    evidence: quoting or stripping what the provider sent would be a
+        #    worse defect than the one being guarded against.
+        assert json.loads(cell) == ["=1+1"]
+
+    def test_a_hostile_string_cell_is_still_neutralized_at_cell_level(self) -> None:
+        # The counterpart to the test above, at the level `_csv_cell` actually
+        # decides: a bare `str` has NO envelope, so it is the shape that still
+        # needs the guard. `reason` is provider-adjacent and lands in the file
+        # verbatim.
+        normalized = normalize_snapshot(
+            _snapshot(annual={"a1": _metric_raw(reason="=1+1", state="suppressed", value=None)}),
+            expected_policy_revision="v1",
+        )
+        cell = next(csv.DictReader(StringIO(metric_rows_csv(metric_rows(normalized)))))["reason"]
+        assert cell == "'=1+1"
 
     def test_numbers_are_never_quoted_into_text(self) -> None:
         # The CSV exists to be re-read as data. A negative FLOAT is a number,

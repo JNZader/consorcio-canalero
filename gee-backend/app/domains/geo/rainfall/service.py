@@ -702,14 +702,26 @@ def neutralize_spreadsheet_formula(text: str) -> str:
 
 
 def _csv_cell(value: Any) -> Any:
-    """Nested evidence stays JSON; the formula guard runs on the FINAL text.
+    """Nested evidence stays JSON; the formula guard runs on plain text cells.
 
-    Order matters: a `discrepancies` entry fed from a provider batch is encoded
-    first, so guarding before `json.dumps` would inspect a value that is not
-    what lands in the cell.
+    The JSON envelope is itself the containment for nested evidence: a dict, a
+    list or a tuple encodes to a cell that ALWAYS starts with ``{`` or ``[``,
+    and neither is in ``SPREADSHEET_FORMULA_PREFIXES``, so a hostile string
+    nested inside can never begin the cell. Running the guard over the encoded
+    text was therefore a no-op for every possible input (LI4-002) -- and it
+    documented a defence that does not exist, which is the more expensive half:
+    the next reader trusts it instead of checking that the envelope holds.
+
+    ``json.dumps`` is NOT decorative here and must stay. Handing the csv writer
+    a bare list makes it write Python's ``repr`` (``['=1+1']``, single quotes),
+    which no consumer can parse back as JSON.
+
+    A plain ``str`` cell has no envelope -- it is the caller's raw text -- so it
+    is the one shape that still needs the guard (`unit`, `reason`, ... are
+    provider-fed).
     """
     if isinstance(value, (dict, list, tuple)):
-        return neutralize_spreadsheet_formula(json.dumps(value, sort_keys=True))
+        return json.dumps(value, sort_keys=True)
     return neutralize_spreadsheet_formula(value) if isinstance(value, str) else value
 
 
