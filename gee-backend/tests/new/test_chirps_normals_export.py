@@ -6,6 +6,11 @@
 *contract*: the CHIRPS source, the normals period, and the full 13-output set
 (12 monthly + 1 annual), each with a resolved download URL.
 
+Plus the fake-zero regression: the normals are exported over the zone's BUFFERED
+BOUNDING BOX and never ``.clip``ped to its outline (the clip is what made Earth
+Engine serialise masked pixels as ``0.0`` with no nodata tag), and every output
+is ``unmask``ed to the sentinel so a real hole stays legible downstream.
+
 AC: precip-normals-pipeline > "Full set generated".
 """
 
@@ -15,6 +20,8 @@ import pytest
 
 from app.domains.geo.gee_service_analytics_support import (
     CHIRPS_COLLECTION_ID,
+    CHIRPS_EXPORT_BUFFER_M,
+    CHIRPS_EXPORT_NODATA,
     export_chirps_monthly_normals_payload,
 )
 
@@ -143,12 +150,53 @@ def test_degenerate_year_range_fails_fast() -> None:
         )
 
 
-def test_download_requests_geotiff_clipped_to_the_region() -> None:
+def test_download_requests_geotiff_over_the_buffered_bounding_box() -> None:
     fake, _ = _run()
 
     params = fake.calls_to("getDownloadURL")[0].args[0]
     assert params["format"] == "GEO_TIFF"
     assert params["crs"] == "EPSG:4326"
-    # Region-clipped and rendered at ~native CHIRPS scale (the 32720 warp is B1b).
-    assert "region" in params
-    assert params["scale"] == 5566
+    assert params["scale"] == 5566  # ~native CHIRPS (the 32720 warp is B1b)
+    # The export window is the zone's BOUNDING BOX plus a skirt, not its outline:
+    # ``bounds -> buffer -> bounds``. Asserted as the chain the code asked for,
+    # which is the only thing a recording double can witness.
+    assert params["region"]._path == ["Geometry", "bounds", "buffer", "bounds"]
+    assert fake.one_call_to("Geometry.bounds.buffer").args == (CHIRPS_EXPORT_BUFFER_M,)
+
+
+# ── the fake-zero regression: no clip, and holes carry a sentinel ────────────
+
+
+def test_the_normals_are_never_clipped_to_the_zone_outline() -> None:
+    """THE regression. ``.clip(geometry)`` is what manufactured the fake zeros.
+
+    Earth Engine serialises a masked pixel into a GeoTIFF as a plain ``0.0``
+    with no nodata tag, so clipping to the zone outline wrote a band of
+    zero-rainfall months around the edge of the extent. CHIRPS is a global
+    product — the clip never bought anything, the export window alone bounds the
+    download. Any ``clip`` reaching Earth Engine here re-opens the defect.
+    """
+    fake, _ = _run()
+
+    assert fake.calls_to("clip") == []
+
+
+def test_every_output_is_unmasked_to_the_sentinel_before_the_download_url() -> None:
+    """Defence in depth: "no data" must be a VALUE, not a mask the GeoTIFF drops.
+
+    Dropping the clip stops manufacturing holes; ``unmask`` makes any hole that
+    remains (EE masks CHIRPS off-product, e.g. over the ocean) legible to the ETL
+    warp as an explicit ``src_nodata`` instead of another indistinguishable 0.0.
+    """
+    fake, _ = _run()
+
+    unmasks = fake.calls_to("unmask")
+    assert len(unmasks) == 13  # one per output, monthly and annual alike
+    assert all(call.args == (CHIRPS_EXPORT_NODATA,) for call in unmasks)
+    # …and it happens BEFORE the URL is resolved, or the bytes are the masked ones.
+    assert all(_ends_with_unmask(call.path) for call in fake.calls_to("getDownloadURL"))
+
+
+def _ends_with_unmask(path: str) -> bool:
+    parts = path.split(".")
+    return len(parts) >= 2 and parts[-2] == "unmask"

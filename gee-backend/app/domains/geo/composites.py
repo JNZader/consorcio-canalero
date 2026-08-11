@@ -589,6 +589,7 @@ def extract_zonal_profile(
     breaks: list[dict] | None = None,
     geom_area_m2: float | None = None,
     low_confidence_pixel_ratio: float = DEFAULT_LOW_CONFIDENCE_PIXEL_RATIO,
+    treat_zero_as_nodata: bool = False,
 ) -> dict[str, Any]:
     """Class-binned zonal statistics for ONE geometry over ONE raster.
 
@@ -648,6 +649,14 @@ def extract_zonal_profile(
             geometry if the raster CRS is projected, else confidence is not
             flagged. Coverage never depends on it.
         low_confidence_pixel_ratio: ``K`` for the relative confidence rule.
+        treat_zero_as_nodata: OPT-IN. When true an exact ``0.0`` is excluded from
+            the valid mask exactly like a nodata pixel, so it feeds neither the
+            statistics nor ``coverage_ratio``. Defaults to false and MUST stay
+            false for every classified dataset (``flood_risk`` /
+            ``drainage_need``), where class 0 is a legitimate class. Only the
+            precipitation normals opt in — see
+            ``ficha_service._perfil_precip`` for why, and for when the
+            convention is retired.
 
     Returns:
         ``{mean, max, p90, valid_pixels, pixel_area_ha, covered_area_ha,
@@ -757,6 +766,12 @@ def extract_zonal_profile(
         valid_mask = ~outside_geometry & ~np.isnan(data)
         if nodata is not None:
             valid_mask &= data != nodata
+        if treat_zero_as_nodata:
+            # Opt-in only (precipitation normals). Dropping the zeros HERE rather
+            # than after the fact is what keeps ``coverage_ratio`` honest: they
+            # leave the numerator, so a zone whose pixels are half fake reads
+            # ``partial`` and a zone that is all fake reads ``none``.
+            valid_mask &= data != 0.0
 
         # ONE rasterization for both sides of the coverage ratio. The window is
         # the raster's own grid extended to whole pixels around the geometry, so
