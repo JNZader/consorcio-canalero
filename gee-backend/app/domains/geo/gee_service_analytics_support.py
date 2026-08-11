@@ -227,6 +227,21 @@ CHIRPS_NORMAL_PERIOD = chirps_normal_period(CHIRPS_NORMAL_START_YEAR, CHIRPS_NOR
 # (etl/generate_chirps_normals.py), never here.
 CHIRPS_NATIVE_SCALE_M = 5566
 
+#: The value ``unmask`` writes where Earth Engine has NO data, and therefore the
+#: ``src_nodata`` the ETL warp must be told about. Depending on how EE serialises
+#: its mask is what produced the bug this constant closes: a masked pixel came
+#: out as a plain ``0.0`` with no nodata tag, indistinguishable from a month
+#: without rain. Stamping the sentinel EE-side makes "no data" explicit in the
+#: bytes instead of implicit in a mask that the GeoTIFF does not carry.
+CHIRPS_EXPORT_NODATA = -9999.0
+
+#: Metres the zone's BOUNDING BOX is grown by before exporting. CHIRPS is a
+#: global product, so there is nothing to gain by clipping it to the zone
+#: outline — and everything to lose: the clip is what masked the pixels that
+#: then serialised as fake zeros. One CHIRPS pixel is ~5.5 km, so a 10 km skirt
+#: guarantees the zone's edge sits on whole, real pixels after the warp.
+CHIRPS_EXPORT_BUFFER_M = 10_000
+
 
 def export_chirps_monthly_normals_payload(
     ee_module,
@@ -240,11 +255,29 @@ def export_chirps_monthly_normals_payload(
     """Build the CHIRPS monthly precipitation normals and resolve a GEE
     download URL for each.
 
-    Twelve monthly normals (January-December) plus one annual total, clipped to
-    ``region``. For month *m* the normal is the mean, across the years
-    ``[start_year, end_year]``, of that month's daily-precipitation sum — i.e.
-    mean accumulated millimetres for that month over the normals period. The
-    annual normal is the sum of the twelve monthly normals.
+    Twelve monthly normals (January-December) plus one annual total, exported
+    over ``region``'s BOUNDING BOX plus a buffer. For month *m* the normal is the
+    mean, across the years ``[start_year, end_year]``, of that month's
+    daily-precipitation sum — i.e. mean accumulated millimetres for that month
+    over the normals period. The annual normal is the sum of the twelve monthly
+    normals.
+
+    **Why there is no ``.clip(geometry)`` here — this is a fix, not an omission.**
+    Clipping each normal to the zone outline masked every pixel outside it, and
+    Earth Engine serialises a masked pixel into a GeoTIFF as a plain ``0.0``
+    carrying NO nodata tag. Those zeros then read downstream as a month with no
+    rain: parcels on the eastern edge of the extent had their normals averaged
+    against them, and a parcel entirely inside the masked band reported 0.0 mm
+    for all twelve months while claiming full coverage. CHIRPS is a GLOBAL
+    product, so the clip bought nothing in the first place — the export window
+    alone bounds the download. Exporting the buffered bbox keeps the zone's edge
+    on whole, real pixels.
+
+    ``unmask(CHIRPS_EXPORT_NODATA)`` is the defence in depth behind that: it
+    makes "no data" an explicit sentinel in the pixel values instead of a mask
+    the GeoTIFF cannot carry, so the ETL warp has something concrete to pass as
+    ``src_nodata``. Both halves are needed — the export window stops manufacturing
+    holes, the sentinel makes any remaining hole legible.
 
     This is the GEE-side export step ONLY: it computes the images and resolves a
     ``getDownloadURL`` per output. Downloading the bytes, warping to EPSG:32720
@@ -257,6 +290,10 @@ def export_chirps_monthly_normals_payload(
     if start_year > end_year:
         raise ValueError(f"start_year ({start_year}) must be <= end_year ({end_year})")
     geometry = ee_module.Geometry(region)
+    # ``bounds -> buffer -> bounds``: the first ``bounds`` drops the outline the
+    # clip used to follow, the buffer adds the skirt, and the second ``bounds``
+    # squares off the rounded corners the buffer leaves behind.
+    export_region = geometry.bounds().buffer(CHIRPS_EXPORT_BUFFER_M).bounds()
     collection = ee_module.ImageCollection(CHIRPS_COLLECTION_ID).filterDate(
         f"{start_year}-01-01", f"{end_year + 1}-01-01"
     )
@@ -270,12 +307,10 @@ def export_chirps_monthly_normals_payload(
             .sum()
             for year in range(start_year, end_year + 1)
         ]
-        return ee_module.ImageCollection(yearly_sums).mean().rename("precip_mm").clip(geometry)
+        return ee_module.ImageCollection(yearly_sums).mean().rename("precip_mm")
 
     monthly_images = [_monthly_normal(month) for month in range(1, 13)]
-    annual_image = (
-        ee_module.ImageCollection(monthly_images).sum().rename("precip_mm").clip(geometry)
-    )
+    annual_image = ee_module.ImageCollection(monthly_images).sum().rename("precip_mm")
 
     outputs: List[tuple[Any, Any]] = [
         (month, image) for month, image in zip(range(1, 13), monthly_images)
@@ -284,11 +319,11 @@ def export_chirps_monthly_normals_payload(
 
     descriptors: List[Dict[str, Any]] = []
     for mes, image in outputs:
-        url = image.getDownloadURL(
+        url = image.unmask(CHIRPS_EXPORT_NODATA).getDownloadURL(
             {
                 "format": "GEO_TIFF",
                 "scale": scale,
-                "region": geometry,
+                "region": export_region,
                 "crs": "EPSG:4326",
             }
         )

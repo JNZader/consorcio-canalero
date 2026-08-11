@@ -15,6 +15,17 @@ There is no scheduled job and none is wanted: regenerate ON DEMAND, by hand, onl
 for one of those two reasons. Re-running with an unchanged period and extent just
 mints a fresh ``version`` over identical pixels.
 
+**REGENERATION PENDING (fake zeros at the eastern edge).** The rasters currently
+on the production volume were produced by the PREVIOUS version of this pipeline,
+which clipped each normal to the zona outline: Earth Engine serialised the masked
+pixels as ``0.0`` with no nodata tag, and the warp — lacking ``src_nodata`` —
+promoted them to measurements. Zones on the eastern edge therefore averaged real
+millimetres together with zeros. The export window and the warp are fixed here,
+but the BYTES ON DISK are not: they only change on a re-run. Until then
+``ficha_service._perfil_precip`` carries a stop-gap that treats ``0.0`` as
+no-data for precipitation, which must be RETIRED once this has run against
+production.
+
 **What it produces.** 13 rasters for ``area_id``:
 
     /data/geo/{area_id}/output/precip_normal_01.tif   (January)
@@ -87,6 +98,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.gee_service import export_chirps_monthly_normals
 from app.domains.geo.gee_service_analytics_support import (
+    CHIRPS_EXPORT_NODATA,
     CHIRPS_FUENTE_LABEL,
     CHIRPS_NORMAL_END_YEAR,
     CHIRPS_NORMAL_START_YEAR,
@@ -110,8 +122,11 @@ TARGET_SRID = 32720
 TARGET_RESOLUTION_M = 5000
 
 #: Matches the composites convention so the raster enters ``extract_zonal_profile``
-#: unchanged (``composites_support.py``).
-NODATA = -9999.0
+#: unchanged (``composites_support.py``). The SAME value the GEE export stamps
+#: with ``unmask``, re-exported rather than re-typed: the sentinel the export
+#: writes and the one the warp reads have to be the same number or the warp
+#: promotes holes back into data, which is precisely the defect this closes.
+NODATA = CHIRPS_EXPORT_NODATA
 
 #: CHIRPS normals period. Distinct year args are surfaced as CLI flags so a period
 #: extension is a documented, deliberate re-run. The DEFAULTS are re-exported from
@@ -173,8 +188,21 @@ def _warp_to_target(
     (rather than deriving a UTM zone) and forces nearest resampling — CHIRPS is
     already ~native at 5 000 m, so nearest is the only resampler that does not
     invent sub-pixel detail (JDB-018).
+
+    ``src_nodata`` is passed EXPLICITLY, and its absence was half of the fake-zero
+    defect. GDAL only honours a source nodata it can read off the file, and a
+    GeoTIFF straight out of ``getDownloadURL`` carries no nodata tag at all — so
+    a warp given only ``dst_nodata`` treats every source pixel as measured and
+    faithfully carries the export's holes across as data. Declaring the sentinel
+    the export stamps (``unmask(CHIRPS_EXPORT_NODATA)``) is what makes them land
+    as destination nodata instead. A source that DOES declare its own nodata is
+    believed over the default — same precedence as ``read_categorical_tile``
+    (``tile_service_support.py``).
     """
     with rasterio_module.open(src_path) as src:
+        # Believe the file when it says something; fall back to the sentinel the
+        # GEE export stamps when — as with every raw GEE GeoTIFF — it says nothing.
+        src_nodata = src.nodata if src.nodata is not None else NODATA
         transform, width, height = calculate_default_transform_fn(
             src.crs,
             TARGET_CRS,
@@ -201,6 +229,7 @@ def _warp_to_target(
                 destination=rasterio_module.band(dst, 1),
                 src_transform=src.transform,
                 src_crs=src.crs,
+                src_nodata=src_nodata,
                 dst_transform=transform,
                 dst_crs=TARGET_CRS,
                 dst_nodata=NODATA,

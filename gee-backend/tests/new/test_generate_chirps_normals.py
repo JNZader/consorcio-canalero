@@ -7,6 +7,9 @@ no network, no GDAL). The tests pin the *contract* the design fixed:
 * 13 rows registered as ``tipo = precip_normal`` with the exact ``metadata_extra``
   (JDB-011);
 * the warp target is EPSG:32720 at 5 000 m, nearest, nodata ``-9999.0`` (JDB-018);
+* the warp declares ``src_nodata`` — the fake-zero regression: a GEE GeoTIFF
+  carries no nodata tag, so a warp that only stamps ``dst_nodata`` promotes the
+  export's masked pixels into measurements;
 * regeneration appends a fresh ``version`` and does NOT overwrite the previous run
   (spec › "Regeneration versions the metadata");
 * missing GEE credentials fail loudly with no partial layer registered (spec ›
@@ -71,6 +74,7 @@ REGION = {
 }
 
 _RESAMPLING_NEAREST = object()  # sentinel: the runner must forward THIS, unchanged
+_MISSING = object()  # sentinel: the kwarg was not passed at all
 
 
 def _fake_export(region: dict, *, start_year: int, end_year: int) -> list[dict]:
@@ -96,15 +100,28 @@ class _FakeRequests:
 
 
 class _FakeSrc:
+    """The downloaded GeoTIFF as it comes out of ``getDownloadURL``.
+
+    ``nodata = None`` is NOT a convenience: it is what Earth Engine actually
+    hands back. A raw GEE GeoTIFF declares no nodata whatsoever — the mask lives
+    in EE, not in the file — which is why the export stamps the sentinel with
+    ``unmask`` and the warp has to declare it as ``src_nodata``. A fake that
+    invented a nodata tag here would let a warp WITHOUT ``src_nodata`` pass, i.e.
+    it would model the one case production never sees.
+    """
+
     crs = "EPSG:4326"
     width = 20
     height = 18
     bounds = (-59.0, -35.0, -58.0, -34.0)
     transform = "SRC_TRANSFORM"
 
+    def __init__(self, nodata: float | None = None) -> None:
+        self.nodata = nodata
+
     @property
     def profile(self) -> dict:
-        return {"driver": "GTiff", "dtype": "float32", "count": 1, "nodata": None}
+        return {"driver": "GTiff", "dtype": "float32", "count": 1, "nodata": self.nodata}
 
 
 class _Ctx:
@@ -119,14 +136,15 @@ class _Ctx:
 
 
 class _FakeRasterio:
-    def __init__(self, recorder: dict) -> None:
+    def __init__(self, recorder: dict, *, src_nodata: float | None = None) -> None:
         self._recorder = recorder
+        self._src_nodata = src_nodata
 
     def open(self, path: str, mode: str = "r", **profile: Any) -> _Ctx:
         if mode == "w":
             self._recorder["write_profiles"].append(profile)
             return _Ctx(object())
-        return _Ctx(_FakeSrc())
+        return _Ctx(_FakeSrc(self._src_nodata))
 
     def band(self, dataset: Any, index: int) -> tuple:
         return ("band", index)
@@ -149,6 +167,10 @@ def _fake_reproject_factory(recorder: dict):
         recorder["reproject"].append(
             {
                 "dst_crs": kwargs.get("dst_crs"),
+                # Recorded with the sentinel so an ABSENT ``src_nodata`` is
+                # distinguishable from an explicit ``None`` — the whole point of
+                # the assertions below.
+                "src_nodata": kwargs.get("src_nodata", _MISSING),
                 "dst_nodata": kwargs.get("dst_nodata"),
                 "resampling": kwargs.get("resampling"),
             }
@@ -168,6 +190,7 @@ def _run(
     export_fn=_fake_export,
     now: datetime,
     recorder: dict | None = None,
+    src_nodata: float | None = None,
     **anios: int,
 ) -> tuple[list[Any], _FakeRequests, dict]:
     recorder = recorder if recorder is not None else _make_recorder()
@@ -179,7 +202,7 @@ def _run(
         export_fn=export_fn,
         **anios,
         requests_module=requests,
-        rasterio_module=_FakeRasterio(recorder),
+        rasterio_module=_FakeRasterio(recorder, src_nodata=src_nodata),
         calculate_default_transform_fn=_fake_calc_factory(recorder),
         reproject_fn=_fake_reproject_factory(recorder),
         resampling_nearest=_RESAMPLING_NEAREST,
@@ -286,6 +309,49 @@ def test_warp_target_is_32720_5000m_nearest_nodata_minus_9999(chirps_db: Session
         assert profile["crs"] == "EPSG:32720"
         assert profile["nodata"] == -9999.0
         assert profile["dtype"] == "float32"
+
+
+# ── src_nodata: the warp must not promote the export's holes into data ───────
+
+
+def test_warp_declares_the_export_sentinel_as_src_nodata_on_a_tagless_geotiff(
+    chirps_db: Session,
+) -> None:
+    """THE fake-zero regression, on the source side.
+
+    A GeoTIFF straight out of ``getDownloadURL`` declares NO nodata (``_FakeSrc``
+    models exactly that). A warp told only ``dst_nodata`` therefore treats every
+    source pixel as measured and carries the export's holes across as data —
+    which is how a masked pixel serialised as ``0.0`` ended up in the ficha as a
+    month with no rain. The warp must declare the sentinel the export stamps
+    with ``unmask``, and the two must be the SAME number.
+    """
+    now = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    _, _, recorder = _run(chirps_db, area_id="area_srcnd", now=now, src_nodata=None)
+
+    assert len(recorder["reproject"]) == 13
+    for call in recorder["reproject"]:
+        assert call["src_nodata"] is not _MISSING, "src_nodata must be passed, not defaulted"
+        assert call["src_nodata"] == gcn.CHIRPS_EXPORT_NODATA
+        # Same sentinel on both sides — a mismatch would re-open the hole with
+        # extra steps.
+        assert call["src_nodata"] == call["dst_nodata"] == gcn.NODATA
+
+
+def test_warp_believes_a_source_that_declares_its_own_nodata(chirps_db: Session) -> None:
+    """A file with a real nodata tag wins over the default — the tile_service precedence.
+
+    The fallback exists for the tagless GEE download, not to override a source
+    that already states what its holes are.
+    """
+    now = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    _, _, recorder = _run(chirps_db, area_id="area_srcnd2", now=now, src_nodata=-1234.0)
+
+    assert len(recorder["reproject"]) == 13
+    for call in recorder["reproject"]:
+        assert call["src_nodata"] == -1234.0
+        # …and the DESTINATION is still normalised to the pipeline convention.
+        assert call["dst_nodata"] == gcn.NODATA
 
 
 # ── Regeneration versions the metadata (JDB-011) ─────────────────────────────
