@@ -150,9 +150,9 @@ Only the tracker (`feat/lluvia-insights`) merges to `main`.
 
 ## Ops: Backfill Runbook Execution + Doc-Nit Folds
 
-- [ ] Ops.1 After slice 1 merges and the `historical` role flag is enabled, run `backfill_cli.py` for 1991 alone; verify 365 persisted intervals for `zona_cc_ampliada`.
-- [ ] Ops.2 Run the remaining 1992-2020 years; verify 30/30 checkpoints `completed_at`, 0 duplicate rows on a dry re-run.
-- [ ] Ops.3 Settle `RAINFALL_BACKFILL_PACE_SECONDS` from the observed 1991-run pace; adjust the `tasks.py` default if the 5s guess proves wrong (design.md Open Question).
+- [x] Ops.1 After slice 1 merges and the `historical` role flag is enabled, run `backfill_cli.py` for 1991 alone; verify 365 persisted intervals for `zona_cc_ampliada`. **DONE 2026-08-11 (prod)**: 365/365 intervals, 0 duplicates.
+- [x] Ops.2 Run the remaining 1992-2020 years; verify 30/30 checkpoints `completed_at`, 0 duplicate rows on a dry re-run. **DONE 2026-08-11 (prod)**: 29/29 years, 10958/10958 intervals total, span 1991-01-01 → 2020-12-31, 0 duplicates on re-run.
+- [x] Ops.3 Settle `RAINFALL_BACKFILL_PACE_SECONDS` from the observed 1991-run pace; adjust the `tasks.py` default if the 5s guess proves wrong (design.md Open Question). **DONE 2026-08-11 (prod)**: the 5s default held; no change made.
 - [ ] Ops.4 LIA-101 fold: confirm this document's chain (1 → 2a → 2b → 3a → 3b → 4) and Review Workload Forecast show no slice above 400 production lines. Doc-only — proving check: this document.
 - [ ] Ops.5 LIA-003 fold: before enabling slice 2b's stale-policy requeue at scale, run the proposal's scope-population SQL (`SELECT count(DISTINCT ...) zone_scopes`, `SELECT count(*) basins FROM zonas_operativas`) against the deployed DB to confirm the small-population assumption holds.
 - [ ] Ops.6 Resolve the design.md open question: whether `annual.percentile` should also suppress when `annual.selected` is `partial`; if yes, file a follow-up task against slice 2a's `compute.py` builder to inherit `partial`.
