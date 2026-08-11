@@ -534,6 +534,32 @@ describe('RainfallAccumulationChart — normal-curve state (4.2b)', () => {
     await screen.findByTestId('rainfall-accumulation-chart');
     expect(screen.queryByTestId('rainfall-normal-curve-state')).toBeNull();
   });
+
+  it('degrades on an unmodelled curve state instead of crashing the panel', async () => {
+    // LI4-005. `NORMAL_CURVE_NOTICE` is keyed by the states this client knows
+    // TODAY; the wire type is the backend's to extend. A fourth state reaches
+    // an `undefined` entry, and reading `.title` off it is a TypeError that
+    // takes down the whole panel subtree over one footnote — a strictly worse
+    // outcome than the untranslated fact. The repo's standing rule for exactly
+    // this case is to SHOW the raw value (`metricLabel ?? key`,
+    // `export._label`), never to disappear.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      series({
+        // Cast on purpose: the point is a state the union does NOT model.
+        normal_curve_state: 'provider_withdrew' as RainfallSeriesResponse['normal_curve_state'],
+        points: curvelessPoints(),
+      })
+    );
+    renderChart();
+
+    // The chart still mounts — that is the whole claim.
+    await screen.findByTestId('rainfall-accumulation-chart');
+    const notice = await screen.findByTestId('rainfall-normal-curve-state');
+    expect(notice.getAttribute('data-normal-curve-state')).toBe('provider_withdrew');
+    // The raw state is carried through, so an operator can name what the server
+    // actually said rather than reading a silent panel.
+    expect(notice.textContent).toContain('provider_withdrew');
+  });
 });
 
 describe('RainfallAccumulationChart — no fake remedy (4.3)', () => {

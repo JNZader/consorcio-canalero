@@ -109,6 +109,33 @@ const NORMAL_CURVE_NOTICE: Record<
   },
 };
 
+/**
+ * The notice for a state with no normal line — with an honest fallback.
+ *
+ * The map above is keyed by the states this client knows TODAY, but
+ * `normal_curve_state` is the BACKEND's field to extend. A state added there
+ * and not here indexes to `undefined`, and reading `.title` off it is a
+ * TypeError that unmounts the whole panel subtree — a reader loses the chart,
+ * the metrics and the provenance over one footnote (LI4-005).
+ *
+ * So an unmodelled state degrades to the untranslated fact: the title states
+ * what is true of EVERY non-`available` state (there is no line), and the body
+ * carries the raw state so an operator can name what the server actually said.
+ * Same rule as `metricLabel`'s raw-key fallback and `export._label` — show it,
+ * never disappear. The cast is confined here: widening the map to a `Partial`
+ * would trade this one guarded lookup for the loss of the compile-time check
+ * that every KNOWN state has copy.
+ */
+function normalCurveNotice(state: RainfallNormalCurveState): {
+  readonly title: string;
+  readonly body: string;
+} {
+  const known = NORMAL_CURVE_NOTICE[state as Exclude<RainfallNormalCurveState, 'available'>] as
+    | { readonly title: string; readonly body: string }
+    | undefined;
+  return known ?? { title: 'Sin línea normal', body: state };
+}
+
 /** ISO day of a date or datetime string, without re-parsing it into a Date
  *  (a `new Date(...)` round trip is where a UTC day silently becomes the day
  *  before in a browser west of Greenwich). */
@@ -256,7 +283,7 @@ function describePlottedWindow(
  */
 function NormalCurveNotice({ state }: { readonly state: RainfallNormalCurveState | undefined }) {
   if (state === undefined || state === RAINFALL_NORMAL_CURVE_STATE.AVAILABLE) return null;
-  const notice = NORMAL_CURVE_NOTICE[state];
+  const notice = normalCurveNotice(state);
   const refused = state === RAINFALL_NORMAL_CURVE_STATE.INTEGRITY_REFUSED;
   return (
     <Alert
@@ -290,7 +317,7 @@ export function RainfallAccumulationChart({
   const curveState = series.normalCurveState;
   const curveAvailable = curveState === RAINFALL_NORMAL_CURVE_STATE.AVAILABLE;
   const curveTitle =
-    curveState !== undefined && !curveAvailable ? NORMAL_CURVE_NOTICE[curveState].title : null;
+    curveState !== undefined && !curveAvailable ? normalCurveNotice(curveState).title : null;
 
   // The pin is authoritative; the echo comparison is the cheap cross-check that
   // ALSO catches a snapshot this tab has been holding while the server moved on
