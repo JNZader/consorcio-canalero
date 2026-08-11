@@ -1,0 +1,630 @@
+# Gold set — consorcio-rag V0 evaluation
+#
+# Ratified verbatim by the owner on 2026-08-10 (Ops O.2): 29 answerable + 23
+# unanswerable = 52. Source: `eval-preguntas-oro-DRAFT-2026-08-10.md`, whose
+# provenance record is `docs/rag/gold-set-provenance.md`.
+#
+# ---------------------------------------------------------------------------
+# WHY SOME QUESTIONS HAVE NO TEXT HERE (`origen: privado`)
+# ---------------------------------------------------------------------------
+# This repository is PUBLIC. `consorcio-corpus-legal` is PRIVATE, and every
+# document it holds is ingested with `clasificacion = 'privado'` by default-deny
+# (repository.documento_row_from_frontmatter). Twenty-six of these questions were
+# transcribed from documents carrying that classification — the audit's §5
+# questions for the commission, the canal N°5 legal analysis, and one question
+# about the consortium's own approved files.
+#
+# The rule applied is the corpus's own, one layer up: **a question inherits the
+# classification of the document it was transcribed from.** Publishing them to a
+# public git remote is strictly more exposure than the external API call that
+# `assert_public_domain` already refuses by default, and permanent besides.
+#
+# So those items carry `pregunta_ref` instead of `pregunta`, and the text is
+# resolved at run time from the YAML at `RAG_GOLD_PRIVADO_PATH` (owner-side, next
+# to the corpus, never committed here). An unresolved item is NOT silently
+# dropped: the harness scores what it can and REFUSES go/no-go while any item is
+# unresolved, exactly as it refuses while any item is `validado_por: draft`.
+#
+# This is a safe default, not a ratified decision — the owner ratified the SET,
+# and the publication surface was never put to him. Flipping it is a data move
+# with no code change: paste the text into `pregunta` and drop `pregunta_ref`.
+#
+# ---------------------------------------------------------------------------
+# TWO CAVEATS THE SOURCE DOCUMENT ITSELF RAISES, RECORDED RATHER THAN RESOLVED
+# ---------------------------------------------------------------------------
+# * Q-1 (titular de concesión) — the draft's Descartes §1 rejects a duplicate of
+#   this question as having "no citable answer ... zona gris real", while the
+#   count table lists it among the 7 answerable. Both are true of different
+#   things: V0 measures RETRIEVAL, not legal certainty. The units that decide the
+#   tension (`5589#238` habilita sin exigir concesión, `5589#239` permite
+#   oponerse por su falta) exist and are retrievable; whether a lawyer can
+#   conclude from them is out of V0's scope. It stays answerable, and this note
+#   is why.
+# * Q-4 (dónde está la reglamentación del art. 235) — the reglamentación is NOT
+#   in the corpus (the analysis records it as unpublished). The retrievable
+#   answer is the article that makes the remission, so `citas_esperadas` is
+#   `5589#235` and a correct system returns it plus nothing else.
+#
+# Both are flagged for the owner; neither was re-classed unilaterally.
+#
+# ---------------------------------------------------------------------------
+# SCHEMA
+# ---------------------------------------------------------------------------
+#   id               stable identifier, also the key into the private file
+#   pregunta         the question verbatim (public items only)
+#   pregunta_ref     source anchor for the text (private items only)
+#   clase            answerable | unanswerable | trampa-vigencia
+#                    `trampa-vigencia` IS answerable — it is the subset whose
+#                    correct answer depends on a caveat unit, and it counts
+#                    toward the 29. Only `unanswerable` is excluded.
+#   subclase         the draft's own taxonomy, carried for traceability
+#   citas_esperadas  expected citation keys, verbatim per the MANIFEST convention
+#   citas_vigencia   the subset of citas_esperadas carrying the vigencia caveat
+#   fuente           where the question and its citations came from
+#   validado_por     draft | owner
+#   dificultad       facil | media | dificil
+#   origen           publico | privado
+
+version: 1
+corpus_sha: 12043582bf8016288a7e8084e85a4b713a97af2f
+ratificado: "2026-08-10"
+fuente_draft: eval-preguntas-oro-DRAFT-2026-08-10.md
+
+items:
+  # =========================================================================
+  # A. RESPONDIBLES — directas (1 unidad)
+  # =========================================================================
+  - id: D-1
+    pregunta: "Convocamos la asamblea y a la hora de arrancar no llegamos ni a la mitad de los socios. ¿La podemos empezar igual o hay que suspenderla?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9750#14"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-2
+    pregunta: "¿Puede votar cualquiera que venga a la asamblea?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9750#15"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-3
+    pregunta: "¿Los que estamos en la Comisión Directiva cobramos algo?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9750#24"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-4
+    pregunta: "¿Estamos obligados a tener un ingeniero, o alcanza con contratarlo cuando hay obra?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["1315-2012#4"]
+    fuente: decreto-1315-2012-reglamentario-ley-9750.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-5
+    pregunta: "¿La APRHI nos puede intervenir? ¿Por cuánto tiempo?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9750#42"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  - id: D-6
+    pregunta: "Si hay que expropiar una franja para el canal, ¿quién es el que expropia?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9867#24"]
+    fuente: ley-9867-aprhi-recursos-hidricos.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  - id: D-7
+    pregunta: "Si le pedimos a la APRHI el expediente de una obra, ¿tenemos que explicarles para qué lo queremos?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["8803#6"]
+    fuente: ley-8803-acceso-informacion-cordoba.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+    # Canary of the ingester, not of the model: Ley 8803 declares `tipo: ley`
+    # (D-22). A filter on `tipo == 'ley-provincial'` makes this unanswerable.
+
+  - id: D-8
+    pregunta: "La cuneta del camino que corre al lado del canal, ¿es nuestra? ¿La tenemos que limpiar nosotros?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["8560#5"]
+    fuente: ley-8560-transito-cordoba.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+    # `8560#5` is one of the three units over the 8192-token embedding ceiling,
+    # so it is FTS-retrievable and has no vector. The ablation should show that
+    # as a mode difference rather than as noise.
+
+  # =========================================================================
+  # B. RESPONDIBLES — compuestas (2-3 unidades)
+  # =========================================================================
+  - id: C-1
+    pregunta: "La ley dice que la Comisión Directiva es de nueve. La nuestra tiene trece. ¿Está mal?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["9750#20", "9750#6", "10demayo#res005-2026#art1"]
+    fuente: ley-9750-consorcios-canaleros.md + consorcio-10-de-mayo-registro-aprhi.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  - id: C-2
+    pregunta: "Queremos sacar a un miembro de la Comisión Directiva. ¿Qué mayoría necesitamos?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["9750#11", "9750#22"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # Two routes with different majorities. An answer that gives one number is
+    # wrong even when the citation is real — which is why citation-precision is
+    # R-precision and not hit-rate.
+
+  - id: C-3
+    pregunta: "¿Con cuánta anticipación hay que avisar la asamblea y dónde hay que publicarla?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["9750#16", "9750#33"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  - id: C-4
+    pregunta: "Hay socios que no pagan la cuota hace años. ¿Los podemos ejecutar? ¿Pueden votar?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["9750#21", "9750#15", "9750#12"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  - id: C-5
+    pregunta: "La municipalidad nos quiere contratar para hacerle una limpieza. ¿Podemos, y podemos cobrar?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["9750#3", "9750#21", "9750#39"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  - id: C-6
+    pregunta: "La APRHI nos rechazó el legajo. ¿Qué presentamos, ante quién y en qué plazo?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["5350#80", "5350#84", "9867#1"]
+    fuente: ley-procedimiento-administrativo-cordoba.md + ley-9867-aprhi-recursos-hidricos.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # `9867#1` is the piece that makes the rest fit (APRHI is autárquica).
+    # Without it the answer goes to `5350#83`, the centralised-administration
+    # route — a natural distractor, declared.
+
+  - id: C-7
+    pregunta: "El canal nuevo tiene que cruzar un camino. ¿Quién autoriza y quién paga el puente?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["5589#207", "8560#28", "5589#221"]
+    fuente: ley-5589-codigo-aguas-cordoba.md + ley-8560-transito-cordoba.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # Declared distractor: `5589#222` is the mirror case (a new road crossing an
+    # existing canal) and inverts who pays.
+
+  - id: C-8
+    pregunta: "El límite sur de nuestra zona es el Río Tercero. Si un consorcista hace una mensura ahí y no está determinada la Línea de Ribera, ¿qué retiro tiene que dejar?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas:
+      ["res-dipas-395-2004#art1", "res-dipas-395-2004#art3", "10demayo#res189-2014#art1"]
+    fuente: resolucion-dipas-395-2004-linea-ribera-provisoria.md + consorcio-10-de-mayo-registro-aprhi.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+
+  - id: C-9
+    pregunta: "¿Podemos llevar el libro de actas en la computadora y firmarlo digitalmente?"
+    clase: answerable
+    subclase: compuesta
+    citas_esperadas: ["9750#18", "25506#3", "25506#6"]
+    fuente: ley-9750-consorcios-canaleros.md + ley-25506-firma-digital.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+
+  # =========================================================================
+  # C. RESPONDIBLES — trampa superada
+  # =========================================================================
+  - id: T-1
+    pregunta: "El financiamiento nuestro sale del FDA. ¿Hasta cuándo está vigente?"
+    clase: trampa-vigencia
+    subclase: trampa-superada
+    citas_esperadas: ["10679#17", "10679#vigencia-de-los-fondos", "9750#39"]
+    citas_vigencia: ["10679#vigencia-de-los-fondos"]
+    fuente: ley-10679-modificatoria-ctp-fda.md + ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # T-1 CANARY (ingester, not model). The captured article says "hasta el 31 de
+    # diciembre de 2023"; the truth is 2032. Without the nota-vigencia unit the
+    # system answers "venció en 2023" with a byte-exact citation.
+
+  - id: T-2
+    pregunta: "Lo que se recauda del FDA, ¿va entero a las obras o se lo reparten antes?"
+    clase: trampa-vigencia
+    subclase: trampa-superada
+    citas_esperadas: ["10679#20", "10679#vigencia-de-los-fondos"]
+    citas_vigencia: ["10679#vigencia-de-los-fondos"]
+    fuente: ley-10679-modificatoria-ctp-fda.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # T-2 CANARY. The MANIFEST calls art. 20 "el caso peor": the captured body
+    # asserts the opposite of what is in force.
+
+  - id: T-3
+    pregunta: "El ejercicio nos cierra el 31 de diciembre. ¿Hasta cuándo tenemos para hacer la asamblea ordinaria?"
+    clase: answerable
+    subclase: trampa-superada
+    citas_esperadas: ["9750#19", "9750#12", "9750#47"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # T-3. NOT a vigencia trap — a plazo-computation trap, so `clase` stays
+    # `answerable`. `9750#47` is the whole question: the law computes ALL its
+    # terms in días HÁBILES unless it says otherwise, and here it does not. The
+    # answer must say hábiles and must discard 31 de marzo. A retrieval that
+    # brings 19 and 12 without 47 scores hit-rate 1.00 and R-precision 2/3 —
+    # which is exactly the discrimination this item exists to produce.
+
+  - id: T-4
+    pregunta: "Salió una ley nueva de consorcios en 2025 y dicen que ahora depende de Bioagroindustria. ¿Nos cambia el régimen a nosotros?"
+    clase: answerable
+    subclase: trampa-superada
+    citas_esperadas: ["11059#1", "11059#3", "10936#12"]
+    fuente: ley-11059-consorcios-camineros.md + ley-10936-consorcios-gestion-integrada-cuencas.md
+    validado_por: owner
+    dificultad: media
+    origen: publico
+    # A RETRIEVAL trap, not a vigencia one: "consorcio" + "ley nueva" pulls the
+    # 11059 with a very high score, and its frontmatter warns in capitals that it
+    # is NOT derecho aplicable to a canalero. Tests whether `relevancia_consorcio`
+    # survives chunking.
+
+  - id: T-5
+    pregunta: "Un consorcista tapó el canal / rompió el bordo. ¿Qué sanción le pueden aplicar?"
+    clase: trampa-vigencia
+    subclase: trampa-superada
+    citas_esperadas: ["5589#244", "5589#275", "5589#276"]
+    citas_vigencia: ["5589#276"]
+    fuente: ley-5589-codigo-aguas-cordoba.md
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # The set's honesty probe: half the answer exists and the other half is a
+    # declared hole. Art. 276 prints "DEROGADO" and its replacement regime is not
+    # in the corpus.
+
+  # =========================================================================
+  # D. RESPONDIBLES — canal N°5 (existentes, texto en el archivo privado)
+  # =========================================================================
+  - id: V-1
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#veredicto-1"
+    clase: answerable
+    subclase: veredicto
+    citas_esperadas: ["9750#3", "5589#202"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: media
+    origen: privado
+
+  - id: V-2
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#veredicto-2"
+    clase: answerable
+    subclase: veredicto
+    citas_esperadas: ["5589#260", "5589#235", "5589#239"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: dificil
+    origen: privado
+
+  - id: V-3
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#veredicto-3"
+    clase: answerable
+    subclase: veredicto
+    citas_esperadas: ["5589#241", "5589#256", "5589#261"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: media
+    origen: privado
+
+  - id: Q-1
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#pregunta-abogado-1"
+    clase: answerable
+    subclase: pregunta-abogado
+    citas_esperadas: ["5589#238", "5589#239", "5589#202"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: dificil
+    origen: privado
+    # See the Q-1 caveat in this file's header: answerable as RETRIEVAL, grey as
+    # law. The draft's Descartes §1 is about the second sense.
+
+  - id: Q-2
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#pregunta-abogado-2"
+    clase: answerable
+    subclase: pregunta-abogado
+    citas_esperadas: ["5589#207", "5589#208", "1315-2012#2"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: media
+    origen: privado
+
+  - id: Q-3
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#pregunta-abogado-3"
+    clase: answerable
+    subclase: pregunta-abogado
+    citas_esperadas: ["5589#254", "5589#260"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: dificil
+    origen: privado
+
+  - id: Q-4
+    pregunta_ref: "analisis-legal-canal5-2026-08-05.md#pregunta-abogado-4"
+    clase: answerable
+    subclase: pregunta-abogado
+    citas_esperadas: ["5589#235"]
+    fuente: analisis-legal-canal5-2026-08-05.md
+    validado_por: owner
+    dificultad: dificil
+    origen: privado
+    # See the Q-4 caveat in the header: the reglamentación is not in the corpus,
+    # so the retrievable answer is the article that remits to it.
+
+  # =========================================================================
+  # E. ABSTENCIÓN — huecos del corpus (nuevas)
+  # =========================================================================
+  - id: X-1
+    pregunta: "¿Cuántos metros de ancho tiene la zona de camino del camino que corre al lado del canal?"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: informe-zona-de-camino-cordoba.md (hueco F-6)
+    validado_por: owner
+    dificultad: media
+    origen: publico
+    # No number exists in any law of the corpus. If the system returns 30 m, 20 m
+    # or 14 m it failed: the corpus states expressly that those circulating
+    # figures have no backing.
+
+  - id: X-2
+    pregunta: "¿Qué reglamento hay que cumplir para cruzar o correr paralelo a un camino provincial con el canal?"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: informe-zona-de-camino-cordoba.md (hueco F-4)
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # Declared distractor: `res-dnv-908-2026#anexo-ii#norma10` and
+    # `#anexo-ii#norma22` DO carry a procedure and a metrage, and govern NATIONAL
+    # routes only. Applying them to a provincial road is a failure with a perfect
+    # citation. (The draft wrote these keys as `#anexo2#…`; the corpus's own key
+    # is `#anexo-ii#…` and the corpus wins.)
+
+  - id: X-3
+    pregunta: "De todo lo que se recauda del FDA, ¿cuánto le toca este año a los canales de desagüe?"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: ley-10679-modificatoria-ctp-fda.md (hueco F-2)
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # Must not invent a percentage, and in particular must not confuse the 0,42 %
+    # (T-2's diversion to the agriculture ministry) or the 0,61 % (the levy rate)
+    # with a quota for canals.
+
+  - id: X-4
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#hueco-F-27"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md (hueco F-27)
+    validado_por: owner
+    dificultad: media
+    origen: privado
+
+  - id: X-5
+    pregunta: "Cuando la Provincia licita una obra de canal, ¿bajo qué régimen lo hace y qué necesita para la habilitación ambiental?"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: caso-testigo-tres-colonias-canal-santa-cecilia.md (huecos F-31, F-32)
+    validado_por: owner
+    dificultad: dificil
+    origen: publico
+    # Ley 8614 (Obras Públicas) and Ley 10208 (Política Ambiental) are cited by
+    # the corpus and not held by it. The system may say the regimes exist; it may
+    # not say what they require.
+
+  # =========================================================================
+  # F. ABSTENCIÓN — las 18 preguntas para la comisión (auditoría §5)
+  # =========================================================================
+  # Only the commission can answer these; the corpus cannot. Text lives in the
+  # owner-side private file — see this file's header.
+  - id: A-1
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.A.1"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-2
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.A.2"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-3
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.A.3"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-4
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.A.4"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-5
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.A.5"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-6
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.B.6"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-7
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.B.7"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-8
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.B.8"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-9
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.B.9"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-10
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.C.10"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-11
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.C.11"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-12
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.C.12"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-13
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.C.13"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-14
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.D.14"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-15
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.D.15"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-16
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.D.16"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-17
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.E.17"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado
+  - id: A-18
+    pregunta_ref: "auditoria-obras-zona-10-de-mayo.md#§5.E.18"
+    clase: unanswerable
+    subclase: abstencion
+    citas_esperadas: []
+    fuente: auditoria-obras-zona-10-de-mayo.md#§5
+    validado_por: owner
+    origen: privado

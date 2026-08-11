@@ -1315,8 +1315,88 @@ def test_geo_worker_mounts_the_map_canal_files() -> None:
     assert "./consorcio-web/public/capas/canales:/app/data/canales:ro" in geo_worker
 
 
+# Import names (not PyPI names) of the heavy ML stack. `FlagEmbedding` keeps
+# its capital F because that is what an `import` statement actually says.
+ML_IMPORT_ROOTS = frozenset(
+    {
+        "torch",
+        "transformers",
+        "sentence_transformers",
+        "FlagEmbedding",
+        "segmentation_models_pytorch",
+    }
+)
+
+# The same stack by PEP 503 normalized distribution name, for requirements files.
+ML_DISTRIBUTIONS = frozenset(
+    {
+        "torch",
+        "transformers",
+        "sentence-transformers",
+        "flagembedding",
+        "segmentation-models-pytorch",
+    }
+)
+
+
+def _ml_imports(fuente: str) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
+    """Split a module's heavy-ML imports into (eager, lazy) `(root, lineno)` pairs.
+
+    An import is LAZY only when it is lexically nested inside a function or
+    method body, because that is exactly the condition under which importing
+    the module does not execute it. Everything else is EAGER — module scope,
+    class bodies, and module-level ``try:``/``if:`` wrappers all run at import
+    time, so a ``try: import torch`` at module scope pulls the CUDA stack into
+    the image just as surely as a bare one, and the old substring guard could
+    not tell any of these apart.
+    """
+    arbol = ast.parse(fuente)
+    ansiosos: list[tuple[str, int]] = []
+    perezosos: list[tuple[str, int]] = []
+
+    def raiz(nombre: str) -> str:
+        return nombre.split(".", 1)[0]
+
+    def registrar(nodo: ast.AST, perezoso: bool) -> None:
+        destino = perezosos if perezoso else ansiosos
+        if isinstance(nodo, ast.Import):
+            for alias in nodo.names:
+                if raiz(alias.name) in ML_IMPORT_ROOTS:
+                    destino.append((raiz(alias.name), nodo.lineno))
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            if raiz(nodo.module) in ML_IMPORT_ROOTS:
+                destino.append((raiz(nodo.module), nodo.lineno))
+
+    def recorrer(nodo: ast.AST, perezoso: bool) -> None:
+        for hijo in ast.iter_child_nodes(nodo):
+            dentro = perezoso or isinstance(hijo, ast.FunctionDef | ast.AsyncFunctionDef)
+            registrar(hijo, dentro)
+            recorrer(hijo, dentro)
+
+    recorrer(arbol, False)
+    return ansiosos, perezosos
+
+
+def _distribuciones_de_requirements(texto: str) -> set[str]:
+    """PEP 503 normalized distribution names declared by a requirements file.
+
+    Handles both hand-written files (``torch>=2.0.0``) and uv-compiled locks
+    (``torch==2.1.0 \\`` plus ``--hash=`` continuation lines and ``# via``
+    comments). Option lines (``-r``, ``--hash``) and comments are skipped.
+    """
+    nombres: set[str] = set()
+    for linea in texto.splitlines():
+        limpia = linea.strip()
+        if not limpia or limpia.startswith(("#", "-")):
+            continue
+        crudo = re.split(r"[<>=!~;\[\s]", limpia, maxsplit=1)[0]
+        if crudo:
+            nombres.add(re.sub(r"[-_.]+", "-", crudo).lower())
+    return nombres
+
+
 def test_training_ml_deps_never_reach_the_server_image() -> None:
-    """torch y sus amigos NO viajan al geo-worker.
+    """torch y sus amigos NO viajan a las imagenes de servidor.
 
     torch arrastra el stack CUDA completo a un servidor SIN GPU: la imagen
     del geo-worker llego a pesar 8.2 GB para un modelo que ningun codigo de
@@ -1325,9 +1405,24 @@ def test_training_ml_deps_never_reach_the_server_image() -> None:
     compartido con otra produccion, y ya hubo un fallo transitorio de spawn
     de WhiteboxTools compatible con presion de memoria.
 
-    Guard en las dos direcciones: si las deps vuelven a requirements-geo, o
-    si alguien importa torch en app/ (lo que exigiria repensar el split),
-    esto se pone rojo.
+    **El split D8 se repenso, y por eso este guard cambio de forma.** El RAG
+    (`app/domains/conocimiento/embedding.py`) necesita BGE-M3 y multilingual-e5
+    para *ingestar*, nunca para servir, asi que la separacion NO es "app/ no
+    nombra torch" sino tres hechos independientes:
+
+    1. los imports pesados viven DENTRO de metodos (`__init__`, `encode`), asi
+       que importar el modulo no ejecuta ninguno — verificado por AST, no por
+       substring, que es lo que hacia rojo a un import perezoso legitimo;
+    2. las deps viven en `requirements-rag.txt`, un extra de ingestion que se
+       instala en un venv aparte (`venv-rag`) y en ninguna clausura de
+       servidor — que es el hecho que este guard existe para proteger y que
+       antes solo aproximaba;
+    3. V0 no monta router de conocimiento, asi que la imagen del server ni
+       siquiera puede llegar a ese codigo.
+
+    Guard en las tres direcciones: si las deps vuelven a requirements-geo, si
+    aparecen en la clausura del server, o si alguien sube un import de torch a
+    scope de modulo en app/, esto se pone rojo con el culpable nombrado.
     """
     geo = _read("gee-backend/requirements-geo.txt")
     for linea in geo.splitlines():
@@ -1337,15 +1432,56 @@ def test_training_ml_deps_never_reach_the_server_image() -> None:
     ml = _read("gee-backend/requirements-ml.txt")
     assert "torch" in ml and "segmentation-models-pytorch" in ml
 
-    # Ningun import de torch en el codigo de la aplicacion.
+    # El hecho de fondo: el stack pesado no esta en NINGUNA clausura que se
+    # instale en una imagen de servidor ni en el CI que corre los tests.
+    # `requirements.lock` es lo que el Dockerfile instala; `requirements.txt`
+    # es su intencion declarada; `requirements-dev.lock` es lo que corre CI.
+    for archivo in (
+        "gee-backend/requirements.txt",
+        "gee-backend/requirements.lock",
+        "gee-backend/requirements-dev.lock",
+    ):
+        declaradas = _distribuciones_de_requirements(_read(archivo))
+        intrusas = sorted(declaradas & ML_DISTRIBUTIONS)
+        assert intrusas == [], f"{archivo} arrastra el stack ML: {intrusas}"
+
+    # Ningun import pesado a scope de modulo en app/: importar cualquier modulo
+    # de la app no puede ejecutar un import de torch. Los imports perezosos
+    # (dentro de metodos) del embedder RAG pasan por diseño — ver el docstring.
     app_dir = REPO_ROOT / "gee-backend" / "app"
-    con_torch = [
-        str(archivo.relative_to(REPO_ROOT))
-        for archivo in app_dir.rglob("*.py")
-        if "import torch" in archivo.read_text(encoding="utf-8")
-        or "segmentation_models" in archivo.read_text(encoding="utf-8")
-    ]
-    assert con_torch == [], con_torch
+    culpables = []
+    for archivo in sorted(app_dir.rglob("*.py")):
+        ansiosos, _ = _ml_imports(archivo.read_text(encoding="utf-8"))
+        culpables += [
+            f"{archivo.relative_to(REPO_ROOT)}:{linea} -> {raiz}" for raiz, linea in ansiosos
+        ]
+    assert culpables == [], culpables
+
+
+def test_the_rag_embedder_keeps_every_ml_import_inside_a_method() -> None:
+    """`embedding.py` es el UNICO modulo de app/ que nombra el stack pesado.
+
+    Lo hace adentro de `BGEM3Embedder.__init__` / `.encode` y de
+    `E5Embedder.__init__`, que es lo que permite que `requirements-rag.txt`
+    siga siendo un extra de ingestion (design.md D8). Este test lo fija por
+    separado del guard general para que un refactor que suba cualquiera de
+    esos imports a scope de modulo se ponga rojo con el archivo nombrado, en
+    vez de aparecer como una linea mas de una lista sobre todo app/.
+
+    La segunda mitad es la que impide que pase en vacio: si alguien borra los
+    embedders, la mitad de arriba seguiria verde por ausencia. Los imports
+    perezosos tienen que SEGUIR estando.
+    """
+    ruta = REPO_ROOT / "gee-backend" / "app" / "domains" / "conocimiento" / "embedding.py"
+    ansiosos, perezosos = _ml_imports(ruta.read_text(encoding="utf-8"))
+
+    assert ansiosos == [], (
+        "embedding.py subio un import pesado a scope de modulo (o a un try/if "
+        f"de modulo, que se ejecuta igual): {ansiosos}"
+    )
+    assert {"torch", "transformers", "sentence_transformers"} <= {raiz for raiz, _ in perezosos}, (
+        f"los imports perezosos del embedder desaparecieron: {perezosos}"
+    )
 
 
 def test_baseline_de_mutacion_no_comparte_grupo_de_concurrencia_con_ci() -> None:
