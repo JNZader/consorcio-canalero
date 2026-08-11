@@ -32,17 +32,16 @@ const GROUP_TITLES: ReadonlyArray<{ key: 'annual' | 'antecedents' | 'intensity';
     { key: 'intensity', title: 'Intensidad y evento' },
   ];
 
-function MetricRow({
-  name,
-  metric,
-  baseline,
-}: {
+export interface RainfallMetricRowProps {
   readonly name: string;
   readonly metric: RainfallMetric;
   /** Served period, so the `normal` row names the SAME baseline as the phrase
    *  above it — never a constant frozen in the frontend (LI4-004). */
   readonly baseline: string;
-}) {
+}
+
+/** ONE metric, badged: state, provisional/fallback flags, value, provenance. */
+export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowProps) {
   const provenance = metric.provenance;
   return (
     <Stack gap={2} data-testid={`rainfall-metric-${name}`}>
@@ -94,24 +93,67 @@ function AnnualText({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot 
   );
 }
 
-export function RainfallMetricList({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot }) {
+export interface RainfallMetricGroupProps {
+  /** The group's metrics, keyed by metric name exactly as the wire sent them. */
+  readonly group: Record<string, RainfallMetric> | undefined;
+  readonly baseline: string;
+  /**
+   * Optional heading. Omitted when the group is rendered as the whole body of
+   * a `CollapsibleSection` whose header already names it — a second title
+   * inside the fold is noise, not structure.
+   */
+  readonly title?: string;
+}
+
+/**
+ * ONE metric group. Renders nothing at all for an absent or empty group: the
+ * antecedents fold mounts this directly, and a heading over zero rows would
+ * claim a section the snapshot never served.
+ */
+export function RainfallMetricGroup({ group, baseline, title }: RainfallMetricGroupProps) {
+  if (!group || Object.keys(group).length === 0) return null;
+  return (
+    <Stack gap={4}>
+      {title !== undefined && (
+        <Text size="xs" fw={600} c="dimmed">
+          {title}
+        </Text>
+      )}
+      {Object.entries(group).map(([name, metric]) => (
+        <RainfallMetricRow key={name} name={name} metric={metric} baseline={baseline} />
+      ))}
+    </Stack>
+  );
+}
+
+export interface RainfallMetricListProps {
+  readonly snapshot: RainfallAnalysisSnapshot;
+  /**
+   * Group keys this list must NOT render because another surface already
+   * shows them (the antecedents have their own fold, with the values in its
+   * collapsed header).
+   *
+   * `exclude`, never `include`, and that is the whole point: with an
+   * include-list a group the server starts serving tomorrow would render
+   * NOWHERE, silently. With an exclude-list the technical fold means
+   * "everything the card and the other fold did not already show", so an
+   * unrecognised group lands there by default (R6).
+   */
+  readonly exclude?: readonly string[];
+}
+
+export function RainfallMetricList({ snapshot, exclude }: RainfallMetricListProps) {
   return (
     <Stack gap="xs" data-testid="rainfall-metrics">
       <AnnualText snapshot={snapshot} />
-      {GROUP_TITLES.map(({ key, title }) => {
-        const group = snapshot[key];
-        if (!group || Object.keys(group).length === 0) return null;
-        return (
-          <Stack key={key} gap={4}>
-            <Text size="xs" fw={600} c="dimmed">
-              {title}
-            </Text>
-            {Object.entries(group).map(([name, metric]) => (
-              <MetricRow key={name} name={name} metric={metric} baseline={snapshot.baseline} />
-            ))}
-          </Stack>
-        );
-      })}
+      {GROUP_TITLES.filter(({ key }) => !exclude?.includes(key)).map(({ key, title }) => (
+        <RainfallMetricGroup
+          key={key}
+          group={snapshot[key]}
+          baseline={snapshot.baseline}
+          title={title}
+        />
+      ))}
       {typeof snapshot.summary === 'string' && snapshot.summary.length > 0 && (
         <Text size="xs" fs="italic" data-testid="rainfall-summary">
           {snapshot.summary}

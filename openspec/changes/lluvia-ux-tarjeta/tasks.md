@@ -57,8 +57,8 @@ All paths below are relative to `consorcio-web/`.
 
 ### List split
 
-- [ ] 1.12 RED `tests/unit/RainfallMetricList.test.tsx::"exclude keeps a group out of this list without dropping it from the snapshot"` — `<RainfallMetricList snapshot={s} exclude={['antecedents']} />` renders `annual` rows and NO `rainfall-metric-d*` row; the same snapshot without `exclude` renders them.
-- [ ] 1.13 GREEN `RainfallMetricList.tsx` — split into `RainfallMetricRow` (one metric) → `RainfallMetricGroup` (one group) → `RainfallMetricList({ snapshot, exclude?: readonly string[] })` (composition + summary). `exclude`, never `include`, so an unrecognised server group lands in the technical fold by default (R6-compatible). Makes 1.12 pass.
+- [x] 1.12 RED `tests/unit/RainfallMetricList.test.tsx::"exclude keeps a group out of this list without dropping it from the snapshot"` — `<RainfallMetricList snapshot={s} exclude={['antecedents']} />` renders `annual` rows and NO `rainfall-metric-d*` row; the same snapshot without `exclude` renders them.
+- [x] 1.13 GREEN `RainfallMetricList.tsx` — split into `RainfallMetricRow` (one metric) → `RainfallMetricGroup` (one group) → `RainfallMetricList({ snapshot, exclude?: readonly string[] })` (composition + summary). `exclude`, never `include`, so an unrecognised server group lands in the technical fold by default (R6-compatible). Makes 1.12 pass.
 
 ### Panel: order, controls, folds, freshness
 

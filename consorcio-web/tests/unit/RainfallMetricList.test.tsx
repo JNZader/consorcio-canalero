@@ -1,18 +1,18 @@
 /**
- * RainfallMetricList.test.tsx (Lluvia insights — slice 4, tasks 4.7/4.8)
+ * RainfallMetricList.test.tsx (Lluvia insights — slice 4, tasks 4.7/4.8;
+ * Lluvia UX — the row/group/list split, slice 1)
  *
- * `AnnualText` is the chart's TEXTUAL EQUIVALENT (design "charts have textual
- * equivalents"), which is why the percentile belongs there and not only in the
- * badged row below: a reader who cannot see the two lines still has to be able
- * to answer "was this year wet or dry against the record?".
+ * The badged metric surface. `AnnualText` and its percentile phrase moved to
+ * `RainfallAnswerCard` when the hierarchy was reordered — the equivalent has to
+ * live above the first fold, and this list now renders INSIDE one.
  *
- * The rules this file locks are the ones the repo has already paid for twice:
+ * The rules this file still locks are the ones the repo has already paid for:
  *   - the baseline period prints AS SERVED (`snapshot.baseline`), never as a
  *     constant in the frontend — the RISK-001 lesson from `PrecipChart`;
- *   - a metric with no value prints "—", never "0"; a served percentile of 0 IS
- *     data and must survive as "0";
- *   - a percentile the analysis did not carry produces no phrase at all rather
- *     than an empty slot that reads like a broken render.
+ *   - a metric with no value prints "—", never "0";
+ *   - `exclude` takes a group OUT OF THIS LIST without dropping it from the
+ *     view: the antecedents render in their own fold, and the technical fold
+ *     shows everything the card and that fold did not already show.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -115,10 +115,13 @@ function snapshot(overrides: Partial<RainfallAnalysisSnapshot> = {}): RainfallAn
   };
 }
 
-function renderList(snap: RainfallAnalysisSnapshot): ReturnType<typeof render> {
+function renderList(
+  snap: RainfallAnalysisSnapshot,
+  exclude?: readonly string[]
+): ReturnType<typeof render> {
   const ui: ReactElement = (
     <MantineProvider env="test">
-      <RainfallMetricList snapshot={snap} />
+      <RainfallMetricList snapshot={snap} exclude={exclude} />
     </MantineProvider>
   );
   return render(ui);
@@ -179,5 +182,59 @@ describe('RainfallMetricList — the served baseline on the badged surfaces (4.7
     const row = screen.getByTestId('rainfall-metric-percentile');
     expect(row.textContent).toContain('baseline_years_below_minimum');
     expect(row.textContent).not.toMatch(/\b0 percentil\b/);
+  });
+});
+
+describe('RainfallMetricList — the exclude seam (slice 1 fold split)', () => {
+  const withAntecedents = () =>
+    snapshot({
+      antecedents: {
+        d7: metric({ metric: 'd7', value: 31 }),
+        d30: metric({ metric: 'd30', value: 83.7 }),
+      },
+    });
+
+  it('exclude keeps a group out of this list without dropping it from the snapshot', () => {
+    // The antecedents get their own fold with the values in its collapsed
+    // header, so the technical fold must not print them a second time — but
+    // the SNAPSHOT is untouched and the group is still rendered, elsewhere.
+    const snap = withAntecedents();
+
+    const first = renderList(snap);
+    expect(screen.getByTestId('rainfall-metric-d7')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-metric-d30')).toBeInTheDocument();
+    first.unmount();
+
+    renderList(snap, ['antecedents']);
+    expect(screen.queryByTestId('rainfall-metric-d7')).toBeNull();
+    expect(screen.queryByTestId('rainfall-metric-d30')).toBeNull();
+    // Everything else is still here — exclusion is one group, not a filter on
+    // the whole list.
+    expect(screen.getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-metric-normal')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-summary')).toBeInTheDocument();
+  });
+
+  it('excluding a group the snapshot does not serve changes nothing', () => {
+    renderList(withAntecedents(), ['intensity']);
+
+    expect(screen.getByTestId('rainfall-metric-d7')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+  });
+
+  it('renders every served group when nothing is excluded', () => {
+    // `exclude`, not `include`: a group nobody named still renders. An
+    // include-list would silently drop whatever the server adds next (R6).
+    renderList(withAntecedents());
+
+    for (const testId of [
+      'rainfall-metric-selected',
+      'rainfall-metric-normal',
+      'rainfall-metric-percentile',
+      'rainfall-metric-d7',
+      'rainfall-metric-d30',
+    ]) {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+    }
   });
 });
