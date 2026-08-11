@@ -73,14 +73,14 @@ Task 4.3 remains `[x]` and struck through as SUPERSEDED by Judgment Day Round 1 
 This is the change's inheritance. Nothing here blocked archive; all of it survives the change.
 
 **P1 — disclosure correctness**
-1. ~~**LI4-004** `metricLabel('normal')` hardcodes `'Normal 1991–2020'`~~ — **DONE 2026-08-11** (§10 cola corta): label keyed off `snapshot.baseline`, period-less honest fallback, negative assertion widened to the whole `rainfall-metrics` subtree and made dash-agnostic. RED captured first — the panel rendered `Normal 2001-2030` and `Normal 1991–2020` simultaneously.
+1. ~~**LI4-004** `metricLabel('normal')` hardcodes `'Normal 1991–2020'`~~ — **DONE 2026-08-11 (4/4 sitios, follow-up `1e38b1e3..1f3003c9`)**. First recorded DONE with **1 of 4 sites fixed** — the badged row only. The branch's own pre-PR lens caught the overclaim (`CC-001`/`CC-002`, review-ledger "Cola corta") and the remaining three were closed before the PR: `service.SUMMARY_METRIC_LABELS` (the narrative, which renders in the SAME subtree as the badge), `export.NORMAL_CURVE_LABEL` + the xlsx metric table, and the chart's suppressed-curve notice. Every label now derives from the envelope's `baseline` with a period-less honest fallback, and the regression assertion became an allowlist against `snapshot.baseline` instead of a denylist against one literal. RED captured per site.
 2. ~~**Ops.5** run the scope-population SQL~~ — **DONE 2026-08-11**, small-population assumption confirmed (§10).
 3. **V-002** ruff gates — not executable in the verify sandbox; closed post-report by the orchestrator.
 
 **P2 — operational (owner-gated)**
 4. ~~Ops.1 / Ops.2 backfill execution~~ — **DONE 2026-08-11** (see §2).
 5. ~~Ops.3 pacing constant~~ — **DONE 2026-08-11**, default retained.
-6. **Ops.6 / JDA-005** — **Ops.6 ESCALATED 2026-08-11**: `partial` is unreachable, but the percentile is disclosed independently of the selected total it ranks and is biased low by internal evidence gaps; reproduction and recommendation in §10. JDA-005 (raw-vs-normalized curve gate) still open.
+6. ~~**Ops.6**~~ — **DONE 2026-08-11**, opción 1 (`f95bf8e5`, rama `fix/rainfall-percentile-evidence-gate`): the percentile is now gated on the selected year's OWN evidence, so the ~10% band that the literal option 1 did not reach is closed too (§10). **JDA-005** (raw-vs-normalized curve gate) still open.
 7. **V-008** execute the e2e suite with seeded credentials against a live backend (Playwright still collects but never runs).
 
 **P3 — robustness**
@@ -106,7 +106,7 @@ This is the change's inheritance. Nothing here blocked archive; all of it surviv
 | First 03:30 sweep after deploy | **PENDING** — the next checkpoint; confirms the current-year re-materialization cadence fires in prod |
 | Ops.4 — 400-line chain confirmation (doc-only) | **DONE 2026-08-11 — result NEGATIVE**, the budget was exceeded (§10) |
 | Ops.5 — scope-population SQL before scaling the requeue | **DONE 2026-08-11** — small-population assumption confirmed (§10) |
-| Ops.6 — `partial` percentile open question | **OPEN — ESCALATED**, the question as posed is the wrong one (§10) |
+| Ops.6 — `partial` percentile open question | **DONE 2026-08-11** — question was the wrong one; the real defect behind it is fixed (opción 1, `f95bf8e5`) (§10) |
 
 Known adjacent debt, not owned by this change: celery-beat still reports a lying healthcheck.
 
@@ -142,7 +142,7 @@ Planned, designed under two Judgment Day rounds, implemented in 6 TDD slices, ve
 
 ## 10. Post-archive ops closure 2026-08-11
 
-Closes the runway items left open at archive. Ops.4 and Ops.5 are settled; Ops.6 is escalated rather than closed, because answering it surfaced a defect the question was not pointed at.
+Closes the runway items left open at archive. Ops.4 and Ops.5 are settled. Ops.6 was first ESCALATED rather than closed, because answering it surfaced a defect the question was not pointed at; it was then fixed the same day and its resolution is recorded below the escalation, which is left standing as the record of how the real defect was found.
 
 ### Ops.4 — forecast vs actuals (CLOSED, result negative)
 
@@ -184,7 +184,7 @@ Run against prod 2026-08-11, before scaling slice 2b's stale-policy requeue:
 
 The small-population assumption behind LIA-003 **holds**. The per-key cooldown still is not a global bound, but at a population of 4 scopes / 15 zones that ceiling is not reachable as a stampede. **Re-measure before onboarding a materially larger consortium** — this is a confirmation at today's size, not a proof of the design.
 
-### Ops.6 — `partial` percentile (OPEN, ESCALATED — do not close)
+### Ops.6 — `partial` percentile (ESCALATED, then RESOLVED — see the resolution below this section)
 
 **The question as posed cannot be answered, because its premise does not hold.** `annual.selected` is never `partial`: no path in the backend emits that state. `apply_metric_policy` (`policy.py:148-172`) returns only `available` / `suppressed` / `unavailable`, and `partial` survives in the rainfall domain only as a schema Literal (`schemas.py:29`), a preservation branch for an already-stored value (`service.py:515`) and summary labels. So "should the percentile suppress when selected is `partial`" is moot as written.
 
@@ -211,3 +211,18 @@ At 21% the panel's own summary reads: `Disponibles: Percentil histórico 9.4 per
 2. At minimum, suppress `annual.percentile` whenever the disclosed `annual.selected` is not `available`, with a distinct reason (e.g. `annual_selected_not_disclosed`). This closes the ≥21% band only and leaves the silent 10% bias open.
 
 No code was changed for Ops.6. The finding is a disclosure-correctness defect on a shipped path and wants its own RED-first change with an owner's call on the threshold semantics.
+
+### Ops.6 — RESOLVED 2026-08-11 opción 1, commit `f95bf8e5` (rama `fix/rainfall-percentile-evidence-gate`)
+
+Percentil gated en doble condición — `annual.selected` pasa su gate **Y** day-completeness del año seleccionado ≥ 0.95 (el mismo piso que los años baseline para entrar a la muestra; el año rankeado es miembro). Razón nueva `selected_evidence_below_threshold`, decidida en build.
+
+Bandas:
+
+| Días faltantes | Resultado |
+|---|---|
+| 0% | `available` (intacto) |
+| ~10% (0.902) | percentil suprimido con `annual` available — **la banda que la opción-1-literal no alcanzaba** |
+| ~21% | ambos suprimidos |
+| lag de cola (completeness 1.0 en ventana clipeada) | intacto y pineado |
+
+`annual.normal` no afectado.
