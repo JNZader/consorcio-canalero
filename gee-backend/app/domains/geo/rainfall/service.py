@@ -70,6 +70,65 @@ def fallback_used_for(role: str, source_id: str) -> bool:
 # frontend poll; confirm against real GEE quota headroom (Open Questions).
 RAINFALL_RECOMPUTE_COOLDOWN = timedelta(minutes=10)
 
+# LI2B-001 (review-ledger.md "Slice 2b -- resilience lens + general
+# refuter"): a key whose newest terminal row is `failed` matched NEITHER the
+# recent-`done` cooldown above NOR the pending pre-check below, so every poll
+# started a fresh MAX_RETRIES cycle. For a TRANSIENT failure that is merely
+# wasteful; for a DETERMINISTIC compute-time failure (ingest succeeds, so the
+# adapter's circuit breaker never trips and each attempt is a real full-year
+# GEE fetch) it never terminates on its own -- neither sweep resurrects a
+# `failed` key, so the request path is the only thing that can, and the only
+# thing that must be bounded.
+#
+# 6 hours is chosen against BOTH failure shapes: a transient failure heals on
+# the first read after the cooldown lapses (well inside one working day), and
+# a deterministic one is capped at <= 4 retry cycles per day instead of one
+# per poll. Shorter would not meaningfully speed up the transient case --
+# nothing that fails deterministically becomes fixable in minutes -- while
+# multiplying the deterministic burn.
+RAINFALL_FAILED_REQUEUE_COOLDOWN = timedelta(hours=6)
+
+# LI2B-003: a `done` row whose build returned a NON-WRITE decision
+# ("latched"/"gate_refused", compute.revision_write_decision) served nothing
+# new and cannot be healed by retrying sooner -- only by upstream data
+# improving. Its re-enqueue therefore backs off to the cadence of the write
+# gate's own daily sweep (celery_app.py's `rainfall.revisit_stale` beat)
+# rather than the 10-minute recompute cooldown that governs a PRODUCTIVE
+# `done`. Without this, a post-rollover key sat permanently stale AND
+# permanently hot: one full-year ingest every ten minutes, forever, with no
+# progress possible until the provider published adequate Final data.
+RAINFALL_REFUSED_REQUEUE_COOLDOWN = timedelta(days=1)
+
+# LI2B-003: the outbox row's own record of a build that refused to write.
+# `work_labels` is the only schema-compatible place to stamp it (RainfallOutbox
+# has no result/note column, models.py), so outcome markers live in their own
+# `outcome:` namespace and are STRIPPED whenever the sweeps copy a row's labels
+# forward (tasks._carryover_labels) -- a marker describes ONE build's outcome,
+# never the work itself, and a healed key must not inherit it.
+OUTCOME_LABEL_PREFIX = "outcome:"
+NON_WRITE_DECISIONS = ("latched", "gate_refused")
+
+
+def outcome_label(decision: str) -> str:
+    """The `work_labels` marker for a build *decision* (LI2B-003)."""
+    return f"{OUTCOME_LABEL_PREFIX}{decision}"
+
+
+def carryover_labels(labels: Any) -> list[str]:
+    """*labels* minus every `outcome:` marker -- what a NEW outbox row may
+    inherit from an older row for the same key."""
+    return [label for label in labels if not str(label).startswith(OUTCOME_LABEL_PREFIX)]
+
+
+def non_write_outcome(row: RainfallOutbox) -> str | None:
+    """The non-write decision *row*'s build recorded, or ``None`` when it
+    recorded none (a productive `done`, or a row written before LI2B-003)."""
+    labels = set(row.work_labels or ())
+    for decision in NON_WRITE_DECISIONS:
+        if outcome_label(decision) in labels:
+            return decision
+    return None
+
 
 def _parse_event_window(event_window: dict[str, Any] | None) -> tuple[datetime, datetime] | None:
     if event_window is None:
@@ -141,6 +200,13 @@ def resolve_missing_work_source(
 
 SNAPSHOT_ROOT_KEYS = {
     "analysis_revision_id",
+    # design.md D3 (slice 3a): the revision's own content address, injected at
+    # disclosure time from the served row exactly as `analysis_revision_id` is
+    # -- `build_snapshot` cannot set it, since it is computed AFTER the
+    # snapshot exists (`tasks._persist_analysis_revision`). Disclosing it is
+    # what makes the client half of the series consistency check possible: the
+    # /series echo compared against the snapshot the tab is holding.
+    "data_revision",
     "scope",
     "regional_estimate",
     "year",
@@ -214,6 +280,55 @@ def _reused_outbox_response(
     }
 
 
+def _requeue_cooldown(
+    db: Any, *, key: dict[str, Any], now: datetime
+) -> tuple[RainfallOutbox, str, timedelta] | None:
+    """The request path's re-enqueue cooldowns, in precedence order, or
+    ``None`` when this key may be enqueued.
+
+    Three windows, one per terminal shape a key's history can be in:
+
+    1. ``recent_done`` within ``RAINFALL_RECOMPUTE_COOLDOWN`` (10 min,
+       decision 6) -- the hot path, unchanged, evaluated first because it is
+       the cheapest and by far the most common.
+    2. the key's newest terminal row is ``failed`` and went terminal within
+       ``RAINFALL_FAILED_REQUEUE_COOLDOWN`` (6 h, LI2B-001).
+    3. the key's newest terminal row is a ``done`` whose build REFUSED to
+       write, within ``RAINFALL_REFUSED_REQUEUE_COOLDOWN`` (24 h, LI2B-003).
+
+    2 and 3 read the NEWEST terminal row rather than "any row in the window"
+    (``repository.latest_terminal_attempt``), so a key that failed or was
+    refused and has since been healed reports its healthy ``done`` row and is
+    not suppressed by its own history.
+    """
+    from app.domains.geo.rainfall.repository import latest_terminal_attempt, recent_done
+
+    # decision 6: a recent `done` row for this key skips re-enqueue
+    # REGARDLESS of whether a revision exists -- a time-bounded skip stops
+    # the per-poll GEE burn while letting a done-without-revision heal
+    # itself once the cooldown lapses.
+    recent = recent_done(db, **key, since=now - RAINFALL_RECOMPUTE_COOLDOWN)
+    if recent is not None:
+        return recent, "recent_done", RAINFALL_RECOMPUTE_COOLDOWN
+
+    terminal = latest_terminal_attempt(db, **key)
+    if terminal is None:
+        return None
+    # `done` rows are dated by completed_at, `failed` rows only by updated_at
+    # -- see latest_terminal_attempt's docstring for why not next_attempt_at.
+    attempted_at = terminal.completed_at or terminal.updated_at
+
+    if terminal.status == "failed":
+        if attempted_at >= now - RAINFALL_FAILED_REQUEUE_COOLDOWN:
+            return terminal, "terminal_failed", RAINFALL_FAILED_REQUEUE_COOLDOWN
+        return None
+
+    decision = non_write_outcome(terminal)
+    if decision is not None and attempted_at >= now - RAINFALL_REFUSED_REQUEUE_COOLDOWN:
+        return terminal, f"non_write_{decision}", RAINFALL_REFUSED_REQUEUE_COOLDOWN
+    return None
+
+
 def queue_missing_analysis(
     db: Any,
     *,
@@ -224,55 +339,40 @@ def queue_missing_analysis(
     requested_role: str | None = None,
     request_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    from app.domains.geo.rainfall.repository import pending_row_for_key, recent_done
+    from app.domains.geo.rainfall.repository import pending_row_for_key
 
     fingerprint = request_fingerprint or _default_request_fingerprint(
         scope=scope, year=year, event_window=event_window
     )
     source = resolve_missing_work_source(event_window, year, requested_role=requested_role)
+    key = {
+        "source_id": source["source_id"],
+        "role": source["role"],
+        "scope_kind": scope.kind,
+        "scope_id": scope.id,
+        "scope_version": scope.version,
+        "year": year,
+    }
 
-    # decision 6: a recent `done` row for this key skips re-enqueue
-    # REGARDLESS of whether a revision exists -- a time-bounded skip stops
-    # the per-poll GEE burn while letting a done-without-revision heal
-    # itself once the cooldown lapses.
-    recent = recent_done(
-        db,
-        source_id=source["source_id"],
-        role=source["role"],
-        scope_kind=scope.kind,
-        scope_id=scope.id,
-        scope_version=scope.version,
-        year=year,
-        since=datetime.now(UTC) - RAINFALL_RECOMPUTE_COOLDOWN,
-    )
-    if recent is not None:
+    cooldown = _requeue_cooldown(db, key=key, now=datetime.now(UTC))
+    if cooldown is not None:
+        row, reason, window = cooldown
         record_event(
             "rainfall.outbox.cooldown",
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-            outbox_id=str(recent.id),
+            **key,
+            outbox_id=str(row.id),
+            reason=reason,
+            cooldown_seconds=int(window.total_seconds()),
         )
         return {
             "status": "queued",
-            "outbox_id": str(recent.id),
+            "outbox_id": str(row.id),
             "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
             "year": year,
-            "labels": recent.work_labels,
+            "labels": row.work_labels,
         }
 
-    existing = pending_row_for_key(
-        db,
-        source_id=source["source_id"],
-        role=source["role"],
-        scope_kind=scope.kind,
-        scope_id=scope.id,
-        scope_version=scope.version,
-        year=year,
-    )
+    existing = pending_row_for_key(db, **key)
     if existing is not None:
         return _reused_outbox_response(existing, source=source, scope=scope, year=year)
 
@@ -302,15 +402,7 @@ def queue_missing_analysis(
         # that row is a reuse, not a failure, so both callers still get a
         # 202 with the SAME outbox_id.
         db.rollback()
-        reused = pending_row_for_key(
-            db,
-            source_id=source["source_id"],
-            role=source["role"],
-            scope_kind=scope.kind,
-            scope_id=scope.id,
-            scope_version=scope.version,
-            year=year,
-        )
+        reused = pending_row_for_key(db, **key)
         if reused is None:
             # The constraint guarantees a matching row exists; a lost race
             # that skipped it would mean the constraint itself is wrong.
@@ -426,6 +518,107 @@ def _normalize_metric(
     return {**raw, "value": applied.value, "state": state, "reason": applied.reason}
 
 
+# ---------------------------------------------------------------------------
+# The disclosure-time summary (design.md D4, lluvia-insights slice 2b)
+# ---------------------------------------------------------------------------
+
+# Same vocabulary the panel prints beside the narrative
+# (consorcio-web/.../rainfall/rainfallFormat.ts): the coherence invariant is
+# about what a reader sees, so the summary must name a metric the way its own
+# badge does. An unknown key falls back to the key itself, exactly as
+# `metricLabel` does on the client.
+SUMMARY_METRIC_LABELS: dict[str, str] = {
+    "selected": "Acumulado del año",
+    "normal": "Normal 1991–2020",
+    "percentile": "Percentil histórico",
+    "d7": "Antecedente 7 días",
+    "d30": "Antecedente 30 días",
+    "d90": "Antecedente 90 días",
+    "p30": "P30",
+    "p60": "P60",
+    "p3h": "P3h",
+    "p24h": "P24h",
+    "i30": "I30",
+    "i60": "I60",
+    "peak": "Pico del evento",
+    "duration": "Duración del evento",
+}
+
+SUMMARY_STATE_LABELS: dict[str, str] = {
+    "available": "disponible",
+    "partial": "parcial",
+    "suppressed": "suprimida",
+    "unavailable": "no disponible",
+}
+
+SUMMARY_AVAILABLE_PREFIX = "Disponibles:"
+SUMMARY_PARTIAL_PREFIX = "Parciales:"
+SUMMARY_MISSING_PREFIX = "Sin dato:"
+SUMMARY_EMPTY = "Este análisis no divulga métricas."
+
+
+def _summary_entry(name: str, metric: dict[str, Any]) -> str:
+    """One metric's phrase. Reads ``state``/``reason``/``value`` -- the three
+    fields the policy owns -- plus ``unit``, which policy never rewrites and
+    without which "204.0" and "50.0" would be indistinguishable millimetres
+    and percentiles in the same sentence."""
+    label = SUMMARY_METRIC_LABELS.get(name, name)
+    state = metric.get("state")
+    if state in {"available", "partial"} and _is_finite_metric_value(metric.get("value")):
+        unit = metric.get("unit")
+        measured = f"{metric['value']:.1f}"
+        return (
+            f"{label} {measured} {unit}"
+            if isinstance(unit, str) and unit
+            else f"{label} {measured}"
+        )
+    state_label = SUMMARY_STATE_LABELS.get(state, "estado desconocido")
+    reason = metric.get("reason")
+    if isinstance(reason, str) and reason:
+        return f"{label} ({state_label}: {reason})"
+    return f"{label} ({state_label})"
+
+
+def rainfall_summary(groups: dict[str, Any]) -> str:
+    """The served narrative, derived from ALREADY-NORMALIZED metric groups
+    (design.md D4).
+
+    Pure and total: it reads only what ``_normalize_metric`` decided --
+    ``state``, ``reason``, ``value`` (and the untouched ``unit``) -- never
+    build-time ``completeness``/``quality``, which survive normalization
+    unchanged and would describe states that were never served. Membership
+    is structural rather than narrated: a metric appears under
+    ``Disponibles`` if and only if its DISCLOSED state is ``available``, so
+    the summary cannot call available something the policy suppressed.
+
+    Metric order follows the envelope's own group/metric order, which
+    ``build_snapshot`` fixes and the JSON round-trip preserves, so the same
+    stored revision always narrates identically.
+    """
+    buckets: dict[str, list[str]] = {"available": [], "partial": [], "missing": []}
+    for group_name in METRIC_GROUPS:
+        group = groups.get(group_name)
+        if not isinstance(group, dict):
+            continue
+        for name, metric in group.items():
+            if not isinstance(metric, dict):
+                continue
+            state = metric.get("state")
+            bucket = state if state in {"available", "partial"} else "missing"
+            buckets[bucket].append(_summary_entry(name, metric))
+
+    sentences = [
+        f"{prefix} {'; '.join(entries)}."
+        for prefix, entries in (
+            (SUMMARY_AVAILABLE_PREFIX, buckets["available"]),
+            (SUMMARY_PARTIAL_PREFIX, buckets["partial"]),
+            (SUMMARY_MISSING_PREFIX, buckets["missing"]),
+        )
+        if entries
+    ]
+    return " ".join(sentences) if sentences else SUMMARY_EMPTY
+
+
 def normalize_snapshot(snapshot: object, *, expected_policy_revision: str) -> dict[str, Any]:
     """Validate and apply one approved policy before JSON or CSV disclosure."""
     if not isinstance(snapshot, dict) or not set(snapshot) <= SNAPSHOT_ROOT_KEYS:
@@ -445,6 +638,14 @@ def normalize_snapshot(snapshot: object, *, expected_policy_revision: str) -> di
             name: _normalize_metric(metric, policy, expected_policy_revision)
             for name, metric in group.items()
         }
+    # design.md D4: the narrative is assembled HERE, after the loop above
+    # decided every served state, and it OVERWRITES anything the stored
+    # envelope carried -- `build_snapshot` emits no summary, and a legacy
+    # build-time one would describe states this policy revision may never
+    # serve. Safe for the same reason the router injects
+    # `analysis_revision_id` post-normalize: the root-key set is validated on
+    # INPUT, and `summary` is already allow-listed.
+    normalized["summary"] = rainfall_summary(normalized)
     return normalized
 
 
@@ -459,6 +660,59 @@ def metric_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+# The characters a spreadsheet reads as "this cell is an expression" on
+# import. `=` is the obvious one; `+`/`-`/`@` open the same door in Excel and
+# LibreOffice, and a leading tab or CR slips a trigger past a naive
+# `startswith("=")` check because the reader strips the whitespace first.
+SPREADSHEET_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+# Prefixing with an apostrophe is the neutralization both readers honour: the
+# cell renders as text and is never evaluated. Deliberately NOT stripping or
+# rewriting the value -- an export is evidence, and silently mutating what the
+# provider sent would be a worse defect than the one being closed.
+SPREADSHEET_TEXT_MARKER = "'"
+
+
+def neutralize_spreadsheet_formula(text: str) -> str:
+    """Make one cell's TEXT inert for a spreadsheet reader.
+
+    ONE definition of "text a spreadsheet would execute", shared by both export
+    formats (the `temporal.utc_day` precedent), so the audit CSV and the xlsx
+    workbook can never disagree about the same value.
+
+    The two formats need it for different reasons and lose it in different
+    ways. The xlsx has a structural lever -- ``cell.data_type = "s"``
+    (`export._append`) types the cell as a string in the file itself, and Excel
+    never evaluates a string cell. A CSV has no types at all: the READER decides
+    what each cell is, which is why the audit CSV is the MORE exposed of the two
+    exports (LI3B-001) even though it is the one nobody thought of as a
+    document. Applying this at value level in both keeps the structural guard as
+    a second layer rather than a single point of failure, and keeps the same
+    hostile value rendering identically in both files.
+
+    Only ``str`` is ever passed here by either caller: a negative FLOAT is a
+    number, not executable text, and quoting it would break every consumer that
+    parses the column.
+    """
+    return (
+        f"{SPREADSHEET_TEXT_MARKER}{text}"
+        if text.startswith(SPREADSHEET_FORMULA_PREFIXES)
+        else text
+    )
+
+
+def _csv_cell(value: Any) -> Any:
+    """Nested evidence stays JSON; the formula guard runs on the FINAL text.
+
+    Order matters: a `discrepancies` entry fed from a provider batch is encoded
+    first, so guarding before `json.dumps` would inspect a value that is not
+    what lands in the cell.
+    """
+    if isinstance(value, (dict, list, tuple)):
+        return neutralize_spreadsheet_formula(json.dumps(value, sort_keys=True))
+    return neutralize_spreadsheet_formula(value) if isinstance(value, str) else value
+
+
 def metric_rows_csv(rows: list[dict[str, Any]]) -> str:
     """Serialize every displayed field; null stays blank and nested evidence stays JSON."""
     fields = tuple(sorted({key for row in rows for key in row}))
@@ -466,12 +720,5 @@ def metric_rows_csv(rows: list[dict[str, Any]]) -> str:
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     for row in rows:
-        writer.writerow(
-            {
-                key: json.dumps(value, sort_keys=True)
-                if isinstance(value, (dict, list, tuple))
-                else value
-                for key, value in row.items()
-            }
-        )
+        writer.writerow({key: _csv_cell(value) for key, value in row.items()})
     return output.getvalue()

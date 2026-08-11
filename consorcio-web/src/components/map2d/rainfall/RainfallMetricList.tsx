@@ -11,7 +11,12 @@
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../../lib/api/rainfall';
-import { describeMetricState, formatMetricValue, metricLabel } from './rainfallFormat';
+import {
+  describeMetricState,
+  formatMetricValue,
+  metricLabel,
+  percentilePhrase,
+} from './rainfallFormat';
 
 const STATE_COLORS: Record<RainfallMetric['state'], string> = {
   available: 'green',
@@ -63,10 +68,15 @@ function MetricRow({ name, metric }: { readonly name: string; readonly metric: R
 function AnnualText({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot }) {
   const selected = snapshot.annual?.selected;
   const normal = snapshot.annual?.normal;
-  if (!selected && !normal) return null;
+  // Task 4.8: the percentile is what answers "wet or dry against the record?"
+  // — the question the chart's two lines answer visually. Without it here, a
+  // reader who cannot see the chart gets two absolute numbers and no ranking.
+  const percentile = snapshot.annual?.percentile;
+  if (!selected && !normal && !percentile) return null;
   const parts: string[] = [];
   if (selected) parts.push(`Año ${snapshot.year}: ${formatMetricValue(selected)}`);
   if (normal) parts.push(`Normal ${snapshot.baseline}: ${formatMetricValue(normal)}`);
+  if (percentile) parts.push(percentilePhrase(percentile, snapshot.baseline));
   return (
     <Text size="sm" fw={600} data-testid="rainfall-annual-text">
       {parts.join(' · ')}

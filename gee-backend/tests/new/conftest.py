@@ -165,7 +165,23 @@ from app.db.base import Base  # noqa: E402
 # fixture. Without this, models that aren't transitively imported by
 # ``app.main`` (e.g. ``EmailCode`` from F5-E) miss the create_all
 # pass and their tables vanish from the test schema.
+#
+# ``intelligence.models`` (``zonas_operativas``) is required here even
+# though nothing in this eager list references it directly: it is the
+# target of an FK column on ``app.domains.geo.models.FloodLabel``
+# (``zonas_operativas.id``). ``Base.metadata.create_all``'s dependency
+# sort resolves that FK by table name against ``Base.metadata`` at
+# call time, so if ``geo.models`` gets imported (by a test body, e.g.
+# via ``rainfall.repository``'s own ``GeoApprovedZoning`` import) BEFORE
+# ``intelligence.models`` is ever imported by anything, the sort raises
+# ``NoReferencedTableError`` -- this is exactly the collection-order
+# accident LI1-001 (review-ledger.md) surfaced when standalone runs of
+# ``test_rainfall_backfill.py`` started requesting the ``db`` fixture:
+# its first test (no ``db``) imports ``tasks`` -> ``repository`` ->
+# ``geo.models`` in its body before the *second* test's ``db`` fixture
+# triggers this module's ``create_all()``.
 from app.auth import email_codes as _email_codes_model  # noqa: F401, E402
+from app.domains.geo.intelligence import models as _geo_intelligence_models  # noqa: F401, E402
 from app.domains.geo.rainfall import models as _rainfall_models  # noqa: F401, E402
 from app.domains.settings import models as _settings_models  # noqa: F401, E402
 from app.shared import audit_log as _audit_log_model  # noqa: F401, E402

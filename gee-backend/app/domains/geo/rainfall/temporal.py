@@ -1,10 +1,35 @@
-"""Pure Buenos Aires calendar and explicit event-window rules."""
+"""Pure calendar rules: UTC normalization, the Buenos Aires policy calendar,
+and explicit event windows."""
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 
 class EventSuppressed(ValueError):
     """The requested event metric cannot be qualified under the policy."""
+
+
+def as_utc(moment: datetime) -> datetime:
+    """*moment* in UTC, treating a naive value as UTC.
+
+    THE one normalization every module that turns a stored ``timestamptz``
+    into a calendar day must go through (LI3A-005). ``psycopg2`` renders a
+    ``timestamptz`` in the database session's ``TimeZone`` setting, and
+    nothing in this codebase pins that setting, so ``.date()`` taken straight
+    off a returned value is silently session-TZ-dependent: a UTC-midnight
+    boundary read under UTC-3 lands on the previous day. That is the LI1-002
+    defect class, and it has now appeared on three separate paths
+    (``date_part`` grouping, series day bucketing, and the baseline cutoff).
+
+    It lives HERE, next to :func:`buenos_aires_date`, rather than as a
+    private helper in each module, precisely because two private copies is
+    how the pattern drifts back apart.
+    """
+    return moment.astimezone(UTC) if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def utc_day(moment: datetime) -> date:
+    """The UTC calendar day *moment* falls on (see :func:`as_utc`)."""
+    return as_utc(moment).date()
 
 
 def comparison_end(year: int, today: date) -> date:

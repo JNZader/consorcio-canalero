@@ -20,10 +20,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../src/lib/api/rainfall', () => ({
   resolveRainfallScopes: vi.fn(),
   fetchRainfallAnalysis: vi.fn(),
+  fetchRainfallSeries: vi.fn(),
 }));
 
-import { fetchRainfallAnalysis, resolveRainfallScopes } from '../../src/lib/api/rainfall';
-import { useRainfallAnalysis, useRainfallScopes } from '../../src/hooks/useRainfallAnalysis';
+import {
+  type RainfallSeriesResponse,
+  fetchRainfallAnalysis,
+  fetchRainfallSeries,
+  resolveRainfallScopes,
+} from '../../src/lib/api/rainfall';
+import {
+  useRainfallAnalysis,
+  useRainfallScopes,
+  useRainfallSeries,
+} from '../../src/hooks/useRainfallAnalysis';
 
 const ZONE = { kind: 'zone' as const, id: 'zona-ne', version: '3' };
 
@@ -126,7 +136,9 @@ describe('useRainfallAnalysis', () => {
 
     await waitFor(() => expect(result.current.queued).toBe(true));
     // The queued answer keeps the poll alive.
-    await waitFor(() => expect(fetchRainfallAnalysis.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() =>
+      expect(vi.mocked(fetchRainfallAnalysis).mock.calls.length).toBeGreaterThanOrEqual(2)
+    );
 
     release({ type: 'ready', snapshot: { analysis_revision_id: 'r2' } as never });
     await waitFor(() => expect(result.current.data?.type).toBe('ready'));
@@ -231,5 +243,83 @@ describe('useRainfallAnalysis', () => {
     release(queuedAnswer());
     await waitFor(() => expect(result.current.gaveUp).toBe(true));
     expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(4);
+  });
+});
+
+
+describe('useRainfallSeries', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function seriesAnswer(overrides: Partial<RainfallSeriesResponse> = {}): RainfallSeriesResponse {
+    return {
+      analysis_revision_id: 'rev-1',
+      data_revision: 'ab'.repeat(32),
+      scope: ZONE,
+      year: 2025,
+      unit: 'mm',
+      comparison_end: '2025-03-02',
+      available_through: '2025-03-02T00:00:00+00:00',
+      consistent_with_snapshot: true,
+      consistency_reason: null,
+      normal_curve_state: 'available',
+      points: [
+        { date: '2025-01-01', mm: 3, accumulated: 3, normal_accumulated: 1, state: 'available' },
+      ],
+      ...overrides,
+    };
+  }
+
+  it('does not fetch without a revision id', () => {
+    renderHook(() => useRainfallSeries(null), { wrapper: wrapper() });
+    expect(fetchRainfallSeries).not.toHaveBeenCalled();
+  });
+
+  it('exposes the consistency fields and the points', async () => {
+    // Task 3b.10: the chart's staleness notice and the "no line to draw"
+    // states are DATA, not an error path, so the hook has to surface them as
+    // first-class fields rather than leaving the component to dig them out of
+    // an optional response body.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      seriesAnswer({
+        consistent_with_snapshot: false,
+        consistency_reason: 'data_revision_moved',
+        normal_curve_state: 'integrity_refused',
+      })
+    );
+
+    const { result } = renderHook(() => useRainfallSeries('rev-1'), { wrapper: wrapper() });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(fetchRainfallSeries).toHaveBeenCalledWith('rev-1', expect.anything());
+    expect(result.current.consistentWithSnapshot).toBe(false);
+    expect(result.current.consistencyReason).toBe('data_revision_moved');
+    // Refused is NOT collapsed into "no curve": the two states leave identical
+    // null columns on the wire, and the chart has to be able to tell them
+    // apart (backend LI3A-001, tasks.md 4.2b).
+    expect(result.current.normalCurveState).toBe('integrity_refused');
+    expect(result.current.points).toHaveLength(1);
+  });
+
+  it('reports a consistent series with no reason, and never polls', async () => {
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(seriesAnswer());
+
+    const { result } = renderHook(() => useRainfallSeries('rev-1'), { wrapper: wrapper() });
+
+    await waitFor(() => expect(result.current.consistentWithSnapshot).toBe(true));
+    expect(result.current.consistencyReason).toBeNull();
+    // The route is read-only server-side; the client must not turn a chart
+    // into a polling loop against it either.
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(fetchRainfallSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it('has empty points while loading, never a fabricated series', async () => {
+    vi.mocked(fetchRainfallSeries).mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() => useRainfallSeries('rev-1'), { wrapper: wrapper() });
+
+    expect(result.current.points).toEqual([]);
+    expect(result.current.consistentWithSnapshot).toBeUndefined();
+    expect(result.current.normalCurveState).toBeUndefined();
   });
 });

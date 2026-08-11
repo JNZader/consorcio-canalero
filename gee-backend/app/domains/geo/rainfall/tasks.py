@@ -1,7 +1,8 @@
 """Celery tasks for Rainfall v2 ingest, revisit and backfill."""
 
 import time
-from datetime import UTC, date, datetime, timedelta
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -15,6 +16,12 @@ from app.domains.geo.rainfall.repository import claim_outbox_row, persist_interv
 
 MAX_OUTBOX_BATCH = 50
 MAX_RETRIES = 5
+
+# design.md D2 / Ops.3: seconds paced between each backfilled year in
+# backfill_baseline_range, so a real 1991-2020 run does not hammer the GEE
+# quota. 5s is a guess pending the Ops.1 1991-only dry run; Ops.3 settles it
+# from the observed real pace and adjusts this default if it proves wrong.
+RAINFALL_BACKFILL_PACE_SECONDS = 5
 
 # R4-204 (review-ledger.md "Pre-PR review — PR3"): celery_app.py's default
 # `task_time_limit=600` applies here (this task is not in
@@ -199,7 +206,12 @@ def ingest_source_scope(
 def _persist_analysis_revision(
     db: Session, *, outbox_id: str, batch: dict[str, Any], now: datetime
 ) -> dict[str, Any]:
+    from app.domains.geo.rainfall import temporal
+    from app.domains.geo.rainfall.adapters.gee_client import UnknownProviderScope, asset_name_for
     from app.domains.geo.rainfall.compute import (
+        BASELINE_EVIDENCE_INVALID,
+        BASELINE_SCOPE_UNMAPPED,
+        baseline_cutoff_for,
         build_snapshot,
         data_revision_for,
         fingerprint_lock_key,
@@ -213,13 +225,15 @@ def _persist_analysis_revision(
         RAINFALL_METRIC_POLICY_REVISION,
     )
     from app.domains.geo.rainfall.repository import (
+        DuplicateBaselineSlotError,
         RainfallRepository,
         acquire_fingerprint_lock,
+        baseline_cumulatives,
         intervals_in_window,
         persist_revision,
     )
     from app.domains.geo.rainfall.scope import AnalysisScope
-    from app.domains.geo.rainfall.service import fallback_used_for
+    from app.domains.geo.rainfall.service import RAINFALL_HISTORICAL_SOURCE, fallback_used_for
 
     row = db.get(RainfallOutbox, outbox_id)
     if row is None:
@@ -245,13 +259,23 @@ def _persist_analysis_revision(
 
     year_start = datetime(row.year, 1, 1, tzinfo=UTC)
     year_end = datetime(row.year + 1, 1, 1, tzinfo=UTC)
+    # design.md D6: widened from [year_start, year_end) so
+    # antecedents.d90 (compute.py) can read up to 90 days into the PRIOR
+    # year when comparison_end falls early in the analysis year --
+    # year_start - 90d is the worst case across the whole year
+    # (comparison_end == Jan 1), so it covers every d7/d30/d90 window for
+    # any comparison_end within [Jan 1, Dec 31]. build_snapshot's own
+    # in_window filter keeps annual.selected scoped to
+    # [year_start, comparison_end) unchanged. Widening the read changes
+    # data_revision_for's input, which is fine and expected: one new
+    # revision per key on the next build.
     persisted = intervals_in_window(
         db,
         source_id=row.source_id,
         scope_kind=row.scope_kind,
         scope_id=row.scope_id,
         scope_version=row.scope_version,
-        start=year_start,
+        start=year_start - timedelta(days=90),
         end=year_end,
     )
     resolved = [
@@ -268,6 +292,64 @@ def _persist_analysis_revision(
         kind=row.scope_kind, id=row.scope_id, version=row.scope_version, regional_estimate=False
     )
 
+    # design.md D1: resolve the scope's historical baseline BEFORE building
+    # the snapshot (comparison_end_date is computed independently here,
+    # ahead of build_snapshot's own identical internal computation, purely
+    # so this resolution can happen first — reused below instead of
+    # re-derived from the returned envelope). A scope with no known
+    # provider asset (the pre-existing basin gap, gee_client.py:42-45) must
+    # not become a build crash: UnknownProviderScope is caught and
+    # build_snapshot receives baseline=None (full suppression wiring
+    # completes in slice 2a's annual.normal/percentile builder).
+    #
+    # design.md D5 amendment (slice 2b, LI2A-101): the baseline windows are
+    # cut at the EFFECTIVE end this build reaches (compute.baseline_cutoff_for
+    # over the same intervals build_snapshot is about to read), never at the
+    # calendar comparison_end -- otherwise a lagging provider would rank a
+    # selected year short by the lag against baselines totalled through
+    # today. With no lag the two dates are identical.
+    comparison_end_date = temporal.comparison_end(row.year, temporal.buenos_aires_date(now))
+    baseline_unavailable_reason = BASELINE_SCOPE_UNMAPPED
+    try:
+        baseline_asset = asset_name_for(scope.kind, scope.id)
+    except UnknownProviderScope:
+        baseline = None
+    else:
+        try:
+            baseline = baseline_cumulatives(
+                db,
+                source_id=RAINFALL_HISTORICAL_SOURCE,
+                asset=baseline_asset,
+                dates=temporal.baseline_dates(
+                    baseline_cutoff_for(year=row.year, now=now, intervals=resolved)
+                ),
+            )
+        except DuplicateBaselineSlotError as exc:
+            # LI2B-004: a duplicated slot in ONE baseline year used to abort
+            # the whole build -- annual, antecedents and intensity with it --
+            # and no retry could fix it, because a retry cannot un-duplicate
+            # persisted data. That made the key PERMANENTLY unbuildable and
+            # made it the sharpest feeder of LI2B-001's re-enqueue loop.
+            # Degrade instead: only the two metrics that actually read the
+            # baseline lose their evidence, and they suppress with their own
+            # honest reason while the rest of the snapshot still builds and
+            # lands. The event is the loud part -- suppression alone would
+            # look like an ordinary thin baseline to an operator.
+            baseline = None
+            baseline_unavailable_reason = BASELINE_EVIDENCE_INVALID
+            record_event(
+                "rainfall.baseline.duplicate_slots",
+                source_id=exc.source_id,
+                asset=exc.asset,
+                baseline_year=exc.year,
+                matched_rows=exc.matched,
+                distinct_slots=exc.distinct_slots,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                scope_version=row.scope_version,
+                year=row.year,
+            )
+
     snapshot = build_snapshot(
         scope=scope,
         year=row.year,
@@ -280,10 +362,11 @@ def _persist_analysis_revision(
         # named spec-primary candidate, not just the daily flip -- see
         # service.RAINFALL_SPEC_PRIMARY_SOURCE_BY_ROLE.
         fallback_used=fallback_used_for(row.role, row.source_id),
+        baseline=baseline,
+        baseline_unavailable_reason=baseline_unavailable_reason,
     )
 
     family = revision_family(batch["provider_revision"])
-    comparison_end_date = date.fromisoformat(snapshot["comparison_end"])
     data_revision = data_revision_for(
         row.source_id,
         family,
@@ -425,6 +508,7 @@ def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
     from sqlalchemy.exc import IntegrityError
 
     from app.domains.geo.rainfall.repository import current_year_done_keys, pending_row_for_key
+    from app.domains.geo.rainfall.service import carryover_labels
 
     scanned = 0
     enqueued = 0
@@ -451,7 +535,11 @@ def _revisit_stage1(db: Session, *, current_year: int) -> dict[str, int]:
         db.add(
             RainfallOutbox(
                 **key,
-                work_labels=list(row.work_labels),
+                # LI2B-003: `outcome:` markers describe ONE build's decision,
+                # not the work -- a fresh attempt must not inherit the
+                # previous one's refusal, or the read path would back off on
+                # a key that has since been rebuilt.
+                work_labels=carryover_labels(row.work_labels),
                 interval_start=row.interval_start,
                 interval_end=row.interval_end,
                 status="pending",
@@ -493,6 +581,7 @@ def _revisit_stage2(db: Session, *, now: datetime) -> dict[str, int]:
     )
     from app.domains.geo.rainfall.service import (
         RAINFALL_HISTORICAL_SOURCE,
+        carryover_labels,
         resolve_missing_work_source,
     )
 
@@ -577,7 +666,13 @@ def _revisit_stage2(db: Session, *, now: datetime) -> dict[str, int]:
         db.add(
             RainfallOutbox(
                 **key,
-                work_labels=list({*row.work_labels, f"role:{work['role']}", "finalization"}),
+                # LI2B-003: `outcome:` markers are stripped here for the same
+                # reason as in stage 1 -- a finalization retry is a NEW
+                # attempt, not an inheritance of the refusal that made this
+                # key a candidate in the first place.
+                work_labels=list(
+                    {*carryover_labels(row.work_labels), f"role:{work['role']}", "finalization"}
+                ),
                 interval_start=work["interval_start"],
                 interval_end=work["interval_end"],
                 status="pending",
@@ -749,6 +844,8 @@ def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
     ``now`` is the disclosure-date seam (design.md Interfaces), passed
     through to ``build_analysis`` and nothing else here.
     """
+    from app.domains.geo.rainfall.service import NON_WRITE_DECISIONS, outcome_label
+
     batch = ingest_source_scope(
         source_id=row.source_id,
         role=row.role,
@@ -777,7 +874,24 @@ def _process_outbox_row(row: RainfallOutbox, db: Session, now: datetime) -> str:
             return "done"
         row.request_fingerprint = derived
 
-    build_analysis(outbox_id=str(row.id), batch=batch, db=db, now=now)
+    built = build_analysis(outbox_id=str(row.id), batch=batch, db=db, now=now)
+
+    # LI2B-003: `revision_write_decision` can refuse to write ("latched" or
+    # "gate_refused", both instrumented as events inside
+    # _persist_analysis_revision) while this row still finishes cleanly --
+    # the work RAN, it just produced no new revision. Marking the row `done`
+    # with nothing else to show for it left the served snapshot stale AND
+    # indistinguishable from a productive `done`, so the request path had no
+    # way to back its re-enqueue off (service._requeue_cooldown) and the key
+    # stayed permanently stale and permanently hot. `work_labels` is the only
+    # schema-compatible place to stamp this (RainfallOutbox has no
+    # result/note column); the list is REBOUND, never mutated in place, so
+    # the JSON column is actually marked dirty.
+    decision = (built or {}).get("decision")
+    if decision in NON_WRITE_DECISIONS:
+        marker = outcome_label(decision)
+        if marker not in row.work_labels:
+            row.work_labels = [*row.work_labels, marker]
 
     row.status = "done"
     row.completed_at = datetime.now(UTC)
@@ -970,3 +1084,69 @@ def backfill_missing(
         checkpoint.completed_at = datetime.now(UTC)
         db.commit()
         return {"status": "completed", **result}
+
+
+def backfill_baseline_range(
+    asset: str,
+    *,
+    years: Iterable[int] = range(1991, 2021),
+    source_id: str = "chirps-v3-final",
+    role: str = "historical",
+) -> dict[str, Any]:
+    """One-shot 1991-2020 historical baseline backfill orchestrator
+    (design.md D2).
+
+    Reuses :func:`backfill_missing` verbatim per ``(source_id, role,
+    "provider_asset", asset, BASELINE_ASSET_VERSION, year)`` key -- the key
+    IS the asset (D1), so N zone scopes sharing one asset cost 30
+    reductions total, never 30N: a caller resolves the shared asset once
+    and calls this function once per asset, not once per zone scope.
+    Idempotent by :func:`backfill_missing`'s own per-key checkpoint
+    short-circuit: an interrupted run resumes at the first year without
+    ``completed_at`` and re-fetches nothing already completed.
+
+    Stops **labelled** -- never a bare traceback -- on
+    ``(AdapterError, CircuitOpen)``, both explicitly (Judgment Day round 1,
+    LIA-004): ``CircuitOpen`` is raised by
+    ``ResilientAdapterState.can_attempt()`` (resilience.py) OUTSIDE the
+    retry loop that turns provider failures into ``AdapterError``, so it
+    bypasses ``ingest_source_scope``'s own ``except AdapterError`` and
+    would otherwise escape here raw on exactly the realistic rerun. Bare
+    ``RuntimeError`` is deliberately not caught -- it would relabel a
+    genuine bug (from the session, ``_run_with_timeout``, or Celery itself)
+    as a clean quota stop. The circuit is Redis-backed per role and
+    persists ~300s ACROSS PROCESSES (resilience.py), so a rerun inside that
+    window is expected to stop again immediately with the same labelled
+    event -- see ``backfill_cli.py``'s runbook note.
+    """
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+    from app.domains.geo.rainfall.adapters.resilience import AdapterError, CircuitOpen
+
+    years_list = list(years)
+    completed: list[int] = []
+    for index, year in enumerate(years_list):
+        try:
+            result = backfill_missing(
+                source_id=source_id,
+                role=role,
+                scope_kind="provider_asset",
+                scope_id=asset,
+                scope_version=BASELINE_ASSET_VERSION,
+                year=year,
+            )
+        except (AdapterError, CircuitOpen) as exc:
+            reason = "circuit_open" if isinstance(exc, CircuitOpen) else "adapter_error"
+            record_event("rainfall.backfill.stopped", asset=asset, year=year, reason=reason)
+            return {
+                "stopped": True,
+                "reason": reason,
+                "year": year,
+                "completed_years": completed,
+            }
+
+        completed.append(year)
+        record_event("rainfall.backfill.year", asset=asset, year=year, status=result["status"])
+        if index < len(years_list) - 1:
+            time.sleep(RAINFALL_BACKFILL_PACE_SECONDS)
+
+    return {"stopped": False, "completed_years": completed}

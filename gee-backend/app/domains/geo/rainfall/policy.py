@@ -184,11 +184,65 @@ def apply_metric_policy(
 # Questions); this same policy is also the write gate PR3's year-rollover
 # finalization reuses verbatim (decision 9b) — the two consumers share one
 # definition of "good enough to show".
-RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08"
+#
+# lluvia-insights slice 2b, task 2b.6 (design.md D3): bumped from
+# "rainfall-v2-2026-08". The bump is LOAD-BEARING, not cosmetic --
+# `data_revision` hashes source/family/scope/year/comparison_end/intervals
+# only, so for a key whose evidence has not moved the enriched envelope
+# (annual.normal/percentile + antecedents) would hit `persist_revision`'s
+# ON CONFLICT DO NOTHING and never land. `policy_revision` is the second
+# column of `uq_rainfall_analysis_snapshot`, so bumping it makes the
+# enriched snapshot a distinct row instead of a discarded duplicate. Old
+# rows stay self-consistent: the router normalizes each row with the
+# row's OWN policy_revision, so no migration and no snapshot backfill --
+# `router.read_analysis` serves them and enqueues a labelled refresh.
+RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08-insights"
 
+# LI2A-003 (lluvia-insights slice 2b, design.md D4 note): annual_normal and
+# annual_percentile carry `completeness = eligible baseline years / 30`, and
+# their `quality["score"]` is that SAME number (D4) -- so any threshold above
+# 20/30 silently dominates compute.MIN_BASELINE_YEARS, the sample-size floor
+# that owns the distinct `baseline_years_below_minimum` reason D5 promises.
+# At 0.9 the effective floor was 27 eligible years, and the whole reachable
+# 20-26 band was served as `coverage_below_threshold`: a sample-size problem
+# wearing a coverage label. Pinned here to exactly `MIN_BASELINE_YEARS / 30`
+# -- the same float division `completeness` itself performs, so the boundary
+# case compares equal rather than losing to a hand-rounded 0.6667 -- which
+# makes the compute-level floor the binding gate and leaves this entry as the
+# structural backstop it was meant to be. Written as a literal (not imported
+# from compute.py, which imports THIS module) and pinned equal to it by
+# `TestBaselineFloorBindsAtDisclosure`.
+_BASELINE_SAMPLE_FRACTION = 20 / 30
+
+# lluvia-insights slice 2a, task 2a.11 (design.md D4): five new metric
+# entries -- annual_normal/annual_percentile (0.9/0.8, a reference
+# climatology is not time-pressured, so it demands more than the
+# in-progress "annual" year) and d7/d30/d90 (0.9/0.8 each, a floor above
+# temporal.rolling_total's own exact-window refusal). Deliberately NO
+# "summary" entry (D4): the report summary is a root-level Spanish string,
+# not a MetricResult, and can never be policy_threshold_unset.
 RAINFALL_METRIC_POLICY = MetricThresholdPolicy(
     revision=RAINFALL_METRIC_POLICY_REVISION,
-    minimum_coverage_by_metric={"annual": 0.8},
-    minimum_quality_by_metric={"annual": 0.8},
+    minimum_coverage_by_metric={
+        "annual": 0.8,
+        "annual_normal": _BASELINE_SAMPLE_FRACTION,
+        "annual_percentile": _BASELINE_SAMPLE_FRACTION,
+        "d7": 0.9,
+        "d30": 0.9,
+        "d90": 0.9,
+    },
+    minimum_quality_by_metric={
+        "annual": 0.8,
+        # Same fraction as the coverage entry above, and for the same
+        # reason: `quality["score"]` for these two IS `completeness`, so a
+        # higher value here would re-suppress the exact 20-26 band under
+        # `quality_below_threshold` instead of `coverage_below_threshold`
+        # -- the same misattribution, a different label (verified by probe).
+        "annual_normal": _BASELINE_SAMPLE_FRACTION,
+        "annual_percentile": _BASELINE_SAMPLE_FRACTION,
+        "d7": 0.8,
+        "d30": 0.8,
+        "d90": 0.8,
+    },
     duration_threshold=None,
 )
