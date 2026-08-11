@@ -515,6 +515,35 @@ describe('RainfallAccumulationChart — normal-curve state (4.2b)', () => {
     expect(refusedText).not.toMatch(/no hay (línea )?normal para este análisis/i);
   });
 
+  it('names the SERVED baseline period in the suppressed notice, never a constant', async () => {
+    // LI4-004, third site. The chart TITLE and the legend already read
+    // `snapshot.baseline`, so a constant in this body puts two different
+    // periods on one screen — and this is the notice a reader gets precisely
+    // when there is no curve to check the claim against.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      series({ normal_curve_state: 'suppressed', points: curvelessPoints() })
+    );
+    renderChart(snapshot({ baseline: '2001-2030' }));
+
+    const notice = await screen.findByTestId('rainfall-normal-curve-state');
+    expect(notice.textContent).toContain('2001-2030');
+    expect(notice.textContent).not.toMatch(/1991[-–]2020/);
+  });
+
+  it('names the metric without a period when no baseline is served', async () => {
+    // Honest degradation, the same rule `metricLabel` and the backend's
+    // `summary_metric_label` follow: state what the line IS rather than assert
+    // a period nobody served.
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(
+      series({ normal_curve_state: 'suppressed', points: curvelessPoints() })
+    );
+    renderChart(snapshot({ baseline: '' }));
+
+    const notice = await screen.findByTestId('rainfall-normal-curve-state');
+    expect(notice.textContent).toMatch(/no hay normal de referencia/i);
+    expect(notice.textContent).not.toMatch(/\d{4}[-–]\d{4}/);
+  });
+
   it('draws no normal line at all when the curve is refused', async () => {
     vi.mocked(fetchRainfallSeries).mockResolvedValue(
       series({ normal_curve_state: 'integrity_refused', points: curvelessPoints() })
