@@ -1347,6 +1347,17 @@ is what caught it; code inspection would not have.
 
 ## Verification at the final tip
 
+> **Corrected in round 2 (ledger RJDA-102).** The rows below said "FULL suite"
+> for `pytest tests/new/`. That is NOT the shape CI runs:
+> `.github/workflows/backend.yml:129` runs `pytest tests/ -v
+> --ignore=tests/new/test_geo_visualization_renderer.py` — the whole `tests/`
+> tree, including its top-level files and `tests/unit/` — and
+> `.github/workflows/deploy.yml:123-131` names `tests/test_ci_workflow_contracts.py`
+> explicitly. `tests/new/` is a SUBSET, and RJDA-101 lived exactly in the gap
+> between the two. The rows are relabelled here and re-measured in the round-2
+> table below; nothing about the numbers themselves was wrong, only the name
+> they were filed under.
+
 | gate | result |
 |---|---|
 | `ruff check .` | exit 0 |
@@ -1355,20 +1366,156 @@ is what caught it; code inspection would not have.
 | `mypy app/domains/conocimiento/ scripts/rag_*.py` | exit 0, 21 files |
 | conocimiento, CI shape | 381 passed / 60 skipped / 0 failed |
 | conocimiento, corpus shape | 413 passed / 28 skipped / 0 failed |
-| FULL suite, CI shape | **2298 passed / 65 skipped / 0 failed** (baseline 2259/62/0) |
-| FULL suite, corpus shape | **2330 passed / 33 skipped / 0 failed** (baseline 2291/30/0) |
+| `pytest tests/new/`, CI shape (**not** the CI scope) | **2298 passed / 65 skipped / 0 failed** (baseline 2259/62/0) |
+| `pytest tests/new/`, corpus shape (**not** the CI scope) | **2330 passed / 33 skipped / 0 failed** (baseline 2291/30/0) |
 
 Both shapes moved by exactly **+39 passed and +3 skipped** — the 39 tests this
 round added, of which 3 are `pgvector`-marked and therefore skip in the default
 image. The history rewrite itself moved neither baseline.
 
+## Judgment Day round 2 — the final fix round
+
+Round 1's re-judge split: **RJDB CLEAN** (all ten findings verified, and the
+RJDA-001 D.N.I. purge re-verified independently rather than read off the round-1
+record), **RJDA FAILING** on two new findings. The orchestrator resolved the
+contradiction by running the failing test and reading its exit code. Both
+findings were real; B had verified the fixes and not the suite, which is the
+standing lesson of this round.
+
+### RJDA-101 — the branch could not pass CI
+
+`test_training_ml_deps_never_reach_the_server_image` grepped `app/**/*.py`
+CONTENT for `import torch`. Slice 3's `embedding.py` has two, both LAZY. The
+guard sits in the CI path twice, so the branch was red on a check measuring a
+proxy for a rule it never broke.
+
+**The rule did not change; the enforcement did.** Three independent facts, each
+asserted on its own, replace one substring:
+
+| # | fact | how it is asserted now |
+|---|---|---|
+| 1 | no ML import executes at import time | **AST** over `app/**/*.py`; an import is lazy only when lexically inside a `FunctionDef`, so a module-level `try: import torch` — which runs at import time exactly like a bare one — is red |
+| 2 | no server closure declares the stack | `requirements.txt` (intent), `requirements.lock` (what `gee-backend/Dockerfile:34` installs), `requirements-dev.lock` (what CI installs), matched on PEP 503 normalized names |
+| 3 | `embedding.py` specifically stays lazy | a companion test in BOTH directions — no eager import, and the lazy ones must still exist, so deleting the embedders cannot pass vacuously |
+
+RED → GREEN → probe, all executed:
+
+```
+# RED at the tip (a877d356)
+pytest tests/test_ci_workflow_contracts.py::test_training_ml_deps_never_reach_the_server_image
+  -> exit 1   AssertionError: ['gee-backend/app/domains/conocimiento/embedding.py']
+
+# GREEN after the amendment
+  -> exit 0   2 passed (guard + companion)
+
+# probe A: module-level `import torch` appended to embedding.py
+  -> both red: ['…/embedding.py:537 -> torch']  ·  "subio un import pesado a scope de modulo"
+# probe B: module-level `try: import torch / except ImportError` (the case a naive
+#          "direct child of Module" check would miss)
+  -> both red: ['…/embedding.py:538 -> torch']
+# probe C: `torch>=2.0.0` appended to requirements.txt
+  -> red: "gee-backend/requirements.txt arrastra el stack ML: ['torch']"
+# tree restored clean after each probe (git diff --stat empty)
+```
+
+design.md D8 carries the same amendment.
+
+### RJDA-102 — and the second defect the correction uncovered
+
+Correcting the label was the easy half. Running the REAL scope is what mattered,
+and it did not come back clean: the deterministic failure was gone, and **14
+others appeared** — 12 in `tests/new/geo/rainfall/`, 2 in
+`tests/unit/test_celery_outbox.py`, in files no chain commit touches.
+
+The tempting reading was "pre-existing ordering artifacts". Execution refuted it:
+
+```
+pytest tests/                                  -> exit 1   14 failed, 2912 passed
+pytest tests/ --ignore=tests/new/conocimiento  -> exit 0   2538 passed,  0 failed
+```
+
+Removing the chain's own suite makes them vanish, so the chain was the cause.
+Bisected file-by-file to `tests/new/conocimiento/test_rag_migrations.py`, then
+reduced to a two-file reproducer (`test_rag_migrations.py` +
+`test_celery_outbox.py` → 2 failed), then to the mechanism:
+
+> Any alembic command loads `app/db/migrations/env.py`, which calls
+> `logging.config.fileConfig`. Its default is `disable_existing_loggers=True`:
+> it sets `disabled = True` on **every logger that already exists**, process-wide
+> and permanently. From the CLI that is invisible — the process runs one
+> migration and exits. In-process it silences the rest of the suite, and this
+> file is the first thing in the repo to run alembic that way. The victims
+> asserted on `caplog.text` and saw `''`.
+
+The three pre-existing alembic-touching test files (`test_alembic_health.py`,
+`test_health_resilience.py`, `test_suelos_etl.py`) were run against the same
+victim and **none of them pollute** — which is what rules out "pre-existing".
+
+Fixed at the cause, `disable_existing_loggers=False`, rather than in the test:
+every future in-process caller inherits the hazard, and a test-side workaround
+has to be remembered each time. `alembic.ini`'s levels and handlers still apply
+exactly as before — only the mass-disable is dropped. The regression test lives
+next to the cause with its witness logger created at **import** time, the only
+ordering under which the flag can bite; a first draft built the logger inside the
+test body and passed with the fix reverted, because `Config(...)` alone never
+loads `env.py`. That draft was thrown away, not shipped.
+
+```
+regression test, env.py reverted -> exit 1  "env.py's fileConfig disabled the existing loggers"
+regression test, env.py fixed    -> exit 0
+```
+
+### Round-2 verification at the fixed tip
+
+| gate | result |
+|---|---|
+| `ruff check .` | exit 0 |
+| `ruff format --check .` | exit 0 |
+| `mypy app/auth app/domains/padron app/domains/denuncias` (the enforced CI scope) | exit 0, 20 files |
+| `mypy app/domains/conocimiento/ scripts/rag_*.py` | exit 0, 22 files |
+| **`pytest tests/` — the REAL CI scope** | **exit 0 · 2927 passed / 66 skipped / 0 failed** |
+| `pytest tests/new/`, CI shape | exit 0 · 2306 passed / 66 skipped / 0 failed |
+| `pytest tests/new/`, corpus shape | exit 0 · 2338 passed / 34 skipped / 0 failed |
+| conocimiento, CI shape | exit 0 · 389 passed / 61 skipped / 0 failed |
+| conocimiento, corpus shape | exit 0 · 421 passed / 29 skipped / 0 failed |
+| **`make test-rag`** (real `consorcio-postgres:16-vector`) | **exit 0 · 29 passed / 0 skipped** |
+| **`make test-rag-corpus`** (real SHA-pinned checkout) | **exit 0 · 32 passed / 0 skipped** |
+
+Both `make` targets treat a SKIP as a failure, so "passed" cannot mean "did not
+run". Adding `env.py` to the mypy invocation drags in the whole model graph and
+surfaces 17 errors — every one of them in the pre-existing
+geo/capas/reuniones/tramites set the round-1 note already documents, **zero** in
+`env.py`, `app/domains/conocimiento/` or `scripts/rag_*.py`, checked line by line
+rather than assumed.
+
+### The rest of round 2
+
+| id | what was wrong | what it is now |
+|---|---|---|
+| RJDB-103 | round 1's vector-mode fix had no EXECUTED proof after the later commits | both `make` rows above, at the fixed tip, zero skips |
+| RJDA-109 | the RJDB-002 fix was pinned only negatively, on the lexical leg | a `pgvector`-marked test asserting a real vector run's `fuente_senal == FUENTE_VECTOR`, `senal_constante is False`, **two distinct non-zero** signals (a flag cannot produce that) and every signal in `[0, 1]` — never RRF's `1/(k+rango+1)` |
+| RJDB-101 ≡ RJDA-106 | the report published "8192 tokens" as a constant; it is 512 under e5 | the block NAMES the ceiling ("el techo de tokens del modelo del batch") instead of numbering one nothing durable records; exempt keys and questions capped at 10 with `(+N more)` in the MARKDOWN only — the JSON twin keeps the full list, because truncating a machine-readable field is data loss |
+| RJDB-102 ≡ RJDA-105 | `--latencia` parsed anything and died at render time, after the ablation | `isinstance(dict)` + typed check of all ten numeric fields (bool rejected: `f"{True:.1f}"` renders `1.0`) + `p50_ms`/`p95_ms` required, all before the ablation, exit 2 naming the file. RED: without it, all five malformed payloads reach the embedder build |
+| RJDA-103 | `claves_sin_vector` ran before the capability check | `require_vector_support` first, inside the service. RED on the default image: raw `ProgrammingError: column "embedding" does not exist`, from inside the caller's session, leaving the transaction aborted |
+| RJDA-104 | three CLIs caught only `RuntimeError`; the wrapper is another module's choice | `(RuntimeError, ImportError)` in all three, plus a test that imports the REAL module, makes torch unimportable via `sys.modules` and asserts the raise site's verbatim message, `requirements-rag.txt`, `venv-rag` and `__cause__` |
+| RJDA-107 | the Makefile guard refused absolute `RAG_EVAL_PYTHON` overrides | a `case` resolving absolute / slash-relative / bare-name-on-PATH. RED: absolute path to this repo's own `venv/bin/python` → exit 2 "does not exist under"; GREEN → exit 0 |
+| RJDB-104 ≡ RJDA-108 | — | `info`, per the severity floor |
+
 Whole-`app/` mypy reports 148 pre-existing errors in 35 files. That is NOT the
 repo's gate — `backend.yml:101` and `deploy.yml:120` both run
 `mypy app/auth app/domains/padron app/domains/denuncias`, which passes — and
-**zero of the 25 files this round touched appear in those 148**, checked
-file-by-file rather than assumed.
+**zero of the 25 files round 1 touched appear in those 148**, checked
+file-by-file rather than assumed. Round 2 adds `app/db/migrations/env.py` to that
+question and the answer is the same: it is absent from the 148, and the 17
+errors that appear when it is handed to mypy directly all belong to the model
+modules it imports.
 
 ## Open after this round
+
+Round 2 was the FINAL round of the convergence budget. Nothing from the ledger
+is left open: every confirmed finding is `fixed`, and `RJDB-104 ≡ RJDA-108` is
+`info` by the severity floor. What remains below is unchanged pre-existing
+scope, not review debt.
 
 * **RAG4-002** stays `info`, unchanged: `conocimiento_004` cannot record the
   batch's torch build or device, and adding two columns belongs to whoever owns
@@ -1376,3 +1523,6 @@ file-by-file rather than assumed.
 * **4.14 / O.3** still blocked on the owner's RTX batch run. The command
   sequence above now has the `RAG_EVAL_PYTHON=venv-rag/bin/python` correction
   and the new latency step 3b.
+* **RAG4-001** (the `websearch_to_tsquery` conjunction) is unchanged and still
+  belongs to the design owner, not to an apply — it is pinned, measured and
+  disclosed in the report, which is as far as an apply may take it.
