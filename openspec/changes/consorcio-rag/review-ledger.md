@@ -380,3 +380,16 @@ end of a second executable one. No new row was opened for it: the alembic
 verification record is what surfaced it and running the real scope is what proved
 it. It is reported to the orchestrator explicitly rather than filed quietly, and
 the fix and its RED-verified regression test are part of this round's diff.
+
+## Judgment Day — apply phase: FINAL VERDICT (2026-08-11)
+
+**Final scoped re-judge (Round 2 verification, terminal): RE-JUDGE A CLEAN + RE-JUDGE B CLEAN.**
+
+- Judge A re-executed the headline claim itself: `pytest tests/` at `e6f2d466` → exit 0 · 2927 passed / 66 skipped / 0 failed, and reconstructed the RJDA-102 bisection arithmetic independently (2538 reconciles). AST guard audited for bypasses (try/class-body/decorators/lambda — none exploitable for import statements); closure check proven non-vacuous against the real uv-lock format.
+- Judge B verified the witness-logger RED-on-revert mechanics against alembic.ini's declared keys, confirmed no victim test was edited, and re-derived every supporting fact from source.
+- Both judges' residual gap (their sandboxes cannot run `make` targets or env assignments) was **closed by the orchestrator with direct execution at the tip**: `make test-rag` → exit 0, 29 passed / 0 skipped · `make test-rag-corpus` → exit 0, 32 passed / 0 skipped — digit-for-digit against the Round-2 record.
+- Info bequest (first-pass quality signals, non-blocking, for the archive backlog): RJDA-201..203 + RJDB-201..206 — chiefly the guard-hardening follow-ups (geo-requirements checks only 2 of the 5 ML distributions; a lazy ML import outside embedding.py would pass both new checks; `__import__`/importlib module-level blind spot mitigated by the closure check) and the unpinned RJDB-101 rendering cap.
+
+### JUDGMENT: APPROVED ✅
+
+Round summary: Round 1 — 1 BLOCKER (PII, fixed via verified history rewrite) + 5 CRITICAL + WARNINGs, all fixed. Round-1 re-judge — A FAILING (RJDA-101/102, both real) / B CLEAN; contradiction resolved by orchestrator execution. Round 2 — all findings closed at the cause (AST guard, env.py fileConfig, corpus_sha reconciliation, leg-native abstention signals, E5 embedder, fsum). Final re-judge — CLEAN × 2. Convergence budget: exactly 2 rounds, never extended.
