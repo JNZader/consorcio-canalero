@@ -73,28 +73,28 @@ Task 4.3 remains `[x]` and struck through as SUPERSEDED by Judgment Day Round 1 
 This is the change's inheritance. Nothing here blocked archive; all of it survives the change.
 
 **P1 — disclosure correctness**
-1. **LI4-004** `metricLabel('normal')` hardcodes `'Normal 1991–2020'`; a different served `baseline` would show one number under two baseline periods. Its negative assertion is scoped to one node and uses a hyphen vs the constant's en-dash, so it cannot fire. Key the label off `snapshot.baseline` and widen the assertion.
-2. **Ops.5** run the scope-population SQL before enabling the stale-policy requeue at scale — the per-key cooldown is not a global bound (LIA-003).
+1. ~~**LI4-004** `metricLabel('normal')` hardcodes `'Normal 1991–2020'`~~ — **DONE 2026-08-11** (§10 cola corta): label keyed off `snapshot.baseline`, period-less honest fallback, negative assertion widened to the whole `rainfall-metrics` subtree and made dash-agnostic. RED captured first — the panel rendered `Normal 2001-2030` and `Normal 1991–2020` simultaneously.
+2. ~~**Ops.5** run the scope-population SQL~~ — **DONE 2026-08-11**, small-population assumption confirmed (§10).
 3. **V-002** ruff gates — not executable in the verify sandbox; closed post-report by the orchestrator.
 
 **P2 — operational (owner-gated)**
 4. ~~Ops.1 / Ops.2 backfill execution~~ — **DONE 2026-08-11** (see §2).
 5. ~~Ops.3 pacing constant~~ — **DONE 2026-08-11**, default retained.
-6. **Ops.6 / JDA-005** two open questions: should `annual.percentile` also suppress when `annual.selected` is `partial`; and the raw-vs-normalized curve gate.
+6. **Ops.6 / JDA-005** — **Ops.6 ESCALATED 2026-08-11**: `partial` is unreachable, but the percentile is disclosed independently of the selected total it ranks and is biased low by internal evidence gaps; reproduction and recommendation in §10. JDA-005 (raw-vs-normalized curve gate) still open.
 7. **V-008** execute the e2e suite with seeded credentials against a live backend (Playwright still collects but never runs).
 
 **P3 — robustness**
-8. **LI4-005** fallback on `NORMAL_CURVE_NOTICE[state]` so an unmodelled state degrades instead of crashing the panel subtree.
+8. ~~**LI4-005** fallback on `NORMAL_CURVE_NOTICE[state]`~~ — **DONE 2026-08-11** (§10): one `normalCurveNotice()` accessor guards both index sites. RED captured — the panel subtree rendered empty.
 9. **LI4-001** drop the unreachable `echoMismatch` branch, or give `/series` an independent digest so the check has a real source.
 10. **LI2A-004** three unpinned copies of `"chirps-v3-final"` (`service.RAINFALL_HISTORICAL_SOURCE`, `repository.py:657`, `compute._BASELINE_SOURCE_ID`) with no drift test.
 11. **LI2A-006** document `rolling_total`'s insertion-order precondition.
 
 **P4 — hygiene**
 12. **LI4-003** campaign empty-window unit case; move the e2e campaign fixture to a past year.
-13. **LI4-002** assert with a cell-level `str` or delete the dead guarded branch and its claim.
-14. **LI4-006 / V-005** rewrite `XLSX_BODY` as escapes so git stops treating the spec as binary; enrol the e2e file in `tsconfig.tests.json`.
+13. ~~**LI4-002** vacuous test / dead guarded branch~~ — **DONE 2026-08-11** (§10): the dead `neutralize_spreadsheet_formula` wrapper over `json.dumps` removed and the false "Order matters" claim dropped; `json.dumps` itself KEPT (load-bearing — without it the cell is Python `repr`, not JSON). Test rewritten to pin the JSON envelope as the real containment, plus a cell-level `str` case.
+14. ~~**LI4-006 / V-005**~~ — **DONE 2026-08-11** (§10): `XLSX_BODY` rewritten as escapes (byte-identical, verified), spec enrolled in `tsconfig.tests.json`. The enrolment immediately caught a REAL defect: `route.request()`'s `method`/`url` were destructured as properties though Playwright exposes them as METHODS, so the mock router matched nothing and would have thrown on the first intercepted call.
 15. The 62-file TS typecheck widening — replace `tsconfig.tests.json`'s hand-list with `tests/**`; until then the ENROLMENT RULE header is the only thing keeping that gate honest.
-16. **V-001** (ledger status cells understate three shipped fixes), **V-004** (`rainfallAnalysisQueryKey` now has one consumer), **V-006** (2a.11 says "4 threshold entries", code has 5), **V-007** (pin one DB shape so `test_martin_reader_grants` stops drifting). **V-003 is closed by this archive's spec merge.**
+16. **V-001** (ledger status cells understate three shipped fixes) and **V-007** (pin one DB shape so `test_martin_reader_grants` stops drifting) remain open. ~~**V-004**~~ — **DONE 2026-08-11** (§10): un-exported, its "two consumers" docstring corrected. ~~**V-006**~~ — **DONE 2026-08-11**: 2a.11 now reads 5, and its stale `0.9/0.8` threshold values corrected to the shipped `0.667/0.667`. **V-003 is closed by this archive's spec merge.**
 
 ## 6. Operational runway
 
@@ -104,9 +104,9 @@ This is the change's inheritance. Nothing here blocked archive; all of it surviv
 | Ops.2 — 1992–2020, 30/30 checkpoints, 0 dupes | **DONE 2026-08-11** — 29/29 years, 10958/10958 total |
 | Ops.3 — settle `RAINFALL_BACKFILL_PACE_SECONDS` | **DONE 2026-08-11** — 5 s default held, no tuning needed |
 | First 03:30 sweep after deploy | **PENDING** — the next checkpoint; confirms the current-year re-materialization cadence fires in prod |
-| Ops.4 — 400-line chain confirmation (doc-only) | **OPEN** |
-| Ops.5 — scope-population SQL before scaling the requeue | **OPEN** (P1) |
-| Ops.6 — `partial` percentile open question | **OPEN** |
+| Ops.4 — 400-line chain confirmation (doc-only) | **DONE 2026-08-11 — result NEGATIVE**, the budget was exceeded (§10) |
+| Ops.5 — scope-population SQL before scaling the requeue | **DONE 2026-08-11** — small-population assumption confirmed (§10) |
+| Ops.6 — `partial` percentile open question | **OPEN — ESCALATED**, the question as posed is the wrong one (§10) |
 
 Known adjacent debt, not owned by this change: celery-beat still reports a lying healthcheck.
 
@@ -139,3 +139,75 @@ Known adjacent debt, not owned by this change: celery-beat still reports a lying
 ## 9. Closure
 
 Planned, designed under two Judgment Day rounds, implemented in 6 TDD slices, verified PASS-with-notes, merged as PR #176, deployed, backfilled and observed live. **SDD cycle complete.** The residual backlog in §5 and the open runway items in §6 are the bequest, not blockers.
+
+## 10. Post-archive ops closure 2026-08-11
+
+Closes the runway items left open at archive. Ops.4 and Ops.5 are settled; Ops.6 is escalated rather than closed, because answering it surfaced a defect the question was not pointed at.
+
+### Ops.4 — forecast vs actuals (CLOSED, result negative)
+
+The check was to confirm no slice exceeded **400 production lines**. Performed, and **the forecast was not met.**
+
+Measured over the merged feature commit `65ebb90f`, excluding tests, `openspec/` and `.md`:
+
+| | Lines |
+|---|---|
+| Production added | **3284** |
+| Production deleted | 134 |
+| Per-slice forecast chain (`apply-progress.md`) | ≈1510 (~380 + ~240 + ~210+60 + ~240 + small + ~380) |
+
+Four single FILES each exceed the 400-line slice budget on their own:
+
+| File | Added |
+|---|---|
+| `gee-backend/app/domains/geo/rainfall/compute.py` | +491 |
+| `consorcio-web/src/components/map2d/rainfall/RainfallAccumulationChart.tsx` | +463 |
+| `gee-backend/app/domains/geo/rainfall/series.py` | +461 |
+| `gee-backend/app/domains/geo/rainfall/export.py` | +348 |
+| `gee-backend/app/domains/geo/rainfall/service.py` | +298 |
+| `gee-backend/app/domains/geo/rainfall/repository.py` | +278 |
+
+`apply-progress.md` recorded most slices as "within the forecast slice budget" qualitatively, without measuring the actual production diff — only slice 3a (~290 actual against a ~240 forecast) and slice 2b (+60 amendment lines over ~210) put real numbers on the record. That is how a 2x overrun stayed invisible until now: **the budget was forecast per slice and never measured per slice.**
+
+Honest caveat: this repo deliberately embeds long rationale docstrings inside production files, so raw line counts overstate logical size. The budget was written in raw lines and is exceeded in raw lines; whether the REVIEW load was correspondingly 2x is not something a line count can settle. The useful lesson is procedural — record measured production lines per slice at apply time, or the budget is decorative.
+
+### Ops.5 — scope-population SQL (CLOSED, assumption confirmed)
+
+Run against prod 2026-08-11, before scaling slice 2b's stale-policy requeue:
+
+| Measure | Value |
+|---|---|
+| `distinct_scopes` | 4 |
+| `zonas_operativas` | 15 |
+| `analysis_fingerprints` | 14 |
+| `outbox_rows` | 26 |
+
+The small-population assumption behind LIA-003 **holds**. The per-key cooldown still is not a global bound, but at a population of 4 scopes / 15 zones that ceiling is not reachable as a stampede. **Re-measure before onboarding a materially larger consortium** — this is a confirmation at today's size, not a proof of the design.
+
+### Ops.6 — `partial` percentile (OPEN, ESCALATED — do not close)
+
+**The question as posed cannot be answered, because its premise does not hold.** `annual.selected` is never `partial`: no path in the backend emits that state. `apply_metric_policy` (`policy.py:148-172`) returns only `available` / `suppressed` / `unavailable`, and `partial` survives in the rainfall domain only as a schema Literal (`schemas.py:29`), a preservation branch for an already-stored value (`service.py:515`) and summary labels. So "should the percentile suppress when selected is `partial`" is moot as written.
+
+**The worry behind it is real, reachable, and worse than the question suggests.** The same-date discipline is sound where it applies: `baseline_cutoff_for` (`compute.py:121-144`) cuts the baseline at the last day the selected year actually reaches, so a year IN PROGRESS is ranked against baselines totalled through the same calendar day. A current-year percentile is the designed use case and is correct — prod's 2026 p46.9 is not a defect.
+
+What is NOT handled is a selected year with **internal evidence gaps**. `total_value` sums only matched slots and `completeness = matched_slots / expected_slots` is derived from that same list (`compute.py:531-541`), so a year missing days is short by exactly those days' rain — and `weibull_percentile` ranks that short total against COMPLETE baselines. The design already identified this precise bias mechanism for the trailing-lag case and fixed it (`compute.py:130-136`: "cutting at the calendar date would rank a selected year that is short by the lag … biasing the percentile low"). `window_end` clips only the trailing edge; a hole in the middle produces the identical bias with no guard.
+
+Worse, disclosure is DECOUPLED: `annual` is thresholded at 0.8 coverage, while `annual_normal`/`annual_percentile` are thresholded on the BASELINE's eligible-year fraction (≈0.667) — an entirely different quantity. So the percentile outlives the total it ranks.
+
+Reproduced against the shipped code (30 baseline years, true selected total at p51.6):
+
+| Days missing from the selected year | Selected total | `annual` state | Served percentile |
+|---|---|---|---|
+| 0% | 500.0 | available | **51.6** (truth) |
+| 10% | 450.0 | **available** | **31.2** — both metrics served, ~20 points low, no caveat |
+| 21% | 395.0 | suppressed (`coverage_below_threshold`) | **9.4** — served anyway |
+| 30% | 350.0 | suppressed | **3.1** |
+
+At 21% the panel's own summary reads: `Disponibles: Percentil histórico 9.4 percentil. Sin dato: Acumulado del año (suprimida: coverage_below_threshold).` A normal year is reported as one of the driest on record, next to an admission that the underlying total was too incomplete to show. The 10% band is arguably worse: nothing is suppressed, nothing is flagged, and the rank is still ~20 points low.
+
+**Recommendation (owner decision, NOT applied here).** Two candidate fixes, in preference order:
+
+1. Couple the percentile to the selected year's own evidence — compute it from the same coverage/completeness that gates `annual`, so a total too incomplete to disclose cannot be ranked. This closes both bands.
+2. At minimum, suppress `annual.percentile` whenever the disclosed `annual.selected` is not `available`, with a distinct reason (e.g. `annual_selected_not_disclosed`). This closes the ≥21% band only and leaves the silent 10% bias open.
+
+No code was changed for Ops.6. The finding is a disclosure-correctness defect on a shipped path and wants its own RED-first change with an owner's call on the threshold semantics.
