@@ -13,6 +13,7 @@ migration path works standalone, the way a real deploy runs it.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from urllib.parse import urlsplit, urlunsplit
 
@@ -438,3 +439,37 @@ def test_migration_002_guard_symmetry_on_vector_image(throwaway_db):
         ix for ix in inspector.get_indexes("rag_unidad") if ix["name"] == ddl.HNSW_INDEX_NAME
     ]
     assert len(hnsw_indexes) == 1
+
+
+#: Created at IMPORT time, which is the only ordering under which
+#: `disable_existing_loggers` can bite: it disables the loggers that already
+#: exist when `fileConfig` runs, and every alembic command in this file runs
+#: later, from a fixture. A logger built inside the test body would be created
+#: AFTER the fixture's `command.stamp` and would witness nothing.
+_TESTIGO_LOGGING = logging.getLogger("tests.alembic_logging_probe")
+
+
+def test_running_alembic_in_process_does_not_disable_the_apps_loggers(throwaway_db) -> None:
+    """An alembic command must not silence the rest of the suite.
+
+    Any alembic command loads `env.py`, which calls `logging.config.fileConfig`.
+    That function's default is `disable_existing_loggers=True`: it sets
+    `disabled = True` on every logger that already exists, process-wide, and
+    permanently. From the CLI that is invisible — the process runs one migration
+    and exits. In this suite it was not: this file is the first thing in the
+    repo to run alembic in-process, and it silenced
+    `app.shared.celery_outbox`'s logger, so two `tests/unit/test_celery_outbox.py`
+    tests asserting on `caplog.text` failed with an EMPTY log — in a file the
+    RAG change never touched, and ONLY when the whole `tests/` tree ran in one
+    session, which is exactly what CI runs (`.github/workflows/backend.yml:129`).
+
+    A cross-file failure between two files with no shared code is the hardest
+    kind to attribute, so the guard lives next to the cause rather than next to
+    the victim. The fixture is the trigger: `throwaway_db` runs `command.stamp`,
+    and asking for it here is what makes this test exercise the real path
+    instead of a `Config(...)` constructor that never loads `env.py` at all.
+    """
+    assert _TESTIGO_LOGGING.disabled is False, (
+        "env.py's fileConfig disabled the existing loggers; pass disable_existing_loggers=False"
+    )
+    assert logging.getLogger("app.shared.celery_outbox").disabled is False

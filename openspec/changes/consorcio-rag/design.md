@@ -655,6 +655,34 @@ contract to test. Entry points are thin scripts in `gee-backend/scripts/` (house
 Migration naming follows the newest house convention (`lluvia_v2_001_…`) → `conocimiento_001_…`.
 Heavy embedding dependencies live in a new `gee-backend/requirements-rag.txt`, never in the app image.
 
+**Amendment (Judgment Day round 2, RJDA-101) — the split was rethought, and the guard with it.**
+The pre-existing repo guard `test_training_ml_deps_never_reach_the_server_image` enforced the
+"torch never reaches a server image" rule by grepping the *content* of every `app/**/*.py` for
+`import torch`. That premise held only while no application module legitimately needed the ML
+stack. `embedding.py` does: `BGEM3Embedder` and `E5Embedder` are ingestion-side objects that live
+in the domain because the artifact format, the token ceiling and the provenance stamp belong to
+it. So the branch was red on CI for a guard that was measuring a proxy rather than the fact.
+The rule is unchanged; what enforces it is now the three independent facts that actually make it
+true, each asserted on its own:
+
+1. **No eager import.** Every ML import in `app/` sits inside a function or method body
+   (`BGEM3Embedder.__init__` / `.encode`, `E5Embedder.__init__`), so importing any application
+   module executes none of them. Asserted by AST, not substring: an import counts as lazy only
+   when it is lexically nested in a `FunctionDef`, which means a module-level `try: import torch`
+   — which executes at import time exactly like a bare one, and which the substring guard could
+   not distinguish either — is still red.
+2. **No server closure declares it.** `torch`, `transformers`, `sentence-transformers`,
+   `FlagEmbedding` and `segmentation-models-pytorch` appear in none of `requirements.txt`
+   (the image's declared intent), `requirements.lock` (what the Dockerfile installs) or
+   `requirements-dev.lock` (what CI installs). This is the fact the guard exists to protect and
+   the one the old content grep only approximated; it is now asserted directly.
+3. **V0 mounts no `conocimiento` router**, so no request path can reach the embedder at all —
+   the "no `router.py`" decision above, doing double duty.
+
+A companion test pins `embedding.py` by name in both directions, so a refactor that hoists an
+import to module scope goes red with the culprit named, and deleting the embedders cannot make
+the assertion pass vacuously.
+
 ### D9 — PixelRAG
 
 Restated from engram `sdd/consorcio-rag/pixelrag-assessment`: out of the V0 core. The problem it solves
