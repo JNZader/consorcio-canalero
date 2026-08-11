@@ -208,6 +208,29 @@ class TestVectorSupportContract:
         assert resultado.hits
         assert resultado.n_vector == 0
 
+    def test_the_exemption_query_refuses_before_touching_the_missing_column(self, corpus_basico):
+        """`claves_sin_vector` checks capability FIRST (ledger RJDA-103).
+
+        The harness asks for the exempt set BEFORE the first `recuperar`, so on
+        a vector-less database this is the first thing that touches the dev-only
+        `embedding` column. Unguarded it raised a raw psycopg
+        `ProgrammingError: column "embedding" does not exist` instead of the
+        `VectorSupportUnavailable` written to explain exactly this situation —
+        and, worse than the message, it did so from inside the caller's session,
+        so the transaction came out aborted and every later query in the same
+        session failed with a second, even less related error.
+
+        The second assertion is the one that pins that: a refusal must leave the
+        session usable.
+        """
+        if repository.vector_support(corpus_basico):
+            pytest.skip("this database HAS pgvector; the contract under test is its absence")
+
+        with pytest.raises(VectorSupportUnavailable):
+            service.claves_sin_vector(corpus_basico, SHA)
+
+        assert service.recuperar(corpus_basico, SHA, "canal", modo="fts").hits
+
     def test_vector_mode_without_an_embedder_is_a_usage_error_not_a_fallback(self, corpus_basico):
         with pytest.raises(service.EmbedderRequerido):
             service.recuperar(corpus_basico, SHA, "canal", modo="vector")

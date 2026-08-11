@@ -139,6 +139,48 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: Fields of the latency JSON that the report renders through a float format.
+#: A string here does not degrade the block, it kills the run inside
+#: `report.py::_bloque_latencia` — `f"{'lento':.1f}"` raises — and it kills it
+#: AFTER the 52-question ablation has already been paid for. A bool is worse:
+#: `f"{True:.1f}"` renders `1.0`, so a malformed file publishes a latency figure
+#: that was never measured. Both are caught here, at the edge, next to the read.
+CAMPOS_NUMERICOS_LATENCIA = (
+    "p50_ms",
+    "p95_ms",
+    "min_ms",
+    "max_ms",
+    "n",
+    "preguntas",
+    "repeticiones",
+    "calentamientos",
+    "cpu_count",
+    "torch_threads",
+)
+
+#: Without these two the block has nothing to say: they ARE the criterion.
+CAMPOS_LATENCIA_OBLIGATORIOS = ("p50_ms", "p95_ms")
+
+
+def problemas_de_latencia(datos: object) -> list[str]:
+    """Everything wrong with a parsed `--latencia` payload, or an empty list."""
+    if not isinstance(datos, dict):
+        return [f"el JSON es {type(datos).__name__}, se esperaba un objeto"]
+
+    problemas = [f"falta `{campo}`" for campo in CAMPOS_LATENCIA_OBLIGATORIOS if campo not in datos]
+    for campo in CAMPOS_NUMERICOS_LATENCIA:
+        if campo not in datos:
+            continue
+        valor = datos[campo]
+        if valor is None:
+            continue
+        # `bool` is an `int` in Python, and `True` formats as `1.0` — exactly the
+        # fabricated number this check exists to refuse.
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            problemas.append(f"`{campo}` es {valor!r}, se esperaba un número")
+    return problemas
+
+
 def _embedder(nombre: str, *, device: str, model_id: str):
     """The deterministic fake is selectable, and only selectable ON PURPOSE.
 
@@ -187,10 +229,15 @@ def main(argv: list[str] | None = None) -> int:
     # must not be discovered after a 52-question ablation has run. Absent, the
     # report says the latency criterion was not evaluated rather than omitting
     # the section, which would read as "not applicable".
+    #
+    # Parsing is not validation, and reading the file early bought nothing while
+    # the SHAPE was still checked at render time (ledger RJDB-102 ≡ RJDA-105):
+    # any JSON at all parsed here, and a list — or a dict with a string where a
+    # float belongs — took the ablation down at the last block of the report.
     latencia = None
     if args.latencia is not None:
         try:
-            latencia = json.loads(args.latencia.read_text(encoding="utf-8"))
+            crudo = json.loads(args.latencia.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             print(
                 f"ERROR: --latencia {args.latencia}: {error}\n"
@@ -198,6 +245,21 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        problemas = problemas_de_latencia(crudo)
+        if problemas:
+            print(
+                f"ERROR: --latencia {args.latencia} no tiene la forma que "
+                "escribe scripts/rag_query_latency.py --json:",
+                file=sys.stderr,
+            )
+            for problema in problemas:
+                print(f"  - {problema}", file=sys.stderr)
+            print(
+                f"Regeneralo con: scripts/rag_query_latency.py … --json {args.latencia}",
+                file=sys.stderr,
+            )
+            return 2
+        latencia = crudo
 
     precondicion = gold.precondicion()
     print(
@@ -240,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         if any(modo in ("vector", "hybrid") for modo in modos):
             try:
                 embedder = _embedder(args.embedder, device=args.device, model_id=args.model_id)
-            except RuntimeError as falta:
+            except (RuntimeError, ImportError) as falta:
                 # `BGEM3Embedder.__init__` raises this when torch/transformers are
                 # absent, which is the DEFAULT state of `venv/` by design: the
                 # ingestion extra pulls the whole CUDA stack and is deliberately
@@ -250,6 +312,15 @@ def main(argv: list[str] | None = None) -> int:
                 # traceback — an environment problem presented as a crash, with
                 # the one-line fix buried in the exception's own message.
                 # `scripts/rag_query_latency.py` already handled it this way.
+                #
+                # `ImportError` is caught alongside `RuntimeError` (ledger
+                # RJDA-104) because the guarantee this branch depends on lives in
+                # another module: the embedders happen to WRAP the ImportError
+                # today, and the day one of them re-raises or a new backend
+                # forgets the wrapper, the failure mode is the raw traceback this
+                # branch was written to remove — a silent regression, since
+                # nothing in the happy path changes. Catching both makes the CLI's
+                # contract independent of the raise site's choice of class.
                 print(f"\nERROR: {falta}", file=sys.stderr)
                 print(
                     "\nO bien corré la ablación sólo con la pierna léxica, que no "

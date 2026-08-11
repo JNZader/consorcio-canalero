@@ -977,6 +977,40 @@ class TestExencionOverCeiling:
         assert corrida.metricas.n_citation_precision == 1
         assert corrida.preguntas[0].precision_no_evaluable is False
 
+    def test_a_real_vector_run_sweeps_the_cosine_scale_and_not_a_flag(self, snapshot, pgvector_db):
+        """RJDA-109: the RJDB-002 fix, asserted against real pgvector.
+
+        `senales_desde` reading the vector leg's own distance instead of the
+        fused RRF score is pinned elsewhere by disabling the native reader and
+        watching the fts signal set collapse — a negative proof, on the lexical
+        leg, over hand-made rows. Nothing asserted the POSITIVE claim on the leg
+        the defect was actually about: that a run against a real `vector`
+        column, with real `<=>` distances, sweeps the cosine scale.
+
+        Two assertions, and the second is the one with teeth. The first says the
+        report will NAME the cosine scale. The second says the numbers were
+        actually on it: under the old code every answered question scored the
+        same `1/61` and every unanswered one `0.0`, so a two-question set could
+        satisfy "more than one distinct value" while still being a flag. Three
+        questions, two of them answered from the vector leg, must produce two
+        DISTINCT non-zero signals — which a presence/absence flag cannot do, and
+        which `senal_constante` (the shipped warning) also cannot detect on its
+        own here.
+        """
+        embedder = self._snapshot_parcialmente_embebido(snapshot)
+        corrida = correr_modo(snapshot, SHA, GOLD_D8, modo="vector", embedder=embedder)
+
+        assert corrida.fuente_senal == harness.FUENTE_VECTOR
+        assert all(s.fuente_senal == harness.FUENTE_VECTOR for s in corrida.senales)
+
+        assert corrida.senal_constante is False
+        no_vacios = {s.score_top1 for s in corrida.senales if s.score_top1 > 0.0}
+        assert len(no_vacios) >= 2, (
+            f"the vector signals are degenerate: {[s.score_top1 for s in corrida.senales]}"
+        )
+        # Every signal on the cosine scale, never RRF's `1/(k+rango+1)`.
+        assert all(0.0 <= s.score_top1 <= 1.0 for s in corrida.senales)
+
 
 # ---------------------------------------------------------------------------
 # The committed gold set itself

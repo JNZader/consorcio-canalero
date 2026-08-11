@@ -254,7 +254,10 @@ def main(argv: list[str] | None = None) -> int:
         embedder = get_embedder(
             args.embedder, rol="passage", device=args.device, model_id=args.model
         )
-    except RuntimeError as missing:  # pragma: no cover — environment-dependent
+    # Both classes, for the reason in `rag_eval.py` (ledger RJDA-104): the
+    # embedders wrap the missing-dependency `ImportError` in a `RuntimeError`
+    # today, and this branch must not depend on that staying true.
+    except (RuntimeError, ImportError) as missing:  # pragma: no cover — environment-dependent
         print(f"\n{missing}", file=sys.stderr)
         return 2
 

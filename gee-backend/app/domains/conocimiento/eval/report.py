@@ -215,6 +215,26 @@ def _bloque_cobertura(corrida: ResultadoModo) -> list[str]:
     return lineas
 
 
+#: Bounded rendering of a key set in the markdown block, per the RAG3-003
+#: convention already used by `rag_load_vectors._muestra`. The exempt set is
+#: "every unit of the snapshot with no vector", which is three units under
+#: BGE-M3's window and can be an order of magnitude more under E5's 512 — an
+#: unbounded bullet list would bury the two numbers the block exists to state.
+#: Only the MARKDOWN is capped: the JSON twin keeps the complete list, because
+#: truncating a machine-readable field is data loss rather than legibility.
+MAX_CLAVES_EN_BLOQUE = 10
+
+
+def _bullets_acotados(valores: tuple[str, ...], *, code: bool) -> list[str]:
+    """`- x` … `- … (+N more)` — the first ten, then an honest count of the rest."""
+    visibles = valores[:MAX_CLAVES_EN_BLOQUE]
+    lineas = [f"  - `{v}`" if code else f"  - {v}" for v in visibles]
+    resto = len(valores) - len(visibles)
+    if resto:
+        lineas.append(f"  - … (+{resto} more)")
+    return lineas
+
+
 def _bloque_exencion(corrida: ResultadoModo) -> list[str]:
     """Disclose the over-ceiling exemption, in every mode, including "none".
 
@@ -223,6 +243,18 @@ def _bloque_exencion(corrida: ResultadoModo) -> list[str]:
     absent, so its absence stops being informative. Here absence and "0 items"
     are different facts — `fts` and `hybrid` never exempt anything by design,
     `vector` may exempt and happen not to — and both are stated.
+
+    **The ceiling is named, not numbered** (ledger RJDB-101 ≡ RJDA-106). It is a
+    property of the embedder that produced the batch — 8192 tokens for BGE-M3,
+    512 for multilingual-e5-large — and nothing durable records it: the
+    `conocimiento_004` provenance columns keep model, HF revision, `sintetico`,
+    artifact sha256 and a timestamp, and the token ceiling lives only in the
+    sidecar that RAG3-001 established is not durable. Printing `8192` under an
+    E5 batch would be a fabricated number in the one block whose whole job is to
+    explain why some units have no vector; deriving it from the model id would
+    be a second source of truth that a `--max-length` override makes a lie. So
+    the block says which ceiling it means and leaves the number to whoever can
+    actually read it.
     """
     exencion = corrida.exencion
     if not exencion.aplica:
@@ -238,17 +270,17 @@ def _bloque_exencion(corrida: ResultadoModo) -> list[str]:
         "",
         f"- unidades del snapshot SIN vector: {len(exencion.claves)}",
     ]
-    for clave in exencion.claves:
-        lineas.append(f"  - `{clave}`")
+    lineas += _bullets_acotados(exencion.claves, code=True)
     lineas += [
         f"- ítems del gold cuyas citas esperadas están TODAS sin vector: "
         f"{exencion.n_preguntas_exentas}",
     ]
-    for id_pregunta in exencion.preguntas:
-        lineas.append(f"  - {id_pregunta}")
+    lineas += _bullets_acotados(exencion.preguntas, code=False)
     lineas += [
         "",
-        "> Estas unidades superan el ceiling de 8192 tokens del modelo. Por "
+        "> Estas unidades superan el techo de tokens del modelo del batch (una "
+        "propiedad del embedder, no una constante del sistema: la ventana de "
+        "BGE-M3 y la de multilingual-e5-large difieren en un factor de 16). Por "
         "decisión de diseño (design.md D3) se ingieren ENTERAS, **nunca se "
         "truncan**, siguen siendo recuperables por FTS y no se embeben: son "
         "**FTS-only by design**. En un modo de una sola pierna vectorial no hay "
@@ -492,9 +524,10 @@ def _a_json(
             "exencion_over_ceiling": {
                 "aplica": corrida.exencion.aplica,
                 "motivo": (
-                    "unidades sobre el ceiling de 8192 tokens: ingeridas enteras, "
-                    "recuperables por FTS, nunca embebidas (FTS-only by design, "
-                    "design.md D3)"
+                    "unidades sobre el techo de tokens del modelo del batch "
+                    "(propiedad del embedder, no una constante del sistema): "
+                    "ingeridas enteras, recuperables por FTS, nunca embebidas "
+                    "(FTS-only by design, design.md D3)"
                 ),
                 "claves_sin_vector": list(corrida.exencion.claves),
                 "preguntas_exentas": list(corrida.exencion.preguntas),

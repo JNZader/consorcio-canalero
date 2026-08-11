@@ -362,6 +362,18 @@ RAG_ARTIFACTS ?= artifacts/rag
 #
 # Under the default the script exits 2 naming `requirements-rag.txt`; it does not
 # die on an ImportError traceback.
+#
+# THREE forms are accepted, because the recipe `cd`s into $(BACKEND_DIR) and all
+# three run correctly from there — only the existence check used to disagree
+# (ledger RJDA-107): it tested `$(BACKEND_DIR)/$(RAG_EVAL_PYTHON)`, so an
+# absolute override became `gee-backend//home/…/bin/python` and was refused as
+# missing while being a perfectly good interpreter. A venv-rag on another disk
+# is the ordinary case for a 6 GB CUDA stack, so that was the override most
+# likely to be typed.
+#
+#   venv-rag/bin/python            relative to gee-backend/ (the default's shape)
+#   /home/me/venv-rag/bin/python   absolute, e.g. a venv outside the checkout
+#   python3.11                     a bare name, resolved on PATH
 RAG_EVAL_PYTHON ?= venv/bin/python
 
 rag-ingest: ## Ingest the SHA-pinned corpus into rag_corpus/rag_documento/rag_unidad
@@ -387,8 +399,14 @@ rag-eval: ## Run the three-mode ablation and write docs/rag/retrieval-eval-*.md
 	@if [ -z "$$RAG_GOLD_PRIVADO_PATH" ]; then \
 		echo "$(YELLOW)rag-eval: RAG_GOLD_PRIVADO_PATH is not set — the 26 items whose text lives outside this public repo will be unresolved, and the report will refuse to emit a go/no-go. See gold_set.yaml's header.$(NC)"; \
 	fi
-	@if [ ! -x "$(BACKEND_DIR)/$(RAG_EVAL_PYTHON)" ]; then \
-		echo "$(RED)rag-eval: $(RAG_EVAL_PYTHON) does not exist under $(BACKEND_DIR).$(NC)"; \
+	@case "$(RAG_EVAL_PYTHON)" in \
+		/*) interprete="$(RAG_EVAL_PYTHON)" ;; \
+		*/*) interprete="$(BACKEND_DIR)/$(RAG_EVAL_PYTHON)" ;; \
+		*) interprete="$$(command -v "$(RAG_EVAL_PYTHON)" 2>/dev/null)" ;; \
+	esac; \
+	if [ -z "$$interprete" ] || [ ! -x "$$interprete" ]; then \
+		echo "$(RED)rag-eval: RAG_EVAL_PYTHON=$(RAG_EVAL_PYTHON) is not an executable interpreter (resolved to '$$interprete').$(NC)"; \
+		echo "$(YELLOW)  a path with a slash is relative to $(BACKEND_DIR) unless it starts with /; a bare name is looked up on PATH.$(NC)"; \
 		exit 2; \
 	fi
 	@cd $(BACKEND_DIR) && $(RAG_EVAL_PYTHON) scripts/rag_eval.py \

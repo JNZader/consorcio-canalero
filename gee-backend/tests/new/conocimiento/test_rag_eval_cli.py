@@ -13,10 +13,15 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 
 import pytest
 
-from app.domains.conocimiento.embedding import DETERMINISTIC_MODEL_ID
+from app.domains.conocimiento.embedding import (
+    DETERMINISTIC_MODEL_ID,
+    BGEM3Embedder,
+    E5Embedder,
+)
 from app.domains.conocimiento.eval.harness import cargar_gold_set as cargar_gold_set_real
 from app.domains.conocimiento.repository import registrar_procedencia
 from scripts import rag_eval
@@ -461,6 +466,38 @@ class TestDependenciaFaltante:
         # Nothing was written: a refusal must not leave a half-built docs/rag entry.
         assert not (tmp_path / "nunca").exists()
 
+    def test_the_real_embedders_raise_what_this_class_only_reproduces(self, monkeypatch):
+        """RJDA-104: close the coupling between the fake message and the real one.
+
+        Every other test here monkeypatches `rag_eval._embedder` and hands the
+        CLI a `RuntimeError` carrying `FALTA_TORCH`. That proves the CLI's half
+        and nothing about the raise site: they would all keep passing if
+        `BGEM3Embedder` stopped wrapping the `ImportError`, stopped naming the
+        file to install, or changed the class it raises — and the regression is
+        invisible, because the happy path does not touch this branch and the
+        environment that exercises it is precisely the one nobody runs tests in.
+
+        So this imports the REAL module and makes the dependency genuinely
+        unimportable: `None` in `sys.modules` is what CPython turns into an
+        `ImportError` at the `import` statement. It runs identically on a box
+        that has torch and on one that does not, and it never downloads 2.2 GB.
+        """
+        monkeypatch.setitem(sys.modules, "torch", None)
+        with pytest.raises(RuntimeError) as bge:
+            BGEM3Embedder()
+        # Verbatim: this is what makes the class attribute above a check rather
+        # than a copy that drifted.
+        assert str(bge.value) == self.FALTA_TORCH
+        assert "requirements-rag.txt" in str(bge.value)
+        assert isinstance(bge.value.__cause__, ImportError)
+
+        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+        with pytest.raises(RuntimeError) as e5:
+            E5Embedder(rol="query")
+        assert "requirements-rag.txt" in str(e5.value)
+        assert "venv-rag" in str(e5.value)
+        assert isinstance(e5.value.__cause__, ImportError)
+
     def test_the_fts_only_ablation_never_needs_an_embedder(self, cli, monkeypatch, tmp_path):
         """The escape hatch the error message offers has to actually work."""
         marcar(cli, sintetico=False)
@@ -559,5 +596,60 @@ class TestLatenciaEnLaCLI:
         )
         assert code == 2
         assert "rag_query_latency.py" in capsys.readouterr().err
+        assert not (tmp_path / "nunca").exists()
+        assert espia_embedder.llamadas == []
+
+    @pytest.mark.parametrize(
+        ("payload", "esperado"),
+        [
+            pytest.param([1, 2, 3], "se esperaba un objeto", id="una-lista"),
+            pytest.param("ok", "se esperaba un objeto", id="un-string"),
+            pytest.param({"etiqueta": "LOCAL"}, "falta `p50_ms`", id="sin-el-criterio"),
+            pytest.param(
+                {"p50_ms": "lento", "p95_ms": 140.0},
+                "`p50_ms` es 'lento', se esperaba un número",
+                id="un-string-donde-va-un-float",
+            ),
+            pytest.param(
+                {"p50_ms": True, "p95_ms": 140.0},
+                "`p50_ms` es True, se esperaba un número",
+                id="un-bool-que-formatea-como-1.0",
+            ),
+        ],
+    )
+    def test_a_malformed_latency_file_is_refused_before_the_ablation_runs(
+        self, cli, tmp_path, capsys, espia_embedder, payload, esperado
+    ):
+        """RJDB-102 ≡ RJDA-105: parsing was never validation.
+
+        Reading the file early bought nothing while its SHAPE was still checked
+        at render time. Any JSON at all parsed — a list, a bare string, a dict
+        missing the two numbers that ARE the criterion — and the run died in the
+        report's last block, after the whole ablation had been paid for:
+        `f"{'lento':.1f}"` raises. The `True` case is the worse one, because it
+        does not raise at all: it renders `1.0` and publishes a latency figure
+        nobody measured.
+
+        Each case must exit 2, name the offending file, and cost no model load.
+        """
+        medicion = tmp_path / "latencia.json"
+        medicion.write_text(json.dumps(payload), encoding="utf-8")
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--latencia",
+                str(medicion),
+            ]
+        )
+        assert code == 2
+        error = capsys.readouterr().err
+        assert str(medicion) in error, "the refusal has to name the file"
+        assert esperado in error
+        assert "rag_query_latency.py" in error
         assert not (tmp_path / "nunca").exists()
         assert espia_embedder.llamadas == []

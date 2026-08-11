@@ -243,9 +243,16 @@ def claves_sin_vector(db: Session, corpus_sha: str) -> frozenset[str]:
     leg ranked badly" apart from "the vector leg had nothing to rank". Those are
     different findings and only one of them is about retrieval quality.
 
-    Callers must have established vector capability first — this reads the
-    dev-only `embedding` column, which does not exist on the CI image.
+    **The capability check runs FIRST, and it is not a formality** (ledger
+    RJDA-103). This reads the dev-only `embedding` column, which does not exist
+    on the CI image, and the harness calls it BEFORE the first `recuperar` — so
+    on a vector-less database the old ordering surfaced a raw psycopg
+    `ProgrammingError: column "embedding" does not exist` instead of the
+    `VectorSupportUnavailable` written to explain exactly this, and it did so
+    from inside the caller's session, aborting the transaction on the way out.
+    Telling callers in a docstring to check first was not a guard; this is.
     """
+    require_vector_support(db)
     return claves_sin_embedding(db, corpus_sha)
 
 

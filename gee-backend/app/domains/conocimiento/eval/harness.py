@@ -400,9 +400,15 @@ class CoberturaLegs:
 class ExencionOverCeiling:
     """Which units this mode cannot reach at all, and whom that silences.
 
-    The three units over the 8192-token ceiling are ingested whole, stay
+    The units over the embedder's token ceiling are ingested whole, stay
     FTS-retrievable and are never embedded — a ratified design decision, not a
-    defect (design.md D3). But gold D-8's ONLY expected citation is one of them
+    defect (design.md D3). WHICH units those are is a property of the model that
+    produced the batch, not a constant: BGE-M3's window is 8192 tokens and leaves
+    three, multilingual-e5-large's is 512 and leaves many more. That is why the
+    set is read from the database (`embedding IS NULL`) instead of recomputed,
+    and why the report names the ceiling rather than printing a number nothing
+    durable records (ledger RJDB-101). But gold D-8's ONLY expected citation is
+    one of them
     (`8560#5`), so in a single-leg `vector` run its citation-precision is 0 by
     construction, and citation-precision feeds a hard `== 1.00` bar. Left in the
     denominator that item alone made the vector arm's bar unreachable while the
