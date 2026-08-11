@@ -60,12 +60,25 @@ import {
   compactAntecedent,
   deriveFreshness,
   describeMetricState,
+  scopeChoiceLabels,
+  shouldUseSegmentedScope,
 } from './rainfallFormat';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 1990 }, (_, i) =>
   String(CURRENT_YEAR - i)
 );
+
+/**
+ * What a reader is told while the analysis is being built (OWN-002).
+ *
+ * ONE sentence, stated identically by the alert and by the `aria-live` region.
+ * It still does the job the queued state exists for — it names what is
+ * happening and promises the update the poll actually delivers, so this is a
+ * LABELLED pending state and never a silent spinner. What it no longer does is
+ * paste the backend's job identifiers into user copy.
+ */
+const QUEUED_SENTENCE = 'Análisis en preparación — se actualiza automáticamente en unos minutos.';
 
 /** The antecedent windows, in the order the collapsed header states them. A
  *  FIXED order: a header whose items move with the data is a header nobody can
@@ -157,6 +170,10 @@ export function RainfallDetailPanel({
         ? [scopes.data.scope]
         : [];
   const regionalEstimate = scopes.data?.regional_estimate === true;
+  // Named per SET, not per choice: a kind that appears once needs no id
+  // qualifier, and adding one would be noise on the ordinary control.
+  const scopeLabels = scopeChoiceLabels(choices);
+  const useSegmentedScope = shouldUseSegmentedScope(scopeLabels);
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [year, setYear] = useState(CURRENT_YEAR);
@@ -178,7 +195,10 @@ export function RainfallDetailPanel({
       if (analysis.gaveUp) {
         setAnnouncement('Análisis no disponible aún. Puede reintentar manualmente.');
       } else {
-        setAnnouncement(`Análisis en preparación: ${analysis.data.queued.labels.join(', ')}`);
+        // The SAME sentence the alert prints. The served labels are internal
+        // job identifiers (`role:daily`, `analysis_missing`) and a screen
+        // reader must not be the one reader who gets handed them (OWN-002).
+        setAnnouncement(QUEUED_SENTENCE);
       }
     } else if (snapshot) {
       setAnnouncement(
@@ -244,20 +264,41 @@ export function RainfallDetailPanel({
           chart, inside the gate, where it cannot become a live control over a
           series that does not exist yet. */}
       <Stack gap="xs" data-testid="rainfall-controls">
-        {choices.length > 1 && (
-          <SegmentedControl
-            size="xs"
-            fullWidth
-            value={selected ? scopeKey(selected) : undefined}
-            onChange={setSelectedKey}
-            data={choices.map((choice) => ({
-              value: scopeKey(choice),
-              label: RAINFALL_SCOPE_LABELS[choice.kind],
-            }))}
-            aria-label="Ámbito regional"
-            data-testid="rainfall-scope-switch"
-          />
-        )}
+        {/* The scope options are named so they can be TOLD APART (OWN-001):
+            labelling by kind alone offered a real parcel `Zona | Zona | Cuenca
+            | Cuenca | Cuenca`, three of them identical. And five segments do
+            not fit 348 px, so above the budget the control becomes the same
+            select the year uses — a segmented control that does not fit is the
+            badge-truncation defect one level up. */}
+        {choices.length > 1 &&
+          (useSegmentedScope ? (
+            <SegmentedControl
+              size="xs"
+              fullWidth
+              value={selected ? scopeKey(selected) : undefined}
+              onChange={setSelectedKey}
+              data={choices.map((choice, index) => ({
+                value: scopeKey(choice),
+                label: scopeLabels[index] ?? RAINFALL_SCOPE_LABELS[choice.kind],
+              }))}
+              aria-label="Ámbito regional"
+              data-testid="rainfall-scope-switch"
+            />
+          ) : (
+            <NativeSelect
+              size="xs"
+              label="Ámbito regional"
+              aria-label="Ámbito regional"
+              value={selected ? scopeKey(selected) : undefined}
+              onChange={(event) => setSelectedKey(event.currentTarget.value)}
+              data={choices.map((choice, index) => ({
+                value: scopeKey(choice),
+                label: scopeLabels[index] ?? RAINFALL_SCOPE_LABELS[choice.kind],
+              }))}
+              data-testid="rainfall-scope-switch"
+              style={{ flex: '1 1 160px', minWidth: 0 }}
+            />
+          ))}
 
         {selected && (
           <Group gap="xs" wrap="wrap">
@@ -301,14 +342,22 @@ export function RainfallDetailPanel({
           spinner. Once the budget is exhausted the terminal state below takes
           over — no auto-update promise after polling has stopped. */}
       {analysis.data?.type === 'queued' && !analysis.gaveUp && !analysis.isError && (
-        <Alert color="blue" variant="light" data-testid="rainfall-queued">
-          <Text size="xs">
-            Análisis en preparación
-            {analysis.data.queued.labels.length > 0
-              ? `: ${analysis.data.queued.labels.join(', ')}`
-              : ''}
-            . Se actualiza automáticamente.
-          </Text>
+        <Alert
+          color="blue"
+          variant="light"
+          data-testid="rainfall-queued"
+          // The served labels stay INSPECTABLE without being copy: they are
+          // backend job identifiers, and pasting them into a sentence is how a
+          // reader got "Análisis en preparación: role:daily, analysis_missing"
+          // (OWN-002). A machine can still read them here; a person is not
+          // asked to.
+          data-queued-labels={
+            analysis.data.queued.labels.length > 0
+              ? analysis.data.queued.labels.join(', ')
+              : undefined
+          }
+        >
+          <Text size="xs">{QUEUED_SENTENCE}</Text>
         </Alert>
       )}
 

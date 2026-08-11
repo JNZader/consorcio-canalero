@@ -15,7 +15,7 @@
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../../lib/api/rainfall';
-import { describeMetricState, formatMetricValue, metricLabel } from './rainfallFormat';
+import { formatMetricValue, metricLabel, metricStateLabel } from './rainfallFormat';
 
 const STATE_COLORS: Record<RainfallMetric['state'], string> = {
   available: 'green',
@@ -39,35 +39,64 @@ export interface RainfallMetricRowProps {
   readonly baseline: string;
 }
 
-/** ONE metric, badged: state, provisional/fallback flags, value, provenance. */
+/**
+ * ONE metric: name, state, value, and the facts underneath.
+ *
+ * EXACTLY ONE BADGE, carrying the state WORD (OWN-003). The row used to carry
+ * three — `Provisional`, `Fallback` and a state badge holding
+ * `describeMetricState`, i.e. the state AND its reason — all competing for one
+ * `nowrap` row inside a 380 px panel, which is how the owner's screenshot came
+ * to read `PROVISIO… FALLB… DISPONI…`. A truncated badge is worse than no
+ * badge: unreadable, and still looking like data.
+ *
+ * Nothing was dropped to get there. The reason moved to its own line, and the
+ * provisional/fallback flags became plain markers on the metadata line — they
+ * are not states, they are qualifiers of one, and they never needed to shout
+ * from the same row as the value. The row also WRAPS now: given too little
+ * width it takes a second line instead of shaving letters off a word.
+ */
 export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowProps) {
   const provenance = metric.provenance;
   return (
     <Stack gap={2} data-testid={`rainfall-metric-${name}`}>
-      <Group gap="xs" wrap="nowrap" justify="space-between">
+      <Group gap="xs" wrap="wrap" justify="space-between">
         <Text size="xs">{metricLabel(name, baseline)}</Text>
-        <Group gap={4} wrap="nowrap">
-          {metric.temporal_state === 'provisional' && (
-            <Badge size="xs" variant="outline" color="violet">
-              Provisional
-            </Badge>
-          )}
-          {metric.fallback_used && (
-            <Badge size="xs" variant="outline" color="cyan">
-              Fallback
-            </Badge>
-          )}
-          <Badge size="xs" variant="light" color={STATE_COLORS[metric.state]}>
-            {describeMetricState(metric)}
+        <Group gap={6} wrap="nowrap">
+          <Badge
+            size="xs"
+            variant="light"
+            color={STATE_COLORS[metric.state]}
+            data-metric-state={metric.state}
+          >
+            {metricStateLabel(metric)}
           </Badge>
           <Text size="xs" fw={600}>
             {formatMetricValue(metric)}
           </Text>
         </Group>
       </Group>
-      <Text size="xs" c="dimmed">
-        {`Fuente: ${provenance.source_id} · Resolución nominal: ${provenance.nominal_resolution} · Cobertura: ${Math.round(metric.coverage * 100)}% · Revisión: ${metric.revision}`}
-      </Text>
+      {/* The reason the badge no longer carries. Its own line, in full: a
+          suppression a reader cannot read is a suppression nobody can act on. */}
+      {metric.reason !== null && metric.reason.length > 0 && (
+        <Text size="xs" c="dimmed">
+          {`Motivo: ${metric.reason}`}
+        </Text>
+      )}
+      <Group gap={6} wrap="wrap">
+        {metric.temporal_state === 'provisional' && (
+          <Text size="xs" c="violet" fw={500}>
+            Provisional
+          </Text>
+        )}
+        {metric.fallback_used && (
+          <Text size="xs" c="cyan" fw={500}>
+            Fallback
+          </Text>
+        )}
+        <Text size="xs" c="dimmed">
+          {`Fuente: ${provenance.source_id} · Resolución nominal: ${provenance.nominal_resolution} · Cobertura: ${Math.round(metric.coverage * 100)}% · Revisión: ${metric.revision}`}
+        </Text>
+      </Group>
     </Stack>
   );
 }

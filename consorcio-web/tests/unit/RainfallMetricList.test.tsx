@@ -16,7 +16,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -182,6 +182,73 @@ describe('RainfallMetricList — the served baseline on the badged surfaces (4.7
     const row = screen.getByTestId('rainfall-metric-percentile');
     expect(row.textContent).toContain('baseline_years_below_minimum');
     expect(row.textContent).not.toMatch(/\b0 percentil\b/);
+  });
+});
+
+describe('RainfallMetricList — a state badge is a word, not a fragment (OWN-003)', () => {
+  // The owner's screenshot of the deployed 380 px panel: `PROVISIO… FALLB…
+  // DISPONI…`. Three badges competed for one row's width and every one of them
+  // ellipsized. A truncated badge is worse than no badge: it is unreadable AND
+  // it still looks like data.
+  //
+  // jsdom has NO LAYOUT, so this cannot assert pixels — and pretending
+  // otherwise would be the fake measurement this repo keeps refusing. What it
+  // asserts is the CONTENT BOUND that makes truncation unreachable: ONE badge
+  // per row, carrying a short vocabulary word and nothing else.
+  const loudMetric = () =>
+    metric({
+      metric: 'd7',
+      value: null,
+      state: 'suppressed',
+      reason: 'coverage_below_threshold',
+      temporal_state: 'provisional',
+      fallback_used: true,
+    });
+
+  it('renders exactly one state badge, whole, with every other fact still reachable', () => {
+    renderList(snapshot({ antecedents: { d7: loudMetric() } }));
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    const badges = row.querySelectorAll('[data-metric-state]');
+    expect(badges).toHaveLength(1);
+
+    const badgeText = badges[0]?.textContent ?? '';
+    expect(badgeText).toBe('Suprimida');
+    expect(badgeText).not.toMatch(/…|\.\.\./);
+    expect(['Disponible', 'Parcial', 'Suprimida', 'No disponible']).toContain(badgeText);
+    // The badge no longer carries the reason — which is the whole reason it
+    // used to overflow — but the reason is not lost, it has its own line.
+    expect(badgeText).not.toContain('coverage_below_threshold');
+    expect(row.textContent).toContain('coverage_below_threshold');
+  });
+
+  it('keeps the provisional and fallback facts as readable markers', () => {
+    renderList(snapshot({ antecedents: { d7: loudMetric() } }));
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    // Still stated, still whole words — they are simply no longer competing
+    // with the state badge and the value for one nowrap row.
+    expect(within(row).getByText('Provisional')).toBeInTheDocument();
+    expect(within(row).getByText('Fallback')).toBeInTheDocument();
+    expect(row.textContent).not.toMatch(/…|\.\.\./);
+  });
+
+  it('states the state of every metric, one badge each', () => {
+    renderList(
+      snapshot({
+        antecedents: {
+          d7: metric({ metric: 'd7', state: 'partial', coverage: 0.8 }),
+          d30: metric({ metric: 'd30', value: null, state: 'unavailable', reason: 'sin fuente' }),
+        },
+      })
+    );
+
+    expect(
+      screen.getByTestId('rainfall-metric-d7').querySelectorAll('[data-metric-state]')
+    ).toHaveLength(1);
+    expect(screen.getByTestId('rainfall-metric-d7').textContent).toContain('Parcial');
+    expect(screen.getByTestId('rainfall-metric-d30').textContent).toContain('No disponible');
+    expect(screen.getByTestId('rainfall-metric-d30').textContent).toContain('sin fuente');
   });
 });
 

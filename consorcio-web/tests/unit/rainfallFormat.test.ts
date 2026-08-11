@@ -9,13 +9,21 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../src/lib/api/rainfall';
+import type {
+  RainfallAnalysisSnapshot,
+  RainfallMetric,
+  RainfallScopeChoice,
+} from '../../src/lib/api/rainfall';
 import {
   compactAntecedent,
   deriveFreshness,
   describeMetricState,
   formatMetricValue,
   metricLabel,
+  metricStateLabel,
+  scopeChoiceLabel,
+  scopeChoiceLabels,
+  shouldUseSegmentedScope,
   wetnessFromPercentile,
   wetnessLabel,
 } from '../../src/components/map2d/rainfall/rainfallFormat';
@@ -329,6 +337,116 @@ describe('deriveFreshness — the three-branch evidence gate', () => {
     expect(freshness.kind).toBe('evidenced');
     expect(freshness.evidenceDay).toBe('no-es-fech');
     expect(freshness.sentence).toContain('no-es-fech');
+  });
+});
+
+function choice(kind: 'zone' | 'basin', id: string): RainfallScopeChoice {
+  return { kind, id, version: '2024-01' };
+}
+
+describe('scopeChoiceLabel — two scopes of one kind must be tellable apart', () => {
+  // OWN-001, owner screenshots: `Zona | Cuenca | Cuenca`, and a Bell Ville
+  // parcel resolving to FIVE scopes as `Zona | Zona | Cuenca | Cuenca | Cuenca`.
+  // The control labelled every option with its KIND, so the reader was asked to
+  // choose between options that read identically — a control that cannot be
+  // operated correctly, only guessed at.
+  it('qualifies with the prettified id, dropping an id token that repeats the kind', () => {
+    expect(scopeChoiceLabel(choice('basin', 'cuenca_sur'), true)).toBe('Cuenca · Sur');
+    expect(scopeChoiceLabel(choice('zone', 'zona-ne'), true)).toBe('Zona · Ne');
+    expect(scopeChoiceLabel(choice('basin', 'basin_rio_tercero_medio'), true)).toBe(
+      'Cuenca · Rio Tercero Medio'
+    );
+  });
+
+  it('degrades an opaque id to its own prettified text rather than dropping it', () => {
+    // The repo's standing rule for an untranslated fact: show it. A blank
+    // qualifier would put the reader back in front of two identical options.
+    expect(scopeChoiceLabel(choice('basin', 'b-carcara-01'), true)).toBe('Cuenca · B Carcara 01');
+  });
+
+  it('states the kind alone when there is nothing left to qualify with', () => {
+    expect(scopeChoiceLabel(choice('basin', 'cuenca'), true)).toBe('Cuenca');
+    expect(scopeChoiceLabel(choice('zone', ''), true)).toBe('Zona');
+  });
+
+  it('stays plain when the kind is unique in the served set', () => {
+    expect(scopeChoiceLabel(choice('basin', 'cuenca_sur'), false)).toBe('Cuenca');
+  });
+});
+
+describe('scopeChoiceLabels — qualifies exactly the kinds that repeat', () => {
+  it('leaves the ordinary zone+basin pair alone', () => {
+    expect(scopeChoiceLabels([choice('zone', 'zona-ne'), choice('basin', 'cuenca_sur')])).toEqual([
+      'Zona',
+      'Cuenca',
+    ]);
+  });
+
+  it('makes all five distinct for the five-scope parcel the owner hit', () => {
+    const labels = scopeChoiceLabels([
+      choice('zone', 'zona_bell_ville'),
+      choice('zone', 'zona_norte'),
+      choice('basin', 'cuenca_rio_tercero'),
+      choice('basin', 'cuenca_algodon'),
+      choice('basin', 'cuenca_litin'),
+    ]);
+
+    expect(labels).toHaveLength(5);
+    expect(new Set(labels).size).toBe(5);
+    expect(labels[0]).toBe('Zona · Bell Ville');
+    expect(labels[2]).toBe('Cuenca · Rio Tercero');
+  });
+});
+
+describe('shouldUseSegmentedScope — the control has to FIT', () => {
+  it('keeps the segmented control for a short pair', () => {
+    expect(shouldUseSegmentedScope(['Zona', 'Cuenca'])).toBe(true);
+  });
+
+  it('refuses more than three options, however short', () => {
+    // Five segments in 348 px is the container-level version of the truncation
+    // defect: every label becomes a fragment.
+    expect(
+      shouldUseSegmentedScope(['Zona', 'Zona · N', 'Cuenca', 'Cuenca · S', 'Cuenca · E'])
+    ).toBe(false);
+  });
+
+  it('refuses three options whose labels do not fit', () => {
+    expect(
+      shouldUseSegmentedScope([
+        'Zona · Bell Ville Norte',
+        'Cuenca · Rio Tercero Medio',
+        'Cuenca · Arroyo Algodon',
+      ])
+    ).toBe(false);
+  });
+
+  it('is a no-op for a single choice (the control does not render at all)', () => {
+    expect(shouldUseSegmentedScope(['Zona'])).toBe(true);
+  });
+});
+
+describe('metricStateLabel', () => {
+  it('is the state WORD alone, so a badge can carry it whole', () => {
+    // OWN-003: the badge used to carry `describeMetricState`, i.e. the state
+    // AND its reason — "Suprimida: coverage_below_threshold" in a 348 px panel,
+    // which is how the owner got `DISPONI…`. The reason keeps its own line.
+    expect(metricStateLabel(metric())).toBe('Disponible');
+    expect(metricStateLabel(metric({ state: 'partial' }))).toBe('Parcial');
+    expect(
+      metricStateLabel(metric({ state: 'suppressed', value: null, reason: 'coverage_below' }))
+    ).toBe('Suprimida');
+    expect(
+      metricStateLabel(metric({ state: 'unavailable', value: null, reason: 'sin fuente' }))
+    ).toBe('No disponible');
+  });
+
+  it('never carries a reason, an ellipsis or a separator', () => {
+    for (const state of ['available', 'partial', 'suppressed', 'unavailable'] as const) {
+      const label = metricStateLabel(metric({ state, reason: 'un_motivo_larguisimo_del_backend' }));
+      expect(label).not.toContain('un_motivo_larguisimo_del_backend');
+      expect(label).not.toMatch(/[…:]|\.\.\./);
+    }
   });
 });
 

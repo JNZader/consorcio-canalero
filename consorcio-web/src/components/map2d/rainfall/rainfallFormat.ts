@@ -55,6 +55,92 @@ export const RAINFALL_SCOPE_LABELS: Record<RainfallScopeChoice['kind'], string> 
   basin: 'Cuenca',
 };
 
+/** Tokens dropped from the head of an id because they only repeat the kind. */
+const SCOPE_ID_KIND_TOKENS: Record<RainfallScopeChoice['kind'], readonly string[]> = {
+  zone: ['zona', 'zone'],
+  basin: ['cuenca', 'basin'],
+};
+
+/**
+ * ONE scope option, named so a reader can tell it from the next one.
+ *
+ * The defect this exists for (OWN-001, owner screenshots): the control labelled
+ * every option with its KIND, so a parcel resolving to two zones and three
+ * basins offered `Zona | Zona | Cuenca | Cuenca | Cuenca` — five options, three
+ * of them indistinguishable, i.e. a control that cannot be operated correctly,
+ * only guessed at.
+ *
+ * `RainfallScopeChoice` is `{kind, id, version}` and the backend serves no
+ * display name, so the only qualifier available is the `id`. It is prettified
+ * rather than shown raw — tokens split on `_`/`-`/space, a leading token that
+ * merely repeats the kind dropped (`cuenca_sur` → `Sur`), the rest capitalized.
+ * An OPAQUE id keeps its own prettified text (`b-carcara-01` → `B Carcara 01`):
+ * ugly, and still the repo's standing rule — show the untranslated fact rather
+ * than disappear, because a blank qualifier puts the reader back in front of
+ * two identical options.
+ *
+ * `qualify` is passed in rather than inferred because it is a property of the
+ * SET, not of the choice: a lone basin needs no qualifier, and adding one would
+ * be noise. See {@link scopeChoiceLabels}.
+ */
+export function scopeChoiceLabel(choice: RainfallScopeChoice, qualify: boolean): string {
+  const kindLabel = RAINFALL_SCOPE_LABELS[choice.kind];
+  if (!qualify) return kindLabel;
+
+  const tokens = choice.id
+    .split(/[\s_-]+/)
+    .filter((token) => token.length > 0)
+    .map((token) => `${token.charAt(0).toUpperCase()}${token.slice(1)}`);
+  const kindTokens = SCOPE_ID_KIND_TOKENS[choice.kind];
+  const qualifier = tokens
+    .filter((token, index) => index > 0 || !kindTokens.includes(token.toLowerCase()))
+    .join(' ');
+
+  return qualifier.length > 0 ? `${kindLabel} · ${qualifier}` : kindLabel;
+}
+
+/**
+ * Label a whole set of scope choices, qualifying exactly the kinds that repeat.
+ *
+ * Qualifying unconditionally would turn the ordinary one-zone-one-basin control
+ * into `Zona · Ne | Cuenca · Zo 12` — two ids nobody asked for. Qualifying
+ * nothing is the defect above. So the rule is the set's own: a choice is
+ * qualified iff another choice shares its kind.
+ */
+export function scopeChoiceLabels(choices: readonly RainfallScopeChoice[]): string[] {
+  const perKind = new Map<RainfallScopeChoice['kind'], number>();
+  for (const choice of choices) {
+    perKind.set(choice.kind, (perKind.get(choice.kind) ?? 0) + 1);
+  }
+  return choices.map((choice) => scopeChoiceLabel(choice, (perKind.get(choice.kind) ?? 0) > 1));
+}
+
+/**
+ * Whether the scope control can be a `SegmentedControl` — or has to be a select.
+ *
+ * A segmented control divides ONE row between its options, so five of them in
+ * the panel's 348 px reproduces the badge-truncation defect at the container
+ * level: every label becomes a fragment. Above the budget the control becomes a
+ * `NativeSelect`, the same one the year uses beside it, whose options are drawn
+ * by the platform in its own popup and therefore cannot fragment.
+ *
+ * THE BUDGET IS AN ESTIMATE, AND SAYING SO IS THE POINT. jsdom has no layout
+ * and the real width depends on the loaded font, so this cannot be a
+ * measurement; it is a character budget derived from the panel's own geometry —
+ * 348 px of card (`map.module.css`: `min(380px, 100% - 72px)`) minus ~32 px of
+ * `Paper p="md"` padding leaves ~316 px, each segment spends ~20 px on its own
+ * padding, and Inter at the `size="xs"` 12 px runs ~6.2 px per character. It
+ * errs toward the select on purpose: a select that was not strictly necessary
+ * costs one extra tap, while a segmented control that did not fit costs the
+ * reader the ability to read any option at all.
+ */
+export function shouldUseSegmentedScope(labels: readonly string[]): boolean {
+  if (labels.length > 3) return false;
+  const glyphBudget = Math.floor((316 - 20 * labels.length) / 6.2);
+  const characters = labels.reduce((total, label) => total + label.length, 0);
+  return characters <= glyphBudget;
+}
+
 const RAINFALL_STATE_LABELS: Record<RainfallMetricState, string> = {
   available: 'Disponible',
   partial: 'Parcial',
@@ -377,7 +463,21 @@ export function deriveFreshness(snapshot: RainfallAnalysisSnapshot): RainfallFre
   };
 }
 
-/** State sentence with its reason where the contract carries one. */
+/**
+ * The state WORD alone — what a badge may carry.
+ *
+ * OWN-003: the badge used to render {@link describeMetricState}, i.e. the state
+ * AND its reason, so a suppressed metric asked a 348 px panel to fit
+ * "Suprimida: coverage_below_threshold" and the reader got `DISPONI…` instead.
+ * A truncated badge is worse than no badge: unreadable AND still looking like
+ * data. The reason is not lost — it gets its own line on the row.
+ */
+export function metricStateLabel(metric: RainfallMetric): string {
+  return RAINFALL_STATE_LABELS[metric.state];
+}
+
+/** State sentence with its reason where the contract carries one. Used where
+ *  there is room for a sentence — the card, an `aria-label` — never in a badge. */
 export function describeMetricState(metric: RainfallMetric): string {
   const label = RAINFALL_STATE_LABELS[metric.state];
   if ((metric.state === 'suppressed' || metric.state === 'unavailable') && metric.reason) {

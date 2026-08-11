@@ -345,7 +345,10 @@ describe('RainfallDetailPanel — metric states, badges and reasons', () => {
     expect(screen.getByTestId('rainfall-antecedents').textContent).not.toMatch(/30d 0\b/);
   });
 
-  it('shows a provisional badge only for provisional metrics', async () => {
+  // A MARKER, not a badge, since OWN-003: three badges per row is what
+  // truncated all three into fragments in the 380 px panel. Still the same
+  // fact, still a whole word, just no longer competing for the value's row.
+  it('shows the provisional marker only for provisional metrics', async () => {
     renderPanel();
     const technical = await expandFold('rainfall-technical');
 
@@ -389,7 +392,7 @@ describe('RainfallDetailPanel — textual chart, live region, queued and export'
     expect(text).toHaveTextContent('Normal 1991-2020: 1013.8 mm');
   });
 
-  it('labels the queued state with its reason and announces it live (no silent spinner)', async () => {
+  it('labels the queued state and announces it live (no silent spinner)', async () => {
     vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
       type: 'queued',
       queued: {
@@ -404,7 +407,12 @@ describe('RainfallDetailPanel — textual chart, live region, queued and export'
 
     const queued = await screen.findByTestId('rainfall-queued');
     expect(queued.textContent).toMatch(/preparaci[oó]n/i);
-    expect(queued.textContent).toContain('analysis_missing');
+    expect(queued.textContent).toMatch(/se actualiza/i);
+    // The served reason is still DISCLOSED, as an inspectable attribute rather
+    // than as copy: `analysis_missing` is a backend job identifier, and the
+    // owner's screenshot of it rendered mid-sentence is why (OWN-002).
+    expect(queued).toHaveAttribute('data-queued-labels', 'analysis_missing');
+    expect(queued.textContent).not.toContain('analysis_missing');
 
     const live = screen.getByTestId('rainfall-live');
     expect(live).toHaveAttribute('aria-live', 'polite');
@@ -566,6 +574,109 @@ describe('RainfallDetailPanel — accumulation chart and xlsx export (4.9)', () 
 
     const error = await screen.findByTestId('rainfall-export-error');
     expect(error.textContent).toContain('no está autorizada');
+  });
+});
+
+/**
+ * Defects the OWNER found on the deployed surface (2026-08-11, screenshots).
+ * Both live on controls this slice is already rebuilding, so they are fixed
+ * here rather than filed: a slice that reorders this surface and leaves an
+ * unusable control on it has not fixed the reader's problem.
+ */
+describe('RainfallDetailPanel — owner-reported defects on the live UI', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setAuth('operador');
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(seriesAnswer());
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: snapshot() });
+  });
+  afterEach(() => setAuth(null));
+
+  it('OWN-001 names every scope option distinctly when a kind repeats', async () => {
+    // The real case: a Bell Ville parcel (nomenclatura 3603403896547762)
+    // resolves to FIVE scopes and the control offered
+    // `Zona | Zona | Cuenca | Cuenca | Cuenca` — three of them identical, so
+    // the reader could only guess which basin they were asking for.
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [
+        { kind: 'zone', id: 'zona_bell_ville', version: '1' },
+        { kind: 'zone', id: 'zona_norte', version: '1' },
+        { kind: 'basin', id: 'cuenca_rio_tercero', version: '1' },
+        { kind: 'basin', id: 'cuenca_algodon', version: '1' },
+        { kind: 'basin', id: 'cuenca_litin', version: '1' },
+      ],
+      regional_estimate: true,
+    });
+    renderPanel();
+
+    const control = await screen.findByTestId('rainfall-scope-switch');
+    const labels = within(control)
+      .getAllByRole('option')
+      .map((option) => option.textContent ?? '');
+
+    expect(labels).toHaveLength(5);
+    expect(new Set(labels).size).toBe(5);
+    expect(labels).toContain('Zona · Bell Ville');
+    expect(labels).toContain('Cuenca · Rio Tercero');
+    // Five segments cannot fit 348 px, so the control is the SELECT variant —
+    // forcing them into one row would be the truncation defect one level up.
+    expect(within(control).queryAllByRole('radio')).toHaveLength(0);
+    expect(control).toHaveAttribute('aria-label', 'Ámbito regional');
+  });
+
+  it('OWN-001 keeps the segmented control for the ordinary zone+basin pair', async () => {
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE, BASIN],
+      regional_estimate: true,
+    });
+    renderPanel();
+
+    const control = await screen.findByTestId('rainfall-scope-switch');
+    expect(within(control).getAllByRole('radio')).toHaveLength(2);
+    // Two kinds, each unique: no id noise on a control that never needed it.
+    expect(within(control).getByText('Zona')).toBeInTheDocument();
+    expect(within(control).getByText('Cuenca')).toBeInTheDocument();
+  });
+
+  it('OWN-002 never prints the backend job labels as user copy', async () => {
+    // The owner's screenshot: "Análisis en preparación: role:daily,
+    // analysis_missing. Se actualiza automáticamente." Those are internal job
+    // labels. They stay INSPECTABLE — a data attribute — and stop being copy.
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE],
+      regional_estimate: true,
+    });
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'queued',
+      queued: {
+        status: 'queued',
+        outbox_id: 'ob-1',
+        scope: ZONE,
+        year: 2025,
+        labels: ['role:daily', 'analysis_missing'],
+      },
+    });
+    renderPanel();
+
+    const queued = await screen.findByTestId('rainfall-queued');
+    // Still a LABELLED pending state, never a bare spinner: it says what is
+    // happening and that it resolves itself.
+    expect(queued.textContent).toMatch(/preparaci[oó]n/i);
+    expect(queued.textContent).toMatch(/se actualiza/i);
+    // …in words, not in job identifiers.
+    expect(queued.textContent).not.toContain('role:daily');
+    expect(queued.textContent).not.toContain('analysis_missing');
+    expect(queued).toHaveAttribute('data-queued-labels', 'role:daily, analysis_missing');
+
+    // The announcement is the same sentence: a screen reader must not be the
+    // only reader who gets handed raw identifiers.
+    const live = screen.getByTestId('rainfall-live');
+    await waitFor(() => expect(live.textContent).toMatch(/preparaci[oó]n/i));
+    expect(live.textContent).not.toContain('role:daily');
+    expect(live.textContent).not.toContain('analysis_missing');
   });
 });
 
