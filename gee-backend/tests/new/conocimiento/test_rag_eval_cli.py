@@ -481,3 +481,83 @@ class TestDependenciaFaltante:
         )
         assert code == 0
         assert (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").is_file()
+
+
+class TestLatenciaEnLaCLI:
+    """RJDA-006 at the entry point: the file is read at the edge, early."""
+
+    def test_the_measurement_reaches_the_report(self, cli, tmp_path):
+        marcar(cli, sintetico=False)
+        medicion = tmp_path / "latencia.json"
+        medicion.write_text(
+            json.dumps(
+                {
+                    "etiqueta": "ESTIMATE",
+                    "modelo": "BAAI/bge-m3",
+                    "sintetico": False,
+                    "device": "cpu",
+                    "cpu_count": 2,
+                    "torch_threads": 2,
+                    "preguntas": 3,
+                    "calentamientos": 3,
+                    "repeticiones": 3,
+                    "n": 9,
+                    "p50_ms": 90.0,
+                    "p95_ms": 140.0,
+                    "min_ms": 80.0,
+                    "max_ms": 150.0,
+                    "media_ms": 95.0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--destino",
+                str(tmp_path / "salida"),
+                "--generado-en",
+                MOMENTO,
+                "--latencia",
+                str(medicion),
+            ]
+        )
+        assert code == 0
+        markdown = (tmp_path / "salida" / "retrieval-eval-dddddddd-2026-08-10.md").read_text(
+            encoding="utf-8"
+        )
+        assert "etiqueta: ESTIMATE" in markdown
+        assert "90.0 ms" in markdown
+        datos = json.loads(
+            (tmp_path / "salida" / "retrieval-eval-dddddddd-2026-08-10.results.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert datos["latencia"]["etiqueta"] == "ESTIMATE"
+
+    def test_an_unreadable_latency_file_exits_2_before_the_ablation_runs(
+        self, cli, tmp_path, capsys, espia_embedder
+    ):
+        """Read at the edge on purpose: a typo in the path must not be found out
+        after a 52-question ablation has already run."""
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--latencia",
+                str(tmp_path / "no-existe.json"),
+            ]
+        )
+        assert code == 2
+        assert "rag_query_latency.py" in capsys.readouterr().err
+        assert not (tmp_path / "nunca").exists()
+        assert espia_embedder.llamadas == []

@@ -24,6 +24,7 @@ from app.domains.conocimiento.embedding import (
     TOKEN_CEILING,
     DeterministicEmbedder,
     VectorsManifest,
+    manifest_path_for,
     parse_vector_literal,
     sha256_file,
 )
@@ -169,9 +170,65 @@ class TestArtifactProduction:
         """
         copy_path, manifest = self._run(db, tmp_path, {"9750#1": CORTO, "10593#1": LARGO})
 
-        assert manifest.over_ceiling == ("10593#1",)
+        assert manifest.claves_over_ceiling == ("10593#1",)
         assert manifest.n_vectors == 1
         assert "10593#1" not in copy_path.read_text(encoding="utf-8")
+
+    def test_the_manifest_records_the_measured_token_count(self, db, tmp_path):
+        """RJDA-007: how far over the ceiling, not merely that it is over.
+
+        `preflight` already measured this with the real tokenizer and the
+        manifest threw it away, so the only way back to it was a
+        `--preflight-only` rerun — while `rag_embed_batch`'s own summary printed
+        `TOKEN_CEILING + 1` for every exempt unit, a fabricated 8193 formatted
+        exactly like the measured counts one screen earlier. "How far over"
+        decides whether a unit is re-chunked upstream or accepted as FTS-only.
+        """
+        _, manifest = self._run(db, tmp_path, {"9750#1": CORTO, "10593#1": LARGO})
+        ((clave, tokens),) = manifest.over_ceiling
+        assert clave == "10593#1"
+        assert tokens > manifest.token_ceiling
+        # NOT the fabricated placeholder, and equal to what the embedder counts.
+        assert tokens != manifest.token_ceiling + 1
+        assert tokens == DeterministicEmbedder().count_tokens(LARGO)
+
+    def test_the_measured_count_survives_the_sidecar_round_trip(self, db, tmp_path):
+        copy_path, manifest = self._run(db, tmp_path, {"9750#1": CORTO, "10593#1": LARGO})
+        releido = VectorsManifest.load(manifest_path_for(copy_path))
+        assert releido.over_ceiling == manifest.over_ceiling
+        assert releido.claves_over_ceiling == ("10593#1",)
+
+    def test_a_sidecar_from_before_the_counts_is_refused_not_defaulted(self, tmp_path):
+        """Reading a bare key list as `(key, 0)` — or as `(key, 8193)` — would
+        invent the very measurement this field exists to stop inventing, and the
+        invented number would be indistinguishable from a real one. The dump is
+        a derived artifact of a SHA-pinned corpus, so re-running the batch is
+        always available; reading a stale artifact as an answer is not."""
+        import json
+
+        viejo = tmp_path / "vectors-deadbeef.json"
+        manifest = VectorsManifest(
+            corpus_sha="d" * 40,
+            modelo="BAAI/bge-m3",
+            revision_hf=None,
+            dims=EMBEDDING_DIMENSIONS,
+            normalized=True,
+            sintetico=False,
+            n_vectors=1,
+            sha256="0" * 64,
+            over_ceiling=(("10593#1", 9001),),
+            token_ceiling=8192,
+            torch=None,
+            transformers=None,
+            device="cpu",
+            generado_en="2026-08-10T00:00:00+00:00",
+        )
+        crudo = json.loads(manifest.to_json())
+        crudo["over_ceiling"] = ["10593#1"]  # the pre-RJDA-007 shape
+        viejo.write_text(json.dumps(crudo), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="bare citation keys"):
+            VectorsManifest.load(viejo)
 
     def test_rows_are_ordered_by_citation_key(self, db, tmp_path):
         copy_path, _ = self._run(
@@ -405,3 +462,153 @@ def test_manifest_written_by_the_batch_is_loadable(db, tmp_path):
         db, SHA, DeterministicEmbedder(), output_dir=tmp_path
     )
     assert VectorsManifest.load(copy_path.with_suffix(".json")) == manifest
+
+
+class TestE5Embedder:
+    """RJDA-005 / RJDB-005: the CLI advertised `e5-large` and it did not exist.
+
+    `rag_eval.py` listed it in `--embedder`'s `choices`, so argparse accepted it
+    and `get_embedder` then raised `ValueError: unknown embedder 'e5-large'` —
+    an advertised option that crashes. Implementing it is not just wiring: E5 is
+    ASYMMETRIC, and the prefixes are the part that cannot be got wrong quietly.
+    """
+
+    class _FakeST:
+        """A stand-in for `SentenceTransformer` that records what it was asked to encode."""
+
+        def __init__(self, model_name_or_path, device=None, revision=None):
+            self.model_name_or_path = model_name_or_path
+            self.device = device
+            self.revision = revision
+            self.max_seq_length = 512
+            self.vistos: list[str] = []
+            self.kwargs: list[dict] = []
+            self.tokenizer = self._FakeTokenizer()
+
+        class _FakeTokenizer:
+            def __init__(self):
+                self.vistos: list[str] = []
+
+            def encode(self, texto, add_special_tokens=True):
+                self.vistos.append(texto)
+                return list(range(len(texto.split())))
+
+        def get_sentence_embedding_dimension(self):
+            return EMBEDDING_DIMENSIONS
+
+        def encode(self, textos, **kwargs):
+            self.vistos.extend(textos)
+            self.kwargs.append(kwargs)
+            return [[0.0] * (EMBEDDING_DIMENSIONS - 1) + [1.0] for _ in textos]
+
+    @pytest.fixture
+    def st(self, monkeypatch):
+        """Inject the fake as the `sentence_transformers` module, so the LAZY
+        import inside `__init__` picks it up without the 2.2 GB download."""
+        import sys
+        import types
+
+        modulo = types.ModuleType("sentence_transformers")
+        creados: list = []
+
+        def constructor(*args, **kwargs):
+            instancia = TestE5Embedder._FakeST(*args, **kwargs)
+            creados.append(instancia)
+            return instancia
+
+        modulo.SentenceTransformer = constructor
+        monkeypatch.setitem(sys.modules, "sentence_transformers", modulo)
+        return creados
+
+    def test_the_query_role_applies_the_query_prefix(self, st):
+        from app.domains.conocimiento.embedding import E5Embedder
+
+        embedder = E5Embedder(rol="query")
+        embedder.encode(["¿cuál es el quórum de la asamblea?"])
+        assert st[0].vistos == ["query: ¿cuál es el quórum de la asamblea?"]
+
+    def test_the_passage_role_applies_the_passage_prefix(self, st):
+        from app.domains.conocimiento.embedding import E5Embedder
+
+        embedder = E5Embedder(rol="passage")
+        embedder.encode(["Artículo 14.- El quórum de la asamblea…"])
+        assert st[0].vistos == ["passage: Artículo 14.- El quórum de la asamblea…"]
+
+    def test_the_role_is_required_and_never_guessed(self, st):
+        """No default, because the wrong prefix raises nothing, warns nothing and
+        changes nothing about the shape — it just ranks worse. Every gate this
+        codebase has (dims, model id, loader identity) passes either way."""
+        from app.domains.conocimiento.embedding import E5Embedder
+
+        with pytest.raises(TypeError):
+            E5Embedder()  # type: ignore[call-arg]
+        with pytest.raises(ValueError, match="rol"):
+            E5Embedder(rol="documento")
+
+    def test_the_token_count_includes_the_prefix(self, st):
+        """A unit measured without its prefix can pass the pre-flight and still
+        be truncated by the model — the silent truncation the whole exemption
+        machinery exists to prevent."""
+        from app.domains.conocimiento.embedding import E5Embedder
+
+        embedder = E5Embedder(rol="passage")
+        embedder.count_tokens("uno dos tres")
+        assert st[0].tokenizer.vistos == ["passage: uno dos tres"]
+
+    def test_it_reports_its_own_identity_dimensions_and_ceiling(self, st):
+        from app.domains.conocimiento.embedding import (
+            E5_MODEL_ID,
+            E5_TOKEN_CEILING,
+            E5Embedder,
+        )
+
+        embedder = E5Embedder(rol="query")
+        # The HF id, which is what the provenance gate compares — and NOT
+        # something shared with BGE-M3, whose dimension count is identical.
+        assert embedder.model_id == E5_MODEL_ID
+        assert embedder.model_id != DEFAULT_MODEL_ID
+        assert embedder.dims == EMBEDDING_DIMENSIONS
+        assert embedder.sintetico is False
+        # A QUARTER of BGE-M3's window: switching models changes which units are
+        # over the ceiling, so the ceiling travels with the embedder.
+        assert embedder.token_ceiling == E5_TOKEN_CEILING == 512
+        assert embedder.token_ceiling < TOKEN_CEILING
+
+    def test_vectors_are_normalized_because_cosine_requires_it(self, st):
+        from app.domains.conocimiento.embedding import E5Embedder
+
+        E5Embedder(rol="passage").encode(["algo"])
+        assert st[0].kwargs[0]["normalize_embeddings"] is True
+
+    def test_get_embedder_resolves_it_with_the_role_threaded_through(self, st):
+        from app.domains.conocimiento.embedding import E5_MODEL_ID, get_embedder
+
+        embedder = get_embedder("e5-large", rol="passage")
+        assert embedder.prefijo == "passage: "
+        # The default `model_id` is BGE-M3's; letting it through would stamp
+        # `BAAI/bge-m3` onto e5 vectors and defeat the only gate that can tell
+        # these two 1024-dim models apart.
+        assert embedder.model_id == E5_MODEL_ID
+
+    def test_get_embedder_requires_a_role_from_every_caller(self):
+        from app.domains.conocimiento.embedding import get_embedder
+
+        with pytest.raises(TypeError):
+            get_embedder("deterministic")  # type: ignore[call-arg]
+        with pytest.raises(ValueError, match="unknown rol"):
+            get_embedder("deterministic", rol="documento")
+
+    def test_the_symmetric_embedders_accept_the_role_and_ignore_it(self):
+        """`rol` is meaningless for BGE-M3 and the fake, and still required: the
+        one call site that forgets is the one that builds a worse index."""
+        from app.domains.conocimiento.embedding import get_embedder
+
+        uno = get_embedder("deterministic", rol="query")
+        otro = get_embedder("deterministic", rol="passage")
+        assert uno.encode(["texto"]) == otro.encode(["texto"])
+
+    def test_an_unknown_name_still_names_all_three_options(self):
+        from app.domains.conocimiento.embedding import get_embedder
+
+        with pytest.raises(ValueError, match="e5-large"):
+            get_embedder("no-existe", rol="query")

@@ -28,7 +28,7 @@ import json
 import struct
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Protocol, Sequence, runtime_checkable
+from typing import Any, Iterable, Protocol, Sequence, runtime_checkable
 
 from app.domains.conocimiento.ddl import EMBEDDING_DIMENSIONS
 
@@ -42,6 +42,27 @@ TOKEN_CEILING = 8192
 #: E5, which require one. Adding a prefix here would silently degrade retrieval
 #: — the failure would look like "the vector leg is mediocre", not like a bug.
 DEFAULT_MODEL_ID = "BAAI/bge-m3"
+
+#: The alternative 1024-dim model. Its dimension count being IDENTICAL to
+#: BGE-M3's is exactly why the provenance gate cannot be a dimension check and
+#: had to become a recorded-model-id check (migration `conocimiento_004`).
+E5_MODEL_ID = "intfloat/multilingual-e5-large"
+
+#: E5's context window. A quarter of BGE-M3's 8192 and not a detail: with E5 the
+#: over-ceiling set is a completely different set of units, so the ceiling is
+#: read off the embedder rather than assumed from the module constant.
+E5_TOKEN_CEILING = 512
+
+#: E5 is ASYMMETRIC. These prefixes are part of the model — it was trained with
+#: them — not a convention that can be dropped for tidiness. Encoding a question
+#: as `passage: ` or an article as `query: ` produces a confident, fully
+#: attributed, quietly worse ranking, which is the failure mode this whole
+#: module is arranged to make impossible to reach by accident.
+PREFIJO_E5 = {"query": "query: ", "passage": "passage: "}
+
+#: The two sides of an asymmetric model. Named so a caller has to say which one
+#: it is building; there is deliberately no default (see `E5Embedder`).
+ROLES = tuple(PREFIJO_E5)
 
 #: `model_id` of the deterministic fake. It is not decoration: the loader writes
 #: it into `rag_corpus.embedding_modelo` and `service.recuperar` refuses to run
@@ -129,6 +150,31 @@ def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
     return digest.hexdigest()
 
 
+def _parse_over_ceiling(path: Path, crudo: Iterable[Any] | None) -> tuple[tuple[str, int], ...]:
+    """`[[key, tokens], …]` -> pairs. A bare key list is REFUSED, not upgraded.
+
+    An artifact written before the token counts existed carries `["9750#1", …]`.
+    Reading it as `[(key, 0)]`, or as `[(key, TOKEN_CEILING + 1)]`, would invent
+    the very measurement this field was changed to stop inventing — and the
+    invented number would then be indistinguishable from a real one. The dump is
+    a derived artifact of a SHA-pinned corpus, so re-running the batch is cheap
+    and always available; reading a stale one as if it had answered the question
+    is not.
+    """
+    pares: list[tuple[str, int]] = []
+    for entrada in crudo or ():
+        if isinstance(entrada, str):
+            raise ValueError(
+                f"{path.name}: `over_ceiling` holds bare citation keys, so this "
+                "artifact predates the measured token counts. Re-run "
+                "scripts/rag_embed_batch.py: defaulting the count would fabricate "
+                "the number the field exists to record."
+            )
+        clave, tokens = entrada
+        pares.append((str(clave), int(tokens)))
+    return tuple(pares)
+
+
 @dataclass(frozen=True)
 class VectorsManifest:
     """The sidecar that makes a dump interpretable and verifiable.
@@ -140,6 +186,16 @@ class VectorsManifest:
     missing vectors, and a batch that dropped a shard would load clean while
     leaving three unrelated articles unreachable by the vector leg, invisibly
     (design.md D3, ledger R3-104).
+
+    It carries `(citation_key, tokens)` pairs, with the token count the REAL
+    tokenizer measured. Keys alone were not enough: `preflight` already knew how
+    far over the ceiling each unit was and threw the number away at the manifest
+    boundary, so the only place it could be recovered was a `--preflight-only`
+    rerun — and `rag_embed_batch`'s own summary printed `TOKEN_CEILING + 1` for
+    every exempt unit, i.e. a fabricated `8193` presented in the same format as
+    the measured counts one screen earlier (ledger RJDA-007). "How far over" is
+    the number that decides whether a unit should be re-chunked upstream or
+    accepted as FTS-only, so it belongs in the durable record.
     """
 
     corpus_sha: str
@@ -150,16 +206,21 @@ class VectorsManifest:
     sintetico: bool
     n_vectors: int
     sha256: str
-    over_ceiling: tuple[str, ...]
+    over_ceiling: tuple[tuple[str, int], ...]
     token_ceiling: int
     torch: str | None
     transformers: str | None
     device: str
     generado_en: str
 
+    @property
+    def claves_over_ceiling(self) -> tuple[str, ...]:
+        """Just the keys, for the loader's set comparisons."""
+        return tuple(clave for clave, _ in self.over_ceiling)
+
     def to_json(self) -> str:
         payload = asdict(self)
-        payload["over_ceiling"] = list(self.over_ceiling)
+        payload["over_ceiling"] = [[clave, tokens] for clave, tokens in self.over_ceiling]
         return json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 
     def write(self, path: Path) -> None:
@@ -175,7 +236,7 @@ class VectorsManifest:
                 "any of them would read an artifact from before the field existed "
                 "as if it had answered the question."
             )
-        raw["over_ceiling"] = tuple(raw["over_ceiling"])
+        raw["over_ceiling"] = _parse_over_ceiling(path, raw["over_ceiling"])
         return cls(**{field: raw[field] for field in cls.__dataclass_fields__})
 
 
@@ -205,6 +266,12 @@ class Embedder(Protocol):
     revision: str | None
     dims: int
     sintetico: bool
+    #: This model's context window, so the ceiling pre-flight measures against
+    #: the model that is actually running. It is NOT the module constant: BGE-M3
+    #: takes 8192 tokens and E5 takes 512, so a hardcoded ceiling would exempt
+    #: the wrong units — or none — the moment the model changed, and the symptom
+    #: would be silent truncation inside the model rather than an exemption.
+    token_ceiling: int
 
     def count_tokens(self, texto: str) -> int: ...
 
@@ -236,6 +303,9 @@ class DeterministicEmbedder:
     model_id = DETERMINISTIC_MODEL_ID
     revision = None
     sintetico = True
+    #: Mirrors BGE-M3's, so a synthetic run exercises the exemption path on
+    #: exactly the units the real run will exempt.
+    token_ceiling = TOKEN_CEILING
 
     def __init__(self, dims: int = EMBEDDING_DIMENSIONS, bytes_per_token: float = 3.0):
         self.dims = dims
@@ -295,6 +365,7 @@ class BGEM3Embedder:
         self.model_id = model_id
         self.device = device
         self.max_length = max_length
+        self.token_ceiling = max_length
         self._tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         self._model = AutoModel.from_pretrained(model_id, revision=revision).to(device).eval()
         self.dims = int(self._model.config.hidden_size)
@@ -327,13 +398,124 @@ class BGEM3Embedder:
         return [fila.tolist() for fila in denso.cpu()]
 
 
-def get_embedder(nombre: str, *, device: str = "cpu", model_id: str = DEFAULT_MODEL_ID):
-    """Resolve an embedder by name. `bge-m3` is the only real one in V0."""
+class E5Embedder:
+    """multilingual-e5-large via sentence-transformers. ASYMMETRIC by construction.
+
+    **`rol` is required and has no default, and that is the whole design.** E5
+    was trained with `query: ` and `passage: ` prefixes and its two sides are
+    genuinely different encoders wearing one set of weights. Getting the prefix
+    wrong does not raise, does not warn and does not change the shape of
+    anything — it returns 1024 confident, unit-norm, fully attributed numbers
+    that rank slightly worse. That failure is invisible at every layer this
+    codebase has: the loader's identity gates pass, the provenance gate passes
+    (same model id), the dimension check passes (1024, identical to BGE-M3), and
+    the eval reports a mediocre vector leg. A default would let one call site
+    forget; a required keyword makes forgetting a `TypeError` at construction.
+
+    So one instance encodes ONE side. `rag_embed_batch` builds `rol='passage'`,
+    the query paths build `rol='query'`, and no object can serve both — which is
+    also why `encode` needs no per-call flag and the `Embedder` protocol stays
+    the single-method seam it was.
+
+    `sentence_transformers` is imported inside `__init__`, exactly like
+    `BGEM3Embedder`, so importing this module costs nothing where only the
+    artifact format is needed (design.md D8).
+
+    **`token_ceiling` is 512, not 8192.** E5's window is a quarter of BGE-M3's,
+    so switching models changes WHICH units are over the ceiling. The pre-flight
+    reads it off the embedder rather than from the module constant; assuming
+    8192 here would silently truncate long articles inside the model, which is
+    the one thing the MANIFEST forbids.
+    """
+
+    sintetico = False
+
+    def __init__(
+        self,
+        *,
+        rol: str,
+        model_id: str = E5_MODEL_ID,
+        device: str = "cpu",
+        revision: str | None = None,
+        max_length: int = E5_TOKEN_CEILING,
+    ):
+        if rol not in PREFIJO_E5:
+            raise ValueError(
+                f"E5Embedder needs rol={ROLES} (got {rol!r}). E5 is asymmetric: "
+                "the prefix is part of the model, and picking the wrong one "
+                "degrades retrieval without raising anything."
+            )
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as missing:  # pragma: no cover — environment-dependent
+            raise RuntimeError(
+                "multilingual-e5-large needs the ingestion extra. Install it "
+                "into a SEPARATE virtualenv (it pulls the whole CUDA stack, "
+                "~6 GB) and never into the app image:\n"
+                "    python -m venv venv-rag\n"
+                "    venv-rag/bin/pip install -r requirements-rag.txt"
+            ) from missing
+
+        self.rol = rol
+        self.prefijo = PREFIJO_E5[rol]
+        self.model_id = model_id
+        self.device = device
+        self.max_length = max_length
+        self.token_ceiling = max_length
+        self._model = SentenceTransformer(model_id, device=device, revision=revision)
+        self._model.max_seq_length = max_length
+        self.dims = int(self._model.get_sentence_embedding_dimension())
+        self.revision = revision
+
+    def count_tokens(self, texto: str) -> int:
+        """Counted WITH the prefix, because the prefix is what gets embedded.
+
+        Counting the bare text would under-report by the prefix's tokens and let
+        a unit sitting just under the ceiling be truncated by the model after
+        passing the pre-flight — the exact silent truncation the exemption
+        machinery exists to prevent.
+        """
+        return len(self._model.tokenizer.encode(self.prefijo + texto, add_special_tokens=True))
+
+    def encode(self, textos: Sequence[str]) -> list[list[float]]:
+        vectores = self._model.encode(
+            [self.prefijo + texto for texto in textos],
+            normalize_embeddings=True,  # mandatory for cosine (design.md D3)
+            convert_to_numpy=True,
+        )
+        return [[float(valor) for valor in fila] for fila in vectores]
+
+
+def get_embedder(
+    nombre: str,
+    *,
+    rol: str,
+    device: str = "cpu",
+    model_id: str = DEFAULT_MODEL_ID,
+):
+    """Resolve an embedder by name. `rol` is required — see `E5Embedder`.
+
+    `rol` is accepted and IGNORED by the symmetric embedders (`bge-m3`,
+    `deterministic`), which take no prefix. It is still required of every caller
+    rather than defaulted, because the one call site that forgets is the one
+    that silently produces a worse index, and a keyword that is sometimes
+    meaningless is cheaper than a default that is sometimes wrong.
+    """
+    if rol not in ROLES:
+        raise ValueError(f"unknown rol {rol!r} (expected one of {ROLES})")
     if nombre == "bge-m3":
         return BGEM3Embedder(model_id=model_id, device=device)
+    if nombre == "e5-large":
+        # NOT `model_id`: that argument defaults to BGE-M3's id, and letting it
+        # through would stamp `BAAI/bge-m3` onto e5 vectors — defeating the one
+        # gate that can tell these two 1024-dim models apart.
+        elegido = model_id if model_id != DEFAULT_MODEL_ID else E5_MODEL_ID
+        return E5Embedder(rol=rol, model_id=elegido, device=device)
     if nombre == "deterministic":
         return DeterministicEmbedder()
-    raise ValueError(f"unknown embedder {nombre!r} (expected 'bge-m3' or 'deterministic')")
+    raise ValueError(
+        f"unknown embedder {nombre!r} (expected 'bge-m3', 'e5-large' or 'deterministic')"
+    )
 
 
 def runtime_versions() -> dict[str, str | None]:

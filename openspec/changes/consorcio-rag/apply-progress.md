@@ -814,10 +814,21 @@ venv-rag/bin/python scripts/rag_embed_batch.py --corpus-sha 12043582bf8016288a7e
 # 3. LOAD (gates: sha256 vs sidecar, active snapshot, dims, exemption identity, model transition)
 cd .. && make rag-embed-load
 
+# 3b. LATENCY — the ratified D3 criterion, measured on the QUERY side.
+#     Its JSON is read by step 4 and rendered into the report with its label.
+#     Ops O.4: on this workstation the honest label is ESTIMATE, because the
+#     target box is the CX33 (2 shared vCPUs, no GPU) and this is not it.
+cd gee-backend && venv-rag/bin/python scripts/rag_query_latency.py \
+  --gold-set app/domains/conocimiento/eval/gold_set.yaml \
+  --device cpu --threads 2 --etiqueta ESTIMATE \
+  --json artifacts/rag/latencia.json
+cd ..
+
 # 4. EVAL — writes docs/rag/retrieval-eval-12043582-YYYY-MM-DD.md + .results.json
 #    NEEDS venv-rag: `vector` and `hybrid` embed each question on the query side.
 #    (`make rag-eval RAG_EVAL_FLAGS="--modo fts"` is the one variant that does not.)
-make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python
+make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python \
+  RAG_EVAL_FLAGS="--latencia artifacts/rag/latencia.json"
 
 # 5. verify what the database says produced those vectors
 psql "$DATABASE_URL" -c "SELECT corpus_sha, embedding_modelo, embedding_sintetico, embeddings_loaded_at FROM rag_corpus"

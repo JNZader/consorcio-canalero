@@ -325,6 +325,71 @@ def _bloque_procedencia(
     ]
 
 
+#: Ops O.4 resolved the latency criterion as "measure locally for V0, LABELLED;
+#: on-box measurement deferred to the V1 gate". So the label travels with the
+#: number and the report never decides it — `scripts/rag_query_latency.py`
+#: stamps `etiqueta` (LOCAL / ESTIMATE) and this block prints what it was given.
+ETIQUETA_LATENCIA_DESCONOCIDA = "SIN ETIQUETA"
+
+
+def _bloque_latencia(latencia: dict[str, Any] | None) -> list[str]:
+    """The ratified latency criterion, or an explicit statement that it is absent.
+
+    D3 asks whether a CPU-only box can turn a question into a query vector fast
+    enough to serve. `scripts/rag_query_latency.py` answers it and wrote its
+    answer to a file nothing read, so the criterion existed and the deliverable
+    never carried it (ledger RJDA-006). The report now reads that file.
+
+    It is READ, never measured here: this module may not touch a clock (the
+    determinism claim is asserted over its AST), and a latency figure taken
+    while rendering a report would measure the report. Absent, the block says
+    so and names the command — silence would let a reader assume the criterion
+    was met by a report that never looked.
+    """
+    if latencia is None:
+        return [
+            "## Latencia de embebido de consulta",
+            "",
+            "- **no medida en esta corrida.** El criterio de latencia (design.md "
+            "D3) no está evaluado en este documento.",
+            "- Para medirlo: `venv-rag/bin/python scripts/rag_query_latency.py "
+            "--gold-set app/domains/conocimiento/eval/gold_set.yaml --device cpu "
+            "--threads 2 --json artifacts/rag/latencia.json`, y volvé a correr "
+            "`rag_eval.py --latencia artifacts/rag/latencia.json`.",
+        ]
+
+    etiqueta = str(latencia.get("etiqueta") or ETIQUETA_LATENCIA_DESCONOCIDA)
+    lineas = [
+        "## Latencia de embebido de consulta",
+        "",
+        f"- **etiqueta: {etiqueta}** — Ops O.4: cualquier medición que no sea "
+        "sobre la máquina destino (CX33, 2 vCPU compartidas, sin GPU) es un "
+        "**ESTIMATE**, y la medición on-box queda diferida a la compuerta de V1.",
+        f"- modelo: `{latencia.get('modelo')}`",
+        f"- device: {latencia.get('device')} · cpu_count: {latencia.get('cpu_count')} "
+        f"· torch threads: {latencia.get('torch_threads')}",
+        f"- muestras: {latencia.get('n')} "
+        f"({latencia.get('preguntas')} preguntas × {latencia.get('repeticiones')} "
+        f"repeticiones, {latencia.get('calentamientos')} de calentamiento)",
+        f"- **p50 {_fmt(latencia.get('p50_ms'), 1)} ms · "
+        f"p95 {_fmt(latencia.get('p95_ms'), 1)} ms** "
+        f"(min {_fmt(latencia.get('min_ms'), 1)} · max {_fmt(latencia.get('max_ms'), 1)})",
+        "",
+        "> Una latencia sin cantidad de núcleos, threads y device no es una "
+        "medición sino un rumor, así que las condiciones van al lado del número. "
+        "Se mide **una consulta por vez**, que es la forma que tendría un "
+        "request; medir en lote reportaría throughput y respondería otra pregunta.",
+    ]
+    if latencia.get("sintetico"):
+        lineas += [
+            "",
+            "> ⚠️ **ESTE NÚMERO NO ES DEL MODELO.** Fue medido con el embebedor "
+            "determinístico, así que mide el arnés: no hay tokenizer real ni "
+            "forward pass. No sirve para decidir la compuerta de serving.",
+        ]
+    return lineas
+
+
 def renderizar_markdown(
     resultado: ResultadoEval,
     procedencia: ProcedenciaEmbeddings | None,
@@ -332,6 +397,7 @@ def renderizar_markdown(
     generado_en: dt.datetime,
     device_consulta: str,
     permitir_sintetico: bool = False,
+    latencia: dict[str, Any] | None = None,
 ) -> str:
     """Render the report. Pure: same arguments in, byte-identical string out."""
     sintetico = _gate_sintetico(procedencia, permitir_sintetico)
@@ -364,6 +430,8 @@ def renderizar_markdown(
         f"- ratificado: {gold.ratificado}",
         f"- corpus_sha del gold set: `{gold.corpus_sha}`",
         f"- evaluable: {'sí' if precondicion.evaluable else 'NO'}",
+        "",
+        *_bloque_latencia(latencia),
     ]
     if not precondicion.evaluable:
         lineas.append("")
@@ -401,6 +469,7 @@ def _a_json(
     generado_en: dt.datetime,
     device_consulta: str,
     sintetico: bool,
+    latencia: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     versiones = runtime_versions()
     modos: dict[str, Any] = {}
@@ -490,6 +559,10 @@ def _a_json(
         # (ledger RAG4-003).
         "gold_corpus_sha": resultado.gold.corpus_sha,
         "sintetico": sintetico,
+        # `None` and not an empty object: "the criterion was not evaluated" and
+        # "it was evaluated and came back empty" are different facts, and a
+        # machine reader must not have to guess which one a `{}` means.
+        "latencia": latencia,
         "minimo_respondibles": MINIMO_RESPONDIBLES,
         "operador_fts": FTS_OPERADOR,
         "rrf_k": RRF_K,
@@ -528,6 +601,7 @@ def escribir_reporte(
     generado_en: dt.datetime,
     device_consulta: str,
     permitir_sintetico: bool = False,
+    latencia: dict[str, Any] | None = None,
 ) -> ReporteEscrito:
     """Write the markdown and its machine-readable twin, side by side.
 
@@ -542,6 +616,7 @@ def escribir_reporte(
         generado_en=generado_en,
         device_consulta=device_consulta,
         permitir_sintetico=permitir_sintetico,
+        latencia=latencia,
     )
     datos = _a_json(
         resultado,
@@ -549,6 +624,7 @@ def escribir_reporte(
         generado_en=generado_en,
         device_consulta=device_consulta,
         sintetico=sintetico,
+        latencia=latencia,
     )
 
     destino.mkdir(parents=True, exist_ok=True)

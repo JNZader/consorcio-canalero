@@ -118,27 +118,57 @@ class TestHitRateAndMRR:
         # Exact: both are dyadic rationals and survive IEEE754 untouched.
         assert agregado.hit_rate_at_5 == 0.75
         assert agregado.citation_precision == 0.375
-        # NOT exact, and the difference is real rather than a rounding
-        # convention: 1 + 1/3 + 1 + 1/6 sums to 2.4999999999999996 in this
-        # order, so the mean is 0.6249999999999999. The hand-computed value is
-        # 0.625; asserting equality would be asserting a property of the
-        # rationals against a float. `metricas_recuperacion` deliberately does
-        # NOT round — rounding belongs to the report, and a metric that rounds
-        # before comparison hides exactly the drift the next test pins.
-        assert agregado.mrr == pytest.approx(0.625)
+        # EXACT, and it did not use to be: `1 + 1/3 + 1 + 1/6` accumulated
+        # left-to-right gives 2.4999999999999996, so the mean printed
+        # 0.6249999999999999 — below the hand-computed 0.625, not noise around
+        # it. `_media` sums with `math.fsum` (exact partial sums, rounded once),
+        # so the aggregate now equals the value a person computes on paper.
+        # `metricas_recuperacion` still does NOT round: rounding belongs to the
+        # report, and a metric that rounds before comparison hides exactly the
+        # drift the next test pins.
+        assert agregado.mrr == 0.625
 
-    def test_the_aggregate_is_bit_identical_across_runs(self):
+    def test_the_aggregate_is_bit_identical_across_runs_and_interpreters(self):
         """Determinism is a claim about the float, not about the rounded print.
 
-        The mean depends on summation ORDER, and the order is the gold set's
-        file order. Pinning the exact repr here means a reordering of the gold
-        set — or a refactor to `statistics.fmean`, which sums differently — shows
-        up as a failing test rather than as a report whose last digit moved for
-        no stated reason.
+        Builtin `sum` rounds at every step, so its result is a property of the
+        summation ORDER — the gold set's file order — and of the interpreter's
+        FP evaluation. `math.fsum` is exact-then-rounded-once, so this repr is
+        the same on every build, which is what lets the number be pinned at all.
+        Verified under CPython 3.11 (this venv) and 3.14 (the repo venv).
+
+        A reordering of the gold set, or a refactor back to a step-rounding sum,
+        shows up here as a failing test rather than as a report whose last digits
+        moved for no stated reason.
         """
         primera = metricas_recuperacion(FIXTURE)
         segunda = metricas_recuperacion(FIXTURE)
-        assert repr(primera.mrr) == repr(segunda.mrr) == "0.6249999999999999"
+        assert repr(primera.mrr) == repr(segunda.mrr) == "0.625"
+
+    def test_fsum_is_what_makes_the_mean_order_independent(self):
+        """The property, asserted directly rather than only through the fixture.
+
+        Same four values, every permutation: one number, on every interpreter.
+
+        The contrast against builtin `sum` is deliberately NOT asserted here,
+        and the reason is the finding itself. Measured on this fixture:
+
+            CPython 3.11.15   sum -> 0.6249999999999999   order-dependent
+            CPython 3.14.6    sum -> 0.625                order-independent
+
+        CPython 3.12 switched `sum()` to Neumaier compensated summation for
+        floats, so an assertion that builtin `sum` disagrees with itself passes
+        on 3.11 and fails on 3.14 — an interpreter-dependent test, which is the
+        very class of defect being removed. `math.fsum` has been exact-then-
+        rounded-once since long before either, so only its property is pinned.
+        """
+        import itertools
+
+        from app.domains.conocimiento.eval.metrics import _media
+
+        valores = [1.0, 1 / 3, 1.0, 1 / 6]
+        medias = {_media(list(orden)) for orden in itertools.permutations(valores)}
+        assert medias == {0.625}
 
 
 class TestCitationPrecisionAndSeparation:

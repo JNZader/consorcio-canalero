@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import sys
 from pathlib import Path
@@ -118,6 +119,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--latencia",
+        type=Path,
+        default=None,
+        help=(
+            "JSON written by scripts/rag_query_latency.py --json. Its p50/p95 and "
+            "its LOCAL/ESTIMATE label are rendered into the report; without it "
+            "the report states that the latency criterion was not evaluated."
+        ),
+    )
+    parser.add_argument(
         "--generado-en",
         help=(
             "ISO-8601 timestamp for the report header. Defaults to the wall "
@@ -137,7 +148,9 @@ def _embedder(nombre: str, *, device: str, model_id: str):
     """
     if nombre == "deterministic":
         return DeterministicEmbedder()
-    return get_embedder(nombre, device=device, model_id=model_id)
+    # `query`: the eval turns gold QUESTIONS into vectors. Ignored by the
+    # symmetric models, load-bearing for e5 (see `E5Embedder`).
+    return get_embedder(nombre, rol="query", device=device, model_id=model_id)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -169,6 +182,22 @@ def main(argv: list[str] | None = None) -> int:
     except (CorpusShaMismatch, GoldSetInvalido) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return SALIDA_IDENTIDAD
+
+    # Read at the edge, like the timestamp, and read EARLY: a typo in the path
+    # must not be discovered after a 52-question ablation has run. Absent, the
+    # report says the latency criterion was not evaluated rather than omitting
+    # the section, which would read as "not applicable".
+    latencia = None
+    if args.latencia is not None:
+        try:
+            latencia = json.loads(args.latencia.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            print(
+                f"ERROR: --latencia {args.latencia}: {error}\n"
+                "Produce it with: scripts/rag_query_latency.py … --json <path>",
+                file=sys.stderr,
+            )
+            return 2
 
     precondicion = gold.precondicion()
     print(
@@ -240,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
             generado_en=generado_en,
             device_consulta=args.device,
             permitir_sintetico=args.allow_synthetic,
+            latencia=latencia,
         )
     except EvalSinteticoNoEsEval as error:
         print(f"ERROR: {error}", file=sys.stderr)

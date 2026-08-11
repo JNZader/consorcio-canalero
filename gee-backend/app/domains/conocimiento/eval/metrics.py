@@ -36,6 +36,7 @@ the direction that looks rigorous.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -223,7 +224,25 @@ def vigencia_correctness(pregunta: PreguntaEvaluada) -> float | None:
 
 
 def _media(valores: Sequence[float]) -> float | None:
-    return sum(valores) / len(valores) if valores else None
+    """Arithmetic mean over `math.fsum`, which is exact then rounded ONCE.
+
+    Not a style preference. Builtin `sum` accumulates left to right and rounds at
+    every step, so its result depends on the summation order AND on whatever the
+    interpreter's FP evaluation happens to do — the published mean's last digits
+    are then a property of the machine that ran the report rather than of the
+    retrieval. `math.fsum` uses Shewchuk's exact partial sums and rounds once at
+    the end, so the same multiset of values gives the same float on every build.
+
+    Measured on the module's own fixture, `1 + 1/3 + 1 + 1/6`: builtin `sum`
+    returns `2.4999999999999996` and the mean prints `0.6249999999999999`;
+    `fsum` returns `2.5` and the mean is `0.625` — the hand-computed value. The
+    old number was not noise around the truth, it was BELOW it, and the report
+    prints three decimals into a `>= 0.70`-style bar.
+
+    Still no rounding here: rounding belongs to the report, and a metric that
+    rounds before comparison hides exactly the drift this pins down.
+    """
+    return math.fsum(valores) / len(valores) if valores else None
 
 
 def metricas_recuperacion(

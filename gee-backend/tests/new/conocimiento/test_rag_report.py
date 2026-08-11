@@ -339,3 +339,102 @@ def test_the_report_pins_the_fusion_constants_it_was_produced_with(corrida):
     markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
     assert "RRF k = 60" in markdown
     assert "LEG_LIMIT = 50" in markdown
+
+
+class TestCriterioDeLatencia:
+    """RJDA-006: the ratified latency criterion reached no deliverable.
+
+    design.md D3 asks whether a CPU-only box can turn a question into a query
+    vector fast enough to serve. `scripts/rag_query_latency.py` answers it and
+    wrote its answer to a JSON file that nothing ever read, so the criterion
+    existed and the report — the V0 deliverable — never carried it.
+    """
+
+    LATENCIA = {
+        "etiqueta": "LOCAL",
+        "modelo": "BAAI/bge-m3",
+        "sintetico": False,
+        "device": "cpu",
+        "cpu_count": 16,
+        "torch_threads": 2,
+        "preguntas": 52,
+        "calentamientos": 3,
+        "repeticiones": 3,
+        "n": 156,
+        "p50_ms": 41.5,
+        "p95_ms": 78.25,
+        "min_ms": 33.0,
+        "max_ms": 120.5,
+        "media_ms": 45.0,
+    }
+
+    def test_without_a_measurement_the_report_says_so_instead_of_omitting_it(self, corrida):
+        """An absent section reads as "not applicable"; the criterion is not."""
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
+        assert "Latencia de embebido de consulta" in markdown
+        assert "no medida en esta corrida" in markdown
+        assert "rag_query_latency.py" in markdown
+
+    def test_a_measurement_is_rendered_with_its_label_and_its_conditions(self, corrida):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(
+            resultado,
+            proc,
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            latencia=self.LATENCIA,
+        )
+        assert "etiqueta: LOCAL" in markdown
+        assert "ESTIMATE" in markdown  # Ops O.4's rule stated next to the number
+        assert "41.5 ms" in markdown
+        assert "78.2 ms" in markdown or "78.3 ms" in markdown
+        # A latency without cores, threads and device is a rumour, not a figure.
+        assert "cpu_count: 16" in markdown
+        assert "torch threads: 2" in markdown
+
+    def test_a_synthetic_measurement_is_labelled_as_not_being_the_model(self, corrida):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(
+            resultado,
+            proc,
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            latencia={**self.LATENCIA, "sintetico": True, "modelo": "deterministic"},
+        )
+        assert "NO ES DEL MODELO" in markdown
+
+    def test_the_json_carries_the_measurement_or_an_explicit_null(self, corrida, tmp_path):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        sin = escribir_reporte(
+            resultado, proc, destino=tmp_path / "sin", generado_en=MOMENTO, device_consulta="cpu"
+        )
+        con = escribir_reporte(
+            resultado,
+            proc,
+            destino=tmp_path / "con",
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            latencia=self.LATENCIA,
+        )
+        # `null`, not `{}`: "not evaluated" and "evaluated, came back empty" are
+        # different facts and a machine reader must not have to guess.
+        assert json.loads(sin.json.read_text(encoding="utf-8"))["latencia"] is None
+        assert json.loads(con.json.read_text(encoding="utf-8"))["latencia"]["p95_ms"] == 78.25
+
+    def test_rendering_a_latency_block_still_reads_no_clock(self, corrida):
+        """The determinism claim survives the new block: it READS a measurement,
+        it never takes one — taking one while rendering would measure the report."""
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        primera = renderizar_markdown(
+            resultado, proc, generado_en=MOMENTO, device_consulta="cpu", latencia=self.LATENCIA
+        )
+        segunda = renderizar_markdown(
+            resultado, proc, generado_en=MOMENTO, device_consulta="cpu", latencia=self.LATENCIA
+        )
+        assert primera == segunda

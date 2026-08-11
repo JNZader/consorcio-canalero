@@ -118,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedder",
         default="bge-m3",
-        choices=("bge-m3", "deterministic"),
+        choices=("bge-m3", "e5-large", "deterministic"),
         help="'deterministic' measures the harness, not the model — plumbing only",
     )
     parser.add_argument("--json", type=Path, default=None, help="also write results here")
@@ -140,7 +140,9 @@ def main(argv: list[str] | None = None) -> int:
     threads = _configurar_threads(args.threads)
 
     try:
-        embedder = get_embedder(args.embedder, device=args.device, model_id=args.model)
+        # `query`: this measures the QUERY side, which is the only side a served
+        # endpoint would compute per request.
+        embedder = get_embedder(args.embedder, rol="query", device=args.device, model_id=args.model)
     except RuntimeError as missing:  # pragma: no cover — environment-dependent
         print(f"\n{missing}", file=sys.stderr)
         return 2

@@ -146,7 +146,12 @@ def embed_snapshot(
     later operator has no way to interpret.
     """
     unidades = leer_unidades(session, corpus_sha)
-    a_embeber, exentas = preflight(unidades, embedder, strict=strict_token_ceiling)
+    # The ceiling comes from the EMBEDDER, not from the module constant: BGE-M3
+    # takes 8192 tokens and multilingual-e5-large takes 512, so a fixed 8192
+    # would exempt nothing under e5 and let the model truncate long articles
+    # silently — the one thing the MANIFEST forbids.
+    ceiling = embedder.token_ceiling
+    a_embeber, exentas = preflight(unidades, embedder, strict=strict_token_ceiling, ceiling=ceiling)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     copy_path = output_dir / f"vectors-{corpus_sha[:8]}.copy"
@@ -174,8 +179,8 @@ def embed_snapshot(
         sintetico=bool(getattr(embedder, "sintetico", False)),
         n_vectors=escritos,
         sha256=sha256_file(copy_path),
-        over_ceiling=tuple(key for key, _ in exentas),
-        token_ceiling=TOKEN_CEILING,
+        over_ceiling=tuple(exentas),
+        token_ceiling=ceiling,
         torch=versiones["torch"],
         transformers=versiones["transformers"],
         device=device,
@@ -200,8 +205,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedder",
         default="bge-m3",
-        choices=("bge-m3", "deterministic"),
+        choices=("bge-m3", "e5-large", "deterministic"),
         help=(
+            "'e5-large' is ASYMMETRIC and is built here with the `passage` "
+            "prefix, because this script embeds the corpus. "
             "'deterministic' is a hash-derived FAKE for pipeline smoke tests; "
             "its artifacts are stamped sintetico=true and the loader refuses "
             "them without --allow-synthetic"
@@ -220,11 +227,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_exentas(exentas: Sequence[tuple[str, int]]) -> None:
+def _print_exentas(exentas: Sequence[tuple[str, int]], ceiling: int = TOKEN_CEILING) -> None:
     if not exentas:
-        print(f"sobre el ceiling      : 0 unidades (ceiling {TOKEN_CEILING} tokens)")
+        print(f"sobre el ceiling      : 0 unidades (ceiling {ceiling} tokens)")
         return
-    print(f"\nSOBRE EL CEILING DE EMBEDDING ({TOKEN_CEILING} tokens): {len(exentas)} unidad(es).")
+    print(f"\nSOBRE EL CEILING DE EMBEDDING ({ceiling} tokens): {len(exentas)} unidad(es).")
     print(
         "  Quedan ENTERAS en la base y siguen siendo recuperables por FTS. NO se "
         "embeben y NUNCA se truncan. Sus claves quedan fijadas en el sidecar, y el "
@@ -241,7 +248,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        embedder = get_embedder(args.embedder, device=args.device, model_id=args.model)
+        # `passage`: this script embeds the CORPUS. On an asymmetric model the
+        # other role would produce a valid-looking index that ranks worse and
+        # raises nothing (see `E5Embedder`).
+        embedder = get_embedder(
+            args.embedder, rol="passage", device=args.device, model_id=args.model
+        )
     except RuntimeError as missing:  # pragma: no cover — environment-dependent
         print(f"\n{missing}", file=sys.stderr)
         return 2
@@ -260,11 +272,16 @@ def main(argv: list[str] | None = None) -> int:
         with Session(engine) as session:
             if args.preflight_only:
                 unidades = leer_unidades(session, args.corpus_sha)
-                a_embeber, exentas = preflight(unidades, embedder, strict=args.strict_token_ceiling)
+                a_embeber, exentas = preflight(
+                    unidades,
+                    embedder,
+                    strict=args.strict_token_ceiling,
+                    ceiling=embedder.token_ceiling,
+                )
                 print(f"corpus_sha            : {args.corpus_sha}")
                 print(f"unidades              : {len(unidades)}")
                 print(f"a embeber             : {len(a_embeber)}")
-                _print_exentas(exentas)
+                _print_exentas(exentas, ceiling=embedder.token_ceiling)
                 print("\n--preflight-only: no se escribió ningún artefacto.")
                 return 0
 
@@ -291,7 +308,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"dump                  : {copy_path}")
     print(f"sidecar               : {manifest_path_for(copy_path)}")
     print(f"sha256                : {manifest.sha256}")
-    _print_exentas([(key, TOKEN_CEILING + 1) for key in manifest.over_ceiling])
+    # The MEASURED counts, straight from the sidecar. This line used to print
+    # `TOKEN_CEILING + 1` for every exempt unit — a fabricated 8193 in the same
+    # format as the real counts `--preflight-only` prints, so the two were
+    # indistinguishable on screen while only one of them was a measurement
+    # (ledger RJDA-007). "How far over" decides whether a unit gets re-chunked
+    # upstream or accepted as FTS-only, so a placeholder there is worse than no
+    # number at all.
+    _print_exentas(manifest.over_ceiling, ceiling=manifest.token_ceiling)
 
     if manifest.sintetico:
         print(

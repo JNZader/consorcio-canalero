@@ -100,7 +100,19 @@ def registrar(db, *, modelo: str = DEFAULT_MODEL_ID, sintetico: bool = False) ->
     db.flush()
 
 
-def make_manifest(*, n_vectors: int, over_ceiling: tuple[str, ...] = (), **overrides):
+#: Token count stamped on exemptions this helper builds from a bare key. An
+#: arbitrary but PLAUSIBLE over-ceiling measurement: every test that passes bare
+#: keys is about the identity of the exempt key SET, where the count only has to
+#: survive the round-trip. The tests that care about the number itself pass
+#: explicit `(key, tokens)` pairs.
+TOKENS_EXENTA_FIXTURE = 9001
+
+
+def make_manifest(*, n_vectors: int, over_ceiling: tuple = (), **overrides):
+    over_ceiling = tuple(
+        (entrada, TOKENS_EXENTA_FIXTURE) if isinstance(entrada, str) else tuple(entrada)
+        for entrada in over_ceiling
+    )
     campos = {
         "corpus_sha": SHA,
         "modelo": "BAAI/bge-m3",

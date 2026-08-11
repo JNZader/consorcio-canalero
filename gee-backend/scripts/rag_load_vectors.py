@@ -273,7 +273,7 @@ def preflight(
             {"sha": manifest.corpus_sha},
         ).all()
     }
-    exentas = set(manifest.over_ceiling)
+    exentas = set(manifest.claves_over_ceiling)
 
     inventadas = sorted(exentas - todas)
     if inventadas:
@@ -355,7 +355,7 @@ def verificar_post_carga(session: Session, manifest: VectorsManifest, actualizad
             {"sha": manifest.corpus_sha},
         ).all()
     }
-    exentas = set(manifest.over_ceiling)
+    exentas = set(manifest.claves_over_ceiling)
     if sin_vector != exentas:
         # BOTH directions, because they are different accidents with the same
         # symptom and naming one hides the other: units that ended up without a
@@ -521,8 +521,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"artifact sha256      : {manifest.sha256}")
     print(f"vectores cargados    : {actualizadas}")
     print(f"unidades exentas     : {len(manifest.over_ceiling)}")
-    for clave in manifest.over_ceiling:
-        print(f"    - {clave} (sobre el ceiling de {manifest.token_ceiling} tokens)")
+    for clave, tokens in manifest.over_ceiling:
+        print(f"    - {clave} ({tokens} tokens, ceiling {manifest.token_ceiling})")
     if manifest.sintetico:
         print(
             "\nADVERTENCIA: estos vectores son SINTÉTICOS (embedder determinista de "
