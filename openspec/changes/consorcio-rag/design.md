@@ -574,25 +574,71 @@ would be recorded as applied and un-rollable.
 The case this is for: consorcio runs **one shared dev volume**. A developer runs `alembic upgrade head`
 on the vector-less image, 002 no-ops, and alembic records it as applied. Later that developer opts into
 `docker-compose.pgvector.yml`; `alembic upgrade head` now has nothing to do, and the embedding column
-never gets created — a stranded volume with no path forward. **Recovery (runbook, one line):** with the
-vector image running, `alembic downgrade -1 && alembic upgrade head`. The downgrade is a guarded no-op
-(nothing to drop), the upgrade re-runs the probe, this time finds the extension, and creates the
-objects. It is safe to repeat, and it destroys nothing: `rag_unidad` rows survive both steps because 002
-only ever touches the `embedding` column, which by construction is empty in this scenario.
+never gets created — a stranded volume with no path forward.
 
-**`-1` no longer lands on 002.** `conocimiento_004` is head as of slice 3 (`conocimiento_003` was head
-at slice 2), so `alembic downgrade -1` now walks back 004 — the recovery above needs `alembic downgrade
-conocimiento_002 && alembic
-upgrade head`, or the guarded statements from `app/domains/conocimiento/ddl.py` executed directly (they
-are the same source of truth migration 002 and the test fixture import, and being `IF NOT EXISTS`-guarded
-they need no version-table surgery). Walking back past 003 is *safe* but not free: 003's downgrade
-restores constraints the ingested corpus violates, so it DELETES the rows only 003 made legal — the
-three fuente-secundaria documents with a NULL `estado_vigencia` and every `anexo-normativo` unit. That
-is deliberate and lossless (`rag_*` is a derived artifact of a SHA-pinned corpus; `upgrade head` +
-`scripts/rag_ingest.py` rebuilds them byte-for-byte), but it means the recovery costs a re-ingestion.
-Before that remediation existed the downgrade did not merely cost something — it raised
-NotNullViolation and was unrunnable on any database that had been ingested even once, which took every
-documented rollback path down with it (ledger RAG2-002).
+**AMENDMENT (apply-phase JD round 1, RJDB-003) — the recovery documented here was destructive AND
+ineffective, and it was never run.** Two earlier revisions of this paragraph prescribed `alembic
+downgrade -1 && alembic upgrade head`, then `alembic downgrade conocimiento_002 && alembic upgrade
+head`. Both are wrong, and the second is wrong in a way that the first version's own correction missed:
+`alembic downgrade <rev>` reverts **to** that revision, i.e. it leaves you standing **at** it with that
+migration still applied. So `downgrade conocimiento_002` runs the downgrades of 004 and 003 and stops —
+**002's `upgrade()` never runs again**, and the whole point of the exercise was to make it re-probe.
+Meanwhile 003's downgrade DELETEs the rows only 003 made legal. The prescribed cure therefore deleted
+data and did not cure anything.
+
+Executed against a throwaway `consorcio-postgres:16-vector` container (alembic 1.18.5, this revision
+chain, three seeded units), starting from a stranded volume with `embedding` absent and
+`alembic_version = conocimiento_004`:
+
+| path | after | `embedding` column | `rag_unidad` | verdict |
+|---|---|---|---|---|
+| — | stranded | absent | 3 | the starting state |
+| **A** `downgrade conocimiento_002 && upgrade head` | version back at 004 | **still absent** | **1** | destructive AND ineffective |
+| **B** `ddl.UPGRADE_STATEMENTS` executed directly | version untouched at 004 | **present** | unchanged | **the recovery** |
+| **C** `downgrade conocimiento_001 && upgrade head` | version back at 004 | present | unchanged (A already deleted) | effective, expensively |
+
+**PRIMARY PATH — non-destructive, and the one to use.** With the vector image running, execute the
+guarded statements from `app/domains/conocimiento/ddl.py` directly. They are the same source of truth
+migration 002 and the test fixture import, they are `IF NOT EXISTS`-guarded, and they need no
+version-table surgery — the version stays at head because nothing about the version is wrong; only the
+objects are missing.
+
+```
+cd gee-backend && venv/bin/python - <<'PY'
+from sqlalchemy import create_engine, text
+from app.domains.conocimiento import ddl
+
+engine = create_engine("postgresql://consorcio:consorcio_dev@localhost:5432/consorcio")
+with engine.begin() as conn:
+    if not ddl.extension_available(conn):
+        raise SystemExit("this image has no pgvector — start docker-compose.pgvector.yml first")
+    for statement in ddl.UPGRADE_STATEMENTS:
+        conn.execute(text(statement))
+PY
+```
+
+Repeatable, deletes nothing, and it verifies the extension is actually available before touching
+anything — a run on the vector-less image refuses instead of half-succeeding.
+
+**DESTRUCTIVE FALLBACK — `alembic downgrade conocimiento_001 && alembic upgrade head`.** Use this only
+if the schema is inconsistent in some way the primary path cannot fix, and know what it costs, because
+all three prices are real:
+
+* it walks back **002**, which is what makes `upgrade head` re-run the probe — this is why the target is
+  `conocimiento_001` and not `conocimiento_002`;
+* **003's downgrade DELETEs** the rows only 003 made legal: the fuente-secundaria documents with a NULL
+  `estado_vigencia` and every `anexo-normativo` unit. Lossless in principle (`rag_*` is a derived
+  artifact of a SHA-pinned corpus) but it costs a **full re-ingestion**, `scripts/rag_ingest.py`;
+* **004's downgrade DROPS the five provenance columns.** Measured above: `embedding_modelo` goes from
+  `'BAAI/bge-m3'` to `NULL`. That is not just a lost record — `service.verificar_embedder` reads that
+  column to refuse a query whose embedder did not produce the stored vectors, so with it NULL the model
+  gate **re-arms from None** and the snapshot reads as "ingested but never embedded". Recovering it
+  means re-running `scripts/rag_load_vectors.py` with the artifact, i.e. the vectors have to be
+  **re-loaded as well as re-ingested**.
+
+Before RAG2-002's remediation the downgrade did not merely cost something — it raised NotNullViolation
+and was unrunnable on any database that had been ingested even once, which took every documented
+rollback path down with it.
 
 This transition is **never exercised by CI** — CI runs `alembic upgrade head` against a fresh database
 on the vector-less image every time, so it only ever sees the no-op branch. That is why the recovery is
@@ -683,13 +729,20 @@ database on the shared dev volume. No production rollback exists because V0 make
 
 **Stranded-volume recovery (see D7).** If `alembic upgrade head` ran on the vector-less image, 002 is
 recorded as applied although it no-opped; opting into the vector image afterwards leaves no upgrade to
-run. With the vector image up: `alembic downgrade conocimiento_002 && alembic upgrade head` (**not
-`-1`** — `conocimiento_003` is head as of slice 2, so `-1` walks back 003 and re-ingestion is then
-required; see D7). Both migrations are
-guarded with `IF [NOT] EXISTS` in both directions, so the downgrade is a no-op and the upgrade re-probes
-and creates the objects. Repeatable, and non-destructive to `rag_unidad` rows. CI never reaches this
-path (fresh database, vector-less image, always the no-op branch), which is exactly why it is written
-down here.
+run. With the vector image up, execute **`ddl.UPGRADE_STATEMENTS` directly** (the exact command is in
+D7). It is `IF NOT EXISTS`-guarded, repeatable, needs no version-table surgery and deletes nothing —
+the alembic version is not what is wrong, only the objects are missing.
+
+**Do NOT use `alembic downgrade conocimiento_002 && alembic upgrade head`**, which two earlier revisions
+of this document prescribed. `downgrade <rev>` reverts *to* that revision, so it stops with 002 still
+applied and 002's `upgrade()` never re-runs — measured: the `embedding` column is still absent
+afterwards, while 003's downgrade has deleted rows on the way past. Destructive and ineffective at once.
+The destructive fallback, if one is genuinely needed, is `downgrade conocimiento_001 && upgrade head`,
+and it costs a re-ingestion AND a vector re-load (004's downgrade nulls the provenance columns, so the
+embedder gate re-arms from None). D7 has the measurements.
+
+CI never reaches this path (fresh database, vector-less image, always the no-op branch), which is
+exactly why it is written down here — and exactly why the wrong version survived two revisions.
 
 ## PR Slicing (auto-chain — total far exceeds the 400-line budget)
 
