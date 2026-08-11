@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { RainfallMetric } from '../../src/lib/api/rainfall';
 import {
-  describeMetricLine,
   describeMetricState,
   formatMetricValue,
   metricLabel,
@@ -106,20 +105,5 @@ describe('describeMetricState', () => {
     );
     expect(text).not.toContain('0');
     expect(text).toContain('cadence_unsupported');
-  });
-});
-
-describe('describeMetricLine', () => {
-  it('composes label, value and state in one textual line (textual chart row)', () => {
-    expect(describeMetricLine('selected', metric())).toBe(
-      'Acumulado del año: 850.2 mm — Disponible'
-    );
-  });
-
-  it('exposes coverage on a partial metric', () => {
-    const line = describeMetricLine('d7', metric({ state: 'partial', coverage: 0.8 }));
-    expect(line).toContain('Antecedente 7 días');
-    expect(line).toContain('Parcial');
-    expect(line).toContain('80%');
   });
 });

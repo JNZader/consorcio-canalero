@@ -105,15 +105,3 @@ export function describeMetricState(metric: RainfallMetric): string {
   }
   return label;
 }
-
-/** One full textual line per metric — the textual-chart row. */
-export function describeMetricLine(
-  key: string,
-  metric: RainfallMetric,
-  baseline?: string | null
-): string {
-  const base = `${metricLabel(key, baseline)}: ${formatMetricValue(metric)} — ${describeMetricState(metric)}`;
-  return metric.state === 'partial'
-    ? `${base} (cobertura ${Math.round(metric.coverage * 100)}%)`
-    : base;
-}
