@@ -71,7 +71,7 @@ import {
   type RainfallNormalCurveState,
   type RainfallSeriesPoint,
 } from '../../../lib/api/rainfall';
-import { formatAccumulated } from './rainfallFormat';
+import { evidenceFooter, formatAccumulated, isoDay, lastEvidenceDay } from './rainfallFormat';
 
 /** Display window over one calendar-year series. Never a request parameter. */
 const CAMPAIGN_PRESET = {
@@ -158,79 +158,6 @@ function normalCurveNotice(
   return known === undefined
     ? { title: 'Sin línea normal', body: state }
     : { title: known.title, body: known.body(normalPhrase(baseline)) };
-}
-
-/** ISO day of a date or datetime string, without re-parsing it into a Date
- *  (a `new Date(...)` round trip is where a UTC day silently becomes the day
- *  before in a browser west of Greenwich). */
-function isoDay(value: string): string {
-  return value.slice(0, 10);
-}
-
-/**
- * The last day the provider actually published, read off `available_through`.
- *
- * `available_through` is the EXCLUSIVE end of the disclosure window, not a
- * day the analysis has evidence for: `compute._disclosure_window` builds it as
- * `min(comparison_end + 1 day, max(interval_end))`, and `series._points` stops
- * at `window_end - 1 day`, so NO point is ever emitted on it. The backend pins
- * the pair literally (`test_rainfall_series_consistency.py`:
- * `available_through == 2025-01-21`, last point `2025-01-20`).
- *
- * Every INCLUSIVE sentence below is therefore about the day before it. Reading
- * the raw value as inclusive was wrong three times over: it claimed evidence
- * for a day with none, it hid a one-day provider lag completely (with a lag of
- * exactly one day the exclusive end EQUALS `comparison_end`, so a `<` test on
- * the raw value is false and the missing day reads as a day without rain), and
- * on a finalized past year it printed January 1 of the NEXT year under a chart
- * titled with this one.
- *
- * `Date.UTC` over the parsed parts, never `new Date(value)`: same reason
- * `isoDay` avoids the round trip, and it carries month and year rollover for
- * free (day 0 is the previous month's last day). Slicing the first ten
- * characters is only correct because the wire value is UTC-normalized where it
- * leaves the backend (`series.build_series`, JDB-101): the stored envelope can
- * carry the same instant under the database session's own offset, and the day
- * of `2024-03-02T21:00:00-03:00` is March 3, not March 2.
- *
- * An unparseable value degrades to its own raw day rather than throwing
- * (JDA-104): `toISOString()` on an invalid Date raises, and the exception
- * would take down the whole panel subtree over one footnote. `build_series`
- * refuses an unparseable `available_through` with a 503 long before it can
- * reach a chart, so this is a guard against an unmodelled shape, not a
- * reachable state — and the repo's rule for that is to show the untranslated
- * fact (`export._label`, `metricLabel ?? key`), never to disappear.
- */
-function lastEvidenceDay(availableThrough: string): string {
-  const day = isoDay(availableThrough);
-  const [year, month, dayOfMonth] = day.split('-').map(Number);
-  // NaN defaults on purpose: a missing part must reach the fallback below
-  // instead of being silently completed into a real, wrong date.
-  const shifted = Date.UTC(
-    year ?? Number.NaN,
-    (month ?? Number.NaN) - 1,
-    (dayOfMonth ?? Number.NaN) - 1
-  );
-  if (Number.isNaN(shifted)) return day;
-  return new Date(shifted).toISOString().slice(0, 10);
-}
-
-/**
- * The evidence half of the footer — a CLAIM, so it is only made when the
- * series carries evidence to back it.
- *
- * With zero published intervals `compute._disclosure_window` falls back to
- * `comparison_end + 1 day`, so an analysis that published NOTHING still
- * carries a plausible-looking `available_through`, and stamping it read as
- * "evidence up to X" over a series whose every point is null (JDB-103). The
- * lag notice is gated on the same fact, because "the provider has not yet
- * published the days after X" is not a sentence about a series with no X.
- */
-function evidenceFooter(evidenceDay: string | null, answered: boolean): string {
-  if (evidenceDay !== null) return `Evidencia publicada hasta el ${evidenceDay}`;
-  return answered
-    ? 'Sin días con evidencia publicada en este análisis'
-    : 'Evidencia publicada hasta el —';
 }
 
 /**

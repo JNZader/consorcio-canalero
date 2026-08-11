@@ -44,6 +44,7 @@
     // TS2339 that says nothing about the code under test.
     "tests/setup.ts",
     "tests/unit/rainfallApi.test.ts",
+    "tests/unit/rainfallFormat.test.ts",
     "tests/unit/RainfallDetailPanel.test.tsx",
     "tests/unit/RainfallAccumulationChart.test.tsx",
     "tests/unit/RainfallMetricList.test.tsx",
