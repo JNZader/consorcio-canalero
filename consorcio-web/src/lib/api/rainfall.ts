@@ -73,6 +73,15 @@ export interface RainfallMetric {
 /** Immutable analysis snapshot (200). Metric groups are keyed dicts. */
 export interface RainfallAnalysisSnapshot {
   analysis_revision_id: string;
+  /**
+   * Content address of the daily evidence this revision was built from
+   * (backend design.md D3). Injected server-side at disclosure time from the
+   * revision row, so it identifies WHICH data the card is showing, not just
+   * which row served it. The `/series` response echoes the same digest: the
+   * server-side pin is authoritative, and comparing these two is the cheap
+   * cross-check that also catches a stale snapshot held open in a tab.
+   */
+  data_revision: string;
   scope: RainfallScopeChoice;
   regional_estimate: boolean;
   year: number;
@@ -83,6 +92,83 @@ export interface RainfallAnalysisSnapshot {
   intensity?: Record<string, RainfallMetric>;
   summary?: unknown;
   source_health?: unknown;
+}
+
+/**
+ * Why a daily point has no value. `unavailable` means the provider has not
+ * published that day inside the analysis' own disclosure window — it is NOT a
+ * measured zero, and a chart that draws it as one invents a dry day.
+ */
+export const RAINFALL_SERIES_POINT_STATE = {
+  AVAILABLE: 'available',
+  UNAVAILABLE: 'unavailable',
+} as const;
+
+export type RainfallSeriesPointState =
+  (typeof RAINFALL_SERIES_POINT_STATE)[keyof typeof RAINFALL_SERIES_POINT_STATE];
+
+/**
+ * Why a series no longer matches the revision it illustrates (backend
+ * design.md D3). Non-null exactly when `consistent_with_snapshot` is false.
+ * The backend documents this enum as closed at these two values: the pin
+ * reports `interval_family_ambiguous` for both "two live families" and "no
+ * rows at all", deliberately, rather than adding a third.
+ */
+export const RAINFALL_CONSISTENCY_REASON = {
+  DATA_REVISION_MOVED: 'data_revision_moved',
+  INTERVAL_FAMILY_AMBIGUOUS: 'interval_family_ambiguous',
+} as const;
+
+export type RainfallConsistencyReason =
+  (typeof RAINFALL_CONSISTENCY_REASON)[keyof typeof RAINFALL_CONSISTENCY_REASON];
+
+/**
+ * Whether the 1991–2020 normal curve is drawable, and if not, WHY NOT
+ * (backend LI3A-001). `suppressed` (no baseline to compare against) and
+ * `integrity_refused` (a curve was computed and discarded for contradicting
+ * the stored `annual.normal`) arrive with byte-identical null columns, so this
+ * field is the only thing that keeps an honest absence distinguishable from a
+ * refusal. The UI must render the two differently.
+ */
+export const RAINFALL_NORMAL_CURVE_STATE = {
+  AVAILABLE: 'available',
+  SUPPRESSED: 'suppressed',
+  INTEGRITY_REFUSED: 'integrity_refused',
+} as const;
+
+export type RainfallNormalCurveState =
+  (typeof RAINFALL_NORMAL_CURVE_STATE)[keyof typeof RAINFALL_NORMAL_CURVE_STATE];
+
+/** One calendar day of the analysis' disclosure window. `null` is UNKNOWN. */
+export interface RainfallSeriesPoint {
+  date: string;
+  mm: number | null;
+  accumulated: number | null;
+  normal_accumulated: number | null;
+  state: RainfallSeriesPointState;
+}
+
+/**
+ * The daily series for one stored revision, pinned to it server-side.
+ *
+ * `consistent_with_snapshot` is authoritative: the backend recomputes the
+ * revision's `data_revision` digest over exactly the window the build read and
+ * compares it with the one stored on the row. Comparing this response's
+ * `data_revision` against the snapshot the tab is holding is the cheap client
+ * cross-check on top of it, and it also catches a stale snapshot left open.
+ */
+export interface RainfallSeriesResponse {
+  analysis_revision_id: string;
+  data_revision: string;
+  scope: RainfallScopeChoice;
+  year: number;
+  unit: string;
+  comparison_end: string;
+  available_through: string;
+  consistent_with_snapshot: boolean;
+  consistency_reason: RainfallConsistencyReason | null;
+  normal_curve_state: RainfallNormalCurveState;
+  points: RainfallSeriesPoint[];
 }
 
 /** Queued analysis (202): the work is labelled and resolves on a poll. */
@@ -100,9 +186,7 @@ export type RainfallAnalysisResponse =
 
 function isQueuedBody(body: unknown): body is RainfallQueued {
   return (
-    typeof body === 'object' &&
-    body !== null &&
-    (body as { status?: unknown }).status === 'queued'
+    typeof body === 'object' && body !== null && (body as { status?: unknown }).status === 'queued'
   );
 }
 
@@ -152,24 +236,46 @@ export async function fetchRainfallAnalysis(
   year: number,
   signal?: AbortSignal
 ): Promise<RainfallAnalysisResponse> {
-  const body = await apiFetch<RainfallAnalysisSnapshot | RainfallQueued>(
-    '/geo/rainfall/analyses',
-    { method: 'POST', body: JSON.stringify({ scope, year }), signal }
-  );
-  return isQueuedBody(body)
-    ? { type: 'queued', queued: body }
-    : { type: 'ready', snapshot: body };
+  const body = await apiFetch<RainfallAnalysisSnapshot | RainfallQueued>('/geo/rainfall/analyses', {
+    method: 'POST',
+    body: JSON.stringify({ scope, year }),
+    signal,
+  });
+  return isQueuedBody(body) ? { type: 'queued', queued: body } : { type: 'ready', snapshot: body };
 }
 
 /**
- * Download the CSV export of one analysis revision. Raw fetch (not apiFetch)
- * because the response is a blob — same pattern as the photo upload path.
+ * Read the daily series for one stored analysis revision.
+ *
+ * Read-only server-side (it enqueues nothing), so it is safe to fetch whenever
+ * the chart mounts — but it is not a substitute for the analysis itself: the
+ * consistency fields it carries describe THAT revision, not a fresher one.
+ * @throws {Error} with the server `detail` on 401/403/404/503.
+ */
+export async function fetchRainfallSeries(
+  revisionId: string,
+  signal?: AbortSignal
+): Promise<RainfallSeriesResponse> {
+  return apiFetch<RainfallSeriesResponse>(
+    `/geo/rainfall/analyses/${encodeURIComponent(revisionId)}/series`,
+    { signal }
+  );
+}
+
+/**
+ * Fetch one revision export and hand it to the browser as a download.
+ *
+ * Raw fetch (not apiFetch) because the response is a blob — same pattern as
+ * the photo upload path. The bearer token travels in the header, NEVER in the
+ * URL, where it would be recorded in browser history and server access logs.
+ * Both export formats share this body so the two can never drift apart on the
+ * half that carries the credential.
  * @throws {Error} with the server `detail` when the export is denied.
  */
-export async function downloadRainfallCsv(revisionId: string): Promise<void> {
+async function downloadRainfallExport(revisionId: string, extension: string): Promise<void> {
   const token = await getAuthToken();
   const response = await fetch(
-    `${API_URL}${API_PREFIX}/geo/rainfall/analyses/${encodeURIComponent(revisionId)}.csv`,
+    `${API_URL}${API_PREFIX}/geo/rainfall/analyses/${encodeURIComponent(revisionId)}.${extension}`,
     { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
   );
   if (!response.ok) {
@@ -184,7 +290,23 @@ export async function downloadRainfallCsv(revisionId: string): Promise<void> {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `lluvia_${revisionId}.csv`;
+  link.download = `lluvia_${revisionId}.${extension}`;
   link.click();
   window.URL.revokeObjectURL(url);
+}
+
+/** Download the audit CSV export of one analysis revision. */
+export async function downloadRainfallCsv(revisionId: string): Promise<void> {
+  return downloadRainfallExport(revisionId, 'csv');
+}
+
+/**
+ * Download the friendly two-sheet xlsx export of one analysis revision
+ * (Resumen + Serie diaria, backend design.md D7). Same authorization boundary
+ * as the CSV; the workbook stamps the series-consistency pin and the
+ * normal-curve state inside itself, because it outlives the screen that would
+ * have shown them.
+ */
+export async function downloadRainfallXlsx(revisionId: string): Promise<void> {
+  return downloadRainfallExport(revisionId, 'xlsx');
 }

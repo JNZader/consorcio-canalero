@@ -45,6 +45,38 @@ export function formatMetricValue(metric: RainfallMetric): string {
   return `${metric.value.toFixed(1)} ${metric.unit}`;
 }
 
+/**
+ * A series value with its unit — the chart's counterpart to
+ * {@link formatMetricValue}, which only knows how to read a `RainfallMetric`.
+ *
+ * Same rule, stated once for both: `null` is UNKNOWN and prints "—", never
+ * "0". A daily point with no published evidence carries `null`, and a chart
+ * caption that renders it as a zero invents a dry day.
+ */
+export function formatAccumulated(value: number | null | undefined, unit: string): string {
+  return value === null || value === undefined ? '—' : `${value.toFixed(1)} ${unit}`;
+}
+
+/**
+ * The percentile as a PHRASE, for the annual textual equivalent.
+ *
+ * Not `formatMetricValue`: the server sends `unit: "percentil"` (deliberately
+ * not `"%"`, so nobody reads a rank as a share of anything), and "27.4
+ * percentil" is not a sentence a reader parses. `baseline` is passed in rather
+ * than hardcoded — the period is server-driven, and a constant here is the
+ * RISK-001 defect that let the UI keep asserting 1991-2020 after the normals
+ * were regenerated over another period.
+ *
+ * Rounded to a whole percentile: a Weibull rank over ~31 samples moves in
+ * steps of roughly 3, so the tenth is precision the number does not have. A
+ * served 0 stays "0" — the driest year on record is data, not a missing value.
+ */
+export function percentilePhrase(metric: RainfallMetric, baseline: string): string {
+  return metric.value === null
+    ? `Percentil de ${baseline}: —`
+    : `Percentil ${Math.round(metric.value)} de ${baseline}`;
+}
+
 /** State sentence with its reason where the contract carries one. */
 export function describeMetricState(metric: RainfallMetric): string {
   const label = RAINFALL_STATE_LABELS[metric.state];

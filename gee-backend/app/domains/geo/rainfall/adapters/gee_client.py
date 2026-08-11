@@ -25,6 +25,13 @@ DEFAULT_ZONE_ASSET = "zona_cc_ampliada"
 BASIN_ASSET_NAMES = frozenset({"candil", "ml", "noroeste", "norte"})
 ZONAL_SCALE_METERS = 1000  # reduction scale used by the validation spike
 
+# design.md D1: the historical-baseline storage key is
+# scope_kind="provider_asset", scope_id=<resolved asset>,
+# scope_version=BASELINE_ASSET_VERSION -- fixed, never a zoning version, so
+# a zone republication (a scope_version bump elsewhere) can never orphan
+# the baseline read (repository.baseline_cumulatives).
+BASELINE_ASSET_VERSION = "v1"
+
 
 class UnknownProviderScope(ValueError):
     """No GEE asset is mapped to the requested provider scope."""
@@ -32,6 +39,11 @@ class UnknownProviderScope(ValueError):
 
 def asset_name_for(scope_kind: str, scope_id: str) -> str:
     """Resolve a rainfall scope to its GEE asset name."""
+    if scope_kind == "provider_asset":
+        # The baseline storage/read key already names the resolved asset
+        # directly (D1) -- unlike "zone"/"basin", there is no zoning/basin
+        # lookup to perform here, so this is a passthrough.
+        return scope_id
     if scope_kind == "zone":
         # The deployment is a single zone_cc asset today; zone ids in the DB
         # are zoning feature ids (geo_approved_zonings), not GEE asset names.

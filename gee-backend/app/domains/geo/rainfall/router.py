@@ -6,12 +6,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
+from app.domains.geo.rainfall.export import XLSX_MEDIA_TYPE, build_workbook
 from app.domains.geo.rainfall.metrics import record_event
+from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+from app.domains.geo.rainfall.series import build_series
 from app.domains.geo.rainfall.service import (
     SnapshotContractError,
     analysis_request_fingerprint,
@@ -112,6 +116,67 @@ def resolve_scope(
     return {"scope": scope, "regional_estimate": scope.regional_estimate}
 
 
+def _requeue_stale_revision(db: Session, *, payload, scope, fingerprint: str) -> None:
+    """Enqueue the stale-policy refresh WITHOUT letting it break the read
+    (LI2B-002).
+
+    The snapshot is already in memory by the time this runs, so a failing
+    enqueue must never turn a serveable 200 into a 500. A bare ``try/except``
+    is not enough: a statement that fails mid-transaction leaves the session
+    ABORTED (SQLSTATE 25P02) and poisons everything that touches it
+    afterwards, so the enqueue gets its own SAVEPOINT to roll back to.
+
+    The savepoint is driven MANUALLY rather than through
+    ``with db.begin_nested():`` on purpose, and the reason is empirical:
+    ``queue_missing_analysis`` owns its own transaction boundary -- it
+    ``commit()``s on success and ``rollback()``s to recover the
+    ``IntegrityError`` race (decision 8, a spec-covered scenario). Inside the
+    context-manager form, that inner ``rollback()`` closes the block's
+    transaction and the very next statement -- the race recovery's own
+    re-read -- raises ``InvalidRequestError: Can't operate on closed
+    transaction inside context manager``. The manual form has no such guard,
+    so both of the callee's paths keep working; ``is_active`` then tells us
+    whether the savepoint is still ours to roll back or the callee already
+    resolved it.
+
+    ``record_event`` writes to the logger, never the session, but it is still
+    emitted AFTER the rollback so the ordering never depends on that.
+    """
+    savepoint = db.begin_nested()
+    try:
+        queue_missing_analysis(
+            db,
+            scope=scope,
+            year=payload.year,
+            labels=("policy_revision_stale",),
+            event_window=(
+                payload.event_window.model_dump(mode="json") if payload.event_window else None
+            ),
+            request_fingerprint=fingerprint,
+        )
+    except (SQLAlchemyError, RuntimeError) as exc:
+        if savepoint.is_active:
+            savepoint.rollback()
+        else:
+            # The callee already committed or rolled back this savepoint and
+            # then failed. Nothing else in this read path holds uncommitted
+            # work, so a session-level rollback is the equally safe fallback
+            # that still clears an aborted transaction.
+            db.rollback()
+        record_event(
+            "rainfall.analysis.requeue_failed",
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=payload.year,
+            error_type=type(exc).__name__,
+            error_message=str(exc)[:200],
+        )
+    else:
+        if savepoint.is_active:
+            savepoint.commit()
+
+
 @router.post("/analyses", openapi_extra=_request_body(AnalysisRequest))
 def read_analysis(
     payload: AnalysisRequest = Depends(parse_analysis_request), db: Session = Depends(get_db)
@@ -141,9 +206,53 @@ def read_analysis(
             request_fingerprint=fingerprint,
         )
         return JSONResponse(queued, status_code=202)
+    # Read the row's fields BEFORE any enqueue below: queue_missing_analysis
+    # commits, which expires the ORM instance and would make every later
+    # attribute access a fresh SELECT.
+    stored_snapshot = revision.snapshot
+    stored_policy_revision = revision.policy_revision
+    stored_data_revision = revision.data_revision
+    revision_id = str(revision.id)
+
+    if stored_policy_revision != RAINFALL_METRIC_POLICY_REVISION:
+        # Task 2b.8 (design.md D3): the stored row was written under a
+        # SUPERSEDED policy revision. It is still served -- normalized with
+        # its OWN policy_revision below, so it stays self-consistent -- and a
+        # refresh is enqueued so the enriched envelope eventually lands.
+        # Neither sweep revisits a past-year key that is already `done`, so
+        # the request path is the only place this is noticed. Enqueued BEFORE
+        # normalization so a stale row that also fails its contract still
+        # gets its healing refresh instead of only a 503.
+        #
+        # Bounded cost, corrected (LI2B-001 -- the earlier text here named
+        # only the `done` cooldown and the pending pre-check, and was
+        # therefore FALSE for the third state a key can be in). Every
+        # terminal state a key's own history can reach now has a window, all
+        # of them applied by service._requeue_cooldown:
+        #   - newest row `done` (productive)  -> 10 min  (decision 6)
+        #   - newest row `done` but its build REFUSED to write
+        #     ("latched"/"gate_refused")      -> 24 h    (LI2B-003)
+        #   - newest row terminal `failed`    -> 6 h     (LI2B-001)
+        #   - a `pending` row already exists  -> reused, never duplicated
+        # so a poll loop costs at most one refresh per key per window, never
+        # one per poll, in EVERY state -- which is what the spec delta's
+        # "Stale Policy Revision Refresh on Poll" MODIFIED requirement
+        # promises.
+        record_event(
+            "rainfall.analysis.policy_revision_stale",
+            revision_id=revision_id,
+            scope_kind=scope.kind,
+            scope_id=scope.id,
+            scope_version=scope.version,
+            year=payload.year,
+            served_policy_revision=stored_policy_revision,
+            current_policy_revision=RAINFALL_METRIC_POLICY_REVISION,
+        )
+        _requeue_stale_revision(db, payload=payload, scope=scope, fingerprint=fingerprint)
+
     try:
         normalized = normalize_snapshot(
-            revision.snapshot, expected_policy_revision=revision.policy_revision
+            stored_snapshot, expected_policy_revision=stored_policy_revision
         )
         # JDB-301 (review-ledger.md "Judgment Day -- APPLY-PHASE completion"):
         # build_snapshot never sets this field (it does not know its own
@@ -153,10 +262,18 @@ def read_analysis(
         # envelope via `dict(snapshot)` and never strips extra/missing root
         # keys, so setting it post-normalize is safe and does not need to
         # touch normalize_snapshot itself.
-        normalized["analysis_revision_id"] = str(revision.id)
+        normalized["analysis_revision_id"] = revision_id
+        # design.md D3 (slice 3a): same mechanism, same reason -- the row's
+        # `data_revision` column is computed after `build_snapshot` returns
+        # (`tasks._persist_analysis_revision`), so disclosure time is the only
+        # place it can be truthfully injected. It closes the client half of the
+        # series consistency loop: the /series response echoes this digest, so
+        # a tab holding an older snapshot can detect the drift itself. The
+        # server-side pin stays authoritative; this is the cheap cross-check.
+        normalized["data_revision"] = stored_data_revision
         record_event(
             "rainfall.analysis.served",
-            revision_id=str(getattr(revision, "id", "")),
+            revision_id=revision_id,
             scope_kind=scope.kind,
             scope_id=scope.id,
             scope_version=scope.version,
@@ -166,6 +283,37 @@ def read_analysis(
         return normalized
     except SnapshotContractError as exc:
         raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+
+
+@router.get("/analyses/{revision}/series")
+def read_analysis_series(revision: UUID, db: Session = Depends(get_db)) -> dict:
+    """The daily series for one stored revision, pinned to it (design.md D3).
+
+    Resolved FROM the revision id, like the CSV export beside it, so it
+    inherits that route's 404 semantics and the router-level
+    `require_admin_or_operator` dependency without restating either. Strictly
+    read-only: unlike `read_analysis`, it enqueues nothing, so no amount of
+    polling can turn a chart into GEE work.
+    """
+    stored = RainfallRepository().get_revision(db, revision)
+    if stored is None:
+        raise HTTPException(404, detail="rainfall analysis is unavailable")
+    started = datetime.now()
+    try:
+        series = build_series(db, stored)
+    except SnapshotContractError as exc:
+        raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+    record_event(
+        "rainfall.series.served",
+        revision_id=str(revision),
+        data_revision=series["data_revision"],
+        consistent_with_snapshot=series["consistent_with_snapshot"],
+        consistency_reason=series["consistency_reason"],
+        normal_curve_state=series["normal_curve_state"],
+        points=len(series["points"]),
+        latency_ms=round((datetime.now() - started).total_seconds() * 1000),
+    )
+    return series
 
 
 @router.get("/analyses/{revision}.csv")
@@ -187,3 +335,41 @@ def export_analysis(revision: UUID, db: Session = Depends(get_db)) -> Response:
         latency_ms=round((datetime.now() - started).total_seconds() * 1000),
     )
     return Response(csv_body, media_type="text/csv")
+
+
+@router.get("/analyses/{revision}.xlsx")
+def export_analysis_xlsx(revision: UUID, db: Session = Depends(get_db)) -> Response:
+    """The friendly two-sheet export (design.md D7).
+
+    Beside the CSV route and modelled on it: resolved from the revision id, so
+    it inherits the same 404 semantics and the same router-level
+    `require_admin_or_operator` gate without restating either. The audit CSV is
+    untouched -- this is an ADDITIONAL view of the same projection, never a
+    redefinition of the audit artifact.
+    """
+    stored = RainfallRepository().get_revision(db, revision)
+    if stored is None:
+        raise HTTPException(404, detail="rainfall analysis is unavailable")
+    started = datetime.now()
+    try:
+        workbook = build_workbook(db, stored)
+    except SnapshotContractError as exc:
+        # Same answer the CSV and /series routes give a snapshot that cannot
+        # describe itself. A downloaded file has no error banner, so a
+        # half-built workbook would be read as a complete one.
+        raise HTTPException(503, detail="rainfall analysis snapshot is invalid") from exc
+    record_event(
+        "rainfall.xlsx.served",
+        revision_id=str(revision),
+        consistent_with_snapshot=workbook.consistent_with_snapshot,
+        consistency_reason=workbook.consistency_reason,
+        normal_curve_state=workbook.normal_curve_state,
+        points=workbook.points,
+        bytes=len(workbook.content),
+        latency_ms=round((datetime.now() - started).total_seconds() * 1000),
+    )
+    return Response(
+        workbook.content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="lluvia_{revision}.xlsx"'},
+    )

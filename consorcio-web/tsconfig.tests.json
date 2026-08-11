@@ -1,0 +1,52 @@
+/*
+ * Typecheck project for the API-contract tests (LI3A-004).
+ *
+ * `tsconfig.json` includes only `src`, `vite.config.ts` and `vitest.config.ts`,
+ * so the type annotations in `tests/` were never compiled by anything: vitest
+ * strips types at transform time without checking them, and `npm run typecheck`
+ * did not see the files. A test written specifically to prove that a wire field
+ * is part of a typed contract (`RainfallAnalysisSnapshot.data_revision`,
+ * task 3a.14) was therefore decorative — deleting the field from the interface
+ * kept every check green.
+ *
+ * `npm run typecheck` now runs this project too, which is the SAME command the
+ * `Typecheck` job in `.github/workflows/frontend.yml` runs. No new workflow and
+ * no new CI job.
+ *
+ * `include` is the rainfall contract surface rather than all of `tests/`, and
+ * that is a measured decision, not an aesthetic one: compiling the whole tests
+ * tree today reports pre-existing errors in 62 other files (JSX component
+ * typing in `ErrorBoundary.test.tsx`, mock typing in hook tests, ...), none of
+ * them related to this contract. Widening this list is the right cleanup, and
+ * it is a separate one — the alternative was shipping no gate at all until that
+ * backlog is paid, which is how the gap survived in the first place. ADD FILES
+ * HERE as their type errors are cleared.
+ *
+ * ENROLMENT RULE (R3-004, slice 3b) — `include` below is a HAND-MAINTAINED list,
+ * not a glob, so a new test file is outside the gate until someone adds it here.
+ * Every new rainfall contract test (`tests/**` touching `src/lib/api/rainfall.ts`,
+ * `src/hooks/useRainfallAnalysis.ts` or the rainfall components) MUST be added to
+ * `include` in the same commit that creates it, and must remain listed until the
+ * 62-file widening lands and this list is replaced by `tests/**`. A contract test
+ * that is not enrolled is decorative in exactly the way LI3A-004 described:
+ * deleting the field it claims to pin keeps every check green.
+ */
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    // Ambient `ImportMeta.env` — nothing imports it, so it has to be listed
+    // or every `import.meta.env` read in the src files these tests pull in
+    // fails to compile.
+    "src/vite-env.d.ts",
+    // The vitest setup file: it is what imports `@testing-library/jest-dom`,
+    // whose module augmentation adds `toBeInTheDocument` and friends to
+    // vitest's `Assertion`. Outside the program, every DOM matcher below is a
+    // TS2339 that says nothing about the code under test.
+    "tests/setup.ts",
+    "tests/unit/rainfallApi.test.ts",
+    "tests/unit/RainfallDetailPanel.test.tsx",
+    "tests/unit/RainfallAccumulationChart.test.tsx",
+    "tests/unit/RainfallMetricList.test.tsx",
+    "tests/hooks/useRainfallAnalysis.test.tsx"
+  ]
+}

@@ -16,9 +16,14 @@ import { useQuery } from '@tanstack/react-query';
 
 import {
   type RainfallAnalysisResponse,
+  type RainfallConsistencyReason,
+  type RainfallNormalCurveState,
   type RainfallResolveResult,
   type RainfallScopeChoice,
+  type RainfallSeriesPoint,
+  type RainfallSeriesResponse,
   fetchRainfallAnalysis,
+  fetchRainfallSeries,
   resolveRainfallScopes,
 } from '../lib/api/rainfall';
 
@@ -54,6 +59,20 @@ export function useRainfallScopes(nomenclatura: string | null): UseRainfallScope
   };
 }
 
+/**
+ * The cache key one scope/year analysis lives under.
+ *
+ * Exported because the chart's re-request action writes the server's answer
+ * straight into it (`queryClient.setQueryData`), so a 200 carrying a newer
+ * revision moves the WHOLE panel and a labelled 202 lands on the poll path
+ * `useRainfallAnalysis` already owns. Two consumers, ONE definition: a key
+ * rebuilt by hand at the second call site is a cache write that silently
+ * lands nowhere the first one reads.
+ */
+export function rainfallAnalysisQueryKey(scope: RainfallScopeChoice, year: number) {
+  return ['rainfall-analysis', scope.kind, scope.id, scope.version, year] as const;
+}
+
 export interface UseRainfallAnalysisOptions {
   /** Test seam: shorten the queued poll cadence. Defaults to 5 s. */
   pollIntervalMs?: number;
@@ -80,10 +99,8 @@ export function useRainfallAnalysis(
   year: number,
   options: UseRainfallAnalysisOptions = {}
 ): UseRainfallAnalysisResult {
-  const {
-    pollIntervalMs = RAINFALL_QUEUED_POLL_MS,
-    maxQueuedPolls = RAINFALL_MAX_QUEUED_POLLS,
-  } = options;
+  const { pollIntervalMs = RAINFALL_QUEUED_POLL_MS, maxQueuedPolls = RAINFALL_MAX_QUEUED_POLLS } =
+    options;
 
   // Consecutive queued (202) answers observed for the CURRENT scope/year. The
   // budget resets when the selection changes (a new request starts fresh) and
@@ -100,7 +117,7 @@ export function useRainfallAnalysis(
 
   const query = useQuery({
     queryKey: scope
-      ? (['rainfall-analysis', scope.kind, scope.id, scope.version, year] as const)
+      ? rainfallAnalysisQueryKey(scope, year)
       : (['rainfall-analysis', 'idle'] as const),
     queryFn: async ({ signal }) => {
       const response = await fetchRainfallAnalysis(scope as RainfallScopeChoice, year, signal);
@@ -126,6 +143,57 @@ export function useRainfallAnalysis(
     queued: query.data?.type === 'queued',
     gaveUp: query.data?.type === 'queued' && queuedPolls.current >= maxQueuedPolls,
     retry,
+    isLoading: query.isLoading && query.fetchStatus !== 'idle',
+    isError: query.isError,
+    error: (query.error as Error | null) ?? null,
+  };
+}
+
+/**
+ * The daily series for one stored revision, with its consistency disclosures
+ * surfaced as first-class fields.
+ *
+ * `consistentWithSnapshot: false` and a refused normal curve are DATA, not
+ * error states: the chart still renders the series (it is the fresher
+ * evidence), above the notice the disclosure requires. Leaving them inside an
+ * optional response body is what would let a component forget to show them.
+ */
+export interface UseRainfallSeriesResult {
+  data: RainfallSeriesResponse | undefined;
+  /** Server-side pin (authoritative). `undefined` until the series arrives. */
+  consistentWithSnapshot: boolean | undefined;
+  /** Non-null exactly when the pin reports inconsistent. */
+  consistencyReason: RainfallConsistencyReason | null | undefined;
+  /** `suppressed` and `integrity_refused` are different facts — keep them apart. */
+  normalCurveState: RainfallNormalCurveState | undefined;
+  /** Empty until the series arrives — never a fabricated placeholder curve. */
+  points: RainfallSeriesPoint[];
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+}
+
+export function useRainfallSeries(revisionId: string | null): UseRainfallSeriesResult {
+  const query = useQuery({
+    queryKey: revisionId
+      ? (['rainfall-series', revisionId] as const)
+      : (['rainfall-series', 'idle'] as const),
+    queryFn: ({ signal }) => fetchRainfallSeries(revisionId as string, signal),
+    enabled: revisionId !== null,
+    // The revision row is immutable, so its series only moves when the
+    // underlying daily data is corrected — and when it does, the response says
+    // so instead of the client having to poll for it. No refetchInterval: the
+    // route is read-only server-side and must stay cheap on the client too.
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  return {
+    data: query.data,
+    consistentWithSnapshot: query.data?.consistent_with_snapshot,
+    consistencyReason: query.data?.consistency_reason,
+    normalCurveState: query.data?.normal_curve_state,
+    points: query.data?.points ?? [],
     isLoading: query.isLoading && query.fetchStatus !== 'idle',
     isError: query.isError,
     error: (query.error as Error | null) ?? null,

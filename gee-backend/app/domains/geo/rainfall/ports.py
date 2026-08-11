@@ -46,7 +46,12 @@ class SourceInterval:
 @dataclass(frozen=True, slots=True)
 class SourceBatch:
     source_id: str
-    scope_kind: Literal["zone", "basin"]
+    # "provider_asset" (design.md D1): the historical-baseline backfill
+    # orchestrator (tasks.backfill_baseline_range) ingests under this scope
+    # kind so persist_intervals writes the fixed, zoning-version-independent
+    # baseline key directly -- not a request scope (scope.executable_scope
+    # still rejects it), storage/backfill-write only.
+    scope_kind: Literal["zone", "basin", "provider_asset"]
     scope_id: str
     scope_version: str
     cadence: timedelta
@@ -66,7 +71,7 @@ class SourceBatch:
             or not self.checksum
         ):
             raise ValueError("source batch requires stable source and scope identity plus checksum")
-        if self.scope_kind not in {"zone", "basin"}:
+        if self.scope_kind not in {"zone", "basin", "provider_asset"}:
             raise ValueError("source batch scope kind is not supported")
         if self.cadence <= timedelta():
             raise ValueError("source batch cadence must be positive")
@@ -87,7 +92,7 @@ class RainfallSourceAdapter(Protocol):
         self,
         *,
         source_id: str,
-        scope_kind: Literal["zone", "basin"],
+        scope_kind: Literal["zone", "basin", "provider_asset"],
         scope_id: str,
         scope_version: str,
         start: datetime,

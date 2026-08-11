@@ -114,6 +114,15 @@ const SNAPSHOT_METRICS = {
   p24h: 12.5,
 } as const;
 
+/**
+ * The digest of the daily evidence this revision was built from, injected
+ * server-side at disclosure time since task 3a.12. The chart compares it
+ * against the `/series` echo, so the two fixtures below MUST carry the same
+ * value: a mismatch is exactly the staleness disclosure, and inventing one
+ * here would make every e2e run show a corrected-data alert.
+ */
+const DATA_REVISION = 'ab'.repeat(32);
+
 /** An immutable ready (200) body — mirrors RainfallAnalysisSnapshot. */
 function readyBody(
   scope: Record<string, string>,
@@ -122,6 +131,7 @@ function readyBody(
 ): Record<string, unknown> {
   return {
     analysis_revision_id: revision,
+    data_revision: DATA_REVISION,
     scope,
     regional_estimate: true,
     year,
@@ -154,9 +164,59 @@ const CSV_BODY = [
 const ZONE_SCOPE = { kind: 'zone', id: 'z-arg-01', version: '2024-01' };
 const BASIN_SCOPE = { kind: 'basin', id: 'b-carcara-01', version: '2024-01' };
 
+/**
+ * A short daily series for the accumulation chart (slice 4).
+ *
+ * Deliberately CONSISTENT (`consistent_with_snapshot: true`, same
+ * `data_revision` as the snapshot, `normal_curve_state: "available"`): this
+ * journey asserts that both lines DRAW, so any disclosure state would be
+ * noise here. The disclosure states have their own unit coverage in
+ * `tests/unit/RainfallAccumulationChart.test.tsx`.
+ *
+ * Shaped the way the backend actually emits it (JDA-103 = JDB-102):
+ * `available_through` is the EXCLUSIVE end of the disclosure window, so the
+ * last POINT is the day before it and the chart discloses that day. The
+ * earlier fixture put a point ON `available_through` with
+ * `available_through == comparison_end`, which no build can produce -- and
+ * after the JDA-001 fix it silently became a one-day-lag fixture whose notice
+ * nobody asserted. Zero lag here, asserted in both directions.
+ */
+function seriesBody(year: number, revision = 'rev-e2e-01'): Record<string, unknown> {
+  const points = Array.from({ length: 40 }, (_, index) => {
+    const day = new Date(Date.UTC(year, 0, 1 + index));
+    return {
+      date: day.toISOString().slice(0, 10),
+      mm: 3,
+      accumulated: 3 * (index + 1),
+      normal_accumulated: 2.4 * (index + 1),
+      state: 'available',
+    };
+  });
+  return {
+    analysis_revision_id: revision,
+    data_revision: DATA_REVISION,
+    scope: ZONE_SCOPE,
+    year,
+    unit: 'mm',
+    comparison_end: `${year}-02-09`,
+    // 40 points -> the last one is 02-09; the exclusive bound is the NEXT day.
+    available_through: `${year}-02-10T00:00:00+00:00`,
+    consistent_with_snapshot: true,
+    consistency_reason: null,
+    normal_curve_state: 'available',
+    points,
+  };
+}
+
+/** A minimal but REAL zip container, so the browser downloads bytes an xlsx
+ *  reader would at least recognise by magic number ("PK"). */
+const XLSX_BODY = Buffer.from('PK' + ' '.repeat(18), 'latin1');
+
 interface RainfallMocks {
   analysisRequests: Array<Record<string, unknown>>;
   csvRequests: Array<{ headers: Record<string, string>; url: string }>;
+  xlsxRequests: Array<{ headers: Record<string, string>; url: string }>;
+  seriesRequests: string[];
 }
 
 /**
@@ -172,6 +232,8 @@ function mockRainfallApi(
   let queuedServed = 0;
   const analysisRequests: RainfallMocks['analysisRequests'] = [];
   const csvRequests: RainfallMocks['csvRequests'] = [];
+  const xlsxRequests: RainfallMocks['xlsxRequests'] = [];
+  const seriesRequests: RainfallMocks['seriesRequests'] = [];
 
   // Match ANY origin: the SPA's API base is baked per build (VITE_API_URL).
   page.route(/api\/v2\/geo\/rainfall\/.*/, async (route) => {
@@ -190,6 +252,28 @@ function mockRainfallApi(
       return;
     }
 
+    // Read-only series route (slice 3a): it enqueues nothing server-side, so
+    // the chart mounting can never create GEE work.
+    if (url.endsWith('/series')) {
+      seriesRequests.push(url);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(seriesBody(new Date().getFullYear())),
+      });
+      return;
+    }
+
+    if (url.endsWith('.xlsx')) {
+      xlsxRequests.push({ headers: route.request().headers(), url });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        body: XLSX_BODY,
+      });
+      return;
+    }
+
     if (url.endsWith('.csv')) {
       csvRequests.push({ headers: route.request().headers(), url });
       await route.fulfill({
@@ -198,7 +282,9 @@ function mockRainfallApi(
         body:
           csvStatus === 200
             ? CSV_BODY
-            : JSON.stringify({ detail: 'La descarga del CSV no está autorizada para este usuario.' }),
+            : JSON.stringify({
+                detail: 'La descarga del CSV no está autorizada para este usuario.',
+              }),
       });
       return;
     }
@@ -231,7 +317,7 @@ function mockRainfallApi(
     });
   });
 
-  return { analysisRequests, csvRequests };
+  return { analysisRequests, csvRequests, xlsxRequests, seriesRequests };
 }
 
 /** Click the fixture parcel → land on the ficha "Lluvia" tab. */
@@ -244,7 +330,10 @@ async function openFicha(page: Page): Promise<'opened' | 'data' | 'structural'> 
   const resolved = await page
     .getByTestId('ficha-result')
     .waitFor({ state: 'visible', timeout: 10_000 })
-    .then(() => true, () => false);
+    .then(
+      () => true,
+      () => false
+    );
   if (!resolved) return 'data';
 
   await page.getByTestId('ficha-dataset-tabs').locator('label', { hasText: 'Lluvia' }).click();
@@ -268,7 +357,10 @@ async function gotoAndOpenFicha(page: Page): Promise<boolean> {
   const shell = await page
     .getByTestId('map-workspace-root')
     .waitFor({ state: 'visible', timeout: 15_000 })
-    .then(() => true, () => false);
+    .then(
+      () => true,
+      () => false
+    );
   requireCondition(shell, 'Map workspace shell no montó');
 
   const outcome = await openFicha(page);
@@ -331,10 +423,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await gotoAndOpenFicha(page);
 
     // Default selection is the FIRST choice (zone). Switch to the basin.
-    await page
-      .getByTestId('rainfall-scope-switch')
-      .locator('label', { hasText: 'Cuenca' })
-      .click();
+    await page.getByTestId('rainfall-scope-switch').locator('label', { hasText: 'Cuenca' }).click();
 
     // Wait until a RECORDED request actually carries the basin scope, not just
     // any analysis request: the default zone POST can otherwise satisfy a
@@ -388,15 +477,9 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     const chunks: Buffer[] = [];
     for await (const chunk of stream) chunks.push(chunk as Buffer);
     const body = Buffer.concat(chunks).toString('utf8');
-    expect(body).toContain(
-      `Acumulado del año,${SNAPSHOT_METRICS.annual},mm,disponible,rev-e2e-01`
-    );
-    expect(body).toContain(
-      `Normal 1991-2020,${SNAPSHOT_METRICS.normal},mm,disponible,rev-e2e-01`
-    );
-    expect(body).toContain(
-      `Antecedente 7 días,${SNAPSHOT_METRICS.d7},mm,disponible,rev-e2e-01`
-    );
+    expect(body).toContain(`Acumulado del año,${SNAPSHOT_METRICS.annual},mm,disponible,rev-e2e-01`);
+    expect(body).toContain(`Normal 1991-2020,${SNAPSHOT_METRICS.normal},mm,disponible,rev-e2e-01`);
+    expect(body).toContain(`Antecedente 7 días,${SNAPSHOT_METRICS.d7},mm,disponible,rev-e2e-01`);
 
     // Parity asserted against the UI-displayed values: the snapshot the
     // interface renders (98.2 normal, 123.4 annual) must appear in the
@@ -409,6 +492,80 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     expect(csvReq.headers.authorization).toBe(`Bearer ${MOCK_TOKEN}`);
     expect(csvReq.url).not.toContain(MOCK_TOKEN);
     expect(csvReq.url).not.toMatch(/[?&](token|access_token|key)=/);
+  });
+
+  test('gráfico acumulado: las DOS series se dibujan y ambas fechas se declaran (4.10)', async ({
+    page,
+  }) => {
+    const mocks = mockRainfallApi(page);
+    await seedAuth(page, makeUser('operador', 'operador@e2e.local'));
+    await gotoAndOpenFicha(page);
+
+    await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
+
+    // The chart is fed from the READ-ONLY /series route of the served
+    // revision, not from a second analysis request.
+    const chart = page.getByTestId('rainfall-accumulation-chart');
+    await expect(chart).toBeVisible();
+    await expect.poll(() => mocks.seriesRequests.length).toBeGreaterThan(0);
+    expect(mocks.seriesRequests[0]).toContain('rev-e2e-01/series');
+
+    // TWO lines: the selected year AND the 1991-2020 normal. This is the whole
+    // point of the slice — one line is the comparison half-built.
+    await expect.poll(() => chart.locator('.recharts-line').count()).toBe(2);
+
+    // Both dates disclosed as TEXT, which is what survives a screenshot and a
+    // screen reader alike -- and each named, not just present as a substring:
+    // the fixture's comparison end and its last day WITH evidence are the same
+    // day (zero lag), so a single `toContainText` could not tell which sentence
+    // it matched, nor notice if one of the two disappeared.
+    const currentYear = new Date().getFullYear();
+    const dates = page.getByTestId('rainfall-accumulation-dates');
+    await expect(dates).toContainText(`Comparación hasta el ${currentYear}-02-09`);
+    await expect(dates).toContainText(`Evidencia publicada hasta el ${currentYear}-02-09`);
+    // The EXCLUSIVE bound is an implementation detail of the window and must
+    // never reach the reader.
+    await expect(dates).not.toContainText(`${currentYear}-02-10`);
+    // Zero lag: this fixture published through its own comparison end, so the
+    // provider-lag notice must stay away. Without this the fixture could drift
+    // back into a lag shape and nothing would say so.
+    await expect(page.getByTestId('rainfall-accumulation-lag')).toHaveCount(0);
+
+    // The display preset windows the same series and issues NO new analysis
+    // request (spec "Campaign Display Preset").
+    const analysisCallsBefore = mocks.analysisRequests.length;
+    await page
+      .getByTestId('rainfall-campaign-preset')
+      .locator('label', { hasText: 'Campaña' })
+      .click();
+    await expect(page.getByTestId('rainfall-campaign-note')).toBeVisible();
+    expect(mocks.analysisRequests.length).toBe(analysisCallsBefore);
+  });
+
+  test('export xlsx: enlace visible y descarga el libro de la revisión (4.10)', async ({
+    page,
+  }) => {
+    const mocks = mockRainfallApi(page);
+    await seedAuth(page, makeUser('admin', 'admin@e2e.local'));
+    await gotoAndOpenFicha(page);
+
+    await expect(page.getByTestId('rainfall-metrics')).toBeVisible();
+    const xlsxButton = page.getByTestId('rainfall-export-xlsx');
+    await expect(xlsxButton).toBeVisible();
+    // The audit CSV is still there: the friendly workbook is an addition.
+    await expect(page.getByTestId('rainfall-export-csv')).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await xlsxButton.click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toBe('lluvia_rev-e2e-01.xlsx');
+    // Same credential rule as the CSV (they share one download body): bearer in
+    // the header, never in the URL where history and access logs would keep it.
+    const xlsxReq = mocks.xlsxRequests[0];
+    expect(xlsxReq.headers.authorization).toBe(`Bearer ${MOCK_TOKEN}`);
+    expect(xlsxReq.url).not.toContain(MOCK_TOKEN);
+    expect(xlsxReq.url).not.toMatch(/[?&](token|access_token|key)=/);
   });
 
   test('export CSV denegado (403) muestra error claro y no deja estado fantasma', async ({
