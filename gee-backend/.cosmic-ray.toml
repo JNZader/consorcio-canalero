@@ -88,6 +88,39 @@ module-path = [
   # threshold is invented here; it enters the gate only alongside the
   # other three once a measured run exists.
   # "app/domains/geo/rainfall/compute.py",
+  # ── consorcio-rag (task 4.13): los cuatro modulos puros del dominio
+  #    conocimiento. PENDIENTE de medir, por el MISMO motivo que rainfall:
+  #    el unico interprete local es el venv 3.11 sin cosmic-ray instalado, y la
+  #    regla del repo es no cablear lo no medido (sin numero, no hay gate).
+  #
+  #    Los tests ya existen y NO tocan base de datos, que es la condicion que
+  #    hace barato el harness (un `pytest` por mutante):
+  #      parser.py     -> tests/new/conocimiento/test_rag_parser.py (+ _traps)
+  #      fusion.py     -> tests/new/conocimiento/test_rag_fusion.py       12 casos
+  #      abstention.py -> tests/new/conocimiento/test_rag_abstention.py   21 casos
+  #      metrics.py    -> tests/new/conocimiento/test_rag_metrics.py      17 casos
+  #
+  #    Son los cuatro que el diseño nombra como objetivos de mutacion
+  #    (design.md, "Mutation targets"): las piezas puras donde un mutante que
+  #    sobrevive significa que el gate es decorativo. `abstention.py` y
+  #    `metrics.py` son los mas cargados de los cuatro — deciden el go/no-go —
+  #    y sus tests son aritmetica trazada a mano, justo la forma que la
+  #    mutacion sabe auditar.
+  #
+  #    Comando de medicion (cuando haya un 3.11 con cosmic-ray):
+  #      cosmic-ray init .cosmic-ray.conocimiento.toml /tmp/cr-rag.sqlite
+  #        (test-command "python3.11 -m pytest tests/new/conocimiento/test_rag_fusion.py
+  #         tests/new/conocimiento/test_rag_abstention.py
+  #         tests/new/conocimiento/test_rag_metrics.py
+  #         tests/new/conocimiento/test_rag_parser.py -q")
+  #      cosmic-ray exec /tmp/cr-rag.sqlite && scripts/cosmic_gate.py
+  #    y recien ahi decidir si entran a este gate o a un job propio con su
+  #    propio piso. NO cablear a CI antes de tener el numero.
+  # issue: measure
+  # "app/domains/conocimiento/parser.py",
+  # "app/domains/conocimiento/fusion.py",
+  # "app/domains/conocimiento/abstention.py",
+  # "app/domains/conocimiento/eval/metrics.py",
   # TODO(mutation-coverage): falta la etapa 3 -- auth/refresh_tokens.py (300
   # mutantes, el de mayor valor y el mas caro). La receta ya esta probada dos
   # veces y NO es "correr los tests con DB mas rapido": el service no toca la

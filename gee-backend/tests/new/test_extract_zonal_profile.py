@@ -756,3 +756,84 @@ def test_default_geom_crs_is_reprojected_onto_a_utm_raster(tmp_path):
     assert profile["coverage"] == "full"
     assert profile["covered_area_ha"] == pytest.approx(9.0, rel=0.02)
     assert profile["mean"] == pytest.approx(40.0)
+
+
+# ---------------------------------------------------------------------------
+# (o) treat_zero_as_nodata — the precip-only convention, OPT-IN by construction
+# ---------------------------------------------------------------------------
+
+
+def _half_zero() -> np.ndarray:
+    """40.0 on the western half, a literal 0.0 on the eastern half."""
+    values = _filled(40.0)
+    values[:, SIZE // 2 :] = 0.0
+    return values
+
+
+def test_zero_pixels_are_data_when_the_flag_is_off(tmp_path):
+    """The DEFAULT must never change: a 0 is a measurement for every classified dataset.
+
+    ``flood_risk`` / ``drainage_need`` share this primitive and their class 0 is
+    a real class. This is the guard that keeps the precipitation convention from
+    leaking into them — it asserts the untouched behaviour, so it fails the day
+    the flag stops being opt-in.
+    """
+    raster = _write_raster(tmp_path, _half_zero())
+
+    profile = extract_zonal_profile(
+        raster,
+        mapping(RASTER_BOX),
+        geom_crs=CRS_32720,
+        breaks=FLOOD_BREAKS,
+        geom_area_m2=RASTER_AREA_M2,
+    )
+
+    assert profile["valid_pixels"] == 100  # the zeros count
+    assert profile["mean"] == pytest.approx(20.0)  # …and drag the mean to half
+    assert profile["coverage"] == "full"
+    assert profile["coverage_ratio"] == 1.0
+
+
+def test_treat_zero_as_nodata_drops_the_zeros_from_stats_and_from_coverage(tmp_path):
+    """Opted in, a 0 is excluded exactly like a nodata pixel — on BOTH accountings.
+
+    Excluding it only from the statistics would leave the worse half of the
+    defect in place: a clean mean served under ``cobertura: total``, i.e. the
+    reader still told the number covers the whole zone.
+    """
+    raster = _write_raster(tmp_path, _half_zero())
+
+    profile = extract_zonal_profile(
+        raster,
+        mapping(RASTER_BOX),
+        geom_crs=CRS_32720,
+        breaks=FLOOD_BREAKS,
+        geom_area_m2=RASTER_AREA_M2,
+        treat_zero_as_nodata=True,
+    )
+
+    assert profile["valid_pixels"] == 50
+    assert profile["mean"] == pytest.approx(40.0)
+    assert profile["max"] == pytest.approx(40.0)
+    assert profile["coverage"] == "partial"
+    assert profile["coverage_ratio"] == pytest.approx(0.5, abs=0.02)
+    assert profile["covered_area_ha"] == pytest.approx(4.5, rel=0.02)
+
+
+def test_treat_zero_as_nodata_over_an_all_zero_zone_is_no_coverage(tmp_path):
+    """Every pixel fake → ``none``, not a confident 0.0 mean over the whole zone."""
+    raster = _write_raster(tmp_path, _filled(0.0))
+
+    profile = extract_zonal_profile(
+        raster,
+        mapping(RASTER_BOX),
+        geom_crs=CRS_32720,
+        breaks=FLOOD_BREAKS,
+        geom_area_m2=RASTER_AREA_M2,
+        treat_zero_as_nodata=True,
+    )
+
+    assert profile["valid_pixels"] == 0
+    assert profile["mean"] is None
+    assert profile["coverage"] == "none"
+    assert profile["coverage_ratio"] == 0.0

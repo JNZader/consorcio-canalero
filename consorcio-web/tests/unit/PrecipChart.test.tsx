@@ -15,6 +15,8 @@
  *     payload that carries neither;
  *   - `sin_cobertura` renders the no-data state with NO chart, NO bars and no
  *     fabricated zeros anywhere in the rendered output;
+ *   - `parcial` renders a caveat ABOVE the numbers, and `total` renders none —
+ *     partial coverage used to be served and rendered as nothing at all;
  *   - the low-confidence badge appears only when the dataset flags it (it never
  *     should for precip — K=0 — but the component honours the flag).
  *
@@ -268,6 +270,42 @@ describe('PrecipChart', () => {
     // And twelve labels, with the zero in July's slot and the rest untouched.
     const etiquetas = chartTexts(container).filter((t) => /^\d+$/.test(t));
     expect(etiquetas).toEqual(MM_REDONDEADO.map((v, i) => (i === 6 ? '0' : v)));
+  });
+
+  it('warns that a `parcial` coverage average speaks for only part of the zone', () => {
+    // The state was already on the wire and rendered as nothing: the reader got
+    // a chart indistinguishable from a full-coverage one. Same defect class as
+    // the fake zeros the backend fix closed — a number worn as more
+    // authoritative than it is.
+    renderWithMantine(<PrecipChart dataset={precip({ cobertura: 'parcial' })} />);
+
+    const aviso = screen.getByTestId('ficha-precipitacion-cobertura-parcial');
+    expect(aviso).toHaveTextContent(/cobertura parcial/i);
+    // The numbers are still served and still drawn — this qualifies them, it
+    // does not suppress them.
+    expect(screen.getByTestId('precip-chart')).toBeInTheDocument();
+    expect(screen.getByTestId('precip-anual')).toBeInTheDocument();
+    // …and the caveat is read BEFORE them, not after.
+    const anual = screen.getByTestId('precip-anual');
+    expect(aviso.compareDocumentPosition(anual) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('stays silent about coverage when it is total', () => {
+    // A caveat on every ficha is a caveat nobody reads.
+    renderWithMantine(<PrecipChart dataset={precip()} />);
+
+    expect(screen.queryByTestId('ficha-precipitacion-cobertura-parcial')).toBeNull();
+  });
+
+  it('renders the no-data state, not the partial caveat, for sin_cobertura', () => {
+    // The two states are mutually exclusive: there is no average to qualify when
+    // there is no average.
+    renderWithMantine(
+      <PrecipChart dataset={precip({ cobertura: 'sin_cobertura', serie: [], anual_mm: null })} />
+    );
+
+    expect(screen.getByTestId('ficha-precipitacion-sin-cobertura')).toBeInTheDocument();
+    expect(screen.queryByTestId('ficha-precipitacion-cobertura-parcial')).toBeNull();
   });
 
   it('shows the low-confidence badge only when the dataset flags it', () => {

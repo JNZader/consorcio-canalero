@@ -36,6 +36,13 @@
  * `cobertura === 'sin_cobertura'` renders an explicit "sin datos de precipitación"
  * state — never an empty/broken chart and never fabricated `0 mm` bars (spec
  * "Zone outside precipitation coverage").
+ *
+ * `cobertura === 'parcial'` renders a one-line caveat ABOVE the numbers. Partial
+ * coverage was previously served and rendered silently: the reader got a chart
+ * that looks exactly like a full-coverage one while the mean spoke for only part
+ * of the zone. That is the same defect class as the fake zeros the backend fix
+ * closed — a number presented as more authoritative than it is — so the state the
+ * payload already carried now has to be visible.
  */
 
 import { Box, Group, Stack, Text } from '@mantine/core';
@@ -122,6 +129,7 @@ export const PrecipChart = memo(function PrecipChart({
   readonly dataset: FichaPrecipitacion;
 }) {
   const hasData = dataset.cobertura !== 'sin_cobertura' && dataset.serie.length > 0;
+  const esParcial = dataset.cobertura === 'parcial';
 
   const chartData = dataset.serie.map((punto) => ({
     mes: mesLabel(punto.mes),
@@ -143,6 +151,21 @@ export const PrecipChart = memo(function PrecipChart({
         </Text>
       ) : (
         <>
+          {/* ABOVE the numbers on purpose: a caveat printed under the chart is
+              read after the reader has already taken the figures at face value.
+              Same dimmed-italic treatment as the no-data line, because it is the
+              same kind of statement — what the payload does NOT say. */}
+          {esParcial && (
+            <Text
+              size="xs"
+              c="dimmed"
+              fs="italic"
+              data-testid="ficha-precipitacion-cobertura-parcial"
+            >
+              Cobertura parcial: el promedio usa sólo la parte de la zona con datos.
+            </Text>
+          )}
+
           {/* The annual total was the table's footer row — the single number a
               reader actually leaves with. Promoted to a headline above the
               chart so it survives the table's removal AND reads first. */}

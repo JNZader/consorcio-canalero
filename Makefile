@@ -6,7 +6,8 @@
         backend-install frontend-install backend-dev frontend-dev backend-test \
         frontend-test backend-lint frontend-lint docker-build docker-logs \
         docker-restart docker-clean format security-scan db-upgrade db-downgrade \
-        ci-quick ci-full install-hooks
+        ci-quick ci-full install-hooks rag-db test-rag test-rag-corpus \
+        rag-ingest rag-embed-load rag-eval
 
 # Default target
 .DEFAULT_GOAL := help
@@ -260,6 +261,158 @@ clean-all: clean ## Deep clean including node_modules and virtual environments
 	rm -rf $(FRONTEND_DIR)/node_modules 2>/dev/null || true
 	rm -rf $(BACKEND_DIR)/.venv $(BACKEND_DIR)/venv 2>/dev/null || true
 	@echo "$(GREEN)Deep cleanup complete!$(NC)"
+
+# ==============================================
+# RAG (pgvector, dev-only — see openspec/changes/consorcio-rag/design.md D7)
+# ==============================================
+rag-db: ## Build + start the pgvector-enabled Postgres service (opt-in, dev only)
+	@echo "$(BLUE)Building consorcio-postgres:16-vector...$(NC)"
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.pgvector.yml build postgres
+	@echo "$(BLUE)Starting consorcio-postgres:16-vector...$(NC)"
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.pgvector.yml up -d postgres
+	@echo "$(GREEN)consorcio-postgres:16-vector is up.$(NC)"
+	@echo "$(YELLOW)Antes de volver a la imagen sin vector: alembic downgrade (primero), si no el volumen compartido queda ilegible.$(NC)"
+
+test-rag: ## Run the pgvector-marked test suite against consorcio-postgres:16-vector
+	@echo "$(BLUE)Building consorcio-postgres:16-vector...$(NC)"
+	docker build -f docker/postgres/Dockerfile -t consorcio-postgres:16-vector docker/postgres
+	@echo "$(BLUE)Running pgvector-marked tests...$(NC)"
+# `TEST_DATABASE_URL=` is load-bearing, not tidiness. conftest's
+# `_resolve_database_url()` honors TEST_DATABASE_URL BEFORE testcontainers, so a
+# developer with that variable exported would run this target against their own
+# database while the success message still claims "ran for real against
+# consorcio-postgres:16-vector" — the image would be built and never touched.
+# Clearing it here makes image selection the only possible DB path (ledger
+# RAG1-001).
+	@cd $(BACKEND_DIR) && \
+		TEST_DATABASE_URL= \
+		TEST_POSTGRES_IMAGE=consorcio-postgres:16-vector \
+		venv/bin/pytest -m pgvector --junitxml=rag-junit.xml tests/new/; \
+		pytest_status=$$?; \
+		if [ $$pytest_status -eq 5 ]; then \
+			echo "$(RED)test-rag: exit code 5 — zero pgvector tests were collected. Check the marker and -m expression.$(NC)"; \
+			exit 1; \
+		elif [ $$pytest_status -ne 0 ]; then \
+			echo "$(RED)test-rag: pytest failed (exit $$pytest_status).$(NC)"; \
+			exit $$pytest_status; \
+		fi; \
+		skipped=$$(venv/bin/python -c "import xml.etree.ElementTree as ET; root = ET.parse('rag-junit.xml').getroot(); suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]; print(sum(int(s.attrib.get('skipped', 0)) for s in suites))"); \
+		if [ "$$skipped" != "0" ]; then \
+			echo "$(RED)test-rag: $$skipped pgvector test(s) skipped despite the vector image — the image is silently degraded (exit code 5 alone cannot catch this; see design.md D7).$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$(GREEN)test-rag: all pgvector tests ran for real against consorcio-postgres:16-vector, zero skipped.$(NC)"
+
+test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinned checkout (LOCAL ONLY — CI cannot hold the private corpus)
+# CI covers the STRUCTURAL tests only. Every content assertion — the 35-document
+# check, the 1383/65 counts, the vigencia canary, verbatim fidelity, determinism,
+# pruning, idempotency — hides behind RAG_CORPUS_PATH, which CI never sets
+# because the corpus repository is private and V0 is all-local by owner rule.
+# Those tests therefore report SKIPPED and the CI run is green (ledger RAG2-005).
+# This target is where that contract actually gets exercised, and like `test-rag`
+# it treats a SKIP as a failure: "the corpus suite passed" must never be able to
+# mean "the corpus suite did not run".
+	@if [ -z "$$RAG_CORPUS_PATH" ]; then \
+		echo "$(RED)test-rag-corpus: RAG_CORPUS_PATH is not set. Point it at a checkout of consorcio-corpus-legal at the pinned SHA, e.g.$(NC)"; \
+		echo "$(YELLOW)  make test-rag-corpus RAG_CORPUS_PATH=~/path/to/consorcio-corpus-legal$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Running RAG corpus-contract tests against $$RAG_CORPUS_PATH...$(NC)"
+	@cd $(BACKEND_DIR) && \
+		RAG_CORPUS_PATH=$$RAG_CORPUS_PATH \
+		venv/bin/pytest -m corpus --junitxml=rag-corpus-junit.xml tests/new/conocimiento/; \
+		pytest_status=$$?; \
+		if [ $$pytest_status -eq 5 ]; then \
+			echo "$(RED)test-rag-corpus: exit code 5 — zero corpus tests were collected. Check the 'corpus' marker and the -m expression.$(NC)"; \
+			exit 1; \
+		elif [ $$pytest_status -ne 0 ]; then \
+			echo "$(RED)test-rag-corpus: pytest failed (exit $$pytest_status).$(NC)"; \
+			exit $$pytest_status; \
+		fi; \
+		skipped=$$(venv/bin/python -c "import xml.etree.ElementTree as ET; root = ET.parse('rag-corpus-junit.xml').getroot(); suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]; print(sum(int(s.attrib.get('skipped', 0)) for s in suites))"); \
+		if [ "$$skipped" != "0" ]; then \
+			echo "$(RED)test-rag-corpus: $$skipped corpus test(s) skipped despite RAG_CORPUS_PATH being set — the checkout is wrong or degraded, and a green run would have covered nothing.$(NC)"; \
+			exit 1; \
+		fi; \
+		echo "$(GREEN)test-rag-corpus: the whole corpus contract ran for real against the pinned checkout, zero skipped.$(NC)"
+
+# ----------------------------------------------
+# The V0 pipeline: ingest -> embed+load -> eval
+# ----------------------------------------------
+# Three targets, run in this order, on a database started with `make rag-db`.
+# Each one refuses rather than degrades, so a skipped step surfaces at the next
+# one instead of quietly producing a smaller number.
+#
+#   RAG_CORPUS_PATH        checkout of consorcio-corpus-legal at the pinned SHA
+#   RAG_CORPUS_SHA         the pinned SHA (defaults to the ratified one)
+#   DATABASE_URL           target database
+#   RAG_GOLD_PRIVADO_PATH  owner-side YAML with the private gold questions
+#   RAG_EVAL_PYTHON        interpreter for rag-eval (see below)
+RAG_CORPUS_SHA ?= 12043582bf8016288a7e8084e85a4b713a97af2f
+RAG_DATABASE_URL ?= $(or $(DATABASE_URL),postgresql://consorcio:consorcio_dev@localhost:5432/consorcio)
+RAG_ARTIFACTS ?= artifacts/rag
+
+# `rag-eval`'s interpreter, overridable because the DEFAULT one cannot run the
+# whole ablation. `vector` and `hybrid` build a real embedder, which needs
+# `requirements-rag.txt` — the CUDA stack, deliberately kept out of the app venv
+# (design.md D8). So the default is the app venv (it runs `--modo fts` and every
+# refusal path), and the three-mode ablation is:
+#
+#   make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python
+#
+# Under the default the script exits 2 naming `requirements-rag.txt`; it does not
+# die on an ImportError traceback.
+#
+# THREE forms are accepted, because the recipe `cd`s into $(BACKEND_DIR) and all
+# three run correctly from there — only the existence check used to disagree
+# (ledger RJDA-107): it tested `$(BACKEND_DIR)/$(RAG_EVAL_PYTHON)`, so an
+# absolute override became `gee-backend//home/…/bin/python` and was refused as
+# missing while being a perfectly good interpreter. A venv-rag on another disk
+# is the ordinary case for a 6 GB CUDA stack, so that was the override most
+# likely to be typed.
+#
+#   venv-rag/bin/python            relative to gee-backend/ (the default's shape)
+#   /home/me/venv-rag/bin/python   absolute, e.g. a venv outside the checkout
+#   python3.11                     a bare name, resolved on PATH
+RAG_EVAL_PYTHON ?= venv/bin/python
+
+rag-ingest: ## Ingest the SHA-pinned corpus into rag_corpus/rag_documento/rag_unidad
+	@if [ -z "$$RAG_CORPUS_PATH" ]; then \
+		echo "$(RED)rag-ingest: RAG_CORPUS_PATH is not set.$(NC)"; \
+		echo "$(YELLOW)  make rag-ingest RAG_CORPUS_PATH=~/path/to/consorcio-corpus-legal$(NC)"; \
+		exit 1; \
+	fi
+	@cd $(BACKEND_DIR) && venv/bin/python scripts/rag_ingest.py \
+		--corpus-path $$RAG_CORPUS_PATH \
+		--corpus-sha $(RAG_CORPUS_SHA) \
+		--database-url "$(RAG_DATABASE_URL)"
+
+rag-embed-load: ## Load a vectors-{sha8}.copy artifact produced by the GPU batch (Ops O.3)
+# The BATCH itself is NOT here: it needs torch + the 2.2 GB BGE-M3 on the RTX
+# workstation (requirements-rag.txt, a separate venv). This target is the LOAD,
+# which runs anywhere and is the step with the gates.
+	@cd $(BACKEND_DIR) && venv/bin/python scripts/rag_load_vectors.py \
+		--vectors $(RAG_ARTIFACTS)/vectors-$(shell echo $(RAG_CORPUS_SHA) | cut -c1-8).copy \
+		--database-url "$(RAG_DATABASE_URL)"
+
+rag-eval: ## Run the three-mode ablation and write docs/rag/retrieval-eval-*.md
+	@if [ -z "$$RAG_GOLD_PRIVADO_PATH" ]; then \
+		echo "$(YELLOW)rag-eval: RAG_GOLD_PRIVADO_PATH is not set — the 26 items whose text lives outside this public repo will be unresolved, and the report will refuse to emit a go/no-go. See gold_set.yaml's header.$(NC)"; \
+	fi
+	@case "$(RAG_EVAL_PYTHON)" in \
+		/*) interprete="$(RAG_EVAL_PYTHON)" ;; \
+		*/*) interprete="$(BACKEND_DIR)/$(RAG_EVAL_PYTHON)" ;; \
+		*) interprete="$$(command -v "$(RAG_EVAL_PYTHON)" 2>/dev/null)" ;; \
+	esac; \
+	if [ -z "$$interprete" ] || [ ! -x "$$interprete" ]; then \
+		echo "$(RED)rag-eval: RAG_EVAL_PYTHON=$(RAG_EVAL_PYTHON) is not an executable interpreter (resolved to '$$interprete').$(NC)"; \
+		echo "$(YELLOW)  a path with a slash is relative to $(BACKEND_DIR) unless it starts with /; a bare name is looked up on PATH.$(NC)"; \
+		exit 2; \
+	fi
+	@cd $(BACKEND_DIR) && $(RAG_EVAL_PYTHON) scripts/rag_eval.py \
+		--corpus-sha $(RAG_CORPUS_SHA) \
+		--database-url "$(RAG_DATABASE_URL)" \
+		$(RAG_EVAL_FLAGS)
 
 # ==============================================
 # UTILITY COMMANDS
