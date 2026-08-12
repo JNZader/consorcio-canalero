@@ -36,6 +36,7 @@ import {
   SegmentedControl,
   Stack,
   Text,
+  VisuallyHidden,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
 
@@ -65,6 +66,8 @@ import {
 } from './rainfallFormat';
 
 const CURRENT_YEAR = new Date().getFullYear();
+/** The oldest year the selector offers — and the floor the fallback stops at. */
+const EARLIEST_YEAR = 1991;
 const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 1990 }, (_, i) =>
   String(CURRENT_YEAR - i)
 );
@@ -139,6 +142,66 @@ function AntecedentAccessory({ group }: { readonly group: Record<string, Rainfal
   );
 }
 
+/**
+ * The regional scope picker — named options, and the RIGHT control for how
+ * many there are (OWN-001).
+ *
+ * Labelling by kind alone offered a real parcel `Zona | Zona | Cuenca | Cuenca
+ * | Cuenca`: five options, three identical, a control that can only be guessed
+ * at. And five segments do not fit the panel's 348 px, so above the budget the
+ * control becomes the same `NativeSelect` the year uses beside it — a
+ * segmented control that does not fit is the badge-truncation defect one level
+ * up, with the whole label set as its victim.
+ *
+ * Its own component so the panel keeps ONE control-flow branch instead of two
+ * nested ternaries around large JSX. Pure — the panel still owns the state.
+ */
+function ScopeControl({
+  choices,
+  selected,
+  onSelect,
+}: {
+  readonly choices: readonly RainfallScopeChoice[];
+  readonly selected: RainfallScopeChoice | null;
+  readonly onSelect: (key: string) => void;
+}) {
+  if (choices.length <= 1) return null;
+
+  const labels = scopeChoiceLabels(choices);
+  const data = choices.map((choice, index) => ({
+    value: scopeKey(choice),
+    label: labels[index] ?? RAINFALL_SCOPE_LABELS[choice.kind],
+  }));
+  const value = selected ? scopeKey(selected) : undefined;
+
+  if (shouldUseSegmentedScope(labels)) {
+    return (
+      <SegmentedControl
+        size="xs"
+        fullWidth
+        value={value}
+        onChange={onSelect}
+        data={data}
+        aria-label="Ámbito regional"
+        data-testid="rainfall-scope-switch"
+      />
+    );
+  }
+
+  return (
+    <NativeSelect
+      size="xs"
+      label="Ámbito regional"
+      aria-label="Ámbito regional"
+      value={value}
+      onChange={(event) => onSelect(event.currentTarget.value)}
+      data={data}
+      data-testid="rainfall-scope-switch"
+      style={{ flex: '1 1 160px', minWidth: 0 }}
+    />
+  );
+}
+
 function LoadingRow({ label }: { readonly label: string }) {
   return (
     <Group gap="xs">
@@ -170,10 +233,6 @@ export function RainfallDetailPanel({
         ? [scopes.data.scope]
         : [];
   const regionalEstimate = scopes.data?.regional_estimate === true;
-  // Named per SET, not per choice: a kind that appears once needs no id
-  // qualifier, and adding one would be noise on the ordinary control.
-  const scopeLabels = scopeChoiceLabels(choices);
-  const useSegmentedScope = shouldUseSegmentedScope(scopeLabels);
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [year, setYear] = useState(CURRENT_YEAR);
@@ -187,11 +246,35 @@ export function RainfallDetailPanel({
     pollIntervalMs,
     maxQueuedPolls,
   });
-  const snapshot = analysis.data?.type === 'ready' ? analysis.data.snapshot : null;
+  const primarySnapshot = analysis.data?.type === 'ready' ? analysis.data.snapshot : null;
+
+  // ONE step back, never a cascade. While the selected year is being prepared
+  // the reader is handed the previous year rather than an empty panel — the
+  // year they would have compared against anyway. If THAT one is also queued
+  // the ladder stops here: a fallback that keeps walking backwards turns one
+  // slow answer into a queue of them.
+  const previousYear = year - 1;
+  const canFallBack =
+    analysis.data?.type === 'queued' && !analysis.isError && previousYear >= EARLIEST_YEAR;
+  const fallback = useRainfallAnalysis(canAccess && canFallBack ? selected : null, previousYear, {
+    pollIntervalMs,
+    maxQueuedPolls,
+  });
+  const fallbackSnapshot = fallback.data?.type === 'ready' ? fallback.data.snapshot : null;
+
+  // What the panel is actually SHOWING. The export buttons, the chart and the
+  // folds all read this, so they describe the revision on screen rather than
+  // the one that has not been built yet.
+  const showingFallback = primarySnapshot === null && fallbackSnapshot !== null;
+  const snapshot = primarySnapshot ?? fallbackSnapshot;
 
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
-    if (analysis.data?.type === 'queued') {
+    if (showingFallback) {
+      setAnnouncement(
+        `Mostrando el análisis ${previousYear}. El análisis ${year} se está preparando.`
+      );
+    } else if (analysis.data?.type === 'queued') {
       if (analysis.gaveUp) {
         setAnnouncement('Análisis no disponible aún. Puede reintentar manualmente.');
       } else {
@@ -201,13 +284,24 @@ export function RainfallDetailPanel({
         setAnnouncement(QUEUED_SENTENCE);
       }
     } else if (snapshot) {
+      // Two dimensions, separated. "…disponible para Zona 2026" ran the scope
+      // and the year together into something that reads like a place called
+      // "Zona 2026"; a listener has no layout to disambiguate it with.
       setAnnouncement(
-        `Análisis de lluvia disponible para ${RAINFALL_SCOPE_LABELS[snapshot.scope.kind]} ${year}`
+        `Análisis de lluvia ${year} disponible · Alcance: ${RAINFALL_SCOPE_LABELS[snapshot.scope.kind]}`
       );
     } else if (analysis.isError) {
       setAnnouncement('No se pudo obtener el análisis de lluvia.');
     }
-  }, [analysis.data, analysis.gaveUp, analysis.isError, snapshot, year]);
+  }, [
+    analysis.data,
+    analysis.gaveUp,
+    analysis.isError,
+    showingFallback,
+    previousYear,
+    snapshot,
+    year,
+  ]);
 
   // One in-flight export at a time, tracked by FORMAT: two independent
   // booleans would let both buttons spin at once and a shared one would spin
@@ -235,10 +329,17 @@ export function RainfallDetailPanel({
   return (
     <Stack gap="xs" data-testid="rainfall-detail">
       {/* Every state change is announced, so queued → ready is perceivable
-          without watching the panel. */}
-      <Text size="xs" c="dimmed" aria-live="polite" data-testid="rainfall-live">
+          without watching the panel.
+          VISUALLY HIDDEN, and that is a fix, not a downgrade: this region
+          restates whatever is ALREADY on screen — the queued alert, the
+          terminal alert, the error, the card — so rendering it visibly printed
+          "Análisis en preparación" twice, one line apart. It stays in the
+          accessibility tree, still `aria-live="polite"`, still carrying the
+          same sentence; it simply stops being a second visible copy of the
+          state it announces. */}
+      <VisuallyHidden aria-live="polite" data-testid="rainfall-live">
         {announcement}
-      </Text>
+      </VisuallyHidden>
       <Group gap="xs" justify="space-between" wrap="nowrap">
         <Text size="sm" fw={600}>
           Detalle técnico de lluvia
@@ -270,35 +371,7 @@ export function RainfallDetailPanel({
             not fit 348 px, so above the budget the control becomes the same
             select the year uses — a segmented control that does not fit is the
             badge-truncation defect one level up. */}
-        {choices.length > 1 &&
-          (useSegmentedScope ? (
-            <SegmentedControl
-              size="xs"
-              fullWidth
-              value={selected ? scopeKey(selected) : undefined}
-              onChange={setSelectedKey}
-              data={choices.map((choice, index) => ({
-                value: scopeKey(choice),
-                label: scopeLabels[index] ?? RAINFALL_SCOPE_LABELS[choice.kind],
-              }))}
-              aria-label="Ámbito regional"
-              data-testid="rainfall-scope-switch"
-            />
-          ) : (
-            <NativeSelect
-              size="xs"
-              label="Ámbito regional"
-              aria-label="Ámbito regional"
-              value={selected ? scopeKey(selected) : undefined}
-              onChange={(event) => setSelectedKey(event.currentTarget.value)}
-              data={choices.map((choice, index) => ({
-                value: scopeKey(choice),
-                label: scopeLabels[index] ?? RAINFALL_SCOPE_LABELS[choice.kind],
-              }))}
-              data-testid="rainfall-scope-switch"
-              style={{ flex: '1 1 160px', minWidth: 0 }}
-            />
-          ))}
+        <ScopeControl choices={choices} selected={selected} onSelect={setSelectedKey} />
 
         {selected && (
           <Group gap="xs" wrap="wrap">
@@ -356,8 +429,18 @@ export function RainfallDetailPanel({
               ? analysis.data.queued.labels.join(', ')
               : undefined
           }
+          data-showing-year={showingFallback ? String(previousYear) : undefined}
         >
-          <Text size="xs">{QUEUED_SENTENCE}</Text>
+          {/* ONE disclosure either way. When the previous year is on screen the
+              same alert becomes the notice that says so — naming BOTH years,
+              because "which year am I looking at" is the question a reader
+              cannot answer from the numbers alone. Two separate blocks would
+              have stated the same pending fact twice. */}
+          <Text size="xs">
+            {showingFallback
+              ? `Mostrando ${previousYear} — el análisis ${year} se está preparando y se actualizará solo.`
+              : QUEUED_SENTENCE}
+          </Text>
         </Alert>
       )}
 

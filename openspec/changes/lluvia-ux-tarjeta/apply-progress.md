@@ -5,9 +5,16 @@ Branch: `feat/lluvia-ux-01-jerarquia`, based on `feat/lluvia-ux-tarjeta` (tracke
 topic `sdd/lluvia-ux-tarjeta/apply-progress`). Frontend-only; `gee-backend/**` and
 `.github/workflows/**` untouched.
 
-**Status: 26/26 slice-1 tasks complete (1.1-1.26), plus O.2. O.1 is owner-gated and NOT
+**Status: 30/30 slice-1 tasks complete (1.1-1.30), plus O.2. O.1 is owner-gated and NOT
 run.** Strict TDD throughout — every task carrying a RED flag was executed RED first, with
 the failure captured before the implementation existed.
+
+> **Record correction.** The first version of this file was committed at `ead8c6dd`
+> claiming "26/26 complete", which was true at that moment and stopped being true the same
+> day: a second external UX review and two owner decisions added tasks 1.27-1.30 and
+> refined 1.26. The numbers below (test counts, bundle delta, diff size) are RE-MEASURED
+> for the final state rather than carried over. Nothing here is inherited from the earlier
+> record without being re-run.
 
 ## Commits
 
@@ -22,6 +29,8 @@ the failure captured before the implementation existed.
 | `d61acbff` | 1.20-1.23 | sheet-body testid, e2e sentinel + expand + zero-scroll, npm script |
 | `99fec0e9` | 1.24-1.26 | the three owner-reported live-UI defects (OWN-001..003) |
 | `7165f3dd` | polish | semantic colour on the derived adjective, word-first |
+| `ead8c6dd` | — | `docs(sdd)` — the FIRST apply record (superseded by this one) |
+| (final) | 1.27-1.30, 1.26b | the second UX review + the two owner decisions (OWN-004..010) |
 
 ## TDD cycle evidence
 
@@ -42,6 +51,10 @@ Every row's RED was OBSERVED, not asserted. Command in each case:
 | 1.24 (formatters) | 12 failures, `scopeChoiceLabel`/`scopeChoiceLabels`/`shouldUseSegmentedScope`/`metricStateLabel` not functions | 46 passed | labelling split into per-choice + per-set, so the set rule is testable alone |
 | 1.24/1.25 (panel) | 2 failures (5 identical options; raw job labels in copy) | 31 passed | `QUEUED_SENTENCE` const — the alert and the announcer cannot drift |
 | 1.26 | 2 failures, no `[data-metric-state]` element | 39 passed | reason and flags relocated rather than deleted |
+| 1.27 | 3 failures (no previous-year request, no two-year notice, no `data-showing-year`) | 34 panel tests passed | the notice reuses the ONE queued alert instead of adding a second block that states the same pending fact twice |
+| 1.28 | failures on `Percentil 46.9` (suffix rendered), and no `rainfall-percentile-gloss` | 25 card + 12 list tests passed | the `percentil` prefix is a table entry, not a branch, so the next non-magnitude unit is data |
+| 1.26b | 2 failures (chip on an available row, `Fallback` instead of Spanish) | 39 passed | `stateChip` extracted — the exception rule is one function with one test |
+| 1.29/1.30 | 5 failures across card, panel and PrecipChart (old copy pinned) | 279 files / 3777 tests | `ScopeControl` extracted, which also took the panel back under the complexity gate |
 
 ## Gates
 

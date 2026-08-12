@@ -323,11 +323,20 @@ describe('RainfallDetailPanel — metric states, badges and reasons', () => {
     const technical = await expandFold('rainfall-technical');
     const metrics = within(technical).getByTestId('rainfall-metrics');
 
-    expect(within(metrics).getAllByText('Disponible').length).toBeGreaterThan(0);
+    // Two surfaces, on purpose, and each asserted for what it owns: the CHIP is
+    // presentation and exception-only (OWN-003), so `Disponible` has none; the
+    // row's TEXT is the contract and states every state, chip or no chip.
+    expect(within(metrics).getAllByText(/^Estado: Disponible$/).length).toBeGreaterThan(0);
+    expect(within(metrics).queryByText('Disponible')).toBeNull();
+
     expect(within(antecedents).getByText('Parcial')).toBeInTheDocument();
-    expect(within(antecedents).getByText(/Suprimida/)).toBeInTheDocument();
+    expect(within(antecedents).getByText('Estado: Parcial')).toBeInTheDocument();
+    expect(within(antecedents).getByText('Suprimida')).toBeInTheDocument();
+    expect(within(antecedents).getByText('Estado: Suprimida')).toBeInTheDocument();
     expect(within(antecedents).getByText(/coverage_below_threshold/)).toBeInTheDocument();
-    expect(within(metrics).getByText(/No disponible/)).toBeInTheDocument();
+
+    expect(within(metrics).getByText('No disponible')).toBeInTheDocument();
+    expect(within(metrics).getByText('Estado: No disponible')).toBeInTheDocument();
     expect(within(metrics).getByText(/sin fuente elegible/)).toBeInTheDocument();
   });
 
@@ -387,9 +396,12 @@ describe('RainfallDetailPanel — textual chart, live region, queued and export'
     renderPanel();
 
     const text = await screen.findByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
-    // The baseline period prints AS SERVED (server-driven, RISK-001 lesson).
-    expect(text).toHaveTextContent('Normal 1991-2020: 1013.8 mm');
+    // The CUT DATE, not the year: "Año 2025: 850.2 mm" reads as a closed annual
+    // total, which mid-year it is not.
+    expect(text).toHaveTextContent('Acumulado hasta el 2025-12-30: 850.2 mm');
+    // The baseline period prints AS SERVED (server-driven, RISK-001 lesson),
+    // and the normal says which period it accumulated over.
+    expect(text).toHaveTextContent('Normal 1991-2020 al mismo período: 1013.8 mm');
   });
 
   it('labels the queued state and announces it live (no silent spinner)', async () => {
@@ -469,23 +481,32 @@ describe('RainfallDetailPanel — textual chart, live region, queued and export'
       type: 'queued' as const,
       queued: { status: 'queued' as const, outbox_id: 'ob-1', scope: ZONE, year: 2025, labels: [] },
     };
+    // Counted PER YEAR, not in total. A queued selected year also asks for the
+    // previous one now (the one-step fallback), so a bare call count would be
+    // measuring two queries at once — and this test is about the budget of the
+    // SELECTED year's query.
+    const selectedYear = new Date().getFullYear();
+    let selectedCalls = 0;
     let release: (value: Awaited<ReturnType<typeof fetchRainfallAnalysis>>) => void = () => {};
-    vi.mocked(fetchRainfallAnalysis)
-      .mockResolvedValueOnce(queued)
-      .mockResolvedValueOnce(queued)
-      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
-      .mockResolvedValue(queued);
+    vi.mocked(fetchRainfallAnalysis).mockImplementation((_scope, requestedYear) => {
+      if (requestedYear !== selectedYear) return Promise.resolve(queued);
+      selectedCalls += 1;
+      // The third call is the one the retry fires; hold it open so the
+      // in-flight pending state below is observable.
+      if (selectedCalls === 3) return new Promise((resolve) => { release = resolve; });
+      return Promise.resolve(queued);
+    });
 
     renderPanel({ pollIntervalMs: 5, maxQueuedPolls: 2 });
 
     await screen.findByTestId('rainfall-unavailable');
-    expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(2);
+    expect(selectedCalls).toBe(2);
 
     fireEvent.click(screen.getByTestId('rainfall-retry'));
 
     // The retry re-runs the fetch; while in flight the terminal state is gone
     // (budget reset) and the labelled pending state is back.
-    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(selectedCalls).toBe(3));
     expect(screen.queryByTestId('rainfall-unavailable')).toBeNull();
     expect(screen.getByTestId('rainfall-queued')).toBeInTheDocument();
 
@@ -493,7 +514,7 @@ describe('RainfallDetailPanel — textual chart, live region, queued and export'
 
     // Fresh budget: it polls again and eventually gives up once more.
     await waitFor(() => expect(screen.getByTestId('rainfall-unavailable')).toBeInTheDocument());
-    expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(4);
+    expect(selectedCalls).toBe(4);
   });
 
   it('announces the terminal state through the live region', async () => {
@@ -677,6 +698,99 @@ describe('RainfallDetailPanel — owner-reported defects on the live UI', () => 
     await waitFor(() => expect(live.textContent).toMatch(/preparaci[oó]n/i));
     expect(live.textContent).not.toContain('role:daily');
     expect(live.textContent).not.toContain('analysis_missing');
+  });
+});
+
+/**
+ * Owner decision: while the selected year is being prepared, show the previous
+ * one rather than an empty panel — with a notice that says so.
+ */
+describe('RainfallDetailPanel — the one-step year fallback', () => {
+  const YEAR = new Date().getFullYear();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setAuth('operador');
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(seriesAnswer());
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE],
+      regional_estimate: true,
+    });
+  });
+  afterEach(() => setAuth(null));
+
+  const queuedAnswer = {
+    type: 'queued' as const,
+    queued: {
+      status: 'queued' as const,
+      outbox_id: 'ob-1',
+      scope: ZONE,
+      year: YEAR,
+      labels: ['analysis_missing'],
+    },
+  };
+
+  it('shows the PREVIOUS year with a notice naming both years', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockImplementation((_scope, requestedYear) =>
+      Promise.resolve(
+        requestedYear === YEAR
+          ? queuedAnswer
+          : { type: 'ready', snapshot: snapshot({ year: requestedYear }) }
+      )
+    );
+    renderPanel();
+
+    // The previous year's analysis is what the reader gets — a real answer
+    // instead of a spinner over an empty panel.
+    const card = await screen.findByTestId('rainfall-answer-card');
+    expect(card).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-annual-text').textContent).toContain('Acumulado');
+
+    // …and the notice says WHICH year that is, and what is happening to the
+    // one that was asked for. "Which year am I looking at" is not a question a
+    // reader can answer from the numbers.
+    const notice = screen.getByTestId('rainfall-queued');
+    expect(notice.textContent).toContain(`Mostrando ${YEAR - 1}`);
+    expect(notice.textContent).toContain(`el análisis ${YEAR} se está preparando`);
+    expect(notice).toHaveAttribute('data-showing-year', String(YEAR - 1));
+    // Still no job identifiers in copy (OWN-002).
+    expect(notice.textContent).not.toContain('analysis_missing');
+    expect(notice).toHaveAttribute('data-queued-labels', 'analysis_missing');
+  });
+
+  it('stops after ONE step: a queued previous year triggers no third request', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue(queuedAnswer);
+    renderPanel();
+
+    await screen.findByTestId('rainfall-queued');
+    await waitFor(() =>
+      expect(vi.mocked(fetchRainfallAnalysis).mock.calls.length).toBeGreaterThanOrEqual(2)
+    );
+
+    // A fallback that keeps walking backwards turns one slow answer into a
+    // queue of them. Exactly two YEARS are ever asked for.
+    const years = new Set(vi.mocked(fetchRainfallAnalysis).mock.calls.map((call) => call[1]));
+    expect(years).toEqual(new Set([YEAR, YEAR - 1]));
+    expect(years.has(YEAR - 2)).toBe(false);
+
+    // …and with nothing to show, the reader gets the plain queued state.
+    expect(screen.queryByTestId('rainfall-answer-card')).toBeNull();
+    expect(screen.getByTestId('rainfall-queued').textContent).toMatch(/se actualiza/i);
+    expect(screen.getByTestId('rainfall-queued')).not.toHaveAttribute('data-showing-year');
+  });
+
+  it('asks for no previous year at all once the selected one answers', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({ year: YEAR }),
+    });
+    renderPanel();
+
+    await screen.findByTestId('rainfall-answer-card');
+    const years = new Set(vi.mocked(fetchRainfallAnalysis).mock.calls.map((call) => call[1]));
+    expect(years).toEqual(new Set([YEAR]));
+    expect(screen.queryByTestId('rainfall-queued')).toBeNull();
   });
 });
 

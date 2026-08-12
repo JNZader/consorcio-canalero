@@ -636,7 +636,15 @@ function PanelBody({
               untouched. */}
           <CollapsibleSection
             key={v2DetailWillRender ? 'precip-demoted' : 'precip-primary'}
-            title="Precipitación mensual normal (recorte de la parcela)"
+            // Plain language, and BOTH axes named: this chart is the historical
+            // monthly series (period) for the PARCEL CLIP (scope), while the v2
+            // card above states a to-date accumulation for a zone or basin.
+            // Two numbers that differ on two dimensions need both said out
+            // loud, or a reader compares them as if only one differed.
+            // No period is asserted here on purpose: the normals' period is
+            // server-driven (`dataset.periodo`, printed by `precip-fuente`),
+            // and a period frozen in a title is the RISK-001 defect.
+            title="Lluvia histórica mensual (recorte de la parcela)"
             defaultOpen={!v2DetailWillRender}
             testId="ficha-precip-fold"
             titleSize="xs"

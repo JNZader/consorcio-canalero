@@ -205,6 +205,36 @@ describe('RainfallMetricList — a state badge is a word, not a fragment (OWN-00
       fallback_used: true,
     });
 
+  it('shows NO chip at all for a plain available, definitive metric', () => {
+    // Exception-only: a chip on every row is a row of chips nobody reads, and
+    // in 380 px they fragment. The state is still in the row's text.
+    renderList(snapshot({ antecedents: { d7: metric({ metric: 'd7', value: 31 }) } }));
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    expect(row.querySelectorAll('[data-metric-state]')).toHaveLength(0);
+    // The chip is gone; the FACT is not. Dropping a chip must never drop a
+    // served field — the fold is where the disclosure floor is discharged.
+    expect(row.textContent).toContain('Estado: Disponible');
+  });
+
+  it('shows exactly one Spanish chip for a fallback-fed value', () => {
+    renderList(
+      snapshot({
+        antecedents: { d7: metric({ metric: 'd7', value: 31, fallback_used: true }) },
+      })
+    );
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    const chips = row.querySelectorAll('[data-metric-state]');
+    expect(chips).toHaveLength(1);
+    // A full Spanish word, never the wire token: `FALLBACK` is not copy.
+    expect(chips[0]?.textContent).toBe('Dato provisorio');
+    expect(chips[0]?.textContent).not.toMatch(/…|\.\.\.|FALLBACK/i);
+    // …and the precise fact stays in the text, which is where the disclosure
+    // floor is discharged.
+    expect(within(row).getByText('Fuente alternativa')).toBeInTheDocument();
+  });
+
   it('renders exactly one state badge, whole, with every other fact still reachable', () => {
     renderList(snapshot({ antecedents: { d7: loudMetric() } }));
 
@@ -229,8 +259,24 @@ describe('RainfallMetricList — a state badge is a word, not a fragment (OWN-00
     // Still stated, still whole words — they are simply no longer competing
     // with the state badge and the value for one nowrap row.
     expect(within(row).getByText('Provisional')).toBeInTheDocument();
-    expect(within(row).getByText('Fallback')).toBeInTheDocument();
+    expect(within(row).getByText('Fuente alternativa')).toBeInTheDocument();
     expect(row.textContent).not.toMatch(/…|\.\.\./);
+  });
+
+  it('renders the percentile as a phrase, not as a suffix', () => {
+    // 1.28(b): `percentil` is a RANK, so in Spanish the word leads and the
+    // number qualifies it. The suffix pattern produced "46.9 percentil" while
+    // the card three lines up said "Percentil 47" — one fact, two spellings,
+    // one of them not a phrase at all.
+    renderList(
+      snapshot({
+        annual: { percentile: metric({ metric: 'percentile', value: 46.9, unit: 'percentil' }) },
+      })
+    );
+
+    const row = screen.getByTestId('rainfall-metric-percentile');
+    expect(row.textContent).toContain('Percentil 46.9');
+    expect(row.textContent).not.toContain('46.9 percentil');
   });
 
   it('states the state of every metric, one badge each', () => {

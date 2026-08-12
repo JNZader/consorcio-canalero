@@ -431,10 +431,17 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await expect(page.getByTestId('rainfall-headline')).toContainText(
       `Percentil ${SNAPSHOT_METRICS.percentile}`
     );
-    const currentYear = new Date().getFullYear();
-    await expect(page.getByTestId('rainfall-annual-text')).toContainText(`Año ${currentYear}`);
-    await expect(page.getByTestId('rainfall-annual-text')).toContainText(
-      `${SNAPSHOT_METRICS.annual} mm`
+    // The accumulation states its CUT DATE, never a bare year: "Año 2026:
+    // 123.4 mm" reads as a closed annual total, which mid-year it is not.
+    const annualText = page.getByTestId('rainfall-annual-text');
+    await expect(annualText).toContainText('Acumulado hasta el ');
+    await expect(annualText).not.toContainText(`Año ${new Date().getFullYear()}:`);
+    await expect(annualText).toContainText(`${SNAPSHOT_METRICS.annual} mm`);
+    // And the normal names the period it accumulated over, not just its baseline.
+    await expect(annualText).toContainText('al mismo período');
+    // The rank in words, so the percentile is not a number the reader nods at.
+    await expect(page.getByTestId('rainfall-percentile-gloss')).toContainText(
+      `De cada 100 años, ${SNAPSHOT_METRICS.percentile} fueron más secos que este.`
     );
 
     // The badged rows are one click away, not gone (R4). Asserting them
@@ -473,9 +480,16 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     await gotoAndOpenFicha(page);
 
     // Labelled queued state must be perceivable (never a bare spinner).
+    // Either wording is correct here and which one appears is a RACE by
+    // design: the moment the selected year answers 202 the panel also asks for
+    // the previous one, and this mock answers every later POST with a 200 — so
+    // the alert may already have become the "showing {Y-1}" notice. Both say
+    // the analysis is being prepared, which is the fact under test.
     const queuedAlert = page.getByTestId('rainfall-queued');
     await expect(queuedAlert).toBeVisible();
-    await expect(queuedAlert).toContainText('Análisis en preparación');
+    await expect(queuedAlert).toContainText(/en preparación|se está preparando/);
+    // Never the backend's job identifiers, in either wording (OWN-002).
+    await expect(queuedAlert).not.toContainText('role:');
 
     // Then auto-polls to a ready snapshot within the bounded budget. The
     // readiness sentinel is the ANSWER CARD: it renders for every ready

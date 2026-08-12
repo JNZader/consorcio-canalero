@@ -31,6 +31,31 @@ const GROUP_TITLES: ReadonlyArray<{ key: 'annual' | 'antecedents' | 'intensity';
     { key: 'intensity', title: 'Intensidad y evento' },
   ];
 
+/**
+ * The chip a row shows — or `null`, which is the common case.
+ *
+ * EXCEPTION-ONLY, and that is the whole rule. A chip on every row is a row of
+ * chips: the reader stops reading them, and in a 380 px panel they truncate
+ * into fragments (`PROVISIO… FALLB… DISPONI…`). So a metric that is simply
+ * available and definitive shows NOTHING, and the chip is reserved for the
+ * rows where the state is the point.
+ *
+ * Full Spanish words, never a wire token: `Dato provisorio`, not `FALLBACK`.
+ * And the chip is PRESENTATION — the state, the reason, the temporal state and
+ * `fallback_used` all remain in the row's text below it, which is where the
+ * disclosure floor is actually discharged (D9). Dropping a chip never drops a
+ * fact.
+ */
+function stateChip(metric: RainfallMetric): { label: string; color: string } | null {
+  if (metric.state !== 'available') {
+    return { label: metricStateLabel(metric), color: STATE_COLORS[metric.state] };
+  }
+  if (metric.temporal_state === 'provisional' || metric.fallback_used) {
+    return { label: 'Dato provisorio', color: 'violet' };
+  }
+  return null;
+}
+
 export interface RainfallMetricRowProps {
   readonly name: string;
   readonly metric: RainfallMetric;
@@ -57,24 +82,30 @@ export interface RainfallMetricRowProps {
  */
 export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowProps) {
   const provenance = metric.provenance;
+  const chip = stateChip(metric);
   return (
     <Stack gap={2} data-testid={`rainfall-metric-${name}`}>
       <Group gap="xs" wrap="wrap" justify="space-between">
         <Text size="xs">{metricLabel(name, baseline)}</Text>
         <Group gap={6} wrap="nowrap">
-          <Badge
-            size="xs"
-            variant="light"
-            color={STATE_COLORS[metric.state]}
-            data-metric-state={metric.state}
-          >
-            {metricStateLabel(metric)}
-          </Badge>
+          {chip !== null && (
+            <Badge size="xs" variant="light" color={chip.color} data-metric-state={metric.state}>
+              {chip.label}
+            </Badge>
+          )}
           <Text size="xs" fw={600}>
             {formatMetricValue(metric)}
           </Text>
         </Group>
       </Group>
+      {/* The state, ALWAYS, in text. The chip above is exception-only — it is
+          presentation — so this is where the disclosure floor is actually
+          discharged: an available metric shows no chip, and its state is still
+          a served field the fold must render (D9). Dropping a chip must never
+          drop a fact. */}
+      <Text size="xs" c="dimmed">
+        {`Estado: ${metricStateLabel(metric)}`}
+      </Text>
       {/* The reason the badge no longer carries. Its own line, in full: a
           suppression a reader cannot read is a suppression nobody can act on. */}
       {metric.reason !== null && metric.reason.length > 0 && (
@@ -90,7 +121,7 @@ export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowP
         )}
         {metric.fallback_used && (
           <Text size="xs" c="cyan" fw={500}>
-            Fallback
+            Fuente alternativa
           </Text>
         )}
         <Text size="xs" c="dimmed">

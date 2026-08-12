@@ -115,6 +115,75 @@ export function scopeChoiceLabels(choices: readonly RainfallScopeChoice[]): stri
   return choices.map((choice) => scopeChoiceLabel(choice, (perKind.get(choice.kind) ?? 0) > 1));
 }
 
+/** Plain-language name for a source class. An unknown class shows itself. */
+const SOURCE_CLASS_WORDS: Record<string, string> = {
+  observed_station: 'estación',
+  estimated_radar: 'radar',
+  estimated_satellite: 'satelital',
+};
+
+/**
+ * The SHORT source — one token plus how it was measured: `CHIRPS (satelital)`.
+ *
+ * The card's evidence footer is a closed set (owner-ratified): the cut date,
+ * the scope, and this. Everything else about provenance — the revision, the
+ * method, the nominal resolution, the aggregation, the intervals — lives in
+ * the technical fold, because the always-visible surface answers "can I trust
+ * this number" and the fold answers "how exactly was it built".
+ *
+ * `null` when the metric was served without provenance (the stripped
+ * `_unavailable` shape), and then the footer simply has no source line: an
+ * unserved field is never fabricated and never a placeholder.
+ */
+export function shortSource(metric: RainfallMetric | undefined): string | null {
+  const provenance = metric?.provenance;
+  if (provenance === undefined) return null;
+  const family = provenance.source_id?.split('-')[0];
+  if (family === undefined || family.length === 0) return null;
+  const word = SOURCE_CLASS_WORDS[provenance.source_class] ?? provenance.source_class;
+  return `${family.toUpperCase()} (${word})`;
+}
+
+/**
+ * The teaching line under the adjective — the percentile in words.
+ *
+ * "Percentil 72" is a rank, and a rank is exactly the kind of number a reader
+ * nods at without decoding. This says the same thing in a sentence anyone can
+ * check: of every 100 years, N were drier than this one.
+ *
+ * Derived from the SAME rounded value the headline prints (R2, and the
+ * consistency rule: no always-visible surface may show a different number for
+ * one fact), and absent entirely when the percentile is not readable — an
+ * interpretation of a withheld number would be the withheld number.
+ */
+export function percentileGloss(metric: RainfallMetric | undefined): string | null {
+  if (metric === undefined || metric.value === null) return null;
+  if (metric.state === 'suppressed' || metric.state === 'unavailable') return null;
+  return `De cada 100 años, ${Math.round(metric.value)} fueron más secos que este.`;
+}
+
+/**
+ * The scope named INSIDE a sentence — `la zona Bell Ville`, `la cuenca Sur`.
+ *
+ * The badge says `Estimación regional` and, on its own, leaves the reader to
+ * guess what "regional" means for the parcel they clicked. This is what lets
+ * the card say which region: the SELECTED one, by name.
+ *
+ * Not {@link scopeChoiceLabel}: that one builds a control OPTION and separates
+ * its parts with `·`, which reads as a rendering artifact mid-sentence. Same
+ * qualifier, prose shape — and no qualifier at all when the id carries none,
+ * because `la zona` is still true and still useful.
+ */
+export function scopeSentence(choice: RainfallScopeChoice): string {
+  const label = scopeChoiceLabel(choice, true);
+  const article = 'la';
+  const [kindWord, qualifier] = label.split(' · ');
+  const lowerKind = (kindWord ?? RAINFALL_SCOPE_LABELS[choice.kind]).toLowerCase();
+  return qualifier === undefined
+    ? `${article} ${lowerKind}`
+    : `${article} ${lowerKind} ${qualifier}`;
+}
+
 /**
  * Whether the scope control can be a `SegmentedControl` — or has to be a select.
  *
@@ -163,9 +232,31 @@ export function metricLabel(key: string, baseline?: string | null): string {
   return key === 'normal' && baseline ? `${label} ${baseline}` : label;
 }
 
-/** Value with unit; unknown stays "—", never "0". */
+/**
+ * The unit that is NOT a suffix.
+ *
+ * Every other unit this contract carries is a magnitude the number is measured
+ * in (`mm`, `mm/h`, `h`), so "850.2 mm" is right. `percentil` is a RANK: in
+ * Spanish the word comes first and the number qualifies it, so the suffix
+ * pattern produced "46.9 percentil" — not a phrase anyone reads, and the same
+ * screen said "Percentil 47" three lines up.
+ */
+const UNIT_PREFIX_LABELS: Record<string, string> = { percentil: 'Percentil' };
+
+/**
+ * Value with unit; unknown stays "—", never "0".
+ *
+ * The precise value survives here on purpose: this is what the technical
+ * fold's row renders, and the fold is where a reader goes for the number as
+ * served. The ALWAYS-VISIBLE surfaces round it (the card headline, the gloss,
+ * the annual phrase) because a Weibull rank over ~31 samples has no meaningful
+ * tenth — what is not allowed is the same screen showing 47 and 46.9 while
+ * calling both "the percentile", which is what the suffix bug produced.
+ */
 export function formatMetricValue(metric: RainfallMetric): string {
   if (metric.value === null) return '—';
+  const prefix = UNIT_PREFIX_LABELS[metric.unit];
+  if (prefix !== undefined) return `${prefix} ${metric.value.toFixed(1)}`;
   return `${metric.value.toFixed(1)} ${metric.unit}`;
 }
 

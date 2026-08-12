@@ -40,7 +40,10 @@ import {
   describeMetricState,
   formatMetricValue,
   metricLabel,
+  percentileGloss,
   percentilePhrase,
+  scopeSentence,
+  shortSource,
   wetnessColor,
   wetnessFromPercentile,
   wetnessLabel,
@@ -72,8 +75,28 @@ function readablePercentile(metric: RainfallMetric | undefined): RainfallMetric 
  * mechanism behind R7: `CollapsibleSection` UNMOUNTS its body when closed, so
  * an equivalent inside a fold disappears from the accessibility tree for
  * exactly the readers it exists for. Structure, not discipline.
+ *
+ * THE PERIOD IS NAMED, and that is not cosmetic. `Año 2026: 503.4 mm` reads as
+ * a CLOSED annual total; in August it is eight months of accumulation, and a
+ * reader quoting it at an asamblea would be quoting a number that does not
+ * exist. So the sentence states the cut: `Acumulado hasta el {día}`, where the
+ * day is the analysis' own last day WITH evidence — taken from the `freshness`
+ * value the panel derived, NEVER from the browser clock, which knows nothing
+ * about what the provider published. When freshness could not be established
+ * the sentence says `Acumulado parcial` instead: no date, and still no claim of
+ * a closed year.
+ *
+ * `annual.normal` is likewise the normal accumulated TO THE SAME DATE, not the
+ * full-year normal, so it says so — while still naming the SERVED baseline
+ * (RISK-001), because those are two different facts about one number.
  */
-function AnnualText({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot }) {
+function AnnualText({
+  snapshot,
+  freshness,
+}: {
+  readonly snapshot: RainfallAnalysisSnapshot;
+  readonly freshness: RainfallFreshness;
+}) {
   const selected = snapshot.annual?.selected;
   const normal = snapshot.annual?.normal;
   // Task 4.8: the percentile is what answers "wet or dry against the record?"
@@ -81,9 +104,15 @@ function AnnualText({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot 
   // reader who cannot see the chart gets two absolute numbers and no ranking.
   const percentile = snapshot.annual?.percentile;
   if (!selected && !normal && !percentile) return null;
+  const cut =
+    freshness.evidenceDay !== null
+      ? `Acumulado hasta el ${freshness.evidenceDay}`
+      : `Acumulado parcial del año ${snapshot.year}`;
   const parts: string[] = [];
-  if (selected) parts.push(`Año ${snapshot.year}: ${formatMetricValue(selected)}`);
-  if (normal) parts.push(`Normal ${snapshot.baseline}: ${formatMetricValue(normal)}`);
+  if (selected) parts.push(`${cut}: ${formatMetricValue(selected)}`);
+  if (normal) {
+    parts.push(`Normal ${snapshot.baseline} al mismo período: ${formatMetricValue(normal)}`);
+  }
   if (percentile) parts.push(percentilePhrase(percentile, snapshot.baseline));
   return (
     <Text size="sm" fw={600} data-testid="rainfall-annual-text">
@@ -97,6 +126,13 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
   const readable = readablePercentile(percentile);
   const selected = snapshot.annual?.selected;
   const wetness = wetnessFromPercentile(percentile);
+  const gloss = percentileGloss(percentile);
+  // The evidence footer is a CLOSED set: cut date (inside the accumulation
+  // phrase), scope, and the short source. Coverage is deliberately NOT here —
+  // a permanent "Cobertura: 100%" is noise on every normal analysis, and a
+  // DEGRADED coverage already surfaces through the state machinery that exists
+  // for it. Exception, not decoration.
+  const source = shortSource(selected ?? snapshot.annual?.normal ?? percentile);
 
   // The headline is the ANSWER: the ranking when it may be read, the year's
   // own total when it may not. Nothing at all when the analysis answers
@@ -139,13 +175,21 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
         </Text>
       )}
 
+      {/* The rank, in words a reader can check. Same ROUNDED value as the
+          headline — one fact, one number, on every always-visible surface. */}
+      {gloss !== null && (
+        <Text size="xs" c="dimmed" data-testid="rainfall-percentile-gloss">
+          {gloss}
+        </Text>
+      )}
+
       {withheld !== undefined && (
         <Text size="xs" c="dimmed">
           {`${metricLabel('percentile')}: ${describeMetricState(withheld)}`}
         </Text>
       )}
 
-      <AnnualText snapshot={snapshot} />
+      <AnnualText snapshot={snapshot} freshness={freshness} />
 
       {/* The freshness of the STORED ANALYSIS, named as such. The chart below
           states the freshness of the SERIES it drew — a different object, and
@@ -169,6 +213,21 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
       <Text size="xs" c="dimmed">
         {scopeParts.join(' · ')}
       </Text>
+
+      {/* What "Estimación regional" MEANS for the parcel the reader clicked.
+          The badge alone names a property of the number and leaves the reader
+          to guess which region produced it; this names it. */}
+      {snapshot.regional_estimate && (
+        <Text size="xs" c="dimmed">
+          {`Estimación para ${scopeSentence(snapshot.scope)}, que contiene esta parcela.`}
+        </Text>
+      )}
+
+      {source !== null && (
+        <Text size="xs" c="dimmed" data-testid="rainfall-source">
+          {`Fuente: ${source}`}
+        </Text>
+      )}
     </Stack>
   );
 }

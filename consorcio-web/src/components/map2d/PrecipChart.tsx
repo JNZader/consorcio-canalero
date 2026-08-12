@@ -140,7 +140,7 @@ export const PrecipChart = memo(function PrecipChart({
     <Stack gap={6} data-testid="ficha-precipitacion">
       <Group gap="xs" justify="space-between" wrap="nowrap">
         <Text size="sm" fw={600}>
-          Precipitación mensual (normal)
+          Lluvia histórica mensual
         </Text>
         {dataset.low_confidence && <LowConfidenceBadge pixelCount={dataset.pixel_count} />}
       </Group>
@@ -171,7 +171,13 @@ export const PrecipChart = memo(function PrecipChart({
               chart so it survives the table's removal AND reads first. */}
           {dataset.anual_mm != null && (
             <Text size="sm" fw={600} data-testid="precip-anual">
-              Anual (normal): {fmtMm(dataset.anual_mm)}
+              {/* "Anual (normal)" left BOTH axes implicit. This number is a
+                  FULL-YEAR historical mean for the PARCEL CLIP, and it now
+                  sits one fold below a card stating a to-date accumulation for
+                  a zone or basin — 913 vs 512 differ on period AND on scope,
+                  and a label that names neither invites the reader to read the
+                  gap as rainfall. */}
+              Total anual histórico (parcela): {fmtMm(dataset.anual_mm)}
             </Text>
           )}
 

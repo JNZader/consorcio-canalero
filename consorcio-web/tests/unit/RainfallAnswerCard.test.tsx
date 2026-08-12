@@ -99,15 +99,37 @@ function renderCard(
 }
 
 describe('RainfallAnswerCard — the annual textual equivalent (moved from the metric list)', () => {
-  it('states the percentile beside the year and the normal', () => {
+  it('states the percentile beside the accumulation and the normal', () => {
     renderCard(snapshot());
 
     const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
-    expect(text).toHaveTextContent('Normal 1991-2020: 1013.8 mm');
+    // The CUT DATE, not the year. "Año 2026: 503.4 mm" reads as a closed annual
+    // total, and in August it is eight months of accumulation — a number a
+    // reader would quote at an asamblea and be wrong. The day comes from the
+    // freshness value the panel derived, never from the browser clock.
+    expect(text).toHaveTextContent('Acumulado hasta el 2025-12-30: 850.2 mm');
+    expect(text.textContent).not.toMatch(/Año 2025:/);
+    // `annual.normal` is the normal accumulated TO THE SAME DATE, so it says
+    // so — while still naming the SERVED baseline (RISK-001).
+    expect(text).toHaveTextContent('Normal 1991-2020 al mismo período: 1013.8 mm');
     // Whole percentiles: a Weibull rank over 31 samples moves in steps of ~3,
     // so a tenth of a percentile is precision the number does not have.
     expect(text).toHaveTextContent('Percentil 27 de 1991-2020');
+  });
+
+  it('claims no cut date when freshness could not be established', () => {
+    // The honest degradation: no fabricated day, and still no claim of a
+    // CLOSED year — "parcial" is the fact that survives either way.
+    renderCard(snapshot(), {
+      kind: 'unknown',
+      evidenceDay: null,
+      sentence: 'Frescura no disponible en este análisis',
+      reason: 'metric_contract_rejected',
+    });
+
+    const text = screen.getByTestId('rainfall-annual-text');
+    expect(text).toHaveTextContent('Acumulado parcial del año 2025: 850.2 mm');
+    expect(text.textContent).not.toMatch(/hasta el/);
   });
 
   it('prints the baseline period AS SERVED, in the phrase too', () => {
@@ -120,7 +142,7 @@ describe('RainfallAnswerCard — the annual textual equivalent (moved from the m
       'Percentil 27 de 2001-2030'
     );
     expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
-      'Normal 2001-2030: 1013.8 mm'
+      'Normal 2001-2030 al mismo período: 1013.8 mm'
     );
 
     // …and the sweep that catches the surface nobody thought of. It compares
@@ -190,7 +212,7 @@ describe('RainfallAnswerCard — the annual textual equivalent (moved from the m
     );
 
     const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
+    expect(text).toHaveTextContent('Acumulado hasta el 2025-12-30: 850.2 mm');
     expect(text.textContent).not.toMatch(/Percentil/i);
   });
 });
@@ -273,6 +295,39 @@ describe('RainfallAnswerCard — the derived adjective (R2)', () => {
   it('presents no label when the analysis carries no percentile at all', () => {
     renderCard(snapshot({ annual: { selected: metric({ value: 850.24 }) } }));
     expect(screen.queryByTestId('rainfall-wetness')).toBeNull();
+    expect(screen.queryByTestId('rainfall-percentile-gloss')).toBeNull();
+  });
+
+  it('glosses the rank in words, using the SAME rounded number as the headline', () => {
+    // A percentile is exactly the kind of number a reader nods at without
+    // decoding. And the gloss must not become the screen's third spelling of
+    // one fact: it reads the ROUNDED value, like the headline.
+    renderCard(snapshot({ annual: { percentile: metric({ value: 46.9, unit: 'percentil' }) } }));
+
+    expect(screen.getByTestId('rainfall-headline')).toHaveTextContent('Percentil 47');
+    expect(screen.getByTestId('rainfall-percentile-gloss')).toHaveTextContent(
+      'De cada 100 años, 47 fueron más secos que este.'
+    );
+    expect(screen.getByTestId('rainfall-percentile-gloss').textContent).not.toContain('46.9');
+  });
+
+  it('offers no gloss for a suppressed percentile', () => {
+    // An interpretation of a withheld number IS the withheld number.
+    renderCard(
+      snapshot({
+        annual: {
+          selected: metric({ value: 850.24 }),
+          percentile: metric({
+            value: null,
+            unit: 'percentil',
+            state: 'suppressed',
+            reason: 'baseline_years_below_minimum',
+          }),
+        },
+      })
+    );
+
+    expect(screen.queryByTestId('rainfall-percentile-gloss')).toBeNull();
   });
 
   it.each([
@@ -378,5 +433,62 @@ describe('RainfallAnswerCard — the scope line (R1)', () => {
     const card = screen.getByTestId('rainfall-answer-card');
     expect(card.textContent).toContain('Ámbito: Cuenca');
     expect(card.textContent).not.toContain('estimación regional');
+    // No badge, no explanation: there is no regional estimate to explain.
+    expect(card.textContent).not.toContain('que contiene esta parcela');
+  });
+
+  it('says WHICH region the regional estimate is for, by name', () => {
+    // The badge alone states a property of the number and leaves the reader to
+    // guess which region produced it for the parcel they clicked.
+    renderCard(snapshot({ scope: { kind: 'basin', id: 'cuenca_rio_tercero', version: '1' } }));
+
+    expect(screen.getByTestId('rainfall-answer-card').textContent).toContain(
+      'Estimación para la cuenca Rio Tercero, que contiene esta parcela.'
+    );
+  });
+
+  it('still names the region when the served id carries no qualifier', () => {
+    renderCard(snapshot({ scope: { kind: 'zone', id: 'zona', version: '1' } }));
+
+    expect(screen.getByTestId('rainfall-answer-card').textContent).toContain(
+      'Estimación para la zona, que contiene esta parcela.'
+    );
+  });
+});
+
+describe('RainfallAnswerCard — the evidence footer is a CLOSED set', () => {
+  it('names the source in one token, not the whole provenance', () => {
+    renderCard(snapshot());
+
+    expect(screen.getByTestId('rainfall-source')).toHaveTextContent('Fuente: CHIRPS (satelital)');
+    // The rest of the provenance belongs to the technical fold: the card
+    // answers "can I trust this", the fold answers "how was it built".
+    const card = screen.getByTestId('rainfall-answer-card').textContent ?? '';
+    expect(card).not.toContain('chirps-v3-final');
+    expect(card).not.toContain('0.05°');
+    expect(card).not.toContain('policy-v1');
+  });
+
+  it('never states coverage on a normal analysis', () => {
+    // Exception, not decoration: a permanent "Cobertura: 100%" is noise on
+    // every healthy analysis, and a DEGRADED one already surfaces through the
+    // state machinery that exists for it.
+    renderCard(snapshot());
+
+    const card = screen.getByTestId('rainfall-answer-card').textContent ?? '';
+    expect(card).not.toMatch(/Cobertura/i);
+    expect(card).not.toMatch(/Completitud/i);
+  });
+
+  it('renders no source line when the metric was served without provenance', () => {
+    const stripped = {
+      metric: 'selected',
+      value: null,
+      state: 'unavailable',
+      reason: 'metric_contract_rejected',
+    } as unknown as RainfallMetric;
+    renderCard(snapshot({ annual: { selected: stripped } }));
+
+    expect(screen.queryByTestId('rainfall-source')).toBeNull();
   });
 });
