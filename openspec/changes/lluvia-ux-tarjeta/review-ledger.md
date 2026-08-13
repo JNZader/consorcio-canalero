@@ -239,6 +239,21 @@ R3-001 → **verified** (terminal alert names both years, `data-showing-year` pr
 
 **Slice 1 review verdict: CLOSED — 0 open findings. 2 CRITICAL fixed+verified in 1 fix round (budget: 2), 9 info bequeathed.**
 
+## Slice 2 — full-4R code review, first pass (2026-08-12, diff feat/lluvia-ux-01-jerarquia..e9d8ebd1, 1212/53 lines)
+
+Four lenses in parallel, 2-sweep budget. **Risk: EMPTY ledger** (root keys are a CLOSED server-side allow-list — `SNAPSHOT_ROOT_KEYS` enforced at service.py:668 — so the raw-key renderer only ever titles server-authored names; formula injection unreachable, exports are server-rendered where the sanitizer lives; no authz change — every newly disclosed field already traveled in the same operator-only payload; fixtures PII-clean). Refutation: 3 batched refuters over the single CRITICAL candidate; vote 2-1 STANDS (correctness + reproducibility stands, impact refuted).
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| S2R3-001 | reliability | `consorcio-web/src/components/map2d/rainfall/RainfallMetricList.tsx:423` with `rainfallFormat.ts:661` | CRITICAL | open→fixed (see fix round) | Shared block asserts "Vale para todas las métricas mostradas, en este plegable y en Antecedentes" (universal over the DISPLAYED set) while `hoistProvenance` compares only `metrics.filter(m => m.provenance !== undefined)`. A stripped metric (backend `_unavailable`, service.py:466-472, reachable PER-METRIC per _normalize_metric :479-518) is displayed but never compared → the block over-claims scope, against the delta spec's fabrication clause (spec.md:13,15 — the "discharges the entry" language is scoped to `available_through` only). Design contradiction UXJB-110 (design.md:96) vs UXJA-107 (design.md:98), unreconciled. **The defective state was already instantiated by a green test** (RainfallDetailPanel.test.tsx:1145 constructs the mixed snapshot and never asserts the block's claim). Refuter calibration: excluded rows are ALWAYS value-less and self-identifying (`—`/`Estado: No disponible`/`Motivo:`), so no number can be mis-sourced — the defect is the sentence, not the hoist. |
+| S2R4-001 | resilience | `RainfallMetricList.tsx:423` | WARNING | info→fixed (discharged by same fix) | Same sentence false in two reachable states: (a) stripped-but-displayed metrics (the CRITICAL above at WARNING framing); (b) "y en Antecedentes" names a fold not on screen when the snapshot serves no antecedents. |
+| S2R3-002 | reliability | `RainfallMetricList.tsx:423` | SUGGESTION | info→fixed (discharged by same fix) | The no-antecedents wording case, untested. |
+| S2R2-001 | readability | `RainfallMetricList.tsx:169,173` | WARNING | info | Wire enums printed raw (`Clase de fuente: estimated_satellite`, `Ámbito espacial: zone`) while the same module owns the Spanish vocabularies the card uses one scroll above (`SOURCE_CLASS_WORDS` → `satelital`, `RAINFALL_SCOPE_LABELS` → `Zona`). Same fact, two words, one panel. Not the D8 raw-key rule — these labels EXIST and are used elsewhere on the same surface. |
+| S2R2-002 | readability | `RainfallMetricList.tsx:98-105` | SUGGESTION | info | `GROUP_TITLES` and `KNOWN_GROUP_ORDER` are two hand-maintained lists of the same keys; drift consequence is a silent reordering. |
+| S2R2-003 | readability | `design.md:356-366` | SUGGESTION | info | Interfaces block omits four shipped exports (`PROVENANCE_FIELDS`, `provenanceFieldValue`, `stringifyUnknownFields`, `metricEvidenceLine`); behaviour designed, record incomplete — same standard deviation #3 applied to `snapshotMetrics`. |
+
+Verified clean across lenses (recorded, not reassurance): no throwing path in any new formatter (the total guard REMOVES a crash path — `'metric' in "texto"` TypeError now unreachable); deny-list matches the backend allow-list exactly; hoist at 0/1/all-stripped/partial never hoists on partial evidence; both folds build the hoist from the same `snapshotMetrics` so they cannot disagree; slice-1 assertions still bind (no vacuity); single-source formatters confirmed by grep; `_unavailable` drops `revision` too, so the exclusion cannot hide a divergent revision.
+
 ## Slice 2 — full-4R code review, fix round 1 of 2 (2026-08-12)
 
 Only the verified CRITICAL was fixed. The refuter vote on it was 2-1 STANDS, with the
