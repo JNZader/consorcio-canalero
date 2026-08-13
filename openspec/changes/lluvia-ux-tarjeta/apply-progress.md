@@ -62,7 +62,7 @@ Every row's RED was OBSERVED, not asserted. Command in each case:
 |---|---|
 | `npx vitest run` (full) | **279 files, 3777 tests, all passing** |
 | `npm run typecheck` (both projects) | exit 0 |
-| `npm run lint` | exit 0 — 3 warnings, all PRE-EXISTING (verified against the merge-base: same 3, `LayerControlsPanel.tsx` ×2 and `useMapLayerEffects.ts` cognitive complexity). A FOURTH appeared mid-apply — `RainfallDetailPanel` crossed the cognitive-complexity gate at 36 — and was fixed by extracting `ScopeControl`, not by raising the threshold |
+| `npm run lint` | exit 0 — 3 warnings, all PRE-EXISTING (verified against the merge-base: same 3 cognitive-complexity warnings — `src/components/map2d/LayerControlsPanel.tsx:397`, `src/components/report-form/useReportFormSubmission.ts:48`, `src/components/map2d/useMapLayerEffects.ts:95`). A FOURTH appeared mid-apply — `RainfallDetailPanel` crossed the cognitive-complexity gate at 36 — and was fixed by extracting `ScopeControl`, not by raising the threshold |
 | `playwright --list` | 10 tests collected in `rainfall-v2-detail.spec.ts`, the zero-scroll case included |
 | Backend | untouched — no `pytest` run needed and none claimed |
 | Docker CI (`javi-forge ci`, run by the pre-push hook) | passed on every commit through `ead8c6dd`: lint + compile + test on both runners, security scan, ghagga review |
@@ -286,7 +286,7 @@ Command in each case: `npx vitest run <file>` before the implementation existed.
 
 | Gate | Result |
 |---|---|
-| `npx vitest run` (full) | **279 files, 3807 tests, all passing** (slice-1 head was 3779 — +28 new) |
+| `npx vitest run` (full) | **279 files, 3806 tests, all passing** (slice-1 head was 3779 — +27 new) |
 | `npm run typecheck` | exit 0 on both tsconfigs (`tsc --noEmit` + `tsconfig.tests.json`) |
 | `npm run lint` | exit 0 — **3 warnings, all PRE-EXISTING** (`LayerControlsPanel.tsx`, `useMapLayerEffects.ts`, `useReportFormSubmission.ts`). No new one: `RainfallMetricList` stayed under the cognitive-complexity gate because the metadata lines were extracted into named line-builders instead of being inlined as ternaries |
 | `npx playwright test --list` | 10 tests collected in `rainfall-v2-detail.spec.ts` |
@@ -295,7 +295,7 @@ Command in each case: `npx vitest run <file>` before the implementation existed.
 
 **One flake seen and chased down rather than waved away**: the first full-suite run had
 `SugerenciasPanel.test.tsx > creates internal topic and submits management update` time out
-at 10 s. Re-run alone: 7/7 green; re-run of the whole suite: 3807/3807 green. It is a
+at 10 s. Re-run alone: 7/7 green; re-run of the whole suite: 3806/3806 green. It is a
 `userEvent` test hitting its own timeout under parallel load, in a file this slice does not
 touch. Recorded because "it passed the second time" is only honest when you say it was
 measured twice.
@@ -327,6 +327,14 @@ padded: the measurement is what the slice weighs.
    cannot be gated per metric. `PROVENANCE_FIELD` therefore has eight entries and
    `design.md`'s Interfaces block, which still lists `AVAILABLE_THROUGH`, is stale on that
    one line. Same decision, corrected arithmetic.
+
+   **Correction (verify phase, V-007): this entry named ONE stale site and there were TWO.**
+   `design.md:385` — the Testing-strategy row `hoist ignores provenance-less metrics (D5)` —
+   still said the shared block "still hoists all NINE fields" after the same amendment, and
+   was missed because the deviation was written against the Interfaces block alone. Corrected
+   to EIGHT in the verify phase. Recorded rather than silently patched: a deviation entry
+   that enumerates the blast radius of an amendment is only worth what its enumeration is
+   worth, and this one under-counted by one site.
 
 2. **`RainfallDetailPanel.tsx` is edited, and slice 2's File Changes row does not list it.**
    Two lines of substance: it imports `hoistProvenance` + `snapshotMetrics` and passes the
@@ -422,7 +430,7 @@ no state word, no reason — while the percentile's identical situation got a fu
 **Strict TDD, both directions** (`consorcio-web/tests/unit/RainfallAnswerCard.test.tsx`):
 `states a withheld selected total by state and reason, never as a number` and `adds no
 state line when the selected total is readable`. Written first, observed RED (1 failed /
-34 passed), then GREEN (36/36 in the file). The negative test is the one that matters most:
+34 passed), then GREEN (35/35 in the file). The negative test is the one that matters most:
 it fails the lazy "just always render the state" fix, which would have parked a permanent
 `Disponible` beside every healthy number — precisely the noise the closed evidence footer
 was designed to refuse.
@@ -432,7 +440,7 @@ was designed to refuse.
 | `npx vitest run` (full suite) | 279 files / **3810** tests, all passing (was 3808; +2 new) |
 | `npm run typecheck` | exit 0 on both tsconfigs |
 | `npm run lint` | **3** warnings — the same pre-existing three, none added |
-| bundle (D12 method) | **910207** vs slice-2 base `908422` → **+1785 / 3072** — PASS, 1287 B of headroom. This fix costs **+35 B** over the +1750 pre-fix delta. Measured, not shaved. |
+| bundle (D12 method) | **910207** vs slice-2 base `908422` → **+1785 / 3072** — PASS, 1287 B of headroom. This fix costs **+35 B** over the +1750 pre-fix delta. Measured, not shaved. **VERIFY-CONFIRMED (2026-08-12):** re-measured on the verify branch head by the same D12 method (clean `npm run build` after `rm -rf dist`, then `find dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" \| wc -c' _ {} \; \| paste -sd+ - \| bc`) and it REPRODUCED **910207 byte for byte** — the third independent reproduction of a D12 figure in this change. Delta +1785 against the 3072 slice-2 budget stands. |
 
 The five remaining judgment-day findings are `info` and were NOT touched: three assessed
 real (freshness reason on a name-prohibited role, the `??` coalesce that lets a stripped

@@ -144,6 +144,12 @@ Convergence budget for the design phase is now spent.
 
 **Post-JD housekeeping (owner-approved "dale", same pattern as lluvia-insights' pre-verify tidy — explicitly NOT a review round):** D13's declared local run gained the two missing preconditions as items 4 and 5 (FICHA_ENABLED reaching the backend service; a host-reachable Martin via port override or VITE_MARTIN_URL), citing the previous change's own apply record where both blockers were first documented. UXJA-201 → `fixed (post-JD housekeeping)`. Also fixed in the same edit: the D11 stale figure ~540→~590 (UXJA-202≡UXJB-204).
 
+**Ledger row added in the verify phase (V-009).** UXJA-201 was the sole open item at the convergence budget's end and was resolved in prose only — no table row, while every other finding of that weight got one. A resolution recorded exclusively in narrative is the one a future reader has to reconstruct, and an escalation is the last finding that should require reconstruction:
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJA-201 | judgment-day | `design.md:271` (D13 declared local run) with `gee-backend/app/config.py:124` and the `docker-compose.yml` martin block | CRITICAL | fixed | The design's declared local e2e environment listed THREE preconditions while the tree imposes FIVE. Two blockers were verified against the tree by orchestrator execution, not accepted on the judge's word: (a) `ficha_enabled: bool = False` at `app/config.py:124`, with no `FICHA_ENABLED` in any compose or env file in the repo — so `probeFichaAvailability` returns `'off'` and EVERY test in the spec soft-skips; (b) the `martin` compose service publishes no host port while the SPA resolves tiles from `VITE_MARTIN_URL \|\| 'http://localhost:3000'` — so `clickFixtureParcela` never gets its `parcelas_catastro` 200 and the zero-scroll case skips. A declared environment that cannot produce a green is a gate that reports skips as passes, which is this criterion's three-strikes failure mode (canary → preview → local) for the third time. **Fixed** by adding both as explicit preconditions 4 and 5 of D13 (`design.md:271`) and to task O.1 (`tasks.md:132-137`), each citing the previous change's own apply record (`openspec/changes/archive/2026-08-07-lluvia-v2/apply-progress.md:245`) where both blockers were first documented. The fix is DOCUMENTARY, and that is the whole point of the distinction the verify phase preserves: naming the preconditions is what makes O.1 executable, it is not the same thing as executing it. O.1 remains unchecked and V-001 remains OPEN. |
+
 **Escalation resolved → the design proceeds to tasks.** The verify phase MUST confirm the declared run actually executes end-to-end with the five preconditions (the three-strikes history of this gate — canary, preview, local — earns it an executed check, not an inspected one).
 
 ## Apply phase — owner-reported defects on the live UI (2026-08-11)
@@ -173,7 +179,7 @@ fixed the reader's problem.
 | OWN-009 | owner decision | `rainfallFormat.ts`, `RainfallAnswerCard.tsx` | WARNING | fixed | The percentile was unreadable three ways at once: the row rendered `46.9 percentil` (a rank is not a magnitude, so the unit is a PREFIX in Spanish — `Percentil 46.9`), the card said `Percentil 47` beside it (one fact, two spellings, on one screen), and neither told a reader what a percentile IS. Now every always-visible surface uses the same ROUNDED value while the technical row keeps the served precision, and a dimmed gloss reads `De cada 100 años, {n} fueron más secos que este.` — absent whenever the percentile is not readable, because an interpretation of a withheld number is the withheld number. Task 1.28. |
 | OWN-010 | owner decision | `RainfallMetricList.tsx` | WARNING | fixed | Refines OWN-003. Chips are EXCEPTION-ONLY: an available, definitive metric shows none, a provisional or fallback-fed value shows exactly `Dato provisorio`, a non-available state shows its state word — full Spanish, never the wire token `FALLBACK` (the metadata line says `Fuente alternativa`). **The row's text now always states `Estado: {word}`**, which is the part that keeps this honest: the chip is presentation, the text is the contract, and dropping a chip must never drop a served field the enumerated floor requires (D9). The card's evidence footer is likewise closed to cut date + scope + short source, with coverage deliberately absent — a permanent `Cobertura: 100%` is noise on every healthy analysis. Tasks 1.26b, 1.29. |
 
-**Info bequest for tasks/verify** (final re-judge rows, non-blocking): UXJA-203 (branch-3 metric rows drop a served available_through — one reconciling clause), UXJA-204/UXJB-202 (ledger count off-by-ones — noted here, correct at source when next edited), UXJA-205 (evidenceFooter is analysis-scoped; the fold's per-metric row needs its own string, not the shared one), UXJA-206 (three base-spec line citations stale by 11 lines post-f95bf8e5), UXJB-201 (available_through must leave D5's hoistable set or the per-metric gate can't run — tasks should pin it to the rows), UXJB-203 (the card/footer strings don't name their subjects; the stale banner is the disclosure — acceptable, recorded), UXJB-205 (the spec's suppression-is-not-absence sentence over-broad vs its own scenario), UXJB-206 (FichaTerritorialRainfallMount.test.tsx missing from the forced-edit list), UXJB-207 (D9 table vs D9a rule 4 disagree on scalar source_health — rule 4 wins, table to be read accordingly).
+**Info bequest for tasks/verify** (final re-judge rows, non-blocking): UXJA-203 (branch-3 metric rows drop a served available_through — one reconciling clause), UXJA-204/UXJB-202 (ledger count off-by-ones — noted here, correct at source when next edited), UXJA-205 (evidenceFooter is analysis-scoped; the fold's per-metric row needs its own string, not the shared one), UXJA-206 (three base-spec line citations stale by 11 lines post-f95bf8e5) — **DISCHARGED in the verify phase (V-008)**: the delta preamble's surviving stale citation, `spec.md:596` for "Intensity, Peak, and Duration Outcomes", was corrected to `:607` after locating the requirement heading live in `openspec/specs/rainfall-analysis/spec.md` rather than by re-applying the +11 arithmetic — the offset was the symptom, the heading is the fact, UXJB-201 (available_through must leave D5's hoistable set or the per-metric gate can't run — tasks should pin it to the rows), UXJB-203 (the card/footer strings don't name their subjects; the stale banner is the disclosure — acceptable, recorded), UXJB-205 (the spec's suppression-is-not-absence sentence over-broad vs its own scenario), UXJB-206 (FichaTerritorialRainfallMount.test.tsx missing from the forced-edit list), UXJB-207 (D9 table vs D9a rule 4 disagree on scalar source_health — rule 4 wins, table to be read accordingly).
 
 ## Slice 1 — full-4R code review (2026-08-12, diff 550dc852..18f6a1f6, ~3647 lines)
 
@@ -325,7 +331,7 @@ No BLOCKER and no CRITICAL.
 ### Judgment Day fix round 1 — what shipped
 
 Strict TDD on UXJA2-001: two tests written FIRST and observed **RED** (1 failed / 34 passed
-in `RainfallAnswerCard.test.tsx`), then **GREEN** (36/36 in the file; 279 files / **3810**
+in `RainfallAnswerCard.test.tsx`), then **GREEN** (35/35 in the file; 279 files / **3810**
 tests in the full suite). Both directions are pinned: a suppressed total states its state +
 reason, and a HEALTHY total adds NO such line — the assertion that fails an "always render
 it" fix, which would have put a permanent `Disponible` next to every good number.
@@ -356,3 +362,55 @@ Nothing was shaved to reach it.
 | UXJB2R-003 | judgment-day | `RainfallAnswerCard.tsx:132` | SUGGESTION | info | Rename verified byte-identical; zero behavioral surface. |
 
 **JUDGMENT: APPROVED ✅** — apply phase, 1 CRITICAL fixed and verified by both judges in 1 fix round (budget: 2). 0 open findings. Info bequest carried to verify/archive.
+
+## Verify phase (2026-08-12)
+
+**Verdict: PASS-with-notes.** A read-only verify agent re-derived the change's claims against
+the tree, then a single writer closed the record findings and measured the one gate the
+read-only sandbox could not. The code verdict is CLEAN: the 3810-test figure reproduced
+digit-for-digit, all 26 delta scenarios trace to a named test, the review ledger closes with
+zero open findings across four rounds, and hygiene is clean (26 commits, zero AI attribution,
+`consorcio-web/public/version.json` in no commit).
+
+**What the verify phase actually found was the RECORD, not the code** — nine of the ten
+findings are figures in the artifacts that disagree with the runs that produced them. That is
+worth stating plainly rather than filing as trivia: this change's whole argument is that a
+measured number beats an asserted one, and an apply record whose own arithmetic drifts is the
+same failure class one level up. Every one of them is now corrected AGAINST THE RUN, never
+against the other document.
+
+### Executed evidence (verify phase, on `feat/lluvia-ux-02-disclosure` head)
+
+| gate | command | result |
+|---|---|---|
+| unit suite | `npx vitest run` (full) | **279 files / 3810 tests passed**, exit 0 — reproduces the recorded figure exactly |
+| typecheck | `npm run typecheck` | exit 0 (both tsconfigs) |
+| lint | `npm run lint` | exit 0, **3 warnings** — the same three pre-existing cognitive-complexity warnings, none added |
+| e2e collection | `npx playwright test -c tests/e2e/playwright.config.ts --list` | **89 tests in 10 files**; **10 tests** in `rainfall-v2-detail.spec.ts`, the zero-scroll case among them. COLLECTED, NOT EXECUTED |
+| bundle (D12) | `rm -rf dist` → `npm run build` → `find dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" \| wc -c' _ {} \; \| paste -sd+ - \| bc` | **910207** vs slice-2 base `908422` → **+1785 / 3072 — PASS**, 1287 B headroom. **Reproduced the recorded figure byte for byte.** |
+
+Method note, recorded because it is a trap the next person will hit: `npx playwright test --list`
+WITHOUT `-c tests/e2e/playwright.config.ts` collects zero tests and exits 1, because from
+`consorcio-web/` it sweeps the vitest suites too and dies on `vi.mock` outside a vitest runner.
+The bare invocation looks like a broken e2e suite and is not one.
+
+### Findings
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| V-001 | verify | `tasks.md` O.1 · `design.md:271` (D13) | CRITICAL | **open** | **The declared local e2e run has still never been executed, so the zero-scroll success criterion is asserted by nobody.** The case exists and collects (10 tests in the spec), which is the only thing any record here claims. It is owner-gated and all three blocking preconditions were re-verified live in this phase, not inherited: (1) `gee-backend/app/config.py:124` — `ficha_enabled: bool = False`; (2) `rg FICHA_ENABLED` over the tree returns NOTHING outside `openspec/` — no compose file, no env file, no example sets it, so `probeFichaAvailability` returns `'off'` and every test in the spec soft-skips; (3) `docker-compose.yml:345-351` — the `martin` service publishes NO host port by deliberate design (its own comment: host 3000 is taken by another stack on this box), while the SPA resolves tiles from `VITE_MARTIN_URL \|\| 'http://localhost:3000'`, so `clickFixtureParcela` never gets its `parcelas_catastro` 200. **This stays OPEN and is not softened.** A skipped run is a failed gate; archiving with it closed would record a zero-scroll criterion no run has ever asserted, which is exactly the third repetition of this gate's own three-strikes history (canary → preview → local). |
+| V-002 | verify | `apply-progress.md` (JD fix section) · `review-ledger.md:328` | WARNING | **closed** | Both sites recorded GREEN as `36/36` for `RainfallAnswerCard.test.tsx`; measured is **35**. The record's own RED line refutes it arithmetically — `1 failed / 34 passed` is 35 tests, and a fix that adds no test cannot make the file grow to 36. Corrected to `35/35` at both sites. |
+| V-003 | verify | `tasks.md` O.2 | WARNING | **closed** | O.2 sat unchecked claiming it waited on "an owner decision: amend the budget to 3547, or trim". That decision was MADE and is recorded at `design.md:229` (amendment to the measured 3547) and `design.md:231` (second reading, +3779/908422 accepted as slice-1 final). O.2 rewritten to carry both readings plus the slice-2 measurement and checked. |
+| V-004 | verify | `apply-progress.md` JD fix gate table | WARNING | **closed** | The bundle figure was UNMEASURED by the read-only verify sandbox. Re-run here by the exact D12 method: **910207, reproducing the recorded figure byte for byte** — the third independent reproduction of a D12 figure in this change. Recorded as verify-confirmed. |
+| V-005 | verify | `apply-progress.md` slice-2 gates | WARNING | **closed** | Slice-2 head test count read 3807 while `review-ledger.md:275` reads 3806. The ledger's chain 3806 → 3808 → 3810 lands on the verified terminal 3810; 3807 does not. Corrected to **3806** (and the flake paragraph's echo of the same figure with it), making the +27 delta from the 3779 slice-1 head explicit. |
+| V-006 | verify | `apply-progress.md:65` | WARNING | **closed** | The three pre-existing lint warnings were named as "`LayerControlsPanel.tsx` ×2 and `useMapLayerEffects.ts`". Verified live, the real three are `src/components/map2d/LayerControlsPanel.tsx:397`, `src/components/report-form/useReportFormSubmission.ts:48`, `src/components/map2d/useMapLayerEffects.ts:95`. The slice-2 record already had it right; slice 1's was corrected to match the run. Consequence worth naming: a mis-attributed baseline is how a NEW warning gets absorbed as "one of the known three". |
+| V-007 | verify | `design.md:385` | WARNING | **closed** | The Testing-strategy row still said the hoist "still hoists all NINE fields" after the eight-field amendment. `apply-progress` deviation #1 named only `design.md:362` as stale, so this second site survived the correction. Corrected to EIGHT, and the deviation entry now records that it under-counted its own blast radius by one site. |
+| V-008 | verify | `specs/rainfall-analysis/spec.md:3` (delta preamble) | WARNING | **closed** | The preamble cited base spec `:596` for "Intensity, Peak, and Duration Outcomes"; the requirement heading actually lives at **`:607`**, located live in `openspec/specs/rainfall-analysis/spec.md` rather than by re-applying the known +11 offset — the offset is the symptom, the heading is the fact. This is bequest item **UXJA-206**, now marked discharged at its bequest entry. |
+| V-009 | verify | `review-ledger.md:143-145` | WARNING | **closed** | UXJA-201 — the design-JD escalation and the SOLE open item at the convergence budget's end — was resolved in prose with no ledger table row, while every other finding of that weight got one. A proper row was added with id/lens/location/severity/status/evidence, recording both verified blocking facts and stating explicitly that the fix is DOCUMENTARY: naming the preconditions is what makes O.1 executable and is not the same as executing it. |
+| V-010 | verify | `consorcio-web/public/version.json` | SUGGESTION | **closed** | Confirmed absent from all 26 commits, and confirmed again for this verify commit: the file is build-generated, is dirty in the worktree after the D12 rebuild, and was NOT staged. `.claude/` likewise. |
+
+**Verify verdict: PASS-with-notes. Nine of ten findings closed in this commit. ONE remains
+open — V-001 — and it is owner-gated, not agent-closable.** The code is verified; the
+outstanding item is a RUN that has not happened, and no amount of inspection substitutes for
+it. Do not archive this change while V-001 is open without recording, in the archive itself,
+that the zero-scroll criterion ships unasserted.

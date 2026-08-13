@@ -1,6 +1,6 @@
 # Delta for rainfall-analysis
 
-Presentation-only delta for change `lluvia-ux-tarjeta`. No data, state, export, metric-content, policy or route requirement changes. "Intensity, Peak, and Duration Outcomes" (`specs/rainfall-analysis/spec.md:596`) is untouched — only its dead display chrome is pruned. Proposal constraints R1–R7 are the acceptance floor.
+Presentation-only delta for change `lluvia-ux-tarjeta`. No data, state, export, metric-content, policy or route requirement changes. "Intensity, Peak, and Duration Outcomes" (`specs/rainfall-analysis/spec.md:607`) is untouched — only its dead display chrome is pruned. Proposal constraints R1–R7 are the acceptance floor.
 
 ## MODIFIED Requirements
 

@@ -144,14 +144,29 @@ land on surfaces slice 1 owns, so they are fixed here. Ledger rows `OWN-004..010
   ```
 
   Acceptance: the run EXECUTES — a report showing every test in the describe RUN (not skipped), the zero-scroll case among them, and all 15 rainfall testids plus `ficha-precipitacion` resolving. A skipped run is a FAILED gate, not a pass. **The verify phase MUST confirm this executed end-to-end (an executed check, not an inspected one) — the three-strikes history of this gate (canary → preview → local) earns it.** CI does not gate this criterion and this change does not claim it does.
-- [ ] O.2 Bundle gate per D12, ONCE PER SLICE at the gate (not per commit): `npm --prefix consorcio-web run build`, then `find consorcio-web/dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" | wc -c' _ {} \; | paste -sd+ - | bc` on the merge-base and on the slice head. Acceptance: delta ≤ 3072 bytes, RECORDED as a number in the apply record (an unmeasured bundle claim is the defect this gate exists for). The sum is a regression tripwire, not a page-weight model.
+- [x] O.2 Bundle gate per D12, ONCE PER SLICE at the gate (not per commit): `npm --prefix consorcio-web run build`, then `find consorcio-web/dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" | wc -c' _ {} \; | paste -sd+ - | bc` on the merge-base and on the slice head. Acceptance: delta ≤ 3072 bytes, RECORDED as a number in the apply record (an unmeasured bundle claim is the defect this gate exists for). The sum is a regression tripwire, not a page-weight model.
 
-  **MEASURED AND FAILED — left unchecked deliberately.** merge-base 904643 → head 908190 =
-  **+3547 bytes, over the 3072 budget by 475**. The slice AS DESIGNED (tasks 1.1-1.23) came in
-  at **+1941, comfortably passing**; the overrun is entirely the seven owner-added tasks
-  (1.24-1.30). Full attribution table in `apply-progress.md`. This box stays unchecked until an
-  owner decision: amend the budget to the measured 3547, or trim. Ticking it would be the
-  unmeasured claim the gate exists to prevent.
+  **MEASURED ON BOTH SLICES, AND THE OWNER DECISION IS IN — checked.** The history, kept
+  because the gate's value is that it fired:
+
+  **Slice 1.** merge-base 904643 → head 908190 = **+3547, over the 3072 budget by 475**. The
+  slice AS DESIGNED (tasks 1.1-1.23) came in at **+1941, comfortably passing**; the overrun is
+  entirely the seven owner-added tasks (1.24-1.30). The apply agent refused to shave code into
+  compliance and left this box unchecked pending an owner call. **That call was made and is
+  recorded in `design.md:229` (D12 amendment, 2026-08-11):** the slice-1 budget is amended to
+  the measured **3547** as an accepted, attributed baseline, with slice 2 keeping its own
+  ≤3072 against that new base. A **second reading** at `design.md:231` accepts **+3779
+  (908422)** as slice-1 FINAL — 232 B past 3547 for the two refuter-verified CRITICAL fixes,
+  itemized and measured against a reproduced pre-fix figure.
+
+  **Slice 2**, against the amended base `908422`: head **910207** = **+1785 / 3072 — PASS**,
+  1287 B of headroom. **Re-measured in the verify phase by the same D12 method and it
+  REPRODUCED 910207 byte for byte.** Full attribution tables in `apply-progress.md`.
+
+  Checked because the acceptance criterion — "delta ≤ budget, RECORDED as a number" — is met
+  on a measured figure with a recorded owner decision behind every amendment, which is the
+  opposite of the unmeasured claim this gate exists to prevent. Nothing was shaved and no
+  budget was moved after the fact to fit a number.
 
 ---
 
