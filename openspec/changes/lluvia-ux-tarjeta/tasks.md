@@ -146,6 +146,13 @@ land on surfaces slice 1 owns, so they are fixed here. Ledger rows `OWN-004..010
   Acceptance: the run EXECUTES — a report showing every test in the describe RUN (not skipped), the zero-scroll case among them, and all 15 rainfall testids plus `ficha-precipitacion` resolving. A skipped run is a FAILED gate, not a pass. **The verify phase MUST confirm this executed end-to-end (an executed check, not an inspected one) — the three-strikes history of this gate (canary → preview → local) earns it.** CI does not gate this criterion and this change does not claim it does.
 - [ ] O.2 Bundle gate per D12, ONCE PER SLICE at the gate (not per commit): `npm --prefix consorcio-web run build`, then `find consorcio-web/dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" | wc -c' _ {} \; | paste -sd+ - | bc` on the merge-base and on the slice head. Acceptance: delta ≤ 3072 bytes, RECORDED as a number in the apply record (an unmeasured bundle claim is the defect this gate exists for). The sum is a regression tripwire, not a page-weight model.
 
+  **MEASURED AND FAILED — left unchecked deliberately.** merge-base 904643 → head 908190 =
+  **+3547 bytes, over the 3072 budget by 475**. The slice AS DESIGNED (tasks 1.1-1.23) came in
+  at **+1941, comfortably passing**; the overrun is entirely the seven owner-added tasks
+  (1.24-1.30). Full attribution table in `apply-progress.md`. This box stays unchecked until an
+  owner decision: amend the budget to the measured 3547, or trim. Ticking it would be the
+  unmeasured claim the gate exists to prevent.
+
 ---
 
 ## Coverage: Delta-Spec Requirements and Scenarios → Tasks/Tests
