@@ -396,22 +396,60 @@ export function RainfallMetricGroup({ group, baseline, title, hoist }: RainfallM
 }
 
 /**
- * The provenance every displayed metric agreed on, stated ONCE.
+ * What the shared block may honestly claim, in one sentence, DERIVED from what
+ * was actually compared and from what is actually on screen (S2R3-001).
  *
- * ITS SCOPE IS BOTH FOLDS, and the wording says so — "todas las métricas
- * mostradas", never "de esta sección" (UXJA-107). The antecedents live in a
- * different fold, and a block scoped to this one would have left their
- * provenance homeless while the delta requires every field to be reachable by
- * operating at most ONE disclosure control. It need not be the SAME control for
- * every field: opening this fold alone exposes the shared provenance of the
- * antecedents too, and opening the antecedents alone exposes their values,
- * states and whatever diverged.
+ * Two independent axes, and both of them used to be asserted rather than
+ * derived:
+ *
+ *   - `everyDisplayedCompared` — `hoistProvenance` compares only metrics that
+ *     CARRY provenance (UXJB-110, `rainfallFormat.ts:661`). A metric served in
+ *     the stripped four-field shape (`service.py:479-518`) is DISPLAYED in the
+ *     folds this sentence names and was never in the comparison set, so
+ *     "todas las métricas mostradas" over-claims membership for it. The
+ *     over-claim is the sentence's, not the hoist's: excluding such a metric is
+ *     the right rule (comparing it would collapse the hoist to zero), and the
+ *     row itself is value-less and self-identifying. So the SENTENCE narrows —
+ *     "solo … con procedencia servida" — and the comparison set is untouched.
+ *     This is the resolution of the UXJB-110 (exclusion) ↔ UXJA-107 (universal
+ *     wording) contradiction: universal wording holds only when the exclusion
+ *     removed nothing.
+ *   - `namesAntecedents` — the antecedents fold mounts only for a non-empty
+ *     `antecedents` group (`RainfallDetailPanel.tsx:570`). Naming a fold that
+ *     is not on screen points the reader at a control that does not exist.
+ */
+function sharedProvenanceScope(everyDisplayedCompared: boolean, namesAntecedents: boolean): string {
+  const where = namesAntecedents ? 'en este plegable y en Antecedentes' : 'en este plegable';
+  return everyDisplayedCompared
+    ? `Vale para todas las métricas mostradas${namesAntecedents ? ', ' : ' '}${where}.`
+    : `Vale solo para las métricas con procedencia servida, ${where}.`;
+}
+
+/**
+ * The provenance every COMPARED metric agreed on, stated ONCE.
+ *
+ * ITS SCOPE IS BOTH FOLDS, and the wording says so — never "de esta sección"
+ * (UXJA-107). The antecedents live in a different fold, and a block scoped to
+ * this one would have left their provenance homeless while the delta requires
+ * every field to be reachable by operating at most ONE disclosure control. It
+ * need not be the SAME control for every field: opening this fold alone exposes
+ * the shared provenance of the antecedents too, and opening the antecedents
+ * alone exposes their values, states and whatever diverged.
+ *
+ * The sentence is BUILT, not hardcoded: see {@link sharedProvenanceScope} for
+ * why a fixed universal sentence was a claim the hoist did not support.
  *
  * Renders nothing when nothing is shared — an empty comparison set (every
  * metric served stripped) or a set that agrees on no field at all. There is no
  * empty block and no placeholder: the rows then carry everything themselves.
  */
-function SharedProvenance({ hoist }: { readonly hoist: RainfallProvenanceHoist }) {
+function SharedProvenance({
+  hoist,
+  scope,
+}: {
+  readonly hoist: RainfallProvenanceHoist;
+  readonly scope: string;
+}) {
   const fields = PROVENANCE_FIELDS.filter((field) => hoist.shared[field] !== undefined);
   if (fields.length === 0) return null;
   return (
@@ -420,7 +458,7 @@ function SharedProvenance({ hoist }: { readonly hoist: RainfallProvenanceHoist }
         Procedencia común
       </Text>
       <Text size="xs" c="dimmed">
-        Vale para todas las métricas mostradas, en este plegable y en Antecedentes.
+        {scope}
       </Text>
       {fields.map((field) => (
         <Text key={field} size="xs" c="dimmed">
@@ -453,11 +491,21 @@ export function RainfallMetricList({ snapshot, exclude }: RainfallMetricListProp
   // The hoist is computed over EVERY displayed metric of the snapshot, not just
   // the groups this list renders: the block speaks for both folds, so it must
   // be compared over both (D5).
-  const hoist = hoistProvenance(snapshotMetrics(snapshot));
+  const displayed = snapshotMetrics(snapshot);
+  const hoist = hoistProvenance(displayed);
+  // Both halves of what the block may claim, read off the SAME sources the
+  // renderers use: the comparison set's own membership rule, and whether the
+  // antecedents group renders in a fold of its own (it is a group of this
+  // snapshot AND this list was told not to render it).
+  const scope = sharedProvenanceScope(
+    displayed.every((metric) => metric.provenance !== undefined),
+    renderedGroups(snapshot).some(({ key }) => key === 'antecedents') &&
+      exclude?.includes('antecedents') === true
+  );
   const sourceHealth = stringifyUnknownFields(snapshot.source_health);
   return (
     <Stack gap="xs" data-testid="rainfall-metrics">
-      <SharedProvenance hoist={hoist} />
+      <SharedProvenance hoist={hoist} scope={scope} />
       {/* The narrative sits UNDER the block: it summarises the metrics below
           it, and a summary above the provenance it summarises reads as the
           fold's own heading. */}

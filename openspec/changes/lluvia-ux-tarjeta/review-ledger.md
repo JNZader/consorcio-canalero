@@ -238,3 +238,28 @@ R3-001 → **verified** (terminal alert names both years, `data-showing-year` pr
 | R3-004 | reliability | `RainfallDetailPanel.tsx:316-317` (untouched line) | WARNING | info | Coupling note: the `isError` term in `canFallBack` is what makes R3-001's disclosure coverage TOTAL (under error the card unmounts rather than rendering undisclosed) — the R4-002 window and this fix's completeness are coupled. A future edit to `canFallBack` can silently reopen R3-001; check this row first. |
 
 **Slice 1 review verdict: CLOSED — 0 open findings. 2 CRITICAL fixed+verified in 1 fix round (budget: 2), 9 info bequeathed.**
+
+## Slice 2 — full-4R code review, fix round 1 of 2 (2026-08-12)
+
+Only the verified CRITICAL was fixed. The refuter vote on it was 2-1 STANDS, with the
+impact calibration that shaped the fix: the excluded rows are ALWAYS value-less and
+self-identifying (`—` + `Estado: No disponible` + `Motivo: …`), so no number can be
+mis-sourced — the defect is the SENTENCE over-claiming its scope, not data corruption.
+So the sentence was fixed and the comparison set was left exactly as designed.
+
+Strict TDD: both assertions were written first and observed RED (2 failed / 42 passed in
+`RainfallDetailPanel.test.tsx`), then GREEN (44/44). No other test touched.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| S2R3-001 | reliability | `consorcio-web/src/components/map2d/rainfall/RainfallMetricList.tsx:423` with `rainfallFormat.ts:661` | CRITICAL | fixed | The shared block said "Vale para todas las métricas mostradas, en este plegable y en Antecedentes." — a claim over the DISPLAYED set — while `hoistProvenance` compares only metrics WITH provenance (UXJB-110). A stripped metric (`_unavailable`: metric/value/state/reason, `service.py:479-518`, reachable PER METRIC) is displayed in the folds the sentence names and was never compared, so the block over-claimed its own scope (delta fabrication clause, `spec.md:13,15`), and design.md:96 (exclusion) contradicted design.md:98 (universal wording) with no reconciliation. **Fixed** by deriving the sentence from what was actually compared: `sharedProvenanceScope(everyDisplayedCompared, namesAntecedents)` keeps the universal wording when the exclusion removed nothing and emits `Vale solo para las métricas con procedencia servida, …` otherwise. Hoist untouched. Pinned by `an unserved field renders no line, and a stripped metric renders only its state`. |
+| S2R4-001(b) | resilience | `RainfallMetricList.tsx:423`, `RainfallDetailPanel.tsx:570` | WARNING | fixed | **Discharged for free by the same sentence, same owner.** The `y en Antecedentes` clause is now conditional on a non-empty `antecedents` group — the exact condition that mounts the fold — so the block never points the reader at a control that is not on screen. Pinned by the new test `the shared block names Antecedentes only when that fold is on screen`. |
+| S2R3-002 | reliability | same | WARNING | fixed | Same discharge as S2R4-001(b): the fold-naming half of the block's claim is now derived, not asserted. |
+| S2R3-005 | reliability | `consorcio-web/src/lib/api/rainfall.ts:69` | WARNING | info | **Bequest, deliberately NOT fixed here (type ripple unknown).** `provenance: RainfallProvenance` is declared REQUIRED while the backend serves stripped shapes without it (`service.py:479-518`), which is why every test constructing that state needs an `as unknown as RainfallMetric` cast — a type that lies, with the cast as its only witness. A truthful `provenance?: RainfallProvenance` is a follow-up: it would force every reader of `.provenance` to be re-checked, which is exactly the audit the type is currently suppressing. Found by the reproducibility refuter. |
+
+Gates: `npx vitest run` 279 files / **3808** tests all passing (was 3806; +2 new);
+`npm run typecheck` exit 0 on both tsconfigs; `npm run lint` **3** warnings — the same
+pre-existing three, none added. Bundle (D12 method, same machine/session): post-fix
+**910172** vs the slice-2 base `908422` → **+1750 against the 3072 budget** (the pre-fix
+slice-2 delta was +1643, so this fix costs **+107 B**: one small builder function and the
+prop that carries its output).

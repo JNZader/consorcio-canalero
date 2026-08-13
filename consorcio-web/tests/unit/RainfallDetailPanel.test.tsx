@@ -1188,11 +1188,44 @@ describe('RainfallDetailPanel — the enumerated field floor', () => {
     expect(strippedRow.textContent).not.toContain('null');
     expect(strippedRow.textContent).not.toContain('NaN');
 
+    // …and the shared block SCOPES ITSELF to what it actually compared
+    // (S2R3-001). `hoistProvenance` excludes the stripped metric from the
+    // comparison set (UXJB-110), so the universal wording would claim a set
+    // membership `d7` never had — a fabricated claim about a displayed metric,
+    // which the delta forbids as much as a fabricated field.
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    expect(shared.textContent).toContain(
+      'Vale solo para las métricas con procedencia servida, en este plegable y en Antecedentes.'
+    );
+    expect(shared.textContent).not.toContain('todas las métricas mostradas');
+
     // An empty `quality` and an empty `discrepancies` are the same rule one
     // level down: the guard yields nothing, so there is no line.
     const servedRow = within(technical).getByTestId('rainfall-metric-selected');
     expect(servedRow.textContent).not.toContain('Calidad');
     expect(servedRow.textContent).not.toContain('Discrepancias');
+  });
+
+  it('the shared block names Antecedentes only when that fold is on screen', async () => {
+    // S2R4-001(b)/S2R3-002. The block is rendered inside the technical fold and
+    // speaks for BOTH folds — but the antecedents fold only mounts when the
+    // snapshot carries a non-empty `antecedents` group. With none served,
+    // naming it points the reader at a control that is not there.
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({
+        annual: { selected: metric({ metric: 'selected', value: 850.24 }) },
+        antecedents: undefined,
+        intensity: undefined,
+      }),
+    });
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    expect(screen.queryByTestId('rainfall-antecedents')).toBeNull();
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    expect(shared.textContent).toContain('Vale para todas las métricas mostradas en este plegable.');
+    expect(shared.textContent).not.toContain('Antecedentes');
   });
 
   it('nothing served disappears', async () => {
