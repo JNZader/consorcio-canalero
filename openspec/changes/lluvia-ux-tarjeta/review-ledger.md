@@ -278,3 +278,16 @@ pre-existing three, none added. Bundle (D12 method, same machine/session): post-
 **910172** vs the slice-2 base `908422` → **+1750 against the 3072 budget** (the pre-fix
 slice-2 delta was +1643, so this fix costs **+107 B**: one small builder function and the
 prop that carries its output).
+
+### Slice 2 — scoped re-review of fix round (2026-08-12, inputs: ledger + `git show fa14e827` only)
+
+S2R3-001 → **verified**. Both axes derive from the right facts: the comparison boolean is computed over the SAME `displayed` variable fed to the hoist, with the predicate character-for-character identical to the hoist's own membership rule (no second source of truth); the antecedents axis combines the group's existence under the total `isMetricGroup` guard with the `exclude` term. Render-state enumeration on the touched lines covers six states with the sentence TRUE in every one (all-stripped → block returns null, no claim made; a stripped metric confined to `annual` → narrows globally, an UNDER-claim, never an over-claim). S2R4-001(b) and S2R3-002 → **verified**, genuinely discharged: `namesAntecedents` is the only producer of the string `Antecedentes` in that block, and the new test asserts both directions in one render. 44/44 in the file, typecheck exit 0, no `any` and no cast in the new prop wiring. No new defect on fix-touched lines.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| S2RR-001 | reliability | `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx:1065` (untouched) | WARNING | info | The true/true branch is pinned by a PREFIX assertion, so deleting the `y en Antecedentes` clause from the positive branch keeps all three tests green. The exact-string discipline the two new assertions use is not applied to the branch that names the other fold. Cheap follow-up: tighten to the full sentence. |
+| S2RR-002 | reliability | `RainfallMetricList.tsx:503` | WARNING | info | The `exclude?.includes('antecedents') === true` conjunct is unpinned — the only caller always passes it, so no test can distinguish it from `true`. A component-level test with `exclude` omitted would pin it. |
+| S2RR-003 | reliability | `RainfallDetailPanel.tsx:570` vs `RainfallMetricList.tsx:120-131` (untouched) | SUGGESTION | info | Two predicates decide "is there an antecedents fold": `Object.keys(...).length > 0` vs `isMetricGroup`. A malformed non-empty group mounts the fold while `namesAntecedents` is false → under-claim. Wire-shape violation only, and the failure mode is silence, never a false claim — does not reopen S2R3-001. |
+| S2RR-004 | reliability | `RainfallMetricList.tsx:420-427` | SUGGESTION | info | Spanish register matches the panel's voice; the separator branch is grammatical in all four combinations. No wording defect. |
+
+**Slice 2 review verdict: CLOSED — 0 open findings. 1 CRITICAL fixed+verified in 1 fix round (budget: 2), 2 info rows discharged by the same fix, 7 info bequeathed (incl. S2R3-005: `rainfall.ts:69` declares `provenance` REQUIRED while the backend serves stripped shapes without it — type ripple unknown, follow-up).**
