@@ -60,19 +60,44 @@ Every row's RED was OBSERVED, not asserted. Command in each case:
 
 | Gate | Result |
 |---|---|
-| `npx vitest run` (full) | **279 files, 3763 tests, all passing** |
+| `npx vitest run` (full) | **279 files, 3777 tests, all passing** |
 | `npm run typecheck` (both projects) | exit 0 |
-| `npm run lint` | exit 0 — 3 warnings, all PRE-EXISTING (verified against the merge-base: same 3, `LayerControlsPanel.tsx` ×2 and `useMapLayerEffects.ts` cognitive complexity) |
+| `npm run lint` | exit 0 — 3 warnings, all PRE-EXISTING (verified against the merge-base: same 3, `LayerControlsPanel.tsx` ×2 and `useMapLayerEffects.ts` cognitive complexity). A FOURTH appeared mid-apply — `RainfallDetailPanel` crossed the cognitive-complexity gate at 36 — and was fixed by extracting `ScopeControl`, not by raising the threshold |
 | `playwright --list` | 10 tests collected in `rainfall-v2-detail.spec.ts`, the zero-scroll case included |
 | Backend | untouched — no `pytest` run needed and none claimed |
+| Docker CI (`javi-forge ci`, run by the pre-push hook) | passed on every commit through `ead8c6dd`: lint + compile + test on both runners, security scan, ghagga review |
 
-### O.2 — bundle gate (D12), MEASURED
+### O.2 — bundle gate (D12), MEASURED — **FAILS by 475 bytes, and is not rounded away**
 
-    merge-base  feat/lluvia-ux-tarjeta        904643 bytes (gzip -9 sum over dist/assets/*.js)
-    head        feat/lluvia-ux-01-jerarquia   907163 bytes
-    delta                                      +2520 bytes    budget 3072 → PASS
+Every figure below is a clean `npm run build` followed by
+`find dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" | wc -c' _ {} \; | paste -sd+ - | bc`,
+same machine, same session.
 
-Both figures come from a clean `npm run build` on each branch, same machine, same session.
+| point | commit | gzip sum | delta vs merge-base | vs 3072 budget |
+|---|---|---|---|---|
+| merge-base | `550dc852` (tracker; source identical to `origin/main`) | 904643 | — | — |
+| DESIGNED slice-1 scope (1.1-1.23) | `d61acbff` | 906584 | **+1941** | PASS |
+| + owner defects OWN-001..003 + the colour polish | `7165f3dd` | 907163 | **+2520** | PASS |
+| FINAL (+ OWN-004..010, tasks 1.27-1.30) | `4f2138da` | 908190 | **+3547** | **OVER by 475** |
+
+**The gate did exactly what it exists for, so it is reported, not adjusted.** The slice as
+DESIGNED passes with 1.1 kB of headroom. What crossed the line is the scope added after
+the design was written: seven owner-driven tasks that ship real UI — a second scope-control
+component, the one-step fallback query and its notice, the percentile gloss, the scope
+sentence and short-source builders, the exception-only chip logic. That is new JavaScript,
+and the budget was set against a scope that no longer exists.
+
+**This is an owner/orchestrator decision, not an apply-time one.** The two honest paths:
+
+1. **Amend the budget** for slice 1, recording that the scope grew by seven tasks after
+   D12 was written. The figure to amend it to is 3547, measured, not estimated.
+2. **Trim 475 bytes.** The only candidate that is not load-bearing is the derived-adjective
+   colour map (`RAINFALL_WETNESS_COLORS` + `wetnessColor`), and it is worth ~100-150 bytes —
+   not enough on its own, and it was explicitly requested by the review.
+
+What was deliberately NOT done: shaving code to hit the number. Trimming a gate into
+compliance is the same failure class as an unmeasured claim — it makes the gate report
+what we want instead of what shipped.
 
 ### O.1 — the declared local run: NOT RUN, and not claimed
 
@@ -84,10 +109,10 @@ the zero-scroll criterion beyond "the case exists and collects".
 
 ## Deviations from design — each with its evidence
 
-1. **The diff is 2853 changed lines, not ~590 (D11).** Measured:
-   `19 files changed, 2527 insertions(+), 326 deletions(-)`. Roughly 646 of that is the
-   owner amendments and the polish, which the estimate could not have known about; the
-   remaining ~2200 is still ~3.7× D11's figure. The estimate undercounted this repo's own
+1. **The diff is 3647 changed lines, not ~590 (D11).** Measured:
+   `22 files changed, 3297 insertions(+), 350 deletions(-)`. About 1440 of that is the ten
+   owner-added tasks (1.24-1.30 plus the polish), which the estimate could not have known
+   about; the remaining ~2200 is still ~3.7× D11's figure. The estimate undercounted this repo's own
    docblock convention — `rainfallFormat.ts` alone grew 405 lines, most of it the WHY that
    every function here carries. **Consequence, not rounded away: the FULL 4R review tier
    stands, and it stands on measurement.** Nothing about the slice boundary changed; the
@@ -150,6 +175,30 @@ the zero-scroll criterion beyond "the case exists and collects".
 | Partial failure / recovery | Queued, gave-up, analysis error, series error, series loading and export error paths all still render and are still tested; an unparseable `available_through` degrades to its raw day instead of throwing (JDA-104), now covered at the analysis level too | Pass |
 | State / tenancy / time | The exclusive→inclusive day conversion has ONE implementation with three callers; the card's date provably comes from the snapshot and does not follow the series (test (d)); no timezone round-trip was added | Pass |
 
+## Deviations added by the post-design amendments
+
+10. **D6's scope control is amended a second time**: extracted into a `ScopeControl`
+    component that chooses between `SegmentedControl` and `NativeSelect`. Driven by
+    OWN-001, and the extraction itself was forced by the cognitive-complexity gate.
+
+11. **`PrecipChart.tsx` is edited, and it is NOT in the design's File Changes table.**
+    Copy only — the headline label and the inner heading (OWN-005). No behaviour, no
+    props, no testids. Listed here because a file outside the declared blast radius is
+    exactly the thing a reviewer should be told about rather than discover.
+
+12. **The one-step fallback adds a SECOND `useRainfallAnalysis` call.** Recorded because
+    it has a visible side effect the design never contemplated: while the previous year is
+    displayed, the export buttons, the chart and both folds all describe THAT year. That
+    is correct — they describe what is on screen — and it is precisely the kind of thing
+    that becomes a bug report if nobody wrote it down.
+
+13. **The announcer is now `VisuallyHidden`.** The design assumed a visible dimmed status
+    line; it duplicated every state already on screen. The `aria-live` contract, the
+    testid and the announced text are unchanged.
+
 ## Push status
 
-Not pushed from here. See the return summary — the branches are local.
+Commits through `ead8c6dd` were pushed to `origin` BEFORE the interruption (both branches;
+the pre-push `javi-forge ci` ran full Docker CI and passed). The final commits — `4f2138da`
+and this record — are LOCAL, per the orchestrator's instruction to leave pushing to a full
+environment.
