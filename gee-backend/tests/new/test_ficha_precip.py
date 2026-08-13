@@ -239,7 +239,7 @@ def _raster_borde_este(
         dtype="float32",
         crs="EPSG:4326",
         transform=from_origin(LON0 - 0.003, LAT0 + D + 0.003, 0.001, 0.001),
-        nodata=NODATA,  # declared, and carried by NOT ONE pixel — as in prod
+        nodata=NODATA,  # declared AND carried by the masked columns — as in the regenerated rasters
     ) as dst:
         dst.write(data, 1)
     return str(path)
