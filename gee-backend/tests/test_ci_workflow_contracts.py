@@ -494,7 +494,7 @@ def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
     assert "apt-get dist-upgrade" not in dockerfile
 
 
-def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
+def test_frontend_pr_and_manual_runs_reach_applicable_quality_gates() -> None:
     frontend = _read(".github/workflows/frontend.yml")
     event_gate = "github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'"
     release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch')"
@@ -503,11 +503,16 @@ def test_frontend_pr_and_manual_runs_reach_every_quality_gate() -> None:
     assert "workflow_dispatch:" in frontend
     # `build` corre en TODO PR: es barato y su señal es inmediata.
     assert event_gate in _job_block(frontend, "build")
-    # La mutacion y la matriz de accesibilidad corren solo en el PR de release
-    # (develop -> main). Medido: Stryker son 62 min y la matriz 4; pagarlos en
-    # cada PR a develop fue parte de lo que hizo que bloquearan la cuenta.
-    for job in ("mutation", "accessibility"):
-        assert release_gate in _job_block(frontend, job), job
+    # La matriz de accesibilidad corre solo en el PR de release (develop ->
+    # main) o a demanda. Pagarla en cada PR a develop fue parte de lo que hizo
+    # que bloquearan la cuenta.
+    assert release_gate in _job_block(frontend, "accessibility")
+    # La mutacion ordinaria corre solo en el PR de release. Un dispatch queda
+    # reservado al productor full para no lanzar dos Stryker a la vez.
+    mutation_guards = re.findall(r"(?m)^    if: (.+)$", _job_block(frontend, "mutation"))
+    assert mutation_guards == [
+        "$" + "{{ github.base_ref == 'main' && needs.changes.outputs.frontend == 'true' }}"
+    ]
 
     build = _job_block(frontend, "build")
     # Sin `mutation` ni `accessibility`: se saltean en los PRs a develop y
@@ -1490,8 +1495,9 @@ def test_baseline_de_mutacion_no_comparte_grupo_de_concurrencia_con_ci() -> None
 
     Con cancel-in-progress, si comparten grupo un push a main CANCELA la corrida
     de baseline en vuelo — que fue lo que impidio sembrar la baseline en `main`
-    y dejo a cada release pagando el scope completo de Stryker (~40 min) en vez
-    del incremental (diff + blast radius, minutos). El grupo tiene que
+    y dejo a cada release pagando el scope completo de Stryker (hoy 2733
+    mutantes y mas de 70 min alojados) en vez del incremental (diff + blast
+    radius, minutos). El grupo tiene que
     diferenciar el evento de baseline del de CI.
     """
     import yaml
@@ -1507,3 +1513,35 @@ def test_baseline_de_mutacion_no_comparte_grupo_de_concurrencia_con_ci() -> None
         "el grupo de concurrencia no distingue el evento de baseline; un push "
         "a main volveria a cancelar mutation-full"
     )
+
+
+def test_frontend_mutation_cold_path_timeout_and_dispatch_baseline_contract() -> None:
+    """Todo cold miss puede terminar y dispatch produce UNA baseline reusable."""
+    frontend = _read(".github/workflows/frontend.yml")
+    mutation = _job_block(frontend, "mutation")
+    mutation_full = _job_block(frontend, "mutation-full")
+
+    assert re.findall(r"(?m)^    if: (.+)$", mutation) == [
+        "$" + "{{ github.base_ref == 'main' && needs.changes.outputs.frontend == 'true' }}"
+    ]
+    assert re.findall(r"(?m)^    timeout-minutes: (\d+)$", mutation) == ["120"]
+
+    # Un dispatch desde main ejecuta solo el productor full. Restringirlo a
+    # main es parte del contrato de cache: una cache creada en otra rama no es
+    # una baseline compartida por los PRs de release.
+    assert re.findall(r"(?m)^    if: (.+)$", mutation_full) == [
+        "$"
+        + "{{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' "
+        "&& github.ref == 'refs/heads/main') }}"
+    ]
+    assert re.findall(r"(?m)^    timeout-minutes: (\d+)$", mutation_full) == ["120"]
+    assert "npx stryker run --force" in mutation_full
+
+    save = mutation_full[mutation_full.index("uses: actions/cache/save@v4") :]
+    assert "if: always()" in save
+    assert "path: consorcio-web/reports/mutation/stryker-incremental.json" in save
+    assert "key: stryker-incremental-${{ github.sha }}" in save
+
+    restore = mutation[mutation.index("uses: actions/cache@v4") :]
+    assert "path: consorcio-web/reports/mutation/stryker-incremental.json" in restore
+    assert "stryker-incremental-" in restore
