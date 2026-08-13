@@ -759,8 +759,13 @@ def test_default_geom_crs_is_reprojected_onto_a_utm_raster(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# (o) treat_zero_as_nodata — the precip-only convention, OPT-IN by construction
+# (o) a 0.0 pixel is DATA — absence is expressed by the nodata value alone
 # ---------------------------------------------------------------------------
+# The retired ``treat_zero_as_nodata`` opt-in existed only while the baked CHIRPS
+# normals carried the GEE ``.clip`` zeros with no nodata tag. Those rasters were
+# regenerated (no-clip export + ``unmask(-9999)`` + ``src_nodata``) and verified
+# in production, so every raster this primitive reads now tags its absent pixels.
+# These tests pin the single, uniform contract that replaced the heuristic.
 
 
 def _half_zero() -> np.ndarray:
@@ -770,13 +775,19 @@ def _half_zero() -> np.ndarray:
     return values
 
 
-def test_zero_pixels_are_data_when_the_flag_is_off(tmp_path):
-    """The DEFAULT must never change: a 0 is a measurement for every classified dataset.
+def _half_nodata_half_zero() -> np.ndarray:
+    """A tagged nodata western half, a measured 0.0 on the eastern half."""
+    values = _filled(NODATA)
+    values[:, SIZE // 2 :] = 0.0
+    return values
 
-    ``flood_risk`` / ``drainage_need`` share this primitive and their class 0 is
-    a real class. This is the guard that keeps the precipitation convention from
-    leaking into them — it asserts the untouched behaviour, so it fails the day
-    the flag stops being opt-in.
+
+def test_zero_pixels_count_as_real_data(tmp_path):
+    """A 0 is a measurement for EVERY dataset this primitive serves.
+
+    ``flood_risk`` / ``drainage_need`` class 0 is a real class, and a
+    regenerated precipitation normal of 0.0 mm is a real millimetre reading.
+    There is no dataset-specific escape hatch left to opt out of it.
     """
     raster = _write_raster(tmp_path, _half_zero())
 
@@ -794,14 +805,14 @@ def test_zero_pixels_are_data_when_the_flag_is_off(tmp_path):
     assert profile["coverage_ratio"] == 1.0
 
 
-def test_treat_zero_as_nodata_drops_the_zeros_from_stats_and_from_coverage(tmp_path):
-    """Opted in, a 0 is excluded exactly like a nodata pixel — on BOTH accountings.
+def test_absence_is_read_from_the_nodata_value_not_from_the_zero_heuristic(tmp_path):
+    """Half absent (tagged nodata), half measured 0.0 → ``partial`` over the zeros.
 
-    Excluding it only from the statistics would leave the worse half of the
-    defect in place: a clean mean served under ``cobertura: total``, i.e. the
-    reader still told the number covers the whole zone.
+    This is the shape the regenerated rasters have: the masked pixels carry
+    ``-9999`` and drop out of both accountings, while the 0.0 pixels stay in and
+    are summarised. The old heuristic could not tell these two apart.
     """
-    raster = _write_raster(tmp_path, _half_zero())
+    raster = _write_raster(tmp_path, _half_nodata_half_zero())
 
     profile = extract_zonal_profile(
         raster,
@@ -809,19 +820,23 @@ def test_treat_zero_as_nodata_drops_the_zeros_from_stats_and_from_coverage(tmp_p
         geom_crs=CRS_32720,
         breaks=FLOOD_BREAKS,
         geom_area_m2=RASTER_AREA_M2,
-        treat_zero_as_nodata=True,
     )
 
-    assert profile["valid_pixels"] == 50
-    assert profile["mean"] == pytest.approx(40.0)
-    assert profile["max"] == pytest.approx(40.0)
+    assert profile["valid_pixels"] == 50  # only the nodata half is excluded
+    assert profile["mean"] == pytest.approx(0.0)
+    assert profile["max"] == pytest.approx(0.0)
     assert profile["coverage"] == "partial"
     assert profile["coverage_ratio"] == pytest.approx(0.5, abs=0.02)
     assert profile["covered_area_ha"] == pytest.approx(4.5, rel=0.02)
 
 
-def test_treat_zero_as_nodata_over_an_all_zero_zone_is_no_coverage(tmp_path):
-    """Every pixel fake → ``none``, not a confident 0.0 mean over the whole zone."""
+def test_an_all_zero_zone_is_full_coverage_with_a_zero_mean(tmp_path):
+    """Every pixel measured 0.0 → ``full`` at 0.0, NOT ``none``.
+
+    The inverse of the palliative: with the rasters fixed, reporting
+    ``sin_cobertura`` over a zone that was fully sampled would now be the
+    silent wrong answer.
+    """
     raster = _write_raster(tmp_path, _filled(0.0))
 
     profile = extract_zonal_profile(
@@ -830,10 +845,42 @@ def test_treat_zero_as_nodata_over_an_all_zero_zone_is_no_coverage(tmp_path):
         geom_crs=CRS_32720,
         breaks=FLOOD_BREAKS,
         geom_area_m2=RASTER_AREA_M2,
-        treat_zero_as_nodata=True,
+    )
+
+    assert profile["valid_pixels"] == 100
+    assert profile["mean"] == pytest.approx(0.0)
+    assert profile["coverage"] == "full"
+    assert profile["coverage_ratio"] == 1.0
+
+
+def test_an_all_nodata_zone_is_no_coverage(tmp_path):
+    """The honest ``none`` path still exists — driven by the nodata tag."""
+    raster = _write_raster(tmp_path, _filled(NODATA))
+
+    profile = extract_zonal_profile(
+        raster,
+        mapping(RASTER_BOX),
+        geom_crs=CRS_32720,
+        breaks=FLOOD_BREAKS,
+        geom_area_m2=RASTER_AREA_M2,
     )
 
     assert profile["valid_pixels"] == 0
     assert profile["mean"] is None
     assert profile["coverage"] == "none"
     assert profile["coverage_ratio"] == 0.0
+
+
+def test_the_treat_zero_as_nodata_palliative_is_gone(tmp_path):
+    """The parameter is REMOVED, not just unused — no caller can revive it."""
+    raster = _write_raster(tmp_path, _half_zero())
+
+    with pytest.raises(TypeError):
+        extract_zonal_profile(
+            raster,
+            mapping(RASTER_BOX),
+            geom_crs=CRS_32720,
+            breaks=FLOOD_BREAKS,
+            geom_area_m2=RASTER_AREA_M2,
+            treat_zero_as_nodata=True,
+        )
