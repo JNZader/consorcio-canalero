@@ -1530,8 +1530,7 @@ def test_frontend_mutation_cold_path_timeout_and_dispatch_baseline_contract() ->
     # main es parte del contrato de cache: una cache creada en otra rama no es
     # una baseline compartida por los PRs de release.
     assert re.findall(r"(?m)^    if: (.+)$", mutation_full) == [
-        "$"
-        + "{{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' "
+        "$" + "{{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' "
         "&& github.ref == 'refs/heads/main') }}"
     ]
     assert re.findall(r"(?m)^    timeout-minutes: (\d+)$", mutation_full) == ["120"]
