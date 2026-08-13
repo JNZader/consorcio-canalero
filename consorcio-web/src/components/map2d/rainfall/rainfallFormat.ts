@@ -613,12 +613,17 @@ export const PROVENANCE_FIELD = {
 
 export type ProvenanceField = (typeof PROVENANCE_FIELD)[keyof typeof PROVENANCE_FIELD];
 
-const PROVENANCE_FIELDS: readonly ProvenanceField[] = Object.values(PROVENANCE_FIELD);
+export const PROVENANCE_FIELDS: readonly ProvenanceField[] = Object.values(PROVENANCE_FIELD);
 
 /** How each candidate field is READ off a metric — `revision` is not a
  *  `provenance` key, so the set needs one accessor per field rather than one
- *  lookup for all of them. */
-function provenanceFieldValue(metric: RainfallMetric, field: ProvenanceField): string | undefined {
+ *  lookup for all of them. Exported because the ROW renders the same fields the
+ *  hoist compares, and two readers of "where does this field live" is how the
+ *  block and the row end up disagreeing about what was hoisted. */
+export function provenanceFieldValue(
+  metric: RainfallMetric,
+  field: ProvenanceField
+): string | undefined {
   if (field === PROVENANCE_FIELD.REVISION) return metric.revision;
   return metric.provenance?.[field];
 }

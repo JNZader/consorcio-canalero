@@ -55,12 +55,13 @@ import {
   RainfallAccumulationChart,
 } from './RainfallAccumulationChart';
 import { RainfallAnswerCard } from './RainfallAnswerCard';
-import { RainfallMetricGroup, RainfallMetricList } from './RainfallMetricList';
+import { RainfallMetricGroup, RainfallMetricList, snapshotMetrics } from './RainfallMetricList';
 import {
   RAINFALL_SCOPE_LABELS,
   compactAntecedent,
   deriveFreshness,
   describeMetricState,
+  hoistProvenance,
   scopeChoiceLabels,
   shouldUseSegmentedScope,
 } from './rainfallFormat';
@@ -574,7 +575,16 @@ export function RainfallDetailPanel({
               titleSize="xs"
               rightAccessory={<AntecedentAccessory group={snapshot.antecedents} />}
             >
-              <RainfallMetricGroup group={snapshot.antecedents} baseline={snapshot.baseline} />
+              {/* The SAME hoist the technical fold's shared block was built
+                  from, so these rows print only what diverges from it (D5).
+                  Without it the antecedents would repeat a block that already
+                  covers them — the six-identical-provenance-blocks defect the
+                  hoist exists to remove, reintroduced one fold over. */}
+              <RainfallMetricGroup
+                group={snapshot.antecedents}
+                baseline={snapshot.baseline}
+                hoist={hoistProvenance(snapshotMetrics(snapshot))}
+              />
             </CollapsibleSection>
           )}
 

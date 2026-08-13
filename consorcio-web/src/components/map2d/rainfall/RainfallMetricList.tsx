@@ -15,7 +15,19 @@
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../../lib/api/rainfall';
-import { formatMetricValue, metricLabel, metricStateLabel } from './rainfallFormat';
+import {
+  formatMetricValue,
+  hoistProvenance,
+  metricEvidenceLine,
+  metricLabel,
+  metricStateLabel,
+  PROVENANCE_FIELD,
+  PROVENANCE_FIELDS,
+  type ProvenanceField,
+  provenanceFieldValue,
+  type RainfallProvenanceHoist,
+  stringifyUnknownFields,
+} from './rainfallFormat';
 
 const STATE_COLORS: Record<RainfallMetric['state'], string> = {
   available: 'green',
@@ -149,12 +161,94 @@ function stateChip(metric: RainfallMetric): { label: string; color: string } | n
   return null;
 }
 
+/** How each hoistable field is NAMED, in the block and on the row alike — one
+ *  vocabulary, so a field that moves between the two does not change words on
+ *  the way. */
+const PROVENANCE_FIELD_LABELS: Record<ProvenanceField, string> = {
+  [PROVENANCE_FIELD.SOURCE_ID]: 'Fuente',
+  [PROVENANCE_FIELD.SOURCE_CLASS]: 'Clase de fuente',
+  [PROVENANCE_FIELD.METHOD]: 'Método',
+  [PROVENANCE_FIELD.NOMINAL_RESOLUTION]: 'Resolución nominal',
+  [PROVENANCE_FIELD.AGGREGATION]: 'Agregación',
+  [PROVENANCE_FIELD.SPATIAL_SCOPE]: 'Ámbito espacial',
+  [PROVENANCE_FIELD.FRESHNESS]: 'Frescura',
+  [PROVENANCE_FIELD.REVISION]: 'Revisión',
+};
+
+/** A dimmed metadata line — or nothing at all when the snapshot served nothing
+ *  to put in it. There is no `—` branch on purpose: D9a rule 3 forbids proving
+ *  a field was considered by printing a placeholder for it. */
+function MetadataLine({ text }: { readonly text: string | null }) {
+  if (text === null || text.length === 0) return null;
+  return (
+    <Text size="xs" c="dimmed">
+      {text}
+    </Text>
+  );
+}
+
+/** `Cobertura: 92% · Completitud: 88%` — each half bound only when served, so
+ *  a metric carrying one of the two prints one of the two. Never hoisted (D5):
+ *  they are the metric's OWN quality, and stating them once for a set would
+ *  make a claim about metrics that do not share it. */
+function qualityCoverageLine(metric: RainfallMetric): string | null {
+  const parts: string[] = [];
+  if (typeof metric.coverage === 'number') {
+    parts.push(`Cobertura: ${Math.round(metric.coverage * 100)}%`);
+  }
+  if (typeof metric.completeness === 'number') {
+    parts.push(`Completitud: ${Math.round(metric.completeness * 100)}%`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/** The window this metric was computed over, AS SERVED. Never hoisted: the
+ *  intervals are what makes d7 a different metric from d90, and inside `annual`
+ *  they are equal only by accident. */
+function intervalLine(metric: RainfallMetric): string | null {
+  const { interval_start: start, interval_end: end } = metric;
+  if (
+    typeof start !== 'string' ||
+    typeof end !== 'string' ||
+    start.length === 0 ||
+    end.length === 0
+  )
+    return null;
+  return `Intervalo: ${start} → ${end}`;
+}
+
+/** Provisional-or-final and fallback use, in TEXT, on every row that serves
+ *  them. The coloured markers above are presentation and only appear in the
+ *  exceptional case; this line is the contract, and the enumerated floor asks
+ *  for both fields whenever the snapshot carries them. Same discipline as
+ *  `Estado: {word}` beside the exception-only chip (OWN-010). */
+function temporalOriginLine(metric: RainfallMetric): string | null {
+  const parts: string[] = [];
+  if (typeof metric.temporal_state === 'string') {
+    parts.push(`Estado temporal: ${metric.temporal_state}`);
+  }
+  if (typeof metric.fallback_used === 'boolean') {
+    parts.push(`Origen: ${metric.fallback_used ? 'fuente alternativa' : 'fuente primaria'}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 export interface RainfallMetricRowProps {
   readonly name: string;
   readonly metric: RainfallMetric;
   /** Served period, so the `normal` row names the SAME baseline as the phrase
    *  above it — never a constant frozen in the frontend (LI4-004). */
   readonly baseline: string;
+  /**
+   * What the shared provenance block already said for the whole displayed set.
+   *
+   * The row prints exactly the fields that DIVERGED (`hoist.perMetric`), so the
+   * reader gets `shared ∪ row` and never six identical provenance blocks. With
+   * no hoist supplied the row prints every field it carries — a group rendered
+   * outside the technical fold with no block above it must not lose provenance
+   * just because nobody consolidated it.
+   */
+  readonly hoist?: RainfallProvenanceHoist;
 }
 
 /**
@@ -173,9 +267,11 @@ export interface RainfallMetricRowProps {
  * from the same row as the value. The row also WRAPS now: given too little
  * width it takes a second line instead of shaving letters off a word.
  */
-export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowProps) {
-  const provenance = metric.provenance;
+export function RainfallMetricRow({ name, metric, baseline, hoist }: RainfallMetricRowProps) {
   const chip = stateChip(metric);
+  // Exactly the provenance fields the shared block did NOT already state. With
+  // no block above, every field this metric carries.
+  const ownFields = hoist?.perMetric ?? PROVENANCE_FIELDS;
   return (
     <Stack gap={2} data-testid={`rainfall-metric-${name}`}>
       <Group gap="xs" wrap="wrap" justify="space-between">
@@ -217,10 +313,42 @@ export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowP
             Fuente alternativa
           </Text>
         )}
-        <Text size="xs" c="dimmed">
-          {`Fuente: ${provenance.source_id} · Resolución nominal: ${provenance.nominal_resolution} · Cobertura: ${Math.round(metric.coverage * 100)}% · Revisión: ${metric.revision}`}
-        </Text>
       </Group>
+      {/* `shared ∪ row`: whatever diverged from the block above, named with the
+          same words the block uses. A metric served in the stripped four-field
+          shape carries none of these, so it prints none of them — and that is
+          the whole of D9a rule 3, not a degradation of it. */}
+      {ownFields.map((field) => (
+        <MetadataLine
+          key={field}
+          text={
+            provenanceFieldValue(metric, field) === undefined
+              ? null
+              : `${PROVENANCE_FIELD_LABELS[field]}: ${provenanceFieldValue(metric, field)}`
+          }
+        />
+      ))}
+      <MetadataLine text={qualityCoverageLine(metric)} />
+      <MetadataLine text={intervalLine(metric)} />
+      {/* The metric's OWN evidence statement, gated on the metric's OWN fields
+          (D9a rule 2). Not `evidenceFooter`, which says "en este análisis" and
+          is a claim about the whole envelope (UXJA-205). */}
+      <MetadataLine text={metricEvidenceLine(metric)} />
+      <MetadataLine
+        text={
+          stringifyUnknownFields(metric.quality).length > 0
+            ? `Calidad: ${stringifyUnknownFields(metric.quality)}`
+            : null
+        }
+      />
+      <MetadataLine
+        text={
+          Array.isArray(metric.discrepancies) && metric.discrepancies.length > 0
+            ? `Discrepancias: ${metric.discrepancies.join('; ')}`
+            : null
+        }
+      />
+      <MetadataLine text={temporalOriginLine(metric)} />
     </Stack>
   );
 }
@@ -235,6 +363,9 @@ export interface RainfallMetricGroupProps {
    * inside the fold is noise, not structure.
    */
   readonly title?: string;
+  /** Passed straight through to the rows: what the shared block already said
+   *  for the whole displayed set, so these rows print only what diverges. */
+  readonly hoist?: RainfallProvenanceHoist;
 }
 
 /**
@@ -242,7 +373,7 @@ export interface RainfallMetricGroupProps {
  * antecedents fold mounts this directly, and a heading over zero rows would
  * claim a section the snapshot never served.
  */
-export function RainfallMetricGroup({ group, baseline, title }: RainfallMetricGroupProps) {
+export function RainfallMetricGroup({ group, baseline, title, hoist }: RainfallMetricGroupProps) {
   if (!group || Object.keys(group).length === 0) return null;
   return (
     <Stack gap={4}>
@@ -252,7 +383,49 @@ export function RainfallMetricGroup({ group, baseline, title }: RainfallMetricGr
         </Text>
       )}
       {Object.entries(group).map(([name, metric]) => (
-        <RainfallMetricRow key={name} name={name} metric={metric} baseline={baseline} />
+        <RainfallMetricRow
+          key={name}
+          name={name}
+          metric={metric}
+          baseline={baseline}
+          hoist={hoist}
+        />
+      ))}
+    </Stack>
+  );
+}
+
+/**
+ * The provenance every displayed metric agreed on, stated ONCE.
+ *
+ * ITS SCOPE IS BOTH FOLDS, and the wording says so — "todas las métricas
+ * mostradas", never "de esta sección" (UXJA-107). The antecedents live in a
+ * different fold, and a block scoped to this one would have left their
+ * provenance homeless while the delta requires every field to be reachable by
+ * operating at most ONE disclosure control. It need not be the SAME control for
+ * every field: opening this fold alone exposes the shared provenance of the
+ * antecedents too, and opening the antecedents alone exposes their values,
+ * states and whatever diverged.
+ *
+ * Renders nothing when nothing is shared — an empty comparison set (every
+ * metric served stripped) or a set that agrees on no field at all. There is no
+ * empty block and no placeholder: the rows then carry everything themselves.
+ */
+function SharedProvenance({ hoist }: { readonly hoist: RainfallProvenanceHoist }) {
+  const fields = PROVENANCE_FIELDS.filter((field) => hoist.shared[field] !== undefined);
+  if (fields.length === 0) return null;
+  return (
+    <Stack gap={2} data-testid="rainfall-provenance-shared">
+      <Text size="xs" fw={600} c="dimmed">
+        Procedencia común
+      </Text>
+      <Text size="xs" c="dimmed">
+        Vale para todas las métricas mostradas, en este plegable y en Antecedentes.
+      </Text>
+      {fields.map((field) => (
+        <Text key={field} size="xs" c="dimmed">
+          {`${PROVENANCE_FIELD_LABELS[field]}: ${hoist.shared[field]}`}
+        </Text>
       ))}
     </Stack>
   );
@@ -277,16 +450,42 @@ export interface RainfallMetricListProps {
 }
 
 export function RainfallMetricList({ snapshot, exclude }: RainfallMetricListProps) {
+  // The hoist is computed over EVERY displayed metric of the snapshot, not just
+  // the groups this list renders: the block speaks for both folds, so it must
+  // be compared over both (D5).
+  const hoist = hoistProvenance(snapshotMetrics(snapshot));
+  const sourceHealth = stringifyUnknownFields(snapshot.source_health);
   return (
     <Stack gap="xs" data-testid="rainfall-metrics">
-      {renderedGroups(snapshot)
-        .filter(({ key }) => !exclude?.includes(key))
-        .map(({ key, title, group }) => (
-          <RainfallMetricGroup key={key} group={group} baseline={snapshot.baseline} title={title} />
-        ))}
+      <SharedProvenance hoist={hoist} />
+      {/* The narrative sits UNDER the block: it summarises the metrics below
+          it, and a summary above the provenance it summarises reads as the
+          fold's own heading. */}
       {typeof snapshot.summary === 'string' && snapshot.summary.length > 0 && (
         <Text size="xs" fs="italic" data-testid="rainfall-summary">
           {snapshot.summary}
+        </Text>
+      )}
+      {renderedGroups(snapshot)
+        .filter(({ key }) => !exclude?.includes(key))
+        .map(({ key, title, group }) => (
+          <RainfallMetricGroup
+            key={key}
+            group={group}
+            baseline={snapshot.baseline}
+            title={title}
+            hoist={hoist}
+          />
+        ))}
+      {/* `source_health` is a ROOT key of the snapshot (`lib/api/rainfall.ts:94`),
+          not a member of `RainfallMetric`: ONE line for the analysis, at the
+          foot, never repeated per metric — that would attribute one
+          analysis-wide fact to six metrics that never carried it. Through the
+          same stringify guard `quality` uses, and absent entirely when the
+          guard yields nothing (D9a rules 3 and 4). */}
+      {sourceHealth.length > 0 && (
+        <Text size="xs" c="dimmed" data-testid="rainfall-source-health">
+          {`Estado de fuentes: ${sourceHealth}`}
         </Text>
       )}
     </Stack>
