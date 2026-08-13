@@ -578,6 +578,173 @@ export function deriveFreshness(snapshot: RainfallAnalysisSnapshot): RainfallFre
 }
 
 /**
+ * The fields a provenance block MAY be hoisted over (design D5).
+ *
+ * EIGHT, not nine. `available_through` is deliberately NOT here (UXJB-201): it
+ * is the INPUT of the per-metric evidence gate ({@link metricEvidenceLine},
+ * D9a rule 2), which decides per metric whether an evidence claim may be made
+ * at all — and a date hoisted into a block that "vale para todas las métricas"
+ * cannot be gated per metric. It is pinned to the rows instead. D5's prose was
+ * written when the count was nine; the arithmetic is corrected here (eight
+ * candidates, six of them hoisting in the mixed case), the decision is not.
+ *
+ * `revision` is metric-level rather than a `provenance` key, and it is in the
+ * set on purpose: a policy bump moves it while every other field stays put, and
+ * that is precisely the case an all-or-nothing hoist would fail.
+ *
+ * `coverage`, `completeness`, `interval_start` and `interval_end` are NEVER
+ * candidates: coverage and completeness are the metric's own quality (hoisting
+ * them would state a claim about metrics that do not share it), and the
+ * intervals are what makes d7 a different metric from d90 — hoisting them
+ * would erase the distinction the antecedents group exists for.
+ */
+export const PROVENANCE_FIELD = {
+  SOURCE_ID: 'source_id',
+  SOURCE_CLASS: 'source_class',
+  METHOD: 'method',
+  NOMINAL_RESOLUTION: 'nominal_resolution',
+  AGGREGATION: 'aggregation',
+  SPATIAL_SCOPE: 'spatial_scope',
+  FRESHNESS: 'freshness',
+  REVISION: 'revision',
+} as const;
+
+export type ProvenanceField = (typeof PROVENANCE_FIELD)[keyof typeof PROVENANCE_FIELD];
+
+const PROVENANCE_FIELDS: readonly ProvenanceField[] = Object.values(PROVENANCE_FIELD);
+
+/** How each candidate field is READ off a metric — `revision` is not a
+ *  `provenance` key, so the set needs one accessor per field rather than one
+ *  lookup for all of them. */
+function provenanceFieldValue(metric: RainfallMetric, field: ProvenanceField): string | undefined {
+  if (field === PROVENANCE_FIELD.REVISION) return metric.revision;
+  return metric.provenance?.[field];
+}
+
+export interface RainfallProvenanceHoist {
+  /** The fields every metric of the comparison set agreed on, ready to render
+   *  ONCE for the whole displayed set. */
+  readonly shared: Readonly<Partial<Record<ProvenanceField, string>>>;
+  /** The fields that diverged, and therefore stay on each row. */
+  readonly perMetric: readonly ProvenanceField[];
+}
+
+/**
+ * Decide, PER FIELD, what may honestly be said once for a whole displayed set.
+ *
+ * A field is `shared` iff the comparison set is non-empty and every metric in
+ * it carries the strictly equal value. Per-field rather than all-or-nothing
+ * because the common divergence is a single field — a `revision` bumped by a
+ * policy change — and an all-or-nothing rule would answer that by putting six
+ * identical provenance blocks back on the rows, which is the reader's original
+ * complaint.
+ *
+ * THE COMPARISON SET EXCLUDES METRICS SERVED WITHOUT PROVENANCE (UXJB-110).
+ * `service._unavailable` (`service.py:466-472`) serves a stripped four-field
+ * shape — `metric`/`value`/`state`/`reason` — for a contract, policy or quality
+ * rejection. Comparing it would make EVERY field diverge against a metric that
+ * carries none, so one unrelated rejection would collapse the hoist to zero.
+ * Such a metric renders its state and reason and nothing else (D9a rule 3), so
+ * excluding it hides nothing: there was nothing to hide.
+ *
+ * The set may end up empty (everything stripped). Then `shared` is empty, there
+ * is no block to render, and the same rule 3 covers it.
+ */
+export function hoistProvenance(metrics: readonly RainfallMetric[]): RainfallProvenanceHoist {
+  const comparable = metrics.filter((metric) => metric.provenance !== undefined);
+  const shared: Partial<Record<ProvenanceField, string>> = {};
+  const perMetric: ProvenanceField[] = [];
+
+  for (const field of PROVENANCE_FIELDS) {
+    const first = comparable.length > 0 ? provenanceFieldValue(comparable[0], field) : undefined;
+    const agrees =
+      first !== undefined &&
+      comparable.every((metric) => provenanceFieldValue(metric, field) === first);
+    if (agrees) shared[field] = first;
+    else perMetric.push(field);
+  }
+
+  return { shared, perMetric };
+}
+
+/**
+ * An `unknown` wire field rendered as text — with `[object Object]` made
+ * unreachable by construction (D9a rule 4).
+ *
+ * ONE guard, TWO callers: `quality` (per metric) and `source_health` (per
+ * analysis). Both arrive typed `unknown` because the backend does not pin their
+ * shape, and two renderings of "what does an object look like here" is exactly
+ * how the pair drifts into two different answers.
+ *
+ * The rules, each of them a way the naive version lies:
+ *   - a plain object becomes `k=v; k=v` pairs IN KEY ORDER — the same flat
+ *     shape the backend already uses for `discrepancies`;
+ *   - only SCALAR values are printed. `null`, arrays, nested objects and
+ *     functions are SKIPPED, never coerced: `String({})` is `[object Object]`,
+ *     a string that looks like a fact and is not one;
+ *   - a non-object input prints as ITSELF. Where D9's table and this rule
+ *     disagree on a scalar `source_health`, this rule wins (UXJB-207): a served
+ *     `"degradado"` is the fact, and wrapping it in an invented key would be
+ *     fabrication;
+ *   - zero pairs yields the EMPTY STRING, and the caller renders no line at all
+ *     (rule 3: an unserved field is never a placeholder).
+ */
+export function stringifyUnknownFields(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return '';
+
+  return Object.entries(value)
+    .filter(
+      ([, entry]) =>
+        typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean'
+    )
+    .map(([key, entry]) => `${key}=${String(entry)}`)
+    .join('; ');
+}
+
+/**
+ * The evidence statement of ONE metric — the D1a gate applied to the metric's
+ * own fields (D9 table, D9a rule 2).
+ *
+ * NOT {@link evidenceFooter}, and the difference is the whole point of this
+ * function existing (UXJA-205): that one is ANALYSIS-scoped ("…en este
+ * análisis"), describing the whole envelope. A metric row that borrowed it
+ * would make a claim about the analysis while the reader is looking at one
+ * metric — and the two can legitimately differ, which is why the rows are
+ * gated one by one.
+ *
+ * Same three branches, same reasons they exist:
+ *   - evidence (`available_through` served AND `coverage > 0` or a served
+ *     numeric value) → the day BEFORE the exclusive window end. A
+ *     policy-suppressed metric takes this branch: its value is withheld, its
+ *     evidence is not in question;
+ *   - `unavailable` + `no_data_in_disclosure_window` (`compute.py:649-650`) →
+ *     the honest empty-window sentence, in the metric's own words;
+ *   - neither → `null`, and the row renders NO evidence line. Printing
+ *     `available_through` unconditionally would restate JDB-103 one layer down:
+ *     with zero published intervals the fallback bound is always present and
+ *     always plausible-looking.
+ */
+export function metricEvidenceLine(metric: RainfallMetric): string | null {
+  const availableThrough = metric.provenance?.available_through;
+  const hasEvidence =
+    typeof availableThrough === 'string' &&
+    availableThrough.length > 0 &&
+    ((typeof metric.coverage === 'number' && metric.coverage > 0) ||
+      typeof metric.value === 'number');
+
+  if (hasEvidence && availableThrough !== undefined) {
+    return `Evidencia publicada hasta el ${lastEvidenceDay(availableThrough)}`;
+  }
+  if (metric.state === 'unavailable' && metric.reason === 'no_data_in_disclosure_window') {
+    return 'Sin días con evidencia publicada para esta métrica';
+  }
+  return null;
+}
+
+/**
  * The state WORD alone — what a badge may carry.
  *
  * OWN-003: the badge used to render {@link describeMetricState}, i.e. the state
