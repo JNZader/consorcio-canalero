@@ -65,7 +65,18 @@ describe('metricLabel', () => {
   it('labels the known metrics in Spanish', () => {
     expect(metricLabel('selected')).toBe('Acumulado del año');
     expect(metricLabel('d30')).toBe('Antecedente 30 días');
-    expect(metricLabel('duration')).toBe('Duración del evento');
+    expect(metricLabel('percentile')).toBe('Percentil histórico');
+  });
+
+  it('degrades a PRUNED intensity key to its raw name, rather than to a fiction', () => {
+    // Slice 2 deleted the eight `intensity` labels: `build_snapshot` cannot
+    // emit that group, so they were vocabulary for data nobody serves. The
+    // prune is only honest because the group renderer is key-driven now (D8) —
+    // an intensity group served tomorrow renders under its raw key with these
+    // raw metric keys, which is visible. `duration` used to read 'Duración del
+    // evento' here; that string described a metric this frontend never met.
+    expect(metricLabel('duration')).toBe('duration');
+    expect(metricLabel('p24h')).toBe('p24h');
   });
 
   it('appends the SERVED baseline to the normal label, never a constant', () => {

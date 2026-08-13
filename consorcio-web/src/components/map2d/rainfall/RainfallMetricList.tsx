@@ -24,12 +24,105 @@ const STATE_COLORS: Record<RainfallMetric['state'], string> = {
   unavailable: 'gray',
 };
 
-const GROUP_TITLES: ReadonlyArray<{ key: 'annual' | 'antecedents' | 'intensity'; title: string }> =
-  [
-    { key: 'annual', title: 'Anual' },
-    { key: 'antecedents', title: 'Antecedentes' },
-    { key: 'intensity', title: 'Intensidad y evento' },
-  ];
+/**
+ * The groups this frontend has a Spanish title for, in the order they render.
+ *
+ * A TITLE TABLE, not a whitelist — that distinction is the whole of R6. The
+ * renderer iterates the SNAPSHOT's own keys and looks a title up here; a key
+ * absent from this table still renders, under its raw name. `intensity` used to
+ * be listed and is not any more: `build_snapshot` cannot emit it
+ * (`compute.py:476-656`), and dead-code-as-documentation is what produced
+ * exploration finding #10. If it ever comes back it renders under `intensity`
+ * with raw metric keys — visible, not dropped.
+ */
+const GROUP_TITLES: Readonly<Record<string, string>> = {
+  annual: 'Anual',
+  antecedents: 'Antecedentes',
+};
+
+/** Known groups first, in the published order, so the vocabulary a reader has
+ *  learned does not get reshuffled by whatever the server adds next. */
+const KNOWN_GROUP_ORDER: readonly string[] = ['annual', 'antecedents'];
+
+/**
+ * Root keys that are NOT metric groups and already have their own renderer.
+ *
+ * Not belt-and-braces. `source_health` is `unknown` on the wire
+ * (`lib/api/rainfall.ts:94`), so a future shape like `{chirps: {metric, state}}`
+ * would PASS the guard below and render as a metric group on top of the single
+ * analysis-level line D9 gives it — the double-rendering the enumerated floor
+ * forbids. `metric_policy` is allow-listed at the server's root
+ * (`service.SNAPSHOT_ROOT_KEYS`) and copied through by `normalize_snapshot`
+ * even though `RainfallAnalysisSnapshot` does not declare it; the guard rejects
+ * it today, and "we know this key and it is not a group" is a stronger
+ * guarantee than "the guard happens to reject it".
+ */
+const NON_GROUP_ROOT_KEYS: ReadonlySet<string> = new Set([
+  'analysis_revision_id',
+  'data_revision',
+  'scope',
+  'regional_estimate',
+  'year',
+  'comparison_end',
+  'baseline',
+  'summary',
+  'source_health',
+  'metric_policy',
+]);
+
+/**
+ * Whether a served root value is a group of metrics — TOTAL over `unknown`.
+ *
+ * Both `typeof` checks come BEFORE any `in`: `'metric' in "texto"` throws
+ * `TypeError: Cannot use 'in' operator`, so a server that starts emitting a
+ * scalar under a new root key would take the whole panel down instead of being
+ * ignored — the exact opposite of what R6 asks for. The e2e fixture already
+ * serves a string `summary` and an object-of-scalars `source_health` at the
+ * root, so the crash is reachable, not theoretical.
+ *
+ * `Array.isArray` is excluded deliberately: a JSON array is an object whose
+ * entries could each look metric-shaped, and rendering one as a keyed group
+ * would invent metric names out of array indices.
+ */
+function isMetricGroup(value: unknown): value is Record<string, RainfallMetric> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entries = Object.values(value);
+  return (
+    entries.length > 0 &&
+    entries.every(
+      (entry) =>
+        entry !== null && typeof entry === 'object' && 'metric' in entry && 'state' in entry
+    )
+  );
+}
+
+interface RenderedGroup {
+  readonly key: string;
+  readonly title: string;
+  readonly group: Record<string, RainfallMetric>;
+}
+
+/** Every metric group the snapshot actually carries: the known ones in their
+ *  published order, then anything else that passes the guard, titled with its
+ *  raw key. */
+function renderedGroups(snapshot: RainfallAnalysisSnapshot): RenderedGroup[] {
+  const entries = Object.entries(snapshot as unknown as Record<string, unknown>);
+  const known = KNOWN_GROUP_ORDER.map(
+    (key) => entries.find(([entryKey]) => entryKey === key) ?? [key, undefined]
+  );
+  const unknown = entries.filter(
+    ([key]) => !KNOWN_GROUP_ORDER.includes(key) && !NON_GROUP_ROOT_KEYS.has(key)
+  );
+  return [...known, ...unknown]
+    .filter((entry): entry is [string, Record<string, RainfallMetric>] => isMetricGroup(entry[1]))
+    .map(([key, group]) => ({ key, title: GROUP_TITLES[key] ?? key, group }));
+}
+
+/** Every metric of every rendered group, which is the set the shared
+ *  provenance block speaks for — BOTH folds, not just this list's own. */
+export function snapshotMetrics(snapshot: RainfallAnalysisSnapshot): RainfallMetric[] {
+  return renderedGroups(snapshot).flatMap(({ group }) => Object.values(group));
+}
 
 /**
  * The chip a row shows — or `null`, which is the common case.
@@ -176,7 +269,9 @@ export interface RainfallMetricListProps {
    * include-list a group the server starts serving tomorrow would render
    * NOWHERE, silently. With an exclude-list the technical fold means
    * "everything the card and the other fold did not already show", so an
-   * unrecognised group lands there by default (R6).
+   * unrecognised group lands there by default (R6) — which is now literally
+   * true of the renderer below, not just of this prop: it iterates the
+   * snapshot's own keys and titles an unknown one with its raw name.
    */
   readonly exclude?: readonly string[];
 }
@@ -184,14 +279,11 @@ export interface RainfallMetricListProps {
 export function RainfallMetricList({ snapshot, exclude }: RainfallMetricListProps) {
   return (
     <Stack gap="xs" data-testid="rainfall-metrics">
-      {GROUP_TITLES.filter(({ key }) => !exclude?.includes(key)).map(({ key, title }) => (
-        <RainfallMetricGroup
-          key={key}
-          group={snapshot[key]}
-          baseline={snapshot.baseline}
-          title={title}
-        />
-      ))}
+      {renderedGroups(snapshot)
+        .filter(({ key }) => !exclude?.includes(key))
+        .map(({ key, title, group }) => (
+          <RainfallMetricGroup key={key} group={group} baseline={snapshot.baseline} title={title} />
+        ))}
       {typeof snapshot.summary === 'string' && snapshot.summary.length > 0 && (
         <Text size="xs" fs="italic" data-testid="rainfall-summary">
           {snapshot.summary}

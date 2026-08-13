@@ -24,6 +24,16 @@ import type {
  * after the normals were regenerated over another period, and the badged row
  * then contradicted the annual phrase beside it, which reads the value AS
  * SERVED (LI4-004).
+ *
+ * The eight `intensity` labels (`p30`/`p60`/`p3h`/`p24h`/`i30`/`i60`/`peak`/
+ * `duration`) were PRUNED in slice 2: `build_snapshot` cannot emit that group
+ * (`compute.py:476-656`), so they were vocabulary for data nobody serves —
+ * dead-code-as-documentation, exploration finding #10. The prune was safe only
+ * once `RainfallMetricList`'s renderer became key-driven with a TOTAL group
+ * guard (design D8): an intensity group served tomorrow renders under its raw
+ * key with raw metric keys, which is visible. Pruning first would have been a
+ * silent drop, i.e. an R6 violation. The backend's own export labels are
+ * unaffected — the CSV carries `P24h (mm en 24 h)` from the server.
  */
 const RAINFALL_METRIC_LABELS: Record<string, string> = {
   selected: 'Acumulado del año',
@@ -32,14 +42,6 @@ const RAINFALL_METRIC_LABELS: Record<string, string> = {
   d7: 'Antecedente 7 días',
   d30: 'Antecedente 30 días',
   d90: 'Antecedente 90 días',
-  p30: 'P30 (mm en 30 min)',
-  p60: 'P60 (mm en 1 h)',
-  p3h: 'P3h (mm en 3 h)',
-  p24h: 'P24h (mm en 24 h)',
-  i30: 'I30 (mm/h)',
-  i60: 'I60 (mm/h)',
-  peak: 'Pico del evento',
-  duration: 'Duración del evento',
 };
 
 /**
