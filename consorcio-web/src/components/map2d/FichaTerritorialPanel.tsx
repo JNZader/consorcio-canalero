@@ -43,7 +43,9 @@ import { type ReactNode, memo, useEffect, useState } from 'react';
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
+import { useCanAccess } from '../../stores/authStore';
 import styles from '../../styles/components/map.module.css';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CanalBufferControl } from './CanalBufferControl';
 import { FichaResumen } from './FichaResumen';
 import { fmtHa } from './fichaShared';
@@ -520,6 +522,23 @@ function PanelBody({
    */
   readonly overlayControls?: ReactNode;
 }) {
+  // TOP of the component, ABOVE both early returns below. Placing it beside
+  // the JSX that uses it would make it a CONDITIONAL hook: the loading and
+  // error renders would call zero hooks and the success render one, so the
+  // first `ficha-loading` → `ficha-result` transition changes the hook count
+  // of the same component instance and React throws "Rendered more hooks than
+  // during the previous render" — crashing the whole ficha on the ordinary
+  // path every reader takes.
+  const staff = useCanAccess(['admin', 'operador']);
+  // The v2 detail's EXACT mount predicate, reassembled from its two homes:
+  // `tipo === 'parcela' && parcelaProps?.nomenclatura` gates the mount below,
+  // and the third conjunct — staff — is the `if (!canAccess) return null`
+  // inside `RainfallDetailPanel`. A fold default keyed on the role alone would
+  // collapse the public normal for a staff reader on a NON-parcela ficha, who
+  // gets no v2 detail at all: hiding that reader's only rainfall content
+  // behind a word about authorization.
+  const v2DetailWillRender = staff && tipo === 'parcela' && !!parcelaProps?.nomenclatura;
+
   if (isLoading) {
     return (
       <Group gap="xs" data-testid="ficha-loading">
@@ -602,13 +621,36 @@ function PanelBody({
 			    staff gate lives inside the detail panel. */}
       {tab === FICHA_PRECIP_TAB && (
         <>
-          <PrecipChart dataset={data.precipitacion_mensual} />
           {tipo === 'parcela' && parcelaProps?.nomenclatura && (
-            <>
-              <Divider />
-              <RainfallDetailPanel nomenclatura={parcelaProps.nomenclatura} />
-            </>
+            <RainfallDetailPanel nomenclatura={parcelaProps.nomenclatura} />
           )}
+          <Divider />
+          {/* The `key` is what makes the default RECOMPUTABLE.
+              `CollapsibleSection` reads `defaultOpen` exactly once into
+              `useState`, so a post-hydration flip of `useCanAccess` — a login
+              or a logout while the ficha is open — would otherwise leave the
+              fold with a default computed from the pre-hydration value. Cost,
+              stated: a manual open/close is reset when the predicate flips.
+              That only happens when the CONTENT changes, so the reset is
+              honest rather than surprising, and the shared primitive stays
+              untouched. */}
+          <CollapsibleSection
+            key={v2DetailWillRender ? 'precip-demoted' : 'precip-primary'}
+            // Plain language, and BOTH axes named: this chart is the historical
+            // monthly series (period) for the PARCEL CLIP (scope), while the v2
+            // card above states a to-date accumulation for a zone or basin.
+            // Two numbers that differ on two dimensions need both said out
+            // loud, or a reader compares them as if only one differed.
+            // No period is asserted here on purpose: the normals' period is
+            // server-driven (`dataset.periodo`, printed by `precip-fuente`),
+            // and a period frozen in a title is the RISK-001 defect.
+            title="Lluvia histórica mensual (recorte de la parcela)"
+            defaultOpen={!v2DetailWillRender}
+            testId="ficha-precip-fold"
+            titleSize="xs"
+          >
+            <PrecipChart dataset={data.precipitacion_mensual} />
+          </CollapsibleSection>
         </>
       )}
     </Stack>

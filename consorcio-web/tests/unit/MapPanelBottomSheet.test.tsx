@@ -384,4 +384,19 @@ describe("initialStage", () => {
 		rerender(shell({ initialStage: "medio", resetKey: "b" }));
 		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "medio");
 	});
+
+	// The SCROLLING box carries its own testid, derived from the shell's like
+	// `-sheet-handle` and `-sheet-close` already are. It exists because a
+	// "visible without scrolling" e2e assertion needs an element whose visible
+	// height it can honestly compare a card's box against, and the sheet root
+	// is not it: the root is capped by `max-height` while THIS is what
+	// overflows. For the ficha it resolves to
+	// `ficha-territorial-panel-sheet-body`.
+	it('names the scrolling body, and the children render inside it', () => {
+		render(shell({ initialStage: "medio" }));
+
+		const body = screen.getByTestId("shell-under-test-sheet-body");
+		expect(body).toBeInTheDocument();
+		expect(body).toContainElement(screen.getByText("contenido"));
+	});
 });

@@ -250,7 +250,15 @@ export function MapPanelShell({
           )}
         </div>
       </div>
-      <div className={styles.panelSheetBody}>{children}</div>
+      {/* The SCROLLING box. Named because it is the only element whose visible
+          height a "visible without scrolling" assertion can honestly be
+          measured against: the sheet itself is capped by `max-height` while
+          this is what actually overflows. Same `${testId}-…` naming as the
+          handle and the close button above. One attribute — no behaviour, no
+          style, no prop. */}
+      <div className={styles.panelSheetBody} data-testid={`${testId}-sheet-body`}>
+        {children}
+      </div>
     </Paper>
   );
 }

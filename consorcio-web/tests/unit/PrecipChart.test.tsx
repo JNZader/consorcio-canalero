@@ -166,7 +166,11 @@ describe('PrecipChart', () => {
     const anual = screen.getByTestId('precip-anual');
     // The one figure a reader leaves with, so it is a standalone stat now, not a
     // table footer row — and at full precision, unlike the cramped bar labels.
-    expect(anual).toHaveTextContent('Anual (normal): 1013.8 mm');
+    // BOTH axes named. "Anual (normal)" left period and scope implicit, and
+    // this number now sits one fold below a card stating a to-date
+    // accumulation for a zone or basin — 913 vs 512 differ on period AND on
+    // scope, and a label naming neither invites reading the gap as rainfall.
+    expect(anual).toHaveTextContent('Total anual histórico (parcela): 1013.8 mm');
 
     const chart = screen.getByTestId('precip-chart');
     expect(anual.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

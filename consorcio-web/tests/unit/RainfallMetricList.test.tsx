@@ -1,22 +1,22 @@
 /**
- * RainfallMetricList.test.tsx (Lluvia insights — slice 4, tasks 4.7/4.8)
+ * RainfallMetricList.test.tsx (Lluvia insights — slice 4, tasks 4.7/4.8;
+ * Lluvia UX — the row/group/list split, slice 1)
  *
- * `AnnualText` is the chart's TEXTUAL EQUIVALENT (design "charts have textual
- * equivalents"), which is why the percentile belongs there and not only in the
- * badged row below: a reader who cannot see the two lines still has to be able
- * to answer "was this year wet or dry against the record?".
+ * The badged metric surface. `AnnualText` and its percentile phrase moved to
+ * `RainfallAnswerCard` when the hierarchy was reordered — the equivalent has to
+ * live above the first fold, and this list now renders INSIDE one.
  *
- * The rules this file locks are the ones the repo has already paid for twice:
+ * The rules this file still locks are the ones the repo has already paid for:
  *   - the baseline period prints AS SERVED (`snapshot.baseline`), never as a
  *     constant in the frontend — the RISK-001 lesson from `PrecipChart`;
- *   - a metric with no value prints "—", never "0"; a served percentile of 0 IS
- *     data and must survive as "0";
- *   - a percentile the analysis did not carry produces no phrase at all rather
- *     than an empty slot that reads like a broken render.
+ *   - a metric with no value prints "—", never "0";
+ *   - `exclude` takes a group OUT OF THIS LIST without dropping it from the
+ *     view: the antecedents render in their own fold, and the technical fold
+ *     shows everything the card and that fold did not already show.
  */
 
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -115,49 +115,36 @@ function snapshot(overrides: Partial<RainfallAnalysisSnapshot> = {}): RainfallAn
   };
 }
 
-function renderList(snap: RainfallAnalysisSnapshot): ReturnType<typeof render> {
+function renderList(
+  snap: RainfallAnalysisSnapshot,
+  exclude?: readonly string[]
+): ReturnType<typeof render> {
   const ui: ReactElement = (
     <MantineProvider env="test">
-      <RainfallMetricList snapshot={snap} />
+      <RainfallMetricList snapshot={snap} exclude={exclude} />
     </MantineProvider>
   );
   return render(ui);
 }
 
-describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
-  it('states the percentile beside the year and the normal', () => {
-    renderList(snapshot());
-
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
-    expect(text).toHaveTextContent('Normal 1991-2020: 1013.8 mm');
-    // Whole percentiles: a Weibull rank over 31 samples moves in steps of ~3,
-    // so a tenth of a percentile is precision the number does not have.
-    expect(text).toHaveTextContent('Percentil 27 de 1991-2020');
-  });
-
-  it('prints the baseline period AS SERVED, on every surface of the panel', () => {
+describe('RainfallMetricList — the served baseline on the badged surfaces (4.7)', () => {
+  it('prints the baseline period AS SERVED, on every surface of the list', () => {
     // RISK-001 all over again: regenerating the normals over another period
-    // must change this panel by itself, with no frontend edit involved.
+    // must change this list by itself, with no frontend edit involved.
     const snap = snapshot({ baseline: '2001-2030' });
     renderList(snap);
 
-    // The three surfaces that name a period, asserted one by one so a failure
-    // says WHICH one regressed.
-    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
-      'Percentil 27 de 2001-2030'
-    );
-    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
-      'Normal 2001-2030: 1013.8 mm'
-    );
+    // The two surfaces the LIST names a period on, asserted one by one so a
+    // failure says WHICH one regressed. The phrase's own half of this contract
+    // moved to `RainfallAnswerCard.test.tsx` with `AnnualText`.
     expect(screen.getByTestId('rainfall-metric-normal')).toHaveTextContent('Normal 2001-2030');
     expect(screen.getByTestId('rainfall-summary')).toHaveTextContent('Normal 2001-2030 1013.8 mm');
 
-    // …and the sweep that catches the FOURTH surface nobody thought of. It
-    // compares against `snapshot.baseline` rather than excluding the literal
-    // 1991-2020, because a detector written as a denylist only ever catches the
-    // one constant it was written for: this one fires on ANY period the server
-    // did not serve, in either dash spelling.
+    // …and the sweep that catches the surface nobody thought of. It compares
+    // against `snapshot.baseline` rather than excluding the literal 1991-2020,
+    // because a detector written as a denylist only ever catches the one
+    // constant it was written for: this one fires on ANY period the server did
+    // not serve, in either dash spelling.
     //
     // Two failure modes of the previous version, both real (LI4-004 / CC-002):
     // it was scoped to the annual-text node while the hardcode lived in the
@@ -170,26 +157,13 @@ describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
       ),
     ].map(([period]) => period);
 
-    expect(periods.length).toBeGreaterThanOrEqual(4);
+    expect(periods.length).toBeGreaterThanOrEqual(2);
     expect([...new Set(periods)]).toEqual([snap.baseline]);
   });
 
-  it('keeps a served percentile of 0 as a number, never as a missing value', () => {
-    // The driest year on record ranks at the bottom. That is DATA — the single
-    // most expensive thing this UI could round away into "—".
-    renderList(
-      snapshot({
-        annual: {
-          selected: metric({ metric: 'selected', value: 12.5 }),
-          percentile: metric({ metric: 'percentile', value: 0, unit: 'percentil' }),
-        },
-      })
-    );
-
-    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent('Percentil 0 de 1991-2020');
-  });
-
-  it('renders no value for a suppressed percentile, and never a zero', () => {
+  it('keeps a suppressed percentile reachable by state and reason in its row', () => {
+    // The badged row is where the reason survives once the phrase above it
+    // prints only "—" (the card carries it too, on the always-visible surface).
     renderList(
       snapshot({
         annual: {
@@ -205,24 +179,175 @@ describe('RainfallMetricList — AnnualText percentile phrase (4.7)', () => {
       })
     );
 
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text.textContent).toContain('—');
-    expect(text.textContent).not.toMatch(/Percentil 0\b/);
-    // The reason is not lost: the badged row below still carries it verbatim.
-    expect(screen.getByTestId('rainfall-metric-percentile').textContent).toContain(
-      'baseline_years_below_minimum'
-    );
+    const row = screen.getByTestId('rainfall-metric-percentile');
+    expect(row.textContent).toContain('baseline_years_below_minimum');
+    expect(row.textContent).not.toMatch(/\b0 percentil\b/);
+  });
+});
+
+describe('RainfallMetricList — a state badge is a word, not a fragment (OWN-003)', () => {
+  // The owner's screenshot of the deployed 380 px panel: `PROVISIO… FALLB…
+  // DISPONI…`. Three badges competed for one row's width and every one of them
+  // ellipsized. A truncated badge is worse than no badge: it is unreadable AND
+  // it still looks like data.
+  //
+  // jsdom has NO LAYOUT, so this cannot assert pixels — and pretending
+  // otherwise would be the fake measurement this repo keeps refusing. What it
+  // asserts is the CONTENT BOUND that makes truncation unreachable: ONE badge
+  // per row, carrying a short vocabulary word and nothing else.
+  const loudMetric = () =>
+    metric({
+      metric: 'd7',
+      value: null,
+      state: 'suppressed',
+      reason: 'coverage_below_threshold',
+      temporal_state: 'provisional',
+      fallback_used: true,
+    });
+
+  it('shows NO chip at all for a plain available, definitive metric', () => {
+    // Exception-only: a chip on every row is a row of chips nobody reads, and
+    // in 380 px they fragment. The state is still in the row's text.
+    renderList(snapshot({ antecedents: { d7: metric({ metric: 'd7', value: 31 }) } }));
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    expect(row.querySelectorAll('[data-metric-state]')).toHaveLength(0);
+    // The chip is gone; the FACT is not. Dropping a chip must never drop a
+    // served field — the fold is where the disclosure floor is discharged.
+    expect(row.textContent).toContain('Estado: Disponible');
   });
 
-  it('omits the phrase entirely when the analysis carries no percentile', () => {
+  it('shows exactly one Spanish chip for a fallback-fed value', () => {
     renderList(
       snapshot({
-        annual: { selected: metric({ metric: 'selected', value: 850.24 }) },
+        antecedents: { d7: metric({ metric: 'd7', value: 31, fallback_used: true }) },
       })
     );
 
-    const text = screen.getByTestId('rainfall-annual-text');
-    expect(text).toHaveTextContent('Año 2025: 850.2 mm');
-    expect(text.textContent).not.toMatch(/Percentil/i);
+    const row = screen.getByTestId('rainfall-metric-d7');
+    const chips = row.querySelectorAll('[data-metric-state]');
+    expect(chips).toHaveLength(1);
+    // A full Spanish word, never the wire token: `FALLBACK` is not copy.
+    expect(chips[0]?.textContent).toBe('Dato provisorio');
+    expect(chips[0]?.textContent).not.toMatch(/…|\.\.\.|FALLBACK/i);
+    // …and the precise fact stays in the text, which is where the disclosure
+    // floor is discharged.
+    expect(within(row).getByText('Fuente alternativa')).toBeInTheDocument();
+  });
+
+  it('renders exactly one state badge, whole, with every other fact still reachable', () => {
+    renderList(snapshot({ antecedents: { d7: loudMetric() } }));
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    const badges = row.querySelectorAll('[data-metric-state]');
+    expect(badges).toHaveLength(1);
+
+    const badgeText = badges[0]?.textContent ?? '';
+    expect(badgeText).toBe('Suprimida');
+    expect(badgeText).not.toMatch(/…|\.\.\./);
+    expect(['Disponible', 'Parcial', 'Suprimida', 'No disponible']).toContain(badgeText);
+    // The badge no longer carries the reason — which is the whole reason it
+    // used to overflow — but the reason is not lost, it has its own line.
+    expect(badgeText).not.toContain('coverage_below_threshold');
+    expect(row.textContent).toContain('coverage_below_threshold');
+  });
+
+  it('keeps the provisional and fallback facts as readable markers', () => {
+    renderList(snapshot({ antecedents: { d7: loudMetric() } }));
+
+    const row = screen.getByTestId('rainfall-metric-d7');
+    // Still stated, still whole words — they are simply no longer competing
+    // with the state badge and the value for one nowrap row.
+    expect(within(row).getByText('Provisional')).toBeInTheDocument();
+    expect(within(row).getByText('Fuente alternativa')).toBeInTheDocument();
+    expect(row.textContent).not.toMatch(/…|\.\.\./);
+  });
+
+  it('renders the percentile as a phrase, not as a suffix', () => {
+    // 1.28(b): `percentil` is a RANK, so in Spanish the word leads and the
+    // number qualifies it. The suffix pattern produced "46.9 percentil" while
+    // the card three lines up said "Percentil 47" — one fact, two spellings,
+    // one of them not a phrase at all.
+    renderList(
+      snapshot({
+        annual: { percentile: metric({ metric: 'percentile', value: 46.9, unit: 'percentil' }) },
+      })
+    );
+
+    const row = screen.getByTestId('rainfall-metric-percentile');
+    expect(row.textContent).toContain('Percentil 46.9');
+    expect(row.textContent).not.toContain('46.9 percentil');
+  });
+
+  it('states the state of every metric, one badge each', () => {
+    renderList(
+      snapshot({
+        antecedents: {
+          d7: metric({ metric: 'd7', state: 'partial', coverage: 0.8 }),
+          d30: metric({ metric: 'd30', value: null, state: 'unavailable', reason: 'sin fuente' }),
+        },
+      })
+    );
+
+    expect(
+      screen.getByTestId('rainfall-metric-d7').querySelectorAll('[data-metric-state]')
+    ).toHaveLength(1);
+    expect(screen.getByTestId('rainfall-metric-d7').textContent).toContain('Parcial');
+    expect(screen.getByTestId('rainfall-metric-d30').textContent).toContain('No disponible');
+    expect(screen.getByTestId('rainfall-metric-d30').textContent).toContain('sin fuente');
+  });
+});
+
+describe('RainfallMetricList — the exclude seam (slice 1 fold split)', () => {
+  const withAntecedents = () =>
+    snapshot({
+      antecedents: {
+        d7: metric({ metric: 'd7', value: 31 }),
+        d30: metric({ metric: 'd30', value: 83.7 }),
+      },
+    });
+
+  it('exclude keeps a group out of this list without dropping it from the snapshot', () => {
+    // The antecedents get their own fold with the values in its collapsed
+    // header, so the technical fold must not print them a second time — but
+    // the SNAPSHOT is untouched and the group is still rendered, elsewhere.
+    const snap = withAntecedents();
+
+    const first = renderList(snap);
+    expect(screen.getByTestId('rainfall-metric-d7')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-metric-d30')).toBeInTheDocument();
+    first.unmount();
+
+    renderList(snap, ['antecedents']);
+    expect(screen.queryByTestId('rainfall-metric-d7')).toBeNull();
+    expect(screen.queryByTestId('rainfall-metric-d30')).toBeNull();
+    // Everything else is still here — exclusion is one group, not a filter on
+    // the whole list.
+    expect(screen.getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-metric-normal')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-summary')).toBeInTheDocument();
+  });
+
+  it('excluding a group the snapshot does not serve changes nothing', () => {
+    renderList(withAntecedents(), ['intensity']);
+
+    expect(screen.getByTestId('rainfall-metric-d7')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+  });
+
+  it('renders every served group when nothing is excluded', () => {
+    // `exclude`, not `include`: a group nobody named still renders. An
+    // include-list would silently drop whatever the server adds next (R6).
+    renderList(withAntecedents());
+
+    for (const testId of [
+      'rainfall-metric-selected',
+      'rainfall-metric-normal',
+      'rainfall-metric-percentile',
+      'rainfall-metric-d7',
+      'rainfall-metric-d30',
+    ]) {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+    }
   });
 });

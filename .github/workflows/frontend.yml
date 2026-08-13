@@ -5,9 +5,9 @@ on:
     # main, not develop: develop no existe (trigger muerto desde el flujo
     # PR→main). Cloudflare Pages publica el frontend desde main en cada push,
     # así que sin esto lo publicado no tenía NINGUNA señal de CI.
-    # OJO: en push corren lint + test + typecheck + image; mutation, a11y y
-    # build quedan gateados a pull_request/dispatch (ver los `if:` de esos
-    # jobs). La cobertura completa sigue siendo la del PR.
+    # OJO: en push corren lint + test + typecheck + image; mutation queda
+    # gateado al PR de release, mientras a11y y build corren en PR/dispatch
+    # (ver los `if:` de esos jobs). La cobertura completa sigue siendo la del PR.
     branches: [main]
   # SIN filtro `paths:` a proposito: un filtro de paths hace que el workflow
   # entero NO CORRA, y un check requerido que nunca corre deja el PR colgado
@@ -22,7 +22,8 @@ on:
     # DOS veces por semana y no una: GitHub desaloja las cachés que no se usan
     # en 7 días, justo el período de un cron semanal. Con una sola corrida, una
     # semana sin PRs de frontend dejaba caducar la baseline y el PR siguiente
-    # pagaba la corrida en frío — que ya midió 62m53s contra un techo de 70.
+    # pagaba la corrida en frio. El scope actual es de 2733 mutantes y una
+    # corrida alojada ya supero el techo anterior de 70 minutos sin terminar.
     - cron: '0 9 * * 1,4'
   workflow_dispatch:
 
@@ -32,7 +33,8 @@ concurrency:
   # comparten grupo (con cancel-in-progress), un push a main CANCELA la corrida
   # de baseline en vuelo — que fue exactamente lo que impidio sembrar la
   # baseline en `main` y dejo a cada release pagando el scope completo de
-  # Stryker (~40 min). Con grupos distintos, la baseline completa tranquila.
+  # Stryker (2733 mutantes; mas de 70 min alojados). Con grupos distintos, la
+  # baseline completa tranquila.
   group: >-
     frontend-${{ github.ref }}-${{
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -147,20 +149,21 @@ jobs:
 
   mutation:
     name: Mutation tests (stryker, incremental)
-    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
+    # workflow_dispatch pertenece exclusivamente al productor de baseline de
+    # abajo: si entrara aca tambien, lanzaria dos Stryker completos en paralelo.
+    if: ${{ github.base_ref == 'main' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     # Incremental: only the mutants this PR's diff can affect — minutes once a
-    # baseline exists. The full scope is 1880 mutants ≈ 46 min on a runner
-    # (measured: 1840/1880 at the 45-minute mark), too much per PR for a repo
-    # that already had to disable a workflow over Actions quota.
+    # baseline exists. The current full scope is 2733 mutants; a hosted cold
+    # run reached 2675/2733 and still had no score when the old 70-minute
+    # ceiling cancelled it. That scope is too much per PR when a baseline is
+    # available, especially in a repo that already exhausted Actions quota.
     #
-    # The 70 is a CEILING, not a cost: a cache hit finishes in minutes and
-    # bills minutes. It only matters on a COLD cache (no baseline yet, or the
-    # weekly entry evicted), where Stryker has to run everything — a 25-minute
-    # cap just killed that run mid-flight and failed the PR. Sized like
-    # `mutation-full` so the cold path can actually complete and store the
-    # baseline the next PRs reuse.
-    timeout-minutes: 70
+    # The 120 is a CEILING, not a cost: a cache hit still finishes and bills in
+    # minutes. It gives the observed >70-minute hosted cold path enough margin
+    # to finish all 2733 mutants and write its report instead of failing the PR.
+    # It matches `mutation-full` because either job may bootstrap from cold.
+    timeout-minutes: 120
     needs: [changes, typecheck, smoke]
     steps:
       - uses: actions/checkout@v4
@@ -171,8 +174,8 @@ jobs:
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
       # Restore the incremental baseline produced by the weekly full run.
-      # On a cache MISS Stryker runs the whole scope (~46 min) and stores a
-      # fresh baseline for the next PRs — hence this job's generous ceiling.
+      # On a cache MISS Stryker runs all 2733 mutants and stores a fresh
+      # baseline for later PRs — hence this job's cold-path ceiling.
       # `restore-keys` makes any previous baseline usable: Stryker re-tests
       # what the diff touched and trusts the stored verdicts for the rest.
       - name: Restore mutation baseline
@@ -186,11 +189,16 @@ jobs:
 
   mutation-full:
     name: Mutation tests (stryker, full baseline)
-    # Weekly, not per PR: refreshes the incremental baseline the PR job reuses.
-    # ~46 min, so it must never sit on the PR critical path.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Scheduled/manual, not per PR: refreshes the incremental baseline the PR
+    # job reuses. A dispatch is restricted to main so the saved cache lives in
+    # refs/heads/main and is readable by release PRs; scheduled runs already
+    # execute from the default branch. Dispatch launches this Stryker job only.
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    # The hosted cold path exceeded 70 minutes at 2675/2733 mutants. 120 leaves
+    # reasonable runner variance plus report/cache-write margin without billing
+    # extra time after Stryker finishes.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -300,9 +308,9 @@ jobs:
     # una conclusion propia: verde si cada dependencia paso o se salteo,
     # rojo si alguna fallo o fue cancelada.
     #
-    # `mutation-full` queda AFUERA a proposito: es del cron semanal y no del
-    # PR. Contrapartida asumida: si esa corrida se rompe, ningun check
-    # requerido lo refleja — hay que mirar la pestana de Actions.
+    # `mutation-full` queda AFUERA a proposito: produce la baseline por cron o
+    # dispatch y no es parte del PR. Contrapartida asumida: si se rompe, ningun
+    # check requerido lo refleja — hay que mirar la pestana de Actions.
     name: Frontend CI
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -1,22 +1,21 @@
 /**
  * RainfallMetricList.tsx (Lluvia v2 — Phase 3)
  *
- * Metric groups of one snapshot as state-badged rows with full provenance,
- * plus the annual TEXTUAL comparison that serves as the chart's accessible
- * equivalent (design: "charts have textual equivalents"). Nominal grid
- * resolution is stated as such — never as parcel-level accuracy (spec
- * "Metric Provenance and State Metadata").
+ * Metric groups of one snapshot as state-badged rows with full provenance.
+ * Nominal grid resolution is stated as such — never as parcel-level accuracy
+ * (spec "Metric Provenance and State Metadata").
+ *
+ * `AnnualText` — the chart's accessible textual equivalent — used to live here
+ * and now lives on `RainfallAnswerCard`. It had to move: this list renders
+ * inside a COLLAPSED `CollapsibleSection`, which unmounts its body, so an
+ * equivalent left here would disappear from the accessibility tree for exactly
+ * the readers it exists for (proposal R7).
  */
 
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../../lib/api/rainfall';
-import {
-  describeMetricState,
-  formatMetricValue,
-  metricLabel,
-  percentilePhrase,
-} from './rainfallFormat';
+import { formatMetricValue, metricLabel, metricStateLabel } from './rainfallFormat';
 
 const STATE_COLORS: Record<RainfallMetric['state'], string> = {
   available: 'green',
@@ -32,86 +31,167 @@ const GROUP_TITLES: ReadonlyArray<{ key: 'annual' | 'antecedents' | 'intensity';
     { key: 'intensity', title: 'Intensidad y evento' },
   ];
 
-function MetricRow({
-  name,
-  metric,
-  baseline,
-}: {
+/**
+ * The chip a row shows — or `null`, which is the common case.
+ *
+ * EXCEPTION-ONLY, and that is the whole rule. A chip on every row is a row of
+ * chips: the reader stops reading them, and in a 380 px panel they truncate
+ * into fragments (`PROVISIO… FALLB… DISPONI…`). So a metric that is simply
+ * available and definitive shows NOTHING, and the chip is reserved for the
+ * rows where the state is the point.
+ *
+ * Full Spanish words, never a wire token: `Dato provisorio`, not `FALLBACK`.
+ * And the chip is PRESENTATION — the state, the reason, the temporal state and
+ * `fallback_used` all remain in the row's text below it, which is where the
+ * disclosure floor is actually discharged (D9). Dropping a chip never drops a
+ * fact.
+ */
+function stateChip(metric: RainfallMetric): { label: string; color: string } | null {
+  if (metric.state !== 'available') {
+    return { label: metricStateLabel(metric), color: STATE_COLORS[metric.state] };
+  }
+  if (metric.temporal_state === 'provisional' || metric.fallback_used) {
+    return { label: 'Dato provisorio', color: 'violet' };
+  }
+  return null;
+}
+
+export interface RainfallMetricRowProps {
   readonly name: string;
   readonly metric: RainfallMetric;
   /** Served period, so the `normal` row names the SAME baseline as the phrase
    *  above it — never a constant frozen in the frontend (LI4-004). */
   readonly baseline: string;
-}) {
+}
+
+/**
+ * ONE metric: name, state, value, and the facts underneath.
+ *
+ * EXACTLY ONE BADGE, carrying the state WORD (OWN-003). The row used to carry
+ * three — `Provisional`, `Fallback` and a state badge holding
+ * `describeMetricState`, i.e. the state AND its reason — all competing for one
+ * `nowrap` row inside a 380 px panel, which is how the owner's screenshot came
+ * to read `PROVISIO… FALLB… DISPONI…`. A truncated badge is worse than no
+ * badge: unreadable, and still looking like data.
+ *
+ * Nothing was dropped to get there. The reason moved to its own line, and the
+ * provisional/fallback flags became plain markers on the metadata line — they
+ * are not states, they are qualifiers of one, and they never needed to shout
+ * from the same row as the value. The row also WRAPS now: given too little
+ * width it takes a second line instead of shaving letters off a word.
+ */
+export function RainfallMetricRow({ name, metric, baseline }: RainfallMetricRowProps) {
   const provenance = metric.provenance;
+  const chip = stateChip(metric);
   return (
     <Stack gap={2} data-testid={`rainfall-metric-${name}`}>
-      <Group gap="xs" wrap="nowrap" justify="space-between">
+      <Group gap="xs" wrap="wrap" justify="space-between">
         <Text size="xs">{metricLabel(name, baseline)}</Text>
-        <Group gap={4} wrap="nowrap">
-          {metric.temporal_state === 'provisional' && (
-            <Badge size="xs" variant="outline" color="violet">
-              Provisional
+        <Group gap={6} wrap="nowrap">
+          {chip !== null && (
+            <Badge size="xs" variant="light" color={chip.color} data-metric-state={metric.state}>
+              {chip.label}
             </Badge>
           )}
-          {metric.fallback_used && (
-            <Badge size="xs" variant="outline" color="cyan">
-              Fallback
-            </Badge>
-          )}
-          <Badge size="xs" variant="light" color={STATE_COLORS[metric.state]}>
-            {describeMetricState(metric)}
-          </Badge>
           <Text size="xs" fw={600}>
             {formatMetricValue(metric)}
           </Text>
         </Group>
       </Group>
+      {/* The state, ALWAYS, in text. The chip above is exception-only — it is
+          presentation — so this is where the disclosure floor is actually
+          discharged: an available metric shows no chip, and its state is still
+          a served field the fold must render (D9). Dropping a chip must never
+          drop a fact. */}
       <Text size="xs" c="dimmed">
-        {`Fuente: ${provenance.source_id} · Resolución nominal: ${provenance.nominal_resolution} · Cobertura: ${Math.round(metric.coverage * 100)}% · Revisión: ${metric.revision}`}
+        {`Estado: ${metricStateLabel(metric)}`}
       </Text>
+      {/* The reason the badge no longer carries. Its own line, in full: a
+          suppression a reader cannot read is a suppression nobody can act on. */}
+      {metric.reason !== null && metric.reason.length > 0 && (
+        <Text size="xs" c="dimmed">
+          {`Motivo: ${metric.reason}`}
+        </Text>
+      )}
+      <Group gap={6} wrap="wrap">
+        {metric.temporal_state === 'provisional' && (
+          <Text size="xs" c="violet" fw={500}>
+            Provisional
+          </Text>
+        )}
+        {metric.fallback_used && (
+          <Text size="xs" c="cyan" fw={500}>
+            Fuente alternativa
+          </Text>
+        )}
+        <Text size="xs" c="dimmed">
+          {`Fuente: ${provenance.source_id} · Resolución nominal: ${provenance.nominal_resolution} · Cobertura: ${Math.round(metric.coverage * 100)}% · Revisión: ${metric.revision}`}
+        </Text>
+      </Group>
     </Stack>
   );
 }
 
-/** Textual annual comparison — the chart's accessible equivalent. */
-function AnnualText({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot }) {
-  const selected = snapshot.annual?.selected;
-  const normal = snapshot.annual?.normal;
-  // Task 4.8: the percentile is what answers "wet or dry against the record?"
-  // — the question the chart's two lines answer visually. Without it here, a
-  // reader who cannot see the chart gets two absolute numbers and no ranking.
-  const percentile = snapshot.annual?.percentile;
-  if (!selected && !normal && !percentile) return null;
-  const parts: string[] = [];
-  if (selected) parts.push(`Año ${snapshot.year}: ${formatMetricValue(selected)}`);
-  if (normal) parts.push(`Normal ${snapshot.baseline}: ${formatMetricValue(normal)}`);
-  if (percentile) parts.push(percentilePhrase(percentile, snapshot.baseline));
+export interface RainfallMetricGroupProps {
+  /** The group's metrics, keyed by metric name exactly as the wire sent them. */
+  readonly group: Record<string, RainfallMetric> | undefined;
+  readonly baseline: string;
+  /**
+   * Optional heading. Omitted when the group is rendered as the whole body of
+   * a `CollapsibleSection` whose header already names it — a second title
+   * inside the fold is noise, not structure.
+   */
+  readonly title?: string;
+}
+
+/**
+ * ONE metric group. Renders nothing at all for an absent or empty group: the
+ * antecedents fold mounts this directly, and a heading over zero rows would
+ * claim a section the snapshot never served.
+ */
+export function RainfallMetricGroup({ group, baseline, title }: RainfallMetricGroupProps) {
+  if (!group || Object.keys(group).length === 0) return null;
   return (
-    <Text size="sm" fw={600} data-testid="rainfall-annual-text">
-      {parts.join(' · ')}
-    </Text>
+    <Stack gap={4}>
+      {title !== undefined && (
+        <Text size="xs" fw={600} c="dimmed">
+          {title}
+        </Text>
+      )}
+      {Object.entries(group).map(([name, metric]) => (
+        <RainfallMetricRow key={name} name={name} metric={metric} baseline={baseline} />
+      ))}
+    </Stack>
   );
 }
 
-export function RainfallMetricList({ snapshot }: { readonly snapshot: RainfallAnalysisSnapshot }) {
+export interface RainfallMetricListProps {
+  readonly snapshot: RainfallAnalysisSnapshot;
+  /**
+   * Group keys this list must NOT render because another surface already
+   * shows them (the antecedents have their own fold, with the values in its
+   * collapsed header).
+   *
+   * `exclude`, never `include`, and that is the whole point: with an
+   * include-list a group the server starts serving tomorrow would render
+   * NOWHERE, silently. With an exclude-list the technical fold means
+   * "everything the card and the other fold did not already show", so an
+   * unrecognised group lands there by default (R6).
+   */
+  readonly exclude?: readonly string[];
+}
+
+export function RainfallMetricList({ snapshot, exclude }: RainfallMetricListProps) {
   return (
     <Stack gap="xs" data-testid="rainfall-metrics">
-      <AnnualText snapshot={snapshot} />
-      {GROUP_TITLES.map(({ key, title }) => {
-        const group = snapshot[key];
-        if (!group || Object.keys(group).length === 0) return null;
-        return (
-          <Stack key={key} gap={4}>
-            <Text size="xs" fw={600} c="dimmed">
-              {title}
-            </Text>
-            {Object.entries(group).map(([name, metric]) => (
-              <MetricRow key={name} name={name} metric={metric} baseline={snapshot.baseline} />
-            ))}
-          </Stack>
-        );
-      })}
+      {GROUP_TITLES.filter(({ key }) => !exclude?.includes(key)).map(({ key, title }) => (
+        <RainfallMetricGroup
+          key={key}
+          group={snapshot[key]}
+          baseline={snapshot.baseline}
+          title={title}
+        />
+      ))}
       {typeof snapshot.summary === 'string' && snapshot.summary.length > 0 && (
         <Text size="xs" fs="italic" data-testid="rainfall-summary">
           {snapshot.summary}
