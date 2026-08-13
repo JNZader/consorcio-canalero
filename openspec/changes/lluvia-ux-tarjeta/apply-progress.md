@@ -62,7 +62,7 @@ Every row's RED was OBSERVED, not asserted. Command in each case:
 |---|---|
 | `npx vitest run` (full) | **279 files, 3777 tests, all passing** |
 | `npm run typecheck` (both projects) | exit 0 |
-| `npm run lint` | exit 0 — 3 warnings, all PRE-EXISTING (verified against the merge-base: same 3, `LayerControlsPanel.tsx` ×2 and `useMapLayerEffects.ts` cognitive complexity). A FOURTH appeared mid-apply — `RainfallDetailPanel` crossed the cognitive-complexity gate at 36 — and was fixed by extracting `ScopeControl`, not by raising the threshold |
+| `npm run lint` | exit 0 — 3 warnings, all PRE-EXISTING (verified against the merge-base: same 3 cognitive-complexity warnings — `src/components/map2d/LayerControlsPanel.tsx:397`, `src/components/report-form/useReportFormSubmission.ts:48`, `src/components/map2d/useMapLayerEffects.ts:95`). A FOURTH appeared mid-apply — `RainfallDetailPanel` crossed the cognitive-complexity gate at 36 — and was fixed by extracting `ScopeControl`, not by raising the threshold |
 | `playwright --list` | 10 tests collected in `rainfall-v2-detail.spec.ts`, the zero-scroll case included |
 | Backend | untouched — no `pytest` run needed and none claimed |
 | Docker CI (`javi-forge ci`, run by the pre-push hook) | passed on every commit through `ead8c6dd`: lint + compile + test on both runners, security scan, ghagga review |
@@ -246,3 +246,205 @@ Commits through `ead8c6dd` were pushed to `origin` BEFORE the interruption (both
 the pre-push `javi-forge ci` ran full Docker CI and passed). The final commits — `4f2138da`
 and this record — are LOCAL, per the orchestrator's instruction to leave pushing to a full
 environment.
+
+---
+
+# Apply progress — slice 2 (technical disclosure, D5/D8/D9/D9a)
+
+Branch: `feat/lluvia-ux-02-disclosure`, stacked on `feat/lluvia-ux-01-jerarquia` at
+`d91e6f51` (the post-fix, review-CLOSED slice-1 head). Frontend-only; `gee-backend/**` and
+`.github/workflows/**` untouched.
+
+**Status: 13/13 slice-2 tasks complete (2.1-2.13).** Strict TDD throughout — every task
+carrying a RED flag was executed RED first and the failure was OBSERVED before the
+implementation existed.
+
+## Commits
+
+| SHA | Tasks | What |
+|---|---|---|
+| `0ef63412` | 2.1-2.4 | `hoistProvenance`, `stringifyUnknownFields`, `metricEvidenceLine` |
+| `52cf6b15` | 2.9-2.10 | key-driven group renderer + total `isMetricGroup`, then the `intensity` label prune |
+| `eb8c0861` | 2.5-2.8, 2.11 | shared provenance block, enumerated field floor on the rows, `source_health` line, summary relocation |
+| (final) | 2.12-2.13 | e2e unknown-group witness + the delta-spec reconciling clause + this record |
+
+## TDD cycle evidence
+
+Command in each case: `npx vitest run <file>` before the implementation existed.
+
+| Task | RED (observed failure) | GREEN |
+|---|---|---|
+| 2.1 → 2.2 | 15 failed / 46 passed — `hoistProvenance is not a function` (with 2.3/2.4's `stringifyUnknownFields`/`metricEvidenceLine`, written in the same RED batch) | 61/61 in `rainfallFormat.test.ts` |
+| 2.3 | same batch — `stringifyUnknownFields is not a function` | same 61/61 |
+| 2.4 | same batch — `metricEvidenceLine is not a function` | same 61/61 |
+| 2.9 → 2.10 | 2 failed / 14 passed — `intensity` rendered under its OLD Spanish title with the label `P24h (mm en 24 h)`, and the unknown-key group did not render at all | 114/114 across list + format + panel |
+| 2.5/2.6/2.11 → 2.7/2.8 | 6 failed / 37 passed — no `rainfall-provenance-shared`, no `rainfall-source-health`, no `Intervalo`/`Completitud`/`Calidad`/`Estado temporal` lines, the stripped row still reached `provenance.source_id`, and the summary sat below the groups | 121/121 across the three rainfall files |
+| 2.12 | n/a (e2e, not executed here — `--list` collects it) | 10 tests collected in the spec |
+| 2.13 | n/a (DOC) | one added clause, no scenario touched |
+
+## Gates
+
+| Gate | Result |
+|---|---|
+| `npx vitest run` (full) | **279 files, 3806 tests, all passing** (slice-1 head was 3779 — +27 new) |
+| `npm run typecheck` | exit 0 on both tsconfigs (`tsc --noEmit` + `tsconfig.tests.json`) |
+| `npm run lint` | exit 0 — **3 warnings, all PRE-EXISTING** (`LayerControlsPanel.tsx`, `useMapLayerEffects.ts`, `useReportFormSubmission.ts`). No new one: `RainfallMetricList` stayed under the cognitive-complexity gate because the metadata lines were extracted into named line-builders instead of being inlined as ternaries |
+| `npx playwright test --list` | 10 tests collected in `rainfall-v2-detail.spec.ts` |
+| Docker CI (`javi-forge ci`, pre-commit hook) | passed on every commit: lint + compile + test on both runners |
+| Backend | untouched — no `pytest` run needed and none claimed |
+
+**One flake seen and chased down rather than waved away**: the first full-suite run had
+`SugerenciasPanel.test.tsx > creates internal topic and submits management update` time out
+at 10 s. Re-run alone: 7/7 green; re-run of the whole suite: 3806/3806 green. It is a
+`userEvent` test hitting its own timeout under parallel load, in a file this slice does not
+touch. Recorded because "it passed the second time" is only honest when you say it was
+measured twice.
+
+### O.2 — bundle gate (D12), MEASURED — **PASSES with 1429 bytes of headroom**
+
+Same method, same machine, same session: clean `npm run build`, then
+`find dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" | wc -c' _ {} \; | paste -sd+ - | bc`.
+
+| point | commit | gzip sum | delta vs base | vs 3072 budget |
+|---|---|---|---|---|
+| slice-2 base (slice-1 post-fix head) | `d91e6f51` | 908422 | — | — |
+| slice-2 head | `eb8c0861` | **910065** | **+1643** | **PASS** (1429 to spare) |
+
+The base was REBUILT and re-measured here rather than carried over, and it reproduced the
+recorded 908422 byte for byte — the same cross-check the slice-1 fix round ran.
+
+The figure is a NET: task 2.10 deletes eight metric labels and a group-title entry, and
+that deletion offsets part of what 2.7/2.8 add (the shared block, the six new metadata
+line-builders, the three new formatters). Nothing was shaved to reach it and nothing was
+padded: the measurement is what the slice weighs.
+
+## Deviations from design — each with its evidence
+
+1. **`available_through` leaves the hoistable set, so D5's field counts change from
+   nine/seven to EIGHT/six.** This is the recorded arithmetic correction from tasks 2.2 and
+   UXJB-201, executed rather than re-argued: the field is the INPUT of the per-metric
+   evidence gate, and a date hoisted into a block that "vale para todas las métricas"
+   cannot be gated per metric. `PROVENANCE_FIELD` therefore has eight entries and
+   `design.md`'s Interfaces block, which still lists `AVAILABLE_THROUGH`, is stale on that
+   one line. Same decision, corrected arithmetic.
+
+   **Correction (verify phase, V-007): this entry named ONE stale site and there were TWO.**
+   `design.md:385` — the Testing-strategy row `hoist ignores provenance-less metrics (D5)` —
+   still said the shared block "still hoists all NINE fields" after the same amendment, and
+   was missed because the deviation was written against the Interfaces block alone. Corrected
+   to EIGHT in the verify phase. Recorded rather than silently patched: a deviation entry
+   that enumerates the blast radius of an amendment is only worth what its enumeration is
+   worth, and this one under-counted by one site.
+
+2. **`RainfallDetailPanel.tsx` is edited, and slice 2's File Changes row does not list it.**
+   Two lines of substance: it imports `hoistProvenance` + `snapshotMetrics` and passes the
+   hoist to the antecedents `RainfallMetricGroup`. Without it D5's "antecedent rows print
+   only what DIVERGES from the shared block" would be unimplementable — the antecedents
+   fold mounts the group directly, not through the list — and those rows would repeat a
+   block that already covers them, which is the six-identical-provenance-blocks defect one
+   fold over. Listed here because a file outside the declared blast radius is what a
+   reviewer should be told about rather than discover.
+
+3. **`snapshotMetrics(snapshot)` is a new export of `RainfallMetricList.tsx`**, not in the
+   Interfaces block. It is the group-detection logic (`renderedGroups` → `isMetricGroup`)
+   reused to answer "which metrics does the shared block speak for", and it lives beside
+   that logic on purpose: computing the comparison set with a second, hand-rolled key list
+   is how the block and the renderer end up disagreeing about what is displayed.
+
+4. **The spec-scenario test `exposes provenance: source, nominal resolution and revision`
+   was MIGRATED, not kept byte-identical.** Slice 1's task 1.16 promised it would stay
+   green untouched; slice 2's own hoist is what changes it. It now asserts the three fields
+   inside the expanded technical fold (`shared ∪ row`) instead of inside one row. Asserting
+   the row alone would now be asserting that the consolidation the requirement explicitly
+   PERMITS did not happen — the test would be pinning the opposite of the spec.
+
+5. **`metricLabel('duration')` no longer returns `'Duración del evento'`**, and the unit
+   test that pinned it was re-expressed against the rule that actually governs now:
+   degrade to the raw key. Forced by the 2.10 prune. The e2e CSV assertion is untouched and
+   was verified to be a different string with a different owner — `P24h (mm en 24 h)` comes
+   from the mocked `CSV_BODY`, i.e. the BACKEND's export label.
+
+6. **Two fields of the enumerated floor needed a line that did not exist: temporal state
+   and `fallback_used`.** Slice 1 rendered them only in the exceptional case (the
+   `Provisional` / `Fuente alternativa` markers), so a `final`, non-fallback metric left
+   two served fields unrendered while the delta requires every carried field. Added as one
+   contract line, `Estado temporal: {state} · Origen: fuente primaria|alternativa`, on the
+   same principle OWN-010 already established for the state chip: the marker is
+   presentation, the text is the contract. Cost, stated: on an exceptional row the fact
+   appears twice, once coloured and once in the contract line.
+
+7. **`R2-001` (info) is discharged as a side effect, deliberately.** The comments in
+   `RainfallMetricList.tsx` and `RainfallDetailPanel.tsx` claimed the R6 catch-all was
+   present while the code iterated a hardcoded three-key list. Task 2.10 makes the claim
+   true; both comments were rewritten to describe the mechanism that shipped rather than
+   the one that was coming. `R3-004`'s coupling note was respected: `canFallBack` was not
+   touched.
+
+## Author counterexample self-check
+
+| Category | Evidence | Result |
+|---|---|---|
+| Null / absence | The stripped four-field shape (no provenance, no coverage, no intervals) renders state + reason and nothing else, pinned by its own test asserting the ABSENCE of nine labels plus `undefined`/`null`/`NaN`; empty `quality` and empty `discrepancies` render no line; an unserved `source_health` renders no placeholder; an empty hoist renders no block | Pass |
+| Boundaries | The hoist is pinned at all-equal, mixed, one-stripped, all-stripped and empty sets; `stringifyUnknownFields` at scalar, nested, array, `null`, function and zero-pair inputs; `metricEvidenceLine` at all three branches plus the policy-suppressed counterexample | Pass |
+| Concurrency / idempotency | N/A — no new async work, no new writer, no new state. Every function added is pure and every render path is a function of the served snapshot | Pass |
+| Malicious input / security | No new input surface and no authorization change. The one hardening is the opposite direction: `isMetricGroup` is total over `unknown`, so a scalar or `null` under a new root key is ignored instead of throwing `TypeError` and taking the panel down | Pass |
+| Partial failure / recovery | A metric rejected by contract/policy/quality no longer poisons the hoist (it leaves the comparison set), so one rejection cannot collapse the consolidation for every other metric | Pass |
+| State / tenancy / time | The exclusive→inclusive day conversion still has ONE implementation; `metricEvidenceLine` reuses `lastEvidenceDay` rather than re-deriving it, and its sentence is metric-scoped so it cannot be confused with the analysis-scoped one | Pass |
+
+## Not run, and not claimed
+
+O.1 (the declared local e2e run of D13) remains owner-gated and was NOT executed here, so
+task 2.12's assertion is COLLECTED but not EXECUTED. A skipped run is a failed gate, not a
+pass; this record claims only that the witness exists and that the spec collects.
+
+## Push status
+
+Not pushed. Every commit is LOCAL, per the orchestrator's instruction to leave pushing to a
+full environment (the worktree's pre-push hook is broken and `--no-verify` was not used).
+
+## Judgment Day fix round 1 (2026-08-12) — UXJA2-001, the suppressed annual total
+
+One owner-approved fix, one file of source and one file of tests.
+
+**What was wrong**: the delta scenario "The year's value is suppressed by policy but its
+evidence exists" (`spec.md:165-171`) has THREE `THEN` clauses; the card implemented two.
+A suppressed `annual.selected` printed `Acumulado hasta el {día}: —` and nothing else —
+no state word, no reason — while the percentile's identical situation got a full
+`Percentil histórico: Suprimida: {motivo}` line on the same always-visible surface. The
+`withheld` branch existed; it was scoped to the percentile only.
+
+**What shipped** (`consorcio-web/src/components/map2d/rainfall/RainfallAnswerCard.tsx`):
+
+- `readablePercentile` → `readableMetric` (`:65`). ONE predicate, consulted by both lines.
+  A second, hand-written readability test for the total is how the two lines would start
+  disagreeing about what "withheld" means — the same single-source rule the slice already
+  paid for with `snapshotMetrics`.
+- `withheldSelected` (`:156-157`), derived exactly like `withheld` is.
+- The new dimmed line (`:198-202`), placed ADJACENT to the percentile's so the two read as
+  one family: `Acumulado del año: No disponible: coverage_below_threshold`.
+- The `—` inside `AnnualText` is untouched on purpose. That is the VALUE slot and the value
+  is unknown; the new line is the STATE and the reason. Removing the dash would have
+  removed the only thing telling the reader a number was expected there.
+- The file header's "what this card refuses to do" clause now says metric, not percentile.
+
+**Strict TDD, both directions** (`consorcio-web/tests/unit/RainfallAnswerCard.test.tsx`):
+`states a withheld selected total by state and reason, never as a number` and `adds no
+state line when the selected total is readable`. Written first, observed RED (1 failed /
+34 passed), then GREEN (35/35 in the file). The negative test is the one that matters most:
+it fails the lazy "just always render the state" fix, which would have parked a permanent
+`Disponible` beside every healthy number — precisely the noise the closed evidence footer
+was designed to refuse.
+
+| gate | result |
+|---|---|
+| `npx vitest run` (full suite) | 279 files / **3810** tests, all passing (was 3808; +2 new) |
+| `npm run typecheck` | exit 0 on both tsconfigs |
+| `npm run lint` | **3** warnings — the same pre-existing three, none added |
+| bundle (D12 method) | **910207** vs slice-2 base `908422` → **+1785 / 3072** — PASS, 1287 B of headroom. This fix costs **+35 B** over the +1750 pre-fix delta. Measured, not shaved. **VERIFY-CONFIRMED (2026-08-12):** re-measured on the verify branch head by the same D12 method (clean `npm run build` after `rm -rf dist`, then `find dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" \| wc -c' _ {} \; \| paste -sd+ - \| bc`) and it REPRODUCED **910207 byte for byte** — the third independent reproduction of a D12 figure in this change. Delta +1785 against the 3072 slice-2 budget stands. |
+
+The five remaining judgment-day findings are `info` and were NOT touched: three assessed
+real (freshness reason on a name-prohibited role, the `??` coalesce that lets a stripped
+metric swallow the `Fuente:` line, the provisional chip on a final-with-fallback row that
+is owner-ratified copy) and two theoretical (the unguarded antecedents row path, the
+hardcoded `ANTECEDENT_ORDER` in the collapsed header). Each is recorded in
+`review-ledger.md` with its evidence, and none of them blocks.

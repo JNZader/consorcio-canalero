@@ -55,12 +55,13 @@ import {
   RainfallAccumulationChart,
 } from './RainfallAccumulationChart';
 import { RainfallAnswerCard } from './RainfallAnswerCard';
-import { RainfallMetricGroup, RainfallMetricList } from './RainfallMetricList';
+import { RainfallMetricGroup, RainfallMetricList, snapshotMetrics } from './RainfallMetricList';
 import {
   RAINFALL_SCOPE_LABELS,
   compactAntecedent,
   deriveFreshness,
   describeMetricState,
+  hoistProvenance,
   scopeChoiceLabels,
   shouldUseSegmentedScope,
 } from './rainfallFormat';
@@ -574,7 +575,16 @@ export function RainfallDetailPanel({
               titleSize="xs"
               rightAccessory={<AntecedentAccessory group={snapshot.antecedents} />}
             >
-              <RainfallMetricGroup group={snapshot.antecedents} baseline={snapshot.baseline} />
+              {/* The SAME hoist the technical fold's shared block was built
+                  from, so these rows print only what diverges from it (D5).
+                  Without it the antecedents would repeat a block that already
+                  covers them — the six-identical-provenance-blocks defect the
+                  hoist exists to remove, reintroduced one fold over. */}
+              <RainfallMetricGroup
+                group={snapshot.antecedents}
+                baseline={snapshot.baseline}
+                hoist={hoistProvenance(snapshotMetrics(snapshot))}
+              />
             </CollapsibleSection>
           )}
 
@@ -586,7 +596,12 @@ export function RainfallDetailPanel({
           >
             {/* `exclude`, not `include`: this fold means "everything the card
                 and the antecedents fold did not already show", so a group the
-                server starts serving tomorrow lands HERE instead of nowhere. */}
+                server starts serving tomorrow lands HERE instead of nowhere.
+                Since slice 2 that is the RENDERER's behaviour and not just this
+                prop's intent — the list iterates the snapshot's own root keys
+                behind a total group guard and titles an unrecognised one with
+                its raw key (R2-001: this comment used to promise it a slice
+                early). */}
             <RainfallMetricList snapshot={snapshot} exclude={['antecedents']} />
           </CollapsibleSection>
         </>

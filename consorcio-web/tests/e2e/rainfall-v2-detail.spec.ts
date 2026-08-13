@@ -451,6 +451,24 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     const technical = page.getByTestId('rainfall-technical-body');
     await expect(technical.getByTestId('rainfall-metrics')).toBeVisible();
     await expect(technical.getByTestId('rainfall-metric-selected')).toBeVisible();
+
+    // R6, witnessed end to end (design D8). The fixture serves an `intensity`
+    // group this frontend has no title for — `build_snapshot` cannot emit it,
+    // and the eight labels it once had were pruned in slice 2. It must still
+    // reach the reader, under its RAW key with raw metric keys, because the
+    // repo's rule for an untranslated fact is to show it, never to drop it.
+    // Until now the fixture only witnessed the CSV export of this group, so the
+    // claim "the e2e fixture is the live witness of the unknown-group fallback"
+    // was false (UXJA-014).
+    await expect(technical.getByText('intensity', { exact: true })).toBeVisible();
+    const rawGroupRow = technical.getByTestId('rainfall-metric-p24h');
+    await expect(rawGroupRow).toBeVisible();
+    await expect(rawGroupRow).toContainText('p24h');
+    // The backend's own export label is a DIFFERENT string with a different
+    // owner: `P24h (mm en 24 h)` lives in the mocked CSV body, so pruning the
+    // frontend labels cannot move it — and this asserts the two have not been
+    // confused for one another.
+    await expect(rawGroupRow).not.toContainText('mm en 24 h');
   });
 
   test('cambio de ámbito (scope switch) reconsulta con el ámbito elegido', async ({ page }) => {

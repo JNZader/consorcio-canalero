@@ -351,3 +351,84 @@ describe('RainfallMetricList — the exclude seam (slice 1 fold split)', () => {
     }
   });
 });
+
+describe('RainfallMetricList — the key-driven renderer (R6, design D8)', () => {
+  /** A root key the wire carried and this frontend has no title for. Cast
+   *  through `unknown` because `RainfallAnalysisSnapshot` declares the groups it
+   *  knows — which is exactly the assumption R6 says must not be load-bearing. */
+  function withRootKey(key: string, value: unknown): RainfallAnalysisSnapshot {
+    return { ...snapshot(), [key]: value } as unknown as RainfallAnalysisSnapshot;
+  }
+
+  it('isMetricGroup is total — a scalar, null, an array or {} renders no group and does NOT throw', () => {
+    // `'metric' in "texto"` is a `TypeError`, so a partial guard would take the
+    // whole panel down the day the backend adds a scalar root key. The e2e
+    // fixture already serves `summary: 'Año seco…'` and
+    // `source_health: {stations: 1}` at the root, so this is not hypothetical.
+    for (const value of ['texto', 42, null, [metric()], {}, true] as const) {
+      const rendered = renderList(withRootKey('novedad', value));
+      expect(screen.getByTestId('rainfall-metrics')).toBeInTheDocument();
+      expect(screen.queryByText('novedad')).toBeNull();
+      rendered.unmount();
+    }
+  });
+
+  it('an unknown group renders under its RAW key, with raw metric labels', () => {
+    // The repo's standing rule for an untranslated fact (`metricLabel ?? key`,
+    // `export._label`): show it, never drop it. A group nobody named still
+    // reaches the reader, titled with the key the server used.
+    renderList(withRootKey('intensity', { p24h: metric({ metric: 'p24h', value: 12.5 }) }));
+
+    expect(screen.getByText('intensity')).toBeInTheDocument();
+    const row = screen.getByTestId('rainfall-metric-p24h');
+    expect(row.textContent).toContain('p24h');
+    expect(row.textContent).toContain('12.5 mm');
+  });
+
+  it('renders every served group, known first and then the unknown ones', () => {
+    const snap = withRootKey('turbulencia', { x1: metric({ metric: 'x1', value: 4 }) });
+    renderList(snap);
+
+    for (const testId of [
+      'rainfall-metric-selected',
+      'rainfall-metric-normal',
+      'rainfall-metric-percentile',
+      'rainfall-metric-x1',
+    ]) {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+    }
+    // Known groups keep their published order; the unrecognised one lands after
+    // them rather than in the middle of the vocabulary the reader knows.
+    const rendered = screen.getByTestId('rainfall-metrics');
+    const selected = screen.getByTestId('rainfall-metric-selected');
+    const unknown = screen.getByTestId('rainfall-metric-x1');
+    expect(
+      (selected.compareDocumentPosition(unknown) & Node.DOCUMENT_POSITION_FOLLOWING) ===
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(true);
+    expect(rendered).toContainElement(unknown);
+  });
+
+  it('never renders a non-group root key as a group', () => {
+    // The deny-list. `scope` is an object of strings and `source_health` is
+    // `unknown` on the wire: a future `{chirps: {metric, state}}` shape would
+    // pass the guard and render as a metric group ON TOP of the single
+    // analysis-level line D9 gives it — the double-rendering the enumerated
+    // floor forbids.
+    renderList(
+      withRootKey('source_health', { chirps: metric({ metric: 'chirps', value: 1 }) })
+    );
+
+    expect(screen.queryByText('source_health')).toBeNull();
+    expect(screen.queryByTestId('rainfall-metric-chirps')).toBeNull();
+  });
+
+  it('the excluded group stays excluded even when it is unknown', () => {
+    renderList(withRootKey('turbulencia', { x1: metric({ metric: 'x1', value: 4 }) }), [
+      'turbulencia',
+    ]);
+
+    expect(screen.queryByTestId('rainfall-metric-x1')).toBeNull();
+    expect(screen.getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+  });
+});

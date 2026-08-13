@@ -372,10 +372,22 @@ describe('RainfallDetailPanel — metric states, badges and reasons', () => {
     renderPanel();
     const technical = await expandFold('rainfall-technical');
 
-    const row = within(technical).getByTestId('rainfall-metric-selected');
-    expect(row.textContent).toContain('chirps-v3-final');
-    expect(row.textContent).toContain('0.05°');
-    expect(row.textContent).toContain('policy-v1');
+    // The spec scenario, unchanged in what it demands and MIGRATED in where it
+    // looks: since the slice-2 hoist (D5) a homogeneous displayed set states
+    // its provenance ONCE for the set, and the metric's own fields are read as
+    // `shared ∪ row`. Asserting the ROW alone would now be asserting that the
+    // consolidation the spec explicitly permits did not happen — which is the
+    // opposite of the requirement ("Provenance MAY be presented once for a
+    // displayed set… no required field of any metric becomes unreachable").
+    expect(within(technical).getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+    expect(technical.textContent).toContain('chirps-v3-final');
+    expect(technical.textContent).toContain('0.05°');
+    expect(technical.textContent).toContain('policy-v1');
+    // …and it is reachable with ONE control operated: this fold, and no other.
+    expect(screen.getByTestId('rainfall-antecedents-header')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
   });
 });
 
@@ -1024,5 +1036,251 @@ describe('RainfallDetailPanel — answer-first hierarchy', () => {
     expect(within(metrics).getByTestId('rainfall-metric-selected')).toBeInTheDocument();
     // The badged percentile row lives HERE now, one click from the headline.
     expect(within(metrics).getByTestId('rainfall-metric-percentile')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The technical disclosure (design D5/D8/D9/D9a, spec delta "Metric Provenance
+ * and State Metadata").
+ *
+ * The floor is ENUMERATED and bound to what the snapshot serves: every field it
+ * carries must be reachable by operating at most ONE disclosure control — not
+ * necessarily the same control for every field — and a field it does NOT carry
+ * must be absent, not a dash, not an empty label, not a placeholder.
+ */
+describe('RainfallDetailPanel — the enumerated field floor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setAuth('operador');
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE],
+      regional_estimate: true,
+    });
+    vi.mocked(fetchRainfallSeries).mockResolvedValue(seriesAnswer());
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: snapshot() });
+  });
+  afterEach(() => setAuth(null));
+
+  it('the enumerated field floor is reachable with one disclosure control', async () => {
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    // The consolidated block, and the words that make ONE control enough: it
+    // speaks for the metrics of BOTH folds, so opening the antecedents alone
+    // still leaves their provenance reachable through this one (UXJA-107).
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    expect(shared.textContent).toContain('Vale para todas las métricas mostradas');
+    expect(shared.textContent).toContain('chirps-v3-final');
+    expect(shared.textContent).toContain('0.05°');
+    expect(shared.textContent).toContain('policy-v1');
+    expect(shared.textContent).toContain('2026-01-02T00:00:00Z');
+
+    // …and the per-metric half of `shared ∪ row`: the fields that are the
+    // metric's OWN and are never hoisted (D5).
+    const row = within(technical).getByTestId('rainfall-metric-selected');
+    expect(row.textContent).toContain('Intervalo: 2025-01-01T00:00:00Z → 2026-01-01T00:00:00Z');
+    expect(row.textContent).toContain('Cobertura: 100%');
+    expect(row.textContent).toContain('Completitud: 100%');
+    expect(row.textContent).toContain('Calidad: score=0.9');
+    expect(row.textContent).toContain('Estado temporal: final');
+    expect(row.textContent).toContain('Origen: fuente primaria');
+    // The evidence statement is the metric's OWN, gated per metric, and never
+    // the analysis-scoped sentence (UXJA-205).
+    expect(row.textContent).toContain('Evidencia publicada hasta el 2025-12-30');
+    expect(row.textContent).not.toContain('en este análisis');
+  });
+
+  it('renders source health ONCE for the analysis, at the fold foot', async () => {
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    // `source_health` is a ROOT key of the snapshot, not a member of
+    // `RainfallMetric`: rendering it per metric would attribute one
+    // analysis-wide fact to six metrics that never carried it.
+    const health = within(technical).getAllByTestId('rainfall-source-health');
+    expect(health).toHaveLength(1);
+    expect(health[0]?.textContent).toContain('Estado de fuentes: chirps-v3-final=ok');
+    expect(within(technical).getByTestId('rainfall-metric-selected').textContent).not.toContain(
+      'Estado de fuentes'
+    );
+  });
+
+  it('renders NO source-health placeholder when the analysis does not serve it', async () => {
+    const served = snapshot();
+    const { source_health: _omitted, ...withoutHealth } = served;
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: withoutHealth as RainfallAnalysisSnapshot,
+    });
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    expect(within(technical).queryByTestId('rainfall-source-health')).toBeNull();
+    expect(technical.textContent).not.toContain('Estado de fuentes');
+  });
+
+  it('keeps a divergent metric own provenance at the metric', async () => {
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({
+        annual: {
+          selected: metric({ metric: 'selected', value: 850.24 }),
+          normal: metric({ metric: 'normal', value: 1013.8, revision: 'policy-v2' }),
+        },
+        antecedents: undefined,
+        intensity: undefined,
+      }),
+    });
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    // The revision diverges, so it leaves the shared block and lands on BOTH
+    // rows — the consolidated presentation may only state what is identical.
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    expect(shared.textContent).not.toContain('policy-v1');
+    expect(shared.textContent).not.toContain('policy-v2');
+    expect(shared.textContent).toContain('chirps-v3-final');
+
+    expect(within(technical).getByTestId('rainfall-metric-selected').textContent).toContain(
+      'Revisión: policy-v1'
+    );
+    expect(within(technical).getByTestId('rainfall-metric-normal').textContent).toContain(
+      'Revisión: policy-v2'
+    );
+  });
+
+  it('an unserved field renders no line, and a stripped metric renders only its state', async () => {
+    // D9a rule 3. The stripped four-field shape (`service.py:466-472`) is what
+    // a contract, policy or quality rejection produces: no provenance, no
+    // coverage, no intervals. Nothing may be invented to prove the field was
+    // considered.
+    const stripped = {
+      metric: 'd7',
+      value: null,
+      state: 'unavailable',
+      reason: 'metric_contract_rejected',
+    } as unknown as RainfallMetric;
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({
+        annual: {
+          selected: metric({ metric: 'selected', quality: {}, discrepancies: [] }),
+        },
+        antecedents: { d7: stripped },
+        intensity: undefined,
+      }),
+    });
+    renderPanel();
+    const antecedents = await expandFold('rainfall-antecedents');
+    const technical = await expandFold('rainfall-technical');
+
+    const strippedRow = within(antecedents).getByTestId('rainfall-metric-d7');
+    expect(strippedRow.textContent).toContain('Estado: No disponible');
+    expect(strippedRow.textContent).toContain('Motivo: metric_contract_rejected');
+    for (const absent of [
+      'Cobertura',
+      'Completitud',
+      'Intervalo',
+      'Frescura',
+      'Fuente:',
+      'Revisión',
+      'Evidencia',
+      'Estado temporal',
+      'Origen',
+    ]) {
+      expect(strippedRow.textContent).not.toContain(absent);
+    }
+    // No dash, no empty label, no `null` printed to fill the gap.
+    expect(strippedRow.textContent).not.toContain('undefined');
+    expect(strippedRow.textContent).not.toContain('null');
+    expect(strippedRow.textContent).not.toContain('NaN');
+
+    // …and the shared block SCOPES ITSELF to what it actually compared
+    // (S2R3-001). `hoistProvenance` excludes the stripped metric from the
+    // comparison set (UXJB-110), so the universal wording would claim a set
+    // membership `d7` never had — a fabricated claim about a displayed metric,
+    // which the delta forbids as much as a fabricated field.
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    expect(shared.textContent).toContain(
+      'Vale solo para las métricas con procedencia servida, en este plegable y en Antecedentes.'
+    );
+    expect(shared.textContent).not.toContain('todas las métricas mostradas');
+
+    // An empty `quality` and an empty `discrepancies` are the same rule one
+    // level down: the guard yields nothing, so there is no line.
+    const servedRow = within(technical).getByTestId('rainfall-metric-selected');
+    expect(servedRow.textContent).not.toContain('Calidad');
+    expect(servedRow.textContent).not.toContain('Discrepancias');
+  });
+
+  it('the shared block names Antecedentes only when that fold is on screen', async () => {
+    // S2R4-001(b)/S2R3-002. The block is rendered inside the technical fold and
+    // speaks for BOTH folds — but the antecedents fold only mounts when the
+    // snapshot carries a non-empty `antecedents` group. With none served,
+    // naming it points the reader at a control that is not there.
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({
+        annual: { selected: metric({ metric: 'selected', value: 850.24 }) },
+        antecedents: undefined,
+        intensity: undefined,
+      }),
+    });
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    expect(screen.queryByTestId('rainfall-antecedents')).toBeNull();
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    expect(shared.textContent).toContain('Vale para todas las métricas mostradas en este plegable.');
+    expect(shared.textContent).not.toContain('Antecedentes');
+  });
+
+  it('nothing served disappears', async () => {
+    // Success criterion 4: with EVERY disclosure expanded, the rendered metric
+    // set equals the snapshot's own, and each metric carries its state, its
+    // reason where it has one, and its provenance as `shared ∪ row`.
+    const served = snapshot({
+      annual: {
+        selected: metric({ metric: 'selected', value: 850.24 }),
+        percentile: metric({ metric: 'percentile', value: 72, unit: 'percentil' }),
+      },
+      antecedents: { d7: metric({ metric: 'd7', value: 31 }) },
+      intensity: { p24h: metric({ metric: 'p24h', value: 12.5 }) },
+    });
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: served });
+    renderPanel();
+    await expandFold('rainfall-antecedents');
+    await expandFold('rainfall-technical');
+
+    const expected = ['selected', 'percentile', 'd7', 'p24h'];
+    const rendered = [...document.querySelectorAll('[data-testid^="rainfall-metric-"]')].map(
+      (node) => node.getAttribute('data-testid')?.replace('rainfall-metric-', '') ?? ''
+    );
+    expect([...rendered].sort()).toEqual([...expected].sort());
+
+    for (const name of expected) {
+      const row = screen.getByTestId(`rainfall-metric-${name}`);
+      expect(row.textContent).toContain('Estado: Disponible');
+      expect(row.textContent).toContain('Cobertura: 100%');
+    }
+    // The unknown group came along, under its raw key (R6).
+    expect(screen.getByText('intensity')).toBeInTheDocument();
+    // …and the provenance every row shares is one block away, one control.
+    expect(screen.getByTestId('rainfall-provenance-shared').textContent).toContain(
+      'chirps-v3-final'
+    );
+  });
+
+  it('places the summary under the shared block, inside the technical fold', async () => {
+    renderPanel();
+    const technical = await expandFold('rainfall-technical');
+
+    const shared = within(technical).getByTestId('rainfall-provenance-shared');
+    const summary = within(technical).getByTestId('rainfall-summary');
+    expect(
+      (shared.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING) ===
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(true);
   });
 });

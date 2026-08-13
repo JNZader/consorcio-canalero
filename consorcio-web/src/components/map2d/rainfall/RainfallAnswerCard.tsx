@@ -19,9 +19,10 @@
  * · Re-derive freshness. The panel derives it ONCE per subject and hands the
  *   value down (D1a). A second derivation here is the duplication the spec
  *   forbids, and it is how two surfaces of one screen start disagreeing.
- * · Print a number the policy withheld. A suppressed or unavailable percentile
- *   is stated by state and reason — never as a value, never as a zero, and
- *   never as an adjective, which is the loudest thing on the card.
+ * · Print a number the policy withheld. A suppressed or unavailable metric —
+ *   the percentile AND the year's own total, symmetrically — is stated by state
+ *   and reason, never as a value, never as a zero, and never as an adjective,
+ *   which is the loudest thing on the card.
  * · Freeze a baseline period. Every phrase reads `snapshot.baseline` as served
  *   (RISK-001/LI4-004): regenerating the normals over another period must move
  *   this card with no frontend edit.
@@ -56,13 +57,18 @@ export interface RainfallAnswerCardProps {
 }
 
 /**
- * The percentile only when it may be READ as a number.
+ * A metric only when it may be READ as a number.
  *
  * Same predicate the adjective uses, and deliberately so: a card that printed
  * `Percentil 95` in the headline while withholding the same number in the row
  * below would have leaked exactly what the policy suppressed.
+ *
+ * ONE predicate for both annual metrics, not two: the delta's "shown by state
+ * and reason" clause is symmetric between the percentile and the year's total,
+ * and a second, slightly different readability test here is how the two lines
+ * would start disagreeing about what "withheld" means.
  */
-function readablePercentile(metric: RainfallMetric | undefined): RainfallMetric | undefined {
+function readableMetric(metric: RainfallMetric | undefined): RainfallMetric | undefined {
   if (metric === undefined || metric.value === null) return undefined;
   if (metric.state === 'suppressed' || metric.state === 'unavailable') return undefined;
   return metric;
@@ -123,7 +129,7 @@ function AnnualText({
 
 export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardProps) {
   const percentile = snapshot.annual?.percentile;
-  const readable = readablePercentile(percentile);
+  const readable = readableMetric(percentile);
   const selected = snapshot.annual?.selected;
   const wetness = wetnessFromPercentile(percentile);
   const gloss = percentileGloss(percentile);
@@ -148,6 +154,14 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
   // surface, not something to discover by opening the technical fold: the
   // badged row that used to carry it is now one click away.
   const withheld = percentile !== undefined && readable === undefined ? percentile : undefined;
+
+  // …and the SAME fact about the year's own total, which the delta asks for in
+  // the same clause. The value slot inside the annual phrase keeps printing
+  // "—" (that is the number, and it is unknown); this line carries the state
+  // and the reason, so a suppressed total is never left as a bare dash the
+  // reader has to interpret as a policy decision.
+  const withheldSelected =
+    selected !== undefined && readableMetric(selected) === undefined ? selected : undefined;
 
   const scopeParts = [
     `Ámbito: ${RAINFALL_SCOPE_LABELS[snapshot.scope.kind]}`,
@@ -186,6 +200,12 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
       {withheld !== undefined && (
         <Text size="xs" c="dimmed">
           {`${metricLabel('percentile')}: ${describeMetricState(withheld)}`}
+        </Text>
+      )}
+
+      {withheldSelected !== undefined && (
+        <Text size="xs" c="dimmed" data-testid="rainfall-selected-withheld">
+          {`${metricLabel('selected')}: ${describeMetricState(withheldSelected)}`}
         </Text>
       )}
 

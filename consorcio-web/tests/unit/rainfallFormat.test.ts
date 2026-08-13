@@ -19,11 +19,14 @@ import {
   deriveFreshness,
   describeMetricState,
   formatMetricValue,
+  hoistProvenance,
+  metricEvidenceLine,
   metricLabel,
   metricStateLabel,
   scopeChoiceLabel,
   scopeChoiceLabels,
   shouldUseSegmentedScope,
+  stringifyUnknownFields,
   wetnessFromPercentile,
   wetnessLabel,
 } from '../../src/components/map2d/rainfall/rainfallFormat';
@@ -62,7 +65,18 @@ describe('metricLabel', () => {
   it('labels the known metrics in Spanish', () => {
     expect(metricLabel('selected')).toBe('Acumulado del año');
     expect(metricLabel('d30')).toBe('Antecedente 30 días');
-    expect(metricLabel('duration')).toBe('Duración del evento');
+    expect(metricLabel('percentile')).toBe('Percentil histórico');
+  });
+
+  it('degrades a PRUNED intensity key to its raw name, rather than to a fiction', () => {
+    // Slice 2 deleted the eight `intensity` labels: `build_snapshot` cannot
+    // emit that group, so they were vocabulary for data nobody serves. The
+    // prune is only honest because the group renderer is key-driven now (D8) —
+    // an intensity group served tomorrow renders under its raw key with these
+    // raw metric keys, which is visible. `duration` used to read 'Duración del
+    // evento' here; that string described a metric this frontend never met.
+    expect(metricLabel('duration')).toBe('duration');
+    expect(metricLabel('p24h')).toBe('p24h');
   });
 
   it('appends the SERVED baseline to the normal label, never a constant', () => {
@@ -473,5 +487,199 @@ describe('compactAntecedent', () => {
       )
     ).toBe('—');
     expect(compactAntecedent(undefined)).toBe('—');
+  });
+});
+
+describe('hoistProvenance — per-field, over the metrics that carry provenance', () => {
+  // D5: a field is SHARED only when every metric in the comparison set agrees
+  // on it. All-or-nothing would under-hoist the common case (one revision
+  // differing after a policy bump puts six identical provenance blocks back on
+  // the rows), and hoisting a per-metric fact would state a claim about metrics
+  // that never made it.
+  it('(a) hoists every candidate field when the whole set agrees', () => {
+    const hoist = hoistProvenance([
+      metric({ metric: 'selected' }),
+      metric({ metric: 'normal' }),
+      metric({ metric: 'd7' }),
+    ]);
+
+    expect(hoist.perMetric).toEqual([]);
+    expect(hoist.shared).toEqual({
+      source_id: 'chirps-v3-final',
+      source_class: 'estimated_satellite',
+      method: 'sum',
+      nominal_resolution: '0.05°',
+      aggregation: 'daily',
+      spatial_scope: 'zone',
+      freshness: '2026-01-02T00:00:00Z',
+      revision: 'policy-v1',
+    });
+  });
+
+  it('(a2) never hoists available_through — it is the input of the per-metric evidence gate', () => {
+    // UXJB-201. `available_through` decides, PER METRIC, whether an evidence
+    // claim may be made at all (D9a rule 2); a hoisted date cannot be gated per
+    // metric, so it is pinned to the rows and leaves the candidate set. Eight
+    // candidates, not nine.
+    const hoist = hoistProvenance([metric(), metric({ metric: 'normal' })]);
+
+    expect(Object.keys(hoist.shared)).not.toContain('available_through');
+    expect(hoist.perMetric).not.toContain('available_through');
+    expect(Object.keys(hoist.shared)).toHaveLength(8);
+  });
+
+  it('(b) keeps exactly the divergent fields on the rows, and hoists the other six', () => {
+    const hoist = hoistProvenance([
+      metric({ metric: 'selected', revision: 'policy-v2' }),
+      metric({
+        metric: 'normal',
+        provenance: { ...metric().provenance, source_id: 'chirps-v3-prelim' },
+      }),
+    ]);
+
+    expect([...hoist.perMetric].sort()).toEqual(['revision', 'source_id']);
+    expect(hoist.shared).toEqual({
+      source_class: 'estimated_satellite',
+      method: 'sum',
+      nominal_resolution: '0.05°',
+      aggregation: 'daily',
+      spatial_scope: 'zone',
+      freshness: '2026-01-02T00:00:00Z',
+    });
+  });
+
+  it('(c) excludes a metric served WITHOUT provenance from the comparison set', () => {
+    // UXJB-110: including the stripped four-field shape would make every field
+    // diverge against a metric that carries none — one rejected metric putting
+    // six identical provenance blocks back on the rows, which is the exact
+    // defect the hoist exists to remove.
+    const hoist = hoistProvenance([
+      metric({ metric: 'selected' }),
+      strippedMetric('metric_contract_rejected'),
+      metric({ metric: 'd7' }),
+    ]);
+
+    expect(hoist.perMetric).toEqual([]);
+    expect(Object.keys(hoist.shared)).toHaveLength(8);
+    expect(hoist.shared.source_id).toBe('chirps-v3-final');
+  });
+
+  it('(d) shares nothing when every metric was served stripped', () => {
+    // The empty comparison set. There is no shared block at all then, which
+    // D9a rule 3 already covers: a stripped metric renders its state and reason
+    // and nothing else.
+    const hoist = hoistProvenance([strippedMetric('a'), strippedMetric('b')]);
+
+    expect(hoist.shared).toEqual({});
+    expect(hoist.perMetric).toHaveLength(8);
+  });
+
+  it('shares nothing for an empty set', () => {
+    expect(hoistProvenance([]).shared).toEqual({});
+  });
+});
+
+describe('stringifyUnknownFields — object fields never print [object Object]', () => {
+  // D9a rule 4: ONE guard, TWO callers (`quality` per metric and
+  // `source_health` per analysis). Both arrive `unknown` on the wire, and two
+  // renderings of "what does an object look like here" is how the pair drifts.
+  it('prints scalar pairs in key order', () => {
+    expect(stringifyUnknownFields({ score: 0.9, source: 'chirps', degraded: false })).toBe(
+      'score=0.9; source=chirps; degraded=false'
+    );
+  });
+
+  it('SKIPS null, arrays, nested objects and functions rather than coercing them', () => {
+    // Coercion is what produces `[object Object]` — a string that looks like a
+    // fact and is not one.
+    const printed = stringifyUnknownFields({
+      score: 0.9,
+      missing: null,
+      windows: [1, 2],
+      nested: { a: 1 },
+      compute: () => 1,
+    });
+
+    expect(printed).toBe('score=0.9');
+    expect(printed).not.toContain('[object Object]');
+  });
+
+  it('prints a scalar input as itself (rule 4 wins over the D9 table)', () => {
+    // UXJB-207: where D9's table and D9a rule 4 disagree on a scalar
+    // `source_health`, rule 4 wins — a scalar prints as itself, never as a
+    // `k=v` pair with an invented key.
+    expect(stringifyUnknownFields('degradado')).toBe('degradado');
+    expect(stringifyUnknownFields(3)).toBe('3');
+    expect(stringifyUnknownFields(false)).toBe('false');
+  });
+
+  it('yields nothing when there is nothing scalar to say, so the caller renders no line', () => {
+    expect(stringifyUnknownFields({})).toBe('');
+    expect(stringifyUnknownFields({ nested: { a: 1 }, list: [] })).toBe('');
+    expect(stringifyUnknownFields(null)).toBe('');
+    expect(stringifyUnknownFields(undefined)).toBe('');
+    expect(stringifyUnknownFields([1, 2, 3])).toBe('');
+  });
+});
+
+describe('metricEvidenceLine — the same three-branch gate, applied PER METRIC', () => {
+  // UXJA-205: `evidenceFooter` says "en este análisis" — it is analysis-scoped
+  // and MUST NOT be reused on a metric row, where "this analysis" is a claim
+  // about the whole envelope rather than about the metric being read.
+  it('states the metric own last day with evidence', () => {
+    expect(metricEvidenceLine(metric())).toBe('Evidencia publicada hasta el 2025-12-30');
+  });
+
+  it('keeps the real date for a metric SUPPRESSED by policy', () => {
+    // The counterexample that rules out a state-keyed gate: `_normalize_metric`
+    // blanks only the VALUE, so coverage and provenance survive suppression.
+    expect(
+      metricEvidenceLine(
+        metric({
+          value: null,
+          state: 'suppressed',
+          reason: 'coverage_below_threshold',
+          coverage: 0.62,
+        })
+      )
+    ).toBe('Evidencia publicada hasta el 2025-12-30');
+  });
+
+  it('says the window published nothing FOR THIS METRIC, in its own words', () => {
+    expect(
+      metricEvidenceLine(
+        metric({
+          value: null,
+          coverage: 0,
+          state: 'unavailable',
+          reason: 'no_data_in_disclosure_window',
+        })
+      )
+    ).toBe('Sin días con evidencia publicada para esta métrica');
+  });
+
+  it('never borrows the analysis-scoped sentence', () => {
+    const line = metricEvidenceLine(
+      metric({
+        value: null,
+        coverage: 0,
+        state: 'unavailable',
+        reason: 'no_data_in_disclosure_window',
+      })
+    );
+
+    expect(line).not.toContain('en este análisis');
+  });
+
+  it('renders NO line at all when neither claim can be made', () => {
+    // The indeterminate branch: a stripped metric proves neither evidence nor
+    // an empty window, so the row simply has no evidence line — never a
+    // fabricated date and never a placeholder (D9a rule 3).
+    expect(metricEvidenceLine(strippedMetric('metric_contract_rejected'))).toBeNull();
+    expect(
+      metricEvidenceLine(
+        metric({ value: null, coverage: 0, state: 'unavailable', reason: 'sin fuente elegible' })
+      )
+    ).toBeNull();
   });
 });

@@ -144,6 +144,12 @@ Convergence budget for the design phase is now spent.
 
 **Post-JD housekeeping (owner-approved "dale", same pattern as lluvia-insights' pre-verify tidy — explicitly NOT a review round):** D13's declared local run gained the two missing preconditions as items 4 and 5 (FICHA_ENABLED reaching the backend service; a host-reachable Martin via port override or VITE_MARTIN_URL), citing the previous change's own apply record where both blockers were first documented. UXJA-201 → `fixed (post-JD housekeeping)`. Also fixed in the same edit: the D11 stale figure ~540→~590 (UXJA-202≡UXJB-204).
 
+**Ledger row added in the verify phase (V-009).** UXJA-201 was the sole open item at the convergence budget's end and was resolved in prose only — no table row, while every other finding of that weight got one. A resolution recorded exclusively in narrative is the one a future reader has to reconstruct, and an escalation is the last finding that should require reconstruction:
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJA-201 | judgment-day | `design.md:271` (D13 declared local run) with `gee-backend/app/config.py:124` and the `docker-compose.yml` martin block | CRITICAL | fixed | The design's declared local e2e environment listed THREE preconditions while the tree imposes FIVE. Two blockers were verified against the tree by orchestrator execution, not accepted on the judge's word: (a) `ficha_enabled: bool = False` at `app/config.py:124`, with no `FICHA_ENABLED` in any compose or env file in the repo — so `probeFichaAvailability` returns `'off'` and EVERY test in the spec soft-skips; (b) the `martin` compose service publishes no host port while the SPA resolves tiles from `VITE_MARTIN_URL \|\| 'http://localhost:3000'` — so `clickFixtureParcela` never gets its `parcelas_catastro` 200 and the zero-scroll case skips. A declared environment that cannot produce a green is a gate that reports skips as passes, which is this criterion's three-strikes failure mode (canary → preview → local) for the third time. **Fixed** by adding both as explicit preconditions 4 and 5 of D13 (`design.md:271`) and to task O.1 (`tasks.md:132-137`), each citing the previous change's own apply record (`openspec/changes/archive/2026-08-07-lluvia-v2/apply-progress.md:245`) where both blockers were first documented. The fix is DOCUMENTARY, and that is the whole point of the distinction the verify phase preserves: naming the preconditions is what makes O.1 executable, it is not the same thing as executing it. O.1 remains unchecked and V-001 remains OPEN. |
+
 **Escalation resolved → the design proceeds to tasks.** The verify phase MUST confirm the declared run actually executes end-to-end with the five preconditions (the three-strikes history of this gate — canary, preview, local — earns it an executed check, not an inspected one).
 
 ## Apply phase — owner-reported defects on the live UI (2026-08-11)
@@ -173,7 +179,7 @@ fixed the reader's problem.
 | OWN-009 | owner decision | `rainfallFormat.ts`, `RainfallAnswerCard.tsx` | WARNING | fixed | The percentile was unreadable three ways at once: the row rendered `46.9 percentil` (a rank is not a magnitude, so the unit is a PREFIX in Spanish — `Percentil 46.9`), the card said `Percentil 47` beside it (one fact, two spellings, on one screen), and neither told a reader what a percentile IS. Now every always-visible surface uses the same ROUNDED value while the technical row keeps the served precision, and a dimmed gloss reads `De cada 100 años, {n} fueron más secos que este.` — absent whenever the percentile is not readable, because an interpretation of a withheld number is the withheld number. Task 1.28. |
 | OWN-010 | owner decision | `RainfallMetricList.tsx` | WARNING | fixed | Refines OWN-003. Chips are EXCEPTION-ONLY: an available, definitive metric shows none, a provisional or fallback-fed value shows exactly `Dato provisorio`, a non-available state shows its state word — full Spanish, never the wire token `FALLBACK` (the metadata line says `Fuente alternativa`). **The row's text now always states `Estado: {word}`**, which is the part that keeps this honest: the chip is presentation, the text is the contract, and dropping a chip must never drop a served field the enumerated floor requires (D9). The card's evidence footer is likewise closed to cut date + scope + short source, with coverage deliberately absent — a permanent `Cobertura: 100%` is noise on every healthy analysis. Tasks 1.26b, 1.29. |
 
-**Info bequest for tasks/verify** (final re-judge rows, non-blocking): UXJA-203 (branch-3 metric rows drop a served available_through — one reconciling clause), UXJA-204/UXJB-202 (ledger count off-by-ones — noted here, correct at source when next edited), UXJA-205 (evidenceFooter is analysis-scoped; the fold's per-metric row needs its own string, not the shared one), UXJA-206 (three base-spec line citations stale by 11 lines post-f95bf8e5), UXJB-201 (available_through must leave D5's hoistable set or the per-metric gate can't run — tasks should pin it to the rows), UXJB-203 (the card/footer strings don't name their subjects; the stale banner is the disclosure — acceptable, recorded), UXJB-205 (the spec's suppression-is-not-absence sentence over-broad vs its own scenario), UXJB-206 (FichaTerritorialRainfallMount.test.tsx missing from the forced-edit list), UXJB-207 (D9 table vs D9a rule 4 disagree on scalar source_health — rule 4 wins, table to be read accordingly).
+**Info bequest for tasks/verify** (final re-judge rows, non-blocking): UXJA-203 (branch-3 metric rows drop a served available_through — one reconciling clause), UXJA-204/UXJB-202 (ledger count off-by-ones — noted here, correct at source when next edited), UXJA-205 (evidenceFooter is analysis-scoped; the fold's per-metric row needs its own string, not the shared one), UXJA-206 (three base-spec line citations stale by 11 lines post-f95bf8e5) — **DISCHARGED in the verify phase (V-008)**: the delta preamble's surviving stale citation, `spec.md:596` for "Intensity, Peak, and Duration Outcomes", was corrected to `:607` after locating the requirement heading live in `openspec/specs/rainfall-analysis/spec.md` rather than by re-applying the +11 arithmetic — the offset was the symptom, the heading is the fact, UXJB-201 (available_through must leave D5's hoistable set or the per-metric gate can't run — tasks should pin it to the rows), UXJB-203 (the card/footer strings don't name their subjects; the stale banner is the disclosure — acceptable, recorded), UXJB-205 (the spec's suppression-is-not-absence sentence over-broad vs its own scenario), UXJB-206 (FichaTerritorialRainfallMount.test.tsx missing from the forced-edit list), UXJB-207 (D9 table vs D9a rule 4 disagree on scalar source_health — rule 4 wins, table to be read accordingly).
 
 ## Slice 1 — full-4R code review (2026-08-12, diff 550dc852..18f6a1f6, ~3647 lines)
 
@@ -238,3 +244,173 @@ R3-001 → **verified** (terminal alert names both years, `data-showing-year` pr
 | R3-004 | reliability | `RainfallDetailPanel.tsx:316-317` (untouched line) | WARNING | info | Coupling note: the `isError` term in `canFallBack` is what makes R3-001's disclosure coverage TOTAL (under error the card unmounts rather than rendering undisclosed) — the R4-002 window and this fix's completeness are coupled. A future edit to `canFallBack` can silently reopen R3-001; check this row first. |
 
 **Slice 1 review verdict: CLOSED — 0 open findings. 2 CRITICAL fixed+verified in 1 fix round (budget: 2), 9 info bequeathed.**
+
+## Slice 2 — full-4R code review, first pass (2026-08-12, diff feat/lluvia-ux-01-jerarquia..e9d8ebd1, 1212/53 lines)
+
+Four lenses in parallel, 2-sweep budget. **Risk: EMPTY ledger** (root keys are a CLOSED server-side allow-list — `SNAPSHOT_ROOT_KEYS` enforced at service.py:668 — so the raw-key renderer only ever titles server-authored names; formula injection unreachable, exports are server-rendered where the sanitizer lives; no authz change — every newly disclosed field already traveled in the same operator-only payload; fixtures PII-clean). Refutation: 3 batched refuters over the single CRITICAL candidate; vote 2-1 STANDS (correctness + reproducibility stands, impact refuted).
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| S2R3-001 | reliability | `consorcio-web/src/components/map2d/rainfall/RainfallMetricList.tsx:423` with `rainfallFormat.ts:661` | CRITICAL | open→fixed (see fix round) | Shared block asserts "Vale para todas las métricas mostradas, en este plegable y en Antecedentes" (universal over the DISPLAYED set) while `hoistProvenance` compares only `metrics.filter(m => m.provenance !== undefined)`. A stripped metric (backend `_unavailable`, service.py:466-472, reachable PER-METRIC per _normalize_metric :479-518) is displayed but never compared → the block over-claims scope, against the delta spec's fabrication clause (spec.md:13,15 — the "discharges the entry" language is scoped to `available_through` only). Design contradiction UXJB-110 (design.md:96) vs UXJA-107 (design.md:98), unreconciled. **The defective state was already instantiated by a green test** (RainfallDetailPanel.test.tsx:1145 constructs the mixed snapshot and never asserts the block's claim). Refuter calibration: excluded rows are ALWAYS value-less and self-identifying (`—`/`Estado: No disponible`/`Motivo:`), so no number can be mis-sourced — the defect is the sentence, not the hoist. |
+| S2R4-001 | resilience | `RainfallMetricList.tsx:423` | WARNING | info→fixed (discharged by same fix) | Same sentence false in two reachable states: (a) stripped-but-displayed metrics (the CRITICAL above at WARNING framing); (b) "y en Antecedentes" names a fold not on screen when the snapshot serves no antecedents. |
+| S2R3-002 | reliability | `RainfallMetricList.tsx:423` | SUGGESTION | info→fixed (discharged by same fix) | The no-antecedents wording case, untested. |
+| S2R2-001 | readability | `RainfallMetricList.tsx:169,173` | WARNING | info | Wire enums printed raw (`Clase de fuente: estimated_satellite`, `Ámbito espacial: zone`) while the same module owns the Spanish vocabularies the card uses one scroll above (`SOURCE_CLASS_WORDS` → `satelital`, `RAINFALL_SCOPE_LABELS` → `Zona`). Same fact, two words, one panel. Not the D8 raw-key rule — these labels EXIST and are used elsewhere on the same surface. |
+| S2R2-002 | readability | `RainfallMetricList.tsx:98-105` | SUGGESTION | info | `GROUP_TITLES` and `KNOWN_GROUP_ORDER` are two hand-maintained lists of the same keys; drift consequence is a silent reordering. |
+| S2R2-003 | readability | `design.md:356-366` | SUGGESTION | info | Interfaces block omits four shipped exports (`PROVENANCE_FIELDS`, `provenanceFieldValue`, `stringifyUnknownFields`, `metricEvidenceLine`); behaviour designed, record incomplete — same standard deviation #3 applied to `snapshotMetrics`. |
+
+Verified clean across lenses (recorded, not reassurance): no throwing path in any new formatter (the total guard REMOVES a crash path — `'metric' in "texto"` TypeError now unreachable); deny-list matches the backend allow-list exactly; hoist at 0/1/all-stripped/partial never hoists on partial evidence; both folds build the hoist from the same `snapshotMetrics` so they cannot disagree; slice-1 assertions still bind (no vacuity); single-source formatters confirmed by grep; `_unavailable` drops `revision` too, so the exclusion cannot hide a divergent revision.
+
+## Slice 2 — full-4R code review, fix round 1 of 2 (2026-08-12)
+
+Only the verified CRITICAL was fixed. The refuter vote on it was 2-1 STANDS, with the
+impact calibration that shaped the fix: the excluded rows are ALWAYS value-less and
+self-identifying (`—` + `Estado: No disponible` + `Motivo: …`), so no number can be
+mis-sourced — the defect is the SENTENCE over-claiming its scope, not data corruption.
+So the sentence was fixed and the comparison set was left exactly as designed.
+
+Strict TDD: both assertions were written first and observed RED (2 failed / 42 passed in
+`RainfallDetailPanel.test.tsx`), then GREEN (44/44). No other test touched.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| S2R3-001 | reliability | `consorcio-web/src/components/map2d/rainfall/RainfallMetricList.tsx:423` with `rainfallFormat.ts:661` | CRITICAL | fixed | The shared block said "Vale para todas las métricas mostradas, en este plegable y en Antecedentes." — a claim over the DISPLAYED set — while `hoistProvenance` compares only metrics WITH provenance (UXJB-110). A stripped metric (`_unavailable`: metric/value/state/reason, `service.py:479-518`, reachable PER METRIC) is displayed in the folds the sentence names and was never compared, so the block over-claimed its own scope (delta fabrication clause, `spec.md:13,15`), and design.md:96 (exclusion) contradicted design.md:98 (universal wording) with no reconciliation. **Fixed** by deriving the sentence from what was actually compared: `sharedProvenanceScope(everyDisplayedCompared, namesAntecedents)` keeps the universal wording when the exclusion removed nothing and emits `Vale solo para las métricas con procedencia servida, …` otherwise. Hoist untouched. Pinned by `an unserved field renders no line, and a stripped metric renders only its state`. |
+| S2R4-001(b) | resilience | `RainfallMetricList.tsx:423`, `RainfallDetailPanel.tsx:570` | WARNING | fixed | **Discharged for free by the same sentence, same owner.** The `y en Antecedentes` clause is now conditional on a non-empty `antecedents` group — the exact condition that mounts the fold — so the block never points the reader at a control that is not on screen. Pinned by the new test `the shared block names Antecedentes only when that fold is on screen`. |
+| S2R3-002 | reliability | same | WARNING | fixed | Same discharge as S2R4-001(b): the fold-naming half of the block's claim is now derived, not asserted. |
+| S2R3-005 | reliability | `consorcio-web/src/lib/api/rainfall.ts:69` | WARNING | info | **Bequest, deliberately NOT fixed here (type ripple unknown).** `provenance: RainfallProvenance` is declared REQUIRED while the backend serves stripped shapes without it (`service.py:479-518`), which is why every test constructing that state needs an `as unknown as RainfallMetric` cast — a type that lies, with the cast as its only witness. A truthful `provenance?: RainfallProvenance` is a follow-up: it would force every reader of `.provenance` to be re-checked, which is exactly the audit the type is currently suppressing. Found by the reproducibility refuter. |
+
+Gates: `npx vitest run` 279 files / **3808** tests all passing (was 3806; +2 new);
+`npm run typecheck` exit 0 on both tsconfigs; `npm run lint` **3** warnings — the same
+pre-existing three, none added. Bundle (D12 method, same machine/session): post-fix
+**910172** vs the slice-2 base `908422` → **+1750 against the 3072 budget** (the pre-fix
+slice-2 delta was +1643, so this fix costs **+107 B**: one small builder function and the
+prop that carries its output).
+
+### Slice 2 — scoped re-review of fix round (2026-08-12, inputs: ledger + `git show fa14e827` only)
+
+S2R3-001 → **verified**. Both axes derive from the right facts: the comparison boolean is computed over the SAME `displayed` variable fed to the hoist, with the predicate character-for-character identical to the hoist's own membership rule (no second source of truth); the antecedents axis combines the group's existence under the total `isMetricGroup` guard with the `exclude` term. Render-state enumeration on the touched lines covers six states with the sentence TRUE in every one (all-stripped → block returns null, no claim made; a stripped metric confined to `annual` → narrows globally, an UNDER-claim, never an over-claim). S2R4-001(b) and S2R3-002 → **verified**, genuinely discharged: `namesAntecedents` is the only producer of the string `Antecedentes` in that block, and the new test asserts both directions in one render. 44/44 in the file, typecheck exit 0, no `any` and no cast in the new prop wiring. No new defect on fix-touched lines.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| S2RR-001 | reliability | `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx:1065` (untouched) | WARNING | info | The true/true branch is pinned by a PREFIX assertion, so deleting the `y en Antecedentes` clause from the positive branch keeps all three tests green. The exact-string discipline the two new assertions use is not applied to the branch that names the other fold. Cheap follow-up: tighten to the full sentence. |
+| S2RR-002 | reliability | `RainfallMetricList.tsx:503` | WARNING | info | The `exclude?.includes('antecedents') === true` conjunct is unpinned — the only caller always passes it, so no test can distinguish it from `true`. A component-level test with `exclude` omitted would pin it. |
+| S2RR-003 | reliability | `RainfallDetailPanel.tsx:570` vs `RainfallMetricList.tsx:120-131` (untouched) | SUGGESTION | info | Two predicates decide "is there an antecedents fold": `Object.keys(...).length > 0` vs `isMetricGroup`. A malformed non-empty group mounts the fold while `namesAntecedents` is false → under-claim. Wire-shape violation only, and the failure mode is silence, never a false claim — does not reopen S2R3-001. |
+| S2RR-004 | reliability | `RainfallMetricList.tsx:420-427` | SUGGESTION | info | Spanish register matches the panel's voice; the separator branch is grammatical in all four combinations. No wording defect. |
+
+**Slice 2 review verdict: CLOSED — 0 open findings. 1 CRITICAL fixed+verified in 1 fix round (budget: 2), 2 info rows discharged by the same fix, 7 info bequeathed (incl. S2R3-005: `rainfall.ts:69` declares `provenance` REQUIRED while the backend serves stripped shapes without it — type ripple unknown, follow-up).**
+
+## Apply phase — Judgment Day (two blind judges, round 1)
+
+Two blind judges reviewed the apply-phase diff independently. **Convergence: 0 confirmed** —
+the judges did not converge on any BLOCKER/CRITICAL. **1 suspect** (UXJA2-001, judge A only)
+was triaged by the orchestrator against `spec.md:165-171` and the code, **CONFIRMED on
+evidence**, and then **owner-approved for fix**. Everything else is `info` and does not
+enter the fix loop.
+
+Process note: judge B's Skill Resolution was **fallback-path** — `react-19` was read, while
+`typescript` and `playwright` were not resolvable at that worktree path. Recorded because a
+lens that ran with a partial standard set is a fact about the review, not a footnote.
+
+### Judge A
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJA2-001 | judgment-day | `consorcio-web/src/components/map2d/rainfall/RainfallAnswerCard.tsx:112,150` | CRITICAL | fixed | The delta scenario "The year's value is suppressed by policy but its evidence exists" (`spec.md:165-171`) requires as its THIRD `THEN` clause that "the suppressed total is shown by state and reason, never as a number and never as zero". The card implemented the first two clauses only: a suppressed `annual.selected` rendered as `Acumulado hasta el {día}: —` via `AnnualText:112` (`formatMetricValue` → `—`), with NO state word and NO reason anywhere on the always-visible surface. The `withheld` branch at `:150` that renders `describeMetricState(...)` was scoped to `snapshot.annual.percentile` ONLY. The percentile twin's own test comment (`tests/unit/RainfallAnswerCard.test.tsx:199-204`) states this exact clause as an always-visible-surface obligation, so the asymmetry was an omission, not an adjudication. **Fixed by symmetry with the percentile**: a dimmed line `{metricLabel('selected')}: {describeMetricState(selected)}` renders adjacent to the percentile's withheld line, under the SAME readability predicate — the helper `readablePercentile` was generalized to `readableMetric` and is now the single predicate both lines consult, so "withheld" cannot come to mean two different things on one card. The `—` inside `AnnualText` stays: that is the VALUE slot, and the new line is the state + reason. Pinned in both directions by two new tests. |
+| UXJA2-002 | judgment-day | `RainfallAnswerCard.tsx:198-208` | WARNING | info | assessment=**real**. The freshness reason rides ONLY on `title` / `aria-label` of a Mantine `Text` that renders a generic role; under ARIA 1.2 that element is name-prohibited, so assistive tech may not expose the reason at all. Same mechanism class as the known `R3-002`, but a DISTINCT element and a distinct delta clause ("with the served reason reachable"). Not fixed: the reason remains reachable through the technical fold, so the clause is satisfied by another surface. |
+| UXJA2-003 | judgment-day | `RainfallAnswerCard.tsx:135` with `rainfallFormat.ts:140-147` | WARNING | info | assessment=**real**. `shortSource(selected ?? normal ?? percentile)` coalesces with `??`, which only falls through on `null`/`undefined`. A STRIPPED four-field metric is truthy and carries no provenance, so it wins the coalesce and `shortSource` returns `null`: the card renders NO `Fuente:` line even when `normal`/`percentile` carry full provenance. Failure mode is SILENCE, never a false claim — which is why it is info and not a fix. |
+
+### Judge B
+
+No BLOCKER and no CRITICAL.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJB2-001 | judgment-day | `RainfallMetricList.tsx:154-162` | WARNING | info | assessment=**real**. `stateChip` labels `Dato provisorio` when `temporal_state === 'provisional'` **OR** `fallback_used`, so a FINAL metric fed by an ordered fallback carries a provisional chip while the same row's text prints `Estado temporal: final` + `Origen: fuente alternativa` — a row that contradicts itself. Owner-ratified copy per task 1.26b / OWN-010, therefore RECORDED and not reopened. Pinned by `RainfallMetricList.test.tsx:220-236`, so a future fix moves the test with it. |
+| UXJB2-002 | judgment-day | `RainfallDetailPanel.tsx:570` with `RainfallMetricList.tsx:99-109` | WARNING | info | assessment=**theoretical**. The antecedents fold is the ONE path that reaches `RainfallMetricRow` WITHOUT the total `isMetricGroup` guard, so a non-metric-shaped entry reaches `formatMetricValue`'s `.toFixed(1)` and throws, taking down the panel subtree — the crash class D8's guard made unreachable everywhere else, still reachable here. Wire-shape violation only. Distinct from `S2RR-003`, which flagged the UNDER-CLAIM consequence of the same predicate mismatch. |
+| UXJB2-003 | judgment-day | `RainfallDetailPanel.tsx:104-158` | WARNING | info | assessment=**theoretical**. `AntecedentAccessory` iterates the hardcoded `ANTECEDENT_ORDER` and `flatMap`s away anything else, so an antecedent key outside `d7`/`d30`/`d90` is absent from the collapsed header the delta makes a MUST. The include-list-vs-key-driven lesson from slice 2 was applied to `RainfallMetricList` and not to this surface. Unreachable today; the value is reachable one click in. |
+
+### Judgment Day fix round 1 — what shipped
+
+Strict TDD on UXJA2-001: two tests written FIRST and observed **RED** (1 failed / 34 passed
+in `RainfallAnswerCard.test.tsx`), then **GREEN** (35/35 in the file; 279 files / **3810**
+tests in the full suite). Both directions are pinned: a suppressed total states its state +
+reason, and a HEALTHY total adds NO such line — the assertion that fails an "always render
+it" fix, which would have put a permanent `Disponible` next to every good number.
+
+Gates: `npx vitest run` 279 files / 3810 tests all passing; `npm run typecheck` exit 0 on
+both tsconfigs; `npm run lint` **3** warnings — the same pre-existing three, none added.
+Bundle (D12 method, same machine/session): **910207** vs the slice-2 base `908422` →
+**+1785 against the 3072 budget** (PASS, 1287 B of headroom). The pre-fix delta was +1750,
+so this fix costs **+35 B**: one predicate rename, one derived value and one dimmed line.
+Nothing was shaved to reach it.
+
+**Judgment Day verdict: 0 open findings. 1 CRITICAL confirmed + fixed in 1 fix round
+(budget: 2); 5 info rows recorded (3 assessed real, 2 theoretical), none blocking.**
+
+### Apply phase — Judgment Day re-judge (round 1, scoped: ledger + `git show 7a2944e1` only)
+
+**Both judges converged: UXJA2-001 → `verified`.** Judge A enumerated the whole state × value space (no suppressed total without a state line, no healthy total with one); judge B checked the same matrix against the BACKEND contract (`schemas.py:52-58` forbids `available` with a null value and requires a reason on `suppressed`/`unavailable`), closing the only false-positive shape at the server, not in the UI. Both confirmed the `readablePercentile` → `readableMetric` rename is a pure rename (body byte-identical, one other call site, zero percentile behavior change) and that the two tests pin both directions non-vacuously (the default fixture serves a healthy `selected`, so an unconditional render would print `Acumulado del año: Disponible` and fail).
+
+**The raw-wire-token question, judged on evidence by both — NOT an OWN-002 re-introduction.** OWN-002 was composed backend JOB identifiers (`role:daily, analysis_missing`) in a status sentence addressed to a person; its fix moved queue labels to a data attribute. Here the token is a per-metric contract `reason` inside the state sentence the delta itself demands, produced by pre-existing owner-adjudicated machinery (`describeMetricState`, OWN-003), already rendered in the identical shape by the UNTOUCHED percentile twin (`:200-204`, asserted verbatim by a pre-existing test at `RainfallAnswerCard.test.tsx:202-204`) and by `RainfallMetricList.tsx:302` `Motivo: {reason}`. The delta's "reason" is satisfied literally; the residual is legibility.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJA2R-001 ≡ UXJB2R-001 | judgment-day | `RainfallAnswerCard.tsx:163-164,206-210` | CRITICAL | verified | Both judges independently verified the delta's third THEN is rendered on the always-visible surface by state and reason, never as a value; predicate symmetric with the percentile through ONE shared helper, so "withheld" cannot diverge between the two lines. |
+| UXJA2R-002 ≡ UXJB2R-002 | judgment-day | `RainfallAnswerCard.tsx:208` and untouched twin `:202`, `rainfallFormat.ts:769-775` | WARNING | info | assessment=real. `coverage_below_threshold` is English snake_case in Spanish copy — satisfied literally, not legibly. No reason-vocabulary map exists anywhere in the frontend, and translating THIS line alone would break the symmetry UXJA2-001 demanded. **Correct scope for the follow-up: one `RAINFALL_REASON_LABELS` inside `describeMetricState`, which fixes the card, the panel row and the aria-labels in a single edit.** |
+| UXJA2R-003 ≡ UXJB2R-004 | judgment-day | `tests/unit/RainfallAnswerCard.test.tsx:207-231` | SUGGESTION | info | Both judges found the same gap: the positive fixture is `state: 'unavailable'` while the delta scenario says *suppressed*. Same predicate, same `describeMetricState` branch → behaviorally covered, but the canonical state word is not pinned on this line. One `it.each` over both states closes it. |
+| UXJA2R-004 | judgment-day | `RainfallAnswerCard.tsx:146-151` (UNTOUCHED) | WARNING | info | assessment=real, first-pass signal, no new round. The headline still uses a hand-written `selected.value !== null` instead of `readableMetric`, so the ONE-predicate rule the fix's own comment claims was applied to the two withheld lines and not to the headline above them. No delta violation (`—` is neither a number nor zero), and judge B verified the leak is closed at the server contract (`formatMetricValue` is state-blind but the validator guarantees a null value for withheld states). |
+| UXJB2R-005 | judgment-day | `RainfallAnswerCard.tsx:163-164` | WARNING | info | assessment=theoretical. `state: 'partial'` + `value: null` is wire-legal and renders `Acumulado del año: Parcial` — state word, no reason (the helper appends reasons only for suppressed/unavailable). Outside the delta clause's scope and better than the bare dash it replaces; identical on the pre-existing percentile line. |
+| UXJB2R-003 | judgment-day | `RainfallAnswerCard.tsx:132` | SUGGESTION | info | Rename verified byte-identical; zero behavioral surface. |
+
+**JUDGMENT: APPROVED ✅** — apply phase, 1 CRITICAL fixed and verified by both judges in 1 fix round (budget: 2). 0 open findings. Info bequest carried to verify/archive.
+
+## Verify phase (2026-08-12)
+
+**Verdict: PASS-with-notes.** A read-only verify agent re-derived the change's claims against
+the tree, then a single writer closed the record findings and measured the one gate the
+read-only sandbox could not. The code verdict is CLEAN: the 3810-test figure reproduced
+digit-for-digit, all 26 delta scenarios trace to a named test, the review ledger closes with
+zero open findings across four rounds, and hygiene is clean (26 commits, zero AI attribution,
+`consorcio-web/public/version.json` in no commit).
+
+**What the verify phase actually found was the RECORD, not the code** — nine of the ten
+findings are figures in the artifacts that disagree with the runs that produced them. That is
+worth stating plainly rather than filing as trivia: this change's whole argument is that a
+measured number beats an asserted one, and an apply record whose own arithmetic drifts is the
+same failure class one level up. Every one of them is now corrected AGAINST THE RUN, never
+against the other document.
+
+### Executed evidence (verify phase, on `feat/lluvia-ux-02-disclosure` head)
+
+| gate | command | result |
+|---|---|---|
+| unit suite | `npx vitest run` (full) | **279 files / 3810 tests passed**, exit 0 — reproduces the recorded figure exactly |
+| typecheck | `npm run typecheck` | exit 0 (both tsconfigs) |
+| lint | `npm run lint` | exit 0, **3 warnings** — the same three pre-existing cognitive-complexity warnings, none added |
+| e2e collection | `npx playwright test -c tests/e2e/playwright.config.ts --list` | **89 tests in 10 files**; **10 tests** in `rainfall-v2-detail.spec.ts`, the zero-scroll case among them. COLLECTED, NOT EXECUTED |
+| bundle (D12) | `rm -rf dist` → `npm run build` → `find dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" \| wc -c' _ {} \; \| paste -sd+ - \| bc` | **910207** vs slice-2 base `908422` → **+1785 / 3072 — PASS**, 1287 B headroom. **Reproduced the recorded figure byte for byte.** |
+
+Method note, recorded because it is a trap the next person will hit: `npx playwright test --list`
+WITHOUT `-c tests/e2e/playwright.config.ts` collects zero tests and exits 1, because from
+`consorcio-web/` it sweeps the vitest suites too and dies on `vi.mock` outside a vitest runner.
+The bare invocation looks like a broken e2e suite and is not one.
+
+### Findings
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| V-001 | verify | `tasks.md` O.1 · `design.md:271` (D13) | CRITICAL | **open** | **The declared local e2e run has still never been executed, so the zero-scroll success criterion is asserted by nobody.** The case exists and collects (10 tests in the spec), which is the only thing any record here claims. It is owner-gated and all three blocking preconditions were re-verified live in this phase, not inherited: (1) `gee-backend/app/config.py:124` — `ficha_enabled: bool = False`; (2) `rg FICHA_ENABLED` over the tree returns NOTHING outside `openspec/` — no compose file, no env file, no example sets it, so `probeFichaAvailability` returns `'off'` and every test in the spec soft-skips; (3) `docker-compose.yml:345-351` — the `martin` service publishes NO host port by deliberate design (its own comment: host 3000 is taken by another stack on this box), while the SPA resolves tiles from `VITE_MARTIN_URL \|\| 'http://localhost:3000'`, so `clickFixtureParcela` never gets its `parcelas_catastro` 200. **This stays OPEN and is not softened.** A skipped run is a failed gate; archiving with it closed would record a zero-scroll criterion no run has ever asserted, which is exactly the third repetition of this gate's own three-strikes history (canary → preview → local). |
+| V-002 | verify | `apply-progress.md` (JD fix section) · `review-ledger.md:328` | WARNING | **closed** | Both sites recorded GREEN as `36/36` for `RainfallAnswerCard.test.tsx`; measured is **35**. The record's own RED line refutes it arithmetically — `1 failed / 34 passed` is 35 tests, and a fix that adds no test cannot make the file grow to 36. Corrected to `35/35` at both sites. |
+| V-003 | verify | `tasks.md` O.2 | WARNING | **closed** | O.2 sat unchecked claiming it waited on "an owner decision: amend the budget to 3547, or trim". That decision was MADE and is recorded at `design.md:229` (amendment to the measured 3547) and `design.md:231` (second reading, +3779/908422 accepted as slice-1 final). O.2 rewritten to carry both readings plus the slice-2 measurement and checked. |
+| V-004 | verify | `apply-progress.md` JD fix gate table | WARNING | **closed** | The bundle figure was UNMEASURED by the read-only verify sandbox. Re-run here by the exact D12 method: **910207, reproducing the recorded figure byte for byte** — the third independent reproduction of a D12 figure in this change. Recorded as verify-confirmed. |
+| V-005 | verify | `apply-progress.md` slice-2 gates | WARNING | **closed** | Slice-2 head test count read 3807 while `review-ledger.md:275` reads 3806. The ledger's chain 3806 → 3808 → 3810 lands on the verified terminal 3810; 3807 does not. Corrected to **3806** (and the flake paragraph's echo of the same figure with it), making the +27 delta from the 3779 slice-1 head explicit. |
+| V-006 | verify | `apply-progress.md:65` | WARNING | **closed** | The three pre-existing lint warnings were named as "`LayerControlsPanel.tsx` ×2 and `useMapLayerEffects.ts`". Verified live, the real three are `src/components/map2d/LayerControlsPanel.tsx:397`, `src/components/report-form/useReportFormSubmission.ts:48`, `src/components/map2d/useMapLayerEffects.ts:95`. The slice-2 record already had it right; slice 1's was corrected to match the run. Consequence worth naming: a mis-attributed baseline is how a NEW warning gets absorbed as "one of the known three". |
+| V-007 | verify | `design.md:385` | WARNING | **closed** | The Testing-strategy row still said the hoist "still hoists all NINE fields" after the eight-field amendment. `apply-progress` deviation #1 named only `design.md:362` as stale, so this second site survived the correction. Corrected to EIGHT, and the deviation entry now records that it under-counted its own blast radius by one site. |
+| V-008 | verify | `specs/rainfall-analysis/spec.md:3` (delta preamble) | WARNING | **closed** | The preamble cited base spec `:596` for "Intensity, Peak, and Duration Outcomes"; the requirement heading actually lives at **`:607`**, located live in `openspec/specs/rainfall-analysis/spec.md` rather than by re-applying the known +11 offset — the offset is the symptom, the heading is the fact. This is bequest item **UXJA-206**, now marked discharged at its bequest entry. |
+| V-009 | verify | `review-ledger.md:143-145` | WARNING | **closed** | UXJA-201 — the design-JD escalation and the SOLE open item at the convergence budget's end — was resolved in prose with no ledger table row, while every other finding of that weight got one. A proper row was added with id/lens/location/severity/status/evidence, recording both verified blocking facts and stating explicitly that the fix is DOCUMENTARY: naming the preconditions is what makes O.1 executable and is not the same as executing it. |
+| V-010 | verify | `consorcio-web/public/version.json` | SUGGESTION | **closed** | Confirmed absent from all 26 commits, and confirmed again for this verify commit: the file is build-generated, is dirty in the worktree after the D12 rebuild, and was NOT staged. `.claude/` likewise. |
+
+**Verify verdict: PASS-with-notes. Nine of ten findings closed in this commit. ONE remains
+open — V-001 — and it is owner-gated, not agent-closable.** The code is verified; the
+outstanding item is a RUN that has not happened, and no amount of inspection substitutes for
+it. Do not archive this change while V-001 is open without recording, in the archive itself,
+that the zero-scroll criterion ships unasserted.
