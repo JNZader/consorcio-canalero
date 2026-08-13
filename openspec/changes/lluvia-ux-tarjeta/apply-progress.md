@@ -196,6 +196,50 @@ the zero-scroll criterion beyond "the case exists and collects".
     line; it duplicated every state already on screen. The `aria-live` contract, the
     testid and the announced text are unchanged.
 
+## Fix round 1 of 2 — the full-4R CRITICALs (2026-08-12)
+
+Scope: `review-ledger.md` rows **R3-001** and **R4-001** ONLY (one defect, two faces —
+the visible surface and the `aria-live` region). The eight WARNING/SUGGESTION rows are
+`info` and were deliberately left alone, R4-002 included.
+
+The defect: `gaveUp` appeared in neither `snapshot` nor `canFallBack`, while the queued
+block that owned the `Mostrando {Y-1}` notice AND `data-showing-year` was gated on
+`!gaveUp`. Once the poll budget ran out the panel kept a fully rendered Y-1 card, chart
+and export row under a year selector reading Y, beside an alert naming neither year — and
+the announcer, testing `showingFallback` first, kept promising an auto-update after
+polling had permanently stopped.
+
+| step | evidence |
+|---|---|
+| RED | 2 new tests written first: **2 failed / 34 passed** in `RainfallDetailPanel.test.tsx`. Observed messages: the terminal alert carried `Análisis no disponible aún. Se agotó…` with no year, and the live region still read `…El análisis 2026 se está preparando.` |
+| GREEN | **36/36** in that file, then **279 files / 3779 tests** across the suite (was 3777) |
+
+What changed in `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx`:
+`fallbackTerminalSentence()` (one terminal sentence naming both years, no promise), the
+terminal alert extracted to `UnavailableAlert` carrying that sentence plus
+`data-showing-year` when a fallback is on screen, and the announcer's `showingFallback`
+branch handling `gaveUp` explicitly with the same sentence + `Puede reintentar
+manualmente.`
+
+**The extraction was forced by the complexity gate, again.** The two added branches took
+the panel to 32 (max 30) — a FOURTH lint warning. Fixed by extracting the alert, exactly
+as `ScopeControl` was extracted during the apply; the threshold was not touched. Lint is
+back to the 3 pre-existing warnings. An intermediate attempt (extracting the announcer
+effect into a pure function) bought ZERO headroom and was reverted: Biome scores nested
+function bodies separately, so moving the effect's branches out of the component does not
+lower the component's score. Recorded because the next person will try it too.
+
+### Bundle after the fix round (same D12 method, same machine and session)
+
+| point | gzip sum | delta vs merge-base `550dc852` (904643) | vs the amended 3547 budget |
+|---|---|---|---|
+| pre-fix (source of `4f2138da`, rebuilt now) | 908190 | +3547 | at the amended budget — and it REPRODUCED the recorded figure byte for byte |
+| post-fix | **908422** | **+3779** | **OVER by 232** |
+
+232 bytes for one sentence builder, one extracted alert component and one announcer
+branch. Measured and reported, not shaved — trimming a gate into compliance is the same
+failure class the apply record already refused once.
+
 ## Push status
 
 Commits through `ead8c6dd` were pushed to `origin` BEFORE the interruption (both branches;

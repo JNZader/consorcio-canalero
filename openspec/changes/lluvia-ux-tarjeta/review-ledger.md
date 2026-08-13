@@ -181,8 +181,8 @@ Four lenses in parallel (risk / readability / reliability / resilience), 2-sweep
 
 | id | lens | location | severity | status | evidence |
 |---|---|---|---|---|---|
-| R3-001 | reliability | `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx:268-269,417,432-443,450-465,467` | CRITICAL | open | `snapshot = primarySnapshot ?? fallbackSnapshot` has no `gaveUp` term while the queued block owning the `Mostrando {Y-1}` notice + `data-showing-year` is gated on `!analysis.gaveUp`. After the 12×5s poll budget the panel renders the full Y-1 card/chart/export under a year selector reading Y beside a contradictory "Análisis no disponible aún" alert, with the substitution notice removed. Ordinary slow-analysis path; no test reaches the intersection (all gaveUp tests mock every year queued; fallback tests never exhaust the budget). **Refuter votes: correctness STANDS (every mechanical claim verified file:line; correction — the chart still prints `Acumulado {Y-1} vs. normal`, so the state is a self-contradicting panel, not a silent misattribution), reproducibility STANDS (full static reachability trace, state stable — `queuedPolls` ref never decrements), impact REFUTED (three surviving year attributions; argues WARNING-class). 1-of-3 → STANDS.** Severity kept CRITICAL per protocol; impact calibration recorded. |
-| R4-001 | resilience | same file `:417,432,441,450-465` with `:257-258,268-269,271-299,382` | CRITICAL | open | Same defect + the announcer effect tests `showingFallback` before `analysis.gaveUp` (`:273` vs `:277-279`), so the terminal announcement is unreachable while a fallback snapshot is on screen: the `aria-live` region re-asserts "se está preparando" after polling permanently stopped and never announces the terminal state the visible alert shows — against the file's own contract at `:8-11` and `:78`. **Refuter votes: correctness STANDS, reproducibility STANDS, impact REFUTED. 1-of-3 → STANDS.** |
+| R3-001 | reliability | `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx:268-269,417,432-443,450-465,467` | CRITICAL | fixed | `snapshot = primarySnapshot ?? fallbackSnapshot` has no `gaveUp` term while the queued block owning the `Mostrando {Y-1}` notice + `data-showing-year` is gated on `!analysis.gaveUp`. After the 12×5s poll budget the panel renders the full Y-1 card/chart/export under a year selector reading Y beside a contradictory "Análisis no disponible aún" alert, with the substitution notice removed. Ordinary slow-analysis path; no test reaches the intersection (all gaveUp tests mock every year queued; fallback tests never exhaust the budget). **Refuter votes: correctness STANDS (every mechanical claim verified file:line; correction — the chart still prints `Acumulado {Y-1} vs. normal`, so the state is a self-contradicting panel, not a silent misattribution), reproducibility STANDS (full static reachability trace, state stable — `queuedPolls` ref never decrements), impact REFUTED (three surviving year attributions; argues WARNING-class). 1-of-3 → STANDS.** Severity kept CRITICAL per protocol; impact calibration recorded. |
+| R4-001 | resilience | same file `:417,432,441,450-465` with `:257-258,268-269,271-299,382` | CRITICAL | fixed | Same defect + the announcer effect tests `showingFallback` before `analysis.gaveUp` (`:273` vs `:277-279`), so the terminal announcement is unreachable while a fallback snapshot is on screen: the `aria-live` region re-asserts "se está preparando" after polling permanently stopped and never announces the terminal state the visible alert shows — against the file's own contract at `:8-11` and `:78`. **Refuter votes: correctness STANDS, reproducibility STANDS, impact REFUTED. 1-of-3 → STANDS.** |
 | R4-002 | resilience | `RainfallDetailPanel.tsx:257-258` with `useRainfallAnalysis.ts:139-142` | WARNING | info | `canFallBack` requires `!analysis.isError`: one failed background poll (TanStack keeps `data`, sets error) disables the fallback query and unmounts card/chart/exports until the next successful poll ~5s later — the degraded path collapses exactly under transient network failure, aria-live churning per flip. |
 | R2-001 | readability | `RainfallMetricList.tsx:175-179`, `RainfallDetailPanel.tsx:531-533` | WARNING | info | Comments claim the R6 unknown-group catch-all is present; the code iterates a hardcoded 3-key `GROUP_TITLES` include-list, so an unknown root key renders NOWHERE. The key-driven renderer is slice-2 scope (D8); the comments state future capability as present fact. |
 | R2-002 | readability | `RainfallDetailPanel.tsx:291` vs `RainfallAnswerCard.tsx:153`, panel `:185,194-195` | WARNING | info | One concept, three words: control says `Ámbito regional`, card says `Ámbito:`, aria-live says `Alcance:` — the divergent surface is the one a screen-reader user cannot cross-reference. Unguarded drift (no test pins `Alcance`). |
@@ -191,3 +191,40 @@ Four lenses in parallel (risk / readability / reliability / resilience), 2-sweep
 | R3-002 | reliability | `RainfallDetailPanel.tsx:96-115` | WARNING | info | Collapsed-antecedents state disclosure rests on `aria-label`/`title` on a nameless `<span>` (name-prohibited generic role, ARIA 1.2); NVDA/JAWS likely never announce it. Test asserts attribute presence, not announcement. D2a's guarantee untested and likely false. |
 | R2-005 | readability | `RainfallDetailPanel.tsx:69-72` | SUGGESTION | info | `EARLIEST_YEAR = 1991` documented as the selector's floor, but `YEAR_OPTIONS` uses the magic literal `CURRENT_YEAR - 1990`; the two agree by coincidence. |
 | R3-003 | reliability | `RainfallDetailPanel.tsx:63,255-257` | SUGGESTION | info | The 1991 fallback-ladder floor is untested: no test selects 1991 and asserts no 1990 request is issued. |
+
+### Fix round 1 of 2 — R3-001 + R4-001 (2026-08-12)
+
+Both CRITICAL rows are ONE defect with two faces (visible surface + `aria-live`), so
+they were fixed together. Strict TDD: the two intersection tests were written first and
+observed RED (2 failed / 34 passed in `RainfallDetailPanel.test.tsx`), then GREEN
+(36/36) with no other test touched.
+
+- **The tests** (`consorcio-web/tests/unit/RainfallDetailPanel.test.tsx`, describe "the
+  one-step year fallback"): `keeps a terminal disclosure naming BOTH years once polling
+  gives up on the fallback` and `announces the terminal fallback state instead of
+  re-promising an update`, over a shared `giveUpWithFallbackOnScreen()` helper that
+  combines the per-year mock (ready for Y-1, queued for Y) with `maxQueuedPolls: 2` —
+  the intersection neither the gaveUp tests nor the fallback tests reached.
+- **The visible surface**: the terminal alert now carries the substitution when a
+  fallback is on screen — `Mostrando el análisis {Y-1}. El análisis {Y} no está
+  disponible aún.` (`fallbackTerminalSentence`) — and `data-showing-year` moved onto it,
+  so the attribute survives wherever a fallback snapshot renders. The non-fallback copy
+  is unchanged, the retry button stays, and no auto-update is promised after polling has
+  stopped. The alert became its own `UnavailableAlert` component: the two added branches
+  pushed the panel to cognitive complexity 32 (max 30) and this repo's precedent is to
+  extract, never to raise the threshold (the same move that produced `ScopeControl`).
+- **The announcer**: the `showingFallback` branch handles `gaveUp` explicitly instead of
+  leaving it unreachable, with the SAME terminal sentence the alert states plus `Puede
+  reintentar manualmente.` — the `:78` contract (alert and live region say the same
+  thing) now holds in the intersection too. The pre-gaveUp fallback announcement is
+  untouched.
+- **Not touched**: R4-002 and the seven other `info` rows. R4-002's `isError` window (a
+  failed background poll unmounts both alerts while the fallback card stays) is
+  adjacent to this fix but is a different, WARNING-severity defect and stays `info`.
+
+Gates: `npx vitest run` 279 files / **3779** tests all passing (was 3777; +2 new);
+`npm run typecheck` exit 0 on both tsconfigs; `npm run lint` back to the **3**
+pre-existing warnings (the 4th, introduced by this fix, was extracted away, not waived).
+Bundle (same D12 method, same machine/session): pre-fix rebuild reproduced `908190`
+exactly, post-fix `908422` → **+3779 vs the merge-base `550dc852` (904643)**, i.e. 232 B
+over the amended 3547 budget. Measured and reported, not shaved.

@@ -780,6 +780,63 @@ describe('RainfallDetailPanel — the one-step year fallback', () => {
     expect(screen.getByTestId('rainfall-queued')).not.toHaveAttribute('data-showing-year');
   });
 
+  /**
+   * The INTERSECTION the fallback tests and the gave-up tests each missed
+   * (review R3-001 / R4-001): the selected year is queued AND the poll budget
+   * is exhausted WHILE the previous year is on screen. Before the fix the
+   * queued block — which owned both the substitution notice and
+   * `data-showing-year` — unmounted, leaving a fully rendered Y-1 card under a
+   * selector reading Y beside an alert that named neither year.
+   */
+  function giveUpWithFallbackOnScreen() {
+    vi.mocked(fetchRainfallAnalysis).mockImplementation((_scope, requestedYear) =>
+      Promise.resolve(
+        requestedYear === YEAR
+          ? queuedAnswer
+          : { type: 'ready', snapshot: snapshot({ year: requestedYear }) }
+      )
+    );
+    // A budget of 2 at a 5 ms cadence: the selected year exhausts it while the
+    // previous year's ready snapshot stays mounted.
+    return renderPanel({ pollIntervalMs: 5, maxQueuedPolls: 2 });
+  }
+
+  it('keeps a terminal disclosure naming BOTH years once polling gives up on the fallback', async () => {
+    giveUpWithFallbackOnScreen();
+
+    const terminal = await screen.findByTestId('rainfall-unavailable');
+    // The previous year is still the answer on screen — the fallback is not
+    // withdrawn because the poll budget ran out.
+    expect(screen.getByTestId('rainfall-answer-card')).toBeInTheDocument();
+
+    // …and the disclosure still says WHICH year that is and what happened to
+    // the one that was asked for, in TERMINAL form.
+    expect(terminal.textContent).toContain(`Mostrando el análisis ${YEAR - 1}`);
+    expect(terminal.textContent).toContain(`El análisis ${YEAR} no está disponible aún`);
+    expect(terminal).toHaveAttribute('data-showing-year', String(YEAR - 1));
+    expect(within(terminal).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+
+    // No auto-update promise survives the stop: polling is over.
+    expect(screen.queryByTestId('rainfall-queued')).toBeNull();
+    expect(document.body.textContent).not.toContain('se actualizará solo');
+    expect(document.body.textContent).not.toContain('se está preparando');
+  });
+
+  it('announces the terminal fallback state instead of re-promising an update', async () => {
+    giveUpWithFallbackOnScreen();
+
+    await screen.findByTestId('rainfall-unavailable');
+    const live = screen.getByTestId('rainfall-live');
+    // The alert and the live region state the SAME terminal fact (the file's
+    // own contract): both years, no auto-update promise, manual retry.
+    await waitFor(() =>
+      expect(live.textContent).toContain(`El análisis ${YEAR} no está disponible aún`)
+    );
+    expect(live.textContent).toContain(`Mostrando el análisis ${YEAR - 1}`);
+    expect(live.textContent).toContain('Puede reintentar manualmente');
+    expect(live.textContent).not.toContain('se está preparando');
+  });
+
   it('asks for no previous year at all once the selected one answers', async () => {
     vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
       type: 'ready',

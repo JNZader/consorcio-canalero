@@ -83,6 +83,20 @@ const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 1990 }, (_, i) =>
  */
 const QUEUED_SENTENCE = 'Análisis en preparación — se actualiza automáticamente en unos minutos.';
 
+/**
+ * What a reader is told when polling gave up WHILE the previous year is on
+ * screen (R3-001 / R4-001).
+ *
+ * The substitution notice cannot disappear just because the poll budget ran
+ * out: the panel is still showing `previousYear` under a selector reading
+ * `year`, and "which year am I looking at" stays the question a reader cannot
+ * answer from the numbers. Terminal form — it names both years and promises
+ * nothing, because auto-refresh is over.
+ */
+function fallbackTerminalSentence(previousYear: number, year: number): string {
+  return `Mostrando el análisis ${previousYear}. El análisis ${year} no está disponible aún.`;
+}
+
 /** The antecedent windows, in the order the collapsed header states them. A
  *  FIXED order: a header whose items move with the data is a header nobody can
  *  learn to scan. */
@@ -202,6 +216,51 @@ function ScopeControl({
   );
 }
 
+/**
+ * Terminal: polling gave up without a ready snapshot (RESILIENCE-001/002).
+ *
+ * Honest labelled failure with a manual retry that re-runs the fetch with a
+ * fresh budget — auto-refresh is over and the UI never promises it.
+ *
+ * When the previous year is on screen this alert INHERITS the queued block's
+ * two jobs (R3-001), because that block unmounts at `gaveUp`: it states the
+ * substitution in TERMINAL form and it carries `data-showing-year`. Without
+ * that, the panel rendered a full Y-1 card, chart and export row under a
+ * selector reading Y, beside an alert naming neither year.
+ *
+ * Its own component for the same reason `ScopeControl` is one: the panel stays
+ * under the cognitive-complexity gate by extraction, never by raising it. Pure.
+ */
+function UnavailableAlert({
+  showingFallback,
+  year,
+  previousYear,
+  onRetry,
+}: {
+  readonly showingFallback: boolean;
+  readonly year: number;
+  readonly previousYear: number;
+  readonly onRetry: () => void;
+}) {
+  return (
+    <Alert
+      color="yellow"
+      variant="light"
+      data-testid="rainfall-unavailable"
+      data-showing-year={showingFallback ? String(previousYear) : undefined}
+    >
+      <Text size="xs">
+        {showingFallback
+          ? fallbackTerminalSentence(previousYear, year)
+          : 'Análisis no disponible aún. Se agotó el tiempo de espera automático.'}
+      </Text>
+      <Button size="xs" variant="light" mt="xs" onClick={onRetry} data-testid="rainfall-retry">
+        Reintentar
+      </Button>
+    </Alert>
+  );
+}
+
 function LoadingRow({ label }: { readonly label: string }) {
   return (
     <Group gap="xs">
@@ -271,8 +330,16 @@ export function RainfallDetailPanel({
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
     if (showingFallback) {
+      // The INTERSECTION is explicit (R3-001/R4-001). This branch is tested
+      // FIRST, so the `gaveUp` case below was unreachable while a previous year
+      // was on screen: the region kept saying "se está preparando" after
+      // polling had permanently stopped — the auto-update promise this file's
+      // header forbids. Both cases name BOTH years, and the terminal one states
+      // the same fact the visible alert states (the contract above).
       setAnnouncement(
-        `Mostrando el análisis ${previousYear}. El análisis ${year} se está preparando.`
+        analysis.gaveUp
+          ? `${fallbackTerminalSentence(previousYear, year)} Puede reintentar manualmente.`
+          : `Mostrando el análisis ${previousYear}. El análisis ${year} se está preparando.`
       );
     } else if (analysis.data?.type === 'queued') {
       if (analysis.gaveUp) {
@@ -444,24 +511,13 @@ export function RainfallDetailPanel({
         </Alert>
       )}
 
-      {/* Terminal: polling gave up without a ready snapshot. Honest labelled
-          failure with a manual retry that re-runs the fetch with a fresh
-          budget — auto-refresh is over and the UI never promises it. */}
       {analysis.gaveUp && (
-        <Alert color="yellow" variant="light" data-testid="rainfall-unavailable">
-          <Text size="xs">
-            Análisis no disponible aún. Se agotó el tiempo de espera automático.
-          </Text>
-          <Button
-            size="xs"
-            variant="light"
-            mt="xs"
-            onClick={() => analysis.retry()}
-            data-testid="rainfall-retry"
-          >
-            Reintentar
-          </Button>
-        </Alert>
+        <UnavailableAlert
+          showingFallback={showingFallback}
+          year={year}
+          previousYear={previousYear}
+          onRetry={() => analysis.retry()}
+        />
       )}
 
       {snapshot && (
