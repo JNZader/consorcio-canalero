@@ -228,3 +228,13 @@ pre-existing warnings (the 4th, introduced by this fix, was extracted away, not 
 Bundle (same D12 method, same machine/session): pre-fix rebuild reproduced `908190`
 exactly, post-fix `908422` → **+3779 vs the merge-base `550dc852` (904643)**, i.e. 232 B
 over the amended 3547 budget. Measured and reported, not shaved.
+
+### Slice 1 — scoped re-review of fix round (2026-08-12, inputs: ledger + `git show 0d3961b1` only)
+
+R3-001 → **verified** (terminal alert names both years, `data-showing-year` present on every state that renders a fallback snapshot; pinned by 2 intersection tests, 36/36 ×3 identical runs). R4-001 → **verified** (announcer dispatches on `gaveUp` inside the `showingFallback` branch with the alert's own sentence; full 6-branch trace shows no surviving auto-update promise after polling stops; dep array covers every value read). No new BLOCKER/CRITICAL — refutation not applicable. Bundle post-fix 3779 accepted in design.md D12 second reading.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| R3-004 | reliability | `RainfallDetailPanel.tsx:316-317` (untouched line) | WARNING | info | Coupling note: the `isError` term in `canFallBack` is what makes R3-001's disclosure coverage TOTAL (under error the card unmounts rather than rendering undisclosed) — the R4-002 window and this fix's completeness are coupled. A future edit to `canFallBack` can silently reopen R3-001; check this row first. |
+
+**Slice 1 review verdict: CLOSED — 0 open findings. 2 CRITICAL fixed+verified in 1 fix round (budget: 2), 9 info bequeathed.**
