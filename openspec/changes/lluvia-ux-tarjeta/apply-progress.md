@@ -393,3 +393,50 @@ pass; this record claims only that the witness exists and that the spec collects
 
 Not pushed. Every commit is LOCAL, per the orchestrator's instruction to leave pushing to a
 full environment (the worktree's pre-push hook is broken and `--no-verify` was not used).
+
+## Judgment Day fix round 1 (2026-08-12) — UXJA2-001, the suppressed annual total
+
+One owner-approved fix, one file of source and one file of tests.
+
+**What was wrong**: the delta scenario "The year's value is suppressed by policy but its
+evidence exists" (`spec.md:165-171`) has THREE `THEN` clauses; the card implemented two.
+A suppressed `annual.selected` printed `Acumulado hasta el {día}: —` and nothing else —
+no state word, no reason — while the percentile's identical situation got a full
+`Percentil histórico: Suprimida: {motivo}` line on the same always-visible surface. The
+`withheld` branch existed; it was scoped to the percentile only.
+
+**What shipped** (`consorcio-web/src/components/map2d/rainfall/RainfallAnswerCard.tsx`):
+
+- `readablePercentile` → `readableMetric` (`:65`). ONE predicate, consulted by both lines.
+  A second, hand-written readability test for the total is how the two lines would start
+  disagreeing about what "withheld" means — the same single-source rule the slice already
+  paid for with `snapshotMetrics`.
+- `withheldSelected` (`:156-157`), derived exactly like `withheld` is.
+- The new dimmed line (`:198-202`), placed ADJACENT to the percentile's so the two read as
+  one family: `Acumulado del año: No disponible: coverage_below_threshold`.
+- The `—` inside `AnnualText` is untouched on purpose. That is the VALUE slot and the value
+  is unknown; the new line is the STATE and the reason. Removing the dash would have
+  removed the only thing telling the reader a number was expected there.
+- The file header's "what this card refuses to do" clause now says metric, not percentile.
+
+**Strict TDD, both directions** (`consorcio-web/tests/unit/RainfallAnswerCard.test.tsx`):
+`states a withheld selected total by state and reason, never as a number` and `adds no
+state line when the selected total is readable`. Written first, observed RED (1 failed /
+34 passed), then GREEN (36/36 in the file). The negative test is the one that matters most:
+it fails the lazy "just always render the state" fix, which would have parked a permanent
+`Disponible` beside every healthy number — precisely the noise the closed evidence footer
+was designed to refuse.
+
+| gate | result |
+|---|---|
+| `npx vitest run` (full suite) | 279 files / **3810** tests, all passing (was 3808; +2 new) |
+| `npm run typecheck` | exit 0 on both tsconfigs |
+| `npm run lint` | **3** warnings — the same pre-existing three, none added |
+| bundle (D12 method) | **910207** vs slice-2 base `908422` → **+1785 / 3072** — PASS, 1287 B of headroom. This fix costs **+35 B** over the +1750 pre-fix delta. Measured, not shaved. |
+
+The five remaining judgment-day findings are `info` and were NOT touched: three assessed
+real (freshness reason on a name-prohibited role, the `??` coalesce that lets a stripped
+metric swallow the `Fuente:` line, the provisional chip on a final-with-fallback row that
+is owner-ratified copy) and two theoretical (the unguarded antecedents row path, the
+hardcoded `ANTECEDENT_ORDER` in the collapsed header). Each is recorded in
+`review-ledger.md` with its evidence, and none of them blocks.

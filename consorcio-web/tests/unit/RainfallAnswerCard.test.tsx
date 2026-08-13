@@ -204,6 +204,40 @@ describe('RainfallAnswerCard — the annual textual equivalent (moved from the m
     );
   });
 
+  it('states a withheld selected total by state and reason, never as a number', () => {
+    // The delta's third THEN clause is symmetric between the two metrics: a
+    // suppressed total is "shown by state and reason, never as a number and
+    // never as zero". The value slot still prints "—"; the STATE and its
+    // reason get their own always-visible line, exactly like the percentile's.
+    renderCard(
+      snapshot({
+        annual: {
+          selected: metric({
+            metric: 'selected',
+            value: null,
+            state: 'unavailable',
+            reason: 'coverage_below_threshold',
+          }),
+          percentile: metric({ metric: 'percentile', value: 46.9, unit: 'percentil' }),
+        },
+      })
+    );
+
+    const card = screen.getByTestId('rainfall-answer-card').textContent ?? '';
+    expect(card).toContain('Acumulado del año: No disponible: coverage_below_threshold');
+    expect(screen.getByTestId('rainfall-annual-text').textContent).toContain('—');
+  });
+
+  it('adds no state line when the selected total is readable', () => {
+    // The other direction, and the one a "just always render it" fix breaks:
+    // a healthy total is the number itself, and a permanent "Disponible" line
+    // beside it is the noise the evidence footer exists to refuse.
+    renderCard(snapshot());
+
+    const card = screen.getByTestId('rainfall-answer-card').textContent ?? '';
+    expect(card).not.toMatch(/Acumulado del año:/);
+  });
+
   it('omits the phrase entirely when the analysis carries no percentile', () => {
     renderCard(
       snapshot({

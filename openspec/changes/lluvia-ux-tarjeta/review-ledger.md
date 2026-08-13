@@ -291,3 +291,51 @@ S2R3-001 → **verified**. Both axes derive from the right facts: the comparison
 | S2RR-004 | reliability | `RainfallMetricList.tsx:420-427` | SUGGESTION | info | Spanish register matches the panel's voice; the separator branch is grammatical in all four combinations. No wording defect. |
 
 **Slice 2 review verdict: CLOSED — 0 open findings. 1 CRITICAL fixed+verified in 1 fix round (budget: 2), 2 info rows discharged by the same fix, 7 info bequeathed (incl. S2R3-005: `rainfall.ts:69` declares `provenance` REQUIRED while the backend serves stripped shapes without it — type ripple unknown, follow-up).**
+
+## Apply phase — Judgment Day (two blind judges, round 1)
+
+Two blind judges reviewed the apply-phase diff independently. **Convergence: 0 confirmed** —
+the judges did not converge on any BLOCKER/CRITICAL. **1 suspect** (UXJA2-001, judge A only)
+was triaged by the orchestrator against `spec.md:165-171` and the code, **CONFIRMED on
+evidence**, and then **owner-approved for fix**. Everything else is `info` and does not
+enter the fix loop.
+
+Process note: judge B's Skill Resolution was **fallback-path** — `react-19` was read, while
+`typescript` and `playwright` were not resolvable at that worktree path. Recorded because a
+lens that ran with a partial standard set is a fact about the review, not a footnote.
+
+### Judge A
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJA2-001 | judgment-day | `consorcio-web/src/components/map2d/rainfall/RainfallAnswerCard.tsx:112,150` | CRITICAL | fixed | The delta scenario "The year's value is suppressed by policy but its evidence exists" (`spec.md:165-171`) requires as its THIRD `THEN` clause that "the suppressed total is shown by state and reason, never as a number and never as zero". The card implemented the first two clauses only: a suppressed `annual.selected` rendered as `Acumulado hasta el {día}: —` via `AnnualText:112` (`formatMetricValue` → `—`), with NO state word and NO reason anywhere on the always-visible surface. The `withheld` branch at `:150` that renders `describeMetricState(...)` was scoped to `snapshot.annual.percentile` ONLY. The percentile twin's own test comment (`tests/unit/RainfallAnswerCard.test.tsx:199-204`) states this exact clause as an always-visible-surface obligation, so the asymmetry was an omission, not an adjudication. **Fixed by symmetry with the percentile**: a dimmed line `{metricLabel('selected')}: {describeMetricState(selected)}` renders adjacent to the percentile's withheld line, under the SAME readability predicate — the helper `readablePercentile` was generalized to `readableMetric` and is now the single predicate both lines consult, so "withheld" cannot come to mean two different things on one card. The `—` inside `AnnualText` stays: that is the VALUE slot, and the new line is the state + reason. Pinned in both directions by two new tests. |
+| UXJA2-002 | judgment-day | `RainfallAnswerCard.tsx:198-208` | WARNING | info | assessment=**real**. The freshness reason rides ONLY on `title` / `aria-label` of a Mantine `Text` that renders a generic role; under ARIA 1.2 that element is name-prohibited, so assistive tech may not expose the reason at all. Same mechanism class as the known `R3-002`, but a DISTINCT element and a distinct delta clause ("with the served reason reachable"). Not fixed: the reason remains reachable through the technical fold, so the clause is satisfied by another surface. |
+| UXJA2-003 | judgment-day | `RainfallAnswerCard.tsx:135` with `rainfallFormat.ts:140-147` | WARNING | info | assessment=**real**. `shortSource(selected ?? normal ?? percentile)` coalesces with `??`, which only falls through on `null`/`undefined`. A STRIPPED four-field metric is truthy and carries no provenance, so it wins the coalesce and `shortSource` returns `null`: the card renders NO `Fuente:` line even when `normal`/`percentile` carry full provenance. Failure mode is SILENCE, never a false claim — which is why it is info and not a fix. |
+
+### Judge B
+
+No BLOCKER and no CRITICAL.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| UXJB2-001 | judgment-day | `RainfallMetricList.tsx:154-162` | WARNING | info | assessment=**real**. `stateChip` labels `Dato provisorio` when `temporal_state === 'provisional'` **OR** `fallback_used`, so a FINAL metric fed by an ordered fallback carries a provisional chip while the same row's text prints `Estado temporal: final` + `Origen: fuente alternativa` — a row that contradicts itself. Owner-ratified copy per task 1.26b / OWN-010, therefore RECORDED and not reopened. Pinned by `RainfallMetricList.test.tsx:220-236`, so a future fix moves the test with it. |
+| UXJB2-002 | judgment-day | `RainfallDetailPanel.tsx:570` with `RainfallMetricList.tsx:99-109` | WARNING | info | assessment=**theoretical**. The antecedents fold is the ONE path that reaches `RainfallMetricRow` WITHOUT the total `isMetricGroup` guard, so a non-metric-shaped entry reaches `formatMetricValue`'s `.toFixed(1)` and throws, taking down the panel subtree — the crash class D8's guard made unreachable everywhere else, still reachable here. Wire-shape violation only. Distinct from `S2RR-003`, which flagged the UNDER-CLAIM consequence of the same predicate mismatch. |
+| UXJB2-003 | judgment-day | `RainfallDetailPanel.tsx:104-158` | WARNING | info | assessment=**theoretical**. `AntecedentAccessory` iterates the hardcoded `ANTECEDENT_ORDER` and `flatMap`s away anything else, so an antecedent key outside `d7`/`d30`/`d90` is absent from the collapsed header the delta makes a MUST. The include-list-vs-key-driven lesson from slice 2 was applied to `RainfallMetricList` and not to this surface. Unreachable today; the value is reachable one click in. |
+
+### Judgment Day fix round 1 — what shipped
+
+Strict TDD on UXJA2-001: two tests written FIRST and observed **RED** (1 failed / 34 passed
+in `RainfallAnswerCard.test.tsx`), then **GREEN** (36/36 in the file; 279 files / **3810**
+tests in the full suite). Both directions are pinned: a suppressed total states its state +
+reason, and a HEALTHY total adds NO such line — the assertion that fails an "always render
+it" fix, which would have put a permanent `Disponible` next to every good number.
+
+Gates: `npx vitest run` 279 files / 3810 tests all passing; `npm run typecheck` exit 0 on
+both tsconfigs; `npm run lint` **3** warnings — the same pre-existing three, none added.
+Bundle (D12 method, same machine/session): **910207** vs the slice-2 base `908422` →
+**+1785 against the 3072 budget** (PASS, 1287 B of headroom). The pre-fix delta was +1750,
+so this fix costs **+35 B**: one predicate rename, one derived value and one dimmed line.
+Nothing was shaved to reach it.
+
+**Judgment Day verdict: 0 open findings. 1 CRITICAL confirmed + fixed in 1 fix round
+(budget: 2); 5 info rows recorded (3 assessed real, 2 theoretical), none blocking.**
