@@ -49,10 +49,16 @@ rows stay, the ficha's month-scoped lookup takes the newest). Exit 1 = credentia
 / extent resolution failed and NOTHING was written. Exit 3 = the batch rolled back.
 
 After a successful run, verify one edge parcel in the ficha (LT B should report
-real millimetres, not `sin_cobertura`), then RETIRE the stop-gap in
-`ficha_service._perfil_precip` — the `treat_zero_as_nodata=True` call — which
-treats `0.0` as no-data for precipitation only while the baked rasters carry the
-clip's zeros.
+real millimetres, not `sin_cobertura`).
+
+**DONE 2026-08-12.** The 13 rasters were regenerated and verified in production
+(LT B went `0.0` → 926.26 mm), and the stop-gap in
+`ficha_service._perfil_precip` — the `treat_zero_as_nodata=True` call — was
+retired together with the `treat_zero_as_nodata` parameter of
+`composites.extract_zonal_profile`. Absence is now read from the nodata value
+alone; a `0.0` pixel counts as a real measurement. Re-running this job on rasters
+baked by the pre-fix pipeline is therefore no longer survivable — if the extent
+or the normals period ever changes, run it with the CURRENT pipeline only.
 
 ## Why no `--force`
 

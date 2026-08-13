@@ -998,28 +998,17 @@ def _perfil_precip(ruta: str, geom4326: dict[str, Any], area_m2: float) -> dict[
     there are no bins) and ``K = 0`` (never low-confidence). An unreadable raster
     is 503 ``raster_ilegible`` exactly as in ``_raster_dataset``.
 
-    ``treat_zero_as_nodata=True`` — TECHNICAL DEBT, and the reason it is a
-    per-call flag rather than a change to the primitive. The baked rasters carry
-    FAKE zeros: the GEE export ``.clip``s each normal to the zona asset, and Earth
-    Engine serialises the masked pixels as ``0.0`` with NO nodata tag, which the
-    ETL warp then promotes to a measurement (it stamps ``dst_nodata`` but never
-    passes ``src_nodata``). A parcel on the eastern edge of the extent therefore
-    averaged real millimetres together with zeros and reported ``cobertura:
-    total`` while doing it. Excluding the zeros lets the HONEST paths that already
-    exist take over: a partly-fake zone reads ``parcial``, a wholly-fake one reads
-    ``sin_cobertura``.
-
-    The convention is valid ONLY while the baked rasters carry the clip's zeros:
-    a real monthly normal of 0.00 mm is impossible on this pampa (the driest
-    months, June/July, sit around 15 mm), so nothing measurable is being
-    discarded here. It does NOT travel to other deployments — an arid extent
-    could have genuine 0.0 normals. RETIRE IT once the 13 rasters are regenerated
-    with the corrected ETL (unbuffered-bbox export + ``unmask(-9999)`` +
-    ``src_nodata``), which is the real fix.
-
-    It stays scoped to precipitation on purpose: ``flood_risk`` /
-    ``drainage_need`` share this primitive and a 0 there is a legitimate class,
-    not an artefact.
+    No dataset-specific handling of ``0.0`` is left here. The
+    ``treat_zero_as_nodata=True`` stop-gap this call once carried was a palliative
+    for the OLD baked rasters: the GEE export ``.clip``ped each normal to the zona
+    asset, Earth Engine serialised the masked pixels as ``0.0`` with NO nodata
+    tag, and the ETL warp promoted them to measurements (it stamped ``dst_nodata``
+    but never passed ``src_nodata``), so an edge parcel averaged real millimetres
+    together with fake zeros under ``cobertura: total``. The export and the warp
+    were fixed (no clip + ``unmask(-9999)`` + ``src_nodata``) and the 13 rasters
+    regenerated and verified in production, so absence now travels as the nodata
+    value and a ``0.0`` pixel is a real millimetre reading that must count —
+    exactly as it always did for ``flood_risk`` / ``drainage_need``.
     """
     try:
         return extract_zonal_profile(
@@ -1029,7 +1018,6 @@ def _perfil_precip(ruta: str, geom4326: dict[str, Any], area_m2: float) -> dict[
             breaks=None,
             geom_area_m2=area_m2,
             low_confidence_pixel_ratio=_PRECIP_K,
-            treat_zero_as_nodata=True,
         )
     except ficha_errors.FichaError:
         raise
