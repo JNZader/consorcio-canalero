@@ -888,7 +888,13 @@ describe('RainfallDetailPanel — answer-first hierarchy', () => {
     renderPanel();
 
     const card = await screen.findByTestId('rainfall-answer-card');
-    const chart = screen.getByTestId('rainfall-accumulation');
+    // The chart is gated on a SECOND query (`fetchRainfallSeries`): until it
+    // resolves the block renders `rainfall-accumulation-loading`, a different
+    // testid. Awaiting the card only proves the ANALYSIS query landed, so a
+    // synchronous `getByTestId` here is a race — it passes whenever the two
+    // mocked promises happen to flush in the same tick and fails on a loaded
+    // runner. Await the element that has its own async dependency.
+    const chart = await screen.findByTestId('rainfall-accumulation');
     const antecedents = screen.getByTestId('rainfall-antecedents');
     const technical = screen.getByTestId('rainfall-technical');
 
@@ -936,7 +942,9 @@ describe('RainfallDetailPanel — answer-first hierarchy', () => {
       'aria-expanded',
       'false'
     );
-    expect(screen.getByTestId('rainfall-accumulation')).toBeInTheDocument();
+    // Same second-query dependency as (a): await it rather than assume the
+    // series mock resolved in the same tick as the analysis mock.
+    expect(await screen.findByTestId('rainfall-accumulation')).toBeInTheDocument();
     expect(screen.getByTestId('rainfall-annual-text')).toBeInTheDocument();
   });
 
