@@ -49,6 +49,7 @@ import {
   wetnessFromPercentile,
   wetnessLabel,
 } from './rainfallFormat';
+import styles from './RainfallAnswerCard.module.css';
 
 export interface RainfallAnswerCardProps {
   readonly snapshot: RainfallAnalysisSnapshot;
@@ -99,9 +100,11 @@ function readableMetric(metric: RainfallMetric | undefined): RainfallMetric | un
 function AnnualText({
   snapshot,
   freshness,
+  className,
 }: {
   readonly snapshot: RainfallAnalysisSnapshot;
   readonly freshness: RainfallFreshness;
+  readonly className?: string;
 }) {
   const selected = snapshot.annual?.selected;
   const normal = snapshot.annual?.normal;
@@ -121,7 +124,7 @@ function AnnualText({
   }
   if (percentile) parts.push(percentilePhrase(percentile, snapshot.baseline));
   return (
-    <Text size="sm" fw={600} data-testid="rainfall-annual-text">
+    <Text className={className} size="sm" fw={600} data-testid="rainfall-annual-text">
       {parts.join(' · ')}
     </Text>
   );
@@ -131,6 +134,7 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
   const percentile = snapshot.annual?.percentile;
   const readable = readableMetric(percentile);
   const selected = snapshot.annual?.selected;
+  const normal = snapshot.annual?.normal;
   const wetness = wetnessFromPercentile(percentile);
   const gloss = percentileGloss(percentile);
   // The evidence footer is a CLOSED set: cut date (inside the accumulation
@@ -139,6 +143,19 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
   // DEGRADED coverage already surfaces through the state machinery that exists
   // for it. Exception, not decoration.
   const source = shortSource(selected ?? snapshot.annual?.normal ?? percentile);
+  const compactCut =
+    freshness.evidenceDay !== null
+      ? `Acumulado al ${freshness.evidenceDay}`
+      : `Acumulado parcial ${snapshot.year}`;
+  const compactContext = [
+    snapshot.regional_estimate
+      ? `Estimación regional: ${scopeSentence(snapshot.scope)}`
+      : `Ámbito: ${RAINFALL_SCOPE_LABELS[snapshot.scope.kind]}`,
+    `comparación hasta el ${snapshot.comparison_end}`,
+    source,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
 
   // The headline is the ANSWER: the ranking when it may be read, the year's
   // own total when it may not. Nothing at all when the analysis answers
@@ -170,10 +187,40 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
   ].filter((part): part is string => part !== null);
 
   return (
-    <Stack gap={4} data-testid="rainfall-answer-card">
+    <Stack className={styles.answerCard} gap={4} data-testid="rainfall-answer-card">
       {headline !== null && (
-        <Text size="xl" fw={700} lh={1.1} data-testid="rainfall-headline">
+        <Text
+          className={styles.mobileEquivalent}
+          size="xl"
+          fw={700}
+          lh={1.1}
+          data-testid="rainfall-headline"
+        >
           {headline}
+        </Text>
+      )}
+
+      {headline !== null && (
+        <Text
+          className={styles.compactHeadline}
+          size="xl"
+          fw={700}
+          lh={1.1}
+          aria-hidden="true"
+          data-testid="rainfall-compact-headline"
+        >
+          {headline}
+          {wetness !== null && readable !== undefined && (
+            <Text
+              component="span"
+              size="sm"
+              fw={600}
+              c={wetnessColor(wetness)}
+              data-testid="rainfall-compact-wetness"
+            >
+              {` · Año ${wetnessLabel(wetness)}`}
+            </Text>
+          )}
         </Text>
       )}
 
@@ -182,7 +229,12 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
         // sentence — adjective, percentile and baseline — is always rendered,
         // so greyscale, colour-blindness and a screen reader all still deliver
         // the whole fact.
-        <Text size="sm" c={wetnessColor(wetness)} data-testid="rainfall-wetness">
+        <Text
+          className={styles.mobileEquivalent}
+          size="sm"
+          c={wetnessColor(wetness)}
+          data-testid="rainfall-wetness"
+        >
           {`Año ${wetnessLabel(wetness)} · categoría derivada del percentil ${Math.round(
             readable.value ?? 0
           )} de ${snapshot.baseline}`}
@@ -192,7 +244,12 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
       {/* The rank, in words a reader can check. Same ROUNDED value as the
           headline — one fact, one number, on every always-visible surface. */}
       {gloss !== null && (
-        <Text size="xs" c="dimmed" data-testid="rainfall-percentile-gloss">
+        <Text
+          className={styles.mobileEquivalent}
+          size="xs"
+          c="dimmed"
+          data-testid="rainfall-percentile-gloss"
+        >
           {gloss}
         </Text>
       )}
@@ -209,7 +266,32 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
         </Text>
       )}
 
-      <AnnualText snapshot={snapshot} freshness={freshness} />
+      <AnnualText
+        className={styles.mobileEquivalent}
+        snapshot={snapshot}
+        freshness={freshness}
+      />
+
+      {(selected !== undefined || normal !== undefined) && (
+        <dl
+          className={styles.compactFacts}
+          aria-hidden="true"
+          data-testid="rainfall-answer-compact"
+        >
+          {selected !== undefined && (
+            <div className={styles.compactFact}>
+              <dt>{compactCut}</dt>
+              <dd>{formatMetricValue(selected)}</dd>
+            </div>
+          )}
+          {normal !== undefined && (
+            <div className={styles.compactFact}>
+              <dt>{`Normal ${snapshot.baseline} · mismo período`}</dt>
+              <dd>{formatMetricValue(normal)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       {/* The freshness of the STORED ANALYSIS, named as such. The chart below
           states the freshness of the SERIES it drew — a different object, and
@@ -230,7 +312,7 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
       {/* R1: this analysis is a ZONE or BASIN estimate. The public monthly
           normal beside it is a parcel clip, and the two must never be readable
           as the same pipeline. */}
-      <Text size="xs" c="dimmed">
+      <Text className={styles.mobileEquivalent} size="xs" c="dimmed">
         {scopeParts.join(' · ')}
       </Text>
 
@@ -238,13 +320,28 @@ export function RainfallAnswerCard({ snapshot, freshness }: RainfallAnswerCardPr
           The badge alone names a property of the number and leaves the reader
           to guess which region produced it; this names it. */}
       {snapshot.regional_estimate && (
-        <Text size="xs" c="dimmed">
+        <Text className={styles.mobileEquivalent} size="xs" c="dimmed">
           {`Estimación para ${scopeSentence(snapshot.scope)}, que contiene esta parcela.`}
         </Text>
       )}
 
+      <Text
+        className={`${styles.compactOnly} ${styles.compactContext}`}
+        size="xs"
+        c="dimmed"
+        aria-hidden="true"
+        data-testid="rainfall-compact-context"
+      >
+        {compactContext}
+      </Text>
+
       {source !== null && (
-        <Text size="xs" c="dimmed" data-testid="rainfall-source">
+        <Text
+          className={styles.mobileEquivalent}
+          size="xs"
+          c="dimmed"
+          data-testid="rainfall-source"
+        >
           {`Fuente: ${source}`}
         </Text>
       )}

@@ -25,7 +25,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -284,6 +284,47 @@ describe('RainfallAnswerCard — the headline is the answer', () => {
     expect(screen.getByTestId('rainfall-answer-card')).toBeInTheDocument();
     expect(screen.queryByTestId('rainfall-headline')).toBeNull();
     expect(screen.getByTestId('rainfall-answer-card').textContent).toContain('Ámbito: Zona');
+  });
+
+  it('offers a compact mobile fact list without removing the complete accessible equivalent', () => {
+    renderCard(snapshot());
+
+    const compact = screen.getByTestId('rainfall-answer-compact');
+    const compactQueries = within(compact);
+
+    expect(compact).toHaveAttribute('aria-hidden', 'true');
+    expect(compactQueries.getByText('Acumulado al 2025-12-30')).toBeInTheDocument();
+    expect(compactQueries.getByText('850.2 mm')).toBeInTheDocument();
+    expect(compactQueries.getByText('Normal 1991-2020 · mismo período')).toBeInTheDocument();
+    expect(compactQueries.getByText('1013.8 mm')).toBeInTheDocument();
+    expect(screen.getByTestId('rainfall-compact-wetness')).toHaveTextContent('Año seco');
+    expect(screen.getByTestId('rainfall-compact-context')).toHaveTextContent(
+      'Estimación regional: la zona Ne'
+    );
+    expect(screen.getByTestId('rainfall-compact-context')).toHaveTextContent(
+      'comparación hasta el 2025-12-31'
+    );
+    expect(screen.getByTestId('rainfall-compact-context')).toHaveTextContent('CHIRPS (satelital)');
+
+    // The compact copy is visual-only. Screen readers keep the complete prose
+    // equivalent, including the ranking and same-period normal context.
+    expect(screen.getByTestId('rainfall-annual-text')).toHaveTextContent(
+      'Percentil 27 de 1991-2020'
+    );
+    expect(screen.getByTestId('rainfall-wetness')).toHaveTextContent(
+      'categoría derivada del percentil 27 de 1991-2020'
+    );
+  });
+
+  it('does not fabricate compact value rows for metrics the snapshot did not serve', () => {
+    renderCard(
+      snapshot({
+        annual: { percentile: metric({ metric: 'percentile', value: 72, unit: 'percentil' }) },
+      })
+    );
+
+    expect(screen.queryByTestId('rainfall-answer-compact')).toBeNull();
+    expect(screen.getByTestId('rainfall-answer-card').textContent).not.toContain('—');
   });
 });
 

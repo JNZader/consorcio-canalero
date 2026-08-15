@@ -353,7 +353,11 @@ describe("map panels — mobile bottom sheet", () => {
 // nueva seleccion vuelve al MISMO initialStage, no a "peek". El shell se monta
 // directo (modo sheet): el consumidor que pasa "medio" es la ficha.
 describe("initialStage", () => {
-	const shell = (extra: { initialStage?: "peek" | "medio" | "alto"; resetKey?: string }) => (
+	const shell = (extra: {
+		initialStage?: "peek" | "medio" | "alto";
+		resetKey?: string;
+		scrollResetKey?: string;
+	}) => (
 		<MantineProvider env="test">
 			<MapPanelShell
 				sheet
@@ -398,5 +402,21 @@ describe("initialStage", () => {
 		const body = screen.getByTestId("shell-under-test-sheet-body");
 		expect(body).toBeInTheDocument();
 		expect(body).toContainElement(screen.getByText("contenido"));
+	});
+
+	it('returns the scrolling body to the top when the selected dataset changes', () => {
+		const { rerender } = render(
+			shell({ initialStage: "medio", scrollResetKey: "suelos" }),
+		);
+		const body = screen.getByTestId("shell-under-test-sheet-body");
+		body.scrollTop = 240;
+
+		rerender(shell({ initialStage: "medio", scrollResetKey: "precipitacion" }));
+
+		expect(body.scrollTop).toBe(0);
+		expect(screen.getByTestId("shell-under-test")).toHaveAttribute(
+			"data-stage",
+			"medio",
+		);
 	});
 });
