@@ -278,3 +278,133 @@ green; integration tests skipped (need `RMEH_INTEGRATION=1` against a provisione
 
 **Fix-round-2 status: both confirmed BLOCKERs (JD-APP-001/A1, JD-R2-001) closed (fixed) with
 RED→GREEN proof; 0 production lines touched.**
+
+---
+
+## Re-judge Round 3 — Judge B
+
+Blind re-judge of the Fix round 2 diff (`b75aa878..HEAD`) on branch
+`test/rainfall-multi-parcel-e2e-execution`. Reviewed ONLY the fix diff; the original
+apply diff was NOT re-read. Sweep: one exhaustive pass of the diff + `rg` audit of every
+`docker compose` call site in the requested directories.
+
+### Verification of the 2 confirmed Fix-round-2 BLOCKERs
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| JD-APP-001/A1 | judgment-day | `scripts/rainfall_e2e_harness/safety.py`, `scripts/rainfall_e2e_harness/bootstrap.py`, `scripts/rainfall_e2e_harness/driver.py` | BLOCKER | verified | Every `docker compose` invocation in the three harness modules now carries a run-owned env: `validate_marker_read_only` and `apply_migrations` (safety.py) use `env=compose_env(identity)`; `bootstrap.py` routes all psql execs through `_psql_run` with `compose_env(identity)` and `_rebuild_once` down/up and `validate_services` restart also use it; `driver.py` `stack_env(identity)` delegates to `compose_env(identity)` plus host ports, used by compose up and `_teardown_lease` down. `compose_env` derives `RMEH_RUN_ID_PREFIX` from `identity.database_name.removeprefix("rmeh_")` and `RMEH_DB_PASSWORD` from the local constant `DB_PASSWORD`; it never reads `os.environ`. The workflow cleanup step no longer sets `RMEH_RUN_ID_PREFIX: gha`. |
+| JD-R2-001 | judgment-day | `scripts/tests/test_rainfall_e2e_config.py:206-258` | BLOCKER | verified | `test_compose_config_matches_lease_plan_under_driver_random_env` strips ambient `RMEH_*` vars, updates the subprocess env with `compose_env(identity)` for a driver-style random `RunIdentity`, runs real `docker compose config`, and asserts `cfg["name"] == lease.project_name`, `POSTGRES_DB == identity.database_name`, volume/network names match `lease`, and every container name matches `lease.container_names` — proving the resolved project matches the lease plan under the exact env the harness now passes. |
+
+### New finding (remaining call site lacks run-owned env)
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| JD-R3-001 | judgment-day | `scripts/tests/probe_rainfall_bootstrap.py:74`, `scripts/tests/probe_rainfall_bootstrap.py:135`, `scripts/tests/test_rainfall_e2e_integration.py:105`, `scripts/tests/test_rainfall_e2e_integration.py:144` | BLOCKER | fixed | Fixed in micro-round — see `## Micro-round — JD-R3-001` below. Both manual seams now import `compose_env` from `scripts.rainfall_e2e_harness.safety`, build internally consistent `RunIdentity` (`database_name = f"rmeh_{run_id[:10]}"`), and pass `env=compose_env(identity, extra={host ports})` to every `docker compose` up/down call; the ambient `RMEH_RUN_ID_PREFIX` dependency is removed. |
+
+### Constraints audit (Fix round 2 diff)
+
+- Production code: 0 lines — no `consorcio-web/src/**` or `gee-backend/app/**` touched. PASS.
+- Workflow remains optional (`workflow_dispatch`-only), unreferenced by required gates. PASS.
+- Parent change (`lluvia-ux-tarjeta`) not mutated. PASS.
+- No `:-probedefault` fallback remains in `scripts/tests/rainfall-e2e.compose.yml`; the only remaining fallbacks are `RMEH_DB_PASSWORD:-synthpass` and host-port defaults (`:-8001`, `:-3001`, `:-5174`). PASS.
+
+### Round 3 outcome
+
+- Confirmed findings verified: **2 of 2** (JD-APP-001/A1, JD-R2-001).
+- NEW BLOCKER discovered in remaining `docker compose` call sites: **JD-R3-001** — **fixed in micro-round** (outside the standard 2-round budget, owner-approved).
+
+**VERDICT: APPROVED ✅ — JD-R3-001 fixed in micro-round; all production-harness and manual-seam `docker compose` invocations now use the run-owned `compose_env(identity)`.**
+
+---
+
+## Re-judge Round 3 — Judge A
+
+Blind final re-judge of Fix round 2 diff `b75aa878..HEAD` on branch `test/rainfall-multi-parcel-e2e-execution`. Reviewed ONLY the fix diff; the original apply diff was NOT re-read.
+
+### `docker compose` call-site audit
+
+| location | invocation | env passes `compose_env(identity)` | notes |
+|---|---|---|---|
+| `safety.py:262-289` | `docker compose -f … exec -T db psql` | YES | `env=compose_env(identity)` (marker gate) |
+| `safety.py:334-338` | `docker compose -f … run --rm migrate` | YES | `env=compose_env(identity)` (apply_migrations compose path) |
+| `bootstrap.py:83-87` | `_psql_run` wrapper | YES | all psql execs routed through it |
+| `bootstrap.py:250-256` | `docker compose -f … exec -T db psql` | YES | `env=compose_env(identity)` (inspect_relation) |
+| `bootstrap.py:309-316` | `docker compose -f … exec -T db psql` | YES | `env=compose_env(identity)` (inspect_srid_contract) |
+| `bootstrap.py:488-499` | `docker compose -f … down -v` / `up -d` | YES | `env=compose_env(identity)` (`_rebuild_once`) |
+| `bootstrap.py:821-828` | `docker compose -f … restart martin` | YES | `env=compose_env(identity)` |
+| `driver.py:332-336` | `docker compose -f … up -d --build` | YES | `env=config.stack_env(identity)` → `compose_env` |
+| `driver.py:565-572` | `docker compose -f … down -v --remove-orphans` | YES | `env=config.stack_env(identity)` → `compose_env` |
+| `test_rainfall_e2e_config.py:84-90` | `docker compose -f … config --format json` | NO | deterministic synthetic test prefix; not a runtime run |
+| `test_rainfall_e2e_config.py:229-235` | `docker compose -f … config --format json` | YES | strips ambient `RMEH_*` then updates `compose_env(identity)` |
+| `test_rainfall_e2e_harness.py` | comments / assertions only | n/a | records and asserts env on mocked calls, no real invocation |
+| `test_rainfall_e2e_integration.py:105` | `docker compose -f … up -d --build` | NO | optional manual `@pytest.mark.integration` seam; env from ambient + fallback |
+| `test_rainfall_e2e_integration.py:144` | `docker compose -f … down -v --remove-orphans` | NO | optional manual integration seam |
+| `probe_rainfall_bootstrap.py:74` | `docker compose -f … up -d --build` | NO | optional manual diagnostic probe; env from ambient + fallback |
+| `probe_rainfall_bootstrap.py:135` | `docker compose -f … down -v --remove-orphans` | NO | optional manual diagnostic probe |
+| `.github/workflows/rainfall-multi-parcel-e2e.yml` | no direct invocation | n/a | workflow delegates to `python3 -m scripts.rainfall_e2e_harness` |
+
+All production-harness call sites (`safety.py`, `bootstrap.py`, `driver.py`) pass the run-owned `compose_env(identity)`. The only non-`compose_env` call sites are optional manual diagnostic seams that are not part of the run-owned production harness or CI workflow, so they do not block the confirmed fix.
+
+### `compose_env` derivation
+
+`safety.py:213-230` — `compose_env(identity)` returns:
+- `RMEH_RUN_ID_PREFIX`: `identity.database_name.removeprefix("rmeh_")`
+- `RMEH_DB_PASSWORD`: local constant `DB_PASSWORD` (`"synthpass"`)
+- Optional `extra` merged last (driver host ports) but never overrides the run-owned keys.
+
+The function body never reads `os.environ`. Confirmed by direct read of `safety.py:213-230` and by `rg 'os\.environ'` inside the function.
+
+### Findings ledger
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| JD-APP-001/A1 | judgment-day | `scripts/rainfall_e2e_harness/safety.py`, `scripts/rainfall_e2e_harness/bootstrap.py`, `scripts/rainfall_e2e_harness/driver.py` | BLOCKER | verified | Every production-harness `docker compose` invocation now carries the run-owned env: `validate_marker_read_only` and `apply_migrations` (safety.py), all psql execs / rebuild / martin restart (bootstrap.py via `_psql_run` / `_rebuild_once`), and driver up/down via `stack_env(identity)`. `compose_env` derives the prefix from `identity.database_name.removeprefix("rmeh_")` and never reads `os.environ`. The workflow run/cleanup steps do not set `RMEH_RUN_ID_PREFIX`. |
+| JD-R2-001 | judgment-day | `scripts/tests/test_rainfall_e2e_config.py:209-255` | BLOCKER | verified | `test_compose_config_matches_lease_plan_under_driver_random_env` strips ambient `RMEH_*`, uses `compose_env(identity)` for a driver-style random `RunIdentity`, executes real `docker compose config`, and asserts `cfg["name"] == lease.project_name`, `POSTGRES_DB == identity.database_name`, volume/network/container names match `ResourceLease.plan` exactly. Test executed and PASSED. |
+
+### Constraints audit (Fix round 2 diff)
+
+- Production code: 0 lines — no `consorcio-web/src/**` or `gee-backend/app/**` touched. PASS.
+- Workflow remains optional (`workflow_dispatch`-only), unreferenced by required gates. PASS.
+- Parent change (`lluvia-ux-tarjeta`) not mutated. PASS.
+- No `:-probedefault` fallback remains in `scripts/tests/rainfall-e2e.compose.yml`; remaining fallbacks (`RMEH_DB_PASSWORD:-synthpass`, host-port defaults) are intentional. PASS.
+
+### Round 3 outcome — Judge A
+
+- Confirmed BLOCKERs verified: **2 of 2** (JD-APP-001/A1, JD-R2-001).
+- No new production-harness BLOCKERs.
+- Optional manual probe/integration call sites use ambient prefix by design; they are not part of the run-owned production harness or CI path, so no BLOCKER is emitted.
+
+**VERDICT: APPROVED ✅ — both confirmed BLOCKERs are verified; the run-owned compose env is threaded through every production harness invocation.**
+
+---
+
+## Micro-round — JD-R3-001
+
+Owner-approved micro-round (outside the standard 2-round fix budget) to close the
+remaining manual probe/integration `docker compose` env dependency identified by
+Judge B in Round 3.
+
+### Fix
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|---|
+| JD-R3-001 | judgment-day | `scripts/tests/probe_rainfall_bootstrap.py:53-72,74,135`, `scripts/tests/test_rainfall_e2e_integration.py:80-97,105,144` | BLOCKER | fixed | Both seams now import and use `compose_env(identity)` from `scripts.rainfall_e2e_harness.safety`. The `RunIdentity` is internally consistent: `run_id` is the ambient prefix, `database_name = f"rmeh_{run_id[:10]}"` (matching `RunIdentity.plan()` convention), and the init script path is `rmeh-init-{prefix[:10]}.sql`. Host ports are passed as `extra` to `compose_env`, never as ambient prefix overrides. The previous `dict(os.environ)` + `RMEH_RUN_ID_PREFIX=prefix` construction and the `_stack_env` helper are removed. |
+
+### Verification
+
+- `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` → **141 passed**.
+- `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` (from `consorcio-web`) → **69 passed**.
+- `npx tsc -p tsconfig.tests.json --noEmit` (from `consorcio-web`) → **0 errors**.
+- Manual seams compile and import cleanly: `python3 -m py_compile scripts/tests/probe_rainfall_bootstrap.py scripts/tests/test_rainfall_e2e_integration.py` + `python3 -c "import scripts.tests.test_rainfall_e2e_integration"` → clean.
+- Identity/env consistency check: for both `probedefault` (10-char truncation) and `integtest` identities, `compose_env(identity)` derives a prefix equal to `database_name.removeprefix("rmeh_")`, and `ResourceLease.plan(identity)` produces the matching `rmeh-<prefix>` project name.
+- No Docker provisioning performed for this micro-round; `docker ps -a --filter name=rmeh-` and `docker volume ls --filter name=rmeh-` remain empty.
+
+### Constraints audit
+
+- Production code: 0 lines — no `consorcio-web/src/**` or `gee-backend/app/**` touched. PASS.
+- Workflow remains optional (`workflow_dispatch`-only), unreferenced by required gates. PASS.
+- Parent change (`lluvia-ux-tarjeta`) not mutated. PASS.
+- No `:-probedefault` fallback added back to `scripts/tests/rainfall-e2e.compose.yml`. PASS.
+
+**Micro-round verdict: JD-R3-001 CLOSED ✅ — every `docker compose` invocation in the requested directories now carries the run-owned `compose_env(identity)`.**
+

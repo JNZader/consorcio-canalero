@@ -282,3 +282,18 @@ clean**. Statuses flipped `open → fixed` for JD-APP-001/A1 and JD-R2-001 in
 `review-ledger.md` (both judges' tables + fix-round-2 section). JD-R2-002 (WARNING/info,
 `_rebuild_once` exit codes) reported back, not touched. 0 production lines, `version.json`
 untouched.
+
+## Micro-round — JD-R3-001 (owner-approved)
+
+Judgment Day Round 3 (Judge B) surfaced JD-R3-001: the manual probe
+`scripts/tests/probe_rainfall_bootstrap.py` and integration seam
+`scripts/tests/test_rainfall_e2e_integration.py` still built `docker compose` env from
+`dict(os.environ)` + ambient prefix. This micro-round closes that seam by:
+
+1. Importing `compose_env` from `scripts.rainfall_e2e_harness.safety`.
+2. Building internally consistent `RunIdentity` (`database_name = f"rmeh_{run_id[:10]}"`).
+3. Passing `compose_env(identity, extra={host ports})` to every `docker compose` up/down.
+4. Removing the `_stack_env` helper and the `dict(os.environ)` + ambient prefix pattern.
+
+Status: `review-ledger.md` updated with `## Micro-round — JD-R3-001`; row status
+`fixed`. Suites remain 141 pytest + 69 vitest + tsc clean. No production lines touched.

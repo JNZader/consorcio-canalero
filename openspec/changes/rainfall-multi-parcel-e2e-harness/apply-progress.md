@@ -735,3 +735,27 @@ tables) + a fix-round-2 summary section in `review-ledger.md`. JD-R2-002 (WARNIN
 `_rebuild_once` exit codes unchecked) was NOT in scope and was NOT touched — reported back
 to the orchestrator. 0 production lines (`consorcio-web/src/**`, `gee-backend/app/**`)
 touched; `version.json` untouched.
+
+## Micro-round — JD-R3-001 (owner-approved, outside standard 2-round budget)
+
+Fixed the two remaining manual real-stack `docker compose` seams to use the run-owned
+`compose_env(identity)` from `scripts.rainfall_e2e_harness.safety`:
+
+- `scripts/tests/probe_rainfall_bootstrap.py`: imported `compose_env`, made the
+  `RunIdentity` internally consistent (`database_name = f"rmeh_{run_id[:10]}"`),
+  aligned the init-script path to the truncated prefix, and replaced
+  `dict(os.environ)` + ambient prefix overrides with `compose_env(identity, extra={host ports})`
+  for both `up` and `down`.
+- `scripts/tests/test_rainfall_e2e_integration.py`: imported `compose_env`, made the
+  fixture identity consistent, removed `_stack_env`, and passed `compose_env(identity, extra={host ports})`
+  to the module-scoped provision/teardown.
+
+Verification:
+- `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` → **141 passed**.
+- `cd consorcio-web && npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` → **69 passed**.
+- `cd consorcio-web && npx tsc -p tsconfig.tests.json --noEmit` → **0 errors**.
+- Manual seams compile and import cleanly; identity/env parity verified for probe
+  (`probedefault` → prefix `probedefau`) and integration (`integtest`) styles.
+- Docker cleanup filters remain empty (no provisioning performed in this micro-round).
+
+0 production lines touched; workflow remains optional; parent change untouched.
