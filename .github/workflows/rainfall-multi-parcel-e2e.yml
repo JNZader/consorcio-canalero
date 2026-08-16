@@ -1,0 +1,93 @@
+name: Rainfall multi-parcel E2E harness (optional, manual)
+
+# OPTIONAL operator-invoked harness (RMEH-010-B/C, design §Optional Manual
+# GitHub Workflow). It is NOT a required check on any PR and is NOT part of the
+# production canary's read-only allowlist — both facts are pinned by
+# `test_rainfall_harness_workflow_stays_optional` in
+# `gee-backend/tests/test_ci_workflow_contracts.py`.
+#
+# DESIGN — every choice here exists to keep this optional harness isolated and
+# fail-closed without coupling it to the required CI graph:
+#
+#  * `workflow_dispatch` ONLY. No push/pull_request trigger: this provisions a
+#    stateful disposable Docker stack, so it is strictly operator-invoked. The
+#    required `Frontend`/`Backend`/`Deploy` gates never reference it, and the
+#    canary's exact three-spec read-only allowlist never includes it.
+#  * ONE global `concurrency` group with `cancel-in-progress: false`: dispatches
+#    SERIALIZE (they share the disposable stack's ports) and an older run's
+#    cleanup is never cancelled by a newer dispatch (RMEH-010-C/D).
+#  * `permissions: { contents: read }` and NO repository/environment secrets:
+#    all DB/auth values are generated synthetic run values by the runner
+#    (RMEH-010-B). There is nothing to authenticate with.
+#  * It runs the SAME Python runner used locally (`python -m
+#    scripts.rainfall_e2e_harness run`), so the hosted path shares the local
+#    fail-closed lifecycle (RMEH-010-A).
+#  * `if: always()` artifact upload with 14-day retention and
+#    `if-no-files-found: error`, because the runner creates `ownership.json`
+#    BEFORE provisioning — a cancelled/early-failed run still has evidence to
+#    retain (RMEH-010-D).
+#  * An explicit cleanup step calls the runner's idempotent `cleanup` command if
+#    the main process was externally killed before its trap completed (W10.3).
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  # Serialize dispatches and never cancel an older cleanup path. The harness
+  # stack is disposable but its host ports are shared, so two dispatches must
+  # not run at once.
+  group: rainfall-multi-parcel-e2e-harness
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    name: Rainfall multi-parcel E2E harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: consorcio-web/package-lock.json
+
+      - name: Install frontend dependencies (lockfile)
+        working-directory: consorcio-web
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      # Only chromium: the harness config is single-project chromium.
+      - name: Install Playwright chromium
+        working-directory: consorcio-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the fail-closed harness (same runner as local)
+        env:
+          CI: '1'
+          RMEH_RUN_ID_PREFIX: gha
+          RMEH_PLAYWRIGHT_JSON: ${{ github.workspace }}/.artifacts/rainfall-multi-parcel/playwright-results.json
+        run: python3 -m scripts.rainfall_e2e_harness run --evidence-dir "${{ github.workspace }}/.artifacts/rainfall-multi-parcel"
+
+      # Explicit idempotent cleanup: if the main process was killed before its
+      # trap completed (job timeout, runner recycle, SIGKILL), this still tears
+      # down the exact recorded leased resources by immutable identity.
+      - name: Clean up disposable stack (idempotent)
+        if: always()
+        run: python3 -m scripts.rainfall_e2e_harness cleanup --run-id gha
+
+      - name: Upload harness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rainfall-multi-parcel-e2e-evidence
+          path: .artifacts/rainfall-multi-parcel/
+          retention-days: 14
+          if-no-files-found: error

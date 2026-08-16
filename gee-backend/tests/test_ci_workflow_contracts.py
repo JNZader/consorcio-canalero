@@ -1808,3 +1808,55 @@ def test_stryker_aggregate_requires_exact_canonical_source_union(tmp_path: Path)
     )
     assert unexpected.returncode == 2
     assert f"unexpected source file paths: {unexpected_source}" in unexpected.stderr
+
+
+RAINFALL_HARNESS_WORKFLOW = ".github/workflows/rainfall-multi-parcel-e2e.yml"
+
+
+def test_rainfall_harness_workflow_stays_optional_and_unreferenced() -> None:
+    """RMEH-010-B / RMEH-014-A: the dedicated manual harness workflow must NOT
+    become a PR-required check and must NOT leak into the required CI gates or
+    the production canary.
+
+    A dedicated `workflow_dispatch`-only workflow is safer than extending the
+    required `Frontend`/`Backend`/`Deploy` gates (whose workflow contract
+    forbids E2E wiring) or the canary (a stateful fixture harness must not point
+    at production). This test pins that separation so the harness can never be
+    silently promoted into a gate.
+    """
+    harness = _without_comments(_read(RAINFALL_HARNESS_WORKFLOW))
+    header = harness.split("\njobs:", 1)[0]
+
+    # (a) workflow_dispatch ONLY — never push/pull_request/schedule, so it can
+    # never run as a required status check on a PR.
+    assert "workflow_dispatch:" in header
+    for forbidden_trigger in ("push:", "pull_request:", "schedule:"):
+        assert forbidden_trigger not in header, forbidden_trigger
+
+    # (b) NOT referenced by any required-gate workflow or the canary.
+    for path in (
+        ".github/workflows/frontend.yml",
+        ".github/workflows/backend.yml",
+        ".github/workflows/deploy.yml",
+        ".github/workflows/e2e-canary.yml",
+    ):
+        text = _read(path)
+        assert RAINFALL_HARNESS_WORKFLOW not in text, path
+
+    # (c) NOT in the production canary three-spec read-only allowlist: the canary
+    # script runs exactly CANARY_READ_ONLY_SPECS, and the harness spec is not one.
+    package = json.loads(_read("consorcio-web/package.json"))
+    canary_script = package["scripts"]["test:e2e:canary"]
+    assert canary_script.startswith("playwright test -c tests/e2e/playwright.config.ts ")
+    assert canary_script.split()[4:] == list(CANARY_READ_ONLY_SPECS)
+
+    # (d) The harness itself is isolated: no secrets, serialized concurrency
+    # (cancel-in-progress:false), 45-min job timeout, artifact upload with
+    # 14-day retention and if-no-files-found:error (RMEH-010-D, design §Workflow).
+    assert "permissions:" in harness
+    assert "contents: read" in harness
+    assert "cancel-in-progress: false" in harness
+    assert "timeout-minutes: 45" in harness
+    assert "retention-days: 14" in harness
+    assert "if-no-files-found: error" in harness
+    assert "if: always()" in harness
