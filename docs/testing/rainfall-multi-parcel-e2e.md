@@ -41,9 +41,14 @@ That single command does the whole owned lifecycle:
 1. generates a fresh run identity + lease (never caller-supplied);
 2. refuses any resource collision and any non-loopback port binding;
 3. provisions the disposable compose stack (init script carves the ownership
-   marker on the brand-new volume);
+   marker on the brand-new volume); the compose project prefix derives from the
+   generated identity's `run_id[:10]` and is passed explicitly to every compose
+   command — no env default, so `up`, the martin restart, and `down` always
+   target the SAME project;
 4. waits for backend liveness, then the read-only marker gate (the ONLY
-   `OwnedBoundary` constructor — no mutation before it);
+   `OwnedBoundary` constructor — no mutation before it); the run/lease identity
+   is recorded (`ownership.json`) BEFORE provisioning so a cancelled run can
+   still be cleaned;
 5. bootstraps migrations + geometry/soil seed + view provenance, validates
    Martin/backend/frontend services, and the Python parcel preflight;
 6. runs the Playwright collection gate (exactly 11 tests) BEFORE any browser;
@@ -115,6 +120,9 @@ cancellation still leaves an explanation.
   `cleanup` tears down exactly the recorded leased resources by immutable
   identity and is safe to re-run after an externally killed main process (the
   GitHub workflow calls it in an `if: always()` step for the same reason).
+  `cleanup` first reads the run's `ownership.json` (recorded before
+  provisioning) so it targets the exact project the run created; `--run-id` is
+  only a fallback when no ownership record exists.
 
 ## Cleanup contract
 

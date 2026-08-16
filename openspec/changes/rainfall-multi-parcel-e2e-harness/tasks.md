@@ -251,3 +251,17 @@ Rolling back this capability removes ONLY: the 10 created files + the 3 modified
 - [inferred] The forecast's aggregate upper bound (1,800) equals the design's continuation-gate ceiling exactly; naive per-file high-water sums reach ~1,802 (rounding), so the orchestrator's STOP trigger ("exceeds 1,800 OR any production path required") does NOT fire, but ceiling-proximity plus ask-always forces "Decision needed before apply: Yes" and a hard ≤1,800 / 0-production implementation cap. from=E3
 - [assumed] Acceptance commands (`pytest`, `vitest`, `playwright --list`, `docker compose config`, `tsc --noEmit`) are SPECIFIED for the apply phase, not executed in this tasks-only phase (session contract: no build/test/runtime). unverified=apply phase must run each acceptance command in the correct cwd and observe the stated outcome before closing each task.
 <!-- evidence:end -->
+## Judgment Day fix round (post-apply, confirmed issues only)
+
+The apply-phase Judgment Day (Judge A + Judge B, blind) REJECTED the W4–W11 diff with
+2/3 BLOCKER + 3 CRITICAL findings. The fix agent applied the six CONFIRMED issues
+TDD-first (RED test pinned each bug, then GREEN). WARNING (info) findings were left
+untouched and reported to the orchestrator. Statuses for JD-APP-001/A1..005/A5 +
+JD-APP-A6 flipped `open → fixed` in `review-ledger.md`; per-fix evidence table and full
+suite results (131 pytest + 69 vitest + tsc clean) are in `review-ledger.md` → "Fix
+round" and `apply-progress.md` → "Judgment Day fix round".
+
+Not fixed (out of scope, reported back): JD-APP-006..009 / A7..A11 — classification
+reachability, cleanup accounting (RMEH-012-B/C), `_rebuild_once` env, zoom mismatch,
+A2 freshness runtime risk, and the real-stack negatives 5.2/5.7 + W9 runtime 11/0/0
+browser gate (integration-only, need `RMEH_INTEGRATION=1` against a provisioned stack).

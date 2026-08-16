@@ -666,3 +666,39 @@ a provisioned disposable stack (integration-only, not verifiable from pure unit)
 - Changed paths: workflow YAML, driver + `__main__.py`, test file additions,
   contract test, runbook, tasks.md + apply-progress.md. All test/harness/config/docs.
 
+
+---
+
+## Judgment Day fix round (surgical, confirmed issues only)
+
+After Judgment Day (Judge A + Judge B blind review) REJECTED the apply diff, the fix
+agent applied the six CONFIRMED issues with RED→GREEN discipline. WARNING (info)
+findings were NOT touched (reported back to the orchestrator). Ledger row statuses
+flipped `open → fixed`; full details in `review-ledger.md` → "Fix round".
+
+| id | fix |
+|---|---|
+| JD-APP-001/A1 (BLOCKER) | Prefix now derived from the generated identity: `stack_env(run_id_prefix)` explicit param (compose up, teardown, martin restart); compose `:-probedefault` fallbacks removed; `ownership.json` persisted BEFORE provisioning; `--evidence-dir` accepted after the subcommand (workflow command order previously failed with exit 2); run step no longer sets a misleading `RMEH_RUN_ID_PREFIX`. |
+| JD-APP-002/A2 (BLOCKER) | Spec writes `manifest.json` FILE (`{ selection_records: [...] }`) next to the reporter JSON via new pure `writeHarnessManifest` helper (vitest-tested); attach also wrapped in dict shape. |
+| JD-APP-003/A3 (BLOCKER) | `classify_run_failure` all-green → `PASSED` (complete-pass/handoff branch reachable); both pinning tests updated. |
+| JD-APP-004/A4 (CRITICAL) | `_parcel_contracts` reads top-level `nomenclature`/`displayIdentity`; real-fixture regression guard added. |
+| JD-APP-005/A5 (CRITICAL) | `run_cleanup` prefers recorded ownership identity; cleanup step gets `--evidence-dir` + fallback prefix env. |
+| JD-APP-A6 (CRITICAL) | `validate_services` raises on dead/500 frontend `/mapa`; martin restart env pinned to run-owned prefix; driver refuses to launch without a green service report. |
+
+### Fix-round GREEN evidence
+
+| | command | result |
+|---|---|---|
+| Harness unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **131 passed** (123 prior + 8 new RED→GREEN) |
+| TS helper unit | `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **69 passed** (67 prior + 2 new) |
+| TS typecheck | `npx tsc -p tsconfig.tests.json --noEmit` | clean |
+| Workflow contract | `python3 -m pytest gee-backend/tests/test_ci_workflow_contracts.py -q -k rainfall` | 1 passed |
+| Integration | `test_rainfall_e2e_integration.py` | skipped (needs `RMEH_INTEGRATION=1` + real stack) |
+
+### Still open (NOT in scope of this fix round)
+
+- Real-stack negatives (5.2/5.7) + W9 runtime 11/0/0 browser gate — integration-only.
+- WARNING (info) findings JD-APP-006..009 / A7..A11 — reported back to the
+  orchestrator, deliberately not fixed here (JD-APP-009/A9 `_rebuild_once` env,
+  cleanup accounting RMEH-012-B/C, classification reachability, zoom mismatch,
+  A2 freshness gate runtime risk).
