@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO))
 from scripts.rainfall_e2e_harness.safety import (  # noqa: E402
     RunIdentity,
     RealCommandRunner,
+    compose_env,
     write_init_script,
     validate_marker_read_only,
 )
@@ -49,24 +50,25 @@ def main() -> int:
     martin_port = os.environ.get("RMEH_MARTIN_HOST_PORT", "3002")
     frontend_port = os.environ.get("RMEH_FRONTEND_HOST_PORT", "5175")
 
-    # Identity must match POSTGRES_DB = rmeh_<prefix> and the marker row.
+    # Identity must match POSTGRES_DB = rmeh_<prefix[:10]> and the marker row.
     identity = RunIdentity(
         run_id=prefix,
         marker_nonce="probenonce" * 4,
-        database_name=f"rmeh_{prefix}",
+        database_name=f"rmeh_{prefix[:10]}",
         evidence_dir=None,
     )
-    init = REPO / "scripts" / "tests" / f"rmeh-init-{prefix}.sql"
+    init = REPO / "scripts" / "tests" / f"rmeh-init-{prefix[:10]}.sql"
     write_init_script(init, identity)
     print(f"[probe] wrote {init} (mode {oct(init.stat().st_mode & 0o777)})")
 
     runner = RealCommandRunner()
-    env = dict(os.environ)
-    env.update(
-        RMEH_RUN_ID_PREFIX=prefix,
-        RMEH_BACKEND_HOST_PORT=backend_port,
-        RMEH_MARTIN_HOST_PORT=martin_port,
-        RMEH_FRONTEND_HOST_PORT=frontend_port,
+    env = compose_env(
+        identity,
+        extra={
+            "RMEH_BACKEND_HOST_PORT": backend_port,
+            "RMEH_MARTIN_HOST_PORT": martin_port,
+            "RMEH_FRONTEND_HOST_PORT": frontend_port,
+        },
     )
 
     # 1. Provision the stack.

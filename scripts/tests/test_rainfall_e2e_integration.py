@@ -30,6 +30,7 @@ from scripts.rainfall_e2e_harness.safety import (
     CommandKind,
     RealCommandRunner,
     RunIdentity,
+    compose_env,
     validate_marker_read_only,
     write_init_script,
 )
@@ -70,36 +71,30 @@ def _origins() -> dict:
     }
 
 
-def _stack_env(prefix: str) -> dict:
-    """Env for compose: container/db prefix + host ports (compose defaults or
-    explicit overrides)."""
-    env = dict(os.environ)
-    env.update(
-        RMEH_RUN_ID_PREFIX=prefix,
-        RMEH_BACKEND_HOST_PORT=os.environ.get("RMEH_BACKEND_HOST_PORT", "8001"),
-        RMEH_MARTIN_HOST_PORT=os.environ.get("RMEH_MARTIN_HOST_PORT", "3001"),
-        RMEH_FRONTEND_HOST_PORT=os.environ.get("RMEH_FRONTEND_HOST_PORT", "5174"),
-    )
-    return env
-
-
 @pytest.fixture(scope="module")
 def provisioned_identity():
     """Provision the disposable stack once per module; teardown the exact
     run-owned resources afterwards."""
     runner = RealCommandRunner()
     prefix = _run_prefix()
-    # Identity must match POSTGRES_DB = rmeh_<prefix> and the marker row that
-    # the init script installs (a driver or this fixture runs `up -d` once).
+    # Identity must match POSTGRES_DB = rmeh_<prefix[:10]> and the marker row
+    # that the init script installs (a driver or this fixture runs `up -d` once).
     identity = RunIdentity(
         run_id=prefix,
         marker_nonce="integtestnonce" * 4,
-        database_name=f"rmeh_{prefix}",
+        database_name=f"rmeh_{prefix[:10]}",
         evidence_dir=REPO_ROOT / ".artifacts" / "rainfall-multi-parcel" / prefix,
     )
-    init = REPO_ROOT / "scripts" / "tests" / f"rmeh-init-{prefix}.sql"
+    init = REPO_ROOT / "scripts" / "tests" / f"rmeh-init-{prefix[:10]}.sql"
     write_init_script(init, identity)
-    env = _stack_env(prefix)
+    env = compose_env(
+        identity,
+        extra={
+            "RMEH_BACKEND_HOST_PORT": os.environ.get("RMEH_BACKEND_HOST_PORT", "8001"),
+            "RMEH_MARTIN_HOST_PORT": os.environ.get("RMEH_MARTIN_HOST_PORT", "3001"),
+            "RMEH_FRONTEND_HOST_PORT": os.environ.get("RMEH_FRONTEND_HOST_PORT", "5174"),
+        },
+    )
 
     up = runner.run(
         ["docker", "compose", "-f", COMPOSE_FILE, "up", "-d", "--build"],
