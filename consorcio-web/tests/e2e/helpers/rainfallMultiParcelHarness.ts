@@ -1,12 +1,13 @@
 /**
  * rainfallMultiParcelHarness.ts — pure helper for the rainfall multi-parcel
- * E2E harness (W2 of change `rainfall-multi-parcel-e2e-harness`).
+ * E2E harness (W2 + W6 of change `rainfall-multi-parcel-e2e-harness`).
  *
  * STRICTLY PURE: no Playwright, no `page`, no DOM side effects beyond the
  * `RectCss`/occlusion inputs the caller supplies. The Vitest layer (this file
  * + `tests/unit/rainfallMultiParcelHarness.test.ts`) pins the contracts; the
  * Playwright state-machine layer (W7/W8) imports these pure functions and feeds
- * them live `getBoundingClientRect()` rectangles and an occlusion snapshot.
+ * them live `getBoundingClientRect()` rectangles, an occlusion snapshot, and
+ * the intercepted request trace.
  *
  * Why projection is in CSS pixels from the live canvas rect (design JD-DES-001):
  *   `devicePixelRatio` and backing-store size are DIAGNOSTICS only. Projection,
@@ -20,6 +21,14 @@
  *   plain `canvas.click({ position })` with no `force`. Helper retries and
  *   Playwright test retries are both `0`; a missing/wrong ficha request or
  *   identity after the single click is FINAL — no second click rescues it.
+ *
+ * W6 — operator auth + distinct cache identity + silent-refresh bearer (D10):
+ *   The pure contracts below model the token lifecycle (seed -> optional
+ *   observed refresh -> rotated), the exact-bearer rule for every rainfall
+ *   request kind (scope/analysis/series/CSV/XLSX), and the fail-closed cache
+ *   isolation rules (RMEH-006, RMEH-013). The W7/W8 spec layer wires the actual
+ *   `page.route` handlers using these pure contracts; nothing here touches
+ *   Playwright or an application store, and no real credential ever enters.
  */
 
 // --------------------------------------------------------------------------- //
@@ -575,3 +584,223 @@ export function redactedConformanceFailure(c: Conformance): string {
 // Cameras export (re-exported from a validated fixture for default use)
 // --------------------------------------------------------------------------- //
 export const CAMERAS = validateFixture(fixtureJsonDefault).cameras;
+
+// --------------------------------------------------------------------------- //
+// W6 — operator auth + distinct cache identity + silent-refresh bearer (D10)
+// --------------------------------------------------------------------------- //
+// Pure contracts only. The W7/W8 spec layer wires `page.route` handlers from
+// these; no Playwright type or application-store import lives in this file.
+// --------------------------------------------------------------------------- //
+
+/** Token lifecycle: `seed token -> optional observed refresh -> rotated token`. */
+export interface TokenLifecycle {
+  seedToken: string;
+  rotatedToken: string;
+  refreshed: boolean;
+}
+
+export function makeTokenLifecycle(seedToken: string, rotatedToken: string): TokenLifecycle {
+  return { seedToken, rotatedToken, refreshed: false };
+}
+
+/** The token active for the current sequence: seed until a refresh is observed. */
+export function activeToken(lifecycle: TokenLifecycle): string {
+  return lifecycle.refreshed ? lifecycle.rotatedToken : lifecycle.seedToken;
+}
+
+/** Returns a NEW lifecycle with the refresh observed (immutable). */
+export function observeRefresh(lifecycle: TokenLifecycle): TokenLifecycle {
+  return { ...lifecycle, refreshed: true };
+}
+
+/** Deterministic silent-refresh route contract (one rotated synthetic token). */
+export function refreshRouteContract(lifecycle: TokenLifecycle): {
+  path: string;
+  status: number;
+  body: { access_token: string };
+} {
+  return {
+    path: '/auth/jwt/refresh',
+    status: 200,
+    body: { access_token: lifecycle.rotatedToken },
+  };
+}
+
+/** One observed rainfall request — the trace record the spec layer attaches. */
+export interface RainfallRequestRecord {
+  kind: 'scope-resolve' | 'analysis' | 'series' | 'csv' | 'xlsx';
+  method: 'GET' | 'POST';
+  url: string;
+  headers: Record<string, string>;
+}
+
+/**
+ * Classify a rainfall request from its method + URL into the five kinds the
+ * boundary owns (RMEH-006). Purely syntactic: no body inspection, no store.
+ */
+export function classifyRainfallRequest(
+  method: 'GET' | 'POST',
+  url: string,
+  headers: Record<string, string>,
+): RainfallRequestRecord {
+  let kind: RainfallRequestRecord['kind'];
+  if (method === 'POST' && url.includes('scopes:resolve')) {
+    kind = 'scope-resolve';
+  } else if (url.endsWith('.csv')) {
+    kind = 'csv';
+  } else if (url.endsWith('.xlsx')) {
+    kind = 'xlsx';
+  } else if (url.endsWith('/series')) {
+    kind = 'series';
+  } else {
+    kind = 'analysis';
+  }
+  return { kind, method, url, headers };
+}
+
+/**
+ * Exact-bearer rule (D10): the request MUST carry `Authorization: Bearer
+ * <activeToken>` and the token MUST NOT appear in the URL. Any other header
+ * (missing, stale, wrong scheme, bare token) or a URL credential fails closed.
+ */
+export function assertExactBearer(record: RainfallRequestRecord, token: string): void {
+  const auth = record.headers.authorization ?? record.headers.Authorization;
+  if (auth !== `Bearer ${token}`) {
+    throw new Error(
+      `rainfall ${record.kind} request must carry Authorization: Bearer <active synthetic token> (observed ${auth ?? '(missing)'})`,
+    );
+  }
+  if (record.url.includes(token)) {
+    throw new Error(`rainfall ${record.kind} token must never appear in the URL`);
+  }
+}
+
+/**
+ * Resolve a scope identity to exactly one fixture parcel. Unknown identity
+ * FAILS — there is no A fallback (RMEH-006-B, D10).
+ */
+export function resolveParcelByIdentity(
+  parcels: ParcelFixture[],
+  scopeId: string,
+): ParcelFixture {
+  const match = parcels.find((p) => p.rainfall.scopeId === scopeId);
+  if (!match) {
+    throw new Error(`unknown rainfall scope identity "${scopeId}" — no A fallback`);
+  }
+  return match;
+}
+
+/** The complete ready contract a parcel's analysis response must satisfy. */
+export interface ReadyRainfallContract {
+  scopeKind: 'zone' | 'basin';
+  scopeId: string;
+  scopeVersion: string;
+  effectiveCacheKey: string;
+  percentile: number;
+  accumulationMm: number;
+  analysisRevisionId: string;
+  dataRevision: string;
+  metricRevision: string;
+}
+
+/**
+ * Build the ready response contract for a parcel from its fixture facts.
+ * A non-ready parcel THROWS — queued/error states are never normalized into
+ * a ready answer (RMEH-006-B).
+ */
+export function readyResponseFor(parcel: ParcelFixture): ReadyRainfallContract {
+  const r = parcel.rainfall;
+  // `ready` is omitted from the committed fixture (absent = ready, matching
+  // `isRainfall`'s default); an EXPLICIT `false` is a non-ready fact.
+  const ready = r.ready === undefined ? true : r.ready;
+  if (!ready) {
+    throw new Error(
+      `parcel ${parcel.alias} rainfall is not ready — missing/queued/error facts must never be normalized into a ready answer`,
+    );
+  }
+  return {
+    scopeKind: r.scopeKind,
+    scopeId: r.scopeId,
+    scopeVersion: r.scopeVersion,
+    effectiveCacheKey: r.effectiveCacheKey,
+    percentile: r.percentile,
+    accumulationMm: r.accumulationMm,
+    analysisRevisionId: r.analysisRevisionId,
+    dataRevision: r.dataRevision,
+    metricRevision: r.metricRevision,
+  };
+}
+
+/**
+ * All five semantic dimensions of a ready answer must match the TARGET parcel:
+ * scope identity, percentile, accumulation, and the analysis+data+metric
+ * revision triple. Any stale/aliased/unknown value fails closed (RMEH-006-C,
+ * RMEH-013-B).
+ */
+export function assertResponseMatchesTarget(
+  response: ReadyRainfallContract,
+  target: ParcelFixture,
+): void {
+  const want = readyResponseFor(target);
+  const dims: Array<[string, unknown, unknown]> = [
+    ['scopeKind', response.scopeKind, want.scopeKind],
+    ['scopeId', response.scopeId, want.scopeId],
+    ['scopeVersion', response.scopeVersion, want.scopeVersion],
+    ['effectiveCacheKey', response.effectiveCacheKey, want.effectiveCacheKey],
+    ['percentile', response.percentile, want.percentile],
+    ['accumulationMm', response.accumulationMm, want.accumulationMm],
+    ['analysisRevisionId', response.analysisRevisionId, want.analysisRevisionId],
+    ['dataRevision', response.dataRevision, want.dataRevision],
+    ['metricRevision', response.metricRevision, want.metricRevision],
+  ];
+  const mismatched = dims.filter(([, observed, expected]) => observed !== expected);
+  if (mismatched.length > 0) {
+    throw new Error(
+      `stale or aliased facts for target ${target.alias}: ${mismatched
+        .map(([name, observed, expected]) => `${name}=${String(observed)} (expected ${String(expected)})`)
+        .join(', ')}`,
+    );
+  }
+}
+
+/**
+ * Pairwise distinct effective cache keys (RMEH-013-A/C). Any two parcels
+ * sharing a key fail closed naming the aliased identities.
+ */
+export function assertCacheKeysDistinct(parcels: ParcelFixture[]): void {
+  const seen = new Map<string, ParcelAlias>();
+  for (const p of parcels) {
+    const key = p.rainfall.effectiveCacheKey;
+    const prior = seen.get(key);
+    if (prior !== undefined) {
+      throw new Error(
+        `cache aliasing: parcels ${prior} and ${p.alias} share effectiveCacheKey "${key}"`,
+      );
+    }
+    seen.set(key, p.alias);
+  }
+}
+
+/**
+ * Freshness gate for a transition: the observed response must be the TARGET's
+ * own ready contract and its cache key must map back to the target — one parcel
+ * receiving another parcel's cached response fails closed (RMEH-013-B/C).
+ */
+export function assertFreshResponse(
+  observed: ReadyRainfallContract,
+  target: ParcelFixture,
+  parcels: ParcelFixture[],
+): void {
+  const owner = parcels.find((p) => p.rainfall.effectiveCacheKey === observed.effectiveCacheKey);
+  if (!owner) {
+    throw new Error(
+      `response cache key "${observed.effectiveCacheKey}" matches no fixture parcel (aliased or unknown cache)`,
+    );
+  }
+  if (owner.alias !== target.alias) {
+    throw new Error(
+      `stale/aliased cached response: observed ${owner.alias} facts served as ${target.alias} (cache key "${observed.effectiveCacheKey}")`,
+    );
+  }
+  assertResponseMatchesTarget(observed, target);
+}

@@ -421,4 +421,78 @@ W5 delta ≈ 1,778 non-production lines (665 tracked diff + 1,113 new: bootstrap
 ### Open for next session
 
 - 5.2/5.7 real-stack negatives (migration-owned incompatible `vt_parcelas_catastro` → one rebuild then explicit abort; missing/incompatible `mv_suelos_por_zona` → migration-only repair; Martin empty/204 → abort). Unit-covered today.
-- W6 (TS pure cache identity + silent-refresh bearer), W7/W8 (append ONE test(), 11 total), W9 (collection gate), W10 (workflow), W11 (handoff/runbook).
+- W7/W8 (append ONE test(), 11 total), W9 (collection gate), W10 (workflow), W11 (handoff/runbook).
+
+## Batch 5 — W6 (this session): distinct cache identity + exact silent-refresh bearer
+
+### What
+
+W6 (tasks 6.1/6.2/6.3) added the pure auth/cache contracts to
+`consorcio-web/tests/e2e/helpers/rainfallMultiParcelHarness.ts` — the design's
+"ready-response router + request trace" responsibility. Per the strict-pure
+contract of the helper (no Playwright types, no `page`), the `page.route`
+wiring itself is deferred to W7/W8, which will import these pure contracts.
+
+### GREEN evidence
+
+| | command | result |
+|---|---|---|
+| Unit (new W6) | `pnpm exec vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **46 passed** (31 W2 + 9 W6.2 + 5 W6.3 + 1 W6.2 trace) |
+| Full unit | `pnpm exec vitest run tests/unit/` | **2,679 passed / 168 files** (no regressions) |
+| Types | `pnpm exec tsc -p tsconfig.tests.json --noEmit` | **0 errors** (was 6 pre-existing W2.3 errors — fixed, making the recorded W4 acceptance real) |
+
+### Contracts added (pure, all in the helper)
+
+- `TokenLifecycle` (`makeTokenLifecycle`/`activeToken`/`observeRefresh`) — the
+  D10 lifecycle `seed token -> optional observed refresh -> rotated token`,
+  immutable refresh (original lifecycle still holds the seed).
+- `refreshRouteContract` — deterministic one rotated synthetic token for
+  `/auth/jwt/refresh`, matching the existing spec seam's `access_token` shape.
+- `classifyRainfallRequest(method, url, headers)` — one observed trace record;
+  five kinds: `scope-resolve` / `analysis` / `series` / `csv` / `xlsx`
+  (syntactic: POST+scopes:resolve, `.csv`, `.xlsx`, `/series`, else analysis).
+- `assertExactBearer` — exact `Authorization: Bearer <active token>`; missing /
+  wrong scheme / stale-after-refresh / URL-embedded token all fail closed.
+- `resolveParcelByIdentity` — unknown scope identity FAILS, no A fallback.
+- `readyResponseFor` — complete ready contract from fixture facts; non-ready
+  (explicit `ready:false`) throws — queued/error never normalized into ready.
+  NOTE: the committed fixture omits `ready` (absent = ready, matching
+  `isRainfall`'s default); only an EXPLICIT `false` is non-ready.
+- `assertResponseMatchesTarget` — all five semantic dimensions (scope identity,
+  percentile, accumulation, analysis+data+metric revision) must match the
+  target; stale/aliased values named in the failure.
+- `assertCacheKeysDistinct` — pairwise distinct `effectiveCacheKey`, naming the
+  aliased aliases on collision (RMEH-013-A/C).
+- `assertFreshResponse` — the observed response's cache key must map back to
+  the TARGET parcel; one parcel receiving another's cached response fails
+  closed (RMEH-013-B/C).
+
+### Fixes to pre-existing surface
+
+- The 6 W2.3 projection tests passed bare `{lat,lng,zoom}` camera literals to
+  `computeProjection`, which types its argument as `Camera` (requires
+  `viewport`). `tsc -p tsconfig.tests.json --noEmit` had 6 errors on the
+  COMMITTED W5 state even though the W4 acceptance was recorded green. Fixed
+  mechanically: each call site now passes a full `Camera` matching its rect.
+  Zero behavior change (46 tests still green).
+
+### Budget / cap
+
+- Helper F2: 576 → 805 lines (+229). The design cap says split a second pure
+  module if F2 > 300; the Batch 2 escalation already documented that F2 is
+  ~2× forecast because the forecast undersized the RMEH-003/004/005/006/013
+  surface (26 exports). W6 adds the D10 auth/cache contracts to the same pure
+  module; splitting them out would fragment the single pure import surface the
+  W7/W8 spec consumes. Consistent with Batch 2: documented escalation, not a
+  silent exceed. Unit test 423 → 616 lines.
+- Cumulative: W4 658 + W5 1,778 + W6 ~434 (helper 229 + test 193 + docs) ≈
+  2,870 — past the PR2 ~2,700 forecast; W7–W11 (~850 remaining forecast) will
+  exceed. Flagging for the owner at the next checkpoint; no scope cut
+  attempted.
+
+### Boundary
+
+- Production = 0 (`consorcio-web/src/**` untouched this session).
+- No version.json staged; no docker activity this session.
+- `tsconfig.tests.json` enrolment already covers the helper + unit test (W4);
+  no new files, no new enrolments.

@@ -20,7 +20,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Camera, LngLat, RectCss } from '../e2e/helpers/rainfallMultiParcelHarness';
+import type {
+  Camera,
+  LngLat,
+  RainfallRequestRecord,
+  RectCss,
+} from '../e2e/helpers/rainfallMultiParcelHarness';
 import {
   CAMERAS,
   CLICKABLE_DISK_RADIUS_PX,
@@ -28,13 +33,24 @@ import {
   INTERACTION_POLICY,
   MIN_EDGE_CLEARANCE_PX,
   MIN_DISK_RADIUS_PX,
+  activeToken,
+  assertCacheKeysDistinct,
+  assertExactBearer,
+  assertFreshResponse,
+  assertResponseMatchesTarget,
   assertConformanceValid,
+  classifyRainfallRequest,
   computeProjection,
   loadFixture,
+  makeTokenLifecycle,
+  observeRefresh,
   occlusion,
   pointInPolygon,
   projectParcel,
+  readyResponseFor,
   redactedConformanceFailure,
+  refreshRouteContract,
+  resolveParcelByIdentity,
   validateFixture,
 } from '../e2e/helpers/rainfallMultiParcelHarness';
 
@@ -148,7 +164,8 @@ describe('W2.3 projection — Web Mercator, DPR-invariant CSS coords, geometry',
     // Web Mercator world size at tile-size 512, zoom 0: 512 px. Center is
     // (0,0) -> x=256, y=256. lng=0, lat=0 -> (256, 256).
     const rect: RectCss = { left: 0, top: 0, width: 512, height: 512 };
-    const p = computeProjection({ lng: 0, lat: 0 }, { lat: 0, lng: 0, zoom: 0 }, rect);
+    const camera: Camera = { lat: 0, lng: 0, zoom: 0, viewport: { width: 512, height: 512 } };
+    const p = computeProjection({ lng: 0, lat: 0 }, camera, rect);
     expect(p.localCssX).toBeCloseTo(256, 5);
     expect(p.localCssY).toBeCloseTo(256, 5);
     expect(p.pageCssX).toBeCloseTo(256, 5);
@@ -163,7 +180,8 @@ describe('W2.3 projection — Web Mercator, DPR-invariant CSS coords, geometry',
     // canvas center — i.e. clamped to the visible half-world centered on the
     // camera. Assert the wrap is symmetric: |localCssX - rect.width/2| <= 256.
     const rect: RectCss = { left: 0, top: 0, width: 512, height: 512 };
-    const p = computeProjection({ lng: 180, lat: 0 }, { lat: 0, lng: 0, zoom: 0 }, rect);
+    const camera: Camera = { lat: 0, lng: 0, zoom: 0, viewport: { width: 512, height: 512 } };
+    const p = computeProjection({ lng: 180, lat: 0 }, camera, rect);
     expect(Math.abs(p.localCssX - rect.width / 2)).toBeLessThanOrEqual(256);
     // The non-wrapped page coordinate still maps to the antimeridian.
     expect(p.pageCssX).toBeGreaterThanOrEqual(0);
@@ -172,17 +190,19 @@ describe('W2.3 projection — Web Mercator, DPR-invariant CSS coords, geometry',
 
   it('clamps to Web Mercator max latitude (~85.05112878) without throwing', () => {
     const rect: RectCss = { left: 0, top: 0, width: 512, height: 512 };
+    const camera: Camera = { lat: 0, lng: 0, zoom: 0, viewport: { width: 512, height: 512 } };
     expect(() =>
-      computeProjection({ lng: 0, lat: 89 }, { lat: 0, lng: 0, zoom: 0 }, rect),
+      computeProjection({ lng: 0, lat: 89 }, camera, rect),
     ).not.toThrow();
-    const p = computeProjection({ lng: 0, lat: 89 }, { lat: 0, lng: 0, zoom: 0 }, rect);
-    const pClamped = computeProjection({ lng: 0, lat: 85.05112878 }, { lat: 0, lng: 0, zoom: 0 }, rect);
+    const p = computeProjection({ lng: 0, lat: 89 }, camera, rect);
+    const pClamped = computeProjection({ lng: 0, lat: 85.05112878 }, camera, rect);
     expect(p.localCssY).toBeCloseTo(pClamped.localCssY, 3);
   });
 
   it('applies non-zero rect.left/top to pageCss but localCss is rect-relative only', () => {
     const rect: RectCss = { left: 240, top: 80, width: 390, height: 844 };
-    const p = computeProjection({ lng: 0, lat: 0 }, { lat: 0, lng: 0, zoom: 0 }, rect);
+    const camera: Camera = { lat: 0, lng: 0, zoom: 0, viewport: { width: 390, height: 844 } };
+    const p = computeProjection({ lng: 0, lat: 0 }, camera, rect);
     expect(p.localCssX).toBeCloseTo(rect.width / 2, 5);
     expect(p.localCssY).toBeCloseTo(rect.height / 2, 5);
     expect(p.pageCssX).toBeCloseTo(rect.left + rect.width / 2, 5);
@@ -420,5 +440,181 @@ describe('W2.4 interaction policy — exactly one click, zero retries, no forbid
     expect(msg).toContain('force:true');
     expect(msg).not.toContain('Bearer');
     expect(msg).not.toContain('password');
+  });
+});
+
+// --------------------------------------------------------------------------- //
+// W6.2 — exact silent-refresh bearer (RMEH-006-A/B/C, RMEH-013-A, D10)
+// --------------------------------------------------------------------------- //
+describe('W6.2 auth — exact bearer, token lifecycle, ready-only responses', () => {
+  const fixture = loadFixture(fixtureJson as unknown);
+  const A = fixture.parcels.find((p) => p.alias === 'A')!;
+  const B = fixture.parcels.find((p) => p.alias === 'B')!;
+
+  const SEED = 'rmeh-seed-token-1';
+  const ROTATED = 'rmeh-rotated-token-2';
+
+  it('activeToken is the seed before any refresh and the rotated token after', () => {
+    const lc = makeTokenLifecycle(SEED, ROTATED);
+    expect(activeToken(lc)).toBe(SEED);
+    const after = observeRefresh(lc);
+    expect(activeToken(after)).toBe(ROTATED);
+    // observeRefresh is immutable — the original lifecycle still holds the seed.
+    expect(activeToken(lc)).toBe(SEED);
+  });
+
+  it('refreshRouteContract returns one deterministic rotated synthetic token', () => {
+    const lc = makeTokenLifecycle(SEED, ROTATED);
+    const contract = refreshRouteContract(lc);
+    expect(contract.path).toContain('/auth/jwt/refresh');
+    expect(contract.status).toBe(200);
+    expect(contract.body).toEqual({ access_token: ROTATED });
+  });
+
+  it('every rainfall request kind must carry the exact active bearer in the header', () => {
+    const lc = makeTokenLifecycle(SEED, ROTATED);
+    for (const kind of ['scope-resolve', 'analysis', 'series', 'csv', 'xlsx'] as const) {
+      const record = classifyRainfallRequest(
+        kind === 'scope-resolve' || kind === 'analysis' ? 'POST' : 'GET',
+        `https://app.local/api/v2/geo/rainfall/${kind === 'scope-resolve' ? 'scopes:resolve' : kind === 'analysis' ? 'analyses' : kind === 'series' ? 'series' : kind === 'csv' ? 'export.csv' : 'export.xlsx'}`,
+        { authorization: `Bearer ${activeToken(lc)}` }
+      );
+      // Exact match passes.
+      expect(() => assertExactBearer(record, activeToken(lc))).not.toThrow();
+    }
+  });
+
+  it('rejects a missing, wrong, or stale bearer (rotated token no longer accepted)', () => {
+    const lc = makeTokenLifecycle(SEED, ROTATED);
+    const after = observeRefresh(lc);
+    const record = classifyRainfallRequest(
+      'POST',
+      'https://app.local/api/v2/geo/rainfall/analyses',
+      { authorization: `Bearer ${SEED}` }
+    );
+    // After refresh the SEED is stale — exact-bearer must reject it.
+    expect(() => assertExactBearer(record, activeToken(after))).toThrow(/bearer|authorization/i);
+    // Missing header.
+    const bare = classifyRainfallRequest('POST', 'https://app.local/api/v2/geo/rainfall/analyses', {});
+    expect(() => assertExactBearer(bare, activeToken(lc))).toThrow(/bearer|authorization/i);
+    // Wrong scheme.
+    const wrong = classifyRainfallRequest(
+      'POST',
+      'https://app.local/api/v2/geo/rainfall/analyses',
+      { authorization: `Token ${SEED}` }
+    );
+    expect(() => assertExactBearer(wrong, activeToken(lc))).toThrow(/bearer|authorization/i);
+  });
+
+  it('rejects a token leaked into the URL', () => {
+    const lc = makeTokenLifecycle(SEED, ROTATED);
+    const leaked = classifyRainfallRequest(
+      'GET',
+      `https://app.local/api/v2/geo/rainfall/export.csv?access_token=${SEED}`,
+      { authorization: `Bearer ${SEED}` }
+    );
+    expect(() => assertExactBearer(leaked, activeToken(lc))).toThrow(/url/i);
+  });
+
+  it('unknown identity fails the route — no A fallback', () => {
+    expect(() => resolveParcelByIdentity(fixture.parcels, 'zone:not-in-fixture:v9')).toThrow(
+      /unknown|identity/i
+    );
+  });
+
+  it('readyResponseFor builds a complete ready contract matching the parcel facts', () => {
+    const contract = readyResponseFor(A);
+    expect(contract).toEqual({
+      scopeKind: A.rainfall.scopeKind,
+      scopeId: A.rainfall.scopeId,
+      scopeVersion: A.rainfall.scopeVersion,
+      effectiveCacheKey: A.rainfall.effectiveCacheKey,
+      percentile: A.rainfall.percentile,
+      accumulationMm: A.rainfall.accumulationMm,
+      analysisRevisionId: A.rainfall.analysisRevisionId,
+      dataRevision: A.rainfall.dataRevision,
+      metricRevision: A.rainfall.metricRevision,
+    });
+  });
+
+  it('refuses a non-ready parcel — no queued/error normalization into ready', () => {
+    const notReady = { ...A, rainfall: { ...A.rainfall, ready: false } };
+    expect(() => readyResponseFor(notReady)).toThrow(/not ready|queued|error/i);
+  });
+
+  it('assertResponseMatchesTarget passes only when all five dimensions match the target', () => {
+    expect(() => assertResponseMatchesTarget(readyResponseFor(A), A)).not.toThrow();
+    // B's ready response must NOT pass for target A (stale/aliased facts).
+    expect(() => assertResponseMatchesTarget(readyResponseFor(B), A)).toThrow(
+      /stale|aliased|expected/i
+    );
+  });
+
+  it('a request trace observer records every rainfall kind with its headers', () => {
+    const trace: RainfallRequestRecord[] = [];
+    trace.push(
+      classifyRainfallRequest('POST', 'https://app.local/api/v2/geo/rainfall/analyses', {
+        authorization: `Bearer ${SEED}`,
+      }),
+      classifyRainfallRequest('GET', 'https://app.local/api/v2/geo/rainfall/export.csv', {
+        authorization: `Bearer ${SEED}`,
+      })
+    );
+    expect(trace.map((r) => r.kind)).toEqual(['analysis', 'csv']);
+    expect(trace.every((r) => r.headers.authorization === `Bearer ${SEED}`)).toBe(true);
+    // No secret is ever recorded into the URL field by classification.
+    expect(trace.every((r) => !r.url.includes(SEED))).toBe(true);
+  });
+});
+
+// --------------------------------------------------------------------------- //
+// W6.3 — cache-aliasing negatives (RMEH-013-A/B/C)
+// --------------------------------------------------------------------------- //
+describe('W6.3 cache identity — aliasing fails closed with diagnostics', () => {
+  const fixture = loadFixture(fixtureJson as unknown);
+  const A = fixture.parcels.find((p) => p.alias === 'A')!;
+  const B = fixture.parcels.find((p) => p.alias === 'B')!;
+  const C = fixture.parcels.find((p) => p.alias === 'C')!;
+
+  it('assertCacheKeysDistinct accepts the committed fixture (pairwise distinct)', () => {
+    expect(() => assertCacheKeysDistinct(fixture.parcels)).not.toThrow();
+  });
+
+  it('two parcels sharing an effective cache key fail closed with diagnostics', () => {
+    const aliased = [A, { ...B, rainfall: { ...B.rainfall, effectiveCacheKey: A.rainfall.effectiveCacheKey } }];
+    expect(() => assertCacheKeysDistinct(aliased)).toThrow(/aliasing|effectiveCacheKey|A|B/i);
+  });
+
+  it('one parcel receiving another parcel cached response fails freshness', () => {
+    // B's request answered from A's cached contract → must fail closed naming the alias.
+    expect(() =>
+      assertFreshResponse(readyResponseFor(A), B, fixture.parcels)
+    ).toThrow(/cached|aliased|A|B/i);
+  });
+
+  it('an A-only value remaining current after B/C selection fails the transition', () => {
+    // Simulate B ready but a stale A percentile still displayed (RMEH-013-B).
+    const staleB = {
+      ...readyResponseFor(B),
+      percentile: A.rainfall.percentile,
+      accumulationMm: A.rainfall.accumulationMm,
+    };
+    expect(() => assertResponseMatchesTarget(staleB, B)).toThrow(/stale|aliased|expected/i);
+    // And a full A contract must not pass as a fresh B answer.
+    expect(() => assertResponseMatchesTarget(readyResponseFor(A), B)).toThrow(
+      /stale|aliased|expected/i
+    );
+  });
+
+  it('fresh A after C requires the exact A revision, not a stale C or aliased cache', () => {
+    // A's own ready contract passes for A…
+    expect(() => assertResponseMatchesTarget(readyResponseFor(A), A)).not.toThrow();
+    // …but C's contract presented as fresh A fails (stale C facts).
+    expect(() => assertResponseMatchesTarget(readyResponseFor(C), A)).toThrow(
+      /stale|aliased|expected/i
+    );
+    // And an aliased A key answered with B's scope/revision fails closed.
+    const aliasedA = { ...readyResponseFor(A), scopeId: B.rainfall.scopeId, metricRevision: B.rainfall.metricRevision };
+    expect(() => assertResponseMatchesTarget(aliasedA, A)).toThrow(/stale|aliased|expected/i);
   });
 });
