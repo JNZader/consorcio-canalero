@@ -34,7 +34,24 @@
 // --------------------------------------------------------------------------- //
 // Types — strict, parsed from `unknown`; no `any`, no direct union
 // --------------------------------------------------------------------------- //
-import fixtureJsonDefault from '../fixtures/rainfall-multi-parcel.fixture.json';
+// The fixture is read at runtime (not via a static `.json` ESM import) because
+// Playwright's ESM loader rejects a bare `import x from '...json'` without a
+// `with { type: 'json' }` attribute, which older TS/`@playwright/test` combos
+// do not emit. `node:fs`/`node:path` are Node builtins — this helper stays free
+// of any Playwright or application-store import (STRICTLY PURE).
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const fixtureJsonDefault = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '../fixtures/rainfall-multi-parcel.fixture.json'
+    ),
+    'utf8'
+  )
+) as unknown;
 
 export const PARCEL_ALIAS = { A: 'A', B: 'B', C: 'C' } as const;
 export type ParcelAlias = (typeof PARCEL_ALIAS)[keyof typeof PARCEL_ALIAS];
@@ -803,4 +820,276 @@ export function assertFreshResponse(
     );
   }
   assertResponseMatchesTarget(observed, target);
+}
+
+// --------------------------------------------------------------------------- //
+// W7.1–W7.3 — mobile A→B→C→A state machine contracts (RMEH-007, RMEH-005)
+// --------------------------------------------------------------------------- //
+
+/**
+ * The exact scope sentence the app renders for a parcel's resolved scope
+ * ("la zona Rmeh A"): kind label + prettified id. The e2e oracle reproduces
+ * the app's prettification rule (tokens split on separators, a leading token
+ * that merely repeats the kind dropped, the rest capitalized) so a drift in
+ * the presentation rule fails the journey instead of silently passing it.
+ */
+export function scopeSentenceFor(parcel: ParcelFixture): string {
+  const kind = parcel.rainfall.scopeKind;
+  const id = parcel.rainfall.scopeId.split(':')[1] ?? parcel.rainfall.scopeId;
+  const kindLabel = kind === 'zone' ? 'Zona' : 'Cuenca';
+  const tokens = id
+    .split(/[\s_-]+/)
+    .filter((token) => token.length > 0)
+    .map((token) => `${token.charAt(0).toUpperCase()}${token.slice(1)}`);
+  const kindTokens = kind === 'zone' ? ['zona', 'zone'] : ['cuenca', 'basin'];
+  const qualifier = tokens
+    .filter((token, index) => index > 0 || !kindTokens.includes(token.toLowerCase()))
+    .join(' ');
+  const label = qualifier.length > 0 ? `${kindLabel} · ${qualifier}` : kindLabel;
+  const [kindWord, ...rest] = label.split(' · ');
+  return rest.length > 0 ? `la ${(kindWord ?? kindLabel).toLowerCase()} ${rest.join(' ')}` : `la ${(kindWord ?? kindLabel).toLowerCase()}`;
+}
+
+/**
+ * What the ficha must show for a target parcel AFTER the user plain-clicks it
+ * on the canvas and activates Lluvia once. Pure evidence — the spec collects
+ * it from the DOM + request trace, this function decides.
+ */
+export interface TargetReadyEvidence {
+  /** Which parcel this transition is supposed to have landed on. */
+  targetAlias: ParcelAlias;
+  /** The Lluvia tab must remain the selected tab. */
+  lluviaSelected: boolean;
+  /** Parcel identity shown by the ficha (nomenclature-based display). */
+  renderedIdentity: string;
+  /** Scope sentence shown on the answer card (derived, NOT the raw scopeId). */
+  renderedScopeSentence: string;
+  renderedPercentile: number;
+  renderedAccumulationMm: number;
+  /** Metric revision from the (expanded) technical fold. */
+  renderedMetricRevision: string;
+  /** Latest observed rainfall trace identities — must all belong to the target. */
+  traces: {
+    scopeNomenclature: string;
+    analysisCacheKey: string;
+    seriesScopeId: string;
+  };
+  /** Sequence number of the latest analysis RESPONSE (recorder counter). */
+  analysisSequence: number;
+  /** Prior target's rendered values (null on the first transition). */
+  previous: {
+    renderedPercentile: number;
+    renderedAccumulationMm: number;
+    renderedMetricRevision: string;
+    analysisSequence: number;
+  } | null;
+  activeToken: string;
+  /** Authorization header observed on the current analysis request. */
+  authHeader: string;
+  /** The synthetic token must never appear in any request URL. */
+  tokenInUrl: boolean;
+}
+
+/**
+ * Shared READY gate for every A→B→C→A transition (RMEH-007-A):
+ * Lluvia stays selected, the ficha identity/scope/percentile/accumulation/
+ * revision all belong to the TARGET, every trace belongs to the target, the
+ * bearer is exactly the active synthetic token (and never in the URL), and no
+ * previous-only value remains current. Any deviation fails closed.
+ */
+export function assertTargetReady(evidence: TargetReadyEvidence, target: ParcelFixture): void {
+  if (!evidence.lluviaSelected) {
+    throw new Error(`Lluvia tab must remain selected for target ${target.alias}`);
+  }
+  if (evidence.renderedIdentity !== target.nomenclature) {
+    throw new Error(
+      `ficha identity "${evidence.renderedIdentity}" does not match target ${target.alias} (${target.nomenclature})`,
+    );
+  }
+  if (evidence.renderedScopeSentence !== scopeSentenceFor(target)) {
+    throw new Error(
+      `scope sentence "${evidence.renderedScopeSentence}" does not match target ${target.alias} (expected "${scopeSentenceFor(target)}")`,
+    );
+  }
+  if (evidence.renderedPercentile !== target.rainfall.percentile) {
+    throw new Error(
+      `rendered percentile ${evidence.renderedPercentile} is not target ${target.alias} (${target.rainfall.percentile})`,
+    );
+  }
+  if (evidence.renderedAccumulationMm !== target.rainfall.accumulationMm) {
+    throw new Error(
+      `rendered accumulation ${evidence.renderedAccumulationMm} is not target ${target.alias} (${target.rainfall.accumulationMm})`,
+    );
+  }
+  if (evidence.renderedMetricRevision !== target.rainfall.metricRevision) {
+    throw new Error(
+      `rendered metric revision "${evidence.renderedMetricRevision}" is not target ${target.alias} (${target.rainfall.metricRevision})`,
+    );
+  }
+  const wantTraceKey = target.rainfall.effectiveCacheKey;
+  if (evidence.traces.analysisCacheKey !== wantTraceKey) {
+    throw new Error(
+      `analysis trace cache key "${evidence.traces.analysisCacheKey}" does not belong to target ${target.alias} (${wantTraceKey})`,
+    );
+  }
+  if (evidence.traces.scopeNomenclature !== target.nomenclature) {
+    throw new Error(
+      `scope-resolve trace resolved "${evidence.traces.scopeNomenclature}" instead of target ${target.alias} (${target.nomenclature})`,
+    );
+  }
+  if (evidence.traces.seriesScopeId !== target.rainfall.scopeId) {
+    throw new Error(
+      `series trace scope "${evidence.traces.seriesScopeId}" does not belong to target ${target.alias}`,
+    );
+  }
+  const expectedAuth = `Bearer ${evidence.activeToken}`;
+  if (evidence.authHeader !== expectedAuth) {
+    throw new Error(
+      `rainfall requests must carry Authorization: Bearer <active synthetic token> (observed ${evidence.authHeader ?? '(missing)'})`,
+    );
+  }
+  if (evidence.tokenInUrl) {
+    throw new Error('synthetic token must never appear in a request URL');
+  }
+  if (evidence.previous) {
+    const stale = [
+      ['percentile', evidence.renderedPercentile, evidence.previous.renderedPercentile],
+      ['accumulationMm', evidence.renderedAccumulationMm, evidence.previous.renderedAccumulationMm],
+      ['metricRevision', evidence.renderedMetricRevision, evidence.previous.renderedMetricRevision],
+    ].filter(([, current, prior]) => current === prior) as Array<[string, number | string, number | string]>;
+    if (stale.length > 0) {
+      throw new Error(
+        `previous target value(s) remained current after transition: ${stale
+          .map(([name, current]) => `${name}=${String(current)}`)
+          .join(', ')}`,
+      );
+    }
+    if (evidence.analysisSequence <= evidence.previous.analysisSequence) {
+      throw new Error(
+        `ready response sequence ${evidence.analysisSequence} must be newer than the previous target's (${evidence.previous.analysisSequence}) — stale cached response`,
+      );
+    }
+  }
+}
+
+/**
+ * Proof that the sheet body really scrolls via the wheel: the content range
+ * (scrollHeight − clientHeight) is positive, the helper drove exactly that
+ * delta as the wheel event, and after the wheel the scrollTop is non-zero.
+ * A zero range (nothing to scroll), a wheel that did not move, or a delta that
+ * is not the range (e.g. direct scrollTop assignment) all fail closed.
+ */
+export interface ScrollWheelProof {
+  /** scrollHeight − clientHeight, sampled before the wheel. */
+  range: number;
+  /** The wheel delta the driver used — must equal the range. */
+  intendedDelta: number;
+  beforeScrollTop: number;
+  afterWheelScrollTop: number;
+}
+
+export function assertScrollRangeAndWheelProof(proof: ScrollWheelProof): void {
+  if (proof.range <= 0) {
+    throw new Error(
+      `sheet body must overflow its visible box (scrollHeight − clientHeight = ${proof.range})`,
+    );
+  }
+  if (proof.intendedDelta !== proof.range) {
+    throw new Error(
+      `wheel delta ${proof.intendedDelta} must equal the measured range ${proof.range} (a direct scrollTop assignment is not a wheel proof)`,
+    );
+  }
+  if (proof.afterWheelScrollTop <= 0) {
+    throw new Error(
+      `wheel must move the sheet body (afterWheelScrollTop=${proof.afterWheelScrollTop}, beforeScrollTop=${proof.beforeScrollTop})`,
+    );
+  }
+  if (proof.afterWheelScrollTop <= proof.beforeScrollTop) {
+    throw new Error(
+      `wheel must scroll forward (afterWheelScrollTop=${proof.afterWheelScrollTop} must exceed beforeScrollTop=${proof.beforeScrollTop})`,
+    );
+  }
+}
+
+/**
+ * The rendered answer card must stay fully inside the visible sheet body
+ * (mobile geometry, RMEH-007-B). Tolerance is 1 CSS px: the card is measured
+ * with the browser's fractional rounding.
+ */
+export function assertCardContained(card: RectCss, body: RectCss, tolerancePx = 1): void {
+  const eps = tolerancePx;
+  const overflows =
+    card.left < body.left - eps ||
+    card.top < body.top - eps ||
+    card.left + card.width > body.left + body.width + eps ||
+    card.top + card.height > body.top + body.height + eps;
+  if (overflows) {
+    throw new Error(
+      `answer card ${JSON.stringify(card)} is not contained in the visible sheet body ${JSON.stringify(body)} (±${eps} CSS px)`,
+    );
+  }
+}
+
+/** Mobile transition gate: READY + sheet at medio + scrollTop reset + containment. */
+export interface MobileReadyEvidence extends TargetReadyEvidence {
+  /** Sheet stage after the transition — the ficha opens at 'medio'. */
+  stage: 'peek' | 'medio' | 'alto';
+  /** The sheet body must return to the top on a NEW selection. */
+  scrollTopAfter: number;
+  cardBox: RectCss;
+  bodyBox: RectCss;
+}
+
+export function assertMobileReady(evidence: MobileReadyEvidence, target: ParcelFixture): void {
+  assertTargetReady(evidence, target);
+  if (evidence.stage !== 'medio') {
+    throw new Error(
+      `ficha must open at stage=medio for a fresh selection (observed ${evidence.stage})`,
+    );
+  }
+  if (evidence.scrollTopAfter !== 0) {
+    throw new Error(
+      `sheet body must return to the top on a new selection (scrollTop=${evidence.scrollTopAfter})`,
+    );
+  }
+  assertCardContained(evidence.cardBox, evidence.bodyBox);
+}
+
+// --------------------------------------------------------------------------- //
+// W8.2 — desktop focus continuity contracts (RMEH-008-B)
+// --------------------------------------------------------------------------- //
+
+/**
+ * Desktop focus must stay with the map interaction surface across every
+ * transition: body, the map canvas, or a visible map-interaction ancestor.
+ * Any hidden/inert/disabled/mobile-only/unrelated element or one outside the
+ * viewport fails closed (RMEH-008-B).
+ */
+export interface DesktopFocusSnapshot {
+  tagName: string;
+  isBody: boolean;
+  isCanvas: boolean;
+  isMapInteractionAncestor: boolean;
+  intersectsViewport: boolean;
+  hidden: boolean;
+  inert: boolean;
+  disabled: boolean;
+  mobileOnly: boolean;
+}
+
+export function assertDesktopFocusStable(snapshot: DesktopFocusSnapshot): void {
+  const allowed = snapshot.isBody || snapshot.isCanvas || snapshot.isMapInteractionAncestor;
+  if (!allowed) {
+    throw new Error(
+      `focus must be body, the map canvas, or a visible map-interaction ancestor (observed ${snapshot.tagName})`,
+    );
+  }
+  if (snapshot.hidden || snapshot.inert || snapshot.disabled || snapshot.mobileOnly) {
+    throw new Error(
+      `focus must not be hidden/inert/disabled/mobile-only (observed ${snapshot.tagName})`,
+    );
+  }
+  if (!snapshot.intersectsViewport) {
+    throw new Error(`focus element ${snapshot.tagName} must intersect the viewport`);
+  }
 }

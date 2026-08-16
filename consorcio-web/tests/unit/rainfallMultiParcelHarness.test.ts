@@ -22,9 +22,12 @@ import { describe, expect, it } from 'vitest';
 
 import type {
   Camera,
+  DesktopFocusSnapshot,
   LngLat,
+  MobileReadyEvidence,
   RainfallRequestRecord,
   RectCss,
+  TargetReadyEvidence,
 } from '../e2e/helpers/rainfallMultiParcelHarness';
 import {
   CAMERAS,
@@ -35,10 +38,15 @@ import {
   MIN_DISK_RADIUS_PX,
   activeToken,
   assertCacheKeysDistinct,
+  assertCardContained,
+  assertDesktopFocusStable,
   assertExactBearer,
   assertFreshResponse,
+  assertMobileReady,
   assertResponseMatchesTarget,
+  assertScrollRangeAndWheelProof,
   assertConformanceValid,
+  assertTargetReady,
   classifyRainfallRequest,
   computeProjection,
   loadFixture,
@@ -51,6 +59,7 @@ import {
   redactedConformanceFailure,
   refreshRouteContract,
   resolveParcelByIdentity,
+  scopeSentenceFor,
   validateFixture,
 } from '../e2e/helpers/rainfallMultiParcelHarness';
 
@@ -616,5 +625,301 @@ describe('W6.3 cache identity — aliasing fails closed with diagnostics', () =>
     // And an aliased A key answered with B's scope/revision fails closed.
     const aliasedA = { ...readyResponseFor(A), scopeId: B.rainfall.scopeId, metricRevision: B.rainfall.metricRevision };
     expect(() => assertResponseMatchesTarget(aliasedA, A)).toThrow(/stale|aliased|expected/i);
+  });
+});
+
+// --------------------------------------------------------------------------- //
+// W7.1–W7.3 — mobile A→B→C→A state machine contracts (RMEH-007, RMEH-005)
+// --------------------------------------------------------------------------- //
+describe('W7 mobile state machine — ready assertion, scroll proof, containment', () => {
+  const fixture = loadFixture(fixtureJson as unknown);
+  const A = fixture.parcels.find((p) => p.alias === 'A')!;
+  const B = fixture.parcels.find((p) => p.alias === 'B')!;
+  const C = fixture.parcels.find((p) => p.alias === 'C')!;
+
+  const SEED = 'rmeh-seed-token-1';
+  const lc = makeTokenLifecycle(SEED, 'rmeh-rotated-token-2');
+
+  function readyEvidence(overrides: Partial<TargetReadyEvidence> = {}): TargetReadyEvidence {
+    return {
+      targetAlias: 'A',
+      lluviaSelected: true,
+      renderedIdentity: A.nomenclature,
+      renderedScopeSentence: scopeSentenceFor(A),
+      renderedPercentile: A.rainfall.percentile,
+      renderedAccumulationMm: A.rainfall.accumulationMm,
+      renderedMetricRevision: A.rainfall.metricRevision,
+      traces: {
+        scopeNomenclature: A.nomenclature,
+        analysisCacheKey: A.rainfall.effectiveCacheKey,
+        seriesScopeId: A.rainfall.scopeId,
+      },
+      analysisSequence: 2,
+      previous: null,
+      activeToken: activeToken(lc),
+      authHeader: `Bearer ${activeToken(lc)}`,
+      tokenInUrl: false,
+      ...overrides,
+    };
+  }
+
+  it('assertTargetReady accepts a complete READY_A evidence set', () => {
+    expect(() => assertTargetReady(readyEvidence(), A)).not.toThrow();
+  });
+
+  it('assertTargetReady requires the Lluvia tab to remain selected', () => {
+    expect(() => assertTargetReady(readyEvidence({ lluviaSelected: false }), A)).toThrow(
+      /lluvia/i
+    );
+  });
+
+  it('assertTargetReady rejects a rendered identity mismatch (wrong parcel ficha)', () => {
+    expect(() =>
+      assertTargetReady(readyEvidence({ renderedIdentity: B.nomenclature }), A)
+    ).toThrow(/identity/i);
+  });
+
+  it('assertTargetReady rejects stale scope/percentile/accumulation/revision', () => {
+    expect(() =>
+      assertTargetReady(readyEvidence({ renderedPercentile: B.rainfall.percentile }), A)
+    ).toThrow(/percentile|scope|accumulation|revision|stale/i);
+    expect(() =>
+      assertTargetReady(readyEvidence({ renderedAccumulationMm: B.rainfall.accumulationMm }), A)
+    ).toThrow(/accumulation|percentile|revision|stale/i);
+    expect(() =>
+      assertTargetReady(readyEvidence({ renderedMetricRevision: B.rainfall.metricRevision }), A)
+    ).toThrow(/revision|stale/i);
+  });
+
+  it('assertTargetReady requires the traces to belong to the target', () => {
+    expect(() =>
+      assertTargetReady(readyEvidence({ traces: { ...readyEvidence().traces, analysisCacheKey: B.rainfall.effectiveCacheKey } }), A)
+    ).toThrow(/cache|scope|trace/i);
+    expect(() =>
+      assertTargetReady(readyEvidence({ traces: { ...readyEvidence().traces, scopeNomenclature: B.nomenclature } }), A)
+    ).toThrow(/trace|scope|identity/i);
+  });
+
+  it('assertTargetReady fails when the bearer is missing, stale, or in the URL', () => {
+    expect(() => assertTargetReady(readyEvidence({ authHeader: 'Bearer wrong-token' }), A)).toThrow(
+      /bearer|authorization/i
+    );
+    expect(() => assertTargetReady(readyEvidence({ authHeader: '(missing)' }), A)).toThrow(
+      /bearer|authorization/i
+    );
+    expect(() => assertTargetReady(readyEvidence({ tokenInUrl: true }), A)).toThrow(/url/i);
+  });
+
+  it('assertTargetReady rejects a previous-only value remaining current (RMEH-013-B)', () => {
+    // previous = B: its percentile must NOT remain current as the A answer.
+    expect(() =>
+      assertTargetReady(
+        readyEvidence({
+          previous: {
+            renderedPercentile: B.rainfall.percentile,
+            renderedAccumulationMm: B.rainfall.accumulationMm,
+            renderedMetricRevision: B.rainfall.metricRevision,
+            analysisSequence: 1,
+          },
+          renderedPercentile: B.rainfall.percentile,
+        }),
+        A
+      )
+    ).toThrow(/previous|stale|percentile/i);
+  });
+
+  it('assertTargetReady rejects a response that is not newer than the previous target (stale cache)', () => {
+    expect(() =>
+      assertTargetReady(
+        readyEvidence({
+          previous: {
+            renderedPercentile: B.rainfall.percentile,
+            renderedAccumulationMm: B.rainfall.accumulationMm,
+            renderedMetricRevision: B.rainfall.metricRevision,
+            analysisSequence: 3,
+          },
+          analysisSequence: 2, // same-or-older sequence than the prior target
+        }),
+        A
+      )
+    ).toThrow(/sequence|newer|stale/i);
+  });
+
+  it('scopeSentenceFor derives the exact scope sentence from fixture facts', () => {
+    // The DOM sentence is kind label + prettified id — NOT the raw composite
+    // scopeId. Only a LEADING kind-repeating token is dropped (app rule:
+    // `index > 0` keeps later tokens), so "rmeh-zone-a" yields "la zona Rmeh
+    // Zone A". The oracle must reproduce the app rule so a presentation drift
+    // fails the journey instead of passing it.
+    expect(scopeSentenceFor(A)).toBe('la zona Rmeh Zone A');
+    expect(scopeSentenceFor(B)).toBe('la zona Rmeh Zone B');
+    expect(scopeSentenceFor(C)).toBe('la zona Rmeh Zone C');
+  });
+
+  it('assertScrollRangeAndWheelProof accepts a real wheel proof', () => {
+    expect(() =>
+      assertScrollRangeAndWheelProof({
+        range: 320,
+        intendedDelta: 320,
+        beforeScrollTop: 0,
+        afterWheelScrollTop: 128,
+      })
+    ).not.toThrow();
+  });
+
+  it('assertScrollRangeAndWheelProof rejects a zero range (scrollHeight <= clientHeight)', () => {
+    expect(() =>
+      assertScrollRangeAndWheelProof({
+        range: 0,
+        intendedDelta: 0,
+        beforeScrollTop: 0,
+        afterWheelScrollTop: 0,
+      })
+    ).toThrow(/scrollHeight|clientHeight|range/i);
+  });
+
+  it('assertScrollRangeAndWheelProof rejects a wheel that did not move (afterWheelScrollTop <= 0)', () => {
+    expect(() =>
+      assertScrollRangeAndWheelProof({
+        range: 320,
+        intendedDelta: 320,
+        beforeScrollTop: 0,
+        afterWheelScrollTop: 0,
+      })
+    ).toThrow(/afterWheelScrollTop|scroll/i);
+  });
+
+  it('assertScrollRangeAndWheelProof rejects an intended delta that is not the range (direct assignment)', () => {
+    expect(() =>
+      assertScrollRangeAndWheelProof({
+        range: 320,
+        intendedDelta: 64, // not scrollHeight - clientHeight → not the real wheel path
+        beforeScrollTop: 0,
+        afterWheelScrollTop: 64,
+      })
+    ).toThrow(/delta|range/i);
+  });
+
+  it('assertCardContained accepts a card fully inside the sheet body', () => {
+    expect(() =>
+      assertCardContained(
+        { left: 12, top: 200, width: 366, height: 300 },
+        { left: 0, top: 0, width: 390, height: 844 }
+      )
+    ).not.toThrow();
+  });
+
+  it('assertCardContained rejects a card overflowing the visible body (±1 CSS px)', () => {
+    expect(() =>
+      assertCardContained(
+        { left: 12, top: 500, width: 366, height: 400 },
+        { left: 0, top: 0, width: 390, height: 844 }
+      )
+    ).toThrow(/contain|visible|body/i);
+  });
+
+  it('assertMobileReady requires stage=medio, scrollTop=0 and containment', () => {
+    const base = readyEvidence();
+    const mobile: MobileReadyEvidence = {
+      ...base,
+      stage: 'medio',
+      scrollTopAfter: 0,
+      cardBox: { left: 12, top: 200, width: 366, height: 300 },
+      bodyBox: { left: 0, top: 0, width: 390, height: 844 },
+    };
+    expect(() => assertMobileReady(mobile, A)).not.toThrow();
+    expect(() => assertMobileReady({ ...mobile, stage: 'alto' }, A)).toThrow(/medio/i);
+    expect(() => assertMobileReady({ ...mobile, scrollTopAfter: 12 }, A)).toThrow(/scrollTop/i);
+    expect(() =>
+      assertMobileReady({ ...mobile, cardBox: { left: 12, top: 500, width: 366, height: 400 } }, A)
+    ).toThrow(/contain|visible|body/i);
+  });
+});
+
+// --------------------------------------------------------------------------- //
+// W8.2 — desktop focus continuity contracts (RMEH-008-B)
+// --------------------------------------------------------------------------- //
+describe('W8 desktop focus — stable focus allowlist, no mobile geometry', () => {
+  it('assertDesktopFocusStable accepts body focus', () => {
+    expect(() =>
+      assertDesktopFocusStable({
+        tagName: 'BODY',
+        isBody: true,
+        isCanvas: false,
+        isMapInteractionAncestor: false,
+        intersectsViewport: true,
+        hidden: false,
+        inert: false,
+        disabled: false,
+        mobileOnly: false,
+      })
+    ).not.toThrow();
+  });
+
+  it('assertDesktopFocusStable accepts the map canvas', () => {
+    expect(() =>
+      assertDesktopFocusStable({
+        tagName: 'CANVAS',
+        isBody: false,
+        isCanvas: true,
+        isMapInteractionAncestor: false,
+        intersectsViewport: true,
+        hidden: false,
+        inert: false,
+        disabled: false,
+        mobileOnly: false,
+      })
+    ).not.toThrow();
+  });
+
+  it('assertDesktopFocusStable accepts a visible map interaction ancestor', () => {
+    expect(() =>
+      assertDesktopFocusStable({
+        tagName: 'DIV',
+        isBody: false,
+        isCanvas: false,
+        isMapInteractionAncestor: true,
+        intersectsViewport: true,
+        hidden: false,
+        inert: false,
+        disabled: false,
+        mobileOnly: false,
+      })
+    ).not.toThrow();
+  });
+
+  it('assertDesktopFocusStable rejects an unrelated, hidden, inert, disabled or mobile-only element', () => {
+    const base: DesktopFocusSnapshot = {
+      tagName: 'BUTTON',
+      isBody: false,
+      isCanvas: false,
+      isMapInteractionAncestor: false,
+      intersectsViewport: true,
+      hidden: false,
+      inert: false,
+      disabled: false,
+      mobileOnly: false,
+    };
+    expect(() => assertDesktopFocusStable(base)).toThrow(/body|canvas|ancestor/i);
+    expect(() => assertDesktopFocusStable({ ...base, isMapInteractionAncestor: true, hidden: true })).toThrow(/hidden|inert|disabled|mobile/i);
+    expect(() => assertDesktopFocusStable({ ...base, isMapInteractionAncestor: true, inert: true })).toThrow(/hidden|inert|disabled|mobile/i);
+    expect(() => assertDesktopFocusStable({ ...base, isMapInteractionAncestor: true, disabled: true })).toThrow(/hidden|inert|disabled|mobile/i);
+    expect(() => assertDesktopFocusStable({ ...base, isMapInteractionAncestor: true, mobileOnly: true })).toThrow(/hidden|inert|disabled|mobile/i);
+  });
+
+  it('assertDesktopFocusStable rejects a non-body element outside the viewport', () => {
+    expect(() =>
+      assertDesktopFocusStable({
+        tagName: 'DIV',
+        isBody: false,
+        isCanvas: false,
+        isMapInteractionAncestor: true,
+        intersectsViewport: false,
+        hidden: false,
+        inert: false,
+        disabled: false,
+        mobileOnly: false,
+      })
+    ).toThrow(/viewport/i);
   });
 });

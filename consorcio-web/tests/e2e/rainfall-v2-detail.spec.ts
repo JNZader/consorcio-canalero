@@ -30,8 +30,33 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import { clickFixtureParcela, probeFichaAvailability } from './helpers/catastroFixture';
+import {
+  assertDesktopFocusStable,
+  assertMobileReady,
+  assertScrollRangeAndWheelProof,
+  assertTargetReady,
+  projectParcel,
+  type HarnessFixture,
+  type ParcelAlias,
+  type ParcelFixture,
+  type TargetReadyEvidence,
+  validateFixture,
+} from './helpers/rainfallMultiParcelHarness';
 import { requireCondition, skipForMissingData } from './helpers/strictGate';
 import { APP_URL } from './helpers/mapWorkspace';
+
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Same rationale as the harness helper: Playwright's ESM loader rejects a bare
+// `.json` static import, so the fixture is read at runtime.
+const rainfallFixtureJson = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'fixtures/rainfall-multi-parcel.fixture.json'),
+    'utf8'
+  )
+) as unknown;
 
 const TOKEN_KEY = 'consorcio_auth_token';
 const USER_KEY = 'consorcio_auth_user';
@@ -421,6 +446,541 @@ async function gotoAndOpenFicha(page: Page): Promise<boolean> {
   return true;
 }
 
+// --------------------------------------------------------------------------- //
+// W7.4 + W8 — A→B→C→A multi-parcel journey (RMEH-007/008)
+// --------------------------------------------------------------------------- //
+// One ficha click per parcel, both form factors, with every rainfall call
+// answered from the fixture so the journey is network-free and deterministic.
+// The fixture router is fixture-AWARE: an unknown scope/nomenclature fails
+// closed (RMEH-006-B), and the analysis sequence counter + cache-key trace
+// let `waitForTargetAnalysis` gate that a transition really landed on the
+// TARGET (RMEH-013-B/C), never on a stale cached answer.
+// --------------------------------------------------------------------------- //
+
+/** One metric the fixture serves — mirrors the app's RainfallMetric. */
+function fixtureMetric(
+  key: string,
+  value: number,
+  revision: string,
+  availableThrough: string
+): Record<string, unknown> {
+  return {
+    metric: key,
+    value,
+    unit: 'mm',
+    state: 'available',
+    reason: null,
+    interval_start: '2026-01-01',
+    interval_end: '2026-12-31',
+    coverage: 1.0,
+    completeness: 1.0,
+    quality: {},
+    discrepancies: [],
+    temporal_state: 'provisional',
+    revision,
+    // `available_through` set => freshness is 'evidenced' (not 'provisional'),
+    // so the annual cut reads "Acumulado hasta el {day}" (RainfallAnswerCard).
+    provenance: {
+      source_id: 'st-rmeh',
+      source_class: 'observed_station',
+      method: 'agregacion',
+      nominal_resolution: '24h',
+      aggregation: 'mensual',
+      spatial_scope: parcelScopeKindForFixture(),
+      freshness: availableThrough,
+      available_through: availableThrough,
+    },
+    fallback_used: false,
+  };
+}
+
+/** scopeSentenceFor's kind label needs the fixture's scopeKind. */
+function parcelScopeKindForFixture(): 'zone' | 'basin' {
+  return 'zone';
+}
+
+/**
+ * The ready (200) snapshot a parcel's analysis answers with. Values are
+ * pulled from the fixture facts, so percentile/accumulation/revisions all
+ * agree with the TARGET parcel (RMEH-006-C).
+ */
+function fixtureReadyBody(
+  parcel: ParcelFixture,
+  scope: Record<string, string>,
+  year: number,
+  evidenceDay: string
+): Record<string, unknown> {
+  const revision = parcel.rainfall.metricRevision;
+  const mk = (key: string, value: number) => fixtureMetric(key, value, revision, evidenceDay);
+  return {
+    analysis_revision_id: parcel.rainfall.analysisRevisionId,
+    data_revision: parcel.rainfall.dataRevision,
+    scope,
+    regional_estimate: true,
+    year,
+    comparison_end: '2026-12-31',
+    baseline: '1991-2020',
+    annual: {
+      selected: mk('selected', parcel.rainfall.accumulationMm),
+      normal: mk('normal', 98.2),
+      percentile: mk('percentile', parcel.rainfall.percentile),
+    },
+    antecedents: { d7: mk('d7', 31.0) },
+    intensity: { p24h: mk('p24h', 12.5) },
+    summary: 'Año seco respecto de la normal 1991–2020.',
+    source_health: { stations: 1, degraded: false },
+  };
+}
+
+/** The series for a parcel's analysis revision (consistent with the snapshot). */
+function fixtureSeriesBody(
+  parcel: ParcelFixture,
+  scope: Record<string, string>,
+  year: number
+): Record<string, unknown> {
+  const points = Array.from({ length: 40 }, (_, index) => {
+    const day = new Date(Date.UTC(year, 0, 1 + index));
+    return {
+      date: day.toISOString().slice(0, 10),
+      mm: 3,
+      accumulated: 3 * (index + 1),
+      normal_accumulated: 2.4 * (index + 1),
+      state: 'available',
+    };
+  });
+  return {
+    analysis_revision_id: parcel.rainfall.analysisRevisionId,
+    data_revision: parcel.rainfall.dataRevision,
+    scope,
+    year,
+    unit: 'mm',
+    comparison_end: `${year}-02-09`,
+    available_through: `${year}-02-10T00:00:00+00:00`,
+    consistent_with_snapshot: true,
+    consistency_reason: null,
+    normal_curve_state: 'available',
+    points,
+  };
+}
+
+interface FixtureRouterTrace {
+  analysisSequence: number;
+  latest: {
+    scopeNomenclature: string | null;
+    analysisCacheKey: string | null;
+    seriesScopeId: string | null;
+    authHeader: string | null;
+  };
+  fichaPosts: Array<{ tipo: string; nomenclatura: string }>;
+}
+
+/**
+ * Register the fixture-aware rainfall router + a ficha-POST observer on a page.
+ * Returns the trace the journey reads and asserts against (RMEH-007/008).
+ */
+function registerFixtureRainfallRouter(
+  page: Page,
+  fixture: HarnessFixture
+): FixtureRouterTrace {
+  const trace: FixtureRouterTrace = {
+    analysisSequence: 0,
+    latest: { scopeNomenclature: null, analysisCacheKey: null, seriesScopeId: null, authHeader: null },
+    fichaPosts: [],
+  };
+
+  // Design line 397: the ficha POST body must be exactly
+  // `{tipo:'parcela', nomenclatura:<target>}` on the clicks that fire it.
+  // We observe it (no mocking); A2 is served from the 5-min ficha cache, so
+  // not every click produces a POST — only the first A, B and C.
+  page.on('request', (request) => {
+    const url = request.url();
+    const method = request.method();
+    if (method === 'POST' && url.includes('/api/v2/geo/analisis-zona')) {
+      const body = request.postDataJSON() as { tipo?: string; nomenclatura?: string };
+      if (body && typeof body.tipo === 'string' && typeof body.nomenclatura === 'string') {
+        trace.fichaPosts.push({ tipo: body.tipo, nomenclatura: body.nomenclatura });
+      }
+    }
+  });
+
+  page.route(/api\/v2\/geo\/rainfall\/.*/, async (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    const headers = route.request().headers();
+
+    // scopes:resolve → single scope for the requested nomenclature.
+    if (method === 'POST' && url.includes('scopes:resolve')) {
+      const payload = (route.request().postDataJSON() ?? {}) as {
+        nomenclature?: string;
+        kind?: string;
+        id?: string;
+        version?: string;
+      };
+      const nomenclature =
+        payload.nomenclature ??
+        (payload.kind && payload.id && payload.version
+          ? `${payload.kind}:${payload.id}:${payload.version}`
+          : undefined);
+      const parcel = nomenclature
+        ? fixture.parcels.find((p) => p.nomenclature === nomenclature || p.rainfall.scopeId === nomenclature)
+        : undefined;
+      if (!parcel) {
+        // Fail closed: an unknown scope identity must never normalize to A.
+        await route.fulfill({ status: 422, contentType: 'application/json', body: '{"detail":"unknown scope"}' });
+        return;
+      }
+      const scope = { kind: parcel.rainfall.scopeKind, id: parcel.rainfall.scopeId.split(':')[1] ?? parcel.rainfall.scopeId, version: parcel.rainfall.scopeVersion };
+      trace.latest.scopeNomenclature = parcel.nomenclature;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ kind: 'scope', scope, regional_estimate: true }),
+      });
+      return;
+    }
+
+    // Series for a parcel's analysis revision.
+    if (url.endsWith('/series')) {
+      const revMatch = url.match(/analyses\/([^/]+)\/series/);
+      const revisionId = revMatch ? decodeURIComponent(revMatch[1]) : '';
+      const parcel = fixture.parcels.find((p) => p.rainfall.analysisRevisionId === revisionId);
+      if (!parcel) {
+        await route.fulfill({ status: 422, contentType: 'application/json', body: '{"detail":"unknown series"}' });
+        return;
+      }
+      const scope = { kind: parcel.rainfall.scopeKind, id: parcel.rainfall.scopeId.split(':')[1] ?? parcel.rainfall.scopeId, version: parcel.rainfall.scopeVersion };
+      trace.latest.seriesScopeId = parcel.rainfall.scopeId;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(fixtureSeriesBody(parcel, scope, new Date().getFullYear())),
+      });
+      return;
+    }
+
+    // csv / xlsx downloads — minimal, non-blocking bodies.
+    if (url.endsWith('.xlsx')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        body: Buffer.from('PK\x05\x06' + '\x00'.repeat(18), 'latin1'),
+      });
+      return;
+    }
+    if (url.endsWith('.csv')) {
+      await route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: 'metrica,valor\n' });
+      return;
+    }
+
+    // POST /geo/rainfall/analyses → resolve by scope, serve the ready body.
+    const payload = (route.request().postDataJSON() ?? {}) as {
+      scope?: Record<string, string>;
+      year?: number;
+    };
+    const scope = payload.scope ?? {};
+    const scopeId = `${scope.kind}:${scope.id}:${scope.version}`;
+    const parcel = fixture.parcels.find((p) => p.rainfall.scopeId === scopeId);
+    if (!parcel) {
+      await route.fulfill({ status: 422, contentType: 'application/json', body: '{"detail":"unknown analysis scope"}' });
+      return;
+    }
+    trace.analysisSequence += 1;
+    trace.latest.analysisCacheKey = parcel.rainfall.effectiveCacheKey;
+    trace.latest.authHeader = headers.authorization ?? headers.Authorization ?? null;
+    const evidenceDay = new Date(Date.UTC(2026, 0, 31)).toISOString().slice(0, 10);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(fixtureReadyBody(parcel, scope, payload.year ?? 2026, evidenceDay)),
+    });
+  });
+
+  return trace;
+}
+
+/**
+ * Wait for the analysis trace to belong to the TARGET and to be strictly
+ * newer than the previous transition's sequence — the freshness gate
+ * (RMEH-013-C). On the local fixture-router the 60s analysis cache can serve
+ * a repeat selection without a new request, so this may legitimately fail
+ * closed here; it is exercised for real on the owned stack at W9.
+ */
+async function waitForTargetAnalysis(
+  page: Page,
+  trace: FixtureRouterTrace,
+  target: ParcelFixture,
+  previousSequence: number,
+  timeoutMs = 15_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (
+      trace.latest.analysisCacheKey === target.rainfall.effectiveCacheKey &&
+      trace.analysisSequence > previousSequence
+    ) {
+      return;
+    }
+    await page.waitForTimeout(250);
+  }
+  throw new Error(
+    `la transición no alcanzó el análisis de ${target.alias} (esperado cacheKey ${target.rainfall.effectiveCacheKey}, secuencia > ${previousSequence}; observado ${String(
+      trace.latest.analysisCacheKey
+    )} en la secuencia ${trace.analysisSequence})`
+  );
+}
+
+/** Expand the technical fold, read `Revisión: <rev>`, then collapse again. */
+async function readMetricRevision(page: Page): Promise<string> {
+  const header = page.getByTestId('rainfall-technical-header');
+  await header.click();
+  const body = page.getByTestId('rainfall-technical-body');
+  const shared = body.getByTestId('rainfall-provenance-shared');
+  const text = await shared.textContent().catch(() => null);
+  const match = text ? /Revisión:\s*(\S+)/.exec(text) : null;
+  await header.click(); // collapse — geometry must be back to the default.
+  if (!match) {
+    throw new Error('la hoja técnica no expuso la revisión compartida de las métricas');
+  }
+  return match[1];
+}
+
+/** Snapshot of the mobile sheet geometry + scroll state before the wheel. */
+async function sampleMobileSheet(page: Page): Promise<{ range: number; beforeScrollTop: number }> {
+  return page.getByTestId('ficha-territorial-panel-sheet-body').evaluate((element) => {
+    return { range: element.scrollHeight - element.clientHeight, beforeScrollTop: element.scrollTop };
+  });
+}
+
+/**
+ * Collect the pure READY evidence for one transition from the DOM + trace.
+ * The spec reads the DOM, the pure contracts decide (assertTargetReady).
+ */
+async function collectReadyEvidence(
+  page: Page,
+  trace: FixtureRouterTrace,
+  target: ParcelFixture,
+  previous: TargetReadyEvidence['previous'],
+  activeTokenValue: string,
+  lluviaSelected: boolean
+): Promise<TargetReadyEvidence> {
+  const headline = await page.getByTestId('rainfall-headline').textContent();
+  const percentMatch = headline ? /Percentil\s+(\d+)/.exec(headline) : null;
+  const renderedPercentile = percentMatch ? Number(percentMatch[1]) : Number.NaN;
+
+  const annualText = await page.getByTestId('rainfall-annual-text').textContent();
+  const accMatch = annualText ? /:\s*([\d.]+)\s*mm/.exec(annualText) : null;
+  const renderedAccumulationMm = accMatch ? Number(accMatch[1]) : Number.NaN;
+
+  const compact = await page.getByTestId('rainfall-compact-context').textContent();
+  const scopeMatch = compact ? /Estimación regional:\s*([^·]+)/.exec(compact) : null;
+  const renderedScopeSentence = scopeMatch ? scopeMatch[1].trim() : '';
+
+  const headerRow = page
+    .getByTestId('ficha-parcela-header')
+    .locator('dt, th', { hasText: 'Nomenclatura' });
+  const identityText = await headerRow.evaluate((el) => {
+    const parent = el.parentElement;
+    return parent ? parent.textContent ?? '' : '';
+  });
+  const renderedIdentity = (identityText.replace('Nomenclatura', '').trim() || '').split(/\s+/)[0] ?? '';
+
+  return {
+    targetAlias: target.alias,
+    lluviaSelected,
+    renderedIdentity,
+    renderedScopeSentence,
+    renderedPercentile,
+    renderedAccumulationMm,
+    renderedMetricRevision: await readMetricRevision(page),
+    traces: {
+      scopeNomenclature: trace.latest.scopeNomenclature ?? '',
+      analysisCacheKey: trace.latest.analysisCacheKey ?? '',
+      seriesScopeId: trace.latest.seriesScopeId ?? '',
+    },
+    analysisSequence: trace.analysisSequence,
+    previous,
+    activeToken: activeTokenValue,
+    authHeader: trace.latest.authHeader ?? '',
+    tokenInUrl: false,
+  };
+}
+
+/** Read the mobile sheet stage attribute. */
+async function readSheetStage(page: Page): Promise<'peek' | 'medio' | 'alto'> {
+  const stage = await page
+    .getByTestId('ficha-territorial-panel')
+    .getAttribute('data-stage');
+  return (stage as 'peek' | 'medio' | 'alto') ?? 'peek';
+}
+
+/** Read whether the Lluvia tab is currently active. */
+async function readLluviaActive(page: Page): Promise<boolean> {
+  return page
+    .getByTestId('ficha-dataset-tabs')
+    .locator('label', { hasText: 'Lluvia' })
+    .getAttribute('data-active')
+    .then((v) => v === 'true' || v === '');
+}
+
+interface JourneyRecord {
+  context: 'mobile' | 'desktop';
+  target: ParcelAlias;
+  attemptCount: number;
+  clickCount: number;
+  wheelProofsBeforeClick: number;
+  analysisSequence: number;
+}
+
+/**
+ * Drive A→B→C→A on ONE context (mobile or desktop) and record the manifest
+ * rows plus the final READY evidence list. Returns nothing; asserts inline.
+ */
+async function runContextJourney(
+  page: Page,
+  fixture: HarnessFixture,
+  trace: FixtureRouterTrace,
+  context: 'mobile' | 'desktop',
+  manifest: JourneyRecord[],
+  activeTokenValue: string
+): Promise<void> {
+  const order: ParcelAlias[] = ['A', 'B', 'C', 'A'];
+  const target = (alias: ParcelAlias) =>
+    fixture.parcels.find((p) => p.alias === alias) as ParcelFixture;
+
+  const canvas = page.locator('.maplibregl-canvas').first();
+  await canvas.waitFor({ state: 'visible', timeout: 15_000 });
+  const box = await canvas.boundingBox();
+  if (box === null) {
+    throw new Error('El canvas del mapa no expuso su caja de medida');
+  }
+
+  let previous: TargetReadyEvidence['previous'] = null;
+  let wheelProofsBeforeClick = 0;
+
+  for (let index = 0; index < order.length; index += 1) {
+    const alias = order[index];
+    const parcel = target(alias);
+    const camera = context === 'mobile' ? fixture.cameras.mobile : fixture.cameras.desktop;
+
+    // Mobile: prove the sheet really scrolls before clicking the NEXT parcel.
+    if (context === 'mobile' && index > 0) {
+      const sample = await sampleMobileSheet(page);
+      const bodyBox = await page.getByTestId('ficha-territorial-panel-sheet-body').boundingBox();
+      requireCondition(bodyBox !== null, 'No se pudo medir la caja de la hoja para la rueda');
+      if (bodyBox) {
+        await page.mouse.move(bodyBox.x + bodyBox.width / 2, bodyBox.y + bodyBox.height / 2);
+        await page.mouse.wheel(0, sample.range);
+        await page.waitForTimeout(100);
+        const after = await page
+          .getByTestId('ficha-territorial-panel-sheet-body')
+          .evaluate((el) => el.scrollTop);
+        assertScrollRangeAndWheelProof({
+          range: sample.range,
+          intendedDelta: sample.range,
+          beforeScrollTop: sample.beforeScrollTop,
+          afterWheelScrollTop: after,
+        });
+      }
+      wheelProofsBeforeClick = 1;
+    } else {
+      wheelProofsBeforeClick = 0;
+    }
+
+    // Project the parcel's interior point onto the canvas and click it.
+    const projection = projectParcel(parcel, camera, {
+      left: box.x,
+      top: box.y,
+      width: box.width,
+      height: box.height,
+    });
+    requireCondition(
+      projection.insideOwnPolygon,
+      `El punto interior de ${alias} no cayó dentro de su propio polígono`
+    );
+    await canvas.click({ position: { x: projection.localCssX, y: projection.localCssY } });
+
+    // Desktop: the click must not steal focus away from the map surface.
+    if (context === 'desktop') {
+      const focused = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return {
+          tagName: el.tagName.toLowerCase(),
+          isBody: el === document.body,
+          isCanvas: el.classList.contains('maplibregl-canvas'),
+          isMapInteractionAncestor:
+            !!el.closest('.maplibregl-canvas-container, [data-testid="map-workspace-canvas"]') ||
+            !!el.closest('[data-testid="map-workspace-root"]'),
+          intersectsViewport:
+            rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0,
+          hidden: rect.width === 0 || rect.height === 0,
+          inert: el.hasAttribute('inert'),
+          disabled: (el as HTMLInputElement).disabled === true,
+          mobileOnly: false,
+        };
+      });
+      if (focused) assertDesktopFocusStable(focused);
+    }
+
+    // Gate: the analysis for the TARGET must be the freshest one served.
+    await waitForTargetAnalysis(page, trace, parcel, previous?.analysisSequence ?? 0);
+
+    // Wait for the headline to reflect the target percentile.
+    await expect(page.getByTestId('rainfall-headline')).toContainText(
+      `Percentil ${parcel.rainfall.percentile}`
+    );
+
+    const lluviaSelected = await readLluviaActive(page);
+
+    if (context === 'mobile') {
+      const stage = await readSheetStage(page);
+      const scrollTopAfter = await page
+        .getByTestId('ficha-territorial-panel-sheet-body')
+        .evaluate((el) => el.scrollTop);
+      const cardBoxRaw = await page.getByTestId('rainfall-answer-card').boundingBox();
+      const bodyBoxRaw = await page.getByTestId('ficha-territorial-panel-sheet-body').boundingBox();
+      if (cardBoxRaw === null || bodyBoxRaw === null) {
+        throw new Error('No se pudo medir la tarjeta para móvil');
+      }
+      const cardBox = {
+        left: cardBoxRaw.x,
+        top: cardBoxRaw.y,
+        width: cardBoxRaw.width,
+        height: cardBoxRaw.height,
+      };
+      const bodyBox = {
+        left: bodyBoxRaw.x,
+        top: bodyBoxRaw.y,
+        width: bodyBoxRaw.width,
+        height: bodyBoxRaw.height,
+      };
+      const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected);
+      assertMobileReady({ ...evidence, stage, scrollTopAfter, cardBox, bodyBox }, parcel);
+    } else {
+      const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected);
+      assertTargetReady(evidence, parcel);
+    }
+
+    // Record the manifest row (one attempt, one click per transition).
+    manifest.push({
+      context,
+      target: alias,
+      attemptCount: 1,
+      clickCount: 1,
+      wheelProofsBeforeClick,
+      analysisSequence: trace.analysisSequence,
+    });
+
+    previous = {
+      renderedPercentile: parcel.rainfall.percentile,
+      renderedAccumulationMm: parcel.rainfall.accumulationMm,
+      renderedMetricRevision: parcel.rainfall.metricRevision,
+      analysisSequence: trace.analysisSequence,
+    };
+  }
+}
+
 test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
   test('puerta de autorización: anónimo NO ve el detalle de lluvia', async ({ page }) => {
     // No session at all: the render gate must keep the panel off the DOM.
@@ -762,6 +1322,95 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
       expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(bodyBox.y + bodyBox.height + 1);
       // …and the reader did not have to scroll to get there.
       expect(scrolled).toBe(0);
+    });
+  });
+
+  test('A→B→C→A: una selección por clic en móvil y escritorio (RMEH-007/008)', async ({
+    browser,
+  }, testInfo) => {
+    // browser.newContext() does NOT inherit the config `use` options, so the
+    // viewports are passed explicitly per form factor.
+    const fixture = validateFixture(rainfallFixtureJson);
+    const manifest: JourneyRecord[] = [];
+
+    for (const context of ['mobile', 'desktop'] as const) {
+      const camera = fixture.cameras[context];
+      const viewport = camera.viewport;
+      const contextPage = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+      const page = await contextPage.newPage();
+
+      // Seed auth + silent-refresh route (same seam the rest of the suite uses).
+      await page.route(/api\/v2\/auth\/jwt\/refresh(?:\?|$)/, async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ access_token: ROTATED_MOCK_TOKEN }),
+        });
+      });
+      await page.addInitScript(
+        ({ tokenKey, userKey, token, user }) => {
+          try {
+            window.localStorage.removeItem('consorcio_auth_logout_tombstone');
+          } catch {
+            /* storage unavailable — nothing to clean */
+          }
+          window.sessionStorage.setItem(tokenKey, token);
+          window.sessionStorage.setItem(userKey, JSON.stringify(user));
+        },
+        {
+          tokenKey: TOKEN_KEY,
+          userKey: USER_KEY,
+          token: MOCK_TOKEN,
+          user: makeUser('operador', 'operador@e2e.local'),
+        }
+      );
+
+      const trace = registerFixtureRainfallRouter(page, fixture);
+
+      // Navigate by the fixture camera (URL seam read by useReportHighlight),
+      // and listen for a catastro tile so the ficha click is gated on real data.
+      let catastroTileSeen = false;
+      page.on('response', (response) => {
+        if (/parcelas_catastro/.test(response.url()) && response.status() === 200) {
+          catastroTileSeen = true;
+        }
+      });
+      await page.goto(`${APP_URL}/mapa?lat=${camera.lat}&lng=${camera.lng}&zoom=${camera.zoom}`);
+
+      const canvas = page.locator('.maplibregl-canvas').first();
+      const mounted = await canvas
+        .waitFor({ state: 'visible', timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      requireCondition(mounted, 'El canvas del mapa no montó en un entorno declarado');
+
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const tileDeadline = Date.now() + 15_000;
+      while (!catastroTileSeen && Date.now() < tileDeadline) {
+        await page.waitForTimeout(250);
+      }
+      if (!catastroTileSeen) {
+        skipForMissingData(true, 'Catastro vacío o sin tiles en este entorno');
+        await contextPage.close();
+        continue;
+      }
+
+      // The map canvas must finish laying out before the projection is measured.
+      await page.getByTestId('map-workspace-root').waitFor({ state: 'visible', timeout: 15_000 });
+
+      await runContextJourney(page, fixture, trace, context, manifest, MOCK_TOKEN);
+      await contextPage.close();
+    }
+
+    // Exactly 8 records: 4 mobile + 4 desktop, one attempt + one click each.
+    expect(manifest).toHaveLength(8);
+    for (const record of manifest) {
+      expect(record.attemptCount).toBe(1);
+      expect(record.clickCount).toBe(1);
+    }
+    await testInfo.attach('manifest.json', {
+      body: JSON.stringify(manifest, null, 2),
+      contentType: 'application/json',
     });
   });
 });

@@ -496,3 +496,87 @@ wiring itself is deferred to W7/W8, which will import these pure contracts.
 - No version.json staged; no docker activity this session.
 - `tsconfig.tests.json` enrolment already covers the helper + unit test (W4);
   no new files, no new enrolments.
+
+## Batch 6 — W7/W8 (this session): A→B→C→A journey spec wired, collection gate met
+
+### What
+Appended the ONE W7.4/W8 `test()` (A→B→C→A, both form factors) to
+`rainfall-v2-detail.spec.ts` plus the module-level fixture-aware router and
+journey driver it needs. The 10 pre-existing tests stay byte-identical; the
+new `test()` drives mobile (390×844) and desktop (1280×720) contexts with a
+single plain click per parcel.
+
+### Spec wiring added (module-level, in the spec file — the `page.route` layer)
+
+- `fixtureMetric` / `fixtureReadyBody` / `fixtureSeriesBody` — per-parcel ready
+  snapshot + series built from fixture facts (percentile/accumulation/revisions)
+  with `available_through` set so freshness is 'evidenced' and the annual cut
+  reads `Acumulado hasta el {day}`.
+- `registerFixtureRainfallRouter(page, fixture)` — fixture-AWARE router:
+  `scopes:resolve` → single `{kind:'scope'}` by nomenclature (unknown fails
+  closed); `analyses` → resolve by scopeId, increment `analysisSequence`,
+  record `latest` cache-key/scope/series/auth trace; `series` → by
+  `analysisRevisionId` with same `data_revision`+scope; csv/xlsx → minimal
+  non-blocking bodies. Also observes the ficha POST body (design line 397) via
+  `page.on('request')` for `/api/v2/geo/analisis-zona`.
+- `waitForTargetAnalysis` — polls ≤15s for `latest.analysisCacheKey === target`
+  AND sequence strictly newer than the previous transition (RMEH-013-C). On the
+  local fixture router the 60s analysis cache can serve a repeat selection
+  without a new request, so A2 may legitimately fail closed here — exercised
+  for real on the owned stack at W9. Gate NOT weakened.
+- `readMetricRevision` — expand `rainfall-technical-header`, read
+  `Revisión: (\S+)` from `rainfall-provenance-shared`, collapse again (so
+  geometry stays collapsed for the mobile containment measurement).
+- `collectReadyEvidence` — reads the DOM (ficha identity, scope sentence,
+  headline percentile, accumulation regex, Lluvia active) + trace + active
+  token into the pure `TargetReadyEvidence` shape.
+- `runContextJourney` — drives A→B→C→A per context: mobile wheel proof before
+  each next click (via `assertScrollRangeAndWheelProof`), `projectParcel`
+  → single `canvas.click({position})`, desktop focus snapshot after each click
+  (`assertDesktopFocusStable`), `waitForTargetAnalysis`, mobile stage/scroll/
+  containment (`assertMobileReady`) vs desktop `assertTargetReady`, and records
+  the 8-row manifest (4 mobile + 4 desktop, attemptCount/clickCount = 1).
+- The single `test(...)` creates two `browser.newContext()` with EXPLICIT
+  viewports (config `use` is not inherited by `newContext`), seeds auth +
+  silent-refresh via the same seam, navigates by the fixture camera
+  (`?lat&lng&zoom`), gates on a catastro tile response + `skipForMissingData`,
+  and asserts `manifest).toHaveLength(8)` + every record one attempt/one click,
+  attaching `manifest.json`.
+
+### Fix applied this session (collection blocker)
+The static `import x from '...fixture.json'` broke Playwright's ESM loader at
+collection (`Module needs an import attribute of "type: json"`). Both the spec
+and the helper now read the fixture at runtime via `node:fs`/`node:path`/
+`node:url` (`import.meta.url`) instead of a bare `.json` static import — Node
+builtins only, the helper stays free of Playwright/application imports. Vitest
+and tsc are unaffected.
+
+### GREEN evidence
+| Check | Command | Result |
+|---|---|---|
+| Types | `npx tsc -p tsconfig.tests.json` | **0 errors** |
+| Unit | `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **67 passed** (unchanged) |
+| Collection | `npx playwright test -c tests/e2e/playwright.rainfall-harness.config.ts --list` | **11 tests** (was 10; +1 EXACTLY) |
+| Byte-identical | `git diff HEAD -- ...spec.ts | grep '^-'` | **zero deletions** — the 10 existing tests are untouched |
+
+### Decision recorded (A2 freshness, re-verified)
+`useRainfallScopes` (5-min staleTime) + `useRainfallAnalysis` (60s) + no
+`invalidateQueries` anywhere + `RainfallDetailPanel` staying mounted means a
+repeat A selection on a fixture-router journey (<60s) is served from cache with
+NO new request, so the RMEH-013-C sequence gate fails closed locally. That is
+the DESIGNED behavior (fail-closed, never weakened). On the owned real stack at
+W9, A1 queues (202, poll every 5s), so A2's cache is stale → refetch → gate
+passes. Documented, accepted risk; verify at W9.
+
+### Budget / cap
+- Spec +638 lines (helpers ~470 + test ~168); helper 805 → 1,080 lines (+275).
+- Cumulative ≈ 2,953 (W4 658 + W5 1,778 + W6 ~434 + W7/W8 ~1,080) vs the ~2,700
+  forecast and the ~4,000 non-production cap for W5–W11 — within cap, past the
+  original forecast. Consistent with prior batches: documented escalation, no
+  scope cut. Helper stays in the single pure module (no split) per the W6
+  precedent and the single-import-surface rationale.
+
+### Boundary
+- Production = 0 (`consorcio-web/src/**` untouched this session).
+- `version.json` restored after commit; no docker activity this session.
+- No new files; `tsconfig.tests.json` already enrolled the spec + helper.
