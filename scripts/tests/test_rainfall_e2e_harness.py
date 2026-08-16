@@ -195,6 +195,78 @@ class TestSafety:
 
 
 # --------------------------------------------------------------------------- #
+# A1/JD-R2-001 — run-owned compose env: every compose invocation targets the
+# SAME project the run provisioned. The prefix derives from the identity's
+# database_name (the single source of truth: POSTGRES_DB, psql -d and the
+# marker row all share it) — NEVER from the ambient env, which could point at
+# a DIFFERENT project (the ``:-probedefault`` divergence made compose up and
+# every later service command target different projects).
+# --------------------------------------------------------------------------- #
+class TestComposeEnv:
+    def test_compose_env_derives_prefix_from_identity_never_ambient(self, monkeypatch):
+        """A1: compose env must NEVER read the ambient ``RMEH_RUN_ID_PREFIX``
+        (that is the exact JD-R2-001 failure: env-less compose calls resolved
+        the ``rmeh-`` empty-prefix project instead of ``rmeh-<run_id[:10]>``)."""
+        from scripts.rainfall_e2e_harness.safety import compose_env
+
+        monkeypatch.setenv("RMEH_RUN_ID_PREFIX", "gha")
+        monkeypatch.setenv("RMEH_DB_PASSWORD", "ambient-leak")
+        identity = RunIdentity.plan(evidence_dir=None)
+        env = compose_env(identity)
+        assert env["RMEH_RUN_ID_PREFIX"] == identity.run_id[:10]
+        assert env["RMEH_RUN_ID_PREFIX"] != "gha", "ambient prefix leaked into compose env"
+        assert env["RMEH_DB_PASSWORD"] == "synthpass"
+        assert env["RMEH_DB_PASSWORD"] != "ambient-leak", "ambient password leaked"
+
+    def test_compose_env_prefix_matches_database_name_for_seam_identities(self):
+        """Integration/probe seams (probe_rainfall_bootstrap.py) build the
+        identity with run_id = the FULL ambient prefix (``probedefault``, 11
+        chars). Deriving the prefix from ``run_id[:10]`` would truncate it to
+        ``probedefau`` and break against the provisioned ``probedefault``
+        project — the database_name-derived prefix must keep the full seam
+        prefix so those stacks are still targeted exactly."""
+        from scripts.rainfall_e2e_harness.safety import compose_env
+
+        identity = RunIdentity(
+            run_id="probedefault",
+            marker_nonce="m" * 32,
+            database_name="rmeh_probedefault",
+            evidence_dir=None,
+        )
+        assert compose_env(identity)["RMEH_RUN_ID_PREFIX"] == "probedefault"
+
+    def test_compose_env_extra_merges_without_touching_prefix(self):
+        """``extra`` carries driver host ports; it must never override the
+        run-owned prefix or the synthetic password."""
+        from scripts.rainfall_e2e_harness.safety import compose_env
+
+        identity = _identity()
+        env = compose_env(
+            identity,
+            extra={"RMEH_BACKEND_HOST_PORT": "8001", "RMEH_MARTIN_HOST_PORT": "3001"},
+        )
+        assert env["RMEH_RUN_ID_PREFIX"] == identity.run_id[:10]
+        assert env["RMEH_DB_PASSWORD"] == "synthpass"
+        assert env["RMEH_BACKEND_HOST_PORT"] == "8001"
+        assert env["RMEH_MARTIN_HOST_PORT"] == "3001"
+
+    def test_marker_gate_env_carries_run_owned_prefix(self):
+        """The read-only marker gate (``validate_marker_read_only``) is the
+        FIRST compose invocation of the bootstrap; it must already carry the
+        run-owned prefix so the exec targets the provisioned project."""
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DATABASE_READONLY, _ok(_marker_row(identity)))
+        validate_marker_read_only(
+            runner, identity, compose_file="scripts/tests/rainfall-e2e.compose.yml"
+        )
+        marker = runner.calls[0]
+        assert marker.command[:3] == ["docker", "compose", "-f"]
+        assert (marker.env or {}).get("RMEH_RUN_ID_PREFIX") == identity.run_id[:10]
+        assert (marker.env or {}).get("RMEH_DB_PASSWORD") == "synthpass"
+
+
+# --------------------------------------------------------------------------- #
 # W1.2 — CLEANUP (RMEH-001-B, RMEH-012-B/C)
 # --------------------------------------------------------------------------- #
 class TestCleanup:
@@ -933,6 +1005,130 @@ class TestBootstrap:
         owned = validate_marker_read_only(runner2, identity)
         apply_migrations(owned, runner2)
         assert runner2.database_mutating_calls[0].command == ["alembic", "upgrade", "head"]
+
+    def test_apply_migrations_compose_path_pins_run_owned_env(self):
+        """JD-R2-001: the compose-aware migrate invocation must carry the
+        run-owned env (``RMEH_RUN_ID_PREFIX``), not resolve the empty-prefix
+        ``rmeh-`` project — the migrate service would run DDL against nothing
+        while the real DB sat untouched under ``rmeh-<run_id[:10]>``."""
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DATABASE_READONLY, _ok(_marker_row(identity)))
+        owned = validate_marker_read_only(runner, identity)
+        apply_migrations(
+            owned,
+            runner,
+            compose_file="scripts/tests/rainfall-e2e.compose.yml",
+            identity=identity,
+        )
+        migrate = runner.database_mutating_calls[0]
+        assert migrate.command[:2] == ["docker", "compose"]
+        assert "migrate" in migrate.command
+        assert (migrate.env or {}).get("RMEH_RUN_ID_PREFIX") == identity.run_id[:10]
+        assert (migrate.env or {}).get("RMEH_DB_PASSWORD") == "synthpass"
+
+    def test_apply_migrations_compose_path_refuses_missing_identity(self):
+        """Fail-closed: the compose path must NEVER run without knowing which
+        run-owned project to target — a missing identity aborts instead of
+        silently hitting the wrong project."""
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DATABASE_READONLY, _ok(_marker_row(identity)))
+        owned = validate_marker_read_only(runner, identity)
+        with pytest.raises(BootstrapSafetyFailure, match="identity"):
+            apply_migrations(
+                owned,
+                runner,
+                compose_file="scripts/tests/rainfall-e2e.compose.yml",
+            )
+        assert runner.database_mutating_calls == []
+
+    def test_bootstrap_every_compose_exec_carries_run_owned_env(self):
+        """JD-R2-001 definitive regression: EVERY ``docker compose`` invocation
+        in a happy-path bootstrap (marker gate, migrate, inspections, seed,
+        views, soil count) carries the run-owned prefix env. Before the fix the
+        psql execs resolved the empty-prefix ``rmeh-`` project."""
+        from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        _program_bootstrap_ok(runner, identity)
+        bootstrap_database(identity, runner, _fixture(), compose_file=COMPOSE_FILE)
+        prefix = identity.run_id[:10]
+        compose_calls = [c for c in runner.calls if c.command[:2] == ["docker", "compose"]]
+        assert compose_calls, "expected compose invocations in the bootstrap"
+        for call in compose_calls:
+            env = call.env or {}
+            assert env.get("RMEH_RUN_ID_PREFIX") == prefix, (
+                f"compose call missing run-owned prefix: {call.command}"
+            )
+            assert env.get("RMEH_DB_PASSWORD") == "synthpass", (
+                f"compose call missing synthetic DB password: {call.command}"
+            )
+
+    def test_bootstrap_rebuild_compose_control_carries_run_owned_env(self):
+        """The one bounded rebuild (``compose down -v`` / ``compose up -d``)
+        must also carry the run-owned env — an env-less rebuild would tear down
+        and recreate the empty-prefix ``rmeh-`` project instead of the run's."""
+        from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        incompatible = _inspection_json(
+            relkind="m", comment="migration", columns=("id",), indexes=(), definition_digest="x"
+        )
+        _program_bootstrap_ok(
+            runner,
+            identity,
+            parcel_view=incompatible,
+            rebuild=True,
+            parcel_view_after_rebuild="",
+        )
+        report = bootstrap_database(identity, runner, _fixture(), compose_file=COMPOSE_FILE)
+        assert report.rebuilt is True
+        control = [
+            c
+            for c in runner.calls
+            if c.kind is CommandKind.DOCKER_CONTROL and c.command[:2] == ["docker", "compose"]
+        ]
+        assert control, "expected compose down/up control calls"
+        for call in control:
+            assert (call.env or {}).get("RMEH_RUN_ID_PREFIX") == identity.run_id[:10], (
+                f"rebuild control call missing run-owned prefix: {call.command}"
+            )
+
+    def test_inspect_relation_psql_env_carries_run_owned_prefix(self):
+        """``inspect_relation``'s psql exec against the run-owned DB must carry
+        the run-owned env (JD-R2-001) and refuse to run with a DB target but no
+        identity (fail-closed)."""
+        from scripts.rainfall_e2e_harness.bootstrap import (
+            COMPOSE_FILE,
+            inspect_relation,
+        )
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json()))
+        inspect_relation(
+            runner,
+            "parcelas_catastro",
+            compose_file=COMPOSE_FILE,
+            database_name=identity.database_name,
+            identity=identity,
+        )
+        call = runner.calls[0]
+        assert call.command[:2] == ["docker", "compose"]
+        assert (call.env or {}).get("RMEH_RUN_ID_PREFIX") == identity.run_id[:10]
+        # Fail-closed: a DB-targeted inspection without an identity aborts.
+        runner2 = RecordingCommandRunner()
+        with pytest.raises(BootstrapSafetyFailure, match="identity"):
+            inspect_relation(
+                runner2,
+                "parcelas_catastro",
+                compose_file=COMPOSE_FILE,
+                database_name=identity.database_name,
+            )
+        assert runner2.calls == []
 
     def test_classify_parcel_view_absent(self):
         from scripts.rainfall_e2e_harness.bootstrap import classify_parcel_view
@@ -2025,13 +2221,20 @@ class TestW11RollbackProof:
             CommandKind.DOCKER_INSPECT,
             type("R", (), {"exit_code": 0, "stdout": "x", "stderr": ""})(),
         )
-        _teardown_lease(runner, lease, config)
+        _teardown_lease(runner, lease, config, identity)
         volume_rm = [c for c in runner.calls if c.command[:3] == ["docker", "volume", "rm"]]
         assert volume_rm, "expected an exact-id volume removal"
         assert [c.command[-1] for c in volume_rm] == [lease.volume_name]
-        # No global prune and no DB token usage in teardown.
+        # No global prune and no DB-token usage in teardown: the compose down is
+        # driven by the lease identity (its env carries only the synthetic
+        # RMEH_* interpolation vars), never a DATABASE_* call or the marker
+        # nonce, and no global prune (RMEH-012-B/C/D).
         assert not any("prune" in c.command for c in runner.calls)
-        assert not any("DB_PASSWORD" in str(c.env) for c in runner.calls)
+        assert not any(
+            c.kind in (CommandKind.DATABASE_MUTATING, CommandKind.DATABASE_READONLY)
+            for c in runner.calls
+        )
+        assert not any(c.env and "marker_nonce" in str(c.env) for c in runner.calls)
 
     def test_cleanup_is_idempotent_when_resources_already_gone(self):
         """Re-running cleanup after an externally killed main process must not
@@ -2052,7 +2255,7 @@ class TestW11RollbackProof:
         identity = RunIdentity(
             run_id="cleanupidem",
             marker_nonce="n" * 32,
-            database_name="rmeh_cleanupidem",
+            database_name="rmeh_cleanupide",
             evidence_dir=None,
         )
         lease = ResourceLease.plan(identity)
@@ -2075,7 +2278,7 @@ class TestW11RollbackProof:
             CommandKind.DOCKER_INSPECT,
             type("R", (), {"exit_code": 1, "stdout": "", "stderr": ""})(),
         )
-        _teardown_lease(runner, lease, config)  # must not raise
+        _teardown_lease(runner, lease, config, identity)  # must not raise
 
     def test_driver_config_stack_env_derives_prefix_from_identity(self):
         """A1: compose must run under the run-owned project name. The driver
@@ -2088,7 +2291,7 @@ class TestW11RollbackProof:
         args = build_parser().parse_args(["run"])
         config = DriverConfig(args, {"RMEH_RUN_ID_PREFIX": "gha"})  # env must NOT leak
         identity = RunIdentity.plan(evidence_dir=config.evidence_dir)
-        env = config.stack_env(identity.run_id[:10])
+        env = config.stack_env(identity)
         assert env["RMEH_RUN_ID_PREFIX"] == identity.run_id[:10]
         assert env["RMEH_BACKEND_HOST_PORT"] == "8001"
         assert env["RMEH_MARTIN_HOST_PORT"] == "3001"
@@ -2107,14 +2310,14 @@ class TestW11RollbackProof:
         identity = RunIdentity(
             run_id="teardownpref",
             marker_nonce="m" * 32,
-            database_name="rmeh_teardownpref",
+            database_name="rmeh_teardownpr",
             evidence_dir=None,
         )
         lease = ResourceLease.plan(identity)
         args = build_parser().parse_args(["run"])
         config = DriverConfig(args, {})
         runner = RecordingCommandRunner()
-        _teardown_lease(runner, lease, config)
+        _teardown_lease(runner, lease, config, identity)
         down = [c for c in runner.calls if c.command[:2] == ["docker", "compose"] and "down" in c.command]
         assert down, "expected a compose down"
         # The prefix is run_id[:10] — the same 10-char prefix compose up used.
@@ -2156,7 +2359,7 @@ class TestW11RollbackProof:
         identity = RunIdentity(
             run_id="cleanuprid1",
             marker_nonce="m" * 32,
-            database_name="rmeh_cleanuprid1",
+            database_name="rmeh_cleanuprid",
             evidence_dir=None,
         )
         lease = ResourceLease.plan(identity)

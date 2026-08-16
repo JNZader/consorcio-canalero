@@ -206,6 +206,54 @@ class TestComposeStackContract:
                     f"{svc} container_name"
                 )
 
+    def test_compose_config_matches_lease_plan_under_driver_random_env(self):
+        """JD-R2-001 parity regression: the compose project resolved under the
+        DRIVER's run-identity env (``compose_env`` — the exact env every
+        compose invocation now carries) must equal the ``ResourceLease.plan``
+        names byte-for-byte. Before the fix, env-less compose calls resolved
+        the empty-prefix ``rmeh-`` project while the run provisioned
+        ``rmeh-<run_id[:10]>`` — a driver-style random prefix here proves the
+        resolved config matches the lease that teardown will use."""
+        from scripts.rainfall_e2e_harness.safety import (
+            ResourceLease,
+            RunIdentity,
+            compose_env,
+        )
+
+        identity = RunIdentity.plan(evidence_dir=None)
+        lease = ResourceLease.plan(identity)
+        # Strip any ambient RMEH_* vars so ONLY compose_env drives the
+        # resolution — exactly the run-owned env the harness now passes.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("RMEH_")}
+        env.update(compose_env(identity))
+        result = subprocess.run(
+            ["docker", "compose", "-f", str(COMPOSE_FILE), "config", "--format", "json"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+        assert result.returncode == 0, (
+            f"docker compose config failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+        cfg = json.loads(result.stdout)
+        assert cfg["name"] == lease.project_name, (
+            f"compose project {cfg['name']!r} != lease {lease.project_name!r}"
+        )
+        db_env = cfg["services"]["db"].get("environment", {})
+        assert db_env.get("POSTGRES_DB") == identity.database_name, (
+            f"POSTGRES_DB {db_env.get('POSTGRES_DB')!r} != {identity.database_name!r}"
+        )
+        vol_name = next(iter((cfg.get("volumes") or {}).values()))["name"]
+        net_name = next(iter((cfg.get("networks") or {}).values()))["name"]
+        assert vol_name == lease.volume_name, f"volume {vol_name!r} != {lease.volume_name!r}"
+        assert net_name == lease.network_name, f"network {net_name!r} != {lease.network_name!r}"
+        for svc, expected in lease.container_names.items():
+            assert cfg["services"][svc]["container_name"] == expected, (
+                f"{svc} container_name {cfg['services'][svc].get('container_name')!r} "
+                f"!= {expected!r}"
+            )
+
     def test_yaml_source_pins_loopback_prefix_on_published_ports(self):
         """Defence-in-depth: the YAML must literally write ``127.0.0.1:`` on
         every published port, so a missing env var cannot resolve to a bare
