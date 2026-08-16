@@ -36,6 +36,7 @@ import { APP_URL } from './helpers/mapWorkspace';
 const TOKEN_KEY = 'consorcio_auth_token';
 const USER_KEY = 'consorcio_auth_user';
 const MOCK_TOKEN = 'e2e-mock-token-4a1';
+const ROTATED_MOCK_TOKEN = 'e2e-rotated-token-8c2';
 
 /** AuthUser shape read by the jwt adapter (src/lib/auth/types.ts). */
 interface MockAuthUser {
@@ -57,6 +58,19 @@ function makeUser(role: MockAuthUser['role'], email: string): MockAuthUser {
  * without any backend call. Call it BEFORE `page.goto`.
  */
 async function seedAuth(page: Page, user: MockAuthUser): Promise<void> {
+  // The map mounts unrelated protected queries. Their expected 401 exercises
+  // the production silent-refresh interceptor, so the offline auth fixture
+  // must own that boundary too; otherwise a local backend cookie decides
+  // whether the seeded staff session survives. Return one deterministic
+  // rotation, keeping the test credential synthetic and the flow network-free.
+  await page.route(/api\/v2\/auth\/jwt\/refresh(?:\?|$)/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ access_token: ROTATED_MOCK_TOKEN }),
+    });
+  });
+
   await page.addInitScript(
     ({ tokenKey, userKey, token, user }) => {
       try {
@@ -69,6 +83,24 @@ async function seedAuth(page: Page, user: MockAuthUser): Promise<void> {
     },
     { tokenKey: TOKEN_KEY, userKey: USER_KEY, token: MOCK_TOKEN, user }
   );
+}
+
+/**
+ * Read the exact bearer the SPA will use now.
+ *
+ * The offline seed is only the boot credential. Any protected request may get
+ * a 401 and legitimately rotate it through the production silent-refresh
+ * interceptor before an export is clicked. Pinning the assertion to the seed
+ * made a correct rotation look like a leak; accepting any header would make
+ * the security assertion worthless. This helper keeps the check exact.
+ */
+async function activeAccessToken(page: Page): Promise<string> {
+  const token = await page.evaluate(
+    (tokenKey) => window.sessionStorage.getItem(tokenKey),
+    TOKEN_KEY
+  );
+  if (!token) throw new Error('La sesión E2E no conserva un access token activo');
+  return token;
 }
 
 /** One metric record — the smallest complete shape the metric list renders. */
@@ -526,6 +558,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
 
     await expect(page.getByTestId('rainfall-answer-card')).toBeVisible();
 
+    const exportToken = await activeAccessToken(page);
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('rainfall-export-csv').click();
     const download = await downloadPromise;
@@ -553,8 +586,9 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
 
     // Sealed: the token went in the Authorization header, never the URL.
     const csvReq = metrics.csvRequests[0];
-    expect(csvReq.headers.authorization).toBe(`Bearer ${MOCK_TOKEN}`);
+    expect(csvReq.headers.authorization).toBe(`Bearer ${exportToken}`);
     expect(csvReq.url).not.toContain(MOCK_TOKEN);
+    expect(csvReq.url).not.toContain(exportToken);
     expect(csvReq.url).not.toMatch(/[?&](token|access_token|key)=/);
   });
 
@@ -619,6 +653,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     // The audit CSV is still there: the friendly workbook is an addition.
     await expect(page.getByTestId('rainfall-export-csv')).toBeVisible();
 
+    const exportToken = await activeAccessToken(page);
     const downloadPromise = page.waitForEvent('download');
     await xlsxButton.click();
     const download = await downloadPromise;
@@ -627,8 +662,9 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     // Same credential rule as the CSV (they share one download body): bearer in
     // the header, never in the URL where history and access logs would keep it.
     const xlsxReq = mocks.xlsxRequests[0];
-    expect(xlsxReq.headers.authorization).toBe(`Bearer ${MOCK_TOKEN}`);
+    expect(xlsxReq.headers.authorization).toBe(`Bearer ${exportToken}`);
     expect(xlsxReq.url).not.toContain(MOCK_TOKEN);
+    expect(xlsxReq.url).not.toContain(exportToken);
     expect(xlsxReq.url).not.toMatch(/[?&](token|access_token|key)=/);
   });
 
@@ -670,9 +706,10 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
   test.describe('respuesta sin scroll en teléfono', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('la tarjeta de respuesta entra en el alto visible de la hoja (390×844)', async ({
-      page,
-    }) => {
+    test('la tarjeta de respuesta entra en el alto visible de la hoja (390×844)', async (
+      { page },
+      testInfo
+    ) => {
       await seedAuth(page, makeUser('operador', 'operador@e2e.local'));
       mockRainfallApi(page);
       await gotoAndOpenFicha(page);
@@ -701,12 +738,29 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
         return;
       }
 
+      const scrolled = await sheetBody.evaluate((element) => element.scrollTop);
+      const bounds = {
+        cardTop: cardBox.y,
+        cardBottom: cardBox.y + cardBox.height,
+        cardHeight: cardBox.height,
+        bodyTop: bodyBox.y,
+        bodyBottom: bodyBox.y + bodyBox.height,
+        bodyHeight: bodyBox.height,
+        topMargin: cardBox.y - bodyBox.y,
+        bottomMargin: bodyBox.y + bodyBox.height - (cardBox.y + cardBox.height),
+        scrollTop: scrolled,
+      };
+      console.info(`[O.1 mobile bounds] ${JSON.stringify(bounds)}`);
+      await testInfo.attach('mobile-card-bounds.json', {
+        body: JSON.stringify(bounds),
+        contentType: 'application/json',
+      });
+
       // The whole card — headline, adjective, textual equivalent, freshness and
       // scope — inside the visible height, with nothing scrolled.
       expect(cardBox.y).toBeGreaterThanOrEqual(bodyBox.y - 1);
       expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(bodyBox.y + bodyBox.height + 1);
       // …and the reader did not have to scroll to get there.
-      const scrolled = await sheetBody.evaluate((element) => element.scrollTop);
       expect(scrolled).toBe(0);
     });
   });

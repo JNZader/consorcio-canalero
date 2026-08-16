@@ -32,8 +32,19 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/components/map2d/rainfall/RainfallDetailPanel', () => ({
-  RainfallDetailPanel: ({ nomenclatura }: { nomenclatura: string }) => (
-    <div data-testid="rainfall-detail-sentinel">{nomenclatura}</div>
+  RainfallDetailPanel: ({
+    nomenclatura,
+    prioritizeAnswer,
+  }: {
+    nomenclatura: string;
+    prioritizeAnswer?: boolean;
+  }) => (
+    <div
+      data-testid="rainfall-detail-sentinel"
+      data-prioritize-answer={prioritizeAnswer ? 'true' : 'false'}
+    >
+      {nomenclatura}
+    </div>
   ),
 }));
 
@@ -106,6 +117,13 @@ const baseProps = {
   tab: 'precipitacion' as const,
 };
 
+function precedes(first: HTMLElement, second: HTMLElement): boolean {
+  return (
+    (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) ===
+    Node.DOCUMENT_POSITION_FOLLOWING
+  );
+}
+
 afterEach(() => setAuth(null));
 
 describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () => {
@@ -130,10 +148,25 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
 
     const detail = screen.getByTestId('rainfall-detail-sentinel');
     const fold = screen.getByTestId('ficha-precip-fold');
-    expect(
-      (detail.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING) ===
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(true);
+    expect(precedes(detail, fold)).toBe(true);
+  });
+
+  it('prioritizes the answer ahead of verbose ficha context in the mobile sheet', () => {
+    setAuth('operador');
+    renderWithMantine(<FichaTerritorialPanel {...baseProps} sheet />);
+
+    const tabs = screen.getByTestId('ficha-dataset-tabs');
+    const detail = screen.getByTestId('rainfall-detail-sentinel');
+    const summary = screen.getByTestId('ficha-resumen');
+    const identity = screen.getByTestId('ficha-parcela-header');
+
+    // The selector stays first so changing tabs never requires a scroll. Once
+    // Lluvia is selected, its answer becomes the first substantive content;
+    // the parcel identity and cross-dataset summary remain rendered below.
+    expect(precedes(tabs, detail)).toBe(true);
+    expect(detail).toHaveAttribute('data-prioritize-answer', 'true');
+    expect(precedes(detail, summary)).toBe(true);
+    expect(precedes(detail, identity)).toBe(true);
   });
 
   it('mounts nothing on the other dataset tabs', () => {
@@ -161,6 +194,86 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
     );
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
     expect(screen.getByTestId('ficha-precipitacion')).toBeInTheDocument();
+  });
+});
+
+describe('FichaTerritorialPanel — mobile rainfall transitions', () => {
+  it('resets the sheet scroll when the selected ficha changes on the same Lluvia tab', () => {
+    setAuth('operador');
+    const { rerender } = renderWithMantine(
+      <FichaTerritorialPanel {...baseProps} sheet resetKey="parcel-a" />
+    );
+    const body = screen.getByTestId('ficha-territorial-panel-sheet-body');
+    body.scrollTop = 240;
+
+    rerender(
+      <MantineProvider env="test">
+        <FichaTerritorialPanel
+          {...baseProps}
+          sheet
+          resetKey="parcel-b"
+          parcelaProps={{ ...PARCELA_PROPS, nomenclatura: '13-06-01-0204' }}
+        />
+      </MantineProvider>
+    );
+
+    expect(body.scrollTop).toBe(0);
+  });
+
+  it('resets once when auth enables prioritization, but not for an unrelated poll update', () => {
+    setAuth('ciudadano');
+    const { rerender } = renderWithMantine(
+      <FichaTerritorialPanel {...baseProps} sheet resetKey="parcel-a" />
+    );
+    const body = screen.getByTestId('ficha-territorial-panel-sheet-body');
+    let scrollTop = 240;
+    const setScrollTop = vi.fn((value: number) => {
+      scrollTop = value;
+    });
+    Object.defineProperty(body, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: setScrollTop,
+    });
+
+    act(() => setAuth('operador'));
+
+    expect(setScrollTop).toHaveBeenCalledTimes(1);
+    expect(setScrollTop).toHaveBeenCalledWith(0);
+
+    scrollTop = 180;
+    setScrollTop.mockClear();
+    rerender(
+      <MantineProvider env="test">
+        <FichaTerritorialPanel
+          {...baseProps}
+          sheet
+          resetKey="parcel-a"
+          data={ficha({ area_ha: 21 })}
+        />
+      </MantineProvider>
+    );
+
+    expect(body.scrollTop).toBe(180);
+    expect(setScrollTop).not.toHaveBeenCalled();
+  });
+
+  it('preserves the focused dataset control across entering and leaving rainfall prioritization', () => {
+    setAuth('ciudadano');
+    renderWithMantine(<FichaTerritorialPanel {...baseProps} sheet resetKey="parcel-a" />);
+    const lluviaOption = screen.getByRole('radio', { name: 'Lluvia' });
+    lluviaOption.focus();
+    expect(lluviaOption).toHaveFocus();
+
+    act(() => setAuth('operador'));
+
+    expect(screen.getByRole('radio', { name: 'Lluvia' })).toBe(lluviaOption);
+    expect(lluviaOption).toHaveFocus();
+
+    act(() => setAuth('ciudadano'));
+
+    expect(screen.getByRole('radio', { name: 'Lluvia' })).toBe(lluviaOption);
+    expect(lluviaOption).toHaveFocus();
   });
 });
 

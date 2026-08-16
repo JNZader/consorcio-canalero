@@ -393,7 +393,8 @@ padded: the measurement is what the slice weighs.
 
 ## Not run, and not claimed
 
-O.1 (the declared local e2e run of D13) remains owner-gated and was NOT executed here, so
+This is the historical slice-2 checkpoint; the executed closeout record at the end of this
+file supersedes its O.1 state. O.1 (the declared local e2e run of D13) was NOT executed here, so
 task 2.12's assertion is COLLECTED but not EXECUTED. A skipped run is a failed gate, not a
 pass; this record claims only that the witness exists and that the spec collects.
 
@@ -448,3 +449,80 @@ metric swallow the `Fuente:` line, the provisional chip on a final-with-fallback
 is owner-ratified copy) and two theoretical (the unguarded antecedents row path, the
 hardcoded `ANTECEDENT_ORDER` in the collapsed header). Each is recorded in
 `review-ledger.md` with its evidence, and none of them blocks.
+
+---
+
+## Apply Progress — `lluvia-ux-tarjeta` closeout (2026-08-15)
+
+### Completed Tasks
+
+- [x] O.1 executed with all six runtime preconditions; 10/10 passed, 0 skipped, exit 0.
+- [x] All 46 task checkboxes reconciled against the merged implementation and prior evidence.
+- [x] O.2 retained from the accepted, reproduced measurement above; no build was run in closeout.
+
+### Root cause and implementation
+
+The card began inside the unscrolled sheet after the ordering/scroll fix, but its prose-heavy
+mobile rendering still exceeded the visible body. The same answer was repeated through the
+wetness derivation, percentile gloss, full annual equivalent, freshness, scope, regional
+explanation and source. The falsifiable closeout hypothesis was that responsive semantic
+compression could remove at least the measured overflow without deleting facts.
+
+`RainfallAnswerCard` remains a pure `{ snapshot, freshness }` component. At the map's existing
+`62em` sheet breakpoint it now presents an `aria-hidden` visual summary: percentile and derived
+adjective share the headline row; accumulated and same-period normal use a two-column `dl`; scope,
+comparison cut and short source share compact context. The complete desktop prose remains
+unchanged and becomes visually clipped — not `display:none` — on mobile, so it stays in the
+accessibility tree. Missing metrics produce no compact row, and font sizes remain Mantine `xs`/
+`sm`/`xl`; no sheet stage, scroll, clipping of the card, test-only CSS or contract boundary changed.
+
+### TDD evidence
+
+| Gate | Command / result |
+|---|---|
+| RED | `npm --prefix consorcio-web run test:run -- tests/unit/RainfallAnswerCard.test.tsx` → exit 1, **2 failed / 35 passed**; compact semantic surface absent |
+| GREEN | same command → exit 0, **37/37 passed** |
+| Relevant regression set | card + detail panel + ficha mount + bottom sheet → exit 0, **4 files / 110 tests passed** |
+| TypeScript | `npm --prefix consorcio-web run typecheck` → exit 0 on application and test tsconfigs |
+| Lint | `npm --prefix consorcio-web run lint` → exit 0; the same 3 pre-existing warnings, no closeout warning |
+
+### O.1 attempts — one compact-card strategy
+
+| Attempt | Result | Mobile evidence |
+|---|---|---|
+| 1 | 9 passed / 1 failed / 0 skipped | card bottom `823.265625`, body bottom `809.59375`: `-13.671875` px |
+| 2 | 9 passed / 1 failed / 0 skipped | card height `142.28125`, bottom margin `-3.078125`, `scrollTop=0` |
+| 3 | **10 passed / 0 failed / 0 skipped, exit 0** | card `669.390625..792.671875` (height `123.28125`) inside body `613.796875..808.59375` (height `194.796875`): bottom margin **`15.921875`**, `scrollTop=0` |
+
+CSV and XLSX remained passing with the exact active bearer-token assertions. The successful
+environment reported `FICHA_ENABLED=True`, `parcelas_catastro=1322`, fixture
+`3603003210041000=1`, `suelos_catastro=45`, and a host-reachable Martin catalog exposing
+`parcelas_catastro`; app/API URLs were `15174` / `18001`.
+
+### Files changed by closeout
+
+| File | Action |
+|---|---|
+| `consorcio-web/src/components/map2d/rainfall/RainfallAnswerCard.tsx` | Responsive semantic card compression |
+| `consorcio-web/src/components/map2d/rainfall/RainfallAnswerCard.module.css` | Sheet-breakpoint compact/accessibility presentation |
+| `consorcio-web/tests/unit/RainfallAnswerCard.test.tsx` | RED/GREEN compact facts and no-fabrication coverage |
+| `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts` | Exact active bearer fixture plus persisted mobile bounds output |
+| `consorcio-web/src/components/map2d/{FichaTerritorialPanel,MapPanelShell}.tsx` | Existing answer-priority and scroll-reset remediation |
+| `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx` | Existing priority answer placement |
+| `consorcio-web/tests/unit/{FichaTerritorialRainfallMount,MapPanelBottomSheet,RainfallDetailPanel}.test.tsx` | Existing structural regressions |
+| `openspec/changes/lluvia-ux-tarjeta/{design.md,tasks.md,apply-progress.md}` | Sixth prerequisite, O.1 evidence, 46/46 reconciliation |
+
+### Budget and deviations
+
+Production churn is **655/800 lines** (`+466/-189`, including the new 62-line CSS module),
+leaving 145 lines. Tests are `+174/-15`; closeout docs before this appended record were
+`+8/-2`. No backend, dependency, route, build output, workflow or unrelated path changed.
+
+**Deviations from design:** none in architecture: the card kept its exact pure props contract,
+the desktop hierarchy and full wording remain, and mobile uses the map's existing sheet
+breakpoint. D13 was corrected from five to six prerequisites based on executed evidence.
+
+### Remaining Tasks
+
+None in `tasks.md`: **46/46 complete**. Apply is ready for native dispatcher evaluation; this
+record does not launch or claim final verification or archive.

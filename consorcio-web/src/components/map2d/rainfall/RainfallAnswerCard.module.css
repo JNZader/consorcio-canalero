@@ -1,0 +1,62 @@
+.compactOnly,
+.compactFacts,
+.compactHeadline {
+  display: none;
+}
+
+/* The map switches from floating panels to the bottom sheet at this same
+   breakpoint. Desktop keeps the full prose; the sheet gets a dense visual
+   summary while the complete wording remains in the accessibility tree. */
+@media (max-width: 62em) {
+  .answerCard {
+    row-gap: 0;
+  }
+
+  .compactOnly {
+    display: block;
+  }
+
+  .compactHeadline {
+    display: block;
+  }
+
+  .compactFacts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+    margin: 0;
+  }
+
+  .compactFact {
+    min-width: 0;
+    font-size: var(--mantine-font-size-xs);
+    line-height: var(--mantine-line-height-xs);
+  }
+
+  .compactFact dt {
+    color: var(--mantine-color-dimmed);
+  }
+
+  .compactFact dd {
+    margin: 0;
+    font-size: var(--mantine-font-size-sm);
+    font-weight: 600;
+  }
+
+  .compactContext {
+    line-height: 1.25;
+  }
+
+  .mobileEquivalent {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}

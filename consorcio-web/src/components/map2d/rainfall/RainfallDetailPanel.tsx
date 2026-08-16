@@ -38,10 +38,11 @@ import {
   Text,
   VisuallyHidden,
 } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 import { useRainfallAnalysis, useRainfallScopes } from '../../../hooks/useRainfallAnalysis';
 import {
+  type RainfallAnalysisResponse,
   type RainfallMetric,
   type RainfallScopeChoice,
   downloadRainfallCsv,
@@ -83,6 +84,26 @@ const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 1990 }, (_, i) =>
  * paste the backend's job identifiers into user copy.
  */
 const QUEUED_SENTENCE = 'Análisis en preparación — se actualiza automáticamente en unos minutos.';
+
+const DETAIL_PLACEMENT = {
+  PRIORITY: 'priority',
+  STANDARD: 'standard',
+} as const;
+
+type DetailPlacement = (typeof DETAIL_PLACEMENT)[keyof typeof DETAIL_PLACEMENT];
+
+function PlacedDetail({
+  prioritizeAnswer,
+  placement,
+  children,
+}: {
+  readonly prioritizeAnswer: boolean;
+  readonly placement: DetailPlacement;
+  readonly children: ReactNode;
+}) {
+  const active = prioritizeAnswer ? DETAIL_PLACEMENT.PRIORITY : DETAIL_PLACEMENT.STANDARD;
+  return active === placement ? children : null;
+}
 
 /**
  * What a reader is told when polling gave up WHILE the previous year is on
@@ -273,16 +294,72 @@ function LoadingRow({ label }: { readonly label: string }) {
   );
 }
 
+function AnalysisStatus({
+  data,
+  gaveUp,
+  isError,
+  showingFallback,
+  previousYear,
+  year,
+  onRetry,
+}: {
+  readonly data: RainfallAnalysisResponse | undefined;
+  readonly gaveUp: boolean;
+  readonly isError: boolean;
+  readonly showingFallback: boolean;
+  readonly previousYear: number;
+  readonly year: number;
+  readonly onRetry: () => void;
+}) {
+  if (data?.type === 'queued' && !gaveUp && !isError) {
+    return (
+      <Alert
+        color="blue"
+        variant="light"
+        data-testid="rainfall-queued"
+        data-queued-labels={data.queued.labels.length > 0 ? data.queued.labels.join(', ') : undefined}
+        data-showing-year={showingFallback ? String(previousYear) : undefined}
+      >
+        <Text size="xs">
+          {showingFallback
+            ? `Mostrando ${previousYear} — el análisis ${year} se está preparando y se actualizará solo.`
+            : QUEUED_SENTENCE}
+        </Text>
+      </Alert>
+    );
+  }
+
+  if (gaveUp) {
+    return (
+      <UnavailableAlert
+        showingFallback={showingFallback}
+        year={year}
+        previousYear={previousYear}
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  return null;
+}
+
 export function RainfallDetailPanel({
   nomenclatura,
   pollIntervalMs,
   maxQueuedPolls,
+  prioritizeAnswer = false,
 }: {
   readonly nomenclatura: string;
   /** Test seam: forwarded to `useRainfallAnalysis` (see the hook options). */
   readonly pollIntervalMs?: number;
   /** Test seam: forwarded to `useRainfallAnalysis` (see the hook options). */
   readonly maxQueuedPolls?: number;
+  /**
+   * Mobile-sheet layout seam. The ficha already owns the dataset selector, so
+   * its short `medio` stage must put the answer before this panel's secondary
+   * header and re-query controls. Desktop keeps the controls-first hierarchy.
+   */
+  readonly prioritizeAnswer?: boolean;
 }) {
   const canAccess = useCanAccess(['admin', 'operador']);
   const scopes = useRainfallScopes(canAccess ? nomenclatura : null);
@@ -408,6 +485,26 @@ export function RainfallDetailPanel({
       <VisuallyHidden aria-live="polite" data-testid="rainfall-live">
         {announcement}
       </VisuallyHidden>
+
+      {/* A fallback disclosure must still precede the answer it qualifies.
+          Normal ready analyses have no status block, so `prioritizeAnswer`
+          makes the card the first visible content in the mobile sheet without
+          hiding or duplicating any control. */}
+      <PlacedDetail prioritizeAnswer={prioritizeAnswer} placement={DETAIL_PLACEMENT.PRIORITY}>
+        <AnalysisStatus
+          data={analysis.data}
+          gaveUp={analysis.gaveUp}
+          isError={analysis.isError}
+          showingFallback={showingFallback}
+          previousYear={previousYear}
+          year={year}
+          onRetry={() => analysis.retry()}
+        />
+        {snapshot && (
+          <RainfallAnswerCard snapshot={snapshot} freshness={deriveFreshness(snapshot)} />
+        )}
+      </PlacedDetail>
+
       <Group gap="xs" justify="space-between" wrap="nowrap">
         <Text size="sm" fw={600}>
           Detalle técnico de lluvia
@@ -478,48 +575,17 @@ export function RainfallDetailPanel({
         </Stack>
       )}
 
-      {/* Queued (202): LABELLED pending state with its reason; the query polls
-          with a bounded budget and this block resolves itself. Never a bare
-          spinner. Once the budget is exhausted the terminal state below takes
-          over — no auto-update promise after polling has stopped. */}
-      {analysis.data?.type === 'queued' && !analysis.gaveUp && !analysis.isError && (
-        <Alert
-          color="blue"
-          variant="light"
-          data-testid="rainfall-queued"
-          // The served labels stay INSPECTABLE without being copy: they are
-          // backend job identifiers, and pasting them into a sentence is how a
-          // reader got "Análisis en preparación: role:daily, analysis_missing"
-          // (OWN-002). A machine can still read them here; a person is not
-          // asked to.
-          data-queued-labels={
-            analysis.data.queued.labels.length > 0
-              ? analysis.data.queued.labels.join(', ')
-              : undefined
-          }
-          data-showing-year={showingFallback ? String(previousYear) : undefined}
-        >
-          {/* ONE disclosure either way. When the previous year is on screen the
-              same alert becomes the notice that says so — naming BOTH years,
-              because "which year am I looking at" is the question a reader
-              cannot answer from the numbers alone. Two separate blocks would
-              have stated the same pending fact twice. */}
-          <Text size="xs">
-            {showingFallback
-              ? `Mostrando ${previousYear} — el análisis ${year} se está preparando y se actualizará solo.`
-              : QUEUED_SENTENCE}
-          </Text>
-        </Alert>
-      )}
-
-      {analysis.gaveUp && (
-        <UnavailableAlert
+      <PlacedDetail prioritizeAnswer={prioritizeAnswer} placement={DETAIL_PLACEMENT.STANDARD}>
+        <AnalysisStatus
+          data={analysis.data}
+          gaveUp={analysis.gaveUp}
+          isError={analysis.isError}
           showingFallback={showingFallback}
-          year={year}
           previousYear={previousYear}
+          year={year}
           onRetry={() => analysis.retry()}
         />
-      )}
+      </PlacedDetail>
 
       {snapshot && (
         <>
@@ -527,7 +593,9 @@ export function RainfallDetailPanel({
               adjective, the textual equivalent and the freshness of THIS
               analysis — derived ONCE, here, and passed down (D1a). Nothing
               below re-derives it. */}
-          <RainfallAnswerCard snapshot={snapshot} freshness={deriveFreshness(snapshot)} />
+          <PlacedDetail prioritizeAnswer={prioritizeAnswer} placement={DETAIL_PLACEMENT.STANDARD}>
+            <RainfallAnswerCard snapshot={snapshot} freshness={deriveFreshness(snapshot)} />
+          </PlacedDetail>
           {/* The year-vs-normal comparison the owner asked for. Mounted here
               rather than inside the metric list because it owns its own
               request (`/series`) and its own disclosures; the card's

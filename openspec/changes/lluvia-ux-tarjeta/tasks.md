@@ -129,12 +129,13 @@ land on surfaces slice 1 owns, so they are fixed here. Ledger rows `OWN-004..010
 
 ## Ops
 
-- [ ] O.1 Execute the DECLARED LOCAL RUN of design D13 for `tests/e2e/rainfall-v2-detail.spec.ts`, as a slice-1 merge gate, with ALL FIVE preconditions satisfied and each one evidenced:
+- [x] O.1 Execute the DECLARED LOCAL RUN of design D13 for `tests/e2e/rainfall-v2-detail.spec.ts`, as a slice-1 merge gate, with ALL SIX preconditions satisfied and each one evidenced:
   1. catastro dataset loaded (otherwise `clickFixtureParcela`'s tile gate skips);
   2. `E2E_API_BASE=http://localhost:8000` (otherwise `probeFichaAvailability` soft-skips every test);
   3. `E2E_APP_URL=http://localhost:5173` (this is what turns `requireCondition` from a skip into a FAILURE — `strictGate.ts`);
   4. **`FICHA_ENABLED=true` reaching the BACKEND SERVICE** — `app/config.py:124` defaults it to `False` and no compose/env file in the repo sets it, so without it the probe returns `'off'`;
   5. **Martin reachable from the browser's host** — the compose service is docker-network-only, while the SPA resolves tiles from `VITE_MARTIN_URL || 'http://localhost:3000'`; use a compose override publishing `3000` or point `VITE_MARTIN_URL` at a reachable Martin.
+  6. **`suelos_catastro` populated** — an empty soils table makes the ficha return `503 dataset_no_cargado` before rainfall detail can reach `ficha-result`.
 
   ```
   FICHA_ENABLED=true docker compose up -d postgres backend
@@ -144,6 +145,8 @@ land on surfaces slice 1 owns, so they are fixed here. Ledger rows `OWN-004..010
   ```
 
   Acceptance: the run EXECUTES — a report showing every test in the describe RUN (not skipped), the zero-scroll case among them, and all 15 rainfall testids plus `ficha-precipitacion` resolving. A skipped run is a FAILED gate, not a pass. **The verify phase MUST confirm this executed end-to-end (an executed check, not an inspected one) — the three-strikes history of this gate (canary → preview → local) earns it.** CI does not gate this criterion and this change does not claim it does.
+
+  **Executed 2026-08-15 in the isolated closeout stack:** `parcelas_catastro=1322`, fixture `3603003210041000=1`, `suelos_catastro=45`, `FICHA_ENABLED=True`, host-reachable Martin with `parcelas_catastro`; `E2E_APP_URL=http://localhost:15174 E2E_API_BASE=http://localhost:18001 npm --prefix consorcio-web run test:e2e:rainfall` → **10 passed, 0 skipped, exit 0**. Mobile bounds: card `669.390625..792.671875` (height `123.28125`) inside body `613.796875..808.59375` (height `194.796875`), bottom margin `15.921875`, `scrollTop=0`.
 - [x] O.2 Bundle gate per D12, ONCE PER SLICE at the gate (not per commit): `npm --prefix consorcio-web run build`, then `find consorcio-web/dist/assets -name '*.js' -exec sh -c 'gzip -9 -c "$1" | wc -c' _ {} \; | paste -sd+ - | bc` on the merge-base and on the slice head. Acceptance: delta ≤ 3072 bytes, RECORDED as a number in the apply record (an unmeasured bundle claim is the defect this gate exists for). The sum is a regression tripwire, not a page-weight model.
 
   **MEASURED ON BOTH SLICES, AND THE OWNER DECISION IS IN — checked.** The history, kept

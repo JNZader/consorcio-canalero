@@ -38,7 +38,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { type ReactNode, memo, useEffect, useState } from 'react';
+import { Fragment, type ReactNode, memo, useEffect, useState } from 'react';
 
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
@@ -186,8 +186,8 @@ export interface FichaTerritorialPanelProps {
    */
   readonly minimized?: boolean;
   readonly onToggleMinimize?: () => void;
-  /** Opaque selection marker — a change reopens the mobile sheet at `peek`. */
-  readonly resetKey?: unknown;
+  /** Selection identity — a change reopens and scrolls the mobile sheet. */
+  readonly resetKey?: string;
 }
 
 /** Human label per ficha tipo, used by the minimized pill summary. */
@@ -514,6 +514,8 @@ function PanelBody({
   hiddenClases,
   onToggleClase,
   overlayControls,
+  v2DetailWillRender,
+  prioritizeRainfall,
 }: Omit<FichaTerritorialPanelProps, 'active' | 'onClose'> & {
   /**
    * Overlay switch + feedback, built by the panel and injected here so it sits
@@ -521,24 +523,11 @@ function PanelBody({
    * body, half a scroll away from the table it paints.
    */
   readonly overlayControls?: ReactNode;
+  /** Exact staff + parcel + nomenclatura mount predicate, owned by the parent. */
+  readonly v2DetailWillRender: boolean;
+  /** Mobile `medio` layout: tabs, then answer; verbose ficha context follows. */
+  readonly prioritizeRainfall: boolean;
 }) {
-  // TOP of the component, ABOVE both early returns below. Placing it beside
-  // the JSX that uses it would make it a CONDITIONAL hook: the loading and
-  // error renders would call zero hooks and the success render one, so the
-  // first `ficha-loading` → `ficha-result` transition changes the hook count
-  // of the same component instance and React throws "Rendered more hooks than
-  // during the previous render" — crashing the whole ficha on the ordinary
-  // path every reader takes.
-  const staff = useCanAccess(['admin', 'operador']);
-  // The v2 detail's EXACT mount predicate, reassembled from its two homes:
-  // `tipo === 'parcela' && parcelaProps?.nomenclatura` gates the mount below,
-  // and the third conjunct — staff — is the `if (!canAccess) return null`
-  // inside `RainfallDetailPanel`. A fold default keyed on the role alone would
-  // collapse the public normal for a staff reader on a NON-parcela ficha, who
-  // gets no v2 detail at all: hiding that reader's only rainfall content
-  // behind a word about authorization.
-  const v2DetailWillRender = staff && tipo === 'parcela' && !!parcelaProps?.nomenclatura;
-
   if (isLoading) {
     return (
       <Group gap="xs" data-testid="ficha-loading">
@@ -562,10 +551,8 @@ function PanelBody({
     );
   }
 
-  return (
-    <Stack gap="sm" data-testid="ficha-result">
-      {/* Fixed header: WHAT was analyzed. It never scrolls out from under the
-			    selector, so the numbers below always have their context. */}
+  const summary = (
+    <Fragment key="summary">
       <FichaResumen ficha={data} />
       <PilarVerdeBadges
         tipo={tipo}
@@ -575,18 +562,45 @@ function PanelBody({
         error={bpaError}
         compact
       />
+    </Fragment>
+  );
+
+  const datasetTabs = (
+    <SegmentedControl
+      key="dataset-tabs"
+      size="xs"
+      fullWidth
+      value={tab}
+      onChange={(value) => onChangeTab?.(value as FichaPanelTab)}
+      data={FICHA_TAB_OPTIONS as unknown as { value: string; label: string }[]}
+      data-testid="ficha-dataset-tabs"
+      aria-label="Conjunto de datos"
+    />
+  );
+
+  const rainfallSection = (
+    <Fragment key="rainfall">
+      {tipo === 'parcela' && parcelaProps?.nomenclatura && (
+        <RainfallDetailPanel
+          nomenclatura={parcelaProps.nomenclatura}
+          prioritizeAnswer={prioritizeRainfall}
+        />
+      )}
       <Divider />
-      <SegmentedControl
-        size="xs"
-        fullWidth
-        value={tab}
-        onChange={(value) => onChangeTab?.(value as FichaPanelTab)}
-        data={FICHA_TAB_OPTIONS as unknown as { value: string; label: string }[]}
-        data-testid="ficha-dataset-tabs"
-        aria-label="Conjunto de datos"
-      />
-      {overlayControls}
-      <Divider />
+      <CollapsibleSection
+        key={v2DetailWillRender ? 'precip-demoted' : 'precip-primary'}
+        title="Lluvia histórica mensual (recorte de la parcela)"
+        defaultOpen={!v2DetailWillRender}
+        testId="ficha-precip-fold"
+        titleSize="xs"
+      >
+        <PrecipChart dataset={data.precipitacion_mensual} />
+      </CollapsibleSection>
+    </Fragment>
+  );
+
+  const selectedDataset = (
+    <Fragment key="selected-dataset">
       {tab === 'suelos' && (
         <SuelosBreakdown
           dataset={data.suelos}
@@ -614,45 +628,32 @@ function PanelBody({
           onToggleClase={onToggleClase}
         />
       )}
-      {/* Rainfall is a 12-month series, not a class partition: nothing to
-			    toggle and nothing to clip on the map. The Rainfall v2 detail
-			    mounts ONLY on a parcel ficha with nomenclatura — the one ficha
-			    context with a resolvable regional scope this release; the
-			    staff gate lives inside the detail panel. */}
-      {tab === FICHA_PRECIP_TAB && (
-        <>
-          {tipo === 'parcela' && parcelaProps?.nomenclatura && (
-            <RainfallDetailPanel nomenclatura={parcelaProps.nomenclatura} />
-          )}
-          <Divider />
-          {/* The `key` is what makes the default RECOMPUTABLE.
-              `CollapsibleSection` reads `defaultOpen` exactly once into
-              `useState`, so a post-hydration flip of `useCanAccess` — a login
-              or a logout while the ficha is open — would otherwise leave the
-              fold with a default computed from the pre-hydration value. Cost,
-              stated: a manual open/close is reset when the predicate flips.
-              That only happens when the CONTENT changes, so the reset is
-              honest rather than surprising, and the shared primitive stays
-              untouched. */}
-          <CollapsibleSection
-            key={v2DetailWillRender ? 'precip-demoted' : 'precip-primary'}
-            // Plain language, and BOTH axes named: this chart is the historical
-            // monthly series (period) for the PARCEL CLIP (scope), while the v2
-            // card above states a to-date accumulation for a zone or basin.
-            // Two numbers that differ on two dimensions need both said out
-            // loud, or a reader compares them as if only one differed.
-            // No period is asserted here on purpose: the normals' period is
-            // server-driven (`dataset.periodo`, printed by `precip-fuente`),
-            // and a period frozen in a title is the RISK-001 defect.
-            title="Lluvia histórica mensual (recorte de la parcela)"
-            defaultOpen={!v2DetailWillRender}
-            testId="ficha-precip-fold"
-            titleSize="xs"
-          >
-            <PrecipChart dataset={data.precipitacion_mensual} />
-          </CollapsibleSection>
-        </>
-      )}
+      {tab === FICHA_PRECIP_TAB && rainfallSection}
+    </Fragment>
+  );
+
+  const content = prioritizeRainfall
+    ? [
+        datasetTabs,
+        <Divider key="rainfall-top-divider" />,
+        rainfallSection,
+        <Divider key="rainfall-context-divider" />,
+        summary,
+      ]
+    : [
+        summary,
+        <Divider key="summary-divider" />,
+        datasetTabs,
+        <Fragment key="overlay-controls">{overlayControls}</Fragment>,
+        <Divider key="dataset-divider" />,
+        selectedDataset,
+      ];
+
+  return (
+    <Stack gap="sm" data-testid="ficha-result">
+      {/* Stable keyed siblings let React MOVE the dataset control without
+          replacing its focused radio when mobile rainfall priority flips. */}
+      {content}
     </Stack>
   );
 }
@@ -694,6 +695,9 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   onToggleMinimize,
   resetKey,
 }: FichaTerritorialPanelProps) {
+  // Keep the auth-layout hint above `active`'s early return. Calling the hook
+  // lower would change this component's hook count when the panel activates.
+  const staff = useCanAccess(['admin', 'operador']);
   if (!active) return null;
 
   // The overlay toggle only makes sense once there is a result to clip on the
@@ -724,6 +728,18 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   // is asserted inline in the JSX so TypeScript narrows the optional handlers.
   const isCanalTipo = tipo === 'canal_buffer' || tipo === 'canal_cuenca';
 
+  // Exact v2 mount predicate. On the short mobile sheet this also controls the
+  // answer-priority layout; non-staff readers retain the ordinary public-first
+  // ficha and never get an empty reordered shell.
+  const v2DetailWillRender = staff && tipo === 'parcela' && !!parcelaProps?.nomenclatura;
+  const prioritizeRainfall =
+    sheet === true &&
+    tab === FICHA_PRECIP_TAB &&
+    v2DetailWillRender &&
+    !isLoading &&
+    !isError &&
+    data !== undefined;
+
   // Built here (the panel owns the overlay props) and injected into the body so
   // it renders immediately under the selector that decides WHAT gets painted.
   const overlayControls = showOverlayToggle ? (
@@ -750,31 +766,8 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
     </>
   ) : null;
 
-  return (
-    <MapPanelShell
-      initialStage="medio"
-      sheet={sheet}
-      floatingClassName={
-        compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel
-      }
-      testId="ficha-territorial-panel"
-      sheetLabel="ficha territorial"
-      onClose={onClose}
-      closeLabel="Cerrar ficha territorial"
-      minimized={minimized}
-      onToggleMinimize={onToggleMinimize}
-      pillLabel={fichaPillLabel({
-        tipo,
-        canalNombre,
-        areaHa: data?.area_ha ?? null,
-        parcelasCount,
-      })}
-      pillClassName={styles.fichaPanelPill}
-      resetKey={resetKey}
-    >
-      {/* In sheet mode the close button lives in the shell's PINNED header, so
-          it stays reachable on a tall ficha; rendering it here too would
-          duplicate the affordance. */}
+  const panelContext = (
+    <Fragment key="panel-context">
       <Group justify="space-between" mb="xs">
         <Title order={5}>Ficha territorial</Title>
         {!sheet && (
@@ -819,26 +812,62 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
           <Divider mb="xs" />
         </>
       )}
-      <PanelBody
-        tipo={tipo}
-        onRemoveParcelas={onRemoveParcelas}
-        nroCuenta={nroCuenta}
-        parcelaProps={parcelaProps}
-        bpaEnriched={bpaEnriched}
-        bpaLoading={bpaLoading}
-        bpaError={bpaError}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        isError={isError}
-        error={error}
-        data={data}
-        onRetry={onRetry}
-        tab={tab}
-        onChangeTab={onChangeTab}
-        hiddenClases={hiddenClases}
-        onToggleClase={onToggleClase}
-        overlayControls={overlayControls}
-      />
+    </Fragment>
+  );
+
+  const panelBody = (
+    <PanelBody
+      key="panel-body"
+      tipo={tipo}
+      onRemoveParcelas={onRemoveParcelas}
+      nroCuenta={nroCuenta}
+      parcelaProps={parcelaProps}
+      bpaEnriched={bpaEnriched}
+      bpaLoading={bpaLoading}
+      bpaError={bpaError}
+      isLoading={isLoading}
+      isFetching={isFetching}
+      isError={isError}
+      error={error}
+      data={data}
+      onRetry={onRetry}
+      tab={tab}
+      onChangeTab={onChangeTab}
+      hiddenClases={hiddenClases}
+      onToggleClase={onToggleClase}
+      overlayControls={overlayControls}
+      v2DetailWillRender={v2DetailWillRender}
+      prioritizeRainfall={prioritizeRainfall}
+    />
+  );
+  const panelContent = prioritizeRainfall
+    ? [panelBody, panelContext]
+    : [panelContext, panelBody];
+
+  return (
+    <MapPanelShell
+      initialStage="medio"
+      sheet={sheet}
+      floatingClassName={
+        compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel
+      }
+      testId="ficha-territorial-panel"
+      sheetLabel="ficha territorial"
+      onClose={onClose}
+      closeLabel="Cerrar ficha territorial"
+      minimized={minimized}
+      onToggleMinimize={onToggleMinimize}
+      pillLabel={fichaPillLabel({
+        tipo,
+        canalNombre,
+        areaHa: data?.area_ha ?? null,
+        parcelasCount,
+      })}
+      pillClassName={styles.fichaPanelPill}
+      resetKey={resetKey}
+      scrollResetKey={`${tab}:${resetKey ?? ''}:${prioritizeRainfall ? 'priority' : 'standard'}`}
+    >
+      {panelContent}
     </MapPanelShell>
   );
 });

@@ -414,3 +414,68 @@ open — V-001 — and it is owner-gated, not agent-closable.** The code is veri
 outstanding item is a RUN that has not happened, and no amount of inspection substitutes for
 it. Do not archive this change while V-001 is open without recording, in the archive itself,
 that the zero-scroll criterion ships unasserted.
+
+## Closeout apply — Judgment Day round 1 (2026-08-15)
+
+Target: the complete uncommitted closeout diff from `70c771c4`, after the declared local
+O.1 run passed all 10 rainfall scenarios with zero skips. Two blind judges reviewed the
+same 13-path diff. The mobile-card fit itself was verified by runtime geometry, but the
+judges disagreed on the severity of two adjacent transition risks; those candidates require
+owner adjudication before any fix or final verify.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| JDA-001 | judgment-day | `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx:857-858` | CRITICAL | fixed | Judge A: `scrollResetKey` carried only the selected tab. Because the tab is deliberately preserved across parcel changes, opening a new parcel while still on Lluvia could retain the old non-zero sheet offset and put the fresh answer above the viewport. Owner adjudicated the risk as real. Fix round 1 composes tab + stable ficha identity + prioritization state and pins parcel/auth/unrelated-rerender behavior in unit tests. Scoped re-judge: B VERIFIED; A FIXED but requests browser transition geometry before verification. |
+| JDB-001 | judgment-day | `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx:603-649` | CRITICAL | verified | Judge B: entering/leaving the prioritized mobile rainfall layout moved the unkeyed dataset `SegmentedControl` between sibling positions, so React could remount it and lose keyboard focus. Owner adjudicated the risk as real. Fix round 1 gives both reorder boundaries stable sibling keys; the scoped test proves the focused radio remains the exact same DOM node entering and leaving priority mode. Both judges VERIFIED. |
+| JDA-002 | judgment-day | `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx:601-650` | WARNING | info | assessment=real. Same focus/remount risk as JDB-001, reported at WARNING severity by Judge A. Recorded once as a first-pass signal; it does not independently enter a fix loop. |
+| JDB-002 | judgment-day | `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx:728-735` | WARNING | info | assessment=real. Auth hydration can enable answer prioritization while the tab string stays unchanged, preserving an old scroll offset. Same root family as JDA-001, reported at WARNING severity by Judge B. |
+| JDA-003 | judgment-day | `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts:60-103` | WARNING | info | assessment=real. The refresh fixture rotates a token without checking method/cookie, while export assertions read the current stored token. The production auth path is unchanged, but the fixture no longer proves the token belongs to the explicit fixture allow-list. |
+
+**Round 1 synthesis:** 0 confirmed BLOCKER/CRITICAL by two-judge convergence; 2
+single-judge CRITICAL candidates with matching WARNING counterparts; 1 additional WARNING.
+No fix was authorized or applied. **JUDGMENT: ESCALATED ⚠️ — awaiting owner adjudication.**
+
+### Fix round 1 + scoped re-judge
+
+Owner adjudication: **fix both**. The surgical fix changed only
+`FichaTerritorialPanel.tsx` and `FichaTerritorialRainfallMount.test.tsx`; targeted RED was
+3 failed / 10 passed, an intermediate probe was 1 failed / 12 passed, and GREEN was
+13/13. Six relevant suites passed 146/146; typecheck and lint passed. Total production
+churn remains 617/800.
+
+The mandatory post-fix O.1 command exited zero but soft-skipped all 10 scenarios, so it is
+NOT regression evidence. Scoped re-judge outcome:
+
+- **JDB-001:** VERIFIED by both judges — stable node identity and retained focus directly
+  prove the fix.
+- **JDA-001:** code fix accepted by both; Judge B VERIFIED from transition-specific tests,
+  Judge A kept it FIXED because jsdom has no geometry and requested a browser scenario that
+  starts from non-zero scroll, changes parcel/auth while staying on Lluvia, then measures the
+  fresh answer against the sheet viewport. The original O.1 scenario does not exercise this
+  transition, so merely rerunning the same 10 tests would not answer Judge A.
+
+**Fix-round budget:** 1 of 2 spent. **JUDGMENT: ESCALATED ⚠️ — JDA-001 awaits owner
+adjudication or one final scoped browser-evidence round.**
+
+### Fix round 2 + terminal scoped re-judge
+
+Owner selected a final browser transition scenario. The temporary Playwright case began
+from non-zero sheet scroll and attempted a real same-tab parcel transition through MapLibre,
+with distinct fixture facts and no store mutation, reload, force-click or test hook. Three
+attempts were spent: the first exposed a missing cadastral view in the fresh environment;
+the second did not change parcel identity; the third ran the full rainfall suite with 10
+existing scenarios passing and the experimental transition failing before the second parcel
+click because the browser produced a different map scale than the test expected. The
+experimental scenario was reverted; round 2 has no net code/test diff.
+
+Both terminal judges reached the same result: the composite reset key is fixed and unit
+tests prove its dispatch semantics, while existing O.1 proves initial card geometry, but no
+browser evidence completes the actual non-zero-scroll parcel/auth transition. Marking it
+verified would overstate the evidence.
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| JDA-001 | judgment-day | `consorcio-web/src/components/map2d/FichaTerritorialPanel.tsx:857-858` | CRITICAL | fixed | Both terminal judges: implementation and transition-specific unit coverage are green, but the real browser transition never completed. Existing O.1 covers initial `scrollTop=0` geometry only. The final experimental run produced 10 passing existing scenarios plus one failing transition scenario before target identity changed; therefore the fix is not browser-verified. |
+
+**Convergence budget:** 2 of 2 spent. No further fix/re-judge loop is allowed.
+**JUDGMENT: ESCALATED ⚠️ — JDA-001 remains fixed but unverified.**

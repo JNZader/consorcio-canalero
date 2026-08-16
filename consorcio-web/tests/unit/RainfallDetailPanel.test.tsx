@@ -166,7 +166,11 @@ function setAuth(rol: 'admin' | 'operador' | 'ciudadano' | null) {
 }
 
 function renderPanel(
-  options: { pollIntervalMs?: number; maxQueuedPolls?: number } = {}
+  options: {
+    pollIntervalMs?: number;
+    maxQueuedPolls?: number;
+    prioritizeAnswer?: boolean;
+  } = {}
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = (
@@ -917,6 +921,13 @@ describe('RainfallDetailPanel — answer-first hierarchy', () => {
     expect(within(chart).getByTestId('rainfall-accumulation-chart')).toBeInTheDocument();
     // The controls that re-query sit above the answer they change.
     expect(precedes(screen.getByTestId('rainfall-controls'), card)).toBe(true);
+  });
+
+  it('(a2) puts the answer before controls when the mobile ficha prioritizes it', async () => {
+    renderPanel({ prioritizeAnswer: true });
+
+    const card = await screen.findByTestId('rainfall-answer-card');
+    expect(precedes(card, screen.getByTestId('rainfall-controls'))).toBe(true);
   });
 
   it('(b) opens with BOTH folds collapsed, at every size', async () => {
