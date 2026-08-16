@@ -662,7 +662,16 @@ def _soil_view_inspection(**ovr) -> str:
         "relkind": "m",
         "owner": "rmeh_user",
         "comment": "mv_suelos_por_zona",
-        "columns": ["mv_id", "zona_id", "zona_nombre", "cuenca", "cap", "simbolo", "ip", "ha_suelo"],
+        "columns": [
+            "mv_id",
+            "zona_id",
+            "zona_nombre",
+            "cuenca",
+            "cap",
+            "simbolo",
+            "ip",
+            "ha_suelo",
+        ],
         "indexes": ["ux_mv_suelos_por_zona_id", "ix_mv_suelos_cuenca", "ix_mv_suelos_zona"],
         "definition_digest": "d1",
     }
@@ -676,8 +685,18 @@ def _harness_view_inspection(**ovr) -> str:
         "relkind": "m",
         "owner": "rmeh_user",
         "comment": "rainfall-multi-parcel-e2e-harness owned run=abc123",
-        "columns": ["id", "nomenclatura", "tipo_parcela", "desig_oficial", "departamento",
-                    "pedania", "superficie_ha", "nro_cuenta", "par_idparcela", "geometria"],
+        "columns": [
+            "id",
+            "nomenclatura",
+            "tipo_parcela",
+            "desig_oficial",
+            "departamento",
+            "pedania",
+            "superficie_ha",
+            "nro_cuenta",
+            "par_idparcela",
+            "geometria",
+        ],
         "indexes": [],
         "definition_digest": "v1",
     }
@@ -689,35 +708,59 @@ def _fixture(aliases: tuple[str, ...] = ("A", "B", "C")) -> dict:
     parcels = []
     for alias in aliases:
         i = "ABC".index(alias)
-        parcels.append({
-            "alias": alias,
-            "stableUuid": f"00000000-0000-4000-8000-00000000000{i + 1}",
-            "nomenclature": f"NC-{alias}",
-            "displayIdentity": f"RMEH-PARCEL-{alias}",
-            "rainfall": {
-                "percentile": 11 * (i + 1),
-                "scopeKind": "zone",
-                "scopeId": f"zone:rmeh-zone-{alias.lower()}:v{i + 1}",
-                "scopeVersion": f"v{i + 1}",
-                "effectiveCacheKey": f"rainfall-analysis:zone:rmeh-zone-{alias.lower()}:v{i + 1}:2025",
-                "accumulationMm": float(100 * (i + 1) + (i + 1) * 0.1),
-                "analysisRevisionId": f"rmeh-rev-{alias.lower()}",
-                "dataRevision": f"data-{alias.lower()}",
-                "metricRevision": f"metric-{alias.lower()}",
-            },
-            "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]},
-            "interiorPoint": {"lng": -62.49 - i * 0.01, "lat": -32.51 - i * 0.01},
-            "provenance": {"sourcePath": "x", "sourceFeatureId": f"f{i}", "sourceGeometrySha256": "s", "derivation": "exact-ring-extraction"},
-        })
+        parcels.append(
+            {
+                "alias": alias,
+                "stableUuid": f"00000000-0000-4000-8000-00000000000{i + 1}",
+                "nomenclature": f"NC-{alias}",
+                "displayIdentity": f"RMEH-PARCEL-{alias}",
+                "rainfall": {
+                    "percentile": 11 * (i + 1),
+                    "scopeKind": "zone",
+                    "scopeId": f"zone:rmeh-zone-{alias.lower()}:v{i + 1}",
+                    "scopeVersion": f"v{i + 1}",
+                    "effectiveCacheKey": f"rainfall-analysis:zone:rmeh-zone-{alias.lower()}:v{i + 1}:2025",
+                    "accumulationMm": float(100 * (i + 1) + (i + 1) * 0.1),
+                    "analysisRevisionId": f"rmeh-rev-{alias.lower()}",
+                    "dataRevision": f"data-{alias.lower()}",
+                    "metricRevision": f"metric-{alias.lower()}",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+                },
+                "interiorPoint": {"lng": -62.49 - i * 0.01, "lat": -32.51 - i * 0.01},
+                "provenance": {
+                    "sourcePath": "x",
+                    "sourceFeatureId": f"f{i}",
+                    "sourceGeometrySha256": "s",
+                    "derivation": "exact-ring-extraction",
+                },
+            }
+        )
     return {
         "change": "rainfall-multi-parcel-e2e-harness",
         "parcels": parcels,
-        "coveringZone": {"kind": "fixture-zone", "id": "rmeh-zone-fixture",
-                         "nomenclature": "RMEH-FIXTURE-ZONE",
-                         "geometry": {"type": "Polygon", "coordinates": [[[-63, -33], [-62, -33], [-62, -32], [-63, -32], [-63, -33]]]}},
-        "coveringSoil": {"kind": "fixture-soil", "id": "rmeh-soil-fixture",
-                         "nomenclature": "RMEH-FIXTURE-SOIL", "simbolo": "RMEH-SIMB", "cap": "I",
-                         "geometry": {"type": "Polygon", "coordinates": [[[-63, -33], [-62, -33], [-62, -32], [-63, -32], [-63, -33]]]}},
+        "coveringZone": {
+            "kind": "fixture-zone",
+            "id": "rmeh-zone-fixture",
+            "nomenclature": "RMEH-FIXTURE-ZONE",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-63, -33], [-62, -33], [-62, -32], [-63, -32], [-63, -33]]],
+            },
+        },
+        "coveringSoil": {
+            "kind": "fixture-soil",
+            "id": "rmeh-soil-fixture",
+            "nomenclature": "RMEH-FIXTURE-SOIL",
+            "simbolo": "RMEH-SIMB",
+            "cap": "I",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-63, -33], [-62, -33], [-62, -32], [-63, -32], [-63, -33]]],
+            },
+        },
     }
 
 
@@ -745,10 +788,28 @@ def _program_bootstrap_ok(
     runner.program(CommandKind.DATABASE_MUTATING, _ok())
     # source inspections + srid probe (read-only)
     runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json()))
-    runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json(columns=["id", "simbolo", "cap", "ip", "geometria"], indexes=["ix_suelos_catastro_geometria", "ix_suelos_catastro_simbolo"])))
-    runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json(columns=["id", "nombre", "geometria", "cuenca", "superficie_ha"], indexes=["ix_zonas_operativas_cuenca"])))
+    runner.program(
+        CommandKind.DATABASE_READONLY,
+        _ok(
+            _inspection_json(
+                columns=["id", "simbolo", "cap", "ip", "geometria"],
+                indexes=["ix_suelos_catastro_geometria", "ix_suelos_catastro_simbolo"],
+            )
+        ),
+    )
+    runner.program(
+        CommandKind.DATABASE_READONLY,
+        _ok(
+            _inspection_json(
+                columns=["id", "nombre", "geometria", "cuenca", "superficie_ha"],
+                indexes=["ix_zonas_operativas_cuenca"],
+            )
+        ),
+    )
     runner.program(CommandKind.DATABASE_READONLY, _ok(json.dumps({"srid": 4326, "postgis": "3.4"})))
-    runner.program(CommandKind.DATABASE_READONLY, _ok(parcel_view if parcel_view is not None else ""))
+    runner.program(
+        CommandKind.DATABASE_READONLY, _ok(parcel_view if parcel_view is not None else "")
+    )
     runner.program(CommandKind.DATABASE_READONLY, _ok(soil_view if soil_view is not None else ""))
     if rebuild:
         runner.program(CommandKind.DOCKER_CONTROL, _ok())
@@ -757,12 +818,32 @@ def _program_bootstrap_ok(
         runner.program(CommandKind.DATABASE_MUTATING, _ok())
         # same three DISTINCT source inspections as the first pass
         runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json()))
-        runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json(columns=["id", "simbolo", "cap", "ip", "geometria"], indexes=["ix_suelos_catastro_geometria", "ix_suelos_catastro_simbolo"])))
-        runner.program(CommandKind.DATABASE_READONLY, _ok(_inspection_json(columns=["id", "nombre", "geometria", "cuenca", "superficie_ha"], indexes=["ix_zonas_operativas_cuenca"])))
-        runner.program(CommandKind.DATABASE_READONLY, _ok(json.dumps({"srid": 4326, "postgis": "3.4"})))
+        runner.program(
+            CommandKind.DATABASE_READONLY,
+            _ok(
+                _inspection_json(
+                    columns=["id", "simbolo", "cap", "ip", "geometria"],
+                    indexes=["ix_suelos_catastro_geometria", "ix_suelos_catastro_simbolo"],
+                )
+            ),
+        )
+        runner.program(
+            CommandKind.DATABASE_READONLY,
+            _ok(
+                _inspection_json(
+                    columns=["id", "nombre", "geometria", "cuenca", "superficie_ha"],
+                    indexes=["ix_zonas_operativas_cuenca"],
+                )
+            ),
+        )
+        runner.program(
+            CommandKind.DATABASE_READONLY, _ok(json.dumps({"srid": 4326, "postgis": "3.4"}))
+        )
         after = parcel_view_after_rebuild if parcel_view_after_rebuild is not None else parcel_view
         runner.program(CommandKind.DATABASE_READONLY, _ok(after if after is not None else ""))
-        runner.program(CommandKind.DATABASE_READONLY, _ok(soil_view if soil_view is not None else ""))
+        runner.program(
+            CommandKind.DATABASE_READONLY, _ok(soil_view if soil_view is not None else "")
+        )
     # seed + view work (mutating)
     runner.program(CommandKind.DATABASE_MUTATING, _ok())
     runner.program(CommandKind.DATABASE_MUTATING, _ok())
@@ -795,7 +876,9 @@ class TestBootstrap:
         identity = _identity()
         runner = RecordingCommandRunner()
         _program_bootstrap_ok(runner, identity)
-        bootstrap_database(identity, runner, _fixture(), compose_file="scripts/tests/rainfall-e2e.compose.yml")
+        bootstrap_database(
+            identity, runner, _fixture(), compose_file="scripts/tests/rainfall-e2e.compose.yml"
+        )
         marker = runner.calls[0]
         assert marker.command[:3] == ["docker", "compose", "-f"]
         assert any("rainfall-e2e.compose.yml" in c for c in marker.command)
@@ -803,10 +886,13 @@ class TestBootstrap:
     def test_bootstrap_uses_compose_migrate_service_when_compose_aware(self):
         from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database
         from scripts.rainfall_e2e_harness.safety import apply_migrations
+
         identity = _identity()
         runner = RecordingCommandRunner()
         _program_bootstrap_ok(runner, identity)
-        bootstrap_database(identity, runner, _fixture(), compose_file="scripts/tests/rainfall-e2e.compose.yml")
+        bootstrap_database(
+            identity, runner, _fixture(), compose_file="scripts/tests/rainfall-e2e.compose.yml"
+        )
         # The FIRST mutating call is the compose-aware migrate-service invocation
         # (the same DDL path provision used), not the raw alembic command.
         migrate = runner.database_mutating_calls[0]
@@ -821,43 +907,93 @@ class TestBootstrap:
 
     def test_classify_parcel_view_absent(self):
         from scripts.rainfall_e2e_harness.bootstrap import classify_parcel_view
+
         assert classify_parcel_view(None) == "absent"
 
     def test_classify_parcel_view_harness_owned(self):
         from scripts.rainfall_e2e_harness.bootstrap import classify_parcel_view, RelationInspection
-        insp = RelationInspection(name="vt_parcelas_catastro", schema="public", relkind="m",
-                                  owner="rmeh_user", comment="rainfall-multi-parcel-e2e-harness owned run=x",
-                                  columns=(), indexes=(), definition_digest=None)
+
+        insp = RelationInspection(
+            name="vt_parcelas_catastro",
+            schema="public",
+            relkind="m",
+            owner="rmeh_user",
+            comment="rainfall-multi-parcel-e2e-harness owned run=x",
+            columns=(),
+            indexes=(),
+            definition_digest=None,
+        )
         assert classify_parcel_view(insp) == "harness-owned"
 
     def test_classify_parcel_view_migration_owned(self):
         from scripts.rainfall_e2e_harness.bootstrap import classify_parcel_view, RelationInspection
-        insp = RelationInspection(name="vt_parcelas_catastro", schema="public", relkind="m",
-                                  owner="rmeh_user", comment="migration 0013", columns=(), indexes=(),
-                                  definition_digest=None)
+
+        insp = RelationInspection(
+            name="vt_parcelas_catastro",
+            schema="public",
+            relkind="m",
+            owner="rmeh_user",
+            comment="migration 0013",
+            columns=(),
+            indexes=(),
+            definition_digest=None,
+        )
         assert classify_parcel_view(insp) == "migration-owned"
 
     def test_classify_parcel_view_unknown(self):
         from scripts.rainfall_e2e_harness.bootstrap import classify_parcel_view, RelationInspection
-        insp = RelationInspection(name="vt_parcelas_catastro", schema="public", relkind="m",
-                                  owner="other", comment="", columns=(), indexes=(),
-                                  definition_digest=None)
+
+        insp = RelationInspection(
+            name="vt_parcelas_catastro",
+            schema="public",
+            relkind="m",
+            owner="other",
+            comment="",
+            columns=(),
+            indexes=(),
+            definition_digest=None,
+        )
         assert classify_parcel_view(insp) == "unknown"
 
     def test_classify_soil_view_absent_incompatible_compatible(self):
         from scripts.rainfall_e2e_harness.bootstrap import classify_soil_view, RelationInspection
+
         assert classify_soil_view(None) == "absent"
-        bad = RelationInspection(name="mv_suelos_por_zona", schema="public", relkind="r", owner="x",
-                                 comment="", columns=("id",), indexes=(), definition_digest=None)
+        bad = RelationInspection(
+            name="mv_suelos_por_zona",
+            schema="public",
+            relkind="r",
+            owner="x",
+            comment="",
+            columns=("id",),
+            indexes=(),
+            definition_digest=None,
+        )
         assert classify_soil_view(bad) == "incompatible"
-        good = RelationInspection(name="mv_suelos_por_zona", schema="public", relkind="m", owner="x",
-                                  comment="migration", columns=("mv_id", "zona_id", "zona_nombre", "cuenca",
-                                                                "cap", "simbolo", "ip", "ha_suelo"),
-                                  indexes=("ux_mv_suelos_por_zona_id",), definition_digest="d")
+        good = RelationInspection(
+            name="mv_suelos_por_zona",
+            schema="public",
+            relkind="m",
+            owner="x",
+            comment="migration",
+            columns=(
+                "mv_id",
+                "zona_id",
+                "zona_nombre",
+                "cuenca",
+                "cap",
+                "simbolo",
+                "ip",
+                "ha_suelo",
+            ),
+            indexes=("ux_mv_suelos_por_zona_id",),
+            definition_digest="d",
+        )
         assert classify_soil_view(good) == "compatible"
 
     def test_build_seed_sql_is_deterministic_and_covers_three_parcels(self):
         from scripts.rainfall_e2e_harness.bootstrap import build_seed_sql
+
         sql = build_seed_sql(_fixture())
         assert sql == build_seed_sql(_fixture()), "seed SQL must be byte-for-byte stable"
         assert "TRUNCATE parcelas_catastro, suelos_catastro, zonas_operativas" in sql
@@ -871,11 +1007,42 @@ class TestBootstrap:
     def test_build_seed_sql_rejects_non_three_cardinality(self):
         from scripts.rainfall_e2e_harness.bootstrap import build_seed_sql
         from scripts.rainfall_e2e_harness.safety import BootstrapPrerequisiteFailure
+
         with pytest.raises(BootstrapPrerequisiteFailure, match="exactly 3"):
             build_seed_sql(_fixture(aliases=("A", "B")))
 
+    def test_build_seed_sql_emits_fourth_legacy_row_when_present(self):
+        """W9: the ten pre-existing rainfall tests click the REAL legacy parcel
+        3603003210041000 through the real ficha endpoint. A top-level
+        `legacyParcel` fixture field must seed it as a 4th deterministic row
+        while `parcels` stays exactly 3 (RMEH-003); absent fixture unchanged."""
+        from scripts.rainfall_e2e_harness.bootstrap import build_seed_sql
+
+        base = build_seed_sql(_fixture())
+        assert "RMEH-LEGACY" not in base
+
+        fx = _fixture()
+        fx["legacyParcel"] = {
+            "stableUuid": "44444444-4444-4444-8444-444444444444",
+            "nomenclature": "3603003210041000",
+            "displayIdentity": "RMEH-LEGACY-PARCEL",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+            },
+        }
+        sql = build_seed_sql(fx)
+        assert "3603003210041000" in sql
+        assert "RMEH-LEGACY" in sql
+        assert "44444444-4444-4444-8444-444444444444" in sql
+        # still ONE INSERT statement (4 value tuples), single transaction.
+        assert sql.count("INSERT INTO parcelas_catastro") == 1
+        assert "BEGIN;" in sql and "COMMIT;" in sql
+        assert sql == build_seed_sql(fx), "legacy row must be deterministic"
+
     def test_bootstrap_absent_views_creates_parcel_view_and_refreshes_soil_view(self):
         from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
+
         identity = _identity()
         runner = RecordingCommandRunner()
         _program_bootstrap_ok(runner, identity)  # both views absent
@@ -890,6 +1057,7 @@ class TestBootstrap:
 
     def test_bootstrap_harness_owned_view_is_recreated_not_relabeled(self):
         from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
+
         identity = _identity()
         runner = RecordingCommandRunner()
         _program_bootstrap_ok(runner, identity, parcel_view=_harness_view_inspection())
@@ -902,11 +1070,16 @@ class TestBootstrap:
     def test_bootstrap_foreign_incompatible_view_consumes_one_rebuild_then_fails(self):
         from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
         from scripts.rainfall_e2e_harness.safety import BootstrapPrerequisiteFailure
+
         identity = _identity()
         runner = RecordingCommandRunner()
-        incompatible = _inspection_json(relkind="m", comment="migration",
-                                        columns=("id", "geometria"),
-                                        indexes=(), definition_digest="x")
+        incompatible = _inspection_json(
+            relkind="m",
+            comment="migration",
+            columns=("id", "geometria"),
+            indexes=(),
+            definition_digest="x",
+        )
         _program_bootstrap_ok(runner, identity, parcel_view=incompatible, rebuild=True)
         with pytest.raises(BootstrapPrerequisiteFailure, match="rebuild"):
             bootstrap_database(identity, runner, _fixture(), compose_file=COMPOSE_FILE)
@@ -917,32 +1090,42 @@ class TestBootstrap:
 
     def test_bootstrap_rebuild_recovers_when_second_inspect_is_compatible(self):
         from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
+
         identity = _identity()
         runner = RecordingCommandRunner()
         # First pass: migration-owned INCOMPATIBLE view -> rebuild; second pass:
         # the harness slot is now ABSENT -> create (recovery within budget).
-        _program_bootstrap_ok(runner, identity,
-                              parcel_view=_inspection_json(relkind="m", comment="migration",
-                                                           columns=("id",), indexes=(), definition_digest="x"),
-                              rebuild=True,
-                              parcel_view_after_rebuild="")
+        _program_bootstrap_ok(
+            runner,
+            identity,
+            parcel_view=_inspection_json(
+                relkind="m", comment="migration", columns=("id",), indexes=(), definition_digest="x"
+            ),
+            rebuild=True,
+            parcel_view_after_rebuild="",
+        )
         report = bootstrap_database(identity, runner, _fixture(), compose_file=COMPOSE_FILE)
         assert report.rebuilt is True
         assert report.parcel_view_action == "create"
 
     def test_bootstrap_rebuild_budget_exhausted_fails_without_ad_hoc_ddl(self):
         from scripts.rainfall_e2e_harness.bootstrap import bootstrap_database, COMPOSE_FILE
+
         identity = _identity()
         runner = RecordingCommandRunner()
         # First pass AND second pass are migration-owned/incompatible: the ONE
         # bounded rebuild is consumed and the bootstrap must abort — never
         # relabel, never hand-edit a migration-owned object.
-        incompatible = _inspection_json(relkind="m", comment="migration",
-                                        columns=("id",), indexes=(), definition_digest="x")
-        _program_bootstrap_ok(runner, identity,
-                              parcel_view=incompatible,
-                              rebuild=True,
-                              parcel_view_after_rebuild=incompatible)
+        incompatible = _inspection_json(
+            relkind="m", comment="migration", columns=("id",), indexes=(), definition_digest="x"
+        )
+        _program_bootstrap_ok(
+            runner,
+            identity,
+            parcel_view=incompatible,
+            rebuild=True,
+            parcel_view_after_rebuild=incompatible,
+        )
         with pytest.raises(BootstrapPrerequisiteFailure, match="did not repair"):
             bootstrap_database(identity, runner, _fixture(), compose_file=COMPOSE_FILE)
         # No mutating write beyond the migrations/rebuild path: the harness
@@ -953,6 +1136,7 @@ class TestBootstrap:
 
     def test_validate_services_ok(self):
         from scripts.rainfall_e2e_harness.bootstrap import validate_services
+
         identity = _identity()
         runner = RecordingCommandRunner()
         # probe convention: last stdout line = HTTP code (curl -w '%{http_code}')
@@ -962,35 +1146,117 @@ class TestBootstrap:
             runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
         runner.program(CommandKind.DOCKER_INSPECT, _ok("ok\n200"))
         for _ in range(3):
-            runner.program(CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200"))
+            runner.program(
+                CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200")
+            )
         runner.program(CommandKind.DOCKER_INSPECT, _ok("html\n200"))
-        report = validate_services(identity, runner, _fixture(),
-                                   origins={"martin": "http://127.0.0.1:3001",
-                                            "backend": "http://127.0.0.1:8001",
-                                            "frontend": "http://127.0.0.1:5174"})
+        report = validate_services(
+            identity,
+            runner,
+            _fixture(),
+            origins={
+                "martin": "http://127.0.0.1:3001",
+                "backend": "http://127.0.0.1:8001",
+                "frontend": "http://127.0.0.1:5174",
+            },
+        )
         assert report.martin_ok and report.backend_live
         assert report.tile_ok_for == ("A", "B", "C")
         assert report.ficha_ok_for == ("A", "B", "C")
         assert report.frontend_ok
 
+    def test_validate_services_probes_legacy_parcel(self):
+        """W9: with a fixture `legacyParcel`, validate_services must ALSO probe
+        the legacy tile (at its own declared zoom) + ficha POST and report the
+        LEGACY alias — a non-200 would soft-skip all ten pre-existing tests."""
+        from scripts.rainfall_e2e_harness.bootstrap import validate_services
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {"parcelas_catastro": {}}}\n200'))
+        for _ in range(4):  # A/B/C + legacy tile
+            runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("ok\n200"))
+        for _ in range(4):  # A/B/C + legacy ficha
+            runner.program(
+                CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200")
+            )
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("html\n200"))
+        fx = _fixture()
+        fx["legacyParcel"] = {
+            "nomenclature": "3603003210041000",
+            "interiorPoint": {"lng": -62.446176, "lat": -32.471267},
+            "zoom": 16,
+        }
+        report = validate_services(
+            identity,
+            runner,
+            fx,
+            origins={
+                "martin": "http://127.0.0.1:3001",
+                "backend": "http://127.0.0.1:8001",
+                "frontend": "http://127.0.0.1:5174",
+            },
+        )
+        assert report.tile_ok_for == ("A", "B", "C", "LEGACY")
+        assert report.ficha_ok_for == ("A", "B", "C", "LEGACY")
+
+    def test_validate_services_legacy_tile_204_aborts(self):
+        """A 204/empty legacy tile must abort BEFORE the browser — the legacy
+        tests would otherwise soft-skip and break the W9 exact-11 gate."""
+        from scripts.rainfall_e2e_harness.bootstrap import validate_services
+        from scripts.rainfall_e2e_harness.safety import BootstrapPrerequisiteFailure
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {"parcelas_catastro": {}}}\n200'))
+        for _ in range(3):  # A/B/C tiles OK
+            runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("204"))  # legacy tile empty
+        fx = _fixture()
+        fx["legacyParcel"] = {
+            "nomenclature": "3603003210041000",
+            "interiorPoint": {"lng": -62.446176, "lat": -32.471267},
+            "zoom": 16,
+        }
+        with pytest.raises(BootstrapPrerequisiteFailure, match="legacy"):
+            validate_services(
+                identity,
+                runner,
+                fx,
+                origins={
+                    "martin": "http://127.0.0.1:3001",
+                    "backend": "http://127.0.0.1:8001",
+                    "frontend": "http://127.0.0.1:5174",
+                },
+            )
+
     def test_validate_services_204_tile_aborts_as_prerequisite_failure(self):
         from scripts.rainfall_e2e_harness.bootstrap import validate_services
         from scripts.rainfall_e2e_harness.safety import BootstrapPrerequisiteFailure
+
         identity = _identity()
         runner = RecordingCommandRunner()
         runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {"parcelas_catastro": {}}}\n200'))
         runner.program(CommandKind.DOCKER_INSPECT, _ok("204"))
         with pytest.raises(BootstrapPrerequisiteFailure, match="204|tile"):
-            validate_services(identity, runner, _fixture(),
-                              origins={"martin": "http://127.0.0.1:3001",
-                                       "backend": "http://127.0.0.1:8001",
-                                       "frontend": "http://127.0.0.1:5174"})
+            validate_services(
+                identity,
+                runner,
+                _fixture(),
+                origins={
+                    "martin": "http://127.0.0.1:3001",
+                    "backend": "http://127.0.0.1:8001",
+                    "frontend": "http://127.0.0.1:5174",
+                },
+            )
 
     def test_validate_services_one_bounded_martin_restart_repairs_empty_catalog(self):
         """A fresh stack boots martin BEFORE bootstrap creates the view, so the
         startup catalog is empty; exactly ONE bounded restart picks it up and
         the source is re-required (mirrors the one bounded DB rebuild)."""
         from scripts.rainfall_e2e_harness.bootstrap import validate_services
+
         identity = _identity()
         runner = RecordingCommandRunner()
         # 1) catalog up but EMPTY (martin booted pre-view) -> triggers restart.
@@ -1003,20 +1269,31 @@ class TestBootstrap:
             runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
         runner.program(CommandKind.DOCKER_INSPECT, _ok("ok\n200"))
         for _ in range(3):
-            runner.program(CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200"))
+            runner.program(
+                CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200")
+            )
         runner.program(CommandKind.DOCKER_INSPECT, _ok("html\n200"))
-        report = validate_services(identity, runner, _fixture(),
-                                   origins={"martin": "http://127.0.0.1:3001",
-                                            "backend": "http://127.0.0.1:8001",
-                                            "frontend": "http://127.0.0.1:5174"},
-                                   martin_poll_seconds=0)
+        report = validate_services(
+            identity,
+            runner,
+            _fixture(),
+            origins={
+                "martin": "http://127.0.0.1:3001",
+                "backend": "http://127.0.0.1:8001",
+                "frontend": "http://127.0.0.1:5174",
+            },
+            martin_poll_seconds=0,
+        )
         assert report.martin_ok and report.backend_live
         assert report.tile_ok_for == ("A", "B", "C")
         assert report.ficha_ok_for == ("A", "B", "C")
         assert report.frontend_ok
         # exactly ONE bounded restart, never more.
-        restarts = [c for c in runner.calls if c.kind is CommandKind.DOCKER_CONTROL
-                    and "restart" in " ".join(c.command)]
+        restarts = [
+            c
+            for c in runner.calls
+            if c.kind is CommandKind.DOCKER_CONTROL and "restart" in " ".join(c.command)
+        ]
         assert len(restarts) == 1
 
     def test_validate_services_empty_catalog_aborts_after_one_restart(self):
@@ -1024,6 +1301,7 @@ class TestBootstrap:
         silent pass or an unbounded restart loop."""
         from scripts.rainfall_e2e_harness.bootstrap import validate_services
         from scripts.rainfall_e2e_harness.safety import BootstrapPrerequisiteFailure
+
         identity = _identity()
         runner = RecordingCommandRunner()
         runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {}}\n200'))
@@ -1032,17 +1310,27 @@ class TestBootstrap:
         for _ in range(30):
             runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {}}\n200'))
         with pytest.raises(BootstrapPrerequisiteFailure, match="catalog"):
-            validate_services(identity, runner, _fixture(),
-                              origins={"martin": "http://127.0.0.1:3001",
-                                       "backend": "http://127.0.0.1:8001",
-                                       "frontend": "http://127.0.0.1:5174"},
-                              martin_poll_seconds=0)
-        restarts = [c for c in runner.calls if c.kind is CommandKind.DOCKER_CONTROL
-                    and "restart" in " ".join(c.command)]
+            validate_services(
+                identity,
+                runner,
+                _fixture(),
+                origins={
+                    "martin": "http://127.0.0.1:3001",
+                    "backend": "http://127.0.0.1:8001",
+                    "frontend": "http://127.0.0.1:5174",
+                },
+                martin_poll_seconds=0,
+            )
+        restarts = [
+            c
+            for c in runner.calls
+            if c.kind is CommandKind.DOCKER_CONTROL and "restart" in " ".join(c.command)
+        ]
         assert len(restarts) == 1
 
     def test_tile_xyz_known_values(self):
         from scripts.rainfall_e2e_harness.bootstrap import tile_xyz
+
         assert tile_xyz(0.0, 0.0, 0) == (0, 0, 0)
         # Web Mercator: at z=1, lng 0..180 -> x=1; lat=45 (north) -> y=0.
         assert tile_xyz(90.0, 45.0, 1) == (1, 0, 1)
@@ -1052,7 +1340,9 @@ class TestBootstrap:
         identity = _identity()
         runner = RecordingCommandRunner()
         runner.program(CommandKind.DATABASE_READONLY, _ok(_marker_row(identity)))
-        owned = validate_marker_read_only(runner, identity, compose_file="scripts/tests/rainfall-e2e.compose.yml")
+        owned = validate_marker_read_only(
+            runner, identity, compose_file="scripts/tests/rainfall-e2e.compose.yml"
+        )
         assert owned.run_id == identity.run_id
         cmd = runner.calls[0].command
         assert "-f" in cmd
@@ -1067,6 +1357,7 @@ class TestBootstrap:
 
     def test_render_init_script_carves_marker_and_matches_identity(self):
         from scripts.rainfall_e2e_harness.safety import render_init_script
+
         identity = _identity()
         script = render_init_script(identity)
         assert "CREATE TABLE IF NOT EXISTS rmeh_ownership" in script
@@ -1075,3 +1366,366 @@ class TestBootstrap:
         assert identity.database_name in script
         # deterministic for the same identity
         assert render_init_script(identity) == script
+
+
+# --------------------------------------------------------------------------- #
+# W9 — FAIL-CLOSED EXACT ACCOUNTING (RMEH-009)
+# --------------------------------------------------------------------------- #
+def _collection_json(
+    spec_count: int, *, file: str = "rainfall-v2-detail.spec.ts", only_at: int | None = None
+) -> str:
+    """Build a Playwright ``--list --reporter=json`` collection body with
+    ``spec_count`` specs (nested under a single suite, the real shape)."""
+    specs = []
+    for i in range(spec_count):
+        annotations = [{"type": "only"}] if i == only_at else []
+        specs.append(
+            {
+                "title": f"test {i}",
+                "file": file,
+                "line": 100 + i,
+                "annotations": annotations,
+                "tests": [{"title": f"test {i}", "testId": f"test-{i}"}],
+            }
+        )
+    return json.dumps(
+        {
+            "config": {"projects": [{"name": "rainfall-harness"}]},
+            "suites": [{"title": "rainfall-v2-detail.spec.ts", "specs": specs, "suites": []}],
+            "errors": [],
+            "stats": {},
+        }
+    )
+
+
+def _results_json(
+    *,
+    passed: int = 11,
+    failed: int = 0,
+    skipped: int = 0,
+    flaky: int = 0,
+    retried_ids: tuple[str, ...] = (),
+    interrupted_ids: tuple[str, ...] = (),
+) -> str:
+    """Build a Playwright JSON-reporter result body. Each test carries a
+    ``results`` array (one entry per retry) and a top-level ``status``."""
+    tests = []
+    n = passed + failed + skipped
+    statuses = (["expected"] * passed) + (["unexpected"] * failed) + (["skipped"] * skipped)
+    for i in range(n):
+        test_id = f"test-{i}"
+        result_status = "passed"
+        if i >= passed and i < passed + failed:
+            result_status = "failed"
+        elif i >= passed + failed:
+            result_status = "skipped"
+        retries = 1 if test_id in retried_ids else 0
+        results = [{"status": result_status, "retry": r} for r in range(retries + 1)]
+        status = statuses[i]
+        tests.append(
+            {
+                "testId": test_id,
+                "title": f"test {i}",
+                "file": "rainfall-v2-detail.spec.ts",
+                "line": 100 + i,
+                "projectName": "rainfall-harness",
+                "results": results,
+                "status": status,
+                "ok": status == "expected",
+            }
+        )
+    # Interrupted tests are discovered (they count toward the 11) but neither
+    # pass nor fail nor skip; append them as extra tests so the accounting sees
+    # them (Playwright marks an interrupted test with top-level status).
+    for k, test_id in enumerate(interrupted_ids):
+        i = n + k
+        tests.append(
+            {
+                "testId": test_id,
+                "title": f"test {i}",
+                "file": "rainfall-v2-detail.spec.ts",
+                "line": 100 + i,
+                "projectName": "rainfall-harness",
+                "results": [{"status": "interrupted", "retry": 0}],
+                "status": "interrupted",
+                "ok": False,
+            }
+        )
+    return json.dumps(
+        {
+            "config": {},
+            "suites": [],
+            "errors": [],
+            "stats": {"expected": passed, "unexpected": failed, "skipped": skipped, "flaky": flaky},
+            "tests": tests,
+        }
+    )
+
+
+def _selection_records(n: int, *, click: int = 1, attempt: int = 1) -> list[dict]:
+    return [
+        {
+            "selection": f"{'mobile' if i % 2 == 0 else 'desktop'}:{i}",
+            "attemptCount": attempt,
+            "clickCount": click,
+        }
+        for i in range(n)
+    ]
+
+
+class TestAccounting:
+    def test_accounting_collection_accepts_exactly_eleven(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        parsed = parse_collection_json(_collection_json(11))
+        verdict = assert_collection_expected(parsed)
+        assert verdict.ok
+        assert verdict.discovered == 11
+
+    def test_accounting_parse_collection_flattens_nested_suites(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            collection_spec_count,
+            parse_collection_json,
+        )
+
+        nested = json.dumps(
+            {
+                "suites": [
+                    {
+                        "title": "a",
+                        "specs": [{"title": "t1", "file": "f"}],
+                        "suites": [
+                            {"title": "b", "specs": [{"title": "t2", "file": "f"}], "suites": []},
+                        ],
+                    },
+                ],
+                "errors": [],
+            }
+        )
+        assert collection_spec_count(parse_collection_json(nested)) == 2
+
+    def test_accounting_collection_rejects_zero(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="no harness tests"):
+            assert_collection_expected(parse_collection_json(_collection_json(0)))
+
+    def test_accounting_collection_rejects_ten(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="exactly 11"):
+            assert_collection_expected(parse_collection_json(_collection_json(10)))
+
+    def test_accounting_collection_rejects_twelve(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="exactly 11"):
+            assert_collection_expected(parse_collection_json(_collection_json(12)))
+
+    def test_accounting_collection_rejects_only_annotation(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match=r"\.only"):
+            assert_collection_expected(parse_collection_json(_collection_json(11, only_at=5)))
+
+    def test_accounting_collection_rejects_omitted_file(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="rainfall-v2-detail"):
+            assert_collection_expected(
+                parse_collection_json(_collection_json(11, file="other.spec.ts"))
+            )
+
+    def test_accounting_collection_rejects_collection_error(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_collection_expected,
+            parse_collection_json,
+        )
+
+        body = json.dumps({"suites": [], "errors": [{"message": "cannot parse"}], "stats": {}})
+        with pytest.raises(HarnessAccountingFailure, match="collection error"):
+            assert_collection_expected(parse_collection_json(body))
+
+    def test_accounting_result_accepts_eleven_zero(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        verdict = assert_result_expected(parse_results_json(_results_json(passed=11)))
+        assert verdict.ok
+        assert verdict.passed == 11
+        assert verdict.failed == 0
+        assert verdict.skipped == 0
+
+    def test_accounting_result_rejects_unexpected_failure(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="1 failed"):
+            assert_result_expected(parse_results_json(_results_json(passed=10, failed=1)))
+
+    def test_accounting_result_rejects_skipped(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="skipped"):
+            assert_result_expected(parse_results_json(_results_json(passed=10, skipped=1)))
+
+    def test_accounting_result_rejects_flaky(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="flaky"):
+            assert_result_expected(parse_results_json(_results_json(passed=11, flaky=1)))
+
+    def test_accounting_result_rejects_retried(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="retried"):
+            assert_result_expected(
+                parse_results_json(_results_json(passed=11, retried_ids=("test-0",)))
+            )
+
+    def test_accounting_result_rejects_interrupted(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="interrupted"):
+            assert_result_expected(
+                parse_results_json(_results_json(passed=10, interrupted_ids=("test-10",)))
+            )
+
+    def test_accounting_result_rejects_short_passed(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_result_expected,
+            parse_results_json,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="passed"):
+            assert_result_expected(parse_results_json(_results_json(passed=10)))
+
+    def test_accounting_manifest_accepts_eight_one_click(self):
+        from scripts.rainfall_e2e_harness.accounting import assert_manifest_contract
+
+        assert assert_manifest_contract(_selection_records(8)) == ""
+
+    def test_accounting_manifest_rejects_wrong_count(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_manifest_contract,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="exactly 8"):
+            assert_manifest_contract(_selection_records(7))
+
+    def test_accounting_manifest_rejects_multi_click(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_manifest_contract,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="click"):
+            assert_manifest_contract(_selection_records(8, click=2))
+
+    def test_accounting_manifest_rejects_multi_attempt(self):
+        from scripts.rainfall_e2e_harness.accounting import (
+            HarnessAccountingFailure,
+            assert_manifest_contract,
+        )
+
+        with pytest.raises(HarnessAccountingFailure, match="attempt"):
+            assert_manifest_contract(_selection_records(8, attempt=2))
+
+    def test_accounting_classify_run_failure_accounting(self):
+        from scripts.rainfall_e2e_harness.accounting import classify_run_failure
+        from scripts.rainfall_e2e_harness.safety import FailureClass
+
+        assert (
+            classify_run_failure(
+                collection_ok=False,
+                result_ok=True,
+                pre_click_integrity_ok=True,
+                click_occurred=True,
+            )
+            is FailureClass.HARNESS_ACCOUNTING_FAILURE
+        )
+        assert (
+            classify_run_failure(
+                collection_ok=True,
+                result_ok=False,
+                pre_click_integrity_ok=True,
+                click_occurred=True,
+            )
+            is FailureClass.HARNESS_ACCOUNTING_FAILURE
+        )
+
+    def test_accounting_classify_run_failure_browser_vs_product(self):
+        from scripts.rainfall_e2e_harness.accounting import classify_run_failure
+        from scripts.rainfall_e2e_harness.safety import FailureClass
+
+        assert (
+            classify_run_failure(
+                collection_ok=True,
+                result_ok=True,
+                pre_click_integrity_ok=False,
+                click_occurred=False,
+            )
+            is FailureClass.BROWSER_INTEGRITY_FAILURE
+        )
+        assert (
+            classify_run_failure(
+                collection_ok=True, result_ok=True, pre_click_integrity_ok=True, click_occurred=True
+            )
+            is FailureClass.PRODUCT_ASSERTION_FAILURE
+        )
+        assert (
+            classify_run_failure(
+                collection_ok=True,
+                result_ok=True,
+                pre_click_integrity_ok=True,
+                click_occurred=False,
+            )
+            is FailureClass.BROWSER_INTEGRITY_FAILURE
+        )

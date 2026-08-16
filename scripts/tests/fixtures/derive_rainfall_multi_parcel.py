@@ -146,8 +146,12 @@ def metres(p_a: tuple[float, float], p_b: tuple[float, float]) -> float:
 
 
 # ---------- camera projection sanity (Web Mercator, tile size 512) ----------
+# The TS browser helper (rainfallMultiParcelHarness.ts) uses TILE_SIZE_PX = 512,
+# so the world is 512 * 2**zoom px and mpp = 40075016.686 * cos(lat) / world.
+# (156543.03392 is the 256-tile constant: 40075016.686 / 256; at 512 tiles the
+# mpp at zoom z equals the 256-tile mpp at zoom z+1.)
 def meters_per_pixel(lat: float, zoom: int) -> float:
-    return 156_543.03392 * math.cos(math.radians(lat)) / (2**zoom)
+    return 78_271.51696 * math.cos(math.radians(lat)) / (2**zoom)
 
 
 def visible_extent_m(viewport_px: int, lat: float, zoom: int) -> float:

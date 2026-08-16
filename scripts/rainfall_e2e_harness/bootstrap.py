@@ -349,6 +349,31 @@ def build_seed_sql(fixture: Mapping[str, Any]) -> str:
             ")"
         )
 
+    # The ten pre-existing rainfall tests navigate to and click the REAL
+    # legacy parcel 3603003210041000 (catastroFixture.ts PARCELA_FIXTURE); the
+    # ficha POST resolves it by nomenclatura from parcelas_catastro. Seeding
+    # only A/B/C truncates that parcel away and the legacy tests soft-skip,
+    # breaking the W9 exact 11/0/0/0 gate. A top-level fixture `legacyParcel`
+    # (NOT inside `parcels`, which stays exactly 3 for RMEH-003) adds it as a
+    # 4th deterministic row when present; absent fixtures are unchanged.
+    legacy = fixture.get("legacyParcel") or {}
+    if legacy.get("nomenclature"):
+        geometry = json.dumps(legacy["geometry"], separators=(",", ":"))
+        parcel_rows.append(
+            "("
+            f"'{legacy['stableUuid']}'::uuid, "
+            f"'{legacy['nomenclature']}', "
+            f"ST_GeomFromGeoJSON('{geometry}'::json), "
+            "'e2e', "
+            f"'{legacy.get('displayIdentity', 'RMEH-LEGACY-PARCEL')}', "
+            "'San Justo', "
+            "'RMEH-LEGACY', "
+            f"ST_Area(ST_Transform(ST_GeomFromGeoJSON('{geometry}'::json), 32720)) / 10000.0, "
+            "'RMEH-LEGACY', "
+            "0"
+            ")"
+        )
+
     zone_geometry = json.dumps(covering_zone.get("geometry") or {"type": "Polygon", "coordinates": []}, separators=(",", ":"))
     soil_geometry = json.dumps(covering_soil.get("geometry") or {"type": "Polygon", "coordinates": []}, separators=(",", ":"))
     zone_uuid = _stable_uuid("zona", str(covering_zone.get("id") or "fixture"))
@@ -767,6 +792,30 @@ def validate_services(
             )
         tile_ok.append(alias)
 
+    # The ten pre-existing tests also click the REAL legacy parcel at its own
+    # declared zoom (catastroFixture.ts PARCELA_FIXTURE.zoom). Fail closed on
+    # it too: a non-200 legacy tile would soft-skip all ten and break the W9
+    # exact-11 gate after the browser already ran.
+    legacy = fixture.get("legacyParcel") or {}
+    if legacy.get("nomenclature"):
+        point = legacy.get("interiorPoint") or {}
+        legacy_zoom = int(legacy.get("zoom") or 16)
+        lx, ly, lz = tile_xyz(float(point.get("lng", 0.0)), float(point.get("lat", 0.0)), legacy_zoom)
+        ltile = _probe_get(runner, f"{martin}/parcelas_catastro/{lz}/{lx}/{ly}", discard_body=True)
+        lcode = _http_code(ltile.stdout)
+        if lcode == 204 or lcode != 200:
+            raise BootstrapPrerequisiteFailure(
+                f"martin tile {lz}/{lx}/{ly} for legacy parcel "
+                f"{legacy.get('nomenclature')} returned HTTP {lcode}; "
+                "the ten pre-existing legacy tests would soft-skip"
+            )
+        if not ltile.stdout.strip():
+            raise BootstrapPrerequisiteFailure(
+                f"martin tile {lz}/{lx}/{ly} for legacy parcel produced no "
+                "probe output; aborting before the browser"
+            )
+        tile_ok.append("LEGACY")
+
     # Backend /live (liveness only — the ficha POST proves the flag is on).
     live = _probe_get(runner, f"{backend}/live")
     backend_live = _http_code(live.stdout) == 200
@@ -784,6 +833,19 @@ def validate_services(
                 f"(HTTP {_http_code(ficha.stdout)}); FICHA_ENABLED not effective"
             )
         ficha_ok.append(alias)
+
+    # Legacy parcel ficha POST — the ten pre-existing tests open this ficha
+    # through the real backend (rainfall mocked, ficha real).
+    if legacy.get("nomenclature"):
+        lpayload = json.dumps({"tipo": "parcela", "nomenclatura": legacy["nomenclature"]})
+        lficha = _probe_post(runner, f"{backend}/api/v2/geo/analisis-zona", lpayload)
+        if _http_code(lficha.stdout) != 200:
+            raise BootstrapPrerequisiteFailure(
+                f"ficha POST tipo=parcela for legacy parcel "
+                f"{legacy['nomenclature']} failed (HTTP {_http_code(lficha.stdout)}); "
+                "the ten pre-existing legacy tests would soft-skip"
+            )
+        ficha_ok.append("LEGACY")
 
     # Frontend /mapa from loopback (camera parameters).
     camera = (fixture.get("cameras") or {}).get("mobile") or {}

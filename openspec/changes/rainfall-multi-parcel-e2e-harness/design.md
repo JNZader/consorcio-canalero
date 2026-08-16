@@ -26,7 +26,10 @@ Add one fail-closed, operator-invoked harness around the existing rainfall Playw
    journey needs: Postgres, Redis, migration runner, backend, Martin, and frontend.
 3. After database ownership is proven, the runner applies repository migrations, inspects the
    provenance and shape of both required materialized views, seeds exactly three real-derived
-   parcel geometries plus one deterministic covering soil/zone fixture from one committed
+   parcel geometries (A/B/C) plus the preserved legacy parcel `3603003210041000` that the ten
+   pre-existing rainfall tests click (a fourth real-derived row; the pre-existing tests resolve
+   it by `nomenclatura` through the real ficha endpoint), plus one deterministic covering
+   soil/zone fixture from one committed
    GeoJSON, creates or
    refreshes only a provenance-permitted `vt_parcelas_catastro`, refreshes the migration-owned
    `mv_suelos_por_zona`, and validates every hard postcondition.
@@ -234,10 +237,10 @@ Bootstrap is bounded and self-healing only inside `OwnedBoundary`.
 | Contract | Required observation |
 |---|---|
 | Alembic | Exactly repository head; no pending branch |
-| Parcels | Total count 3; one each A/B/C nomenclature and UUID; no other row |
+| Parcels | Total count 4; one each A/B/C nomenclature and UUID plus the preserved legacy parcel `3603003210041000` (the ten pre-existing tests click it); no other row |
 | Parcel geometry | `ST_IsValid`, SRID 4326, polygonal, positive area, pairwise no area overlap |
 | Soil and fixture zone | One deterministic soil and one deterministic fixture zone; valid SRID-4326 `MULTIPOLYGON`s; each parcel is covered/intersects with positive area |
-| `vt_parcelas_catastro` | `public`, `relkind='m'`, exact public column set/types and defining projection, count 3, expected row identities; provenance is either exact current-run harness marker or preserved compatible migration/unknown owner/comment |
+| `vt_parcelas_catastro` | `public`, `relkind='m'`, exact public column set/types and defining projection, count 4, expected row identities (A/B/C + legacy `3603003210041000`); provenance is either exact current-run harness marker or preserved compatible migration/unknown owner/comment |
 | Materialized refresh | Base-row digest equals projection-row digest after each of two runs |
 | `mv_suelos_por_zona` | `public`, `relkind='m'`, exact migration column set/types and definition digest, unique `mv_id`, preserved owner/comment, refresh succeeds, and exactly one expected fixture zone/soil row has positive `ha_suelo` |
 | Martin catalog | One declared `parcelas_catastro` source backed by the materialized view |

@@ -777,7 +777,7 @@ async function collectReadyEvidence(
 
   const headerRow = page
     .getByTestId('ficha-parcela-header')
-    .locator('dt, th', { hasText: 'Nomenclatura' });
+    .locator('.mantine-Badge-root', { hasText: 'Nomenclatura' });
   const identityText = await headerRow.evaluate((el) => {
     const parent = el.parentElement;
     return parent ? parent.textContent ?? '' : '';
@@ -840,8 +840,7 @@ async function runContextJourney(
   fixture: HarnessFixture,
   trace: FixtureRouterTrace,
   context: 'mobile' | 'desktop',
-  manifest: JourneyRecord[],
-  activeTokenValue: string
+  manifest: JourneyRecord[]
 ): Promise<void> {
   const order: ParcelAlias[] = ['A', 'B', 'C', 'A'];
   const target = (alias: ParcelAlias) =>
@@ -849,6 +848,22 @@ async function runContextJourney(
 
   const canvas = page.locator('.maplibregl-canvas').first();
   await canvas.waitFor({ state: 'visible', timeout: 15_000 });
+
+  // The map workspace renders a Mantine loading overlay above the canvas
+  // while the fixture dataset is being fetched. The canvas is VISIBLE but
+  // not hit-testable under that overlay, so a plain click would land on the
+  // overlay and fail actionability. This is a PRECONDITION wait (RMEH-004-B:
+  // occlusion aborts before the pointer); it is not a click retry, so the
+  // exactly-one-click interaction policy (RMEH-005-A) is preserved.
+  const overlayGone = await page
+    .locator('.mantine-Loader-root')
+    .waitFor({ state: 'detached', timeout: 30_000 })
+    .then(
+      () => true,
+      () => false
+    );
+  requireCondition(overlayGone, 'El overlay de carga no se desmontó antes del primer clic');
+
   const box = await canvas.boundingBox();
   if (box === null) {
     throw new Error('El canvas del mapa no expuso su caja de medida');
@@ -923,6 +938,25 @@ async function runContextJourney(
       if (focused) assertDesktopFocusStable(focused);
     }
 
+    // Design RMEH-007-A: "plain-click A → activate `Lluvia` once → READY_A".
+    // The ficha opens on the `suelos` dataset tab, and the v2 rainfall detail
+    // (RainfallDetailPanel → scopes:resolve + analyses requests) mounts ONLY
+    // when the `Lluvia` tab is active. The tab lens survives selection changes
+    // (useFichaOverlayTabs CONTRACT), so ONE activation per context is enough;
+    // it must also come AFTER the desktop focus check, which asserts the
+    // canvas click did not steal focus.
+    if (index === 0) {
+      const fichaResolved = await page
+        .getByTestId('ficha-result')
+        .waitFor({ state: 'visible', timeout: 15_000 })
+        .then(
+          () => true,
+          () => false
+        );
+      requireCondition(fichaResolved, 'La ficha no resolvió su resultado antes de activar Lluvia');
+      await page.getByTestId('ficha-dataset-tabs').locator('label', { hasText: 'Lluvia' }).click();
+    }
+
     // Gate: the analysis for the TARGET must be the freshest one served.
     await waitForTargetAnalysis(page, trace, parcel, previous?.analysisSequence ?? 0);
 
@@ -955,9 +989,16 @@ async function runContextJourney(
         width: bodyBoxRaw.width,
         height: bodyBoxRaw.height,
       };
+      // The silent-refresh interceptor may have ROTATED the seed token in
+      // sessionStorage (production behavior, exercised by the map's protected
+      // queries). The auth assertion must pin the token active FOR THIS
+      // sequence, read live — never the seed constant (design "Authentication
+      // and Silent Refresh": seed -> optional observed refresh -> rotated).
+      const activeTokenValue = await activeAccessToken(page);
       const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected);
       assertMobileReady({ ...evidence, stage, scrollTopAfter, cardBox, bodyBox }, parcel);
     } else {
+      const activeTokenValue = await activeAccessToken(page);
       const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected);
       assertTargetReady(evidence, parcel);
     }
@@ -1398,7 +1439,7 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
       // The map canvas must finish laying out before the projection is measured.
       await page.getByTestId('map-workspace-root').waitFor({ state: 'visible', timeout: 15_000 });
 
-      await runContextJourney(page, fixture, trace, context, manifest, MOCK_TOKEN);
+      await runContextJourney(page, fixture, trace, context, manifest);
       await contextPage.close();
     }
 

@@ -443,7 +443,9 @@ export interface ParcelProjection {
 }
 
 function metresPerPixel(lat: number, zoom: number): number {
-  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
+  // TILE_SIZE_PX = 512: world = 512 * 2**zoom, so the z0 mpp is
+  // 40075016.686 / 512 = 78271.51696 (half the 256-tile constant).
+  return (78271.51696 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
 function metresToBoundaryM(point: LngLat, polygon: GeoJsonPolygon): number {

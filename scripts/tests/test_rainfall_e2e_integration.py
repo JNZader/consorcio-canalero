@@ -167,6 +167,6 @@ class TestRealStackIdempotency:
         identity, runner, _ = provisioned_identity
         fixture = _load_fixture()
         report = validate_services(identity, runner, fixture, origins=_origins())
-        assert report.tile_ok_for == ("A", "B", "C")
-        assert report.ficha_ok_for == ("A", "B", "C")
+        assert report.tile_ok_for == ("A", "B", "C", "LEGACY")
+        assert report.ficha_ok_for == ("A", "B", "C", "LEGACY")
         assert report.martin_ok and report.backend_live and report.frontend_ok
