@@ -265,3 +265,20 @@ Not fixed (out of scope, reported back): JD-APP-006..009 / A7..A11 — classific
 reachability, cleanup accounting (RMEH-012-B/C), `_rebuild_once` env, zoom mismatch,
 A2 freshness runtime risk, and the real-stack negatives 5.2/5.7 + W9 runtime 11/0/0
 browser gate (integration-only, need `RMEH_INTEGRATION=1` against a provisioned stack).
+
+## Judgment Day fix round 2 (post-re-judge, the two confirmed BLOCKERs)
+
+The Round-2 re-judge found **JD-APP-001/A1** still open and **JD-R2-001** (BLOCKER):
+the ~8 env-less DB-side compose call sites resolved the empty-prefix project `rmeh-`
+after the fallback removal, failing the marker gate on every real run. Fix round 2
+closed both with ONE root-cause fix: `safety.compose_env(identity)` (run-owned prefix
+from the identity's `database_name` + synthetic `RMEH_DB_PASSWORD`) threaded into every
+compose invocation — marker gate, `apply_migrations` (fail-closed on missing identity),
+all 8 psql execs via `bootstrap._psql_run`, `_rebuild_once`, martin restart, driver
+`stack_env(identity)`/`_teardown_lease(identity)`; workflow cleanup step's ambient
+`RMEH_RUN_ID_PREFIX` removed. 10 new RED→GREEN tests incl. a real-`docker compose
+config` parity test vs `ResourceLease.plan`; suites now **141 pytest + 69 vitest + tsc
+clean**. Statuses flipped `open → fixed` for JD-APP-001/A1 and JD-R2-001 in
+`review-ledger.md` (both judges' tables + fix-round-2 section). JD-R2-002 (WARNING/info,
+`_rebuild_once` exit codes) reported back, not touched. 0 production lines, `version.json`
+untouched.

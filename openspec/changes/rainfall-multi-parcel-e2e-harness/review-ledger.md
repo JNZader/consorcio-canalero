@@ -158,3 +158,123 @@ Full suites: `scripts/tests/test_rainfall_e2e_harness.py` + `test_rainfall_e2e_c
 gee-backend workflow optionality contract green; integration tests skipped (need `RMEH_INTEGRATION=1`).
 
 **Fix-round status: all six confirmed findings closed (fixed) with RED→GREEN proof.**
+
+---
+
+## Re-judge Round 2 — Judge A (scoped re-review of fix diff `db400e06..HEAD`, 13 files +615/-58)
+
+Judge A (independent, blind, adversarial) re-reviewed ONLY the fix diff and the persisted
+ledger; the full original apply diff (`d98585af..db400e06`) was NOT re-read. Sweep budget: 2
+exhaustive sweeps of the fix diff (both used). Static review with exact-line evidence plus a
+targeted test probe. Constraints verified: `consorcio-web/src/**` and `gee-backend/app/**`
+untouched (0 production lines); workflow stays `workflow_dispatch`-only and unreferenced by
+required gates (`test_ci_workflow_contracts.py` pin untouched); parent change files untouched;
+fix stays surgical (only the 6 findings' surfaces + docs + tests).
+
+### Verification of the 6 confirmed findings
+
+| id | status | evidence |
+|---|---|---|
+| JD-APP-001/A1 | **fixed** | NOT resolved end-to-end (Round 1 evidence below). **[Closed by Fix round 2 — the DB-side compose commands now carry the run-owned env; see the Round 2 fix section below.]** The fix aligned exactly three compose invocations (up `driver.py:333`, teardown down `driver.py:568`, martin restart `bootstrap.py:751`) with the run identity — but every DB-side compose command still resolves the project from the AMBIENT env, and the fix made that fatal by removing all `:-probedefault` fallbacks AND removing `RMEH_RUN_ID_PREFIX: gha` from the workflow run step (`.github/workflows/rainfall-multi-parcel-e2e.yml:84-88`). `validate_marker_read_only` (`safety.py:249` — `docker compose exec`, NO env), `apply_migrations` (`safety.py:284` — `docker compose run --rm migrate`, NO env), `inspect_relation` (`bootstrap.py:214`), `inspect_srid_contract` (`bootstrap.py:256`), seed (`bootstrap.py:510`) all run with `RMEH_RUN_ID_PREFIX` unset in the parent process (no `.env` anywhere; runbook sets no env; `stack_env` never mutates `os.environ`). With `name: rmeh-${RMEH_RUN_ID_PREFIX}` (bare, no default), compose substitutes the empty string (warning) → project `rmeh-`, which is NOT the provisioned `rmeh-<run_id[:10]>` → `docker compose exec db psql` fails → marker gate raises `BootstrapSafetyFailure` at `driver.py:346`, the FIRST compose-dependent step after `up`. The fix moved the guaranteed failure from "compose up (missing init bind)" to "marker gate (wrong compose project)"; the run still cannot pass through EITHER documented path (local runbook or workflow). The fix's own comment ("passing it explicitly to every compose command", workflow lines 79-83) is factually wrong for the ~8 exec/run call sites. Root cause of A1 (driver never aligns ALL compose invocations with the run identity) persists. See new finding R2-001. |
+| JD-APP-002/A2 | verified | Spec now writes the manifest FILE to `dirname(RMEH_PLAYWRIGHT_JSON)/manifest.json` wrapped as `{selection_records: [...]}` (`rainfall-v2-detail.spec.ts:1453-1457`); `_run_playwright` sets `RMEH_PLAYWRIGHT_JSON = evidence_dir/playwright-results.json` (`driver.py:507`) → same path the gate reads (`driver.py:380-382`, `_read_manifest_records` `driver.py:517-527`). 8 records asserted before write (`spec.ts:1448-1452`). Pure helper `writeHarnessManifest` unit-tested (`rainfallMultiParcelHarness.test.ts`, 2 tests; executed exit=0). Attachment also wrapped in dict shape. Driver's post-gate overwrite (`driver.py:411`) keeps `selection_records` via `SceneManifest.to_json` (`taxonomy.py:53-86`). |
+| JD-APP-003/A3 | verified | `classify_run_failure` all-green path returns `PASSED` (`accounting.py` final return). Complete-pass/handoff branch reachable: `if cls is not FailureClass.PASSED:` (`driver.py:390`) → green run exits 0 (`driver.py:429-431`). Both pinning tests flipped to PASSED (`test_rainfall_e2e_harness.py:1816,1939-1941`; executed exit=0). `PRODUCT_ASSERTION_FAILURE` no longer emitted by this classifier — documented in docstring as surfacing via `taxonomy.classify_request_failure`/result gate (consistent with the confirmed finding's scope; taxonomy-side reachability was the separate A7 WARNING/info, untouched). |
+| JD-APP-004/A4 | verified | `_parcel_contracts` reads top-level `parcel["nomenclature"]`/`parcel["displayIdentity"]` (`driver.py:170-171`). Real shipped fixture confirmed on disk: 3 parcels, all top-level, NO `identity` sub-object (read, executed). New guard test `test_parcel_contracts_on_shipped_fixture_file` reads the REAL `FIXTURE_PATH` file (executed exit=0). |
+| JD-APP-005/A5 | verified | `run_cleanup` prefers the recorded `ownership.json` identity (`_read_recorded_identity`, `driver.py:605-614`); `_persist_identity` writes BEFORE provisioning (`driver.py:307-313`); `_teardown_lease` derives the down prefix from `lease.project_name.removeprefix("rmeh-")` (`driver.py:568`). Workflow cleanup step now passes `--evidence-dir` (same dir as run step) + `RMEH_RUN_ID_PREFIX: gha` fallback env (`rainfall-multi-parcel-e2e.yml:96-100`). Tests pin recorded-prefix down (`test_run_cleanup_uses_recorded_identity_prefix`, `test_teardown_lease_pins_identity_derived_prefix_env`; executed exit=0). |
+| JD-APP-A6 | verified | `validate_services` RAISES `BootstrapPrerequisiteFailure` when frontend `/mapa` probe ≠ 200 (`bootstrap.py:854-861`); driver refuses browser unless `services.frontend_ok` (`driver.py:355-363`); martin restart runs with `env={"RMEH_RUN_ID_PREFIX": identity.run_id[:10]}` (`bootstrap.py:748-751`), merged by `RealCommandRunner` (`safety.py:84-86` — PATH preserved). Tests `test_validate_services_frontend_failure_fails_closed` + `test_validate_services_martin_restart_pins_identity_prefix_env` (executed exit=0). |
+
+### New findings introduced by the fix
+
+| id | lens | location | severity | status | assessment | evidence |
+|---|---|---|---|---|---|---|
+| R2-001 | judgment-day | `rainfall-e2e.compose.yml:26,35,38,50,56,68,100,113,127,158,170,199,219,224` + `safety.py:249,284` + `bootstrap.py:214,256,510` + `driver.py:346` | BLOCKER | fixed | real | **[Closed by Fix round 2 — see below.]** The strict compose file (`${RMEH_RUN_ID_PREFIX}` bare, fallbacks removed) makes EVERY compose invocation without the var resolve to the empty-string project `rmeh-` (compose-spec: unset `${VAR}` → warning + empty string). The fix removed the only ambient prefix source (workflow run-step env, `rainfall-multi-parcel-e2e.yml:84-88`) while leaving ~8 `docker compose exec`/`run` call sites env-less (see A1 row). Deterministic failure: compose up succeeds (`driver.py:333`), backend /live 200, then the marker gate (`driver.py:346` → `safety.py:249`) executes `docker compose exec` against project `rmeh-` → no such project/container → `BootstrapSafetyFailure` → `BOOTSTRAP_PREREQUISITE_FAILURE` → exit 1, on EVERY real run in both documented paths. The A1 root cause survives in the DB command layer. |
+| R2-002 | judgment-day | `bootstrap.py:427-434` (`_rebuild_once`), `rainfall-e2e.compose.yml:26` | WARNING | info | real | The strict compose change also degrades the (pre-existing, A9-info) repair path: `_rebuild_once` runs `docker compose down -v`/`up -d` with NO env, so the empty-prefix project `rmeh-` (or interpolation failure) replaces the old silent `rmeh-probedefault` no-op; exit codes remain unchecked, and `up -d` would attempt to create the wrong project (self-limiting: missing `rmeh-init-.sql` bind aborts it). Same user-visible outcome class as A9 (repair does nothing), so canonical WARNING/info — recorded, not blocking. |
+
+### Round outcome (Judge A re-judge)
+
+- Resolved and verified: **5 of 6** (A2, A3, A4, A5, A6).
+- NOT resolved: **A1** (BLOCKER, still open) — the identity/compose disconnect persists in the
+  DB command layer (`docker compose exec`/`run`), and the fix's strict-compose + env removal
+  makes the empty-prefix project resolution fail deterministically at the marker gate
+  (`driver.py:346`). New finding R2-001 carries the evidence.
+- Constraints held: 0 production lines; workflow remains optional; parent change untouched;
+  fix surgical; 15 targeted fix tests executed (exit=0) confirming the RED→GREEN claims that
+  were in scope.
+
+**JUDGMENT: NOT APPROVED ❌ — A1 remains open (BLOCKER): the harness cannot complete a green
+run through either documented path until the DB-side compose commands receive the run-owned
+prefix env.**
+
+---
+
+## Re-judge Round 2 — Judge B (scoped re-review of fix diff db400e06..HEAD)
+
+Blind re-judge of the fix round. Reviewed ONLY the fix diff (13 files, +615/-58) and the
+Round-1 ledger; the original apply diff was NOT re-read. Sweep budget: 2 exhaustive sweeps
+of the fix diff, both used. Empirical verification performed with `docker compose v5.3.0`
+(compose config + exec against a non-existent `rmeh-` project).
+
+### Verification of the 6 confirmed findings
+
+| id | severity | status | evidence |
+|---|---|---|---|
+| JD-APP-001/A1 | BLOCKER | **fixed** | **[Closed by Fix round 2 — see below.]** Fix is INCOMPLETE — the run still cannot complete either documented path. `stack_env(run_id_prefix)` + fallback removal + init-bind alignment + pre-provision `ownership.json` are all present and correct for compose `up`/`down`/martin-restart, but every OTHER `docker compose` invocation in the pipeline is env-less and now resolves the project to `rmeh-` (empty prefix): `validate_marker_read_only` (safety.py:229-249, called driver.py:346 — the SOLE OwnedBoundary constructor), `apply_migrations` via `compose run --rm migrate` (safety.py:283-286), every `_psql_cmd` exec (bootstrap.py:60-63; call sites 208, 250, 510, 589, 606, 617, 628, 639), `_rebuild_once` (bootstrap.py:427, 431). Pre-fix these were project-consistent with compose up (`rmeh-probedefault` on both sides); post-fix compose up targets `rmeh-<run_id[:10]>` while the marker gate targets `rmeh-`. Empirically verified: `RMEH_RUN_ID_PREFIX` unset → `compose config` emits `name: rmeh-`; `compose exec -T db psql …` exits 1 with `service "db" is not running`. The BLOCKER moved from the compose-up init-bind failure to the marker gate; exit code 1 via BootstrapSafetyFailure → BOOTSTRAP_PREREQUISITE_FAILURE on every run. |
+| JD-APP-002/A2 | BLOCKER | verified | Spec writes `{ selection_records: [...] }` manifest FILE via `writeHarnessManifest` to `dirname(RMEH_PLAYWRIGHT_JSON)` = the evidence dir (`_run_playwright` passes the absolute evidence path, driver.py:505-509); driver gate reads `evidence_dir/manifest.json` BEFORE its own sealed write (driver.py:380-382 → 411); `EXPECTED_SELECTION_RECORDS = 8` matches the spec's `expect(manifest).toHaveLength(8)` + per-record 1/1; vitest unit coverage added. Gate ordering and shape aligned. |
+| JD-APP-003/A3 | CRITICAL | verified | `classify_run_failure` all-True path returns `PASSED` (accounting.py:309); the complete-pass branch (manifest + `jda-001-handoff.json` + `return 0`, driver.py:390-412, 429-431) is reachable; both pinning tests flipped to PASSED with rationale. Caveat: the run never reaches this gate while A1 is open (marker gate fails first) — code-level fix is correct, runtime-blocked by A1. |
+| JD-APP-004/A4 | CRITICAL | verified | `_parcel_contracts` reads top-level `parcel["nomenclature"]` / `parcel["displayIdentity"]`; empirically matches the shipped fixture (3 parcels, top-level keys, no `identity` sub-object); 2 new tests incl. a guard over the real fixture file on disk. |
+| JD-APP-005/A5 | CRITICAL | verified | `run_cleanup` prefers the RECORDED identity from `ownership.json` (written pre-provision) so compose-down targets the exact `rmeh-<run_id[:10]>` project; workflow cleanup step now passes `--evidence-dir` + fallback prefix env; parser accepts `--evidence-dir` after the subcommand (workflow command order no longer exit-2s); teardown prefix derived from `lease.project_name` (driver.py:568). New unit test pins the recorded prefix. |
+| JD-APP-A6 | CRITICAL | verified | `validate_services` now RAISES `BootstrapPrerequisiteFailure` when frontend `/mapa` is not HTTP 200 (bootstrap.py:854-861) — fail-closed before the browser; martin restart carries `RMEH_RUN_ID_PREFIX=run_id[:10]` (bootstrap.py:745-753); driver's `services.frontend_ok` refusal (driver.py:356-363) is now unreachable belt-and-suspenders (validate_services raises first) — harmless. 2 new tests (frontend-500 aborts; restart env pinned). |
+
+### NEW findings (defects introduced/exposed by the fix diff)
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| JD-R2-001 | judgment-day | `scripts/rainfall_e2e_harness/safety.py:229-249,283-286`, `scripts/rainfall_e2e_harness/bootstrap.py:60-63,208,250,510,589,606,617,628,639,427,431`, `scripts/rainfall_e2e_harness/driver.py:346,351`, `scripts/tests/rainfall-e2e.compose.yml:26` | BLOCKER | fixed | **[Closed by Fix round 2 — see below.]** The fallback removal (fix diff) without threading the run-owned env into the env-less compose call sites creates a NEW project mismatch: `name: rmeh-${RMEH_RUN_ID_PREFIX}` with the var unset resolves to project `rmeh-` (empirically confirmed: `compose config` → `name: rmeh-`), while compose up/teardown/restart now target `rmeh-<run_id[:10]>`. `validate_marker_read_only` (the SOLE OwnedBoundary constructor, called at driver.py:346) runs `docker compose exec -T db psql` with no env → targets `rmeh-` → `service "db" is not running`, exit 1 (empirically confirmed) → BootstrapSafetyFailure → BOOTSTRAP_PREREQUISITE_FAILURE → exit 1 on EVERY real run (local runbook + GitHub workflow; workflow run step's `RMEH_RUN_ID_PREFIX` was removed in this fix, so the ambient env is unset). Same env-less pattern breaks the migration path (`compose run --rm migrate`) and every `_psql_cmd` bootstrap exec once the marker gate were bypassed. `safety.py` and `bootstrap.py` exec call sites are untouched lines, but the breakage is CAUSED by fix-touched lines (fallback removal + stack_env change); A1's own original evidence cited the marker gate failure mode. Fix required: pass the run-owned `RMEH_RUN_ID_PREFIX` env into `validate_marker_read_only`/`_psql_cmd`/`apply_migrations`/`_rebuild_once` (or make the compose file not depend on the ambient var for these paths). |
+
+### Constraints audit (fix diff)
+
+- Production code: 0 lines — no `consorcio-web/src/**` or `gee-backend/app/**` touched. PASS.
+- Workflow remains optional (`workflow_dispatch`-only), unreferenced by required gates. PASS.
+- Parent change (`lluvia-ux-tarjeta`) not mutated; `PARENT_LEDGER_PATH` only read. PASS.
+- Surgical scope: changes limited to the six confirmed fixes + their tests/docs/ledger; `--evidence-dir` subparser additions justified by A5 (workflow command order); no unflagged refactors observed. PASS.
+
+### Round 2 outcome
+
+- Confirmed findings verified: **5 of 6** (A2, A3, A4, A5, A6).
+- Confirmed finding still open: **JD-APP-001/A1 (BLOCKER)** — fix incomplete; the harness still cannot complete a green run through either documented path.
+- NEW BLOCKER introduced by the fix: **JD-R2-001** (env-less compose exec/run paths now resolve project `rmeh-` vs provisioned `rmeh-<run_id[:10]>`; marker gate fails on every run).
+
+**JUDGMENT: NOT APPROVED ❌ — A1 remains unresolved and the fix introduces a same-class BLOCKER (JD-R2-001) at the marker gate.**
+
+---
+
+## Fix round 2 — surgical apply (confirmed BLOCKERs only, TDD RED→GREEN)
+
+Fix agent applied the two confirmed BLOCKER findings — **JD-APP-001/A1** and **JD-R2-001** —
+which share ONE root cause: the ~8 DB-side `docker compose exec`/`run` call sites resolved the
+compose project from the AMBIENT env (empty after the round-1 fallback removal), so every
+DB command targeted the empty-prefix project `rmeh-` instead of the provisioned
+`rmeh-<run_id[:10]>`, failing deterministically at the marker gate (`driver.py:346`) on every
+real run. The fix introduces ONE composition helper used at EVERY compose invocation site and
+removes the ambient dependency entirely.
+
+| id | fix summary | verification |
+|---|---|---|
+| JD-APP-001/A1 | Root-cause fix: new `safety.compose_env(identity, *, extra=None)` returns the run-owned env (`RMEH_RUN_ID_PREFIX` derived from `identity.database_name.removeprefix("rmeh_")` — the single source of truth shared by POSTGRES_DB/`psql -d`/marker row, equal to `run_id[:10]` for driver-generated identities and FULL prefix for integration/probe seams — plus the synthetic `RMEH_DB_PASSWORD=synthpass`), never reading ambient env. Every compose invocation now passes it: `validate_marker_read_only` (`safety.py`), `apply_migrations` compose path (`safety.py`, with a fail-closed guard: compose path without identity raises `BootstrapSafetyFailure`), all 8 `_psql_cmd` exec sites via a new `bootstrap._psql_run` wrapper (inspect_relation, inspect_srid_contract, seed, create/recreate/refresh parcel view, refresh soil view, count soil rows), `_rebuild_once` down/up (`bootstrap.py`), martin restart (`bootstrap.py`, previously `run_id[:10]`-only). `driver.stack_env` now takes the identity and delegates to `compose_env` + host ports; `_teardown_lease` takes the identity (prefix from the same source, not `lease.project_name`). Workflow cleanup step's `RMEH_RUN_ID_PREFIX: gha` env removed — the driver derives everything from `ownership.json`/identity; the run step never set it (unchanged). `__init__.py` exports `compose_env`. | 10 new RED→GREEN unit tests: compose_env derives prefix / never ambient / seam-identity full-prefix / extra merge; marker-gate env carries prefix+password; apply_migrations pins env + refuses missing identity; EVERY compose exec in a happy-path bootstrap carries prefix+password; rebuild down/up carry env; inspect_relation psql env + fail-closed guard. Parity test `test_compose_config_matches_lease_plan_under_driver_random_env` runs real `docker compose config` under `compose_env` of a driver-style random identity and asserts project/volume/network/container/POSTGRES_DB == `ResourceLease.plan` names EXACTLY (PASSED, docker CLI present). Full suites: harness+config pytest = **141 passed** (was 131); vitest 69 passed; `tsc -p tsconfig.tests.json --noEmit` clean; `git diff --check` clean; integration tests skipped (need `RMEH_INTEGRATION=1`). |
+| JD-R2-001 | Same root cause as A1; closed by the same `compose_env` threading (see A1 row). | The `test_bootstrap_every_compose_exec_carries_run_owned_env` regression asserts EVERY `docker compose` invocation in the bootstrap records `RMEH_RUN_ID_PREFIX=<run_id[:10]>` + `RMEH_DB_PASSWORD=synthpass`; parity test proves the resolved project equals the lease plan under the driver env. |
+
+- `JD-R2-002` (WARNING/info — `_rebuild_once` exit codes unchecked) was NOT in the confirmed
+  fix scope and was NOT modified: the rebuild env was threaded (part of A1/JD-R2-001) but exit
+  code checking was deliberately left untouched and reported back to the orchestrator.
+- Existing driver-layer tests updated for the signature changes (`stack_env(identity)`,
+  `_teardown_lease(..., identity)`) and two hand-built test identities made internally
+  consistent (`database_name = rmeh_<run_id[:10]>`, matching `RunIdentity.plan`); the
+  `test_cleanup_uses_exact_lease_identity_not_prefix` DB-token assertion now checks for
+  DATABASE_* calls/marker-nonce instead of the synthetic `RMEH_DB_PASSWORD` interpolation var.
+
+Full suites: `scripts/tests/test_rainfall_e2e_harness.py` + `test_rainfall_e2e_config.py` =
+**141 passed**; `consorcio-web` vitest harness unit = **69 passed**; `tsc -p
+tsconfig.tests.json --noEmit` clean; gee-backend workflow optionality contract untouched and
+green; integration tests skipped (need `RMEH_INTEGRATION=1` against a provisioned stack).
+
+**Fix-round-2 status: both confirmed BLOCKERs (JD-APP-001/A1, JD-R2-001) closed (fixed) with
+RED→GREEN proof; 0 production lines touched.**

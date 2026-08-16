@@ -702,3 +702,36 @@ flipped `open → fixed`; full details in `review-ledger.md` → "Fix round".
   orchestrator, deliberately not fixed here (JD-APP-009/A9 `_rebuild_once` env,
   cleanup accounting RMEH-012-B/C, classification reachability, zoom mismatch,
   A2 freshness gate runtime risk).
+
+## Judgment Day fix round 2 (surgical — the two confirmed BLOCKERs, TDD RED→GREEN)
+
+The Round-2 re-judge (Judge A + Judge B) found the Round-1 fix still open on
+**JD-APP-001/A1** and introduced **JD-R2-001** (BLOCKER): the ~8 DB-side `docker compose
+exec`/`run` call sites (marker gate, migrate, all psql execs, rebuild, seed, views) were
+env-less, and with the `:-probedefault` fallbacks removed they resolved the empty-prefix
+project `rmeh-` while compose up/teardown/restart targeted `rmeh-<run_id[:10]>` — the marker
+gate failed on EVERY real run (`driver.py:346`). Root-cause fix: one composition helper
+`compose_env(identity)` used at EVERY compose invocation site; the ambient env is never
+read.
+
+| id | fix |
+|---|---|
+| JD-APP-001/A1 (BLOCKER) | `safety.compose_env(identity, *, extra)` returns run-owned `RMEH_RUN_ID_PREFIX` (from `database_name.removeprefix("rmeh_")` — single source of truth, = `run_id[:10]` for driver identities, full prefix for probe/integration seams) + synthetic `RMEH_DB_PASSWORD=synthpass`, never ambient. Threaded into `validate_marker_read_only`, `apply_migrations` (compose path, fail-closed on missing identity), all 8 psql exec sites via `bootstrap._psql_run` (inspect_relation, inspect_srid_contract, seed, 4 view/soil helpers), `_rebuild_once` down/up, martin restart. `driver.stack_env(identity)` delegates to it + host ports; `_teardown_lease` takes the identity; workflow cleanup step's `RMEH_RUN_ID_PREFIX: gha` env removed (driver derives from `ownership.json`). |
+| JD-R2-001 (BLOCKER) | Same root cause, closed by the same `compose_env` threading (see A1 row). |
+
+### Fix-round-2 GREEN evidence
+
+| | command | result |
+|---|---|---|
+| Harness unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **141 passed** (131 prior + 10 new RED→GREEN) |
+| Compose parity | `test_compose_config_matches_lease_plan_under_driver_random_env` (real `docker compose config` under `compose_env` of a random identity vs `ResourceLease.plan`) | PASSED |
+| TS helper unit | `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **69 passed** (unchanged) |
+| TS typecheck | `npx tsc -p tsconfig.tests.json --noEmit` | clean |
+| Diff hygiene | `git diff --check` | clean |
+| Integration | `test_rainfall_e2e_integration.py` | skipped (needs `RMEH_INTEGRATION=1` + real stack) |
+
+Ledger row statuses flipped `open → fixed` for JD-APP-001/A1 and JD-R2-001 (both judges'
+tables) + a fix-round-2 summary section in `review-ledger.md`. JD-R2-002 (WARNING/info,
+`_rebuild_once` exit codes unchecked) was NOT in scope and was NOT touched — reported back
+to the orchestrator. 0 production lines (`consorcio-web/src/**`, `gee-backend/app/**`)
+touched; `version.json` untouched.
