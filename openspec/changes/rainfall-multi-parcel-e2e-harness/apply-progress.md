@@ -580,3 +580,89 @@ passes. Documented, accepted risk; verify at W9.
 - Production = 0 (`consorcio-web/src/**` untouched this session).
 - `version.json` restored after commit; no docker activity this session.
 - No new files; `tsconfig.tests.json` already enrolled the spec + helper.
+
+## Batch 7 — W10 + W11 (this session): runner driver CLI, optional manual workflow, runbook + JDA-001 handoff + rollback proof
+
+### What
+Completed the execution half of PR2 (W10 + W11), adding the runner driver CLI
+that W10.3's "idempotent cleanup command", the workflow's "same Python runner",
+and the runbook's "one command" all reference, plus the operator workflow,
+contract test, runbook, and handoff/rollback evidence.
+
+### W10 — optional `workflow_dispatch`
+
+- **10.1** `.github/workflows/rainfall-multi-parcel-e2e.yml` (new): `workflow_dispatch`
+  only; `permissions: { contents: read }`; ONE global concurrency group
+  `cancel-in-progress: false` (dispatches serialize, never cancel an older
+  cleanup); 45-min job timeout; setup-python@v5 (3.11) + setup-node@v4 (Node 22)
+  + lockfile `npm ci` + locked Chromium; runs the SAME Python runner as local
+  (`python3 -m scripts.rainfall_e2e_harness run`); no secrets; `if: always()`
+  artifact upload (14-day retention, `if-no-files-found: error`) + explicit
+  idempotent `cleanup --run-id gha` step.
+- **10.2** Contract test
+  `test_rainfall_harness_workflow_stays_optional_and_unreferenced` in
+  `gee-backend/tests/test_ci_workflow_contracts.py`: asserts the workflow is
+  `workflow_dispatch`-only, NOT referenced by `frontend.yml`/`backend.yml`/
+  `deploy.yml`/`e2e-canary.yml`, NOT in the canary three-spec allowlist, and
+  carries serialized concurrency + 45-min timeout + 14-day artifact retention
+  + `if-no-files-found: error`.
+- **10.3** `if: always()` upload with `if-no-files-found: error` + explicit
+  cleanup step calling the runner's idempotent `cleanup` subcommand.
+
+### Runner driver CLI (critical gap — required by W10/W11)
+
+The probe docstring and design reference "the W11 runner driver" / "the runner's
+idempotent cleanup command", but no CLI existed. Added:
+
+- `scripts/rainfall_e2e_harness/driver.py` (new) — `run_driver` (one owned
+  lifecycle: identity → lease → collision gate → compose up → marker gate →
+  bootstrap → preflight → validate services → collection gate → playwright run
+  → result gate → manifest + `jda-001-handoff.json` ONLY on PASSED → teardown)
+  and `run_cleanup` (idempotent teardown by exact lease identity). Pure/testable
+  via injected `CommandRunner`; `ROLLBACK_ARTIFACTS` (13) + `ROLLBACK_ENROLMENTS`
+  (2) + `PARENT_LEDGER_PATH` constants.
+- `scripts/rainfall_e2e_harness/__main__.py` (new) — `python -m
+  scripts.rainfall_e2e_harness {run,cleanup}` entry point, the same runner the
+  workflow + runbook invoke.
+
+### W11 — runbook + handoff + rollback proof
+
+- **11.1** `build_handoff` emits `jda-001-handoff.json` ONLY on a complete pass:
+  source change, fixture/evidence digests, exact 11/0/0, transition refs,
+  `parent_record_mutated: false`, proposed separate JDA-001 transaction.
+- **11.2** Parent-boundary tests: runner/rollback surface is disjoint from
+  `openspec/changes/lluvia-ux-tarjeta/review-ledger.md`; `PRODUCT_ASSERTION_FAILURE`
+  requests a separate remediation; evidence dir confined to `.artifacts/`.
+- **11.3** Rollback proof: exactly 13 artifacts + 2 enrolments; cleanup uses
+  exact lease identity (never prefix/DB-token/global-prune) and is idempotent
+  when resources are already gone.
+- **11.4** `docs/testing/rainfall-multi-parcel-e2e.md` (new): prerequisites, one
+  command, statuses (PASSED + six failure classes), evidence layout, cleanup
+  contract, JDA-001 boundary, rollback procedure, "not a required CI check".
+
+### GREEN evidence
+
+| | command | result |
+|---|---|---|
+| W11 unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py -q` | **105 passed** (95 prior + 10 W11) |
+| W10.2 | `python3 -m pytest gee-backend/tests/test_ci_workflow_contracts.py -q` | **44 passed** (43 prior + 1 W10.2) |
+| Full Python unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **123 passed** |
+| Driver CLI | `python3 -m scripts.rainfall_e2e_harness --help` / `cleanup --help` | parses |
+| Workflow YAML | `python3 -c "import yaml; yaml.safe_load(open(...))"` | valid |
+| Lint | `ruff check --select E4,E7,E9,F` + `ruff format --check` on new files | All checks passed |
+| Diff hygiene | `git diff --check` | clean |
+
+### Budget / cap
+W10 + W11 delta ≈ 590 non-production lines (workflow 63 + driver ~370 +
+`__main__.py` 15 + 10 W11 tests ~180 + runbook ~170 + 1 contract test). PR2
+execution half is now COMPLETE (W4–W11); the remaining open items are the
+real-stack negatives (5.2/5.7) and W9's runtime 11/0/0 browser gate, which need
+a provisioned disposable stack (integration-only, not verifiable from pure unit).
+
+### Boundary
+- Production = 0 (`consorcio-web/src/**`, `gee-backend/app/**` untouched).
+- No `version.json` change; no `.claude/`; no AI attribution.
+- Docker clean: no `rmeh-*` containers/volumes after this session.
+- Changed paths: workflow YAML, driver + `__main__.py`, test file additions,
+  contract test, runbook, tasks.md + apply-progress.md. All test/harness/config/docs.
+
