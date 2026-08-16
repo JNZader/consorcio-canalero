@@ -5,6 +5,12 @@
 # SDD infrastructure (agent-local, not committed)
 .atl/
 
+# Rainfall multi-parcel E2E harness — generated disposable-stack artifacts
+# (ownership init scripts and per-run evidence; regenerated each run, never
+# committed — RMEH-001).
+scripts/tests/rmeh-init-*.sql
+.artifacts/
+
 # ===========================================
 # ENVIRONMENT & SECRETS
 # ===========================================

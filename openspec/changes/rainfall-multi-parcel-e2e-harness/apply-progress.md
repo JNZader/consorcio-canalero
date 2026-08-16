@@ -369,3 +369,56 @@ execution seam after the 2,400 non-production cap was exceeded at 2,990 lines
 - **PR2 boundary:** W4 → W11. ~2,700 additional lines at current density.
   Starts with Compose/Martin config and ends with the 11/0/0 browser gate and
   runbook/JDA handoff. Next session.
+
+## Batch 4 — W5 (this session): idempotent bootstrap integration, real-stack proven
+
+### What
+
+W5 core (tasks 5.1/5.3/5.4/5.5/5.6) implemented in the new
+`scripts/rainfall_e2e_harness/bootstrap.py` (800 lines) + integration seam
+extensions, validated TWICE against a real disposable owned Docker stack.
+
+### GREEN evidence (real stack, ports 8101/3002/5175 to dodge the dev stack on 8001)
+
+| | command | result |
+|---|---|---|
+| Unit suite | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **89 passed** |
+| Real-stack integration | `RMEH_INTEGRATION=1 RMEH_RUN_ID_PREFIX=integtest RMEH_BACKEND_HOST_PORT=8101 RMEH_MARTIN_HOST_PORT=3002 RMEH_FRONTEND_HOST_PORT=5175 python3 -m pytest scripts/tests/test_rainfall_e2e_integration.py -v` | **2 passed** — `test_bootstrap_twice_same_owned_db_is_stable` + `test_services_stable_after_second_pass` |
+
+Two passes against the SAME owned DB: `action=recreate rebuilt=False soil_rows=1 srid=4326 digest=4ad8aee9b2a6` on both — byte/cardinality stable. Services: `tile=(A,B,C) ficha=(A,B,C) martin=True live=True frontend=True`. Teardown `down -v --remove-orphans`; no `rmeh-*` containers/volumes left.
+
+### Root causes found and fixed by the real-stack probe (unit layer could not catch these)
+
+1. **`psql -c` does no `%s` substitution** — `inspect_relation` passed the relation name as a trailing argv; psql ignored it and sent literal `%s` (`extra command-line argument ignored`). FIX: inline the fixed internal name into the SQL.
+2. **Seed TRUNCATE FK failure** — `TRUNCATE parcelas_catastro, suelos_catastro, zonas_operativas` failed because migration-owned `indices_hidricos` FK-references `zonas_operativas`. FIX: `TRUNCATE ... CASCADE` (safe: whole seed is one transaction that fully re-populates the run-owned tables). ALSO: the seed exit code was unchecked → silent no-op; now raises `BootstrapPrerequisiteFailure` on non-zero.
+3. **Missing semicolon in `PARCEL_VIEW_DDL`** (`WITH DATA` + concatenated COMMENT = one broken statement) → CREATE MATERIALIZED VIEW failed silently (exit code unchecked). FIX: semicolon + exit-code checks on ALL parcel/soil view mutations.
+4. **Postgres uid-999 init-script readability** — entrypoint `exec gosu postgres` (uid 999) before init files; host-0600 unreadable. FIX (deviation): mode 0644, synthetic marker only; real password stays in mode-0600 temp env (design §Secrets); documented in compose + `write_init_script` docstring.
+5. **`role "root" does not exist`** — `docker compose exec db psql` runs as OS root; psql defaults role to root. FIX: explicit `-U rmeh_user -d <database_name>` threaded through every psql command.
+6. **Martin v0.14.2 catalog shape** is `{"tiles": {...}}`, not `{"tables": ...}`; tile route is `/{source}/{z}/{x}/{y}` (NO `.pbf` suffix — that's the 404 "can not parse 9758.pbf"). Tile bodies are binary protobuf → probe uses `-o /dev/null`.
+7. **Martin boots before the view exists** on a fresh stack → empty catalog. FIX: ONE bounded martin restart in `validate_services` (mirrors the one bounded DB rebuild) + `restart: on-failure` in compose for the transient Docker DNS race (`failed to lookup address information`).
+
+### Files
+
+- `scripts/rainfall_e2e_harness/bootstrap.py` (new, 800) — `bootstrap_database`, `validate_services`, seed, provenance gates, `tile_xyz`, `_catalog_sources`.
+- `scripts/rainfall_e2e_harness/safety.py` — `RealCommandRunner`, `render_init_script`/`write_init_script`, compose-aware `apply_migrations`, JSON marker query with `-U rmeh_user -d`.
+- `scripts/tests/test_rainfall_e2e_integration.py` (new, 172) — self-provisioning real-stack fixture (env-aware ports), 2 tests.
+- `scripts/tests/probe_rainfall_bootstrap.py` (new, 141) — one-off real-stack diagnostic probe (not part of the suite).
+- `scripts/tests/rainfall-e2e.compose.yml` — init-script bind mount, martin config path fix (`./fixtures/`), `restart: on-failure`.
+- `scripts/pytest.ini` — `integration` marker.
+- `.gitignore` — `scripts/tests/rmeh-init-*.sql` + `.artifacts/` (generated, never committed).
+- `scripts/tests/test_rainfall_e2e_harness.py` — 20 new unit tests (89 total).
+
+### Boundary
+
+- Production = 0 (`consorcio-web/src/**` untouched this session).
+- No `version.json` staged; generated init scripts deleted + gitignored; `.artifacts/` gitignored.
+- Docker cleanup verified: no `rmeh-*` containers/volumes after the integration run.
+
+### Budget
+
+W5 delta ≈ 1,778 non-production lines (665 tracked diff + 1,113 new: bootstrap.py 800, integration 172, probe 141). W4 658 + W5 1,778 = 2,436 — the PR2 ~2,700 forecast is nearly exhausted before W6; W6–W11 (~1,078 forecast) will exceed it. Flagging for the owner at the next checkpoint; no scope cut attempted (contracts RMEH-002/003/006 mandate the surface).
+
+### Open for next session
+
+- 5.2/5.7 real-stack negatives (migration-owned incompatible `vt_parcelas_catastro` → one rebuild then explicit abort; missing/incompatible `mv_suelos_por_zona` → migration-only repair; Martin empty/204 → abort). Unit-covered today.
+- W6 (TS pure cache identity + silent-refresh bearer), W7/W8 (append ONE test(), 11 total), W9 (collection gate), W10 (workflow), W11 (handoff/runbook).

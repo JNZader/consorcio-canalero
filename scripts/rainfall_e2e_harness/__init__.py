@@ -18,6 +18,23 @@ Safety invariants (RMEH-001/012, design §Safety Boundary):
 
 from __future__ import annotations
 
+from scripts.rainfall_e2e_harness.bootstrap import (
+    COMPOSE_FILE,
+    HARNESS_VIEW_MARKER,
+    BootstrapReport,
+    RelationInspection,
+    RelationKind,
+    ServiceReport,
+    bootstrap_database,
+    build_seed_sql,
+    classify_parcel_view,
+    classify_soil_view,
+    inspect_relation,
+    inspect_srid_contract,
+    seed_digest,
+    tile_xyz,
+    validate_services,
+)
 from scripts.rainfall_e2e_harness.events import EventStream
 from scripts.rainfall_e2e_harness.lifecycle import Lifecycle
 from scripts.rainfall_e2e_harness.preflight import (
@@ -36,10 +53,13 @@ from scripts.rainfall_e2e_harness.safety import (
     LeaseResource,
     OwnedBoundary,
     RecordingCommandRunner,
+    RealCommandRunner,
     ResourceLease,
     RunIdentity,
     apply_migrations,
+    render_init_script,
     validate_marker_read_only,
+    write_init_script,
 )
 from scripts.rainfall_e2e_harness.taxonomy import (
     SceneManifest,
@@ -65,6 +85,7 @@ __all__ = [
     "ParcelContract",
     "Preflight",
     "RecordingCommandRunner",
+    "RealCommandRunner",
     "ResourceLease",
     "RunIdentity",
     "SceneManifest",
@@ -75,5 +96,7 @@ __all__ = [
     "preflight_parcel_contracts",
     "redact_command",
     "redact_text",
+    "render_init_script",
     "validate_marker_read_only",
+    "write_init_script",
 ]

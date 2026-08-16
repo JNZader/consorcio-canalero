@@ -68,6 +68,35 @@ class CommandRunner:
         raise NotImplementedError
 
 
+class RealCommandRunner(CommandRunner):
+    """Shells out via subprocess (W5 integration + W11 runner driver)."""
+
+    def run(
+        self,
+        command: list[str],
+        *,
+        kind: CommandKind,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        import os
+        import subprocess
+
+        full_env = dict(os.environ)
+        if env:
+            full_env.update(env)
+        try:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                env=full_env,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            return CommandResult(124, "", f"command timed out: {' '.join(command)}")
+        return CommandResult(proc.returncode, proc.stdout, proc.stderr)
+
+
 class RecordingCommandRunner(CommandRunner):
     """Fake runner: records every call by kind, returns programmed results."""
 
@@ -178,24 +207,46 @@ class OwnedBoundary:
     database_name: str
 
 
-def validate_marker_read_only(runner: CommandRunner, identity: RunIdentity) -> OwnedBoundary:
+def validate_marker_read_only(
+    runner: CommandRunner,
+    identity: RunIdentity,
+    *,
+    compose_file: str | None = None,
+) -> OwnedBoundary:
     """Read-only marker query — the SOLE OwnedBoundary constructor. Issued as
     ``DATABASE_READONLY`` so the recording adapter proves no ``DATABASE_MUTATING``
-    call precedes a constructed boundary."""
-    result = runner.run(
-        [
-            "docker",
-            "compose",
-            "exec",
-            "-T",
-            "db",
-            "psql",
-            "-tA",
-            "-c",
-            "SELECT run_id, marker_nonce, database_name FROM rmeh_ownership LIMIT 1",
-        ],
-        kind=CommandKind.DATABASE_READONLY,
-    )
+    call precedes a constructed boundary.
+
+    ``compose_file`` is the W5 integration seam: the runner passes the harness
+    compose path (``scripts/tests/rainfall-e2e.compose.yml``) so ``docker
+    compose`` resolves the run-owned project instead of auto-discovering a
+    production compose from the cwd. When omitted (unit layer), the command is
+    unchanged from W1.
+
+    The query emits a JSON object: ``psql -tA`` of a bare multi-column select
+    would pipe-join the values, which ``json.loads`` cannot parse. This is the
+    W5 fix that makes the W1 marker contract work against a real Postgres."""
+    command = ["docker", "compose"]
+    if compose_file is not None:
+        command += ["-f", compose_file]
+    command += [
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        "rmeh_user",
+        "-d",
+        identity.database_name,
+        "-tA",
+        "-c",
+        "SELECT json_build_object("
+        "'run_id', run_id, "
+        "'marker_nonce', marker_nonce, "
+        "'database_name', database_name) "
+        "FROM rmeh_ownership LIMIT 1",
+    ]
+    result = runner.run(command, kind=CommandKind.DATABASE_READONLY)
     if result.exit_code != 0:
         raise BootstrapSafetyFailure(f"marker query error: {result.stderr.strip()}")
     body = result.stdout.strip()
@@ -211,14 +262,70 @@ def validate_marker_read_only(runner: CommandRunner, identity: RunIdentity) -> O
     return OwnedBoundary(run_id=identity.run_id, database_name=row["database_name"])
 
 
-def apply_migrations(owned: OwnedBoundary | None, runner: CommandRunner) -> None:
-    """``alembic upgrade head`` against the run-owned DB. Requires OwnedBoundary."""
+def apply_migrations(
+    owned: OwnedBoundary | None,
+    runner: CommandRunner,
+    *,
+    compose_file: str | None = None,
+) -> None:
+    """``alembic upgrade head`` against the run-owned DB. Requires OwnedBoundary.
+
+    ``compose_file`` is the W5 integration seam: when set, migrations run
+    through the compose ``migrate`` service (in-container, run-owned env), the
+    same DDL path the provision used. When omitted (unit layer), the raw
+    ``alembic upgrade head`` command is issued unchanged from W1."""
     if owned is None:
         raise BootstrapSafetyFailure(
             "apply_migrations requires a proven owned boundary; no OwnedBoundary "
             "token (no marker proof) means no database writes"
         )
+    if compose_file is not None:
+        runner.run(
+            ["docker", "compose", "-f", compose_file, "run", "--rm", "migrate"],
+            kind=CommandKind.DATABASE_MUTATING,
+        )
+        return
     runner.run(["alembic", "upgrade", "head"], kind=CommandKind.DATABASE_MUTATING)
+
+
+def render_init_script(identity: RunIdentity) -> str:
+    """Render the Postgres init SQL that carves the ownership marker on the
+    brand-new run-owned volume (W5 compose bind mount). The first DB
+    initialization creates ``rmeh_ownership(run_id, marker_nonce,
+    database_name)`` so the marker gate (RMEH-001-B) can prove ownership before
+    any mutating write. Deterministic for a given identity."""
+    return (
+        "-- rainfall-multi-parcel-e2e-harness ownership marker (W5)\n"
+        "CREATE TABLE IF NOT EXISTS rmeh_ownership (\n"
+        "  run_id TEXT NOT NULL,\n"
+        "  marker_nonce TEXT NOT NULL,\n"
+        "  database_name TEXT NOT NULL\n"
+        ");\n"
+        f"INSERT INTO rmeh_ownership (run_id, marker_nonce, database_name) VALUES (\n"
+        f"  '{identity.run_id}',\n"
+        f"  '{identity.marker_nonce}',\n"
+        f"  '{identity.database_name}'\n"
+        f");\n"
+    )
+
+
+def write_init_script(path: Path, identity: RunIdentity, *, mode: int = 0o644) -> Path:
+    """Persist the init script with a restrictive-but-container-readable mode.
+
+    The Postgres entrypoint restarts itself as the container's ``postgres``
+    user (uid 999) BEFORE executing init scripts, so ``psql -f`` opens the file
+    as uid 999. A 0600 file owned by the host user is therefore unreadable by
+    that process. The design's 0600 intent (host-side secret protection) is
+    honored for the DB password/nonce via the mode-0600 temporary env file
+    (design §Secrets); the bind-mounted init script holds only the SYNTHETIC
+    marker (run_id/nonce/database_name of a disposable stack), so 0644 makes it
+    readable by the container postgres user without exposing any real
+    credential. The mode is parameterized for environments where a 0600 file
+    owned by the container uid is feasible."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_init_script(identity), encoding="utf-8")
+    path.chmod(mode)
+    return path
 
 
 # -- ResourceLease: Docker teardown authority, independent of the DB token --

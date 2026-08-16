@@ -40,6 +40,14 @@ services:
       POSTGRES_PASSWORD: ${RMEH_DB_PASSWORD:-synthpass}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # W5: ownership marker re-installed on every fresh volume (the runner
+      # validates the marker BEFORE touching anything; it must exist). Mode is
+      # 0644 so the container's postgres user (uid 999) can open it: the
+      # entrypoint restarts itself as postgres before psql -f. The content is
+      # the SYNTHETIC marker (run_id/nonce/database_name of the disposable
+      # stack); the real DB password stays in a mode-0600 temp env file, never
+      # here (design §Secrets).
+      - ./rmeh-init-${RMEH_RUN_ID_PREFIX:-probedefault}.sql:/docker-entrypoint-initdb.d/01-rmeh-ownership.sql:ro
     expose:
       - "5432"
     networks:
@@ -148,7 +156,11 @@ services:
   martin:
     image: ghcr.io/maplibre/martin:v0.14.2
     container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-martin-1
-    restart: "no"
+    # on-failure: a transient Docker DNS race right after network creation can
+    # kill martin at startup (failed to lookup "db"); restarting on non-zero
+    # exit keeps the disposable stack self-healing. The harness still does its
+    # own bounded restart in validate_services for the empty-catalog case.
+    restart: on-failure
     depends_on:
       db:
         condition: service_healthy
@@ -157,7 +169,7 @@ services:
     environment:
       DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX:-probedefault}
     volumes:
-      - ./martin-rainfall-e2e.yaml:/config/config.yaml:ro
+      - ./fixtures/martin-rainfall-e2e.yaml:/config/config.yaml:ro
     expose:
       - "3000"
     ports:
