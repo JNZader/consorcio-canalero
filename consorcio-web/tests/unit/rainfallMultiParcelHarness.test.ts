@@ -20,18 +20,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type {
-  Camera,
-  FixtureProvenance,
-  LngLat,
-  ParcelFixture,
-  RainfallFixture,
-  RectCss,
-} from '../e2e/helpers/rainfallMultiParcelHarness';
+import type { Camera, LngLat, RectCss } from '../e2e/helpers/rainfallMultiParcelHarness';
 import {
   CAMERAS,
   CLICKABLE_DISK_RADIUS_PX,
-  EDGE_CLEARANCE_PX,
   FORBIDDEN_SEAM_PATTERNS,
   INTERACTION_POLICY,
   MIN_EDGE_CLEARANCE_PX,

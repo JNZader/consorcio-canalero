@@ -110,6 +110,11 @@ playwright-report/
 a11y-report/
 test-results/
 *.lcov
+# Harness probe runtime output (playwright-results.json under
+# consorcio-web/tests/e2e/.artifacts/). The runner redirects the JSON reporter
+# to its own evidence path via RMEH_PLAYWRIGHT_JSON; this is only the local
+# probe default.
+consorcio-web/tests/e2e/.artifacts/
 .stryker-tmp/
 # Scratch mutation configs: one-off scoped runs (stryker-<algo>.config.*).
 # 26 quedaron commiteados por descuido; el config real es
