@@ -296,14 +296,15 @@ def classify_run_failure(
     A discovery/result/evidence contract failure is ``HARNESS_ACCOUNTING_FAILURE``.
     Otherwise, a browser failure is ``BROWSER_INTEGRITY_FAILURE`` when the
     pre-click camera/projection/occlusion/tile integrity gate failed or no real
-    click occurred, and ``PRODUCT_ASSERTION_FAILURE`` only when all pre-click
-    integrity passed AND the single real click happened but the subsequent
-    request/identity/continuity/freshness/scroll/geometry/focus behavior failed
-    (reuses the exclusive split in ``taxonomy.classify_request_failure``)."""
+    click occurred. The classifier receives no input that can signal a
+    product-behavior failure, so the all-green path is ``PASSED`` — a completed
+    green run must never be reported as a failure (product-level assertion
+    failures surface through ``taxonomy.classify_request_failure`` and the
+    result gate, not this harness gate classifier)."""
     if not collection_ok or not result_ok:
         return FailureClass.HARNESS_ACCOUNTING_FAILURE
     if not pre_click_integrity_ok:
         return FailureClass.BROWSER_INTEGRITY_FAILURE
     if not click_occurred:
         return FailureClass.BROWSER_INTEGRITY_FAILURE
-    return FailureClass.PRODUCT_ASSERTION_FAILURE
+    return FailureClass.PASSED

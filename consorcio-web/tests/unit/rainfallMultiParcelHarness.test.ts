@@ -20,6 +20,10 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type {
   Camera,
   DesktopFocusSnapshot,
@@ -61,6 +65,7 @@ import {
   resolveParcelByIdentity,
   scopeSentenceFor,
   validateFixture,
+  writeHarnessManifest,
 } from '../e2e/helpers/rainfallMultiParcelHarness';
 
 import fixtureJson from '../e2e/fixtures/rainfall-multi-parcel.fixture.json';
@@ -921,5 +926,65 @@ describe('W8 desktop focus — stable focus allowlist, no mobile geometry', () =
         mobileOnly: false,
       })
     ).toThrow(/viewport/i);
+  });
+});
+
+describe('W9.6 manifest evidence — selection-records contract on disk (A2)', () => {
+  it('writeHarnessManifest writes { selection_records } to dirname(outputJson)/manifest.json', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rmeh-manifest-'));
+    const outputJson = join(dir, 'nested', 'playwright-results.json');
+    const records = [
+      {
+        context: 'mobile' as const,
+        target: 'A' as const,
+        attemptCount: 1,
+        clickCount: 1,
+        wheelProofsBeforeClick: 0,
+        analysisSequence: 1,
+      },
+    ];
+    const manifestPath = writeHarnessManifest(records, outputJson);
+    expect(manifestPath).toBe(join(dir, 'nested', 'manifest.json'));
+    const written = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      selection_records: unknown[];
+    };
+    expect(Array.isArray(written.selection_records)).toBe(true);
+    expect(written.selection_records).toHaveLength(1);
+  });
+
+  it('writeHarnessManifest round-trips the exact fields the driver gate reads', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rmeh-manifest2-'));
+    const records = [
+      {
+        context: 'desktop' as const,
+        target: 'C' as const,
+        attemptCount: 1,
+        clickCount: 1,
+        wheelProofsBeforeClick: 2,
+        analysisSequence: 2,
+      },
+      {
+        context: 'mobile' as const,
+        target: 'B' as const,
+        attemptCount: 2,
+        clickCount: 1,
+        wheelProofsBeforeClick: 0,
+        analysisSequence: 3,
+      },
+    ];
+    writeHarnessManifest(records, join(dir, 'playwright-results.json'));
+    const written = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as {
+      selection_records: Array<{
+        context: string;
+        target: string;
+        attemptCount: number;
+        clickCount: number;
+        wheelProofsBeforeClick: number;
+        analysisSequence: number;
+      }>;
+    };
+    expect(written.selection_records.map((r) => r.target)).toEqual(['C', 'B']);
+    expect(written.selection_records.map((r) => r.context)).toEqual(['desktop', 'mobile']);
+    expect(written.selection_records.map((r) => r.analysisSequence)).toEqual([2, 3]);
   });
 });

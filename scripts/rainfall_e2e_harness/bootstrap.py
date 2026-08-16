@@ -745,6 +745,10 @@ def validate_services(
         restart = runner.run(
             ["docker", "compose", "-f", COMPOSE_FILE, "restart", "martin"],
             kind=CommandKind.DOCKER_CONTROL,
+            # The restart must target the run-owned compose project, exactly as
+            # compose up created it (A6/A1) — a bare default project would
+            # restart nothing on a fresh `rmeh-<run_id>` stack.
+            env={"RMEH_RUN_ID_PREFIX": identity.run_id[:10]},
         )
         if restart.exit_code != 0:
             raise BootstrapPrerequisiteFailure(
@@ -847,11 +851,18 @@ def validate_services(
             )
         ficha_ok.append("LEGACY")
 
-    # Frontend /mapa from loopback (camera parameters).
+    # Frontend /mapa from loopback (camera parameters). A dead/500 frontend is
+    # a FAIL-CLOSED prerequisite failure: the browser must never start against a
+    # frontend that cannot serve the map (A6).
     camera = (fixture.get("cameras") or {}).get("mobile") or {}
     qs = f"lat={camera.get('lat', -32.5)}&lng={camera.get('lng', -62.5)}&zoom={camera.get('zoom', camera_zoom)}"
     mapa = _probe_get(runner, f"{frontend}/mapa?{qs}")
     frontend_ok = _http_code(mapa.stdout) == 200
+    if not frontend_ok:
+        raise BootstrapPrerequisiteFailure(
+            f"frontend /mapa failed (HTTP {_http_code(mapa.stdout)}); "
+            "browser must not start against a dead/500 frontend (RMEH-002-D)"
+        )
 
     return ServiceReport(
         martin_ok=True,

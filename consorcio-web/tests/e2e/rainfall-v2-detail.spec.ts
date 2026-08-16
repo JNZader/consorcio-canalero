@@ -41,6 +41,7 @@ import {
   type ParcelFixture,
   type TargetReadyEvidence,
   validateFixture,
+  writeHarnessManifest,
 } from './helpers/rainfallMultiParcelHarness';
 import { requireCondition, skipForMissingData } from './helpers/strictGate';
 import { APP_URL } from './helpers/mapWorkspace';
@@ -1449,8 +1450,13 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
       expect(record.attemptCount).toBe(1);
       expect(record.clickCount).toBe(1);
     }
+    // The driver reads the manifest from the FILE next to the reporter output,
+    // wrapped in { selection_records: [...] } — not from the attachment (A2).
+    const harnessOutputJson =
+      process.env.RMEH_PLAYWRIGHT_JSON ?? '.artifacts/rainfall-multi-parcel/playwright-results.json';
+    writeHarnessManifest(manifest, harnessOutputJson);
     await testInfo.attach('manifest.json', {
-      body: JSON.stringify(manifest, null, 2),
+      body: JSON.stringify({ selection_records: manifest }, null, 2),
       contentType: 'application/json',
     });
   });

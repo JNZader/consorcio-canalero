@@ -389,6 +389,35 @@ class TestPreflight:
         assert "percentile" in msg
         assert str(collide) in msg
 
+    def test_parcel_contracts_uses_top_level_fixture_keys(self):
+        """A4: the fixture exposes ``nomenclature``/``displayIdentity`` at the
+        TOP level of each parcel (no ``parcel['identity']`` sub-object);
+        ``_parcel_contracts`` must read those keys — reading
+        ``parcel['identity']['nomenclature']`` raises KeyError today."""
+        from scripts.rainfall_e2e_harness.driver import _parcel_contracts
+
+        contracts = _parcel_contracts(_fixture())
+        assert [c.alias for c in contracts] == ["A", "B", "C"]
+        assert [c.nomenclature for c in contracts] == ["NC-A", "NC-B", "NC-C"]
+        assert [c.display_identity for c in contracts] == [
+            "RMEH-PARCEL-A",
+            "RMEH-PARCEL-B",
+            "RMEH-PARCEL-C",
+        ]
+        assert preflight_parcel_contracts(contracts).ok
+
+    def test_parcel_contracts_on_shipped_fixture_file(self):
+        """A4: regression guard against the REAL shipped fixture on disk — the
+        driver's preflight must never KeyError on the artifact it actually runs."""
+        from scripts.rainfall_e2e_harness.driver import FIXTURE_PATH, _parcel_contracts
+
+        with open(FIXTURE_PATH, encoding="utf-8") as fh:
+            fx = json.load(fh)
+        contracts = _parcel_contracts(fx)
+        assert sorted(c.alias for c in contracts) == ["A", "B", "C"]
+        assert all(c.nomenclature and c.display_identity for c in contracts)
+        assert preflight_parcel_contracts(contracts).ok
+
 
 # --------------------------------------------------------------------------- #
 # W3.1 — LIFECYCLE (RMEH-010-A, RMEH-012-A/B)
@@ -1328,6 +1357,75 @@ class TestBootstrap:
         ]
         assert len(restarts) == 1
 
+    def test_validate_services_frontend_failure_fails_closed(self):
+        """A6: a dead/500 frontend /mapa must RAISE as a prerequisite failure —
+        the browser must never start against a frontend that cannot serve the
+        map. Today ``frontend_ok`` is computed but never enforced."""
+        from scripts.rainfall_e2e_harness.bootstrap import validate_services
+        from scripts.rainfall_e2e_harness.safety import BootstrapPrerequisiteFailure
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {"parcelas_catastro": {}}}\n200'))
+        for _ in range(3):
+            runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("ok\n200"))
+        for _ in range(3):
+            runner.program(
+                CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200")
+            )
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("500"))  # frontend /mapa fails
+        with pytest.raises(BootstrapPrerequisiteFailure, match="frontend"):
+            validate_services(
+                identity,
+                runner,
+                _fixture(),
+                origins={
+                    "martin": "http://127.0.0.1:3001",
+                    "backend": "http://127.0.0.1:8001",
+                    "frontend": "http://127.0.0.1:5174",
+                },
+            )
+
+    def test_validate_services_martin_restart_pins_identity_prefix_env(self):
+        """A6/A1: the bounded martin restart must run against the run-owned
+        compose project (``RMEH_RUN_ID_PREFIX=<run_id[:10]>``), never the bare
+        default project — on a fresh stack the restart must target the
+        ``rmeh-<run_id>`` project that compose up actually created."""
+        from scripts.rainfall_e2e_harness.bootstrap import validate_services
+
+        identity = _identity()
+        runner = RecordingCommandRunner()
+        runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {}}\n200'))  # empty catalog
+        runner.program(CommandKind.DOCKER_CONTROL, _ok(""))  # the bounded restart
+        runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {"parcelas_catastro": {}}}\n200'))
+        for _ in range(3):
+            runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("ok\n200"))
+        for _ in range(3):
+            runner.program(
+                CommandKind.DOCKER_INSPECT, _ok(json.dumps({"tipo": "parcela"}) + "\n200")
+            )
+        runner.program(CommandKind.DOCKER_INSPECT, _ok("html\n200"))
+        validate_services(
+            identity,
+            runner,
+            _fixture(),
+            origins={
+                "martin": "http://127.0.0.1:3001",
+                "backend": "http://127.0.0.1:8001",
+                "frontend": "http://127.0.0.1:5174",
+            },
+            martin_poll_seconds=0,
+        )
+        restarts = [
+            c
+            for c in runner.calls
+            if c.kind is CommandKind.DOCKER_CONTROL and "restart" in " ".join(c.command)
+        ]
+        assert len(restarts) == 1
+        assert (restarts[0].env or {}).get("RMEH_RUN_ID_PREFIX") == identity.run_id[:10]
+
     def test_tile_xyz_known_values(self):
         from scripts.rainfall_e2e_harness.bootstrap import tile_xyz
 
@@ -1701,7 +1799,7 @@ class TestAccounting:
             is FailureClass.HARNESS_ACCOUNTING_FAILURE
         )
 
-    def test_accounting_classify_run_failure_browser_vs_product(self):
+    def test_accounting_classify_run_failure_browser_vs_passed(self):
         from scripts.rainfall_e2e_harness.accounting import classify_run_failure
         from scripts.rainfall_e2e_harness.safety import FailureClass
 
@@ -1718,7 +1816,7 @@ class TestAccounting:
             classify_run_failure(
                 collection_ok=True, result_ok=True, pre_click_integrity_ok=True, click_occurred=True
             )
-            is FailureClass.PRODUCT_ASSERTION_FAILURE
+            is FailureClass.PASSED
         )
         assert (
             classify_run_failure(
@@ -1825,9 +1923,13 @@ class TestW11ParentBoundary:
         for path in ROLLBACK_ARTIFACTS:
             assert "lluvia-ux-tarjeta" not in path
 
-    def test_product_assertion_failure_requests_separate_remediation(self):
-        """A PRODUCT_ASSERTION_FAILURE must emit evidence requesting a separate
-        remediation decision; this change stays test-only."""
+    def test_all_green_run_classifies_as_passed_not_product_failure(self):
+        """A3: an all-green accounting/browser run is PASSED. The classifier
+        receives no input that can signal a product-behavior failure, so it must
+        never return PRODUCT_ASSERTION_FAILURE on the all-green path (it did,
+        which made every completed green run a 'product assertion failure').
+        Product-level failures surface through the taxonomy classifier and the
+        result gate, never through this harness gate classifier."""
         from scripts.rainfall_e2e_harness.accounting import classify_run_failure
         from scripts.rainfall_e2e_harness.safety import FailureClass
 
@@ -1837,10 +1939,10 @@ class TestW11ParentBoundary:
             pre_click_integrity_ok=True,
             click_occurred=True,
         )
-        assert cls is FailureClass.PRODUCT_ASSERTION_FAILURE
-        # The handoff proposes the separate transaction ONLY on a complete pass;
-        # a product failure never writes it (this change stays test-only).
-        assert cls is not FailureClass.PASSED
+        assert cls is FailureClass.PASSED
+        # The handoff proposes the separate JDA transaction ONLY on a complete
+        # pass; a failure never writes it (this change stays test-only).
+        assert cls is not FailureClass.PRODUCT_ASSERTION_FAILURE
 
     def test_driver_writes_no_parent_artifact_during_run(self):
         """End-to-end guard: the driver's evidence/artifact surface is confined
@@ -1974,3 +2076,100 @@ class TestW11RollbackProof:
             type("R", (), {"exit_code": 1, "stdout": "", "stderr": ""})(),
         )
         _teardown_lease(runner, lease, config)  # must not raise
+
+    def test_driver_config_stack_env_derives_prefix_from_identity(self):
+        """A1: compose must run under the run-owned project name. The driver
+        derives ``RMEH_RUN_ID_PREFIX`` from the generated identity and passes it
+        EXPLICITLY; the ambient env can never override the random identity with
+        a different prefix (the ``:-probedefault`` divergence made ``docker
+        compose up`` and every later service command target DIFFERENT projects)."""
+        from scripts.rainfall_e2e_harness.driver import DriverConfig, build_parser
+
+        args = build_parser().parse_args(["run"])
+        config = DriverConfig(args, {"RMEH_RUN_ID_PREFIX": "gha"})  # env must NOT leak
+        identity = RunIdentity.plan(evidence_dir=config.evidence_dir)
+        env = config.stack_env(identity.run_id[:10])
+        assert env["RMEH_RUN_ID_PREFIX"] == identity.run_id[:10]
+        assert env["RMEH_BACKEND_HOST_PORT"] == "8001"
+        assert env["RMEH_MARTIN_HOST_PORT"] == "3001"
+        assert env["RMEH_FRONTEND_HOST_PORT"] == "5174"
+
+    def test_teardown_lease_pins_identity_derived_prefix_env(self):
+        """A1: ``compose down`` must run against the lease-owned project — the
+        teardown env carries ``RMEH_RUN_ID_PREFIX`` derived from the lease
+        project name, so cleanup tears down what the run actually created."""
+        from scripts.rainfall_e2e_harness.driver import (
+            DriverConfig,
+            _teardown_lease,
+            build_parser,
+        )
+
+        identity = RunIdentity(
+            run_id="teardownpref",
+            marker_nonce="m" * 32,
+            database_name="rmeh_teardownpref",
+            evidence_dir=None,
+        )
+        lease = ResourceLease.plan(identity)
+        args = build_parser().parse_args(["run"])
+        config = DriverConfig(args, {})
+        runner = RecordingCommandRunner()
+        _teardown_lease(runner, lease, config)
+        down = [c for c in runner.calls if c.command[:2] == ["docker", "compose"] and "down" in c.command]
+        assert down, "expected a compose down"
+        # The prefix is run_id[:10] — the same 10-char prefix compose up used.
+        assert (down[0].env or {}).get("RMEH_RUN_ID_PREFIX") == "teardownpr"
+
+    def test_driver_persists_ownership_identity_before_provisioning(self, tmp_path):
+        """A1/RMEH-010-D: the driver must record the run/lease identity
+        (ownership.json) so a cancelled run can still be cleaned and cleanup
+        never re-derives a different prefix than the run actually used."""
+        from scripts.rainfall_e2e_harness.driver import (
+            DriverConfig,
+            _persist_identity,
+            _read_recorded_identity,
+            build_parser,
+        )
+
+        args = build_parser().parse_args(["run", "--evidence-dir", str(tmp_path)])
+        config = DriverConfig(args, {"RMEH_RUN_ID_PREFIX": "ignored-env"})
+        identity = RunIdentity.plan(evidence_dir=config.evidence_dir)
+        lease = ResourceLease.plan(identity)
+        _persist_identity(config, identity, lease)
+        recorded = _read_recorded_identity(config)
+        assert recorded is not None
+        assert recorded.run_id == identity.run_id
+        assert recorded.database_name == identity.database_name
+        assert recorded.marker_nonce == identity.marker_nonce
+
+    def test_run_cleanup_uses_recorded_identity_prefix(self, tmp_path):
+        """A5: ``cleanup`` must derive the prefix from the RECORDED ownership
+        identity (the exact project the run used) — the workflow cleanup step
+        today runs without the prefix and no-ops against the wrong project."""
+        from scripts.rainfall_e2e_harness.driver import (
+            DriverConfig,
+            _persist_identity,
+            run_cleanup,
+            build_parser,
+        )
+
+        identity = RunIdentity(
+            run_id="cleanuprid1",
+            marker_nonce="m" * 32,
+            database_name="rmeh_cleanuprid1",
+            evidence_dir=None,
+        )
+        lease = ResourceLease.plan(identity)
+        args = build_parser().parse_args(["run", "--evidence-dir", str(tmp_path)])
+        config = DriverConfig(args, {})
+        _persist_identity(config, identity, lease)
+        runner = RecordingCommandRunner()
+        cleanup_args = build_parser().parse_args(
+            ["cleanup", "--run-id", "gha", "--evidence-dir", str(tmp_path)]
+        )
+        run_cleanup(cleanup_args, runner=runner, env={})
+        down = [c for c in runner.calls if c.command[:2] == ["docker", "compose"] and "down" in c.command]
+        assert down, "expected a compose down"
+        # The recorded identity's run_id[:10] prefix — the exact project the
+        # run created, NOT the workflow's env/`--run-id` guess.
+        assert (down[0].env or {}).get("RMEH_RUN_ID_PREFIX") == "cleanuprid"

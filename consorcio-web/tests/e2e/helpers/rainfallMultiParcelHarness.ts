@@ -39,7 +39,7 @@
 // `with { type: 'json' }` attribute, which older TS/`@playwright/test` combos
 // do not emit. `node:fs`/`node:path` are Node builtins — this helper stays free
 // of any Playwright or application-store import (STRICTLY PURE).
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -675,6 +675,41 @@ export function classifyRainfallRequest(
     kind = 'analysis';
   }
   return { kind, method, url, headers };
+}
+
+/**
+ * One selection record in the harness manifest — the exact shape the driver's
+ * gate reads back from `manifest.json` (`selection_records[]`; A2).
+ */
+export interface HarnessManifestRecord {
+  context: 'mobile' | 'desktop';
+  target: ParcelAlias;
+  attemptCount: number;
+  clickCount: number;
+  wheelProofsBeforeClick: number;
+  analysisSequence: number;
+}
+
+/**
+ * Write the selection-record manifest to `dirname(outputJsonPath)/manifest.json`
+ * in the shape the driver's gate expects: `{ selection_records: [...] }` (A2).
+ *
+ * The driver reads the manifest from the FILE, not from Playwright's JSON
+ * reporter attachment — so the spec must materialize it next to the reporter
+ * output (the config's `RMEH_PLAYWRIGHT_JSON`). Returns the manifest path.
+ */
+export function writeHarnessManifest(
+  records: readonly HarnessManifestRecord[],
+  outputJsonPath: string
+): string {
+  const manifestPath = join(dirname(outputJsonPath), 'manifest.json');
+  mkdirSync(dirname(manifestPath), { recursive: true });
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({ selection_records: records }, null, 2),
+    'utf8'
+  );
+  return manifestPath;
 }
 
 /**

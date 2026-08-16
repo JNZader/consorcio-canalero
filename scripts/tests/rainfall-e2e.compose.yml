@@ -23,7 +23,7 @@
 # schema). That is the W4.1 acceptance; the real provision is W5.
 # =============================================================================
 
-name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}
+name: rmeh-${RMEH_RUN_ID_PREFIX}
 
 services:
   # --------------------------------------------------------------------------
@@ -32,10 +32,10 @@ services:
   # --------------------------------------------------------------------------
   db:
     image: pgrouting/pgrouting:16-3.4-3.6.1
-    container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-db-1
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-db-1
     restart: "no"
     environment:
-      POSTGRES_DB: rmeh_${RMEH_RUN_ID_PREFIX:-probedefault}
+      POSTGRES_DB: rmeh_${RMEH_RUN_ID_PREFIX}
       POSTGRES_USER: rmeh_user
       POSTGRES_PASSWORD: ${RMEH_DB_PASSWORD:-synthpass}
     volumes:
@@ -47,13 +47,13 @@ services:
       # the SYNTHETIC marker (run_id/nonce/database_name of the disposable
       # stack); the real DB password stays in a mode-0600 temp env file, never
       # here (design §Secrets).
-      - ./rmeh-init-${RMEH_RUN_ID_PREFIX:-probedefault}.sql:/docker-entrypoint-initdb.d/01-rmeh-ownership.sql:ro
+      - ./rmeh-init-${RMEH_RUN_ID_PREFIX}.sql:/docker-entrypoint-initdb.d/01-rmeh-ownership.sql:ro
     expose:
       - "5432"
     networks:
       - net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rmeh_user -d rmeh_${RMEH_RUN_ID_PREFIX:-probedefault}"]
+      test: ["CMD-SHELL", "pg_isready -U rmeh_user -d rmeh_${RMEH_RUN_ID_PREFIX}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -65,7 +65,7 @@ services:
   # --------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-redis-1
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-redis-1
     restart: "no"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     expose:
@@ -88,8 +88,8 @@ services:
       context: ../../gee-backend
       dockerfile: Dockerfile
       target: development
-    image: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-backend
-    container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-migrate-1
+    image: rmeh-${RMEH_RUN_ID_PREFIX}-backend
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-migrate-1
     restart: "no"
     depends_on:
       db:
@@ -97,7 +97,7 @@ services:
     environment:
       ENVIRONMENT: development
       DEBUG: "true"
-      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX:-probedefault}
+      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX}
       USE_PGBOUNCER: "false"
     networks:
       - net
@@ -109,8 +109,8 @@ services:
   # test; no GEE credential; CORS limited to the loopback frontend origin.
   # --------------------------------------------------------------------------
   backend:
-    image: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-backend
-    container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-backend-1
+    image: rmeh-${RMEH_RUN_ID_PREFIX}-backend
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-backend-1
     restart: "no"
     depends_on:
       db:
@@ -124,7 +124,7 @@ services:
       DEBUG: "true"
       FICHA_ENABLED: "true"
       RATE_LIMIT_DISABLED: "true"
-      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX:-probedefault}
+      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX}
       REDIS_URL: redis://redis:6379/0
       MARTIN_INTERNAL_URL: http://martin:3000
       MARTIN_PUBLIC_URL: http://127.0.0.1:${RMEH_MARTIN_HOST_PORT:-3001}
@@ -155,7 +155,7 @@ services:
   # --------------------------------------------------------------------------
   martin:
     image: ghcr.io/maplibre/martin:v0.14.2
-    container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-martin-1
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-martin-1
     # on-failure: a transient Docker DNS race right after network creation can
     # kill martin at startup (failed to lookup "db"); restarting on non-zero
     # exit keeps the disposable stack self-healing. The harness still does its
@@ -167,7 +167,7 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX:-probedefault}
+      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX}
     volumes:
       - ./fixtures/martin-rainfall-e2e.yaml:/config/config.yaml:ro
     expose:
@@ -196,7 +196,7 @@ services:
       context: ../../consorcio-web
       dockerfile: Dockerfile
       target: development
-    container_name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}-frontend-1
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-frontend-1
     restart: "no"
     depends_on:
       backend:
@@ -216,9 +216,9 @@ services:
 
 networks:
   net:
-    name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}_net
+    name: rmeh-${RMEH_RUN_ID_PREFIX}_net
     driver: bridge
 
 volumes:
   pgdata:
-    name: rmeh-${RMEH_RUN_ID_PREFIX:-probedefault}_pgdata
+    name: rmeh-${RMEH_RUN_ID_PREFIX}_pgdata

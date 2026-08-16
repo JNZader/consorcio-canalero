@@ -58,6 +58,7 @@ from scripts.rainfall_e2e_harness.events import EventStream
 from scripts.rainfall_e2e_harness.lifecycle import Lifecycle
 from scripts.rainfall_e2e_harness.preflight import preflight_parcel_contracts
 from scripts.rainfall_e2e_harness.safety import (
+    BootstrapPrerequisiteFailure,
     CommandKind,
     CommandRunner,
     FailureClass,
@@ -120,7 +121,6 @@ class DriverConfig:
         self.backend_host = env.get("RMEH_BACKEND_HOST_PORT", "8001")
         self.martin_host = env.get("RMEH_MARTIN_HOST_PORT", "3001")
         self.frontend_host = env.get("RMEH_FRONTEND_HOST_PORT", "5174")
-        self.run_id_prefix = env.get("RMEH_RUN_ID_PREFIX", "")
 
     @property
     def origins(self) -> Mapping[str, str]:
@@ -130,10 +130,15 @@ class DriverConfig:
             "frontend": f"http://127.0.0.1:{self.frontend_host}",
         }
 
-    def stack_env(self) -> dict[str, str]:
+    def stack_env(self, run_id_prefix: str) -> dict[str, str]:
+        """Compose environment for ONE owned run. ``RMEH_RUN_ID_PREFIX`` must be
+        passed EXPLICITLY, derived from the generated identity's ``run_id[:10]``
+        (the compose project name the run actually created) — never from the
+        ambient env, which could point at a DIFFERENT project than the one
+        provisioned (A1)."""
         env = dict(os.environ)
         env.update(
-            RMEH_RUN_ID_PREFIX=self.run_id_prefix,
+            RMEH_RUN_ID_PREFIX=run_id_prefix,
             RMEH_BACKEND_HOST_PORT=self.backend_host,
             RMEH_MARTIN_HOST_PORT=self.martin_host,
             RMEH_FRONTEND_HOST_PORT=self.frontend_host,
@@ -162,8 +167,11 @@ def _parcel_contracts(fixture: Mapping[str, Any]) -> list[Any]:
             ParcelContract(
                 alias=parcel["alias"],
                 stable_uuid=parcel["stableUuid"],
-                nomenclature=parcel["identity"]["nomenclature"],
-                display_identity=parcel["identity"]["displayIdentity"],
+                # The shipped fixture (and the spec's own `_fixture()` helper)
+                # expose these at the TOP level — there is no `identity`
+                # sub-object (A4).
+                nomenclature=parcel["nomenclature"],
+                display_identity=parcel["displayIdentity"],
                 scope_kind=rainfall["scopeKind"],
                 scope_id=rainfall["scopeId"],
                 scope_version=rainfall["scopeVersion"],
@@ -207,6 +215,46 @@ def _repo_sha() -> str:
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _persist_identity(config: DriverConfig, identity: Any, lease: Any) -> None:
+    """Record the exact run/lease identity BEFORE provisioning (RMEH-010-D):
+    a cancelled run must still be cleanable, and ``cleanup`` must target the
+    exact project this run created (A1/A5). Written under the evidence dir so
+    the explicit workflow cleanup step can read it back."""
+    _write_json(
+        config.evidence_dir / "ownership.json",
+        {
+            "run_id": identity.run_id,
+            "marker_nonce": identity.marker_nonce,
+            "database_name": identity.database_name,
+            "compose_project": lease.project_name,
+            "prefix": identity.run_id[:10],
+        },
+    )
+
+
+def _read_recorded_identity(config: DriverConfig) -> Any | None:
+    """Rehydrate the recorded run identity (ownership.json), or None when no
+    run was recorded in this evidence dir. ``cleanup`` prefers the recorded
+    identity so it tears down the exact project the run created (A5)."""
+    from scripts.rainfall_e2e_harness.safety import RunIdentity
+
+    path = config.evidence_dir / "ownership.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data.get("run_id"):
+        return None
+    return RunIdentity(
+        run_id=str(data["run_id"]),
+        marker_nonce=str(data.get("marker_nonce", "")),
+        database_name=str(data.get("database_name", f"rmeh_{str(data['run_id'])[:10]}")),
+        evidence_dir=config.evidence_dir,
+    )
 
 
 def build_handoff(
@@ -259,6 +307,10 @@ def run_driver(
     identity = RunIdentity.plan(evidence_dir=config.evidence_dir)
     lease = ResourceLease.plan(identity)
     config.evidence_dir.mkdir(parents=True, exist_ok=True)
+    # Record the ownership identity BEFORE any provisioning so a cancelled run
+    # can still be cleaned and cleanup targets the exact project (RMEH-010-D,
+    # A1/A5).
+    _persist_identity(config, identity, lease)
     stream = EventStream.open(config.evidence_dir / "events.jsonl")
     failure_class = FailureClass.PASSED
     diagnostics = ""
@@ -270,13 +322,15 @@ def run_driver(
         lease.assert_no_resource_collision(runner)
         stream.append({"phase": "lease_planned", "run_id": identity.run_id})
 
-        # Provision the disposable stack (init script carries the marker).
+        # Provision the disposable stack (init script carries the marker). The
+        # compose project derives from the generated identity: prefix =
+        # run_id[:10], passed EXPLICITLY — never from the ambient env (A1).
         init = REPO_ROOT / "scripts" / "tests" / f"rmeh-init-{identity.run_id[:10]}.sql"
         write_init_script(init, identity)
         up = runner.run(
             ["docker", "compose", "-f", config.compose_file, "up", "-d", "--build"],
             kind=CommandKind.DOCKER_CONTROL,
-            env=config.stack_env(),
+            env=config.stack_env(identity.run_id[:10]),
         )
         if up.exit_code != 0:
             raise RuntimeError(f"compose up failed: {up.stderr.strip()}")
@@ -298,7 +352,15 @@ def run_driver(
         lc.to_bootstrapped()
         stream.append({"phase": "bootstrapped"})
         preflight_parcel_contracts(_parcel_contracts(fixture))
-        validate_services(identity, runner, fixture, origins=config.origins)
+        services = validate_services(identity, runner, fixture, origins=config.origins)
+        if not services.frontend_ok:
+            # Defense in depth: validate_services already raises when the
+            # frontend cannot serve /mapa; the driver still refuses to launch
+            # the browser unless the report is green (A6).
+            raise BootstrapPrerequisiteFailure(
+                "service validation failed: frontend /mapa not OK; "
+                "browser must not start (RMEH-002-D)"
+            )
         lc.to_preflight_passed()
         stream.append({"phase": "preflight_passed"})
 
@@ -500,7 +562,10 @@ def _teardown_lease(
         runner.run(
             ["docker", "compose", "-f", config.compose_file, "down", "-v", "--remove-orphans"],
             kind=CommandKind.DOCKER_CONTROL,
-            env=config.stack_env(),
+            # Teardown must target the SAME project the run provisioned: the
+            # prefix is derived from the lease's project name (A1/A5), never
+            # from the ambient env.
+            env=config.stack_env(lease.project_name.removeprefix("rmeh-")),
         )
     except Exception:  # noqa: BLE001 — best-effort teardown
         pass
@@ -529,18 +594,24 @@ def run_cleanup(
     runner: CommandRunner | None = None,
     env: Mapping[str, str] | None = None,
 ) -> int:
-    """Idempotent teardown subcommand (W10.3 cleanup step). Rebuilds the lease
-    plan from the recorded run identity and removes only the exact resources,
-    tolerating an already-torn-down stack."""
+    """Idempotent teardown subcommand (W10.3 cleanup step). Prefers the RECORDED
+    run identity (ownership.json) so it tears down the exact project the run
+    created; falls back to a synthetic identity from ``--run-id`` when no
+    ownership record exists. Rebuilds the lease plan from that identity and
+    removes only the exact resources, tolerating an already-torn-down stack."""
     env = env if env is not None else dict(os.environ)
     config = DriverConfig(args, env)
     runner = runner if runner is not None else RealCommandRunner()
-    identity = RunIdentity(
-        run_id=args.run_id or "cleanup",
-        marker_nonce="",
-        database_name=f"rmeh_{args.run_id or 'cleanup'}",
-        evidence_dir=config.evidence_dir,
-    )
+    recorded = _read_recorded_identity(config)
+    if recorded is not None:
+        identity = recorded
+    else:
+        identity = RunIdentity(
+            run_id=args.run_id or "cleanup",
+            marker_nonce="",
+            database_name=f"rmeh_{args.run_id or 'cleanup'}",
+            evidence_dir=config.evidence_dir,
+        )
     lease = ResourceLease.plan(identity)
     _teardown_lease(runner, lease, config)
     return 0
@@ -563,9 +634,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run_p = sub.add_parser("run", help="run one owned lifecycle and clean up")
+    # --evidence-dir must also be accepted AFTER the subcommand (the workflow
+    # calls `run --evidence-dir …` / `cleanup --run-id gha --evidence-dir …`);
+    # a main-parser-only option would reject the workflow's command order (A5).
+    run_p.add_argument("--evidence-dir", default=str(REPO_ROOT / ".artifacts" / "rainfall-multi-parcel"))
     run_p.set_defaults(func=run_driver)
 
     clean_p = sub.add_parser("cleanup", help="idempotently tear down recorded resources")
+    clean_p.add_argument("--evidence-dir", default=str(REPO_ROOT / ".artifacts" / "rainfall-multi-parcel"))
     clean_p.add_argument("--run-id", default="")
     clean_p.set_defaults(func=run_cleanup)
     return parser
