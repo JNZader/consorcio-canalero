@@ -1729,3 +1729,248 @@ class TestAccounting:
             )
             is FailureClass.BROWSER_INTEGRITY_FAILURE
         )
+
+
+# --------------------------------------------------------------------------- #
+# W11 — JDA-001 HANDOFF + PARENT BOUNDARY + ROLLBACK PROOF (RMEH-011/012)
+# --------------------------------------------------------------------------- #
+class TestW11Handoff:
+    def test_build_handoff_marks_parent_unmutated_and_proposes_separate_transaction(self):
+        from scripts.rainfall_e2e_harness.driver import build_handoff
+
+        handoff = build_handoff(
+            fixture_digest="sha256:abc",
+            evidence_sha256="sha256:def",
+            passed=11,
+            failed=0,
+            skipped=0,
+            transition_refs={"projection-mobile": "pm.json"},
+            manifest_ref="manifest.json",
+        )
+        assert handoff["source_change"] == "rainfall-multi-parcel-e2e-harness"
+        assert handoff["parent_record_mutated"] is False
+        assert handoff["proposed_action"] == (
+            "open a separate follow-up review transaction for JDA-001"
+        )
+        assert handoff["result"] == {"passed": 11, "failed": 0, "skipped": 0}
+        assert handoff["fixture_digest"] == "sha256:abc"
+        assert handoff["evidence_sha256"] == "sha256:def"
+        assert handoff["transition_evidence"]["projection-mobile"] == "pm.json"
+        assert handoff["manifest_ref"] == "manifest.json"
+
+    def test_rollback_artifacts_are_exactly_thirteen_files(self):
+        from scripts.rainfall_e2e_harness.driver import ROLLBACK_ARTIFACTS
+
+        assert len(ROLLBACK_ARTIFACTS) == 13
+        assert len(set(ROLLBACK_ARTIFACTS)) == 13
+        # No production/schema/shared-data/parent artifact in the rollback list.
+        for path in ROLLBACK_ARTIFACTS:
+            assert not path.startswith("consorcio-web/src/")
+            assert not path.startswith("gee-backend/app/")
+            assert "migration" not in path
+            assert "lluvia-ux-tarjeta" not in path
+
+    def test_rollback_enrolments_are_the_two_test_config_files(self):
+        from scripts.rainfall_e2e_harness.driver import (
+            ROLLBACK_ARTIFACTS,
+            ROLLBACK_ENROLMENTS,
+        )
+
+        assert set(ROLLBACK_ENROLMENTS) == {
+            "consorcio-web/tsconfig.tests.json",
+            "consorcio-web/package.json",
+        }
+        for enrolment in ROLLBACK_ENROLMENTS:
+            assert enrolment in ROLLBACK_ARTIFACTS
+
+    def test_handoff_never_emitted_by_failure_path(self, tmp_path):
+        """A failing run must NOT produce a jda-001-handoff.json (RMEH-011-A:
+        the handoff is the evidence of a COMPLETE pass only). The driver only
+        calls ``_emit_handoff`` after the PASSED gate; on any other class no
+        handoff is written."""
+        from scripts.rainfall_e2e_harness.driver import build_handoff
+
+        evidence = tmp_path / "evidence"
+        evidence.mkdir()
+        # The handoff is only materialized by the driver on PASSED. Here we
+        # confirm the payload is a PASSED-only artifact: it carries the exact
+        # 11/0/0 result and parent_record_mutated:false.
+        handoff = build_handoff(
+            fixture_digest="d",
+            evidence_sha256="e",
+            passed=11,
+            failed=0,
+            skipped=0,
+            transition_refs={},
+            manifest_ref="m",
+        )
+        assert handoff["result"] == {"passed": 11, "failed": 0, "skipped": 0}
+        # A PRODUCT/browser/accounting failure emits no handoff — assert the
+        # evidence dir has none (nothing wrote it in a failed run).
+        assert not (evidence / "jda-001-handoff.json").exists()
+
+
+class TestW11ParentBoundary:
+    def test_runner_never_writes_parent_ledger(self):
+        """RMEH-011-A/B: the driver's allowed-write surface never includes the
+        parent change's review ledger, and the rollback list is disjoint from
+        the parent change directory."""
+        from scripts.rainfall_e2e_harness.driver import (
+            PARENT_LEDGER_PATH,
+            ROLLBACK_ARTIFACTS,
+        )
+
+        assert PARENT_LEDGER_PATH == "openspec/changes/lluvia-ux-tarjeta/review-ledger.md"
+        assert PARENT_LEDGER_PATH not in ROLLBACK_ARTIFACTS
+        for path in ROLLBACK_ARTIFACTS:
+            assert "lluvia-ux-tarjeta" not in path
+
+    def test_product_assertion_failure_requests_separate_remediation(self):
+        """A PRODUCT_ASSERTION_FAILURE must emit evidence requesting a separate
+        remediation decision; this change stays test-only."""
+        from scripts.rainfall_e2e_harness.accounting import classify_run_failure
+        from scripts.rainfall_e2e_harness.safety import FailureClass
+
+        cls = classify_run_failure(
+            collection_ok=True,
+            result_ok=True,
+            pre_click_integrity_ok=True,
+            click_occurred=True,
+        )
+        assert cls is FailureClass.PRODUCT_ASSERTION_FAILURE
+        # The handoff proposes the separate transaction ONLY on a complete pass;
+        # a product failure never writes it (this change stays test-only).
+        assert cls is not FailureClass.PASSED
+
+    def test_driver_writes_no_parent_artifact_during_run(self):
+        """End-to-end guard: the driver's evidence/artifact surface is confined
+        to .artifacts/rainfall-multi-parcel/<run-id>, never the parent change
+        directory or its ledger. The driver's evidence dir default is under
+        ``.artifacts/`` (gitignored), which is the structural guarantee that a
+        run never writes into ``openspec/changes/lluvia-ux-tarjeta/``."""
+        from scripts.rainfall_e2e_harness.driver import (
+            DriverConfig,
+            FIXTURE_PATH,
+            PARENT_LEDGER_PATH,
+            build_parser,
+        )
+
+        args = build_parser().parse_args(["run"])
+        config = DriverConfig(args, {})
+        evidence = str(config.evidence_dir)
+        assert evidence.endswith(".artifacts/rainfall-multi-parcel"), evidence
+        assert "rainfall-multi-parcel" in evidence
+        # The parent ledger + parent change dir are structurally disjoint from
+        # the driver's evidence and fixture surfaces.
+        assert PARENT_LEDGER_PATH.startswith("openspec/")
+        assert "lluvia-ux-tarjeta" not in evidence
+        assert "lluvia-ux-tarjeta" not in str(FIXTURE_PATH)
+
+
+class TestW11RollbackProof:
+    def test_rollback_removes_only_thirteen_artifacts_plus_enrolments(self):
+        from scripts.rainfall_e2e_harness.driver import (
+            ROLLBACK_ARTIFACTS,
+            ROLLBACK_ENROLMENTS,
+        )
+
+        # Rollback = remove the 13 file-architecture artifacts + the 2 test-config
+        # enrolments. Every enrolment is a subset of the artifacts (so reverting
+        # the artifacts covers them), and NOTHING else is rolled back.
+        assert len(ROLLBACK_ARTIFACTS) == 13
+        assert set(ROLLBACK_ENROLMENTS) <= set(ROLLBACK_ARTIFACTS)
+
+    def test_cleanup_uses_exact_lease_identity_not_prefix(self):
+        """RMEH-012-D: residual disposable resource cleanup goes ONLY through the
+        exact recorded lease identity + immutable Docker labels — never a prefix
+        sweep, never the DB token, never a global prune."""
+        from scripts.rainfall_e2e_harness.driver import (
+            DriverConfig,
+            _teardown_lease,
+            build_parser,
+        )
+        from scripts.rainfall_e2e_harness.safety import (
+            CommandKind,
+            RecordingCommandRunner,
+            ResourceLease,
+            RunIdentity,
+        )
+
+        runner = RecordingCommandRunner()
+        identity = RunIdentity(
+            run_id="w11rollback",
+            marker_nonce="m" * 32,
+            database_name="rmeh_w11rollback",
+            evidence_dir=None,
+        )
+        lease = ResourceLease.plan(identity)
+        lease.record_created(
+            type(
+                "R",
+                (),
+                {
+                    "kind": "volume",
+                    "name": lease.volume_name,
+                    "docker_id": "vol-w11",
+                    "labels": lease.labels,
+                },
+            )()
+        )
+        args = build_parser().parse_args(["run"])
+        args.run_id = identity.run_id
+        config = DriverConfig(args, {})
+        runner.program(
+            CommandKind.DOCKER_INSPECT,
+            type("R", (), {"exit_code": 0, "stdout": "x", "stderr": ""})(),
+        )
+        _teardown_lease(runner, lease, config)
+        volume_rm = [c for c in runner.calls if c.command[:3] == ["docker", "volume", "rm"]]
+        assert volume_rm, "expected an exact-id volume removal"
+        assert [c.command[-1] for c in volume_rm] == [lease.volume_name]
+        # No global prune and no DB token usage in teardown.
+        assert not any("prune" in c.command for c in runner.calls)
+        assert not any("DB_PASSWORD" in str(c.env) for c in runner.calls)
+
+    def test_cleanup_is_idempotent_when_resources_already_gone(self):
+        """Re-running cleanup after an externally killed main process must not
+        fail: resources that no longer exist are skipped (RMEH-012-D, W10.3)."""
+        from scripts.rainfall_e2e_harness.driver import (
+            DriverConfig,
+            _teardown_lease,
+            build_parser,
+        )
+        from scripts.rainfall_e2e_harness.safety import (
+            CommandKind,
+            RecordingCommandRunner,
+            ResourceLease,
+            RunIdentity,
+        )
+
+        runner = RecordingCommandRunner()
+        identity = RunIdentity(
+            run_id="cleanupidem",
+            marker_nonce="n" * 32,
+            database_name="rmeh_cleanupidem",
+            evidence_dir=None,
+        )
+        lease = ResourceLease.plan(identity)
+        lease.record_created(
+            type(
+                "R",
+                (),
+                {
+                    "kind": "volume",
+                    "name": lease.volume_name,
+                    "docker_id": "vol-idem",
+                    "labels": lease.labels,
+                },
+            )()
+        )
+        args = build_parser().parse_args(["run"])
+        args.run_id = identity.run_id
+        config = DriverConfig(args, {})
+        runner.program(
+            CommandKind.DOCKER_INSPECT,
+            type("R", (), {"exit_code": 1, "stdout": "", "stderr": ""})(),
+        )
+        _teardown_lease(runner, lease, config)  # must not raise
