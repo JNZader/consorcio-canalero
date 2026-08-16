@@ -65,6 +65,7 @@ from scripts.rainfall_e2e_harness.safety import (
     RealCommandRunner,
     ResourceLease,
     RunIdentity,
+    compose_env,
     validate_marker_read_only,
     write_init_script,
 )
@@ -130,20 +131,21 @@ class DriverConfig:
             "frontend": f"http://127.0.0.1:{self.frontend_host}",
         }
 
-    def stack_env(self, run_id_prefix: str) -> dict[str, str]:
-        """Compose environment for ONE owned run. ``RMEH_RUN_ID_PREFIX`` must be
-        passed EXPLICITLY, derived from the generated identity's ``run_id[:10]``
-        (the compose project name the run actually created) — never from the
-        ambient env, which could point at a DIFFERENT project than the one
-        provisioned (A1)."""
-        env = dict(os.environ)
-        env.update(
-            RMEH_RUN_ID_PREFIX=run_id_prefix,
-            RMEH_BACKEND_HOST_PORT=self.backend_host,
-            RMEH_MARTIN_HOST_PORT=self.martin_host,
-            RMEH_FRONTEND_HOST_PORT=self.frontend_host,
+    def stack_env(self, identity: RunIdentity) -> dict[str, str]:
+        """Compose environment for ONE owned run. Delegates to
+        ``compose_env`` (the run-owned prefix derived from the identity's
+        database_name + the synthetic DB password) plus the driver host ports.
+        The prefix is passed EXPLICITLY from the generated identity — never
+        from the ambient env, which could point at a DIFFERENT project than
+        the one provisioned (A1/JD-R2-001)."""
+        return compose_env(
+            identity,
+            extra={
+                "RMEH_BACKEND_HOST_PORT": self.backend_host,
+                "RMEH_MARTIN_HOST_PORT": self.martin_host,
+                "RMEH_FRONTEND_HOST_PORT": self.frontend_host,
+            },
         )
-        return env
 
 
 def _load_fixture() -> dict[str, Any]:
@@ -330,7 +332,7 @@ def run_driver(
         up = runner.run(
             ["docker", "compose", "-f", config.compose_file, "up", "-d", "--build"],
             kind=CommandKind.DOCKER_CONTROL,
-            env=config.stack_env(identity.run_id[:10]),
+            env=config.stack_env(identity),
         )
         if up.exit_code != 0:
             raise RuntimeError(f"compose up failed: {up.stderr.strip()}")
@@ -421,7 +423,7 @@ def run_driver(
     finally:
         # Teardown the exact leased resources — runs on EVERY path (RMEH-012-A/B),
         # including an externally killed main process if the trap reached here.
-        _teardown_lease(runner, lease, config)
+        _teardown_lease(runner, lease, config, identity)
         lc.to_cleaned()
         stream.append({"phase": "cleaned"})
         stream.close()
@@ -554,6 +556,7 @@ def _teardown_lease(
     runner: CommandRunner,
     lease: ResourceLease,
     config: DriverConfig,
+    identity: RunIdentity,
 ) -> None:
     """Teardown the exact recorded leased resources. Idempotent: inspect each
     recorded resource; remove it only if it still exists. Never prefix-sweeps,
@@ -563,9 +566,9 @@ def _teardown_lease(
             ["docker", "compose", "-f", config.compose_file, "down", "-v", "--remove-orphans"],
             kind=CommandKind.DOCKER_CONTROL,
             # Teardown must target the SAME project the run provisioned: the
-            # prefix is derived from the lease's project name (A1/A5), never
-            # from the ambient env.
-            env=config.stack_env(lease.project_name.removeprefix("rmeh-")),
+            # env derives from the run identity (A1/A5), never from the
+            # ambient env or a prefix guess.
+            env=config.stack_env(identity),
         )
     except Exception:  # noqa: BLE001 — best-effort teardown
         pass
@@ -613,7 +616,7 @@ def run_cleanup(
             evidence_dir=config.evidence_dir,
         )
     lease = ResourceLease.plan(identity)
-    _teardown_lease(runner, lease, config)
+    _teardown_lease(runner, lease, config, identity)
     return 0
 
 

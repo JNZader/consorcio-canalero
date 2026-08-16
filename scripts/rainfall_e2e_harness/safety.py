@@ -197,6 +197,39 @@ class RunIdentity:
 
 
 # -- Owned boundary: sole constructor = successful marker gate (RMEH-001-B/C) --
+# -- Run-owned compose env: every compose invocation targets THIS run (A1) ---
+# The compose project/volume/network/container/database names all interpolate
+# from RMEH_RUN_ID_PREFIX, and the DB password is the synthetic disposable
+# value (never a real credential — the compose file's own default matches).
+# The prefix derives from the identity's database_name (``rmeh_<prefix>``) —
+# the single source of truth shared by POSTGRES_DB, ``psql -d`` and the marker
+# row — NOT from ``run_id[:10]``, which would truncate integration/probe seam
+# identities whose run_id IS the full ambient prefix (probedefault, 11 chars),
+# and NEVER from the ambient env, which could point at a DIFFERENT project
+# than the one provisioned (the JD-R2-001 ``:-probedefault`` divergence).
+DB_PASSWORD = "synthpass"
+
+
+def compose_env(
+    identity: RunIdentity,
+    *,
+    extra: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Minimal, deterministic compose environment for ONE owned run. Never
+    reads the ambient env: the prefix and password are always the run's own,
+    so every compose command (up/down/exec/run/config/restart) resolves the
+    exact ``rmeh-<prefix>`` project this run provisioned (A1/JD-R2-001).
+    ``extra`` carries driver host ports and never overrides the two run-owned
+    keys."""
+    env = {
+        "RMEH_RUN_ID_PREFIX": identity.database_name.removeprefix("rmeh_"),
+        "RMEH_DB_PASSWORD": DB_PASSWORD,
+    }
+    if extra:
+        env.update(extra)
+    return env
+
+
 @dataclass(frozen=True)
 class OwnedBoundary:
     """In-memory token proving the disposable DB belongs to this run. Constructed
@@ -246,7 +279,14 @@ def validate_marker_read_only(
         "'database_name', database_name) "
         "FROM rmeh_ownership LIMIT 1",
     ]
-    result = runner.run(command, kind=CommandKind.DATABASE_READONLY)
+    result = runner.run(
+        command,
+        kind=CommandKind.DATABASE_READONLY,
+        # A1/JD-R2-001: the exec must target the run-owned project; an
+        # env-less `docker compose` here resolves the empty-prefix `rmeh-`
+        # project while the run provisioned `rmeh-<run_id[:10]>`.
+        env=compose_env(identity),
+    )
     if result.exit_code != 0:
         raise BootstrapSafetyFailure(f"marker query error: {result.stderr.strip()}")
     body = result.stdout.strip()
@@ -267,22 +307,34 @@ def apply_migrations(
     runner: CommandRunner,
     *,
     compose_file: str | None = None,
+    identity: RunIdentity | None = None,
 ) -> None:
     """``alembic upgrade head`` against the run-owned DB. Requires OwnedBoundary.
 
     ``compose_file`` is the W5 integration seam: when set, migrations run
     through the compose ``migrate`` service (in-container, run-owned env), the
     same DDL path the provision used. When omitted (unit layer), the raw
-    ``alembic upgrade head`` command is issued unchanged from W1."""
+    ``alembic upgrade head`` command is issued unchanged from W1.
+
+    The compose path REQUIRES the run identity (A1/JD-R2-001): the migrate
+    service must resolve the run-owned project, and a missing identity aborts
+    instead of silently targeting the wrong (empty-prefix) project."""
     if owned is None:
         raise BootstrapSafetyFailure(
             "apply_migrations requires a proven owned boundary; no OwnedBoundary "
             "token (no marker proof) means no database writes"
         )
     if compose_file is not None:
+        if identity is None:
+            raise BootstrapSafetyFailure(
+                "apply_migrations compose path requires the run identity: the "
+                "migrate service must target the run-owned project, and a "
+                "missing identity would silently resolve the wrong one"
+            )
         runner.run(
             ["docker", "compose", "-f", compose_file, "run", "--rm", "migrate"],
             kind=CommandKind.DATABASE_MUTATING,
+            env=compose_env(identity),
         )
         return
     runner.run(["alembic", "upgrade", "head"], kind=CommandKind.DATABASE_MUTATING)

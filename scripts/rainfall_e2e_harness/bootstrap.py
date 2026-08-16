@@ -38,12 +38,14 @@ from typing import Any, Mapping, Sequence
 
 from scripts.rainfall_e2e_harness.safety import (
     BootstrapPrerequisiteFailure,
+    BootstrapSafetyFailure,
     CommandKind,
     CommandResult,
     CommandRunner,
     OwnedBoundary,
     RunIdentity,
     apply_migrations,
+    compose_env,
     validate_marker_read_only,
 )
 
@@ -63,6 +65,26 @@ def _psql_cmd(compose_file: str, database_name: str, sql: str) -> list[str]:
         "docker", "compose", "-f", compose_file, "exec", "-T", "db", "psql",
         "-U", DB_ROLE, "-d", database_name, "-tA", "-c", sql,
     ]
+
+
+def _psql_run(
+    runner: CommandRunner,
+    identity: RunIdentity,
+    *,
+    compose_file: str,
+    database_name: str,
+    sql: str,
+    kind: CommandKind,
+) -> CommandResult:
+    """Run one ``psql`` exec against the run-owned DB WITH the run-owned
+    compose env (A1/JD-R2-001): an env-less ``docker compose exec`` would
+    resolve the empty-prefix ``rmeh-`` project instead of the provisioned
+    ``rmeh-<prefix>`` one, silently inspecting/DDL-ing nothing."""
+    return runner.run(
+        _psql_cmd(compose_file, database_name, sql),
+        kind=kind,
+        env=compose_env(identity),
+    )
 
 # Ownership marker carved into the harness-created materialized view. The
 # presence of this marker is what makes a slot "harness-owned" (recreatable);
@@ -177,11 +199,16 @@ def inspect_relation(
     *,
     compose_file: str = COMPOSE_FILE,
     database_name: str | None = None,
+    identity: RunIdentity | None = None,
 ) -> RelationInspection | None:
     """One read-only catalog query over pg_namespace/pg_class/pg_indexes.
     Returns None when the relation is absent (empty stdout). ``database_name``
     is the run-owned DB (``rmeh_<prefix>``); when omitted (unit layer) the
     command is built without the role/db flags, unchanged from W1.
+
+    A DB-targeted inspection REQUIRES the run identity (A1/JD-R2-001): the
+    psql exec must carry the run-owned compose env, and a missing identity
+    aborts instead of resolving the wrong project.
 
     ``name`` is a FIXED internal constant from the harness's own relation
     catalog (``RelationKind``) — never caller input — so it is inlined into the
@@ -205,13 +232,29 @@ def inspect_relation(
         f"WHERE n.nspname = 'public' AND c.relname = '{quoted}'"
     )
     if database_name is not None:
-        command = _psql_cmd(compose_file, database_name, sql)
+        if identity is None:
+            raise BootstrapSafetyFailure(
+                "inspect_relation requires the run identity when targeting a "
+                "run-owned database; refusing to resolve the wrong project"
+            )
+        result = _psql_run(
+            runner,
+            identity,
+            compose_file=compose_file,
+            database_name=database_name,
+            sql=sql,
+            kind=CommandKind.DATABASE_READONLY,
+        )
     else:
         command = [
             "docker", "compose", "-f", compose_file, "exec", "-T", "db", "psql",
             "-tA", "-c", sql,
         ]
-    result = runner.run(command, kind=CommandKind.DATABASE_READONLY)
+        result = runner.run(
+            command,
+            kind=CommandKind.DATABASE_READONLY,
+            env=compose_env(identity) if identity is not None else None,
+        )
     if result.exit_code != 0:
         raise BootstrapPrerequisiteFailure(
             f"relation inspection error for {name}: {result.stderr.strip()}"
@@ -237,6 +280,7 @@ def inspect_srid_contract(
     *,
     compose_file: str = COMPOSE_FILE,
     database_name: str | None = None,
+    identity: RunIdentity | None = None,
 ) -> Mapping[str, Any]:
     """PostGIS presence + geometry SRID contract (one read-only query)."""
     sql = (
@@ -247,13 +291,29 @@ def inspect_srid_contract(
         ")"
     )
     if database_name is not None:
-        command = _psql_cmd(compose_file, database_name, sql)
+        if identity is None:
+            raise BootstrapSafetyFailure(
+                "inspect_srid_contract requires the run identity when targeting "
+                "a run-owned database; refusing to resolve the wrong project"
+            )
+        result = _psql_run(
+            runner,
+            identity,
+            compose_file=compose_file,
+            database_name=database_name,
+            sql=sql,
+            kind=CommandKind.DATABASE_READONLY,
+        )
     else:
         command = [
             "docker", "compose", "-f", compose_file, "exec", "-T", "db", "psql",
             "-tA", "-c", sql,
         ]
-    result = runner.run(command, kind=CommandKind.DATABASE_READONLY)
+        result = runner.run(
+            command,
+            kind=CommandKind.DATABASE_READONLY,
+            env=compose_env(identity) if identity is not None else None,
+        )
     if result.exit_code != 0:
         raise BootstrapPrerequisiteFailure(
             f"srid contract error: {result.stderr.strip()}"
@@ -427,13 +487,18 @@ def _rebuild_once(
     runner.run(
         ["docker", "compose", "-f", compose_file, "down", "-v"],
         kind=CommandKind.DOCKER_CONTROL,
+        # A1/JD-R2-001: the rebuild must tear down and recreate the RUN'S
+        # project — an env-less down/up would destroy/recreate the
+        # empty-prefix `rmeh-` project instead.
+        env=compose_env(identity),
     )
     runner.run(
         ["docker", "compose", "-f", compose_file, "up", "-d"],
         kind=CommandKind.DOCKER_CONTROL,
+        env=compose_env(identity),
     )
     owned = validate_marker_read_only(runner, identity, compose_file=compose_file)
-    apply_migrations(owned, runner, compose_file=compose_file)
+    apply_migrations(owned, runner, compose_file=compose_file, identity=identity)
     return owned
 
 
@@ -454,20 +519,20 @@ def bootstrap_database(
     # Step 1: re-read the marker (ordering invariant: no mutating call before it).
     owned = validate_marker_read_only(runner, identity, compose_file=compose_file)
     # Step 2: migration head (idempotent — no-op when already at head).
-    apply_migrations(owned, runner, compose_file=compose_file)
+    apply_migrations(owned, runner, compose_file=compose_file, identity=identity)
 
     rebuilt = False
 
     def _inspect_all() -> tuple[Mapping[str, RelationInspection | None], Mapping[str, Any]]:
         sources = {
-            "parcelas_catastro": inspect_relation(runner, "parcelas_catastro", compose_file=compose_file, database_name=identity.database_name),
-            "suelos_catastro": inspect_relation(runner, "suelos_catastro", compose_file=compose_file, database_name=identity.database_name),
-            "zonas_operativas": inspect_relation(runner, "zonas_operativas", compose_file=compose_file, database_name=identity.database_name),
+            "parcelas_catastro": inspect_relation(runner, "parcelas_catastro", compose_file=compose_file, database_name=identity.database_name, identity=identity),
+            "suelos_catastro": inspect_relation(runner, "suelos_catastro", compose_file=compose_file, database_name=identity.database_name, identity=identity),
+            "zonas_operativas": inspect_relation(runner, "zonas_operativas", compose_file=compose_file, database_name=identity.database_name, identity=identity),
         }
-        srid_contract = inspect_srid_contract(runner, compose_file=compose_file, database_name=identity.database_name)
+        srid_contract = inspect_srid_contract(runner, compose_file=compose_file, database_name=identity.database_name, identity=identity)
         views = {
-            "vt_parcelas_catastro": inspect_relation(runner, "vt_parcelas_catastro", compose_file=compose_file, database_name=identity.database_name),
-            "mv_suelos_por_zona": inspect_relation(runner, "mv_suelos_por_zona", compose_file=compose_file, database_name=identity.database_name),
+            "vt_parcelas_catastro": inspect_relation(runner, "vt_parcelas_catastro", compose_file=compose_file, database_name=identity.database_name, identity=identity),
+            "mv_suelos_por_zona": inspect_relation(runner, "mv_suelos_por_zona", compose_file=compose_file, database_name=identity.database_name, identity=identity),
         }
         return {**sources, **views}, srid_contract
 
@@ -507,8 +572,12 @@ def bootstrap_database(
 
     # Step 5.3: fixture seed transaction (deterministic rows).
     sql = build_seed_sql(fixture)
-    seed_result = runner.run(
-        _psql_cmd(compose_file, identity.database_name, sql),
+    seed_result = _psql_run(
+        runner,
+        identity,
+        compose_file=compose_file,
+        database_name=identity.database_name,
+        sql=sql,
         kind=CommandKind.DATABASE_MUTATING,
     )
     if seed_result.exit_code != 0:
@@ -521,10 +590,10 @@ def bootstrap_database(
     parcel_view = relations["vt_parcelas_catastro"]
     parcel_kind = classify_parcel_view(parcel_view)
     if parcel_kind == "absent":
-        _create_parcel_view(runner, owned, compose_file=compose_file, database_name=identity.database_name)
+        _create_parcel_view(runner, owned, compose_file=compose_file, database_name=identity.database_name, identity=identity)
         action = "create"
     elif parcel_kind == "harness-owned":
-        _recreate_parcel_view(runner, owned, compose_file=compose_file, database_name=identity.database_name)
+        _recreate_parcel_view(runner, owned, compose_file=compose_file, database_name=identity.database_name, identity=identity)
         action = "recreate"
     else:
         # migration-owned / unknown: compatible REQUIRED, never relabeled.
@@ -534,7 +603,7 @@ def bootstrap_database(
                 "(kind/schema/columns/definition); refusing to relabel a "
                 "migration-owned/unknown object"
             )
-        _refresh_parcel_view(runner, owned, compose_file=compose_file, database_name=identity.database_name)
+        _refresh_parcel_view(runner, owned, compose_file=compose_file, database_name=identity.database_name, identity=identity)
         action = "refresh"
 
     # Step 5.4: mv_suelos_por_zona migration-owned postconditions.
@@ -551,8 +620,8 @@ def bootstrap_database(
             "mv_suelos_por_zona incompatible (relkind/columns/unique mv_id); "
             "migration-only repair required, never ad hoc DDL"
         )
-    _refresh_soil_view(runner, owned, compose_file=compose_file, database_name=identity.database_name)
-    soil_rows = _count_soil_rows(runner, compose_file=compose_file, database_name=identity.database_name)
+    _refresh_soil_view(runner, owned, compose_file=compose_file, database_name=identity.database_name, identity=identity)
+    soil_rows = _count_soil_rows(runner, compose_file=compose_file, database_name=identity.database_name, identity=identity)
     if soil_rows != 1:
         raise BootstrapPrerequisiteFailure(
             f"mv_suelos_por_zona must hold exactly one fixture zone/soil row "
@@ -581,13 +650,14 @@ def bootstrap_database(
     )
 
 
-def _create_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str) -> None:
+def _create_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str, identity: RunIdentity) -> None:
     sql = PARCEL_VIEW_DDL + (
         f"COMMENT ON MATERIALIZED VIEW vt_parcelas_catastro IS "
         f"'{HARNESS_VIEW_MARKER} owned run={owned.run_id}';"
     )
-    result = runner.run(
-        _psql_cmd(compose_file, database_name, sql),
+    result = _psql_run(
+        runner, identity,
+        compose_file=compose_file, database_name=database_name, sql=sql,
         kind=CommandKind.DATABASE_MUTATING,
     )
     if result.exit_code != 0:
@@ -596,15 +666,16 @@ def _create_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_
         )
 
 
-def _recreate_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str) -> None:
+def _recreate_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str, identity: RunIdentity) -> None:
     sql = (
         "DROP MATERIALIZED VIEW IF EXISTS vt_parcelas_catastro;"
         + PARCEL_VIEW_DDL
         + f"COMMENT ON MATERIALIZED VIEW vt_parcelas_catastro IS "
         f"'{HARNESS_VIEW_MARKER} owned run={owned.run_id}';"
     )
-    result = runner.run(
-        _psql_cmd(compose_file, database_name, sql),
+    result = _psql_run(
+        runner, identity,
+        compose_file=compose_file, database_name=database_name, sql=sql,
         kind=CommandKind.DATABASE_MUTATING,
     )
     if result.exit_code != 0:
@@ -613,9 +684,11 @@ def _recreate_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compos
         )
 
 
-def _refresh_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str) -> None:
-    result = runner.run(
-        _psql_cmd(compose_file, database_name, "REFRESH MATERIALIZED VIEW vt_parcelas_catastro"),
+def _refresh_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str, identity: RunIdentity) -> None:
+    result = _psql_run(
+        runner, identity,
+        compose_file=compose_file, database_name=database_name,
+        sql="REFRESH MATERIALIZED VIEW vt_parcelas_catastro",
         kind=CommandKind.DATABASE_MUTATING,
     )
     if result.exit_code != 0:
@@ -624,9 +697,11 @@ def _refresh_parcel_view(runner: CommandRunner, owned: OwnedBoundary, *, compose
         )
 
 
-def _refresh_soil_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str) -> None:
-    result = runner.run(
-        _psql_cmd(compose_file, database_name, "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_suelos_por_zona"),
+def _refresh_soil_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_file: str, database_name: str, identity: RunIdentity) -> None:
+    result = _psql_run(
+        runner, identity,
+        compose_file=compose_file, database_name=database_name,
+        sql="REFRESH MATERIALIZED VIEW CONCURRENTLY mv_suelos_por_zona",
         kind=CommandKind.DATABASE_MUTATING,
     )
     if result.exit_code != 0:
@@ -635,12 +710,13 @@ def _refresh_soil_view(runner: CommandRunner, owned: OwnedBoundary, *, compose_f
         )
 
 
-def _count_soil_rows(runner: CommandRunner, *, compose_file: str, database_name: str) -> int:
-    result = runner.run(
-        _psql_cmd(
-            compose_file, database_name,
-            "SELECT count(*) FROM mv_suelos_por_zona WHERE ha_suelo > 0",
-        ),
+def _count_soil_rows(runner: CommandRunner, *, compose_file: str, database_name: str, identity: RunIdentity) -> int:
+    result = _psql_run(
+        runner,
+        identity,
+        compose_file=compose_file,
+        database_name=database_name,
+        sql="SELECT count(*) FROM mv_suelos_por_zona WHERE ha_suelo > 0",
         kind=CommandKind.DATABASE_READONLY,
     )
     if result.exit_code != 0:
@@ -748,7 +824,7 @@ def validate_services(
             # The restart must target the run-owned compose project, exactly as
             # compose up created it (A6/A1) — a bare default project would
             # restart nothing on a fresh `rmeh-<run_id>` stack.
-            env={"RMEH_RUN_ID_PREFIX": identity.run_id[:10]},
+            env=compose_env(identity),
         )
         if restart.exit_code != 0:
             raise BootstrapPrerequisiteFailure(

@@ -91,12 +91,11 @@ jobs:
       # trap completed (job timeout, runner recycle, SIGKILL), this still tears
       # down the exact recorded leased resources by immutable identity. The
       # driver reads ownership.json (written BEFORE provisioning) to target the
-      # exact project the run created; RMEH_RUN_ID_PREFIX here only backs the
-      # no-record fallback derived from `--run-id` (A5).
+      # exact project the run created and derives the compose prefix from that
+      # recorded identity — no ambient RMEH_RUN_ID_PREFIX is needed or set
+      # here, so cleanup can never point compose at a different project (A5).
       - name: Clean up disposable stack (idempotent)
         if: always()
-        env:
-          RMEH_RUN_ID_PREFIX: gha
         run: python3 -m scripts.rainfall_e2e_harness cleanup --run-id gha --evidence-dir "${{ github.workspace }}/.artifacts/rainfall-multi-parcel"
 
       - name: Upload harness evidence
