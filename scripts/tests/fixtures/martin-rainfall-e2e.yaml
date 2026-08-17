@@ -1,0 +1,40 @@
+# =============================================================================
+# scripts/tests/fixtures/martin-rainfall-e2e.yaml
+# Martin vector-tile catalog for the rainfall multi-parcel E2E harness (W4.2).
+#
+# Publishes EXACTLY one source — `parcelas_catastro` backed by the migration-
+# owned / harness-owned materialized view `public.vt_parcelas_catastro` — with
+# the SAME seven frontend-whitelisted properties as the production catalog
+# (martin/config.yaml). No other source, no functions, no auto-discovery: the
+# harness Martin host must never leak a column the public map does not read
+# (RMEH-002-C / RMEH-003 / RMEH-014-B).
+#
+# Drift against the production catalog is a diagnostic, never an auto-rewrite:
+# these seven properties mirror src/lib/map/layerPropertyWhitelists.ts, so a
+# change there is a deliberate review, not a copy to silently follow.
+# =============================================================================
+
+listen_addresses: '0.0.0.0:3000'
+
+postgres:
+  # The harness runner injects DATABASE_URL from generated disposable values;
+  # no real credential is ever referenced here.
+  connection_string: ${DATABASE_URL}
+  auto_publish: false
+  functions: {}
+  tables:
+    parcelas_catastro:
+      schema: public
+      table: vt_parcelas_catastro
+      srid: 4326
+      geometry_column: geometria
+      # No id_column: the base table's PK is UUID and Martin's mvt_agg_transfn
+      # requires an integer — same constraint as the production catalog.
+      properties:
+        nro_cuenta: Cuenta catastral
+        desig_oficial: Designacion oficial
+        superficie_ha: Superficie (ha)
+        departamento: Departamento
+        pedania: Pedania
+        nomenclatura: Nomenclatura
+        tipo_parcela: Tipo de parcela

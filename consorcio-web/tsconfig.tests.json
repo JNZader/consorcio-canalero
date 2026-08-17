@@ -38,20 +38,45 @@
     // or every `import.meta.env` read in the src files these tests pull in
     // fails to compile.
     "src/vite-env.d.ts",
+    // Ambient wildcard for `@tabler/icons-react/dist/esm/icons/*.mjs`, for the
+    // same reason and with the same failure mode as the line above: nothing
+    // IMPORTS it, so this project would not pick it up, and every deep icon
+    // import inside `src/components/ui/icons.tsx` becomes a TS7016 the moment a
+    // test in this list reaches that module. It does now —
+    // `RainfallDetailPanel` mounts `CollapsibleSection`, which imports
+    // `./icons`. The errors point at `icons.tsx`, which is nowhere near the
+    // code under test, so the trail is worth writing down once.
+    "src/types/tabler-icons.d.ts",
     // The vitest setup file: it is what imports `@testing-library/jest-dom`,
     // whose module augmentation adds `toBeInTheDocument` and friends to
     // vitest's `Assertion`. Outside the program, every DOM matcher below is a
     // TS2339 that says nothing about the code under test.
     "tests/setup.ts",
     "tests/unit/rainfallApi.test.ts",
+    "tests/unit/rainfallFormat.test.ts",
     "tests/unit/RainfallDetailPanel.test.tsx",
     "tests/unit/RainfallAccumulationChart.test.tsx",
     "tests/unit/RainfallMetricList.test.tsx",
+    "tests/unit/RainfallAnswerCard.test.tsx",
+    // UXJB-206: this file pins the ficha-side half of the rainfall contract
+    // (the v2 mount predicate and the public fold's default) and was outside
+    // the gate, which is the same decorative state LI3A-004 described.
+    "tests/unit/FichaTerritorialRainfallMount.test.tsx",
     "tests/hooks/useRainfallAnalysis.test.tsx",
     // The e2e journey builds the SAME wire shapes as the unit fixtures above
     // (analysis snapshot, series envelope), so it drifts from the contract in
     // exactly the same way — and Playwright never runs in CI, which left it
     // with no detector at all. Enrolled per the rule above (V-005/LI4-006).
-    "tests/e2e/rainfall-v2-detail.spec.ts"
+    "tests/e2e/rainfall-v2-detail.spec.ts",
+    // RMEH-003..013 harness (change `rainfall-multi-parcel-e2e-harness`): the
+    // pure Web Mercator/occlusion/click-policy helper + its Vitest unit tests.
+    // Enrolled here in the SAME commit that the harness Playwright config and
+    // the package.json `test:e2e:rainfall-harness` command land (W4.4) — a
+    // contract test that is not in this list is decorative in exactly the way
+    // LI3A-004 described (deleting the field it pins keeps every check green).
+    // The W7/W8 appended `test()` imports this helper, so the appended spec is
+    // covered transitively through the rainfall-v2-detail.spec.ts entry above.
+    "tests/e2e/helpers/rainfallMultiParcelHarness.ts",
+    "tests/unit/rainfallMultiParcelHarness.test.ts"
   ]
 }

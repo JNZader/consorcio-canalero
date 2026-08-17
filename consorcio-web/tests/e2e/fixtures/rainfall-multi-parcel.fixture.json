@@ -1,0 +1,343 @@
+{
+  "schemaVersion": 1,
+  "change": "rainfall-multi-parcel-e2e-harness",
+  "description": "Deterministic three-parcel rainfall multi-parcel E2E fixture. Real-derived polygon rings + synthetic identities/rainfall facts per design.md controlled-facts table. Sole source for Python seed (W5) + TS browser helper (W2).",
+  "sourceDataset": {
+    "path": "consorcio-web/public/data/catastro_rural_cu.geojson",
+    "features": 1322,
+    "derivationScript": "scripts/tests/fixtures/derive_rainfall_multi_parcel.py"
+  },
+  "cameras": {
+    "mobile": {
+      "lat": -32.515003798815094,
+      "lng": -62.48415256150391,
+      "zoom": 13,
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "sheetStage": "medio"
+      },
+      "metersPerPixel": 8.056947358781049
+    },
+    "desktop": {
+      "lat": -32.515003798815094,
+      "lng": -62.48415256150391,
+      "zoom": 13,
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "metersPerPixel": 8.056947358781049
+    }
+  },
+  "coveringZone": {
+    "kind": "fixture-zone",
+    "id": "rmeh-zone-fixture",
+    "nomenclature": "RMEH-FIXTURE-ZONE",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            -62.49584886132813,
+            -32.527763005
+          ],
+          [
+            -62.469341443183595,
+            -32.527763005
+          ],
+          [
+            -62.469341443183595,
+            -32.506910653554684
+          ],
+          [
+            -62.49584886132813,
+            -32.506910653554684
+          ],
+          [
+            -62.49584886132813,
+            -32.527763005
+          ]
+        ]
+      ]
+    },
+    "covers": [
+      "A",
+      "B",
+      "C"
+    ]
+  },
+  "coveringSoil": {
+    "kind": "fixture-soil",
+    "id": "rmeh-soil-fixture",
+    "nomenclature": "RMEH-FIXTURE-SOIL",
+    "simbolo": "RMEH-SIMB",
+    "cap": "CAP-RMEH",
+    "ip": 1.5,
+    "haSuelo": 1234.5,
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            -62.49584886132813,
+            -32.527763005
+          ],
+          [
+            -62.469341443183595,
+            -32.527763005
+          ],
+          [
+            -62.469341443183595,
+            -32.506910653554684
+          ],
+          [
+            -62.49584886132813,
+            -32.506910653554684
+          ],
+          [
+            -62.49584886132813,
+            -32.527763005
+          ]
+        ]
+      ]
+    },
+    "intersects": [
+      "A",
+      "B",
+      "C"
+    ]
+  },
+  "parcels": [
+    {
+      "alias": "A",
+      "stableUuid": "11111111-1111-4111-8111-111111111111",
+      "nomenclature": "3603403896547762",
+      "displayIdentity": "RMEH-PARCEL-A",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -62.4835209,
+              -32.52326365
+            ],
+            [
+              -62.48920522,
+              -32.52202016
+            ],
+            [
+              -62.49876937,
+              -32.5199228
+            ],
+            [
+              -62.50734133,
+              -32.51806235
+            ],
+            [
+              -62.50022387,
+              -32.48975445
+            ],
+            [
+              -62.47619662,
+              -32.4938627
+            ],
+            [
+              -62.4835209,
+              -32.52326365
+            ]
+          ]
+        ]
+      },
+      "interiorPoint": {
+        "lng": -62.49284886132813,
+        "lat": -32.510337737890616
+      },
+      "provenance": {
+        "sourcePath": "consorcio-web/public/data/catastro_rural_cu.geojson",
+        "sourceFeatureId": "3603403896547762",
+        "sourceGeometrySha256": "c46417cadc62caf03c4e5544d479ba9a45812c396e480442b5d2437cbc399144",
+        "derivation": "exact-ring-extraction"
+      },
+      "rainfall": {
+        "percentile": 21,
+        "scopeKind": "zone",
+        "scopeId": "zone:rmeh-zone-a:v1",
+        "scopeVersion": "v1",
+        "effectiveCacheKey": "rainfall-analysis:zone:rmeh-zone-a:v1:2025",
+        "accumulationMm": 111.1,
+        "analysisRevisionId": "rmeh-rev-a",
+        "dataRevision": "data-a-2025",
+        "metricRevision": "metric-a"
+      }
+    },
+    {
+      "alias": "B",
+      "stableUuid": "22222222-2222-4222-8222-222222222222",
+      "nomenclature": "3603003230500300",
+      "displayIdentity": "RMEH-PARCEL-B",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -62.48429862,
+              -32.52706266
+            ],
+            [
+              -62.49023437,
+              -32.52568672
+            ],
+            [
+              -62.48940309,
+              -32.52266797
+            ],
+            [
+              -62.48368653,
+              -32.52396702
+            ],
+            [
+              -62.48429862,
+              -32.52706266
+            ]
+          ]
+        ]
+      },
+      "interiorPoint": {
+        "lng": -62.48726738,
+        "lat": -32.524763005
+      },
+      "provenance": {
+        "sourcePath": "consorcio-web/public/data/catastro_rural_cu.geojson",
+        "sourceFeatureId": "3603003230500300",
+        "sourceGeometrySha256": "d2de2056d9a7a3ca53243d0e71bdab211dca979b22bd1bfc08714c729373dd86",
+        "derivation": "exact-ring-extraction"
+      },
+      "rainfall": {
+        "percentile": 52,
+        "scopeKind": "zone",
+        "scopeId": "zone:rmeh-zone-b:v2",
+        "scopeVersion": "v2",
+        "effectiveCacheKey": "rainfall-analysis:zone:rmeh-zone-b:v2:2025",
+        "accumulationMm": 222.2,
+        "analysisRevisionId": "rmeh-rev-b",
+        "dataRevision": "data-b-2025",
+        "metricRevision": "metric-b"
+      }
+    },
+    {
+      "alias": "C",
+      "stableUuid": "33333333-3333-4333-8333-333333333333",
+      "nomenclature": "3603003230530600",
+      "displayIdentity": "RMEH-PARCEL-C",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -62.48183462,
+              -32.51864657
+            ],
+            [
+              -62.48139629,
+              -32.51682276
+            ],
+            [
+              -62.48133892,
+              -32.51617037
+            ],
+            [
+              -62.4776361,
+              -32.50076761
+            ],
+            [
+              -62.46324579,
+              -32.5032675
+            ],
+            [
+              -62.4675501,
+              -32.52112082
+            ],
+            [
+              -62.48183462,
+              -32.51864657
+            ]
+          ]
+        ]
+      },
+      "interiorPoint": {
+        "lng": -62.472341443183595,
+        "lat": -32.509910653554684
+      },
+      "provenance": {
+        "sourcePath": "consorcio-web/public/data/catastro_rural_cu.geojson",
+        "sourceFeatureId": "3603003230530600",
+        "sourceGeometrySha256": "d91bfbccc7c05d74fd50b12d00b517ae64e124d01942a2c1cf0cb35cf03beb18",
+        "derivation": "exact-ring-extraction"
+      },
+      "rainfall": {
+        "percentile": 83,
+        "scopeKind": "zone",
+        "scopeId": "zone:rmeh-zone-c:v3",
+        "scopeVersion": "v3",
+        "effectiveCacheKey": "rainfall-analysis:zone:rmeh-zone-c:v3:2025",
+        "accumulationMm": 333.3,
+        "analysisRevisionId": "rmeh-rev-c",
+        "dataRevision": "data-c-2025",
+        "metricRevision": "metric-c"
+      }
+    }
+  ],
+  "legacyParcel": {
+    "alias": "LEGACY",
+    "stableUuid": "44444444-4444-4444-8444-444444444444",
+    "nomenclature": "3603003210041000",
+    "displayIdentity": "RMEH-LEGACY-PARCEL",
+    "zoom": 16,
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [-62.4632313, -32.4530357],
+          [-62.4632143, -32.45293924],
+          [-62.45386809, -32.45472025],
+          [-62.44232403, -32.45671801],
+          [-62.43720634, -32.4575375],
+          [-62.43202003, -32.45831302],
+          [-62.426973, -32.45919292],
+          [-62.42044818, -32.46033012],
+          [-62.42335691, -32.47245893],
+          [-62.42331643, -32.47246524],
+          [-62.42604489, -32.48212857],
+          [-62.42818474, -32.49098901],
+          [-62.43198702, -32.50850269],
+          [-62.4532321, -32.50487845],
+          [-62.45323521, -32.50486982],
+          [-62.47760626, -32.50064393],
+          [-62.46916855, -32.46567724],
+          [-62.46885227, -32.46436134],
+          [-62.46601406, -32.45255142],
+          [-62.4632313, -32.4530357]
+        ]
+      ]
+    },
+    "interiorPoint": {
+      "lng": -62.446176,
+      "lat": -32.471267
+    },
+    "provenance": {
+      "sourcePath": "consorcio-web/public/data/catastro_rural_cu.geojson",
+      "sourceFeatureId": "3603003210041000",
+      "sourceGeometrySha256": "98bced9da3e1d37ab952dc5738f1ce025335960587653310024c06c3d5299d96",
+      "derivation": "exact-ring-extraction"
+    }
+  },
+  "geometryChecks": {
+    "disk_radius_px_mobile": 21.334829645574864,
+    "edge_clearance_px_mobile": 21.334829645574864,
+    "pairwise_disk_distance_px_mobile": 208.37933170839645,
+    "disk_radius_px_desktop": 21.334829645574864,
+    "edge_clearance_px_desktop": 21.334829645574864,
+    "pairwise_disk_distance_px_desktop": 208.37933170839645
+  }
+}

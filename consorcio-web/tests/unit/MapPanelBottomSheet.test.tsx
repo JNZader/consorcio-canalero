@@ -353,7 +353,11 @@ describe("map panels — mobile bottom sheet", () => {
 // nueva seleccion vuelve al MISMO initialStage, no a "peek". El shell se monta
 // directo (modo sheet): el consumidor que pasa "medio" es la ficha.
 describe("initialStage", () => {
-	const shell = (extra: { initialStage?: "peek" | "medio" | "alto"; resetKey?: string }) => (
+	const shell = (extra: {
+		initialStage?: "peek" | "medio" | "alto";
+		resetKey?: string;
+		scrollResetKey?: string;
+	}) => (
 		<MantineProvider env="test">
 			<MapPanelShell
 				sheet
@@ -383,5 +387,36 @@ describe("initialStage", () => {
 		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "alto");
 		rerender(shell({ initialStage: "medio", resetKey: "b" }));
 		expect(screen.getByTestId("shell-under-test")).toHaveAttribute("data-stage", "medio");
+	});
+
+	// The SCROLLING box carries its own testid, derived from the shell's like
+	// `-sheet-handle` and `-sheet-close` already are. It exists because a
+	// "visible without scrolling" e2e assertion needs an element whose visible
+	// height it can honestly compare a card's box against, and the sheet root
+	// is not it: the root is capped by `max-height` while THIS is what
+	// overflows. For the ficha it resolves to
+	// `ficha-territorial-panel-sheet-body`.
+	it('names the scrolling body, and the children render inside it', () => {
+		render(shell({ initialStage: "medio" }));
+
+		const body = screen.getByTestId("shell-under-test-sheet-body");
+		expect(body).toBeInTheDocument();
+		expect(body).toContainElement(screen.getByText("contenido"));
+	});
+
+	it('returns the scrolling body to the top when the selected dataset changes', () => {
+		const { rerender } = render(
+			shell({ initialStage: "medio", scrollResetKey: "suelos" }),
+		);
+		const body = screen.getByTestId("shell-under-test-sheet-body");
+		body.scrollTop = 240;
+
+		rerender(shell({ initialStage: "medio", scrollResetKey: "precipitacion" }));
+
+		expect(body.scrollTop).toBe(0);
+		expect(screen.getByTestId("shell-under-test")).toHaveAttribute(
+			"data-stage",
+			"medio",
+		);
 	});
 });

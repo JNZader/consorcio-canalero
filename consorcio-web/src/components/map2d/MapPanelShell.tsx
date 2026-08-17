@@ -48,7 +48,7 @@
 
 import { ActionIcon, CloseButton, Paper, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronDown } from '@tabler/icons-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 
 import styles from '../../styles/components/map.module.css';
 
@@ -104,6 +104,11 @@ interface MapPanelShellProps {
    */
   readonly resetKey?: unknown;
   /**
+   * Opaque content marker. Whenever it changes, the sheet's internal scroller
+   * returns to the top without changing the selected height stage.
+   */
+  readonly scrollResetKey?: unknown;
+  /**
    * Stage the SHEET opens at (and resets to on a new selection). Defaults to
    * 'peek'. The ficha passes 'medio': the user just ASKED for this content by
    * tapping a parcel, and a one-row peek that needs a second (undiscoverable)
@@ -126,10 +131,22 @@ export function MapPanelShell({
   pillLabel,
   pillClassName,
   resetKey,
+  scrollResetKey,
   initialStage = 'peek',
   children,
 }: MapPanelShellProps) {
   const [stage, setStage] = useState<SheetStage>(initialStage);
+  const sheetBodyRef = useRef<HTMLDivElement>(null);
+
+  // Dataset controls can sit near the bottom of a long ficha. The browser
+  // scrolls the clicked option into view before dispatching the click; when the
+  // selected dataset then reorders its answer to the top, preserving that old
+  // offset places the new answer above the viewport. Reset before paint: no
+  // visible jump, no stage change, and no manual scroll required.
+  useLayoutEffect(() => {
+    void scrollResetKey;
+    if (sheetBodyRef.current) sheetBodyRef.current.scrollTop = 0;
+  }, [scrollResetKey]);
 
   // A new selection reuses the same mounted shell, so the stage has to be reset
   // explicitly — otherwise clicking a second parcel would open at whatever cap
@@ -250,7 +267,19 @@ export function MapPanelShell({
           )}
         </div>
       </div>
-      <div className={styles.panelSheetBody}>{children}</div>
+      {/* The SCROLLING box. Named because it is the only element whose visible
+          height a "visible without scrolling" assertion can honestly be
+          measured against: the sheet itself is capped by `max-height` while
+          this is what actually overflows. Same `${testId}-…` naming as the
+          handle and the close button above. One attribute — no behaviour, no
+          style, no prop. */}
+      <div
+        ref={sheetBodyRef}
+        className={styles.panelSheetBody}
+        data-testid={`${testId}-sheet-body`}
+      >
+        {children}
+      </div>
     </Paper>
   );
 }
