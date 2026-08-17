@@ -52,6 +52,9 @@
     // (analysis snapshot, series envelope), so it drifts from the contract in
     // exactly the same way — and Playwright never runs in CI, which left it
     // with no detector at all. Enrolled per the rule above (V-005/LI4-006).
-    "tests/e2e/rainfall-v2-detail.spec.ts"
+    "tests/e2e/rainfall-v2-detail.spec.ts",
+    // Multi-Hazard E2E + its shared deterministic auth seeder.
+    "tests/e2e/helpers/seedAuth.ts",
+    "tests/e2e/multi-hazard.spec.ts"
   ]
 }
