@@ -45,14 +45,14 @@ This is a single, small fast-follow slice. It only touches the rainfall panel, t
 
 ### 1.2 Add parcel-change invalidation to `RainfallDetailPanel.tsx`
 
-- [ ] **1.2.1** Import `useQueryClient` from `@tanstack/react-query` in `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx`.
-- [ ] **1.2.2** Call `const queryClient = useQueryClient();` inside `RainfallDetailPanel`, placed **before** the `if (!canAccess) return null;` early return to keep the hook order stable.
-- [ ] **1.2.3** Add a `useEffect` that tracks the previous `nomenclatura` prop and, when it changes (and `canAccess` is true), calls:
+- [x] **1.2.1** Import `useQueryClient` from `@tanstack/react-query` in `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx`.
+- [x] **1.2.2** Call `const queryClient = useQueryClient();` inside `RainfallDetailPanel`, placed **before** the `if (!canAccess) return null;` early return to keep the hook order stable.
+- [x] **1.2.3** Add a `useEffect` that tracks the previous `nomenclatura` prop and, when it changes (and `canAccess` is true), calls:
   ```ts
   queryClient.invalidateQueries({ queryKey: ['rainfall-analysis'] });
   ```
-- [ ] **1.2.4** Ensure the effect does **not** run on initial mount: initialize the previous-value ref to the current `nomenclatura` and compare inside the effect.
-- [ ] **1.2.5** Ensure the effect does **not** depend on `year`, `selectedKey`, or `selected` scope changes, so scope/year changes within the same parcel do not trigger invalidation.
+- [x] **1.2.4** Ensure the effect does **not** run on initial mount: initialize the previous-value ref to the current `nomenclatura` and compare inside the effect.
+- [x] **1.2.5** Ensure the effect does **not** depend on `year`, `selectedKey`, or `selected` scope changes, so scope/year changes within the same parcel do not trigger invalidation.
 - **Estimate**: 30 min
 - **Verification**:
   - The new unit test in 2.1 passes.
