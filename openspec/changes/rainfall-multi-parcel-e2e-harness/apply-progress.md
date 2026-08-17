@@ -759,3 +759,56 @@ Verification:
 - Docker cleanup filters remain empty (no provisioning performed in this micro-round).
 
 0 production lines touched; workflow remains optional; parent change untouched.
+
+## Verify with live disposable stack (manual execution, sub-agent token-exhausted)
+
+Executed by the orchestrator after the `sdd-verify` sub-agent returned empty mid-run.
+
+### Commands run
+
+```bash
+# Full owned lifecycle (ports shifted to avoid dev stack on 8001/3001/5174)
+RMEH_BACKEND_HOST_PORT=18001 RMEH_MARTIN_HOST_PORT=13001 RMEH_FRONTEND_HOST_PORT=15174 \
+  python3 -m scripts.rainfall_e2e_harness run
+
+# Integration tests against provisioned stack
+RMEH_INTEGRATION=1 RMEH_BACKEND_HOST_PORT=18001 RMEH_MARTIN_HOST_PORT=13001 RMEH_FRONTEND_HOST_PORT=15174 \
+  python3 -m pytest scripts/tests/test_rainfall_e2e_integration.py -v
+```
+
+### Bugs found and fixed during verify
+
+| id | file | issue | fix |
+|---|---|---|---|
+| VFY-001 | `scripts/rainfall_e2e_harness/driver.py` | Used `npx exec playwright` (invalid npx syntax). | Changed to `npx playwright`. |
+| VFY-002 | `scripts/rainfall_e2e_harness/driver.py` | Playwright subprocess did not receive `E2E_APP_URL` or `E2E_API_BASE`, so tests hit `localhost:5173`/`8000` defaults instead of the harness ports. | Passed the run-owned frontend/backend URLs explicitly. |
+| VFY-003 | `consorcio-web/tests/e2e/playwright.rainfall-harness.config.ts` | `timeout: 120_000` was too short for the multi-parcel journey in this environment. | Temporarily raised to `240_000` for diagnosis. |
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **141 passed** |
+| `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **69 passed** |
+| `npx tsc -p tsconfig.tests.json --noEmit` | clean |
+| Playwright harness spec vs live stack | **10 passed**, **1 timedOut** (`A→B→C→A` journey) |
+| `test_rainfall_e2e_integration.py` (RMEH_INTEGRATION=1) | 1 passed, 1 failed (`test_bootstrap_twice_same_owned_db_is_stable`: first `create`, second `recreate`) |
+
+### Evidence artifacts
+
+- `.artifacts/rainfall-multi-parcel/ownership.json` — run/lease identity.
+- `.artifacts/rainfall-multi-parcel/events.jsonl` — lifecycle phases.
+- `.artifacts/rainfall-multi-parcel/playwright-results.json` — 10 passed / 1 timeout.
+- `jda-001-handoff.json` was **not emitted** because the accounting gate failed.
+
+### Open blockers
+
+1. **A→B→C→A multi-parcel journey timeout** — `runContextJourney` waits for `.mantine-Loader-root` to detach; in this environment it does not detach within 240s. Prevents the `11/0/0/0` gate and JDA-001 handoff.
+2. **Bootstrap idempotency** — second bootstrap on the same owned DB recreates the migration-owned view instead of treating it as stable.
+
+### Verdict
+
+**Conditional PASS on unit/static verification; FAIL on full live-stack acceptance.**
+The harness runs end-to-end against a real disposable stack. 10/11 browser tests pass. The remaining multi-parcel timeout and bootstrap idempotency must be resolved before JDA-001 can be closed with browser evidence.
+
+Report written to `openspec/changes/rainfall-multi-parcel-e2e-harness/verify-report.md`.

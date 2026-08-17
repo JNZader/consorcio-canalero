@@ -177,6 +177,38 @@ Critical edges: W2 fixture JSON feeds W5 seed AND W6 cache identity; W4 Compose/
 - [x] 11.3 RED rollback proof: rollback = remove only the 13 file-architecture artifacts + the 2 test-config enrolments; NO production/schema/shared-data/parent rollback; any residual disposable resource cleaned only via exact recorded lease identity + immutable Docker labels before removing the runner. Files: `scripts/tests/test_rainfall_e2e_harness.py`. Reqs: RMEH-012-D, RMEH-001.
 - [x] 11.4 Create `docs/testing/rainfall-multi-parcel-e2e.md` — operator prerequisites, local command, statuses (PASSED + six failure classes), evidence layout, cleanup contract, JDA-001 boundary, rollback procedure, "not a required CI check" notice. Reqs: RMEH-010-A, RMEH-011, RMEH-012.
 
+## Verification result (manual, post-Judgment-Day)
+
+Runbook command executed against a live disposable stack (ports shifted to avoid the dev stack):
+
+```bash
+RMEH_BACKEND_HOST_PORT=18001 RMEH_MARTIN_HOST_PORT=13001 RMEH_FRONTEND_HOST_PORT=15174 \
+  python3 -m scripts.rainfall_e2e_harness run
+```
+
+Latest run (after multiple debug iterations):
+
+- Lifecycle reached `tests_finished`.
+- Playwright collection gate: **11 tests discovered** ✅ (W7.4/W8.3 collection gate met).
+- Playwright result gate: **10 passed, 1 failed** ❌ (W9.2 not met).
+- Failing test: `A→B→C→A: una selección por clic en móvil y escritorio (RMEH-007/008)`.
+  - Root cause: `useRainfallAnalysis` has `staleTime: 60_000`. The final A→A re-selection within 60 s of the initial A selection is served from TanStack Query cache, so the fixture router observes no new analysis request. The UI correctly shows A's data, but the test's `assertTargetReady` requires both `analysisCacheKey === target` AND `analysisSequence > previousSequence`, which cannot be satisfied for a cached repeat selection.
+  - Mobile-specific projection/popup/sheet issues were resolved: removed `networkidle` wait, dismiss MapLibre popups before each transition, collapse the mobile sheet to peek before B/C/A clicks.
+- `jda-001-handoff.json` was **not emitted** (requires full `PASSED`).
+- Docker cleanup verified empty after the run.
+- Integration idempotency (`test_bootstrap_twice_same_owned_db_is_stable`) failed: first pass `create`, second pass `recreate`.
+- Full report in `verify-report.md`.
+
+Updated task states:
+- W7.1–W7.2 → ✅ mobile A→B and B→C transitions pass on live stack; wheel proof + containment + stage checks pass.
+- W7.3 → ❌ mobile C→A cached-repeat freshness gate fails (sequence not newer).
+- W8.1–W8.2 → ✅ desktop A→B and B→C transitions pass on live stack; focus continuity passes.
+- W8.3 → ❌ desktop C→A cached-repeat freshness gate fails (sequence not newer).
+- W9.1 collection gate → ✅ verified.
+- W9.2 result gate → ❌ not verified (10/0/0/1, expected 11/0/0/0).
+- W7.1–W7.3 / W8.1–W8.3 multi-parcel journey → ❌ runtime blocked by loader timeout.
+- 5.2 / 5.7 real-stack negatives → ❌ not executed (unit-covered only).
+
 ## Task → RMEH Scenario Matrix (46 scenarios; coverage must total 46)
 
 | Req | Scenario | Task(s) | Verification layer |
