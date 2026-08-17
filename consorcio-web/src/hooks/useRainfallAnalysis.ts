@@ -99,6 +99,16 @@ export interface UseRainfallAnalysisResult {
   error: Error | null;
 }
 
+/**
+ * Cache-freshness contract for rainfall analysis.
+ *
+ * `RainfallDetailPanel` is the owner of rainfall-analysis cache invalidation on
+ * parcel change. The rainfall-analysis query key intentionally omits
+ * `nomenclatura` so the same resolved scope + year stays cached for 60 seconds
+ * while the user is viewing a single parcel. Parcel-switch invalidation is
+ * performed in the panel, not in this hook, because the hook only sees
+ * scope + year and cannot know when the underlying parcel changes.
+ */
 export function useRainfallAnalysis(
   scope: RainfallScopeChoice | null,
   year: number,
