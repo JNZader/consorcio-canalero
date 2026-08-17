@@ -188,11 +188,14 @@ export function useHazardMapState(params: {
   );
 
   // Unknown basin ids are dropped from the URL so the written state stays clean.
+  // Only do this once basins have finished loading; otherwise the first render
+  // clears a valid URL basin before the catalog arrives.
   useEffect(() => {
-    if (isHazardActive && basin && !selectedBasin) {
+    if (!isHazardActive || !basin || !basins) return;
+    if (!selectedBasin) {
       setBasin(null);
     }
-  }, [isHazardActive, basin, selectedBasin, setBasin]);
+  }, [isHazardActive, basin, selectedBasin, setBasin, basins]);
 
   // Fly to basin bbox when selection changes.
   const prevBasinRef = useRef<string | null>(null);

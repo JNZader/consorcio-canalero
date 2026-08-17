@@ -141,10 +141,21 @@ export function useGeoLayers() {
 
       const seen = new Map<string, GeoLayerInfo>();
       for (const layer of items) {
-        // Dedup por (variante, tipo, area): las tres variantes comparten tipo
-        // y area, asi que sin la variante en la clave se pisarian entre si y
-        // solo sobreviviria una en el selector.
-        const key = `${layer.variante}::${layer.tipo}::${layer.area_id ?? ''}`;
+        // Dedup por (variante, tipo, area, metadata_extra): las tres variantes de
+        // HAND/TWI comparten tipo y area, asi que sin la variante en la clave se
+        // pisarian entre si. Para precip_normal el discriminante es `mes` dentro
+        // de metadata_extra, por lo que tambien se incluye en la clave.
+        const extraKey = layer.metadata_extra
+          ? JSON.stringify(
+              Object.entries(layer.metadata_extra)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .reduce<Record<string, unknown>>((acc, [k, v]) => {
+                  acc[k] = v;
+                  return acc;
+                }, {})
+            )
+          : '';
+        const key = `${layer.variante}::${layer.tipo}::${layer.area_id ?? ''}::${extraKey}`;
         const existing = seen.get(key);
         if (!existing || layer.created_at > existing.created_at) {
           seen.set(key, layer);

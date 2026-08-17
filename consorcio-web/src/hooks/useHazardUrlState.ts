@@ -1,5 +1,5 @@
 import { getRouteApi, useNavigate, useRouter } from '@tanstack/react-router';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useCanAccess } from '../stores/authStore';
 
 export const RISK_CLASS_LABELS = ['Bajo', 'Medio', 'Alto', 'Crítico'] as const;
@@ -140,6 +140,15 @@ export function useHazardUrlState(): HazardUrlState {
     },
     [navigate]
   );
+
+  // Role/flag gate: if hazard mode is requested in the URL but the gate is
+  // closed (citizen, feature flag off, etc.), drop the param so the URL stays
+  // clean and shared links never advertise a gated mode.
+  useEffect(() => {
+    if (rawHazard && !gateOpen) {
+      writeSearch({ hazard: false });
+    }
+  }, [rawHazard, gateOpen, writeSearch]);
 
   const setHazard = useCallback(
     (on: boolean) => {

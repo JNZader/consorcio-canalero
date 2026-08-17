@@ -251,8 +251,22 @@ const verifyEmailRoute = createRoute({
  */
 function parseRiskClasses(input: unknown): string[] {
   if (input === undefined || input === null) return [];
+  // Backward-compatible with the old JSON-array serialization
+  // (e.g. `["Bajo","Medio"]`) and the legacy `layers` default `[]`.
   if (typeof input === 'string') {
-    return input
+    const trimmed = input.trim();
+    if (trimmed === '' || trimmed === '[]') return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+        }
+      } catch {
+        /* fall through to comma splitting */
+      }
+    }
+    return trimmed
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean);

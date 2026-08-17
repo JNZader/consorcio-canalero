@@ -302,10 +302,12 @@ test.describe('Multi-Hazard — full operator flow', () => {
       );
 
       await expect(page.getByTestId('hazard-controls-desktop')).toBeVisible();
-      await expect(page.getByTestId('hazard-basin-select')).toHaveValue('candil');
+      // Mantine Select renders the selected label in the input's `value`
+      // attribute, not the raw option value.
+      await expect(page.getByTestId('hazard-basin-select')).toHaveValue('Cuenca Candil');
       await expect(page.getByTestId('hazard-risk-class-crítico')).not.toBeChecked();
       await expect(page.getByTestId('hazard-risk-class-bajo')).toBeChecked();
-      await expect(page.getByTestId('hazard-precip-month-select')).toHaveValue('03');
+      await expect(page.getByTestId('hazard-precip-month-select')).toHaveValue('Marzo');
 
       // Copy the absolute URL and open it in a brand-new page (same browser
       // context is enough to prove shareability; storage is clean on newPage).
@@ -316,9 +318,9 @@ test.describe('Multi-Hazard — full operator flow', () => {
       await freshPage.goto(url);
 
       await expect(freshPage.getByTestId('hazard-controls-desktop')).toBeVisible();
-      await expect(freshPage.getByTestId('hazard-basin-select')).toHaveValue('candil');
+      await expect(freshPage.getByTestId('hazard-basin-select')).toHaveValue('Cuenca Candil');
       await expect(freshPage.getByTestId('hazard-risk-class-crítico')).not.toBeChecked();
-      await expect(freshPage.getByTestId('hazard-precip-month-select')).toHaveValue('03');
+      await expect(freshPage.getByTestId('hazard-precip-month-select')).toHaveValue('Marzo');
     }
   );
 
