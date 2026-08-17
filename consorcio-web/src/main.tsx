@@ -8,7 +8,7 @@ import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { Notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { RouterProvider, createRouter } from '@tanstack/react-router';
+import { RouterProvider, createRouter, defaultStringifySearch } from '@tanstack/react-router';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import { type ReactNode, StrictMode, useEffect } from 'react';
@@ -43,9 +43,92 @@ import './styles/global.css';
 // Create the router instance
 const basepath = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
+const HAZARD_SEARCH_KEYS = new Set(['hazard', 'basin', 'riskClasses', 'layers', 'precipMonth']);
+
+function hasHazardSearchKeys(search: Record<string, unknown>): boolean {
+  return Object.keys(search).some((key) => HAZARD_SEARCH_KEYS.has(key));
+}
+
+/**
+ * Custom serializer for `/mapa` hazard-mode search params.
+ *
+ * TanStack Router's default serializer turns booleans into `true`/`false` and
+ * arrays into JSON strings (`["Bajo","Medio"]`), which breaks shareable URLs
+ * and the E2E assertions that expect `hazard=1` and repeated risk-class params.
+ * This serializer keeps the URL deterministic and human readable while
+ * delegating non-hazard routes to the default serializer.
+ */
+function appendHazardParam(params: URLSearchParams, value: unknown): void {
+  if (value === true || value === 1 || value === '1') {
+    params.set('hazard', '1');
+  }
+}
+
+function appendArrayParam(params: URLSearchParams, key: string, value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0) return;
+  for (const item of value) {
+    params.append(key, String(item));
+  }
+}
+
+function appendStringParam(
+  params: URLSearchParams,
+  key: string,
+  value: unknown,
+  defaultValue?: string,
+): void {
+  if (typeof value !== 'string') return;
+  const trimmed = value.trim();
+  if (trimmed === '') return;
+  if (defaultValue !== undefined && trimmed === defaultValue) return;
+  params.set(key, trimmed);
+}
+
+function stringifyHazardSearch(search: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(search)) {
+    if (value === undefined || value === null) continue;
+
+    switch (key) {
+      case 'hazard':
+        appendHazardParam(params, value);
+        break;
+      case 'basin':
+        appendStringParam(params, 'basin', value);
+        break;
+      case 'riskClasses':
+      case 'layers':
+        appendArrayParam(params, key, value);
+        break;
+      case 'precipMonth':
+        appendStringParam(params, 'precipMonth', value, 'anual');
+        break;
+      default:
+        if (Array.isArray(value)) {
+          appendArrayParam(params, key, value);
+        } else {
+          params.set(key, String(value));
+        }
+        break;
+    }
+  }
+
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function stringifySearch(search: Record<string, unknown>): string {
+  if (hasHazardSearchKeys(search)) {
+    return stringifyHazardSearch(search);
+  }
+  return defaultStringifySearch(search);
+}
+
 const router = createRouter({
   routeTree,
   basepath,
+  stringifySearch,
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 30_000,
 });
