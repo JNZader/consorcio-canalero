@@ -67,6 +67,16 @@
     // (analysis snapshot, series envelope), so it drifts from the contract in
     // exactly the same way — and Playwright never runs in CI, which left it
     // with no detector at all. Enrolled per the rule above (V-005/LI4-006).
-    "tests/e2e/rainfall-v2-detail.spec.ts"
+    "tests/e2e/rainfall-v2-detail.spec.ts",
+    // RMEH-003..013 harness (change `rainfall-multi-parcel-e2e-harness`): the
+    // pure Web Mercator/occlusion/click-policy helper + its Vitest unit tests.
+    // Enrolled here in the SAME commit that the harness Playwright config and
+    // the package.json `test:e2e:rainfall-harness` command land (W4.4) — a
+    // contract test that is not in this list is decorative in exactly the way
+    // LI3A-004 described (deleting the field it pins keeps every check green).
+    // The W7/W8 appended `test()` imports this helper, so the appended spec is
+    // covered transitively through the rainfall-v2-detail.spec.ts entry above.
+    "tests/e2e/helpers/rainfallMultiParcelHarness.ts",
+    "tests/unit/rainfallMultiParcelHarness.test.ts"
   ]
 }

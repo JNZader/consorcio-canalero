@@ -1,12 +1,13 @@
 /**
  * rainfallMultiParcelHarness.ts — pure helper for the rainfall multi-parcel
- * E2E harness (W2 of change `rainfall-multi-parcel-e2e-harness`).
+ * E2E harness (W2 + W6 of change `rainfall-multi-parcel-e2e-harness`).
  *
  * STRICTLY PURE: no Playwright, no `page`, no DOM side effects beyond the
  * `RectCss`/occlusion inputs the caller supplies. The Vitest layer (this file
  * + `tests/unit/rainfallMultiParcelHarness.test.ts`) pins the contracts; the
  * Playwright state-machine layer (W7/W8) imports these pure functions and feeds
- * them live `getBoundingClientRect()` rectangles and an occlusion snapshot.
+ * them live `getBoundingClientRect()` rectangles, an occlusion snapshot, and
+ * the intercepted request trace.
  *
  * Why projection is in CSS pixels from the live canvas rect (design JD-DES-001):
  *   `devicePixelRatio` and backing-store size are DIAGNOSTICS only. Projection,
@@ -20,12 +21,37 @@
  *   plain `canvas.click({ position })` with no `force`. Helper retries and
  *   Playwright test retries are both `0`; a missing/wrong ficha request or
  *   identity after the single click is FINAL — no second click rescues it.
+ *
+ * W6 — operator auth + distinct cache identity + silent-refresh bearer (D10):
+ *   The pure contracts below model the token lifecycle (seed -> optional
+ *   observed refresh -> rotated), the exact-bearer rule for every rainfall
+ *   request kind (scope/analysis/series/CSV/XLSX), and the fail-closed cache
+ *   isolation rules (RMEH-006, RMEH-013). The W7/W8 spec layer wires the actual
+ *   `page.route` handlers using these pure contracts; nothing here touches
+ *   Playwright or an application store, and no real credential ever enters.
  */
 
 // --------------------------------------------------------------------------- //
 // Types — strict, parsed from `unknown`; no `any`, no direct union
 // --------------------------------------------------------------------------- //
-import fixtureJsonDefault from '../fixtures/rainfall-multi-parcel.fixture.json';
+// The fixture is read at runtime (not via a static `.json` ESM import) because
+// Playwright's ESM loader rejects a bare `import x from '...json'` without a
+// `with { type: 'json' }` attribute, which older TS/`@playwright/test` combos
+// do not emit. `node:fs`/`node:path` are Node builtins — this helper stays free
+// of any Playwright or application-store import (STRICTLY PURE).
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const fixtureJsonDefault = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '../fixtures/rainfall-multi-parcel.fixture.json'
+    ),
+    'utf8'
+  )
+) as unknown;
 
 export const PARCEL_ALIAS = { A: 'A', B: 'B', C: 'C' } as const;
 export type ParcelAlias = (typeof PARCEL_ALIAS)[keyof typeof PARCEL_ALIAS];
@@ -417,7 +443,9 @@ export interface ParcelProjection {
 }
 
 function metresPerPixel(lat: number, zoom: number): number {
-  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
+  // TILE_SIZE_PX = 512: world = 512 * 2**zoom, so the z0 mpp is
+  // 40075016.686 / 512 = 78271.51696 (half the 256-tile constant).
+  return (78271.51696 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
 function metresToBoundaryM(point: LngLat, polygon: GeoJsonPolygon): number {
@@ -575,3 +603,530 @@ export function redactedConformanceFailure(c: Conformance): string {
 // Cameras export (re-exported from a validated fixture for default use)
 // --------------------------------------------------------------------------- //
 export const CAMERAS = validateFixture(fixtureJsonDefault).cameras;
+
+// --------------------------------------------------------------------------- //
+// W6 — operator auth + distinct cache identity + silent-refresh bearer (D10)
+// --------------------------------------------------------------------------- //
+// Pure contracts only. The W7/W8 spec layer wires `page.route` handlers from
+// these; no Playwright type or application-store import lives in this file.
+// --------------------------------------------------------------------------- //
+
+/** Token lifecycle: `seed token -> optional observed refresh -> rotated token`. */
+export interface TokenLifecycle {
+  seedToken: string;
+  rotatedToken: string;
+  refreshed: boolean;
+}
+
+export function makeTokenLifecycle(seedToken: string, rotatedToken: string): TokenLifecycle {
+  return { seedToken, rotatedToken, refreshed: false };
+}
+
+/** The token active for the current sequence: seed until a refresh is observed. */
+export function activeToken(lifecycle: TokenLifecycle): string {
+  return lifecycle.refreshed ? lifecycle.rotatedToken : lifecycle.seedToken;
+}
+
+/** Returns a NEW lifecycle with the refresh observed (immutable). */
+export function observeRefresh(lifecycle: TokenLifecycle): TokenLifecycle {
+  return { ...lifecycle, refreshed: true };
+}
+
+/** Deterministic silent-refresh route contract (one rotated synthetic token). */
+export function refreshRouteContract(lifecycle: TokenLifecycle): {
+  path: string;
+  status: number;
+  body: { access_token: string };
+} {
+  return {
+    path: '/auth/jwt/refresh',
+    status: 200,
+    body: { access_token: lifecycle.rotatedToken },
+  };
+}
+
+/** One observed rainfall request — the trace record the spec layer attaches. */
+export interface RainfallRequestRecord {
+  kind: 'scope-resolve' | 'analysis' | 'series' | 'csv' | 'xlsx';
+  method: 'GET' | 'POST';
+  url: string;
+  headers: Record<string, string>;
+}
+
+/**
+ * Classify a rainfall request from its method + URL into the five kinds the
+ * boundary owns (RMEH-006). Purely syntactic: no body inspection, no store.
+ */
+export function classifyRainfallRequest(
+  method: 'GET' | 'POST',
+  url: string,
+  headers: Record<string, string>,
+): RainfallRequestRecord {
+  let kind: RainfallRequestRecord['kind'];
+  if (method === 'POST' && url.includes('scopes:resolve')) {
+    kind = 'scope-resolve';
+  } else if (url.endsWith('.csv')) {
+    kind = 'csv';
+  } else if (url.endsWith('.xlsx')) {
+    kind = 'xlsx';
+  } else if (url.endsWith('/series')) {
+    kind = 'series';
+  } else {
+    kind = 'analysis';
+  }
+  return { kind, method, url, headers };
+}
+
+/**
+ * One selection record in the harness manifest — the exact shape the driver's
+ * gate reads back from `manifest.json` (`selection_records[]`; A2).
+ */
+export interface HarnessManifestRecord {
+  context: 'mobile' | 'desktop';
+  target: ParcelAlias;
+  attemptCount: number;
+  clickCount: number;
+  wheelProofsBeforeClick: number;
+  analysisSequence: number;
+}
+
+/**
+ * Write the selection-record manifest to `dirname(outputJsonPath)/manifest.json`
+ * in the shape the driver's gate expects: `{ selection_records: [...] }` (A2).
+ *
+ * The driver reads the manifest from the FILE, not from Playwright's JSON
+ * reporter attachment — so the spec must materialize it next to the reporter
+ * output (the config's `RMEH_PLAYWRIGHT_JSON`). Returns the manifest path.
+ */
+export function writeHarnessManifest(
+  records: readonly HarnessManifestRecord[],
+  outputJsonPath: string
+): string {
+  const manifestPath = join(dirname(outputJsonPath), 'manifest.json');
+  mkdirSync(dirname(manifestPath), { recursive: true });
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({ selection_records: records }, null, 2),
+    'utf8'
+  );
+  return manifestPath;
+}
+
+/**
+ * Exact-bearer rule (D10): the request MUST carry `Authorization: Bearer
+ * <activeToken>` and the token MUST NOT appear in the URL. Any other header
+ * (missing, stale, wrong scheme, bare token) or a URL credential fails closed.
+ */
+export function assertExactBearer(record: RainfallRequestRecord, token: string): void {
+  const auth = record.headers.authorization ?? record.headers.Authorization;
+  if (auth !== `Bearer ${token}`) {
+    throw new Error(
+      `rainfall ${record.kind} request must carry Authorization: Bearer <active synthetic token> (observed ${auth ?? '(missing)'})`,
+    );
+  }
+  if (record.url.includes(token)) {
+    throw new Error(`rainfall ${record.kind} token must never appear in the URL`);
+  }
+}
+
+/**
+ * Resolve a scope identity to exactly one fixture parcel. Unknown identity
+ * FAILS — there is no A fallback (RMEH-006-B, D10).
+ */
+export function resolveParcelByIdentity(
+  parcels: ParcelFixture[],
+  scopeId: string,
+): ParcelFixture {
+  const match = parcels.find((p) => p.rainfall.scopeId === scopeId);
+  if (!match) {
+    throw new Error(`unknown rainfall scope identity "${scopeId}" — no A fallback`);
+  }
+  return match;
+}
+
+/** The complete ready contract a parcel's analysis response must satisfy. */
+export interface ReadyRainfallContract {
+  scopeKind: 'zone' | 'basin';
+  scopeId: string;
+  scopeVersion: string;
+  effectiveCacheKey: string;
+  percentile: number;
+  accumulationMm: number;
+  analysisRevisionId: string;
+  dataRevision: string;
+  metricRevision: string;
+}
+
+/**
+ * Build the ready response contract for a parcel from its fixture facts.
+ * A non-ready parcel THROWS — queued/error states are never normalized into
+ * a ready answer (RMEH-006-B).
+ */
+export function readyResponseFor(parcel: ParcelFixture): ReadyRainfallContract {
+  const r = parcel.rainfall;
+  // `ready` is omitted from the committed fixture (absent = ready, matching
+  // `isRainfall`'s default); an EXPLICIT `false` is a non-ready fact.
+  const ready = r.ready === undefined ? true : r.ready;
+  if (!ready) {
+    throw new Error(
+      `parcel ${parcel.alias} rainfall is not ready — missing/queued/error facts must never be normalized into a ready answer`,
+    );
+  }
+  return {
+    scopeKind: r.scopeKind,
+    scopeId: r.scopeId,
+    scopeVersion: r.scopeVersion,
+    effectiveCacheKey: r.effectiveCacheKey,
+    percentile: r.percentile,
+    accumulationMm: r.accumulationMm,
+    analysisRevisionId: r.analysisRevisionId,
+    dataRevision: r.dataRevision,
+    metricRevision: r.metricRevision,
+  };
+}
+
+/**
+ * All five semantic dimensions of a ready answer must match the TARGET parcel:
+ * scope identity, percentile, accumulation, and the analysis+data+metric
+ * revision triple. Any stale/aliased/unknown value fails closed (RMEH-006-C,
+ * RMEH-013-B).
+ */
+export function assertResponseMatchesTarget(
+  response: ReadyRainfallContract,
+  target: ParcelFixture,
+): void {
+  const want = readyResponseFor(target);
+  const dims: Array<[string, unknown, unknown]> = [
+    ['scopeKind', response.scopeKind, want.scopeKind],
+    ['scopeId', response.scopeId, want.scopeId],
+    ['scopeVersion', response.scopeVersion, want.scopeVersion],
+    ['effectiveCacheKey', response.effectiveCacheKey, want.effectiveCacheKey],
+    ['percentile', response.percentile, want.percentile],
+    ['accumulationMm', response.accumulationMm, want.accumulationMm],
+    ['analysisRevisionId', response.analysisRevisionId, want.analysisRevisionId],
+    ['dataRevision', response.dataRevision, want.dataRevision],
+    ['metricRevision', response.metricRevision, want.metricRevision],
+  ];
+  const mismatched = dims.filter(([, observed, expected]) => observed !== expected);
+  if (mismatched.length > 0) {
+    throw new Error(
+      `stale or aliased facts for target ${target.alias}: ${mismatched
+        .map(([name, observed, expected]) => `${name}=${String(observed)} (expected ${String(expected)})`)
+        .join(', ')}`,
+    );
+  }
+}
+
+/**
+ * Pairwise distinct effective cache keys (RMEH-013-A/C). Any two parcels
+ * sharing a key fail closed naming the aliased identities.
+ */
+export function assertCacheKeysDistinct(parcels: ParcelFixture[]): void {
+  const seen = new Map<string, ParcelAlias>();
+  for (const p of parcels) {
+    const key = p.rainfall.effectiveCacheKey;
+    const prior = seen.get(key);
+    if (prior !== undefined) {
+      throw new Error(
+        `cache aliasing: parcels ${prior} and ${p.alias} share effectiveCacheKey "${key}"`,
+      );
+    }
+    seen.set(key, p.alias);
+  }
+}
+
+/**
+ * Freshness gate for a transition: the observed response must be the TARGET's
+ * own ready contract and its cache key must map back to the target — one parcel
+ * receiving another parcel's cached response fails closed (RMEH-013-B/C).
+ */
+export function assertFreshResponse(
+  observed: ReadyRainfallContract,
+  target: ParcelFixture,
+  parcels: ParcelFixture[],
+): void {
+  const owner = parcels.find((p) => p.rainfall.effectiveCacheKey === observed.effectiveCacheKey);
+  if (!owner) {
+    throw new Error(
+      `response cache key "${observed.effectiveCacheKey}" matches no fixture parcel (aliased or unknown cache)`,
+    );
+  }
+  if (owner.alias !== target.alias) {
+    throw new Error(
+      `stale/aliased cached response: observed ${owner.alias} facts served as ${target.alias} (cache key "${observed.effectiveCacheKey}")`,
+    );
+  }
+  assertResponseMatchesTarget(observed, target);
+}
+
+// --------------------------------------------------------------------------- //
+// W7.1–W7.3 — mobile A→B→C→A state machine contracts (RMEH-007, RMEH-005)
+// --------------------------------------------------------------------------- //
+
+/**
+ * The exact scope sentence the app renders for a parcel's resolved scope
+ * ("la zona Rmeh A"): kind label + prettified id. The e2e oracle reproduces
+ * the app's prettification rule (tokens split on separators, a leading token
+ * that merely repeats the kind dropped, the rest capitalized) so a drift in
+ * the presentation rule fails the journey instead of silently passing it.
+ */
+export function scopeSentenceFor(parcel: ParcelFixture): string {
+  const kind = parcel.rainfall.scopeKind;
+  const id = parcel.rainfall.scopeId.split(':')[1] ?? parcel.rainfall.scopeId;
+  const kindLabel = kind === 'zone' ? 'Zona' : 'Cuenca';
+  const tokens = id
+    .split(/[\s_-]+/)
+    .filter((token) => token.length > 0)
+    .map((token) => `${token.charAt(0).toUpperCase()}${token.slice(1)}`);
+  const kindTokens = kind === 'zone' ? ['zona', 'zone'] : ['cuenca', 'basin'];
+  const qualifier = tokens
+    .filter((token, index) => index > 0 || !kindTokens.includes(token.toLowerCase()))
+    .join(' ');
+  const label = qualifier.length > 0 ? `${kindLabel} · ${qualifier}` : kindLabel;
+  const [kindWord, ...rest] = label.split(' · ');
+  return rest.length > 0 ? `la ${(kindWord ?? kindLabel).toLowerCase()} ${rest.join(' ')}` : `la ${(kindWord ?? kindLabel).toLowerCase()}`;
+}
+
+/**
+ * What the ficha must show for a target parcel AFTER the user plain-clicks it
+ * on the canvas and activates Lluvia once. Pure evidence — the spec collects
+ * it from the DOM + request trace, this function decides.
+ */
+export interface TargetReadyEvidence {
+  /** Which parcel this transition is supposed to have landed on. */
+  targetAlias: ParcelAlias;
+  /** The Lluvia tab must remain the selected tab. */
+  lluviaSelected: boolean;
+  /** Parcel identity shown by the ficha (nomenclature-based display). */
+  renderedIdentity: string;
+  /** Scope sentence shown on the answer card (derived, NOT the raw scopeId). */
+  renderedScopeSentence: string;
+  renderedPercentile: number;
+  renderedAccumulationMm: number;
+  /** Metric revision from the (expanded) technical fold. */
+  renderedMetricRevision: string;
+  /** Latest observed rainfall trace identities — must all belong to the target. */
+  traces: {
+    scopeNomenclature: string;
+    analysisCacheKey: string;
+    seriesScopeId: string;
+  };
+  /** Sequence number of the latest analysis RESPONSE (recorder counter). */
+  analysisSequence: number;
+  /** Prior target's rendered values (null on the first transition). */
+  previous: {
+    renderedPercentile: number;
+    renderedAccumulationMm: number;
+    renderedMetricRevision: string;
+    analysisSequence: number;
+  } | null;
+  activeToken: string;
+  /** Authorization header observed on the current analysis request. */
+  authHeader: string;
+  /** The synthetic token must never appear in any request URL. */
+  tokenInUrl: boolean;
+}
+
+/**
+ * Shared READY gate for every A→B→C→A transition (RMEH-007-A):
+ * Lluvia stays selected, the ficha identity/scope/percentile/accumulation/
+ * revision all belong to the TARGET, every trace belongs to the target, the
+ * bearer is exactly the active synthetic token (and never in the URL), and no
+ * previous-only value remains current. Any deviation fails closed.
+ */
+export function assertTargetReady(evidence: TargetReadyEvidence, target: ParcelFixture): void {
+  if (!evidence.lluviaSelected) {
+    throw new Error(`Lluvia tab must remain selected for target ${target.alias}`);
+  }
+  if (evidence.renderedIdentity !== target.nomenclature) {
+    throw new Error(
+      `ficha identity "${evidence.renderedIdentity}" does not match target ${target.alias} (${target.nomenclature})`,
+    );
+  }
+  if (evidence.renderedScopeSentence !== scopeSentenceFor(target)) {
+    throw new Error(
+      `scope sentence "${evidence.renderedScopeSentence}" does not match target ${target.alias} (expected "${scopeSentenceFor(target)}")`,
+    );
+  }
+  if (evidence.renderedPercentile !== target.rainfall.percentile) {
+    throw new Error(
+      `rendered percentile ${evidence.renderedPercentile} is not target ${target.alias} (${target.rainfall.percentile})`,
+    );
+  }
+  if (evidence.renderedAccumulationMm !== target.rainfall.accumulationMm) {
+    throw new Error(
+      `rendered accumulation ${evidence.renderedAccumulationMm} is not target ${target.alias} (${target.rainfall.accumulationMm})`,
+    );
+  }
+  if (evidence.renderedMetricRevision !== target.rainfall.metricRevision) {
+    throw new Error(
+      `rendered metric revision "${evidence.renderedMetricRevision}" is not target ${target.alias} (${target.rainfall.metricRevision})`,
+    );
+  }
+  const wantTraceKey = target.rainfall.effectiveCacheKey;
+  if (evidence.traces.analysisCacheKey !== wantTraceKey) {
+    throw new Error(
+      `analysis trace cache key "${evidence.traces.analysisCacheKey}" does not belong to target ${target.alias} (${wantTraceKey})`,
+    );
+  }
+  if (evidence.traces.scopeNomenclature !== target.nomenclature) {
+    throw new Error(
+      `scope-resolve trace resolved "${evidence.traces.scopeNomenclature}" instead of target ${target.alias} (${target.nomenclature})`,
+    );
+  }
+  if (evidence.traces.seriesScopeId !== target.rainfall.scopeId) {
+    throw new Error(
+      `series trace scope "${evidence.traces.seriesScopeId}" does not belong to target ${target.alias}`,
+    );
+  }
+  const expectedAuth = `Bearer ${evidence.activeToken}`;
+  if (evidence.authHeader !== expectedAuth) {
+    throw new Error(
+      `rainfall requests must carry Authorization: Bearer <active synthetic token> (observed ${evidence.authHeader ?? '(missing)'})`,
+    );
+  }
+  if (evidence.tokenInUrl) {
+    throw new Error('synthetic token must never appear in a request URL');
+  }
+  if (evidence.previous) {
+    const stale = [
+      ['percentile', evidence.renderedPercentile, evidence.previous.renderedPercentile],
+      ['accumulationMm', evidence.renderedAccumulationMm, evidence.previous.renderedAccumulationMm],
+      ['metricRevision', evidence.renderedMetricRevision, evidence.previous.renderedMetricRevision],
+    ].filter(([, current, prior]) => current === prior) as Array<[string, number | string, number | string]>;
+    if (stale.length > 0) {
+      throw new Error(
+        `previous target value(s) remained current after transition: ${stale
+          .map(([name, current]) => `${name}=${String(current)}`)
+          .join(', ')}`,
+      );
+    }
+    if (evidence.analysisSequence <= evidence.previous.analysisSequence) {
+      throw new Error(
+        `ready response sequence ${evidence.analysisSequence} must be newer than the previous target's (${evidence.previous.analysisSequence}) — stale cached response`,
+      );
+    }
+  }
+}
+
+/**
+ * Proof that the sheet body really scrolls via the wheel: the content range
+ * (scrollHeight − clientHeight) is positive, the helper drove exactly that
+ * delta as the wheel event, and after the wheel the scrollTop is non-zero.
+ * A zero range (nothing to scroll), a wheel that did not move, or a delta that
+ * is not the range (e.g. direct scrollTop assignment) all fail closed.
+ */
+export interface ScrollWheelProof {
+  /** scrollHeight − clientHeight, sampled before the wheel. */
+  range: number;
+  /** The wheel delta the driver used — must equal the range. */
+  intendedDelta: number;
+  beforeScrollTop: number;
+  afterWheelScrollTop: number;
+}
+
+export function assertScrollRangeAndWheelProof(proof: ScrollWheelProof): void {
+  if (proof.range <= 0) {
+    throw new Error(
+      `sheet body must overflow its visible box (scrollHeight − clientHeight = ${proof.range})`,
+    );
+  }
+  if (proof.intendedDelta !== proof.range) {
+    throw new Error(
+      `wheel delta ${proof.intendedDelta} must equal the measured range ${proof.range} (a direct scrollTop assignment is not a wheel proof)`,
+    );
+  }
+  if (proof.afterWheelScrollTop <= 0) {
+    throw new Error(
+      `wheel must move the sheet body (afterWheelScrollTop=${proof.afterWheelScrollTop}, beforeScrollTop=${proof.beforeScrollTop})`,
+    );
+  }
+  if (proof.afterWheelScrollTop <= proof.beforeScrollTop) {
+    throw new Error(
+      `wheel must scroll forward (afterWheelScrollTop=${proof.afterWheelScrollTop} must exceed beforeScrollTop=${proof.beforeScrollTop})`,
+    );
+  }
+}
+
+/**
+ * The rendered answer card must stay fully inside the visible sheet body
+ * (mobile geometry, RMEH-007-B). Tolerance is 1 CSS px: the card is measured
+ * with the browser's fractional rounding.
+ */
+export function assertCardContained(card: RectCss, body: RectCss, tolerancePx = 1): void {
+  const eps = tolerancePx;
+  const overflows =
+    card.left < body.left - eps ||
+    card.top < body.top - eps ||
+    card.left + card.width > body.left + body.width + eps ||
+    card.top + card.height > body.top + body.height + eps;
+  if (overflows) {
+    throw new Error(
+      `answer card ${JSON.stringify(card)} is not contained in the visible sheet body ${JSON.stringify(body)} (±${eps} CSS px)`,
+    );
+  }
+}
+
+/** Mobile transition gate: READY + sheet at medio + scrollTop reset + containment. */
+export interface MobileReadyEvidence extends TargetReadyEvidence {
+  /** Sheet stage after the transition — the ficha opens at 'medio'. */
+  stage: 'peek' | 'medio' | 'alto';
+  /** The sheet body must return to the top on a NEW selection. */
+  scrollTopAfter: number;
+  cardBox: RectCss;
+  bodyBox: RectCss;
+}
+
+export function assertMobileReady(evidence: MobileReadyEvidence, target: ParcelFixture): void {
+  assertTargetReady(evidence, target);
+  if (evidence.stage !== 'medio') {
+    throw new Error(
+      `ficha must open at stage=medio for a fresh selection (observed ${evidence.stage})`,
+    );
+  }
+  if (evidence.scrollTopAfter !== 0) {
+    throw new Error(
+      `sheet body must return to the top on a new selection (scrollTop=${evidence.scrollTopAfter})`,
+    );
+  }
+  assertCardContained(evidence.cardBox, evidence.bodyBox);
+}
+
+// --------------------------------------------------------------------------- //
+// W8.2 — desktop focus continuity contracts (RMEH-008-B)
+// --------------------------------------------------------------------------- //
+
+/**
+ * Desktop focus must stay with the map interaction surface across every
+ * transition: body, the map canvas, or a visible map-interaction ancestor.
+ * Any hidden/inert/disabled/mobile-only/unrelated element or one outside the
+ * viewport fails closed (RMEH-008-B).
+ */
+export interface DesktopFocusSnapshot {
+  tagName: string;
+  isBody: boolean;
+  isCanvas: boolean;
+  isMapInteractionAncestor: boolean;
+  intersectsViewport: boolean;
+  hidden: boolean;
+  inert: boolean;
+  disabled: boolean;
+  mobileOnly: boolean;
+}
+
+export function assertDesktopFocusStable(snapshot: DesktopFocusSnapshot): void {
+  const allowed = snapshot.isBody || snapshot.isCanvas || snapshot.isMapInteractionAncestor;
+  if (!allowed) {
+    throw new Error(
+      `focus must be body, the map canvas, or a visible map-interaction ancestor (observed ${snapshot.tagName})`,
+    );
+  }
+  if (snapshot.hidden || snapshot.inert || snapshot.disabled || snapshot.mobileOnly) {
+    throw new Error(
+      `focus must not be hidden/inert/disabled/mobile-only (observed ${snapshot.tagName})`,
+    );
+  }
+  if (!snapshot.intersectsViewport) {
+    throw new Error(`focus element ${snapshot.tagName} must intersect the viewport`);
+  }
+}

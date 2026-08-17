@@ -369,3 +369,446 @@ execution seam after the 2,400 non-production cap was exceeded at 2,990 lines
 - **PR2 boundary:** W4 → W11. ~2,700 additional lines at current density.
   Starts with Compose/Martin config and ends with the 11/0/0 browser gate and
   runbook/JDA handoff. Next session.
+
+## Batch 4 — W5 (this session): idempotent bootstrap integration, real-stack proven
+
+### What
+
+W5 core (tasks 5.1/5.3/5.4/5.5/5.6) implemented in the new
+`scripts/rainfall_e2e_harness/bootstrap.py` (800 lines) + integration seam
+extensions, validated TWICE against a real disposable owned Docker stack.
+
+### GREEN evidence (real stack, ports 8101/3002/5175 to dodge the dev stack on 8001)
+
+| | command | result |
+|---|---|---|
+| Unit suite | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **89 passed** |
+| Real-stack integration | `RMEH_INTEGRATION=1 RMEH_RUN_ID_PREFIX=integtest RMEH_BACKEND_HOST_PORT=8101 RMEH_MARTIN_HOST_PORT=3002 RMEH_FRONTEND_HOST_PORT=5175 python3 -m pytest scripts/tests/test_rainfall_e2e_integration.py -v` | **2 passed** — `test_bootstrap_twice_same_owned_db_is_stable` + `test_services_stable_after_second_pass` |
+
+Two passes against the SAME owned DB: `action=recreate rebuilt=False soil_rows=1 srid=4326 digest=4ad8aee9b2a6` on both — byte/cardinality stable. Services: `tile=(A,B,C) ficha=(A,B,C) martin=True live=True frontend=True`. Teardown `down -v --remove-orphans`; no `rmeh-*` containers/volumes left.
+
+### Root causes found and fixed by the real-stack probe (unit layer could not catch these)
+
+1. **`psql -c` does no `%s` substitution** — `inspect_relation` passed the relation name as a trailing argv; psql ignored it and sent literal `%s` (`extra command-line argument ignored`). FIX: inline the fixed internal name into the SQL.
+2. **Seed TRUNCATE FK failure** — `TRUNCATE parcelas_catastro, suelos_catastro, zonas_operativas` failed because migration-owned `indices_hidricos` FK-references `zonas_operativas`. FIX: `TRUNCATE ... CASCADE` (safe: whole seed is one transaction that fully re-populates the run-owned tables). ALSO: the seed exit code was unchecked → silent no-op; now raises `BootstrapPrerequisiteFailure` on non-zero.
+3. **Missing semicolon in `PARCEL_VIEW_DDL`** (`WITH DATA` + concatenated COMMENT = one broken statement) → CREATE MATERIALIZED VIEW failed silently (exit code unchecked). FIX: semicolon + exit-code checks on ALL parcel/soil view mutations.
+4. **Postgres uid-999 init-script readability** — entrypoint `exec gosu postgres` (uid 999) before init files; host-0600 unreadable. FIX (deviation): mode 0644, synthetic marker only; real password stays in mode-0600 temp env (design §Secrets); documented in compose + `write_init_script` docstring.
+5. **`role "root" does not exist`** — `docker compose exec db psql` runs as OS root; psql defaults role to root. FIX: explicit `-U rmeh_user -d <database_name>` threaded through every psql command.
+6. **Martin v0.14.2 catalog shape** is `{"tiles": {...}}`, not `{"tables": ...}`; tile route is `/{source}/{z}/{x}/{y}` (NO `.pbf` suffix — that's the 404 "can not parse 9758.pbf"). Tile bodies are binary protobuf → probe uses `-o /dev/null`.
+7. **Martin boots before the view exists** on a fresh stack → empty catalog. FIX: ONE bounded martin restart in `validate_services` (mirrors the one bounded DB rebuild) + `restart: on-failure` in compose for the transient Docker DNS race (`failed to lookup address information`).
+
+### Files
+
+- `scripts/rainfall_e2e_harness/bootstrap.py` (new, 800) — `bootstrap_database`, `validate_services`, seed, provenance gates, `tile_xyz`, `_catalog_sources`.
+- `scripts/rainfall_e2e_harness/safety.py` — `RealCommandRunner`, `render_init_script`/`write_init_script`, compose-aware `apply_migrations`, JSON marker query with `-U rmeh_user -d`.
+- `scripts/tests/test_rainfall_e2e_integration.py` (new, 172) — self-provisioning real-stack fixture (env-aware ports), 2 tests.
+- `scripts/tests/probe_rainfall_bootstrap.py` (new, 141) — one-off real-stack diagnostic probe (not part of the suite).
+- `scripts/tests/rainfall-e2e.compose.yml` — init-script bind mount, martin config path fix (`./fixtures/`), `restart: on-failure`.
+- `scripts/pytest.ini` — `integration` marker.
+- `.gitignore` — `scripts/tests/rmeh-init-*.sql` + `.artifacts/` (generated, never committed).
+- `scripts/tests/test_rainfall_e2e_harness.py` — 20 new unit tests (89 total).
+
+### Boundary
+
+- Production = 0 (`consorcio-web/src/**` untouched this session).
+- No `version.json` staged; generated init scripts deleted + gitignored; `.artifacts/` gitignored.
+- Docker cleanup verified: no `rmeh-*` containers/volumes after the integration run.
+
+### Budget
+
+W5 delta ≈ 1,778 non-production lines (665 tracked diff + 1,113 new: bootstrap.py 800, integration 172, probe 141). W4 658 + W5 1,778 = 2,436 — the PR2 ~2,700 forecast is nearly exhausted before W6; W6–W11 (~1,078 forecast) will exceed it. Flagging for the owner at the next checkpoint; no scope cut attempted (contracts RMEH-002/003/006 mandate the surface).
+
+### Open for next session
+
+- 5.2/5.7 real-stack negatives (migration-owned incompatible `vt_parcelas_catastro` → one rebuild then explicit abort; missing/incompatible `mv_suelos_por_zona` → migration-only repair; Martin empty/204 → abort). Unit-covered today.
+- W7/W8 (append ONE test(), 11 total), W9 (collection gate), W10 (workflow), W11 (handoff/runbook).
+
+## Batch 5 — W6 (this session): distinct cache identity + exact silent-refresh bearer
+
+### What
+
+W6 (tasks 6.1/6.2/6.3) added the pure auth/cache contracts to
+`consorcio-web/tests/e2e/helpers/rainfallMultiParcelHarness.ts` — the design's
+"ready-response router + request trace" responsibility. Per the strict-pure
+contract of the helper (no Playwright types, no `page`), the `page.route`
+wiring itself is deferred to W7/W8, which will import these pure contracts.
+
+### GREEN evidence
+
+| | command | result |
+|---|---|---|
+| Unit (new W6) | `pnpm exec vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **46 passed** (31 W2 + 9 W6.2 + 5 W6.3 + 1 W6.2 trace) |
+| Full unit | `pnpm exec vitest run tests/unit/` | **2,679 passed / 168 files** (no regressions) |
+| Types | `pnpm exec tsc -p tsconfig.tests.json --noEmit` | **0 errors** (was 6 pre-existing W2.3 errors — fixed, making the recorded W4 acceptance real) |
+
+### Contracts added (pure, all in the helper)
+
+- `TokenLifecycle` (`makeTokenLifecycle`/`activeToken`/`observeRefresh`) — the
+  D10 lifecycle `seed token -> optional observed refresh -> rotated token`,
+  immutable refresh (original lifecycle still holds the seed).
+- `refreshRouteContract` — deterministic one rotated synthetic token for
+  `/auth/jwt/refresh`, matching the existing spec seam's `access_token` shape.
+- `classifyRainfallRequest(method, url, headers)` — one observed trace record;
+  five kinds: `scope-resolve` / `analysis` / `series` / `csv` / `xlsx`
+  (syntactic: POST+scopes:resolve, `.csv`, `.xlsx`, `/series`, else analysis).
+- `assertExactBearer` — exact `Authorization: Bearer <active token>`; missing /
+  wrong scheme / stale-after-refresh / URL-embedded token all fail closed.
+- `resolveParcelByIdentity` — unknown scope identity FAILS, no A fallback.
+- `readyResponseFor` — complete ready contract from fixture facts; non-ready
+  (explicit `ready:false`) throws — queued/error never normalized into ready.
+  NOTE: the committed fixture omits `ready` (absent = ready, matching
+  `isRainfall`'s default); only an EXPLICIT `false` is non-ready.
+- `assertResponseMatchesTarget` — all five semantic dimensions (scope identity,
+  percentile, accumulation, analysis+data+metric revision) must match the
+  target; stale/aliased values named in the failure.
+- `assertCacheKeysDistinct` — pairwise distinct `effectiveCacheKey`, naming the
+  aliased aliases on collision (RMEH-013-A/C).
+- `assertFreshResponse` — the observed response's cache key must map back to
+  the TARGET parcel; one parcel receiving another's cached response fails
+  closed (RMEH-013-B/C).
+
+### Fixes to pre-existing surface
+
+- The 6 W2.3 projection tests passed bare `{lat,lng,zoom}` camera literals to
+  `computeProjection`, which types its argument as `Camera` (requires
+  `viewport`). `tsc -p tsconfig.tests.json --noEmit` had 6 errors on the
+  COMMITTED W5 state even though the W4 acceptance was recorded green. Fixed
+  mechanically: each call site now passes a full `Camera` matching its rect.
+  Zero behavior change (46 tests still green).
+
+### Budget / cap
+
+- Helper F2: 576 → 805 lines (+229). The design cap says split a second pure
+  module if F2 > 300; the Batch 2 escalation already documented that F2 is
+  ~2× forecast because the forecast undersized the RMEH-003/004/005/006/013
+  surface (26 exports). W6 adds the D10 auth/cache contracts to the same pure
+  module; splitting them out would fragment the single pure import surface the
+  W7/W8 spec consumes. Consistent with Batch 2: documented escalation, not a
+  silent exceed. Unit test 423 → 616 lines.
+- Cumulative: W4 658 + W5 1,778 + W6 ~434 (helper 229 + test 193 + docs) ≈
+  2,870 — past the PR2 ~2,700 forecast; W7–W11 (~850 remaining forecast) will
+  exceed. Flagging for the owner at the next checkpoint; no scope cut
+  attempted.
+
+### Boundary
+
+- Production = 0 (`consorcio-web/src/**` untouched this session).
+- No version.json staged; no docker activity this session.
+- `tsconfig.tests.json` enrolment already covers the helper + unit test (W4);
+  no new files, no new enrolments.
+
+## Batch 6 — W7/W8 (this session): A→B→C→A journey spec wired, collection gate met
+
+### What
+Appended the ONE W7.4/W8 `test()` (A→B→C→A, both form factors) to
+`rainfall-v2-detail.spec.ts` plus the module-level fixture-aware router and
+journey driver it needs. The 10 pre-existing tests stay byte-identical; the
+new `test()` drives mobile (390×844) and desktop (1280×720) contexts with a
+single plain click per parcel.
+
+### Spec wiring added (module-level, in the spec file — the `page.route` layer)
+
+- `fixtureMetric` / `fixtureReadyBody` / `fixtureSeriesBody` — per-parcel ready
+  snapshot + series built from fixture facts (percentile/accumulation/revisions)
+  with `available_through` set so freshness is 'evidenced' and the annual cut
+  reads `Acumulado hasta el {day}`.
+- `registerFixtureRainfallRouter(page, fixture)` — fixture-AWARE router:
+  `scopes:resolve` → single `{kind:'scope'}` by nomenclature (unknown fails
+  closed); `analyses` → resolve by scopeId, increment `analysisSequence`,
+  record `latest` cache-key/scope/series/auth trace; `series` → by
+  `analysisRevisionId` with same `data_revision`+scope; csv/xlsx → minimal
+  non-blocking bodies. Also observes the ficha POST body (design line 397) via
+  `page.on('request')` for `/api/v2/geo/analisis-zona`.
+- `waitForTargetAnalysis` — polls ≤15s for `latest.analysisCacheKey === target`
+  AND sequence strictly newer than the previous transition (RMEH-013-C). On the
+  local fixture router the 60s analysis cache can serve a repeat selection
+  without a new request, so A2 may legitimately fail closed here — exercised
+  for real on the owned stack at W9. Gate NOT weakened.
+- `readMetricRevision` — expand `rainfall-technical-header`, read
+  `Revisión: (\S+)` from `rainfall-provenance-shared`, collapse again (so
+  geometry stays collapsed for the mobile containment measurement).
+- `collectReadyEvidence` — reads the DOM (ficha identity, scope sentence,
+  headline percentile, accumulation regex, Lluvia active) + trace + active
+  token into the pure `TargetReadyEvidence` shape.
+- `runContextJourney` — drives A→B→C→A per context: mobile wheel proof before
+  each next click (via `assertScrollRangeAndWheelProof`), `projectParcel`
+  → single `canvas.click({position})`, desktop focus snapshot after each click
+  (`assertDesktopFocusStable`), `waitForTargetAnalysis`, mobile stage/scroll/
+  containment (`assertMobileReady`) vs desktop `assertTargetReady`, and records
+  the 8-row manifest (4 mobile + 4 desktop, attemptCount/clickCount = 1).
+- The single `test(...)` creates two `browser.newContext()` with EXPLICIT
+  viewports (config `use` is not inherited by `newContext`), seeds auth +
+  silent-refresh via the same seam, navigates by the fixture camera
+  (`?lat&lng&zoom`), gates on a catastro tile response + `skipForMissingData`,
+  and asserts `manifest).toHaveLength(8)` + every record one attempt/one click,
+  attaching `manifest.json`.
+
+### Fix applied this session (collection blocker)
+The static `import x from '...fixture.json'` broke Playwright's ESM loader at
+collection (`Module needs an import attribute of "type: json"`). Both the spec
+and the helper now read the fixture at runtime via `node:fs`/`node:path`/
+`node:url` (`import.meta.url`) instead of a bare `.json` static import — Node
+builtins only, the helper stays free of Playwright/application imports. Vitest
+and tsc are unaffected.
+
+### GREEN evidence
+| Check | Command | Result |
+|---|---|---|
+| Types | `npx tsc -p tsconfig.tests.json` | **0 errors** |
+| Unit | `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **67 passed** (unchanged) |
+| Collection | `npx playwright test -c tests/e2e/playwright.rainfall-harness.config.ts --list` | **11 tests** (was 10; +1 EXACTLY) |
+| Byte-identical | `git diff HEAD -- ...spec.ts | grep '^-'` | **zero deletions** — the 10 existing tests are untouched |
+
+### Decision recorded (A2 freshness, re-verified)
+`useRainfallScopes` (5-min staleTime) + `useRainfallAnalysis` (60s) + no
+`invalidateQueries` anywhere + `RainfallDetailPanel` staying mounted means a
+repeat A selection on a fixture-router journey (<60s) is served from cache with
+NO new request, so the RMEH-013-C sequence gate fails closed locally. That is
+the DESIGNED behavior (fail-closed, never weakened). On the owned real stack at
+W9, A1 queues (202, poll every 5s), so A2's cache is stale → refetch → gate
+passes. Documented, accepted risk; verify at W9.
+
+### Budget / cap
+- Spec +638 lines (helpers ~470 + test ~168); helper 805 → 1,080 lines (+275).
+- Cumulative ≈ 2,953 (W4 658 + W5 1,778 + W6 ~434 + W7/W8 ~1,080) vs the ~2,700
+  forecast and the ~4,000 non-production cap for W5–W11 — within cap, past the
+  original forecast. Consistent with prior batches: documented escalation, no
+  scope cut. Helper stays in the single pure module (no split) per the W6
+  precedent and the single-import-surface rationale.
+
+### Boundary
+- Production = 0 (`consorcio-web/src/**` untouched this session).
+- `version.json` restored after commit; no docker activity this session.
+- No new files; `tsconfig.tests.json` already enrolled the spec + helper.
+
+## Batch 7 — W10 + W11 (this session): runner driver CLI, optional manual workflow, runbook + JDA-001 handoff + rollback proof
+
+### What
+Completed the execution half of PR2 (W10 + W11), adding the runner driver CLI
+that W10.3's "idempotent cleanup command", the workflow's "same Python runner",
+and the runbook's "one command" all reference, plus the operator workflow,
+contract test, runbook, and handoff/rollback evidence.
+
+### W10 — optional `workflow_dispatch`
+
+- **10.1** `.github/workflows/rainfall-multi-parcel-e2e.yml` (new): `workflow_dispatch`
+  only; `permissions: { contents: read }`; ONE global concurrency group
+  `cancel-in-progress: false` (dispatches serialize, never cancel an older
+  cleanup); 45-min job timeout; setup-python@v5 (3.11) + setup-node@v4 (Node 22)
+  + lockfile `npm ci` + locked Chromium; runs the SAME Python runner as local
+  (`python3 -m scripts.rainfall_e2e_harness run`); no secrets; `if: always()`
+  artifact upload (14-day retention, `if-no-files-found: error`) + explicit
+  idempotent `cleanup --run-id gha` step.
+- **10.2** Contract test
+  `test_rainfall_harness_workflow_stays_optional_and_unreferenced` in
+  `gee-backend/tests/test_ci_workflow_contracts.py`: asserts the workflow is
+  `workflow_dispatch`-only, NOT referenced by `frontend.yml`/`backend.yml`/
+  `deploy.yml`/`e2e-canary.yml`, NOT in the canary three-spec allowlist, and
+  carries serialized concurrency + 45-min timeout + 14-day artifact retention
+  + `if-no-files-found: error`.
+- **10.3** `if: always()` upload with `if-no-files-found: error` + explicit
+  cleanup step calling the runner's idempotent `cleanup` subcommand.
+
+### Runner driver CLI (critical gap — required by W10/W11)
+
+The probe docstring and design reference "the W11 runner driver" / "the runner's
+idempotent cleanup command", but no CLI existed. Added:
+
+- `scripts/rainfall_e2e_harness/driver.py` (new) — `run_driver` (one owned
+  lifecycle: identity → lease → collision gate → compose up → marker gate →
+  bootstrap → preflight → validate services → collection gate → playwright run
+  → result gate → manifest + `jda-001-handoff.json` ONLY on PASSED → teardown)
+  and `run_cleanup` (idempotent teardown by exact lease identity). Pure/testable
+  via injected `CommandRunner`; `ROLLBACK_ARTIFACTS` (13) + `ROLLBACK_ENROLMENTS`
+  (2) + `PARENT_LEDGER_PATH` constants.
+- `scripts/rainfall_e2e_harness/__main__.py` (new) — `python -m
+  scripts.rainfall_e2e_harness {run,cleanup}` entry point, the same runner the
+  workflow + runbook invoke.
+
+### W11 — runbook + handoff + rollback proof
+
+- **11.1** `build_handoff` emits `jda-001-handoff.json` ONLY on a complete pass:
+  source change, fixture/evidence digests, exact 11/0/0, transition refs,
+  `parent_record_mutated: false`, proposed separate JDA-001 transaction.
+- **11.2** Parent-boundary tests: runner/rollback surface is disjoint from
+  `openspec/changes/lluvia-ux-tarjeta/review-ledger.md`; `PRODUCT_ASSERTION_FAILURE`
+  requests a separate remediation; evidence dir confined to `.artifacts/`.
+- **11.3** Rollback proof: exactly 13 artifacts + 2 enrolments; cleanup uses
+  exact lease identity (never prefix/DB-token/global-prune) and is idempotent
+  when resources are already gone.
+- **11.4** `docs/testing/rainfall-multi-parcel-e2e.md` (new): prerequisites, one
+  command, statuses (PASSED + six failure classes), evidence layout, cleanup
+  contract, JDA-001 boundary, rollback procedure, "not a required CI check".
+
+### GREEN evidence
+
+| | command | result |
+|---|---|---|
+| W11 unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py -q` | **105 passed** (95 prior + 10 W11) |
+| W10.2 | `python3 -m pytest gee-backend/tests/test_ci_workflow_contracts.py -q` | **44 passed** (43 prior + 1 W10.2) |
+| Full Python unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **123 passed** |
+| Driver CLI | `python3 -m scripts.rainfall_e2e_harness --help` / `cleanup --help` | parses |
+| Workflow YAML | `python3 -c "import yaml; yaml.safe_load(open(...))"` | valid |
+| Lint | `ruff check --select E4,E7,E9,F` + `ruff format --check` on new files | All checks passed |
+| Diff hygiene | `git diff --check` | clean |
+
+### Budget / cap
+W10 + W11 delta ≈ 590 non-production lines (workflow 63 + driver ~370 +
+`__main__.py` 15 + 10 W11 tests ~180 + runbook ~170 + 1 contract test). PR2
+execution half is now COMPLETE (W4–W11); the remaining open items are the
+real-stack negatives (5.2/5.7) and W9's runtime 11/0/0 browser gate, which need
+a provisioned disposable stack (integration-only, not verifiable from pure unit).
+
+### Boundary
+- Production = 0 (`consorcio-web/src/**`, `gee-backend/app/**` untouched).
+- No `version.json` change; no `.claude/`; no AI attribution.
+- Docker clean: no `rmeh-*` containers/volumes after this session.
+- Changed paths: workflow YAML, driver + `__main__.py`, test file additions,
+  contract test, runbook, tasks.md + apply-progress.md. All test/harness/config/docs.
+
+
+---
+
+## Judgment Day fix round (surgical, confirmed issues only)
+
+After Judgment Day (Judge A + Judge B blind review) REJECTED the apply diff, the fix
+agent applied the six CONFIRMED issues with RED→GREEN discipline. WARNING (info)
+findings were NOT touched (reported back to the orchestrator). Ledger row statuses
+flipped `open → fixed`; full details in `review-ledger.md` → "Fix round".
+
+| id | fix |
+|---|---|
+| JD-APP-001/A1 (BLOCKER) | Prefix now derived from the generated identity: `stack_env(run_id_prefix)` explicit param (compose up, teardown, martin restart); compose `:-probedefault` fallbacks removed; `ownership.json` persisted BEFORE provisioning; `--evidence-dir` accepted after the subcommand (workflow command order previously failed with exit 2); run step no longer sets a misleading `RMEH_RUN_ID_PREFIX`. |
+| JD-APP-002/A2 (BLOCKER) | Spec writes `manifest.json` FILE (`{ selection_records: [...] }`) next to the reporter JSON via new pure `writeHarnessManifest` helper (vitest-tested); attach also wrapped in dict shape. |
+| JD-APP-003/A3 (BLOCKER) | `classify_run_failure` all-green → `PASSED` (complete-pass/handoff branch reachable); both pinning tests updated. |
+| JD-APP-004/A4 (CRITICAL) | `_parcel_contracts` reads top-level `nomenclature`/`displayIdentity`; real-fixture regression guard added. |
+| JD-APP-005/A5 (CRITICAL) | `run_cleanup` prefers recorded ownership identity; cleanup step gets `--evidence-dir` + fallback prefix env. |
+| JD-APP-A6 (CRITICAL) | `validate_services` raises on dead/500 frontend `/mapa`; martin restart env pinned to run-owned prefix; driver refuses to launch without a green service report. |
+
+### Fix-round GREEN evidence
+
+| | command | result |
+|---|---|---|
+| Harness unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **131 passed** (123 prior + 8 new RED→GREEN) |
+| TS helper unit | `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **69 passed** (67 prior + 2 new) |
+| TS typecheck | `npx tsc -p tsconfig.tests.json --noEmit` | clean |
+| Workflow contract | `python3 -m pytest gee-backend/tests/test_ci_workflow_contracts.py -q -k rainfall` | 1 passed |
+| Integration | `test_rainfall_e2e_integration.py` | skipped (needs `RMEH_INTEGRATION=1` + real stack) |
+
+### Still open (NOT in scope of this fix round)
+
+- Real-stack negatives (5.2/5.7) + W9 runtime 11/0/0 browser gate — integration-only.
+- WARNING (info) findings JD-APP-006..009 / A7..A11 — reported back to the
+  orchestrator, deliberately not fixed here (JD-APP-009/A9 `_rebuild_once` env,
+  cleanup accounting RMEH-012-B/C, classification reachability, zoom mismatch,
+  A2 freshness gate runtime risk).
+
+## Judgment Day fix round 2 (surgical — the two confirmed BLOCKERs, TDD RED→GREEN)
+
+The Round-2 re-judge (Judge A + Judge B) found the Round-1 fix still open on
+**JD-APP-001/A1** and introduced **JD-R2-001** (BLOCKER): the ~8 DB-side `docker compose
+exec`/`run` call sites (marker gate, migrate, all psql execs, rebuild, seed, views) were
+env-less, and with the `:-probedefault` fallbacks removed they resolved the empty-prefix
+project `rmeh-` while compose up/teardown/restart targeted `rmeh-<run_id[:10]>` — the marker
+gate failed on EVERY real run (`driver.py:346`). Root-cause fix: one composition helper
+`compose_env(identity)` used at EVERY compose invocation site; the ambient env is never
+read.
+
+| id | fix |
+|---|---|
+| JD-APP-001/A1 (BLOCKER) | `safety.compose_env(identity, *, extra)` returns run-owned `RMEH_RUN_ID_PREFIX` (from `database_name.removeprefix("rmeh_")` — single source of truth, = `run_id[:10]` for driver identities, full prefix for probe/integration seams) + synthetic `RMEH_DB_PASSWORD=synthpass`, never ambient. Threaded into `validate_marker_read_only`, `apply_migrations` (compose path, fail-closed on missing identity), all 8 psql exec sites via `bootstrap._psql_run` (inspect_relation, inspect_srid_contract, seed, 4 view/soil helpers), `_rebuild_once` down/up, martin restart. `driver.stack_env(identity)` delegates to it + host ports; `_teardown_lease` takes the identity; workflow cleanup step's `RMEH_RUN_ID_PREFIX: gha` env removed (driver derives from `ownership.json`). |
+| JD-R2-001 (BLOCKER) | Same root cause, closed by the same `compose_env` threading (see A1 row). |
+
+### Fix-round-2 GREEN evidence
+
+| | command | result |
+|---|---|---|
+| Harness unit | `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **141 passed** (131 prior + 10 new RED→GREEN) |
+| Compose parity | `test_compose_config_matches_lease_plan_under_driver_random_env` (real `docker compose config` under `compose_env` of a random identity vs `ResourceLease.plan`) | PASSED |
+| TS helper unit | `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **69 passed** (unchanged) |
+| TS typecheck | `npx tsc -p tsconfig.tests.json --noEmit` | clean |
+| Diff hygiene | `git diff --check` | clean |
+| Integration | `test_rainfall_e2e_integration.py` | skipped (needs `RMEH_INTEGRATION=1` + real stack) |
+
+Ledger row statuses flipped `open → fixed` for JD-APP-001/A1 and JD-R2-001 (both judges'
+tables) + a fix-round-2 summary section in `review-ledger.md`. JD-R2-002 (WARNING/info,
+`_rebuild_once` exit codes unchecked) was NOT in scope and was NOT touched — reported back
+to the orchestrator. 0 production lines (`consorcio-web/src/**`, `gee-backend/app/**`)
+touched; `version.json` untouched.
+
+## Micro-round — JD-R3-001 (owner-approved, outside standard 2-round budget)
+
+Fixed the two remaining manual real-stack `docker compose` seams to use the run-owned
+`compose_env(identity)` from `scripts.rainfall_e2e_harness.safety`:
+
+- `scripts/tests/probe_rainfall_bootstrap.py`: imported `compose_env`, made the
+  `RunIdentity` internally consistent (`database_name = f"rmeh_{run_id[:10]}"`),
+  aligned the init-script path to the truncated prefix, and replaced
+  `dict(os.environ)` + ambient prefix overrides with `compose_env(identity, extra={host ports})`
+  for both `up` and `down`.
+- `scripts/tests/test_rainfall_e2e_integration.py`: imported `compose_env`, made the
+  fixture identity consistent, removed `_stack_env`, and passed `compose_env(identity, extra={host ports})`
+  to the module-scoped provision/teardown.
+
+Verification:
+- `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` → **141 passed**.
+- `cd consorcio-web && npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` → **69 passed**.
+- `cd consorcio-web && npx tsc -p tsconfig.tests.json --noEmit` → **0 errors**.
+- Manual seams compile and import cleanly; identity/env parity verified for probe
+  (`probedefault` → prefix `probedefau`) and integration (`integtest`) styles.
+- Docker cleanup filters remain empty (no provisioning performed in this micro-round).
+
+0 production lines touched; workflow remains optional; parent change untouched.
+
+## Verify with live disposable stack (manual execution, sub-agent token-exhausted)
+
+Executed by the orchestrator after the `sdd-verify` sub-agent returned empty mid-run.
+
+### Commands run
+
+```bash
+# Full owned lifecycle (ports shifted to avoid dev stack on 8001/3001/5174)
+RMEH_BACKEND_HOST_PORT=18001 RMEH_MARTIN_HOST_PORT=13001 RMEH_FRONTEND_HOST_PORT=15174 \
+  python3 -m scripts.rainfall_e2e_harness run
+
+# Integration tests against provisioned stack
+RMEH_INTEGRATION=1 RMEH_BACKEND_HOST_PORT=18001 RMEH_MARTIN_HOST_PORT=13001 RMEH_FRONTEND_HOST_PORT=15174 \
+  python3 -m pytest scripts/tests/test_rainfall_e2e_integration.py -v
+```
+
+### Bugs found and fixed during verify
+
+| id | file | issue | fix |
+|---|---|---|---|
+| VFY-001 | `scripts/rainfall_e2e_harness/driver.py` | Used `npx exec playwright` (invalid npx syntax). | Changed to `npx playwright`. |
+| VFY-002 | `scripts/rainfall_e2e_harness/driver.py` | Playwright subprocess did not receive `E2E_APP_URL` or `E2E_API_BASE`, so tests hit `localhost:5173`/`8000` defaults instead of the harness ports. | Passed the run-owned frontend/backend URLs explicitly. |
+| VFY-003 | `consorcio-web/tests/e2e/playwright.rainfall-harness.config.ts` | `timeout: 120_000` was too short for the multi-parcel journey in this environment. | Temporarily raised to `240_000` for diagnosis. |
+
+### Results
+
+| Suite | Result |
+|---|---|
+| `python3 -m pytest scripts/tests/test_rainfall_e2e_harness.py scripts/tests/test_rainfall_e2e_config.py -q` | **141 passed** |
+| `npx vitest run tests/unit/rainfallMultiParcelHarness.test.ts` | **69 passed** |
+| `npx tsc -p tsconfig.tests.json --noEmit` | clean |
+| Playwright harness spec vs live stack | **10 passed**, **1 timedOut** (`A→B→C→A` journey) |
+| `test_rainfall_e2e_integration.py` (RMEH_INTEGRATION=1) | 1 passed, 1 failed (`test_bootstrap_twice_same_owned_db_is_stable`: first `create`, second `recreate`) |
+
+### Evidence artifacts
+
+- `.artifacts/rainfall-multi-parcel/ownership.json` — run/lease identity.
+- `.artifacts/rainfall-multi-parcel/events.jsonl` — lifecycle phases.
+- `.artifacts/rainfall-multi-parcel/playwright-results.json` — 10 passed / 1 timeout.
+- `jda-001-handoff.json` was **not emitted** because the accounting gate failed.
+
+### Open blockers
+
+1. **A→B→C→A multi-parcel journey timeout** — `runContextJourney` waits for `.mantine-Loader-root` to detach; in this environment it does not detach within 240s. Prevents the `11/0/0/0` gate and JDA-001 handoff.
+2. **Bootstrap idempotency** — second bootstrap on the same owned DB recreates the migration-owned view instead of treating it as stable.
+
+### Verdict
+
+**Conditional PASS on unit/static verification; FAIL on full live-stack acceptance.**
+The harness runs end-to-end against a real disposable stack. 10/11 browser tests pass. The remaining multi-parcel timeout and bootstrap idempotency must be resolved before JDA-001 can be closed with browser evidence.
+
+Report written to `openspec/changes/rainfall-multi-parcel-e2e-harness/verify-report.md`.

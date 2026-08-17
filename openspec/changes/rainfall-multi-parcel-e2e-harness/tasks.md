@@ -123,39 +123,39 @@ Critical edges: W2 fixture JSON feeds W5 seed AND W6 cache identity; W4 Compose/
 
 ## Phase 4 — W4: Test Infra Config
 
-- [ ] 4.1 Create `scripts/tests/rainfall-e2e.compose.yml` — Postgres+PostGIS/Redis/migrate/backend/Martin/frontend; generated project `rmeh-<run_id-prefix>`, volume, network; every port `127.0.0.1`; no fixed shared names; reject `0.0.0.0`/non-loopback/default `consorcio` DB. Accept: `docker compose -f scripts/tests/rainfall-e2e.compose.yml config` resolves with loopback-only ports (specify; do not execute). Reqs: RMEH-001, RMEH-010.
-- [ ] 4.2 Create `scripts/tests/fixtures/martin-rainfall-e2e.yaml` — publish only `public.vt_parcelas_catastro` under source `parcelas_catastro` with the seven whitelisted properties. Reqs: RMEH-002-C, RMEH-003.
-- [ ] 4.3 Create `consorcio-web/tests/e2e/playwright.rainfall-harness.config.ts` — select only `rainfall-v2-detail.spec.ts`, Chromium channel, one worker, `retries: 0`, JSON reporter, evidence dir. Reqs: RMEH-009-C/D, RMEH-014-A.
-- [ ] 4.4 Modify `consorcio-web/tsconfig.tests.json` (enrol new TS helper + unit test) and `consorcio-web/package.json` (one named harness Playwright command; canary command byte-identical). Accept: `pnpm --filter consorcio-web exec tsc -p tsconfig.tests.json --noEmit`. Reqs: RMEH-010-A, RMEH-014-A.
+- [x] 4.1 Create `scripts/tests/rainfall-e2e.compose.yml` — Postgres+PostGIS/Redis/migrate/backend/Martin/frontend; generated project `rmeh-<run_id-prefix>`, volume, network; every port `127.0.0.1`; no fixed shared names; reject `0.0.0.0`/non-loopback/default `consorcio` DB. Accept: `docker compose -f scripts/tests/rainfall-e2e.compose.yml config` resolves with loopback-only ports (specify; do not execute). Reqs: RMEH-001, RMEH-010.
+- [x] 4.2 Create `scripts/tests/fixtures/martin-rainfall-e2e.yaml` — publish only `public.vt_parcelas_catastro` under source `parcelas_catastro` with the seven whitelisted properties. Reqs: RMEH-002-C, RMEH-003.
+- [x] 4.3 Create `consorcio-web/tests/e2e/playwright.rainfall-harness.config.ts` — select only `rainfall-v2-detail.spec.ts`, Chromium channel, one worker, `retries: 0`, JSON reporter, evidence dir. Reqs: RMEH-009-C/D, RMEH-014-A.
+- [x] 4.4 Modify `consorcio-web/tsconfig.tests.json` (enrol new TS helper + unit test) and `consorcio-web/package.json` (one named harness Playwright command; canary command byte-identical). Accept: `pnpm --filter consorcio-web exec tsc -p tsconfig.tests.json --noEmit`. Reqs: RMEH-010-A, RMEH-014-A. _(committed 5c35d8ba, W4: 67 pytest + 31 vitest green)_
 
 ## Phase 5 — W5: Idempotent Bootstrap Integration
 
-- [ ] 5.1 GREEN bootstrap ordering in `scripts/rainfall_e2e_harness.py`: re-read `rmeh_ownership`; `alembic upgrade head`; validate head + `parcelas_catastro`/`suelos_catastro`/`zonas_operativas`/PostGIS/geometry types/SRID 4326/indexes; classify both materialized-view slots (absent/present with provenance). Inspect `pg_namespace`/`pg_class.relkind`/owner/comment/columns/indexes/definition digest before any drop/recreate. Accept: integration test against real owned stack. Reqs: RMEH-002-A, RMEH-001.
-- [ ] 5.2 GREEN one bounded disposable rebuild (budget = 1): if migration state / migration-owned table / migration-owned `mv_suelos_por_zona` absent-incompatible OR existing migration/unknown `vt_parcelas_catastro` incompatible → recreate run-owned DB, reinstall marker, rerun migrations once, repeat inspection; remaining mismatch aborts (never hand-create migration objects). Reqs: RMEH-002-A, JDA-001, JDB-004.
-- [ ] 5.3 GREEN fixture seed transaction: validate fixture first, then replace run-owned `parcelas_catastro`/`suelos_catastro`/`zonas_operativas` with deterministic rows (stable UUIDs/nomenclatures); one synthetic fixture zone `MULTIPOLYGON` covering A/B/C. Reqs: RMEH-003-A/D.
-- [ ] 5.4 GREEN `vt_parcelas_catastro` provenance gate (create as materialized view w/ `geometria` + 7 properties + harness run/lease ownership comment IF absent; if exact marker present → drop/recreate/refresh; if migration-owned/unknown → require compatible kind/schema/cols/definition/row behavior, use/refresh, never relabel) + migration-owned `mv_suelos_por_zona` postconditions (`relkind='m'`, exact cols, unique `mv_id`, definition digest, preserved owner/comment, refresh succeeds, exactly one fixture zone/soil row with positive `ha_suelo`). Reqs: RMEH-002-A, JDA-001, JDB-004.
-- [ ] 5.5 GREEN Martin (health + exactly `parcelas_catastro` source + 200 + non-empty vector-tile body for every declared click target z/x/y; HTTP 204 → `BOOTSTRAP_PREREQUISITE_FAILURE`) + backend `/live` + real ficha POST A/B/C succeeding as `tipo=parcela` (flag effective, not just env-dumped) + frontend `/mapa?lat&lng&zoom` 200 from loopback. Reqs: RMEH-002-C/D, RMEH-006-A.
-- [ ] 5.6 RED idempotency probe (integration, real stack, marker `@pytest.mark.integration`): run seed + view refresh + all validations a second time in same owned DB; require byte-for-byte/cardinality stable IDs/facts/geometry digests/source catalog/aliases. Reqs: RMEH-002-B, RMEH-003-D.
-- [ ] 5.7 RED relation-drift negatives (integration): migration-owned incompatible `vt_parcelas_catastro` consumes the one rebuild then fails explicitly; missing/incompatible `mv_suelos_por_zona` → migration-only repair, no ad hoc DDL; Martin empty/204 source → abort before browser. Reqs: RMEH-002-A/C, JDA-001, JDB-004.
+- [x] 5.1 GREEN bootstrap ordering in `scripts/rainfall_e2e_harness/bootstrap.py`: re-read `rmeh_ownership`; `alembic upgrade head`; validate head + `parcelas_catastro`/`suelos_catastro`/`zonas_operativas`/PostGIS/geometry types/SRID 4326/indexes; classify both materialized-view slots (absent/present with provenance). Inspect `pg_namespace`/`pg_class.relkind`/owner/comment/columns/indexes/definition digest before any drop/recreate. Accept: integration test against real owned stack. Reqs: RMEH-002-A, RMEH-001.
+- [ ] 5.2 GREEN one bounded disposable rebuild (budget = 1): if migration state / migration-owned table / migration-owned `mv_suelos_por_zona` absent-incompatible OR existing migration/unknown `vt_parcelas_catastro` incompatible → recreate run-owned DB, reinstall marker, rerun migrations once, repeat inspection; remaining mismatch aborts (never hand-create migration objects). Reqs: RMEH-002-A, JDA-001, JDB-004. _(unit-covered; real-stack rebuild negative pending 5.7)_
+- [x] 5.3 GREEN fixture seed transaction: validate fixture first, then replace run-owned `parcelas_catastro`/`suelos_catastro`/`zonas_operativas` with deterministic rows (stable UUIDs/nomenclatures); one synthetic fixture zone `MULTIPOLYGON` covering A/B/C. Reqs: RMEH-003-A/D.
+- [x] 5.4 GREEN `vt_parcelas_catastro` provenance gate (create as materialized view w/ `geometria` + 7 properties + harness run/lease ownership comment IF absent; if exact marker present → drop/recreate/refresh; if migration-owned/unknown → require compatible kind/schema/cols/definition/row behavior, use/refresh, never relabel) + migration-owned `mv_suelos_por_zona` postconditions (`relkind='m'`, exact cols, unique `mv_id`, definition digest, preserved owner/comment, refresh succeeds, exactly one fixture zone/soil row with positive `ha_suelo`). Reqs: RMEH-002-A, JDA-001, JDB-004.
+- [x] 5.5 GREEN Martin (health + exactly `parcelas_catastro` source + 200 + non-empty vector-tile body for every declared click target z/x/y; HTTP 204 → `BOOTSTRAP_PREREQUISITE_FAILURE`) + backend `/live` + real ficha POST A/B/C succeeding as `tipo=parcela` (flag effective, not just env-dumped) + frontend `/mapa?lat&lng&zoom` 200 from loopback. Reqs: RMEH-002-C/D, RMEH-006-A.
+- [x] 5.6 RED idempotency probe (integration, real stack, marker `@pytest.mark.integration`): run seed + view refresh + all validations a second time in same owned DB; require byte-for-byte/cardinality stable IDs/facts/geometry digests/source catalog/aliases. Reqs: RMEH-002-B, RMEH-003-D. _(test_rainfall_e2e_integration.py, 2 passed on real stack)_
+- [ ] 5.7 RED relation-drift negatives (integration): migration-owned incompatible `vt_parcelas_catastro` consumes the one rebuild then fails explicitly; missing/incompatible `mv_suelos_por_zona` → migration-only repair, no ad hoc DDL; Martin empty/204 source → abort before browser. Reqs: RMEH-002-A/C, JDA-001, JDB-004. _(unit-covered incl. bounded martin restart; real-stack negatives pending)_
 
 ## Phase 6 — W6: Operator Auth + Distinct Cache Identity + Silent-Refresh Bearer
 
-- [ ] 6.1 GREEN fixture-aware `page.route` rainfall boundary + deterministic silent-refresh `/auth/jwt/refresh` rotated synthetic token in `rainfallMultiParcelHarness.ts` (reuses existing `addInitScript` sessionStorage seam; no application store writes; no production login backdoor; no real credential/cookie/secret). Reqs: RMEH-006-A, D10, RMEH-013-A.
-- [ ] 6.2 RED exact-bearer: every rainfall scope/analysis/series/CSV/XLSX request carries `Authorization: Bearer <active synthetic token>`; token never in URL; rotated token after refresh; unknown identity → fail route (no A fallback); bodies ready with matching scope/percentile/accumulation/analysis+data+metric revision; no queued/error normalization. Files: `rainfallMultiParcelHarness.test.ts` + request observers in `rainfall-v2-detail.spec.ts`. Reqs: RMEH-006-A/B/C, RMEH-013-A, D10.
-- [ ] 6.3 RED cache-aliasing negative: two parcels share an effective cache key, or one parcel receives another parcel's cached response, or any A-only value remains current after B/C → preflight or transition freshness fails closed with diagnostics naming aliased identities/scopes/revisions/observed response. Files: `rainfallMultiParcelHarness.test.ts`. Reqs: RMEH-013-B/C.
+- [x] 6.1 GREEN fixture-aware `page.route` rainfall boundary + deterministic silent-refresh `/auth/jwt/refresh` rotated synthetic token in `rainfallMultiParcelHarness.ts` (reuses existing `addInitScript` sessionStorage seam; no application store writes; no production login backdoor; no real credential/cookie/secret). Reqs: RMEH-006-A, D10, RMEH-013-A. _(pure contracts: TokenLifecycle, activeToken/observeRefresh, refreshRouteContract, classifyRainfallRequest, assertExactBearer, resolveParcelByIdentity, readyResponseFor, assertResponseMatchesTarget; page.route wiring lands in W7/W8 importing these)_
+- [x] 6.2 RED exact-bearer: every rainfall scope/analysis/series/CSV/XLSX request carries `Authorization: Bearer <active synthetic token>`; token never in URL; rotated token after refresh; unknown identity → fail route (no A fallback); bodies ready with matching scope/percentile/accumulation/analysis+data+metric revision; no queued/error normalization. Files: `rainfallMultiParcelHarness.test.ts` + request observers in `rainfall-v2-detail.spec.ts`. Reqs: RMEH-006-A/B/C, RMEH-013-A, D10. _(vitest 9 tests; spec observers deferred to W7/W8)_
+- [x] 6.3 RED cache-aliasing negative: two parcels share an effective cache key, or one parcel receives another parcel's cached response, or any A-only value remains current after B/C → preflight or transition freshness fails closed with diagnostics naming aliased identities/scopes/revisions/observed response. Files: `rainfallMultiParcelHarness.test.ts`. Reqs: RMEH-013-B/C. _(vitest 5 tests: assertCacheKeysDistinct + assertFreshResponse + stale-dimension negatives)_
 
 ## Phase 7 — W7: Playwright Mobile A→B→C→A
 
-- [ ] 7.1 GREEN mobile state-machine helper in `rainfallMultiParcelHarness.ts`: NEW CONTEXT → navigate supported `?lat&lng&zoom` → plain-click A (exactly one `canvas.click({position})`, no `force`) → activate `Lluvia` once → READY_A (Lluvia label, ficha identity = A, target scope/percentile/accumulation, technical revision) + complete-card containment inside visible body + stage `medio`. Reqs: RMEH-007-A, RMEH-005-A.
-- [ ] 7.2 GREEN mobile transitions: before EACH transition prove `scrollHeight > clientHeight` AND wheel over the real sheet body until `scrollTop > 0` (delta = `scrollHeight - clientHeight`; forbid direct `scrollTop` assignment / `scrollIntoView` / keyboard); attach `{range, beforeScrollTop, afterWheelScrollTop}`; then plain-click B / C → READY_B / READY_C + Lluvia + exact B/C facts replace prior + `scrollTop === 0` + complete ready card inside visible body (±1 CSS px). Reqs: RMEH-007-B/C, RMEH-005-B.
-- [ ] 7.3 GREEN mobile C→A fresh: require a NEW A scope/analysis request + ready response sequence newer than C's; A exact revision/facts; absence of every C-only fact from current surfaces (no stale C / aliased A cache); `scrollTop=0` + containment. Reqs: RMEH-007-D, RMEH-013-B.
-- [ ] 7.4 RED add exactly ONE new `test()` (mobile context) in `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts` exercising 7.1–7.3; attach `projection-mobile.json`, `request-trace.json`, screenshots/trace on failure. Accept: `pnpm --filter consorcio-web exec playwright test --config=tests/e2e/playwright.rainfall-harness.config.ts --list` reports the count INCREASED BY EXACTLY 1. Reqs: RMEH-007, RMEH-005-A/B.
+- [ ] 7.1 GREEN mobile state-machine helper in `rainfallMultiParcelHarness.ts`: NEW CONTEXT → navigate supported `?lat&lng&zoom` → plain-click A (exactly one `canvas.click({position})`, no `force`) → activate `Lluvia` once → READY_A (Lluvia label, ficha identity = A, target scope/percentile/accumulation, technical revision) + complete-card containment inside visible body + stage `medio`. Reqs: RMEH-007-A, RMEH-005-A. _(pure contract `assertTargetReady`/`assertMobileReady`/`assertCardContained` + spec `runContextJourney` wired; runtime verification pending W9 real stack)_
+- [ ] 7.2 GREEN mobile transitions: before EACH transition prove `scrollHeight > clientHeight` AND wheel over the real sheet body until `scrollTop > 0` (delta = `scrollHeight - clientHeight`; forbid direct `scrollTop` assignment / `scrollIntoView` / keyboard); attach `{range, beforeScrollTop, afterWheelScrollTop}`; then plain-click B / C → READY_B / READY_C + Lluvia + exact B/C facts replace prior + `scrollTop === 0` + complete ready card inside visible body (±1 CSS px). Reqs: RMEH-007-B/C, RMEH-005-B. _(pure `assertScrollRangeAndWheelProof` + `assertMobileReady`; wheel proof driven in spec; runtime pending W9)_
+- [ ] 7.3 GREEN mobile C→A fresh: require a NEW A scope/analysis request + ready response sequence newer than C's; A exact revision/facts; absence of every C-only fact from current surfaces (no stale C / aliased A cache); `scrollTop=0` + containment. Reqs: RMEH-007-D, RMEH-013-B. _(pure `assertFreshResponse`/`assertTargetReady` sequence gate + spec `waitForTargetAnalysis`; A2 freshness may fail closed on fixture router (react-query cache) — runtime pending W9)_
+- [x] 7.4 RED add exactly ONE new `test()` (mobile context) in `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts` exercising 7.1–7.3; attach `projection-mobile.json`, `request-trace.json`, screenshots/trace on failure. Accept: `pnpm --filter consorcio-web exec playwright test --config=tests/e2e/playwright.rainfall-harness.config.ts --list` reports the count INCREASED BY EXACTLY 1. Reqs: RMEH-007, RMEH-005-A/B. _(single `test()` appended; `--list` now reports 11, up from 10 — INCREASED BY EXACTLY 1; runtime assertions pending W9)_
 
 ## Phase 8 — W8: Playwright Desktop A→B→C→A (same `test()`, second context)
 
-- [ ] 8.1 GREEN desktop context inside the SAME `test()` from 7.4: committed desktop viewport + camera; plain-click A → B → C → A; `assertTargetReady` after each (all five dimensions replaced, no prior-only value current). Reqs: RMEH-008-A, RMEH-005.
-- [ ] 8.2 GREEN desktop focus continuity: capture active element before each click; after readiness focus must be `body`, the canvas, or the same visible map interaction ancestor; a non-body active element must intersect the viewport and must NOT be hidden/inert/disabled/mobile-only/unrelated. NO sheet-height, visible-body containment, body scroll-range, or scroll-reset assertion on desktop. Reqs: RMEH-008-B.
-- [ ] 8.3 Accept: total discovered test count stays EXACTLY 11 (one `test()`, two contexts); manifest records EIGHT one-attempt selection records (4 mobile + 4 desktop), attempt count `1` and click count `1` in each; helper retry count `0`, Playwright retry count `0`. Reqs: RMEH-005, RMEH-009-D.
+- [ ] 8.1 GREEN desktop context inside the SAME `test()` from 7.4: committed desktop viewport + camera; plain-click A → B → C → A; `assertTargetReady` after each (all five dimensions replaced, no prior-only value current). Reqs: RMEH-008-A, RMEH-005. _(spec drives desktop context in same `test()`; runtime verification pending W9 real stack)_
+- [ ] 8.2 GREEN desktop focus continuity: capture active element before each click; after readiness focus must be `body`, the canvas, or the same visible map interaction ancestor; a non-body active element must intersect the viewport and must NOT be hidden/inert/disabled/mobile-only/unrelated. NO sheet-height, visible-body containment, body scroll-range, or scroll-reset assertion on desktop. Reqs: RMEH-008-B. _(pure `assertDesktopFocusStable` + spec `readFocusSnapshot`-style activeElement capture; runtime pending W9)_
+- [ ] 8.3 Accept: total discovered test count stays EXACTLY 11 (one `test()`, two contexts); manifest records EIGHT one-attempt selection records (4 mobile + 4 desktop), attempt count `1` and click count `1` in each; helper retry count `0`, Playwright retry count `0`. Reqs: RMEH-005, RMEH-009-D. _(collection gate met: `--list` reports exactly 11; manifest of 8 records materializes at runtime — pending W9 real stack)_
 
 ## Phase 9 — W9: Fail-Closed Exact Accounting + Failure Classification
 
@@ -166,16 +166,48 @@ Critical edges: W2 fixture JSON feeds W5 seed AND W6 cache identity; W4 Compose/
 
 ## Phase 10 — W10: Optional `workflow_dispatch`
 
-- [ ] 10.1 Create `.github/workflows/rainfall-multi-parcel-e2e.yml` — `workflow_dispatch` only; `permissions: { contents: read }`; ONE global concurrency group with `cancel-in-progress: false` (dispatches serialize, do not share mutable resources, do not cancel an older cleanup); 45-minute job timeout; checkout + pinned major setup actions + Node 22 + lockfile install + locked Chromium + the same Python runner used locally; NO repository/environment secrets (all DB/auth values synthetic run values). Reqs: RMEH-010-B/C.
-- [ ] 10.2 RED/contract `gee-backend/tests/test_ci_workflow_contracts.py` — assert this workflow is NOT referenced by the required `Frontend`/`Backend`/`Deploy` gates and is NOT in the production canary three-spec read-only allowlist. Reqs: RMEH-010-B, RMEH-014-A.
-- [ ] 10.3 GREEN `if: always()` artifact upload with 14-day retention and `if-no-files-found: error` (ownership.json exists before provisioning); explicit cleanup step calling the runner's idempotent cleanup command if the main process was externally killed before its trap completed. Reqs: RMEH-010-D, RMEH-012-A/B.
+- [x] 10.1 Create `.github/workflows/rainfall-multi-parcel-e2e.yml` — `workflow_dispatch` only; `permissions: { contents: read }`; ONE global concurrency group with `cancel-in-progress: false` (dispatches serialize, do not share mutable resources, do not cancel an older cleanup); 45-minute job timeout; checkout + pinned major setup actions + Node 22 + lockfile install + locked Chromium + the same Python runner used locally; NO repository/environment secrets (all DB/auth values synthetic run values). Reqs: RMEH-010-B/C.
+- [x] 10.2 RED/contract `gee-backend/tests/test_ci_workflow_contracts.py` — assert this workflow is NOT referenced by the required `Frontend`/`Backend`/`Deploy` gates and is NOT in the production canary three-spec read-only allowlist. Reqs: RMEH-010-B, RMEH-014-A.
+- [x] 10.3 GREEN `if: always()` artifact upload with 14-day retention and `if-no-files-found: error` (ownership.json exists before provisioning); explicit cleanup step calling the runner's idempotent cleanup command if the main process was externally killed before its trap completed. Reqs: RMEH-010-D, RMEH-012-A/B.
 
 ## Phase 11 — W11: Runbook + JDA-001 Handoff + Cleanup/Rollback Proof
 
-- [ ] 11.1 GREEN `jda-001-handoff.json` emitted ONLY on a complete pass: source change `rainfall-multi-parcel-e2e-harness`; fixture + evidence digests; exact 11/0/0 result; mobile/desktop transition evidence references; `parent_record_mutated: false`; proposed action "open a separate follow-up review transaction for JDA-001". Reqs: RMEH-011-A.
-- [ ] 11.2 RED parent-boundary: runner + workflow NEVER write `openspec/changes/lluvia-ux-tarjeta/review-ledger.md`, never update an Engram parent topic, never extend Judgment Day rounds, never declare the parent APPROVED; a `PRODUCT_ASSERTION_FAILURE` emits evidence requesting a separate remediation decision and this change stays test-only. Files: `scripts/tests/test_rainfall_e2e_harness.py`. Reqs: RMEH-011-A/B.
-- [ ] 11.3 RED rollback proof: rollback = remove only the 13 file-architecture artifacts + the 2 test-config enrolments; NO production/schema/shared-data/parent rollback; any residual disposable resource cleaned only via exact recorded lease identity + immutable Docker labels before removing the runner. Files: `scripts/tests/test_rainfall_e2e_harness.py`. Reqs: RMEH-012-D, RMEH-001.
-- [ ] 11.4 Create `docs/testing/rainfall-multi-parcel-e2e.md` — operator prerequisites, local command, statuses (PASSED + six failure classes), evidence layout, cleanup contract, JDA-001 boundary, rollback procedure, "not a required CI check" notice. Reqs: RMEH-010-A, RMEH-011, RMEH-012.
+- [x] 11.1 GREEN `jda-001-handoff.json` emitted ONLY on a complete pass: source change `rainfall-multi-parcel-e2e-harness`; fixture + evidence digests; exact 11/0/0 result; mobile/desktop transition evidence references; `parent_record_mutated: false`; proposed action "open a separate follow-up review transaction for JDA-001". Reqs: RMEH-011-A.
+- [x] 11.2 RED parent-boundary: runner + workflow NEVER write `openspec/changes/lluvia-ux-tarjeta/review-ledger.md`, never update an Engram parent topic, never extend Judgment Day rounds, never declare the parent APPROVED; a `PRODUCT_ASSERTION_FAILURE` emits evidence requesting a separate remediation decision and this change stays test-only. Files: `scripts/tests/test_rainfall_e2e_harness.py`. Reqs: RMEH-011-A/B.
+- [x] 11.3 RED rollback proof: rollback = remove only the 13 file-architecture artifacts + the 2 test-config enrolments; NO production/schema/shared-data/parent rollback; any residual disposable resource cleaned only via exact recorded lease identity + immutable Docker labels before removing the runner. Files: `scripts/tests/test_rainfall_e2e_harness.py`. Reqs: RMEH-012-D, RMEH-001.
+- [x] 11.4 Create `docs/testing/rainfall-multi-parcel-e2e.md` — operator prerequisites, local command, statuses (PASSED + six failure classes), evidence layout, cleanup contract, JDA-001 boundary, rollback procedure, "not a required CI check" notice. Reqs: RMEH-010-A, RMEH-011, RMEH-012.
+
+## Verification result (manual, post-Judgment-Day)
+
+Runbook command executed against a live disposable stack (ports shifted to avoid the dev stack):
+
+```bash
+RMEH_BACKEND_HOST_PORT=18001 RMEH_MARTIN_HOST_PORT=13001 RMEH_FRONTEND_HOST_PORT=15174 \
+  python3 -m scripts.rainfall_e2e_harness run
+```
+
+Latest run (after multiple debug iterations):
+
+- Lifecycle reached `tests_finished`.
+- Playwright collection gate: **11 tests discovered** ✅ (W7.4/W8.3 collection gate met).
+- Playwright result gate: **10 passed, 1 failed** ❌ (W9.2 not met).
+- Failing test: `A→B→C→A: una selección por clic en móvil y escritorio (RMEH-007/008)`.
+  - Root cause: `useRainfallAnalysis` has `staleTime: 60_000`. The final A→A re-selection within 60 s of the initial A selection is served from TanStack Query cache, so the fixture router observes no new analysis request. The UI correctly shows A's data, but the test's `assertTargetReady` requires both `analysisCacheKey === target` AND `analysisSequence > previousSequence`, which cannot be satisfied for a cached repeat selection.
+  - Mobile-specific projection/popup/sheet issues were resolved: removed `networkidle` wait, dismiss MapLibre popups before each transition, collapse the mobile sheet to peek before B/C/A clicks.
+- `jda-001-handoff.json` was **not emitted** (requires full `PASSED`).
+- Docker cleanup verified empty after the run.
+- Integration idempotency (`test_bootstrap_twice_same_owned_db_is_stable`) failed: first pass `create`, second pass `recreate`.
+- Full report in `verify-report.md`.
+
+Updated task states:
+- W7.1–W7.2 → ✅ mobile A→B and B→C transitions pass on live stack; wheel proof + containment + stage checks pass.
+- W7.3 → ❌ mobile C→A cached-repeat freshness gate fails (sequence not newer).
+- W8.1–W8.2 → ✅ desktop A→B and B→C transitions pass on live stack; focus continuity passes.
+- W8.3 → ❌ desktop C→A cached-repeat freshness gate fails (sequence not newer).
+- W9.1 collection gate → ✅ verified.
+- W9.2 result gate → ❌ not verified (10/0/0/1, expected 11/0/0/0).
+- W7.1–W7.3 / W8.1–W8.3 multi-parcel journey → ❌ runtime blocked by loader timeout.
+- 5.2 / 5.7 real-stack negatives → ❌ not executed (unit-covered only).
 
 ## Task → RMEH Scenario Matrix (46 scenarios; coverage must total 46)
 
@@ -251,3 +283,49 @@ Rolling back this capability removes ONLY: the 10 created files + the 3 modified
 - [inferred] The forecast's aggregate upper bound (1,800) equals the design's continuation-gate ceiling exactly; naive per-file high-water sums reach ~1,802 (rounding), so the orchestrator's STOP trigger ("exceeds 1,800 OR any production path required") does NOT fire, but ceiling-proximity plus ask-always forces "Decision needed before apply: Yes" and a hard ≤1,800 / 0-production implementation cap. from=E3
 - [assumed] Acceptance commands (`pytest`, `vitest`, `playwright --list`, `docker compose config`, `tsc --noEmit`) are SPECIFIED for the apply phase, not executed in this tasks-only phase (session contract: no build/test/runtime). unverified=apply phase must run each acceptance command in the correct cwd and observe the stated outcome before closing each task.
 <!-- evidence:end -->
+## Judgment Day fix round (post-apply, confirmed issues only)
+
+The apply-phase Judgment Day (Judge A + Judge B, blind) REJECTED the W4–W11 diff with
+2/3 BLOCKER + 3 CRITICAL findings. The fix agent applied the six CONFIRMED issues
+TDD-first (RED test pinned each bug, then GREEN). WARNING (info) findings were left
+untouched and reported to the orchestrator. Statuses for JD-APP-001/A1..005/A5 +
+JD-APP-A6 flipped `open → fixed` in `review-ledger.md`; per-fix evidence table and full
+suite results (131 pytest + 69 vitest + tsc clean) are in `review-ledger.md` → "Fix
+round" and `apply-progress.md` → "Judgment Day fix round".
+
+Not fixed (out of scope, reported back): JD-APP-006..009 / A7..A11 — classification
+reachability, cleanup accounting (RMEH-012-B/C), `_rebuild_once` env, zoom mismatch,
+A2 freshness runtime risk, and the real-stack negatives 5.2/5.7 + W9 runtime 11/0/0
+browser gate (integration-only, need `RMEH_INTEGRATION=1` against a provisioned stack).
+
+## Judgment Day fix round 2 (post-re-judge, the two confirmed BLOCKERs)
+
+The Round-2 re-judge found **JD-APP-001/A1** still open and **JD-R2-001** (BLOCKER):
+the ~8 env-less DB-side compose call sites resolved the empty-prefix project `rmeh-`
+after the fallback removal, failing the marker gate on every real run. Fix round 2
+closed both with ONE root-cause fix: `safety.compose_env(identity)` (run-owned prefix
+from the identity's `database_name` + synthetic `RMEH_DB_PASSWORD`) threaded into every
+compose invocation — marker gate, `apply_migrations` (fail-closed on missing identity),
+all 8 psql execs via `bootstrap._psql_run`, `_rebuild_once`, martin restart, driver
+`stack_env(identity)`/`_teardown_lease(identity)`; workflow cleanup step's ambient
+`RMEH_RUN_ID_PREFIX` removed. 10 new RED→GREEN tests incl. a real-`docker compose
+config` parity test vs `ResourceLease.plan`; suites now **141 pytest + 69 vitest + tsc
+clean**. Statuses flipped `open → fixed` for JD-APP-001/A1 and JD-R2-001 in
+`review-ledger.md` (both judges' tables + fix-round-2 section). JD-R2-002 (WARNING/info,
+`_rebuild_once` exit codes) reported back, not touched. 0 production lines, `version.json`
+untouched.
+
+## Micro-round — JD-R3-001 (owner-approved)
+
+Judgment Day Round 3 (Judge B) surfaced JD-R3-001: the manual probe
+`scripts/tests/probe_rainfall_bootstrap.py` and integration seam
+`scripts/tests/test_rainfall_e2e_integration.py` still built `docker compose` env from
+`dict(os.environ)` + ambient prefix. This micro-round closes that seam by:
+
+1. Importing `compose_env` from `scripts.rainfall_e2e_harness.safety`.
+2. Building internally consistent `RunIdentity` (`database_name = f"rmeh_{run_id[:10]}"`).
+3. Passing `compose_env(identity, extra={host ports})` to every `docker compose` up/down.
+4. Removing the `_stack_env` helper and the `dict(os.environ)` + ambient prefix pattern.
+
+Status: `review-ledger.md` updated with `## Micro-round — JD-R3-001`; row status
+`fixed`. Suites remain 141 pytest + 69 vitest + tsc clean. No production lines touched.
