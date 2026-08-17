@@ -244,9 +244,58 @@ const verifyEmailRoute = createRoute({
   },
 });
 
+/**
+ * Hazard-mode search params (SDD multi-hazard-viewer).
+ * Parsed on `/mapa` so the page receives a typed search object. Unknown
+ * keys are ignored; malformed values fall back to safe defaults.
+ */
+function parseRiskClasses(input: unknown): string[] {
+  if (input === undefined || input === null) return [];
+  if (typeof input === 'string') {
+    return input
+      .split(/[,;]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(input)) {
+    return input.filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+  }
+  return [];
+}
+
+function parseStringParam(input: unknown): string | undefined {
+  if (typeof input === 'string' && input.trim() !== '') return input.trim();
+  return undefined;
+}
+
+const VALID_PRECIP_MONTHS = new Set([
+  'anual',
+  '01',
+  '02',
+  '03',
+  '04',
+  '05',
+  '06',
+  '07',
+  '08',
+  '09',
+  '10',
+  '11',
+  '12',
+]);
+
 const mapaRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/mapa',
+  validateSearch: (search: Record<string, unknown>) => ({
+    hazard: search.hazard === '1' || search.hazard === 1 || search.hazard === true,
+    basin: parseStringParam(search.basin),
+    riskClasses: parseRiskClasses(search.riskClasses),
+    layers: parseRiskClasses(search.layers),
+    precipMonth: VALID_PRECIP_MONTHS.has(String(search.precipMonth))
+      ? String(search.precipMonth)
+      : 'anual',
+  }),
   component: () => (
     <RootLayout
       title="Mapa Interactivo"
