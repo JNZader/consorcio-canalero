@@ -772,7 +772,8 @@ async function collectReadyEvidence(
   target: ParcelFixture,
   previous: TargetReadyEvidence['previous'],
   activeTokenValue: string,
-  lluviaSelected: boolean
+  lluviaSelected: boolean,
+  selectedAliases: ParcelAlias[]
 ): Promise<TargetReadyEvidence> {
   const headline = await page.getByTestId('rainfall-headline').textContent();
   const percentMatch = headline ? /Percentil\s+(\d+)/.exec(headline) : null;
@@ -809,6 +810,7 @@ async function collectReadyEvidence(
       seriesScopeId: trace.latest.seriesScopeId ?? '',
     },
     analysisSequence: trace.analysisSequence,
+    selectedAliases,
     previous,
     activeToken: activeTokenValue,
     authHeader: trace.latest.authHeader ?? '',
@@ -842,6 +844,34 @@ async function readLluviaActive(page: Page): Promise<boolean> {
     .locator('label', { hasText: 'Lluvia' })
     .getAttribute('data-active')
     .then((v) => v === 'true' || v === '');
+}
+
+/**
+ * Dismiss the desktop ficha panel between parcel selections so the next map
+ * click does not land on the floating card. The panel may close outright or
+ * minimize to a pill; either outcome is acceptable as long as the card is no
+ * longer in the way.
+ */
+async function dismissDesktopPanel(page: Page): Promise<void> {
+  const closeButton = page.getByRole('button', { name: 'Cerrar ficha territorial', exact: true });
+  if ((await closeButton.count()) === 0) {
+    // Already dismissed or not in desktop shape.
+    return;
+  }
+  await closeButton.click();
+  const panel = page.getByTestId('ficha-territorial-panel');
+  const pill = page.getByTestId('ficha-territorial-panel-pill');
+  await expect
+    .poll(
+      async () => {
+        const pillVisible = await pill.isVisible().catch(() => false);
+        if (pillVisible) return true;
+        // Panel unmounted = nothing to block the next click.
+        return (await panel.count()) === 0;
+      },
+      { message: 'La ficha territorial no se cerró ni minimizó', timeout: 5000 }
+    )
+    .toBe(true);
 }
 
 interface JourneyRecord {
@@ -894,9 +924,11 @@ async function runContextJourney(
 
   let previous: TargetReadyEvidence['previous'] = null;
   let wheelProofsBeforeClick = 0;
+  const selectedAliases: ParcelAlias[] = [];
 
   for (let index = 0; index < order.length; index += 1) {
     const alias = order[index];
+    selectedAliases.push(alias);
     const parcel = target(alias);
 
     // Dismiss any location/denuncia popup so the next click lands on the map
@@ -1029,11 +1061,11 @@ async function runContextJourney(
       // sequence, read live — never the seed constant (design "Authentication
       // and Silent Refresh": seed -> optional observed refresh -> rotated).
       const activeTokenValue = await activeAccessToken(page);
-      const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected);
+      const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected, selectedAliases);
       assertMobileReady({ ...evidence, stage, scrollTopAfter, cardBox, bodyBox }, parcel);
     } else {
       const activeTokenValue = await activeAccessToken(page);
-      const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected);
+      const evidence = await collectReadyEvidence(page, trace, parcel, previous, activeTokenValue, lluviaSelected, selectedAliases);
       assertTargetReady(evidence, parcel);
     }
 
@@ -1053,6 +1085,13 @@ async function runContextJourney(
       renderedMetricRevision: parcel.rainfall.metricRevision,
       analysisSequence: trace.analysisSequence,
     };
+
+    // Desktop: collapse/close the ficha panel before the next map click so the
+    // floating card does not intercept it. Keep the last selection open for the
+    // final assertions.
+    if (context === 'desktop' && index < order.length - 1) {
+      await dismissDesktopPanel(page);
+    }
   }
 }
 

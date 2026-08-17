@@ -28,7 +28,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // `importActual` and NOT a bare factory: the panel now mounts
@@ -1327,46 +1327,26 @@ describe('RainfallDetailPanel — cache freshness on parcel change', () => {
   });
   afterEach(() => setAuth(null));
 
-  it('invalidates rainfall-analysis cache when nomenclatura changes, but not on initial mount or same-parcel re-render', async () => {
+  it('starts a new analysis query when nomenclatura changes', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    vi.spyOn(queryClient, 'invalidateQueries');
-
     const { rerender } = renderPanelWithClient(queryClient, { nomenclatura: 'parcel-a' });
     await screen.findByTestId('rainfall-detail');
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalled());
 
-    // Initial mount must NOT invalidate — the current parcel is the baseline.
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ['rainfall-analysis'],
-    });
-
-    // Switching parcel invalidates the whole rainfall-analysis prefix once.
+    vi.mocked(fetchRainfallAnalysis).mockClear();
     rerender(<RainfallDetailPanel nomenclatura="parcel-b" />);
-    await waitFor(() => expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1));
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['rainfall-analysis'] });
-
-    // Re-rendering with the SAME parcel must not invalidate again.
-    rerender(<RainfallDetailPanel nomenclatura="parcel-b" />);
-    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(1));
   });
 
-  it('does not invalidate when scope or year change within the same parcel', async () => {
+  it('does not start a new analysis query when the same nomenclatura re-renders', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    vi.spyOn(queryClient, 'invalidateQueries');
-
-    renderPanelWithClient(queryClient, { nomenclatura: 'parcel-a' });
+    const { rerender } = renderPanelWithClient(queryClient, { nomenclatura: 'parcel-a' });
     await screen.findByTestId('rainfall-detail');
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalled());
 
-    const switcher = await screen.findByTestId('rainfall-scope-switch');
-    fireEvent.click(within(switcher).getByText('Cuenca'));
-    await waitFor(() =>
-      expect(fetchRainfallAnalysis).toHaveBeenCalledWith(BASIN, expect.any(Number), expect.anything())
-    );
-
-    fireEvent.change(screen.getByTestId('rainfall-year-select'), { target: { value: '2024' } });
-    await waitFor(() =>
-      expect(fetchRainfallAnalysis).toHaveBeenCalledWith(expect.anything(), 2024, expect.anything())
-    );
-
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+    vi.mocked(fetchRainfallAnalysis).mockClear();
+    rerender(<RainfallDetailPanel nomenclatura="parcel-a" />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(fetchRainfallAnalysis).not.toHaveBeenCalled();
   });
 });

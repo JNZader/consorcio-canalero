@@ -74,8 +74,8 @@ export function useRainfallScopes(nomenclatura: string | null): UseRainfallScope
  * Still a named function rather than an inline literal: the key is built in
  * one place so the `enabled: false` idle branch below cannot drift from it.
  */
-function rainfallAnalysisQueryKey(scope: RainfallScopeChoice, year: number) {
-  return ['rainfall-analysis', scope.kind, scope.id, scope.version, year] as const;
+function rainfallAnalysisQueryKey(scope: RainfallScopeChoice, year: number, nomenclatura: string) {
+  return ['rainfall-analysis', scope.kind, scope.id, scope.version, year, nomenclatura] as const;
 }
 
 export interface UseRainfallAnalysisOptions {
@@ -83,6 +83,12 @@ export interface UseRainfallAnalysisOptions {
   pollIntervalMs?: number;
   /** Test seam: shrink the consecutive-queued budget. Defaults to 12. */
   maxQueuedPolls?: number;
+  /**
+   * Parcel identity that produced the resolved scope. Including it in the query
+   * key guarantees that switching parcels creates a fresh query even when two
+   * parcels resolve to different scopes within the 60-second stale window.
+   */
+  nomenclatura?: string;
 }
 
 export interface UseRainfallAnalysisResult {
@@ -100,22 +106,31 @@ export interface UseRainfallAnalysisResult {
 }
 
 /**
- * Cache-freshness contract for rainfall analysis.
+ * Fetch rainfall analysis for one resolved scope + year.
  *
- * `RainfallDetailPanel` is the owner of rainfall-analysis cache invalidation on
- * parcel change. The rainfall-analysis query key intentionally omits
- * `nomenclatura` so the same resolved scope + year stays cached for 60 seconds
- * while the user is viewing a single parcel. Parcel-switch invalidation is
- * performed in the panel, not in this hook, because the hook only sees
- * scope + year and cannot know when the underlying parcel changes.
+ * The query key includes the resolved scope, year, and the parcel
+ * `nomenclatura` that produced the scope. This keeps per-parcel caches
+ * independent: selecting a different parcel always creates a new query, while
+ * re-selecting the same parcel within 60 seconds still benefits from the
+ * `staleTime` cache. The `nomenclatura` is a stable parcel identity, not a
+ * resolved scope, because two parcels can map to different scopes and we want
+ * each parcel's analysis to be fresh on first selection.
+ *
+ * No production invalidation is required: the key itself carries the parcel
+ * identity, so `RainfallDetailPanel` intentionally does NOT call
+ * `queryClient.invalidateQueries` for the rainfall-analysis prefix. Cache
+ * freshness across parcels is achieved exclusively through the per-parcel key.
  */
 export function useRainfallAnalysis(
   scope: RainfallScopeChoice | null,
   year: number,
   options: UseRainfallAnalysisOptions = {}
 ): UseRainfallAnalysisResult {
-  const { pollIntervalMs = RAINFALL_QUEUED_POLL_MS, maxQueuedPolls = RAINFALL_MAX_QUEUED_POLLS } =
-    options;
+  const {
+    pollIntervalMs = RAINFALL_QUEUED_POLL_MS,
+    maxQueuedPolls = RAINFALL_MAX_QUEUED_POLLS,
+    nomenclatura = 'unknown',
+  } = options;
 
   // Consecutive queued (202) answers observed for the CURRENT scope/year. The
   // budget resets when the selection changes (a new request starts fresh) and
@@ -132,8 +147,8 @@ export function useRainfallAnalysis(
 
   const query = useQuery({
     queryKey: scope
-      ? rainfallAnalysisQueryKey(scope, year)
-      : (['rainfall-analysis', 'idle'] as const),
+      ? rainfallAnalysisQueryKey(scope, year, nomenclatura)
+      : (['rainfall-analysis', 'idle', nomenclatura] as const),
     queryFn: async ({ signal }) => {
       const response = await fetchRainfallAnalysis(scope as RainfallScopeChoice, year, signal);
       queuedPolls.current = response.type === 'queued' ? queuedPolls.current + 1 : 0;

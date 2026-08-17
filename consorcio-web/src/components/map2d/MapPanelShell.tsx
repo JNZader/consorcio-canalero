@@ -208,8 +208,10 @@ export function MapPanelShell({
   if (!sheet) {
     return (
       <Paper shadow="md" p="md" radius="md" className={floatingClassName} data-testid={testId}>
-        {minimizeButton && <div className={styles.panelCardMinimize}>{minimizeButton}</div>}
-        {children}
+        <div className={styles.panelCardBody}>
+          {minimizeButton && <div className={styles.panelCardMinimize}>{minimizeButton}</div>}
+          {children}
+        </div>
       </Paper>
     );
   }

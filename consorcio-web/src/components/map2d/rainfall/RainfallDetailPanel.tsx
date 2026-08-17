@@ -38,8 +38,7 @@ import {
   Text,
   VisuallyHidden,
 } from '@mantine/core';
-import { useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 import { useRainfallAnalysis, useRainfallScopes } from '../../../hooks/useRainfallAnalysis';
 import {
@@ -363,16 +362,6 @@ export function RainfallDetailPanel({
   readonly prioritizeAnswer?: boolean;
 }) {
   const canAccess = useCanAccess(['admin', 'operador']);
-  const queryClient = useQueryClient();
-  const previousNomenclatura = useRef(nomenclatura);
-  useEffect(() => {
-    if (previousNomenclatura.current !== nomenclatura) {
-      previousNomenclatura.current = nomenclatura;
-      if (canAccess) {
-        queryClient.invalidateQueries({ queryKey: ['rainfall-analysis'] });
-      }
-    }
-  }, [nomenclatura, canAccess, queryClient]);
   const scopes = useRainfallScopes(canAccess ? nomenclatura : null);
   const choices =
     scopes.data?.kind === 'choices'
@@ -393,6 +382,7 @@ export function RainfallDetailPanel({
   const analysis = useRainfallAnalysis(canAccess ? selected : null, year, {
     pollIntervalMs,
     maxQueuedPolls,
+    nomenclatura,
   });
   const primarySnapshot = analysis.data?.type === 'ready' ? analysis.data.snapshot : null;
 
@@ -407,6 +397,7 @@ export function RainfallDetailPanel({
   const fallback = useRainfallAnalysis(canAccess && canFallBack ? selected : null, previousYear, {
     pollIntervalMs,
     maxQueuedPolls,
+    nomenclatura,
   });
   const fallbackSnapshot = fallback.data?.type === 'ready' ? fallback.data.snapshot : null;
 
