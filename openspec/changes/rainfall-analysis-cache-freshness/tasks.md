@@ -2,132 +2,180 @@
 
 **Change name**: `rainfall-analysis-cache-freshness`  
 **OpenSpec root**: `/tmp/opencode/consorcio-canalero-rainfall-pr2/openspec`  
-**Goal**: close parent `lluvia-ux-tarjeta` JDA-001 by making the multi-parcel E2E harness reach an **11/0/0/0** assertion gate.
+**Goal**: close parent `lluvia-ux-tarjeta` JDA-001 by making the multi-parcel E2E harness reach an **11/0/0/0** assertion gate, using Approach B (per-parcel query key) and Option A (cache-served repeat selections are fresh).
 
 ## Acceptance Criteria (from spec)
 
-- [ ] `RainfallDetailPanel.tsx` invalidates `['rainfall-analysis']` whenever `nomenclatura` changes.
-- [ ] No invalidation occurs on initial mount or re-render with the same `nomenclatura`.
-- [ ] Scope/year changes within the same parcel do not trigger invalidation.
-- [ ] A new unit test in `RainfallDetailPanel.test.tsx` fails if the invalidation logic is removed.
-- [ ] `useRainfallAnalysis.ts` docstring documents the cache-freshness contract.
-- [ ] `rainfall-v2-detail.spec.ts` multi-parcel journey reports **11/0/0/0**.
-- [ ] Within a single parcel session, the 60-second `staleTime` remains effective.
+- [x] `useRainfallAnalysis.ts` builds the rainfall-analysis query key with `scope.kind`, `scope.id`, `scope.version`, `year`, and `nomenclatura`.
+- [x] `RainfallDetailPanel.tsx` does NOT call `queryClient.invalidateQueries` for the rainfall-analysis prefix.
+- [x] `RainfallDetailPanel.tsx` passes `nomenclatura` to `useRainfallAnalysis`.
+- [x] A unit test verifies that a `nomenclatura` change creates a new analysis fetch.
+- [x] A unit test verifies that a same-`nomenclatura` re-render does not create a new analysis fetch.
+- [ ] An optional unit test verifies scope/year cache reuse within the same parcel.
+- [x] `rainfall-v2-detail.spec.ts` multi-parcel journey reports **11/0/0/0**.
+- [x] The E2E harness accepts the final `C→A` repeat selection as fresh when the rendered card matches fixture A.
+- [x] Within a single parcel session, the 60-second `staleTime` remains effective.
 
 ## First Slice / Batch Breakdown
 
-This is a single, small fast-follow slice. It only touches the rainfall panel, the hook contract, and one regression test. The work is intentionally ordered: **document the contract first** so the implementation is motivated, then **add the invalidation**, then **pin it with a regression test**, and finally **verify the E2E harness gate**.
+This is a single fast-follow slice. The pivot from Approach A to Approach B means the production code already carries the per-parcel query key; the remaining work is to (1) align the docstring and remove any leftover invalidation, (2) relax the E2E harness for Option A, and (3) pin the behavior with focused unit tests. The work is intentionally ordered: **confirm the production contract first**, then **relax the E2E gate**, then **add unit tests**, and finally **run the E2E harness**.
 
 ## Dependency Graph
 
 ```text
-1.1 (docstring) ──→ 1.2 (invalidation effect) ──→ 2.1 (regression test)
-                        │
-                        └──→ 3.1 (unit suite) ──→ 3.2 (E2E multi-parcel run) ──→ 3.3 (gate sign-off)
+1.1 (key contract) ──→ 2.1 (E2E harness relaxation) ──→ 4.1 (E2E verification)
+         │
+         └──→ 3.1 (unit tests) ──→ 4.1 (E2E verification)
 ```
 
-- 1.1 can be done in parallel with 2.1 scaffolding, but the docstring text must match the chosen invalidation behavior before the slice is merged.
-- 1.2 must land before 2.1 can assert the behavior.
-- 3.1 and 3.2 depend on 1.2 and 2.1.
-- 3.3 is the final readiness gate.
+- 1.1 must land before 2.1 and 3.1 can assume the production behavior.
+- 2.1 and 3.1 are independent and can run in parallel.
+- 4.1 depends on 1.1, 2.1, and 3.1.
 
-## Phase 1: Cache-Freshness Contract (Foundation)
+## Phase 1: Align Production Code with Approach B (Foundation)
 
-### 1.1 Document the cache-freshness contract in `useRainfallAnalysis.ts`
+### 1.1 Verify the rainfall-analysis query key includes `nomenclatura`
 
-- [x] **1.1.1** Add a code comment / docstring in `consorcio-web/src/hooks/useRainfallAnalysis.ts` that explains:
-  - `RainfallDetailPanel` is the owner of rainfall-analysis cache invalidation on parcel change.
-  - The rainfall-analysis query key intentionally omits `nomenclatura` so that the same resolved scope + year stays cached for 60 seconds while the user is viewing a single parcel.
-  - Parcel-switch invalidation is performed in the panel, not in the hook, because the hook only sees scope + year and cannot know when the underlying parcel changes.
+- [x] **1.1.1** Open `consorcio-web/src/hooks/useRainfallAnalysis.ts` and confirm `rainfallAnalysisQueryKey(scope, year, nomenclatura)` returns `['rainfall-analysis', scope.kind, scope.id, scope.version, year, nomenclatura]`.
+- [x] **1.1.2** Confirm `useRainfallAnalysis` accepts `nomenclatura` in `UseRainfallAnalysisOptions` and forwards it to the key builder.
+- [x] **1.1.3** Confirm `RainfallDetailPanel.tsx` passes its `nomenclatura` prop to `useRainfallAnalysis` in the call options.
+- [x] **1.1.4** Update the JSDoc on `useRainfallAnalysis` to state that the key carries the parcel `nomenclatura` and that no production invalidation is used; the key itself ensures per-parcel freshness.
+- [x] **1.1.5** Confirm there is no `useQueryClient` import, no `queryClient.invalidateQueries` call, and no `invalidateQueries` reference in `RainfallDetailPanel.tsx` for the rainfall-analysis prefix.
+- **Estimate**: 20 min
+- **Verification**: Read the files; diff shows only docstring updates if already correct.
+- **Risk**: Low — if the key already includes `nomenclatura`, this is mostly a docstring pass.
+
+### 1.2 Remove any remaining Approach A invalidation scaffolding
+
+- [x] **1.2.1** Search the production code for `invalidateQueries` with a `rainfall-analysis` key and remove any leftover.
+- [x] **1.2.2** Run `npm --prefix consorcio-web run typecheck` to confirm no dangling `useQueryClient` or invalidation imports.
+- [x] **1.2.3** Run `npm --prefix consorcio-web run lint` to confirm no unused imports.
 - **Estimate**: 15 min
-- **Verification**: Read the comment and confirm it matches the exact invalidation logic added in 1.2.
-- **Risk**: Low — pure documentation; must be kept in sync with the actual implementation or it becomes misleading.
+- **Verification**: Type-check and lint pass.
+- **Risk**: Low — the source already reflects Approach B; this is a cleanup pass.
 
-### 1.2 Add parcel-change invalidation to `RainfallDetailPanel.tsx`
+## Phase 2: Relax E2E Harness for Option A (Core Implementation)
 
-- [x] **1.2.1** Import `useQueryClient` from `@tanstack/react-query` in `consorcio-web/src/components/map2d/rainfall/RainfallDetailPanel.tsx`.
-- [x] **1.2.2** Call `const queryClient = useQueryClient();` inside `RainfallDetailPanel`, placed **before** the `if (!canAccess) return null;` early return to keep the hook order stable.
-- [x] **1.2.3** Add a `useEffect` that tracks the previous `nomenclatura` prop and, when it changes (and `canAccess` is true), calls:
-  ```ts
-  queryClient.invalidateQueries({ queryKey: ['rainfall-analysis'] });
-  ```
-- [x] **1.2.4** Ensure the effect does **not** run on initial mount: initialize the previous-value ref to the current `nomenclatura` and compare inside the effect.
-- [x] **1.2.5** Ensure the effect does **not** depend on `year`, `selectedKey`, or `selected` scope changes, so scope/year changes within the same parcel do not trigger invalidation.
+### 2.1 Update `assertTargetReady` and `assertMobileReady` in `rainfallMultiParcelHarness.ts`
+
+- [x] **2.1.1** Add a way to detect a repeat selection (e.g., pass a flag from `runContextJourney` or derive from the transition order that A appears at index 0 and again at index 3).
+- [x] **2.1.2** For repeat selections (final `C→A`), skip the `analysisSequence > previous.analysisSequence` check and the `evidence.traces.analysisCacheKey !== wantTraceKey` check.
+- [x] **2.1.3** Keep the strict newer-sequence and trace-key checks for non-repeat selections (`A→B` and `B→C`).
+- [x] **2.1.4** Keep all rendered-card checks (identity, scope sentence, percentile, accumulation, metric revision) regardless of repeat status.
+- [x] **2.1.5** Ensure `assertMobileReady` inherits the same relaxation via `assertTargetReady`.
 - **Estimate**: 30 min
-- **Verification**:
-  - The new unit test in 2.1 passes.
-  - `useEffect` dependency array is exactly `[nomenclatura, canAccess, queryClient]` or equivalent, and does not include `year`/`selected`.
-- **Risk**: Medium — if the dependency list is wrong, every scope/year change will throw away the 60-second cache and defeat the request-budgeting behavior.
+- **Verification**: The harness compiles; the helper unit tests pass if any exist.
+- **Risk**: Medium — if the repeat detection is wrong, every transition could skip the freshness gate.
 
-## Phase 2: Regression Test
+### 2.2 Update `waitForTargetAnalysis` in `rainfall-v2-detail.spec.ts`
 
-### 2.1 Add a regression unit test in `RainfallDetailPanel.test.tsx`
+- [x] **2.2.1** Keep the newer-sequence wait for `A→B` and `B→C`.
+- [x] **2.2.2** For the final `C→A` transition, accept the cached response when either:
+  - `trace.latest.analysisCacheKey === target.rainfall.effectiveCacheKey` and `trace.analysisSequence > previousSequence`, OR
+  - the rendered card matches the target fixture (headline percentile, accumulation text, scope sentence, identity, metric revision) even if the sequence did not advance.
+- [x] **2.2.3** Reuse the existing `collectReadyEvidence` helper to read the rendered values, or extract a small helper to avoid duplicating the DOM reads.
+- [x] **2.2.4** Do not add production invalidation; the relaxation lives only in the test harness.
+- **Estimate**: 30 min
+- **Verification**: The spec type-checks and the `A→B→C→A` test can reach the assert gate.
+- **Risk**: Medium — the DOM selectors used to detect the cache-served state must match the actual rendered card.
 
-- [x] **2.1.1** Add a test-specific helper `renderPanelWithClient(queryClient, props)` in `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx` that wraps `RainfallDetailPanel` with the provided `QueryClient` and the standard `MantineProvider`.
-- [x] **2.1.2** Spy on `queryClient.invalidateQueries` with `vi.spyOn(queryClient, 'invalidateQueries')`.
-- [x] **2.1.3** Write a test that:
-  - Mounts the panel with `nomenclatura="parcel-a"` and asserts `invalidateQueries` was **not** called for `['rainfall-analysis']` (initial mount is safe).
-  - Rerenders to `nomenclatura="parcel-b"` and asserts `invalidateQueries` was called **once** with `{ queryKey: ['rainfall-analysis'] }`.
-  - Rerenders again to `nomenclatura="parcel-b"` and asserts the call count stays at one (same-parcel re-render is safe).
-- [x] **2.1.4** (Optional but recommended) Write a second test that changes the year/scope select within the same `nomenclatura` and asserts `invalidateQueries` is not called again.
-- [x] **2.1.5** Confirm the test **fails** if the `useEffect` from 1.2 is removed (regression guard).
+## Phase 3: Unit Tests for Per-Parcel Query Key (Testing)
+
+### 3.1 Add/update per-parcel query-key tests in `RainfallDetailPanel.test.tsx`
+
+- [x] **3.1.1** Keep or rewrite the existing test: changing `nomenclatura` from `parcel-a` to `parcel-b` calls `fetchRainfallAnalysis` exactly once (new query).
+- [x] **3.1.2** Keep or rewrite the existing test: re-rendering with the same `nomenclatura` does not call `fetchRainfallAnalysis` again (cache hit).
+- [ ] **3.1.3** Add an optional test: within the same parcel, switch to a different scope/year via the UI, then switch back to the original scope/year; the second selection reuses the cached query (no new fetch) because the key includes scope/year.
+- [x] **3.1.4** Remove any tests that assert `queryClient.invalidateQueries` is called for rainfall analysis, since production does not perform invalidation.
 - **Estimate**: 45 min
-- **Verification**: Run `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` and the new test passes; temporarily comment out the invalidation and confirm it fails.
-- **Risk**: Low — test scaffolding is straightforward; the main risk is a stale `QueryClient` between tests if not reset in `afterEach`.
+- **Verification**: `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` passes.
+- **Risk**: Low — the test scaffold already wraps with `QueryClientProvider`.
 
-## Phase 3: Verification
+### 3.2 Run the RainfallDetailPanel unit suite
 
-### 3.1 Run the RainfallDetailPanel unit suite
-
-- [x] **3.1.1** Run `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` and confirm all tests pass.
-- [x] **3.1.2** Run `npm --prefix consorcio-web run typecheck` (or the relevant package script) and confirm no new type errors.
-- [x] **3.1.3** Run `npm --prefix consorcio-web run lint` (Biome) and confirm no new lint errors.
+- [x] **3.2.1** Run `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` and confirm all tests pass.
+- [x] **3.2.2** Run `npm --prefix consorcio-web run typecheck` and confirm no new errors.
+- [x] **3.2.3** Run `npm --prefix consorcio-web run lint` and confirm no new errors.
 - **Estimate**: 15 min
-- **Verification**: CI-green unit output; no new errors.
-- **Risk**: Low — the change is small, but Biome may complain about unused imports if the spy helper is not cleaned up.
+- **Verification**: CI-green unit output.
+- **Risk**: Low — the change is small.
 
-### 3.2 Run the E2E multi-parcel journey
+## Phase 4: Verification
 
-- [ ] **3.2.1** Set up the declared local environment from design D13 of `lluvia-ux-tarjeta`:
+### 4.1 Run the E2E multi-parcel journey
+
+- [x] **4.1.1** Set up the declared local environment from design D13 of `lluvia-ux-tarjeta`:
   - `FICHA_ENABLED=true docker compose up -d postgres backend`
   - `docker compose exec backend python -m app.domains.geo.etl.load_suelos_catastro`
-  - `docker compose up -d martin` (with a reachable port / `VITE_MARTIN_URL` as documented in D13)
+  - `docker compose up -d martin` (with a reachable `VITE_MARTIN_URL`)
   - `npm --prefix consorcio-web run dev`
-- [ ] **3.2.2** Execute the dedicated rainfall E2E script:
+- [x] **4.1.2** Execute the dedicated rainfall E2E script:
   ```bash
   E2E_APP_URL=http://localhost:5173 E2E_API_BASE=http://localhost:8000 \
     npm --prefix consorcio-web run test:e2e:rainfall
   ```
-  (Script defined in `consorcio-web/package.json` as `test:e2e:rainfall`.)
-- [ ] **3.2.3** Confirm the `A→B→C→A` multi-parcel test reaches the harness assertion gate.
-- **Estimate**: 30 min (mostly environment warm-up)
-- **Verification**: The test passes and the harness report shows the expected 11/0/0/0 assertion gate.
-- **Risk**: High — if the local environment is not fully seeded (catastro tiles, Martin reachable, `FICHA_ENABLED`, `suelos_catastro` populated), the spec will skip or fail. This is a known operational risk; the E2E is intentionally not gated in CI.
+- [x] **4.1.3** Confirm the `A→B→C→A` multi-parcel test reaches the harness assertion gate.
+- **Estimate**: 30 min
+- **Verification**: Test passes and the harness report shows 11/0/0/0.
+- **Risk**: High — the local environment must be fully seeded.
+- **Status**: COMPLETED — the Python disposable-stack driver produced a clean `11/0/0/0` run. The canonical ports (`8011/3011/5184`) were blocked by a stale docker-proxy, so the final run used alternative ports (`8013/3012/5185`) and still passed.
+- **Evidence**: `/tmp/rainfall-e2e-evidence8/manifest.json`, `/tmp/rainfall-e2e-evidence8/playwright-results.json`, `/tmp/rainfall-e2e-evidence8/events.jsonl`.
 
-### 3.3 Sign off the review budget and gate
+### 4.2 Sign off the review budget
 
-- [x] **3.3.1** Estimate the final diff size:
-  - Source changes: ~15 lines in `RainfallDetailPanel.tsx` + ~10 lines in `useRainfallAnalysis.ts` = ~25 lines.
-  - Test changes: ~35 lines in `RainfallDetailPanel.test.tsx`.
-  - **Estimated total changed lines**: ~60 lines (well under the 400-line threshold for full 4R review).
-- [x] **3.3.2** Forecast review workload: one standard lens (`review-reliability` or `review-readability`) because the diff is small, does not touch auth/security/payments, and the behavior change is a TanStack Query pattern. If the slice is merged into a larger branch that already exceeds 400 changed lines, the combined diff must be reviewed at the full 4R tier.
-- [x] **3.3.3** Confirm that `staleTime: 60_000` in `useRainfallAnalysis.ts` is unchanged and that no global `refetchOnMount`/`staleTime` defaults were modified.
+- [x] **4.2.1** Estimate the final diff size: source changes ~15 lines (docstring + minor cleanup), test changes ~80 lines, total well under 400 lines.
+- [x] **4.2.2** Forecast review workload: one standard lens (`review-reliability`) because the diff is small and does not touch auth/security/payments.
+- [x] **4.2.3** Confirm that no global `staleTime` or `refetchOnMount` defaults were modified.
 - **Estimate**: 10 min
-- **Verification**: Diff review shows only the intended lines; no `staleTime` or global query-config changes.
-- **Risk**: Low — the change is bounded, but a mis-merge into the parent branch could accidentally drag in unrelated changes.
+- **Verification**: Diff review shows only the intended changes.
+- **Risk**: Low.
+
+## Phase 5: Layout + E2E Robustness Fix (Ficha Panel Overlay)
+
+This batch was added to eliminate a flaky desktop failure: the ficha-territorial panel's floating card was intercepting map clicks on desktop, so the second/third desktop parcel selections could not click through to the canvas. The fix mixes a minimal CSS `pointer-events` guard with a test helper that explicitly dismisses the panel between selections.
+
+### 5.1 Add CSS pointer-events guard to desktop floating cards
+
+- [x] **5.1.1** Open `consorcio-web/src/styles/components/map.module.css` and add `pointer-events: none` to the desktop `.infoPanel` and `.fichaPanel` card rules only.
+- [x] **5.1.2** Restore `pointer-events: auto` for interactive children: close buttons, action icons, pills, buttons, links, inputs, selects, textareas, `label` elements, and elements with ARIA roles such as `button`, `tab`, `radio`, `listbox`, `switch`, `option`.
+- [x] **5.1.3** Add `.fichaPanel svg { pointer-events: none; }` to prevent the Recharts SVG from stealing clicks from the map canvas.
+- [x] **5.1.4** Confirm the mobile sheet class `.panelSheet` is NOT modified; mobile behavior must remain unchanged.
+- **Estimate**: 20 min
+- **Verification**: CSS-related unit tests pass; the desktop panel buttons and tab labels remain clickable; the map can be clicked behind the panel.
+- **Risk**: Medium — `pointer-events: none` can accidentally disable all panel interactions if children are not correctly restored.
+
+### 5.2 Add a dismiss helper to the E2E multi-parcel spec
+
+- [x] **5.2.1** Add `dismissDesktopPanel(page)` in `consorcio-web/tests/e2e/rainfall-v2-detail.spec.ts` that clicks the close button with aria-label `"Cerrar ficha territorial"` and waits for the panel to disappear or the pill to appear.
+- [x] **5.2.2** Wire `dismissDesktopPanel` after each non-final desktop selection in `runContextJourney` so the canvas is clear before the next click.
+- [x] **5.2.3** Keep the mobile path unchanged; mobile uses the bottom sheet, not the floating panel.
+- **Estimate**: 25 min
+- **Verification**: The `A→B→C→A` desktop journey reaches the assertion gate in one attempt.
+- **Risk**: Low — the helper is a test-only change.
+
+### 5.3 Re-validate the E2E harness after the layout fix
+
+- [x] **5.3.1** Rebuild the RMEH frontend container so the new CSS is copied into the image.
+- [x] **5.3.2** Run the CSS-related unit tests and confirm no regressions.
+- [x] **5.3.3** Run `npm --prefix consorcio-web run typecheck` and `npm --prefix consorcio-web run lint`.
+- [x] **5.3.4** Run the Python E2E driver and confirm the harness gate is `11/0/0/0`.
+- **Estimate**: 35 min
+- **Verification**: `manifest.json` reports `"passed": 11, "failed": 0, "skipped": 0` and `playwright-results.json` shows `expected: 11, unexpected: 0, flaky: 0`.
+- **Risk**: Low — the fix is additive and test-only beyond the CSS rule.
 
 ## Chained-PR Implications
 
-- This change is a **fast-follow PR** to `lluvia-ux-tarjeta` (JDA-001). It assumes the panel, the card hierarchy, and the E2E harness from that change are already on the integration branch.
-- The diff is too small to justify its own chain; it should be delivered as **one PR** against the parent branch / after the parent merges.
-- Because the E2E harness and the `11/0/0/0` gate are owned by the sibling `rainfall-multi-parcel-e2e-harness` change, this change must be validated on a branch that includes both the UX card slice and the harness slice.
+- This change is a fast-follow PR to `lluvia-ux-tarjeta` (JDA-001). It assumes the panel, the card hierarchy, and the E2E harness from that change are already on the integration branch.
+- The diff is small and should be delivered as one PR against the parent branch.
+- The E2E harness and the 11/0/0/0 gate are owned by the sibling `rainfall-multi-parcel-e2e-harness` change; this change must be validated on a branch that includes both slices.
 - No backend, contract, migration, or route changes are required.
 
 ## Out-of-Scope Reminders
 
-- Do NOT change the rainfall-analysis query key to include `nomenclatura`.
+- Do NOT add `queryClient.invalidateQueries` in production code.
+- Do NOT change the rainfall-analysis query key to omit `nomenclatura`.
 - Do NOT change global TanStack Query `staleTime` or `refetchOnMount` defaults.
 - Do NOT add server-side cache headers or API-level invalidation.
-- Do NOT refactor the multi-parcel E2E harness itself (owned by `rainfall-multi-parcel-e2e-harness`).
+- Do NOT refactor the multi-parcel E2E harness fixture itself (owned by `rainfall-multi-parcel-e2e-harness`).
 - Do NOT touch visual or UX changes to the Lluvia detail card (owned by `lluvia-ux-tarjeta`).
-- Do NOT backport the invalidation pattern to NDVI or suelos panels without an explicit request.
+- Do NOT backport the per-parcel key pattern to NDVI or suelos panels without an explicit request.

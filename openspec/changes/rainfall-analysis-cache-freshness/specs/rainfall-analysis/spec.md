@@ -6,57 +6,78 @@
 
 ## ADDED Requirements
 
-### Requirement: Parcel-Change Cache Invalidation for Rainfall Analysis
+### Requirement: Per-Parcel Rainfall Analysis Query Key
 
-The system MUST invalidate all cached queries matching the `['rainfall-analysis']` query-key prefix whenever the `nomenclatura` prop passed to `RainfallDetailPanel` changes. The system MUST NOT trigger that invalidation on initial mount, on re-render with an unchanged `nomenclatura`, or on scope/year selection changes within the same parcel.
+The `useRainfallAnalysis` hook MUST include the source parcel `nomenclatura` in the rainfall-analysis query key so that each parcel has an independent cache entry. The key MUST also carry the resolved scope (`kind`, `id`, `version`) and the selected `year`.
 
-#### Scenario: Parcel change triggers rainfall-analysis invalidation (happy path)
+#### Scenario: Parcel A and parcel B with different scopes have independent cache entries
 
-- GIVEN `RainfallDetailPanel` is rendered for parcel A with a `QueryClient`
-- AND the rainfall-analysis query for parcel A's resolved scope is cached
+- GIVEN `useRainfallAnalysis` is called for parcel A with scope SA and year Y
+- AND the result is cached
+- WHEN `useRainfallAnalysis` is called for parcel B with scope SB and year Y
+- THEN the query key for parcel B differs from parcel A's key
+- AND a fresh network request is issued for parcel B
+
+#### Scenario: Re-rendering the same parcel reuses the cached analysis
+
+- GIVEN `RainfallDetailPanel` is rendered for parcel A with scope SA and year Y
+- AND the analysis result is cached
+- WHEN the panel re-renders with the same `nomenclatura`, scope, and year
+- THEN no new rainfall-analysis network request is issued
+- AND the cached result is served
+
+#### Scenario: Scope or year change within the same parcel creates a new query
+
+- GIVEN `RainfallDetailPanel` is rendered for parcel A with scope SA and year Y
+- WHEN the user selects a different scope or year while staying on parcel A
+- THEN the rainfall-analysis query key changes to reflect the new scope/year
+- AND a new network request is issued for the new scope/year combination
+- AND the result is cached independently under the parcel's key
+
+### Requirement: No Production Cache Invalidation
+
+The system MUST NOT call `queryClient.invalidateQueries` for the rainfall-analysis query prefix in `RainfallDetailPanel` or any related production code. Cache freshness across parcels is achieved exclusively through the per-parcel query key.
+
+#### Scenario: Parcel change does not trigger invalidation
+
+- GIVEN `RainfallDetailPanel` is rendered for parcel A
 - WHEN the `nomenclatura` prop changes to parcel B
-- THEN the system calls `queryClient.invalidateQueries({ queryKey: ['rainfall-analysis'] })`
-- AND the active rainfall-analysis observer for parcel B issues a fresh network request
+- THEN the system does NOT call `queryClient.invalidateQueries({ queryKey: ['rainfall-analysis'] })`
+- AND a fresh analysis query for parcel B runs because the key differs
 
-#### Scenario: Initial render and same-parcel re-render do not invalidate
-
-- GIVEN `RainfallDetailPanel` is rendered for parcel A
-- WHEN the component mounts or re-renders without a `nomenclatura` change
-- THEN the system does NOT call `invalidateQueries` for the rainfall-analysis prefix
-
-#### Scenario: Scope or year change within the same parcel does not invalidate
+#### Scenario: Scope or year change does not trigger invalidation
 
 - GIVEN `RainfallDetailPanel` is rendered for parcel A
-- AND the user switches scope or year while staying on parcel A
-- WHEN the selection changes
-- THEN the system does NOT call `invalidateQueries` for the rainfall-analysis prefix
-- AND the existing 60-second `staleTime` cache for that parcel remains valid
+- WHEN the user switches scope or year while staying on parcel A
+- THEN the system does NOT call `queryClient.invalidateQueries` for the rainfall-analysis prefix
+- AND the new query is created naturally by the key change
 
-#### Scenario: Returning to a previously selected parcel refetches fresh data
+### Requirement: E2E Cache-Freshness Gate (Option A)
 
-- GIVEN parcels A, B, and C were each selected within the 60-second stale window
+The multi-parcel E2E harness MUST accept that a repeat parcel selection inside the 60-second stale window may be served from the per-parcel cache without a new network request. For the final `C→A` transition in the `A→B→C→A` journey, the harness MUST treat the selection as fresh when the rendered card matches the target fixture exactly, even if the recorded analysis sequence or trace key is not newer than the previous transition.
+
+#### Scenario: Final C→A is served from cache
+
+- GIVEN the `A→B→C→A` multi-parcel journey has reached the final A selection
+- AND parcel A's analysis is still within the 60-second stale window
 - WHEN the user selects parcel A again
-- THEN the rainfall-analysis cache entry for parcel A is stale
-- AND a fresh network request is issued for parcel A
+- THEN the E2E harness MAY observe that no new analysis network request was issued
+- AND the harness MUST pass if the rendered identity, scope sentence, percentile, accumulation, and metric revision all match fixture A
 
-### Requirement: Cache-Freshness Contract Documentation
+#### Scenario: A→B and B→C still require a newer analysis sequence
 
-The system MUST document, in the `useRainfallAnalysis` hook docstring or adjacent code comment, that `RainfallDetailPanel` owns rainfall-analysis cache invalidation on parcel change and that the rainfall-analysis query key intentionally omits `nomenclatura`.
-
-#### Scenario: Developer reads hook documentation
-
-- GIVEN a developer inspects `useRainfallAnalysis.ts`
-- WHEN they read the cache-freshness contract comment
-- THEN they understand that parcel-switch invalidation is performed by the panel
-- AND they understand why the query key does not include `nomenclatura`
+- GIVEN the user transitions from parcel A to parcel B
+- WHEN the harness waits for the target analysis
+- THEN it MUST wait for a newer recorded analysis sequence than the previous transition
+- AND the trace key, scope, and rendered values MUST all match fixture B
 
 ## MODIFIED Requirements
 
 ### Requirement: Supported Analysis Scope and Parcel Semantics
 
-When the selected parcel changes, the system MUST treat any cached rainfall-analysis result as stale and MUST refetch the analysis for the newly selected parcel instead of serving the cached snapshot from the previous parcel.
+When the selected parcel changes, the system MUST fetch the analysis for the newly selected parcel instead of serving the cached snapshot from the previous parcel. The per-parcel query key guarantees this by construction.
 
-(Previously: the requirement defined scope resolution and regional-estimate labelling but did not address cache invalidation across parcel switches.)
+(Previously: the requirement assumed the same query key and required invalidation; now the key itself includes the parcel identity.)
 
 #### Scenario: Parcel switch no longer shows previous parcel's cached analysis
 
@@ -68,39 +89,44 @@ When the selected parcel changes, the system MUST treat any cached rainfall-anal
 
 ## REMOVED Requirements
 
-None.
+- The requirement that `RainfallDetailPanel` call `queryClient.invalidateQueries({ queryKey: ['rainfall-analysis'] })` on parcel change is removed because the per-parcel query key makes it unnecessary.
+- The requirement that `useRainfallAnalysis.ts` docstring state that the panel owns invalidation is removed; the docstring now states that the query key itself carries the parcel identity and that no production invalidation is used.
 
 ## Non-Functional Requirements
 
 ### Performance
 
-The rainfall-analysis cache invalidation logic SHOULD run only once per actual parcel transition and SHOULD NOT cause additional invalidations on scope/year changes or repeated mount/unmount of the same parcel.
+The per-parcel cache key preserves the existing 60-second `staleTime` within a single parcel session. Scope or year changes within the same parcel create a new query for the new combination, but re-selecting the same scope/year for the same parcel reuses the cached entry.
 
-Within a single parcel session, the existing 60-second `staleTime` for rainfall-analysis queries MUST remain in effect, preserving the current request-budgeting behavior.
+There MUST be no production `invalidateQueries` calls for the rainfall-analysis prefix, avoiding unnecessary cache churn and refetch coordination.
 
 ### Testability
 
-A regression unit test in `RainfallDetailPanel.test.tsx` MUST verify that changing `nomenclatura` calls `invalidateQueries({ queryKey: ['rainfall-analysis'] })`.
+A regression unit test in `RainfallDetailPanel.test.tsx` MUST verify that changing `nomenclatura` creates a new `fetchRainfallAnalysis` call.
 
-The unit test MUST fail if the invalidation logic is removed.
+A regression unit test MUST verify that re-rendering with the same `nomenclatura` does not create a new `fetchRainfallAnalysis` call.
 
-The E2E multi-parcel journey in `rainfall-v2-detail.spec.ts` MUST report an 11/0/0/0 gate (11 passing assertions, 0 expected, 0 unexpected, 0 failing).
+An optional unit test MAY verify that switching scope/year within the same parcel and reverting reuses the cached query without a new fetch.
+
+The E2E multi-parcel journey in `rainfall-v2-detail.spec.ts` MUST report an 11/0/0/0 assertion gate.
 
 ## Acceptance Criteria
 
-- [ ] `RainfallDetailPanel.tsx` invalidates `['rainfall-analysis']` whenever `nomenclatura` changes.
-- [ ] No invalidation occurs on initial mount or re-render with the same `nomenclatura`.
-- [ ] Scope/year changes within the same parcel do not trigger invalidation.
-- [ ] A new unit test in `RainfallDetailPanel.test.tsx` fails if invalidation logic is removed.
-- [ ] `useRainfallAnalysis.ts` docstring documents the cache-freshness contract.
+- [ ] `useRainfallAnalysis.ts` builds the rainfall-analysis query key with `scope.kind`, `scope.id`, `scope.version`, `year`, and `nomenclatura`.
+- [ ] `RainfallDetailPanel.tsx` does NOT call `queryClient.invalidateQueries` for the rainfall-analysis prefix.
+- [ ] `RainfallDetailPanel.tsx` passes `nomenclatura` to `useRainfallAnalysis`.
+- [ ] A unit test in `RainfallDetailPanel.test.tsx` verifies that a `nomenclatura` change creates a new analysis fetch.
+- [ ] A unit test verifies that a same-`nomenclatura` re-render does not create a new analysis fetch.
+- [ ] An optional unit test verifies scope/year cache reuse within the same parcel.
 - [ ] `rainfall-v2-detail.spec.ts` multi-parcel journey reports **11/0/0/0**.
-- [ ] Within a single parcel session, the 60-second cache remains effective.
+- [ ] The E2E harness accepts the final `C→A` repeat selection as fresh when the rendered card matches fixture A, even without a newer analysis sequence.
+- [ ] Within a single parcel session, the 60-second `staleTime` remains effective.
 
 ## Out of Scope
 
-- Redesigning the rainfall-analysis query key to include `nomenclatura`.
 - Changing global TanStack Query `staleTime` or `refetchOnMount` defaults.
 - Adding server-side cache headers or API-level invalidation.
-- Refactoring the multi-parcel E2E harness itself (owned by sibling change `rainfall-multi-parcel-e2e-harness`).
+- Refactoring the multi-parcel E2E harness fixture itself (owned by sibling change `rainfall-multi-parcel-e2e-harness`).
 - Visual or UX changes to the Lluvia detail card (owned by parent `lluvia-ux-tarjeta` JDA-001).
-- Backporting the invalidation pattern to other detail panels (NDVI, suelos) without an explicit request.
+- Backporting the per-parcel key pattern to other detail panels (NDVI, suelos) without an explicit request.
+- Adding production invalidation logic to force refetches on parcel change.
