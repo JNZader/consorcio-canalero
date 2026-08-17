@@ -468,6 +468,64 @@ def test_invalid_hide_ranges_does_not_break_the_tile(client, cache, monkeypatch,
     assert response.status_code == 200
 
 
+# ── precip_normal + per-request rescale ────────────────────────────────────
+
+
+@needs_rio_tiler
+def test_precip_normal_tile_renders_with_default_colormap(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    path = _write_raster(
+        tmp_path / "precip_anual.tif", np.full((64, 64), 900.0), "float32"
+    )
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    response = client.get(_url(LAYER_ID, x, y))
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+
+@needs_rio_tiler
+def test_continuous_tile_uses_per_request_rescale(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    path = _write_raster(
+        tmp_path / "precip_monthly.tif", np.full((64, 64), 50.0), "float32"
+    )
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    default_response = client.get(_url(LAYER_ID, x, y))
+    override_response = client.get(
+        _url(LAYER_ID, x, y, rescale_min=0, rescale_max=200)
+    )
+
+    assert default_response.status_code == 200
+    assert override_response.status_code == 200
+    assert default_response.content != override_response.content
+
+
+@needs_rio_tiler
+def test_cache_key_separates_rescale_params(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    path = _write_raster(
+        tmp_path / "precip.tif", np.full((64, 64), 100.0), "float32"
+    )
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    client.get(_url(LAYER_ID, x, y))
+    client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=200))
+
+    assert len(cache.store) == 2
+
+
+# ── terrain-rgb fallbacks ──────────────────────────────────────────────────
+
+
 def test_terrain_rgb_falls_back_to_a_flat_tile_when_every_pixel_is_nodata(
     client, cache, monkeypatch, tmp_path
 ) -> None:
