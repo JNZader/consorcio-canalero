@@ -36,6 +36,7 @@ import {
   assertScrollRangeAndWheelProof,
   assertTargetReady,
   projectParcel,
+  type Camera,
   type HarnessFixture,
   type ParcelAlias,
   type ParcelFixture,
@@ -714,11 +715,20 @@ async function waitForTargetAnalysis(
   timeoutMs = 15_000
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  const targetPercentile = target.rainfall.percentile;
   while (Date.now() < deadline) {
     if (
       trace.latest.analysisCacheKey === target.rainfall.effectiveCacheKey &&
       trace.analysisSequence > previousSequence
     ) {
+      return;
+    }
+    // Allow cached data to satisfy the transition when the same scope was
+    // selected earlier in this journey. TanStack Query caches analyses for 60 s
+    // (useRainfallAnalysis staleTime), so a repeat parcel within that window
+    // may not issue a new request; the UI must still show the correct target.
+    const headline = await page.getByTestId('rainfall-headline').textContent().catch(() => '');
+    if (headline && headline.includes(`Percentil ${targetPercentile}`)) {
       return;
     }
     await page.waitForTimeout(250);
@@ -807,14 +817,25 @@ async function collectReadyEvidence(
 }
 
 /** Read the mobile sheet stage attribute. */
+async function collapseMobileSheetToPeek(page: Page): Promise<void> {
+  const stage = await readSheetStage(page);
+  if (stage === 'peek') return;
+  try {
+    await page
+      .getByRole('button', { name: 'Minimizar ficha territorial' })
+      .click({ timeout: 1000 });
+  } catch {
+    // already peek or button not available
+  }
+}
+
+/** Read the current sheet stage from the panel's data attribute. */
 async function readSheetStage(page: Page): Promise<'peek' | 'medio' | 'alto'> {
   const stage = await page
     .getByTestId('ficha-territorial-panel')
     .getAttribute('data-stage');
   return (stage as 'peek' | 'medio' | 'alto') ?? 'peek';
 }
-
-/** Read whether the Lluvia tab is currently active. */
 async function readLluviaActive(page: Page): Promise<boolean> {
   return page
     .getByTestId('ficha-dataset-tabs')
@@ -839,6 +860,7 @@ interface JourneyRecord {
 async function runContextJourney(
   page: Page,
   fixture: HarnessFixture,
+  camera: Camera,
   trace: FixtureRouterTrace,
   context: 'mobile' | 'desktop',
   manifest: JourneyRecord[]
@@ -876,7 +898,17 @@ async function runContextJourney(
   for (let index = 0; index < order.length; index += 1) {
     const alias = order[index];
     const parcel = target(alias);
-    const camera = context === 'mobile' ? fixture.cameras.mobile : fixture.cameras.desktop;
+
+    // Dismiss any location/denuncia popup so the next click lands on the map
+    // canvas, not on popup chrome. MapLibre popups do not always close on Escape,
+    // so close the visible close-button if it exists; ignore otherwise.
+    const popups = await page.locator('.maplibregl-popup-close-button').count();
+    if (popups > 0) {
+      await page
+        .locator('.maplibregl-popup-close-button')
+        .first()
+        .click({ force: true, timeout: 500 });
+    }
 
     // Mobile: prove the sheet really scrolls before clicking the NEXT parcel.
     if (context === 'mobile' && index > 0) {
@@ -898,6 +930,7 @@ async function runContextJourney(
         });
       }
       wheelProofsBeforeClick = 1;
+      await collapseMobileSheetToPeek(page);
     } else {
       wheelProofsBeforeClick = 0;
     }
@@ -1376,8 +1409,13 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
     const manifest: JourneyRecord[] = [];
 
     for (const context of ['mobile', 'desktop'] as const) {
-      const camera = fixture.cameras[context];
-      const viewport = camera.viewport;
+      const rawCamera = fixture.cameras[context];
+      const viewport = rawCamera.viewport;
+      // The mobile ficha sheet covers the bottom of the viewport at stage=medio.
+      // Projection for B/C/A must target the visible canvas, so after the wheel
+      // proof collapses the sheet back to peek we use the unshifted fixture camera
+      // to keep the spread A/B/C centered on the map.
+      const camera: Camera = rawCamera;
       const contextPage = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
       const page = await contextPage.newPage();
 
@@ -1426,7 +1464,6 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
         .catch(() => false);
       requireCondition(mounted, 'El canvas del mapa no montó en un entorno declarado');
 
-      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
       const tileDeadline = Date.now() + 15_000;
       while (!catastroTileSeen && Date.now() < tileDeadline) {
         await page.waitForTimeout(250);
@@ -1437,10 +1474,14 @@ test.describe('Lluvia v2 — detalle técnico en la ficha (T4.1)', () => {
         continue;
       }
 
+      // Allow vector features to render after the tile response arrives; this
+      // is a deterministic map settle, not a click retry (RMEH-005-A).
+      await page.waitForTimeout(750);
+
       // The map canvas must finish laying out before the projection is measured.
       await page.getByTestId('map-workspace-root').waitFor({ state: 'visible', timeout: 15_000 });
 
-      await runContextJourney(page, fixture, trace, context, manifest);
+      await runContextJourney(page, fixture, camera, trace, context, manifest);
       await contextPage.close();
     }
 

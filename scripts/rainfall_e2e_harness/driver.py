@@ -467,7 +467,6 @@ def _run_collection(config: DriverConfig) -> str:
     result = subprocess.run(
         [
             config.npm,
-            "exec",
             "playwright",
             "test",
             "-c",
@@ -479,6 +478,12 @@ def _run_collection(config: DriverConfig) -> str:
         capture_output=True,
         text=True,
         check=False,
+        env={
+            **os.environ,
+            "RMEH_FRONTEND_URL": config.frontend_url,
+            "E2E_APP_URL": config.frontend_url,
+            "E2E_API_BASE": f"http://127.0.0.1:{config.backend_host}",
+        },
     )
     if result.returncode != 0:
         raise HarnessAccountingFailure(
@@ -494,7 +499,6 @@ def _run_playwright(config: DriverConfig, results_json: Path) -> None:
     result = subprocess.run(
         [
             config.npm,
-            "exec",
             "playwright",
             "test",
             "-c",
@@ -508,6 +512,8 @@ def _run_playwright(config: DriverConfig, results_json: Path) -> None:
             **os.environ,
             "RMEH_PLAYWRIGHT_JSON": str(results_json),
             "RMEH_FRONTEND_URL": config.frontend_url,
+            "E2E_APP_URL": config.frontend_url,
+            "E2E_API_BASE": f"http://127.0.0.1:{config.backend_host}",
         },
     )
     if result.returncode != 0:

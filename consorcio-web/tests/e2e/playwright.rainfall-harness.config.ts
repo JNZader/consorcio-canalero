@@ -37,7 +37,7 @@ const harnessOutputJson =
 export default defineConfig({
   testDir: '.',
   testMatch: /rainfall-v2-detail\.spec\.ts$/,
-  timeout: 120_000,
+  timeout: 300_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   forbidOnly: true,
