@@ -53,6 +53,24 @@ describe('layerRenderRegistry — coverage', () => {
     }
   });
 
+  it('precip_normal is registered as a raster layer with the documented defaults', () => {
+    const entry = LAYER_RENDER_REGISTRY.precip_normal;
+    expect(entry).toBeDefined();
+    expect(entry.mlLayers).toHaveLength(1);
+    expect(entry.mlLayers[0]).toEqual({
+      id: 'map2d-precip-normal-layer',
+      opacityProp: 'raster-opacity',
+      defaultOpacity: 0.55,
+    });
+    expect(entry.family).toBe('precipitation');
+    expect(entry.supportsDate).toBe(false);
+  });
+
+  it('precip_normal appears in the default layer order exactly once', () => {
+    const matches = DEFAULT_LAYER_ORDER.filter((id) => id === 'precip_normal');
+    expect(matches).toHaveLength(1);
+  });
+
   it('catastro-fill defaultOpacity IS the shared paint constant (no mirror drift)', () => {
     // Regression guard (R4-001): the registry used to hard-code 0.08 while the
     // paint used 0.12. `applyLayerOpacity` multiplies `defaultOpacity` by ANY
