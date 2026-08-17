@@ -63,14 +63,14 @@ This is a single, small fast-follow slice. It only touches the rainfall panel, t
 
 ### 2.1 Add a regression unit test in `RainfallDetailPanel.test.tsx`
 
-- [ ] **2.1.1** Add a test-specific helper `renderPanelWithClient(queryClient, props)` in `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx` that wraps `RainfallDetailPanel` with the provided `QueryClient` and the standard `MantineProvider`.
-- [ ] **2.1.2** Spy on `queryClient.invalidateQueries` with `vi.spyOn(queryClient, 'invalidateQueries')`.
-- [ ] **2.1.3** Write a test that:
+- [x] **2.1.1** Add a test-specific helper `renderPanelWithClient(queryClient, props)` in `consorcio-web/tests/unit/RainfallDetailPanel.test.tsx` that wraps `RainfallDetailPanel` with the provided `QueryClient` and the standard `MantineProvider`.
+- [x] **2.1.2** Spy on `queryClient.invalidateQueries` with `vi.spyOn(queryClient, 'invalidateQueries')`.
+- [x] **2.1.3** Write a test that:
   - Mounts the panel with `nomenclatura="parcel-a"` and asserts `invalidateQueries` was **not** called for `['rainfall-analysis']` (initial mount is safe).
   - Rerenders to `nomenclatura="parcel-b"` and asserts `invalidateQueries` was called **once** with `{ queryKey: ['rainfall-analysis'] }`.
   - Rerenders again to `nomenclatura="parcel-b"` and asserts the call count stays at one (same-parcel re-render is safe).
-- [ ] **2.1.4** (Optional but recommended) Write a second test that changes the year/scope select within the same `nomenclatura` and asserts `invalidateQueries` is not called again.
-- [ ] **2.1.5** Confirm the test **fails** if the `useEffect` from 1.2 is removed (regression guard).
+- [x] **2.1.4** (Optional but recommended) Write a second test that changes the year/scope select within the same `nomenclatura` and asserts `invalidateQueries` is not called again.
+- [x] **2.1.5** Confirm the test **fails** if the `useEffect` from 1.2 is removed (regression guard).
 - **Estimate**: 45 min
 - **Verification**: Run `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` and the new test passes; temporarily comment out the invalidation and confirm it fails.
 - **Risk**: Low — test scaffolding is straightforward; the main risk is a stale `QueryClient` between tests if not reset in `afterEach`.
