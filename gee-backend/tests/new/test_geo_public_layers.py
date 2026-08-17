@@ -110,8 +110,9 @@ def test_public_layers_expose_published_production_set(
     # Igualdad EXACTA: si manana alguien amplia PUBLIC_PRODUCTION_LAYER_TYPES,
     # este assert falla y obliga a decidirlo a conciencia en el test, no de
     # rebote. flood_risk/drainage_need se sumaron al set publico (overlays de
-    # riesgo/drenaje de la ficha, 2026-08-01).
-    assert _tipos(resp) == {"dem_raw", "terrain_class", "flood_risk", "drainage_need"}
+    # riesgo/drenaje de la ficha, 2026-08-01); precip_normal se suma para el
+    # visor multi-riesgo (2026-08-17).
+    assert _tipos(resp) == {"dem_raw", "terrain_class", "flood_risk", "drainage_need", "precip_normal"}
 
 
 def test_public_layers_hide_non_published_types(client: TestClient, seeded_layers: None) -> None:

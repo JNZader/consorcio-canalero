@@ -109,6 +109,14 @@ def get_tile(
         default=None,
         description=TERRAIN_SMOOTHING_METHODS_DESCRIPTION,
     ),
+    rescale_min: Optional[float] = Query(
+        default=None,
+        description="Minimum value for the requested rescale range (continuous layers).",
+    ),
+    rescale_max: Optional[float] = Query(
+        default=None,
+        description="Maximum value for the requested rescale range (continuous layers).",
+    ),
 ):
     """Serve a 256x256 PNG tile from a GeoLayer's raster data.
 
@@ -136,13 +144,17 @@ def get_tile(
     # v3: terrain-rgb nodata is feathered down to the baseline instead of being
     # snapped to it, so every previously cached elevation tile that straddles
     # the DEM edge still carries the vertical curtain. Bump to retire them.
+    # v4: rescale_min/rescale_max allow monthly/annual CHIRPS normals to share
+    # the same layer id with different contrast; previous keys ignored them.
     cache_key = (
-        f"v3:{layer_id}:{z}:{x}:{y}"
+        f"v4:{layer_id}:{z}:{x}:{y}"
         f":enc={encoding or '-'}"
         f":cmap={colormap or '-'}"
         f":hc={_normalise_csv(hide_classes)}"
         f":hr={_normalise_csv(hide_ranges)}"
         f":smooth={terrain_smoothing or '-'}"
+        f":rmin={rescale_min if rescale_min is not None else '-'}"
+        f":rmax={rescale_max if rescale_max is not None else '-'}"
     )
     bytes_cache = get_bytes_cache()
     cached = bytes_cache.get(cache_key)
@@ -191,6 +203,14 @@ def get_tile(
             _hidden_ranges = {int(r.strip()) for r in hide_ranges.split(",") if r.strip()}
         except ValueError:
             logger.warning("Invalid hide_ranges value: %s", hide_ranges)
+
+    # A per-request rescale range lets the same continuous layer (e.g. CHIRPS
+    # monthly vs annual normals) render with different contrast without creating
+    # separate layer ids. If only one bound is sent we ignore it and fall back
+    # to the configured default.
+    _requested_rescale: tuple[float, float] | None = None
+    if rescale_min is not None and rescale_max is not None:
+        _requested_rescale = (rescale_min, rescale_max)
 
     if encoding == "terrain-rgb":
         # Read with a buffer halo only when smoothing is requested, so that
@@ -271,6 +291,7 @@ def get_tile(
                     layer.tipo,
                     cmap_name,
                     _hidden_ranges,
+                    rescale=_requested_rescale,
                 )
             except Exception as e:
                 logger.warning(
@@ -288,7 +309,7 @@ def get_tile(
                 )
                 img.rescale(((0.0, 13.0),))
             else:
-                rescale = DEFAULT_RESCALE.get(layer.tipo)
+                rescale = _requested_rescale or DEFAULT_RESCALE.get(layer.tipo)
                 if rescale:
                     img.rescale(((rescale[0], rescale[1]),))
 

@@ -55,20 +55,23 @@ PUBLIC_TILE_CAPABLE_TYPES = {
     "terrain_class",
     "flood_risk",
     "drainage_need",
+    "precip_normal",
 }
 
 
 # Layer types published to anonymous visitors in production.
 # `terrain_class` (clasificación del terreno) se publica a pedido del consorcio
 # (2026-07-30); `flood_risk` y `drainage_need` (composites de riesgo/drenaje) se
-# publican como overlays raster del mapa de la ficha (2026-08-01). El resto de
-# los tipos del pipeline DEM sigue detrás de login.
-# Las subcuencas son otro endpoint (`/geo/basins`), ya público.
+# publican como overlays raster del mapa de la ficha (2026-08-01);
+# `precip_normal` (normales CHIRPS 1991-2020) se publica como overlay del
+# visor multi-riesgo (2026-08-17). El resto de los tipos del pipeline DEM sigue
+# detrás de login. Las subcuencas son otro endpoint (`/geo/basins`), ya público.
 PUBLIC_PRODUCTION_LAYER_TYPES = {
     "dem_raw",
     "terrain_class",
     "flood_risk",
     "drainage_need",
+    "precip_normal",
 }
 
 
@@ -342,6 +345,8 @@ async def proxy_tile(
     hide_classes: Optional[str] = Query(default=None),
     hide_ranges: Optional[str] = Query(default=None),
     terrain_smoothing: Optional[str] = Query(default=None),
+    rescale_min: Optional[float] = Query(default=None),
+    rescale_max: Optional[float] = Query(default=None),
 ):
     """Proxy tile requests to the geo-worker tile service (public).
 
@@ -380,6 +385,10 @@ async def proxy_tile(
         params["hide_ranges"] = hide_ranges
     if terrain_smoothing:
         params["terrain_smoothing"] = terrain_smoothing
+    if rescale_min is not None:
+        params["rescale_min"] = rescale_min
+    if rescale_max is not None:
+        params["rescale_max"] = rescale_max
 
     upstream_url = f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
 
