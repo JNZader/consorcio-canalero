@@ -100,6 +100,7 @@ export const LAYER_CATEGORY = {
   BASE: 'base',
   HIDROGRAFIA: 'hidrografia',
   TERRITORIO: 'territorio',
+  PRECIPITATION: 'precipitation',
   PILAR_VERDE: 'pilar_verde',
   CANALES: 'canales',
   ANALISIS: 'analisis',
@@ -261,14 +262,16 @@ export function buildDemLayerOptions(
   }>,
   geoLayerLabels: Record<string, string>
 ) {
-  return demLayers.map((layer) => ({
-    value: layer.id,
-    // `layer.label` ya trae el sufijo de variante ("(natural)", "(escenario)")
-    // que puso enrichLayer. Armar la etiqueta desde el tipo mostraba las tres
-    // variantes IGUAL —tres "Acumulacion de Flujo" indistinguibles—, porque el
-    // tipo es el mismo para las tres; lo unico que las separa es el nombre/label.
-    label: layer.label ?? geoLayerLabels[layer.tipo] ?? layer.nombre,
-  }));
+  return demLayers
+    .filter((layer) => layer.tipo !== 'precip_normal')
+    .map((layer) => ({
+      value: layer.id,
+      // `layer.label` ya trae el sufijo de variante ("(natural)", "(escenario)")
+      // que puso enrichLayer. Armar la etiqueta desde el tipo mostraba las tres
+      // variantes IGUAL —tres "Acumulacion de Flujo" indistinguibles—, porque el
+      // tipo es el mismo para las tres; lo unico que las separa es el nombre/label.
+      label: layer.label ?? geoLayerLabels[layer.tipo] ?? layer.nombre,
+    }));
 }
 
 /**
@@ -302,6 +305,7 @@ export function buildFamilyActiveCounts(params: {
   canalChildIds?: readonly string[];
   showIGNOverlay?: boolean;
   showDemOverlay?: boolean;
+  showPrecipitation?: boolean;
 }): Record<LayerCategory, number> {
   const {
     layerItems,
@@ -309,12 +313,14 @@ export function buildFamilyActiveCounts(params: {
     canalChildIds = [],
     showIGNOverlay = false,
     showDemOverlay = false,
+    showPrecipitation = false,
   } = params;
 
   const counts: Record<LayerCategory, number> = {
     [LAYER_CATEGORY.BASE]: (showIGNOverlay ? 1 : 0) + (showDemOverlay ? 1 : 0),
     [LAYER_CATEGORY.HIDROGRAFIA]: 0,
     [LAYER_CATEGORY.TERRITORIO]: 0,
+    [LAYER_CATEGORY.PRECIPITATION]: showPrecipitation ? 1 : 0,
     [LAYER_CATEGORY.PILAR_VERDE]: 0,
     [LAYER_CATEGORY.CANALES]: canalChildIds.reduce(
       (count, id) => (vectorVisibility[id] ? count + 1 : count),

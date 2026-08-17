@@ -32,6 +32,8 @@ export interface GeoLayerInfo {
   variante: VarianteCapa;
   /** Etiqueta lista para el selector, ya con el sufijo de variante si aplica. */
   label: string;
+  /** Extra metadata emitted by the backend (e.g. `mes` for `precip_normal`). */
+  metadata_extra?: Record<string, unknown>;
 }
 
 /** Prefijos de nombre con que el backend marca cada variante NO-operativa. */
@@ -94,7 +96,19 @@ const TILE_CAPABLE_TYPES = new Set([
   'terrain_class',
   'flood_risk',
   'drainage_need',
+  'precip_normal',
 ]);
+
+export function findPrecipNormalLayer(
+  layers: GeoLayerInfo[],
+  month: string
+): GeoLayerInfo | undefined {
+  return layers.find((layer) => {
+    if (layer.tipo !== 'precip_normal') return false;
+    const mes = layer.metadata_extra?.mes;
+    return String(mes ?? 'anual') === month;
+  });
+}
 
 export function useGeoLayers() {
   const { loading: authLoading, initialized } = useAuthStore();
