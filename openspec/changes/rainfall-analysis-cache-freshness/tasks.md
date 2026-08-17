@@ -79,9 +79,9 @@ This is a single, small fast-follow slice. It only touches the rainfall panel, t
 
 ### 3.1 Run the RainfallDetailPanel unit suite
 
-- [ ] **3.1.1** Run `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` and confirm all tests pass.
-- [ ] **3.1.2** Run `npm --prefix consorcio-web run typecheck` (or the relevant package script) and confirm no new type errors.
-- [ ] **3.1.3** Run `npm --prefix consorcio-web run lint` (Biome) and confirm no new lint errors.
+- [x] **3.1.1** Run `npm --prefix consorcio-web run test -- --run tests/unit/RainfallDetailPanel.test.tsx` and confirm all tests pass.
+- [x] **3.1.2** Run `npm --prefix consorcio-web run typecheck` (or the relevant package script) and confirm no new type errors.
+- [x] **3.1.3** Run `npm --prefix consorcio-web run lint` (Biome) and confirm no new lint errors.
 - **Estimate**: 15 min
 - **Verification**: CI-green unit output; no new errors.
 - **Risk**: Low — the change is small, but Biome may complain about unused imports if the spy helper is not cleaned up.
