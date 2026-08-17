@@ -36,9 +36,9 @@ function ruleBody(selector: string): string {
   return match?.[1] ?? '';
 }
 
-/** The two fades: the desktop cards share one block, the sheet has its own. */
+/** The two fades: the desktop card body shares one block, the sheet has its own. */
 const FADES = [
-  ['tarjetas de escritorio', '.infoPanel::after, .fichaPanel::after'],
+  ['tarjetas de escritorio', '.panelCardBody::after'],
   ['bottom sheet', '.panelSheetBody::after'],
 ] as const;
 
@@ -78,6 +78,16 @@ describe('degradado sticky de los paneles del mapa', () => {
     // degradado del borde visible y dejaria contenido sin velar justo debajo.
     const bodyRules = [...css.matchAll(/\.panelSheetBody\s*\{([^}]*)\}/g)].map((m) => m[1]);
     expect(bodyRules.length, 'tiene que existir alguna regla `.panelSheetBody`').toBeGreaterThan(0);
+    for (const rule of bodyRules) {
+      expect(rule).not.toMatch(/padding-bottom/);
+    }
+  });
+
+  it('el cuerpo scrolleable de la tarjeta de escritorio no declara padding inferior propio', () => {
+    // `.panelCardBody` es el scroller real; cualquier `padding-bottom` aca volveria
+    // a levantar el degradado del borde visible, igual que en el sheet.
+    const bodyRules = [...css.matchAll(/\.panelCardBody\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(bodyRules.length, 'tiene que existir alguna regla `.panelCardBody`').toBeGreaterThan(0);
     for (const rule of bodyRules) {
       expect(rule).not.toMatch(/padding-bottom/);
     }

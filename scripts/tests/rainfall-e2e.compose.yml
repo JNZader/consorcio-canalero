@@ -1,0 +1,224 @@
+# =============================================================================
+# scripts/tests/rainfall-e2e.compose.yml
+# Isolated disposable stack for the rainfall multi-parcel E2E harness (W4 of
+# change `rainfall-multi-parcel-e2e-harness`).
+#
+# DIFFERS FROM THE PRODUCTION COMPOSE BY CONSTRUCTION (RMEH-001/010):
+#   * Every identity (project, volume, network, container, database) derives
+#     from RMEH_RUN_ID_PREFIX via interpolation — there are NO fixed shared
+#     names. The Python runner (scripts/rainfall_e2e_harness) generates the
+#     prefix and refuses caller overrides (RunIdentity.plan).
+#   * Every published host port binds 127.0.0.1 only: 0.0.0.0 / non-loopback
+#     / a bare published port would be a data-loss surface. ResourceLease
+#     .assert_loopback_only re-verifies the resolved config.
+#   * The database is rmeh_<prefix>, NEVER 'consorcio'; the role is the
+#     synthetic rmeh_user. The production compose's env_file is intentionally
+#     NOT referenced — no real credential ever enters this stack.
+#   * db + redis are internal-only (expose, no host ports); only backend,
+#     martin, and frontend publish a loopback host port — the three the
+#     Playwright host process and the runner's HTTP probes talk to.
+#
+# `docker compose -f scripts/tests/rainfall-e2e.compose.yml config` resolves
+# this file WITHOUT a Docker daemon (config only resolves interpolation +
+# schema). That is the W4.1 acceptance; the real provision is W5.
+# =============================================================================
+
+name: rmeh-${RMEH_RUN_ID_PREFIX}
+
+services:
+  # --------------------------------------------------------------------------
+  # DATABASE — PostgreSQL + PostGIS + pgRouting (same image as production,
+  # so the migration-owned schema/geometry types match verbatim).
+  # --------------------------------------------------------------------------
+  db:
+    image: pgrouting/pgrouting:16-3.4-3.6.1
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-db-1
+    restart: "no"
+    environment:
+      POSTGRES_DB: rmeh_${RMEH_RUN_ID_PREFIX}
+      POSTGRES_USER: rmeh_user
+      POSTGRES_PASSWORD: ${RMEH_DB_PASSWORD:-synthpass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # W5: ownership marker re-installed on every fresh volume (the runner
+      # validates the marker BEFORE touching anything; it must exist). Mode is
+      # 0644 so the container's postgres user (uid 999) can open it: the
+      # entrypoint restarts itself as postgres before psql -f. The content is
+      # the SYNTHETIC marker (run_id/nonce/database_name of the disposable
+      # stack); the real DB password stays in a mode-0600 temp env file, never
+      # here (design §Secrets).
+      - ./rmeh-init-${RMEH_RUN_ID_PREFIX}.sql:/docker-entrypoint-initdb.d/01-rmeh-ownership.sql:ro
+    expose:
+      - "5432"
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rmeh_user -d rmeh_${RMEH_RUN_ID_PREFIX}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # REDIS — broker; internal-only, no password for the disposable run (the
+  # runner never persists anything in Redis; it is the cache/broker fixture).
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-redis-1
+    restart: "no"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # MIGRATE — one-shot alembic runner. Talks to db DIRECTLY (no pooler ever in
+  # this stack), so DDL session state is preserved between statements.
+  # --------------------------------------------------------------------------
+  migrate:
+    build:
+      context: ../../gee-backend
+      dockerfile: Dockerfile
+      target: development
+    image: rmeh-${RMEH_RUN_ID_PREFIX}-backend
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-migrate-1
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX}
+      USE_PGBOUNCER: "false"
+    networks:
+      - net
+    command: ["alembic", "upgrade", "head"]
+
+  # --------------------------------------------------------------------------
+  # BACKEND — FastAPI. FICHA_ENABLED=true (proved effective by the W5 ficha
+  # POST, not assumed from the env dump); rate limiting disabled for the
+  # test; no GEE credential; CORS limited to the loopback frontend origin.
+  # --------------------------------------------------------------------------
+  backend:
+    image: rmeh-${RMEH_RUN_ID_PREFIX}-backend
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-backend-1
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      FICHA_ENABLED: "true"
+      RATE_LIMIT_DISABLED: "true"
+      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX}
+      REDIS_URL: redis://redis:6379/0
+      MARTIN_INTERNAL_URL: http://martin:3000
+      MARTIN_PUBLIC_URL: http://127.0.0.1:${RMEH_MARTIN_HOST_PORT:-3001}
+      CORS_ORIGINS: http://127.0.0.1:${RMEH_FRONTEND_HOST_PORT:-5174}
+      HEALTHCHECK_HOST: localhost
+      USE_PGBOUNCER: "false"
+      USE_ONE_TIME_CODES: "false"
+    expose:
+      - "8000"
+    ports:
+      - "127.0.0.1:${RMEH_BACKEND_HOST_PORT:-8001}:8000"
+    networks:
+      - net
+    healthcheck:
+      # /live is liveness-only (no DB/Redis/GEE). The runner probes /live and
+      # then the real ficha POST A/B/C, which is what proves the flag is on.
+      test: ["CMD", "python", "-m", "app.healthcheck"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  # --------------------------------------------------------------------------
+  # MARTIN — vector tiles from vt_parcelas_catastro only, via the harness
+  # catalog (scripts/tests/fixtures/martin-rainfall-e2e.yaml — one source,
+  # seven properties, no auto-discovery).
+  # --------------------------------------------------------------------------
+  martin:
+    image: ghcr.io/maplibre/martin:v0.14.2
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-martin-1
+    # on-failure: a transient Docker DNS race right after network creation can
+    # kill martin at startup (failed to lookup "db"); restarting on non-zero
+    # exit keeps the disposable stack self-healing. The harness still does its
+    # own bounded restart in validate_services for the empty-catalog case.
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://rmeh_user:${RMEH_DB_PASSWORD:-synthpass}@db:5432/rmeh_${RMEH_RUN_ID_PREFIX}
+    volumes:
+      - ./fixtures/martin-rainfall-e2e.yaml:/config/config.yaml:ro
+    expose:
+      - "3000"
+    ports:
+      - "127.0.0.1:${RMEH_MARTIN_HOST_PORT:-3001}:3000"
+    networks:
+      - net
+    command: ["--config", "/config/config.yaml"]
+    healthcheck:
+      # 127.0.0.1 (not localhost): inside the container localhost resolves
+      # ::1 (IPv6) first and Martin binds IPv4 0.0.0.0 only — the same gotcha
+      # as the production compose's martin healthcheck.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # --------------------------------------------------------------------------
+  # FRONTEND — Vite dev server against the loopback backend + martin origins.
+  # The journey navigates to /mapa?lat&lng&zoom on this origin.
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ../../consorcio-web
+      dockerfile: Dockerfile
+      target: development
+    container_name: rmeh-${RMEH_RUN_ID_PREFIX}-frontend-1
+    restart: "no"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      VITE_API_URL: http://127.0.0.1:${RMEH_BACKEND_HOST_PORT:-8001}
+      VITE_MARTIN_URL: http://127.0.0.1:${RMEH_MARTIN_HOST_PORT:-3001}
+    expose:
+      - "5173"
+    ports:
+      - "127.0.0.1:${RMEH_FRONTEND_HOST_PORT:-5174}:5173"
+    networks:
+      - net
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+networks:
+  net:
+    name: rmeh-${RMEH_RUN_ID_PREFIX}_net
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: rmeh-${RMEH_RUN_ID_PREFIX}_pgdata

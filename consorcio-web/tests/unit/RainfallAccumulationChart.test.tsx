@@ -49,7 +49,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { type ComponentProps, type ReactElement, cloneElement } from 'react';
+import { type ComponentProps, type ReactElement, cloneElement, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The `formatter` the component hands recharts' `Tooltip` (see 4.4). */
@@ -104,7 +104,11 @@ import type {
   RainfallSeriesResponse,
 } from '../../src/lib/api/rainfall';
 import { fetchRainfallAnalysis, fetchRainfallSeries } from '../../src/lib/api/rainfall';
-import { RainfallAccumulationChart } from '../../src/components/map2d/rainfall/RainfallAccumulationChart';
+import {
+  CAMPAIGN_PRESET,
+  type CampaignPreset,
+  RainfallAccumulationChart,
+} from '../../src/components/map2d/rainfall/RainfallAccumulationChart';
 
 const ZONE = { kind: 'zone' as const, id: 'zona-ne', version: '3' };
 const YEAR = 2025;
@@ -227,12 +231,24 @@ function curvelessPoints(): RainfallSeriesPoint[] {
   return points().map((point) => ({ ...point, normal_accumulated: null }));
 }
 
+/**
+ * The chart is CONTROLLED (design D6): `preset`/`onPresetChange` are required
+ * props and the component owns no window state of its own. `RainfallDetailPanel`
+ * is that owner in production; here this wrapper is, so the 26 `renderChart`
+ * call sites below keep driving the real control through one seam instead of
+ * the component keeping an uncontrolled branch alive purely for tests.
+ */
+function ControlledChart({ snap }: { readonly snap: RainfallAnalysisSnapshot }) {
+  const [preset, setPreset] = useState<CampaignPreset>(CAMPAIGN_PRESET.CALENDAR);
+  return <RainfallAccumulationChart snapshot={snap} preset={preset} onPresetChange={setPreset} />;
+}
+
 function renderChart(snap: RainfallAnalysisSnapshot = snapshot()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = (
     <QueryClientProvider client={client}>
       <MantineProvider env="test">
-        <RainfallAccumulationChart snapshot={snap} />
+        <ControlledChart snap={snap} />
       </MantineProvider>
     </QueryClientProvider>
   );

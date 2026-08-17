@@ -26,48 +26,63 @@
  *
  * @type {import('@stryker-mutator/api/core').PartialStrykerOptions}
  */
+const shard = process.env.STRYKER_SHARD;
+
+if (shard && shard !== 'a' && shard !== 'b') {
+  throw new Error(`Invalid STRYKER_SHARD ${JSON.stringify(shard)}; expected "a" or "b"`);
+}
+
+const shardMode = Boolean(shard);
+
+export const mutationTargets = [
+  // Core API logic
+  'src/lib/api/core.ts',
+  // Auth
+  'src/lib/auth.ts',
+  // Stores (business state)
+  'src/stores/authStore.ts',
+  'src/stores/configStore.ts',
+  // Utilities with logic
+  'src/lib/validators.ts',
+  'src/lib/formatters.ts',
+  'src/lib/errorHandler.ts',
+  'src/lib/typeGuards.ts',
+  // Pilar Verde pure helpers (Phase 3 — ≥85% target)
+  'src/components/map2d/bpaPracticas.ts',
+  // Pilar Verde widget pure helpers (Phase 4 — ≥85% target)
+  'src/components/admin/pilarVerdeWidget/computeKpis.ts',
+  'src/components/admin/pilarVerdeWidget/fmt.ts',
+  // Pilar Azul pure formatter (Phase 3 — ≥85% target).
+  // `formatLongitud` + `formatLongitudMeters` drive the longitud row of
+  // `<CanalCard>` — tests pin all 4 branches (null/equal/different/default).
+  'src/components/map2d/canalesFormat.ts',
+  // Rainfall v2 (archived lluvia-v2 change, follow-up registered 2026-08-07):
+  // the authenticated ficha analysis slice. Registered AFTER the archive, when
+  // task 3.4's mutation-target deferral was closed. Covered by
+  // tests/unit/rainfallApi.test.ts, tests/unit/RainfallDetailPanel.test.tsx,
+  // tests/unit/rainfallFormat.test.ts, tests/hooks/useRainfallAnalysis.test.tsx
+  // and tests/e2e/rainfall-v2-detail.spec.ts. `rainfallFormat.ts` is the
+  // shared display/export formatter and the highest-value pure target.
+  'src/lib/api/rainfall.ts',
+  'src/hooks/useRainfallAnalysis.ts',
+  'src/components/map2d/rainfall/RainfallDetailPanel.tsx',
+  'src/components/map2d/rainfall/rainfallFormat.ts',
+  'src/components/map2d/rainfall/RainfallMetricList.tsx',
+];
+
 export default {
   packageManager: 'npm',
   testRunner: 'vitest',
-  reporters: ['clear-text', 'progress'],
+  reporters: shardMode ? ['clear-text', 'progress', 'json'] : ['clear-text', 'progress'],
+  jsonReporter: {
+    fileName: shardMode
+      ? `reports/mutation/mutation-${shard}.json`
+      : 'reports/mutation/mutation.json',
+  },
   vitest: {
     configFile: 'vitest.config.ts',
   },
-  mutate: [
-    // Core API logic
-    'src/lib/api/core.ts',
-    // Auth
-    'src/lib/auth.ts',
-    // Stores (business state)
-    'src/stores/authStore.ts',
-    'src/stores/configStore.ts',
-    // Utilities with logic
-    'src/lib/validators.ts',
-    'src/lib/formatters.ts',
-    'src/lib/errorHandler.ts',
-    'src/lib/typeGuards.ts',
-    // Pilar Verde pure helpers (Phase 3 — ≥85% target)
-    'src/components/map2d/bpaPracticas.ts',
-    // Pilar Verde widget pure helpers (Phase 4 — ≥85% target)
-    'src/components/admin/pilarVerdeWidget/computeKpis.ts',
-    'src/components/admin/pilarVerdeWidget/fmt.ts',
-    // Pilar Azul pure formatter (Phase 3 — ≥85% target).
-    // `formatLongitud` + `formatLongitudMeters` drive the longitud row of
-    // `<CanalCard>` — tests pin all 4 branches (null/equal/different/default).
-    'src/components/map2d/canalesFormat.ts',
-    // Rainfall v2 (archived lluvia-v2 change, follow-up registered 2026-08-07):
-    // the authenticated ficha analysis slice. Registered AFTER the archive, when
-    // task 3.4's mutation-target deferral was closed. Covered by
-    // tests/unit/rainfallApi.test.ts, tests/unit/RainfallDetailPanel.test.tsx,
-    // tests/unit/rainfallFormat.test.ts, tests/hooks/useRainfallAnalysis.test.tsx
-    // and tests/e2e/rainfall-v2-detail.spec.ts. `rainfallFormat.ts` is the
-    // shared display/export formatter and the highest-value pure target.
-    'src/lib/api/rainfall.ts',
-    'src/hooks/useRainfallAnalysis.ts',
-    'src/components/map2d/rainfall/RainfallDetailPanel.tsx',
-    'src/components/map2d/rainfall/rainfallFormat.ts',
-    'src/components/map2d/rainfall/RainfallMetricList.tsx',
-  ],
+  mutate: mutationTargets,
   thresholds: {
     high: 85,
     low: 60,
@@ -79,7 +94,9 @@ export default {
     // justos): el criterio dice "no en cada PR", y una regla que uno no
     // respeta a la primera oportunidad no es una regla. Subirlo una vez por
     // tanda, no una vez por commit.
-    break: 75,
+    // Los shards no pueden aplicar este piso por separado: eso seria mas
+    // estricto que el score global. CI agrega ambos JSON y aplica 75 una vez.
+    break: shardMode ? null : 75,
   },
   timeoutMS: 30000,
   concurrency: 4,
@@ -90,5 +107,7 @@ export default {
   // The weekly `mutation-full` job refreshes this file with a complete run;
   // `--force` rebuilds it from scratch.
   incremental: true,
-  incrementalFile: 'reports/mutation/stryker-incremental.json',
+  incrementalFile: shardMode
+    ? `reports/mutation/stryker-incremental-${shard}.json`
+    : 'reports/mutation/stryker-incremental.json',
 };
