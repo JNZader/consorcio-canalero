@@ -106,12 +106,12 @@ This is a single, small fast-follow slice. It only touches the rainfall panel, t
 
 ### 3.3 Sign off the review budget and gate
 
-- [ ] **3.3.1** Estimate the final diff size:
+- [x] **3.3.1** Estimate the final diff size:
   - Source changes: ~15 lines in `RainfallDetailPanel.tsx` + ~10 lines in `useRainfallAnalysis.ts` = ~25 lines.
   - Test changes: ~35 lines in `RainfallDetailPanel.test.tsx`.
   - **Estimated total changed lines**: ~60 lines (well under the 400-line threshold for full 4R review).
-- [ ] **3.3.2** Forecast review workload: one standard lens (`review-reliability` or `review-readability`) because the diff is small, does not touch auth/security/payments, and the behavior change is a TanStack Query pattern. If the slice is merged into a larger branch that already exceeds 400 changed lines, the combined diff must be reviewed at the full 4R tier.
-- [ ] **3.3.3** Confirm that `staleTime: 60_000` in `useRainfallAnalysis.ts` is unchanged and that no global `refetchOnMount`/`staleTime` defaults were modified.
+- [x] **3.3.2** Forecast review workload: one standard lens (`review-reliability` or `review-readability`) because the diff is small, does not touch auth/security/payments, and the behavior change is a TanStack Query pattern. If the slice is merged into a larger branch that already exceeds 400 changed lines, the combined diff must be reviewed at the full 4R tier.
+- [x] **3.3.3** Confirm that `staleTime: 60_000` in `useRainfallAnalysis.ts` is unchanged and that no global `refetchOnMount`/`staleTime` defaults were modified.
 - **Estimate**: 10 min
 - **Verification**: Diff review shows only the intended lines; no `staleTime` or global query-config changes.
 - **Risk**: Low — the change is bounded, but a mis-merge into the parent branch could accidentally drag in unrelated changes.
