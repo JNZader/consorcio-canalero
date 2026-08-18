@@ -163,7 +163,7 @@ describe('SugerenciasPanel', () => {
     ).toHaveAttribute('id', 'suggestion-history-region');
   });
 
-  it('creates internal topic and submits management update', async () => {
+  it('creates internal topic', async () => {
     const user = userEvent.setup();
     renderPanel();
 
@@ -187,16 +187,20 @@ describe('SugerenciasPanel', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: /nuevo tema interno/i })).not.toBeInTheDocument();
     });
+  });
+
+  it('submits management update', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('Pendientes');
 
     const row = screen.getByRole('row', {
       name: /limpiar desagues secundarios infraestructura ciudadana pendiente/i,
     });
     await user.click(within(row).getByRole('button'));
     const detailModal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
-    await user.type(
-      within(detailModal).getByPlaceholderText(/vecino/i),
-      'Pasa a agenda'
-    );
+    await user.type(within(detailModal).getByPlaceholderText(/vecino/i), 'Pasa a agenda');
     await user.click(within(detailModal).getByRole('button', { name: /registrar gestión/i }));
 
     await waitFor(() => {
