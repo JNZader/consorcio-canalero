@@ -351,3 +351,15 @@ Functionally verified and **upload-ready**: every H1/H2/H3/H4/H5/H6/HARD-R4 requ
   `./venv/bin/python -m pytest tests/new/test_geo_public_layers.py tests/new/test_imagery_tile_service.py tests/new/test_rescale_policy.py tests/new/test_proxy_tile_rescale.py tests/new/test_proxy_tile_rescale_db_failure.py`
   → **exit 0 · 77 passed (2.44s)**, including both backend test files in scope.
 - **Evidence supports e2e 6/6:** config mechanics verified above make the 6/6 reproducible; the direct-run claim (`npm run test:e2e:multi-hazard:strict` → 6 passed, exit 0) stands. Full browser execution was not re-run in this sandbox; determinism is preserved (default feature flag `true`, spec mocks backend calls, strict hard-fail guards active). |
+
+## Pre-push chain correction — C6 auth/snapshot race (2026-08-18)
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| C6-R3-001 | reliability | `consorcio-web/src/components/map2d/useHazardMapState.ts:226-279`; `tests/unit/useHazardMapState.test.ts` | CRITICAL | verified | A reload with `?hazard=1` could initially observe `isHazardActive=false` while auth initialized and clear the valid pre-hazard session snapshot. The lifecycle now returns while `useAuthLoading()` is true. Tests cover all four resolved states: pending auth preserves the snapshot; activation hydrates without overwrite; active→inactive restores and clears; initial resolved non-hazard clears stale storage without applying visibility. Targeted suite: 14/14 passed. Scoped reliability re-review marked the finding verified. |
+
+### Final pre-push status
+
+- All BLOCKER/CRITICAL findings from the branch-by-branch review are either refuted with evidence or fixed and verified.
+- The former B3 integration slice was split into a non-visible core PR and a UI/legend PR so no independently mergeable branch exposes the incorrect monthly scale.
+- Remaining findings are WARNING/SUGGESTION information items and do not block the ordered chain.
