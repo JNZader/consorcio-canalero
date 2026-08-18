@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -163,7 +163,7 @@ describe('SugerenciasPanel', () => {
     ).toHaveAttribute('id', 'suggestion-history-region');
   });
 
-  it('creates internal topic and submits management update', async () => {
+  it('creates internal topic', async () => {
     const user = userEvent.setup();
     renderPanel();
 
@@ -171,11 +171,12 @@ describe('SugerenciasPanel', () => {
     await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
     const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
 
-    await user.type(within(createModal).getByLabelText(/titulo/i), 'Plan de mantenimiento trimestral');
-    await user.type(
-      within(createModal).getByLabelText(/descripcion/i),
-      'Definir cuadrillas y presupuesto para el trimestre'
-    );
+    fireEvent.change(within(createModal).getByLabelText(/titulo/i), {
+      target: { value: 'Plan de mantenimiento trimestral' },
+    });
+    fireEvent.change(within(createModal).getByLabelText(/descripcion/i), {
+      target: { value: 'Definir cuadrillas y presupuesto para el trimestre' },
+    });
     await user.click(within(createModal).getByRole('button', { name: /crear tema/i }));
 
     await waitFor(() => {
@@ -187,16 +188,20 @@ describe('SugerenciasPanel', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: /nuevo tema interno/i })).not.toBeInTheDocument();
     });
+  });
+
+  it('submits management update', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('Pendientes');
 
     const row = screen.getByRole('row', {
       name: /limpiar desagues secundarios infraestructura ciudadana pendiente/i,
     });
     await user.click(within(row).getByRole('button'));
     const detailModal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
-    await user.type(
-      within(detailModal).getByPlaceholderText(/vecino/i),
-      'Pasa a agenda'
-    );
+    await user.type(within(detailModal).getByPlaceholderText(/vecino/i), 'Pasa a agenda');
     await user.click(within(detailModal).getByRole('button', { name: /registrar gestión/i }));
 
     await waitFor(() => {
