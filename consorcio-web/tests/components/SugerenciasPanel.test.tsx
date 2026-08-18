@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -171,11 +171,12 @@ describe('SugerenciasPanel', () => {
     await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
     const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
 
-    await user.type(within(createModal).getByLabelText(/titulo/i), 'Plan de mantenimiento trimestral');
-    await user.type(
-      within(createModal).getByLabelText(/descripcion/i),
-      'Definir cuadrillas y presupuesto para el trimestre'
-    );
+    fireEvent.change(within(createModal).getByLabelText(/titulo/i), {
+      target: { value: 'Plan de mantenimiento trimestral' },
+    });
+    fireEvent.change(within(createModal).getByLabelText(/descripcion/i), {
+      target: { value: 'Definir cuadrillas y presupuesto para el trimestre' },
+    });
     await user.click(within(createModal).getByRole('button', { name: /crear tema/i }));
 
     await waitFor(() => {
