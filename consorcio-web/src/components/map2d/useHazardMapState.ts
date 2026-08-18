@@ -12,6 +12,7 @@ import {
 } from '../../hooks/useHazardUrlState';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import { useMultiHazardGate } from '../../hooks/useMultiHazardGate';
+import { useAuthLoading } from '../../stores/authStore';
 import { useHazardMapStore } from '../../stores/hazardMapStore';
 import { defaultVisibleVectors, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import {
@@ -159,6 +160,11 @@ export function useHazardMapState(params: {
 
   const gateOpen = useMultiHazardGate();
   const hazard = useHazardUrlState();
+  // Auth initialization gate. While `authLoading` is true the gate has not yet
+  // resolved, so `isHazardActive === false` is NOT a genuine inactive state —
+  // it is merely the gate being closed pending auth (see C6-R3-001 below).
+  const authLoading = useAuthLoading();
+  const authResolved = !authLoading;
   const {
     basin,
     setBasin,
@@ -203,16 +209,43 @@ export function useHazardMapState(params: {
   precipMonthRef.current = precipMonth;
 
   // Apply canonical stack when hazard mode turns on; restore snapshot when off.
-  // Intentionally keyed only on `isHazardActive` so user layer toggles while the
-  // mode is active are not overwritten by the canonical defaults.
+  //
+  // CRITICAL (C6-R3-001): `isHazardActive` is false BOTH when hazard mode is
+  // genuinely off AND while auth initialization is still pending (the gate has
+  // not resolved yet, so an authorized operator reloading with `?hazard=1` is
+  // momentarily "inactive"). We must NOT touch the snapshot while auth is
+  // loading — doing so would destroy a valid pre-hazard snapshot written by a
+  // prior session in this tab (the user's original layer visibility) before the
+  // gate opens. Only after auth resolves do we apply the lifecycle:
+  //   - hazard active             → hydrate existing snapshot without overwrite;
+  //   - genuine active→inactive   → restore + clear exactly once;
+  //   - initial resolved non-hazard (never activated this session) →
+  //     drop any stale snapshot WITHOUT restoring incorrect visibility.
+  // Intentionally keyed only on `isHazardActive` + `authResolved` so user layer
+  // toggles while the mode is active are not overwritten by canonical defaults.
   useEffect(() => {
+    // Wait for auth to resolve before any snapshot lifecycle runs. While
+    // `authLoading` is true the current `isHazardActive === false` is not a
+    // real inactive state and must not clear/restore anything.
+    if (!authResolved) return;
+
     if (!isHazardActive) {
-      restorePreHazardSnapshot(snapshotRef, (layerId, visible) =>
-        setSharedVectorVisibilityRef.current('map2d', layerId, visible)
-      );
-      // Drop the persisted snapshot — hazard mode is over for this tab.
+      if (snapshotRef.current) {
+        // Genuine active -> inactive transition this session: restore the
+        // pre-hazard visibility exactly once and drop the persisted snapshot.
+        restorePreHazardSnapshot(snapshotRef, (layerId, visible) =>
+          setSharedVectorVisibilityRef.current('map2d', layerId, visible)
+        );
+        // Drop the persisted snapshot — hazard mode is over for this tab.
+        clearHazardVisibilitySnapshot();
+        resetHazardStoreRef.current();
+        return;
+      }
+      // Initial resolved non-hazard state: we never activated hazard this
+      // session. A stale snapshot left by a prior session must be dropped so it
+      // cannot leak into a future restore, but we must NOT restore it (that
+      // would apply pre-hazard visibility while not in hazard mode).
       clearHazardVisibilitySnapshot();
-      resetHazardStoreRef.current();
       return;
     }
 
@@ -243,7 +276,7 @@ export function useHazardMapState(params: {
     if (!precipMonthRef.current) {
       setPrecipMonthRef.current(HAZARD_DEFAULT_PRECIP_MONTH);
     }
-  }, [isHazardActive]);
+  }, [isHazardActive, authResolved]);
 
   // Minimize panels when a parcel ficha opens.
   useEffect(() => {

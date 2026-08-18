@@ -147,6 +147,14 @@ vi.mock('../../src/stores/mapLayerSyncStore', () => ({
   defaultVisibleVectors: NORMAL_DEFAULT_VECTORS,
 }));
 
+// Auth initialization flag. Default `loading: false` (auth resolved) so the
+// existing scenarios run the snapshot lifecycle exactly as before; the
+// C6-R3-001 regression test flips it to `true` to simulate a pending reload.
+const authState = vi.hoisted(() => ({ loading: false }));
+vi.mock('../../src/stores/authStore', () => ({
+  useAuthLoading: () => authState.loading,
+}));
+
 describe('useHazardMapState', () => {
   beforeEach(() => {
     mocks.gateOpen = true;
@@ -155,6 +163,7 @@ describe('useHazardMapState', () => {
     mocks.url.basin = null;
     mocks.url.riskClasses = [];
     mocks.url.precipMonth = 'anual';
+    authState.loading = false;
     mocks.shared.map2d.visibleVectors = {
       roads: true,
       waterways: true,
@@ -587,5 +596,77 @@ describe('useHazardMapState — H4 pre-hazard visibility snapshot', () => {
         configurable: true,
       });
     }
+  });
+
+  it('C6-R3-001: reload with ?hazard=1 while auth loads preserves snapshot, then restores exactly once', () => {
+    // Simulate a prior hazard session in this tab that captured the user's
+    // pre-hazard layer visibility.
+    sessionStorage.setItem(
+      HAZARD_VISIBILITY_SNAPSHOT_KEY,
+      JSON.stringify({ version: 1, values: CUSTOM_PRE_HAZARD })
+    );
+    const seedRaw = sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY);
+    expect(seedRaw).not.toBeNull();
+
+    // Auth is still initializing → the gate is closed and `isHazardActive` is
+    // momentarily false even though `?hazard=1` was requested.
+    authState.loading = true;
+    mocks.url.hazard = true;
+    mocks.url.isHazardActive = false;
+
+    const map = createFakeMap();
+    const mapRef = { current: map as unknown as maplibregl.Map } as MutableRefObject<maplibregl.Map>;
+
+    const { rerender } = renderHook(
+      (_props: { active: boolean }) =>
+        useHazardMapState({
+          mapRef,
+          mapReady: true,
+          basins: { type: 'FeatureCollection', features: [] },
+          allGeoLayers: [],
+          fichaActive: false,
+        }),
+      { initialProps: { active: false } }
+    );
+
+    // Reset call history so the assertions below reflect ONLY this test's
+    // pending mount (the shared mock carries residue from earlier tests).
+    mocks.shared.setVectorVisibility.mockClear();
+
+    // While auth is pending the mount effect must NOT clear the snapshot.
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBe(seedRaw);
+    // No visibility writes happened during the pending mount (auth gate still
+    // closed); the lifecycle must wait until auth resolves.
+    expect(mocks.shared.setVectorVisibility).not.toHaveBeenCalled();
+
+    // Auth resolves and the operator is authorized → hazard becomes active.
+    authState.loading = false;
+    mocks.url.isHazardActive = true;
+    act(() => rerender({ active: true }));
+
+    // Snapshot was hydrated WITHOUT being overwritten by the canonical stack.
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBe(seedRaw);
+    expect(readHazardVisibilitySnapshot()?.values).toEqual(CUSTOM_PRE_HAZARD);
+    // Canonical hazard layers are forced ON.
+    for (const layerId of ['flood_risk', 'drainage_need', 'precip_normal']) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', layerId, true);
+    }
+
+    // Now the user disables hazard → genuine active→inactive transition must
+    // restore the original visibility exactly once and clear the snapshot.
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    act(() => rerender({ active: false }));
+
+    // Every original pre-hazard key was restored to its exact value.
+    for (const [key, value] of Object.entries(CUSTOM_PRE_HAZARD)) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', key, value);
+    }
+    // Canonical hazard layers not in the snapshot are explicitly turned OFF.
+    for (const layerId of ['flood_risk', 'drainage_need', 'precip_normal']) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', layerId, false);
+    }
+    // Snapshot cleared exactly once.
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
   });
 });
