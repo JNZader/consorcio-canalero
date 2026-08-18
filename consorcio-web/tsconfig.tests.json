@@ -55,6 +55,9 @@
     "tests/e2e/rainfall-v2-detail.spec.ts",
     // Multi-Hazard E2E + its shared deterministic auth seeder.
     "tests/e2e/helpers/seedAuth.ts",
-    "tests/e2e/multi-hazard.spec.ts"
+    "tests/e2e/multi-hazard.spec.ts",
+    // The committed strict, non-skipping Playwright harness for Multi-Hazard
+    // (H3): it forces the feature flag on and makes the soft-skip branch fail.
+    "tests/e2e/playwright.multi-hazard.strict.config.ts"
   ]
 }

@@ -1,0 +1,76 @@
+name: E2E Multi-Hazard strict
+
+# Deterministic, NON-SKIPPING gate for the Multi-Hazard operator feature (PR-B4 H3).
+#
+# Unlike the generic canary (`.github/workflows/e2e-canary.yml`), this harness
+# starts its OWN Vite dev server with `VITE_FEATURE_MULTI_HAZARD_VIEWER=true`
+# (via `tests/e2e/playwright.multi-hazard.strict.config.ts`) and forces
+# `skipForMissingData` to HARD-FAIL. So a missing toggle/control fails CI instead
+# of soft-skipping green.
+#
+# It runs ONLY `multi-hazard.spec.ts` through `npm run test:e2e:multi-hazard:strict`
+# — it never runs the unrelated e2e suite. The webServer boots a local Vite (no
+# deploy, no credentials): the spec seeds auth offline via `seedAuth` and mocks
+# the required backend calls, so no backend or E2E secrets are needed.
+#
+# Install/Playwright shape mirrors `e2e-canary.yml` (checkout, setup-node with
+# npm cache, `playwright install --with-deps`, run, upload report on failure).
+
+on:
+  push:
+    branches: ['feature/multi-hazard-viewer/**', main]
+    paths:
+      - 'consorcio-web/**'
+      - '.github/workflows/e2e-multi-hazard-strict.yml'
+  pull_request:
+    branches: ['feature/multi-hazard-viewer/**', main]
+    paths:
+      - 'consorcio-web/**'
+      - '.github/workflows/e2e-multi-hazard-strict.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-multi-hazard-strict-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  multi-hazard-strict:
+    name: Multi-Hazard strict e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: consorcio-web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: consorcio-web
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Install Playwright chromium
+        working-directory: consorcio-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Multi-Hazard strict e2e
+        working-directory: consorcio-web
+        env:
+          CI: '1'
+        run: npm run test:e2e:multi-hazard:strict
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-multi-hazard-strict-report
+          path: |
+            consorcio-web/playwright-report/
+            consorcio-web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

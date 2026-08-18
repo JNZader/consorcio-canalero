@@ -20,10 +20,13 @@
  * AUTH gate is seeded offline via `seedAuth` (sessionStorage seam read by the
  * jwt adapter). No `E2E_ADMIN_*` credentials and no login POST are required.
  *
- * FEATURE-FLAG gate is a soft skip: if `VITE_FEATURE_MULTI_HAZARD_VIEWER` is
- * not enabled in the served bundle, the toggle is absent and the operator tests
- * skip loudly. This keeps local runs green against the default `.env.example`
- * while still making CI fail if the flag is on and the UI is broken.
+ * FEATURE-FLAG gate: against the generic prod/canary config the toggle-absent
+ * case is a soft skip (the flag may legitimately be off there). BUT the committed
+ * strict harness — `playwright.multi-hazard.strict.config.ts` /
+ * `npm run test:e2e:multi-hazard:strict` — starts Vite with
+ * `VITE_FEATURE_MULTI_HAZARD_VIEWER=true` and sets `MULTI_HAZARD_E2E_STRICT=1`,
+ * which turns `skipForMissingData` into a HARD FAILURE. So under the strict
+ * harness a missing toggle/control FAILS CI instead of soft-skipping green.
  */
 
 import { type Page, expect, test } from '@playwright/test';

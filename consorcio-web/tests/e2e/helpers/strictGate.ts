@@ -33,10 +33,33 @@ export function requireCondition(condition: boolean, reason: string): void {
 }
 
 /**
- * Data/credential gate: always skips, in both modes, but says so out loud.
- * Use for seeded datasets, feature flags and admin credentials — their absence
- * is an environment fact, not a regression.
+ * True when the dedicated Multi-Hazard strict harness is active
+ * (`MULTI_HAZARD_E2E_STRICT=1`, set by
+ * `playwright.multi-hazard.strict.config.ts`). In that mode a feature/data gate
+ * HARD-FAILS instead of skipping, because the harness starts the frontend with
+ * the feature flag forced on and an absent toggle/control is a real regression,
+ * never an environment fact.
+ */
+export const MULTI_HAZARD_STRICT_E2E = process.env.MULTI_HAZARD_E2E_STRICT === '1';
+
+/**
+ * Data/credential gate.
+ *
+ * Generic / canary runs: always skips (the feature flag, a seeded dataset or
+ * admin credentials are environment facts, not regressions) with a message that
+ * names what was missing — honest green when the env is simply not configured.
+ *
+ * Multi-Hazard strict harness (`MULTI_HAZARD_E2E_STRICT=1`): the soft-skip
+ * branch is DISABLED. `condition === true` means "missing → skip"; here it means
+ * "missing → FAIL", so a missing toggle/control can never mask a regression.
  */
 export function skipForMissingData(condition: boolean, reason: string): void {
+  if (MULTI_HAZARD_STRICT_E2E) {
+    expect(
+      !condition,
+      `[strict multi-hazard] ${reason} — under the strict harness this MUST be present, not skipped`
+    ).toBe(true);
+    return;
+  }
   test.skip(condition, `[datos/credenciales] ${reason}`);
 }

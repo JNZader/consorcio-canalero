@@ -22,6 +22,7 @@
     "test:e2e:prod": "playwright test -c tests/e2e/playwright.config.ts",
     "test:e2e:canary": "playwright test -c tests/e2e/playwright.config.ts tests/e2e/mapa-maplibre.spec.ts tests/e2e/mapa-viewport-movil.spec.ts tests/e2e/ficha-territorial.spec.ts",
     "test:e2e:local": "playwright test -c tests/e2e/playwright.local.config.ts",
+    "test:e2e:multi-hazard:strict": "playwright test -c tests/e2e/playwright.multi-hazard.strict.config.ts",
     "test:a11y": "playwright test -c tests/accessibility/playwright.config.ts",
     "test:smoke": "vitest run tests/unit/api.test.ts",
     "mutation:run": "stryker run",
