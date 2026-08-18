@@ -307,9 +307,7 @@ def _run_util_linux_hotfix(
     rm_log = tmp_path / "rm.log"
 
     fixed_version = f"2.41.5-0+{version_suffix}"
-    records = {
-        package: ("installed", fixed_version) for package in UTIL_LINUX_PACKAGES
-    }
+    records = {package: ("installed", fixed_version) for package in UTIL_LINUX_PACKAGES}
     records["bsdutils"] = ("installed", f"1:{fixed_version}")
     records["login"] = ("installed", f"1:4.16.0+really{fixed_version}")
     for package, record in (record_overrides or {}).items():
@@ -318,10 +316,7 @@ def _run_util_linux_hotfix(
         else:
             records[package] = record
     records_path.write_text(
-        "".join(
-            f"{package}|{state}|{version}\n"
-            for package, (state, version) in records.items()
-        ),
+        "".join(f"{package}|{state}|{version}\n" for package, (state, version) in records.items()),
         encoding="utf-8",
     )
 
@@ -410,9 +405,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 6
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
-    assert [
-        finding for finding in backend_findings if finding["cve"] == "CVE-2026-53615"
-    ] == []
+    assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-53615"] == []
     deferred_openssl_findings = [
         finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"
     ]
@@ -453,22 +446,16 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
 def test_backend_dockerfile_enforces_fixed_util_linux_source_version() -> None:
     hotfix = _util_linux_hotfix_body()
 
-    assert hotfix.count("fixed_version=\"2.41.5-0+deb13u1\"") == 1
+    assert hotfix.count('fixed_version="2.41.5-0+deb13u1"') == 1
     assert hotfix.count("dpkg-query --show --showformat=") == 1
     assert "${db:Status-Status}|${Version}" in hotfix
     assert 'package_state="${package_record%%|*}"' in hotfix
     assert 'normalized_version="${installed_version#*:}"' in hotfix
     assert 'normalized_version="${normalized_version#*+really}"' in hotfix
-    assert (
-        'dpkg --compare-versions "$normalized_version" ge "$fixed_version"' in hotfix
-    )
+    assert 'dpkg --compare-versions "$normalized_version" ge "$fixed_version"' in hotfix
     assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
-    assert hotfix.index("dpkg --compare-versions") < hotfix.index(
-        "rm -rf /var/lib/apt/lists/*"
-    )
-    install_block, version_gate = hotfix.split(
-        'fixed_version="2.41.5-0+deb13u1"', 1
-    )
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="2.41.5-0+deb13u1"', 1)
     install_lines = {
         line.strip().removesuffix("\\").strip().removesuffix(";")
         for line in install_block.splitlines()
@@ -491,13 +478,12 @@ def test_util_linux_hotfix_accepts_fixed_versions_and_queries_all_packages(
     assert (run_dir / "dpkg-query.log").read_text(encoding="utf-8").splitlines() == list(
         UTIL_LINUX_PACKAGES
     )
-    assert len(
-        (run_dir / "dpkg-compare.log").read_text(encoding="utf-8").splitlines()
-    ) == len(UTIL_LINUX_PACKAGES)
+    assert len((run_dir / "dpkg-compare.log").read_text(encoding="utf-8").splitlines()) == len(
+        UTIL_LINUX_PACKAGES
+    )
     assert (run_dir / "apt-get.log").read_text(encoding="utf-8").splitlines() == [
         "update",
-        "install -y --no-install-recommends --only-upgrade "
-        + " ".join(UTIL_LINUX_PACKAGES),
+        "install -y --no-install-recommends --only-upgrade " + " ".join(UTIL_LINUX_PACKAGES),
     ]
     assert (run_dir / "rm.log").read_text(encoding="utf-8").strip().startswith("-rf ")
 
