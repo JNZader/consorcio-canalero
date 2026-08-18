@@ -26,6 +26,7 @@ import { withBasePath } from './lib/basePath';
 import { authAdapter } from './lib/auth/index';
 import { clearLocalLogoutTombstone, persistAuthSession } from './lib/auth/storage';
 import { logger } from './lib/logger';
+import { validateMapaSearch } from './lib/mapaSearchSerialization';
 
 // PERF — ``HomePage`` is the ONLY page loaded eagerly. It is the landing
 // route: lazy-loading it bought ~1.4 KB (brotli) of deferred bytes and cost a
@@ -245,71 +246,16 @@ const verifyEmailRoute = createRoute({
 });
 
 /**
- * Hazard-mode search params (SDD multi-hazard-viewer).
- * Parsed on `/mapa` so the page receives a typed search object. Unknown
- * keys are ignored; malformed values fall back to safe defaults.
+ * Hazard-mode search params (SDD multi-hazard-viewer). Scoped to `/mapa` via
+ * an internal Symbol marker attached inside `validateMapaSearch` (see H5): the
+ * global serializer only switches to the hazard writer when that marker is
+ * present, so non-map routes with generic keys (e.g. `layers`) are never
+ * custom-serialized. The parser/validator lives in `./lib/mapaSearchSerialization`.
  */
-function parseRiskClasses(input: unknown): string[] {
-  if (input === undefined || input === null) return [];
-  // Backward-compatible with the old JSON-array serialization
-  // (e.g. `["Bajo","Medio"]`) and the legacy `layers` default `[]`.
-  if (typeof input === 'string') {
-    const trimmed = input.trim();
-    if (trimmed === '' || trimmed === '[]') return [];
-    if (trimmed.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((v): v is string => typeof v === 'string' && v.trim() !== '');
-        }
-      } catch {
-        /* fall through to comma splitting */
-      }
-    }
-    return trimmed
-      .split(/[,;]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  if (Array.isArray(input)) {
-    return input.filter((v): v is string => typeof v === 'string' && v.trim() !== '');
-  }
-  return [];
-}
-
-function parseStringParam(input: unknown): string | undefined {
-  if (typeof input === 'string' && input.trim() !== '') return input.trim();
-  return undefined;
-}
-
-const VALID_PRECIP_MONTHS = new Set([
-  'anual',
-  '01',
-  '02',
-  '03',
-  '04',
-  '05',
-  '06',
-  '07',
-  '08',
-  '09',
-  '10',
-  '11',
-  '12',
-]);
-
 const mapaRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/mapa',
-  validateSearch: (search: Record<string, unknown>) => ({
-    hazard: search.hazard === '1' || search.hazard === 1 || search.hazard === true,
-    basin: parseStringParam(search.basin),
-    riskClasses: parseRiskClasses(search.riskClasses),
-    layers: parseRiskClasses(search.layers),
-    precipMonth: VALID_PRECIP_MONTHS.has(String(search.precipMonth))
-      ? String(search.precipMonth)
-      : 'anual',
-  }),
+  validateSearch: (search: Record<string, unknown>) => validateMapaSearch(search),
   component: () => (
     <RootLayout
       title="Mapa Interactivo"
