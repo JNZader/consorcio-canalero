@@ -1,6 +1,8 @@
 import { Box, Checkbox, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/core';
+import type { Feature, Geometry } from 'geojson';
 import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
+import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import styles from '../../styles/components/map.module.css';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
@@ -193,6 +195,53 @@ function CanalDashedLineCheckbox({
   );
 }
 
+function HazardRiskChip({ label }: { readonly label: string }) {
+  const range = LAYER_LEGEND_CONFIG.flood_risk.ranges?.find((r) => r.label === label);
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <ColorSwatch color={range?.color ?? '#999999'} size={16} withShadow={false} />
+      <Text size="xs">{label}</Text>
+    </Group>
+  );
+}
+
+function HazardPrecipRamp() {
+  const config = LAYER_LEGEND_CONFIG.precip_normal;
+  const gradient = `linear-gradient(to right, ${config.colorStops.join(', ')})`;
+  return (
+    <Stack gap={2} data-testid="hazard-precip-legend">
+      <Text size="xs" fw={600} c="dimmed">
+        {config.label}
+      </Text>
+      <Box style={{ height: 12, borderRadius: 2, background: gradient }} />
+      <Group justify="space-between" wrap="nowrap">
+        <Text size="9px" c="dimmed">
+          {config.min} {config.unit}
+        </Text>
+        <Text size="9px" c="dimmed">
+          {config.max} {config.unit}
+        </Text>
+      </Group>
+    </Stack>
+  );
+}
+
+function HazardBasinChip({ name }: { readonly name: string }) {
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid="hazard-basin-legend">
+      <Box
+        style={{
+          width: 16,
+          height: 16,
+          border: '2px solid #00897B',
+          borderRadius: 4,
+        }}
+      />
+      <Text size="xs">{name}</Text>
+    </Group>
+  );
+}
+
 /**
  * Color + label pairs for the propuestos legend — ordered by priority
  * (Alta → Largo plazo) to match the map paint and the filter UI.
@@ -306,6 +355,16 @@ interface LeyendaPanelProps {
    * orphan against the previous section.
    */
   readonly pilarAzulEscuelasVisible?: boolean;
+  /**
+   * Multi-Hazard mode active — render the hazard-specific legend section.
+   */
+  readonly hazardActive?: boolean;
+  /** Active risk-class labels to render as color chips. */
+  readonly hazardRiskClasses?: readonly string[];
+  /** Selected basin feature to derive the legend label from. */
+  readonly hazardBasin?: Feature<Geometry> | null;
+  /** Whether the CHIRPS normals precipitation overlay is visible. */
+  readonly hazardPrecipVisible?: boolean;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -327,8 +386,16 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   pilarAzulEscuelasVisible = false,
   propuestasEtapasVisibility,
   onSetEtapaVisible,
+  hazardActive = false,
+  hazardRiskClasses = [],
+  hazardBasin,
+  hazardPrecipVisible = false,
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
+
+  const hazardBasinName = hazardBasin
+    ? String(hazardBasin.properties?.nombre ?? hazardBasin.properties?.name ?? '')
+    : undefined;
 
   const legendItems =
     customItems.length > 0
@@ -589,6 +656,23 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               />
               <Text size="xs">Escuela rural</Text>
             </Group>
+          )}
+          {hazardActive && (
+            <>
+              <Divider my={4} />
+              <Text size="xs" c="dimmed" fw={500}>
+                Multi-Hazard
+              </Text>
+              {hazardRiskClasses.length > 0 && (
+                <Group gap="xs" wrap="wrap" data-testid="hazard-risk-classes-legend">
+                  {hazardRiskClasses.map((label) => (
+                    <HazardRiskChip key={label} label={label} />
+                  ))}
+                </Group>
+              )}
+              {hazardPrecipVisible && <HazardPrecipRamp />}
+              {hazardBasinName && <HazardBasinChip name={hazardBasinName} />}
+            </>
           )}
           {/*
           YPF estación de bombeo — ALWAYS rendered. No visibility flag gates

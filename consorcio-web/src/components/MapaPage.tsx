@@ -16,13 +16,22 @@ import {
 } from '@mantine/core';
 import { Suspense, lazy, useState } from 'react';
 import { useGeoLayers } from '../hooks/useGeoLayers';
+import { useHazardUrlState } from '../hooks/useHazardUrlState';
+import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
 import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
-import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
+import {
+  Icon3dCubeSphere,
+  IconAlertTriangle,
+  IconCloudRain,
+  IconMap,
+  IconPhoto,
+  IconSatellite,
+} from './ui/icons';
 
 // Lazy-load TerrainViewer3D to avoid bundling deck.gl/geo-layers when not used
 const TerrainViewer3D = lazy(() => import('./terrain/TerrainViewer3D'));
@@ -46,6 +55,10 @@ export function MapaContent() {
   // DEM layers — find the dem_raw layer for 3D terrain
   const { layers: demLayers } = useGeoLayers();
   const demRawLayer = demLayers.find((l) => l.tipo === 'dem_raw');
+
+  // Multi-Hazard mode toggle (operators with feature flag only).
+  const hazardGateOpen = useMultiHazardGate();
+  const hazard = useHazardUrlState();
 
   // 2D/3D view toggle
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('2d');
@@ -176,17 +189,36 @@ export function MapaContent() {
                       </Tooltip>
                     ),
                   },
-                ]}
-              />
+              ]}
+            />
 
-              <Button
-                component="a"
-                href={withBasePath('/participacion')}
-                color="orange"
-                leftSection={<IconAlertTriangle size={18} />}
+            {hazardGateOpen && (
+              <Tooltip
+                label={hazard.isHazardActive ? 'Desactivar Multi-Hazard' : 'Activar Multi-Hazard'}
+                position="bottom"
+                withArrow
               >
-                Reportar Incidente
-              </Button>
+                <Button
+                  variant={hazard.isHazardActive ? 'filled' : 'light'}
+                  size="sm"
+                  color="cyan"
+                  leftSection={<IconCloudRain size={16} />}
+                  onClick={() => hazard.setHazard(!hazard.hazard)}
+                  data-testid="hazard-mode-toggle"
+                >
+                  Multi-Hazard
+                </Button>
+              </Tooltip>
+            )}
+
+            <Button
+              component="a"
+              href={withBasePath('/participacion')}
+              color="orange"
+              leftSection={<IconAlertTriangle size={18} />}
+            >
+              Reportar Incidente
+            </Button>
             </Group>
           </Group>
         </Paper>

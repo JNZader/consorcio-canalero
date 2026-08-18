@@ -174,6 +174,12 @@ interface LayerControlsPanelProps {
    */
   readonly layerProvenance?: Partial<Record<LayerCategory, string>>;
   /**
+   * Optional precipitation overlay visibility count. The precipitation layer
+   * is driven by Multi-Hazard mode, not by the DEM selector, so its active
+   * count is injected by the parent.
+   */
+  readonly showPrecipitation?: boolean;
+  /**
    * AUD-005 (T5) — set when an ANCESTOR already owns a scroll area (the
    * `MapWorkspace` sidebar body on desktop, the layers Drawer on mobile).
    *
@@ -417,6 +423,7 @@ export function LayerControlsPanel({
   pilarVerdeLayersError = null,
   layerHealth,
   layerProvenance,
+  showPrecipitation = false,
   insideScrollContainer = false,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
@@ -451,6 +458,7 @@ export function LayerControlsPanel({
     canalChildIds: canalesChildIds,
     showIGNOverlay,
     showDemOverlay,
+    showPrecipitation,
   });
   const canalesActiveCount = familyActiveCounts[LAYER_CATEGORY.CANALES];
 

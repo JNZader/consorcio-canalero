@@ -95,6 +95,9 @@ import { useMapEscapeExit } from './map2d/useMapEscapeExit';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
+import { useHazardMapState } from './map2d/useHazardMapState';
+import { HazardControls } from './map2d/HazardControls';
+import { HazardControlsMobile } from './map2d/HazardControlsMobile';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
@@ -121,6 +124,58 @@ const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
  */
 function isFichaOverlayPainting(enabled: boolean, data: unknown): boolean {
   return enabled && data != null;
+}
+
+interface HazardMapOverlayProps {
+  readonly hazardMap: ReturnType<typeof useHazardMapState>;
+  readonly basins: FeatureCollection | null | undefined;
+  readonly isDesktop: boolean;
+}
+
+function HazardMapOverlay({ hazardMap, basins, isDesktop }: HazardMapOverlayProps) {
+  if (!hazardMap.isHazardActive) return null;
+
+  return (
+    <Box
+      style={{
+        position: 'absolute',
+        top: isDesktop ? 12 : undefined,
+        bottom: isDesktop ? undefined : 12,
+        left: isDesktop ? 12 : '50%',
+        transform: isDesktop ? undefined : 'translateX(-50%)',
+        zIndex: 5,
+        maxWidth: isDesktop ? undefined : 'calc(100% - 24px)',
+      }}
+    >
+      {isDesktop ? (
+        <HazardControls
+          basin={hazardMap.url.basin}
+          setBasin={hazardMap.url.setBasin}
+          riskClasses={hazardMap.url.riskClasses}
+          setRiskClasses={hazardMap.url.setRiskClasses}
+          precipMonth={hazardMap.url.precipMonth}
+          setPrecipMonth={hazardMap.url.setPrecipMonth}
+          resetToDefaults={hazardMap.url.resetToDefaults}
+          panelOpen={hazardMap.panelOpen}
+          setPanelOpen={hazardMap.setPanelOpen}
+          basins={basins}
+        />
+      ) : (
+        <HazardControlsMobile
+          basin={hazardMap.url.basin}
+          setBasin={hazardMap.url.setBasin}
+          riskClasses={hazardMap.url.riskClasses}
+          setRiskClasses={hazardMap.url.setRiskClasses}
+          precipMonth={hazardMap.url.precipMonth}
+          setPrecipMonth={hazardMap.url.setPrecipMonth}
+          resetToDefaults={hazardMap.url.resetToDefaults}
+          expanded={hazardMap.mobileExpanded}
+          setExpanded={hazardMap.setMobileExpanded}
+          basins={basins}
+        />
+      )}
+    </Box>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -747,6 +802,14 @@ export default function MapaMapLibre() {
   // marker is auto-popped and the user can close it.
   useReportHighlight({ mapRef, mapReady });
 
+  const hazardMap = useHazardMapState({
+    mapRef,
+    mapReady,
+    basins,
+    allGeoLayers,
+    fichaActive: fichaInteraction.request !== null,
+  });
+
   const comparisonVisibleRelevadoIds = (canalesIndex?.relevados ?? [])
     .map((canal) => canal.id)
     .filter((slug) => {
@@ -924,6 +987,7 @@ export default function MapaMapLibre() {
       canalChildIds,
       showIGNOverlay,
       showDemOverlay,
+      showPrecipitation: hazardMap.showPrecipitation,
     })
   );
 
@@ -1004,6 +1068,8 @@ export default function MapaMapLibre() {
                 mapReady={mapReady}
                 onSliderPointerDown={handleSliderPointerDown}
               />
+
+              <HazardMapOverlay hazardMap={hazardMap} basins={basins} isDesktop={isDesktop} />
             </div>
 
             {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
@@ -1179,6 +1245,7 @@ export default function MapaMapLibre() {
               pilarVerdeLayersError={pilarVerdeLayersError}
               layerHealth={layerHealth}
               layerProvenance={layerProvenance}
+              showPrecipitation={hazardMap.showPrecipitation}
             />
             {showLegend && (
               <>
@@ -1200,6 +1267,10 @@ export default function MapaMapLibre() {
                   pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
                   propuestasEtapasVisibility={propuestasEtapasVisibility}
                   onSetEtapaVisible={setEtapaVisible}
+                  hazardActive={hazardMap.isHazardActive}
+                  hazardRiskClasses={hazardMap.url.riskClasses}
+                  hazardBasin={hazardMap.selectedBasin}
+                  hazardPrecipVisible={hazardMap.showPrecipitation}
                 />
                 {visibleRasterLayers.length > 0 && (
                   <RasterLegend
