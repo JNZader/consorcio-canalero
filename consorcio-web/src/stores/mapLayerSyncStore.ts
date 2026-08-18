@@ -114,7 +114,7 @@ function perCanalKey(estado: 'relevado' | 'propuesto', slug: string): string {
   return `canal_${estado}_${safe}`;
 }
 
-const defaultVisibleVectors: Record<string, boolean> = {
+export const defaultVisibleVectors: Record<string, boolean> = {
   approved_zones: false,
   zona: false,
   cuencas: false,

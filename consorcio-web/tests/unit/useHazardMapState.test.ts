@@ -14,6 +14,36 @@ import type { MutableRefObject } from 'react';
 import type maplibregl from 'maplibre-gl';
 import { useHazardMapState } from '../../src/components/map2d/useHazardMapState';
 import type { HazardUrlState } from '../../src/hooks/useHazardUrlState';
+import {
+  HAZARD_VISIBILITY_SNAPSHOT_KEY,
+  readHazardVisibilitySnapshot,
+  clearHazardVisibilitySnapshot,
+} from '../../src/components/map2d/hazardVisibilitySnapshot';
+
+/** Documented normal defaults used by the fresh-shared-link fallback. */
+const { NORMAL_DEFAULT_VECTORS } = vi.hoisted(() => ({
+  NORMAL_DEFAULT_VECTORS: {
+    roads: true,
+    waterways: true,
+    catastro: true,
+    soil: false,
+    approved_zones: false,
+    zona: false,
+    cuencas: false,
+    basins: false,
+    hydraulic_risk: false,
+    puntos_conflicto: false,
+    ign_historico: false,
+    canales_relevados: true,
+    canales_propuestos: false,
+    escuelas: false,
+    pilar_verde_bpa_historico: false,
+    pilar_verde_agro_aceptada: false,
+    pilar_verde_agro_presentada: false,
+    pilar_verde_agro_zonas: false,
+    pilar_verde_porcentaje_forestacion: false,
+  } as Record<string, boolean>,
+}));
 
 const CANONICAL_STACK = [
   'flood_risk',
@@ -114,6 +144,7 @@ vi.mock('../../src/stores/hazardMapStore', () => ({
 vi.mock('../../src/stores/mapLayerSyncStore', () => ({
   useMapLayerSyncStore: (selector: (state: typeof mocks.shared) => unknown) =>
     selector(mocks.shared),
+  defaultVisibleVectors: NORMAL_DEFAULT_VECTORS,
 }));
 
 describe('useHazardMapState', () => {
@@ -124,6 +155,18 @@ describe('useHazardMapState', () => {
     mocks.url.basin = null;
     mocks.url.riskClasses = [];
     mocks.url.precipMonth = 'anual';
+    mocks.shared.map2d.visibleVectors = {
+      roads: true,
+      waterways: true,
+      catastro: true,
+      soil: false,
+    };
+    // Start every test with a clean per-tab snapshot store.
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore (some environments disable storage)
+    }
     vi.clearAllMocks();
   });
 
@@ -318,5 +361,231 @@ describe('useHazardMapState', () => {
     // Further re-renders with the same selection must NOT zoom again.
     act(() => rerender({ ready: true, basinId: 'cuenca-1' }));
     expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useHazardMapState — H4 pre-hazard visibility snapshot', () => {
+  /** A non-canonical, clearly-custom pre-hazard visibility the user chose. */
+  const CUSTOM_PRE_HAZARD: Record<string, boolean> = {
+    roads: false,
+    waterways: true,
+    catastro: false,
+    soil: true,
+    canales_relevados: true,
+    basins: false,
+  };
+
+  /** The canonical hazard stack as it would appear persisted in the store. */
+  const CANONICAL_AS_PERSISTED: Record<string, boolean> = {
+    ...CUSTOM_PRE_HAZARD,
+    flood_risk: true,
+    drainage_need: true,
+    soil: true,
+    canales_relevados: true,
+    basins: true,
+    precip_normal: true,
+  };
+
+  function mountHazard(active: boolean, visibleVectors: Record<string, boolean>) {
+    mocks.shared.map2d.visibleVectors = visibleVectors;
+    const map = createFakeMap();
+    const mapRef = { current: map as unknown as maplibregl.Map } as MutableRefObject<maplibregl.Map>;
+    mocks.url.hazard = active;
+    mocks.url.isHazardActive = active && mocks.gateOpen;
+    return renderHook(
+      (_props: { active: boolean }) =>
+        useHazardMapState({
+          mapRef,
+          mapReady: true,
+          basins: { type: 'FeatureCollection', features: [] },
+          allGeoLayers: [],
+          fichaActive: false,
+        }),
+      { initialProps: { active } }
+    );
+  }
+
+  it('normal enable → disable restores original values and clears the snapshot', () => {
+    // Genuine enable: store still holds the user's pre-hazard state.
+    const { rerender } = mountHazard(false, CUSTOM_PRE_HAZARD);
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+
+    // Enable.
+    mocks.url.hazard = true;
+    mocks.url.isHazardActive = true;
+    act(() => rerender({ active: true }));
+
+    // Snapshot captured the pre-hazard (custom) state.
+    const captured = readHazardVisibilitySnapshot();
+    expect(captured).not.toBeNull();
+    expect(captured?.values).toEqual(CUSTOM_PRE_HAZARD);
+
+    // Disable.
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    act(() => rerender({ active: false }));
+
+    // Every custom key was restored to its pre-hazard value.
+    for (const [key, value] of Object.entries(CUSTOM_PRE_HAZARD)) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', key, value);
+    }
+    // Canonical hazard layers not in the snapshot are explicitly turned OFF.
+    for (const layerId of ['flood_risk', 'drainage_need', 'precip_normal']) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', layerId, false);
+    }
+    // Snapshot cleared.
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('reload/remount while active preserves the snapshot and restores it exactly once', () => {
+    // Simulate a prior session that wrote a valid snapshot.
+    sessionStorage.setItem(
+      HAZARD_VISIBILITY_SNAPSHOT_KEY,
+      JSON.stringify({ version: 1, values: CUSTOM_PRE_HAZARD })
+    );
+    const seedRaw = sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY);
+
+    // Reload while hazard stays active (store shows canonical stack).
+    const { rerender } = mountHazard(true, CANONICAL_AS_PERSISTED);
+
+    // Snapshot was NOT overwritten by the now-canonical store state.
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBe(seedRaw);
+    const loaded = readHazardVisibilitySnapshot();
+    expect(loaded?.values).toEqual(CUSTOM_PRE_HAZARD);
+
+    // Disable once → restore + clear.
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    act(() => rerender({ active: false }));
+
+    for (const [key, value] of Object.entries(CUSTOM_PRE_HAZARD)) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', key, value);
+    }
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('fresh shared `hazard=1` link with no snapshot restores normal defaults', () => {
+    // No snapshot, store already shows the canonical stack (fresh link in a
+    // new tab that inherited the persisted hazard state).
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+    const { rerender } = mountHazard(true, CANONICAL_AS_PERSISTED);
+
+    // Snapshot fell back to documented normal defaults, not the canonical stack.
+    const captured = readHazardVisibilitySnapshot();
+    expect(captured?.values).toEqual(NORMAL_DEFAULT_VECTORS);
+    // The canonical stack is never written back as the restore source.
+    expect(captured?.values.flood_risk).toBeUndefined();
+    expect(captured?.values.precip_normal).toBeUndefined();
+
+    // Disable → restore normal defaults + turn canonical layers OFF.
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    act(() => rerender({ active: false }));
+
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'soil', false);
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'flood_risk', false);
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'precip_normal', false);
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'canales_relevados', true);
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('malformed snapshot is cleared and safely falls back to normal defaults', () => {
+    sessionStorage.setItem(HAZARD_VISIBILITY_SNAPSHOT_KEY, '{not valid json');
+
+    const { rerender } = mountHazard(true, CANONICAL_AS_PERSISTED);
+
+    // Malformed blob was replaced by a fresh normal-defaults fallback snapshot.
+    const captured = readHazardVisibilitySnapshot();
+    expect(captured?.values).toEqual(NORMAL_DEFAULT_VECTORS);
+
+    // Disable → normal defaults restored, no crash, snapshot cleared.
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    act(() => rerender({ active: false }));
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'flood_risk', false);
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('wrong-version snapshot is cleared and safely falls back to normal defaults', () => {
+    sessionStorage.setItem(
+      HAZARD_VISIBILITY_SNAPSHOT_KEY,
+      JSON.stringify({ version: 999, values: { roads: true } })
+    );
+
+    const { rerender } = mountHazard(true, CANONICAL_AS_PERSISTED);
+
+    // Wrong-version blob was replaced by a fresh normal-defaults fallback snapshot.
+    const captured = readHazardVisibilitySnapshot();
+    expect(captured?.values).toEqual(NORMAL_DEFAULT_VECTORS);
+
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    act(() => rerender({ active: false }));
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'flood_risk', false);
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('snapshot is not overwritten by an active-mode remount', () => {
+    // Seed a valid snapshot from a prior session.
+    sessionStorage.setItem(
+      HAZARD_VISIBILITY_SNAPSHOT_KEY,
+      JSON.stringify({ version: 1, values: CUSTOM_PRE_HAZARD })
+    );
+    const seedRaw = sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY);
+    expect(seedRaw).not.toBeNull();
+
+    // Mount while active.
+    const first = mountHazard(true, CANONICAL_AS_PERSISTED);
+    // Snapshot preserved exactly (not overwritten with canonical/normal).
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBe(seedRaw);
+
+    // Remount (unmount + mount) while still active.
+    first.unmount();
+    mountHazard(true, CANONICAL_AS_PERSISTED);
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBe(seedRaw);
+    expect(readHazardVisibilitySnapshot()?.values).toEqual(CUSTOM_PRE_HAZARD);
+  });
+
+  it('sessionStorage unavailable does not crash and falls back gracefully', () => {
+    // Force the snapshot module's storage access to throw.
+    const original = globalThis.sessionStorage;
+    const throwing = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: throwing,
+      configurable: true,
+    });
+
+    try {
+      // Genuine enable with storage unavailable: must not throw.
+      const { rerender } = mountHazard(false, CUSTOM_PRE_HAZARD);
+      mocks.url.hazard = true;
+      mocks.url.isHazardActive = true;
+      expect(() => act(() => rerender({ active: true }))).not.toThrow();
+
+      // Disable must also not throw.
+      mocks.url.hazard = false;
+      mocks.url.isHazardActive = false;
+      expect(() => act(() => rerender({ active: false }))).not.toThrow();
+
+      // Restore still happened from the in-memory ref (exactly once per key).
+      for (const [key, value] of Object.entries(CUSTOM_PRE_HAZARD)) {
+        expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', key, value);
+      }
+    } finally {
+      Object.defineProperty(globalThis, 'sessionStorage', {
+        value: original,
+        configurable: true,
+      });
+    }
   });
 });

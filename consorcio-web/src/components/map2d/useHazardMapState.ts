@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import {
@@ -13,7 +13,12 @@ import {
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import { useMultiHazardGate } from '../../hooks/useMultiHazardGate';
 import { useHazardMapStore } from '../../stores/hazardMapStore';
-import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { defaultVisibleVectors, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import {
+  clearHazardVisibilitySnapshot,
+  readHazardVisibilitySnapshot,
+  writeHazardVisibilitySnapshot,
+} from './hazardVisibilitySnapshot';
 import { buildBasinCatastroFilter, findBasinById } from './hazardBasinFilter';
 import { SOURCE_IDS } from './map2dConfig';
 import { syncHazardRiskLayers, syncPrecipNormalLayer } from './mapRasterOverlayHelpers';
@@ -21,6 +26,75 @@ import { getFeatureCollectionBounds } from './map2dUtils';
 
 const CANONICAL_STACK = [...HAZARD_DEFAULT_LAYERS];
 const CANONICAL_STACK_SET = new Set<string>(CANONICAL_STACK);
+
+/**
+ * True when every canonical hazard layer is currently visible in the shared
+ * store. Used to distinguish a *genuine* hazard enable (pre-hazard state still
+ * in the store) from a *reload of an already-applied hazard session* (the
+ * canonical stack was persisted by a prior session and is already ON). The
+ * latter is the exact case H4 fixes: we must NOT capture the canonical stack as
+ * the pre-hazard restore source.
+ */
+function isCanonicalStackApplied(values: Record<string, boolean>): boolean {
+  return CANONICAL_STACK.every((layerId) => values[layerId] === true);
+}
+
+/**
+ * Restore the pre-hazard visibility snapshot into the shared store when hazard
+ * mode turns off. Any canonical hazard layer absent from the snapshot was
+ * forced ON by hazard mode, so it is explicitly turned OFF — this guarantees we
+ * never leave the hazard stack visible after disabling (covers the fresh-shared
+ * link fallback, whose snapshot is documented normal defaults and omits those
+ * layers).
+ */
+function restorePreHazardSnapshot(
+  snapshotRef: MutableRefObject<VisibilitySnapshot | null>,
+  restore: (layerId: string, visible: boolean) => void
+): void {
+  const snapshot = snapshotRef.current;
+  if (!snapshot) return;
+  for (const [layerId, value] of Object.entries(snapshot.values)) {
+    restore(layerId, value);
+  }
+  for (const layerId of CANONICAL_STACK) {
+    if (!(layerId in snapshot.values)) {
+      restore(layerId, false);
+    }
+  }
+  snapshotRef.current = null;
+}
+
+/**
+ * Hydrate the in-memory pre-hazard snapshot EXACTLY ONCE. Prefer a valid
+ * sessionStorage snapshot written by a prior session in THIS tab (a reload while
+ * hazard mode is still active preserves the user's pre-hazard state). Never
+ * overwrite a valid stored snapshot with the canonical stack.
+ *
+ * When no snapshot exists, distinguish the two sub-cases: a genuine first enable
+ * (store still holds the user's pre-hazard visibility → capture that) versus a
+ * reload of an already-applied hazard session (canonical stack already in the
+ * store → fall back to documented normal defaults, never the canonical stack).
+ */
+function hydratePreHazardSnapshot(
+  snapshotRef: MutableRefObject<VisibilitySnapshot | null>,
+  sharedVisibleVectors: Record<string, boolean>,
+  normalDefaults: Record<string, boolean>
+): Record<string, boolean> {
+  if (snapshotRef.current) return snapshotRef.current.values;
+  const stored = readHazardVisibilitySnapshot();
+  if (stored) {
+    snapshotRef.current = { values: { ...stored.values } };
+    return stored.values;
+  }
+  const preHazard = isCanonicalStackApplied(sharedVisibleVectors)
+    ? { ...normalDefaults }
+    : { ...sharedVisibleVectors };
+  snapshotRef.current = { values: preHazard };
+  // Persist so a later remount / reload in this tab keeps the same restore
+  // source and we never re-derive it from a now-canonical store state.
+  writeHazardVisibilitySnapshot(preHazard);
+  return preHazard;
+}
 
 /**
  * Snapshot of non-hazard vector visibility taken when hazard mode turns on.
@@ -133,27 +207,24 @@ export function useHazardMapState(params: {
   // mode is active are not overwritten by the canonical defaults.
   useEffect(() => {
     if (!isHazardActive) {
-      if (snapshotRef.current) {
-        const restored = snapshotRef.current.values;
-        // Restore each key individually through the shared store so the map
-        // layer effects pick up the change.
-        for (const [key, value] of Object.entries(restored)) {
-          setSharedVectorVisibilityRef.current('map2d', key, value);
-        }
-        snapshotRef.current = null;
-      }
+      restorePreHazardSnapshot(snapshotRef, (layerId, visible) =>
+        setSharedVectorVisibilityRef.current('map2d', layerId, visible)
+      );
+      // Drop the persisted snapshot — hazard mode is over for this tab.
+      clearHazardVisibilitySnapshot();
       resetHazardStoreRef.current();
       return;
     }
 
-    if (!snapshotRef.current) {
-      snapshotRef.current = { values: { ...sharedVisibleVectorsRef.current } };
-    }
+    const base = hydratePreHazardSnapshot(
+      snapshotRef,
+      sharedVisibleVectorsRef.current,
+      defaultVisibleVectors
+    );
 
     // Turn canonical stack ON. Layers not in the canonical stack keep their
     // previous state from the snapshot if one exists, otherwise their current
     // value. This avoids stomping user choices when re-enabling hazard mode.
-    const base = snapshotRef.current?.values ?? sharedVisibleVectorsRef.current;
     for (const layerId of CANONICAL_STACK) {
       setSharedVectorVisibilityRef.current('map2d', layerId, true);
     }
