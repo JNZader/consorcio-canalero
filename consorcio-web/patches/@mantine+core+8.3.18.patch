@@ -1,0 +1,42 @@
+diff --git a/node_modules/@mantine/core/esm/components/Transition/Transition.mjs b/node_modules/@mantine/core/esm/components/Transition/Transition.mjs
+--- a/node_modules/@mantine/core/esm/components/Transition/Transition.mjs
++++ b/node_modules/@mantine/core/esm/components/Transition/Transition.mjs
+@@ -32,13 +32,13 @@ function Transition({
+   const env = useMantineEnv();
+   const { transitionDuration, transitionStatus, transitionTimingFunction } = useTransition({
+     mounted,
+-    exitDuration,
+-    duration,
++    exitDuration: env === "test" ? 0 : exitDuration,
++    duration: env === "test" ? 0 : duration,
+     timingFunction,
+     onExit,
+     onEntered,
+     onEnter,
+     onExited,
+-    enterDelay,
+-    exitDelay
++    enterDelay: env === "test" ? undefined : enterDelay,
++    exitDelay: env === "test" ? undefined : exitDelay
+   });
+diff --git a/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs b/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs
+--- a/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs
++++ b/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs
+@@ -34,13 +34,13 @@ function Transition({
+   const env = Mantine_context.useMantineEnv();
+   const { transitionDuration, transitionStatus, transitionTimingFunction } = useTransition.useTransition({
+     mounted,
+-    exitDuration,
+-    duration,
++    exitDuration: env === "test" ? 0 : exitDuration,
++    duration: env === "test" ? 0 : duration,
+     timingFunction,
+     onExit,
+     onEntered,
+     onEnter,
+     onExited,
+-    enterDelay,
+-    exitDelay
++    enterDelay: env === "test" ? undefined : enterDelay,
++    exitDelay: env === "test" ? undefined : exitDelay
+   });
