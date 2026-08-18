@@ -24,8 +24,8 @@ PLATFORM = "linux/amd64"
 # Prorrogas al sunset absoluto — registro consolidado.
 #
 # Prorroga CRITICAL 2026-07-30 y prorroga HIGH 2026-08-04. El registro
-# anterior nombraba solo 2 CVE CRITICAL; la deuda congelada real son 15
-# filas (10 HIGH + 5 CRITICAL) sobre 12 CVE distintos, y AMBOS techos se
+# anterior nombraba solo 2 CVE CRITICAL; la deuda congelada real son 18
+# filas (13 HIGH + 5 CRITICAL) sobre 13 CVE distintos, y AMBOS techos se
 # corren al mismo sunset absoluto ya existente. Re-evaluacion completa
 # 2026-08-04 (build fresco --no-cache + Trivy 0.70.0 + Docker Hub API +
 # tracker de seguridad de Debian): las 24 filas persisten identicas, NINGUNA
@@ -41,6 +41,12 @@ PLATFORM = "linux/amd64"
 #                                           quitaron del baseline por el hotfix
 #                                           que hace --only-upgrade de esos 9
 #                                           paquetes en el stage de produccion.
+#     CVE-2026-14456  openssl/libssl3t64/   [trixie] sin version arreglada;
+#                    openssl-provider-legacy (3 filas) alta recien revelada por
+#                                           la DB v2 del mismo dia en el re-scan
+#                                           CI 2026-08-18 (Trivy 0.70.0); se
+#                                           congela como fix_deferred con
+#                                           snapshot honesto (PR #193).
 #     CVE-2025-69720  ncurses (4 filas)     [trixie] no-dsa (minor issue)
 #     CVE-2026-48962  perl                  fixed solo en unstable 5.40.1-8
 #     CVE-2026-57432  perl                  fixed solo en unstable 5.40.1-8
@@ -60,8 +66,8 @@ PLATFORM = "linux/amd64"
 #                                           que instala nuestro Dockerfile para
 #                                           el render headless VTK/PyVista.
 #
-# Concentracion (post-hotfix, 15 filas): perl 53% (8) + ncurses 27% (4) = 80%;
-# util-linux 0% (las 9 filas se resolvieron via trixie-security en el stage prod).
+# Concentracion (baseline 2026-08-18, 18 filas): perl 8 + ncurses 4 +
+# openssl 3 (CVE-2026-14456) = 15 de 18; util-linux 0% (resuelto en stage prod).
 # perl-base es dependencia esencial de dpkg y util-linux/ncurses son sistema
 # base: nada de eso es removible, y la app no usa perl. La palanca externa
 # restante es un point release de Debian (13.7) que podria bajar hasta 5 HIGH

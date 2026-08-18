@@ -286,25 +286,31 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # sacar esos 6 CVEs del baseline. 24 -> 15 el 2026-08-18: hotfix
     # CVE-2026-53615 (Debian trixie-security arreglo util-linux 2.41.5; los 9
     # paquetes se actualizan en el stage de produccion, ver Dockerfile).
-    assert len(backend["findings"]) == 15
-    assert sum(finding["count"] for finding in backend["findings"]) == 15
+    # 15 -> 18 el 2026-08-18 (re-scan CI, Trivy 0.70.0, DB v2 del mismo dia):
+    # se agregan 3 filas HIGH CVE-2026-14456 (openssl, libssl3t64 y
+    # openssl-provider-legacy 3.5.6-1~deb13u2,
+    # fix_deferred, sin FixedVersion) reveladas por la DB v2 actual; el
+    # baseline se refresco con snapshot honesto (ver PR #193).
+    assert len(backend["findings"]) == 18
+    assert sum(finding["count"] for finding in backend["findings"]) == 18
     assert {finding["count"] for finding in backend["findings"]} == {1}
     assert {finding["target"] for finding in backend["findings"]} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend["findings"]) == 10
+    assert sum(finding["severity"] == "HIGH" for finding in backend["findings"]) == 13
     assert sum(finding["severity"] == "CRITICAL" for finding in backend["findings"]) == 5
     assert sum(finding["status"] == "affected" for finding in backend["findings"]) == 12
-    assert sum(finding["status"] == "fix_deferred" for finding in backend["findings"]) == 3
+    assert sum(finding["status"] == "fix_deferred" for finding in backend["findings"]) == 6
     assert all(finding["fixed"] == "" for finding in backend["findings"])
     assert all("layer" not in finding for finding in backend["findings"])
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
-        "sha256:eda0e61b19adcf2978774fbee2d9414f409ea10aa595c7fb0198d30f8716d4a8"
+        "sha256:b799340b92552748d8fa68824e34843c6c1eb5702edccc1ba0ccd94e5f575d8c"
     )
     assert geo_provenance["report_sha256"] == (
         "sha256:21eedc171a92b12f338aa9f714fc15fd701a0f2f35aed3997fa1bf711d09db51"
     )
-    assert backend_provenance["source_revision"] == ("96cf15d0f36577c2500d2708dc5c1b899035177f")
-    assert geo_provenance["source_revision"] == backend_provenance["source_revision"]
+    assert backend_provenance["source_revision"] == ("48b69c890576d968cbe54fa858e34043fcfb1da2")
+    # geo-worker baseline is NOT refreshed by this change (distinct revision):
+    assert geo_provenance["source_revision"] == ("96cf15d0f36577c2500d2708dc5c1b899035177f")
     assert backend_provenance["platform"] == "linux/amd64"
     assert geo_provenance["platform"] == "linux/amd64"
     assert backend_provenance["base_image"] == BACKEND_BASE
