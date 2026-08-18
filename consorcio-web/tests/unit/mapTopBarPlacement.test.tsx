@@ -20,6 +20,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Provide a stable TanStack Router context (see `__mocks__/@tanstack/react-router.ts`)
+// so `MapaMapLibre` (which reads `/mapa` URL state via `useHazardUrlState`) can
+// render without the full app route tree.
+vi.mock('@tanstack/react-router');
+
 /**
  * MapLibre needs a real WebGL context, which happy-dom does not have. Only the
  * surface `useMapInitialization` touches is stubbed — this file asserts on the

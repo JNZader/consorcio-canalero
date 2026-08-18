@@ -66,6 +66,10 @@ vi.mock('../../src/components/MapaInteractivo', () => ({
   MapaContenido: () => <div data-testid="mapa-contenido">Mapa Mock</div>,
 }));
 
+// Stable TanStack Router context (see `__mocks__/@tanstack/react-router.ts`) so
+// `MapaContent` can render its `/mapa` URL-state hook without the full app.
+vi.mock('@tanstack/react-router');
+
 // Wrapper con MantineProvider
 const renderWithMantine = (component: React.ReactNode) => {
   return render(<MantineProvider env="test">{component}</MantineProvider>);

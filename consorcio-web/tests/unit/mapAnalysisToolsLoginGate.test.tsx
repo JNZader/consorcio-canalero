@@ -74,6 +74,10 @@ vi.mock('maplibre-gl', () => {
   return { default: maplibregl, ...maplibregl };
 });
 
+// Stable TanStack Router context (see `__mocks__/@tanstack/react-router.ts`) so
+// `MapaMapLibre` can render its `/mapa` URL-state hook without the full app.
+vi.mock('@tanstack/react-router');
+
 import MapaMapLibre from '../../src/components/MapaMapLibre';
 import { useAnalysisToolsGate } from '../../src/components/map2d/useAnalysisToolsGate';
 import {
