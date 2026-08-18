@@ -24,8 +24,8 @@ PLATFORM = "linux/amd64"
 # Prorrogas al sunset absoluto — registro consolidado.
 #
 # Prorroga CRITICAL 2026-07-30 y prorroga HIGH 2026-08-04. El registro
-# anterior nombraba solo 2 CVE CRITICAL; la deuda congelada real son 24
-# filas (19 HIGH + 5 CRITICAL) sobre 13 CVE distintos, y AMBOS techos se
+# anterior nombraba solo 2 CVE CRITICAL; la deuda congelada real son 15
+# filas (10 HIGH + 5 CRITICAL) sobre 12 CVE distintos, y AMBOS techos se
 # corren al mismo sunset absoluto ya existente. Re-evaluacion completa
 # 2026-08-04 (build fresco --no-cache + Trivy 0.70.0 + Docker Hub API +
 # tracker de seguridad de Debian): las 24 filas persisten identicas, NINGUNA
@@ -36,7 +36,11 @@ PLATFORM = "linux/amd64"
 # Evidencia del tracker de Debian — los 13 CVE estan "vulnerable" en trixie
 # sin version arreglada disponible:
 #   HIGH
-#     CVE-2026-53615  util-linux (9 filas)  unstable unfixed, bug #1140197
+#     CVE-2026-53615  util-linux (9 filas)  RESUELTO via trixie-security
+#                                           (2.41.5-0+deb13u1): las 9 filas se
+#                                           quitaron del baseline por el hotfix
+#                                           que hace --only-upgrade de esos 9
+#                                           paquetes en el stage de produccion.
 #     CVE-2025-69720  ncurses (4 filas)     [trixie] no-dsa (minor issue)
 #     CVE-2026-48962  perl                  fixed solo en unstable 5.40.1-8
 #     CVE-2026-57432  perl                  fixed solo en unstable 5.40.1-8
@@ -56,11 +60,12 @@ PLATFORM = "linux/amd64"
 #                                           que instala nuestro Dockerfile para
 #                                           el render headless VTK/PyVista.
 #
-# Concentracion: util-linux 37% + perl 33% + ncurses 17% = 87% de la deuda.
+# Concentracion (post-hotfix, 15 filas): perl 53% (8) + ncurses 27% (4) = 80%;
+# util-linux 0% (las 9 filas se resolvieron via trixie-security en el stage prod).
 # perl-base es dependencia esencial de dpkg y util-linux/ncurses son sistema
-# base: nada de eso es removible, y la app no usa perl. La unica palanca
-# externa es un point release de Debian (13.7) que podria bajar hasta 3 HIGH
-# y 2 CRITICAL (perl 5.40.1-8 + acl); hay que vigilarlo antes del sunset.
+# base: nada de eso es removible, y la app no usa perl. La palanca externa
+# restante es un point release de Debian (13.7) que podria bajar hasta 5 HIGH
+# y 1 CRITICAL (perl 5.40.1-8 + acl); hay que vigilarlo antes del sunset.
 #
 # El sunset absoluto 2026-08-21 fuerza la re-revision total: ``_enforce_time``
 # evalua el sunset ANTES que los deadlines por severidad, asi que ese dia la

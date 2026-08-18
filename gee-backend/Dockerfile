@@ -80,6 +80,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libosmesa6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (CVE-2026-53615): Debian trixie-security ships the fixed
+# util-linux 2.41.5-0+deb13u1, but both pinned slim-trixie base images still
+# carry the vulnerable 2.41-5 binaries. Upgrade the nine affected packages in
+# the production image explicitly. --only-upgrade keeps the transaction to
+# already-installed binaries (fail-closed: errors if a package is missing) and
+# leaves the frozen base digest untouched -- the upgrade, not a digest bump,
+# is the fix.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade \
+    bsdutils \
+    libblkid1 \
+    liblastlog2-2 \
+    libmount1 \
+    libsmartcols1 \
+    libuuid1 \
+    login \
+    mount \
+    util-linux \
+    && rm -rf /var/lib/apt/lists/*
+
 # COPY merges directories, so remove the base image's packaging artifacts
 # before importing the prepared build tree. Otherwise stale setuptools
 # dist-info can shadow the secure runtime version.
