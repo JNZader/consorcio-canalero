@@ -363,3 +363,13 @@ Functionally verified and **upload-ready**: every H1/H2/H3/H4/H5/H6/HARD-R4 requ
 - All BLOCKER/CRITICAL findings from the branch-by-branch review are either refuted with evidence or fixed and verified.
 - The former B3 integration slice was split into a non-visible core PR and a UI/legend PR so no independently mergeable branch exposes the incorrect monthly scale.
 - Remaining findings are WARNING/SUGGESTION information items and do not block the ordered chain.
+
+## Pre-push incident — recurring frontend suite timeout (2026-08-18)
+
+| id | lens | location | severity | status | evidence |
+|---|---|---|---|---|---|
+| R3-001 | reliability | `consorcio-web/tests/components/SugerenciasPanel.test.tsx:166-211` | BLOCKER | verified | The same compound test exceeded the 10-second global timeout in two consecutive normal pre-push CI simulations. Each run passed 287/288 files and 3774/3775 tests; the sole failure combined internal-topic creation and management-update flows, roughly 105 `userEvent.type` keystrokes, and two modal lifecycles. Isolated runs passed, but the required full-suite gate is repeatedly red under contention. The required general refuter verdict was `stands`. |
+| R3-002 | reliability | `consorcio-web/tests/components/SugerenciasPanel.test.tsx:174-178,196-199` | SUGGESTION | info | Per-keystroke `userEvent.type` and transition-sensitive modal teardown amplify contention latency. This is a non-blocking hardening signal; it does not independently drive a fix round. |
+| R3-003 | reliability | `consorcio-web/vitest.config.ts:8-59` | SUGGESTION | info | The reviewer noted no explicit Vitest `forbidOnly`; this is informational and unrelated to the timeout. Existing whole-source coverage enforcement was previously accepted as equivalent evidence for this chain. |
+
+R3-001 survived the required batched general refuter and enters fix round 1. R3-002 and R3-003 remain informational and will not be re-reviewed.
