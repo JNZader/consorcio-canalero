@@ -1,6 +1,9 @@
 import type maplibregl from 'maplibre-gl';
 
+import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
+import { buildTileUrl, findPrecipNormalLayer } from '../../hooks/useGeoLayers';
 import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
+import { RISK_CLASS_LABELS } from '../../hooks/useHazardUrlState';
 import { SOURCE_IDS } from './map2dConfig';
 import { IGN_IMAGE_URL, IGN_MAPLIBRE_COORDS, setLayerVisibility } from './map2dUtils';
 import { PILAR_VERDE_Z_ORDER } from './pilarVerdeLayers';
@@ -324,4 +327,145 @@ export function syncMartinSuggestionLayers(
     });
   }
   setLayerVisibility(map, `${SOURCE_IDS.MARTIN_PUNTOS}-circle`, params.showConflictPoints);
+}
+
+/**
+ * Sync a single XYZ raster source/layer pair.
+ *
+ * - If the layer should be hidden, only flips visibility off (source is left
+ *   mounted so a later "on" is cheap and doesn't re-download tiles).
+ * - If the source exists with a different tile URL, updates tiles in place.
+ * - Otherwise adds the source + raster layer just below `vector-layers-start`.
+ */
+function syncRasterTileSource(
+  map: maplibregl.Map,
+  sourceId: string,
+  tileUrl: string | null,
+  options: { visible: boolean; opacity: number; beforeId?: string }
+) {
+  const layerId = `${sourceId}-layer`;
+  const beforeId = options.beforeId ?? 'vector-layers-start';
+
+  if (!options.visible || !tileUrl) {
+    setLayerVisibility(map, layerId, false);
+    return;
+  }
+
+  const existing = map.getSource(sourceId) as maplibregl.RasterTileSource | undefined;
+  const existingTiles = getRasterTiles(existing);
+  const sourceHasCurrentTiles = existingTiles?.[0] === tileUrl;
+
+  if (existing && sourceHasCurrentTiles) {
+    (
+      existing as maplibregl.RasterTileSource & {
+        setTiles?: (tiles: string[]) => void;
+      }
+    ).setTiles?.([tileUrl]);
+  } else if (existing) {
+    removeRasterOverlay(map, sourceId);
+    map.addSource(sourceId, {
+      type: 'raster',
+      tiles: [tileUrl],
+      tileSize: 256,
+    });
+  } else {
+    map.addSource(sourceId, {
+      type: 'raster',
+      tiles: [tileUrl],
+      tileSize: 256,
+    });
+  }
+
+  if (!map.getLayer(layerId)) {
+    map.addLayer(
+      {
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: { 'raster-opacity': options.opacity },
+      },
+      beforeId
+    );
+  } else {
+    setLayerVisibility(map, layerId, true);
+  }
+}
+
+/**
+ * Sync the CHIRPS normals (`precip_normal`) raster overlay for Multi-Hazard mode.
+ *
+ * Adds/removes the layer with hazard mode, switches the source tile URL when
+ * the month changes without remounting the layer, and applies the month-specific
+ * rescale range (0-200 mm for monthly, 0-1800 mm for annual).
+ */
+export function syncPrecipNormalLayer(
+  map: maplibregl.Map,
+  params: {
+    isHazardActive: boolean;
+    precipMonth: string;
+    allGeoLayers: GeoLayerInfo[];
+  }
+) {
+  const layer = findPrecipNormalLayer(params.allGeoLayers, params.precipMonth);
+  const tileUrl = layer
+    ? buildTileUrl(layer.id, {
+        rescaleMin: 0,
+        rescaleMax: params.precipMonth === 'anual' ? 1800 : 200,
+      })
+    : null;
+
+  syncRasterTileSource(map, SOURCE_IDS.PRECIP_NORMAL, tileUrl, {
+    visible: params.isHazardActive,
+    opacity: 0.55,
+  });
+}
+
+function findHazardRiskLayer(layers: GeoLayerInfo[], tipo: string): GeoLayerInfo | undefined {
+  return (
+    layers.find((l) => l.tipo === tipo && l.variante === 'relevado') ??
+    layers.find((l) => l.tipo === tipo)
+  );
+}
+
+function buildHiddenRiskRanges(activeClasses: readonly string[]): number[] {
+  const hidden: number[] = [];
+  for (let i = 0; i < RISK_CLASS_LABELS.length; i += 1) {
+    if (!activeClasses.includes(RISK_CLASS_LABELS[i])) {
+      hidden.push(i);
+    }
+  }
+  return hidden;
+}
+
+/**
+ * Sync the `flood_risk` and `drainage_need` raster overlays for Multi-Hazard mode.
+ *
+ * The active risk-class set maps to hidden `RANGE_CONFIGS` indices (Bajo=0,
+ * Medio=1, Alto=2, Crítico=3) and is forwarded to the tile proxy via `hide_ranges`.
+ */
+export function syncHazardRiskLayers(
+  map: maplibregl.Map,
+  params: {
+    isHazardActive: boolean;
+    activeRiskClasses: readonly string[];
+    allGeoLayers: GeoLayerInfo[];
+  }
+) {
+  const hiddenRanges = buildHiddenRiskRanges(params.activeRiskClasses);
+
+  const floodRisk = findHazardRiskLayer(params.allGeoLayers, 'flood_risk');
+  syncRasterTileSource(
+    map,
+    SOURCE_IDS.FLOOD_RISK,
+    floodRisk ? buildTileUrl(floodRisk.id, { hideRanges: hiddenRanges }) : null,
+    { visible: params.isHazardActive, opacity: 0.55 }
+  );
+
+  const drainageNeed = findHazardRiskLayer(params.allGeoLayers, 'drainage_need');
+  syncRasterTileSource(
+    map,
+    SOURCE_IDS.DRAINAGE_NEED,
+    drainageNeed ? buildTileUrl(drainageNeed.id, { hideRanges: hiddenRanges }) : null,
+    { visible: params.isHazardActive, opacity: 0.55 }
+  );
 }

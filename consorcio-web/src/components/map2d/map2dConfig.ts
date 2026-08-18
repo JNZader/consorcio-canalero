@@ -63,6 +63,8 @@ export const SOURCE_IDS = {
   COMPARISON_RIGHT: 'map2d-comparison-right',
   DEM_RASTER: 'map2d-dem-raster',
   PRECIP_NORMAL: 'map2d-precip-normal',
+  FLOOD_RISK: 'map2d-flood-risk',
+  DRAINAGE_NEED: 'map2d-drainage-need',
   MARTIN_PUNTOS: 'map2d-martin-puntos',
   // ── Pilar Verde (Phase 2/7) ──
   // Values match the `PilarVerdeLayerId` tuple in `stores/mapLayerSyncStore.ts`

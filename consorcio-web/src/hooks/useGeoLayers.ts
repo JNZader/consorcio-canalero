@@ -176,7 +176,13 @@ export function useGeoLayers() {
  */
 export function buildTileUrl(
   layerId: string,
-  options?: { colormap?: string; hideClasses?: number[]; hideRanges?: number[] }
+  options?: {
+    colormap?: string;
+    hideClasses?: number[];
+    hideRanges?: number[];
+    rescaleMin?: number;
+    rescaleMax?: number;
+  }
 ): string {
   const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
   const params = new URLSearchParams();
@@ -188,6 +194,12 @@ export function buildTileUrl(
   }
   if (options?.hideRanges && options.hideRanges.length > 0) {
     params.set('hide_ranges', options.hideRanges.join(','));
+  }
+  if (options?.rescaleMin !== undefined) {
+    params.set('rescale_min', String(options.rescaleMin));
+  }
+  if (options?.rescaleMax !== undefined) {
+    params.set('rescale_max', String(options.rescaleMax));
   }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
