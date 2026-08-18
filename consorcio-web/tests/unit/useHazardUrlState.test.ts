@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   navigate: vi.fn(),
   canAccess: vi.fn(() => true),
+  authLoading: vi.fn(() => false),
   router: { state: { status: 'idle' } } as unknown,
 }));
 
@@ -32,6 +33,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../../src/stores/authStore', () => ({
   useCanAccess: mocks.canAccess,
+  useAuthLoading: mocks.authLoading,
 }));
 
 describe('useHazardUrlState', () => {
@@ -39,6 +41,7 @@ describe('useHazardUrlState', () => {
     mocks.search = {};
     mocks.navigate.mockClear();
     mocks.canAccess.mockReturnValue(true);
+    mocks.authLoading.mockReturnValue(false);
     import.meta.env.VITE_FEATURE_MULTI_HAZARD_VIEWER = 'true';
   });
 
@@ -241,7 +244,10 @@ describe('useHazardUrlState', () => {
     });
   });
 
-  it('returns safe defaults and no-op setters when there is no router context', () => {
+  it('calls hooks unconditionally (no early-return on a missing router) so setters route through navigate (JD-A-2 / JD-B-001)', () => {
+    // A missing router object must no longer trigger an early return that skips
+    // `routeApi.useSearch` / `useNavigate` — that was a Rules-of-Hooks violation
+    // (the hook count differed between renders). The hooks now run unconditionally.
     mocks.router = undefined;
 
     const { result } = renderHook(() => useHazardUrlState());
@@ -252,13 +258,47 @@ describe('useHazardUrlState', () => {
     expect(result.current.riskClasses).toEqual([]);
     expect(result.current.precipMonth).toBe(HAZARD_DEFAULT_PRECIP_MONTH);
 
-    expect(() => act(() => result.current.setHazard(true))).not.toThrow();
-    expect(() => act(() => result.current.setBasin('x'))).not.toThrow();
-    expect(() => act(() => result.current.setRiskClasses([] as RiskClass[]))).not.toThrow();
-    expect(() => act(() => result.current.setPrecipMonth('01'))).not.toThrow();
-    expect(() => act(() => result.current.resetToDefaults())).not.toThrow();
-    expect(mocks.navigate).not.toHaveBeenCalled();
+    // With the early-return gone, setters route through the (mocked) navigate
+    // instead of silently no-op'ing.
+    act(() => result.current.setHazard(true));
+    expect(mocks.navigate).toHaveBeenCalledTimes(1);
 
     mocks.router = { state: { status: 'idle' } };
+  });
+
+  it('preserves a shared hazard URL while auth initializes — authorized operator survives (R4-001)', () => {
+    mocks.canAccess.mockReturnValue(true);
+    mocks.authLoading.mockReturnValue(true); // auth not finished yet
+    mocks.search = { hazard: true };
+
+    const { rerender } = renderHook(() => useHazardUrlState());
+
+    // During the async auth window the shared gated URL must NOT be stripped.
+    expect(mocks.navigate).not.toHaveBeenCalled();
+
+    // Auth finishes and the operator is authorized → gate opens, still no strip.
+    mocks.authLoading.mockReturnValue(false);
+    rerender({});
+
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('strips a shared hazard URL only after auth finishes for an unauthorized user (R4-001)', () => {
+    mocks.canAccess.mockReturnValue(false);
+    mocks.authLoading.mockReturnValue(true); // auth still initializing
+    mocks.search = { hazard: true };
+
+    const { rerender } = renderHook(() => useHazardUrlState());
+
+    // While auth initializes, even an unauthorized user keeps the shared URL.
+    expect(mocks.navigate).not.toHaveBeenCalled();
+
+    // Auth finishes → gate closed → the gated param is stripped exactly once.
+    mocks.authLoading.mockReturnValue(false);
+    rerender({});
+
+    expect(mocks.navigate).toHaveBeenCalledTimes(1);
+    const searchFn = mocks.navigate.mock.calls[0][0].search;
+    expect(searchFn({})).toEqual({ hazard: false });
   });
 });

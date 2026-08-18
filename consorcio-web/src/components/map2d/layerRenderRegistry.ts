@@ -62,6 +62,13 @@ export interface LayerRenderEntry {
   readonly family?: string;
   /** True when the layer supports a date/aggregation selector (future daily/event precipitation overlay). */
   readonly supportsDate?: boolean;
+  /**
+   * True when the layer's z-order is owned by a feature module (NOT the general
+   * public layer-order control). The reorder UI must never expose it and
+   * `applyLayerOrder` must never reposition it — the authoritative z-order
+   * lives elsewhere (e.g. `syncPrecipNormalLayer` for `precip_normal`).
+   */
+  readonly excludeFromPublicReorder?: boolean;
 }
 
 /**
@@ -128,7 +135,6 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   'soil',
   'catastro',
   'basins',
-  'precip_normal',
   'approved_zones',
   'puntos_conflicto',
   'pilar_verde_agro_zonas',
@@ -238,6 +244,11 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
     ],
     family: 'precipitation',
     supportsDate: false,
+    // R3-001: hazard-managed precipitation has ONE authoritative z-order
+    // strategy (`syncPrecipNormalLayer` always re-hoists it below
+    // `vector-layers-start`). It must not appear in, be written by, or be
+    // repositioned by the general public layer-order control.
+    excludeFromPublicReorder: true,
   },
   pilar_verde_bpa_historico: {
     mlLayers: [
@@ -329,6 +340,21 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   },
 };
 
+/**
+ * The subset of `RENDERABLE_UI_LAYER_IDS` that the GENERAL PUBLIC layer-order
+ * control may expose and `applyLayerOrder` may reposition. Hazard-managed
+ * layers (e.g. `precip_normal`, flagged `excludeFromPublicReorder`) are
+ * excluded — their z-order is owned by a feature module, not the reorder UI.
+ * This is the single source of truth for what the "Orden de capas" control
+ * renders and what the reorder apply step is allowed to touch (R3-001).
+ */
+export type ReorderableUiLayerId = Exclude<RenderableUiLayerId, 'precip_normal'>;
+
+export const REORDERABLE_UI_LAYER_IDS: readonly ReorderableUiLayerId[] =
+  RENDERABLE_UI_LAYER_IDS.filter(
+    (id) => !LAYER_RENDER_REGISTRY[id].excludeFromPublicReorder
+  ) as ReorderableUiLayerId[];
+
 /** Minimal MapLibre surface the apply helpers touch — keeps tests light. */
 export interface MapLayerImperativeApi {
   getLayer: (id: string) => unknown;
@@ -395,6 +421,11 @@ export function applyLayerOrder(
   for (const uiId of order) {
     const entry = LAYER_RENDER_REGISTRY[uiId as RenderableUiLayerId];
     if (!entry) continue;
+    // R3-001: hazard-managed layers keep their authoritative z-order — the
+    // public reorder control must never hoist `precip_normal` above the
+    // contextual vectors, even if a legacy persisted `orderByLayer` still
+    // lists it.
+    if (entry.excludeFromPublicReorder) continue;
     for (const ml of entry.mlLayers) {
       if (!map.getLayer(ml.id)) continue;
       try {

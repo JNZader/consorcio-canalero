@@ -18,6 +18,7 @@ import {
   DEFAULT_LAYER_ORDER,
   LAYER_RENDER_REGISTRY,
   OPACITY_PROP,
+  REORDERABLE_UI_LAYER_IDS,
   RENDERABLE_UI_LAYER_IDS,
   applyLayerOpacity,
   applyLayerOrder,
@@ -66,9 +67,17 @@ describe('layerRenderRegistry — coverage', () => {
     expect(entry.supportsDate).toBe(false);
   });
 
-  it('precip_normal appears in the default layer order exactly once', () => {
-    const matches = DEFAULT_LAYER_ORDER.filter((id) => id === 'precip_normal');
-    expect(matches).toHaveLength(1);
+  it('precip_normal is flagged excludeFromPublicReorder (hazard owns its z-order)', () => {
+    expect(LAYER_RENDER_REGISTRY.precip_normal.excludeFromPublicReorder).toBe(true);
+  });
+
+  it('precip_normal is excluded from the public-reorderable set (R3-001)', () => {
+    expect(RENDERABLE_UI_LAYER_IDS).toContain('precip_normal');
+    expect(REORDERABLE_UI_LAYER_IDS).not.toContain('precip_normal');
+  });
+
+  it('precip_normal is excluded from the default public layer order (R3-001)', () => {
+    expect(DEFAULT_LAYER_ORDER).not.toContain('precip_normal');
   });
 
   it('catastro-fill defaultOpacity IS the shared paint constant (no mirror drift)', () => {
@@ -124,8 +133,8 @@ describe('layerRenderRegistry — coverage', () => {
 });
 
 describe('DEFAULT_LAYER_ORDER', () => {
-  it('contains EXACTLY the RENDERABLE_UI_LAYER_IDS set (no missing/extra) — cannot drift', () => {
-    expect([...DEFAULT_LAYER_ORDER].sort()).toEqual([...RENDERABLE_UI_LAYER_IDS].sort());
+  it('contains EXACTLY the REORDERABLE_UI_LAYER_IDS set (no missing/extra) — cannot drift', () => {
+    expect([...DEFAULT_LAYER_ORDER].sort()).toEqual([...REORDERABLE_UI_LAYER_IDS].sort());
   });
 
   it('has no duplicate ids', () => {
@@ -237,5 +246,16 @@ describe('applyLayerOrder', () => {
     const { map, moveLayer } = makeMap();
     expect(() => applyLayerOrder(map, undefined as unknown as readonly string[])).not.toThrow();
     expect(moveLayer).not.toHaveBeenCalled();
+  });
+
+  it('never repositions hazard-managed precip_normal even if it appears in the order list (R3-001)', () => {
+    const { map, moveLayer } = makeMap();
+    // A legacy persisted `orderByLayer` could still list precip_normal; the
+    // authoritative z-order is owned by `syncPrecipNormalLayer`, so applyLayerOrder
+    // must skip it and NOT hoist the raster above the contextual vectors.
+    applyLayerOrder(map, ['precip_normal', 'waterways', 'roads']);
+    // precip_normal's ml-layer must never move; the other two still hoist.
+    expect(moveLayer).toHaveBeenCalledTimes(6);
+    expect(moveLayer).not.toHaveBeenCalledWith('map2d-precip-normal-layer');
   });
 });

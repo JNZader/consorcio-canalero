@@ -1,6 +1,6 @@
-import { getRouteApi, useNavigate, useRouter } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo } from 'react';
-import { useCanAccess } from '../stores/authStore';
+import { useAuthLoading, useCanAccess } from '../stores/authStore';
 
 export const RISK_CLASS_LABELS = ['Bajo', 'Medio', 'Alto', 'Crítico'] as const;
 export type RiskClass = (typeof RISK_CLASS_LABELS)[number];
@@ -75,8 +75,8 @@ export const HAZARD_DEFAULT_PRECIP_MONTH: PrecipMonth = 'anual';
  * - Treats `hazard=1` as `false` when the user lacks the role/flag gate.
  */
 export function useHazardUrlState(): HazardUrlState {
-  const router = useRouter({ warn: false });
   const canAccessHazard = useCanAccess(['admin', 'operador']);
+  const authLoading = useAuthLoading();
 
   const featureFlagEnabled = useMemo(() => {
     const raw = import.meta.env.VITE_FEATURE_MULTI_HAZARD_VIEWER;
@@ -85,24 +85,12 @@ export function useHazardUrlState(): HazardUrlState {
 
   const gateOpen = featureFlagEnabled && canAccessHazard;
 
-  // Tests and storybook may render components that consume this hook without a
-  // TanStack Router provider. Fall back to sensible defaults and no-op setters
-  // instead of crashing.
-  if (!router) {
-    return {
-      hazard: false,
-      isHazardActive: false,
-      basin: null,
-      riskClasses: [],
-      precipMonth: HAZARD_DEFAULT_PRECIP_MONTH,
-      setHazard: () => {},
-      setBasin: () => {},
-      setRiskClasses: () => {},
-      setPrecipMonth: () => {},
-      resetToDefaults: () => {},
-    };
-  }
-
+  // A TanStack Router context is required (the app always wraps `/mapa` in a
+  // RouterProvider, and the unit tests mock `@tanstack/react-router`). The
+  // previous early-return-on-missing-router fallback called `routeApi.useSearch`
+  // / `useNavigate` only on the happy path, which violated the Rules of Hooks
+  // (the hook count changed between renders). We now call every hook
+  // unconditionally and rely on the router provider being present.
   const search = routeApi.useSearch();
   const navigate = useNavigate({ from: '/mapa' });
 
@@ -144,11 +132,18 @@ export function useHazardUrlState(): HazardUrlState {
   // Role/flag gate: if hazard mode is requested in the URL but the gate is
   // closed (citizen, feature flag off, etc.), drop the param so the URL stays
   // clean and shared links never advertise a gated mode.
+  //
+  // CRITICAL (R4-001): auth initializes asynchronously. While `authLoading`
+  // is true we MUST NOT touch the URL — an authorized operator's shared
+  // `?hazard=1` link would otherwise be stripped before their session resolves.
+  // Only after auth finishes do we strip the param for genuinely unauthorized
+  // users / a disabled feature flag.
   useEffect(() => {
+    if (authLoading) return;
     if (rawHazard && !gateOpen) {
       writeSearch({ hazard: false });
     }
-  }, [rawHazard, gateOpen, writeSearch]);
+  }, [rawHazard, gateOpen, authLoading, writeSearch]);
 
   const setHazard = useCallback(
     (on: boolean) => {

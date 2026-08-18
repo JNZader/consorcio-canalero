@@ -22,7 +22,7 @@ import {
 } from '../../src/components/map2d/LayerOrderSection';
 import {
   DEFAULT_LAYER_ORDER,
-  RENDERABLE_UI_LAYER_IDS,
+  REORDERABLE_UI_LAYER_IDS,
 } from '../../src/components/map2d/layerRenderRegistry';
 
 function renderWithMantine(ui: ReactNode) {
@@ -61,16 +61,16 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     expect(resolveEffectiveBottomToTop([])).toEqual([...DEFAULT_LAYER_ORDER]);
   });
 
-  it('keeps a valid override order verbatim (already full set)', () => {
-    const full = [...RENDERABLE_UI_LAYER_IDS];
+  it('keeps a valid override order verbatim (already full reorderable set)', () => {
+    const full = [...REORDERABLE_UI_LAYER_IDS];
     expect(resolveEffectiveBottomToTop(full)).toEqual(full);
   });
 
-  it('drops unknown ids and re-inserts any MISSING renderable id → always the full set', () => {
+  it('drops unknown ids and re-inserts any MISSING reorderable id → always the full reorderable set', () => {
     const partial = ['roads', 'nonexistent_layer', 'waterways'];
     const resolved = resolveEffectiveBottomToTop(partial);
-    // Full set, no strays, no dupes.
-    expect([...resolved].sort()).toEqual([...RENDERABLE_UI_LAYER_IDS].sort());
+    // Full reorderable set, no strays, no dupes.
+    expect([...resolved].sort()).toEqual([...REORDERABLE_UI_LAYER_IDS].sort());
     // Honors the user's leading order for the ids they DID list.
     expect(resolved.slice(0, 2)).toEqual(['roads', 'waterways']);
   });
@@ -81,7 +81,7 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     // bottom (index 0), not surface at the end/top.
     const withoutRoads = DEFAULT_LAYER_ORDER.filter((id) => id !== 'roads');
     const resolved = resolveEffectiveBottomToTop(withoutRoads);
-    expect([...resolved].sort()).toEqual([...RENDERABLE_UI_LAYER_IDS].sort());
+    expect([...resolved].sort()).toEqual([...REORDERABLE_UI_LAYER_IDS].sort());
     expect(resolved[0]).toBe('roads');
     expect(resolved.at(-1)).not.toBe('roads');
   });
@@ -92,9 +92,10 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     const withoutBasins = DEFAULT_LAYER_ORDER.filter((id) => id !== 'basins');
     const resolved = resolveEffectiveBottomToTop(withoutBasins);
     const idx = resolved.indexOf('basins');
-    // Its DEFAULT predecessor is `catastro`, successor `precip_normal`.
+    // Its DEFAULT predecessor is `catastro`, successor `approved_zones`.
+    // (`precip_normal` is hazard-managed and excluded from the reorder set, R3-001.)
     expect(resolved[idx - 1]).toBe('catastro');
-    expect(resolved[idx + 1]).toBe('precip_normal');
+    expect(resolved[idx + 1]).toBe('approved_zones');
     expect(resolved.at(-1)).not.toBe('basins');
   });
 
@@ -105,7 +106,7 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     const custom = DEFAULT_LAYER_ORDER.filter((id) => id !== 'puntos_conflicto' && id !== 'escuelas');
     const persisted = ['escuelas', ...custom]; // escuelas forced to bottom
     const resolved = resolveEffectiveBottomToTop(persisted);
-    expect([...resolved].sort()).toEqual([...RENDERABLE_UI_LAYER_IDS].sort());
+    expect([...resolved].sort()).toEqual([...REORDERABLE_UI_LAYER_IDS].sort());
     // Custom choice honored: escuelas stays at the very bottom.
     expect(resolved[0]).toBe('escuelas');
     // Missing puntos_conflicto is present (full-set), not lost.
@@ -114,7 +115,7 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
 });
 
 describe('<LayerOrderSection /> (task 3.5 UI)', () => {
-  it('renders a row for EVERY reorderable layer (full set, not partial)', () => {
+  it('renders a row for EVERY public-reorderable layer (full set, not partial)', () => {
     renderWithMantine(
       <LayerOrderSection
         orderByLayer={[]}
@@ -122,9 +123,11 @@ describe('<LayerOrderSection /> (task 3.5 UI)', () => {
         vectorVisibility={{}}
       />
     );
-    for (const id of RENDERABLE_UI_LAYER_IDS) {
+    for (const id of REORDERABLE_UI_LAYER_IDS) {
       expect(screen.getByTestId(`layer-order-item-${id}`)).toBeInTheDocument();
     }
+    // Hazard-managed precip_normal is NOT a reorder row (R3-001).
+    expect(screen.queryByTestId('layer-order-item-precip_normal')).not.toBeInTheDocument();
   });
 
   it('shows top-of-list = top-of-map (DEFAULT reversed → escuelas first, roads last)', () => {

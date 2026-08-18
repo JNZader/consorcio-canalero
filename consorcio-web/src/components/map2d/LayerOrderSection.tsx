@@ -4,7 +4,7 @@
  * map-redesign Fase 3 — Tanda B (task 3.5).
  *
  * A drag-to-reorder "Orden de capas" control for the reorderable UI layers.
- * The list ALWAYS renders the FULL set of `RENDERABLE_UI_LAYER_IDS` (active
+ * The list ALWAYS renders the FULL set of `REORDERABLE_UI_LAYER_IDS` (active
  * AND inactive, the latter dimmed) so every write to `onLayerOrderChange` is a
  * COMPLETE bottom→top ordering — the contract `applyLayerOrder` depends on (a
  * partial list would hoist its members above unrelated layers). See the
@@ -32,8 +32,8 @@ import { ActionIcon, Box, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconArrowsSort, IconGripVertical } from '../ui/icons';
 import {
   DEFAULT_LAYER_ORDER,
-  RENDERABLE_UI_LAYER_IDS,
-  type RenderableUiLayerId,
+  REORDERABLE_UI_LAYER_IDS,
+  type ReorderableUiLayerId,
 } from './layerRenderRegistry';
 
 /**
@@ -41,8 +41,11 @@ import {
  * entry exists in `layerItems` (passed from the panel), that label wins — this
  * map only covers ids that may NOT appear in `layerItems` (canales masters,
  * escuelas) and gives everything a sensible Spanish default.
+ *
+ * NOTE (R3-001): `precip_normal` is intentionally absent — it is hazard-managed
+ * and excluded from the public reorder control, so it can never be a row here.
  */
-const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
+const LAYER_ORDER_LABELS: Record<ReorderableUiLayerId, string> = {
   basins: 'Subcuencas',
   approved_zones: 'Zonas aprobadas',
   waterways: 'Hidrografía',
@@ -50,7 +53,6 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   soil: 'Suelos',
   catastro: 'Catastro',
   puntos_conflicto: 'Puntos de conflicto',
-  precip_normal: 'Precipitación CHIRPS',
   pilar_verde_bpa_historico: 'BPA histórico',
   pilar_verde_agro_aceptada: 'Agroforestal aceptada',
   pilar_verde_agro_presentada: 'Agroforestal presentada',
@@ -100,16 +102,19 @@ export function reorderLayerIds(
  */
 export function resolveEffectiveBottomToTop(
   orderByLayer: readonly string[]
-): RenderableUiLayerId[] {
-  const valid = new Set<string>(RENDERABLE_UI_LAYER_IDS);
-  if (orderByLayer.length === 0) return [...DEFAULT_LAYER_ORDER];
+): ReorderableUiLayerId[] {
+  // Only the public-reorderable set participates — hazard-managed layers
+  // (e.g. `precip_normal`) are excluded so they can never enter the order list
+  // and never get hoisted by `applyLayerOrder` (R3-001).
+  const valid = new Set<string>(REORDERABLE_UI_LAYER_IDS);
+  if (orderByLayer.length === 0) return [...(DEFAULT_LAYER_ORDER as readonly ReorderableUiLayerId[])];
 
-  const seen = new Set<RenderableUiLayerId>();
-  const kept: RenderableUiLayerId[] = [];
+  const seen = new Set<ReorderableUiLayerId>();
+  const kept: ReorderableUiLayerId[] = [];
   for (const id of orderByLayer) {
-    if (valid.has(id) && !seen.has(id as RenderableUiLayerId)) {
-      kept.push(id as RenderableUiLayerId);
-      seen.add(id as RenderableUiLayerId);
+    if (valid.has(id) && !seen.has(id as ReorderableUiLayerId)) {
+      kept.push(id as ReorderableUiLayerId);
+      seen.add(id as ReorderableUiLayerId);
     }
   }
 
@@ -119,9 +124,10 @@ export function resolveEffectiveBottomToTop(
   // (`roads`, idx 0) sinks to the bottom and a new topmost one appends on top —
   // instead of everything piling up at the end. The kept ids keep their custom
   // relative order (a high-default id the user dragged low STAYS low).
-  const result: RenderableUiLayerId[] = [...kept];
-  for (let defaultIdx = 0; defaultIdx < DEFAULT_LAYER_ORDER.length; defaultIdx++) {
-    const id = DEFAULT_LAYER_ORDER[defaultIdx];
+  const result: ReorderableUiLayerId[] = [...kept];
+  const defaultOrder = DEFAULT_LAYER_ORDER as readonly ReorderableUiLayerId[];
+  for (let defaultIdx = 0; defaultIdx < defaultOrder.length; defaultIdx++) {
+    const id = defaultOrder[defaultIdx];
     if (seen.has(id)) continue;
     result.splice(Math.min(defaultIdx, result.length), 0, id);
     seen.add(id);
@@ -130,7 +136,7 @@ export function resolveEffectiveBottomToTop(
 }
 
 interface SortableLayerRowProps {
-  readonly id: RenderableUiLayerId;
+  readonly id: ReorderableUiLayerId;
   readonly label: string;
   readonly active: boolean;
 }

@@ -268,4 +268,55 @@ describe('useHazardMapState', () => {
       expect.arrayContaining(['within', expect.objectContaining({ type: 'Feature' })])
     );
   });
+
+  it('zooms to the basin exactly once when the async basin catalog loads after a shared URL (JD-A-1)', () => {
+    const basin = {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-62.5, -32.5],
+            [-62.4, -32.5],
+            [-62.4, -32.6],
+            [-62.5, -32.6],
+            [-62.5, -32.5],
+          ],
+        ],
+      },
+      properties: { id: 'cuenca-1', nombre: 'Cuenca Test' },
+    };
+
+    const map = createFakeMap();
+    const mapRef = { current: map as unknown as maplibregl.Map } as MutableRefObject<maplibregl.Map>;
+
+    const { rerender } = renderHook(
+      ({ ready, basinId }: { ready: boolean; basinId: string | null }) => {
+        mocks.url.hazard = true;
+        mocks.url.isHazardActive = true;
+        mocks.url.basin = basinId;
+        return useHazardMapState({
+          mapRef,
+          mapReady: true,
+          basins: ready
+            ? { type: 'FeatureCollection', features: [basin as Feature] }
+            : { type: 'FeatureCollection', features: [] },
+          allGeoLayers: [],
+          fichaActive: false,
+        });
+      },
+      { initialProps: { ready: false, basinId: 'cuenca-1' } }
+    );
+
+    // Before the catalog arrives, `selectedBasin` is undefined → no zoom yet.
+    expect(map.fitBounds).not.toHaveBeenCalled();
+
+    // Catalog loads → the delayed basin resolves and fitBounds fires once.
+    act(() => rerender({ ready: true, basinId: 'cuenca-1' }));
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+
+    // Further re-renders with the same selection must NOT zoom again.
+    act(() => rerender({ ready: true, basinId: 'cuenca-1' }));
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
 });

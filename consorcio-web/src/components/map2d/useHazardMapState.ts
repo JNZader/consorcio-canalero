@@ -198,15 +198,35 @@ export function useHazardMapState(params: {
   }, [isHazardActive, basin, selectedBasin, setBasin, basins]);
 
   // Fly to basin bbox when selection changes.
-  const prevBasinRef = useRef<string | null>(null);
+  //
+  // CRITICAL (JD-A-1): a basin is marked "handled" ONLY after a zoom was
+  // actually initiated. A shared URL carries `?basin=` before the async basin
+  // catalog arrives, so on first render `selectedBasin` is still undefined. The
+  // old code assigned `prevBasinRef` BEFORE checking `selectedBasin`, so by the
+  // time the catalog loaded the effect believed it had already zoomed and
+  // skipped `fitBounds` forever. We now leave the marker unset until the zoom
+  // fires, so the delayed catalog triggers exactly one `fitBounds`.
+  const zoomedBasinRef = useRef<string | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map || !isHazardActive) return;
 
     const basinId = basin;
-    if (basinId === prevBasinRef.current) return;
-    prevBasinRef.current = basinId ?? null;
 
+    // No basin selected → reset the marker and clear any pending zoom.
+    if (!basinId) {
+      zoomedBasinRef.current = null;
+      setPendingBasinZoom(false);
+      return;
+    }
+
+    // Already zoomed to this basin → don't repeat (handles re-renders / prop
+    // churn that keep the same selection).
+    if (basinId === zoomedBasinRef.current) return;
+
+    // Basin id is set but the catalog hasn't resolved the feature yet (async
+    // load). Wait — do NOT mark as handled, so the next effect run (after
+    // `selectedBasin` arrives) triggers the zoom exactly once.
     if (!selectedBasin) {
       setPendingBasinZoom(false);
       return;
@@ -221,6 +241,9 @@ export function useHazardMapState(params: {
       return;
     }
 
+    // Mark handled BEFORE initiating the zoom so concurrent re-renders with
+    // the same selection don't double-trigger `fitBounds`.
+    zoomedBasinRef.current = basinId;
     setPendingBasinZoom(true);
     try {
       map.fitBounds(bbox, { padding: 40, duration: 800 });
@@ -233,6 +256,8 @@ export function useHazardMapState(params: {
         window.clearTimeout(timeout);
       };
     } catch {
+      // Zoom failed → allow a later retry once the selection is re-validated.
+      zoomedBasinRef.current = null;
       setPendingBasinZoom(false);
     }
   }, [mapRef, mapReady, isHazardActive, basin, selectedBasin, setPendingBasinZoom]);
