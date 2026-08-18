@@ -1,5 +1,7 @@
 """Core geo router endpoints for jobs, layers, bundles and approved basins."""
 
+import functools
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -9,10 +11,13 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.domains.geo.models import GeoLayer
+from app.domains.geo.rescale_policy import validate_rescale
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_common import (
     _get_repo,
@@ -31,6 +36,8 @@ from app.domains.geo.schemas import (
 )
 from app.domains.geo.service import dispatch_job
 from app.shared.pagination import PaginatedResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Geo Processing"])
 
@@ -334,6 +341,26 @@ def trigger_dem_pipeline(
 # ──────────────────────────────────────────────
 
 
+@functools.lru_cache(maxsize=1024)
+def _layer_tipo_cached(layer_id_str: str) -> Optional[str]:
+    """Cache the immutable ``tipo`` of a published layer by id.
+
+    A tile endpoint is hammered for the same ``layer_id`` across thousands of
+    tiles, so the cold-miss DB read (one per layer per process) is amortised to
+    nothing. ``tipo`` never changes for a given layer, so the cache is safe.
+    """
+    db = SessionLocal()
+    try:
+        stmt = select(GeoLayer.tipo).where(GeoLayer.id == uuid.UUID(layer_id_str))
+        return db.execute(stmt).scalar_one_or_none()
+    finally:
+        db.close()
+
+
+def _layer_tipo(layer_id: uuid.UUID) -> Optional[str]:
+    return _layer_tipo_cached(str(layer_id))
+
+
 @router.get("/layers/{layer_id}/tiles/{z}/{x}/{y}.png")
 async def proxy_tile(
     layer_id: uuid.UUID,
@@ -373,6 +400,40 @@ async def proxy_tile(
     if x >= 2**z or y >= 2**z:
         return Response(status_code=204, headers=_cors)
 
+    # Validate the rescale override at the public edge BEFORE forwarding anything
+    # to the internal worker. ``validate_rescale`` enforces both-or-neither,
+    # finite, min<max and the per-layer canonical policy, returning the exact
+    # canonical pair to forward (or None when no override should be applied).
+    # A malformed/unsupported pair is rejected here with an explicit 4xx so the
+    # attacker never reaches the worker with an unbounded cache-key float.
+    canonical_rescale: Optional[tuple[float, float]] = None
+    if rescale_min is not None or rescale_max is not None:
+        try:
+            tipo = _layer_tipo(layer_id)
+        except SQLAlchemyError as exc:
+            # The cached ``_layer_tipo`` lookup hit a database failure. The proxy
+            # can still forward the tile to the internal worker, which renders
+            # with its own default rescale, so we degrade to "no override" and
+            # forward without rescale params instead of returning 500.
+            #
+            # The exception is caught HERE, at the route boundary — NOT inside
+            # ``_layer_tipo_cached``. ``functools.lru_cache`` only memoises
+            # *return values*, so a raised exception is never stored; the very
+            # next request re-attempts the DB lookup rather than serving a
+            # cached ``None`` failure. We therefore must not swallow the error
+            # inside the cached function (returning ``None`` would cache it).
+            logger.warning(
+                "proxy_tile: DB lookup failed for layer %s (%s); "
+                "forwarding without rescale override (default rendering)",
+                layer_id,
+                type(exc).__name__,
+            )
+        else:
+            # ``validate_rescale`` raises HTTPException (4xx) for malformed or
+            # unsupported rescale input — that is the intended edge validation
+            # and is left to propagate unchanged.
+            canonical_rescale = validate_rescale(tipo, rescale_min, rescale_max)
+
     # Build the upstream URL
     params = {}
     if colormap:
@@ -385,10 +446,9 @@ async def proxy_tile(
         params["hide_ranges"] = hide_ranges
     if terrain_smoothing:
         params["terrain_smoothing"] = terrain_smoothing
-    if rescale_min is not None:
-        params["rescale_min"] = rescale_min
-    if rescale_max is not None:
-        params["rescale_max"] = rescale_max
+    if canonical_rescale is not None:
+        params["rescale_min"] = canonical_rescale[0]
+        params["rescale_max"] = canonical_rescale[1]
 
     upstream_url = f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
 
