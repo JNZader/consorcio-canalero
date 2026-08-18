@@ -84,10 +84,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # util-linux 2.41.5-0+deb13u1, but both pinned slim-trixie base images still
 # carry the vulnerable 2.41-5 binaries. Upgrade the nine affected packages in
 # the production image explicitly. --only-upgrade keeps the transaction to
-# already-installed binaries (fail-closed: errors if a package is missing) and
-# leaves the frozen base digest untouched -- the upgrade, not a digest bump,
-# is the fix.
-RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade \
+# already-installed binaries; the explicit installed-version assertion below
+# fails early if one is absent or remains vulnerable. Trivy is authoritative
+# for the final image. The upgrade leaves the frozen base digest untouched.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
     bsdutils \
     libblkid1 \
     liblastlog2-2 \
@@ -96,8 +98,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade 
     libuuid1 \
     login \
     mount \
-    util-linux \
-    && rm -rf /var/lib/apt/lists/*
+    util-linux; \
+    fixed_version="2.41.5-0+deb13u1"; \
+    for package in \
+        bsdutils \
+        libblkid1 \
+        liblastlog2-2 \
+        libmount1 \
+        libsmartcols1 \
+        libuuid1 \
+        login \
+        mount \
+        util-linux; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        normalized_version="${installed_version#*:}"; \
+        if [ "$package" = "login" ]; then \
+            case "$normalized_version" in \
+                *+really*) normalized_version="${normalized_version#*+really}" ;; \
+                *) echo "unexpected login version: $installed_version" >&2; exit 1 ;; \
+            esac; \
+        fi; \
+        if ! dpkg --compare-versions "$normalized_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 # COPY merges directories, so remove the base image's packaging artifacts
 # before importing the prepared build tree. Otherwise stale setuptools

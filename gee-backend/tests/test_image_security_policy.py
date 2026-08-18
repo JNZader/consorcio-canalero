@@ -29,6 +29,17 @@ GEO_REF = "local/consorcio-geo-worker:test"
 GEO_DAEMON_IMAGE_ID = "sha256:" + ("5" * 64)
 GEO_PLATFORM_MANIFEST_DIGEST = "sha256:" + ("9" * 64)
 GEO_CONFIG_DIGEST = "sha256:" + ("0" * 64)
+UTIL_LINUX_PACKAGES = (
+    "bsdutils",
+    "libblkid1",
+    "liblastlog2-2",
+    "libmount1",
+    "libsmartcols1",
+    "libuuid1",
+    "login",
+    "mount",
+    "util-linux",
+)
 BACKEND_BASE = (
     "python:3.11.15-slim-trixie@"
     "sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
@@ -265,9 +276,107 @@ def _assert_rejected(result: subprocess.CompletedProcess[str], fragment: str) ->
     assert fragment.lower() in result.stderr.lower()
 
 
+def _util_linux_hotfix_body() -> str:
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
+    hotfix = dockerfile.split("# Security hotfix (CVE-2026-53615):", 1)[1].split(
+        "# COPY merges directories", 1
+    )[0]
+    return hotfix.split("RUN ", 1)[1].strip()
+
+
+def _write_fake_executable(path: Path, body: str) -> None:
+    path.write_text(f"#!/bin/sh\nset -eu\n{body}", encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _run_util_linux_hotfix(
+    tmp_path: Path,
+    *,
+    version_suffix: str = "deb13u1",
+    record_overrides: dict[str, tuple[str, str] | None] | None = None,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    host_dpkg = Path("/usr/bin/dpkg")
+    assert host_dpkg.is_file(), "behavioral version checks require /usr/bin/dpkg"
+
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    records_path = tmp_path / "package-records"
+    query_log = tmp_path / "dpkg-query.log"
+    compare_log = tmp_path / "dpkg-compare.log"
+    apt_log = tmp_path / "apt-get.log"
+    rm_log = tmp_path / "rm.log"
+
+    fixed_version = f"2.41.5-0+{version_suffix}"
+    records = {
+        package: ("installed", fixed_version) for package in UTIL_LINUX_PACKAGES
+    }
+    records["bsdutils"] = ("installed", f"1:{fixed_version}")
+    records["login"] = ("installed", f"1:4.16.0+really{fixed_version}")
+    for package, record in (record_overrides or {}).items():
+        if record is None:
+            records.pop(package)
+        else:
+            records[package] = record
+    records_path.write_text(
+        "".join(
+            f"{package}|{state}|{version}\n"
+            for package, (state, version) in records.items()
+        ),
+        encoding="utf-8",
+    )
+
+    _write_fake_executable(
+        fake_bin / "apt-get",
+        'printf "%s\\n" "$*" >> "$FAKE_APT_LOG"\n',
+    )
+    _write_fake_executable(
+        fake_bin / "rm",
+        'printf "%s\\n" "$*" >> "$FAKE_RM_LOG"\n',
+    )
+    _write_fake_executable(
+        fake_bin / "dpkg-query",
+        """package=""
+for argument in "$@"; do package="$argument"; done
+printf "%s\\n" "$package" >> "$FAKE_DPKG_QUERY_LOG"
+while IFS='|' read -r candidate state version; do
+    [ "$candidate" = "$package" ] || continue
+    printf "%s|%s" "$state" "$version"
+    exit 0
+done < "$FAKE_DPKG_RECORDS"
+exit 1
+""",
+    )
+    _write_fake_executable(
+        fake_bin / "dpkg",
+        """[ "$#" -eq 4 ]
+[ "$1" = "--compare-versions" ]
+printf "%s|%s|%s\\n" "$2" "$3" "$4" >> "$FAKE_DPKG_COMPARE_LOG"
+exec /usr/bin/dpkg "$@"
+""",
+    )
+
+    result = subprocess.run(
+        ["/bin/sh", "-c", _util_linux_hotfix_body()],
+        cwd=tmp_path,
+        env={
+            "PATH": str(fake_bin),
+            "FAKE_APT_LOG": str(apt_log),
+            "FAKE_DPKG_COMPARE_LOG": str(compare_log),
+            "FAKE_DPKG_QUERY_LOG": str(query_log),
+            "FAKE_DPKG_RECORDS": str(records_path),
+            "FAKE_RM_LOG": str(rm_log),
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result, tmp_path
+
+
 def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     policy = json.loads(REPO_POLICY.read_text(encoding="utf-8"))
     backend = policy["images"]["backend"]
+    backend_findings = backend["findings"]
     geo = policy["images"]["geo-worker"]
     backend_provenance = backend["baseline_generated_from"]
     geo_provenance = geo["baseline_generated_from"]
@@ -291,16 +400,36 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # openssl-provider-legacy 3.5.6-1~deb13u2,
     # fix_deferred, sin FixedVersion) reveladas por la DB v2 actual; el
     # baseline se refresco con snapshot honesto (ver PR #193).
-    assert len(backend["findings"]) == 18
-    assert sum(finding["count"] for finding in backend["findings"]) == 18
-    assert {finding["count"] for finding in backend["findings"]} == {1}
-    assert {finding["target"] for finding in backend["findings"]} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend["findings"]) == 13
-    assert sum(finding["severity"] == "CRITICAL" for finding in backend["findings"]) == 5
-    assert sum(finding["status"] == "affected" for finding in backend["findings"]) == 12
-    assert sum(finding["status"] == "fix_deferred" for finding in backend["findings"]) == 6
-    assert all(finding["fixed"] == "" for finding in backend["findings"])
-    assert all("layer" not in finding for finding in backend["findings"])
+    assert len(backend_findings) == 18
+    assert sum(finding["count"] for finding in backend_findings) == 18
+    assert {finding["count"] for finding in backend_findings} == {1}
+    assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 13
+    assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 5
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 12
+    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 6
+    assert all(finding["fixed"] == "" for finding in backend_findings)
+    assert all("layer" not in finding for finding in backend_findings)
+    assert [
+        finding for finding in backend_findings if finding["cve"] == "CVE-2026-53615"
+    ] == []
+    deferred_openssl_findings = [
+        finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"
+    ]
+    assert len(deferred_openssl_findings) == 3
+    assert {
+        (
+            finding["cve"],
+            finding["pkg_id"].partition("@")[0],
+            finding["severity"],
+            finding["status"],
+        )
+        for finding in deferred_openssl_findings
+    } == {
+        ("CVE-2026-14456", "libssl3t64", "HIGH", "fix_deferred"),
+        ("CVE-2026-14456", "openssl", "HIGH", "fix_deferred"),
+        ("CVE-2026-14456", "openssl-provider-legacy", "HIGH", "fix_deferred"),
+    }
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
         "sha256:b799340b92552748d8fa68824e34843c6c1eb5702edccc1ba0ccd94e5f575d8c"
@@ -319,6 +448,110 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert geo_provenance["scanner"]["version"] == "0.70.0"
     assert backend_provenance["scanner"]["vulnerability_db"]["version"] == 2
     assert geo_provenance["scanner"]["vulnerability_db"]["version"] == 2
+
+
+def test_backend_dockerfile_enforces_fixed_util_linux_source_version() -> None:
+    hotfix = _util_linux_hotfix_body()
+
+    assert hotfix.count("fixed_version=\"2.41.5-0+deb13u1\"") == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'normalized_version="${installed_version#*:}"' in hotfix
+    assert 'normalized_version="${normalized_version#*+really}"' in hotfix
+    assert (
+        'dpkg --compare-versions "$normalized_version" ge "$fixed_version"' in hotfix
+    )
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index(
+        "rm -rf /var/lib/apt/lists/*"
+    )
+    install_block, version_gate = hotfix.split(
+        'fixed_version="2.41.5-0+deb13u1"', 1
+    )
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    for package in UTIL_LINUX_PACKAGES:
+        assert package in install_lines
+        assert package in gate_lines
+
+
+def test_util_linux_hotfix_accepts_fixed_versions_and_queries_all_packages(
+    tmp_path: Path,
+) -> None:
+    result, run_dir = _run_util_linux_hotfix(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert (run_dir / "dpkg-query.log").read_text(encoding="utf-8").splitlines() == list(
+        UTIL_LINUX_PACKAGES
+    )
+    assert len(
+        (run_dir / "dpkg-compare.log").read_text(encoding="utf-8").splitlines()
+    ) == len(UTIL_LINUX_PACKAGES)
+    assert (run_dir / "apt-get.log").read_text(encoding="utf-8").splitlines() == [
+        "update",
+        "install -y --no-install-recommends --only-upgrade "
+        + " ".join(UTIL_LINUX_PACKAGES),
+    ]
+    assert (run_dir / "rm.log").read_text(encoding="utf-8").strip().startswith("-rf ")
+
+
+def test_util_linux_hotfix_accepts_later_debian_security_revisions(
+    tmp_path: Path,
+) -> None:
+    result, _ = _run_util_linux_hotfix(tmp_path, version_suffix="deb13u2")
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_util_linux_hotfix_rejects_package_below_fixed_version(tmp_path: Path) -> None:
+    result, _ = _run_util_linux_hotfix(
+        tmp_path,
+        record_overrides={"mount": ("installed", "2.41.4-0+deb13u9")},
+    )
+
+    assert result.returncode != 0
+    assert "mount remains below 2.41.5-0+deb13u1" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        None,
+        ("not-installed", "2.41.5-0+deb13u1"),
+    ],
+    ids=["missing", "not-installed"],
+)
+def test_util_linux_hotfix_rejects_missing_or_not_installed_package(
+    tmp_path: Path,
+    record: tuple[str, str] | None,
+) -> None:
+    result, _ = _run_util_linux_hotfix(
+        tmp_path,
+        record_overrides={"libuuid1": record},
+    )
+
+    assert result.returncode != 0
+    if record is not None:
+        assert "security upgrade did not install libuuid1" in result.stderr
+
+
+def test_util_linux_hotfix_rejects_login_without_really_source_marker(
+    tmp_path: Path,
+) -> None:
+    result, _ = _run_util_linux_hotfix(
+        tmp_path,
+        record_overrides={"login": ("installed", "1:2.41.5-0+deb13u2")},
+    )
+
+    assert result.returncode != 0
+    assert "unexpected login version" in result.stderr
 
 
 def test_valid_exact_backend_and_empty_geo_reports_pass(tmp_path: Path) -> None:
