@@ -3,6 +3,8 @@ import type { Feature, Geometry } from 'geojson';
 import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
+import { precipRangeForMonth } from '../../config/precipRanges';
+import type { PrecipMonth } from '../../hooks/useHazardUrlState';
 import styles from '../../styles/components/map.module.css';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
@@ -205,21 +207,28 @@ function HazardRiskChip({ label }: { readonly label: string }) {
   );
 }
 
-function HazardPrecipRamp() {
+function HazardPrecipRamp({ precipMonth }: { readonly precipMonth: PrecipMonth }) {
   const config = LAYER_LEGEND_CONFIG.precip_normal;
+  // Range is sourced from the shared `precipRanges` contract (NOT the static
+  // config `max`) so the legend honors the monthly 0–200 mm range and the
+  // annual 0–1800 mm range exactly like the tile rescale does.
+  const { min, max } = precipRangeForMonth(precipMonth);
   const gradient = `linear-gradient(to right, ${config.colorStops.join(', ')})`;
   return (
-    <Stack gap={2} data-testid="hazard-precip-legend">
+    <Stack gap={2} data-testid="hazard-precip-legend" data-precip-month={precipMonth}>
       <Text size="xs" fw={600} c="dimmed">
         {config.label}
       </Text>
-      <Box style={{ height: 12, borderRadius: 2, background: gradient }} />
+      <Box
+        data-testid="hazard-precip-ramp-gradient"
+        style={{ height: 12, borderRadius: 2, background: gradient }}
+      />
       <Group justify="space-between" wrap="nowrap">
-        <Text size="9px" c="dimmed">
-          {config.min} {config.unit}
+        <Text size="9px" c="dimmed" data-testid="hazard-precip-legend-min">
+          {min} {config.unit}
         </Text>
-        <Text size="9px" c="dimmed">
-          {config.max} {config.unit}
+        <Text size="9px" c="dimmed" data-testid="hazard-precip-legend-max">
+          {max} {config.unit}
         </Text>
       </Group>
     </Stack>
@@ -365,6 +374,13 @@ interface LeyendaPanelProps {
   readonly hazardBasin?: Feature<Geometry> | null;
   /** Whether the CHIRPS normals precipitation overlay is visible. */
   readonly hazardPrecipVisible?: boolean;
+  /**
+   * Active precipitation month for the hazard precip overlay. Drives the legend
+   * range via the shared `precipRanges` contract: `'anual'` → 0–1800 mm,
+   * `'01'`–`'12'` → 0–200 mm. Defaults to `'anual'` for backwards compatibility
+   * with consumers that do not thread the month through.
+   */
+  readonly precipMonth?: PrecipMonth;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -390,6 +406,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   hazardRiskClasses = [],
   hazardBasin,
   hazardPrecipVisible = false,
+  precipMonth = 'anual',
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
 
@@ -670,7 +687,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
                   ))}
                 </Group>
               )}
-              {hazardPrecipVisible && <HazardPrecipRamp />}
+              {hazardPrecipVisible && <HazardPrecipRamp precipMonth={precipMonth} />}
               {hazardBasinName && <HazardBasinChip name={hazardBasinName} />}
             </>
           )}

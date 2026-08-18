@@ -1271,6 +1271,7 @@ export default function MapaMapLibre() {
                   hazardRiskClasses={hazardMap.url.riskClasses}
                   hazardBasin={hazardMap.selectedBasin}
                   hazardPrecipVisible={hazardMap.showPrecipitation}
+                  precipMonth={hazardMap.url.precipMonth}
                 />
                 {visibleRasterLayers.length > 0 && (
                   <RasterLegend

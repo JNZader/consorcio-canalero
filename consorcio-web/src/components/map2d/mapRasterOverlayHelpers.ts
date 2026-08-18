@@ -7,6 +7,7 @@ import { RISK_CLASS_LABELS } from '../../hooks/useHazardUrlState';
 import { SOURCE_IDS } from './map2dConfig';
 import { IGN_IMAGE_URL, IGN_MAPLIBRE_COORDS, setLayerVisibility } from './map2dUtils';
 import { PILAR_VERDE_Z_ORDER } from './pilarVerdeLayers';
+import { precipRangeForMonth } from '../../config/precipRanges';
 
 interface LayerLike {
   id: string;
@@ -396,7 +397,8 @@ function syncRasterTileSource(
  *
  * Adds/removes the layer with hazard mode, switches the source tile URL when
  * the month changes without remounting the layer, and applies the month-specific
- * rescale range (0-200 mm for monthly, 0-1800 mm for annual).
+ * rescale range (0-200 mm for monthly, 0-1800 mm for annual). The range is read
+ * from the shared `precipRanges` contract so it cannot drift from the legend.
  */
 export function syncPrecipNormalLayer(
   map: maplibregl.Map,
@@ -407,10 +409,11 @@ export function syncPrecipNormalLayer(
   }
 ) {
   const layer = findPrecipNormalLayer(params.allGeoLayers, params.precipMonth);
+  const range = precipRangeForMonth(params.precipMonth);
   const tileUrl = layer
     ? buildTileUrl(layer.id, {
-        rescaleMin: 0,
-        rescaleMax: params.precipMonth === 'anual' ? 1800 : 200,
+        rescaleMin: range.min,
+        rescaleMax: range.max,
       })
     : null;
 

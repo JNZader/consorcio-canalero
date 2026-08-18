@@ -5,7 +5,13 @@
  * tile_service.py (DEFAULT_COLORMAPS / DEFAULT_RESCALE).
  * Hardcoded here to avoid an extra network request — update both
  * places when colormaps or ranges change.
+ *
+ * The CHIRPS precip-normal range (`precip_normal`) is sourced from
+ * `./precipRanges` so the legend config and the tile-rescale builder share one
+ * contract for the 0–1800 mm (annual) / 0–200 mm (monthly) boundaries.
  */
+
+import { PRECIP_ANNUAL_MAX_MM, PRECIP_MIN_MM } from './precipRanges';
 
 export interface CategoricalEntry {
   color: string;
@@ -139,8 +145,10 @@ export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
   },
   precip_normal: {
     colorStops: ['#ffffcc', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#0c2c84'],
-    min: 0,
-    max: 1800,
+    // Annual default. The legend ramp overrides max per `precipMonth` via
+    // `precipRangeForMonth` so the monthly 0–200 mm range is honored too.
+    min: PRECIP_MIN_MM,
+    max: PRECIP_ANNUAL_MAX_MM,
     unit: 'mm',
     label: 'CHIRPS 1991-2020 normal',
   },
