@@ -17,6 +17,10 @@ from fastapi import FastAPI, HTTPException, Path as PathParam, Query
 from fastapi.responses import Response
 from rio_tiler.io import Reader
 from rio_tiler.errors import TileOutsideBounds
+from app.domains.geo.rescale_policy import (
+    rescale_cache_token,
+    resolved_rescale,
+)
 from app.domains.geo.tile_service_support import (
     CATEGORICAL_COLORS,
     CATEGORICAL_TYPES,
@@ -146,15 +150,18 @@ def get_tile(
     # the DEM edge still carries the vertical curtain. Bump to retire them.
     # v4: rescale_min/rescale_max allow monthly/annual CHIRPS normals to share
     # the same layer id with different contrast; previous keys ignored them.
+    # v5 (hardening H1): the rescale portion is now a BOUNDED canonical token
+    # ("m" / "a" / "-") instead of the raw attacker-controlled float, so the
+    # cache-key cardinality is finite and an unbounded rescale range can never
+    # be injected into the key. Retire v4 keys.
     cache_key = (
-        f"v4:{layer_id}:{z}:{x}:{y}"
+        f"v5:{layer_id}:{z}:{x}:{y}"
         f":enc={encoding or '-'}"
         f":cmap={colormap or '-'}"
         f":hc={_normalise_csv(hide_classes)}"
         f":hr={_normalise_csv(hide_ranges)}"
         f":smooth={terrain_smoothing or '-'}"
-        f":rmin={rescale_min if rescale_min is not None else '-'}"
-        f":rmax={rescale_max if rescale_max is not None else '-'}"
+        f":r={rescale_cache_token(rescale_min, rescale_max)}"
     )
     bytes_cache = get_bytes_cache()
     cached = bytes_cache.get(cache_key)
@@ -206,11 +213,13 @@ def get_tile(
 
     # A per-request rescale range lets the same continuous layer (e.g. CHIRPS
     # monthly vs annual normals) render with different contrast without creating
-    # separate layer ids. If only one bound is sent we ignore it and fall back
-    # to the configured default.
-    _requested_rescale: tuple[float, float] | None = None
-    if rescale_min is not None and rescale_max is not None:
-        _requested_rescale = (rescale_min, rescale_max)
+    # separate layer ids. Only a canonical, policy-approved pair is applied;
+    # anything else (a single bound, an unsupported range, or a direct call
+    # that bypassed the proxy) degrades to the layer's default rescale so the
+    # existing default rendering is preserved and the cache key stays bounded.
+    _requested_rescale: tuple[float, float] | None = resolved_rescale(
+        layer.tipo, rescale_min, rescale_max
+    )
 
     if encoding == "terrain-rgb":
         # Read with a buffer halo only when smoothing is requested, so that
