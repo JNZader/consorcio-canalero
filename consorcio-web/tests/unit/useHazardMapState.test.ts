@@ -669,4 +669,31 @@ describe('useHazardMapState — H4 pre-hazard visibility snapshot', () => {
     // Snapshot cleared exactly once.
     expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
   });
+
+  it('clears a stale snapshot on an initial resolved non-hazard mount without restoring layers', () => {
+    sessionStorage.setItem(
+      HAZARD_VISIBILITY_SNAPSHOT_KEY,
+      JSON.stringify({ version: 1, values: CUSTOM_PRE_HAZARD })
+    );
+    authState.loading = false;
+    mocks.url.hazard = false;
+    mocks.url.isHazardActive = false;
+    mocks.shared.setVectorVisibility.mockClear();
+
+    const map = createFakeMap();
+    const mapRef = { current: map as unknown as maplibregl.Map } as MutableRefObject<maplibregl.Map>;
+
+    renderHook(() =>
+      useHazardMapState({
+        mapRef,
+        mapReady: true,
+        basins: { type: 'FeatureCollection', features: [] },
+        allGeoLayers: [],
+        fichaActive: false,
+      })
+    );
+
+    expect(sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+    expect(mocks.shared.setVectorVisibility).not.toHaveBeenCalled();
+  });
 });
