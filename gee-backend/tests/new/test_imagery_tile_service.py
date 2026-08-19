@@ -552,6 +552,7 @@ def test_unsupported_rescale_falls_back_to_default_and_bounded_key(
     x, y = _covering_tile()
 
     default_response = client.get(_url(LAYER_ID, x, y))
+    cache.store.clear()  # Force the unsupported override through the cold-cache fallback.
     override_response = client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=100))
 
     assert default_response.status_code == 200
