@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { HazardControls } from '../../src/components/map2d/HazardControls';
@@ -49,24 +50,46 @@ describe('HazardControls', () => {
     expect(screen.getByRole('button', { name: 'Restablecer' })).toBeInTheDocument();
   });
 
-  it('emits risk, reset, and collapse callbacks without owning state', () => {
+  it('emits risk, reset, and collapse callbacks without owning state', async () => {
     const props = renderControls();
+    const user = userEvent.setup();
 
-    fireEvent.click(screen.getByLabelText('Alto'));
-    fireEvent.click(screen.getByRole('button', { name: 'Restablecer' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Contraer controles de riesgos' }));
+    await user.click(screen.getByLabelText('Alto'));
+    await user.click(screen.getByRole('button', { name: 'Restablecer' }));
+    await user.click(screen.getByRole('button', { name: 'Contraer controles de riesgos' }));
 
     expect(props.onRiskClassChange).toHaveBeenCalledWith('Alto', false);
     expect(props.onReset).toHaveBeenCalledTimes(1);
     expect(props.onCollapsedChange).toHaveBeenCalledWith(true);
   });
 
-  it('renders an expand chip when the parent collapses it and minimizes for a ficha', () => {
+  it('emits basin and precipitation selections through accessible combobox options', async () => {
+    const props = renderControls();
+    const user = userEvent.setup();
+
+    const basinSelect = screen.getByLabelText('Seleccionar cuenca');
+    await user.click(basinSelect);
+    await user.click(screen.getByRole('option', { name: 'Río Tercero' }));
+
+    await user.click(basinSelect);
+    await user.click(screen.getByRole('option', { name: 'Mostrar todo' }));
+
+    await user.click(screen.getByLabelText('Periodo de precipitación'));
+    await user.click(screen.getByRole('option', { name: 'Enero' }));
+
+    expect(props.onBasinChange).toHaveBeenNthCalledWith(1, 'rio-tercero');
+    expect(props.onBasinChange).toHaveBeenNthCalledWith(2, null);
+    expect(props.onPrecipitationPeriodChange).toHaveBeenCalledOnce();
+    expect(props.onPrecipitationPeriodChange).toHaveBeenCalledWith(PRECIPITATION_PERIOD.JANUARY);
+  });
+
+  it('collapses for an open ficha even when the parent does not collapse it', async () => {
     const onFichaMinimize = vi.fn();
-    const props = renderControls({ collapsed: true, fichaOpen: true, onFichaMinimize });
+    const props = renderControls({ collapsed: false, fichaOpen: true, onFichaMinimize });
+    const user = userEvent.setup();
 
     expect(screen.getByTestId('hazard-controls-desktop-collapsed')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Expandir controles de riesgos' }));
+    await user.click(screen.getByRole('button', { name: 'Expandir controles de riesgos' }));
 
     expect(props.onCollapsedChange).toHaveBeenCalledWith(false);
     expect(onFichaMinimize).toHaveBeenCalledTimes(1);
