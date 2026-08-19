@@ -23,11 +23,11 @@ function layer(period: unknown, createdAt: string, id = String(period)) {
 }
 
 describe('precipitation catalog contract', () => {
-  it('uses the GEE precip-normal source for public and authenticated catalogs', () => {
-    expect(buildPrecipNormalCatalogEndpoint(null)).toContain(
+  it('uses the public catalog unless the authenticated role may use the operator catalog', () => {
+    expect(buildPrecipNormalCatalogEndpoint(null, null)).toContain(
       '/layers/public?limit=100&tipo=precip_normal&fuente=gee'
     );
-    expect(buildPrecipNormalCatalogEndpoint('token')).toContain(
+    expect(buildPrecipNormalCatalogEndpoint('token', 'operador')).toContain(
       '/layers?limit=100&tipo=precip_normal&fuente=gee'
     );
   });
