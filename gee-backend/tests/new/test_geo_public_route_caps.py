@@ -22,6 +22,7 @@ import os
 import struct
 import uuid
 import zlib
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -146,7 +147,7 @@ def test_map_pdf_builder_rejects_undecodable_image_bytes(branding) -> None:
 
 
 @pytest.fixture
-def cliente(monkeypatch):
+def cliente(monkeypatch, db):
     from app.db.session import get_db
     from app.main import app
     from app.shared.pdf.base import BrandingInfo
@@ -159,7 +160,7 @@ def cliente(monkeypatch):
             logo_path=None,
         ),
     )
-    app.dependency_overrides[get_db] = lambda: object()
+    app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
     client.headers.update({"Host": "localhost"})
     yield client
@@ -340,9 +341,123 @@ def test_export_map_pdf_rejects_a_declared_bomb_with_422_not_500(cliente) -> Non
 
 # ── tile proxy: bounded z/x/y ───────────────────────────────────────────────
 
+PAIR_DETAIL = "rescale_min y rescale_max deben enviarse juntos o ninguno"
+ORDER_DETAIL = "rescale_min debe ser estrictamente menor que rescale_max"
+FINITE_DETAIL = "rescale_min y rescale_max deben ser valores finitos"
+NUMBER_DETAIL = "rescale_min debe ser un valor numerico"
+UNSUPPORTED_PRECIP_DETAIL = "rango de rescale no soportado para la capa 'precip_normal'"
 
-def _tile_url(z: int, x: int, y: int) -> str:
-    return f"/api/v2/geo/layers/{uuid.uuid4()}/tiles/{z}/{x}/{y}.png"
+
+def _tile_url(z: int, x: int, y: int, layer_id: uuid.UUID | None = None) -> str:
+    return f"/api/v2/geo/layers/{layer_id or uuid.uuid4()}/tiles/{z}/{x}/{y}.png"
+
+
+def _seed_tile_layer(db, tipo: str, fuente: str | None = None) -> uuid.UUID:
+    from app.domains.geo.models import FormatoGeoLayer, GeoLayer
+
+    layer = GeoLayer(
+        nombre=f"{tipo}_{uuid.uuid4()}",
+        tipo=tipo,
+        fuente=fuente or ("gee" if tipo == "precip_normal" else "dem_pipeline"),
+        archivo_path=f"/tmp/{tipo}.tif",
+        formato=FormatoGeoLayer.GEOTIFF.value,
+    )
+    db.add(layer)
+    db.flush()
+    return layer.id
+
+
+@pytest.fixture
+def precip_layer_id(db) -> uuid.UUID:
+    return _seed_tile_layer(db, "precip_normal")
+
+
+@pytest.mark.parametrize(
+    ("params", "detail"),
+    [
+        ({"rescale_min": 0}, PAIR_DETAIL),
+        ({"rescale_min": 200, "rescale_max": 0}, ORDER_DETAIL),
+        ({"rescale_min": 0, "rescale_max": 100}, UNSUPPORTED_PRECIP_DETAIL),
+        ({"rescale_min": "nan", "rescale_max": 200}, FINITE_DETAIL),
+        ({"rescale_min": "not-a-number", "rescale_max": 200}, NUMBER_DETAIL),
+        ({"rescale_min": "", "rescale_max": 200}, NUMBER_DETAIL),
+    ],
+)
+def test_tile_proxy_rejects_invalid_public_rescale(
+    cliente, precip_layer_id: uuid.UUID, params: dict[str, object], detail: str
+) -> None:
+    response = cliente.get(_tile_url(10, 0, 0, precip_layer_id), params=params)
+
+    assert response.status_code == 400, response.text
+    assert response.json() == {"detail": detail}
+
+
+def test_tile_proxy_rejects_invalid_rescale_outside_the_pyramid(
+    cliente, precip_layer_id: uuid.UUID
+) -> None:
+    response = cliente.get(
+        _tile_url(2, 4, 0, precip_layer_id),
+        params={"rescale_min": 0},
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json() == {"detail": PAIR_DETAIL}
+
+
+def test_tile_proxy_rejects_precip_rescale_for_a_non_precip_layer(cliente, db) -> None:
+    layer_id = _seed_tile_layer(db, "dem_raw")
+
+    response = cliente.get(
+        _tile_url(10, 0, 0, layer_id),
+        params={"rescale_min": 0, "rescale_max": 200},
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json() == {"detail": "rango de rescale no soportado para la capa 'dem_raw'"}
+
+
+def test_tile_proxy_validates_before_hiding_unpublished_layers(cliente, db) -> None:
+    missing_id = uuid.uuid4()
+    invalid = cliente.get(
+        _tile_url(10, 0, 0, missing_id), params={"rescale_min": 0, "rescale_max": 100}
+    )
+    assert invalid.status_code == 400
+    assert invalid.json() == {"detail": UNSUPPORTED_PRECIP_DETAIL}
+
+    hidden_ids = [
+        missing_id,
+        _seed_tile_layer(db, "precip_normal", "manual"),
+        _seed_tile_layer(db, "hand", "dem_pipeline"),
+        _seed_tile_layer(db, "dem_raw", "gee"),
+        _seed_tile_layer(db, "precip_normal", "dem_pipeline"),
+    ]
+    for layer_id in hidden_ids:
+        response = cliente.get(
+            _tile_url(10, 0, 0, layer_id), params={"rescale_min": 0, "rescale_max": 200}
+        )
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Geo layer no encontrado"}
+
+
+def test_tile_proxy_forwards_a_valid_canonical_rescale(
+    cliente, precip_layer_id: uuid.UUID, monkeypatch
+) -> None:
+    from app.domains.geo import router_core
+
+    tile_client = type("RecordingTileClient", (), {})()
+    tile_client.get = AsyncMock(
+        return_value=type("TileResponse", (), {"status_code": 200, "content": b"png"})()
+    )
+    monkeypatch.setattr(router_core, "_get_tile_client", lambda: tile_client)
+
+    response = cliente.get(
+        _tile_url(10, 0, 0, precip_layer_id),
+        params={"rescale_min": 0, "rescale_max": 200},
+    )
+
+    assert response.status_code == 200, response.text
+    params = tile_client.get.await_args.kwargs["params"]
+    assert params == {"rescale_min": 0.0, "rescale_max": 200.0}
 
 
 def test_tile_proxy_rejects_an_absurd_zoom(cliente) -> None:
