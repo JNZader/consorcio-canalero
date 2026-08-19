@@ -101,6 +101,7 @@ DEFAULT_COLORMAPS: dict[str, str] = {
     "flow_dir": "spectral",
     "flood_risk": "rdylgn_r",
     "drainage_need": "ylorbr",
+    "precip_normal": "ylgnbu",
 }
 
 DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
@@ -114,6 +115,7 @@ DEFAULT_RESCALE: dict[str, tuple[float, float]] = {
     "flow_dir": (0.0, 128.0),
     "flood_risk": (10.0, 90.0),
     "drainage_need": (20.0, 70.0),
+    "precip_normal": (0.0, 1800.0),
 }
 
 CATEGORICAL_COLORS: dict[str, dict[int, tuple[int, int, int, int]]] = {
@@ -531,6 +533,7 @@ def render_continuous_with_ranges(
     layer_tipo: str,
     cmap_name: str,
     hidden_ranges: set[int],
+    rescale: tuple[float, float] | None = None,
 ) -> bytes:
     from rio_tiler.colormap import cmap as colormap_registry
 
@@ -542,7 +545,8 @@ def render_continuous_with_ranges(
         )
         img.rescale(((0.0, 13.0),))
     else:
-        rescale = DEFAULT_RESCALE.get(layer_tipo)
+        if rescale is None:
+            rescale = DEFAULT_RESCALE.get(layer_tipo)
         if rescale:
             img.rescale(((rescale[0], rescale[1]),))
 

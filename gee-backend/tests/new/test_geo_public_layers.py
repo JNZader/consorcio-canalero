@@ -76,7 +76,7 @@ def client(db: Session, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 @pytest.fixture
 def seeded_layers(db: Session) -> None:
-    """One DEM-pipeline layer per tile-capable tipo.
+    """One production-shaped layer per tile-capable tipo.
 
     Seeds the FULL tile-capable set (not just a sample) so the equality
     assertion below fails if ANY extra tipo is ever added to the public
@@ -90,7 +90,11 @@ def seeded_layers(db: Session) -> None:
             GeoLayer(
                 nombre=f"{tipo}_test",
                 tipo=tipo,
-                fuente=FuenteGeoLayer.DEM_PIPELINE.value,
+                fuente=(
+                    FuenteGeoLayer.GEE.value
+                    if tipo == "precip_normal"
+                    else FuenteGeoLayer.DEM_PIPELINE.value
+                ),
                 archivo_path=f"/tmp/{tipo}.tif",
                 formato=FormatoGeoLayer.GEOTIFF.value,
             )
@@ -107,11 +111,16 @@ def test_public_layers_expose_published_production_set(
 ) -> None:
     resp = client.get(ENDPOINT, params={"limit": 100})
     assert resp.status_code == 200, resp.text
-    # Igualdad EXACTA: si manana alguien amplia PUBLIC_PRODUCTION_LAYER_TYPES,
-    # este assert falla y obliga a decidirlo a conciencia en el test, no de
-    # rebote. flood_risk/drainage_need se sumaron al set publico (overlays de
-    # riesgo/drenaje de la ficha, 2026-08-01).
-    assert _tipos(resp) == {"dem_raw", "terrain_class", "flood_risk", "drainage_need"}
+    # Exact equality makes any publication-policy expansion an explicit test
+    # decision. Risk overlays were published for the parcel map on 2026-08-01;
+    # precipitation normals were added for the multi-hazard viewer on 2026-08-17.
+    assert _tipos(resp) == {
+        "dem_raw",
+        "terrain_class",
+        "flood_risk",
+        "drainage_need",
+        "precip_normal",
+    }
 
 
 def test_public_layers_hide_non_published_types(client: TestClient, seeded_layers: None) -> None:
@@ -157,12 +166,20 @@ def test_public_layers_tipo_filter_narrows_to_composite(
     assert _tipos(resp) == {tipo}
 
 
-def test_public_layers_foreign_fuente_returns_empty_page(
+def test_public_layers_manual_fuente_returns_empty_page(
     client: TestClient, seeded_layers: None
 ) -> None:
-    resp = client.get(ENDPOINT, params={"fuente": "gee"})
+    resp = client.get(ENDPOINT, params={"fuente": "manual"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["items"] == []
+
+
+def test_public_layers_expose_production_gee_precip_normal(
+    client: TestClient, seeded_layers: None
+) -> None:
+    resp = client.get(ENDPOINT, params={"fuente": "gee", "tipo": "precip_normal"})
+    assert resp.status_code == 200, resp.text
+    assert _tipos(resp) == {"precip_normal"}
 
 
 def test_public_layers_require_no_authentication(client: TestClient) -> None:
