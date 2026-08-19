@@ -137,6 +137,13 @@ export const LAYER_LEGEND_CONFIG: Record<string, RasterLegendInfo> = {
       { label: '135-145m', min: 135, max: 145, color: '#a50026' },
     ],
   },
+  precip_normal: {
+    colorStops: ['#ffffcc', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#0c2c84'],
+    min: 0,
+    max: 1800,
+    unit: 'mm',
+    label: 'CHIRPS 1991-2020 normal',
+  },
   flow_acc: {
     colorStops: ['#ffffcc', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#0c2c84'],
     min: 1,

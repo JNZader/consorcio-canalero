@@ -58,6 +58,10 @@ export interface MlLayerRender {
 
 export interface LayerRenderEntry {
   readonly mlLayers: readonly MlLayerRender[];
+  /** Optional layer family used by the hazard panel and legend grouping. */
+  readonly family?: string;
+  /** True when the layer supports a date/aggregation selector (future daily/event precipitation overlay). */
+  readonly supportsDate?: boolean;
 }
 
 /**
@@ -80,6 +84,7 @@ export const RENDERABLE_UI_LAYER_IDS = [
   'soil',
   'catastro',
   'puntos_conflicto',
+  'precip_normal',
   'pilar_verde_bpa_historico',
   'pilar_verde_agro_aceptada',
   'pilar_verde_agro_presentada',
@@ -123,6 +128,7 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   'soil',
   'catastro',
   'basins',
+  'precip_normal',
   'approved_zones',
   'puntos_conflicto',
   'pilar_verde_agro_zonas',
@@ -221,6 +227,17 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
         defaultOpacity: 0.85,
       },
     ],
+  },
+  precip_normal: {
+    mlLayers: [
+      {
+        id: `${SOURCE_IDS.PRECIP_NORMAL}-layer`,
+        opacityProp: OPACITY_PROP.raster,
+        defaultOpacity: 0.55,
+      },
+    ],
+    family: 'precipitation',
+    supportsDate: false,
   },
   pilar_verde_bpa_historico: {
     mlLayers: [

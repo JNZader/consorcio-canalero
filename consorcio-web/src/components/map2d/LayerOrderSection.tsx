@@ -50,6 +50,7 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   soil: 'Suelos',
   catastro: 'Catastro',
   puntos_conflicto: 'Puntos de conflicto',
+  precip_normal: 'Precipitación CHIRPS',
   pilar_verde_bpa_historico: 'BPA histórico',
   pilar_verde_agro_aceptada: 'Agroforestal aceptada',
   pilar_verde_agro_presentada: 'Agroforestal presentada',

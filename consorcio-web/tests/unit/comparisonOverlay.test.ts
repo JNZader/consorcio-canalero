@@ -15,6 +15,11 @@ import {
 import { WATERWAY_DEFS } from '../../src/hooks/useWaterways';
 import { ALL_ETAPAS } from '../../src/types/canales';
 
+const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
+const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(
+  (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id)
+);
+
 interface FakeMapHarness {
   map: maplibregl.Map;
   layers: Map<string, { id: string }>;
@@ -130,18 +135,18 @@ function createInputs(
 }
 
 describe('comparison overlay vector coverage', () => {
-  it('is set-equal to the canonical renderable UI layer registry', () => {
+  it('excludes raster-only UI ids from the vector comparison overlay', () => {
     expect([...COMPARISON_RENDERABLE_UI_LAYER_IDS].sort()).toEqual(
-      [...RENDERABLE_UI_LAYER_IDS].sort()
+      [...COMPARISON_VECTOR_UI_LAYER_IDS].sort()
     );
   });
 
-  it('mounts every concrete layer represented by the canonical registry', () => {
+  it('mounts every concrete comparison-vector layer', () => {
     const harness = createFakeMap();
 
     syncComparisonVectorLayers(harness.map, createInputs());
 
-    for (const id of RENDERABLE_UI_LAYER_IDS) {
+    for (const id of COMPARISON_RENDERABLE_UI_LAYER_IDS) {
       for (const layer of LAYER_RENDER_REGISTRY[id].mlLayers) {
         expect(harness.layers.has(layer.id), `comparison omitted ${id}/${layer.id}`).toBe(true);
       }

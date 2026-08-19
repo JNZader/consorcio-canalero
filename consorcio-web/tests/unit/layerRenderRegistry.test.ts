@@ -74,6 +74,20 @@ describe('layerRenderRegistry — coverage', () => {
     }
   });
 
+  it('registers precip_normal as the CHIRPS raster layer', () => {
+    expect(LAYER_RENDER_REGISTRY.precip_normal).toMatchObject({
+      mlLayers: [
+        {
+          id: 'map2d-precip-normal-layer',
+          opacityProp: 'raster-opacity',
+          defaultOpacity: 0.55,
+        },
+      ],
+      family: 'precipitation',
+      supportsDate: false,
+    });
+  });
+
   it('every ml layer declares a valid opacity prop and a 0..1 default', () => {
     for (const id of RENDERABLE_UI_LAYER_IDS) {
       for (const ml of LAYER_RENDER_REGISTRY[id].mlLayers) {
@@ -112,6 +126,12 @@ describe('DEFAULT_LAYER_ORDER', () => {
 
   it('has no duplicate ids', () => {
     expect(new Set(DEFAULT_LAYER_ORDER).size).toBe(DEFAULT_LAYER_ORDER.length);
+  });
+
+  it('includes precip_normal exactly once after basins', () => {
+    const basinsIndex = DEFAULT_LAYER_ORDER.indexOf('basins');
+    expect(DEFAULT_LAYER_ORDER.filter((id) => id === 'precip_normal')).toHaveLength(1);
+    expect(DEFAULT_LAYER_ORDER[basinsIndex + 1]).toBe('precip_normal');
   });
 
   it('lists roads at the bottom and escuelas at the top (documented z-order)', () => {
