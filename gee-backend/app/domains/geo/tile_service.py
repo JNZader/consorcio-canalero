@@ -17,6 +17,10 @@ from fastapi import FastAPI, HTTPException, Path as PathParam, Query
 from fastapi.responses import Response
 from rio_tiler.io import Reader
 from rio_tiler.errors import TileOutsideBounds
+from app.domains.geo.rescale_policy import (
+    rescale_cache_token,
+    resolved_rescale,
+)
 from app.domains.geo.tile_service_support import (
     CATEGORICAL_COLORS,
     CATEGORICAL_TYPES,
@@ -109,6 +113,14 @@ def get_tile(
         default=None,
         description=TERRAIN_SMOOTHING_METHODS_DESCRIPTION,
     ),
+    rescale_min: Optional[float] = Query(
+        default=None,
+        description="Minimum value for the requested rescale range (continuous layers).",
+    ),
+    rescale_max: Optional[float] = Query(
+        default=None,
+        description="Maximum value for the requested rescale range (continuous layers).",
+    ),
 ):
     """Serve a 256x256 PNG tile from a GeoLayer's raster data.
 
@@ -136,13 +148,20 @@ def get_tile(
     # v3: terrain-rgb nodata is feathered down to the baseline instead of being
     # snapped to it, so every previously cached elevation tile that straddles
     # the DEM edge still carries the vertical curtain. Bump to retire them.
+    # v4: rescale_min/rescale_max allow monthly/annual CHIRPS normals to share
+    # the same layer id with different contrast; previous keys ignored them.
+    # v5 (hardening H1): the rescale portion is now a BOUNDED canonical token
+    # ("m" / "a" / "-") instead of the raw attacker-controlled float, so the
+    # cache-key cardinality is finite and an unbounded rescale range can never
+    # be injected into the key. Retire v4 keys.
     cache_key = (
-        f"v3:{layer_id}:{z}:{x}:{y}"
+        f"v5:{layer_id}:{z}:{x}:{y}"
         f":enc={encoding or '-'}"
         f":cmap={colormap or '-'}"
         f":hc={_normalise_csv(hide_classes)}"
         f":hr={_normalise_csv(hide_ranges)}"
         f":smooth={terrain_smoothing or '-'}"
+        f":r={rescale_cache_token(rescale_min, rescale_max)}"
     )
     bytes_cache = get_bytes_cache()
     cached = bytes_cache.get(cache_key)
@@ -191,6 +210,16 @@ def get_tile(
             _hidden_ranges = {int(r.strip()) for r in hide_ranges.split(",") if r.strip()}
         except ValueError:
             logger.warning("Invalid hide_ranges value: %s", hide_ranges)
+
+    # A per-request rescale range lets the same continuous layer (e.g. CHIRPS
+    # monthly vs annual normals) render with different contrast without creating
+    # separate layer ids. Only a canonical, policy-approved pair is applied;
+    # anything else (a single bound, an unsupported range, or a direct call
+    # that bypassed the proxy) degrades to the layer's default rescale so the
+    # existing default rendering is preserved and the cache key stays bounded.
+    _requested_rescale: tuple[float, float] | None = resolved_rescale(
+        layer.tipo, rescale_min, rescale_max
+    )
 
     if encoding == "terrain-rgb":
         # Read with a buffer halo only when smoothing is requested, so that
@@ -271,6 +300,7 @@ def get_tile(
                     layer.tipo,
                     cmap_name,
                     _hidden_ranges,
+                    rescale=_requested_rescale,
                 )
             except Exception as e:
                 logger.warning(
@@ -288,7 +318,7 @@ def get_tile(
                 )
                 img.rescale(((0.0, 13.0),))
             else:
-                rescale = DEFAULT_RESCALE.get(layer.tipo)
+                rescale = _requested_rescale or DEFAULT_RESCALE.get(layer.tipo)
                 if rescale:
                     img.rescale(((rescale[0], rescale[1]),))
 

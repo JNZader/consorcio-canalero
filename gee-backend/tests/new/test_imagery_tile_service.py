@@ -468,6 +468,123 @@ def test_invalid_hide_ranges_does_not_break_the_tile(client, cache, monkeypatch,
     assert response.status_code == 200
 
 
+# ── precip_normal + per-request rescale ────────────────────────────────────
+
+
+@needs_rio_tiler
+def test_precip_normal_tile_renders_with_default_colormap(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    path = _write_raster(tmp_path / "precip_anual.tif", np.full((64, 64), 900.0), "float32")
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    response = client.get(_url(LAYER_ID, x, y))
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+
+@needs_rio_tiler
+def test_continuous_tile_uses_per_request_rescale(client, cache, monkeypatch, tmp_path) -> None:
+    path = _write_raster(tmp_path / "precip_monthly.tif", np.full((64, 64), 50.0), "float32")
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    default_response = client.get(_url(LAYER_ID, x, y))
+    override_response = client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=200))
+
+    assert default_response.status_code == 200
+    assert override_response.status_code == 200
+    assert default_response.content != override_response.content
+
+
+@needs_rio_tiler
+def test_cache_key_separates_rescale_params(client, cache, monkeypatch, tmp_path) -> None:
+    path = _write_raster(tmp_path / "precip.tif", np.full((64, 64), 100.0), "float32")
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    client.get(_url(LAYER_ID, x, y))
+    client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=200))
+
+    assert len(cache.store) == 2
+
+
+# ── H1 hardening: bounded cache-key token + safe fallback ────────────────────
+
+
+@needs_rio_tiler
+def test_rescale_cache_key_uses_bounded_token_not_raw_float(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    """The rescale portion of the cache key must be a bounded token, never the
+    attacker-controlled float. Monthly -> 'r=m', annual -> 'r=a', none -> 'r=-'."""
+    path = _write_raster(tmp_path / "precip.tif", np.full((64, 64), 100.0), "float32")
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=200))
+    annual_key = cache.sets[-1]
+    client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=1800))
+    client.get(_url(LAYER_ID, x, y))
+
+    monthly_key, annual_key2, none_key = cache.sets[-3], cache.sets[-2], cache.sets[-1]
+    for key in (monthly_key, annual_key2, none_key):
+        assert "rmin=" not in key
+        assert "rmax=" not in key
+    assert ":r=m" in monthly_key
+    assert ":r=a" in annual_key2
+    assert ":r=-" in none_key
+    # Distinct canonical ranges must not collide in the cache.
+    assert monthly_key != annual_key2 != none_key
+
+
+@needs_rio_tiler
+def test_unsupported_rescale_falls_back_to_default_and_bounded_key(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    """A rescale pair that is not canonical for the layer (e.g. a direct call
+    that bypassed the proxy) must NOT be applied and must NOT reach the cache
+    key as a raw float — it degrades to the default rendering with token '-'."""
+    path = _write_raster(tmp_path / "precip.tif", np.full((64, 64), 100.0), "float32")
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    default_response = client.get(_url(LAYER_ID, x, y))
+    override_response = client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=100))
+
+    assert default_response.status_code == 200
+    assert override_response.status_code == 200
+    # Falls back to the default render (no contrast change from an unsupported range).
+    assert default_response.content == override_response.content
+    # And the cache key never carries the unsupported float.
+    assert ":r=-" in cache.sets[-1]
+    assert "rmin=" not in cache.sets[-1]
+
+
+@needs_rio_tiler
+def test_no_override_renders_identically_to_annual_default(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    """No-override preserves the existing default rendering: for precip_normal the
+    default rescale IS (0, 1800), so omitting rescale must render identically to
+    the explicit annual override."""
+    path = _write_raster(tmp_path / "precip.tif", np.full((64, 64), 900.0), "float32")
+    _serve(monkeypatch, _layer(path, tipo="precip_normal"))
+    x, y = _covering_tile()
+
+    no_override = client.get(_url(LAYER_ID, x, y))
+    annual = client.get(_url(LAYER_ID, x, y, rescale_min=0, rescale_max=1800))
+
+    assert no_override.status_code == 200
+    assert annual.status_code == 200
+    assert no_override.content == annual.content
+
+
+# ── terrain-rgb fallbacks ──────────────────────────────────────────────────
+
+
 def test_terrain_rgb_falls_back_to_a_flat_tile_when_every_pixel_is_nodata(
     client, cache, monkeypatch, tmp_path
 ) -> None:
