@@ -182,9 +182,7 @@ def test_public_layers_expose_production_gee_precip_normal(
     assert _tipos(resp) == {"precip_normal"}
 
 
-def test_public_precip_catalog_exposes_period_metadata(
-    client: TestClient, db: Session
-) -> None:
+def test_public_precip_catalog_exposes_period_metadata(client: TestClient, db: Session) -> None:
     db.add(
         GeoLayer(
             nombre="precip_enero",
