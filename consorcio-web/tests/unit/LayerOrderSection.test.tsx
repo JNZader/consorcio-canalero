@@ -92,9 +92,9 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     const withoutBasins = DEFAULT_LAYER_ORDER.filter((id) => id !== 'basins');
     const resolved = resolveEffectiveBottomToTop(withoutBasins);
     const idx = resolved.indexOf('basins');
-    // Its DEFAULT predecessor is `catastro`, successor `approved_zones`.
+    // Its DEFAULT predecessor is `catastro`, successor `precip_normal`.
     expect(resolved[idx - 1]).toBe('catastro');
-    expect(resolved[idx + 1]).toBe('approved_zones');
+    expect(resolved[idx + 1]).toBe('precip_normal');
     expect(resolved.at(-1)).not.toBe('basins');
   });
 

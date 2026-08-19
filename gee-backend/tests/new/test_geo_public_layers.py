@@ -182,6 +182,25 @@ def test_public_layers_expose_production_gee_precip_normal(
     assert _tipos(resp) == {"precip_normal"}
 
 
+def test_public_precip_catalog_exposes_period_metadata(client: TestClient, db: Session) -> None:
+    db.add(
+        GeoLayer(
+            nombre="precip_enero",
+            tipo="precip_normal",
+            fuente=FuenteGeoLayer.GEE.value,
+            archivo_path="/tmp/precip_enero.tif",
+            formato=FormatoGeoLayer.GEOTIFF.value,
+            metadata_extra={"mes": 1},
+        )
+    )
+    db.flush()
+
+    response = client.get(ENDPOINT, params={"fuente": "gee", "tipo": "precip_normal"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["metadata_extra"] == {"mes": 1}
+
+
 def test_public_layers_require_no_authentication(client: TestClient) -> None:
     resp = client.get(ENDPOINT)
     assert resp.status_code == 200, "public layer catalog must stay anonymous-readable"

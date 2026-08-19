@@ -92,6 +92,7 @@ class GeoLayerListResponse(BaseModel):
     fuente: str
     formato: str
     area_id: Optional[str] = None
+    metadata_extra: Optional[dict[str, Any]] = None
     created_at: datetime
 
 
