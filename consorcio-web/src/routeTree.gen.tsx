@@ -247,6 +247,19 @@ const verifyEmailRoute = createRoute({
 const mapaRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/mapa',
+  validateSearch: (search: Record<string, unknown>) => {
+    const riskClasses = Array.isArray(search.riskClasses)
+      ? search.riskClasses.flatMap((value) => (typeof value === 'string' ? value.split(',') : []))
+      : typeof search.riskClasses === 'string'
+        ? search.riskClasses.split(',')
+        : [];
+    return {
+      ...(search.hazard === '1' || search.hazard === true ? { hazard: '1' } : {}),
+      ...(typeof search.basin === 'string' && search.basin.trim() ? { basin: search.basin.trim() } : {}),
+      ...(riskClasses.length > 0 ? { riskClasses } : {}),
+      ...(typeof search.precipMonth === 'string' ? { precipMonth: search.precipMonth } : {}),
+    };
+  },
   component: () => (
     <RootLayout
       title="Mapa Interactivo"
