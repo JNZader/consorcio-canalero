@@ -123,7 +123,7 @@ export interface UseHazardUrlStateOptions {
 export function useHazardUrlState({ basinIds }: UseHazardUrlStateOptions = {}) {
   const gateOpen = useMultiHazardGate();
   const navigate = useNavigate();
-  const search = useSearch({ from: '/mapa', strict: false }) as HazardSearchInput;
+  const search = useSearch({ from: '/mapa' });
   const state = parseHazardUrlState(search, { gateOpen, basinIds });
   const canonicalSearch = toHazardSearch(state, gateOpen);
 
