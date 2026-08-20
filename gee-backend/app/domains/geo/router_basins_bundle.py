@@ -29,13 +29,42 @@ from app.domains.geo.router_common import (
     MAP_PDF_OPENAPI_EXTRA,
 )
 from app.shared.pdf.builders_common import ImagenDemasiadoGrande, ImagenInvalida
-from app.domains.geo.schemas import ApprovedZonesDeleteResponse
+from app.domains.geo.schemas import (
+    ApprovedZonesDeleteResponse,
+    BasinCatastroMembershipResponse,
+)
 
 router = APIRouter(tags=["Geo Processing"])
+
+
+def _get_intelligence_repository():
+    from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+    return IntelligenceRepository()
 
 # ──────────────────────────────────────────────
 # BASINS (PostGIS)
 # ──────────────────────────────────────────────
+
+
+@router.get(
+    "/basins/{basin_id}/catastro-membership",
+    response_model=BasinCatastroMembershipResponse,
+)
+def get_basin_catastro_membership(
+    basin_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo=Depends(_get_intelligence_repository),
+    _user=Depends(_require_operator()),
+) -> BasinCatastroMembershipResponse:
+    """Return server-computed cadastre membership for one selected basin."""
+    nomenclaturas = repo.get_catastro_membership_by_basin(db, basin_id)
+    if nomenclaturas is None:
+        raise HTTPException(status_code=404, detail="Cuenca operativa no encontrada")
+    return BasinCatastroMembershipResponse(
+        basin_id=basin_id,
+        intersecting_feature_ids=nomenclaturas,
+    )
 
 
 @router.get("/basins", response_model=dict)
