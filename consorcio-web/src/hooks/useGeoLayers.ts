@@ -7,7 +7,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { API_URL, getAuthToken } from '../lib/api';
 import { queryKeys } from '../lib/query';
-import { useAuthStore } from '../stores/authStore';
+import { selectUserRole, useAuthStore } from '../stores/authStore';
+import { MULTI_HAZARD_ALLOWED_ROLES } from './useMultiHazardGate';
 
 /**
  * Variante de drenaje de una capa hidrologica:
@@ -229,20 +230,25 @@ export function dedupePrecipNormalLayers(layers: readonly GeoLayerInfo[]): GeoLa
     .map(([, layer]) => layer);
 }
 
-export function buildPrecipNormalCatalogEndpoint(token: string | null): string {
-  const path = token ? '/api/v2/geo/layers' : '/api/v2/geo/layers/public';
+export function buildPrecipNormalCatalogEndpoint(token: string | null, role: unknown): string {
+  const canUseOperatorCatalog =
+    token !== null && MULTI_HAZARD_ALLOWED_ROLES.includes(role as (typeof MULTI_HAZARD_ALLOWED_ROLES)[number]);
+  const path = canUseOperatorCatalog ? '/api/v2/geo/layers' : '/api/v2/geo/layers/public';
   return `${API_URL}${path}?limit=100&tipo=precip_normal&fuente=gee`;
 }
 
 export function usePrecipNormalLayers() {
   const { loading: authLoading, initialized } = useAuthStore();
+  const role = useAuthStore(selectUserRole);
   const authGateOpen = initialized && !authLoading;
   const query = useQuery({
     queryKey: [...queryKeys.geoLayers(), 'precip-normal'],
     queryFn: async () => {
       const token = await getAuthToken();
-      const response = await fetch(buildPrecipNormalCatalogEndpoint(token), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const endpoint = buildPrecipNormalCatalogEndpoint(token, role);
+      const canUseOperatorCatalog = endpoint.includes('/layers?');
+      const response = await fetch(endpoint, {
+        headers: canUseOperatorCatalog && token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) throw new Error(`Error fetching precipitation layers: ${response.status}`);
       const data = await response.json();
