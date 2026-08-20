@@ -21,9 +21,9 @@ class IntelligenceRepositoryZonesMixin:
         if basin_exists is None:
             return None
 
-        basin_geometry = select(ZonaOperativa.geometria).where(
-            ZonaOperativa.id == basin_id
-        ).scalar_subquery()
+        basin_geometry = (
+            select(ZonaOperativa.geometria).where(ZonaOperativa.id == basin_id).scalar_subquery()
+        )
         statement = (
             select(ParcelaCatastro.nomenclatura)
             .where(func.ST_Relate(ParcelaCatastro.geometria, basin_geometry, "T********"))

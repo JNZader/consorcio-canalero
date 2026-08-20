@@ -1,86 +1,105 @@
-"""Contract tests for protected basin-to-catastro membership evidence."""
+"""PostGIS and ASGI contracts for protected basin-to-catastro membership."""
 
 from __future__ import annotations
 
-import uuid
-from types import SimpleNamespace
-from unittest.mock import MagicMock
+from uuid import uuid4
 
-import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from geoalchemy2 import WKTElement
 
 from app.auth import require_admin_or_operator
+from app.db.session import get_db
+from app.domains.geo.intelligence.models import ParcelaCatastro, ZonaOperativa
 from app.domains.geo.intelligence.repository import IntelligenceRepository
-from app.domains.geo.router_basins_bundle import (
-    get_basin_catastro_membership,
-    router,
-)
+from app.domains.geo.router_basins_bundle import router
 
-def _scalar_result(value):
-    return SimpleNamespace(scalar_one_or_none=lambda: value)
+ENDPOINT = "/api/v2/geo/basins"
 
-def _names_result(names):
-    return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: names))
 
-def test_repository_uses_interior_intersection_and_returns_sorted_distinct_nomenclaturas():
-    basin_id = uuid.uuid4()
-    db = MagicMock()
-    db.execute.side_effect = [
-        _scalar_result(True),
-        _names_result(["19-01-003", "19-01-001", "19-01-001"]),
-    ]
-
-    result = IntelligenceRepository().get_catastro_membership_by_basin(db, basin_id)
-
-    assert result == ["19-01-001", "19-01-003"]
-    membership_statement = db.execute.call_args_list[1].args[0]
-    compiled_sql = str(membership_statement)
-    assert "parcelas_catastro.nomenclatura" in compiled_sql
-    assert "ST_Relate" in compiled_sql
-    assert "T********" in compiled_sql
-    assert "DISTINCT" in compiled_sql
-    assert "ORDER BY parcelas_catastro.nomenclatura" in compiled_sql
-
-def test_repository_distinguishes_unknown_basin_from_empty_membership():
-    db = MagicMock()
-    db.execute.return_value = _scalar_result(None)
-
-    result = IntelligenceRepository().get_catastro_membership_by_basin(db, uuid.uuid4())
-
-    assert result is None
-    db.execute.assert_called_once()
-
-def test_endpoint_returns_only_the_wire_contract_for_an_empty_membership():
-    basin_id = uuid.uuid4()
-    repo = MagicMock()
-    repo.get_catastro_membership_by_basin.return_value = []
-
-    response = get_basin_catastro_membership(
-        basin_id,
-        db=MagicMock(),
-        repo=repo,
-        _user=MagicMock(),
+def _polygon(x1, y1, x2, y2):
+    return WKTElement(
+        f"POLYGON(({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))",
+        srid=4326,
     )
 
-    assert response.model_dump(mode="json") == {
-        "basin_id": str(basin_id),
+
+def _seed_basin(db, *, parcels=()):
+    basin = ZonaOperativa(
+        nombre="membership-basin",
+        cuenca="test",
+        superficie_ha=1,
+        geometria=_polygon(0, 0, 2, 2),
+    )
+    db.add(basin)
+    for nomenclatura, bounds in parcels:
+        db.add(ParcelaCatastro(nomenclatura=nomenclatura, geometria=_polygon(*bounds)))
+    db.flush()
+    return basin
+
+
+def _client(db=None):
+    app = FastAPI()
+    if db is not None:
+        app.dependency_overrides[get_db] = lambda: db
+        app.dependency_overrides[require_admin_or_operator] = lambda: None
+    app.include_router(router, prefix="/api/v2/geo")
+    return TestClient(app)
+
+
+def test_repository_returns_sorted_overlaps_and_excludes_boundary_only_contact(db):
+    basin = _seed_basin(
+        db,
+        parcels=(
+            ("parcel-b", (1, 1, 3, 3)),
+            ("parcel-a", (0.5, 0.5, 1.5, 1.5)),
+            ("boundary-only", (2, 0, 3, 1)),
+            ("outside", (3, 3, 4, 4)),
+        ),
+    )
+
+    result = IntelligenceRepository().get_catastro_membership_by_basin(db, basin.id)
+
+    assert result == ["parcel-a", "parcel-b"]
+
+
+def test_repository_returns_none_for_unknown_basin(db):
+    assert IntelligenceRepository().get_catastro_membership_by_basin(db, uuid4()) is None
+
+
+def test_membership_endpoint_rejects_anonymous_requests():
+    response = _client().get(f"{ENDPOINT}/{uuid4()}/catastro-membership")
+
+    assert response.status_code == 401
+
+
+def test_membership_endpoint_returns_minimal_wire_contract(db):
+    basin = _seed_basin(
+        db,
+        parcels=(("parcel-b", (1, 1, 3, 3)), ("parcel-a", (0.5, 0.5, 1.5, 1.5))),
+    )
+
+    response = _client(db).get(f"{ENDPOINT}/{basin.id}/catastro-membership")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "basin_id": str(basin.id),
+        "feature_id_property": "nomenclatura",
+        "intersecting_feature_ids": ["parcel-a", "parcel-b"],
+    }
+
+
+def test_membership_endpoint_distinguishes_empty_and_unknown_basins(db):
+    basin = _seed_basin(db)
+    client = _client(db)
+
+    empty_response = client.get(f"{ENDPOINT}/{basin.id}/catastro-membership")
+    unknown_response = client.get(f"{ENDPOINT}/{uuid4()}/catastro-membership")
+
+    assert empty_response.status_code == 200
+    assert empty_response.json() == {
+        "basin_id": str(basin.id),
         "feature_id_property": "nomenclatura",
         "intersecting_feature_ids": [],
     }
-
-def test_endpoint_returns_404_for_an_unknown_basin():
-    repo = MagicMock()
-    repo.get_catastro_membership_by_basin.return_value = None
-
-    with pytest.raises(HTTPException) as raised:
-        get_basin_catastro_membership(
-            uuid.uuid4(), db=MagicMock(), repo=repo, _user=MagicMock()
-        )
-
-    assert raised.value.status_code == 404
-    assert raised.value.detail == "Cuenca operativa no encontrada"
-
-def test_endpoint_requires_admin_or_operator_authentication():
-    route = next(item for item in router.routes if item.path == "/basins/{basin_id}/catastro-membership")
-
-    assert route.dependant.dependencies[-1].call is require_admin_or_operator
+    assert unknown_response.status_code == 404

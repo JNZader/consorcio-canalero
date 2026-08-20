@@ -42,6 +42,7 @@ def _get_intelligence_repository():
 
     return IntelligenceRepository()
 
+
 # ──────────────────────────────────────────────
 # BASINS (PostGIS)
 # ──────────────────────────────────────────────
