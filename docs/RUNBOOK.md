@@ -934,3 +934,23 @@ immutable `OLD_ID` rollback tag, backup the Compose file, build backend only,
 canary on `127.0.0.1:18080`, require a local credentialed tunnel smoke (health,
 ready, anonymous 401, authenticated real-basin membership 200), bound/redact
 observations, and automatically restore the old image ID after failed cutover.
+
+#### 2.2.b B3-P executor slice (stacked on `7823aed8`)
+
+This executor depends on the first deployment-preflight slice at commit
+`7823aed8`; review and integrate that slice first. The existing
+`deploy_b3p.py plan` remains zero-subprocess by default. The executor is an
+explicit operation, never a replacement for the planner:
+
+```bash
+python3 scripts/deploy_b3p_executor.py --target-sha 1bb3985beb6817e2d7093203d515e8de2235a889 --confirm DEPLOY-B3P --basin <real-basin-id>
+```
+
+It additionally requires local `CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE=1` and local
+`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`; credentials are not transferred in SSH
+arguments or written to evidence. It replays GitHub plus remote preflight before
+mutation, builds/backend-canaries only, tunnels loopback smoke, checks public
+health after cutover, and rolls back only post-cutover failures. It never runs
+migrations/workers/geo-worker, Compose down, prune, or global restarts; Biogas is
+captured before/after as a read-only equality baseline. Do not run it without an
+approved production change window and a real basin identifier.
