@@ -52,6 +52,7 @@ def go(executor): return executor.execute(base.TARGET_SHA,"DEPLOY-B3P",{"CONSORC
 def test_admission_is_zero_action_and_fresh_failure_blocks_mutation():
     fake=Fake(); executor,seen=subject(fake)
     with pytest.raises(Refusal): executor.execute(None,None,{},None)
+    with pytest.raises(Refusal): executor.execute(base.TARGET_SHA,base.CONFIRMATION,{"CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE":"1"},"real-basin")
     assert fake.calls==[] and seen==[]
     executor,_=subject(fake,lambda *_: (_ for _ in ()).throw(Failure("fresh"))); assert go(executor).outcome is Outcome.FAILED and not any("fetch origin" in call for call in fake.calls)
 def test_compose_image_canary_and_public_phase_contract():
@@ -74,8 +75,7 @@ def test_failure_boundaries_and_exact_rollback(failure,outcome):
 def test_expected_401_is_not_transport_failure_and_route_is_v2(monkeypatch): error=HTTPError("x",401,"",None,io.BytesIO(b"unauthorized")); monkeypatch.setattr(module,"urlopen",lambda *_,**__: (_ for _ in ()).throw(error)); assert Executor._http("GET","/api/v2/geo/basins/x/catastro-membership",{},"")[0]==401
 def test_cli_prints_sanitized_report_and_distinct_exit(monkeypatch,capsys): monkeypatch.setattr(module.Executor,"execute",lambda *_: module.Report(Outcome.FAILED_ROLLBACK,evidence=["password=***"])); assert module.main(["--target-sha",base.TARGET_SHA,"--confirm",base.CONFIRMATION,"--basin","x"])==4 and '"outcome": "failed_rollback"' in capsys.readouterr().out
 def test_readiness_retries_only_transport_failure_with_bounded_sleep():
-    waits=[]; attempts=iter((Failure("connection refused"),(200,"ready")))
-    executor,_=subject(Fake()); executor.sleeper=lambda seconds: waits.append(seconds)
+    waits=[]; attempts=iter((Failure("connection refused"),(200,"ready"))); executor,_=subject(Fake()); executor.sleeper=lambda seconds: waits.append(seconds)
     def ready(*_):
         item=next(attempts)
         if isinstance(item, Failure): raise item

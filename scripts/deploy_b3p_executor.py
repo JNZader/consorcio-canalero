@@ -164,7 +164,7 @@ class Executor:
         self.report.outcome=self._recover(old,basin,environ,baseline)
     def execute(self,sha,confirmation,environ,basin):
         if sha!=base.TARGET_SHA or confirmation!=base.CONFIRMATION or environ.get("CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE")!="1": raise Refusal("exact target, confirmation, and execute opt-in required")
-        if not basin: raise Refusal("real basin is required")
+        if not basin or not environ.get("E2E_ADMIN_EMAIL") or not environ.get("E2E_ADMIN_PASSWORD"): raise Refusal("real basin is required" if not basin else "local E2E credentials required")
         old=baseline=new=""; handlers={}
         def interrupt(*_): raise Interrupted("interrupted")
         for sig in (signal.SIGINT,signal.SIGTERM): handlers[sig]=signal.signal(sig,interrupt)
