@@ -900,3 +900,37 @@ yet activated.
 | SMTP (email verify, reset) | ☐ | `.env` SMTP_HOST / USERNAME / PASSWORD | 1.5 |
 | Backup encryption passphrase | ☐ | `.env` BACKUP_ENCRYPTION_PASSPHRASE (LOSE = backups unrecoverable) | 1.4 |
 | Restic passphrase | ☐ | `.env` RESTIC_PASSWORD (LOSE = backups unrecoverable) | 1.4 |
+
+#### 2.2.a B3-P backend deployment preparation (fail-closed)
+
+Do **not** use this package to deploy yet. It is a deterministic controller-side
+plan and read-only preflight; `execute` deliberately refuses after its three
+admission gates until the canary/cutover state machine receives its own review.
+It never accesses Biogas and never runs migrations, workers, geo-worker, Compose
+`down`, Docker cleanup, or Caddy/firewall changes.
+
+```bash
+python3 scripts/deploy_b3p.py                       # default: prints only, no subprocess
+python3 scripts/deploy_b3p.py preflight             # read-only SSH gates, one command each
+python3 scripts/deploy_b3p.py plan --target-sha <40-lowercase-hex-sha>
+```
+
+Pinned defaults are Hetzner `javier@157.180.29.238:2222`, key
+`~/.ssh/hetzner_ghagga`, stack `/home/javier/stacks/consorcio`, repository
+`JNZader/consorcio-canalero`, backend-only target, and B3-P SHA
+`1bb3985beb6817e2d7093203d515e8de2235a889`. A different **exact** SHA can be
+planned/preflighted with `--target-sha`; official GitHub REST must report that
+same SHA with `verification.verified=true` and `reason=valid` before execution.
+
+The preflight fails closed on its first non-zero read-only SSH gate and redacts
+credential-shaped output. It includes fresh branch/HEAD/status/staged/untracked/
+unfinished-operation, Compose/custom-prod/no-reload, exact normalized backend
+mounts, fetch/ancestry/collision/no-compose-or-Alembic, resources/port/live-image,
+and Consorcio+Biogas read-only baselines. Runtime volume names normalize exactly
+from `consorcio-backend-cache`, `consorcio-geo-data`, and
+`consorcio-denuncia-uploads`; extras, anonymous volumes, binds (including code,
+root, or Docker socket) fail. A future executable state machine must retain an
+immutable `OLD_ID` rollback tag, backup the Compose file, build backend only,
+canary on `127.0.0.1:18080`, require a local credentialed tunnel smoke (health,
+ready, anonymous 401, authenticated real-basin membership 200), bound/redact
+observations, and automatically restore the old image ID after failed cutover.
