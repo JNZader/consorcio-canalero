@@ -1,4 +1,6 @@
 from __future__ import annotations
+from pathlib import Path
+import shlex
 
 import io
 import os
@@ -6,6 +8,8 @@ import os
 import pytest
 
 from scripts import deploy_b3p as deploy
+TARGET_SHA = "a" * 40
+CONFIG = deploy.Config(target_sha=TARGET_SHA)
 
 
 class Runner:
@@ -21,11 +25,11 @@ class Runner:
 def test_plan_is_default_and_never_runs_a_subprocess():
     runner = Runner()
     output = io.StringIO()
-    assert deploy.main([], runner=runner, stdout=output) == 0
+    assert deploy.main(["plan", "--target-sha", TARGET_SHA], runner=runner, stdout=output) == 0
     assert runner.calls == []
     assert "plan" in output.getvalue()
     assert "\"argv\"" in output.getvalue()
-    assert deploy.DEFAULTS.target_sha in output.getvalue()
+    assert TARGET_SHA in output.getvalue()
 
 
 def test_execute_refuses_in_gate_order_before_ssh(monkeypatch):
@@ -35,8 +39,8 @@ def test_execute_refuses_in_gate_order_before_ssh(monkeypatch):
     for argv, message in [
         (["execute"], "target"),
         (["execute", "--target-sha", "bad"], "target"),
-        (["execute", "--target-sha", deploy.DEFAULTS.target_sha], "confirmation"),
-        (["execute", "--target-sha", deploy.DEFAULTS.target_sha, "--confirm", "DEPLOY-B3P"], "opt-in"),
+        (["execute", "--target-sha", TARGET_SHA], "confirmation"),
+        (["execute", "--target-sha", TARGET_SHA, "--confirm", "DEPLOY-B3P"], "opt-in"),
     ]:
         with pytest.raises(deploy.Refusal, match=message):
             deploy.main(argv, runner=runner, environ={})
@@ -49,7 +53,7 @@ def test_execute_requires_github_verification_before_unimplemented_mutation(monk
     monkeypatch.setattr(deploy, "verify_github_commit", lambda *args: None)
     with pytest.raises(deploy.Refusal, match="not implemented"):
         deploy.main(
-            ["execute", "--target-sha", deploy.DEFAULTS.target_sha, "--confirm", "DEPLOY-B3P"],
+            ["execute", "--target-sha", TARGET_SHA, "--confirm", "DEPLOY-B3P"],
             runner=runner,
             environ={"CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE": "1"},
         )
@@ -75,14 +79,22 @@ def test_mount_normalization_requires_exact_named_volume_contract():
         {"Type": "volume", "Name": "consorcio-backend-cache", "Destination": "/app/.cache", "RW": True},
         {"Type": "volume", "Name": "consorcio-geo-data", "Destination": "/data/geo", "RW": True},
         {"Type": "volume", "Name": "consorcio-denuncia-uploads", "Destination": "/app/uploads", "RW": True},
+        {"Type": "bind", "Source": "/home/javier/stacks/consorcio/gee-backend/data/waterways", "Destination": "/app/data/waterways", "RW": True},
     ]
     assert deploy.normalize_mounts(mounts) == {
         ("volume", "backend-cache", "/app/.cache", "rw"),
         ("volume", "geo-data", "/data/geo", "rw"),
         ("volume", "denuncia-uploads", "/app/uploads", "rw"),
+        ("bind", "/home/javier/stacks/consorcio/gee-backend/data/waterways", "/app/data/waterways", "rw"),
     }
     with pytest.raises(deploy.Refusal, match="mount"):
         deploy.normalize_mounts(mounts + [{"Type": "bind", "Source": "/", "Destination": "/app", "RW": True}])
+    with pytest.raises(deploy.Refusal, match="mount"):
+        deploy.normalize_mounts([mount for mount in mounts if mount["Type"] != "bind"])
+    with pytest.raises(deploy.Refusal, match="mount"):
+        deploy.normalize_mounts(mounts[:-1] + [{"Type": "bind", "Source": "/tmp/waterways", "Destination": "/app/data/waterways", "RW": True}])
+    with pytest.raises(deploy.Refusal, match="mount"):
+        deploy.normalize_mounts(mounts[:-1] + [{"Type": "bind", "Source": "/home/javier/stacks/consorcio/gee-backend/data/waterways", "Destination": "/app/data/waterways", "RW": False}])
 
 
 def test_services_and_volumes_are_backend_only_and_biogas_is_observational():
@@ -113,9 +125,9 @@ def test_github_verification_fails_closed_for_invalid_or_malformed_payload():
         def read(self): return self.payload
         def __enter__(self): return self
         def __exit__(self, *args): pass
-    for payload in [b"not json", b'{"sha":"wrong"}', b'{"sha":"' + deploy.DEFAULTS.target_sha.encode() + b'","commit":{"verification":{"verified":true,"reason":"unsigned"}}}']:
+    for payload in [b"not json", b'{"sha":"wrong"}', b'{"sha":"' + TARGET_SHA.encode() + b'","commit":{"verification":{"verified":true,"reason":"unsigned"}}}']:
         with pytest.raises(deploy.Refusal):
-            deploy.verify_github_commit(deploy.DEFAULTS, deploy.DEFAULTS.target_sha, opener=lambda request, timeout: Response(payload))
+            deploy.verify_github_commit(CONFIG, TARGET_SHA, opener=lambda request, timeout: Response(payload))
 
 
 def test_reviewed_remote_plan_and_free_port_contract():
@@ -125,11 +137,11 @@ def test_reviewed_remote_plan_and_free_port_contract():
     assert argv[-1] == "sh -lc " + shlex.quote(command)
     assert argv[-2] == f"{deploy.DEFAULTS.user}@{deploy.DEFAULTS.host}"
     assert shlex.split(argv[-1]) == ["sh", "-lc", command]
-    plan = deploy.deployment_plan(deploy.DEFAULTS)
+    plan = deploy.deployment_plan(CONFIG)
     assert all(step["argv"][0] == "ssh" and deploy.DEFAULTS.stack in shlex.split(step["argv"][-1])[-1] for step in plan)
     with pytest.raises(deploy.Refusal, match="compose image"):
-        deploy._validate_gate(deploy.Gate("live-image", ""), "sha256:old-image|unproven")
-    deploy._validate_gate(deploy.Gate("live-image", ""), "sha256:old-image|consorcio-backend")
+        deploy._validate_gate(deploy.Gate("live-image", ""), "sha256:old-image|unproven", CONFIG)
+    deploy._validate_gate(deploy.Gate("live-image", ""), "sha256:old-image|consorcio-backend", CONFIG)
     with pytest.raises(TypeError):
         deploy.rollback_plan("sha256:old-image", deploy.DEFAULTS, "unproven")
     text = shlex.split(deploy.rollback_plan("sha256:old-image")[-1])[-1]
@@ -137,6 +149,29 @@ def test_reviewed_remote_plan_and_free_port_contract():
     assert "--no-build --force-recreate backend" in text and "docker inspect" in text
     loopback = next(gate for gate in deploy.GATES if gate.name == "loopback-port")
     assert loopback.command == "ss -H -ltn sport = :18080"
-    deploy._validate_gate(loopback, "")
+    deploy._validate_gate(loopback, "", CONFIG)
     with pytest.raises(deploy.Refusal, match="occupied"):
-        deploy._validate_gate(loopback, "LISTEN 0 4096 127.0.0.1:18080 0.0.0.0:*")
+        deploy._validate_gate(loopback, "LISTEN 0 4096 127.0.0.1:18080 0.0.0.0:*", CONFIG)
+
+
+def test_production_local_override_and_plan_use_one_explicit_compose_selection():
+    root = Path(__file__).resolve().parents[2]
+    override = (root / deploy.PRODUCTION_COMPOSE_FILE).read_text()
+    assert "target: production" in override
+    assert "FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS must name the Caddy proxy}" in override
+    assert "./gee-backend/data/waterways:/app/data/waterways" in override
+    assert "./gee-backend/app:/app/app" not in override
+    assert "./consorcio-web/public/waterways" not in override
+    assert "./gee-backend/credentials" not in override
+    assert "pgbouncer:" in override and "condition: service_healthy" in override
+    selector = deploy.compose_command("config", "--quiet")
+    assert selector == "docker compose -f docker-compose.yml -f docker-compose.production-local.yml config --quiet"
+    prefix = selector.split(" config", 1)[0]
+    assert all(prefix in shlex.split(step["argv"][-1])[-1] for step in deploy.deployment_plan(CONFIG) if "docker compose" in shlex.split(step["argv"][-1])[-1])
+
+
+def test_current_checkout_admission_does_not_require_target_only_compose_contract():
+    assert all(gate.name not in {"production-compose", "target-compose-contract"} for gate in deploy.CURRENT_CHECKOUT_GATES)
+    assert [gate.name for gate in deploy.FULL_TARGET_CONTRACT_GATES] == ["target-head", "base-compose-integrity", "worktree-status", "staged", "untracked", "unfinished-git-operation", "production-compose", "target-compose-contract", "backend-mounts"]
+    assert deploy.Config().target_sha is None
+    assert not hasattr(deploy, "TARGET_SHA")
