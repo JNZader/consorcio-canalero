@@ -4,7 +4,7 @@ set -eu
 fail() { printf "REJECTED: %s\n" "$*" >&2; exit 1; }
 mode=${1:-}
 case "$mode" in admit|execute) ;; *) fail "mode must be admit or execute" ;; esac
-for tool in awk cat cmp cp dd docker git kill mkdir mv od rm rmdir sha256sum sort sync; do
+for tool in awk cat cmp cp dd docker git kill mkdir mv od rm rmdir sha256sum sort sync xargs; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing prerequisite: $tool"
 done
 for value in RELOCATE_SOURCE RELOCATE_DEST RELOCATE_CRON_FILE RELOCATE_CRON_OLD RELOCATE_CRON_NEW RELOCATE_GIT_RECEIPT RELOCATE_CONTAINER_RECEIPT RELOCATE_SHA256; do
@@ -38,7 +38,7 @@ require_git_receipt() {
 }
 require_container_receipt() {
   [ -s "$container_receipt" ] || fail "container receipt is empty"
-  docker ps --no-trunc --format "{{.ID}}|{{.Image}}|{{.StartedAt}}|{{.RestartCount}}|{{.Names}}" |
+  docker ps -q --no-trunc | xargs -r docker inspect --format "{{.Id}}|{{.Config.Image}}|{{.State.StartedAt}}|{{.RestartCount}}|{{.Name}}" |
     awk -F '|' 'NF != 5 {bad=1; next} {n=$5; if (substr(n,1,1) != "/" ) n="/" n; print $1 "|" $2 "|" $3 "|" $4 "|" n} END {exit bad}' |
     LC_ALL=C sort | cmp -s "$container_receipt" - || fail "container receipt differs"
 }
