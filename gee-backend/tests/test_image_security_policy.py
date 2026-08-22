@@ -395,12 +395,16 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # openssl-provider-legacy 3.5.6-1~deb13u2,
     # fix_deferred, sin FixedVersion) reveladas por la DB v2 actual; el
     # baseline se refresco con snapshot honesto (ver PR #193).
+    # 2026-08-22: siguen 18 filas, pero CVE-2026-57433 (perl-base) fue
+    # RECLASIFICADO por la DB de CRITICAL a HIGH — mismo paquete, misma
+    # version, mismo status `affected`, sigue sin FixedVersion. El reparto
+    # pasa de 13 HIGH + 5 CRITICAL a 14 HIGH + 4 CRITICAL.
     assert len(backend_findings) == 18
     assert sum(finding["count"] for finding in backend_findings) == 18
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 13
-    assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 5
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 14
+    assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 4
     assert sum(finding["status"] == "affected" for finding in backend_findings) == 12
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 6
     assert all(finding["fixed"] == "" for finding in backend_findings)
@@ -425,12 +429,12 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     }
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
-        "sha256:b799340b92552748d8fa68824e34843c6c1eb5702edccc1ba0ccd94e5f575d8c"
+        "sha256:a156af189662f888c91197f748f09bdca494a08e868b4ec7c1caa87129f4c92f"
     )
     assert geo_provenance["report_sha256"] == (
         "sha256:21eedc171a92b12f338aa9f714fc15fd701a0f2f35aed3997fa1bf711d09db51"
     )
-    assert backend_provenance["source_revision"] == ("48b69c890576d968cbe54fa858e34043fcfb1da2")
+    assert backend_provenance["source_revision"] == ("197fdbf6dc89981bf1dfa1626a8b2bfbadcc9138")
     # geo-worker baseline is NOT refreshed by this change (distinct revision):
     assert geo_provenance["source_revision"] == ("96cf15d0f36577c2500d2708dc5c1b899035177f")
     assert backend_provenance["platform"] == "linux/amd64"
@@ -989,9 +993,9 @@ def test_deadline_ceilings_are_the_documented_dates() -> None:
     spec.loader.exec_module(module)
 
     assert module.DEADLINE_CEILINGS == {
-        "CRITICAL": "2026-08-21T00:00:00Z",
-        "HIGH": "2026-08-21T00:00:00Z",
-        "absolute_sunset": "2026-08-21T00:00:00Z",
+        "CRITICAL": "2026-09-18T00:00:00Z",
+        "HIGH": "2026-09-18T00:00:00Z",
+        "absolute_sunset": "2026-09-18T00:00:00Z",
     }
 
 
@@ -999,7 +1003,7 @@ def test_deadline_ceilings_are_the_documented_dates() -> None:
     ("mutate_policy", "now", "message"),
     [
         (
-            lambda policy: policy["deadlines"].__setitem__("HIGH", "2026-08-22T00:00:00Z"),
+            lambda policy: policy["deadlines"].__setitem__("HIGH", "2026-09-19T00:00:00Z"),
             "2026-07-23T00:00:00Z",
             "ceiling",
         ),
