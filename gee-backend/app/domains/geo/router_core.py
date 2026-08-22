@@ -1,6 +1,7 @@
 """Core geo router endpoints for jobs, layers, bundles and approved basins."""
 
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -10,8 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
@@ -33,6 +36,8 @@ from app.domains.geo.schemas import (
 )
 from app.domains.geo.service import dispatch_job
 from app.shared.pagination import PaginatedResponse
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["Geo Processing"])
 
@@ -74,6 +79,53 @@ PUBLIC_PRODUCTION_LAYER_TYPES = {
     "drainage_need",
     "precip_normal",
 }
+
+
+# Throttle for the "rescale layer lookup unavailable" warning.
+#
+# The tile route is deliberately EXEMPT from the global rate limiter (see the
+# ``proxy_tile`` docstring), and logs ship off-box to BetterStack whenever a
+# Logtail token is set (``app/core/logging.py``). A database outage therefore
+# hits this warning once per tile — ~256 tiles per viewport, per visitor — so an
+# unthrottled emit turns a DB incident into a billable log flood. The message is
+# identical every time, so one line per minute carries the same information.
+#
+# Process-local on purpose: no shared state, no lock. ``proxy_tile`` is async, so
+# every execution in a worker runs on that worker's single event-loop thread;
+# with several workers each keeps its own latch, which is the intended blast
+# radius (one line per minute per worker). A benign race would at worst emit a
+# second line.
+_RESCALE_LOOKUP_WARN_INTERVAL_S = 60.0
+_rescale_lookup_warn_last: Optional[float] = None
+_rescale_lookup_warn_suppressed = 0
+
+
+def _rescale_lookup_warn_budget(now: float) -> Optional[int]:
+    """Claim permission to emit the lookup-failure warning.
+
+    Returns the number of occurrences suppressed since the previous emission
+    (``0`` on the first failure, so the first one is always logged), or ``None``
+    when the caller must stay silent because an identical warning was emitted
+    less than ``_RESCALE_LOOKUP_WARN_INTERVAL_S`` ago.
+    """
+    global _rescale_lookup_warn_last, _rescale_lookup_warn_suppressed
+
+    last = _rescale_lookup_warn_last
+    if last is not None and (now - last) < _RESCALE_LOOKUP_WARN_INTERVAL_S:
+        _rescale_lookup_warn_suppressed += 1
+        return None
+
+    suppressed = _rescale_lookup_warn_suppressed
+    _rescale_lookup_warn_last = now
+    _rescale_lookup_warn_suppressed = 0
+    return suppressed
+
+
+def _reset_rescale_lookup_warn_throttle() -> None:
+    """Clear the warning latch. Test hook — the state is module-global."""
+    global _rescale_lookup_warn_last, _rescale_lookup_warn_suppressed
+    _rescale_lookup_warn_last = None
+    _rescale_lookup_warn_suppressed = 0
 
 
 def _parse_rescale_query_value(name: str, value: Optional[str]) -> Optional[float]:
@@ -399,19 +451,59 @@ async def proxy_tile(
     validate_rescale("precip_normal", parsed_rescale_min, parsed_rescale_max)
     canonical_rescale = None
     if parsed_rescale_min is not None:
-        layer = (
-            db.query(GeoLayer)
-            .filter(
-                GeoLayer.id == layer_id,
-                GeoLayer.tipo.in_(_public_layer_types()),
-                _public_layer_source_filter(),
+        try:
+            layer = (
+                db.query(GeoLayer)
+                .filter(
+                    GeoLayer.id == layer_id,
+                    GeoLayer.tipo.in_(_public_layer_types()),
+                    _public_layer_source_filter(),
+                )
+                .one_or_none()
             )
-            .one_or_none()
-        )
-        if layer is None:
-            raise HTTPException(status_code=404, detail="Geo layer no encontrado")
-        layer_tipo = getattr(layer.tipo, "value", layer.tipo)
-        canonical_rescale = validate_rescale(layer_tipo, parsed_rescale_min, parsed_rescale_max)
+        except SQLAlchemyError as exc:
+            # The layer-tipo lookup hit a database failure. It exists only to
+            # resolve the CANONICAL rescale override for the layer's type, so
+            # forward the tile without an override rather than fail it.
+            #
+            # Be honest about how much this buys during a real outage. The
+            # geo-worker is NOT independent of this database: ``_get_layer``
+            # (tile_service.py) opens its own ``SessionLocal`` against the SAME
+            # Postgres and raises 404 when it cannot read the row, which the
+            # blanket ``>= 400 -> 204`` mapping at the end of this function
+            # turns into a blank tile. So this does NOT mean "the worker
+            # re-renders with its defaults".
+            #
+            # What it actually preserves is the worker's BYTE CACHE: the cache
+            # lookup in ``get_tile`` returns before ``_get_layer`` is ever
+            # called, so an already-cached tile is still served during the
+            # outage. Note the cache key embeds the rescale token, so the hit
+            # has to be on the no-override (``r=-``) variant of that tile —
+            # dropping the override changes which cached entry we ask for.
+            # Everything else (cold miss, uncached variant) degrades from a
+            # 500 to a 204, which is strictly no worse for the caller and keeps
+            # the failure inside the tile instead of the whole response.
+            #
+            # The 404 "is this layer public?" check degrades with the lookup;
+            # the worker cannot serve an unknown layer from cache anyway.
+            #
+            # Only SQLAlchemyError degrades — a programmer error must still
+            # surface as a 500 rather than be masked as a blank tile.
+            suppressed = _rescale_lookup_warn_budget(time.monotonic())
+            if suppressed is not None:
+                logger.warning(
+                    "Tile rescale layer lookup unavailable; forwarding without override",
+                    # A sample, not the only affected layer: the warning is
+                    # throttled and covers every failure in the window.
+                    layer_id=str(layer_id),
+                    error_type=type(exc).__name__,
+                    suppressed_since_last=suppressed,
+                )
+        else:
+            if layer is None:
+                raise HTTPException(status_code=404, detail="Geo layer no encontrado")
+            layer_tipo = getattr(layer.tipo, "value", layer.tipo)
+            canonical_rescale = validate_rescale(layer_tipo, parsed_rescale_min, parsed_rescale_max)
 
     # x/y must be inside the pyramid for this zoom; outside is "no tile here",
     # which is exactly what the upstream answers for an out-of-bounds tile.
