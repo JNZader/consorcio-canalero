@@ -1,8 +1,9 @@
 /**
  * mapPanelFade.spec.ts — the sticky fade must never paint over content.
  *
- * `.infoPanel` / `.fichaPanel` (desktop cards) and `.panelSheetBody` (mobile
- * bottom sheet) end in a sticky `::after` gradient: the affordance that says
+ * `.panelCardBody` (the scroller inside the `.infoPanel` / `.fichaPanel` desktop
+ * cards) and `.panelSheetBody` (mobile bottom sheet) end in a sticky `::after`
+ * gradient: the affordance that says
  * "there is more below". It shipped with `margin-top: -24px` plus a
  * compensating `padding-bottom` on the scroller, and that pair does NOT
  * compensate: a sticky box never leaves its CONTAINING BLOCK, which is the
@@ -58,6 +59,12 @@ const STAGE_CLASS = { peek: 'panelSheetPeek', medio: '', alto: 'panelSheetExpand
  * Rebuilds what `MapPanelShell` renders, with the REAL stylesheet. The inline
  * `padding: 16px` is not decoration: Mantine 8 emits `<Paper p="md">` as an
  * inline `padding` shorthand, which is why the desktop rule needs `!important`.
+ *
+ * Since R3-001 the desktop card is a two-box shape: the `<Paper>` root
+ * (`.infoPanel` / `.fichaPanel`) keeps `pointer-events: none` so the map stays
+ * clickable through it, and the scrolling + the sticky fade moved to the inner
+ * `.panelCardBody` wrapper. The scroller measured here is therefore that inner
+ * wrapper, exactly as the shell mounts it (`MapPanelShell.tsx:210-215`).
  */
 function harness(shape: Shape): string {
   const rows = LINES.map(
@@ -66,7 +73,9 @@ function harness(shape: Shape): string {
 
   const body =
     shape.kind === 'card'
-      ? `<div class="${shape.panelClass}" id="scroller" style="padding: 16px;">${rows}</div>`
+      ? `<div class="${shape.panelClass}" style="padding: 16px;">
+           <div class="panelCardBody" id="scroller">${rows}</div>
+         </div>`
       : `<div class="panelSheet ${STAGE_CLASS[shape.stage]}" data-stage="${shape.stage}" style="padding: 16px;">
            <div class="panelSheetHeader" style="height: 18px;"></div>
            <div class="panelSheetBody" id="scroller">${rows}</div>
@@ -199,8 +208,7 @@ test.describe('Degradado de los paneles del mapa', () => {
       // scrolleable y la posicion del renglon quedan clavados y lo unico que
       // cambia entre las dos capturas es si el degradado pinta o no.
       await page.addStyleTag({
-        content:
-          '.infoPanel::after, .fichaPanel::after, .panelSheetBody::after { background: none !important; }',
+        content: '.panelCardBody::after, .panelSheetBody::after { background: none !important; }',
       });
       const withoutFade = await lastLineShot(page);
 
