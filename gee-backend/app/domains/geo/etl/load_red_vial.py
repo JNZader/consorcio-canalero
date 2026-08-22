@@ -25,7 +25,8 @@ authoring-time conversion of the repository file ``gee/red_vial/caminoss.kml``:
   document order, carrying the eleven IDECOR ``<SimpleData>`` attributes and the
   ``<MultiGeometry>``'s ``<LineString>`` coordinates verbatim (a Placemark with
   several LineStrings becomes a ``MultiLineString``, which the load then collapses
-  with ``ST_LineMerge`` — or aborts on, see below).
+  with ``ST_LineMerge`` when the parts touch and admits as N segments when they
+  do not — see below).
 * **NOT** ``gee/red_vial_provincial.kml``: that is a different, province-wide
   39 127-feature file and is not this layer.
 
@@ -38,13 +39,30 @@ mismatch, so a truncated or silently re-converted file can never load partially.
 The constant is a claim about the source — changing the source means changing it
 deliberately, in the same commit.
 
-**Identity, and why there are two ids.** ``id`` is the row identity that
+**A feature is not always one row** *(owner decision, 2026-08-22)*. Almost every
+Placemark is a single line and becomes a single row. A Placemark whose
+``MultiGeometry`` holds several lines is collapsed by ``ST_LineMerge`` when the
+parts touch; when they are genuinely **disconnected**, the feature is admitted as
+**N segments of one lineage** — one row per connected part, ``parte`` = 1..N —
+instead of aborting the load. The earlier rule aborted naming the id, which was
+correct as a refusal to split *silently* — so the split is now **loud** instead:
+every multi-part feature is named in the load report with its part count. In the
+shipped source exactly one feature is multi-part (``13680``, two parts), and that
+one was enough to make the whole network unloadable under the old rule. Whether
+another source publishes one or fifty, the rule is the same, and the report says
+which. Parts are numbered from the **geometry** (start point x, then y, then the
+WKB), never from the source's part order, so a source that re-emits the same
+lines in another order lands on the same identities.
+
+**Identity, and why there are three ids.** ``id`` is the row identity that
 ``cruce_camino`` and ``relevamiento_tramo`` reference; ``source_id`` is what the
-source publishes. For each source feature the loader resolves **the active row
-with that ``source_id``** — never "the row whose PK equals the id":
+source publishes; ``parte`` is which connected part of that feature the row
+carries. For each part the loader resolves **the active row with that
+``(source_id, parte)``** — never "the row whose PK equals the id":
 
 * no active row → INSERT, ``id = source_id`` when free, next free ordinal suffix
-  (``28188#2``, ``28188#3``, …) otherwise;
+  (``28188#2``, ``28188#3``, …) otherwise. Parts and splits draw from the SAME
+  ordinal space, so a PK is never reused by either;
 * active row, unchanged or trivially-changed geometry → UPDATE in place;
 * active row, **materially changed** geometry (``geom_hash`` differs AND the
   Hausdorff distance to the stored trace exceeds one DEM cell, 30 m) → the
@@ -52,7 +70,8 @@ with that ``source_id``** — never "the row whose PK equals the id":
   the new trace is INSERTed as a new row with the SAME ``source_id`` and the next
   free suffixed PK.
 
-Ids present in the table and absent from the source are likewise **retired**.
+``(source_id, parte)`` pairs present in the table and absent from the source are
+likewise **retired** — including one part of a feature that lost it.
 **The loader never issues a row-removing statement, ever** — a crossing or a
 field survey is never orphaned, and a road that comes back is a new row, not a
 re-used identity. Every UPSERT stamps ``ultima_carga_en`` (with
@@ -63,21 +82,24 @@ crossing side.
 
 **Assertions (all inside the load transaction; any failure → ROLLBACK → exit 3)**
 
-0. parsed feature count == ``RED_VIAL_FEATURE_COUNT`` (the fidelity pin)
-1. active row count == source feature count
+0. parsed feature count == ``RED_VIAL_FEATURE_COUNT`` (the fidelity pin — a claim
+   about the SOURCE, in features, unchanged by the multi-part admission)
+1. active row count == the number of **parts** the source yielded, which is
+   ``>= RED_VIAL_FEATURE_COUNT`` and equal to it only when every feature is a
+   single line. Two different quantities, deliberately named differently
 2. every stored geometry valid under ``ST_IsValid`` — the source is repaired with
    ``ST_MakeValid`` first and the ``MultiGeometry`` wrapper collapsed with
-   ``ST_LineMerge``; a feature surviving as a MultiLineString aborts **naming its
-   id** rather than being silently split
+   ``ST_LineMerge``, then decomposed with ``ST_Dump``
 3. every stored geometry SRID 4326 and a LineString
 4. no geometry empty after the repair
-5. **granularity verification** — feature count, min / median / p90 / max of
+5. **granularity verification** — segment count, min / median / p90 / max of
    ``ST_Length(geom::geography)``, the count of features whose measured length
    disagrees with the declared ``lzn`` by more than 10 %, and the ids of every
    feature beyond p99 or 5 km flagged ``OUTLIER — requiere decisión explícita``.
    Assertion 5 **reports and never corrects**: a long feature is loaded whole and
-   the layer is never re-segmented. The same report names the ids retired by this
-   load and every lineage split it performed.
+   the layer is never re-segmented **by length**. The same report names the ids
+   retired by this load, every lineage split, and every multi-part feature
+   admitted.
 
 Exit codes:
     0  success
@@ -91,11 +113,9 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
-import hashlib
 from importlib.resources import as_file, files
 import json
 from pathlib import Path
-import struct
 import sys
 from typing import Any, Final, Sequence
 
@@ -164,54 +184,18 @@ class EtlUsageError(RuntimeError):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _wkb(geometry: dict[str, Any]) -> bytes:
-    """Little-endian WKB of a normalized LineString / MultiLineString.
-
-    Hand-rolled rather than delegated to PostGIS because ``geom_hash`` has to be
-    computable *before* the row reaches the database — it is what decides whether
-    the row is an UPDATE or a retire-and-insert. Vertex order is part of the
-    encoding on purpose: ``lado_cruce`` is defined relative to the segment's
-    digitization direction, so a reversed trace is a changed trace.
-    """
-    geometry_type = geometry.get("type")
-    coordinates = geometry.get("coordinates") or []
-    if geometry_type == "LineString":
-        parts = [coordinates]
-        wkb_type = 2
-    elif geometry_type == "MultiLineString":
-        parts = list(coordinates)
-        wkb_type = 5
-    else:  # pragma: no cover — parse_features rejects everything else first
-        raise EtlAssertionError(f"tipo de geometría no soportado: {geometry_type!r}")
-
-    def line(points: Sequence[Sequence[float]]) -> bytes:
-        buffer = struct.pack("<BII", 1, 2, len(points))
-        for point in points:
-            buffer += struct.pack("<dd", float(point[0]), float(point[1]))
-        return buffer
-
-    if wkb_type == 2:
-        return line(parts[0])
-    buffer = struct.pack("<BII", 1, 5, len(parts))
-    for part in parts:
-        buffer += line(part)
-    return buffer
-
-
-def geom_hash(geometry: dict[str, Any]) -> str:
-    """sha256 of the WKB of the normalized geometry."""
-    return hashlib.sha256(_wkb(geometry)).hexdigest()
-
-
 @dataclass(frozen=True)
 class SourceFeature:
-    """One native road feature, coerced to what ``red_vial`` accepts."""
+    """One native road feature, coerced to what ``red_vial`` accepts.
+
+    A feature is not necessarily one row: it is decomposed into its connected
+    parts by the database (see :func:`explode_parts`), and each part is a row.
+    """
 
     source_id: str
     attributes: dict[str, str | None]
     lzn: float | None
     geometry_json: str
-    geom_hash: str
 
     @classmethod
     def from_geojson(cls, raw: Any, index: int = 0) -> SourceFeature:
@@ -256,7 +240,6 @@ class SourceFeature:
             attributes=attributes,
             lzn=lzn,
             geometry_json=json.dumps(geometry),
-            geom_hash=geom_hash(geometry),
         )
 
 
@@ -308,7 +291,7 @@ def read_source(path: Path | None = None) -> list[SourceFeature]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stored-geometry assertions (2–4)
+# Decomposition into parts + the stored-geometry assertions (2–4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -320,7 +303,7 @@ def assert_stored_geometry(
     srid: int,
     geom_type: str,
 ) -> None:
-    """Assertions 2-4 on one stored row, attributing every failure to its id."""
+    """Assertions 2-4 on one stored part, attributing every failure to its id."""
     if empty:
         raise EtlAssertionError(
             f"geometría irreparable en id={feature_id!r}: ST_MakeValid no dejó ninguna línea"
@@ -331,10 +314,81 @@ def assert_stored_geometry(
         raise EtlAssertionError(f"SRID {srid} != 4326 en id={feature_id!r}")
     if geom_type != "LINESTRING":
         raise EtlAssertionError(
-            f"geometría {geom_type!r} != LINESTRING en id={feature_id!r}: la envoltura "
-            "MultiGeometry no se pudo colapsar (partes desconectadas). El tramo NO se "
-            "parte en silencio: requiere decisión explícita sobre el origen."
+            f"geometría {geom_type!r} != LINESTRING en id={feature_id!r}: ST_Dump debía "
+            "entregar partes simples y no lo hizo"
         )
+
+
+@dataclass(frozen=True)
+class Part:
+    """One connected part of a source feature — exactly one ``red_vial`` row.
+
+    ``geom_hash`` is the sha256 of this part's WKB, computed by PostgreSQL over
+    the very bytes that get stored, so "did this segment change?" is answered by
+    comparing two hashes of the same thing rather than two encodings of it.
+    ``wkb`` carries the geometry between the decomposition query and the write
+    with no text round trip, so no coordinate is ever re-parsed or rounded.
+    """
+
+    parte: int
+    geom_hash: str
+    wkb: bytes
+
+
+#: Decomposition + assertions 2-4 in one query, run BEFORE any write.
+#:
+#: `ST_LineMerge` still collapses the KML `MultiGeometry` wrapper whenever the
+#: parts are connected — the common case, and the only case the design
+#: originally contemplated. What changed (owner decision, 2026-08-22) is the
+#: other case: when the parts are genuinely disconnected, the feature is admitted
+#: as N segments of one lineage instead of aborting the whole load. The field
+#: reality is that several such roads exist, and an abort on the first one hides
+#: every other.
+#:
+#: **Part numbering is derived from the geometry, never from the source's part
+#: order**: `ORDER BY` start-point x, then y, then the WKB itself. A source that
+#: re-emits the same lines in a different order therefore lands on the same
+#: identities — with source-order numbering it would swap two segments' PKs, and
+#: with them every crossing and field survey attached to those PKs.
+_EXPLODE = text(f"""
+    WITH colapsada AS (SELECT {GEOM_EXPRESSION} AS g),
+         partes AS (SELECT (ST_Dump(g)).geom AS parte_geom FROM colapsada)
+    SELECT
+        row_number() OVER (
+            ORDER BY ST_X(ST_StartPoint(parte_geom)),
+                     ST_Y(ST_StartPoint(parte_geom)),
+                     ST_AsBinary(parte_geom)
+        ) AS parte,
+        encode(sha256(ST_AsBinary(parte_geom)), 'hex') AS geom_hash,
+        ST_AsEWKB(parte_geom) AS wkb,
+        ST_IsValid(parte_geom) AS valid,
+        ST_IsEmpty(parte_geom) AS empty,
+        ST_SRID(parte_geom) AS srid,
+        GeometryType(parte_geom) AS geom_type
+    FROM partes
+    ORDER BY parte
+""")
+
+
+def explode_parts(db: Session, feature: SourceFeature) -> list[Part]:
+    """Collapse the wrapper, split what cannot be collapsed, assert each part."""
+    rows = db.execute(_EXPLODE, {"geom": feature.geometry_json}).all()
+    if not rows:
+        raise EtlAssertionError(
+            f"geometría irreparable en id={feature.source_id!r}: ST_MakeValid no dejó ninguna línea"
+        )
+
+    parts: list[Part] = []
+    for row in rows:
+        assert_stored_geometry(
+            f"{feature.source_id}[parte {row.parte}]",
+            valid=bool(row.valid),
+            empty=bool(row.empty),
+            srid=int(row.srid),
+            geom_type=str(row.geom_type),
+        )
+        parts.append(Part(parte=int(row.parte), geom_hash=str(row.geom_hash), wkb=bytes(row.wkb)))
+    return parts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -358,7 +412,9 @@ def next_free_pk(source_id: str, taken: set[str]) -> str:
 
 _LIKE_ESCAPE = str.maketrans({"\\": "\\\\", "%": "\\%", "_": "\\_"})
 
-_SELECT_ACTIVE = text("SELECT id, geom_hash FROM red_vial WHERE source_id = :sid AND activo")
+_SELECT_ACTIVE = text(
+    "SELECT id, geom_hash FROM red_vial WHERE source_id = :sid AND parte = :parte AND activo"
+)
 
 _SELECT_LINEAGE_PKS = text(
     "SELECT id FROM red_vial WHERE id = :sid OR id LIKE :pattern ESCAPE '\\'"
@@ -366,26 +422,19 @@ _SELECT_LINEAGE_PKS = text(
 
 _SELECT_HAUSDORFF = text(
     "SELECT ST_HausdorffDistance("
-    f"  ST_Transform(geom, {METRIC_SRID}), ST_Transform({GEOM_EXPRESSION}, {METRIC_SRID})"
+    f"  ST_Transform(geom, {METRIC_SRID}), "
+    f"  ST_Transform(ST_GeomFromEWKB(:geom_wkb), {METRIC_SRID})"
     ") FROM red_vial WHERE id = :id"
 )
 
-#: Assertions 2-4 run *before* the write, not on its ``RETURNING``: the column's
-#: ``geometry(LineString, 4326)`` typmod would reject a surviving MultiLineString
-#: with a raw driver error, which is neither attributable to an id nor an
-#: assertion failure (it would exit 5 instead of 3). Checking the collapsed
-#: geometry first is what lets the abort name the feature.
-_PRECHECK = text(
-    f"SELECT ST_IsValid(g) AS valid, ST_IsEmpty(g) AS empty, ST_SRID(g) AS srid, "
-    f"GeometryType(g) AS geom_type FROM (SELECT {GEOM_EXPRESSION} AS g) AS colapsada"
-)
-
+#: The geometry travels as the EWKB the decomposition already produced, so the
+#: stored bytes are exactly the bytes ``geom_hash`` was computed over.
 _INSERT = text(
-    "INSERT INTO red_vial (id, source_id, "
+    "INSERT INTO red_vial (id, source_id, parte, "
     + ", ".join(TEXT_ATTRIBUTES)
-    + ", lzn, geom, geom_hash, activo, ultima_carga_en) VALUES (:id, :source_id, "
+    + ", lzn, geom, geom_hash, activo, ultima_carga_en) VALUES (:id, :source_id, :parte, "
     + ", ".join(f":{name}" for name in TEXT_ATTRIBUTES)
-    + f", :lzn, {GEOM_EXPRESSION}, :geom_hash, true, clock_timestamp())"
+    + ", :lzn, ST_GeomFromEWKB(:geom_wkb), :geom_hash, true, clock_timestamp())"
 )
 
 # ``clock_timestamp()`` rather than ``now()``: ``now()`` is the *transaction*
@@ -395,42 +444,46 @@ _INSERT = text(
 _UPDATE = text(
     "UPDATE red_vial SET "
     + ", ".join(f"{name} = :{name}" for name in TEXT_ATTRIBUTES)
-    + f", lzn = :lzn, geom = {GEOM_EXPRESSION}, geom_hash = :geom_hash, "
+    + ", lzn = :lzn, parte = :parte, geom = ST_GeomFromEWKB(:geom_wkb), geom_hash = :geom_hash, "
     + "ultima_carga_en = clock_timestamp(), updated_at = clock_timestamp() WHERE id = :id"
 )
 
 _RETIRE = text("UPDATE red_vial SET activo = false, updated_at = clock_timestamp() WHERE id = :id")
 
+#: Retirement is per ``(source_id, parte)``, not per ``source_id``: a feature that
+#: drops from three parts to two must retire the vanished part while the other
+#: two keep their identities.
 _RETIRE_ABSENT = text(
     "UPDATE red_vial SET activo = false, updated_at = clock_timestamp() "
-    "WHERE activo AND NOT (source_id = ANY(:source_ids)) RETURNING id"
+    "WHERE activo AND NOT EXISTS ("
+    "  SELECT 1 FROM unnest(CAST(:source_ids AS text[]), CAST(:partes AS int[])) AS t(sid, p)"
+    "  WHERE t.sid = red_vial.source_id AND t.p = red_vial.parte"
+    ") RETURNING id"
 )
 
 
-def _row_params(feature: SourceFeature, row_id: str) -> dict[str, Any]:
+def _row_params(feature: SourceFeature, part: Part, row_id: str) -> dict[str, Any]:
     params: dict[str, Any] = {
         "id": row_id,
         "source_id": feature.source_id,
+        "parte": part.parte,
         "lzn": feature.lzn,
-        "geom": feature.geometry_json,
-        "geom_hash": feature.geom_hash,
+        "geom_wkb": part.wkb,
+        "geom_hash": part.geom_hash,
     }
     params.update(feature.attributes)
     return params
 
 
-def _write(db: Session, statement, feature: SourceFeature, row_id: str) -> None:
-    """Check assertions 2-4 on the collapsed geometry, then write the row."""
-    params = _row_params(feature, row_id)
-    checked = db.execute(_PRECHECK, {"geom": feature.geometry_json}).one()
-    assert_stored_geometry(
-        row_id,
-        valid=bool(checked.valid),
-        empty=bool(checked.empty),
-        srid=int(checked.srid),
-        geom_type=str(checked.geom_type),
-    )
-    db.execute(statement, params)
+def _lineage_pks(db: Session, source_id: str) -> set[str]:
+    """Every PK the lineage has ever used — parts and splits share one space."""
+    return {
+        r.id
+        for r in db.execute(
+            _SELECT_LINEAGE_PKS,
+            {"sid": source_id, "pattern": source_id.translate(_LIKE_ESCAPE) + "#%"},
+        )
+    }
 
 
 @dataclass(frozen=True)
@@ -449,75 +502,83 @@ class Split:
         )
 
 
-def upsert_features(db: Session, features: Sequence[SourceFeature]) -> tuple[int, int, list[Split]]:
-    """Apply the lineage rule to every source feature. Returns (inserted, updated, splits)."""
-    inserted = 0
-    updated = 0
-    splits: list[Split] = []
+@dataclass
+class UpsertOutcome:
+    """What the write pass did, and the key set the retirement pass needs."""
+
+    inserted: int = 0
+    updated: int = 0
+    splits: list[Split] = field(default_factory=list)
+    multipart: list[tuple[str, int]] = field(default_factory=list)
+    loaded_keys: list[tuple[str, int]] = field(default_factory=list)
+
+
+def upsert_features(db: Session, features: Sequence[SourceFeature]) -> UpsertOutcome:
+    """Apply the lineage rule to every part of every source feature."""
+    outcome = UpsertOutcome()
 
     for feature in features:
-        active = db.execute(_SELECT_ACTIVE, {"sid": feature.source_id}).one_or_none()
+        parts = explode_parts(db, feature)
+        if len(parts) > 1:
+            outcome.multipart.append((feature.source_id, len(parts)))
 
-        if active is None:
-            taken = {
-                r.id
-                for r in db.execute(
-                    _SELECT_LINEAGE_PKS,
-                    {
-                        "sid": feature.source_id,
-                        "pattern": feature.source_id.translate(_LIKE_ESCAPE) + "#%",
-                    },
+        for part in parts:
+            outcome.loaded_keys.append((feature.source_id, part.parte))
+            active = db.execute(
+                _SELECT_ACTIVE, {"sid": feature.source_id, "parte": part.parte}
+            ).one_or_none()
+
+            if active is None:
+                new_id = next_free_pk(feature.source_id, _lineage_pks(db, feature.source_id))
+                db.execute(_INSERT, _row_params(feature, part, new_id))
+                outcome.inserted += 1
+                continue
+
+            if active.geom_hash == part.geom_hash:
+                db.execute(_UPDATE, _row_params(feature, part, active.id))
+                outcome.updated += 1
+                continue
+
+            distance = db.execute(
+                _SELECT_HAUSDORFF, {"id": active.id, "geom_wkb": part.wkb}
+            ).scalar_one()
+            if distance is not None and float(distance) > MATERIAL_CHANGE_M:
+                # A different road wearing a known id: retire, never overwrite —
+                # the crossings and surveys attached to the old trace stay on the
+                # old row.
+                db.execute(_RETIRE, {"id": active.id})
+                new_id = next_free_pk(feature.source_id, _lineage_pks(db, feature.source_id))
+                db.execute(_INSERT, _row_params(feature, part, new_id))
+                outcome.inserted += 1
+                outcome.splits.append(
+                    Split(
+                        source_id=feature.source_id,
+                        retired_id=active.id,
+                        new_id=new_id,
+                        hausdorff_m=float(distance),
+                    )
                 )
-            }
-            _write(db, _INSERT, feature, next_free_pk(feature.source_id, taken))
-            inserted += 1
-            continue
+                continue
 
-        if active.geom_hash == feature.geom_hash:
-            _write(db, _UPDATE, feature, active.id)
-            updated += 1
-            continue
+            db.execute(_UPDATE, _row_params(feature, part, active.id))
+            outcome.updated += 1
 
-        distance = db.execute(
-            _SELECT_HAUSDORFF, {"id": active.id, "geom": feature.geometry_json}
-        ).scalar_one()
-        if distance is not None and float(distance) > MATERIAL_CHANGE_M:
-            # A different road wearing a known id: retire, never overwrite — the
-            # crossings and surveys attached to the old trace stay on the old row.
-            db.execute(_RETIRE, {"id": active.id})
-            taken = {
-                r.id
-                for r in db.execute(
-                    _SELECT_LINEAGE_PKS,
-                    {
-                        "sid": feature.source_id,
-                        "pattern": feature.source_id.translate(_LIKE_ESCAPE) + "#%",
-                    },
-                )
-            }
-            new_id = next_free_pk(feature.source_id, taken)
-            _write(db, _INSERT, feature, new_id)
-            inserted += 1
-            splits.append(
-                Split(
-                    source_id=feature.source_id,
-                    retired_id=active.id,
-                    new_id=new_id,
-                    hausdorff_m=float(distance),
-                )
-            )
-            continue
-
-        _write(db, _UPDATE, feature, active.id)
-        updated += 1
-
-    return inserted, updated, splits
+    return outcome
 
 
-def retire_absent(db: Session, features: Sequence[SourceFeature]) -> list[str]:
-    """Flip every active row whose ``source_id`` left the source. Never a removal."""
-    source_ids = [feature.source_id for feature in features]
-    rows = db.execute(_RETIRE_ABSENT, {"source_ids": source_ids}).all()
+def retire_absent(db: Session, loaded_keys: Sequence[tuple[str, int]]) -> list[str]:
+    """Flip every active row whose ``(source_id, parte)`` left the source.
+
+    Never a removal: a retired row keeps its PK, and its crossings and field
+    surveys keep resolving.
+    """
+    rows = db.execute(
+        _RETIRE_ABSENT,
+        {
+            "source_ids": [key[0] for key in loaded_keys],
+            "partes": [key[1] for key in loaded_keys],
+        },
+    ).all()
     return sorted(r.id for r in rows)
 
 
@@ -527,15 +588,20 @@ def retire_absent(db: Session, features: Sequence[SourceFeature]) -> list[str]:
 
 
 def assert_active_row_count(db: Session, expected: int) -> int:
-    """Assertion 1 — active rows must equal the source feature count.
+    """Assertion 1 — active rows must equal the number of parts the source yielded.
 
-    Strict equality also proves convergence: a re-run must not grow the working
-    set. Retired rows are deliberately outside the count.
+    **Not** the source feature count. Since the owner's exit (B) a feature whose
+    ``MultiGeometry`` holds disconnected lines becomes N rows, so
+    ``rows >= features``, with equality exactly when every feature is a single
+    line. The pin that still speaks about features is ``RED_VIAL_FEATURE_COUNT``
+    (assertion 0); this one is about parts, and saying so is what keeps both
+    honest. Strict equality still proves convergence: a re-run must not grow the
+    working set. Retired rows are deliberately outside the count.
     """
     stored = int(db.execute(text("SELECT count(*) FROM red_vial WHERE activo")).scalar_one())
     if stored != expected:
         raise EtlAssertionError(
-            f"filas activas en red_vial {stored} != features del origen {expected}"
+            f"filas activas en red_vial {stored} != partes del origen {expected}"
         )
     return stored
 
@@ -656,13 +722,15 @@ def granularity_report(db: Session) -> GranularityReport:
 
 @dataclass(frozen=True)
 class LoadResult:
-    """What the operator has to record: the load, its splits, its retirements."""
+    """What the operator has to record: the load, its parts, splits, retirements."""
 
+    feature_count: int
     rows_before: int
     rows_after: int
     inserted: int
     updated: int
     splits: list[Split]
+    multipart: list[tuple[str, int]]
     retired_ids: list[str]
     granularity: GranularityReport
     committed: bool
@@ -671,6 +739,7 @@ class LoadResult:
         verb = "cargado" if self.committed else "ENSAYO (rollback, no se escribió)"
         lines = [
             f"carga de red_vial [{verb}]",
+            f"  - features del origen:       {self.feature_count}",
             f"  - tramos activos antes:      {self.rows_before}",
             f"  - tramos activos después:    {self.rows_after}",
             f"  - insertados:                {self.inserted}",
@@ -681,6 +750,12 @@ class LoadResult:
             lines.append(f"      ids: {', '.join(self.retired_ids)}")
         lines.append(f"  - splits de linaje:          {len(self.splits)}")
         lines.extend(split.render() for split in self.splits)
+        lines.append(
+            f"  - MULTIPARTE (feature con partes desconectadas → N tramos del mismo "
+            f"linaje): {len(self.multipart)}"
+        )
+        for source_id, count in self.multipart:
+            lines.append(f"      * source_id={source_id} partes={count}")
         lines.append(self.granularity.render())
         return "\n".join(lines)
 
@@ -693,17 +768,19 @@ def load(db: Session, features: Sequence[SourceFeature], *, dry_run: bool = Fals
     """
     rows_before = int(db.execute(text("SELECT count(*) FROM red_vial WHERE activo")).scalar_one())
     try:
-        inserted, updated, splits = upsert_features(db, features)
-        retired_ids = retire_absent(db, features)
-        rows_after = assert_active_row_count(db, len(features))
+        outcome = upsert_features(db, features)
+        retired_ids = retire_absent(db, outcome.loaded_keys)
+        rows_after = assert_active_row_count(db, len(outcome.loaded_keys))
         report = granularity_report(db)
 
         result = LoadResult(
+            feature_count=len(features),
             rows_before=rows_before,
             rows_after=rows_after,
-            inserted=inserted,
-            updated=updated,
-            splits=splits,
+            inserted=outcome.inserted,
+            updated=outcome.updated,
+            splits=outcome.splits,
+            multipart=outcome.multipart,
             retired_ids=retired_ids,
             granularity=report,
             committed=not dry_run,

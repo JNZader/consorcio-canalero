@@ -22,6 +22,8 @@ exists. The stand-in dependent table here exists only to prove (b).
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -92,7 +94,10 @@ def dependiente(db: Session):
 
 def _rows(db: Session) -> list:
     return db.execute(
-        text("SELECT id, source_id, activo, geom_hash, ultima_carga_en FROM red_vial ORDER BY id")
+        text(
+            "SELECT id, source_id, parte, activo, geom_hash, ultima_carga_en "
+            "FROM red_vial ORDER BY id"
+        )
     ).all()
 
 
@@ -248,22 +253,166 @@ class TestStoredGeometry:
             [source_feature("13680", connected, geometry_type="MultiLineString")],
             dry_run=False,
         )
-        stored = db.execute(
-            text("SELECT GeometryType(geom) AS geom_type FROM red_vial WHERE id = '13680'")
-        ).scalar_one()
-        assert stored == "LINESTRING"
+        rows = db.execute(
+            text("SELECT id, parte, GeometryType(geom) AS geom_type FROM red_vial")
+        ).all()
+        assert [(r.id, r.parte, r.geom_type) for r in rows] == [("13680", 1, "LINESTRING")]
 
-    def test_a_disconnected_multigeometry_aborts_naming_its_id(self, db: Session):
-        """It is never silently split: two disconnected parts are a source decision."""
-        disconnected = [[[-62.50, -32.50], [-62.49, -32.50]], [[-62.40, -32.40], [-62.39, -32.40]]]
-        with pytest.raises(loader.EtlAssertionError, match="13680"):
-            loader.load(
-                db,
-                [source_feature("13680", disconnected, geometry_type="MultiLineString")],
-                dry_run=False,
+
+class TestMultiPartAdmission:
+    """Owner decision, 2026-08-22 (exit B): a disconnected MultiGeometry is N segments.
+
+    The earlier rule aborted the whole load naming the id. The field reality the
+    owner brought is that several such features exist, and an abort on the first
+    one hides all the others — so the parts are admitted as N rows of ONE
+    lineage, each with its own suffixed PK, and the load reports them.
+    """
+
+    #: Two lines ~9 km apart: `ST_LineMerge` cannot join them.
+    DISCONNECTED = [
+        [[-62.50, -32.50], [-62.49, -32.50]],
+        [[-62.40, -32.40], [-62.39, -32.40]],
+    ]
+
+    def test_a_disconnected_feature_becomes_one_row_per_part(self, db: Session):
+        result = loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+
+        rows = db.execute(
+            text(
+                "SELECT id, source_id, parte, activo, GeometryType(geom) AS geom_type "
+                "FROM red_vial ORDER BY parte"
             )
-        # The whole load rolled back: the table is left in its prior state.
-        assert _rows(db) == []
+        ).all()
+        assert [(r.id, r.source_id, r.parte, r.activo, r.geom_type) for r in rows] == [
+            ("13680", "13680", 1, True, "LINESTRING"),
+            ("13680#2", "13680", 2, True, "LINESTRING"),
+        ]
+        assert result.inserted == 2
+        assert result.rows_after == 2
+
+    def test_the_load_reports_every_multi_part_feature(self, db: Session):
+        result = loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+        assert result.multipart == [("13680", 2)]
+        assert "MULTIPARTE" in result.render()
+        assert "13680" in result.render()
+
+    def test_each_part_keeps_its_own_geometry_verbatim(self, db: Session):
+        loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+        stored = db.execute(
+            text("SELECT parte, ST_AsGeoJSON(geom, 15) AS geojson FROM red_vial ORDER BY parte")
+        ).all()
+        loaded = [json.loads(r.geojson)["coordinates"] for r in stored]
+        # Part order is derived from the geometry (start point, lexicographic),
+        # not from the source's part order — so the same two lines always land on
+        # the same two identities.
+        assert sorted(loaded) == sorted(self.DISCONNECTED)
+
+    def test_part_identity_survives_the_source_reordering_its_parts(self, db: Session):
+        """Ordering by start point is what makes the identity stable.
+
+        With source-order indexing, a source that emitted the same two lines in
+        the other order would swap two segments' identities — and every field
+        survey attached to them.
+        """
+        loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+        before = {r.id: r.geom_hash for r in db.execute(text("SELECT id, geom_hash FROM red_vial"))}
+
+        reordered = list(reversed(self.DISCONNECTED))
+        result = loader.load(
+            db,
+            [source_feature("13680", reordered, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+
+        after = {r.id: r.geom_hash for r in db.execute(text("SELECT id, geom_hash FROM red_vial"))}
+        assert after == before
+        assert result.splits == []
+        assert result.inserted == 0
+
+    def test_a_second_load_of_the_same_multi_part_feature_is_idempotent(self, db: Session):
+        feature = source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")
+        loader.load(db, [feature], dry_run=False)
+        first = [(r.id, r.source_id, r.activo) for r in _rows(db)]
+
+        result = loader.load(db, [feature], dry_run=False)
+
+        assert [(r.id, r.source_id, r.activo) for r in _rows(db)] == first
+        assert result.inserted == 0
+        assert result.updated == 2
+
+    def test_a_part_that_disappears_is_retired_not_removed(self, db: Session):
+        """From two parts to one: the vanished part follows the retire-only rule."""
+        loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+
+        result = loader.load(db, [source_feature("13680", self.DISCONNECTED[0])], dry_run=False)
+
+        rows = {r.id: r.activo for r in _rows(db)}
+        assert rows == {"13680": True, "13680#2": False}
+        assert result.retired_ids == ["13680#2"]
+
+    def test_a_part_that_comes_back_reactivates_as_a_new_row(self, db: Session):
+        loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+        loader.load(db, [source_feature("13680", self.DISCONNECTED[0])], dry_run=False)
+        loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+
+        rows = [(r.id, r.activo) for r in _rows(db)]
+        assert rows == [("13680", True), ("13680#2", False), ("13680#3", True)]
+
+    def test_the_suffix_space_is_shared_with_the_lineage_split(self, db: Session):
+        """Parts and splits draw from ONE ordinal space, so no PK is ever reused."""
+        loader.load(
+            db,
+            [source_feature("13680", self.DISCONNECTED, geometry_type="MultiLineString")],
+            dry_run=False,
+        )
+        moved = [self.DISCONNECTED[0], [[-62.30, -32.30], [-62.29, -32.30]]]
+        loader.load(
+            db, [source_feature("13680", moved, geometry_type="MultiLineString")], dry_run=False
+        )
+
+        rows = [(r.id, r.activo) for r in _rows(db)]
+        assert ("13680#3", True) in rows
+        assert ("13680#2", False) in rows
+
+    def test_a_three_part_feature_lands_as_three_rows(self, db: Session):
+        three = [
+            [[-62.50, -32.50], [-62.49, -32.50]],
+            [[-62.40, -32.40], [-62.39, -32.40]],
+            [[-62.30, -32.30], [-62.29, -32.30]],
+        ]
+        result = loader.load(
+            db, [source_feature("13680", three, geometry_type="MultiLineString")], dry_run=False
+        )
+        assert result.multipart == [("13680", 3)]
+        assert [r.id for r in _rows(db)] == ["13680", "13680#2", "13680#3"]
 
 
 class TestDryRun:

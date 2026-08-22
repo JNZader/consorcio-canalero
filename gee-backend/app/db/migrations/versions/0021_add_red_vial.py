@@ -2,25 +2,38 @@
 
 The road network the consorcio reasons about lives today only as a Google Earth
 Engine asset, so nothing in the platform can hang per-segment data off it. This
-migration lands it in PostGIS with **one row per native source feature** — the
-layer already arrives split into short line features, and that native
-segmentation IS the segment for both the flow ranking (Fase A) and the field
-survey (Fase B). Nothing is merged and nothing is re-split.
+migration lands it in PostGIS with **one row per connected part of a native
+source feature** — the layer already arrives split into short line features, and
+that native segmentation IS the segment for both the flow ranking (Fase A) and
+the field survey (Fase B). Nothing is merged and nothing is re-split by length.
 
-**Two identifiers, on purpose.**
+**Three identifiers, on purpose.**
 
 * ``id TEXT PRIMARY KEY`` — the row identity later tables point at
   (``cruce_camino.tramo_ref``, ``relevamiento_tramo.tramo_ref``). Equal to the
   source id for the first row of a lineage, ordinal-suffixed (``28188#2``,
   ``28188#3``, …) for later ones. Never reused, never rewritten.
 * ``source_id TEXT NOT NULL`` — the identifier the source publishes. Every row
-  of a lineage shares it, and the **partial** unique index
-  ``ux_red_vial_source_activo ON red_vial (source_id) WHERE activo`` makes "two
-  active rows for one source id" unrepresentable. A plain unique index would
-  forbid the lineage split the loader performs when the source re-publishes an
-  id with a materially different trace.
+  of a lineage shares it.
+* ``parte SMALLINT NOT NULL DEFAULT 1`` — which connected part of that source
+  feature the row carries *(added by owner decision, 2026-08-22)*. Almost every
+  source feature is a single line and stays at ``parte = 1``; a feature whose
+  ``MultiGeometry`` holds several **disconnected** lines is admitted as N rows of
+  one lineage rather than aborted: refusing the whole network over one such
+  feature helps nobody, and the shipped source has exactly one (``13680``, two
+  parts, measured — the earlier rule turned it into a load that could never
+  complete).
 
-``geom_hash`` (sha256 of the WKB of the normalized geometry) is what lets the
+The **partial** unique index
+``ux_red_vial_source_activo ON red_vial (source_id, parte) WHERE activo`` is what
+makes "two active rows for the same part of one source feature" unrepresentable.
+Keyed on ``(source_id, parte)`` and not on ``source_id`` alone precisely because
+the N parts of one feature are all active at the same time; within a part the
+invariant is unchanged. A plain (non-partial) unique index would forbid the
+lineage split the loader performs when the source re-publishes an id with a
+materially different trace.
+
+``geom_hash`` (sha256 of the WKB of the stored part geometry) is what lets the
 loader tell "same road, re-published" from "different road, same id"; combined
 with a Hausdorff distance over one DEM cell (30 m) it decides update-in-place vs
 retire-and-insert. ``activo`` carries the retire-only rule: **the loader never
@@ -62,6 +75,7 @@ CREATE_RED_VIAL: str = """
     CREATE TABLE red_vial (
         id TEXT PRIMARY KEY,
         source_id TEXT NOT NULL,
+        parte SMALLINT NOT NULL DEFAULT 1,
         fna TEXT,
         gna TEXT,
         rtn TEXT,
@@ -92,10 +106,12 @@ CREATE_HCT_INDEX: str = "CREATE INDEX ix_red_vial_hct ON red_vial (hct)"
 #: lineage, retired rows included, so they need a non-partial index too.
 CREATE_SOURCE_ID_INDEX: str = "CREATE INDEX ix_red_vial_source_id ON red_vial (source_id)"
 
-#: The lineage key. PARTIAL on purpose: at most one ACTIVE row per source id,
-#: while retired rows of the same lineage stay addressable.
+#: The lineage key. PARTIAL on purpose: at most one ACTIVE row per (source id,
+#: part), while retired rows of the same lineage stay addressable. ``parte`` is
+#: in the key because the N disconnected parts of one source feature are all
+#: active simultaneously.
 CREATE_SOURCE_ACTIVO_UNIQUE: str = (
-    "CREATE UNIQUE INDEX ux_red_vial_source_activo ON red_vial (source_id) WHERE activo"
+    "CREATE UNIQUE INDEX ux_red_vial_source_activo ON red_vial (source_id, parte) WHERE activo"
 )
 
 UPGRADE_STATEMENTS: tuple[str, ...] = (

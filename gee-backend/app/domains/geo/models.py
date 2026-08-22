@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -478,12 +479,13 @@ class RedVial(TimestampMixin, Base):
     for later rows of the same lineage, because the crossing and survey tables
     reference it and that reference has to survive a reload.
 
-    ``source_id`` is the id the source publishes; every row of a lineage shares
-    it and at most one of them is ``activo`` (partial unique index
-    ``ux_red_vial_source_activo``). ``geom_hash`` is the sha256 of the WKB of the
-    normalized geometry, which is how the loader tells "same road re-published"
-    from "different road, same id". The loader never deletes: a segment that
-    leaves the source is retired with ``activo = false``.
+    ``source_id`` is the id the source publishes and ``parte`` is which connected
+    part of that feature the row carries; every row of a lineage shares the
+    ``source_id`` and at most one row is ``activo`` per ``(source_id, parte)``
+    (partial unique index ``ux_red_vial_source_activo``). ``geom_hash`` is the
+    sha256 of the WKB of the stored part geometry, which is how the loader tells
+    "same road re-published" from "different road, same id". The loader never
+    deletes: a segment that leaves the source is retired with ``activo = false``.
     """
 
     __tablename__ = "red_vial"
@@ -494,6 +496,7 @@ class RedVial(TimestampMixin, Base):
         Index(
             "ux_red_vial_source_activo",
             "source_id",
+            "parte",
             unique=True,
             postgresql_where=sa.text("activo"),
         ),
@@ -511,6 +514,12 @@ class RedVial(TimestampMixin, Base):
         nullable=False,
         index=True,
         comment="Identifier published by the source; shared by a whole lineage",
+    )
+    parte: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        server_default=sa.text("1"),
+        comment="Which connected part of the source feature this row carries",
     )
     fna: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Full name")
     gna: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Generic name")

@@ -6,12 +6,15 @@ schema, runs the real statements against it and inspects the result.
 
 What matters beyond "the table exists":
 
-* the **partial** unique index ``ux_red_vial_source_activo`` — a *plain* unique
-  index on ``source_id`` would forbid the lineage split D1 requires (a retired
-  row and its replacement share one ``source_id``), so the test asserts
-  ``pg_index.indpred IS NOT NULL``, not merely that the index is unique;
-* the ``activo`` / ``ultima_carga_en`` defaults, which the retire-only load rule
-  depends on;
+* the **partial** unique index ``ux_red_vial_source_activo`` on
+  ``(source_id, parte)`` — a *plain* unique index would forbid the lineage split
+  D1 requires (a retired row and its replacement share one ``source_id``), so the
+  test asserts ``pg_index.indpred IS NOT NULL``, not merely that the index is
+  unique; and the key must include ``parte``, because the N disconnected parts of
+  one source feature are all active at the same time (owner decision,
+  2026-08-22);
+* the ``activo`` / ``parte`` / ``ultima_carga_en`` defaults, which the
+  retire-only load rule depends on;
 * ``downgrade()`` really removes the table (run from the migration's own
   ``DOWNGRADE_STATEMENTS``, not re-typed here).
 """
@@ -42,9 +45,14 @@ TEXT_ATTRIBUTES: tuple[str, ...] = (
 )
 
 _INSERT = text(
-    "INSERT INTO red_vial (id, source_id, geom, geom_hash) VALUES "
-    "(:id, :source_id, ST_GeomFromText('LINESTRING(-62 -32.5, -62.01 -32.51)', 4326), :h)"
+    "INSERT INTO red_vial (id, source_id, parte, geom, geom_hash) VALUES "
+    "(:id, :source_id, :parte, "
+    "ST_GeomFromText('LINESTRING(-62 -32.5, -62.01 -32.51)', 4326), :h)"
 )
+
+
+def _insert(conn, row_id: str, source_id: str, *, parte: int = 1, geom_hash: str = "h") -> None:
+    conn.execute(_INSERT, {"id": row_id, "source_id": source_id, "parte": parte, "h": geom_hash})
 
 
 def _run(conn, statements) -> None:
@@ -125,14 +133,24 @@ class TestRedVialTable:
     def test_geom_hash_is_not_null(self, migrated):
         assert _columns(migrated)["geom_hash"] == ("text", "NO")
 
-    def test_activo_and_ultima_carga_en_defaults(self, migrated):
-        migrated.execute(_INSERT, {"id": "defaults-1", "source_id": "defaults-1", "h": "abc"})
+    def test_activo_parte_and_ultima_carga_en_defaults(self, migrated):
+        migrated.execute(
+            text(
+                "INSERT INTO red_vial (id, source_id, geom, geom_hash) VALUES "
+                "('defaults-1', 'defaults-1', "
+                "ST_GeomFromText('LINESTRING(-62 -32.5, -62.01 -32.51)', 4326), 'abc')"
+            )
+        )
         row = migrated.execute(
-            text("SELECT activo, ultima_carga_en FROM red_vial WHERE id = 'defaults-1'")
+            text("SELECT activo, parte, ultima_carga_en FROM red_vial WHERE id = 'defaults-1'")
         ).one()
         assert row.activo is True
+        assert row.parte == 1  # a single-line feature is part 1 without saying so
         assert row.ultima_carga_en is not None
         migrated.execute(text("DELETE FROM red_vial WHERE id = 'defaults-1'"))
+
+    def test_parte_is_a_not_null_smallint(self, migrated):
+        assert _columns(migrated)["parte"] == ("smallint", "NO")
 
     def test_expected_indexes_exist(self, migrated):
         names = {
@@ -163,7 +181,7 @@ class TestRedVialTable:
 
 
 class TestPartialUniqueIndex:
-    """``ux_red_vial_source_activo`` must be UNIQUE **and** partial."""
+    """``ux_red_vial_source_activo`` must be UNIQUE, partial, and keyed on the part."""
 
     def test_index_is_unique_and_partial(self, migrated):
         row = migrated.execute(
@@ -179,16 +197,49 @@ class TestPartialUniqueIndex:
         # A plain unique index here would forbid the D1 lineage split.
         assert row.is_partial is True
 
-    def test_two_active_rows_for_one_source_id_are_refused(self, migrated):
-        migrated.execute(_INSERT, {"id": "28188", "source_id": "28188", "h": "h1"})
+    def test_the_key_is_source_id_and_parte(self, migrated):
+        """Keyed on ``(source_id, parte)``: the N parts of one feature coexist."""
+        columns = (
+            migrated.execute(
+                text(
+                    "SELECT a.attname FROM pg_index i "
+                    "JOIN pg_class c ON c.oid = i.indexrelid "
+                    "JOIN pg_attribute a ON a.attrelid = i.indrelid "
+                    " AND a.attnum = ANY(i.indkey) "
+                    "WHERE c.relname = 'ux_red_vial_source_activo' "
+                    "AND c.relnamespace = CAST(:s AS regnamespace) "
+                    "ORDER BY a.attname"
+                ),
+                {"s": SCHEMA},
+            )
+            .scalars()
+            .all()
+        )
+        assert columns == ["parte", "source_id"]
+
+    def test_two_active_rows_for_the_same_source_id_and_parte_are_refused(self, migrated):
+        _insert(migrated, "28188", "28188", geom_hash="h1")
         with pytest.raises(Exception, match="ux_red_vial_source_activo|duplicate key"):
-            migrated.execute(_INSERT, {"id": "28188#2", "source_id": "28188", "h": "h2"})
+            _insert(migrated, "28188#2", "28188", geom_hash="h2")
         migrated.execute(text("DELETE FROM red_vial WHERE source_id = '28188'"))
 
+    def test_several_parts_of_one_source_feature_may_be_active_at_once(self, migrated):
+        """The whole point of the owner's exit (B): a disconnected feature is N rows."""
+        _insert(migrated, "13680", "13680", parte=1, geom_hash="h1")
+        _insert(migrated, "13680#2", "13680", parte=2, geom_hash="h2")
+        _insert(migrated, "13680#3", "13680", parte=3, geom_hash="h3")
+        rows = migrated.execute(
+            text(
+                "SELECT id, parte FROM red_vial WHERE source_id = '13680' AND activo ORDER BY parte"
+            )
+        ).all()
+        assert [(r.id, r.parte) for r in rows] == [("13680", 1), ("13680#2", 2), ("13680#3", 3)]
+        migrated.execute(text("DELETE FROM red_vial WHERE source_id = '13680'"))
+
     def test_a_retired_row_leaves_room_for_a_new_active_one(self, migrated):
-        migrated.execute(_INSERT, {"id": "27371", "source_id": "27371", "h": "h1"})
+        _insert(migrated, "27371", "27371", geom_hash="h1")
         migrated.execute(text("UPDATE red_vial SET activo = false WHERE id = '27371'"))
-        migrated.execute(_INSERT, {"id": "27371#2", "source_id": "27371", "h": "h2"})
+        _insert(migrated, "27371#2", "27371", geom_hash="h2")
         rows = migrated.execute(
             text("SELECT id, activo FROM red_vial WHERE source_id = '27371' ORDER BY id")
         ).all()
@@ -235,7 +286,7 @@ class TestDowngrade:
                     "tramo_ref TEXT NOT NULL REFERENCES red_vial(id) ON DELETE RESTRICT)"
                 )
             )
-            conn.execute(_INSERT, {"id": "dep-1", "source_id": "dep-1", "h": "h"})
+            _insert(conn, "dep-1", "dep-1")
             conn.execute(text("INSERT INTO dependiente (tramo_ref) VALUES ('dep-1')"))
 
             with pytest.raises(Exception, match="depend|dependiente"):

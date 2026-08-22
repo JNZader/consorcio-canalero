@@ -195,35 +195,6 @@ class TestParsing:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# geom_hash — the material-change discriminator
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestGeomHash:
-    def test_is_stable_across_two_parses_of_the_same_feature(self):
-        first = parse(feature("28188"))[0]
-        second = parse(feature("28188"))[0]
-        assert first.geom_hash == second.geom_hash
-        assert len(first.geom_hash) == 64  # sha256 hex
-
-    def test_differs_when_a_vertex_moves(self):
-        base = parse(feature("28188"))[0]
-        moved = parse(feature("28188", coordinates=[[-62.39, -32.53], [-62.30, -32.54]]))[0]
-        assert base.geom_hash != moved.geom_hash
-
-    def test_ignores_the_attributes(self):
-        base = parse(feature("28188"))[0]
-        renamed = parse(feature("28188", fna="otro nombre"))[0]
-        assert base.geom_hash == renamed.geom_hash
-
-    def test_vertex_order_is_part_of_the_hash(self):
-        """A reversed trace is the same line but not the same digitization."""
-        base = parse(feature("28188"))[0]
-        reversed_ = parse(feature("28188", coordinates=[[-62.38, -32.54], [-62.39, -32.53]]))[0]
-        assert base.geom_hash != reversed_.geom_hash
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # The stored-geometry assertions (2–4), unit-tested off the DB round trip
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -234,7 +205,8 @@ class TestStoredGeometryAssertions:
             "28188", valid=True, empty=False, srid=4326, geom_type="LINESTRING"
         )
 
-    def test_a_surviving_multilinestring_aborts_naming_its_id(self):
+    def test_a_non_simple_part_aborts_naming_its_id(self):
+        """``ST_Dump`` owes the writer simple parts; anything else is a bug, loudly."""
         with pytest.raises(loader.EtlAssertionError, match="13680"):
             loader.assert_stored_geometry(
                 "13680", valid=True, empty=False, srid=4326, geom_type="MULTILINESTRING"
@@ -319,6 +291,48 @@ def db(test_engine):
         session.close()
         transaction.rollback()
         connection.close()
+
+
+class TestGeomHash:
+    """``geom_hash`` is the material-change discriminator, computed over the stored bytes.
+
+    Real PG rather than in-memory: since the multi-part admission the hash is
+    per **part** and is produced by ``sha256(ST_AsBinary(...))`` inside the same
+    query that decomposes the geometry — so the hash covers exactly the bytes the
+    row will hold, instead of a second, hopefully-equivalent encoding of them.
+    """
+
+    def _hash(self, db, coordinates, **overrides) -> str:
+        parsed = loader.SourceFeature.from_geojson(feature("28188", coordinates, **overrides))
+        parts = loader.explode_parts(db, parsed)
+        assert len(parts) == 1
+        return parts[0].geom_hash
+
+    def test_is_stable_across_two_passes_over_the_same_feature(self, db):
+        first = self._hash(db, [[-62.39, -32.53], [-62.38, -32.54]])
+        second = self._hash(db, [[-62.39, -32.53], [-62.38, -32.54]])
+        assert first == second
+        assert len(first) == 64  # sha256 hex
+
+    def test_differs_when_a_vertex_moves(self, db):
+        base = self._hash(db, [[-62.39, -32.53], [-62.38, -32.54]])
+        moved = self._hash(db, [[-62.39, -32.53], [-62.30, -32.54]])
+        assert base != moved
+
+    def test_ignores_the_attributes(self, db):
+        base = self._hash(db, [[-62.39, -32.53], [-62.38, -32.54]])
+        renamed = self._hash(db, [[-62.39, -32.53], [-62.38, -32.54]], fna="otro nombre")
+        assert base == renamed
+
+    def test_vertex_order_is_part_of_the_hash(self, db):
+        """A reversed trace is the same line but not the same digitization.
+
+        ``lado_cruce`` and ``rumbo_camino_deg`` are defined relative to the
+        stored digitization direction, so a reversal has to register as a change.
+        """
+        base = self._hash(db, [[-62.39, -32.53], [-62.38, -32.54]])
+        reversed_ = self._hash(db, [[-62.38, -32.54], [-62.39, -32.53]])
+        assert base != reversed_
 
 
 class TestGranularityReport:
