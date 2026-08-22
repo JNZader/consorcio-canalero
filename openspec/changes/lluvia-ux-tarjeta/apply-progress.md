@@ -394,7 +394,8 @@ padded: the measurement is what the slice weighs.
 ## Not run, and not claimed
 
 This is the historical slice-2 checkpoint; the executed closeout record at the end of this
-file supersedes its O.1 state. O.1 (the declared local e2e run of D13) was NOT executed here, so
+file supersedes its O.1 state. O.1 (the declared local e2e run of D13) remains owner-gated
+and was NOT executed here, so
 task 2.12's assertion is COLLECTED but not EXECUTED. A skipped run is a failed gate, not a
 pass; this record claims only that the witness exists and that the spec collects.
 

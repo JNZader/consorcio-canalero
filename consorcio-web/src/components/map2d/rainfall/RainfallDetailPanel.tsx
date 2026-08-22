@@ -382,6 +382,7 @@ export function RainfallDetailPanel({
   const analysis = useRainfallAnalysis(canAccess ? selected : null, year, {
     pollIntervalMs,
     maxQueuedPolls,
+    nomenclatura,
   });
   const primarySnapshot = analysis.data?.type === 'ready' ? analysis.data.snapshot : null;
 
@@ -396,6 +397,7 @@ export function RainfallDetailPanel({
   const fallback = useRainfallAnalysis(canAccess && canFallBack ? selected : null, previousYear, {
     pollIntervalMs,
     maxQueuedPolls,
+    nomenclatura,
   });
   const fallbackSnapshot = fallback.data?.type === 'ready' ? fallback.data.snapshot : null;
 

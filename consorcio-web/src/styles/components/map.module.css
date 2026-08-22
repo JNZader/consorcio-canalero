@@ -230,6 +230,13 @@
    grow to compensate. Narrow viewports normally swap these cards for the bottom
    sheet below (`.panelSheet`); the `@media (max-width: 62em)` overrides further
    down are the no-`matchMedia` fallback for that swap. */
+/* ── Pointer-events guard for the floating desktop cards (map-fluidity). ─────
+   The cards are positioned over the map. The ROOT keeps `pointer-events: none`
+   so empty/background areas pass clicks through to the map canvas. The actual
+   scrollable content lives in `.panelCardBody`, which re-enables pointer events
+   so its scrollbar, interactive controls, and the Recharts tooltip all work.
+   The mobile bottom sheet (`.panelSheet`) is NOT changed — it is the touch
+   reading surface and must keep its pointer events. */
 .infoPanel {
   position: absolute;
   top: calc(var(--mantine-spacing-md) + 108px);
@@ -238,9 +245,9 @@
   width: min(360px, calc(100% - 72px));
   max-width: 360px;
   max-height: calc(100% - 124px);
-  overflow-y: auto;
   background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
   backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 
 .fichaPanel {
@@ -251,12 +258,22 @@
   width: min(380px, calc(100% - 72px));
   max-width: 380px;
   max-height: calc(100% - 124px);
-  overflow-y: auto;
   background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
   backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 
-/* ── Both panels open at once ─────────────────────────────────────────────── */
+/* Scrollable body of the floating desktop cards. It owns `overflow-y: auto`
+   (removed from the root in R3-001) and re-enables pointer events so the native
+   scrollbar, buttons, links, inputs, pills, and the Recharts SVG tooltip all
+   remain reachable. Wrapping both the minimize button and `children` here means
+   we no longer need a long descendant allowlist: everything inside this wrapper
+   gets pointer events by default. */
+.panelCardBody {
+  max-height: 100%;
+  overflow-y: auto;
+  pointer-events: auto;
+}
 /* A catastro click opens the ficha (bottom-right) AND, when the click also hit
    a canal / escuela / BPA / suelo / camino feature, the InfoPanel (top-right).
    With their solo max-heights (`calc(100% - 124px)` each) the two rects overlap
@@ -285,12 +302,11 @@
 }
 
 /* ── Guillotina de contenido en los paneles de escritorio ─────────────────── */
-/* `.infoPanel` y `.fichaPanel` son sus PROPIOS scrollers (`overflow-y: auto`
-   arriba) y su fondo es opaco al 96%, asi que una tabla o un desglose cortado
-   por el borde inferior termina exactamente igual que si terminara ahi: la
-   ultima fila queda entera, con su linea inferior, y nada dice que abajo hay
-   mas. Es la "guillotina" — el usuario no scrollea porque no sabe que hay que
-   scrollear.
+/* `.panelCardBody` es el scroller de las tarjetas de escritorio y su fondo es
+   opaco al 96%, asi que una tabla o un desglose cortado por el borde inferior
+   termina exactamente igual que si terminara ahi: la ultima fila queda entera,
+   con su linea inferior, y nada dice que abajo hay mas. Es la "guillotina" — el
+   usuario no scrollea porque no sabe que hay que scrollear.
 
    El degradado sticky es la afordancia estandar: la fila que se va se desvanece
    contra el fondo del panel en vez de cortarse en seco.
@@ -328,15 +344,15 @@
    para empujar el degradado por debajo del ultimo renglon.
 
    `margin-inline` negativo lo sangra a traves del padding lateral (16px de cada
-   lado) para que el degradado llegue a los dos bordes; la caja resultante mide
-   exactamente el ancho de la caja de padding, asi que no genera scroll
-   horizontal (`overflow-y: auto` obliga a `overflow-x: auto`).
+   lado, que viene del `Paper p="md"` del shell) para que el degradado llegue a
+   los dos bordes; la caja resultante mide exactamente el ancho de la caja de
+   padding, asi que no genera scroll horizontal (`overflow-y: auto` obliga a
+   `overflow-x: auto`).
 
    Fijado por `tests/unit/mapPanelFadeClearance.test.ts` (el CSS como texto) y
    por `tests/accessibility/mapPanelFade.spec.ts`, que mide la geometria en
    motores de verdad — un test en happy-dom no maqueta nada. */
-.infoPanel::after,
-.fichaPanel::after {
+.panelCardBody::after {
   content: '';
   display: block;
   position: sticky;
@@ -351,18 +367,19 @@
   pointer-events: none;
 }
 
-/* CERO padding inferior, y el `!important` es A PROPOSITO y NO decorativo:
-   `MapPanelShell` monta las dos tarjetas como `<Paper p="md">`, y en Mantine 8
-   una style prop no responsiva se emite como estilo INLINE (`parseStyleProps` →
-   `inlineStyles`), o sea un `padding` shorthand inline de 16px. Ninguna regla de
-   hoja de estilos le gana sin `!important`. Mismo criterio que `--slider-size`
-   mas abajo.
+/* CERO padding inferior en la TARJETA, y el `!important` es A PROPOSITO y NO
+   decorativo: `MapPanelShell` monta las dos tarjetas como `<Paper p="md">`, y
+   en Mantine 8 una style prop no responsiva se emite como estilo INLINE
+   (`parseStyleProps` → `inlineStyles`), o sea un `padding` shorthand inline de
+   16px. Ninguna regla de hoja de estilos le gana sin `!important`. Mismo
+   criterio que `--slider-size` mas abajo.
 
-   Cero, no un valor: el despeje del ultimo renglon ya lo da el espaciador de
-   24px del `::after` de arriba. Cualquier `padding-bottom` aca ADEMAS de eso
-   levantaria el degradado del borde visible (el `sticky` se apoya en la caja de
-   contenido) y dejaria una franja de contenido sin velo justo abajo — que es
-   exactamente el bug que se arreglo. */
+   El scroller interno `.panelCardBody` no tiene padding propio: el despeje del
+   ultimo renglon lo da el espaciador de 24px del `::after` de arriba. Un
+   `padding-bottom` en la tarjeta ADEMAS de eso levantaria el degradado del borde
+   visible (el `sticky` se apoya en la caja de contenido del scroller) y dejaria
+   una franja de contenido sin velo justo abajo — que es exactamente el bug que
+   se arreglo. */
 .infoPanel,
 .fichaPanel {
   padding-bottom: 0 !important;

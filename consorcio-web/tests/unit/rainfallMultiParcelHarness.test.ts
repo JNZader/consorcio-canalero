@@ -53,6 +53,7 @@ import {
   assertTargetReady,
   classifyRainfallRequest,
   computeProjection,
+  isRepeatSelection,
   loadFixture,
   makeTokenLifecycle,
   observeRefresh,
@@ -660,6 +661,7 @@ describe('W7 mobile state machine — ready assertion, scroll proof, containment
         seriesScopeId: A.rainfall.scopeId,
       },
       analysisSequence: 2,
+      selectedAliases: ['A'],
       previous: null,
       activeToken: activeToken(lc),
       authHeader: `Bearer ${activeToken(lc)}`,
@@ -746,6 +748,91 @@ describe('W7 mobile state machine — ready assertion, scroll proof, containment
           analysisSequence: 2, // same-or-older sequence than the prior target
         }),
         A
+      )
+    ).toThrow(/sequence|newer|stale/i);
+  });
+
+  it('isRepeatSelection detects the final A of A→B→C→A as a repeat', () => {
+    expect(isRepeatSelection(['A'])).toBe(false);
+    expect(isRepeatSelection(['A', 'B'])).toBe(false);
+    expect(isRepeatSelection(['A', 'B', 'C'])).toBe(false);
+    expect(isRepeatSelection(['A', 'B', 'C', 'A'])).toBe(true);
+  });
+
+  it('assertTargetReady accepts a cache-served repeat selection when the rendered card matches the target', () => {
+    // The final A is served from the per-parcel cache: the recorded traces and
+    // sequence still belong to the previous C, but the DOM shows A's facts.
+    expect(() =>
+      assertTargetReady(
+        readyEvidence({
+          selectedAliases: ['A', 'B', 'C', 'A'],
+          previous: {
+            renderedPercentile: C.rainfall.percentile,
+            renderedAccumulationMm: C.rainfall.accumulationMm,
+            renderedMetricRevision: C.rainfall.metricRevision,
+            analysisSequence: 3,
+          },
+          analysisSequence: 3, // no newer request issued
+          traces: {
+            scopeNomenclature: C.nomenclature,
+            analysisCacheKey: C.rainfall.effectiveCacheKey,
+            seriesScopeId: C.rainfall.scopeId,
+          },
+        }),
+        A
+      )
+    ).not.toThrow();
+  });
+
+  it('assertTargetReady still rejects a repeat selection whose rendered card does not match the target', () => {
+    expect(() =>
+      assertTargetReady(
+        readyEvidence({
+          selectedAliases: ['A', 'B', 'C', 'A'],
+          renderedPercentile: C.rainfall.percentile,
+          previous: {
+            renderedPercentile: C.rainfall.percentile,
+            renderedAccumulationMm: C.rainfall.accumulationMm,
+            renderedMetricRevision: C.rainfall.metricRevision,
+            analysisSequence: 3,
+          },
+          analysisSequence: 3,
+          traces: {
+            scopeNomenclature: C.nomenclature,
+            analysisCacheKey: C.rainfall.effectiveCacheKey,
+            seriesScopeId: C.rainfall.scopeId,
+          },
+        }),
+        A
+      )
+    ).toThrow(/percentile|stale/i);
+  });
+
+  it('assertTargetReady keeps the strict newer-sequence gate for first-time transitions (A→B)', () => {
+    expect(() =>
+      assertTargetReady(
+        readyEvidence({
+          selectedAliases: ['A', 'B'],
+          targetAlias: 'B',
+          renderedIdentity: B.nomenclature,
+          renderedScopeSentence: scopeSentenceFor(B),
+          renderedPercentile: B.rainfall.percentile,
+          renderedAccumulationMm: B.rainfall.accumulationMm,
+          renderedMetricRevision: B.rainfall.metricRevision,
+          traces: {
+            scopeNomenclature: B.nomenclature,
+            analysisCacheKey: B.rainfall.effectiveCacheKey,
+            seriesScopeId: B.rainfall.scopeId,
+          },
+          previous: {
+            renderedPercentile: A.rainfall.percentile,
+            renderedAccumulationMm: A.rainfall.accumulationMm,
+            renderedMetricRevision: A.rainfall.metricRevision,
+            analysisSequence: 1,
+          },
+          analysisSequence: 1, // not newer than A
+        }),
+        B
       )
     ).toThrow(/sequence|newer|stale/i);
   });

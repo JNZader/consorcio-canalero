@@ -28,7 +28,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // `importActual` and NOT a bare factory: the panel now mounts
@@ -181,6 +181,24 @@ function renderPanel(
     </QueryClientProvider>
   );
   return render(ui);
+}
+
+function renderPanelWithClient(
+  queryClient: QueryClient,
+  props: {
+    nomenclatura: string;
+    pollIntervalMs?: number;
+    maxQueuedPolls?: number;
+  }
+) {
+  function Wrapper({ children }: { readonly children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <MantineProvider env="test">{children}</MantineProvider>
+      </QueryClientProvider>
+    );
+  }
+  return render(<RainfallDetailPanel {...props} />, { wrapper: Wrapper });
 }
 
 /**
@@ -1293,5 +1311,42 @@ describe('RainfallDetailPanel — the enumerated field floor', () => {
       (shared.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING) ===
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBe(true);
+  });
+});
+
+describe('RainfallDetailPanel — cache freshness on parcel change', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setAuth('operador');
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE, BASIN],
+      regional_estimate: true,
+    });
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({ type: 'ready', snapshot: snapshot() });
+  });
+  afterEach(() => setAuth(null));
+
+  it('starts a new analysis query when nomenclatura changes', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = renderPanelWithClient(queryClient, { nomenclatura: 'parcel-a' });
+    await screen.findByTestId('rainfall-detail');
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalled());
+
+    vi.mocked(fetchRainfallAnalysis).mockClear();
+    rerender(<RainfallDetailPanel nomenclatura="parcel-b" />);
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not start a new analysis query when the same nomenclatura re-renders', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = renderPanelWithClient(queryClient, { nomenclatura: 'parcel-a' });
+    await screen.findByTestId('rainfall-detail');
+    await waitFor(() => expect(fetchRainfallAnalysis).toHaveBeenCalled());
+
+    vi.mocked(fetchRainfallAnalysis).mockClear();
+    rerender(<RainfallDetailPanel nomenclatura="parcel-a" />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(fetchRainfallAnalysis).not.toHaveBeenCalled();
   });
 });

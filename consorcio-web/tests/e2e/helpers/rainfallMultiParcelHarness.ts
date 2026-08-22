@@ -888,6 +888,19 @@ export function scopeSentenceFor(parcel: ParcelFixture): string {
 }
 
 /**
+ * A repeat selection is one whose target alias already appears earlier in the
+ * same journey. The final `C→A` step of `A→B→C→A` is a repeat; `A→B` and
+ * `B→C` are first-time transitions. Repeat selections may be served from the
+ * per-parcel cache without a newer analysis sequence, so the strict trace-key
+ * gate is relaxed for them (owner decision #15286, Option A).
+ */
+export function isRepeatSelection(selectedAliases: readonly ParcelAlias[]): boolean {
+  if (selectedAliases.length <= 1) return false;
+  const current = selectedAliases[selectedAliases.length - 1];
+  return selectedAliases.slice(0, -1).includes(current);
+}
+
+/**
  * What the ficha must show for a target parcel AFTER the user plain-clicks it
  * on the canvas and activates Lluvia once. Pure evidence — the spec collects
  * it from the DOM + request trace, this function decides.
@@ -913,6 +926,8 @@ export interface TargetReadyEvidence {
   };
   /** Sequence number of the latest analysis RESPONSE (recorder counter). */
   analysisSequence: number;
+  /** Aliases selected in this journey up to and including the current target. */
+  selectedAliases: ParcelAlias[];
   /** Prior target's rendered values (null on the first transition). */
   previous: {
     renderedPercentile: number;
@@ -933,8 +948,17 @@ export interface TargetReadyEvidence {
  * revision all belong to the TARGET, every trace belongs to the target, the
  * bearer is exactly the active synthetic token (and never in the URL), and no
  * previous-only value remains current. Any deviation fails closed.
+ *
+ * REPEAT SELECTIONS (owner decision #15286, Option A): when the target alias
+ * was already selected earlier in the same journey, the per-parcel cache may
+ * serve the response without a newer analysis sequence. In that case the
+ * rendered card facts are the freshness gate; the strict trace-key and
+ * newer-sequence checks are skipped. First-time transitions (A→B, B→C) keep
+ * the strict gate.
  */
 export function assertTargetReady(evidence: TargetReadyEvidence, target: ParcelFixture): void {
+  const isRepeat = isRepeatSelection(evidence.selectedAliases);
+
   if (!evidence.lluviaSelected) {
     throw new Error(`Lluvia tab must remain selected for target ${target.alias}`);
   }
@@ -963,22 +987,29 @@ export function assertTargetReady(evidence: TargetReadyEvidence, target: ParcelF
       `rendered metric revision "${evidence.renderedMetricRevision}" is not target ${target.alias} (${target.rainfall.metricRevision})`,
     );
   }
-  const wantTraceKey = target.rainfall.effectiveCacheKey;
-  if (evidence.traces.analysisCacheKey !== wantTraceKey) {
-    throw new Error(
-      `analysis trace cache key "${evidence.traces.analysisCacheKey}" does not belong to target ${target.alias} (${wantTraceKey})`,
-    );
+
+  // First-time transitions must prove the latest network trace belongs to the
+  // target. Repeat selections may be cache-served, so the rendered card facts
+  // (verified above) are the freshness gate.
+  if (!isRepeat) {
+    const wantTraceKey = target.rainfall.effectiveCacheKey;
+    if (evidence.traces.analysisCacheKey !== wantTraceKey) {
+      throw new Error(
+        `analysis trace cache key "${evidence.traces.analysisCacheKey}" does not belong to target ${target.alias} (${wantTraceKey})`,
+      );
+    }
+    if (evidence.traces.scopeNomenclature !== target.nomenclature) {
+      throw new Error(
+        `scope-resolve trace resolved "${evidence.traces.scopeNomenclature}" instead of target ${target.alias} (${target.nomenclature})`,
+      );
+    }
+    if (evidence.traces.seriesScopeId !== target.rainfall.scopeId) {
+      throw new Error(
+        `series trace scope "${evidence.traces.seriesScopeId}" does not belong to target ${target.alias}`,
+      );
+    }
   }
-  if (evidence.traces.scopeNomenclature !== target.nomenclature) {
-    throw new Error(
-      `scope-resolve trace resolved "${evidence.traces.scopeNomenclature}" instead of target ${target.alias} (${target.nomenclature})`,
-    );
-  }
-  if (evidence.traces.seriesScopeId !== target.rainfall.scopeId) {
-    throw new Error(
-      `series trace scope "${evidence.traces.seriesScopeId}" does not belong to target ${target.alias}`,
-    );
-  }
+
   const expectedAuth = `Bearer ${evidence.activeToken}`;
   if (evidence.authHeader !== expectedAuth) {
     throw new Error(
@@ -1001,7 +1032,7 @@ export function assertTargetReady(evidence: TargetReadyEvidence, target: ParcelF
           .join(', ')}`,
       );
     }
-    if (evidence.analysisSequence <= evidence.previous.analysisSequence) {
+    if (!isRepeat && evidence.analysisSequence <= evidence.previous.analysisSequence) {
       throw new Error(
         `ready response sequence ${evidence.analysisSequence} must be newer than the previous target's (${evidence.previous.analysisSequence}) — stale cached response`,
       );
