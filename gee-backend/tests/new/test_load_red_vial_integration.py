@@ -402,6 +402,41 @@ class TestMultiPartAdmission:
         assert ("13680#3", True) in rows
         assert ("13680#2", False) in rows
 
+    #: Sorts BEFORE both `DISCONNECTED` parts by start-point x — the case that
+    #: shifted every ordinal when identity was positional.
+    LOWEST = [[-62.90, -32.90], [-62.89, -32.90]]
+
+    def _load(self, db: Session, parts: list) -> object:
+        return loader.load(
+            db, [source_feature("13680", parts, geometry_type="MultiLineString")], dry_run=False
+        )
+
+    def test_gaining_a_part_that_sorts_first_leaves_the_survivors_untouched(self, db: Session):
+        """RDD review R4: identity is geometric, so a new part cannot renumber the others."""
+        self._load(db, self.DISCONNECTED)
+        before = {r.id: (r.parte, r.geom_hash) for r in _rows(db)}
+
+        result = self._load(db, [self.LOWEST, *self.DISCONNECTED])
+
+        after = {r.id: (r.parte, r.geom_hash, r.activo) for r in _rows(db)}
+        for row_id, (parte, geom_hash) in before.items():
+            assert after[row_id] == (parte, geom_hash, True), row_id
+        assert (result.retired_ids, result.splits) == ([], [])
+        assert (result.inserted, result.updated, len(after)) == (1, 2, 3)
+
+    def test_losing_the_lowest_sorting_part_retires_only_that_part(self, db: Session):
+        """The mirror case: the survivor keeps its PK, its ordinal and its history."""
+        self._load(db, [self.LOWEST, *self.DISCONNECTED])
+        before = {r.id: (r.parte, r.geom_hash) for r in _rows(db)}
+        lowest_id = min(_rows(db), key=lambda r: r.parte).id
+
+        result = self._load(db, self.DISCONNECTED)
+
+        assert result.retired_ids == [lowest_id]
+        assert (result.inserted, result.splits) == (0, [])
+        survivors = {r.id: (r.parte, r.geom_hash) for r in _rows(db) if r.activo}
+        assert survivors == {k: v for k, v in before.items() if k != lowest_id}
+
     def test_a_three_part_feature_lands_as_three_rows(self, db: Session):
         three = [
             [[-62.50, -32.50], [-62.49, -32.50]],

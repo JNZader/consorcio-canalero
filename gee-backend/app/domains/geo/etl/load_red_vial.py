@@ -51,27 +51,28 @@ shipped source exactly one feature is multi-part (``13680``, two parts), and tha
 one was enough to make the whole network unloadable under the old rule. Whether
 another source publishes one or fifty, the rule is the same, and the report says
 which. Parts are numbered from the **geometry** (start point x, then y, then the
-WKB), never from the source's part order, so a source that re-emits the same
-lines in another order lands on the same identities.
+WKB), never from the source's part order — and since the RDD review that ordering
+only assigns ordinals to *brand-new* parts: identity itself is resolved by
+geometry (see below), so no ordering can renumber an existing segment.
 
-**Identity, and why there are three ids.** ``id`` is the row identity that
+**Identity, and why there are three ids** *(corrected in RDD review, 2026-08-22:
+part identity is geometric, not positional)*. ``id`` is the row identity that
 ``cruce_camino`` and ``relevamiento_tramo`` reference; ``source_id`` is what the
-source publishes; ``parte`` is which connected part of that feature the row
-carries. For each part the loader resolves **the active row with that
-``(source_id, parte)``** — never "the row whose PK equals the id":
+source publishes; ``parte`` is an **opaque identity label** for one part of it,
+*not* a position. Each incoming part is resolved against the active rows of the
+same ``source_id`` **by geometry**, one to one: exact ``geom_hash``, then nearest
+by Hausdorff within one DEM cell (30 m). Then:
 
-* no active row → INSERT, ``id = source_id`` when free, next free ordinal suffix
-  (``28188#2``, ``28188#3``, …) otherwise. Parts and splits draw from the SAME
-  ordinal space, so a PK is never reused by either;
-* active row, unchanged or trivially-changed geometry → UPDATE in place;
-* active row, **materially changed** geometry (``geom_hash`` differs AND the
-  Hausdorff distance to the stored trace exceeds one DEM cell, 30 m) → the
-  existing row is **retired** (``activo = false``, PK and dependents intact) and
-  the new trace is INSERTed as a new row with the SAME ``source_id`` and the next
-  free suffixed PK.
+* matched → UPDATE in place, and the row **keeps its own ``parte``**;
+* incoming part with no match → INSERT, ``id = source_id`` when free, next free
+  ordinal suffix (``28188#2``, ``28188#3``, …) otherwise, with the next free
+  ``parte``. Parts and splits draw from the SAME ordinal space, so neither a PK
+  nor a ``parte`` is ever reused within a lineage;
+* active row with no match → **retired** (``activo = false``, PK and dependents
+  intact). A retire+insert pairing within one lineage is the D1 split — a known
+  id re-published with a materially different trace — and the report names it.
 
-``(source_id, parte)`` pairs present in the table and absent from the source are
-likewise **retired** — including one part of a feature that lost it.
+Why geometry and not the ordinal: see :func:`_match_parts`.
 **The loader never issues a row-removing statement, ever** — a crossing or a
 field survey is never orphaned, and a road that comes back is a new row, not a
 re-used identity. Every UPSERT stamps ``ultima_carga_en`` (with
@@ -345,11 +346,10 @@ class Part:
 #: reality is that several such roads exist, and an abort on the first one hides
 #: every other.
 #:
-#: **Part numbering is derived from the geometry, never from the source's part
-#: order**: `ORDER BY` start-point x, then y, then the WKB itself. A source that
-#: re-emits the same lines in a different order therefore lands on the same
-#: identities — with source-order numbering it would swap two segments' PKs, and
-#: with them every crossing and field survey attached to those PKs.
+#: The `ORDER BY` (start point x, then y, then WKB) is deterministic, and since
+#: the RDD review its ONLY job is handing ordinals to brand-new parts. The
+#: ordinals here are **provisional**: `_match_parts` resolves identity by
+#: geometry, so a matched row keeps the `parte` it already had.
 _EXPLODE = text(f"""
     WITH colapsada AS (SELECT {GEOM_EXPRESSION} AS g),
          partes AS (SELECT (ST_Dump(g)).geom AS parte_geom FROM colapsada)
@@ -412,8 +412,10 @@ def next_free_pk(source_id: str, taken: set[str]) -> str:
 
 _LIKE_ESCAPE = str.maketrans({"\\": "\\\\", "%": "\\%", "_": "\\_"})
 
-_SELECT_ACTIVE = text(
-    "SELECT id, geom_hash FROM red_vial WHERE source_id = :sid AND parte = :parte AND activo"
+#: The whole lineage, retired rows included: the active ones are matched against,
+#: and every row's ``parte`` is an ordinal a new part must not reuse.
+_SELECT_LINEAGE = text(
+    "SELECT id, parte, geom_hash, activo FROM red_vial WHERE source_id = :sid ORDER BY parte"
 )
 
 _SELECT_LINEAGE_PKS = text(
@@ -448,8 +450,6 @@ _UPDATE = text(
     + "ultima_carga_en = clock_timestamp(), updated_at = clock_timestamp() WHERE id = :id"
 )
 
-_RETIRE = text("UPDATE red_vial SET activo = false, updated_at = clock_timestamp() WHERE id = :id")
-
 #: Retirement is per ``(source_id, parte)``, not per ``source_id``: a feature that
 #: drops from three parts to two must retire the vanished part while the other
 #: two keep their identities.
@@ -462,11 +462,12 @@ _RETIRE_ABSENT = text(
 )
 
 
-def _row_params(feature: SourceFeature, part: Part, row_id: str) -> dict[str, Any]:
+def _row_params(feature: SourceFeature, part: Part, row_id: str, parte: int) -> dict[str, Any]:
+    """``parte`` is passed in, never taken from ``part``: a matched row KEEPS its own."""
     params: dict[str, Any] = {
         "id": row_id,
         "source_id": feature.source_id,
-        "parte": part.parte,
+        "parte": parte,
         "lzn": feature.lzn,
         "geom_wkb": part.wkb,
         "geom_hash": part.geom_hash,
@@ -502,6 +503,66 @@ class Split:
         )
 
 
+def _match_parts(
+    db: Session, existing: Sequence[Any], incoming: Sequence[Part]
+) -> tuple[list[tuple[Any, Part]], list[Any], list[Part], dict[tuple[str, int], float]]:
+    """Resolve incoming parts against existing active rows **by geometry**.
+
+    One-to-one, in two passes: exact ``geom_hash``, then greedy by ascending
+    Hausdorff within ``MATERIAL_CHANGE_M`` (ties broken by stored id then
+    incoming ordinal, so the result is deterministic).
+
+    Matching by the ``parte`` ordinal instead — which this loader did until the
+    RDD review — holds only while the SET of parts never changes: one part added
+    or dropped shifts every survivor's ordinal, each incoming part is then
+    compared against a stored trace kilometres away, and the resulting "material
+    change" retires the whole lineage and detaches its surveys, exiting 0.
+
+    Returns (pairs, unmatched_rows, unmatched_parts, distances).
+    """
+    rows, parts = list(existing), list(incoming)
+    pairs: list[tuple[Any, Part]] = []
+
+    by_hash = {row.geom_hash: row for row in rows}
+    for part in list(parts):
+        row = by_hash.pop(part.geom_hash, None)
+        if row is not None:
+            pairs.append((row, part))
+            rows.remove(row)
+            parts.remove(part)
+
+    distances: dict[tuple[str, int], float] = {}
+    for row in rows:
+        for part in parts:
+            distance = db.execute(
+                _SELECT_HAUSDORFF, {"id": row.id, "geom_wkb": part.wkb}
+            ).scalar_one()
+            if distance is not None:
+                distances[(row.id, part.parte)] = float(distance)
+
+    for _, row_id, parte in sorted(
+        (distance, row_id, parte)
+        for (row_id, parte), distance in distances.items()
+        if distance <= MATERIAL_CHANGE_M
+    ):
+        row = next((r for r in rows if r.id == row_id), None)
+        part = next((p for p in parts if p.parte == parte), None)
+        if row is not None and part is not None:
+            pairs.append((row, part))
+            rows.remove(row)
+            parts.remove(part)
+
+    return pairs, rows, parts, distances
+
+
+def next_free_parte(used: set[int]) -> int:
+    """The ordinal a NEW part gets. Opaque label, never reused, never a position."""
+    ordinal = 1
+    while ordinal in used:
+        ordinal += 1
+    return ordinal
+
+
 @dataclass
 class UpsertOutcome:
     """What the write pass did, and the key set the retirement pass needs."""
@@ -522,46 +583,41 @@ def upsert_features(db: Session, features: Sequence[SourceFeature]) -> UpsertOut
         if len(parts) > 1:
             outcome.multipart.append((feature.source_id, len(parts)))
 
-        for part in parts:
-            outcome.loaded_keys.append((feature.source_id, part.parte))
-            active = db.execute(
-                _SELECT_ACTIVE, {"sid": feature.source_id, "parte": part.parte}
-            ).one_or_none()
+        lineage = db.execute(_SELECT_LINEAGE, {"sid": feature.source_id}).all()
+        pairs, unmatched_rows, unmatched_parts, distances = _match_parts(
+            db, [row for row in lineage if row.activo], parts
+        )
 
-            if active is None:
-                new_id = next_free_pk(feature.source_id, _lineage_pks(db, feature.source_id))
-                db.execute(_INSERT, _row_params(feature, part, new_id))
-                outcome.inserted += 1
-                continue
+        for row, part in pairs:
+            # The matched row KEEPS its ordinal: it is an identity label, not a
+            # position, so nothing renumbers when the part set changes.
+            db.execute(_UPDATE, _row_params(feature, part, row.id, row.parte))
+            outcome.loaded_keys.append((feature.source_id, row.parte))
+            outcome.updated += 1
 
-            if active.geom_hash == part.geom_hash:
-                db.execute(_UPDATE, _row_params(feature, part, active.id))
-                outcome.updated += 1
-                continue
-
-            distance = db.execute(
-                _SELECT_HAUSDORFF, {"id": active.id, "geom_wkb": part.wkb}
-            ).scalar_one()
-            if distance is not None and float(distance) > MATERIAL_CHANGE_M:
-                # A different road wearing a known id: retire, never overwrite —
-                # the crossings and surveys attached to the old trace stay on the
-                # old row.
-                db.execute(_RETIRE, {"id": active.id})
-                new_id = next_free_pk(feature.source_id, _lineage_pks(db, feature.source_id))
-                db.execute(_INSERT, _row_params(feature, part, new_id))
-                outcome.inserted += 1
+        used_partes = {row.parte for row in lineage}
+        taken_pks = _lineage_pks(db, feature.source_id)
+        # Unmatched incoming = new part; unmatched active row = gone. Both at
+        # once is the D1 split, reported as such. The retirement itself is left
+        # to ``retire_absent``: every key missing from ``loaded_keys``.
+        for index, part in enumerate(unmatched_parts):
+            new_id = next_free_pk(feature.source_id, taken_pks)
+            parte = next_free_parte(used_partes)
+            taken_pks.add(new_id)
+            used_partes.add(parte)
+            db.execute(_INSERT, _row_params(feature, part, new_id, parte))
+            outcome.loaded_keys.append((feature.source_id, parte))
+            outcome.inserted += 1
+            if index < len(unmatched_rows):
+                retired = unmatched_rows[index]
                 outcome.splits.append(
                     Split(
                         source_id=feature.source_id,
-                        retired_id=active.id,
+                        retired_id=retired.id,
                         new_id=new_id,
-                        hausdorff_m=float(distance),
+                        hausdorff_m=distances.get((retired.id, part.parte), float("inf")),
                     )
                 )
-                continue
-
-            db.execute(_UPDATE, _row_params(feature, part, active.id))
-            outcome.updated += 1
 
     return outcome
 
