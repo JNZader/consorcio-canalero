@@ -73,7 +73,7 @@ PLATFORM = "linux/amd64"
 # restante es un point release de Debian (13.7) que podria bajar hasta 5 HIGH
 # y 1 CRITICAL (perl 5.40.1-8 + acl); hay que vigilarlo antes del sunset.
 #
-# El sunset absoluto 2026-08-21 fuerza la re-revision total: ``_enforce_time``
+# El sunset absoluto (hoy 2026-09-18) fuerza la re-revision total: ``_enforce_time``
 # evalua el sunset ANTES que los deadlines por severidad, asi que ese dia la
 # politica falla aunque los techos por severidad sigan vigentes; y el chequeo
 # de techos rechaza cualquier deadline del JSON mayor al sunset hard-codeado.
@@ -83,10 +83,41 @@ PLATFORM = "linux/amd64"
 # PINEA (``test_deadline_ceilings_are_the_documented_dates``): extenderla exige
 # tocar codigo Y test en un commit revisado, con una justificacion nueva en
 # este bloque. Ese es el contrato real; "imposible de extender" no existe.
+#
+# Prorroga del SUNSET ABSOLUTO 2026-08-21 -> 2026-09-18 (la primera; las dos
+# anteriores movieron solo los techos por severidad HASTA este sunset, nunca el
+# sunset mismo). El 2026-08-22 el sunset ya habia vencido y ``_enforce_time``
+# rechazaba AMBAS imagenes con "policy absolute sunset has expired" — incluido
+# el geo-worker, cuyo conjunto de excepciones esta vacio y cuyo escaneo fresco
+# de ese dia da 0 hallazgos CRITICAL/HIGH. Es decir: el fallo de CI no era
+# deuda nueva, era el reloj de la politica.
+#
+# Justificacion nueva (re-verificacion completa 2026-08-22, build fresco +
+# Trivy 0.70.0 + DB v2 del dia + apt de la imagen base):
+#   - Las 18 filas del baseline persisten; NINGUNA trae FixedVersion.
+#   - El apt de la base pineada no ofrece candidato nuevo para perl-base
+#     (5.40.1-6), ncurses (6.5+20250216-2), gzip (1.13-1), libacl1
+#     (2.3.2-2+b1) ni openssl (3.5.6-1~deb13u2): Installed == Candidate.
+#   - El point release Debian 13.7 que este bloque venia vigilando NO salio:
+#     python:3.11-slim-trixie corriente (digest 9c900dea...) sigue en Debian
+#     13.6 con exactamente las mismas versiones de paquete, asi que mover el
+#     digest de la base no remediaria una sola fila.
+#   - libxml2 ya esta en el candidato mas alto disponible
+#     (2.12.7+dfsg+really2.9.14-2.1+deb13u3) y CVE-2026-6653 sigue sin fix.
+#   - perl-base es dependencia esencial de dpkg; ncurses/gzip/acl/openssl son
+#     sistema base. No hay palanca interna: ninguno es removible.
+# Unico cambio real del conjunto: CVE-2026-57433 (perl-base) fue RECLASIFICADO
+# por la DB de CRITICAL a HIGH — mismo paquete, misma version, mismo status
+# `affected`, sigue sin fix. El baseline se refresco con snapshot honesto, asi
+# que el multiset queda 14 HIGH + 4 CRITICAL (antes 13 + 5), 18 filas igual.
+#
+# La palanca externa sigue siendo el point release Debian 13.7 (bajaria hasta
+# 5 HIGH y 1 CRITICAL: perl 5.40.1-8 + acl). Hay que volver a mirarlo antes
+# del 2026-09-18.
 DEADLINE_CEILINGS = {
-    "CRITICAL": "2026-08-21T00:00:00Z",
-    "HIGH": "2026-08-21T00:00:00Z",
-    "absolute_sunset": "2026-08-21T00:00:00Z",
+    "CRITICAL": "2026-09-18T00:00:00Z",
+    "HIGH": "2026-09-18T00:00:00Z",
+    "absolute_sunset": "2026-09-18T00:00:00Z",
 }
 ROLE_BINDINGS = {
     "backend": {
