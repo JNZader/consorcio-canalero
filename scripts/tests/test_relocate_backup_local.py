@@ -31,7 +31,7 @@ class RelocatorFixture(unittest.TestCase):
         self.expected_git.write_bytes(b" M scripts/backup_local.sh\0")
         self.expected_containers.write_text("a|img|now|0|/api\n")
         self._fake("git", "#!/bin/sh\ndd if=\"$FAKE_GIT_FILE\" bs=4096 2>/dev/null\n")
-        self._fake("docker", "#!/bin/sh\nprintf '%s' \"$FAKE_DOCKER\"\n")
+        self._fake("docker", "#!/bin/sh\ncase \"$1\" in ps) printf '%s' \"$FAKE_DOCKER_IDS\" ;; inspect) printf '%s' \"$FAKE_DOCKER\" ;; esac\n")
 
     def tearDown(self):
         shutil.rmtree(self.temp)
@@ -51,6 +51,7 @@ class RelocatorFixture(unittest.TestCase):
             "RELOCATE_SHA256": self.source_hash,
             "RELOCATE_TEST_HOOKS": "1",
             "FAKE_GIT_FILE": str(self.expected_git),
+            "FAKE_DOCKER_IDS": "cid\n",
             "FAKE_DOCKER": "a|img|now|0|api\n",
         } | extra
         args = ["/bin/sh", str(SCRIPT)] + ([] if mode is None else [mode])
