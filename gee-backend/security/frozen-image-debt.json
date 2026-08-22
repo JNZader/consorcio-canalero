@@ -1,9 +1,9 @@
 {
   "active": true,
   "deadlines": {
-    "CRITICAL": "2026-08-21T00:00:00Z",
-    "HIGH": "2026-08-21T00:00:00Z",
-    "absolute_sunset": "2026-08-21T00:00:00Z"
+    "CRITICAL": "2026-09-18T00:00:00Z",
+    "HIGH": "2026-09-18T00:00:00Z",
+    "absolute_sunset": "2026-09-18T00:00:00Z"
   },
   "images": {
     "backend": {
@@ -14,25 +14,25 @@
       "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
       "baseline_generated_from": {
         "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
-        "config_digest": "sha256:6ca482d304596efcddd6bd1a30c36868e9da1dc3c1e5672cf75199e3accc495f",
-        "image_id": "sha256:6ca482d304596efcddd6bd1a30c36868e9da1dc3c1e5672cf75199e3accc495f",
-        "image_ref": "local/consorcio-backend:48b69c890576d968cbe54fa858e34043fcfb1da2",
+        "config_digest": "sha256:ab6174a3c38810935d1f9f94ed82f0d2267e465ec272d40076a05ba116373b21",
+        "image_id": "sha256:7bb9c509c5f21332726416bd073625f9605b0f8c6e46f27bebf18360fb4c0d40",
+        "image_ref": "local/consorcio-backend:197fdbf6dc89981bf1dfa1626a8b2bfbadcc9138",
         "platform": "linux/amd64",
-        "platform_manifest_digest": "sha256:e5710a7ae12ec830be80fde0b8ae83c2b29cb12e97e98f1590831bbedaac0eca",
-        "report_sha256": "sha256:b799340b92552748d8fa68824e34843c6c1eb5702edccc1ba0ccd94e5f575d8c",
-        "scanned_at": "2026-08-18T19:24:38.082079655Z",
+        "platform_manifest_digest": "sha256:7f0cbca20f43cf654c8bf7e5442ddc4572ebe7c84bca4a269afb8a8f88fcb89c",
+        "report_sha256": "sha256:a156af189662f888c91197f748f09bdca494a08e868b4ec7c1caa87129f4c92f",
+        "scanned_at": "2026-08-22T18:24:06.939073084Z",
         "scanner": {
           "name": "trivy",
           "report_schema_version": 2,
           "version": "0.70.0",
           "vulnerability_db": {
-            "downloaded_at": "2026-08-18T19:07:07.503801079Z",
-            "next_update": "2026-08-19T12:56:24.164002506Z",
-            "updated_at": "2026-08-18T12:56:24.164002626Z",
+            "downloaded_at": "2026-08-22T18:23:52.572534288Z",
+            "next_update": "2026-08-23T12:57:22.518775968Z",
+            "updated_at": "2026-08-22T12:57:22.518776499Z",
             "version": 2
           }
         },
-        "source_revision": "48b69c890576d968cbe54fa858e34043fcfb1da2"
+        "source_revision": "197fdbf6dc89981bf1dfa1626a8b2bfbadcc9138"
       },
       "dockerfile": "gee-backend/Dockerfile",
       "findings": [
@@ -226,7 +226,7 @@
           "installed": "5.40.1-6",
           "pkg_id": "perl-base@5.40.1-6",
           "purl": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
-          "severity": "CRITICAL",
+          "severity": "HIGH",
           "status": "affected",
           "target": "<image> (debian 13.6)",
           "type": "debian"
