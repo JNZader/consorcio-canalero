@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -92,6 +92,7 @@ class GeoLayerListResponse(BaseModel):
     fuente: str
     formato: str
     area_id: Optional[str] = None
+    metadata_extra: Optional[dict[str, Any]] = None
     created_at: datetime
 
 
@@ -352,3 +353,11 @@ class ApprovedZonesDeleteResponse(BaseModel):
     when there was no active approved zoning to clear."""
 
     deleted: int
+
+
+class BasinCatastroMembershipResponse(BaseModel):
+    """Stable cadastral identifiers intersecting an operational basin."""
+
+    basin_id: uuid.UUID
+    feature_id_property: Literal["nomenclatura"] = "nomenclatura"
+    intersecting_feature_ids: list[str]

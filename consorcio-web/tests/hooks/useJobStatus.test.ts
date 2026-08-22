@@ -80,7 +80,7 @@ describe('useJobStatus', () => {
 
     await waitFor(() => expect(onCompleted).toHaveBeenCalledWith(completedResult), { timeout: 2500 });
 
-    expect(result.current.result).toEqual(completedResult);
+    await waitFor(() => expect(result.current.result).toEqual(completedResult));
     expect(result.current.error).toBeNull();
     expect(onCompleted).toHaveBeenCalledTimes(1);
   }, 5000);

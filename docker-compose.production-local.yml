@@ -1,0 +1,27 @@
+# Production-local override for B3-P. Keep docker-compose.yml dev/local.
+services:
+  pgbouncer:
+    # The base stack profiles the pooler out of development; production activates it.
+    profiles: !override []
+
+  backend:
+    build:
+      target: production
+    # Restore the image CMD; the base Compose reload command is development-only.
+    command: !reset null
+    environment:
+      # Set in production .env to the Caddy Docker DNS name, never a subnet CIDR.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS must name the Caddy proxy}
+    volumes: !override
+      # MonitoringService atomically updates this authoritative dataset.
+      - ./gee-backend/data/waterways:/app/data/waterways
+      - backend-cache:/app/.cache
+      - geo-data:/data/geo
+      - denuncia-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy

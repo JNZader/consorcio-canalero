@@ -900,3 +900,67 @@ yet activated.
 | SMTP (email verify, reset) | ☐ | `.env` SMTP_HOST / USERNAME / PASSWORD | 1.5 |
 | Backup encryption passphrase | ☐ | `.env` BACKUP_ENCRYPTION_PASSPHRASE (LOSE = backups unrecoverable) | 1.4 |
 | Restic passphrase | ☐ | `.env` RESTIC_PASSWORD (LOSE = backups unrecoverable) | 1.4 |
+
+#### 2.2.a B3-P backend deployment preparation (fail-closed)
+
+Do **not** use this package to deploy yet. It is a deterministic controller-side
+plan and read-only preflight; `execute` deliberately refuses after its three
+admission gates until the canary/cutover state machine receives its own review.
+It never accesses Biogas and never runs migrations, workers, geo-worker, Compose
+`down`, Docker cleanup, or Caddy/firewall changes.
+
+```bash
+python3 scripts/deploy_b3p.py preflight             # current-checkout admission only; never claims deploy-ready
+python3 scripts/deploy_b3p.py preflight --target-sha <40-lowercase-hex-sha>  # full readiness only when HEAD is that target
+python3 scripts/deploy_b3p.py plan --target-sha <40-lowercase-hex-sha>
+```
+
+Pinned connection defaults are Hetzner `javier@157.180.29.238:2222`, key
+`~/.ssh/hetzner_ghagga`, stack `/home/javier/stacks/consorcio`, repository
+`JNZader/consorcio-canalero`, and backend-only scope. Every plan or executor
+requires an operator-supplied exact lowercase 40-hex `--target-sha`; there is
+no future-release SHA default. The executor requires its configured target and
+CLI target to match exactly, verifies GitHub's `verification.verified=true` /
+`reason=valid`, runs read-only current-checkout admission, then fetches and
+ff-only advances to that target. While holding the deployment lock, it then
+rechecks the exact target HEAD, clean Git state, base Compose integrity, full
+production-local Compose contract, and actual backend mounts before any Docker
+build/tag/run/up. A failure there leaves runtime untouched; the clean repository
+may remain advanced at the target for recovery.
+
+The production-local selector is `docker compose -f docker-compose.yml -f
+docker-compose.production-local.yml`. It preserves `docker-compose.yml` as the
+dev/local stack. In the production `.env`, set `FORWARDED_ALLOW_IPS=caddy`:
+`caddy` is the intended Docker DNS peer, not a network CIDR.
+
+The preflight fails closed on its first non-zero read-only SSH gate and redacts
+credential-shaped output. It includes fresh branch/HEAD/status/staged/untracked/
+unfinished-operation, Compose/custom-prod/no-reload, exact normalized backend
+mounts, fetch/ancestry/collision/no-compose-or-Alembic, resources/port/live-image,
+and Consorcio+Biogas read-only baselines. Runtime volume names normalize exactly
+from `consorcio-backend-cache`, `consorcio-geo-data`, and
+`consorcio-denuncia-uploads`; extras, anonymous volumes, binds (including code,
+root, or Docker socket) fail. A future executable state machine must retain an
+immutable `OLD_ID` rollback tag, backup the Compose file, build backend only,
+canary on `127.0.0.1:18080`, require a local credentialed tunnel smoke (health,
+ready, anonymous 401, authenticated real-basin membership 200), bound/redact
+observations, and automatically restore the old image ID after failed cutover.
+
+#### 2.2.b B3-P executor slice
+
+This executor depends on the merged deployment-preflight slice. The existing
+`deploy_b3p.py plan` remains zero-subprocess by default. The executor is an
+explicit operation, never a replacement for the planner:
+
+```bash
+python3 scripts/deploy_b3p_executor.py --target-sha <merged-main-sha> --confirm DEPLOY-B3P --basin <real-basin-id>
+```
+
+It additionally requires local `CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE=1` and local
+`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`; credentials are not transferred in SSH
+arguments or written to evidence. It replays GitHub plus remote preflight before
+mutation, builds/backend-canaries only, tunnels loopback smoke, checks public
+health after cutover, and rolls back only post-cutover failures. It never runs
+migrations/workers/geo-worker, Compose down, prune, or global restarts; Biogas is
+captured before/after as a read-only equality baseline. Do not run it without an
+approved production change window and a real basin identifier.

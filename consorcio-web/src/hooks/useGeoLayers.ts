@@ -7,7 +7,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { API_URL, getAuthToken } from '../lib/api';
 import { queryKeys } from '../lib/query';
-import { useAuthStore } from '../stores/authStore';
+import { selectUserRole, useAuthStore } from '../stores/authStore';
+import { MULTI_HAZARD_ALLOWED_ROLES } from './useMultiHazardGate';
 
 /**
  * Variante de drenaje de una capa hidrologica:
@@ -32,6 +33,8 @@ export interface GeoLayerInfo {
   variante: VarianteCapa;
   /** Etiqueta lista para el selector, ya con el sufijo de variante si aplica. */
   label: string;
+  /** Extra metadata emitted by the backend (e.g. `mes` for `precip_normal`). */
+  metadata_extra?: Record<string, unknown>;
 }
 
 /** Prefijos de nombre con que el backend marca cada variante NO-operativa. */
@@ -95,6 +98,16 @@ const TILE_CAPABLE_TYPES = new Set([
   'flood_risk',
   'drainage_need',
 ]);
+
+export function findPrecipNormalLayer(
+  layers: readonly GeoLayerInfo[],
+  period: unknown
+): GeoLayerInfo | undefined {
+  const normalized = normalizePrecipNormalPeriod(period);
+  return normalized
+    ? dedupePrecipNormalLayers(layers).find((layer) => precipPeriod(layer) === normalized)
+    : undefined;
+}
 
 export function useGeoLayers() {
   const { loading: authLoading, initialized } = useAuthStore();
@@ -177,4 +190,78 @@ export function buildTileUrl(
   }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
+}
+
+
+export function selectDemLayers(layers: readonly GeoLayerInfo[]): GeoLayerInfo[] {
+  return layers
+    .filter((layer) => layer.tipo !== 'precip_normal' && TILE_CAPABLE_TYPES.has(layer.tipo))
+    .map((layer) => enrichLayer(layer));
+}
+
+function normalizePrecipNormalPeriod(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim().toLowerCase() === 'anual') return 'anual';
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(numeric) && numeric >= 1 && numeric <= 12
+    ? String(numeric).padStart(2, '0')
+    : undefined;
+}
+
+function precipPeriod(layer: GeoLayerInfo): string | undefined {
+  return layer.tipo === 'precip_normal'
+    ? normalizePrecipNormalPeriod(layer.metadata_extra?.mes)
+    : undefined;
+}
+
+export function dedupePrecipNormalLayers(layers: readonly GeoLayerInfo[]): GeoLayerInfo[] {
+  const latest = new Map<string, GeoLayerInfo>();
+  for (const layer of layers) {
+    const period = precipPeriod(layer);
+    if (!period) continue;
+    const existing = latest.get(period);
+    if (!existing || layer.created_at > existing.created_at) latest.set(period, layer);
+  }
+  return Array.from(latest.entries())
+    .sort(([left], [right]) => {
+      if (left === 'anual') return 1;
+      if (right === 'anual') return -1;
+      return left.localeCompare(right);
+    })
+    .map(([, layer]) => layer);
+}
+
+export function buildPrecipNormalCatalogEndpoint(token: string | null, role: unknown): string {
+  const canUseOperatorCatalog =
+    token !== null && MULTI_HAZARD_ALLOWED_ROLES.includes(role as (typeof MULTI_HAZARD_ALLOWED_ROLES)[number]);
+  const path = canUseOperatorCatalog ? '/api/v2/geo/layers' : '/api/v2/geo/layers/public';
+  return `${API_URL}${path}?limit=100&tipo=precip_normal&fuente=gee`;
+}
+
+export function usePrecipNormalLayers() {
+  const { loading: authLoading, initialized } = useAuthStore();
+  const role = useAuthStore(selectUserRole);
+  const authGateOpen = initialized && !authLoading;
+  const query = useQuery({
+    queryKey: [...queryKeys.geoLayers(), 'precip-normal'],
+    queryFn: async () => {
+      const token = await getAuthToken();
+      const endpoint = buildPrecipNormalCatalogEndpoint(token, role);
+      const canUseOperatorCatalog = endpoint.includes('/layers?');
+      const response = await fetch(endpoint, {
+        headers: canUseOperatorCatalog && token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error(`Error fetching precipitation layers: ${response.status}`);
+      const data = await response.json();
+      return dedupePrecipNormalLayers(data.items ?? []);
+    },
+    enabled: authGateOpen,
+    staleTime: 1000 * 60 * 5,
+  });
+  return {
+    layers: query.data ?? [],
+    loading: authLoading || query.isLoading,
+    error: query.error ? 'No se pudieron cargar las capas de precipitacion' : null,
+    reload: query.refetch,
+    enabled: authGateOpen,
+  };
 }

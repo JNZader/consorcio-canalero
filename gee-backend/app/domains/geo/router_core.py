@@ -9,11 +9,13 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
+from app.domains.geo.rescale_policy import validate_rescale
 from app.domains.geo.router_common import (
     _get_repo,
     _get_tile_client,
@@ -55,21 +57,32 @@ PUBLIC_TILE_CAPABLE_TYPES = {
     "terrain_class",
     "flood_risk",
     "drainage_need",
+    "precip_normal",
 }
 
 
 # Layer types published to anonymous visitors in production.
-# `terrain_class` (clasificación del terreno) se publica a pedido del consorcio
-# (2026-07-30); `flood_risk` y `drainage_need` (composites de riesgo/drenaje) se
-# publican como overlays raster del mapa de la ficha (2026-08-01). El resto de
-# los tipos del pipeline DEM sigue detrás de login.
-# Las subcuencas son otro endpoint (`/geo/basins`), ya público.
+# `terrain_class` was published at the consortium's request (2026-07-30).
+# `flood_risk` and `drainage_need` are raster overlays for the parcel map
+# (2026-08-01), and `precip_normal` exposes CHIRPS 1991-2020 normals for the
+# multi-hazard viewer (2026-08-17). Other DEM pipeline types remain private.
+# Basins are served by the separate public `/geo/basins` endpoint.
 PUBLIC_PRODUCTION_LAYER_TYPES = {
     "dem_raw",
     "terrain_class",
     "flood_risk",
     "drainage_need",
+    "precip_normal",
 }
+
+
+def _parse_rescale_query_value(name: str, value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{name} debe ser un valor numerico") from exc
 
 
 def _truthy_env_flag(name: str) -> bool:
@@ -87,6 +100,21 @@ def _public_map_layer_eval_enabled() -> bool:
     # bloqueados server-side por _is_production_env.
     return _truthy_env_flag("PUBLIC_MAP_LAYER_EVAL") and not _is_production_env(
         settings.environment
+    )
+
+
+def _public_layer_types() -> set[str]:
+    return (
+        PUBLIC_TILE_CAPABLE_TYPES
+        if _public_map_layer_eval_enabled()
+        else PUBLIC_PRODUCTION_LAYER_TYPES
+    )
+
+
+def _public_layer_source_filter():
+    return or_(
+        and_(GeoLayer.fuente == "dem_pipeline", GeoLayer.tipo != "precip_normal"),
+        and_(GeoLayer.fuente == "gee", GeoLayer.tipo == "precip_normal"),
     )
 
 
@@ -197,34 +225,33 @@ def list_public_geo_layers(
 ) -> PaginatedResponse[GeoLayerListResponse]:
     """List a safe public subset of geo layers.
 
-    Non-authenticated base visualization only. Always scoped to DEM-pipeline
-    layers, so this endpoint never becomes a general public metadata catalog
-    for every GeoLayer source.
+    Non-authenticated base visualization only. Publication is source/type
+    scoped, so this endpoint never becomes a general public metadata catalog.
 
     In production only `PUBLIC_PRODUCTION_LAYER_TYPES` is exposed; the local
     review flag widens the set to every tile-capable type.
     """
-    eval_enabled = _public_map_layer_eval_enabled()
-    allowed_types = PUBLIC_TILE_CAPABLE_TYPES if eval_enabled else PUBLIC_PRODUCTION_LAYER_TYPES
+    allowed_types = _public_layer_types()
     if tipo and tipo not in allowed_types:
         return PaginatedResponse[GeoLayerListResponse].create(
             items=[], total=0, page=page, limit=limit
         )
-    # `fuente` is accepted for client symmetry with /layers, but the only
-    # publishable source is the DEM pipeline: anything else is an empty page.
-    if fuente and fuente != "dem_pipeline":
+    # Terrain products come from the DEM pipeline; CHIRPS normals are
+    # registered by their production generator as GEE layers.
+    if fuente and fuente not in {"dem_pipeline", "gee"}:
         return PaginatedResponse[GeoLayerListResponse].create(
             items=[], total=0, page=page, limit=limit
         )
 
     query = db.query(GeoLayer).filter(
-        GeoLayer.fuente == "dem_pipeline",
-        GeoLayer.tipo.in_(allowed_types),
+        GeoLayer.tipo.in_(allowed_types), _public_layer_source_filter()
     )
     if tipo:
         query = query.filter(GeoLayer.tipo == tipo)
     if area_id:
         query = query.filter(GeoLayer.area_id == area_id)
+    if fuente:
+        query = query.filter(GeoLayer.fuente == fuente)
     total = query.count()
     items = query.order_by(GeoLayer.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
@@ -342,6 +369,9 @@ async def proxy_tile(
     hide_classes: Optional[str] = Query(default=None),
     hide_ranges: Optional[str] = Query(default=None),
     terrain_smoothing: Optional[str] = Query(default=None),
+    rescale_min: Optional[str] = Query(default=None),
+    rescale_max: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
 ):
     """Proxy tile requests to the geo-worker tile service (public).
 
@@ -363,6 +393,26 @@ async def proxy_tile(
 
     _cors = {"Access-Control-Allow-Origin": "*"}
 
+    parsed_rescale_min = _parse_rescale_query_value("rescale_min", rescale_min)
+    parsed_rescale_max = _parse_rescale_query_value("rescale_max", rescale_max)
+    # Reject globally unsupported public ranges before any layer existence check.
+    validate_rescale("precip_normal", parsed_rescale_min, parsed_rescale_max)
+    canonical_rescale = None
+    if parsed_rescale_min is not None:
+        layer = (
+            db.query(GeoLayer)
+            .filter(
+                GeoLayer.id == layer_id,
+                GeoLayer.tipo.in_(_public_layer_types()),
+                _public_layer_source_filter(),
+            )
+            .one_or_none()
+        )
+        if layer is None:
+            raise HTTPException(status_code=404, detail="Geo layer no encontrado")
+        layer_tipo = getattr(layer.tipo, "value", layer.tipo)
+        canonical_rescale = validate_rescale(layer_tipo, parsed_rescale_min, parsed_rescale_max)
+
     # x/y must be inside the pyramid for this zoom; outside is "no tile here",
     # which is exactly what the upstream answers for an out-of-bounds tile.
     if x >= 2**z or y >= 2**z:
@@ -380,6 +430,8 @@ async def proxy_tile(
         params["hide_ranges"] = hide_ranges
     if terrain_smoothing:
         params["terrain_smoothing"] = terrain_smoothing
+    if canonical_rescale is not None:
+        params["rescale_min"], params["rescale_max"] = canonical_rescale
 
     upstream_url = f"{settings.geo_worker_tile_url}/tiles/{layer_id}/{z}/{x}/{y}.png"
 

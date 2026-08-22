@@ -34,6 +34,13 @@ import { syncMartinSuggestionLayers } from './mapRasterOverlayHelpers';
 const COMPARISON_SOURCE_ID = 'comparison-left';
 const COMPARISON_LAYER_ID = 'comparison-left-layer';
 
+/**
+ * Vector layers rendered in the side-by-side comparison overlay.
+ *
+ * Deliberately excludes raster-only UI ids (e.g. `precip_normal`): the
+ * comparison view shows exactly ONE raster tile layer on the left
+ * (`leftTileUrl`), not the normal map's collection of raster overlays.
+ */
 export const COMPARISON_RENDERABLE_UI_LAYER_IDS = [
   'basins',
   'approved_zones',

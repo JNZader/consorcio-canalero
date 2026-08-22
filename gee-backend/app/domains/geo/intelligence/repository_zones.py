@@ -7,10 +7,31 @@ from typing import Any, Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.domains.geo.intelligence.models import IndiceHidrico, ZonaOperativa
+from app.domains.geo.intelligence.models import IndiceHidrico, ParcelaCatastro, ZonaOperativa
 
 
 class IntelligenceRepositoryZonesMixin:
+    def get_catastro_membership_by_basin(
+        self, db: Session, basin_id: uuid.UUID
+    ) -> list[str] | None:
+        """Return parcel identifiers whose interiors meet the basin interior."""
+        basin_exists = db.execute(
+            select(ZonaOperativa.id).where(ZonaOperativa.id == basin_id)
+        ).scalar_one_or_none()
+        if basin_exists is None:
+            return None
+
+        basin_geometry = (
+            select(ZonaOperativa.geometria).where(ZonaOperativa.id == basin_id).scalar_subquery()
+        )
+        statement = (
+            select(ParcelaCatastro.nomenclatura)
+            .where(func.ST_Relate(ParcelaCatastro.geometria, basin_geometry, "T********"))
+            .distinct()
+            .order_by(ParcelaCatastro.nomenclatura)
+        )
+        return sorted(set(db.execute(statement).scalars().all()))
+
     def _paginated_results(
         self, db: Session, base_stmt, *, page: int, limit: int, order_by
     ) -> tuple[list[Any], int]:
