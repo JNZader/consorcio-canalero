@@ -65,8 +65,36 @@ def _create_throwaway_database(base_url: str) -> tuple[str, str]:
     fresh_engine = create_engine(fresh_url, isolation_level="AUTOCOMMIT")
     with fresh_engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        for statement in _PREREQUISITES_0022:
+            conn.execute(text(statement))
     fresh_engine.dispose()
     return fresh_url, dbname
+
+
+#: The three objects `0022_add_cruce_camino` references, recreated as the
+#: narrowest possible stubs.
+#:
+#: `conocimiento_005` chains onto `0022_add_cruce_camino` rather than
+#: `conocimiento_004`, because `0021_add_red_vial` had already chained onto
+#: `conocimiento_004` and a second child there forks the tree into two heads (see
+#: that migration's docstring, and `test_single_alembic_head` below). The
+#: consequence lands here: upgrading to `conocimiento_005` now necessarily walks
+#: `0021` and `0022`, and `0022`'s `CREATE TABLE` references `red_vial` (which
+#: `0021` creates, so that one is covered), plus `geo_jobs`, `canal_consorcio` and
+#: the `tipo_geo_job` enum — all created by migrations far below `lluvia_v2_005`,
+#: which this fixture deliberately *stamps* rather than replays (`pgrouting` is
+#: absent from the test image; see `throwaway_db`).
+#:
+#: Stubs, not the real DDL, on purpose: nothing in these tests reads or writes
+#: these tables, they exist only so the foreign keys and the `ALTER TYPE` resolve.
+#: Copying the real definitions would be a second source of truth that drifts.
+#: `0021`/`0022` have their own real-PG tests (`test_red_vial_migration`,
+#: `test_cruce_camino_migration`) against a properly built schema.
+_PREREQUISITES_0022: tuple[str, ...] = (
+    "CREATE TYPE tipo_geo_job AS ENUM ('placeholder')",
+    "CREATE TABLE geo_jobs (id UUID PRIMARY KEY)",
+    "CREATE TABLE canal_consorcio (id TEXT PRIMARY KEY)",
+)
 
 
 def _drop_database(base_url: str, dbname: str) -> None:
@@ -79,21 +107,20 @@ def _drop_database(base_url: str, dbname: str) -> None:
 
 _PRIOR_HEAD = "lluvia_v2_005"  # the head this slice's migrations chain onto
 
-#: The target these tests upgrade to — the conocimiento chain's own head, NOT
-#: ``"head"``.
+#: The target these tests upgrade to, named explicitly rather than as ``"head"``.
 #:
-#: ``"head"`` was a convenience that quietly took on the prerequisites of every
-#: migration anyone later stacks on top. The fixture deliberately does not replay
-#: full history (``pgrouting`` is absent from the test image), so it hands those
-#: later migrations a database that is *stamped* as complete while being
-#: physically empty: no ``geo_jobs``, no ``canal_consorcio``, no ``tipo_geo_job``.
-#: ``0021_add_red_vial`` survived that only by having no dependencies of its own;
-#: ``0022_add_cruce_camino`` legitimately references all three, so under
-#: ``"head"`` these tests would fail for a reason that has nothing to do with the
-#: RAG migrations they exist to check. Naming the target fixes the scope to what
-#: is actually under test and stops the file breaking on unrelated work. Those
-#: migrations have their own real-PG tests (``test_red_vial_migration``,
-#: ``test_cruce_camino_migration``), so nothing is left unchecked.
+#: ``conocimiento_005`` happens to be the tree's single head today, but naming it
+#: is not redundancy: ``"head"`` silently retargets onto whatever anyone stacks on
+#: top next, and the fixture *stamps* rather than replays history, so a future
+#: migration's prerequisites would arrive here as an unexplained failure in a file
+#: about RAG. Naming the revision fixes the scope to what is under test.
+#:
+#: What it does NOT do is dodge prerequisites: since ``conocimiento_005`` chains
+#: onto ``0022_add_cruce_camino``, reaching it walks ``0021`` and ``0022`` too.
+#: ``0021`` has no dependencies; ``0022``'s three are stubbed in
+#: ``_PREREQUISITES_0022`` above. Both have their own real-PG tests
+#: (``test_red_vial_migration``, ``test_cruce_camino_migration``) against a
+#: properly built schema, so nothing is left unchecked.
 _CONOCIMIENTO_HEAD = "conocimiento_005"
 
 
@@ -131,6 +158,35 @@ def throwaway_db(monkeypatch):
 
     engine.dispose()
     _drop_database(settings.database_url, dbname)
+
+
+def test_single_alembic_head():
+    """The revision tree must have exactly ONE head.
+
+    This slice shipped `conocimiento_005` with `down_revision =
+    "conocimiento_004"` while `0021_add_red_vial` was already chained there, and
+    every migration test in this file stayed green: they upgrade to an *explicit*
+    revision (`_CONOCIMIENTO_HEAD`), and naming a revision resolves against one
+    branch of a fork exactly as happily as against a linear chain. A fork is
+    invisible to anything that never asks for "the" head.
+
+    Production asks. `alembic upgrade head` refuses to run against multiple heads,
+    so the deploy step simply stops; and `check_alembic_health_sync` calls
+    `ScriptDirectory.get_current_head()`, which raises `MultipleHeads` — turning
+    the healthcheck itself into the outage. The only cheap guard is to ask the
+    tree the question directly, with no database involved.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    heads = ScriptDirectory.from_config(Config(str(ALEMBIC_INI_PATH))).get_heads()
+
+    assert len(heads) == 1, (
+        f"the alembic tree has forked into {len(heads)} heads ({sorted(heads)}); "
+        "`alembic upgrade head` and check_alembic_health_sync both fail on this. "
+        "Chain the newest revision onto the current tip instead of onto a "
+        "revision that already has a child."
+    )
 
 
 def test_upgrade_head_creates_three_tables(throwaway_db):

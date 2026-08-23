@@ -33,8 +33,18 @@ run. What is lost is the class and its evidence, both rebuilt by re-running
 ingest — the same recovery path migration 004 documents for its provenance
 columns.
 
+**Why this revises `0022_add_cruce_camino` and not `conocimiento_004`.** The
+conocimiento chain is not the only thing stacked on `conocimiento_004`:
+`0021_add_red_vial` already chains onto it and `0022_add_cruce_camino` onto
+`0021`. Pointing this revision at `conocimiento_004` too would fork the tree into
+two heads (`0022_add_cruce_camino` and `conocimiento_005`), and a forked tree is
+not a cosmetic problem — `alembic upgrade head` refuses to run against multiple
+heads, and `ScriptDirectory.get_current_head()` (which
+`app.core.health.check_alembic_health_sync` and its test rely on) raises. So this
+revision chains onto the current tip of the whole tree, wherever that tip lives.
+
 Revision ID: conocimiento_005
-Revises: conocimiento_004
+Revises: 0022_add_cruce_camino
 """
 
 from typing import Sequence, Union
@@ -43,7 +53,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "conocimiento_005"
-down_revision: Union[str, None] = "conocimiento_004"
+down_revision: Union[str, None] = "0022_add_cruce_camino"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
