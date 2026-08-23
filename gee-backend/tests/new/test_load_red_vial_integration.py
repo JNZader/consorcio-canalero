@@ -437,6 +437,34 @@ class TestMultiPartAdmission:
         survivors = {r.id: (r.parte, r.geom_hash) for r in _rows(db) if r.activo}
         assert survivors == {k: v for k, v in before.items() if k != lowest_id}
 
+    #: Two lineages' worth of geometry where the ``parte`` ordinals deliberately
+    #: do NOT follow x order: ``B`` is loaded alone first (so it takes parte 1)
+    #: and the lower-x ``A`` arrives later (parte 2). Positional pairing of the
+    #: report would therefore cross the two splits below.
+    A = [[-62.50, -32.50], [-62.49, -32.50]]
+    B = [[-62.40, -32.40], [-62.39, -32.40]]
+    NEAR_A = [[-62.495, -32.50], [-62.485, -32.50]]
+    NEAR_B = [[-62.395, -32.40], [-62.385, -32.40]]
+
+    def test_the_split_report_pairs_by_geometry_not_by_list_position(self, db: Session):
+        """RDD review R2: the audit line must name the nearest pair, with a real distance."""
+        self._load(db, [self.B])
+        self._load(db, [self.A, self.B])
+        assert {r.id: r.parte for r in _rows(db)} == {"13680": 1, "13680#2": 2}
+
+        result = self._load(db, [self.NEAR_A, self.NEAR_B])
+
+        assert len(result.splits) == 2
+        starts = {
+            r.id: r.x
+            for r in db.execute(text("SELECT id, ST_X(ST_StartPoint(geom)) AS x FROM red_vial"))
+        }
+        for split in result.splits:
+            # Nearest pair: a crossed pairing would be ~0.095° apart, not ~0.005°.
+            assert abs(starts[split.new_id] - starts[split.retired_id]) < 0.01, split
+            assert split.hausdorff_m is not None and split.hausdorff_m < 1000, split
+        assert "no medible" not in result.render()
+
     def test_a_three_part_feature_lands_as_three_rows(self, db: Session):
         three = [
             [[-62.50, -32.50], [-62.49, -32.50]],
@@ -448,6 +476,45 @@ class TestMultiPartAdmission:
         )
         assert result.multipart == [("13680", 3)]
         assert [r.id for r in _rows(db)] == ["13680", "13680#2", "13680#3"]
+
+
+class TestRollbackContract:
+    """The loader's headline safety contract, proved rather than narrated.
+
+    RDD review R3: "any assertion failure → ROLLBACK → exit 3, the table left in
+    its prior state" had no test at any level. Both cases below drive the REAL
+    ``load()`` against a table that already holds a row, and both put a
+    *successful* write before the failing one — so a broken rollback would show
+    up as a moved ``ultima_carga_en`` even when no row was added.
+    """
+
+    #: An empty MultiLineString: ``ST_Dump`` yields zero parts, so the real
+    #: ``explode_parts`` aborts. Verified against PostGIS rather than assumed.
+    IRREPARABLE: list = []
+
+    @pytest.mark.parametrize("failure", ["geometria irreparable", "conteo de filas"])
+    def test_a_failed_load_leaves_every_prior_row_byte_identical(self, db: Session, failure: str):
+        good = source_feature("28188", NEAR)
+        loader.load(db, [good], dry_run=False)
+        before = [tuple(r) for r in _rows(db)]
+        assert len(before) == 1
+
+        if failure == "geometria irreparable":
+            doomed = [
+                good,
+                source_feature("27371", self.IRREPARABLE, geometry_type="MultiLineString"),
+            ]
+        else:
+            # A duplicated source feature: two loaded keys, one stored row —
+            # assertion 1 catches the inconsistency after a write has happened.
+            doomed = [good, good]
+
+        with pytest.raises(loader.EtlAssertionError):
+            loader.load(db, doomed, dry_run=False)
+
+        # Same rows, same ids, same partes, same hashes, same activo, same
+        # ultima_carga_en — and no new row.
+        assert [tuple(r) for r in _rows(db)] == before
 
 
 class TestDryRun:

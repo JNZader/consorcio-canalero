@@ -494,13 +494,56 @@ class Split:
     source_id: str
     retired_id: str
     new_id: str
-    hausdorff_m: float
+    hausdorff_m: float | None
 
     def render(self) -> str:
-        return (
-            f"    - source_id={self.source_id}: {self.retired_id} → {self.new_id} "
-            f"(Hausdorff {self.hausdorff_m:.0f} m > {MATERIAL_CHANGE_M:.0f} m)"
+        # ``None`` when ST_HausdorffDistance returned NULL for the pair: an
+        # unmeasurable distance is reported as such, never as ``inf``.
+        distancia = (
+            "Hausdorff no medible"
+            if self.hausdorff_m is None
+            else f"Hausdorff {self.hausdorff_m:.0f} m > {MATERIAL_CHANGE_M:.0f} m"
         )
+        return f"    - source_id={self.source_id}: {self.retired_id} → {self.new_id} ({distancia})"
+
+
+def _pair_splits(
+    source_id: str,
+    retired: Sequence[Any],
+    inserted: Sequence[tuple[Part, str]],
+    distances: dict[tuple[str, int], float],
+) -> list[Split]:
+    """Pair each retired row with the geometrically NEAREST new part.
+
+    Pairing by list position — which this reporter did until the RDD review —
+    contradicts the identity rule the rest of the loader follows: with more than
+    one retirement and more than one new part the printed
+    ``retired_id → new_id`` was arbitrary, and its distance fell back to ``inf``
+    because ``distances`` is keyed on the geometric pair that positional pairing
+    need not have produced. Greedy ascending, same deterministic tie-break as
+    :func:`_match_parts`, so the audit line always names the nearest pair and
+    always prints the distance actually measured for it.
+    """
+    rows, news = list(retired), list(inserted)
+    splits: list[Split] = []
+
+    for _, row_id, parte in sorted(
+        (distances[(row.id, part.parte)], row.id, part.parte)
+        for row in rows
+        for part, _ in news
+        if (row.id, part.parte) in distances
+    ):
+        row = next((r for r in rows if r.id == row_id), None)
+        entry = next((e for e in news if e[0].parte == parte), None)
+        if row is not None and entry is not None:
+            splits.append(Split(source_id, row.id, entry[1], distances[(row.id, parte)]))
+            rows.remove(row)
+            news.remove(entry)
+
+    # Leftovers: no measurable distance between them, so no pair can be claimed
+    # to be the nearest one. Reported, with the distance named as unmeasurable.
+    splits.extend(Split(source_id, row.id, new_id, None) for row, (_, new_id) in zip(rows, news))
+    return splits
 
 
 def _match_parts(
@@ -598,9 +641,11 @@ def upsert_features(db: Session, features: Sequence[SourceFeature]) -> UpsertOut
         used_partes = {row.parte for row in lineage}
         taken_pks = _lineage_pks(db, feature.source_id)
         # Unmatched incoming = new part; unmatched active row = gone. Both at
-        # once is the D1 split, reported as such. The retirement itself is left
-        # to ``retire_absent``: every key missing from ``loaded_keys``.
-        for index, part in enumerate(unmatched_parts):
+        # once is the D1 split, reported as such by ``_pair_splits``. The
+        # retirement itself is left to ``retire_absent``: every key missing from
+        # ``loaded_keys``.
+        inserted: list[tuple[Part, str]] = []
+        for part in unmatched_parts:
             new_id = next_free_pk(feature.source_id, taken_pks)
             parte = next_free_parte(used_partes)
             taken_pks.add(new_id)
@@ -608,16 +653,9 @@ def upsert_features(db: Session, features: Sequence[SourceFeature]) -> UpsertOut
             db.execute(_INSERT, _row_params(feature, part, new_id, parte))
             outcome.loaded_keys.append((feature.source_id, parte))
             outcome.inserted += 1
-            if index < len(unmatched_rows):
-                retired = unmatched_rows[index]
-                outcome.splits.append(
-                    Split(
-                        source_id=feature.source_id,
-                        retired_id=retired.id,
-                        new_id=new_id,
-                        hausdorff_m=distances.get((retired.id, part.parte), float("inf")),
-                    )
-                )
+            inserted.append((part, new_id))
+
+        outcome.splits.extend(_pair_splits(feature.source_id, unmatched_rows, inserted, distances))
 
     return outcome
 
