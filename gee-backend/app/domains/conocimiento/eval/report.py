@@ -513,6 +513,10 @@ def _a_json(
             "metricas": {
                 "n_respondibles": corrida.metricas.n_respondibles,
                 "hit_rate_at_5": corrida.metricas.hit_rate_at_5,
+                # Re-ratified 2026-08-23: hit@10 is scored as its own bar, so it
+                # is published as its own figure. A bar whose number does not
+                # appear in the JSON is a verdict nobody can re-derive.
+                "hit_rate_at_10": corrida.metricas.hit_rate_at_10,
                 "mrr": corrida.metricas.mrr,
                 "citation_precision": corrida.metricas.citation_precision,
                 "n_citation_precision": corrida.metricas.n_citation_precision,

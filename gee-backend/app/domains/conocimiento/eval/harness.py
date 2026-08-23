@@ -73,10 +73,31 @@ LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
 #: there and every item stays in every denominator.
 MODOS_SIN_ALCANCE_LEXICO = ("vector",)
 
-#: The owner's ratified bars (retrieval spec, `Go/No-Go Thresholds`).
-BARRA_HIT_RATE = 0.85
-BARRA_MRR = 0.70
-BARRA_CITATION_PRECISION = 1.0
+#: The owner's RE-RATIFIED bars (`design.md:1141-1145`, amendment of 2026-08-23),
+#: fixed against 116 measured configurations rather than proposed in advance.
+#:
+#: They moved DOWN from the V0 aspirations (hit@5 0.85, MRR 0.70,
+#: citation-precision 1.00) and the honest reason is recorded here rather than
+#: buried in a commit message: those figures were written before anything had
+#: been measured, and citation-precision = 1.00 is unreachable BY CONSTRUCTION on
+#: this gold set — several items expect two citations where the corpus offers a
+#: third, equally correct one. A bar nothing can clear does not protect quality,
+#: it just guarantees a NO-GO that gets waived.
+#:
+#: The two bars that did NOT move are the two that cannot be traded:
+#: norma-vs-secundaria and vigencia-correctness stay at 1.00, both measured clear
+#: at B50, and they are what stops a consultant's report or a derogated article
+#: from being served as live law. The per-document cap was rejected for breaking
+#: exactly the second of them (0.793 hit@5 against 0.333 vigencia).
+#:
+#: The honesty rider travels with these numbers: the gold set is 29 answerable
+#: questions, so ONE question is worth 0.034 hit@5, and the B50 family reads as
+#: ≈0.72–0.76. Growing the gold set (follow-up F2) is what would make these bars
+#: sharper; lowering them again is not.
+BARRA_HIT_RATE = 0.72
+BARRA_HIT_RATE_10 = 0.80
+BARRA_MRR = 0.55
+BARRA_CITATION_PRECISION = 0.33
 BARRA_SEPARACION = 1.0
 BARRA_VIGENCIA = 1.0
 
@@ -87,6 +108,18 @@ BARRA_VIGENCIA = 1.0
 #: stopping a stale or foreign file from resolving 26 questions is that the file
 #: says which set it belongs to and we read it.
 NOMBRE_GOLD_SET = "gold_set.yaml"
+
+
+class SenalAbstencionNoRatificada(RuntimeError):
+    """This mode has no ratified abstention signal, so none is improvised.
+
+    Raised for a mode that carries no fused score — today only `bm25_ce`.
+    Abstention bars are an OPEN owner decision (0.1) precisely because the
+    measured candidate signal, reranker confidence, is worse than the cosine one
+    it would replace. Refusing beats defaulting: a threshold selected from an
+    unratified signal would still print a number, and the number would decide a
+    go/no-go nobody chose.
+    """
 
 
 class GoldSetInvalido(RuntimeError):
@@ -570,7 +603,23 @@ def _escala_de_senal(resultado: ResultadoRecuperacion) -> tuple[list[float], str
         if not any(valor is None for valor in crudos):
             nombre = FUENTE_FTS if resultado.modo == "fts" else FUENTE_VECTOR
             return [float(valor) for valor in crudos if valor is not None], nombre
-    return [hit.score_rrf for hit in resultado.hits], FUENTE_RRF
+    crudos_rrf = [hit.score_rrf for hit in resultado.hits]
+    if any(valor is None for valor in crudos_rrf):
+        # `bm25_ce` gets here: it fuses nothing, so it carries no RRF score, and
+        # its only candidate signal is the cross-encoder's — which the campaign
+        # measured as WORSE than cosine for abstention (LOOCV precision 0.489 at
+        # recall 1.000). Decision 0.1 is explicitly OPEN by owner decision, and
+        # falling back to "whatever number this run happens to carry" would be
+        # picking a side in code (`design.md:1145-1148`, amendment A6).
+        raise SenalAbstencionNoRatificada(
+            f"modo {resultado.modo!r} carries no fused score, and no abstention "
+            "signal has been ratified for it. Owner decision 0.1 is open: the "
+            "options on the table are relaxing recall to >= 0.90 or building a "
+            "different signal. Until one is chosen this arm's abstention pair is "
+            "not-evaluable, and inventing one here would set the gate to whatever "
+            "the system already does."
+        )
+    return [float(valor) for valor in crudos_rrf if valor is not None], FUENTE_RRF
 
 
 def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbstencion:
@@ -841,7 +890,7 @@ def decidir_go_no_go(
     forzar_evaluable: bool = False,
     minimo_respondibles: int = MINIMO_RESPONDIBLES,
 ) -> GoNoGo:
-    """Score the seven bars. The abstention pair reads the HELD-OUT figures.
+    """Score the eight bars. The abstention pair reads the HELD-OUT figures.
 
     `forzar_evaluable` exists for tests that need the bar arithmetic without a
     52-item fixture. It is not exposed on the CLI, because "evaluate anyway" is
@@ -853,12 +902,21 @@ def decidir_go_no_go(
 
     barras = (
         Barra("hit-rate@5", metricas.hit_rate_at_5, BARRA_HIT_RATE, ">=", "answerable subset"),
+        Barra(
+            "hit-rate@10",
+            metricas.hit_rate_at_10,
+            BARRA_HIT_RATE_10,
+            ">=",
+            "answerable subset",
+        ),
         Barra("MRR", metricas.mrr, BARRA_MRR, ">=", "answerable subset"),
+        # `>=`, not `==`: the re-ratified bar is a floor at 0.33, because 1.00 is
+        # unreachable by construction on this gold set.
         Barra(
             "citation-precision",
             metricas.citation_precision,
             BARRA_CITATION_PRECISION,
-            "==",
+            ">=",
             "answerable subset",
         ),
         Barra(

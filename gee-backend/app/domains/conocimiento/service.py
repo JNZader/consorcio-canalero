@@ -28,6 +28,12 @@ from app.domains.conocimiento.expectations import CorpusExpectations, load_expec
 from app.domains.conocimiento.fusion import RRF_K, reciprocal_rank_fusion
 from app.domains.conocimiento.gates import GateReport, run_all_gates
 from app.domains.conocimiento.parser import Unidad, parse_document
+from app.domains.conocimiento.recuperacion.bm25 import (
+    PROFUNDIDAD_CANDIDATOS,
+    lexemas_de_consulta,
+    obtener_indice,
+)
+from app.domains.conocimiento.recuperacion.reranker import Candidato, Reranker, ordenar_por_ce
 from app.domains.conocimiento.repository import (
     # Deliberate re-export (the redundant alias is how ruff is told so). The eval
     # package may not import `repository` (design.md D4) and still has to print
@@ -45,6 +51,7 @@ from app.domains.conocimiento.repository import (
     hydrate_citations,
     leer_procedencia,
     require_vector_support,
+    textos_indexados,
     vector_search,
 )
 from app.domains.conocimiento.schemas import CitaRecuperada, ResultadoRecuperacion
@@ -180,7 +187,18 @@ def texto_sha256(texto: str) -> str:
 # Retrieval — one code path, three modes (design.md D4)
 # ---------------------------------------------------------------------------
 
-MODOS = ("fts", "vector", "hybrid")
+#: `fts`, `vector` and `hybrid` are the published V0 ablation and stay exactly as
+#: they were — they are the baseline `bm25_ce` is measured AGAINST, and an
+#: ablation whose baseline arm no longer runs is a claim rather than a
+#: comparison. `bm25_ce` is the ratified serving configuration `B50`
+#: (`design.md:1125-1139`): real BM25 candidates, cross-encoder ranking, no
+#: vector leg anywhere in it.
+MODOS = ("fts", "vector", "hybrid", "bm25_ce")
+
+#: The modes that fuse two legs by RRF. `bm25_ce` is deliberately not one of
+#: them: it has a single candidate leg and a ranker, and there is nothing to
+#: fuse.
+MODOS_RRF = ("fts", "vector", "hybrid")
 
 
 class EmbedderRequerido(RuntimeError):
@@ -347,6 +365,94 @@ def verificar_embedder(db: Session, corpus_sha: str, embedder: Embedder) -> None
         )
 
 
+class RerankerRequerido(RuntimeError):
+    """`modo="bm25_ce"` was asked for without a ranker to run it.
+
+    A sibling of `EmbedderRequerido` and a refusal for the same reason: returning
+    the BM25 order under the `bm25_ce` label would publish the candidate leg as
+    if it were the ratified configuration. BM25 alone is candidate GENERATION; it
+    was never measured as a ranking.
+    """
+
+
+def _recuperar_bm25_ce(
+    db: Session,
+    corpus_sha: str,
+    pregunta: str,
+    *,
+    k: int,
+    reranker: Reranker,
+    profundidad: int,
+) -> ResultadoRecuperacion:
+    """The ratified `B50` path: BM25 top-50 over norma units, then the CE.
+
+    Three properties are contracts rather than implementation details:
+
+    * **no vector column is read**, at all — the vector leg is out of candidate
+      generation (`design.md:1129-1131`) and the stored corpus vectors have no
+      serving consumer on this path;
+    * **the order is the cross-encoder's alone** — the BM25 score selected the
+      pool and is carried for disclosure, never blended (`design.md:1136-1138`);
+    * **no per-document cap** — REJECTED at ratification because it lifts hit@5
+      to 0.793 while collapsing vigencia-correctness to 0.333
+      (`design.md:1138-1139`).
+    """
+    indice = obtener_indice(db, corpus_sha)
+    lexemas = lexemas_de_consulta(db, pregunta)
+    candidatos = indice.buscar(lexemas, limite=profundidad)
+
+    textos = textos_indexados(db, corpus_sha, [hit.citation_key for hit in candidatos])
+    faltantes = [hit.citation_key for hit in candidatos if hit.citation_key not in textos]
+    if faltantes:
+        # Same failure the fused path names on hydration: a key the index holds
+        # and the table does not means the snapshot moved under the query.
+        raise IngestionAbort(
+            f"{', '.join(faltantes)} are in the BM25 index of snapshot {corpus_sha} "
+            "but have no row. The snapshot changed mid-query."
+        )
+
+    ordenados = ordenar_por_ce(
+        reranker,
+        pregunta,
+        [
+            Candidato(citation_key=hit.citation_key, texto_indexado=textos[hit.citation_key])
+            for hit in candidatos
+        ],
+    )[:k]
+
+    por_bm25 = _leg_map(candidatos)
+    provenance = hydrate_citations(db, corpus_sha, [clave for clave, _ in ordenados])
+
+    hits: list[CitaRecuperada] = []
+    for citation_key, score_ce in ordenados:
+        fila = provenance.get(citation_key)
+        if fila is None:
+            raise IngestionAbort(
+                f"{citation_key} ranked in snapshot {corpus_sha} but has no row. "
+                "The snapshot changed mid-query."
+            )
+        en_bm25 = por_bm25[citation_key]
+        hits.append(
+            CitaRecuperada(
+                **fila,
+                score_ce=score_ce,
+                rango_bm25=en_bm25.rango,
+                valor_bm25=en_bm25.valor,
+            )
+        )
+
+    return ResultadoRecuperacion(
+        corpus_sha=corpus_sha,
+        pregunta=pregunta,
+        modo="bm25_ce",
+        k=k,
+        hits=hits,
+        n_bm25=len(candidatos),
+        reranker_modelo=reranker.model_id,
+        reranker_sintetico=reranker.sintetico,
+    )
+
+
 def recuperar(
     db: Session,
     corpus_sha: str,
@@ -355,10 +461,19 @@ def recuperar(
     modo: str = "hybrid",
     k: int = 10,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
     limite_leg: int = LEG_LIMIT,
     rrf_k: int = RRF_K,
+    profundidad_candidatos: int = PROFUNDIDAD_CANDIDATOS,
 ) -> ResultadoRecuperacion:
-    """Run the requested legs, fuse by RRF, return fully attributed citations.
+    """Run the requested legs and return fully attributed citations.
+
+    Two shapes live behind one entry point. `fts`, `vector` and `hybrid` are the
+    published V0 ablation: independent legs, RRF fusion, unchanged. `bm25_ce` is
+    the ratified serving configuration and does not fuse at all — BM25 selects
+    fifty norma candidates and the cross-encoder orders them (`_recuperar_bm25_ce`).
+    The fused path below is NOT dead code kept for sentiment: it is the baseline
+    the ratified configuration's numbers are quoted against.
 
     Determinism is a property of the whole chain and every link carries part of
     it: each leg sorts by `citation_key` as its secondary key, fusion sorts by
@@ -376,6 +491,24 @@ def recuperar(
     """
     if modo not in MODOS:
         raise ValueError(f"unknown modo {modo!r} (expected one of {MODOS})")
+
+    if modo == "bm25_ce":
+        if reranker is None:
+            raise RerankerRequerido(
+                "modo='bm25_ce' needs a reranker: BM25 selects the candidate pool "
+                "and the cross-encoder is what ranks it. Returning the BM25 order "
+                "alone would publish candidate generation as if it were the "
+                "ratified B50 configuration."
+            )
+        return _recuperar_bm25_ce(
+            db,
+            corpus_sha,
+            pregunta,
+            k=k,
+            reranker=reranker,
+            profundidad=profundidad_candidatos,
+        )
+
     if modo in ("vector", "hybrid") and embedder is None:
         raise EmbedderRequerido(
             f"modo={modo!r} needs an embedder to turn the question into a query "

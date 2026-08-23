@@ -45,6 +45,11 @@ from typing import Sequence
 #: the failure this module exists to prevent.
 HIT_RATE_K = 5
 
+#: The second, wider depth the re-ratified bars score (`design.md:1141-1145`).
+#: It is the served page size, so `hit@10` is "was the answer reachable at all in
+#: what the reader was given", against `hit@5`'s "was it near the top".
+HIT_RATE_K_AMPLIO = 10
+
 #: Items with this `clase` have no expected citation and are scored by the
 #: abstention pair, never by the retrieval metrics.
 CLASE_SIN_RESPUESTA = "unanswerable"
@@ -119,6 +124,11 @@ class MetricasRecuperacion:
     #: by construction (the over-ceiling exemption of a single-leg `vector` run).
     n_citation_precision: int = 0
     k_hit_rate: int = HIT_RATE_K
+    #: The second hit-rate depth the re-ratified bars score (`design.md:1141-1145`).
+    #: Reported alongside hit@5 rather than instead of it: the two answer
+    #: different questions — "is the answer on the page a human reads first" and
+    #: "is the answer reachable at all within the served page".
+    hit_rate_at_10: float | None = None
 
 
 def hit_rate_at_k(pregunta: PreguntaEvaluada, k: int = HIT_RATE_K) -> float:
@@ -277,4 +287,7 @@ def metricas_recuperacion(
         n_separacion=len(separaciones),
         n_citation_precision=len(precisiones),
         k_hit_rate=k,
+        hit_rate_at_10=_media(
+            [hit_rate_at_k(pregunta, HIT_RATE_K_AMPLIO) for pregunta in respondibles]
+        ),
     )
