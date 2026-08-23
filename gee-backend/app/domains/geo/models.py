@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Optional
 
 import sqlalchemy as sa
+from geoalchemy2 import Geometry
 from sqlalchemy import (
     Boolean,
     Date,
@@ -13,7 +14,9 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -463,3 +466,98 @@ class NdwiBaseline(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<NdwiBaseline zona={self.zona_operativa_id} mean={self.ndwi_mean:.3f} std={self.ndwi_std:.3f}>"
+
+
+# ── Red vial ─────────────────────────────────────
+
+
+class RedVial(TimestampMixin, Base):
+    """One native road-network feature — the segment unit of the road analysis.
+
+    Mirrors ``0021_add_red_vial`` column for column. Not ``UUIDMixin``: the PK is
+    the source's own string id (``"28188"``), ordinal-suffixed (``"28188#2"``)
+    for later rows of the same lineage, because the crossing and survey tables
+    reference it and that reference has to survive a reload.
+
+    ``source_id`` is the id the source publishes and ``parte`` is which connected
+    part of that feature the row carries; every row of a lineage shares the
+    ``source_id`` and at most one row is ``activo`` per ``(source_id, parte)``
+    (partial unique index ``ux_red_vial_source_activo``). ``geom_hash`` is the
+    sha256 of the WKB of the stored part geometry, which is how the loader tells
+    "same road re-published" from "different road, same id". The loader never
+    deletes: a segment that leaves the source is retired with ``activo = false``.
+    """
+
+    __tablename__ = "red_vial"
+    __table_args__ = (
+        # PARTIAL unique: at most one ACTIVE row per source id, while retired
+        # rows of the same lineage remain. Declared here as well as in the
+        # migration because the test schema is built from ``Base.metadata``.
+        Index(
+            "ux_red_vial_source_activo",
+            "source_id",
+            "parte",
+            unique=True,
+            postgresql_where=sa.text("activo"),
+        ),
+        Index("ix_red_vial_ccc", "ccc"),
+        Index("ix_red_vial_hct", "hct"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="Row identity: source id, ordinal-suffixed for later lineage rows",
+    )
+    source_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        index=True,
+        comment="Identifier published by the source; shared by a whole lineage",
+    )
+    parte: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        server_default=sa.text("1"),
+        comment="Which connected part of the source feature this row carries",
+    )
+    fna: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Full name")
+    gna: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Generic name")
+    rtn: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Route number")
+    fun: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Function code")
+    rst: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Surface type")
+    hct: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Hierarchy")
+    ccn: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Consorcio name")
+    ccc: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Consorcio code")
+    rcc: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Consorcio road nr")
+    red: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Network tier")
+    lzn: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Length declared by the source, in km",
+    )
+    geom: Mapped[str] = mapped_column(
+        Geometry("LINESTRING", srid=4326),
+        nullable=False,
+        comment="Road segment trace",
+    )
+    geom_hash: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="sha256 of the WKB of the normalized geometry",
+    )
+    activo: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=sa.text("true"),
+        comment="False once retired; rows are never deleted",
+    )
+    ultima_carga_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        comment="Every load writes it, even when no attribute changed",
+    )
+
+    def __repr__(self) -> str:
+        return f"<RedVial {self.id!r} source={self.source_id!r} activo={self.activo}>"
