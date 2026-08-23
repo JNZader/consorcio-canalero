@@ -77,6 +77,15 @@
     // The W7/W8 appended `test()` imports this helper, so the appended spec is
     // covered transitively through the rainfall-v2-detail.spec.ts entry above.
     "tests/e2e/helpers/rainfallMultiParcelHarness.ts",
-    "tests/unit/rainfallMultiParcelHarness.test.ts"
+    "tests/unit/rainfallMultiParcelHarness.test.ts",
+    // Multi-hazard slice c1: the shared router test harness and its detector.
+    // Not a rainfall contract test, so the ENROLMENT RULE above does not compel
+    // it — enrolled anyway because the harness IS a typed contract (the mock's
+    // export shape must keep matching how `src/` calls `@tanstack/react-router`),
+    // which is the exact failure mode this project was created to catch. It
+    // compiles clean today; if the 62-file widening lands first, this line and
+    // its neighbours disappear together.
+    "__mocks__/@tanstack/react-router.ts",
+    "tests/components/mapRouterHarness.test.tsx"
   ]
 }
