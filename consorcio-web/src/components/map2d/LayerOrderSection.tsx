@@ -50,6 +50,10 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   soil: 'Suelos',
   catastro: 'Catastro',
   puntos_conflicto: 'Puntos de conflicto',
+  // One label for the single `road_flow` id — the two paint variants (natural
+  // drainage and canal) are one user-facing layer here, and the kind filter
+  // lives in the crossings panel, not in the order list.
+  road_flow: 'Cruces de camino',
   precip_normal: 'Precipitación CHIRPS',
   pilar_verde_bpa_historico: 'BPA histórico',
   pilar_verde_agro_aceptada: 'Agroforestal aceptada',

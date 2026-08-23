@@ -64,6 +64,13 @@ export const SOURCE_IDS = {
   DEM_RASTER: 'map2d-dem-raster',
   PRECIP_NORMAL: 'map2d-precip-normal',
   MARTIN_PUNTOS: 'map2d-martin-puntos',
+  // ── flujo-caminos (design D6) — ranked road crossings ──
+  // ONE geojson source feeding BOTH `road_flow-flujo` and `road_flow-canal`,
+  // populated from the SAME response object the ranked list renders, so the two
+  // surfaces cannot disagree about a direction, an area, a rank or a segment
+  // (RFA-R2). It is NOT a Martin source: the payload is authenticated and
+  // operator-only, and this capability publishes nothing.
+  ROAD_FLOW: 'road_flow',
   // ── Pilar Verde (Phase 2/7) ──
   // Values match the `PilarVerdeLayerId` tuple in `stores/mapLayerSyncStore.ts`
   // so the source id == the visibility-toggle id (no translation table).

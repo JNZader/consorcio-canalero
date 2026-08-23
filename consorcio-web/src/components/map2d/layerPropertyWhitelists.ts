@@ -21,6 +21,7 @@
  */
 
 import { SOURCE_IDS } from './map2dConfig';
+import { ROAD_FLOW_LAYER_IDS } from './roadFlowLayers';
 
 /**
  * Per-layer list of property keys to display, IN ORDER. The order is the
@@ -69,6 +70,24 @@ export const LAYER_PROPERTY_WHITELISTS: Record<string, readonly string[]> = {
    * what an operator actually reads.
    */
   'approved-zones': ['nombre', 'cuenca', 'superficie_ha', 'basin_count', 'member_basin_names'],
+
+  /**
+   * Ranked road crossings (flujo-caminos, design D6). Hides the row UUID and
+   * `canal_ref` plumbing; shows what an operator reads in the field.
+   *
+   * There is deliberately NO volume, flow rate, depth, cuneta size or return
+   * period here — because the backend publishes none. This capability derives a
+   * DIRECTION and a RELATIVE ORDER.
+   */
+  'road-flow': [
+    'direccion_flujo_deg',
+    'rumbo_camino_deg',
+    'area_aporte_ha',
+    'orden_ranking',
+    'confianza',
+    'tramo_ref',
+    'nota',
+  ],
 } as const;
 
 /**
@@ -105,6 +124,15 @@ export const LAYER_PROPERTY_LABELS: Record<string, Record<string, string>> = {
     superficie_ha: 'Superficie',
     basin_count: 'Sub-cuencas',
     member_basin_names: 'Compone',
+  },
+  'road-flow': {
+    direccion_flujo_deg: 'Dirección del flujo',
+    rumbo_camino_deg: 'Rumbo del camino',
+    area_aporte_ha: 'Área de aporte',
+    orden_ranking: 'Puesto',
+    confianza: 'Confianza',
+    tramo_ref: 'Tramo',
+    nota: 'Observación',
   },
 } as const;
 
@@ -150,6 +178,23 @@ function formatStringList(value: unknown): FormatResult {
   return String(value);
 }
 
+function formatDegrees(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}°`;
+}
+
+/**
+ * Confidence, spelled out. `baja` is rendered with the SAME marker the ranked
+ * list uses — a reader who clicks a point and a reader who scans the list must
+ * come away with the same sentence, not two different euphemisms.
+ */
+function formatConfianza(value: unknown): string {
+  if (value === 'baja') return 'Baja — orientación aproximada';
+  if (value === 'alta') return 'Alta';
+  return String(value);
+}
+
 export const LAYER_PROPERTY_FORMATTERS: Record<string, Record<string, LayerValueFormatter>> = {
   basins: {
     superficie_ha: formatHectares,
@@ -157,6 +202,12 @@ export const LAYER_PROPERTY_FORMATTERS: Record<string, Record<string, LayerValue
   'approved-zones': {
     superficie_ha: formatHectares,
     member_basin_names: formatStringList,
+  },
+  'road-flow': {
+    direccion_flujo_deg: formatDegrees,
+    rumbo_camino_deg: formatDegrees,
+    area_aporte_ha: formatHectares,
+    confianza: formatConfianza,
   },
 } as const;
 
@@ -180,6 +231,11 @@ export function resolveLayerWhitelistKey(layerId: string | undefined | null): st
     layerId === `${SOURCE_IDS.APPROVED_ZONES}-line`
   )
     return 'approved-zones';
+  // BOTH road-crossing ml layers route to ONE whitelist: they are two paint
+  // variants of one dataset with identical properties, so a second key would be
+  // two copies of the same label table waiting to disagree.
+  if (layerId === ROAD_FLOW_LAYER_IDS.FLUJO || layerId === ROAD_FLOW_LAYER_IDS.CANAL)
+    return 'road-flow';
   return null;
 }
 

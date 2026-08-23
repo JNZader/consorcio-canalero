@@ -16,8 +16,26 @@ import { WATERWAY_DEFS } from '../../src/hooks/useWaterways';
 import { ALL_ETAPAS } from '../../src/types/canales';
 
 const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
+
+/**
+ * Renderable UI ids that are vectors but are DELIBERATELY absent from the
+ * comparison overlay. Each entry needs a reason, because the default for a new
+ * vector layer is to be covered here — this set is the escape hatch, and an
+ * undocumented member is indistinguishable from an oversight.
+ *
+ *   - `road_flow` (flujo-caminos, design D6): the ranked crossings are read
+ *     against the LIVE map with their panel — the list, the kind filter and the
+ *     always-mounted disclaimer are all part of reading them honestly, and none
+ *     of that exists in the image-comparison slider. Rendering the points there
+ *     would show a ranking stripped of the statement of what it is not. D6 does
+ *     not place this layer in the comparison view, and no task in Slice 4 wires
+ *     its data into that view's inputs, so it is excluded rather than
+ *     half-mounted.
+ */
+const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow']);
+
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(
-  (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id)
+  (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id) && !NOT_IN_COMPARISON_UI_LAYER_IDS.has(id)
 );
 
 interface FakeMapHarness {
