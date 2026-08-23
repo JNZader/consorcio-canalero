@@ -248,6 +248,8 @@
   background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
   backdrop-filter: blur(6px);
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .fichaPanel {
@@ -261,6 +263,8 @@
   background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
   backdrop-filter: blur(6px);
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Scrollable body of the floating desktop cards. It owns `overflow-y: auto`
@@ -269,8 +273,14 @@
    remain reachable. Wrapping both the minimize button and `children` here means
    we no longer need a long descendant allowlist: everything inside this wrapper
    gets pointer events by default. */
+/* The cap comes from the FLEX chain, not from a percentage: the roots above
+   are `max-height`-capped flex columns and `min-height: 0` lets this item
+   shrink below its content height, which is what activates `overflow-y: auto`.
+   A `max-height: 100%` here would silently resolve to `none` — percentages
+   resolve against the parent's `height`, and these roots only have `auto`
+   height under a `max-height` — leaving the card without a scrollbar. */
 .panelCardBody {
-  max-height: 100%;
+  min-height: 0;
   overflow-y: auto;
   pointer-events: auto;
 }
