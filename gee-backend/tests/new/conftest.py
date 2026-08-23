@@ -181,6 +181,7 @@ from app.db.base import Base  # noqa: E402
 # ``geo.models`` in its body before the *second* test's ``db`` fixture
 # triggers this module's ``create_all()``.
 from app.auth import email_codes as _email_codes_model  # noqa: F401, E402
+from app.domains.geo import models as _geo_models  # noqa: F401, E402
 from app.domains.geo.intelligence import models as _geo_intelligence_models  # noqa: F401, E402
 from app.domains.geo.rainfall import models as _rainfall_models  # noqa: F401, E402
 from app.domains.settings import models as _settings_models  # noqa: F401, E402

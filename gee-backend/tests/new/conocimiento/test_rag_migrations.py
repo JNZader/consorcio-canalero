@@ -54,7 +54,19 @@ def _create_throwaway_database(base_url: str) -> tuple[str, str]:
     with admin_engine.connect() as conn:
         conn.execute(text(f'CREATE DATABASE "{dbname}"'))
     admin_engine.dispose()
-    return _with_dbname(base_url, dbname), dbname
+
+    # PostGIS, in the throwaway database itself. `upgrade head` walks every
+    # migration above the stamped head, and those are not all RAG migrations:
+    # `0021_add_red_vial` creates a `geometry(LineString, 4326)` column, which
+    # fails with `type "geometry" does not exist` on a database created from
+    # `template1`. `conftest.py`'s `test_engine` does exactly this for the
+    # shared test database; the throwaway one needs it for the same reason.
+    fresh_url = _with_dbname(base_url, dbname)
+    fresh_engine = create_engine(fresh_url, isolation_level="AUTOCOMMIT")
+    with fresh_engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+    fresh_engine.dispose()
+    return fresh_url, dbname
 
 
 def _drop_database(base_url: str, dbname: str) -> None:
