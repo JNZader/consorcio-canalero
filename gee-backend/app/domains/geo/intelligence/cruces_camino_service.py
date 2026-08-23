@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional
 import structlog
 
 from app.domains.geo.intelligence.cruces_camino_support import (
+    CopiaCorrupta,
     DemJobEnCurso,
     VarianteNoDisponible,
     calcular_desactualizado,
@@ -312,7 +313,7 @@ def run_crossing_task(
             db.close()
         logger.warning("cruces_camino.variante_no_disponible", area_id=area_id, detalle=str(exc))
         return {"job_id": job_id, "status": "failed", "motivo": motivo}
-    except DemJobEnCurso as exc:
+    except (DemJobEnCurso, CopiaCorrupta) as exc:
         db = session_factory()
         try:
             _fail(

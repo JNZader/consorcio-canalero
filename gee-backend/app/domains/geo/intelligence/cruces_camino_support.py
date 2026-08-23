@@ -177,6 +177,22 @@ class DemJobEnCurso(RuntimeError):
         super().__init__(f"{motivo}: a DEM job owns area {area_id!r}")
 
 
+class CopiaCorrupta(RuntimeError):
+    """A private raster copy failed corroboration; the run refuses honestly.
+
+    This names what was actually OBSERVED — an empty, size-unstable or
+    zero-dimension copy — not a hypothesis about who caused it. A concurrent
+    DEM job is one possible cause and the post-copy re-check reports that one
+    as ``DemJobEnCurso``; this exception never claims it.
+    """
+
+    def __init__(self, path: str, observacion: str) -> None:
+        self.path = path
+        self.motivo = "copia_corrupta_post_check"
+        self.observacion = observacion
+        super().__init__(f"copia_corrupta_post_check: {observacion} ({path})")
+
+
 @dataclass(frozen=True)
 class VarianteResuelta:
     """The pair this run will read, and the name of what it actually read."""
@@ -396,12 +412,12 @@ def corroborar_copias(flow_dir_copy: str, flow_acc_copy: str) -> None:
     for path in (flow_dir_copy, flow_acc_copy):
         first = Path(path).stat().st_size
         if first == 0:
-            raise DemJobEnCurso("", "dem_job_started_during_copy")
+            raise CopiaCorrupta(path, "empty copy")
         if Path(path).stat().st_size != first:
-            raise DemJobEnCurso("", "dem_job_started_during_copy")
+            raise CopiaCorrupta(path, "size unstable across two stats")
         with rasterio.open(path) as src:
             if src.width == 0 or src.height == 0:
-                raise DemJobEnCurso("", "dem_job_started_during_copy")
+                raise CopiaCorrupta(path, "zero-dimension raster")
 
 
 # ---------------------------------------------------------------------------

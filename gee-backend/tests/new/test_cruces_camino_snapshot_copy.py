@@ -35,6 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.domains.geo.intelligence import cruces_camino_support
+from app.domains.geo.intelligence.repository import IntelligenceRepository
 
 from app.domains.geo.intelligence import cruces_camino_service
 
@@ -634,3 +635,66 @@ class TestScratchIsNotLeakedOnCopyFailure:
                 variante, scratch_root=scratch_root
             )
         assert list(scratch_root.iterdir()) == []
+
+
+class TestCorroborationNamesWhatItObserved:
+    """R2 fix: a failed corroboration reports the observation, never a DEM job.
+
+    The old behavior raised ``DemJobEnCurso("", "dem_job_started_during_copy")``
+    for an empty or torn copy — an exception whose type, motivo and message all
+    named a cause the function never checked, and that motivo was persisted
+    into the job row for the operator to read.
+    """
+
+    def test_an_empty_copy_reports_copia_corrupta_not_a_dem_job(self, tmp_path):
+        empty = tmp_path / "flow_dir.tif"
+        empty.write_bytes(b"")
+        other = tmp_path / "flow_acc.tif"
+        other.write_bytes(b"irrelevant")
+        with pytest.raises(cruces_camino_support.CopiaCorrupta) as excinfo:
+            cruces_camino_support.corroborar_copias(str(empty), str(other))
+        assert excinfo.value.motivo == "copia_corrupta_post_check"
+        assert "empty copy" in str(excinfo.value)
+        assert "DEM job" not in str(excinfo.value)
+
+
+class TestSameAreaReplaceIsSerialized:
+    """R4 fix: two whole-area replaces for the SAME area cannot interleave.
+
+    Proven with the real lock, not by reading the SQL: session A holds the
+    per-area transaction-scoped advisory lock, and session B's replace for the
+    same area blocks until it hits its own ``lock_timeout`` — which is exactly
+    the mutual exclusion the delete-then-insert needs to stay one coherent run.
+    """
+
+    def test_second_replace_for_same_area_blocks_on_the_lock(
+        self, session_factory
+    ):
+        from datetime import datetime, timezone
+
+        repo_a = IntelligenceRepository()
+        session_a = session_factory()
+        session_b = session_factory()
+        try:
+            repo_a.replace_cruces_for_area(
+                session_a,
+                area_id="zona_lock_test",
+                geo_job_id=uuid.uuid4(),
+                calculada_en=datetime.now(timezone.utc),
+                rows=[],
+            )  # transaction left OPEN: the xact lock is held
+            session_b.execute(text("SET lock_timeout = '200ms'"))
+            with pytest.raises(Exception) as excinfo:
+                repo_a.replace_cruces_for_area(
+                    session_b,
+                    area_id="zona_lock_test",
+                    geo_job_id=uuid.uuid4(),
+                    calculada_en=datetime.now(timezone.utc),
+                    rows=[],
+                )
+            assert "lock" in str(excinfo.value).lower()
+        finally:
+            session_a.rollback()
+            session_b.rollback()
+            session_a.close()
+            session_b.close()

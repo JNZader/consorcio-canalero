@@ -24,6 +24,10 @@ from app.domains.geo.intelligence.cruces_camino_support import (
 #: Scoped to the area, so a re-run for area A leaves area B's rows untouched.
 SQL_DELETE_AREA = text("DELETE FROM cruce_camino WHERE area_id = :area_id")
 
+SQL_ADVISORY_LOCK_AREA = text(
+    "SELECT pg_advisory_xact_lock(hashtextextended('cruce_camino:' || :area_id, 0))"
+)
+
 SQL_INSERT_CRUCE = text(
     """
     INSERT INTO cruce_camino (
@@ -112,6 +116,12 @@ class IntelligenceRepositoryCrucesMixin:
         always a rank within one coherent run and no operator ever sees a
         half-replaced list.
         """
+        # Serialize whole-area replaces: two concurrent runs for the SAME area
+        # would otherwise interleave their delete-then-insert into a mixed set
+        # and orden_ranking would stop being a rank within one coherent run.
+        # The lock is transaction-scoped, so the caller's commit/rollback
+        # releases it; runs for different areas do not contend.
+        db.execute(SQL_ADVISORY_LOCK_AREA, {"area_id": area_id})
         db.execute(SQL_DELETE_AREA, {"area_id": area_id})
         for row in rows:
             db.execute(
