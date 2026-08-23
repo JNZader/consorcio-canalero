@@ -29,6 +29,8 @@ from app.domains.geo.intelligence.schemas import (
     CompositeAnalysisRequest,
     CriticidadRequest,
     CriticidadResponse,
+    CrucesCaminoRecalcularRequest,
+    CrucesCaminoResponse,
     DashboardInteligente,
     EscorrentiaRequest,
     EscorrentiaResponse,
@@ -155,6 +157,71 @@ def list_hci(
 
 
 # CONFLICT POINTS
+# ROAD × FLOW CROSSINGS (flujo-caminos Fase A)
+#
+# Operator-and-admin only, and there is no other way in: this capability
+# publishes nothing — no ``vt_`` view, no Martin source, no property — so the
+# operator-only requirement is satisfied STRUCTURALLY rather than by a ``WHERE``
+# clause somebody has to keep correct. The dependency below rejects before the
+# service runs, so a denial cannot carry a partial payload.
+@router.get("/cruces-camino", response_model=CrucesCaminoResponse)
+def get_cruces_camino(
+    area_id: str = Query(..., min_length=1, max_length=100),
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+) -> CrucesCaminoResponse:
+    """Ranked natural-drainage crossings plus the unranked canal candidates.
+
+    ONE response feeds both the ranked list and the map layer, so the two views
+    cannot disagree about direction, contributing area, segment or rank.
+
+    The results describe flow **direction, not hydraulics**. The disclaimer is a
+    frontend obligation (it must be readable without operating a disclosure
+    control, and a test asserts it) — this docstring does not discharge it, which
+    is precisely the failure mode the requirement was written against.
+    """
+    from app.domains.geo.intelligence import cruces_camino_service
+
+    return CrucesCaminoResponse.model_validate(
+        cruces_camino_service.get_cruces_camino(db, area_id=area_id)
+    )
+
+
+@router.post("/cruces-camino/recalcular", response_model=AsyncTaskResponse)
+def recalcular_cruces_camino(
+    payload: CrucesCaminoRecalcularRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+) -> AsyncTaskResponse:
+    """Dispatch a recompute. Same dependency as the read (RFA-R6).
+
+    Recomputation IS invalidation: the run's single transaction deletes this
+    area's rows and inserts the new set, so there is never a mixture of two
+    generations and ``orden_ranking`` is always a rank within one coherent run.
+
+    A run launched while a DEM pipeline owns this area refuses cleanly and writes
+    nothing — the snapshot-copy protocol makes that safe and self-announcing, so
+    the answer to a refusal is simply to dispatch again.
+
+    Dispatch goes through ``dispatch_job`` and the durable **outbox allowlist**,
+    like every other geo job, rather than through a bare ``.delay()``. That is
+    not ceremony: the outbox persists the publication intent in the same
+    transaction as the ``geo_jobs`` row, so a broker hiccup between the two
+    cannot leave a PENDING job nobody will ever run — and
+    ``_get_task_key_map`` is asserted to cover **every** ``TipoGeoJob``, so a
+    tipo dispatched outside it would be a hole in that guarantee.
+    """
+    from app.domains.geo.models import TipoGeoJob
+    from app.domains.geo.service import dispatch_job
+
+    job = dispatch_job(
+        db,
+        tipo=TipoGeoJob.ROAD_FLOW_CROSSINGS,
+        parametros={"area_id": payload.area_id},
+    )
+    return AsyncTaskResponse(task_id=str(job.celery_task_id))
+
+
 @router.get(
     "/conflictos",
     response_model=PaginatedResponse[PuntoConflictoResponse],

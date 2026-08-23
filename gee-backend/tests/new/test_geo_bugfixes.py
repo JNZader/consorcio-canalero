@@ -51,6 +51,10 @@ class TestTipoGeoJobEnum:
             "dem_full_pipeline",
             "basin_delineation",
             "composite_analysis",
+            # flujo-caminos Fase A. Added to the shared ``tipo_geo_job`` type by
+            # ``0022_add_cruce_camino``; the downgrade cannot remove it, because
+            # PostgreSQL cannot remove an enum value.
+            "road_flow_crossings",
         }
         actual = {member.value for member in TipoGeoJob}
         assert expected == actual

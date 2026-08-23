@@ -80,6 +80,65 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
         "categoria": "analisis",
         "descripcion": "Umbral TWI para riesgo alto de anegamiento",
     },
+    # ── analisis / cruces camino x flujo (flujo-caminos Fase A) ──
+    #
+    # These five are SEEDS, not calibrated values, and they live here rather
+    # than as task-dispatch parameters so they are changeable without a code
+    # change AND so every run records the same tuning. A dispatch parameter's
+    # default is still code, and two callers passing different literals would
+    # make "the parameters that produced this rank list" depend on who launched
+    # it. Each run copies these into ``geo_jobs.resultado`` and the read
+    # response echoes them, so a rank list can never be read without them.
+    {
+        "clave": "analisis/cruce_acc_threshold_cells",
+        "valor": 1000,
+        "categoria": "analisis",
+        # Borrowed from extract_drainage_network(flow_acc, 1000, ...), which
+        # thresholds the BURNED accumulation. This one thresholds the NATURAL
+        # accumulation, so the same number selects a different -- generally
+        # sparser -- set of channels. Familiarity, NOT parity with the map's
+        # drainage layer. Calibration against known culverts is pending.
+        "descripcion": (
+            "Celdas de acumulacion minimas para que un maximo local cuente como "
+            "cauce. Semilla sin calibrar; NO equivale al umbral de la capa de drenaje"
+        ),
+    },
+    {
+        "clave": "analisis/cruce_min_separation_m",
+        "valor": 90.0,
+        "categoria": "analisis",
+        "descripcion": (
+            "Distancia minima sobre el camino entre dos cruces aceptados (3 celdas "
+            "GLO-30); por debajo, una sola loma de acumulacion registra varios"
+        ),
+    },
+    {
+        "clave": "analisis/cruce_parallel_min_angle_deg",
+        "valor": 22.5,
+        "categoria": "analisis",
+        "descripcion": (
+            "Borde INFERIOR del predicado de cruce: por debajo se excluye como flujo "
+            "paralelo. Es medio paso D8, no un numero redondo"
+        ),
+    },
+    {
+        "clave": "analisis/cruce_parallel_high_angle_deg",
+        "valor": 45.0,
+        "categoria": "analisis",
+        "descripcion": (
+            "Borde SUPERIOR del predicado de cruce: desde aqui la orientacion es de "
+            "confianza alta; entre ambos bordes se guarda con confianza baja"
+        ),
+    },
+    {
+        "clave": "analisis/cruce_bearing_window_m",
+        "valor": 60.0,
+        "categoria": "analisis",
+        "descripcion": (
+            "Semiventana para calcular el rumbo local del camino, para que los "
+            "escalones de rasterizacion no dominen la prueba de angulo"
+        ),
+    },
     # ── contacto ──
     {
         "clave": "contacto/telefono",

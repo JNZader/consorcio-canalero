@@ -43,6 +43,7 @@ def test_task_key_map_covers_every_geo_job_type_exactly() -> None:
         TipoGeoJob.DEM_FULL_PIPELINE: CeleryTaskKey.RUN_FULL_DEM_PIPELINE,
         TipoGeoJob.BASIN_DELINEATION: CeleryTaskKey.DELINEATE_BASINS,
         TipoGeoJob.COMPOSITE_ANALYSIS: CeleryTaskKey.COMPOSITE_ANALYSIS,
+        TipoGeoJob.ROAD_FLOW_CROSSINGS: CeleryTaskKey.COMPUTE_ROAD_FLOW_CROSSINGS,
     }
 
 

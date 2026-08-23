@@ -79,6 +79,23 @@ def _drop_database(base_url: str, dbname: str) -> None:
 
 _PRIOR_HEAD = "lluvia_v2_005"  # the head this slice's migrations chain onto
 
+#: The target these tests upgrade to — the conocimiento chain's own head, NOT
+#: ``"head"``.
+#:
+#: ``"head"`` was a convenience that quietly took on the prerequisites of every
+#: migration anyone later stacks on top. The fixture deliberately does not replay
+#: full history (``pgrouting`` is absent from the test image), so it hands those
+#: later migrations a database that is *stamped* as complete while being
+#: physically empty: no ``geo_jobs``, no ``canal_consorcio``, no ``tipo_geo_job``.
+#: ``0021_add_red_vial`` survived that only by having no dependencies of its own;
+#: ``0022_add_cruce_camino`` legitimately references all three, so under
+#: ``"head"`` these tests would fail for a reason that has nothing to do with the
+#: RAG migrations they exist to check. Naming the target fixes the scope to what
+#: is actually under test and stops the file breaking on unrelated work. Those
+#: migrations have their own real-PG tests (``test_red_vial_migration``,
+#: ``test_cruce_camino_migration``), so nothing is left unchecked.
+_CONOCIMIENTO_HEAD = "conocimiento_004"
+
 
 @pytest.fixture
 def throwaway_db(monkeypatch):
@@ -120,7 +137,7 @@ def test_upgrade_head_creates_three_tables(throwaway_db):
     """1.1: `alembic upgrade head` on an empty DB creates all three tables."""
     cfg, engine = throwaway_db
 
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
 
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
@@ -175,7 +192,7 @@ def test_migration_002_noop_on_vector_less_image(throwaway_db):
                 "test_migration_002_guard_symmetry_on_vector_image."
             )
 
-    command.upgrade(cfg, "head")  # must not raise
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)  # must not raise
 
     inspector = inspect(engine)
     unidad_columns = {c["name"] for c in inspector.get_columns("rag_unidad")}
@@ -280,7 +297,7 @@ def test_downgrade_003_runs_against_an_ingested_database(throwaway_db):
     tables and takes the whole chain with it.
     """
     cfg, engine = throwaway_db
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
     _seed_003_shaped_rows(engine)
 
     command.downgrade(cfg, "conocimiento_002")  # must not raise
@@ -308,7 +325,7 @@ def test_downgrade_003_runs_against_an_ingested_database(throwaway_db):
 
     # And the round trip closes: re-upgrading restores the relaxed schema, so
     # re-ingesting the pinned corpus rebuilds what the downgrade deleted.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
     _seed_003_shaped_rows(engine, with_corpus=False)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM rag_unidad")).scalar_one() == 2
@@ -340,7 +357,7 @@ def test_downgrade_004_drops_provenance_and_deletes_nothing(throwaway_db):
     import importlib
 
     cfg, engine = throwaway_db
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
     _seed_003_shaped_rows(engine)
     _stamp_provenance(engine)
 
@@ -367,7 +384,7 @@ def test_downgrade_004_drops_provenance_and_deletes_nothing(throwaway_db):
     # And back up: the columns return, empty. The provenance record itself is
     # gone — recoverable only by re-running the loader, which is exactly what the
     # migration docstring promises rather than pretending otherwise.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
     with engine.connect() as conn:
         vuelta = conn.execute(
             text("SELECT embedding_modelo, embeddings_loaded_at FROM rag_corpus")
@@ -378,7 +395,7 @@ def test_downgrade_004_drops_provenance_and_deletes_nothing(throwaway_db):
 def test_downgrade_003_to_base_drops_everything_after_ingestion(throwaway_db):
     """The documented full rollback (`downgrade base`) on a used database."""
     cfg, engine = throwaway_db
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
     _seed_003_shaped_rows(engine)
 
     command.downgrade(cfg, _PRIOR_HEAD)  # must not raise

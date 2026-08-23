@@ -440,3 +440,98 @@ class IntelligencePlaceholderResponse(BaseModel):
         description="Always empty on these placeholder endpoints.",
     )
     message: str = Field(..., description="Operator-facing hint pointing at the real endpoint.")
+
+
+# ──────────────────────────────────────────────
+# CRUCES CAMINO x FLUJO (flujo-caminos Fase A)
+# ──────────────────────────────────────────────
+
+
+class CrucesCaminoRecalcularRequest(BaseModel):
+    """Request to recompute an area's crossings.
+
+    The five thresholds are deliberately NOT accepted here. They live in
+    ``system_settings`` (category ``analisis``) so that what a run records cannot
+    depend on who dispatched it; letting a caller override them per request would
+    reintroduce exactly the ambiguity the single home was chosen to remove.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    area_id: str = Field(..., min_length=1, max_length=100)
+
+
+class CrucesCaminoResponse(BaseModel):
+    """One response feeding BOTH the ranked list and the map.
+
+    Deliberately one payload: the list and the map read the *same* response and
+    therefore cannot disagree about direction, contributing area, segment or rank
+    (RFA's "A crossing point is selected on the map" scenario).
+
+    **No volume, flow rate, depth, cuneta size or return period appears here, and
+    none is implied by a placeholder figure.** This capability derives a
+    direction, an upslope contributing area and a relative ordering; it derives
+    no hydraulics, and the UI says so beside the results.
+
+    ``total_flujo_natural`` is the rank denominator. The UI reads ``N.º de M``
+    with M = that count and never the total row count: canal crossings are a
+    separate, unranked set, and a denominator that moved with DEM coverage rather
+    than with the road network would mean nothing.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    area_id: str
+    calculada_en: Optional[datetime] = Field(
+        default=None,
+        description=(
+            "Generation timestamp of the run that produced this set. Always shown "
+            "with the list, so no rank is ever read without knowing how old it is."
+        ),
+    )
+    desactualizado: bool = Field(
+        default=False,
+        description=(
+            "True when the terrain data or the road network changed after "
+            "``calculada_en``. A false positive costs a dismissible notice; the "
+            "comparison is deliberately biased that way, because a false negative "
+            "would cost a silently wrong ranking presented as current."
+        ),
+    )
+    total_flujo_natural: int = Field(
+        default=0, description="Rank denominator — the ranked set's size."
+    )
+    total_canal: int = Field(
+        default=0, description="Culvert/bridge candidates. Unranked, counted separately."
+    )
+    features: dict[str, Any] = Field(
+        default_factory=lambda: {"type": "FeatureCollection", "features": []},
+        description="GeoJSON in EPSG:4326 — reprojected, never merely stamped.",
+    )
+    excluidos: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "The run's own account of what it decided not to keep, with motivo in "
+            "{sin_direccion, flujo_paralelo, suprimido_por_separacion, "
+            "maximo_en_extremo}. A suppressed double crossing stays visible here."
+        ),
+    )
+    parametros: dict[str, Any] = Field(
+        default_factory=dict,
+        description="The five recorded thresholds this run actually used.",
+    )
+    variante: Optional[str] = Field(
+        default=None,
+        description=(
+            "Which drainage result was read: ``natural``, or "
+            "``relevado_equivale_natural`` when the operational pair stood in "
+            "under a verified no-burn condition."
+        ),
+    )
+    segmentos_parcialmente_cubiertos: int = Field(
+        default=0,
+        description=(
+            "Segments only partly inside the raster footprint. A crossing near "
+            "the edge can be missed when its ridge lies just outside it."
+        ),
+    )
