@@ -38,8 +38,21 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 const SHEET = 'tramo-survey-sheet';
 
-/** The controls RSS-R3 counts: three fields plus the save action. */
-const CONTROLS = ['tramo-survey-nivel', 'tramo-survey-tiene-cuneta', 'tramo-survey-save'] as const;
+/**
+ * The controls RSS-R3 counts: the THREE fields plus the save action.
+ *
+ * `tramo-survey-estado-cuneta` is conditional — it mounts only once the
+ * operator answers that the segment HAS a cuneta — so the measurement below
+ * answers "Sí" first. Measuring two of the three fields and calling it "the
+ * three fields fit" was the previous shape, and the third one is the one added
+ * last to the layout, i.e. the one most likely to overflow it.
+ */
+const CONTROLS = [
+  'tramo-survey-nivel',
+  'tramo-survey-tiene-cuneta',
+  'tramo-survey-estado-cuneta',
+  'tramo-survey-save',
+] as const;
 
 /** Storage slots `lib/auth/storage.ts` reads a session from. */
 const TOKEN_KEY = 'consorcio_auth_token';
@@ -194,6 +207,11 @@ test.describe('Relevamiento de tramo — 390×844', () => {
       'La hoja de relevamiento del tramo no montó desde la capa "Cruces de camino" en /mapa'
     );
 
+    // Mount the conditional third field: "Estado de la cuneta" only exists once
+    // the segment is said to HAVE one. One tap, the same one an operator makes.
+    await page.getByTestId('tramo-survey-tiene-cuneta').getByText('Sí', { exact: true }).click();
+    await expect(page.getByTestId('tramo-survey-estado-cuneta')).toBeVisible();
+
     const body = page.getByTestId(`${SHEET}-sheet-body`);
     const bodyBox = await body.boundingBox();
     requireCondition(bodyBox !== null, 'No se pudo medir la caja visible del cuerpo de la hoja');
@@ -237,5 +255,11 @@ test.describe('Relevamiento de tramo — 390×844', () => {
       const options = page.getByTestId(testId).locator('input[type="radio"]');
       await expect(options).toHaveCount(expected);
     }
+
+    // The third field costs the same single tap once it exists.
+    await page.getByTestId('tramo-survey-tiene-cuneta').getByText('Sí', { exact: true }).click();
+    await expect(
+      page.getByTestId('tramo-survey-estado-cuneta').locator('input[type="radio"]')
+    ).toHaveCount(2);
   });
 });
