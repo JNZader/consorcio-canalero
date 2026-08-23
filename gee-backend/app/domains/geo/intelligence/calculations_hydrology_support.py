@@ -240,7 +240,7 @@ CRUCE_COLUMNS: tuple[str, ...] = (
 )
 
 
-def _traversal_cells(line, transform, shape) -> list[tuple[int, int]]:
+def _traversal_cells(line, transform, shape, *, clip: bool = True) -> list[tuple[int, int]]:
     """The ordered cell traversal of a polyline, in along-road order.
 
     Bresenham-style: the cells the road actually passes through, deduplicated,
@@ -248,6 +248,11 @@ def _traversal_cells(line, transform, shape) -> list[tuple[int, int]]:
     **skipped**, not excluded — a road that leaves the DEM is still in scope for
     the part of it that does not (design D3, "spatial pre-filter — scope, not
     exclusion").
+
+    ``clip=False`` keeps every visited cell, including the NEGATIVE rows and
+    columns of a road leaving the raster by the north or the west. It exists for
+    the partial-coverage count, which is a comparison against the unclipped
+    traversal and silently under-counted while those cells were dropped.
     """
     from rasterio.transform import rowcol
 
@@ -268,7 +273,7 @@ def _traversal_cells(line, transform, shape) -> list[tuple[int, int]]:
             if (row, col) in seen:
                 continue
             seen.add((row, col))
-            if 0 <= row < height and 0 <= col < width:
+            if not clip or (0 <= row < height and 0 <= col < width):
                 cells.append((row, col))
     return cells
 
@@ -688,9 +693,10 @@ def detectar_cruces_camino_flujo_impl(
             cells = _traversal_cells(road.geometry, transform, (height, width))
             if len(cells) < 3:
                 continue
-            full = _traversal_cells(
-                road.geometry, transform, (10**9, 10**9)
-            )  # unclipped, to detect partial coverage
+            # Unclipped, to detect partial coverage in EVERY direction: a huge
+            # shape kept the lower bound and so missed a road leaving by the
+            # north or the west, where rows/cols go negative.
+            full = _traversal_cells(road.geometry, transform, (height, width), clip=False)
             if len(full) > len(cells):
                 parametros["segmentos_parcialmente_cubiertos"] += 1
             traversals[tramo_ref] = cells

@@ -487,6 +487,29 @@ class TestProperty5NoZombieRunning:
         ).scalar_one()
         assert stranded == 0
 
+    def test_a_failure_between_the_claim_and_the_compute_is_not_a_zombie(
+        self, db, seeded, session_factory, tmp_path, monkeypatch
+    ):
+        """The window the outer handler did not cover: post-claim, pre-compute."""
+        job_id = _crossing_job(db)
+
+        def boom(_db):
+            raise RuntimeError("settings unreachable")
+
+        monkeypatch.setattr(cruces_camino_service, "leer_parametros", boom)
+
+        with pytest.raises(RuntimeError):
+            cruces_camino_service.run_crossing_task(
+                area_id=AREA,
+                job_id=job_id,
+                session_factory=session_factory,
+                scratch_root=str(tmp_path / "scratch"),
+            )
+
+        estado_final, error = _job_estado(db, job_id)
+        assert estado_final == "failed", "no post-claim exception may strand the row in RUNNING"
+        assert AREA in error
+
     def test_the_estado_enum_gained_no_skipped_value(self, db):
         labels = (
             db.execute(
@@ -499,6 +522,53 @@ class TestProperty5NoZombieRunning:
             .all()
         )
         assert set(labels) == {"pending", "running", "completed", "failed"}
+
+
+class TestAnUnavailableVariantIsRefused:
+    """The design's mandate: a named refusal, never a degraded canal-only run."""
+
+    def test_the_job_fails_without_computing_and_the_last_good_set_survives(
+        self, db, seeded, session_factory, tmp_path, monkeypatch
+    ):
+        from app.domains.geo.intelligence.repository import IntelligenceRepository
+
+        good = cruces_camino_service.run_crossing_task(
+            area_id=AREA,
+            job_id=_crossing_job(db),
+            session_factory=session_factory,
+            scratch_root=str(tmp_path / "scratch-good"),
+        )
+        assert good["status"] == "completed"
+        before = _crossing_count(db)
+        assert before > 0, "there must be a last good set to protect"
+
+        loaded: list[dict] = []
+        original_loader = IntelligenceRepository.get_red_vial_en_bbox
+
+        def spy(self, session, **kwargs):
+            loaded.append(kwargs)
+            return original_loader(self, session, **kwargs)
+
+        def refuse(*_args, **_kwargs):
+            raise cruces_camino_service.VarianteNoDisponible(AREA, "natural_flow_acc")
+
+        monkeypatch.setattr(IntelligenceRepository, "get_red_vial_en_bbox", spy)
+        monkeypatch.setattr(cruces_camino_service, "resolver_variante_drenaje", refuse)
+
+        job_id = _crossing_job(db)
+        result = cruces_camino_service.run_crossing_task(
+            area_id=AREA,
+            job_id=job_id,
+            session_factory=session_factory,
+            scratch_root=str(tmp_path / "scratch-refused"),
+        )
+
+        assert result["status"] == "failed"
+        estado_final, error = _job_estado(db, job_id)
+        assert estado_final == "failed"
+        assert "variante_no_disponible" in error and "natural_flow_acc" in error
+        assert loaded == [], "a refused run must never load the network, least of all worldwide"
+        assert _crossing_count(db) == before, "a refusal leaves the last good set intact"
 
 
 class TestTheProducerHalfDoesNotExist:

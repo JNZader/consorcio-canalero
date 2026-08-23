@@ -209,49 +209,41 @@ def run_crossing_task(
             logger.info("cruces_camino.not_claimed", area_id=area_id, job_id=job_id)
             return {"job_id": job_id, "status": "skipped", "motivo": "fence_lost"}
 
-        parametros = leer_parametros(db)
-
-        # ── Variant resolution ──────────────────────────────────────────
-        # A refusal here aborts the flujo_natural derivation ONLY: canal
-        # crossings have no raster dependency whatsoever, so an area with a
-        # broken DEM still gets its culvert candidates.
-        variante = None
-        variante_error: Optional[str] = None
-        try:
-            variante = resolver_variante_drenaje(db, _ResolverPorts(jobs, repo), area_id=area_id)
-        except VarianteNoDisponible as exc:
-            variante_error = str(exc)
-            logger.warning(
-                "cruces_camino.variante_no_disponible", area_id=area_id, detalle=str(exc)
-            )
     finally:
         db.close()
 
     scratch = None
     try:
+        # Post-claim work belongs INSIDE the handlers below: an exception here
+        # used to escape past a bare ``finally: db.close()`` and strand the row
+        # in RUNNING for ever.
+        db = session_factory()
+        try:
+            parametros = leer_parametros(db)
+            # ── Variant resolution ──────────────────────────────────────
+            # A genuinely unavailable variant is a NAMED REFUSAL, never a
+            # degraded canal-only run: the bbox is ALWAYS derived from the
+            # copied raster, so no run scans the whole network, and no degraded
+            # result can replace the last good set.
+            variante = resolver_variante_drenaje(db, _ResolverPorts(jobs, repo), area_id=area_id)
+        finally:
+            db.close()
+
         # ── Steps 2 and 3: copy, then REVALIDATE ────────────────────────
-        flow_dir_copy = flow_acc_copy = None
-        if variante is not None:
-            scratch, flow_dir_copy, flow_acc_copy = copiar_rasters_a_scratch(
-                variante, scratch_root=scratch_root
-            )
-            db = session_factory()
-            try:
-                verificar_dem_libre(db, area_id, desde=pre_check_at)
-            finally:
-                db.close()
-            corroborar_copias(flow_dir_copy, flow_acc_copy)
+        scratch, flow_dir_copy, flow_acc_copy = copiar_rasters_a_scratch(
+            variante, scratch_root=scratch_root
+        )
+        db = session_factory()
+        try:
+            verificar_dem_libre(db, area_id, desde=pre_check_at)
+        finally:
+            db.close()
+        corroborar_copias(flow_dir_copy, flow_acc_copy)
 
         # ── Step 4: compute, entirely from the private copies ───────────
         db = session_factory()
         try:
-            if flow_acc_copy is not None:
-                bbox = _raster_bbox_4326(flow_acc_copy)
-            else:
-                # No raster: the canal derivation still runs, over the whole
-                # active network. There is no footprint to pre-filter by.
-                bbox = (-180.0, -90.0, 180.0, 90.0)
-            minx, miny, maxx, maxy = bbox
+            minx, miny, maxx, maxy = _raster_bbox_4326(flow_acc_copy)
             roads = _load_lines(
                 repo.get_red_vial_en_bbox(db, minx=minx, miny=miny, maxx=maxx, maxy=maxy)
             )
@@ -264,8 +256,7 @@ def run_crossing_task(
         gdf, excluidos, run_parametros = detectar_cruces_camino_flujo(
             roads, canals, flow_dir_copy, flow_acc_copy, **parametros
         )
-        run_parametros["variante"] = variante.variante if variante else None
-        run_parametros["variante_error"] = variante_error
+        run_parametros["variante"] = variante.variante
         run_parametros["area_id"] = area_id
 
         # ── Step 5: write, in ONE transaction ───────────────────────────
@@ -305,6 +296,22 @@ def run_crossing_task(
         logger.info("cruces_camino.done", area_id=area_id, cruces=len(rows))
         return {"job_id": job_id, "status": "completed", **resultado}
 
+    except VarianteNoDisponible as exc:
+        motivo = f"variante_no_disponible ({exc})"
+        db = session_factory()
+        try:
+            _fail(
+                db,
+                jobs,
+                job_id,
+                expected=EstadoGeoJob.RUNNING.value,
+                motivo=motivo,
+                area_id=area_id,
+            )
+        finally:
+            db.close()
+        logger.warning("cruces_camino.variante_no_disponible", area_id=area_id, detalle=str(exc))
+        return {"job_id": job_id, "status": "failed", "motivo": motivo}
     except DemJobEnCurso as exc:
         db = session_factory()
         try:

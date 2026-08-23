@@ -150,11 +150,9 @@ CLAVES_DE_QUEMADO: tuple[str, ...] = ("burned_dem", "filled_hydro_dem")
 class VarianteNoDisponible(RuntimeError):
     """The required drainage result does not resolve, and may not be substituted.
 
-    Carries ``area_id`` and ``capa_faltante`` because the caller must do two
-    things with it: report which layer is missing, and **still compute the canal
-    crossings**. A hard refusal here aborts the ``flujo_natural`` derivation
-    only — canal crossings have no raster dependency whatsoever, so an area with
-    a broken DEM still gets its culvert candidates.
+    Carries ``area_id`` and ``capa_faltante`` because the caller has to name the
+    missing layer when it refuses. The refusal is TOTAL: the run fails without
+    computing, so no degraded result ever replaces the area's last good set.
     """
 
     def __init__(self, area_id: str, capa_faltante: str, detalle: str = "") -> None:

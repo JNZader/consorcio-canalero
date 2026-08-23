@@ -1131,6 +1131,19 @@ class TestRankingAndParameters:
 
         assert parametros["segmentos_parcialmente_cubiertos"] == 1
 
+    def test_a_segment_leaving_by_the_west_is_counted_too(self, tmp_path):
+        """North and west put rows/cols NEGATIVE, which the bound test drops."""
+        shape = (9, 9)
+        fd = _write_raster(tmp_path / "fd.tif", _flow_dir_all(4, shape))
+        fa = _write_raster(tmp_path / "fa.tif", np.full(shape, 100.0))
+
+        start = _cell_center(4, 2)
+        west = {"id": "t_w", "geometry": LineString([start, (start[0] - 20 * CELL, start[1])])}
+
+        _, _, parametros = _run(_roads([west]), _canals([]), fd, fa)
+
+        assert parametros["segmentos_parcialmente_cubiertos"] == 1
+
 
 # ---------------------------------------------------------------------------
 # Law 1 and Law 2 — proving checks, executable
