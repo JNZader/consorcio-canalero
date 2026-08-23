@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 import structlog
+from sqlalchemy import text
 
 from app.domains.geo.intelligence.cruces_camino_support import (
     CopiaCorrupta,
@@ -175,9 +176,13 @@ def run_crossing_task(
     # Before the claim on purpose: refusing here transitions PENDING → FAILED,
     # so there is no window in which this task owns a RUNNING row it is about to
     # abandon.
-    pre_check_at = now()
     db = session_factory()
     try:
+        # The guard predicate compares against ``geo_jobs.updated_at``, which
+        # the DATABASE server stamps. Taking the mark from the worker's clock
+        # would make the revalidation window depend on cross-host clock skew,
+        # so the mark comes from the same clock that writes the column.
+        pre_check_at = db.execute(text("SELECT now()")).scalar_one()
         if job_id is None:
             job = jobs.create_job(
                 db, tipo=TipoGeoJob.ROAD_FLOW_CROSSINGS.value, parametros={"area_id": area_id}
