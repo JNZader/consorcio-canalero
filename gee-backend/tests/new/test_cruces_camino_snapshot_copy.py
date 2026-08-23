@@ -631,9 +631,7 @@ class TestScratchIsNotLeakedOnCopyFailure:
         scratch_root = tmp_path / "scratch-root"
         scratch_root.mkdir()
         with pytest.raises(FileNotFoundError):
-            cruces_camino_support.copiar_rasters_a_scratch(
-                variante, scratch_root=scratch_root
-            )
+            cruces_camino_support.copiar_rasters_a_scratch(variante, scratch_root=scratch_root)
         assert list(scratch_root.iterdir()) == []
 
 
@@ -667,9 +665,7 @@ class TestSameAreaReplaceIsSerialized:
     the mutual exclusion the delete-then-insert needs to stay one coherent run.
     """
 
-    def test_second_replace_for_same_area_blocks_on_the_lock(
-        self, session_factory
-    ):
+    def test_second_replace_for_same_area_blocks_on_the_lock(self, session_factory):
         from datetime import datetime, timezone
 
         repo_a = IntelligenceRepository()

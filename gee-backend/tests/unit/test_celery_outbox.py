@@ -71,6 +71,7 @@ def test_task_key_allowlist_is_exact() -> None:
         "geo.delineate_basins",
         "geo.composite_analysis",
         "gee.sar_temporal",
+        "geo.intelligence.compute_road_flow_crossings",
     }
 
 
