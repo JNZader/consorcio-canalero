@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import yaml
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.domains.conocimiento.embedding import Embedder
@@ -33,6 +34,7 @@ from app.domains.conocimiento.repository import (
     # WHICH operator produced the lexical leg it is reporting on — an ablation
     # whose operator is not disclosed is a measurement of something the reader
     # cannot name (ledger RAG4-001).
+    CLASIFICACIONES_ENVIABLES,
     FTS_OPERADOR as FTS_OPERADOR,
     LEG_LIMIT,
     IngestionAbort,
@@ -254,6 +256,65 @@ def claves_sin_vector(db: Session, corpus_sha: str) -> frozenset[str]:
     """
     require_vector_support(db)
     return claves_sin_embedding(db, corpus_sha)
+
+
+#: The serving gate's SQL, in the same raw-SQL join shape `eval/privacy.py:49-58`
+#: already uses, so "what leaves the machine" reads the same in both places. Raw
+#: rather than the ORM for exactly that reason: this query must be readable end
+#: to end by someone auditing the privacy boundary.
+_UNIDADES_ENVIABLES_SQL = text(
+    """
+    SELECT u.citation_key
+    FROM rag_unidad u
+    JOIN rag_documento d
+      ON d.corpus_sha = u.corpus_sha AND d.documento_id = u.documento_id
+    WHERE u.corpus_sha = :corpus_sha
+      AND u.citation_key = ANY(:claves)
+      AND d.clasificacion = ANY(:enviables)
+    """
+)
+
+
+def assert_unidades_publicas(
+    db: Session, corpus_sha: str, claves: Sequence[str]
+) -> frozenset[str]:
+    """Return the SHIPPABLE SUBSET of `claves` — it never raises on exclusion.
+
+    Per-unit exclusion, not snapshot refusal, and the difference is deliberate.
+    `eval/privacy.py`'s `assert_public_domain` refuses the WHOLE snapshot if a
+    single document is non-public, which is right for a *baseline*: a baseline
+    computed over a filtered corpus would be compared against a corpus it was not
+    computed over. A served answer has no such symmetry requirement — it is
+    grounded in whatever units it actually cites — so dropping the units that may
+    not travel is the correct behaviour here, and refusing the request would not
+    be.
+
+    The admitted set is `CLASIFICACIONES_ENVIABLES`, imported rather than
+    re-spelled: "shippable" has exactly ONE definition in this codebase, shared
+    with the ingest rule. `assert_public_domain` deliberately does not use it.
+
+    The name is kept from the ratified amendment even though the function now
+    admits `institucional` too, because that is the name the amendment uses and
+    renaming it here would make the design document and the code disagree about
+    which gate is which.
+
+    Downstream contract (G2b): the generation payload is the retrieved list
+    filtered to this subset, in retrieved order, nothing back-filled to restore
+    `k`; an empty payload is abstención and never reaches the provider; and every
+    later check binds to the payload, so an excluded unit's citation key is an
+    INVENTED key, not a permitted one.
+    """
+    if not claves:
+        return frozenset()
+    filas = db.execute(
+        _UNIDADES_ENVIABLES_SQL,
+        {
+            "corpus_sha": corpus_sha,
+            "claves": list(claves),
+            "enviables": sorted(CLASIFICACIONES_ENVIABLES),
+        },
+    ).scalars()
+    return frozenset(filas)
 
 
 def verificar_embedder(db: Session, corpus_sha: str, embedder: Embedder) -> None:
