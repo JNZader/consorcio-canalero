@@ -339,6 +339,87 @@ class TestPreFillProvenanceIsAStoredFact:
         assert candidata == "terraplen"
 
 
+class TestTheSuggestedLevelIsServedNotReimplemented:
+    """One table, exposed — so S4 cannot end up owning a second one.
+
+    The server ALREADY compares a submission against ``CANDIDATA_A_NIVEL`` to
+    decide ``nivel_desde_candidata``. A client that translated
+    ``clasificacion_candidata`` on its own would be a second copy of that table,
+    and the day the two disagreed the form would pre-fill a level the server then
+    refused to call confirmed — a disagreement visible only as an inexplicable
+    ``false`` in a column nobody is looking at. Serving ``nivel_sugerido`` from
+    the same object removes the possibility rather than documenting against it.
+    """
+
+    def test_the_read_carries_the_suggested_level_for_the_newest_candidate(self, db, seeded):
+        from app.domains.geo.relevamiento.service import RelevamientoService
+
+        TestPreFillProvenanceIsAStoredFact()._crear_candidata(db, clasificacion="canal")
+
+        detalle = RelevamientoService().get_detalle(db, TRAMO)
+
+        assert detalle.candidata is not None
+        assert detalle.candidata.clasificacion_candidata == "canal"
+        assert detalle.candidata.nivel_sugerido == "menor", (
+            "a road BELOW its flanks is a channel, and 'menor' is what that means "
+            "in the operator's vocabulary"
+        )
+
+    def test_the_suggestion_is_what_the_server_would_accept_as_confirmed(self, db, seeded):
+        """The two halves, asserted against each other rather than assumed.
+
+        Submitting exactly the suggested level with the client flag set is the
+        one case that must store ``nivel_desde_candidata = True``. If the
+        suggestion and the comparison ever came from different tables, this is
+        the test that would break.
+        """
+        from app.domains.geo.relevamiento.service import RelevamientoService
+
+        provenance = TestPreFillProvenanceIsAStoredFact()
+        provenance._crear_candidata(db, clasificacion="canal")
+        sugerido = RelevamientoService().get_detalle(db, TRAMO).candidata.nivel_sugerido
+
+        stored = provenance._registrar(
+            db, seeded, nivel_relativo=sugerido, nivel_confirmado_sin_cambios=True
+        )
+
+        assert stored["nivel_desde_candidata"] is True
+
+    def test_the_endpoint_serves_it_inside_candidata_and_nowhere_else(self, db, seeded):
+        """It rides with the candidate, never merged into ``vigente``.
+
+        Naming what the DEM would suggest is not the same as recording what
+        somebody surveyed, and the read keeps the two apart by construction.
+        """
+        from app.domains.geo.relevamiento.service import RelevamientoService
+
+        TestPreFillProvenanceIsAStoredFact()._crear_candidata(db, clasificacion="neutro")
+        RelevamientoService().registrar(
+            db,
+            payload=_crear_payload(nivel_relativo="mayor"),
+            relevado_por=seeded,
+        )
+
+        cuerpo = RelevamientoService().get_detalle(db, TRAMO).model_dump()
+
+        assert cuerpo["candidata"]["nivel_sugerido"] == "igual"
+        assert "nivel_sugerido" not in cuerpo["vigente"]
+        assert all("nivel_sugerido" not in entrada for entrada in cuerpo["historial"])
+
+
+def _crear_payload(**overrides):
+    from app.domains.geo.relevamiento.schemas import RelevamientoTramoCreate
+
+    payload = {
+        "tramo_ref": TRAMO,
+        "nivel_relativo": "mayor",
+        "tiene_cuneta": "si",
+        "estado_cuneta": "limpia",
+    }
+    payload.update(overrides)
+    return RelevamientoTramoCreate(**payload)
+
+
 class TestTheViewDefinitionHasNotDrifted:
     def test_the_model_side_view_matches_the_migration(self):
         """One definition of "which record wins", in two places that must agree.

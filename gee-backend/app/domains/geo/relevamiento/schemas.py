@@ -21,12 +21,38 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    computed_field,
+    field_validator,
+)
 
 NivelRelativo = Literal["menor", "igual", "mayor"]
 TieneCuneta = Literal["si", "no", "parcial"]
 EstadoCuneta = Literal["limpia", "colmatada"]
 ClasificacionCandidata = Literal["terraplen", "canal", "neutro"]
+
+#: What each DEM classification means in the operator's vocabulary. The
+#: classifier compares ``median(road) - median(flank)``, so a road that sits
+#: ABOVE its flanks is an embankment and reads as ``mayor``; below is a channel
+#: and reads as ``menor``.
+#:
+#: **THE table — there is no second one.** It lives here, next to the two
+#: Literals it maps between, because three consumers need exactly this mapping
+#: and any of them re-typing it would be a fork nobody would notice until the
+#: two copies disagreed: the form pre-fills through it, ``CandidataResponse``
+#: exposes it as ``nivel_sugerido`` so the client never has to own a copy, and
+#: ``RelevamientoService`` compares the submitted value against it to decide
+#: whether the operator really accepted what was displayed. It is total over
+#: ``ClasificacionCandidata``, so the lookup below cannot raise.
+CANDIDATA_A_NIVEL: dict[ClasificacionCandidata, NivelRelativo] = {
+    "terraplen": "mayor",
+    "canal": "menor",
+    "neutro": "igual",
+}
 
 
 class RelevamientoTramoCreate(BaseModel):
@@ -105,6 +131,24 @@ class CandidataResponse(BaseModel):
     confianza_m: float
     calculada_en: datetime
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def nivel_sugerido(self) -> NivelRelativo:
+        """The candidate in the operator's vocabulary — a SUGGESTION, not a value.
+
+        Computed from :data:`CANDIDATA_A_NIVEL` rather than stored or accepted
+        from anywhere: the server already compares a submission against that
+        table to decide ``nivel_desde_candidata``, so a client translating
+        ``clasificacion_candidata`` on its own would be a second table, and the
+        day the two disagreed the form would pre-fill a value the server then
+        refused to call confirmed. Derived, so it cannot drift and cannot be set.
+
+        It stays in ``candidata``, next to ``clasificacion_candidata`` and never
+        merged into ``vigente``: naming what the DEM would suggest is not the
+        same as recording what somebody surveyed.
+        """
+        return CANDIDATA_A_NIVEL[self.clasificacion_candidata]
+
 
 class TramoRelevamientoDetalle(BaseModel):
     """Three NAMED fields — never merged into one "the value of this segment"."""
@@ -131,6 +175,7 @@ class CoberturaResponse(BaseModel):
 
 
 __all__ = [
+    "CANDIDATA_A_NIVEL",
     "CandidataResponse",
     "CoberturaResponse",
     "RelevamientoTramoCreate",

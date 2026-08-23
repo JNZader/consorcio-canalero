@@ -18,10 +18,17 @@ the CHECK is what holds when a future ETL bypasses the schema entirely.
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
-from app.domains.geo.relevamiento.schemas import RelevamientoTramoCreate
+from app.domains.geo.relevamiento.schemas import (
+    CANDIDATA_A_NIVEL,
+    CandidataResponse,
+    RelevamientoTramoCreate,
+)
 
 VALID = {
     "tramo_ref": "28188",
@@ -120,6 +127,70 @@ class TestThePreFillFlagIsExplicit:
         payload = RelevamientoTramoCreate(**VALID, nivel_confirmado_sin_cambios=True)
 
         assert payload.nivel_confirmado_sin_cambios is True
+
+
+class TestTheSuggestedLevelIsDerivedFromTheOneTable:
+    """``nivel_sugerido`` — computed from ``CANDIDATA_A_NIVEL``, never stored.
+
+    The mapping is exposed so no consumer has to re-implement it. Every pair is
+    named here, INCLUDING ``neutro → igual``: it is the one the classifier
+    produces when the DEM sees no difference, it is the one a form is most likely
+    to translate as "leave it blank", and until now nothing asserted it at all.
+    """
+
+    @pytest.mark.parametrize(
+        ("clasificacion", "nivel"),
+        [("terraplen", "mayor"), ("canal", "menor"), ("neutro", "igual")],
+    )
+    def test_each_classification_has_exactly_one_operator_level(
+        self, clasificacion: str, nivel: str
+    ):
+        candidata = _candidata(clasificacion)
+
+        assert candidata.nivel_sugerido == nivel
+        assert CANDIDATA_A_NIVEL[clasificacion] == nivel
+
+    def test_the_response_carries_it(self):
+        cuerpo = _candidata("terraplen").model_dump()
+
+        assert cuerpo["nivel_sugerido"] == "mayor", (
+            "a computed field the serializer drops would leave the client with "
+            "the raw classification and no choice but to translate it itself"
+        )
+
+    def test_it_cannot_be_supplied_by_the_caller(self):
+        """Derived means derived: an input would be a second source of truth."""
+        candidata = CandidataResponse(**{**_candidata_kwargs("canal"), "nivel_sugerido": "mayor"})
+
+        assert candidata.nivel_sugerido == "menor"
+
+    def test_the_table_covers_every_classification_the_column_allows(self):
+        """Total by construction, so the lookup cannot raise on a valid row."""
+        from typing import get_args
+
+        from app.domains.geo.relevamiento.schemas import ClasificacionCandidata
+
+        assert set(CANDIDATA_A_NIVEL) == set(get_args(ClasificacionCandidata))
+
+    def test_the_service_uses_this_very_object(self):
+        """Not "an equal copy" — the same object, so it cannot drift."""
+        from app.domains.geo.relevamiento import service
+
+        assert service.CANDIDATA_A_NIVEL is CANDIDATA_A_NIVEL
+
+
+def _candidata_kwargs(clasificacion: str) -> dict:
+    return {
+        "tramo_ref": "28188",
+        "geo_job_id": uuid.uuid4(),
+        "clasificacion_candidata": clasificacion,
+        "confianza_m": 1.4,
+        "calculada_en": datetime.now(timezone.utc),
+    }
+
+
+def _candidata(clasificacion: str) -> CandidataResponse:
+    return CandidataResponse(**_candidata_kwargs(clasificacion))
 
 
 class TestNoHydraulicQuantityIsOffered:
