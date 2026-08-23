@@ -69,6 +69,21 @@ SQL_SELECT_CANDIDATA = text(
     """
 )
 
+#: One candidate row per segment per RUN. No upsert and no conflict clause: a new
+#: run is a new generation, keyed by its own ``geo_job_id``, and the previous
+#: generation is history rather than something to overwrite.
+SQL_INSERT_CANDIDATA = text(
+    """
+    INSERT INTO tramo_clasificacion_candidata (
+        tramo_ref, geo_job_id, dem_layer_id, clasificacion_candidata,
+        confianza_m, calculada_en
+    ) VALUES (
+        :tramo_ref, :geo_job_id, :dem_layer_id, :clasificacion_candidata,
+        :confianza_m, :calculada_en
+    )
+    """
+)
+
 #: The three counters plus the denominator, in ONE pass over the ACTIVE network,
 #: so they cannot disagree with each other. A retired segment is out of all four:
 #: counting it as ``sin_datos`` would permanently depress coverage against a road
@@ -147,6 +162,34 @@ class RelevamientoRepository:
             .one()
         )
         return dict(row)
+
+    def insertar_candidatas(
+        self,
+        db: Session,
+        *,
+        filas: list[dict[str, Any]],
+        geo_job_id: uuid.UUID,
+        calculada_en: Any,
+    ) -> int:
+        """Write one run's candidates. The caller owns the transaction boundary.
+
+        Nothing older is touched: candidates from previous runs stay exactly
+        where they are, which is what makes "two DEM runs produce two candidate
+        rows" true rather than aspirational.
+        """
+        for fila in filas:
+            db.execute(
+                SQL_INSERT_CANDIDATA,
+                {
+                    "geo_job_id": str(geo_job_id),
+                    "calculada_en": calculada_en,
+                    "dem_layer_id": fila.get("dem_layer_id"),
+                    "tramo_ref": fila["tramo_ref"],
+                    "clasificacion_candidata": fila["clasificacion_candidata"],
+                    "confianza_m": fila["confianza_m"],
+                },
+            )
+        return len(filas)
 
     def get_vigente(self, db: Session, tramo_ref: str) -> Optional[dict[str, Any]]:
         row = db.execute(SQL_SELECT_VIGENTE, {"tramo_ref": tramo_ref}).mappings().first()

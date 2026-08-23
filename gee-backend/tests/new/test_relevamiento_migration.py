@@ -427,6 +427,39 @@ class TestCandidataTable:
         assert fragment not in names
 
 
+class TestTheRunTypeIsNameable:
+    """The candidate table is keyed by its run, so the run needs a job type.
+
+    Borrowing ``dem_pipeline`` would label a classification as something it is
+    not, and the job list is how an operator sees what actually ran.
+    """
+
+    def test_the_enum_value_is_added_if_not_exists(self):
+        assert MIGRATION.ADD_ENUM_VALUE.count("IF NOT EXISTS") == 1
+        assert "tramo_classification" in MIGRATION.ADD_ENUM_VALUE
+
+    def test_the_downgrade_leaves_the_enum_value_in_place(self):
+        """PostgreSQL cannot remove an enum value — the residue is documented."""
+        for statement in MIGRATION.DOWNGRADE_STATEMENTS:
+            assert "tipo_geo_job" not in statement
+
+    def test_the_model_enum_carries_the_same_value(self):
+        from app.domains.geo.models import TipoGeoJob
+
+        assert TipoGeoJob.TRAMO_CLASSIFICATION.value == "tramo_classification"
+
+    def test_the_type_dispatches_through_the_durable_outbox(self):
+        """Every ``TipoGeoJob`` must map to an allowlisted task key."""
+        from app.domains.geo.models import TipoGeoJob
+        from app.domains.geo.service import _get_task_key_map
+        from app.shared.celery_outbox import CeleryTaskKey
+
+        assert (
+            _get_task_key_map()[TipoGeoJob.TRAMO_CLASSIFICATION]
+            == CeleryTaskKey.CLASSIFY_ROAD_SEGMENTS
+        )
+
+
 class TestDowngrade:
     def test_the_downgrade_drops_the_view_before_the_tables(self, migrated):
         """A ``DROP TABLE`` under a dependent view fails; ordering is the contract."""

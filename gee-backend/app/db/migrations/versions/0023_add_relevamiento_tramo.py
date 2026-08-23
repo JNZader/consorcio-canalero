@@ -147,6 +147,18 @@ CREATE_CANDIDATA_INDEX: str = (
     "ON tramo_clasificacion_candidata (tramo_ref, calculada_en DESC)"
 )
 
+#: The classification run needs a ``geo_jobs`` row of its own, because the
+#: candidate table is keyed by the run that produced it. ``geo_jobs.tipo`` is a
+#: NOT NULL enum, so the run has to be nameable: borrowing ``dem_pipeline``
+#: would label a classification as something it is not, and the job list is how
+#: an operator sees what actually ran.
+#:
+#: ``IF NOT EXISTS`` because a downgrade cannot take an enum value back off the
+#: type — PostgreSQL has no ``DROP VALUE``. Same permanent, harmless, documented
+#: residue as ``0022``'s ``road_flow_crossings``; a re-upgrade is then a no-op
+#: rather than a duplicate-value error.
+ADD_ENUM_VALUE: str = "ALTER TYPE tipo_geo_job ADD VALUE IF NOT EXISTS 'tramo_classification'"
+
 UPGRADE_STATEMENTS: tuple[str, ...] = (
     CREATE_RELEVAMIENTO_TRAMO,
     CREATE_TRAMO_VERSION_INDEX,
@@ -155,6 +167,8 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
     CREATE_CANDIDATA_INDEX,
 )
 
+#: The enum value is deliberately NOT here: PostgreSQL cannot remove one.
+#:
 #: The view first: ``DROP TABLE`` under a dependent view fails. NOT ``CASCADE``
 #: — see the module docstring; this drop destroys field-collected survey data and
 #: it is meant to be loud about what it takes with it.
@@ -166,6 +180,10 @@ DOWNGRADE_STATEMENTS: tuple[str, ...] = (
 
 
 def upgrade() -> None:
+    # The enum value first and on its own: ``ALTER TYPE ... ADD VALUE`` cannot
+    # run in the same transaction as a statement that uses the new value on
+    # older PostgreSQL, and running it first keeps the ordering obvious.
+    op.execute(ADD_ENUM_VALUE)
     for statement in UPGRADE_STATEMENTS:
         op.execute(statement)
 
