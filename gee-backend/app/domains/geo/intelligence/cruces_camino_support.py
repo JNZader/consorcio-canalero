@@ -368,10 +368,17 @@ def copiar_rasters_a_scratch(
     """
     scratch = Path(scratch_root) / f"cruces-{uuid.uuid4().hex}"
     scratch.mkdir(parents=True, exist_ok=False)
-    flow_dir_copy = scratch / "flow_dir.tif"
-    flow_acc_copy = scratch / "flow_acc.tif"
-    shutil.copy2(variante.flow_dir_path, flow_dir_copy)
-    shutil.copy2(variante.flow_acc_path, flow_acc_copy)
+    # The caller only learns this path from the RETURN value, so a failure
+    # between mkdir and return would leak the directory forever: clean up our
+    # own partial state before re-raising.
+    try:
+        flow_dir_copy = scratch / "flow_dir.tif"
+        flow_acc_copy = scratch / "flow_acc.tif"
+        shutil.copy2(variante.flow_dir_path, flow_dir_copy)
+        shutil.copy2(variante.flow_acc_path, flow_acc_copy)
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
     return scratch, str(flow_dir_copy), str(flow_acc_copy)
 
 

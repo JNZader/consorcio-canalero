@@ -34,6 +34,8 @@ from rasterio.crs import CRS
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.domains.geo.intelligence import cruces_camino_support
+
 from app.domains.geo.intelligence import cruces_camino_service
 
 AREA = "zona_snapshot"
@@ -579,12 +581,21 @@ class TestTheProducerHalfDoesNotExist:
         is no producer-side edit and therefore no "the guard is worthless if only
         one side takes it" failure mode.
         """
+        base_ref = "origin/feat/flujo-caminos-s1-red-vial"
+        probe = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{base_ref}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[3],
+        )
+        if probe.returncode != 0:
+            pytest.skip(f"base ref {base_ref} unavailable in this checkout; chain-scoped proof")
         diff = subprocess.run(
             [
                 "git",
                 "diff",
                 "--stat",
-                "origin/feat/flujo-caminos-s1-red-vial...HEAD",
+                f"{base_ref}...HEAD",
                 "--",
                 "gee-backend/app/domains/geo/tasks_dem_support.py",
             ],
@@ -596,3 +607,30 @@ class TestTheProducerHalfDoesNotExist:
         assert diff.stdout.strip() == "", (
             f"tasks_dem_support.py must be untouched by this change:\n{diff.stdout}"
         )
+
+
+class TestScratchIsNotLeakedOnCopyFailure:
+    """A failure INSIDE the copy helper removes its own directory (R4 fix).
+
+    The caller only learns the scratch path from the helper's return value, so
+    an exception between ``mkdir`` and ``return`` would otherwise leak the
+    directory forever with no owner.
+    """
+
+    def test_a_failed_second_copy_leaves_no_directory_behind(self, tmp_path):
+        flow_dir = tmp_path / "flow_dir_src.tif"
+        flow_dir.write_bytes(b"not-really-a-tif")
+        variante = cruces_camino_support.VarianteResuelta(
+            flow_dir_path=str(flow_dir),
+            flow_acc_path=str(tmp_path / "missing_flow_acc.tif"),
+            variante="natural",
+            flow_dir_layer="flow_dir_x",
+            flow_acc_layer="flow_acc_x",
+        )
+        scratch_root = tmp_path / "scratch-root"
+        scratch_root.mkdir()
+        with pytest.raises(FileNotFoundError):
+            cruces_camino_support.copiar_rasters_a_scratch(
+                variante, scratch_root=scratch_root
+            )
+        assert list(scratch_root.iterdir()) == []

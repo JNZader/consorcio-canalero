@@ -248,6 +248,19 @@ class TestNothingExistingMoved:
 
 
 def _diff_stat(*paths: str) -> str:
+    # These proofs are CHAIN-SCOPED: they only mean anything in a checkout
+    # where the S1 base ref exists (single-branch/shallow fetches, source
+    # archives, and any clone after the branch is merged and deleted do not
+    # have it). There the honest outcome is an explicit skip, not a red that
+    # blames the code for the shape of the local VCS state.
+    probe = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{BASE_REF}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    if probe.returncode != 0:
+        pytest.skip(f"base ref {BASE_REF} unavailable in this checkout; chain-scoped proof")
     result = subprocess.run(
         ["git", "diff", "--stat", f"{BASE_REF}...HEAD", "--", *paths],
         capture_output=True,
