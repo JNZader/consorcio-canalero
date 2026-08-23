@@ -698,3 +698,72 @@ class TestSameAreaReplaceIsSerialized:
             session_b.rollback()
             session_a.close()
             session_b.close()
+
+
+def _fila_natural(*, rank: int) -> dict:
+    return {
+        "tramo_ref": "snap-1",
+        "tipo": "flujo_natural",
+        "lon": -62.8,
+        "lat": -33.0,
+        "direccion_flujo_deg": 0.0,
+        "rumbo_camino_deg": 90.0,
+        "lado_cruce": "izq_a_der",
+        "area_aporte_ha": 540.0,
+        "orden_ranking": rank,
+        "confianza": "alta",
+        "nota": None,
+        "canal_ref": None,
+    }
+
+
+class TestAnEmptyReplaceIsSignaledNotSilent:
+    """R4 fix: a successful zero-crossing run may replace, but never silently.
+
+    Recomputation IS invalidation, so the empty set is the new truth — the
+    defect was the SILENCE: "COMPLETED, cruces: 0" carried no trace that a
+    populated ranking had just been destroyed. The signal is the trace.
+    """
+
+    def test_emptying_a_populated_set_records_the_destroyed_count(
+        self, db, seeded, session_factory, tmp_path, monkeypatch
+    ):
+        from datetime import datetime, timezone
+
+        repo = IntelligenceRepository()
+        repo.replace_cruces_for_area(
+            db,
+            area_id=AREA,
+            geo_job_id=uuid.UUID(_crossing_job(db)),
+            calculada_en=datetime.now(timezone.utc),
+            rows=[_fila_natural(rank=1), _fila_natural(rank=2)],
+        )
+        db.commit()
+        assert _crossing_count(db) == 2
+
+        # Force the legitimately-empty outcome (an operator raising the acc
+        # threshold produces exactly this shape) without faking any failure:
+        # the run itself proceeds and COMPLETES.
+        monkeypatch.setattr(cruces_camino_service, "_frame_to_rows", lambda gdf: [])
+
+        job_id = _crossing_job(db)
+        result = cruces_camino_service.run_crossing_task(
+            area_id=AREA,
+            job_id=job_id,
+            session_factory=session_factory,
+            scratch_root=str(tmp_path / "scratch"),
+        )
+
+        assert result["status"] == "completed"
+        assert _crossing_count(db) == 0, "the empty set IS the new truth"
+        fresh = session_factory()
+        try:
+            resultado = fresh.execute(
+                text("SELECT resultado FROM geo_jobs WHERE id = :id"), {"id": job_id}
+            ).scalar_one()
+        finally:
+            fresh.close()
+        assert resultado["cruces"] == 0
+        assert resultado["reemplazo_vacio"] == {"previos": 2}, (
+            "the operator must see that a populated ranking was emptied, and by how much"
+        )

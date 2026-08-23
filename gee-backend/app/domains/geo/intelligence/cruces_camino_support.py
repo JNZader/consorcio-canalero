@@ -140,7 +140,11 @@ SQL_DEM_RESULTADOS = text(
     """
 )
 
-#: The keys a DEM run writes into ``outputs`` ONLY inside its burn branch
+#: The keys a DEM run writes into ``outputs`` ONLY inside its burn branch.
+#: That ``outputs`` dict is persisted VERBATIM as ``geo_jobs.resultado``
+#: (``tasks_dem_support.py:426`` — ``resultado=outputs``), so these markers
+#: live at the TOP LEVEL of the payload ``SQL_DEM_RESULTADOS`` returns, and the
+#: top-level membership test below is the correct lookup depth.
 #: (``tasks_dem_support.py:109-143``). Their presence IS the record of a burn;
 #: their absence, on a run that produced any output at all, is the record of
 #: none. That is the checked fact the fallback below is licensed by.

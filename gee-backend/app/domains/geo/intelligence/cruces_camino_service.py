@@ -265,6 +265,13 @@ def run_crossing_task(
         rows = _frame_to_rows(gdf)
         db = session_factory()
         try:
+            # Recomputation IS invalidation, so an empty result legitimately
+            # replaces the set — but silently emptying a populated list is the
+            # one degradation an operator cannot see from "COMPLETED, cruces: 0"
+            # alone. The count-before is read inside the SAME transaction (and
+            # therefore under the per-area advisory lock), so the signal names
+            # exactly the set this run destroyed.
+            previos = len(repo.get_cruces_for_area(db, area_id)) if not rows else 0
             repo.replace_cruces_for_area(
                 db,
                 area_id=area_id,
@@ -278,6 +285,14 @@ def run_crossing_task(
                 "excluidos": excluidos,
                 "parametros": run_parametros,
             }
+            if not rows and previos:
+                resultado["reemplazo_vacio"] = {"previos": previos}
+                logger.warning(
+                    "cruces_camino.reemplazo_vacio",
+                    area_id=area_id,
+                    previos=previos,
+                    job_id=job_id,
+                )
             completed = jobs.update_job_status_if_current(
                 db,
                 uuid.UUID(job_id),
