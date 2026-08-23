@@ -30,6 +30,26 @@ cross-encoder's norma-vs-secundaria separation collapses to 0.483
 (`design.md:1135-1136`) — the reranker happily puts a consultant's report above
 the law it summarises, which is the single failure this corpus exists to prevent.
 
+**A declared divergence from the reference formula: `math.fsum`, not `sum`.**
+`doclen` and `avgdl` are accumulated with `math.fsum`, which is this repository's
+standing policy for any float mean that reaches a published number
+(`eval/metrics.py:236-245`): builtin `sum` rounds at every step, so its result
+depends on summation order and the report's last digits become a property of the
+machine that ran it. The textbook BM25 write-up says `sum`, and this module's own
+docstring says "changing it changes the measurement" — so the deviation is
+declared here rather than left for a reader to find. It is benign and bounded:
+the terms are small non-negative integers-as-floats (`setweight` multiplicities),
+so the two agree exactly on any realistic corpus and differ by at most one ULP in
+`avgdl` in the worst case, far below the third decimal any bar is scored at. What
+it buys is that the same snapshot yields the same `avgdl` bit-for-bit regardless
+of row order.
+
+The per-document accumulation inside `buscar` deliberately stays an incremental
+`+=`, not an `fsum` over collected terms: it is a running total over a
+deterministic iteration (the query's lexemes in order, then `self.claves`, which
+is a tuple), and the ranking consumes the ORDER of those scores rather than their
+digits. Changing it would change the measured configuration for no gain.
+
 Measured cost at the pinned corpus (1398 norma units): 0.14 s to build, ~2 MB
 resident, ~0.5 ms per query.
 """
