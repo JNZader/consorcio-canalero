@@ -57,6 +57,12 @@ export function useMapDerivedState(params: {
    * is derived from `!!escuelas?.collection`.
    */
   escuelas?: Partial<EscuelasData> | null;
+  /**
+   * Whether the ranked road-crossing layer is offered in the selector at all.
+   * ROLE, not data — see `buildVectorLayerItems`'s `showRoadFlow` note. Passed
+   * straight through so the gate has exactly one home.
+   */
+  showRoadFlow?: boolean;
 }) {
   const {
     capas,
@@ -171,6 +177,7 @@ export function useMapDerivedState(params: {
         showPilarVerde,
         showPilarAzul,
         showEscuelas,
+        showRoadFlow: params.showRoadFlow ?? false,
       }),
     [
       approvedZonesCollection,
@@ -180,6 +187,7 @@ export function useMapDerivedState(params: {
       showPilarVerde,
       showPilarAzul,
       showEscuelas,
+      params.showRoadFlow,
     ]
   );
 

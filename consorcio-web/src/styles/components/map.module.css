@@ -267,6 +267,37 @@
   flex-direction: column;
 }
 
+/* Cruces de camino (flujo-caminos, S4). Anclado abajo a la IZQUIERDA a
+   proposito: `.infoPanel` y `.fichaPanel` comparten `right: 56px` y se reparten
+   esa columna entre si, asi que un tercer panel ahi los taparia. La columna
+   izquierda arriba la ocupan los controles de capas (`map-2d-top-left-panels`,
+   `maxHeight: calc(100vh - 180px)`), por eso este se ancla al borde INFERIOR:
+   los dos pueden estar abiertos sin pisarse.
+
+   Todo lo demas (pointer-events, scroller `.panelCardBody`, degradado, tamano
+   del boton de cerrar) lo hereda por estar listado junto a `.fichaPanel` en las
+   reglas agrupadas de mas abajo — no hay una segunda copia de esas reglas. */
+.roadFlowPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+  width: min(340px, calc(100% - 72px));
+  max-width: 340px;
+  max-height: calc(100% - 124px);
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.roadFlowPanelPill {
+  bottom: var(--mantine-spacing-md);
+  right: auto;
+  left: var(--mantine-spacing-md);
+}
+
 /* Scrollable body of the floating desktop cards. It owns `overflow-y: auto`
    (removed from the root in R3-001) and re-enables pointer events so the native
    scrollbar, buttons, links, inputs, pills, and the Recharts SVG tooltip all
@@ -395,6 +426,15 @@
   padding-bottom: 0 !important;
 }
 
+/* Same rule for the cruces card, declared on its OWN selector: the grouped
+   selector above is pinned as TEXT by `tests/unit/mapPanelFadeClearance.test.ts`
+   (it is the contract that the fade never gets a compensating padding), and
+   widening a pinned contract to carry a third panel would weaken the pin for
+   the two it was written for. */
+.roadFlowPanel {
+  padding-bottom: 0 !important;
+}
+
 @media (max-width: 62em) {
   /* Narrow viewports: the page chrome wraps to several rows, so the canvas has
      to give back more height than on desktop (measured ~300px above the canvas
@@ -430,6 +470,11 @@
   .infoPanel,
   .fichaPanel {
     right: var(--mantine-spacing-md);
+    width: min(360px, calc(100% - 32px));
+  }
+
+  .roadFlowPanel {
+    left: var(--mantine-spacing-md);
     width: min(360px, calc(100% - 32px));
   }
 
@@ -697,15 +742,30 @@
   --panel-close-size: 22px;
 }
 
+/* Same 22px for the cruces card. Separate selector for the same reason as the
+   padding rule above — `tests/unit/MapCtrlTouchTargets.test.tsx` pins the three
+   shapes named in the grouped selector. */
+.roadFlowPanel {
+  --panel-close-size: 22px;
+}
+
 .infoPanel .panelCloseButton,
 .fichaPanel .panelCloseButton,
 .panelSheet .panelCloseButton {
   --cb-size: var(--panel-close-size);
 }
 
+.roadFlowPanel .panelCloseButton {
+  --cb-size: var(--panel-close-size);
+}
+
 .infoPanel .panelActionIcon,
 .fichaPanel .panelActionIcon,
 .panelSheet .panelActionIcon {
+  --ai-size: var(--panel-close-size);
+}
+
+.roadFlowPanel .panelActionIcon {
   --ai-size: var(--panel-close-size);
 }
 

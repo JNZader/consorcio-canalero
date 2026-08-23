@@ -100,6 +100,18 @@ export const SOURCE_IDS = {
   ESCUELAS: 'escuelas',
 } as const;
 
+/**
+ * Default `area_id` the ranked crossings are read for while the DEM catalogue
+ * has not answered yet (flujo-caminos).
+ *
+ * `zona_principal` is a ROLLOUT FACT — the single processing area of this
+ * deployment, recorded in the change's task 2.2 — never a rule. The read
+ * endpoint takes `area_id` as a query parameter precisely so a second area
+ * costs a dispatch and not an edit, and the container prefers whatever area the
+ * catalogue actually reports over this fallback.
+ */
+export const DEFAULT_ROAD_FLOW_AREA_ID = 'zona_principal';
+
 type WaterwayDef = (typeof WATERWAY_DEFS)[number];
 
 const WATERWAY_FILE_SPECS = [

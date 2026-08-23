@@ -1,4 +1,4 @@
-import type { FeatureCollection } from 'geojson';
+import type { FeatureCollection, Point } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useEffect } from 'react';
@@ -9,6 +9,7 @@ import { ALL_ETAPAS } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
+import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
 import {
   syncAgroAceptadaLayer,
   syncAgroPresentadaLayer,
@@ -20,6 +21,7 @@ import {
   syncCanalesLayers,
   syncEscuelasLayer,
   syncPorcentajeForestacionLayer,
+  syncRoadFlowLayers,
   syncRoadLayers,
   syncSoilLayers,
   syncWaterwayLayers,
@@ -90,6 +92,20 @@ interface UseMapLayerEffectsParams {
    * visibility — never in a competing effect. Defaults to `false`.
    */
   isFichaCanal?: boolean;
+  /**
+   * Cruces de camino (flujo-caminos, D6). This is the `features` member of the
+   * SAME `RoadFlowCrossingsResponse` the ranked list renders — one fetch, one
+   * payload, two surfaces (RFA-R2). Do NOT add a second fetch for the map.
+   */
+  roadFlowCrossings?: FeatureCollection<Point> | null;
+  /**
+   * M, the run's own `flujo_natural` counter, which graduates the radius scale.
+   * Never `features.length` — the collection also carries the unranked canal
+   * points (Law 7).
+   */
+  roadFlowTotalFlujoNatural?: number;
+  /** Panel kind filter. A `setFilter`, never an unmount (RFA-R3). */
+  roadFlowKinds?: RoadFlowKindVisibility;
 }
 
 export function useMapLayerEffects({
@@ -116,6 +132,9 @@ export function useMapLayerEffects({
   canales,
   escuelas,
   isFichaCanal = false,
+  roadFlowCrossings = null,
+  roadFlowTotalFlujoNatural = 0,
+  roadFlowKinds = ROAD_FLOW_ALL_KINDS_VISIBLE,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -154,6 +173,27 @@ export function useMapLayerEffects({
     // única condición — el endpoint backend (`/geo/basins`) siempre fue público.
     syncBasinLayers(map, basins, !!vectorVisibility.basins);
   }, [basins, mapReady, mapRef, vectorVisibility.basins]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    // ONE payload, two surfaces: `roadFlowCrossings` is the very object the
+    // ranked panel renders, so the map and the list cannot disagree (RFA-R2).
+    syncRoadFlowLayers(
+      map,
+      roadFlowCrossings,
+      roadFlowTotalFlujoNatural,
+      !!vectorVisibility.road_flow,
+      roadFlowKinds
+    );
+  }, [
+    mapReady,
+    mapRef,
+    roadFlowCrossings,
+    roadFlowKinds,
+    roadFlowTotalFlujoNatural,
+    vectorVisibility.road_flow,
+  ]);
 
   useEffect(() => {
     const map = mapRef.current;

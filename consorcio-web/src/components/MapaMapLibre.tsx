@@ -28,6 +28,7 @@ const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { useApprovedZones } from '../hooks/useApprovedZones';
+import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
 import { useCanales } from '../hooks/useCanales';
@@ -256,6 +257,18 @@ export default function MapaMapLibre() {
   } = useGeoLayers();
   const { approvedZones, hasApprovedZones } = useApprovedZones();
 
+  // Cruces de camino (flujo-caminos, S4). ONE hook owns the whole capability —
+  // fetch, panel state, survey selection and the map gestures. See its header
+  // for why it is not inline here.
+  const deactivateRoadFlow = useCallback(() => toggleLayer('road_flow', false), [toggleLayer]);
+  const roadFlow = useRoadFlowWiring({
+    mapRef,
+    mapReady,
+    active: !!vectorVisibility.road_flow,
+    geoLayers: allGeoLayers,
+    onDeactivate: deactivateRoadFlow,
+  });
+
   const selectedImage = useSelectedImageListener();
   const comparison = useImageComparisonListener();
   // Lazy fetch (~1.6MB across 10 static assets). Split by consumer:
@@ -360,6 +373,7 @@ export default function MapaMapLibre() {
     pilarVerde,
     canales: canalesData,
     escuelas: escuelasData,
+    showRoadFlow: roadFlow.showRoadFlow,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -541,6 +555,9 @@ export default function MapaMapLibre() {
     canales: canalesData,
     escuelas: escuelasData,
     isFichaCanal,
+    roadFlowCrossings: roadFlow.mapCollection,
+    roadFlowTotalFlujoNatural: roadFlow.totalFlujoNatural,
+    roadFlowKinds: roadFlow.kinds,
   });
 
   useMapInteractionEffects({
@@ -1142,6 +1159,17 @@ export default function MapaMapLibre() {
               layerProvenance={layerProvenance}
               showEmbeddedMapControls={false}
               showEmbeddedRasterLegend={false}
+              roadFlowActive={roadFlow.roadFlowActive}
+              roadFlowCrossings={roadFlow.crossings}
+              roadFlowCobertura={roadFlow.cobertura}
+              roadFlowKinds={roadFlow.kinds}
+              onRoadFlowKindsChange={roadFlow.setKinds}
+              onSelectRoadFlowCrossing={roadFlow.onSelectCrossing}
+              onSurveyTramo={roadFlow.onSurveyTramo}
+              onCloseRoadFlow={roadFlow.onClose}
+              tramoSurveyDetalle={roadFlow.tramoDetalle}
+              onSubmitTramoSurvey={roadFlow.onSubmitTramoSurvey}
+              onCloseTramoSurvey={roadFlow.onCloseTramoSurvey}
             />
           </Box>
         }

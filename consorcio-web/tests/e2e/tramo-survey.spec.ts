@@ -12,6 +12,16 @@
  * run is blind (no `E2E_APP_URL`); the moment somebody declares an environment,
  * a missing sheet is a FAILURE, which is the honest answer.
  *
+ * ⚠️ THE DATA IS STUBBED, THE LAYOUT IS REAL. ⚠️
+ * The three routes this flow reads (`cruces-camino`, `cobertura`, the segment
+ * detail) are fulfilled from fixtures, and the operator session is seeded into
+ * the same `sessionStorage` slots the JWT adapter reads. That is deliberate:
+ * what this spec measures is CSS and layout in a real browser at a real
+ * viewport, and making it depend on a seeded database plus live credentials
+ * would turn every honest layout regression into "no había backend". The
+ * navigation it drives is the REAL one — layer toggle → panel → survey sheet —
+ * so a wiring regression still fails here.
+ *
  * Measurement contract: every control's `boundingBox()` is compared against the
  * SHEET BODY's own visible width (`…-sheet-body`, `MapPanelShell.tsx:281`), not
  * against the viewport. The sheet body is the element that actually overflows —
@@ -19,7 +29,7 @@
  * "visible without scrolling" claim can honestly be measured against.
  */
 
-import { expect, test } from '@playwright/test';
+import { type Page, expect, test } from '@playwright/test';
 
 import { APP_URL } from './helpers/mapWorkspace';
 import { requireCondition } from './helpers/strictGate';
@@ -31,18 +41,157 @@ const SHEET = 'tramo-survey-sheet';
 /** The controls RSS-R3 counts: three fields plus the save action. */
 const CONTROLS = ['tramo-survey-nivel', 'tramo-survey-tiene-cuneta', 'tramo-survey-save'] as const;
 
+/** Storage slots `lib/auth/storage.ts` reads a session from. */
+const TOKEN_KEY = 'consorcio_auth_token';
+const USER_KEY = 'consorcio_auth_user';
+
+const OPERADOR = {
+  id: '00000000-0000-0000-0000-000000000001',
+  email: 'operador@e2e.local',
+  nombre: 'Operador',
+  apellido: 'E2E',
+  telefono: '',
+  role: 'operador',
+};
+
+const TRAMO_REF = 'RV-0001';
+
+const CRUCES = {
+  area_id: 'zona_principal',
+  calculada_en: '2026-08-22T14:03:00Z',
+  desactualizado: false,
+  total_flujo_natural: 1,
+  total_canal: 0,
+  features: {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [-62.68, -32.62] },
+        properties: {
+          id: 'c1',
+          tipo: 'flujo_natural',
+          tramo_ref: TRAMO_REF,
+          canal_ref: null,
+          direccion_flujo_deg: 90,
+          rumbo_camino_deg: 0,
+          lado_cruce: 'norte',
+          area_aporte_ha: 12.5,
+          orden_ranking: 1,
+          confianza: 'alta',
+          nota: null,
+        },
+      },
+    ],
+  },
+  excluidos: [],
+  parametros: {},
+  variante: null,
+  segmentos_parcialmente_cubiertos: 0,
+};
+
+const COBERTURA = {
+  area_id: 'zona_principal',
+  relevados: 1,
+  solo_candidato: 2,
+  sin_datos: 3,
+  total_activos: 6,
+};
+
+/** A segment WITH a DEM candidate, so the chip and its 30 m disclosure render. */
+const DETALLE = {
+  tramo_ref: TRAMO_REF,
+  vigente: null,
+  historial: [],
+  candidata: {
+    tramo_ref: TRAMO_REF,
+    geo_job_id: '00000000-0000-0000-0000-0000000000aa',
+    dem_layer_id: null,
+    clasificacion_candidata: 'terraplen',
+    confianza_m: 1.4,
+    calculada_en: '2026-08-20T10:00:00Z',
+    nivel_sugerido: 'mayor',
+  },
+};
+
+/**
+ * Drive the REAL entry point: seed an operator session, stub the three reads,
+ * tick the `road_flow` layer and open the survey sheet from the ranked row.
+ *
+ * @returns whether the survey sheet became visible.
+ */
+async function abrirHojaDeRelevamiento(page: Page): Promise<boolean> {
+  await page.addInitScript(
+    ({ tokenKey, userKey, user }) => {
+      window.sessionStorage.setItem(tokenKey, 'e2e-token');
+      window.sessionStorage.setItem(userKey, JSON.stringify(user));
+    },
+    { tokenKey: TOKEN_KEY, userKey: USER_KEY, user: OPERADOR }
+  );
+
+  await page.route('**/geo/intelligence/cruces-camino**', (route) =>
+    route.fulfill({ json: CRUCES })
+  );
+  await page.route('**/geo/relevamiento/cobertura**', (route) =>
+    route.fulfill({ json: COBERTURA })
+  );
+  await page.route('**/geo/relevamiento/tramos/**', (route) => route.fulfill({ json: DETALLE }));
+
+  const reached = await page
+    .goto(`${APP_URL}/mapa`)
+    .then(() => true)
+    .catch(() => false);
+  if (!reached) return false;
+
+  const mounted = await page
+    .getByTestId('map-workspace-root')
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!mounted) return false;
+
+  // Narrow viewport: the layer controls live in the burger Drawer.
+  await page.getByTestId('map-workspace-burger').click();
+
+  // The families render EXPANDED, so the accordion control is only touched when
+  // the entry is actually hidden — clicking it unconditionally would COLLAPSE
+  // the section and hide the very checkbox this flow needs.
+  const cruces = page.getByRole('checkbox', { name: 'Cruces de camino' });
+  const offered = await cruces
+    .waitFor({ state: 'attached', timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!offered) return false;
+  if (!(await cruces.isVisible())) {
+    await page.getByRole('button', { name: /Análisis/ }).click();
+  }
+  await cruces.check();
+
+  // The Drawer covers the canvas; the panel it just opened is underneath it.
+  await page.keyboard.press('Escape');
+
+  const relevar = page.getByTestId(`road-flow-relevar-${TRAMO_REF}`);
+  const listo = await relevar
+    .waitFor({ state: 'visible', timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!listo) return false;
+
+  await relevar.click();
+
+  return page
+    .getByTestId(SHEET)
+    .waitFor({ state: 'visible', timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+}
+
 test.describe('Relevamiento de tramo — 390×844', () => {
   test('los tres campos y el guardado entran sin scroll horizontal', async ({ page }) => {
-    await page.goto(`${APP_URL}/mapa`);
-
-    const sheet = page.getByTestId(SHEET);
-    const mounted = await sheet
-      .waitFor({ state: 'visible', timeout: 15000 })
-      .then(() => true)
-      .catch(() => false);
+    const mounted = await abrirHojaDeRelevamiento(page);
     requireCondition(
       mounted,
-      'La hoja de relevamiento del tramo no montó: no hay punto de entrada en /mapa'
+      'La hoja de relevamiento del tramo no montó desde la capa "Cruces de camino" en /mapa'
     );
 
     const body = page.getByTestId(`${SHEET}-sheet-body`);
@@ -73,16 +222,10 @@ test.describe('Relevamiento de tramo — 390×844', () => {
   });
 
   test('cada campo muestra sus opciones a la vez (un toque por campo)', async ({ page }) => {
-    await page.goto(`${APP_URL}/mapa`);
-
-    const sheet = page.getByTestId(SHEET);
-    const mounted = await sheet
-      .waitFor({ state: 'visible', timeout: 15000 })
-      .then(() => true)
-      .catch(() => false);
+    const mounted = await abrirHojaDeRelevamiento(page);
     requireCondition(
       mounted,
-      'La hoja de relevamiento del tramo no montó: no hay punto de entrada en /mapa'
+      'La hoja de relevamiento del tramo no montó desde la capa "Cruces de camino" en /mapa'
     );
 
     // No keyboard, no nested menu: the options are already on screen, so the

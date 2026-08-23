@@ -20,10 +20,31 @@ import {
 } from './LayerControlsPanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
+import { RoadFlowPanel } from './RoadFlowPanel';
+import { TramoSurveySheet } from './TramoSurveySheet';
+import type { RoadFlowKindVisibility } from './roadFlowLayers';
+import type { UseRoadFlowCrossingsResult } from '../../hooks/useRoadFlowCrossings';
+import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
+import type {
+  CoberturaResponse,
+  RelevamientoTramoCreate,
+  TramoRelevamientoDetalle,
+} from '../../lib/api/relevamiento';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
 import type { LayerHealth } from './layerHealth';
 import type { LayerCategory } from './map2dDerived';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
+
+/**
+ * Fallbacks for the optional cruces handlers. They exist so the panel can stay
+ * fully presentational while its props stay optional for callers that have not
+ * wired the capability; the submit one REJECTS rather than resolving, because a
+ * save that silently does nothing is worse than a save that says it failed —
+ * `TramoSurveySheet` keeps the operator's three answers on screen either way.
+ */
+const noop = () => undefined;
+const rejectMissingSubmit = () =>
+  Promise.reject(new Error('No se puede guardar: falta conectar el envío del relevamiento.'));
 
 interface LayerItem {
   id: string;
@@ -225,6 +246,29 @@ export interface MapUiPanelsProps {
    * Defaults to `true` to preserve the floating bottom-right behavior.
    */
   readonly showEmbeddedRasterLegend?: boolean;
+  /**
+   * Cruces de camino (flujo-caminos S4). The panel's LIFECYCLE IS THE LAYER
+   * TOGGLE: `roadFlowActive` mirrors `vectorVisibility.road_flow`, so ticking
+   * the layer opens the panel and unticking it closes the panel. All of these
+   * are optional — a caller that has not wired the capability renders exactly
+   * what it rendered before.
+   */
+  readonly roadFlowActive?: boolean;
+  readonly roadFlowCrossings?: UseRoadFlowCrossingsResult;
+  readonly roadFlowCobertura?: CoberturaResponse;
+  readonly roadFlowKinds?: RoadFlowKindVisibility;
+  readonly onRoadFlowKindsChange?: (kinds: RoadFlowKindVisibility) => void;
+  readonly onSelectRoadFlowCrossing?: (feature: RoadFlowCrossingFeature) => void;
+  readonly onSurveyTramo?: (tramoRef: string) => void;
+  /** Turns the `road_flow` layer OFF. Closing the panel and hiding it are one act. */
+  readonly onCloseRoadFlow?: () => void;
+  /**
+   * The selected segment's survey record, or `null` when no segment is
+   * selected. Present ⇒ `TramoSurveySheet` is mounted.
+   */
+  readonly tramoSurveyDetalle?: TramoRelevamientoDetalle | null;
+  readonly onSubmitTramoSurvey?: (payload: RelevamientoTramoCreate) => Promise<unknown>;
+  readonly onCloseTramoSurvey?: () => void;
 }
 
 export const MapUiPanels = memo(function MapUiPanels({
@@ -311,6 +355,17 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportPng,
   showEmbeddedMapControls = true,
   showEmbeddedRasterLegend = true,
+  roadFlowActive = false,
+  roadFlowCrossings,
+  roadFlowCobertura,
+  roadFlowKinds,
+  onRoadFlowKindsChange,
+  onSelectRoadFlowCrossing,
+  onSurveyTramo,
+  onCloseRoadFlow,
+  tramoSurveyDetalle = null,
+  onSubmitTramoSurvey,
+  onCloseTramoSurvey,
 }: MapUiPanelsProps) {
   // A catastro click can open BOTH panels at once (ficha for the parcel +
   // InfoPanel for whatever canal / escuela / BPA / suelo feature sat under the
@@ -344,6 +399,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   // drag auto-minimizes). The panels stay presentational.
   const [infoMinimized, setInfoMinimized] = useState(false);
   const [fichaMinimized, setFichaMinimized] = useState(false);
+  const [roadFlowMinimized, setRoadFlowMinimized] = useState(false);
 
   // A NEW selection always shows its content: minimizing is a statement about
   // the thing you were looking at, not a preference that should survive into the
@@ -375,6 +431,7 @@ export const MapUiPanels = memo(function MapUiPanels({
     setLastDragSignal(mapDragSignal);
     setInfoMinimized(true);
     setFichaMinimized(true);
+    setRoadFlowMinimized(true);
   }
 
   const toggleInfoMinimized = useCallback(() => {
@@ -383,6 +440,21 @@ export const MapUiPanels = memo(function MapUiPanels({
   const toggleFichaMinimized = useCallback(() => {
     setFichaMinimized((value) => !value);
   }, []);
+
+  // Same model for the cruces panel. Its reset trigger is the LAYER TOGGLE:
+  // turning the layer off and on again is a fresh request to look at it, so it
+  // must never come back as a pill the user has to find and tap.
+  const [lastRoadFlowActive, setLastRoadFlowActive] = useState(roadFlowActive);
+  if (lastRoadFlowActive !== roadFlowActive) {
+    setLastRoadFlowActive(roadFlowActive);
+    setRoadFlowMinimized(false);
+  }
+  const toggleRoadFlowMinimized = useCallback(() => {
+    setRoadFlowMinimized((value) => !value);
+  }, []);
+
+  // A selected segment IS the sheet's mount condition — there is no second flag.
+  const surveyOpen = tramoSurveyDetalle !== null;
 
   // A pill occupies almost nothing, so the moment either panel is minimized the
   // other one gets the whole column back — capping it at 45/55 would waste half
@@ -555,6 +627,40 @@ export const MapUiPanels = memo(function MapUiPanels({
         canalMaxBufferM={fichaCanalMaxBufferM}
         onCanalBufferChange={onFichaCanalBufferChange}
       />
+
+      {/*
+        Cruces de camino. The panel exists exactly while the LAYER is on — there
+        is no separate open/close state to get out of step with what the map is
+        painting.
+
+        On a narrow viewport the survey sheet WINS: both are `MapPanelShell`
+        sheets anchored to the same bottom edge, and the operator who just asked
+        to survey a segment needs the form, not the list behind it. Closing the
+        sheet brings the list straight back, because the list's condition never
+        changed.
+      */}
+      {roadFlowActive && roadFlowCrossings && roadFlowKinds && !(isNarrow && surveyOpen) && (
+        <RoadFlowPanel
+          sheet={isNarrow}
+          crossings={roadFlowCrossings}
+          cobertura={roadFlowCobertura}
+          kinds={roadFlowKinds}
+          onKindsChange={onRoadFlowKindsChange ?? noop}
+          onSelectCrossing={onSelectRoadFlowCrossing ?? noop}
+          onSurveyTramo={onSurveyTramo ?? noop}
+          onClose={onCloseRoadFlow ?? noop}
+          minimized={roadFlowMinimized}
+          onToggleMinimize={toggleRoadFlowMinimized}
+        />
+      )}
+
+      {surveyOpen && tramoSurveyDetalle && (
+        <TramoSurveySheet
+          detalle={tramoSurveyDetalle}
+          onSubmit={onSubmitTramoSurvey ?? rejectMissingSubmit}
+          onClose={onCloseTramoSurvey ?? noop}
+        />
+      )}
 
       <ExportPngModal
         opened={exportPngModalOpen}
