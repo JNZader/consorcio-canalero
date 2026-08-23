@@ -44,7 +44,7 @@ heads, and `ScriptDirectory.get_current_head()` (which
 revision chains onto the current tip of the whole tree, wherever that tip lives.
 
 Revision ID: conocimiento_005
-Revises: 0022_add_cruce_camino
+Revises: 0023_add_relevamiento_tramo
 """
 
 from typing import Sequence, Union
@@ -53,7 +53,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "conocimiento_005"
-down_revision: Union[str, None] = "0022_add_cruce_camino"
+down_revision: Union[str, None] = "0023_add_relevamiento_tramo"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

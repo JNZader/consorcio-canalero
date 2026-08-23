@@ -94,6 +94,10 @@ _PREREQUISITES_0022: tuple[str, ...] = (
     "CREATE TYPE tipo_geo_job AS ENUM ('placeholder')",
     "CREATE TABLE geo_jobs (id UUID PRIMARY KEY)",
     "CREATE TABLE canal_consorcio (id TEXT PRIMARY KEY)",
+    # `0023_add_relevamiento_tramo` (now also on the walk, since
+    # `conocimiento_005` chains onto it) additionally references `users(id)`;
+    # `red_vial` needs no stub because `0021` itself creates it on the walk.
+    "CREATE TABLE users (id UUID PRIMARY KEY)",
 )
 
 
