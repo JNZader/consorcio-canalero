@@ -100,5 +100,9 @@ def leer_cobertura(
     They are three fields on purpose: a candidate is not a survey, and a single
     "surveyed" figure that quietly included candidate-only segments would report
     fieldwork nobody did (RSS-R4).
+
+    With ``area_id`` the scope is that area's **DEM footprint**; without it, the
+    whole network. An area with no registered DEM footprint is a 404 naming the
+    area, never the network's numbers wearing the area's label.
     """
     return servicio.get_cobertura(db, area_id)

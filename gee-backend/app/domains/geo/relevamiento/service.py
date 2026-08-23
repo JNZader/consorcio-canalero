@@ -10,8 +10,10 @@ Three decisions live here and nowhere else:
 2. **The candidate is never written to.** A survey that disagrees with it leaves
    it exactly where it is: it is a record of what the DEM once suggested, not a
    draft of the operator's answer.
-3. **Coverage counts the ACTIVE network.** A retired segment keeps its history
-   and leaves the denominator (design D4).
+3. **Coverage counts the ACTIVE network, inside the area's DEM footprint.** A
+   retired segment keeps its history and leaves the denominator (design D4), and
+   the area is the ground its terrain analysis covers — not the union of every
+   layer that ever named the area (owner ratification A, 2026-08-23).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.relevamiento.repository import RelevamientoRepository
 from app.domains.geo.relevamiento.schemas import (
+    CANDIDATA_A_NIVEL,
     CandidataResponse,
     CoberturaResponse,
     RelevamientoTramoCreate,
@@ -32,18 +35,13 @@ from app.domains.geo.relevamiento.schemas import (
     TramoRelevamientoDetalle,
 )
 
-#: What each DEM classification means in the operator's vocabulary. The
-#: classifier compares ``median(road) - median(flank)``, so a road that sits
-#: ABOVE its flanks is an embankment and reads as ``mayor``; below is a channel
-#: and reads as ``menor``. This is the mapping the form pre-fills through, so it
-#: is also the one the server must compare against — two different mappings would
-#: make "confirmed the suggestion" mean one thing on screen and another in the
-#: database.
-CANDIDATA_A_NIVEL: dict[str, str] = {
-    "terraplen": "mayor",
-    "canal": "menor",
-    "neutro": "igual",
-}
+# ``CANDIDATA_A_NIVEL`` is IMPORTED, never redefined here. It moved to
+# ``schemas`` because ``CandidataResponse.nivel_sugerido`` is computed from it
+# and a schema module cannot import this one without a cycle;
+# ``service.CANDIDATA_A_NIVEL`` still resolves, to the SAME object. That
+# identity is the point: "the response suggests it, the form pre-fills it, the
+# server compares against it" holds by construction instead of by two copies
+# agreeing.
 
 SQL_TRAMO_EXISTE = text("SELECT activo FROM red_vial WHERE id = :tramo_ref")
 
@@ -131,8 +129,16 @@ class RelevamientoService:
     def get_cobertura(self, db: Session, area_id: Optional[str] = None) -> CoberturaResponse:
         """Three counters plus their denominator, over ACTIVE segments only.
 
-        An ``area_id`` with no registered footprint is a **named refusal**, not a
-        silent count of the whole network: answering a question about one area
+        The area filter is the **DEM footprint** and only that (owner
+        ratification A, 2026-08-23): the area is the ground its terrain analysis
+        covers, so a segment outside the DEM is one this area never looked at.
+        A union over every registered layer would make the denominator depend on
+        what else happened to be registered against the area.
+
+        ``area_id`` stays optional — omitting it counts the whole network on
+        purpose, which is a different question and is asked differently. An
+        ``area_id`` with no registered DEM footprint is a **named refusal**, not
+        a silent count of the whole network: answering a question about one area
         with a number about every area is the kind of degradation nobody spots
         from the number alone.
         """
@@ -143,7 +149,7 @@ class RelevamientoService:
                 raise HTTPException(
                     status_code=404,
                     detail=(
-                        f"El área {area_id} no tiene extensión registrada; "
+                        f"El área {area_id} no tiene un DEM con extensión registrada; "
                         "no hay sobre qué contar cobertura"
                     ),
                 )

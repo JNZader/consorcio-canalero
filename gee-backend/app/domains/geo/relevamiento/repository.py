@@ -111,14 +111,34 @@ SQL_COBERTURA = text(
     """
 )
 
-#: The area footprint, from the layers that area's DEM runs registered. Same
-#: spatial pre-filter the crossing run uses (``SQL_RED_VIAL_EN_BBOX``), read from
-#: the recorded bboxes rather than by opening rasters: coverage is a counting
-#: question and must not depend on a file still being on disk.
+#: The layer whose footprint IS the area's terrain footprint. The DEM is what
+#: every derived raster is cut from, so its extent is the area, and it is the
+#: same surface the classifier reads (``clasificador.NOMBRE_DEM_FILLED``).
+TIPO_LAYER_DEM = "dem_raw"
+
+#: The area footprint = **the DEM layer's own bbox** (owner ratification A,
+#: 2026-08-23), NOT the union of every layer this area ever registered. A union
+#: grows with whatever else got registered against the area — a wider GEE
+#: import, a basins export, a hand-loaded raster — so coverage would be counted
+#: over a denominator nobody chose, and it would silently widen the moment an
+#: unrelated layer appeared. One footprint, named, from the layer the terrain
+#: analysis is actually about.
+#:
+#: Newest first, ``LIMIT 1``: ``upsert_layer`` keys on the NAME, so an area
+#: normally has exactly one DEM row; the ordering makes the answer deterministic
+#: rather than relying on that.
+#:
+#: Same spatial pre-filter the crossing run uses (``SQL_RED_VIAL_EN_BBOX``), read
+#: from the recorded bbox rather than by opening the raster: coverage is a
+#: counting question and must not depend on a file still being on disk.
 SQL_AREA_BBOX = text(
     """
     SELECT bbox FROM geo_layers
-     WHERE area_id = :area_id AND bbox IS NOT NULL
+     WHERE area_id = :area_id
+       AND tipo::text = :tipo
+       AND bbox IS NOT NULL
+     ORDER BY updated_at DESC
+     LIMIT 1
     """
 )
 
@@ -207,24 +227,22 @@ class RelevamientoRepository:
     def get_area_bbox(
         self, db: Session, area_id: str
     ) -> Optional[tuple[float, float, float, float]]:
-        """The union of the bboxes that area's layers recorded, or ``None``.
+        """The area's **DEM** footprint, or ``None``.
 
-        ``None`` means "this area has no registered footprint" and is answered by
-        the caller as a named refusal, never as "count the whole network".
+        One layer's bbox, not a union: a segment outside the DEM is a segment
+        this area's terrain analysis never looked at, and counting it would
+        report coverage of ground the classifier cannot classify.
+
+        ``None`` means "this area has no registered DEM footprint" and is
+        answered by the caller as a named refusal, never as "count the whole
+        network".
         """
-        cajas = [
-            row[0]
-            for row in db.execute(SQL_AREA_BBOX, {"area_id": area_id}).all()
-            if isinstance(row[0], (list, tuple)) and len(row[0]) == 4
-        ]
-        if not cajas:
+        caja = db.execute(
+            SQL_AREA_BBOX, {"area_id": area_id, "tipo": TIPO_LAYER_DEM}
+        ).scalar_one_or_none()
+        if not isinstance(caja, (list, tuple)) or len(caja) != 4:
             return None
-        return (
-            min(float(c[0]) for c in cajas),
-            min(float(c[1]) for c in cajas),
-            max(float(c[2]) for c in cajas),
-            max(float(c[3]) for c in cajas),
-        )
+        return (float(caja[0]), float(caja[1]), float(caja[2]), float(caja[3]))
 
     def contar_cobertura(
         self,
@@ -255,4 +273,4 @@ class RelevamientoRepository:
         return {key: int(value) for key, value in row.items()}
 
 
-__all__ = ["RelevamientoRepository"]
+__all__ = ["TIPO_LAYER_DEM", "RelevamientoRepository"]

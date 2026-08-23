@@ -30,6 +30,15 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-at-least-32-characters-long
 ENDPOINT = "/api/v2/geo/relevamiento/cobertura"
 AREA = "zona_cobertura"
 
+#: The area's DEM footprint — and the ONLY footprint the filter uses (owner
+#: ratification A, 2026-08-23).
+DEM_BBOX = [-62.2, -32.6, -61.9, -32.4]
+
+#: A second layer for the same area, registered over much wider ground. Under
+#: the old union rule its bbox widened the area; under the DEM-footprint rule it
+#: is irrelevant, and ``cob-fuera-del-dem`` below is what proves which rule ran.
+OTRA_CAPA_BBOX = [-63.5, -33.5, -61.0, -32.0]
+
 #: Inside the seeded area footprint.
 TRAMOS = {
     "cob-relevado": -62.00,
@@ -37,6 +46,12 @@ TRAMOS = {
     "cob-vacio": -62.02,
     "cob-retirado": -62.03,
 }
+
+#: Outside the DEM footprint, inside ``OTRA_CAPA_BBOX``. Active and surveyed, so
+#: it would land in ``relevados`` and in ``total_activos`` the moment the filter
+#: widened past the DEM.
+TRAMO_FUERA_DEL_DEM = "cob-fuera-del-dem"
+LON_FUERA_DEL_DEM = -63.20
 
 
 @pytest.fixture
@@ -101,7 +116,19 @@ def seeded(db_session_factory):
                 archivo_path=f"/data/geo/{AREA}/output/dem_raw.tif",
                 formato=FormatoGeoLayer.GEOTIFF,
                 srid=4326,
-                bbox=[-62.2, -32.6, -61.9, -32.4],
+                bbox=DEM_BBOX,
+                area_id=AREA,
+            )
+        )
+        session.add(
+            GeoLayer(
+                nombre=f"flow_acc_{AREA}",
+                tipo=TipoGeoLayer.FLOW_ACC,
+                fuente=FuenteGeoLayer.DEM_PIPELINE,
+                archivo_path=f"/data/geo/{AREA}/output/flow_acc.tif",
+                formato=FormatoGeoLayer.GEOTIFF,
+                srid=4326,
+                bbox=OTRA_CAPA_BBOX,
                 area_id=AREA,
             )
         )
@@ -128,8 +155,22 @@ def seeded(db_session_factory):
                 },
             )
 
+        session.execute(
+            text(
+                "INSERT INTO red_vial (id, source_id, geom, geom_hash, activo) VALUES "
+                "(:id, :id, ST_GeomFromText(:wkt, 4326), :h, true)"
+            ),
+            {
+                "id": TRAMO_FUERA_DEL_DEM,
+                "wkt": (
+                    f"LINESTRING({LON_FUERA_DEL_DEM} -32.90, {LON_FUERA_DEL_DEM - 0.005} -32.91)"
+                ),
+                "h": f"hash-{TRAMO_FUERA_DEL_DEM}",
+            },
+        )
+
         repo = RelevamientoRepository()
-        for tramo in ("cob-relevado", "cob-retirado"):
+        for tramo in ("cob-relevado", "cob-retirado", TRAMO_FUERA_DEL_DEM):
             repo.insertar(
                 session,
                 tramo_ref=tramo,
@@ -241,3 +282,93 @@ class TestTheAreaFilter:
         body = client.get(ENDPOINT, params={"area_id": AREA}).json()
 
         assert body["area_id"] == AREA
+
+
+class TestTheFootprintIsTheDemAndOnlyTheDem:
+    """Owner ratification A (2026-08-23): the DEM's bbox, never a union.
+
+    The area a survey campaign covers is the ground its terrain analysis
+    covers. A union over every layer that ever named the area makes the
+    denominator depend on what else got registered — a wider GEE import, a
+    hand-loaded raster — and it widens SILENTLY: nobody re-reads a coverage
+    percentage and wonders which layers were in scope when it was computed.
+
+    ``cob-fuera-del-dem`` is the discriminator. It is active and surveyed, and it
+    sits inside ``OTRA_CAPA_BBOX`` but outside ``DEM_BBOX``, so a union filter
+    would put it in ``relevados`` and in ``total_activos``.
+    """
+
+    def test_a_segment_outside_the_dem_is_in_none_of_the_three_counters(self, app_client, seeded):
+        app, client = app_client
+        _as_operator(app)
+
+        body = client.get(ENDPOINT, params={"area_id": AREA}).json()
+
+        assert body["total_activos"] == 3, (
+            "the segment outside the DEM is out of the denominator; a union over "
+            f"{OTRA_CAPA_BBOX} would have made this 4"
+        )
+        assert body["relevados"] == 1, (
+            "it is surveyed, so a widened footprint would have shown up here as "
+            "fieldwork credited to an area that never covered that ground"
+        )
+        assert body["solo_candidato"] == 1
+        assert body["sin_datos"] == 1
+
+    def test_it_is_the_dem_layers_bbox_that_is_read(self, db_session_factory, seeded):
+        """Read directly, so the counters cannot mask which bbox won."""
+        from app.domains.geo.relevamiento.repository import RelevamientoRepository
+
+        session = db_session_factory()
+        try:
+            bbox = RelevamientoRepository().get_area_bbox(session, AREA)
+        finally:
+            session.close()
+
+        assert bbox == tuple(DEM_BBOX), (
+            "the union of the two seeded layers would be "
+            f"{OTRA_CAPA_BBOX} — a footprint nobody chose"
+        )
+
+    def test_an_area_whose_only_layer_is_not_a_dem_is_the_named_refusal(
+        self, app_client, db_session_factory, seeded
+    ):
+        """No DEM means no footprint — and no footprint is a 404, not the network.
+
+        The 404 is kept exactly as it was: an area with layers but no terrain
+        analysis has nothing to count coverage over, and answering it with the
+        whole network's numbers under that area's label is the degradation this
+        refusal exists to prevent.
+        """
+        from app.domains.geo.models import (
+            FormatoGeoLayer,
+            FuenteGeoLayer,
+            GeoLayer,
+            TipoGeoLayer,
+        )
+
+        app, client = app_client
+        _as_operator(app)
+        sin_dem = "zona_sin_dem"
+        session = db_session_factory()
+        try:
+            session.add(
+                GeoLayer(
+                    nombre=f"basins_{sin_dem}",
+                    tipo=TipoGeoLayer.BASINS,
+                    fuente=FuenteGeoLayer.DEM_PIPELINE,
+                    archivo_path=f"/data/geo/{sin_dem}/output/basins.geojson",
+                    formato=FormatoGeoLayer.GEOJSON,
+                    srid=4326,
+                    bbox=OTRA_CAPA_BBOX,
+                    area_id=sin_dem,
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        response = client.get(ENDPOINT, params={"area_id": sin_dem})
+
+        assert response.status_code == 404
+        assert sin_dem in response.text
