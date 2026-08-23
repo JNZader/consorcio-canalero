@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -214,7 +215,15 @@ class TestPreFillProvenanceIsAStoredFact:
     fact from "well, it happens to match".
     """
 
-    def _crear_candidata(self, db, tramo=TRAMO, clasificacion="terraplen"):
+    def _crear_candidata(self, db, tramo=TRAMO, clasificacion="terraplen", *, calculada_en=None):
+        """``calculada_en`` is passed EXPLICITLY, never left to the default.
+
+        ``DEFAULT now()`` is transaction-start time, so two candidates created
+        inside one test transaction would be stamped identically and "the newest"
+        would fall through to the ``geo_job_id`` tie-break — i.e. to a random
+        UUID. That is the same trap ``version`` exists to avoid on the survey
+        side, and a test that walked into it would pass or fail by coin toss.
+        """
         from app.domains.geo.models import EstadoGeoJob, GeoJob, TipoGeoJob
 
         job = GeoJob(
@@ -230,9 +239,14 @@ class TestPreFillProvenanceIsAStoredFact:
             text(
                 "INSERT INTO tramo_clasificacion_candidata "
                 "(tramo_ref, geo_job_id, clasificacion_candidata, confianza_m, calculada_en) "
-                "VALUES (:t, :j, :c, 1.4, now())"
+                "VALUES (:t, :j, :c, 1.4, :calculada_en)"
             ),
-            {"t": tramo, "j": job_id, "c": clasificacion},
+            {
+                "t": tramo,
+                "j": job_id,
+                "c": clasificacion,
+                "calculada_en": calculada_en or datetime.now(timezone.utc),
+            },
         )
         db.flush()
         return job_id
@@ -297,9 +311,9 @@ class TestPreFillProvenanceIsAStoredFact:
 
     def test_the_newest_candidate_is_the_one_compared_against(self, db, seeded):
         """Multiple runs coexist; the pre-fill and the comparison read the newest."""
-        self._crear_candidata(db, clasificacion="canal")
-        db.execute(text("SELECT pg_sleep(0.01)"))
-        self._crear_candidata(db, clasificacion="terraplen")
+        ahora = datetime.now(timezone.utc)
+        self._crear_candidata(db, clasificacion="canal", calculada_en=ahora - timedelta(days=1))
+        self._crear_candidata(db, clasificacion="terraplen", calculada_en=ahora)
 
         stored = self._registrar(
             db, seeded, nivel_relativo="mayor", nivel_confirmado_sin_cambios=True
