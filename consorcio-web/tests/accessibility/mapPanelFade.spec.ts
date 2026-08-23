@@ -100,6 +100,17 @@ function harness(shape: Shape): string {
 
 async function mount(page: Page, shape: Shape) {
   await page.setContent(harness(shape));
+  // El scroller tiene que SER un scroller dentro del stage capado. Si el CSS
+  // deja de capear su alto — p. ej. un `max-height: 100%` que resuelve a `none`
+  // contra un padre de alto `auto` — entonces `scrollHeight === clientHeight`,
+  // el poll de "ya esta al fondo" da true sin scrollear y TODOS los asserts de
+  // este spec pasan en vacio. Ese fue exactamente el bug que dejo la tarjeta de
+  // escritorio sin scrollbar; este assert lo convierte en un rojo.
+  const overflows = await page.evaluate(() => {
+    const el = document.getElementById('scroller');
+    return el ? el.scrollHeight > el.clientHeight : false;
+  });
+  expect(overflows, 'el scroller tiene que desbordar dentro del stage capado').toBe(true);
   await page.evaluate(() => {
     const el = document.getElementById('scroller');
     if (el) el.scrollTop = el.scrollHeight;
