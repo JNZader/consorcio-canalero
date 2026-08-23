@@ -447,6 +447,58 @@ def run_canal_analysis() -> dict:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Road × flow crossings (flujo-caminos Fase A)
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(queue="geo", name="geo.intelligence.compute_road_flow_crossings")
+def compute_road_flow_crossings(area_id: str, job_id: str | None = None) -> dict:
+    """Derive this area's road crossings under the snapshot-copy protocol.
+
+    Five steps, and step 3 is the one that makes the run safe:
+
+    1. **Pre-check** — before claiming its own job, refuse if a ``dem_pipeline``
+       or ``dem_full_pipeline`` job for this area is PENDING or RUNNING. Cheap
+       first layer; its TOCTOU residue is real and is not papered over.
+    2. **Copy** the two resolved rasters into a private scratch directory. After
+       this, nothing in the run touches the pipeline's files again.
+    3. **Post-copy re-check**, keyed on ``updated_at >= pre_check_at`` — every
+       compare-and-set bumps ``updated_at``, so the ``PENDING → RUNNING`` claim
+       of a job *created before* the pre-check still trips it, which
+       ``created_at`` would miss. Plus two cheap corroborating sanity checks,
+       stated as corroboration and not as proof.
+    4. **Compute entirely from the private copies**, so a pipeline that starts,
+       archives, wipes or rewrites the originals mid-run cannot affect a
+       computation already in flight.
+    5. **Write** — delete-then-insert scoped to ``area_id`` in one transaction —
+       then remove the scratch directory in a ``finally``.
+
+    A refused run ends ``FAILED`` with a motivo and returns ``status: "skipped"``:
+    ``EstadoGeoJob`` has exactly PENDING/RUNNING/COMPLETED/FAILED and this change
+    adds none, and the repo's own precedent for "refused because another run owns
+    this area" is ``run_full_dem_pipeline`` (``geo/tasks.py:529-536``).
+    **No job is ever left zombie-RUNNING**: the pre-check refusal happens BEFORE
+    the claim (PENDING → FAILED) and the post-copy abort is an explicit
+    RUNNING → FAILED compare-and-set.
+
+    A lost fence is different from both: it returns ``status: "skipped"``
+    **without writing an estado of its own**, because the row already belongs to
+    whoever won the fence and touching it would be the resurrection the
+    compare-and-set exists to prevent.
+    """
+    from datetime import datetime, timezone
+
+    from app.domains.geo.intelligence import cruces_camino_service
+
+    return cruces_camino_service.run_crossing_task(
+        area_id=area_id,
+        job_id=job_id,
+        session_factory=_get_deps()["SessionLocal"],
+        now=lambda: datetime.now(timezone.utc),
+    )
+
+
 @celery_app.task(queue="geo", name="geo.intelligence.refresh_materialized_views")
 def task_refresh_materialized_views() -> dict:
     """Refresh all geo materialized views (zone stats, alert summary, conflict density)."""

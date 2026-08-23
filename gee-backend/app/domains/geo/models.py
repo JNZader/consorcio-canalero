@@ -92,6 +92,10 @@ class TipoGeoJob(str, enum.Enum):
     DEM_FULL_PIPELINE = "dem_full_pipeline"
     BASIN_DELINEATION = "basin_delineation"
     COMPOSITE_ANALYSIS = "composite_analysis"
+    # flujo-caminos Fase A. Added to the shared ``tipo_geo_job`` type by
+    # ``0022_add_cruce_camino`` via ``ADD VALUE IF NOT EXISTS``; the downgrade
+    # cannot remove it, because PostgreSQL cannot remove an enum value.
+    ROAD_FLOW_CROSSINGS = "road_flow_crossings"
 
 
 class TipoAnalisisGee(str, enum.Enum):

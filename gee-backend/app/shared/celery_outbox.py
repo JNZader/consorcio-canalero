@@ -76,6 +76,7 @@ class CeleryTaskKey(str, Enum):
     DELINEATE_BASINS = "geo.delineate_basins"
     COMPOSITE_ANALYSIS = "geo.composite_analysis"
     SAR_TEMPORAL = "gee.sar_temporal"
+    COMPUTE_ROAD_FLOW_CROSSINGS = "geo.intelligence.compute_road_flow_crossings"
 
 
 class CeleryTask(Protocol):
@@ -206,6 +207,7 @@ def get_celery_task_registry() -> TaskRegistry:
         sar_temporal_task,
         supervised_classification_task,
     )
+    from app.domains.geo.intelligence.tasks import compute_road_flow_crossings
     from app.domains.geo.tasks import (
         classify_terrain,
         composite_analysis_task,
@@ -237,6 +239,7 @@ def get_celery_task_registry() -> TaskRegistry:
         CeleryTaskKey.DELINEATE_BASINS: delineate_basins_task,
         CeleryTaskKey.COMPOSITE_ANALYSIS: composite_analysis_task,
         CeleryTaskKey.SAR_TEMPORAL: sar_temporal_task,
+        CeleryTaskKey.COMPUTE_ROAD_FLOW_CROSSINGS: compute_road_flow_crossings,
     }
     for task_key, task in registry.items():
         if task.name != task_key.value:
