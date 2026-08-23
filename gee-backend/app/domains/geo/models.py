@@ -96,6 +96,11 @@ class TipoGeoJob(str, enum.Enum):
     # ``0022_add_cruce_camino`` via ``ADD VALUE IF NOT EXISTS``; the downgrade
     # cannot remove it, because PostgreSQL cannot remove an enum value.
     ROAD_FLOW_CROSSINGS = "road_flow_crossings"
+    # flujo-caminos Fase B. Added by ``0023_add_relevamiento_tramo`` the same
+    # way and with the same permanent residue: the candidate table is keyed by
+    # the run that produced it, so the run needs a job row of its own, and a
+    # classification labelled ``dem_pipeline`` would misname what actually ran.
+    TRAMO_CLASSIFICATION = "tramo_classification"
 
 
 class TipoAnalisisGee(str, enum.Enum):

@@ -55,6 +55,10 @@ class TestTipoGeoJobEnum:
             # ``0022_add_cruce_camino``; the downgrade cannot remove it, because
             # PostgreSQL cannot remove an enum value.
             "road_flow_crossings",
+            # flujo-caminos Fase B. Added by ``0023_add_relevamiento_tramo``,
+            # with the same permanent enum residue: the candidate table is keyed
+            # by the run that produced it, so the run needs its own job type.
+            "tramo_classification",
         }
         actual = {member.value for member in TipoGeoJob}
         assert expected == actual

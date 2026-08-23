@@ -53,6 +53,7 @@ def _get_task_key_map() -> Mapping[TipoGeoJob, CeleryTaskKey]:
         TipoGeoJob.BASIN_DELINEATION: CeleryTaskKey.DELINEATE_BASINS,
         TipoGeoJob.COMPOSITE_ANALYSIS: CeleryTaskKey.COMPOSITE_ANALYSIS,
         TipoGeoJob.ROAD_FLOW_CROSSINGS: CeleryTaskKey.COMPUTE_ROAD_FLOW_CROSSINGS,
+        TipoGeoJob.TRAMO_CLASSIFICATION: CeleryTaskKey.CLASSIFY_ROAD_SEGMENTS,
     }
 
 

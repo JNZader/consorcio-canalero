@@ -14,6 +14,7 @@ from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.intelligence.router import router as intel_router
 from app.domains.geo.rainfall.router import router as rainfall_router
+from app.domains.geo.relevamiento.router import router as relevamiento_router
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_analysis import router as analysis_router
 from app.domains.geo.router_basins_bundle import (
@@ -241,6 +242,9 @@ router.include_router(gee_router)
 
 router.include_router(intel_router, prefix="/intelligence")
 router.include_router(rainfall_router)
+# Fase B: the segment survey and its DEM candidate. Operator-and-admin only,
+# append-only, and published nowhere.
+router.include_router(relevamiento_router)
 router.include_router(visualization_router, prefix="/render", tags=["Visualization"])
 
 

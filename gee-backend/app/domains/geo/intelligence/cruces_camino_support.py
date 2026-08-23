@@ -402,18 +402,24 @@ def copiar_rasters_a_scratch(
     return scratch, str(flow_dir_copy), str(flow_acc_copy)
 
 
-def corroborar_copias(flow_dir_copy: str, flow_acc_copy: str) -> None:
+def corroborar_copias(*rutas: str) -> None:
     """Two cheap sanity checks that ride along — CORROBORATION, not proof.
 
-    Both files are non-empty and their size is stable across two stats, and
-    ``rasterio.open`` succeeds on both. Stated for exactly what they are: a torn
+    Every copy is non-empty, its size is stable across two stats, and
+    ``rasterio.open`` succeeds on it. Stated for exactly what they are: a torn
     or truncated GeoTIFF fails to parse with **high probability, not with
     certainty**. The post-copy job re-check is the guard; this is a second
     opinion that costs nothing.
+
+    Variadic rather than "the two flow rasters": Fase B copies **one** raster
+    (the filled DEM) and needs exactly this check, and a second implementation
+    of it would be a second place for the observation vocabulary
+    (``CopiaCorrupta``, ``copia_corrupta_post_check``) to drift. The Fase A
+    call sites pass their two paths positionally and are unaffected.
     """
     import rasterio
 
-    for path in (flow_dir_copy, flow_acc_copy):
+    for path in rutas:
         first = Path(path).stat().st_size
         if first == 0:
             raise CopiaCorrupta(path, "empty copy")

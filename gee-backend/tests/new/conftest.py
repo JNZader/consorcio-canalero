@@ -184,6 +184,7 @@ from app.auth import email_codes as _email_codes_model  # noqa: F401, E402
 from app.domains.geo import models as _geo_models  # noqa: F401, E402
 from app.domains.geo.intelligence import models as _geo_intelligence_models  # noqa: F401, E402
 from app.domains.geo.rainfall import models as _rainfall_models  # noqa: F401, E402
+from app.domains.geo.relevamiento import models as _relevamiento_models  # noqa: F401, E402
 from app.domains.settings import models as _settings_models  # noqa: F401, E402
 from app.shared import audit_log as _audit_log_model  # noqa: F401, E402
 from app.shared import celery_outbox as _celery_outbox_model  # noqa: F401, E402

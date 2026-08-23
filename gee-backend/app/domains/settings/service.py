@@ -139,6 +139,31 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
             "escalones de rasterizacion no dominen la prueba de angulo"
         ),
     },
+    # ── analisis / clasificador de tramos (flujo-caminos Fase B) ──
+    #
+    # The SAME home as the five above, decided at task 3.1: seven parameters of
+    # one change living in two different mechanisms would be a defect. Both are
+    # read once per run and copied into the run's result, so a candidate row can
+    # never be read without the tuning that produced it.
+    {
+        "clave": "analisis/tramo_clasif_umbral_m",
+        "valor": 1.0,
+        "categoria": "analisis",
+        "descripcion": (
+            "Diferencia de elevacion minima (m) entre la mediana del camino y la de "
+            "sus flancos para clasificarlo como terraplen o canal. Semilla sin calibrar: "
+            "el error vertical del DEM de 30 m es del mismo orden que este umbral"
+        ),
+    },
+    {
+        "clave": "analisis/tramo_clasif_flanco_offset_m",
+        "valor": 60.0,
+        "categoria": "analisis",
+        "descripcion": (
+            "Distancia perpendicular (m) a cada lado del camino donde se muestrea el "
+            "terreno de referencia; 60 m son dos celdas GLO-30"
+        ),
+    },
     # ── contacto ──
     {
         "clave": "contacto/telefono",
