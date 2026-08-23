@@ -122,6 +122,18 @@ class SenalAbstencionNoRatificada(RuntimeError):
     """
 
 
+#: One wording for both refusal paths in `_escala_de_senal`. Two hand-written
+#: copies of the same refusal drift, and the arm whose gate this decides is the
+#: one nobody re-reads until it has already published a number.
+_MOTIVO_SENAL_NO_RATIFICADA = (
+    "modo {modo!r} carries no fused score, and no abstention signal has been "
+    "ratified for it. Owner decision 0.1 is open: the options on the table are "
+    "relaxing recall to >= 0.90 or building a different signal. Until one is "
+    "chosen this arm's abstention pair is not-evaluable, and inventing one here "
+    "would set the gate to whatever the system already does."
+)
+
+
 class GoldSetInvalido(RuntimeError):
     """The committed gold set does not satisfy its own schema."""
 
@@ -475,6 +487,17 @@ class ResultadoModo:
     detalles: tuple[DetallePregunta, ...]
     metricas: MetricasRecuperacion
     exencion: ExencionOverCeiling = field(default_factory=lambda: ExencionOverCeiling(False))
+    #: Identity of the ranker that produced this mode's ORDER, carried up from the
+    #: retrieval results rather than re-derived from `modo`. `None` in a mode that
+    #: has no ranker at all (the RRF ablation orders by fusion, not by a model).
+    #:
+    #: This travels for the same reason `rag_corpus` records which model wrote the
+    #: embeddings: a report rendered over a deterministic stand-in ranker is shaped
+    #: exactly like a measurement and is none, and the only thing that can tell the
+    #: two apart is the identity of the thing that ranked. `report._gate_sintetico`
+    #: refuses on it exactly as it refuses on synthetic embeddings.
+    ranker_modelo: str | None = None
+    ranker_sintetico: bool | None = None
     #: Computed from `senales`/`detalles` at construction time so a caller cannot
     #: pass a LOOCV result or a coverage count that does not belong to this run.
     loocv: ResultadoLOOCV = field(init=False)
@@ -603,22 +626,24 @@ def _escala_de_senal(resultado: ResultadoRecuperacion) -> tuple[list[float], str
         if not any(valor is None for valor in crudos):
             nombre = FUENTE_FTS if resultado.modo == "fts" else FUENTE_VECTOR
             return [float(valor) for valor in crudos if valor is not None], nombre
+    # Keyed on the MODE, not on the shape of the hits. Asking `any(hit.score_rrf
+    # is None ...)` reads as the same question and is not: over an empty page
+    # `any([])` is False, so a `bm25_ce` run that retrieved nothing fell straight
+    # through to the RRF branch and produced `top1 = 0.0` labelled "RRF
+    # fusionado" — a signal from a fusion that never ran, on the arm whose whole
+    # point is that its abstention signal is unratified. The empty page is
+    # exactly the case an abstention grid cares most about, so it was the one
+    # case the refusal leaked on.
+    if resultado.modo not in service.MODOS_RRF:
+        raise SenalAbstencionNoRatificada(_MOTIVO_SENAL_NO_RATIFICADA.format(modo=resultado.modo))
     crudos_rrf = [hit.score_rrf for hit in resultado.hits]
     if any(valor is None for valor in crudos_rrf):
-        # `bm25_ce` gets here: it fuses nothing, so it carries no RRF score, and
-        # its only candidate signal is the cross-encoder's — which the campaign
-        # measured as WORSE than cosine for abstention (LOOCV precision 0.489 at
-        # recall 1.000). Decision 0.1 is explicitly OPEN by owner decision, and
-        # falling back to "whatever number this run happens to carry" would be
-        # picking a side in code (`design.md:1145-1148`, amendment A6).
-        raise SenalAbstencionNoRatificada(
-            f"modo {resultado.modo!r} carries no fused score, and no abstention "
-            "signal has been ratified for it. Owner decision 0.1 is open: the "
-            "options on the table are relaxing recall to >= 0.90 or building a "
-            "different signal. Until one is chosen this arm's abstention pair is "
-            "not-evaluable, and inventing one here would set the gate to whatever "
-            "the system already does."
-        )
+        # Defensive backstop for an RRF mode whose fused score is missing: the
+        # fused path always sets it, so reaching here means the invariant broke
+        # and the same refusal applies — a threshold selected from an unratified
+        # signal still prints a number, and the number decides a go/no-go nobody
+        # chose (`design.md:1145-1148`, amendment A6).
+        raise SenalAbstencionNoRatificada(_MOTIVO_SENAL_NO_RATIFICADA.format(modo=resultado.modo))
     return [float(valor) for valor in crudos_rrf if valor is not None], FUENTE_RRF
 
 
@@ -717,6 +742,14 @@ def correr_modo(
         claves_exentas = service.claves_sin_vector(db, corpus_sha)
     exentas_ids: list[str] = []
 
+    # Read off the runs rather than derived from `modo`, for the same reason
+    # `fuente_senal` is: the report may not name a ranker the numbers did not come
+    # from. `None` stays `None` for a mode with no ranker, and one synthetic run
+    # is enough to mark the whole mode synthetic — a page ordered by a stand-in
+    # does not stop being noise because its neighbours were ordered by the model.
+    rankers: set[str] = set()
+    ranker_sintetico: bool | None = None
+
     for item in gold.resueltas:
         assert item.pregunta is not None  # guarded by `resueltas`; keeps mypy honest
         resultado = service.recuperar(
@@ -727,6 +760,10 @@ def correr_modo(
             k=k,
             embedder=embedder,
         )
+        if resultado.reranker_modelo is not None:
+            rankers.add(resultado.reranker_modelo)
+        if resultado.reranker_sintetico is not None:
+            ranker_sintetico = bool(ranker_sintetico) or resultado.reranker_sintetico
         fuera_de_alcance = item_fuera_de_alcance(item, claves_exentas)
         if fuera_de_alcance:
             exentas_ids.append(item.id)
@@ -761,6 +798,11 @@ def correr_modo(
             claves=tuple(sorted(claves_exentas)),
             preguntas=tuple(exentas_ids),
         ),
+        # Joined rather than picked: two rankers inside one mode is not a state
+        # this pipeline produces, and if it ever does the report must say so
+        # instead of naming whichever one came last.
+        ranker_modelo=" + ".join(sorted(rankers)) or None,
+        ranker_sintetico=ranker_sintetico,
     )
 
 

@@ -23,7 +23,9 @@ quality is the eval harness's job on the GPU box.
 
 from __future__ import annotations
 
+import datetime as dt
 import inspect
+import json
 
 import pytest
 from sqlalchemy import event, text
@@ -31,6 +33,12 @@ from sqlalchemy import event, text
 from app.domains.conocimiento import service
 from app.domains.conocimiento.eval import harness, metrics
 from app.domains.conocimiento.eval.metrics import HitEvaluado, PreguntaEvaluada
+from app.domains.conocimiento.eval.report import (
+    EvalSinteticoNoEsEval,
+    escribir_reporte,
+    nombre_de_archivo,
+    renderizar_markdown,
+)
 from app.domains.conocimiento.recuperacion import bm25 as modulo_bm25
 from app.domains.conocimiento.recuperacion import reranker as modulo_reranker
 from app.domains.conocimiento.recuperacion.bm25 import (
@@ -54,6 +62,9 @@ from app.domains.conocimiento.recuperacion.reranker import (
 from app.domains.conocimiento.schemas import ResultadoRecuperacion
 
 SHA = "b" * 40
+
+#: Time is an argument to the report, never read from a clock (`report.py` point 3).
+MOMENTO = dt.datetime(2026, 8, 23, 16, 30, tzinfo=dt.timezone.utc)
 
 #: `(tipo, es_secundaria)` per seeded document. Only the two shapes this unit
 #: cares about: a norm and a fuente secundaria.
@@ -588,8 +599,41 @@ class TestBarrasReRatificadas:
         assert barra.pasa
 
     def test_un_hit_rate_bajo_la_barra_no_pasa(self):
-        barra = next(b for b in _barras_de_prueba(hit_rate=0.71) if b.nombre == "hit-rate@5")
-        assert not barra.pasa
+        assert not _barra("hit-rate@5", hit_rate=0.71).pasa
+
+    def test_una_citation_precision_bajo_el_piso_no_pasa(self):
+        """The floor is a floor. `>=` with no failing case is `True` with extra steps."""
+        assert not _barra("citation-precision", citation_precision=0.20).pasa
+        assert _barra("citation-precision", citation_precision=0.34).pasa
+
+    def test_hit_rate_at_10_discrimina_en_ambas_direcciones(self):
+        """The new bar is scored, not merely published.
+
+        `hit-rate@10` arrived with the amendment, and a bar that has never been
+        seen to FAIL is indistinguishable from a bar that is not wired to
+        anything — which is exactly how the old `hybrid` gate survived being
+        pointed at an arm nobody ran.
+        """
+        assert not _barra("hit-rate@10", hit_rate_at_10=0.79).pasa
+        assert _barra("hit-rate@10", hit_rate_at_10=0.81).pasa
+
+    @pytest.mark.parametrize(
+        ("nombre", "parametro", "minimo"),
+        [
+            ("hit-rate@5", "hit_rate", harness.BARRA_HIT_RATE),
+            ("hit-rate@10", "hit_rate_at_10", harness.BARRA_HIT_RATE_10),
+            ("citation-precision", "citation_precision", harness.BARRA_CITATION_PRECISION),
+        ],
+    )
+    def test_el_valor_exacto_de_la_barra_pasa(self, nombre, parametro, minimo):
+        """`>=`, not `>`. The boundary is INSIDE the bar.
+
+        This is the mutation `>=` → `>` that no amount of testing 1.0 against
+        0.72 can kill, and the one that matters: the B50 family reads ≈0.72–0.76
+        on a 29-question set where one question is worth 0.034, so the measured
+        arm can land exactly on its own minimum.
+        """
+        assert _barra(nombre, **{parametro: minimo}).pasa
 
     def test_la_senal_de_abstencion_de_bm25_ce_no_se_improvisa(self):
         """Owner decision 0.1 is OPEN, and no code may pick a side.
@@ -610,6 +654,123 @@ class TestBarrasReRatificadas:
         with pytest.raises(harness.SenalAbstencionNoRatificada):
             harness._escala_de_senal(resultado)
 
+    def test_la_negativa_tambien_cubre_la_pagina_VACIA(self):
+        """The leak the shape-keyed guard had, and the case it mattered most in.
+
+        The refusal used to be keyed on `any(hit.score_rrf is None ...)`, which
+        over zero hits is `False` — so a `bm25_ce` question that retrieved
+        nothing fell through to the RRF branch and produced `top1 = 0.0` labelled
+        `RRF fusionado`, from a fusion that never ran. An empty page is the
+        single most load-bearing point of an abstention grid (it is what
+        "abstain" looks like), so the guard was open on precisely the input it
+        exists for. It is now keyed on the MODE.
+        """
+        resultado = ResultadoRecuperacion(
+            corpus_sha=SHA, pregunta="canal", modo="bm25_ce", k=10, hits=[]
+        )
+        with pytest.raises(harness.SenalAbstencionNoRatificada):
+            harness._escala_de_senal(resultado)
+
+    def test_una_pagina_vacia_de_un_modo_RRF_sigue_dando_senal(self):
+        """The fix must not turn every empty page into a refusal.
+
+        `fts` retrieving nothing is a legitimate `0.0` on a ratified scale — that
+        is the whole `senales_desde` contract — and breaking it would silently
+        drop the published baseline out of the abstention table.
+        """
+        vacio = ResultadoRecuperacion(corpus_sha=SHA, pregunta="canal", modo="fts", k=10, hits=[])
+        scores, fuente = harness._escala_de_senal(vacio)
+        assert scores == []
+        assert fuente == harness.FUENTE_FTS
+
+
+class TestRankerSinteticoNoAbreLaCompuerta:
+    """spec `knowledge-hybrid-retrieval` — "A synthetic ranker cannot open the gate".
+
+    RAG3-001 refused a report rendered over synthetic EMBEDDINGS. Under `bm25_ce`
+    that refusal covered nothing: the arm reads no vector column, so its snapshot
+    provenance is honest while a `RerankerDeterministico` fabricates the entire
+    order — the cross-encoder score is the ranking in full. The scenario existed
+    in the spec with no code behind it; these are the two directions.
+    """
+
+    def test_un_ranker_sintetico_cierra_la_compuerta(self):
+        resultado = _eval_de_prueba(
+            _corrida_de_prueba(ranker_modelo="deterministico", ranker_sintetico=True)
+        )
+        with pytest.raises(EvalSinteticoNoEsEval) as excinfo:
+            renderizar_markdown(resultado, None, generado_en=MOMENTO, device_consulta="cpu")
+        mensaje = str(excinfo.value)
+        assert "deterministico" in mensaje
+        assert "bm25_ce" in mensaje
+
+    def test_el_smoke_run_permitido_no_lleva_veredicto_ni_nombre_de_eval(self):
+        """Same treatment as synthetic embeddings: no verdict, `SINTETICO-` infix."""
+        resultado = _eval_de_prueba(
+            _corrida_de_prueba(ranker_modelo="deterministico", ranker_sintetico=True)
+        )
+        markdown = renderizar_markdown(
+            resultado,
+            None,
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            permitir_sintetico=True,
+        )
+        assert "SMOKE RUN" in markdown
+        assert "NOT AN EVAL" in markdown
+        assert "NO EVALUABLE" in markdown
+        assert "ranker SINTÉTICO" in markdown
+        assert nombre_de_archivo(SHA, MOMENTO, sintetico=True).startswith(
+            "retrieval-eval-SINTETICO-"
+        )
+
+    def test_el_ranker_real_no_interfiere(self):
+        """A real ranker over real provenance renders as an eval, unchanged."""
+        resultado = _eval_de_prueba(
+            _corrida_de_prueba(
+                ranker_modelo=modulo_reranker.MODELO_RERANKER, ranker_sintetico=False
+            )
+        )
+        markdown = renderizar_markdown(resultado, None, generado_en=MOMENTO, device_consulta="cpu")
+        assert "SMOKE RUN" not in markdown
+        assert "ranker SINTÉTICO" not in markdown
+
+    def test_un_modo_sin_ranker_no_dispara_la_compuerta(self):
+        """The RRF ablation orders by fusion and has no ranker: `None`, not False.
+
+        Guards against the obvious over-correction — treating "no ranker
+        recorded" as "synthetic" would refuse to publish the very baseline B50 is
+        quoted against.
+        """
+        corrida = _corrida_de_prueba()
+        assert corrida.ranker_sintetico is None
+        markdown = renderizar_markdown(
+            _eval_de_prueba(corrida), None, generado_en=MOMENTO, device_consulta="cpu"
+        )
+        assert "SMOKE RUN" not in markdown
+
+    def test_el_json_publica_la_identidad_del_ranker(self, tmp_path):
+        """A machine reader must not have to parse the Spanish banner."""
+        resultado = _eval_de_prueba(
+            _corrida_de_prueba(ranker_modelo="deterministico", ranker_sintetico=True)
+        )
+        escrito = escribir_reporte(
+            resultado,
+            None,
+            destino=tmp_path,
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            permitir_sintetico=True,
+        )
+        assert escrito.markdown.name.startswith("retrieval-eval-SINTETICO-")
+        datos = json.loads(escrito.json.read_text(encoding="utf-8"))
+        assert datos["sintetico"] is True
+        assert datos["modos"]["bm25_ce"]["ranker"] == {
+            "modelo": "deterministico",
+            "sintetico": True,
+        }
+        assert datos["modos"]["bm25_ce"]["go_no_go"]["veredicto"] == "NO EVALUABLE"
+
 
 def _cita_sin_rrf():
     from app.domains.conocimiento.schemas import CitaRecuperada
@@ -628,13 +789,16 @@ def _cita_sin_rrf():
     )
 
 
-def _barras_de_prueba(*, hit_rate: float = 1.0, citation_precision: float = 1.0):
-    """The bar tuple `decidir_go_no_go` builds, without a 52-item fixture.
-
-    `forzar_evaluable` is the harness's own test seam for exactly this: the bar
-    ARITHMETIC is what is under test here, not the n>=20 precondition.
-    """
-    corrida = harness.ResultadoModo(
+def _corrida_de_prueba(
+    *,
+    hit_rate: float = 1.0,
+    hit_rate_at_10: float = 1.0,
+    citation_precision: float = 1.0,
+    ranker_modelo: str | None = None,
+    ranker_sintetico: bool | None = None,
+) -> harness.ResultadoModo:
+    """One `bm25_ce` `ResultadoModo`, without a 52-item fixture or a database."""
+    return harness.ResultadoModo(
         modo="bm25_ce",
         k=10,
         preguntas=(),
@@ -648,8 +812,46 @@ def _barras_de_prueba(*, hit_rate: float = 1.0, citation_precision: float = 1.0)
             separacion_norma_secundaria=1.0,
             vigencia_correctness=1.0,
             n_vigencia=29,
-            hit_rate_at_10=1.0,
+            hit_rate_at_10=hit_rate_at_10,
         ),
+        ranker_modelo=ranker_modelo,
+        ranker_sintetico=ranker_sintetico,
+    )
+
+
+def _barras_de_prueba(
+    *,
+    hit_rate: float = 1.0,
+    hit_rate_at_10: float = 1.0,
+    citation_precision: float = 1.0,
+):
+    """The bar tuple `decidir_go_no_go` builds, without a 52-item fixture.
+
+    `forzar_evaluable` is the harness's own test seam for exactly this: the bar
+    ARITHMETIC is what is under test here, not the n>=20 precondition.
+
+    Every scored metric is a parameter so each bar can be driven in BOTH
+    directions. A bar exercised only above its minimum proves the comparison
+    fires, never that it discriminates: `valor >= minimo` and `True` are
+    indistinguishable from that side.
+    """
+    corrida = _corrida_de_prueba(
+        hit_rate=hit_rate,
+        hit_rate_at_10=hit_rate_at_10,
+        citation_precision=citation_precision,
     )
     gold = harness.GoldSet(version=1, corpus_sha=SHA, ratificado="owner", items=())
     return harness.decidir_go_no_go(corrida, gold, forzar_evaluable=True).barras
+
+
+def _barra(nombre: str, **valores):
+    return next(b for b in _barras_de_prueba(**valores) if b.nombre == nombre)
+
+
+def _eval_de_prueba(corrida: harness.ResultadoModo) -> harness.ResultadoEval:
+    return harness.ResultadoEval(
+        corpus_sha=SHA,
+        modos=("bm25_ce",),
+        por_modo={"bm25_ce": corrida},
+        gold=harness.GoldSet(version=1, corpus_sha=SHA, ratificado="owner", items=()),
+    )
