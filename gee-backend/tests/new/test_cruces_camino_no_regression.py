@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import importlib
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 
@@ -299,27 +298,14 @@ class TestUntouchedFileProofs:
         """No exclusion predicate was needed, because nothing was written there."""
         assert _diff_stat("gee-backend/app/domains/geo/intelligence/repository_metrics.py") == ""
 
-    def test_the_martin_grants_security_test_passes_unedited(self):
-        """The standing proof that the second, independent control did not move."""
-        result = subprocess.run(
-            [
-                # ``sys.executable``, not ``"python"``: the venv is on PATH as
-                # ``python3`` only on some machines and this must not be a test
-                # that passes or fails on how the shell was set up.
-                sys.executable,
-                "-m",
-                "pytest",
-                "tests/new/test_martin_reader_grants.py",
-                "-q",
-                "--no-header",
-            ],
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT / "gee-backend",
-        )
-        assert result.returncode == 0, (
-            f"test_martin_reader_grants.py must pass unedited:\n{result.stdout[-3000:]}"
-        )
+    # A fourth proof used to re-run ``test_martin_reader_grants.py`` as a nested
+    # pytest subprocess "to prove it still passes unedited". Removed 2026-08-23:
+    # the diff proof above already pins the file byte-for-byte, the file runs in
+    # the normal suite with its own fixtures anyway, and the nested run executed
+    # against the SHARED CI database — its teardown ``DROP TABLE users`` failed
+    # whenever the outer suite had already created the FK-dependent tables, so
+    # the proof was red or green depending on pytest-randomly's ordering, not on
+    # anything about the code.
 
 
 class TestNoPublishedObjectWasCreated:
