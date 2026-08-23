@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   LayerOrderSection,
+  mergeHiddenLayerIds,
   reorderLayerIds,
   resolveEffectiveBottomToTop,
 } from '../../src/components/map2d/LayerOrderSection';
@@ -175,5 +176,56 @@ describe('<LayerOrderSection /> (task 3.5 UI)', () => {
       />
     );
     expect(screen.getByText('Mi Red Vial Custom')).toBeInTheDocument();
+  });
+});
+
+/**
+ * SUG-1 (flujo-caminos, fix-forward 2026-08-23) — a layer the selector does not
+ * OFFER must not get a reorder row either. `road_flow` is the one reorderable
+ * layer with a role-gated entry, so a citizen session was being shown a control
+ * over a layer it cannot see.
+ *
+ * The full-set contract `applyLayerOrder` depends on is NOT relaxed for that:
+ * hiding a ROW never shrinks the WRITE.
+ */
+describe('hiddenIds — the offer gate, without breaking the full-set write', () => {
+  it('omits the hidden row and keeps every other one', () => {
+    renderWithMantine(
+      <LayerOrderSection
+        orderByLayer={[]}
+        onLayerOrderChange={() => {}}
+        vectorVisibility={{}}
+        hiddenIds={['road_flow']}
+      />
+    );
+    expect(screen.queryByTestId('layer-order-item-road_flow')).toBeNull();
+    for (const id of RENDERABLE_UI_LAYER_IDS.filter((value) => value !== 'road_flow')) {
+      expect(screen.getByTestId(`layer-order-item-${id}`)).toBeInTheDocument();
+    }
+  });
+
+  it('still renders the row when the layer IS offered', () => {
+    renderWithMantine(
+      <LayerOrderSection orderByLayer={[]} onLayerOrderChange={() => {}} vectorVisibility={{}} />
+    );
+    expect(screen.getByTestId('layer-order-item-road_flow')).toBeInTheDocument();
+  });
+
+  it('mergeHiddenLayerIds keeps the FULL set and anchors the hidden ids in place', () => {
+    const full = ['escuelas', 'road_flow', 'roads', 'catastro'] as never[];
+    // The visible list is `full` minus the hidden id, reordered.
+    const reorderedVisible = ['roads', 'escuelas', 'catastro'] as never[];
+    const merged = mergeHiddenLayerIds(full, reorderedVisible, new Set(['road_flow']));
+
+    // Same length, same members: nothing was dropped by hiding a row.
+    expect(merged).toHaveLength(full.length);
+    expect([...merged].sort()).toEqual([...full].sort());
+    // The hidden id did not move; the visible ones took the remaining slots.
+    expect(merged).toEqual(['roads', 'road_flow', 'escuelas', 'catastro']);
+  });
+
+  it('mergeHiddenLayerIds is the identity when nothing is hidden', () => {
+    const full = [...DEFAULT_LAYER_ORDER];
+    expect(mergeHiddenLayerIds(full, full, new Set())).toEqual(full);
   });
 });
