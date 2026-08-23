@@ -13,10 +13,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  LAYER_PROPERTY_FORMATTERS,
+  LAYER_PROPERTY_LABELS,
   LAYER_PROPERTY_WHITELISTS,
   getDisplayableProperties,
   resolveLayerWhitelistKey,
 } from '../../src/components/map2d/layerPropertyWhitelists';
+import { buildClickableLayers } from '../../src/components/map2d/useMapInteractionEffects';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { ROAD_FLOW_LAYER_IDS } from '../../src/components/map2d/roadFlowLayers';
 
@@ -200,79 +203,35 @@ describe('getDisplayableProperties', () => {
 });
 
 // ---------------------------------------------------------------------------
-// flujo-caminos S4 — task 4.5: the road-crossing popup
+// flujo-caminos S4 — task 4.5, RETIRED by the owner decision of 2026-08-23
 // ---------------------------------------------------------------------------
 
-describe('road-flow whitelist (flujo-caminos, design D6)', () => {
-  it('routes BOTH ml layers to the single `road-flow` key', () => {
-    expect(resolveLayerWhitelistKey(ROAD_FLOW_LAYER_IDS.FLUJO)).toBe('road-flow');
-    expect(resolveLayerWhitelistKey(ROAD_FLOW_LAYER_IDS.CANAL)).toBe('road-flow');
+/**
+ * Task 4.5 whitelisted the properties of a CROSSING POPUP. The ratified wiring
+ * builds no such popup: a crossing click opens `TramoSurveySheet` for its
+ * segment, and the two `road_flow` ml layers are deliberately absent from
+ * `buildClickableLayers`, so InfoPanel never receives one of those features.
+ *
+ * These assertions replace the ones that exercised the dead table. They pin the
+ * RETIREMENT rather than deleting the coverage silently: re-adding a whitelist
+ * here without also making those layers clickable (and mounting a disclaimer in
+ * whatever surface reads them) would fail this file.
+ */
+describe('road-flow whitelist — retired with the popup (owner decision 2026-08-23)', () => {
+  it('neither ml layer resolves to a whitelist key', () => {
+    expect(resolveLayerWhitelistKey(ROAD_FLOW_LAYER_IDS.FLUJO)).toBeNull();
+    expect(resolveLayerWhitelistKey(ROAD_FLOW_LAYER_IDS.CANAL)).toBeNull();
   });
 
-  it('reads Spanish labels — NEVER raw wire keys', () => {
-    const rows = getDisplayableProperties(ROAD_FLOW_LAYER_IDS.FLUJO, {
-      id: 'e1b0d0ee-1c6e-4a0f-9d2e-2b7b7f6ab111',
-      tipo: 'flujo_natural',
-      tramo_ref: 'RV-1042',
-      canal_ref: null,
-      direccion_flujo_deg: 245,
-      rumbo_camino_deg: 88,
-      lado_cruce: 'norte',
-      area_aporte_ha: 128.4,
-      orden_ranking: 3,
-      confianza: 'alta',
-      nota: null,
-    });
-
-    const labels = rows.map((r) => r.label);
-    expect(labels).toContain('Dirección del flujo');
-    expect(labels).toContain('Rumbo del camino');
-    expect(labels).toContain('Área de aporte');
-    expect(labels).toContain('Puesto');
-    expect(labels).toContain('Confianza');
-
-    // No raw key ever reaches the popup as its own label.
-    for (const raw of [
-      'direccion_flujo_deg',
-      'rumbo_camino_deg',
-      'area_aporte_ha',
-      'orden_ranking',
-      'confianza',
-    ]) {
-      expect(labels).not.toContain(raw);
-    }
-
-    // Plumbing stays hidden.
-    expect(rows.map((r) => r.key)).not.toContain('id');
-    expect(rows.map((r) => r.key)).not.toContain('canal_ref');
-    expect(rows.map((r) => r.key)).not.toContain('lado_cruce');
+  it('no `road-flow` table survives in any of the three registries', () => {
+    expect(LAYER_PROPERTY_WHITELISTS['road-flow']).toBeUndefined();
+    expect(LAYER_PROPERTY_LABELS['road-flow']).toBeUndefined();
+    expect(LAYER_PROPERTY_FORMATTERS['road-flow']).toBeUndefined();
   });
 
-  it('formats degrees, hectares and the low-confidence marker', () => {
-    const rows = getDisplayableProperties(ROAD_FLOW_LAYER_IDS.CANAL, {
-      tramo_ref: 'RV-77',
-      direccion_flujo_deg: 12,
-      area_aporte_ha: 1520.55,
-      confianza: 'baja',
-      nota: 'incidencia oblicua (31.2 grados)',
-    });
-    const by = (key: string) => rows.find((r) => r.key === key)?.formatted;
-    expect(by('direccion_flujo_deg')).toBe('12°');
-    expect(by('area_aporte_ha')).toBe('1.520,6 ha');
-    expect(by('confianza')).toBe('Baja — orientación aproximada');
-  });
-
-  it('publishes NO hydraulic magnitude — not even as a hidden key', () => {
-    const forbidden = [
-      'volumen',
-      'caudal',
-      'profundidad',
-      'ancho_cuneta',
-      'capacidad',
-      'periodo_retorno',
-    ];
-    for (const key of LAYER_PROPERTY_WHITELISTS['road-flow']) {
-      expect(forbidden).not.toContain(key);
-    }
+  it('those layers are not clickable, which is WHY there is no whitelist', () => {
+    const clickable = buildClickableLayers('idle');
+    expect(clickable).not.toContain(ROAD_FLOW_LAYER_IDS.FLUJO);
+    expect(clickable).not.toContain(ROAD_FLOW_LAYER_IDS.CANAL);
   });
 });
