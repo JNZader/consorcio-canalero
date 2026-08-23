@@ -150,6 +150,31 @@ INDICE_NO_PUBLICACION: frozenset[str] = frozenset(
 )
 
 
+def regla_clasificacion_sha256() -> str:
+    """A digest over the three change-controlled artifacts of the rule.
+
+    Pinned in `eval/expected_clasificacion.yaml`'s header and asserted by the
+    unit suite, which is what closes the threat the artifact alone does not: a
+    rule change that widens the shippable set WITHOUT touching the expected
+    artifact. The 11 checked-in fixtures cover 11 of 35 documents, so an
+    allowlist entry that only promotes one of the other 24 would otherwise land
+    with every test green and no diff anyone had to sign off.
+
+    Order-insensitive for the two sets, order-SENSITIVE for `FUENTES_PUBLICAS`,
+    because that one is a tuple whose order determines which host gets recorded
+    as evidence when a document carries several.
+    """
+    payload = "\n".join(
+        (
+            "FUENTES_PUBLICAS=" + "|".join(FUENTES_PUBLICAS),
+            "TIPOS_INSTITUCIONALES=" + "|".join(sorted(TIPOS_INSTITUCIONALES)),
+            "INDICE_NO_PUBLICACION=" + "|".join(sorted(INDICE_NO_PUBLICACION)),
+            "CLASIFICACIONES_ENVIABLES=" + "|".join(sorted(CLASIFICACIONES_ENVIABLES)),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 class IngestionAbort(RuntimeError):
     """Base class for every condition that must stop ingestion before a write."""
 

@@ -183,9 +183,7 @@ class TestGateDeServicioPorPedido:
 
     def test_it_returns_the_shippable_subset_and_never_raises(self, db):
         seed(db, {"ley-9750": "publico", "acta-interna": "privado"})
-        enviables = assert_unidades_publicas(
-            db, SHA, ["ley-9750#1", "acta-interna#1"]
-        )
+        enviables = assert_unidades_publicas(db, SHA, ["ley-9750#1", "acta-interna#1"])
         assert enviables == frozenset({"ley-9750#1"})
 
     def test_an_institucional_unit_is_ADMITTED(self, db):

@@ -77,8 +77,7 @@ def downgrade() -> None:
     """
     op.execute(
         sa.text(
-            f"UPDATE {TABLE} SET clasificacion = 'privado' "
-            "WHERE clasificacion = 'institucional'"
+            f"UPDATE {TABLE} SET clasificacion = 'privado' WHERE clasificacion = 'institucional'"
         )
     )
     op.drop_column(TABLE, EVIDENCIA_COLUMN)

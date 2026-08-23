@@ -275,9 +275,7 @@ _UNIDADES_ENVIABLES_SQL = text(
 )
 
 
-def assert_unidades_publicas(
-    db: Session, corpus_sha: str, claves: Sequence[str]
-) -> frozenset[str]:
+def assert_unidades_publicas(db: Session, corpus_sha: str, claves: Sequence[str]) -> frozenset[str]:
     """Return the SHIPPABLE SUBSET of `claves` — it never raises on exclusion.
 
     Per-unit exclusion, not snapshot refusal, and the difference is deliberate.

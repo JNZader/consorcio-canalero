@@ -170,3 +170,90 @@ def load_expectations(path: Path | None = None) -> CorpusExpectations:
         clases_excluidas=clases_excluidas,
         archivos_no_documento=frozenset(raw.get("archivos_no_documento", ())),
     )
+
+
+# ---------------------------------------------------------------------------
+# `eval/expected_clasificacion.yaml` — the checked-in privacy expectation
+# ---------------------------------------------------------------------------
+#
+# It lives under `eval/` (design.md's file table) but is loaded from HERE, not
+# from the eval package: the eval package may not import `repository`
+# (design.md D4) and the diff this artifact exists for is a diff against the
+# ingest rule. `expectations.py` already owns the checked-in contracts and
+# imports nothing from `repository`, so the loader belongs here and the
+# comparison happens in the caller.
+
+EXPECTED_CLASIFICACION_PATH = Path(__file__).parent / "eval" / "expected_clasificacion.yaml"
+
+
+class ClasificacionShaMismatch(RuntimeError):
+    """The artifact is pinned to a different corpus revision than the snapshot."""
+
+
+@dataclass(frozen=True)
+class ExpectedClasificacion:
+    """One document's expected class and the evidence string it derives from."""
+
+    documento_id: str
+    tipo: str
+    es_secundaria: bool
+    clasificacion: str
+    evidencia: str
+
+
+@dataclass(frozen=True)
+class ExpectedClasificaciones:
+    corpus_sha: str
+    #: `repository.regla_clasificacion_sha256()` at generation time. A rule
+    #: change that does not regenerate this artifact fails the unit diff, which
+    #: is the point: 11 of 35 documents have checked-in fixtures, so a widening
+    #: that only touches the other 24 would otherwise be invisible in CI.
+    regla_sha256: str
+    documentos: dict[str, ExpectedClasificacion]
+
+    def por_clase(self, clase: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                doc_id for doc_id, item in self.documentos.items() if item.clasificacion == clase
+            )
+        )
+
+
+@lru_cache(maxsize=1)
+def load_expected_clasificacion(path: Path | None = None) -> ExpectedClasificaciones:
+    raw = yaml.safe_load((path or EXPECTED_CLASIFICACION_PATH).read_text(encoding="utf-8"))
+    documentos = {
+        entry["documento_id"]: ExpectedClasificacion(
+            documento_id=entry["documento_id"],
+            tipo=entry["tipo"],
+            es_secundaria=bool(entry["es_secundaria"]),
+            clasificacion=entry["clasificacion"],
+            evidencia=entry["evidencia"],
+        )
+        for entry in raw["documentos"]
+    }
+    return ExpectedClasificaciones(
+        corpus_sha=str(raw["corpus_sha"]),
+        regla_sha256=str(raw["regla_sha256"]),
+        documentos=documentos,
+    )
+
+
+def verificar_corpus_sha_clasificacion(expected: ExpectedClasificaciones, corpus_sha: str) -> None:
+    """Refuse an artifact pinned to a different corpus revision than the snapshot.
+
+    Same discipline as `harness.verificar_corpus_sha`, and for the same reason
+    scaled up: a `fuente_url` list is corpus content, so an expectation written
+    against one revision says nothing about another. Compared against the wrong
+    snapshot, a document that was promoted by a URL added later is
+    indistinguishable from a rule regression.
+    """
+    if expected.corpus_sha != corpus_sha:
+        raise ClasificacionShaMismatch(
+            f"expected_clasificacion.yaml is pinned to corpus_sha "
+            f"{expected.corpus_sha} but the snapshot being checked is "
+            f"{corpus_sha}. Every expected class was derived from the first "
+            "revision's frontmatter; diffed against the second, a promotion that "
+            "a later URL caused is indistinguishable from a rule regression. "
+            "Regenerate the artifact against the snapshot you mean to check."
+        )
