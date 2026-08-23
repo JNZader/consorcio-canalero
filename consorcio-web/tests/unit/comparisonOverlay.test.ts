@@ -19,18 +19,27 @@ const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
 
 /**
  * Renderable UI ids that are vectors but are DELIBERATELY absent from the
- * comparison overlay. Each entry needs a reason, because the default for a new
- * vector layer is to be covered here — this set is the escape hatch, and an
- * undocumented member is indistinguishable from an oversight.
+ * comparison overlay.
  *
- *   - `road_flow` (flujo-caminos, design D6): the ranked crossings are read
- *     against the LIVE map with their panel — the list, the kind filter and the
- *     always-mounted disclaimer are all part of reading them honestly, and none
- *     of that exists in the image-comparison slider. Rendering the points there
- *     would show a ranking stripped of the statement of what it is not. D6 does
- *     not place this layer in the comparison view, and no task in Slice 4 wires
- *     its data into that view's inputs, so it is excluded rather than
- *     half-mounted.
+ * ⚠️ THE RULE, RATIFIED BY THE OWNER ON 2026-08-23: ⚠️
+ * *"toda capa cuyos datos requieren panel autenticado + disclaimer queda fuera
+ * del comparador"* — any layer whose data requires an authenticated panel plus
+ * a disclaimer stays out of the comparator.
+ *
+ * That is a RULE, not a per-layer excuse: the comparison slider renders map
+ * paint and nothing else, so a layer that can only be read honestly alongside a
+ * panel (and the sentence that panel carries) has no honest rendering there.
+ * Membership of this set is therefore decided by the rule, and a member that
+ * does NOT satisfy it is an oversight, exactly as an unlisted layer would be.
+ *
+ *   - `road_flow` (flujo-caminos, design D6) — satisfies both halves: its route
+ *     is `require_admin_or_operator`, the selector entry is role-gated, and
+ *     RFA-R4 requires the non-hydraulic disclaimer to accompany the ranking
+ *     wherever it is read (`RoadFlowDisclaimer`, surfaces `lista`/`hoja`/`chip`).
+ *     Rendering the points in the slider would show a ranking stripped of the
+ *     statement of what it is not. D6 does not place this layer in the
+ *     comparison view and no task wires its data into that view's inputs, so it
+ *     is excluded rather than half-mounted.
  */
 const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow']);
 
