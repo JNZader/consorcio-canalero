@@ -12,6 +12,12 @@ frontmatter and surfaced as-is. V0 derives no boolean from
 `relevancia_consorcio`: a regex over legal prose is exactly the silent
 misclassification this design refuses.
 
+The one deliberate exception is `clasificacion`, which IS derived — by a
+mechanical three-class rule over `tipo` and `fuente_url` hosts
+(`clasificar_documento`), never over prose — and which travels with the evidence
+string it was derived from. Deriving it from structured provenance is the
+opposite of inferring it from prose, and the difference is the whole point.
+
 The retrieval half adds a third: **the vector leg fails loudly or not at all**
 (design.md D4). It never falls back to FTS, because a hybrid mode that quietly
 became FTS-only would make the whole three-mode ablation a comparison of FTS
@@ -24,6 +30,7 @@ import datetime
 import hashlib
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import urlsplit
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -66,6 +73,130 @@ TIPOS_DERECHO_APLICABLE: frozenset[str] = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# The three-class `clasificacion` rule (design.md G2a + amendment A1, ratified
+# 2026-08-23). CHANGE CONTROL: any edit to `FUENTES_PUBLICAS`,
+# `TIPOS_INSTITUCIONALES`, `INDICE_NO_PUBLICACION` or `CLASIFICACIONES_ENVIABLES`
+# requires explicit owner sign-off recorded in the PR that makes it, exactly as
+# for `eval/expected_clasificacion.yaml`. These artifacts ARE the privacy
+# boundary in executable form; a quiet one-line addition ships a document to a
+# third party, which is not a refactor.
+#
+# The same applies to the MATCHING MECHANICS — `entrada_allowlist_para` and
+# `es_url_indice` — which carry no listed value and therefore cannot be reviewed
+# by reading a diff of constants. `REGLA_MECANICA_VERSION` below is what puts
+# them inside the same digest, and it must be bumped in the same reviewed diff.
+# ---------------------------------------------------------------------------
+
+#: The only classes that may leave the box, defined ONCE and shared by the ingest
+#: rule and the per-request serving gate (`service.assert_unidades_publicas`).
+#: `eval/privacy.py`'s `assert_public_domain` deliberately does NOT use it — the
+#: hosted-embedding baseline stays `publico`-only, because an `institucional`
+#: document is a consorcio instrument cleared for the ANSWER path, not for a
+#: corpus-wide comparison against a third-party embedding service (design.md G2).
+CLASIFICACIONES_ENVIABLES: frozenset[str] = frozenset({"publico", "institucional"})
+
+#: The consorcio's OWN normative instruments. Written out rather than derived by
+#: intersecting `TIPOS_DERECHO_APLICABLE` with a jurisdiction: no document's
+#: `jurisdiccion` value identifies the consorcio (every one is territorial), so
+#: that intersection is not derivable and pretending otherwise would be guessing.
+#: `registro-administrativo` is the `tipo` of `consorcio-10-de-mayo-registro-
+#: aprhi`, which holds Res. SRHyC 189/2014 (the act creating the consorcio) and
+#: Res. Gral. APRHI 005/2026 (its current authorities). `estatuto` and a
+#: consorcio-resolution `tipo` do not exist in this corpus and are NOT pre-added:
+#: when one appears it must join `TIPOS_DERECHO_APLICABLE` *and* this set in the
+#: same reviewed diff.
+TIPOS_INSTITUCIONALES: frozenset[str] = frozenset({"registro-administrativo"})
+
+#: Official gazette / registry hosts, ordered as ratified. An entry `E` matches a
+#: host `H` iff `H == E` or `H.endswith("." + E)` — a LABEL-BOUNDARY suffix match,
+#: never a substring and never a public-suffix computation (no PSL, no DNS). Each
+#: entry is written as the exact host beneath which subdomains are admitted, so
+#: widening is always a visible diff.
+#:
+#: `www.cba.gov.ar` is narrow ON PURPOSE: a bare `cba.gov.ar` would admit every
+#: provincial subdomain, `ambiente.` and `prensa.` included. `aprhi.gob.ar` is
+#: bare because the host actually present is `www.aprhi.gob.ar`.
+FUENTES_PUBLICAS: tuple[str, ...] = (
+    "saij.gob.ar",
+    "boletinoficial.cba.gov.ar",
+    "boletinoficial.gob.ar",  # amendment A1: the NATIONAL gazette
+    "web2.cba.gov.ar",
+    "www.cba.gov.ar",
+    "legislaturacba.gob.ar",
+    "aprhi.gob.ar",
+    "infoleg.gob.ar",
+    "justiciacordoba.gob.ar",  # amendment A1: the Córdoba judiciary
+)
+
+#: Amendment A1's new rule, made mechanical: a URL that points at a page LISTING
+#: documents is not evidence that this document was published there. The host
+#: allowlist became necessary but no longer sufficient — an entry must be both an
+#: allowlisted host AND a concrete-document URL.
+#:
+#: U1's implementation choice is a NAMED LIST of exact URLs rather than a
+#: heuristic, because it is auditable: every exclusion is a line a reviewer can
+#: read and a diff someone must sign off. The stated cost is that it is scoped to
+#: the pinned corpus SHA — a new index URL at a future SHA is not excluded until
+#: it is listed — and that is a change-controlled edit like any other here. The
+#: match is EXACT, not prefix: a document living under a listed index still
+#: promotes, which is the correct direction for a rule about landing pages.
+#:
+#: Named consequence at the pinned SHA: after this rule, `aprhi.gob.ar` promotes
+#: ZERO documents — every APRHI URL in the corpus is an index or a section
+#: landing. The entry stays because the owner ratified it; it is inert today.
+INDICE_NO_PUBLICACION: frozenset[str] = frozenset(
+    {
+        "https://agrimensorescordoba.org.ar/legislacion/",
+        "https://ambiente.cba.gov.ar/proyectosingresados/aviso-de-proyecto-sistematizacion-de-cuenca-tres-colonias-y-canal-santa-cecilia/",
+        "https://www.aprhi.gob.ar/direccion-general-de-aprovechamiento-y-coordinacion/estudios-y-proyectos-hidraulicos-mulisectoriales/",
+        "https://www.aprhi.gob.ar/normativas/",
+    }
+)
+
+
+#: Bumped by hand whenever the *mechanics* of the rule change — how a host is
+#: matched against `FUENTES_PUBLICAS`, or how a URL is matched against
+#: `INDICE_NO_PUBLICACION` — as opposed to what those constants list.
+#:
+#: It exists because a digest over the constants alone is blind to exactly the
+#: change that hurts most: rewriting `es_url_indice` from an exact string
+#: comparison to a prefix match would ship or withhold documents wholesale
+#: without moving a single listed value, so every guard downstream of the digest
+#: would stay green. Change controlled like the constants themselves.
+#:
+#: * v1 — original: exact `url.strip()` membership.
+#: * v2 — index matching normalizes both sides (see `_clave_indice`).
+REGLA_MECANICA_VERSION: str = "v2"
+
+
+def regla_clasificacion_sha256() -> str:
+    """A digest over the four change-controlled artifacts of the rule, plus its
+    mechanics version.
+
+    Pinned in `eval/expected_clasificacion.yaml`'s header and asserted by the
+    unit suite, which is what closes the threat the artifact alone does not: a
+    rule change that widens the shippable set WITHOUT touching the expected
+    artifact. The 11 checked-in fixtures cover 11 of 35 documents, so an
+    allowlist entry that only promotes one of the other 24 would otherwise land
+    with every test green and no diff anyone had to sign off.
+
+    Order-insensitive for the three sets, order-SENSITIVE for `FUENTES_PUBLICAS`,
+    because that one is a tuple whose order determines which host gets recorded
+    as evidence when a document carries several.
+    """
+    payload = "\n".join(
+        (
+            "FUENTES_PUBLICAS=" + "|".join(FUENTES_PUBLICAS),
+            "TIPOS_INSTITUCIONALES=" + "|".join(sorted(TIPOS_INSTITUCIONALES)),
+            "INDICE_NO_PUBLICACION=" + "|".join(sorted(INDICE_NO_PUBLICACION)),
+            "CLASIFICACIONES_ENVIABLES=" + "|".join(sorted(CLASIFICACIONES_ENVIABLES)),
+            "REGLA_MECANICA_VERSION=" + REGLA_MECANICA_VERSION,
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 class IngestionAbort(RuntimeError):
     """Base class for every condition that must stop ingestion before a write."""
 
@@ -102,13 +233,182 @@ def es_secundaria_for(tipo: str) -> bool:
     )
 
 
-def _first_url(value: Any) -> str | None:
-    """Frontmatter `fuente_url` is sometimes a scalar and sometimes a list."""
+def _urls_de(value: Any) -> tuple[str, ...]:
+    """Frontmatter `fuente_url` is sometimes a scalar and sometimes a list.
+
+    Declaration order is preserved and is load-bearing: it is what makes the
+    recorded evidence deterministic when a document carries several allowlisted
+    hosts.
+    """
     if value is None:
-        return None
+        return ()
     if isinstance(value, (list, tuple)):
-        return str(value[0]) if value else None
-    return str(value)
+        return tuple(str(item) for item in value if item is not None)
+    return (str(value),)
+
+
+def _first_url(value: Any) -> str | None:
+    """The `fuente_url` COLUMN keeps carrying only the first entry (V0 shape)."""
+    urls = _urls_de(value)
+    return urls[0] if urls else None
+
+
+def host_de_url(url: str) -> str | None:
+    """The lowercased, port-stripped, IDNA-decoded host of a URL, or None.
+
+    None for anything unparseable or hostless. A URL whose host cannot be read is
+    not evidence of publication, so returning None routes it to default-deny
+    rather than to a guess.
+    """
+    try:
+        host = urlsplit(url.strip()).hostname
+    except ValueError:
+        return None
+    if not host:
+        return None
+    if "xn--" in host:
+        try:
+            host = host.encode("ascii").decode("idna")
+        except (UnicodeError, UnicodeDecodeError):
+            return None
+    return host
+
+
+def entrada_allowlist_para(host: str) -> str | None:
+    """The `FUENTES_PUBLICAS` entry that admits `host`, or None.
+
+    Label-boundary suffix match, pinned to one rule: `host == entrada` or
+    `host.endswith("." + entrada)`. This admits `www.saij.gob.ar` under
+    `saij.gob.ar` and rejects `saij.gob.ar.evil.example` (does not end in
+    `.saij.gob.ar`) and `notsaij.gob.ar` (no label boundary).
+    """
+    host = host.lower()
+    for entrada in FUENTES_PUBLICAS:
+        if host == entrada or host.endswith(f".{entrada}"):
+            return entrada
+    return None
+
+
+def _clave_indice(url: str) -> str:
+    """The comparison key for the index exclusion. Applied to BOTH sides.
+
+    The exclusion was previously an exact `url.strip()` membership test while the
+    PROMOTING half of the same rule normalized its input (`host_de_url`
+    lowercases, strips the port and decodes IDNA). That asymmetry was the bug:
+    `https://WWW.APRHI.GOB.AR/normativas/` failed the raw string comparison
+    against the listed `https://www.aprhi.gob.ar/normativas/`, then promoted,
+    because the promoting half happily lowercased the very same host. A
+    fail-closed exclusion that a trivial variant of the SAME page walks around is
+    not fail-closed.
+
+    What is normalized, and why each one is a variant of the same page rather
+    than a different resource:
+
+    * **Scheme is dropped entirely.** `http` and `https` are transports, not
+      identity: the listed landing page served over plain http is the same
+      landing page. Dropping it also makes the comparison immune to `HTTPS://`.
+    * **Host is lowercased**, and userinfo and port are dropped, by reading
+      `urlsplit(...).hostname` — the same accessor the promoting half already
+      uses, which is the point.
+    * **One trailing slash is removed from the path.** `/normativas/` and
+      `/normativas` are the same landing page on every server that serves either.
+    * **Path case, query and fragment are preserved verbatim.** Paths are
+      case-sensitive per RFC 3986, and a query string can genuinely select a
+      concrete document under a landing path (`/normativas/?doc=5`), which the
+      rule's stated intent says must still promote. Collapsing those would be a
+      guess, not a canonicalization.
+
+    Known residual, deliberately NOT closed here: a `www.`-less variant of a
+    listed host (`https://aprhi.gob.ar/normativas/`) still evades. Stripping the
+    `www.` label is an assumption about a site's DNS, not a property of URLs, and
+    `INDICE_NO_PUBLICACION` is change-controlled — widening the matching mechanic
+    beyond what the amendment ratified is the owner's call, not a fix-forward's.
+    Listing the variant is the sanctioned remedy.
+    """
+    partes = urlsplit(url.strip())
+    host = partes.hostname or ""
+    camino = partes.path
+    if camino.endswith("/"):
+        camino = camino[:-1]
+    clave = f"{host}{camino}"
+    if partes.query:
+        clave += f"?{partes.query}"
+    if partes.fragment:
+        clave += f"#{partes.fragment}"
+    return clave
+
+
+def es_url_indice(url: str) -> bool:
+    """True when this URL is a listed INDEX/landing page (amendment A1).
+
+    Both sides go through `_clave_indice`, so case, scheme and a trailing slash
+    cannot be used to slip a listed landing page past the exclusion. The match
+    stays EXACT rather than prefix: a document living UNDER a listed index
+    (`/normativas/2026/res-3.pdf`) still promotes, which is the ratified
+    direction for a rule about landing pages.
+    """
+    try:
+        objetivo = _clave_indice(url)
+    except ValueError:
+        # Unparseable. `host_de_url` returns None for the same input and
+        # `clasificar_documento` then skips the URL, so it promotes nothing
+        # either way; saying "not an index" here keeps the two halves reading
+        # the same URL the same way.
+        return False
+    for listada in INDICE_NO_PUBLICACION:
+        if _clave_indice(listada) == objetivo:
+            return True
+    return False
+
+
+def clasificar_documento(
+    tipo: str, es_secundaria: bool, fuente_urls: Sequence[str]
+) -> tuple[str, str]:
+    """Derive `(clasificacion, clasificacion_evidencia)`. Pure — no DB, no network.
+
+    The three clauses are evaluated IN THIS ORDER and the order is load-bearing:
+
+        privado        <=  es_secundaria is True                     # FIRST
+        institucional  <=  tipo in TIPOS_INSTITUCIONALES
+        publico        <=  some fuente_url is a concrete document on an
+                           allowlisted host
+        privado        <=  everything else                           # default-deny
+
+    **Why the secundaria test runs first.** It makes the host allowlist
+    unreachable for a fuente secundaria, which is what closes the `fuente_url`
+    key-naming gap: `informe-f3-sujeto-expropiante` has no `fuente_url` key at
+    all and carries eleven official-looking hosts — press outlets among them —
+    under a DIFFERENT key, `fuentes_externas_verificadas`. Only `fuente_url` is
+    consulted; no other key is. Those entries are the sources an analyst
+    consulted while writing a report, and a press URL is not a publication of the
+    document, so reading them would be actively wrong. The rule can afford to
+    read exactly one key precisely because the ordering makes the informe
+    `privado` before any host is looked at.
+
+    Nothing is inferred from prose: `verificacion` and `estado_vigencia` are free
+    text in this corpus, and a regex over legal prose is exactly the silent
+    misclassification this module refuses to build.
+    """
+    if es_secundaria:
+        return "privado", "es_secundaria"
+
+    if tipo in TIPOS_INSTITUCIONALES:
+        return "institucional", f"tipo:{tipo} ∈ TIPOS_INSTITUCIONALES"
+
+    for url in fuente_urls:
+        if es_url_indice(url):
+            continue
+        host = host_de_url(url)
+        if host is None:
+            continue
+        entrada = entrada_allowlist_para(host)
+        if entrada is not None:
+            return (
+                "publico",
+                f"host:{host} ⊂ FUENTES_PUBLICAS:{entrada} (fuente_url: {url})",
+            )
+
+    return "privado", "sin host en FUENTES_PUBLICAS"
 
 
 def _as_date(value: Any) -> datetime.date | None:
@@ -137,6 +437,8 @@ def documento_row_from_frontmatter(
     tipo = normalize_tipo(str(frontmatter["tipo"]))
     es_secundaria = es_secundaria_for(tipo)
     estado_vigencia = frontmatter.get("estado_vigencia")
+    fuente_urls = _urls_de(frontmatter.get("fuente_url"))
+    clasificacion, clasificacion_evidencia = clasificar_documento(tipo, es_secundaria, fuente_urls)
 
     if estado_vigencia is None and not es_secundaria:
         raise IngestionAbort(
@@ -161,9 +463,12 @@ def documento_row_from_frontmatter(
         "verificacion": (
             None if frontmatter.get("verificacion") is None else str(frontmatter["verificacion"])
         ),
-        # Default-deny (design.md D3). Nothing in V0 promotes a document to
-        # `publico`; the hosted-embedding leg stays unreachable by construction.
-        "clasificacion": "privado",
+        # Derived, not hard-coded — and the evidence travels with it, so "why is
+        # this document shippable?" is a SELECT rather than a re-run of the rule
+        # against a corpus checkout the box may not have. The evidence is
+        # evidence: nothing reads it back to decide anything.
+        "clasificacion": clasificacion,
+        "clasificacion_evidencia": clasificacion_evidencia,
         "fuente_url": _first_url(frontmatter.get("fuente_url")),
         "fecha_sancion": _as_date(frontmatter.get("fecha_sancion")),
         "fecha_bo": _as_date(frontmatter.get("fecha_bo")),
@@ -187,11 +492,11 @@ UPSERT_DOCUMENTO_SQL = text(
     """
     INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria,
                                jurisdiccion, estado_vigencia, relevancia_consorcio,
-                               verificacion, clasificacion, fuente_url,
-                               fecha_sancion, fecha_bo)
+                               verificacion, clasificacion, clasificacion_evidencia,
+                               fuente_url, fecha_sancion, fecha_bo)
     VALUES (:corpus_sha, :documento_id, :tipo, :es_secundaria, :jurisdiccion,
             :estado_vigencia, :relevancia_consorcio, :verificacion, :clasificacion,
-            :fuente_url, :fecha_sancion, :fecha_bo)
+            :clasificacion_evidencia, :fuente_url, :fecha_sancion, :fecha_bo)
     ON CONFLICT (corpus_sha, documento_id) DO UPDATE SET
         tipo = EXCLUDED.tipo,
         es_secundaria = EXCLUDED.es_secundaria,
@@ -199,7 +504,11 @@ UPSERT_DOCUMENTO_SQL = text(
         estado_vigencia = EXCLUDED.estado_vigencia,
         relevancia_consorcio = EXCLUDED.relevancia_consorcio,
         verificacion = EXCLUDED.verificacion,
+        -- Both, in place: re-running ingest at the SAME corpus_sha is what
+        -- reclassifies the 35 rows the old hardcode wrote as `privado`. It is a
+        -- named, ordered runbook step, never a hand-written UPDATE.
         clasificacion = EXCLUDED.clasificacion,
+        clasificacion_evidencia = EXCLUDED.clasificacion_evidencia,
         fuente_url = EXCLUDED.fuente_url,
         fecha_sancion = EXCLUDED.fecha_sancion,
         fecha_bo = EXCLUDED.fecha_bo

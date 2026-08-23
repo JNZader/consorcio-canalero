@@ -2,9 +2,26 @@
 
 O.5 resolved to a LOCAL baseline (`intfloat/multilingual-e5-large`), so V0 makes
 no external call at all and this module guards a door nobody currently opens.
-That is the point: `clasificacion` defaults to `privado` for every ingested
-document and nothing in V0 promotes one, so the gate makes the API leg
-unreachable BY CONSTRUCTION rather than by everyone remembering.
+
+*(Updated 2026-08-23, U1.)* It used to say that `clasificacion` defaults to
+`privado` for every ingested document and that nothing promotes one, which made
+this leg unreachable by construction. The three-class ingest rule
+(`repository.clasificar_documento`) promotes documents now, so that sentence is
+retired rather than left standing as a comforting falsehood.
+
+What replaces it is narrower and still true. **This gate stays `publico`-only.**
+The optional API-embedding comparison baseline is bounded by the retrieval spec
+to the current public-domain (SAIJ/BO-sourced) corpus text, and an
+`institucional` document is not that — it is a consorcio instrument the owner
+cleared for the *answer* path, not for a corpus-wide comparison against a
+third-party embedding service. So a snapshot containing the consorcio's own
+registro keeps failing `assert_public_domain`, the API baseline stays unreachable
+in practice, and that is the correct outcome rather than a bug to fix.
+
+The SERVING gate is a different function with a different set:
+`service.assert_unidades_publicas` admits `CLASIFICACIONES_ENVIABLES =
+{publico, institucional}`, per unit, per request, and excludes rather than
+refuses. Two questions, two sets, one place each. Do not merge them.
 
 Two independent guarantees, because a single one is always one edit from being
 bypassed:

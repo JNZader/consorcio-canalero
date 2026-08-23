@@ -152,8 +152,15 @@ class RagDocumento(Base):
             ["rag_corpus.corpus_sha"],
             name="fk_rag_documento_corpus",
         ),
+        # Three classes since migration conocimiento_005. `institucional` is the
+        # consorcio's own normative instruments: shippable to the generation
+        # provider (`CLASIFICACIONES_ENVIABLES`) but deliberately NOT part of the
+        # eval baseline's `publico`-only set. The CHECK is mirrored in
+        # `conocimiento_005_clasificacion_tres_clases.py`; widening one without
+        # the other is how a class becomes writable in tests and rejected in
+        # production.
         CheckConstraint(
-            "clasificacion IN ('publico', 'privado')",
+            "clasificacion IN ('publico', 'institucional', 'privado')",
             name="ck_rag_documento_clasificacion",
         ),
         # Scoped NOT NULL (migration conocimiento_003): every document that IS
@@ -194,6 +201,11 @@ class RagDocumento(Base):
     # D3). A document must be explicitly marked `publico` to ever reach an
     # external embedding/judge call.
     clasificacion: Mapped[str] = mapped_column(Text, nullable=False, default="privado")
+    # The string the ingest rule derived `clasificacion` FROM (migration
+    # conocimiento_005). Evidence, never an input: nothing reads it back to
+    # decide anything. Nullable because a snapshot ingested below 005 has none,
+    # and a schema that pretended otherwise would be lying about old rows.
+    clasificacion_evidencia: Mapped[str | None] = mapped_column(Text, nullable=True)
     fuente_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     fecha_sancion: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     fecha_bo: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
