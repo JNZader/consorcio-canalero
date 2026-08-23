@@ -14,7 +14,12 @@ Same shape as the crossing run (Fase A), for the same reasons:
    of trying to interleave with it. The re-check mark comes from ``SELECT now()``
    on the DATABASE, because the predicate compares against ``geo_jobs.updated_at``
    — a column the database server stamps — and taking it from the worker's clock
-   would make the window depend on cross-host clock skew.
+   would make the window depend on cross-host clock skew. The copy is then
+   **corroborated** with Fase A's own helper: an empty, size-unstable or
+   zero-dimension copy is refused as ``copia_corrupta_post_check``, naming what
+   was observed rather than a hypothesis about who caused it. Without it a
+   truncated copy would not raise at all — it would sample fewer cells and hand
+   back a median that reads exactly like a measurement.
 4. **Compute from the copy**, and
 5. **write in ONE transaction**, keyed ``(tramo_ref, geo_job_id)`` so a re-run
    adds a new generation of candidates instead of overwriting the previous one.
@@ -36,7 +41,9 @@ import structlog
 from sqlalchemy import text
 
 from app.domains.geo.intelligence.cruces_camino_support import (
+    CopiaCorrupta,
     DemJobEnCurso,
+    corroborar_copias,
     dem_job_ocupado,
     verificar_dem_libre,
 )
@@ -71,8 +78,16 @@ def _raster_crs(path: str):
 def _copiar_a_scratch(dem_path: str, *, scratch_root: str) -> tuple[str, str]:
     """A private copy, so a pipeline mid-run cannot change what we are reading."""
     scratch = tempfile.mkdtemp(prefix="clasif_tramo_", dir=scratch_root)
-    destino = os.path.join(scratch, os.path.basename(dem_path))
-    shutil.copy2(dem_path, destino)
+    # The caller only learns this path from the RETURN value, so a failure
+    # between mkdtemp and return would leak the directory forever with no owner:
+    # clean up our own partial state before re-raising. Same shape, and for the
+    # same reason, as ``copiar_rasters_a_scratch`` (Fase A).
+    try:
+        destino = os.path.join(scratch, os.path.basename(dem_path))
+        shutil.copy2(dem_path, destino)
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
     return scratch, destino
 
 
@@ -166,6 +181,12 @@ def run_classification_task(
             verificar_dem_libre(db, area_id, desde=pre_check_at)
         finally:
             db.close()
+        # A second opinion that costs nothing, and the reason it is here rather
+        # than left to the sampling step: an unreadable copy raises somewhere
+        # opaque, and a TRUNCATED one is worse — it samples fewer cells and
+        # returns a median that looks like a reading. This names what was
+        # observed instead.
+        corroborar_copias(dem_copia)
 
         minx, miny, maxx, maxy = _raster_bbox_4326(dem_copia)
         db = session_factory()
@@ -246,7 +267,7 @@ def run_classification_task(
         finally:
             db.close()
         return {"job_id": job_id, "status": "failed", "motivo": motivo}
-    except DemJobEnCurso as exc:
+    except (DemJobEnCurso, CopiaCorrupta) as exc:
         db = session_factory()
         try:
             _fail(
@@ -260,7 +281,7 @@ def run_classification_task(
         finally:
             db.close()
         return {"job_id": job_id, "status": "skipped", "motivo": exc.motivo}
-    except Exception as exc:  # pragma: no cover — the no-zombie guarantee
+    except Exception as exc:  # the no-zombie guarantee
         db = session_factory()
         try:
             _fail(

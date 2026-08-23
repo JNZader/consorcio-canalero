@@ -23,8 +23,10 @@ def classify_road_segments(area_id: str, job_id: str | None = None) -> dict:
     job FAILED with ``dem_job_running_pre_check``, and a newest DEM run that
     offers only a burned or simulated surface ends it with
     ``dem_filled_no_disponible`` rather than classifying against a −10 m
-    fictional trench. A lost fence returns ``skipped`` without writing an estado
-    of its own — the row already belongs to whoever won it.
+    fictional trench. A private copy that fails corroboration ends it with
+    ``copia_corrupta_post_check`` — the observation, never a guess at its cause.
+    A lost fence returns ``skipped`` without writing an estado of its own — the
+    row already belongs to whoever won it.
 
     Nothing this task writes is a measurement. Every row lands in
     ``tramo_clasificacion_candidata``, labelled a candidate, keyed by this run,
