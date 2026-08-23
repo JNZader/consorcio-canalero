@@ -76,11 +76,16 @@ TIPOS_DERECHO_APLICABLE: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 # The three-class `clasificacion` rule (design.md G2a + amendment A1, ratified
 # 2026-08-23). CHANGE CONTROL: any edit to `FUENTES_PUBLICAS`,
-# `TIPOS_INSTITUCIONALES` or `INDICE_NO_PUBLICACION` requires explicit owner
-# sign-off recorded in the PR that makes it, exactly as for
-# `eval/expected_clasificacion.yaml`. These artifacts ARE the privacy boundary in
-# executable form; a quiet one-line addition ships a document to a third party,
-# which is not a refactor.
+# `TIPOS_INSTITUCIONALES`, `INDICE_NO_PUBLICACION` or `CLASIFICACIONES_ENVIABLES`
+# requires explicit owner sign-off recorded in the PR that makes it, exactly as
+# for `eval/expected_clasificacion.yaml`. These artifacts ARE the privacy
+# boundary in executable form; a quiet one-line addition ships a document to a
+# third party, which is not a refactor.
+#
+# The same applies to the MATCHING MECHANICS — `entrada_allowlist_para` and
+# `es_url_indice` — which carry no listed value and therefore cannot be reviewed
+# by reading a diff of constants. `REGLA_MECANICA_VERSION` below is what puts
+# them inside the same digest, and it must be bumped in the same reviewed diff.
 # ---------------------------------------------------------------------------
 
 #: The only classes that may leave the box, defined ONCE and shared by the ingest
@@ -150,8 +155,24 @@ INDICE_NO_PUBLICACION: frozenset[str] = frozenset(
 )
 
 
+#: Bumped by hand whenever the *mechanics* of the rule change — how a host is
+#: matched against `FUENTES_PUBLICAS`, or how a URL is matched against
+#: `INDICE_NO_PUBLICACION` — as opposed to what those constants list.
+#:
+#: It exists because a digest over the constants alone is blind to exactly the
+#: change that hurts most: rewriting `es_url_indice` from an exact string
+#: comparison to a prefix match would ship or withhold documents wholesale
+#: without moving a single listed value, so every guard downstream of the digest
+#: would stay green. Change controlled like the constants themselves.
+#:
+#: * v1 — original: exact `url.strip()` membership.
+#: * v2 — index matching normalizes both sides (see `_clave_indice`).
+REGLA_MECANICA_VERSION: str = "v2"
+
+
 def regla_clasificacion_sha256() -> str:
-    """A digest over the three change-controlled artifacts of the rule.
+    """A digest over the four change-controlled artifacts of the rule, plus its
+    mechanics version.
 
     Pinned in `eval/expected_clasificacion.yaml`'s header and asserted by the
     unit suite, which is what closes the threat the artifact alone does not: a
@@ -160,7 +181,7 @@ def regla_clasificacion_sha256() -> str:
     allowlist entry that only promotes one of the other 24 would otherwise land
     with every test green and no diff anyone had to sign off.
 
-    Order-insensitive for the two sets, order-SENSITIVE for `FUENTES_PUBLICAS`,
+    Order-insensitive for the three sets, order-SENSITIVE for `FUENTES_PUBLICAS`,
     because that one is a tuple whose order determines which host gets recorded
     as evidence when a document carries several.
     """
@@ -170,6 +191,7 @@ def regla_clasificacion_sha256() -> str:
             "TIPOS_INSTITUCIONALES=" + "|".join(sorted(TIPOS_INSTITUCIONALES)),
             "INDICE_NO_PUBLICACION=" + "|".join(sorted(INDICE_NO_PUBLICACION)),
             "CLASIFICACIONES_ENVIABLES=" + "|".join(sorted(CLASIFICACIONES_ENVIABLES)),
+            "REGLA_MECANICA_VERSION=" + REGLA_MECANICA_VERSION,
         )
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -267,9 +289,76 @@ def entrada_allowlist_para(host: str) -> str | None:
     return None
 
 
+def _clave_indice(url: str) -> str:
+    """The comparison key for the index exclusion. Applied to BOTH sides.
+
+    The exclusion was previously an exact `url.strip()` membership test while the
+    PROMOTING half of the same rule normalized its input (`host_de_url`
+    lowercases, strips the port and decodes IDNA). That asymmetry was the bug:
+    `https://WWW.APRHI.GOB.AR/normativas/` failed the raw string comparison
+    against the listed `https://www.aprhi.gob.ar/normativas/`, then promoted,
+    because the promoting half happily lowercased the very same host. A
+    fail-closed exclusion that a trivial variant of the SAME page walks around is
+    not fail-closed.
+
+    What is normalized, and why each one is a variant of the same page rather
+    than a different resource:
+
+    * **Scheme is dropped entirely.** `http` and `https` are transports, not
+      identity: the listed landing page served over plain http is the same
+      landing page. Dropping it also makes the comparison immune to `HTTPS://`.
+    * **Host is lowercased**, and userinfo and port are dropped, by reading
+      `urlsplit(...).hostname` — the same accessor the promoting half already
+      uses, which is the point.
+    * **One trailing slash is removed from the path.** `/normativas/` and
+      `/normativas` are the same landing page on every server that serves either.
+    * **Path case, query and fragment are preserved verbatim.** Paths are
+      case-sensitive per RFC 3986, and a query string can genuinely select a
+      concrete document under a landing path (`/normativas/?doc=5`), which the
+      rule's stated intent says must still promote. Collapsing those would be a
+      guess, not a canonicalization.
+
+    Known residual, deliberately NOT closed here: a `www.`-less variant of a
+    listed host (`https://aprhi.gob.ar/normativas/`) still evades. Stripping the
+    `www.` label is an assumption about a site's DNS, not a property of URLs, and
+    `INDICE_NO_PUBLICACION` is change-controlled — widening the matching mechanic
+    beyond what the amendment ratified is the owner's call, not a fix-forward's.
+    Listing the variant is the sanctioned remedy.
+    """
+    partes = urlsplit(url.strip())
+    host = partes.hostname or ""
+    camino = partes.path
+    if camino.endswith("/"):
+        camino = camino[:-1]
+    clave = f"{host}{camino}"
+    if partes.query:
+        clave += f"?{partes.query}"
+    if partes.fragment:
+        clave += f"#{partes.fragment}"
+    return clave
+
+
 def es_url_indice(url: str) -> bool:
-    """True when this URL is a listed INDEX/landing page (amendment A1)."""
-    return url.strip() in INDICE_NO_PUBLICACION
+    """True when this URL is a listed INDEX/landing page (amendment A1).
+
+    Both sides go through `_clave_indice`, so case, scheme and a trailing slash
+    cannot be used to slip a listed landing page past the exclusion. The match
+    stays EXACT rather than prefix: a document living UNDER a listed index
+    (`/normativas/2026/res-3.pdf`) still promotes, which is the ratified
+    direction for a rule about landing pages.
+    """
+    try:
+        objetivo = _clave_indice(url)
+    except ValueError:
+        # Unparseable. `host_de_url` returns None for the same input and
+        # `clasificar_documento` then skips the URL, so it promotes nothing
+        # either way; saying "not an index" here keeps the two halves reading
+        # the same URL the same way.
+        return False
+    for listada in INDICE_NO_PUBLICACION:
+        if _clave_indice(listada) == objetivo:
+            return True
+    return False
 
 
 def clasificar_documento(

@@ -473,7 +473,66 @@ class TestReglaDeIndice:
         """
         assert self.APRHI_INDICE in INDICE_NO_PUBLICACION
         assert es_url_indice("https://www.aprhi.gob.ar/normativas/2026/res-3.pdf") is False
-        assert es_url_indice("https://www.aprhi.gob.ar/normativas") is False
+
+    @pytest.mark.parametrize(
+        "variante",
+        [
+            "https://WWW.APRHI.GOB.AR/normativas/",
+            "HTTPS://www.aprhi.gob.ar/normativas/",
+            "http://www.aprhi.gob.ar/normativas/",
+            "https://www.aprhi.gob.ar/normativas",
+            "http://WWW.Aprhi.Gob.Ar/normativas",
+            "  https://www.aprhi.gob.ar/normativas/  ",
+        ],
+    )
+    def test_a_trivial_variant_of_a_listed_index_cannot_evade_the_exclusion(self, variante):
+        """The fix-forward for the asymmetry that shipped in the first cut.
+
+        This assertion is the REVERSE of what this file previously pinned:
+        `es_url_indice("https://www.aprhi.gob.ar/normativas")` (no trailing
+        slash) used to be asserted `False`, and that was the finding, not the
+        contract. The exclusion compared `url.strip()` against the listed string
+        raw — case-, scheme- and slash-sensitive — while the PROMOTING half of
+        the very same rule ran the URL through `host_de_url`, which lowercases
+        and strips the port. So `https://WWW.APRHI.GOB.AR/normativas/` missed the
+        exclusion and then matched `aprhi.gob.ar` in `FUENTES_PUBLICAS`: a
+        one-keystroke variant of the SAME landing page promoted a document to
+        `publico`.
+
+        A fail-closed rule that a trivial variant of the same page walks around
+        is not fail-closed, so both sides now normalize identically
+        (`repository._clave_indice`). Every variant below denotes the one listed
+        landing page and must be recognised as an index.
+        """
+        assert es_url_indice(variante) is True
+
+    def test_normalisation_does_not_leak_into_the_path_or_the_query(self):
+        """Normalisation closes same-page variants and stops there.
+
+        Path case is significant per RFC 3986 and a query can select a concrete
+        document under a landing path, so neither is collapsed: doing so would
+        demote real publications on a guess. The exclusion widening only ever
+        costs shippability, but it still has to be a canonicalisation rather than
+        a heuristic, or the audit trail stops meaning anything.
+        """
+        assert es_url_indice("https://www.aprhi.gob.ar/NORMATIVAS/") is False
+        assert es_url_indice("https://www.aprhi.gob.ar/normativas/?doc=5") is False
+
+    def test_the_uppercase_host_variant_no_longer_promotes_a_document(self):
+        """The finding end to end, not just at the predicate.
+
+        `es_url_indice` returning True is the mechanism; what actually mattered
+        is that the document stops reaching the answer path. `aprhi.gob.ar` is in
+        `FUENTES_PUBLICAS`, so before the fix this frontmatter classified
+        `publico` on a landing page.
+        """
+        _, frontmatter = load_fixture("normas-srh-2013-fragmento.md")
+        frontmatter = {**frontmatter, "fuente_url": ["https://WWW.APRHI.GOB.AR/normativas/"]}
+        row = documento_row_from_frontmatter(
+            SHA, "normas-srh-2013-presentacion-proyectos", frontmatter
+        )
+        assert row["clasificacion"] == "privado"
+        assert row["clasificacion_evidencia"] == "sin host en FUENTES_PUBLICAS"
 
     def test_aprhi_entry_is_inert_at_the_pinned_sha_and_that_is_recorded(self):
         """Named consequence of the index rule (amendment A1): `aprhi.gob.ar`
