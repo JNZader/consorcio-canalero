@@ -5,17 +5,26 @@
 # suite (the 11 checked-in fixtures, no database) and by runbook step 8 (all 35
 # reclassified rows).
 #
-# CHANGE CONTROL: editing this file, `FUENTES_PUBLICAS`, `TIPOS_INSTITUCIONALES`
-# or `INDICE_NO_PUBLICACION` requires explicit owner sign-off recorded in the PR
-# that makes it. Together they ARE the privacy boundary in executable form.
+# CHANGE CONTROL: editing this file, `FUENTES_PUBLICAS`, `TIPOS_INSTITUCIONALES`,
+# `INDICE_NO_PUBLICACION` or `CLASIFICACIONES_ENVIABLES` requires explicit owner
+# sign-off recorded in the PR that makes it. Together they ARE the privacy
+# boundary in executable form.
 #
-# `regla_sha256` is a digest over those three artifacts. A rule change that does
+# `regla_sha256` is a digest over those four artifacts AND over
+# `REGLA_MECANICA_VERSION`, the hand-bumped token for how the rule MATCHES —
+# host suffix matching and index-URL normalisation — because a digest over
+# listed values alone is blind to a rewritten comparison that moves documents
+# between classes without touching a single listed value. A rule change that does
 # not regenerate this file fails the unit diff — which is exactly the widening
 # the 11 fixtures alone cannot see, since 24 documents have no fixture here.
 
 corpus_sha: 12043582bf8016288a7e8084e85a4b713a97af2f
 generado: 2026-08-23
-regla_sha256: 77bc94f366e2accda624190c17c7ddb10d144c11b2bb209df15b33b38b297f33
+regla_sha256: a8f2a00886c90862b517ca76a23b54ea7622090da61959172c4b65b29c28d01a
+regla_mecanica_version: v2
+clasificaciones_enviables:
+  - institucional
+  - publico
 fuentes_publicas:
   - saij.gob.ar
   - boletinoficial.cba.gov.ar

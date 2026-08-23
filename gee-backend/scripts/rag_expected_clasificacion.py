@@ -54,11 +54,16 @@ CABECERA = """\
 # suite (the 11 checked-in fixtures, no database) and by runbook step 8 (all 35
 # reclassified rows).
 #
-# CHANGE CONTROL: editing this file, `FUENTES_PUBLICAS`, `TIPOS_INSTITUCIONALES`
-# or `INDICE_NO_PUBLICACION` requires explicit owner sign-off recorded in the PR
-# that makes it. Together they ARE the privacy boundary in executable form.
+# CHANGE CONTROL: editing this file, `FUENTES_PUBLICAS`, `TIPOS_INSTITUCIONALES`,
+# `INDICE_NO_PUBLICACION` or `CLASIFICACIONES_ENVIABLES` requires explicit owner
+# sign-off recorded in the PR that makes it. Together they ARE the privacy
+# boundary in executable form.
 #
-# `regla_sha256` is a digest over those three artifacts. A rule change that does
+# `regla_sha256` is a digest over those four artifacts AND over
+# `REGLA_MECANICA_VERSION`, the hand-bumped token for how the rule MATCHES —
+# host suffix matching and index-URL normalisation — because a digest over
+# listed values alone is blind to a rewritten comparison that moves documents
+# between classes without touching a single listed value. A rule change that does
 # not regenerate this file fails the unit diff — which is exactly the widening
 # the 11 fixtures alone cannot see, since 24 documents have no fixture here.
 """
@@ -134,8 +139,11 @@ def render(corpus_sha: str, filas: list[dict[str, object]]) -> str:
         f"corpus_sha: {corpus_sha}",
         f"generado: {datetime.date.today().isoformat()}",
         f"regla_sha256: {repository.regla_clasificacion_sha256()}",
-        "fuentes_publicas:",
+        f"regla_mecanica_version: {repository.REGLA_MECANICA_VERSION}",
+        "clasificaciones_enviables:",
     ]
+    lineas += [f"  - {clase}" for clase in sorted(repository.CLASIFICACIONES_ENVIABLES)]
+    lineas.append("fuentes_publicas:")
     lineas += [f"  - {entrada}" for entrada in repository.FUENTES_PUBLICAS]
     lineas.append("tipos_institucionales:")
     lineas += [f"  - {tipo}" for tipo in sorted(repository.TIPOS_INSTITUCIONALES)]

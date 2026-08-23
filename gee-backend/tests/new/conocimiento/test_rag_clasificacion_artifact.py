@@ -110,18 +110,23 @@ class TestGuardaDeCambioDeRegla:
 
     def test_the_artifact_pins_the_current_rule(self):
         assert load_expected_clasificacion().regla_sha256 == regla_clasificacion_sha256(), (
-            "FUENTES_PUBLICAS, TIPOS_INSTITUCIONALES or INDICE_NO_PUBLICACION "
-            "changed without regenerating eval/expected_clasificacion.yaml. That "
-            "is a widening (or narrowing) of the shippable set with no diff "
-            "anyone had to sign off. Re-run scripts/rag_expected_clasificacion.py "
-            "against the pinned checkout and get owner sign-off in the PR."
+            "FUENTES_PUBLICAS, TIPOS_INSTITUCIONALES, INDICE_NO_PUBLICACION, "
+            "CLASIFICACIONES_ENVIABLES or REGLA_MECANICA_VERSION changed without "
+            "regenerating eval/expected_clasificacion.yaml. That is a widening "
+            "(or narrowing) of the shippable set with no diff anyone had to sign "
+            "off. Re-run scripts/rag_expected_clasificacion.py against the "
+            "pinned checkout and get owner sign-off in the PR."
         )
 
     def test_the_digest_actually_moves_when_the_rule_moves(self, monkeypatch):
         """Otherwise the guard above is a constant compared against itself.
 
-        Each of the three change-controlled artifacts is perturbed in turn,
+        Each of the four change-controlled artifacts is perturbed in turn,
         because a digest that only covers one of them protects only one.
+        `CLASIFICACIONES_ENVIABLES` was hashed from the start but never
+        perturbed here — an omission that made the guard for the single most
+        dangerous constant in the module (the definition of "may leave the box")
+        the one thing this test did not actually check.
         """
         from app.domains.conocimiento import repository
 
@@ -146,6 +151,36 @@ class TestGuardaDeCambioDeRegla:
             "INDICE_NO_PUBLICACION",
             repository.INDICE_NO_PUBLICACION | {"https://www.aprhi.gob.ar/otra/"},
         )
+        assert regla_clasificacion_sha256() != base
+        monkeypatch.undo()
+
+        # Widening AND narrowing: the boundary moving in either direction is a
+        # change the artifact must be regenerated for.
+        monkeypatch.setattr(
+            repository,
+            "CLASIFICACIONES_ENVIABLES",
+            repository.CLASIFICACIONES_ENVIABLES | {"privado"},
+        )
+        assert regla_clasificacion_sha256() != base
+        monkeypatch.undo()
+
+        monkeypatch.setattr(repository, "CLASIFICACIONES_ENVIABLES", frozenset({"publico"}))
+        assert regla_clasificacion_sha256() != base
+
+    def test_the_digest_moves_when_the_matching_MECHANICS_move(self, monkeypatch):
+        """The gap the constants alone cannot cover.
+
+        Every perturbation above changes a listed VALUE. The change that actually
+        shipped a defect in this slice changed none: `es_url_indice` compared raw
+        strings while the promoting half normalized, and rewriting that
+        comparison moved documents between classes with the constants untouched
+        and the digest frozen. `REGLA_MECANICA_VERSION` is the hand-bumped token
+        that puts "how it matches" inside the same guard as "what it lists".
+        """
+        from app.domains.conocimiento import repository
+
+        base = regla_clasificacion_sha256()
+        monkeypatch.setattr(repository, "REGLA_MECANICA_VERSION", "v99")
         assert regla_clasificacion_sha256() != base
 
     def test_reordering_the_allowlist_moves_the_digest(self, monkeypatch):
