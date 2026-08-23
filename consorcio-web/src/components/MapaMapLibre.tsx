@@ -1167,7 +1167,11 @@ export default function MapaMapLibre() {
               onSelectRoadFlowCrossing={roadFlow.onSelectCrossing}
               onSurveyTramo={roadFlow.onSurveyTramo}
               onCloseRoadFlow={roadFlow.onClose}
+              tramoSurveyRef={roadFlow.tramoRef}
               tramoSurveyDetalle={roadFlow.tramoDetalle}
+              tramoSurveyLoading={roadFlow.tramoLoading}
+              tramoSurveyError={roadFlow.tramoError}
+              onRetryTramoSurvey={roadFlow.onRetryTramoSurvey}
               onSubmitTramoSurvey={roadFlow.onSubmitTramoSurvey}
               onCloseTramoSurvey={roadFlow.onCloseTramoSurvey}
             />

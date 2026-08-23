@@ -74,7 +74,13 @@ export interface RoadFlowWiring {
   readonly onSelectCrossing: (feature: RoadFlowCrossingFeature) => void;
   readonly onSurveyTramo: (tramoRef: string) => void;
   readonly onClose: () => void;
+  /** The segment the operator asked for. THE SHEET'S MOUNT CONDITION. */
+  readonly tramoRef: string | null;
   readonly tramoDetalle: TramoRelevamientoDetalle | null;
+  readonly tramoLoading: boolean;
+  readonly tramoError: Error | null;
+  /** Re-issues the segment read after a failure. */
+  readonly onRetryTramoSurvey: () => void;
   readonly onSubmitTramoSurvey: (payload: RelevamientoTramoCreate) => Promise<unknown>;
   readonly onCloseTramoSurvey: () => void;
 }
@@ -99,16 +105,40 @@ export function useRoadFlowWiring({
   const { data: cobertura } = useRelevamientoCobertura(areaId, active);
   const [kinds, setKinds] = useState<RoadFlowKindVisibility>(ROAD_FLOW_ALL_KINDS_VISIBLE);
 
-  // The selected segment IS the survey sheet's mount condition.
+  // The selected segment IS the survey sheet's mount condition — the REF, not
+  // the answer to the read. A sheet that mounted on the data left the "Relevar"
+  // button doing nothing at all whenever the GET failed.
   const [tramoRef, setTramoRef] = useState<string | null>(null);
-  const { data: tramoDetalle } = useTramoRelevamiento(tramoRef);
+  const {
+    data: tramoDetalle,
+    isLoading: tramoLoading,
+    error: tramoError,
+    refetch: refetchTramo,
+  } = useTramoRelevamiento(tramoRef);
   const registrar = useRegistrarRelevamiento();
+
+  /**
+   * Asking for a segment. Asking for the one ALREADY selected re-issues the
+   * read instead of writing the same state and changing nothing: with
+   * `retry: false` a failed read stays failed, so without this the second tap
+   * on the same row would be as silent as the first one was.
+   */
+  const onSurveyTramo = useCallback(
+    (ref: string) => {
+      if (ref === tramoRef) {
+        refetchTramo();
+        return;
+      }
+      setTramoRef(ref);
+    },
+    [refetchTramo, tramoRef]
+  );
 
   const { flyToCrossing } = useRoadFlowInteraction({
     mapRef,
     mapReady,
     active,
-    onSelectTramo: setTramoRef,
+    onSelectTramo: onSurveyTramo,
   });
 
   const onCloseTramoSurvey = useCallback(() => setTramoRef(null), []);
@@ -144,9 +174,13 @@ export function useRoadFlowWiring({
     mapCollection: (crossings.data?.features as unknown as FeatureCollection<Point>) ?? null,
     totalFlujoNatural: crossings.data?.total_flujo_natural ?? 0,
     onSelectCrossing: flyToCrossing,
-    onSurveyTramo: setTramoRef,
+    onSurveyTramo,
     onClose,
+    tramoRef,
     tramoDetalle: tramoDetalle ?? null,
+    tramoLoading,
+    tramoError,
+    onRetryTramoSurvey: refetchTramo,
     onSubmitTramoSurvey,
     onCloseTramoSurvey,
   };

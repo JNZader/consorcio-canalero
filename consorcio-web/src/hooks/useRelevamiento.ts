@@ -34,6 +34,12 @@ export interface UseTramoRelevamientoResult {
   readonly isLoading: boolean;
   readonly isError: boolean;
   readonly error: Error | null;
+  /**
+   * Re-issue the read. `retry: false` means a failed read STAYS failed until
+   * somebody asks again, so the sheet's "Reintentar" needs a way to ask — and
+   * so does tapping the same row a second time.
+   */
+  readonly refetch: () => void;
 }
 
 /**
@@ -56,6 +62,9 @@ export function useTramoRelevamiento(tramoRef: string | null): UseTramoRelevamie
     isLoading: query.isLoading && query.fetchStatus !== 'idle',
     isError: query.isError,
     error: (query.error as Error | null) ?? null,
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }
 
