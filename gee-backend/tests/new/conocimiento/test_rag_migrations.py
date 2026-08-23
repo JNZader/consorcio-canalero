@@ -94,7 +94,7 @@ _PRIOR_HEAD = "lluvia_v2_005"  # the head this slice's migrations chain onto
 #: is actually under test and stops the file breaking on unrelated work. Those
 #: migrations have their own real-PG tests (``test_red_vial_migration``,
 #: ``test_cruce_camino_migration``), so nothing is left unchecked.
-_CONOCIMIENTO_HEAD = "conocimiento_004"
+_CONOCIMIENTO_HEAD = "conocimiento_005"
 
 
 @pytest.fixture
@@ -390,6 +390,117 @@ def test_downgrade_004_drops_provenance_and_deletes_nothing(throwaway_db):
             text("SELECT embedding_modelo, embeddings_loaded_at FROM rag_corpus")
         ).first()
     assert vuelta == (None, None)
+
+
+def _insert_documento(engine, documento_id: str, clasificacion: str, evidencia: str | None):
+    """Insert one `rag_documento` row, returning nothing and swallowing nothing."""
+    sha = "a" * 40
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion, clasificacion_evidencia) VALUES "
+                "(:sha, :doc, 'registro-administrativo', false, 'provincial', 'vigente', "
+                ":clase, :evidencia)"
+            ),
+            {"sha": sha, "doc": documento_id, "clase": clasificacion, "evidencia": evidencia},
+        )
+
+
+def test_conocimiento_005_roundtrip(throwaway_db):
+    """1.3: `institucional` inserts after the upgrade; the downgrade DEMOTES it.
+
+    Two halves, and the second one is the point. The widened CHECK is trivial to
+    verify and trivial to get right; what migration 003 taught (ledger R3-101) is
+    that a downgrade which merely re-creates the narrow constraint fails the
+    moment the database has been *used* — here, the moment the re-ingest wrote
+    the consorcio's own `registro-administrativo` row as `institucional`. So the
+    downgrade demotes to `privado` first, which is the safe direction: a document
+    that stops being shippable is a smaller blast radius than a migration that
+    cannot run.
+    """
+    cfg, engine = throwaway_db
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
+    _seed_003_shaped_rows(engine)
+
+    _insert_documento(
+        engine,
+        "consorcio-10-de-mayo-registro-aprhi",
+        "institucional",
+        "tipo:registro-administrativo ∈ TIPOS_INSTITUCIONALES",
+    )
+    _insert_documento(engine, "ley-9750", "publico", "host:www.saij.gob.ar ⊂ saij.gob.ar")
+
+    with engine.connect() as conn:
+        clases = conn.execute(
+            text("SELECT clasificacion FROM rag_documento ORDER BY documento_id")
+        ).scalars()
+        assert "institucional" in set(clases)
+
+    command.downgrade(cfg, "conocimiento_004")  # must not raise
+
+    with engine.connect() as conn:
+        # Demoted, not deleted: the row survives, its class does not.
+        fila = conn.execute(
+            text(
+                "SELECT clasificacion FROM rag_documento WHERE documento_id = "
+                "'consorcio-10-de-mayo-registro-aprhi'"
+            )
+        ).scalar_one()
+        assert fila == "privado"
+        # `publico` is untouched — demotion is scoped to the class the narrow
+        # CHECK cannot hold, never a blanket "reset everything to privado".
+        assert (
+            conn.execute(
+                text("SELECT clasificacion FROM rag_documento WHERE documento_id = 'ley-9750'")
+            ).scalar_one()
+            == "publico"
+        )
+        columnas = {c["name"] for c in inspect(engine).get_columns("rag_documento")}
+        assert "clasificacion_evidencia" not in columnas
+
+    # Re-upgrading restores the column (empty — the evidence is rebuilt by
+    # re-ingest, exactly like migration 004's provenance) and the wide CHECK.
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
+    with engine.connect() as conn:
+        assert (
+            conn.execute(
+                text(
+                    "SELECT clasificacion_evidencia FROM rag_documento WHERE documento_id = "
+                    "'consorcio-10-de-mayo-registro-aprhi'"
+                )
+            ).scalar_one()
+            is None
+        )
+    _insert_documento(engine, "otro-registro", "institucional", None)  # must not raise
+
+
+def test_conocimiento_005_narrow_check_is_really_back_after_downgrade(throwaway_db):
+    """The demotion is not cosmetic: the narrow CHECK must reject `institucional`.
+
+    Asserting only that the existing row reads `privado` would pass against a
+    downgrade that demoted the data and forgot to re-create the constraint —
+    which is a schema that silently accepts the value the whole downgrade exists
+    to make impossible.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    cfg, engine = throwaway_db
+    command.upgrade(cfg, _CONOCIMIENTO_HEAD)
+    _seed_003_shaped_rows(engine)
+    command.downgrade(cfg, "conocimiento_004")
+
+    sha = "a" * 40
+    with pytest.raises(IntegrityError):
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                    "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                    "(:sha, 'nuevo', 'registro-administrativo', false, 'p', 'v', 'institucional')"
+                ),
+                {"sha": sha},
+            )
 
 
 def test_downgrade_003_to_base_drops_everything_after_ingestion(throwaway_db):
