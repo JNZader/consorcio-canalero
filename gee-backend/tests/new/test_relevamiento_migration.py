@@ -333,17 +333,21 @@ class TestCandidataTable:
         assert exists == 1
 
     def test_the_primary_key_is_tramo_ref_plus_geo_job_id(self, migrated):
-        columns = migrated.execute(
-            text(
-                "SELECT a.attname FROM pg_constraint c "
-                "JOIN pg_namespace n ON n.oid = c.connamespace "
-                "JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON true "
-                "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum "
-                "WHERE n.nspname = :s AND c.contype = 'p' "
-                "AND c.conrelid = cast(:t AS regclass) ORDER BY k.ord"
-            ),
-            {"s": SCHEMA, "t": f"{SCHEMA}.tramo_clasificacion_candidata"},
-        ).scalars().all()
+        columns = (
+            migrated.execute(
+                text(
+                    "SELECT a.attname FROM pg_constraint c "
+                    "JOIN pg_namespace n ON n.oid = c.connamespace "
+                    "JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON true "
+                    "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum "
+                    "WHERE n.nspname = :s AND c.contype = 'p' "
+                    "AND c.conrelid = cast(:t AS regclass) ORDER BY k.ord"
+                ),
+                {"s": SCHEMA, "t": f"{SCHEMA}.tramo_clasificacion_candidata"},
+            )
+            .scalars()
+            .all()
+        )
         assert columns == ["tramo_ref", "geo_job_id"]
 
     def test_geo_job_id_carries_a_real_fk(self, migrated):
@@ -368,15 +372,19 @@ class TestCandidataTable:
         assert data_type == "uuid"
         assert nullable == "YES"
 
-        fk_columns = migrated.execute(
-            text(
-                "SELECT a.attname FROM pg_constraint c "
-                "JOIN unnest(c.conkey) AS k(attnum) ON true "
-                "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum "
-                "WHERE c.conrelid = cast(:t AS regclass) AND c.contype = 'f'"
-            ),
-            {"t": f"{SCHEMA}.tramo_clasificacion_candidata"},
-        ).scalars().all()
+        fk_columns = (
+            migrated.execute(
+                text(
+                    "SELECT a.attname FROM pg_constraint c "
+                    "JOIN unnest(c.conkey) AS k(attnum) ON true "
+                    "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum "
+                    "WHERE c.conrelid = cast(:t AS regclass) AND c.contype = 'f'"
+                ),
+                {"t": f"{SCHEMA}.tramo_clasificacion_candidata"},
+            )
+            .scalars()
+            .all()
+        )
         assert "dem_layer_id" not in fk_columns
 
     def test_two_runs_over_the_same_segment_coexist(self, migrated):
@@ -424,9 +432,7 @@ class TestDowngrade:
         """A ``DROP TABLE`` under a dependent view fails; ordering is the contract."""
         statements = MIGRATION.DOWNGRADE_STATEMENTS
         view_index = next(i for i, s in enumerate(statements) if "VIEW" in s.upper())
-        table_index = next(
-            i for i, s in enumerate(statements) if "DROP TABLE" in s.upper()
-        )
+        table_index = next(i for i, s in enumerate(statements) if "DROP TABLE" in s.upper())
         assert view_index < table_index
 
     def test_the_downgrade_never_cascades(self):

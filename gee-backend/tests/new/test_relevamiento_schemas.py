@@ -93,9 +93,7 @@ class TestTheCunetaCombinationRule:
         assert "estado_cuneta" in _named_fields(errors)
 
     def test_no_cuneta_with_no_state_is_accepted(self):
-        payload = RelevamientoTramoCreate(
-            **{**VALID, "tiene_cuneta": "no", "estado_cuneta": None}
-        )
+        payload = RelevamientoTramoCreate(**{**VALID, "tiene_cuneta": "no", "estado_cuneta": None})
 
         assert payload.estado_cuneta is None
 

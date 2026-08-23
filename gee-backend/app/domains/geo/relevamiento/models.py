@@ -139,7 +139,15 @@ class RelevamientoTramo(UUIDMixin, TimestampMixin, Base):
         BigInteger,
         # A real sequence, so ``create_all`` builds the same ``BIGSERIAL`` the
         # migration does and the ordering key exists in the test schema too.
+        #
+        # The ``server_default`` is NOT redundant with the ``Sequence``: a
+        # ``Sequence`` on a non-primary-key column is applied by the ORM at
+        # INSERT time and is NOT rendered as a column DEFAULT in the emitted
+        # DDL, so a plain SQL ``INSERT`` — which is exactly what the append-only
+        # repository issues — would leave the column NULL. ``BIGSERIAL`` in the
+        # migration is precisely this pair, and the sequence names match.
         Sequence("relevamiento_tramo_version_seq"),
+        server_default=sa.text("nextval('relevamiento_tramo_version_seq')"),
         nullable=False,
         unique=True,
         comment="The total order: assigned at INSERT, unique by construction",
