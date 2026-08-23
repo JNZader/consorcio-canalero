@@ -13,6 +13,7 @@ from app.domains.geo.intelligence.calculations_hydrology_support import (
     calcular_indice_criticidad_hidrica_impl,
     clasificar_nivel_riesgo_impl,
     clasificar_severidad_conflicto_impl,
+    detectar_cruces_camino_flujo_impl,
     detectar_puntos_conflicto_impl,
     empty_runoff_geojson_impl,
     generar_zonificacion_impl,
@@ -141,6 +142,47 @@ def detectar_puntos_conflicto(
 
 def _clasificar_severidad_conflicto(acumulacion: float, pendiente: float) -> str:
     return clasificar_severidad_conflicto_impl(acumulacion, pendiente)
+
+
+def detectar_cruces_camino_flujo(
+    red_vial_gdf: "gpd.GeoDataFrame",
+    canales_gdf: "gpd.GeoDataFrame",
+    flow_dir_path: Optional[str],
+    flow_acc_path: Optional[str],
+    *,
+    acc_threshold_cells: float,
+    min_separation_m: float,
+    parallel_min_angle_deg: float,
+    parallel_high_angle_deg: float,
+    bearing_window_m: float,
+):
+    """Road×flow and road×canal crossings — see the impl's docstring for the rules.
+
+    A **sibling** of :func:`detectar_puntos_conflicto`, not a fourth mode of it:
+    that function's filter *discards* points and this one must keep every crossing
+    in order to rank them, it never touches the D8 pointer so direction is not
+    derivable from its output, and its return contract is a fixed six-column
+    frame. Forcing a fourth pair through it would change behaviour for the three
+    existing ``tipo``s.
+
+    The five thresholds are **required keyword arguments with no defaults**. They
+    live in ``system_settings`` (category ``analisis``) and are read by the Celery
+    task, so a default here would be a second, silent home for a value the design
+    requires to be changeable without a code change — and the one the run
+    recorded would stop matching the one it used.
+    """
+    return detectar_cruces_camino_flujo_impl(
+        red_vial_gdf,
+        canales_gdf,
+        flow_dir_path,
+        flow_acc_path,
+        acc_threshold_cells=acc_threshold_cells,
+        min_separation_m=min_separation_m,
+        parallel_min_angle_deg=parallel_min_angle_deg,
+        parallel_high_angle_deg=parallel_high_angle_deg,
+        bearing_window_m=bearing_window_m,
+        build_empty_geojson=_build_empty_geojson,
+    )
 
 
 def simular_escorrentia(

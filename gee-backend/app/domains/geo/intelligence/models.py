@@ -9,10 +9,13 @@ from typing import Optional
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -167,6 +170,159 @@ class PuntoConflicto(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<PuntoConflicto {self.id} tipo={self.tipo!r} severidad={self.severidad!r}>"
+
+
+# ── Cruce Camino ──────────────────────────────
+
+
+class CruceCamino(UUIDMixin, TimestampMixin, Base):
+    """A road crossing point — natural drainage or canal (flujo-caminos Fase A).
+
+    Mirrors ``0022_add_cruce_camino`` column for column. A **dedicated** table, on
+    purpose: ``PuntoConflicto`` above has no area column, so the per-area re-run
+    this feature performs (``DELETE ... WHERE area_id = :area_id``) is not
+    expressible there, and its ``NOT NULL`` ``severidad`` / ``pendiente_valor``
+    would fabricate a risk grade on every crossing. ``PuntoConflicto`` is
+    therefore **not modified** and keeps counting exactly what it counts today.
+
+    **No ``severidad``, no ``pendiente_valor``, no ``acumulacion_valor``.** This
+    capability derives a direction, a contributing area and a relative rank; it
+    derives no risk grade and no slope, and a column that would have to be
+    invented to be filled is a column that does not belong here.
+
+    The per-``tipo`` rules live in the four CHECKs rather than in ``nullable``,
+    because the same column is required on one ``tipo`` and meaningless on the
+    other: ``flujo_natural`` needs direction, road bearing, side, area, rank and a
+    confidence band and may carry no ``canal_ref``; ``canal`` needs a
+    ``canal_ref`` and never carries a rank, since ranking is defined over the
+    natural-drainage set only.
+    """
+
+    __tablename__ = "cruce_camino"
+    __table_args__ = (
+        CheckConstraint("tipo IN ('flujo_natural', 'canal')", name="ck_cruce_tipo"),
+        CheckConstraint(
+            "confianza IS NULL OR confianza IN ('alta', 'baja')",
+            name="ck_cruce_confianza_valores",
+        ),
+        CheckConstraint(
+            "tipo <> 'flujo_natural' OR ("
+            "direccion_flujo_deg IS NOT NULL AND rumbo_camino_deg IS NOT NULL "
+            "AND lado_cruce IS NOT NULL "
+            "AND area_aporte_ha IS NOT NULL AND orden_ranking IS NOT NULL)",
+            name="ck_cruce_flujo_completo",
+        ),
+        CheckConstraint(
+            "tipo <> 'canal' OR (orden_ranking IS NULL AND canal_ref IS NOT NULL)",
+            name="ck_cruce_canal_sin_rank",
+        ),
+        CheckConstraint(
+            "tipo <> 'flujo_natural' OR canal_ref IS NULL",
+            name="ck_cruce_flujo_sin_canal",
+        ),
+        CheckConstraint(
+            "tipo <> 'flujo_natural' OR confianza IS NOT NULL",
+            name="ck_cruce_flujo_confianza",
+        ),
+        Index("ix_cruce_camino_area", "area_id", "tipo"),
+        Index("ix_cruce_camino_tramo", "tramo_ref"),
+    )
+
+    area_id: Mapped[str] = mapped_column(
+        # ``String(100)`` — physically identical to the migration's
+        # ``VARCHAR(100)`` and to ``GeoLayer.area_id``. NOT a UUID: ``geo_jobs``
+        # has no area column at all, so there is no UUID precedent, and the
+        # staleness comparison stays a plain ``text = text``.
+        String(100),
+        nullable=False,
+        comment="Processing area, matching geo_layer.area_id",
+    )
+    tramo_ref: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("red_vial.id", ondelete="RESTRICT"),
+        nullable=False,
+        comment="Road segment this crossing belongs to",
+    )
+    tipo: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="flujo_natural | canal",
+    )
+    geometria: Mapped[str] = mapped_column(
+        Geometry("POINT", srid=4326),
+        nullable=False,
+        comment="Crossing location, REPROJECTED to 4326 (never merely stamped)",
+    )
+    direccion_flujo_deg: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Absolute azimuth in the raster's UTM grid frame, [0, 360)",
+    )
+    rumbo_camino_deg: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Local road bearing at the crossing, same UTM-grid frame",
+    )
+    lado_cruce: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="izq_a_der | der_a_izq, relative to the stored digitization",
+    )
+    area_aporte_ha: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Upslope contributing area in hectares",
+    )
+    orden_ranking: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Rank over the flujo_natural rows only; always NULL on canal",
+    )
+    confianza: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="alta | baja — the three-band crossing predicate",
+    )
+    nota: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Why confianza is baja, when it is",
+    )
+    canal_ref: Mapped[Optional[str]] = mapped_column(
+        # TEXT, not UUID: ``canal_consorcio.id`` is ``TEXT PRIMARY KEY``
+        # (``0020_add_canal_consorcio.py:65-66``), so a UUID column could never
+        # have referenced it and would have accepted any value at all.
+        #
+        # The ``REFERENCES canal_consorcio(id) ON DELETE RESTRICT`` lives in the
+        # migration and NOT here, deliberately: ``canal_consorcio`` is a
+        # migration-only table with no ORM model (it is read through ``text()``
+        # SQL — ``ficha_service.py:518-571``, ``load_canales_consorcio.py``), so
+        # a ``ForeignKey`` on this column would make ``Base.metadata.create_all``
+        # raise ``NoReferencedTableError`` for every test in the suite. The real
+        # database gets the constraint from ``0022``; the migration test asserts
+        # its target and its ``RESTRICT`` delete rule against the real DDL.
+        Text,
+        nullable=True,
+        comment="Canal this crossing belongs to, for tipo='canal' (FK lives in 0022)",
+    )
+    geo_job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("geo_jobs.id"),
+        nullable=False,
+        comment="The run that produced this row",
+    )
+    calculada_en: Mapped[dt_datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        comment="Generation timestamp of the run; the staleness comparison reads it",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CruceCamino {self.id} tipo={self.tipo!r} tramo={self.tramo_ref!r} "
+            f"rank={self.orden_ranking}>"
+        )
 
 
 # ── Alerta Geo ────────────────────────────────
