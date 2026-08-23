@@ -20,6 +20,7 @@ import {
 } from './LayerControlsPanel';
 import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
+import { RoadFlowDisclaimerChip } from './RoadFlowDisclaimer';
 import { RoadFlowPanel } from './RoadFlowPanel';
 import { TramoSurveySheet } from './TramoSurveySheet';
 import type { RoadFlowKindVisibility } from './roadFlowLayers';
@@ -263,10 +264,16 @@ export interface MapUiPanelsProps {
   /** Turns the `road_flow` layer OFF. Closing the panel and hiding it are one act. */
   readonly onCloseRoadFlow?: () => void;
   /**
-   * The selected segment's survey record, or `null` when no segment is
-   * selected. Present ⇒ `TramoSurveySheet` is mounted.
+   * The segment the operator ASKED for. Present ⇒ `TramoSurveySheet` is
+   * mounted, whatever the read is doing: a tap has to produce a visible sheet
+   * even when the request is slow or fails.
    */
+  readonly tramoSurveyRef?: string | null;
+  /** The selected segment's survey record, or `null` while it is not readable. */
   readonly tramoSurveyDetalle?: TramoRelevamientoDetalle | null;
+  readonly tramoSurveyLoading?: boolean;
+  readonly tramoSurveyError?: Error | null;
+  readonly onRetryTramoSurvey?: () => void;
   readonly onSubmitTramoSurvey?: (payload: RelevamientoTramoCreate) => Promise<unknown>;
   readonly onCloseTramoSurvey?: () => void;
 }
@@ -363,7 +370,11 @@ export const MapUiPanels = memo(function MapUiPanels({
   onSelectRoadFlowCrossing,
   onSurveyTramo,
   onCloseRoadFlow,
+  tramoSurveyRef = null,
   tramoSurveyDetalle = null,
+  tramoSurveyLoading = false,
+  tramoSurveyError = null,
+  onRetryTramoSurvey,
   onSubmitTramoSurvey,
   onCloseTramoSurvey,
 }: MapUiPanelsProps) {
@@ -454,7 +465,27 @@ export const MapUiPanels = memo(function MapUiPanels({
   }, []);
 
   // A selected segment IS the sheet's mount condition — there is no second flag.
-  const surveyOpen = tramoSurveyDetalle !== null;
+  // The REF is what the operator asked for, so the sheet exists from the tap:
+  // the record only decides what the sheet SHOWS. (`tramoSurveyDetalle` still
+  // counts on its own for callers that pass a record and no ref.)
+  const surveyOpen = tramoSurveyRef !== null || tramoSurveyDetalle !== null;
+
+  /*
+    THE DISCLAIMER ACCOMPANIES THE CIRCLES, ALWAYS (RFA-R4, owner ratification
+    2026-08-23). Two surfaces carry one of their own: the ranked list inside
+    `RoadFlowPanel` and the survey sheet. Neither is guaranteed to be on screen
+    while the layer paints — the panel minimizes to a pill, and the sheet
+    displaces it on a narrow viewport. The chip is the floating minimum that
+    covers exactly that gap, so a ranking is never read with no statement of
+    what it is not.
+  */
+  const roadFlowPanelRendered =
+    roadFlowActive && !!roadFlowCrossings && !!roadFlowKinds && !(isNarrow && surveyOpen);
+  // The list — and with it the `lista` disclaimer — only renders once there is
+  // a response to list.
+  const roadFlowListVisible =
+    roadFlowPanelRendered && !roadFlowMinimized && !!roadFlowCrossings?.data;
+  const showRoadFlowDisclaimerChip = roadFlowActive && !roadFlowListVisible && !surveyOpen;
 
   // A pill occupies almost nothing, so the moment either panel is minimized the
   // other one gets the whole column back — capping it at 45/55 would waste half
@@ -639,7 +670,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         sheet brings the list straight back, because the list's condition never
         changed.
       */}
-      {roadFlowActive && roadFlowCrossings && roadFlowKinds && !(isNarrow && surveyOpen) && (
+      {roadFlowPanelRendered && roadFlowCrossings && roadFlowKinds && (
         <RoadFlowPanel
           sheet={isNarrow}
           crossings={roadFlowCrossings}
@@ -654,13 +685,20 @@ export const MapUiPanels = memo(function MapUiPanels({
         />
       )}
 
-      {surveyOpen && tramoSurveyDetalle && (
+      {surveyOpen && (
         <TramoSurveySheet
           detalle={tramoSurveyDetalle}
+          tramoRef={tramoSurveyRef ?? undefined}
+          isLoading={tramoSurveyLoading}
+          error={tramoSurveyError}
+          onRetry={onRetryTramoSurvey}
           onSubmit={onSubmitTramoSurvey ?? rejectMissingSubmit}
           onClose={onCloseTramoSurvey ?? noop}
         />
       )}
+
+      {/* The floating minimum — see `roadFlowListVisible` above. */}
+      {showRoadFlowDisclaimerChip && <RoadFlowDisclaimerChip />}
 
       <ExportPngModal
         opened={exportPngModalOpen}

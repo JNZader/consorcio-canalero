@@ -17,7 +17,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -368,6 +368,134 @@ describe('cruces de camino · filtro de tipo', () => {
     // which is what stops the reader from losing one kind entirely (RFA-R3).
     expect(screen.getByTestId('road-flow-ranked-section')).toBeInTheDocument();
     expect(screen.getByTestId('road-flow-canal-section')).toBeInTheDocument();
+  });
+});
+
+/**
+ * RFA-R4 at the CALL SITES (owner ratification 2026-08-23: "el disclaimer
+ * acompaña SIEMPRE").
+ *
+ * These assertions render the real panels, not the disclaimer component on its
+ * own. That is the whole point of moving them here: the previous test mounted
+ * two `RoadFlowDisclaimer` instances itself and asserted there were two, which
+ * would have stayed green with the sentence rendered nowhere in the product.
+ * Each case below is a state the layer can actually be left in with circles
+ * still painted on the map.
+ */
+describe('cruces de camino · el disclaimer acompaña SIEMPRE', () => {
+  it('panel abierto: viaja con la lista, sin chip redundante', () => {
+    mockViewport(false);
+    renderWithMantine(<MapUiPanels {...roadFlowProps()} />);
+
+    const lista = screen.getByTestId('road-flow-ranked-list');
+    expect(within(lista).getByTestId('road-flow-disclaimer-lista')).toBeInTheDocument();
+    expect(screen.queryByTestId('road-flow-disclaimer-chip-host')).toBeNull();
+  });
+
+  it('panel minimizado a pastilla con la capa PRENDIDA: aparece el chip', () => {
+    mockViewport(false);
+    renderWithMantine(<MapUiPanels {...roadFlowProps()} />);
+
+    fireEvent.click(screen.getByTestId('road-flow-panel-minimize'));
+
+    // The pill unmounts the list — and with it the `lista` instance — while the
+    // circles stay painted. That is exactly the gap the chip covers.
+    expect(screen.queryByTestId('road-flow-ranked-list')).toBeNull();
+    const chip = screen.getByTestId('road-flow-disclaimer-chip-host');
+    expect(within(chip).getByTestId('road-flow-disclaimer-chip')).toBeInTheDocument();
+  });
+
+  it('hoja abierta en angosto (desplaza al panel): la hoja lleva su instancia', () => {
+    mockViewport(true);
+    renderWithMantine(
+      <MapUiPanels
+        {...roadFlowProps({
+          tramoSurveyRef: 'RV-0001',
+          tramoSurveyDetalle: DETALLE,
+          onSubmitTramoSurvey: async () => undefined,
+          onCloseTramoSurvey: () => {},
+        })}
+      />
+    );
+
+    const hoja = screen.getByTestId('tramo-survey-sheet');
+    expect(screen.queryByTestId('road-flow-panel')).toBeNull();
+    expect(within(hoja).getByTestId('road-flow-disclaimer-hoja')).toBeInTheDocument();
+    // One statement on screen, not two.
+    expect(screen.queryByTestId('road-flow-disclaimer-chip-host')).toBeNull();
+  });
+
+  it('la capa apagada no deja ningún disclaimer suelto', () => {
+    mockViewport(false);
+    renderWithMantine(<MapUiPanels {...roadFlowProps({ roadFlowActive: false })} />);
+    expect(screen.queryByText(/no una medición hidráulica/)).toBeNull();
+  });
+});
+
+/**
+ * DISC-5 — the "Relevar" button used to die in silence: the sheet mounted on
+ * the DATA, so a failed read produced no sheet, no error and no way to tell a
+ * dead control from a slow one.
+ */
+describe('cruces de camino · la hoja abre con el toque, no con la respuesta', () => {
+  it('mientras se lee el tramo la hoja está abierta con su spinner', () => {
+    mockViewport(false);
+    renderWithMantine(
+      <MapUiPanels
+        {...roadFlowProps({
+          tramoSurveyRef: 'RV-0001',
+          tramoSurveyDetalle: null,
+          tramoSurveyLoading: true,
+        })}
+      />
+    );
+
+    expect(screen.getByTestId('tramo-survey-sheet')).toBeInTheDocument();
+    expect(screen.getByTestId('tramo-survey-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('tramo-survey-nivel')).toBeNull();
+  });
+
+  it('si la lectura falla se ve el error y "Reintentar" vuelve a pedirla', () => {
+    mockViewport(false);
+    const onRetryTramoSurvey = vi.fn();
+    renderWithMantine(
+      <MapUiPanels
+        {...roadFlowProps({
+          tramoSurveyRef: 'RV-0001',
+          tramoSurveyDetalle: null,
+          tramoSurveyError: new Error('No se pudo leer el tramo RV-0001'),
+          onRetryTramoSurvey,
+        })}
+      />
+    );
+
+    expect(screen.getByTestId('tramo-survey-load-error')).toHaveTextContent(
+      'No se pudo leer el tramo RV-0001'
+    );
+
+    fireEvent.click(screen.getByTestId('tramo-survey-retry'));
+    expect(onRetryTramoSurvey).toHaveBeenCalledTimes(1);
+  });
+
+  it('cuando llega la respuesta la misma hoja muestra el formulario', () => {
+    mockViewport(false);
+    const { rerender } = renderWithMantine(
+      <MapUiPanels
+        {...roadFlowProps({ tramoSurveyRef: 'RV-0001', tramoSurveyLoading: true })}
+      />
+    );
+    expect(screen.getByTestId('tramo-survey-loading')).toBeInTheDocument();
+
+    rerender(
+      <MantineProvider env="test">
+        <MapUiPanels
+          {...roadFlowProps({ tramoSurveyRef: 'RV-0001', tramoSurveyDetalle: DETALLE })}
+        />
+      </MantineProvider>
+    );
+
+    expect(screen.getByTestId('tramo-survey-nivel')).toBeInTheDocument();
+    expect(screen.queryByTestId('tramo-survey-loading')).toBeNull();
   });
 });
 

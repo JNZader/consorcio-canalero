@@ -298,6 +298,25 @@
   left: var(--mantine-spacing-md);
 }
 
+/* Floating home of the disclaimer while neither the ranked list nor the survey
+   sheet is on screen (owner ratification 2026-08-23 — "el disclaimer acompaña
+   SIEMPRE"). It sits ABOVE the panel pill's own slot so the two never overlap
+   when the panel is minimized, and it is `pointer-events: none` because there
+   is nothing on it to operate: no close, no fold, no link. */
+.roadFlowDisclaimerChip {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 44px);
+  left: var(--mantine-spacing-md);
+  z-index: 1000;
+  max-width: min(340px, calc(100% - 72px));
+  padding: 6px 10px;
+  border-radius: var(--mantine-radius-md);
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  box-shadow: var(--mantine-shadow-sm);
+  pointer-events: none;
+}
+
 /* Scrollable body of the floating desktop cards. It owns `overflow-y: auto`
    (removed from the root in R3-001) and re-enables pointer events so the native
    scrollbar, buttons, links, inputs, pills, and the Recharts SVG tooltip all
