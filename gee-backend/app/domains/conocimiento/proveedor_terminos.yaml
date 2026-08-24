@@ -1,0 +1,43 @@
+# The provider terms behind the model pin — task 6.7, a BLOCKING pre-enablement
+# gate (`design.md:493-497`, amendment A2).
+#
+# This file is the record, not the verification. The verification is an
+# operational act the OWNER performs against the live pool and the provider's
+# published terms; the procedure is in `docs/rag/proveedor-terminos.md`. Until it
+# is performed, `verificar_terminos` refuses and the feature flag does not turn
+# on. Fail-closed, not a warning.
+#
+# It is checked in and lives next to the pin so that a silent terms change is a
+# diff rather than a discovery.
+
+# The exact model id AS THE POOL EXPOSES IT. Not the name from a blog post: the
+# pin is worthless if it does not name a real route (amendment A2, point 1).
+modelo_id: deepseek-v4-flash
+# The pool the pin is routed through. The same model id behind a different
+# operator is different terms and different retention.
+pool: opencode-cli
+
+# UNVERIFIED. Flip to `true` only together with the evidence fields below, in the
+# same commit, with the owner's name on it.
+verificado: false
+
+# --- evidence (all four required; a record nobody can audit is a claim) -------
+# ISO date on which the terms were read.
+verificado_el: null
+# Who read them. A verification with no author is a rumour.
+verificado_por: null
+# The URL of the published terms that were read.
+fuente_url: null
+# sha256 of the terms text as read, so a later silent edit is detectable.
+sha256_terminos: null
+
+# --- the two substantive criteria --------------------------------------------
+# Does the provider publish that it does NOT train on API input? A provider that
+# trains on inputs is ineligible regardless of price or latency: the ratified
+# privacy amendment permits public law text plus the question to leave the box,
+# not to become training data.
+no_entrenamiento: null
+# The published retention window for API traffic, in days. Must be a bounded
+# number: "they keep it for a while" is not a retention term. 0 means the
+# provider publishes that it retains nothing.
+retencion_dias: null
