@@ -645,6 +645,7 @@ class TestGoNoGo:
             metricas=harness.MetricasRecuperacion(
                 n_respondibles=25,
                 hit_rate_at_5=1.0,
+                hit_rate_at_10=1.0,
                 mrr=1.0,
                 citation_precision=1.0,
                 separacion_norma_secundaria=1.0,
@@ -682,6 +683,7 @@ class TestGoNoGo:
             metricas=harness.MetricasRecuperacion(
                 n_respondibles=25,
                 hit_rate_at_5=1.0,
+                hit_rate_at_10=1.0,
                 mrr=1.0,
                 citation_precision=1.0,
                 separacion_norma_secundaria=1.0,
@@ -766,6 +768,10 @@ class TestGoNoGo:
         decision = decidir_go_no_go(corrida, PREGUNTAS, forzar_evaluable=True)
         assert [barra.nombre for barra in decision.barras] == [
             "hit-rate@5",
+            # Added by the 2026-08-23 re-ratification: hit@10 is the served page
+            # depth, so it answers "was the answer reachable at all in what the
+            # reader was given" next to hit@5's "was it near the top".
+            "hit-rate@10",
             "MRR",
             "citation-precision",
             "norma-vs-secundaria",

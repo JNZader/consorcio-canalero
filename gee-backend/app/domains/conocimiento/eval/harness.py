@@ -73,10 +73,31 @@ LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
 #: there and every item stays in every denominator.
 MODOS_SIN_ALCANCE_LEXICO = ("vector",)
 
-#: The owner's ratified bars (retrieval spec, `Go/No-Go Thresholds`).
-BARRA_HIT_RATE = 0.85
-BARRA_MRR = 0.70
-BARRA_CITATION_PRECISION = 1.0
+#: The owner's RE-RATIFIED bars (`design.md:1141-1145`, amendment of 2026-08-23),
+#: fixed against 116 measured configurations rather than proposed in advance.
+#:
+#: They moved DOWN from the V0 aspirations (hit@5 0.85, MRR 0.70,
+#: citation-precision 1.00) and the honest reason is recorded here rather than
+#: buried in a commit message: those figures were written before anything had
+#: been measured, and citation-precision = 1.00 is unreachable BY CONSTRUCTION on
+#: this gold set — several items expect two citations where the corpus offers a
+#: third, equally correct one. A bar nothing can clear does not protect quality,
+#: it just guarantees a NO-GO that gets waived.
+#:
+#: The two bars that did NOT move are the two that cannot be traded:
+#: norma-vs-secundaria and vigencia-correctness stay at 1.00, both measured clear
+#: at B50, and they are what stops a consultant's report or a derogated article
+#: from being served as live law. The per-document cap was rejected for breaking
+#: exactly the second of them (0.793 hit@5 against 0.333 vigencia).
+#:
+#: The honesty rider travels with these numbers: the gold set is 29 answerable
+#: questions, so ONE question is worth 0.034 hit@5, and the B50 family reads as
+#: ≈0.72–0.76. Growing the gold set (follow-up F2) is what would make these bars
+#: sharper; lowering them again is not.
+BARRA_HIT_RATE = 0.72
+BARRA_HIT_RATE_10 = 0.80
+BARRA_MRR = 0.55
+BARRA_CITATION_PRECISION = 0.33
 BARRA_SEPARACION = 1.0
 BARRA_VIGENCIA = 1.0
 
@@ -87,6 +108,30 @@ BARRA_VIGENCIA = 1.0
 #: stopping a stale or foreign file from resolving 26 questions is that the file
 #: says which set it belongs to and we read it.
 NOMBRE_GOLD_SET = "gold_set.yaml"
+
+
+class SenalAbstencionNoRatificada(RuntimeError):
+    """This mode has no ratified abstention signal, so none is improvised.
+
+    Raised for a mode that carries no fused score — today only `bm25_ce`.
+    Abstention bars are an OPEN owner decision (0.1) precisely because the
+    measured candidate signal, reranker confidence, is worse than the cosine one
+    it would replace. Refusing beats defaulting: a threshold selected from an
+    unratified signal would still print a number, and the number would decide a
+    go/no-go nobody chose.
+    """
+
+
+#: One wording for both refusal paths in `_escala_de_senal`. Two hand-written
+#: copies of the same refusal drift, and the arm whose gate this decides is the
+#: one nobody re-reads until it has already published a number.
+_MOTIVO_SENAL_NO_RATIFICADA = (
+    "modo {modo!r} carries no fused score, and no abstention signal has been "
+    "ratified for it. Owner decision 0.1 is open: the options on the table are "
+    "relaxing recall to >= 0.90 or building a different signal. Until one is "
+    "chosen this arm's abstention pair is not-evaluable, and inventing one here "
+    "would set the gate to whatever the system already does."
+)
 
 
 class GoldSetInvalido(RuntimeError):
@@ -442,6 +487,17 @@ class ResultadoModo:
     detalles: tuple[DetallePregunta, ...]
     metricas: MetricasRecuperacion
     exencion: ExencionOverCeiling = field(default_factory=lambda: ExencionOverCeiling(False))
+    #: Identity of the ranker that produced this mode's ORDER, carried up from the
+    #: retrieval results rather than re-derived from `modo`. `None` in a mode that
+    #: has no ranker at all (the RRF ablation orders by fusion, not by a model).
+    #:
+    #: This travels for the same reason `rag_corpus` records which model wrote the
+    #: embeddings: a report rendered over a deterministic stand-in ranker is shaped
+    #: exactly like a measurement and is none, and the only thing that can tell the
+    #: two apart is the identity of the thing that ranked. `report._gate_sintetico`
+    #: refuses on it exactly as it refuses on synthetic embeddings.
+    ranker_modelo: str | None = None
+    ranker_sintetico: bool | None = None
     #: Computed from `senales`/`detalles` at construction time so a caller cannot
     #: pass a LOOCV result or a coverage count that does not belong to this run.
     loocv: ResultadoLOOCV = field(init=False)
@@ -570,7 +626,25 @@ def _escala_de_senal(resultado: ResultadoRecuperacion) -> tuple[list[float], str
         if not any(valor is None for valor in crudos):
             nombre = FUENTE_FTS if resultado.modo == "fts" else FUENTE_VECTOR
             return [float(valor) for valor in crudos if valor is not None], nombre
-    return [hit.score_rrf for hit in resultado.hits], FUENTE_RRF
+    # Keyed on the MODE, not on the shape of the hits. Asking `any(hit.score_rrf
+    # is None ...)` reads as the same question and is not: over an empty page
+    # `any([])` is False, so a `bm25_ce` run that retrieved nothing fell straight
+    # through to the RRF branch and produced `top1 = 0.0` labelled "RRF
+    # fusionado" — a signal from a fusion that never ran, on the arm whose whole
+    # point is that its abstention signal is unratified. The empty page is
+    # exactly the case an abstention grid cares most about, so it was the one
+    # case the refusal leaked on.
+    if resultado.modo not in service.MODOS_RRF:
+        raise SenalAbstencionNoRatificada(_MOTIVO_SENAL_NO_RATIFICADA.format(modo=resultado.modo))
+    crudos_rrf = [hit.score_rrf for hit in resultado.hits]
+    if any(valor is None for valor in crudos_rrf):
+        # Defensive backstop for an RRF mode whose fused score is missing: the
+        # fused path always sets it, so reaching here means the invariant broke
+        # and the same refusal applies — a threshold selected from an unratified
+        # signal still prints a number, and the number decides a go/no-go nobody
+        # chose (`design.md:1145-1148`, amendment A6).
+        raise SenalAbstencionNoRatificada(_MOTIVO_SENAL_NO_RATIFICADA.format(modo=resultado.modo))
+    return [float(valor) for valor in crudos_rrf if valor is not None], FUENTE_RRF
 
 
 def senales_desde(item: GoldItem, resultado: ResultadoRecuperacion) -> SenalAbstencion:
@@ -668,6 +742,14 @@ def correr_modo(
         claves_exentas = service.claves_sin_vector(db, corpus_sha)
     exentas_ids: list[str] = []
 
+    # Read off the runs rather than derived from `modo`, for the same reason
+    # `fuente_senal` is: the report may not name a ranker the numbers did not come
+    # from. `None` stays `None` for a mode with no ranker, and one synthetic run
+    # is enough to mark the whole mode synthetic — a page ordered by a stand-in
+    # does not stop being noise because its neighbours were ordered by the model.
+    rankers: set[str] = set()
+    ranker_sintetico: bool | None = None
+
     for item in gold.resueltas:
         assert item.pregunta is not None  # guarded by `resueltas`; keeps mypy honest
         resultado = service.recuperar(
@@ -678,6 +760,10 @@ def correr_modo(
             k=k,
             embedder=embedder,
         )
+        if resultado.reranker_modelo is not None:
+            rankers.add(resultado.reranker_modelo)
+        if resultado.reranker_sintetico is not None:
+            ranker_sintetico = bool(ranker_sintetico) or resultado.reranker_sintetico
         fuera_de_alcance = item_fuera_de_alcance(item, claves_exentas)
         if fuera_de_alcance:
             exentas_ids.append(item.id)
@@ -712,6 +798,11 @@ def correr_modo(
             claves=tuple(sorted(claves_exentas)),
             preguntas=tuple(exentas_ids),
         ),
+        # Joined rather than picked: two rankers inside one mode is not a state
+        # this pipeline produces, and if it ever does the report must say so
+        # instead of naming whichever one came last.
+        ranker_modelo=" + ".join(sorted(rankers)) or None,
+        ranker_sintetico=ranker_sintetico,
     )
 
 
@@ -841,7 +932,7 @@ def decidir_go_no_go(
     forzar_evaluable: bool = False,
     minimo_respondibles: int = MINIMO_RESPONDIBLES,
 ) -> GoNoGo:
-    """Score the seven bars. The abstention pair reads the HELD-OUT figures.
+    """Score the eight bars. The abstention pair reads the HELD-OUT figures.
 
     `forzar_evaluable` exists for tests that need the bar arithmetic without a
     52-item fixture. It is not exposed on the CLI, because "evaluate anyway" is
@@ -853,12 +944,21 @@ def decidir_go_no_go(
 
     barras = (
         Barra("hit-rate@5", metricas.hit_rate_at_5, BARRA_HIT_RATE, ">=", "answerable subset"),
+        Barra(
+            "hit-rate@10",
+            metricas.hit_rate_at_10,
+            BARRA_HIT_RATE_10,
+            ">=",
+            "answerable subset",
+        ),
         Barra("MRR", metricas.mrr, BARRA_MRR, ">=", "answerable subset"),
+        # `>=`, not `==`: the re-ratified bar is a floor at 0.33, because 1.00 is
+        # unreachable by construction on this gold set.
         Barra(
             "citation-precision",
             metricas.citation_precision,
             BARRA_CITATION_PRECISION,
-            "==",
+            ">=",
             "answerable subset",
         ),
         Barra(

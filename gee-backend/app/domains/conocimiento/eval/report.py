@@ -22,6 +22,14 @@ convention:
    the module's own AST. Same database plus same gold set produces a
    byte-identical document apart from the header it was handed.
 
+**Point 1 has two halves, and only one of them used to exist.** RAG3-001 was
+written when every mode was ordered by RRF over a vector leg, so "was this
+fabricated?" had exactly one answer: `embedding_sintetico`. `bm25_ce` reads no
+vector column at all and its order is the cross-encoder's alone, so a
+`DeterministicReranker` fabricates the entire ranking while the snapshot's
+embedding provenance stays perfectly real. The gate now refuses on either
+source, with the same treatment: no verdict, `SINTETICO-` in the filename.
+
 **What the database cannot tell us, and is therefore not printed as if it could
 (ledger RAG4-002).** D6 asks the report to pin torch version and device "for both
 legs". `conocimiento_004` records model, HF revision, `sintetico`, the artifact
@@ -57,7 +65,12 @@ ETIQUETA_SMOKE = "SMOKE RUN — NOT AN EVAL"
 
 
 class EvalSinteticoNoEsEval(RuntimeError):
-    """The snapshot holds synthetic vectors, so this cannot be published as an eval."""
+    """Something in this run was produced by a stand-in, so it is not an eval.
+
+    Either the snapshot's vectors or a mode's RANKER. The two are independent
+    sources of the same failure and both carry the same consequence, which is why
+    they share one exception rather than being told apart at the call site.
+    """
 
 
 @dataclass(frozen=True)
@@ -77,22 +90,77 @@ def nombre_de_archivo(corpus_sha: str, generado_en: dt.datetime, *, sintetico: b
     return f"retrieval-eval-{marca}{corpus_sha[:8]}-{generado_en.date().isoformat()}.md"
 
 
-def _gate_sintetico(procedencia: ProcedenciaEmbeddings | None, permitir: bool) -> bool:
-    """Returns whether this is a smoke run. Raises when it is one and is not allowed."""
-    sintetico = bool(procedencia is not None and procedencia.sintetico)
-    if sintetico and not permitir:
+def _rankers_sinteticos(resultado: ResultadoEval | None) -> tuple[str, ...]:
+    """The modes of this run whose ORDER came from a stand-in ranker, sorted.
+
+    The second half of the RAG3-001 refusal, and it was missing. Under `bm25_ce`
+    the retrieval order is the cross-encoder's alone, so a `DeterministicReranker`
+    substitutes for the model exactly as `DeterministicEmbedder` substitutes for
+    BGE-M3 — and the report it produces has the same tables, the same bars and
+    the same verdict line over an order that is hash noise. Gating only on
+    `ProcedenciaEmbeddings` let that through on the one arm that has no embedding
+    provenance to gate at all: `bm25_ce` reads no vector column, so its
+    `procedencia.sintetico` says nothing about what ranked it.
+    """
+    if resultado is None:
+        return ()
+    return tuple(
+        sorted(
+            modo for modo, corrida in resultado.por_modo.items() if corrida.ranker_sintetico is True
+        )
+    )
+
+
+def _gate_sintetico(
+    procedencia: ProcedenciaEmbeddings | None,
+    permitir: bool,
+    *,
+    resultado: ResultadoEval | None = None,
+) -> bool:
+    """Returns whether this is a smoke run. Raises when it is one and is not allowed.
+
+    Two independent sources of fabrication, one gate and one treatment: synthetic
+    EMBEDDINGS (the snapshot was loaded by a deterministic stand-in) and a
+    synthetic RANKER (the order came from one). Either alone makes the document a
+    smoke run — no verdict, `SINTETICO-` in the filename — because a table cannot
+    be half a measurement.
+    """
+    embeddings_sinteticos = bool(procedencia is not None and procedencia.sintetico)
+    modos_sinteticos = _rankers_sinteticos(resultado)
+    sintetico = embeddings_sinteticos or bool(modos_sinteticos)
+    if not sintetico or permitir:
+        return sintetico
+
+    motivos: list[str] = []
+    if embeddings_sinteticos:
         snapshot = procedencia.corpus_sha if procedencia else "?"
         modelo = procedencia.modelo if procedencia else None
-        raise EvalSinteticoNoEsEval(
-            f"snapshot {snapshot} was loaded with "
-            f"SYNTHETIC vectors (embedding_modelo={modelo!r}, embedding_sintetico=true). "
-            "Refusing to render an eval report: every table would be shaped like a "
-            "measurement and none of it would be one. Load real vectors "
-            "(scripts/rag_embed_batch.py + scripts/rag_load_vectors.py), or pass "
-            "permitir_sintetico=True / --allow-synthetic to get a clearly-labelled "
-            "SMOKE RUN that carries no verdict."
+        motivos.append(
+            f"snapshot {snapshot} was loaded with SYNTHETIC vectors "
+            f"(embedding_modelo={modelo!r}, embedding_sintetico=true)"
         )
-    return sintetico
+    if modos_sinteticos:
+        rankers = sorted(
+            {
+                resultado.por_modo[modo].ranker_modelo or "?"
+                for modo in modos_sinteticos
+                if resultado is not None
+            }
+        )
+        motivos.append(
+            f"mode(s) {', '.join(modos_sinteticos)} were ranked by a SYNTHETIC "
+            f"stand-in ({', '.join(rankers)}) rather than by "
+            "BAAI/bge-reranker-v2-m3"
+        )
+    raise EvalSinteticoNoEsEval(
+        "; ".join(motivos) + ". "
+        "Refusing to render an eval report: every table would be shaped like a "
+        "measurement and none of it would be one. Load real vectors "
+        "(scripts/rag_embed_batch.py + scripts/rag_load_vectors.py) and rank with "
+        "the pinned cross-encoder, or pass permitir_sintetico=True / "
+        "--allow-synthetic to get a clearly-labelled SMOKE RUN that carries no "
+        "verdict."
+    )
 
 
 def _fmt(valor: float | None, decimales: int = 3) -> str:
@@ -432,7 +500,8 @@ def renderizar_markdown(
     latencia: dict[str, Any] | None = None,
 ) -> str:
     """Render the report. Pure: same arguments in, byte-identical string out."""
-    sintetico = _gate_sintetico(procedencia, permitir_sintetico)
+    sintetico = _gate_sintetico(procedencia, permitir_sintetico, resultado=resultado)
+    modos_sinteticos = _rankers_sinteticos(resultado)
     gold = resultado.gold
     precondicion = gold.precondicion()
 
@@ -441,12 +510,25 @@ def renderizar_markdown(
         lineas += [
             f"# {ETIQUETA_SMOKE} — consorcio-rag",
             "",
-            "> Este documento **no es una evaluación**. El snapshot fue cargado con "
-            "vectores sintéticos (`embedding_sintetico = true`), producidos por un "
-            "embebedor determinístico de prueba. Los rankings de abajo son ruido con "
-            "forma de medición. No hay veredicto y no puede haberlo.",
+            "> Este documento **no es una evaluación**. Los rankings de abajo son "
+            "ruido con forma de medición. No hay veredicto y no puede haberlo.",
             "",
         ]
+        if procedencia is not None and procedencia.sintetico:
+            lineas += [
+                "> - El snapshot fue cargado con vectores sintéticos "
+                "(`embedding_sintetico = true`), producidos por un embebedor "
+                "determinístico de prueba.",
+                "",
+            ]
+        if modos_sinteticos:
+            lineas += [
+                f"> - El orden de {', '.join(f'`{m}`' for m in modos_sinteticos)} lo "
+                "produjo un ranker SINTÉTICO, no `BAAI/bge-reranker-v2-m3`. En "
+                "`bm25_ce` el orden es el del cross-encoder y nada más, así que un "
+                "stand-in determinístico no degrada el ranking: lo reemplaza entero.",
+                "",
+            ]
     else:
         lineas += ["# Evaluación de recuperación — consorcio-rag V0", ""]
 
@@ -510,9 +592,20 @@ def _a_json(
         go_no_go = decidir_go_no_go(corrida, resultado.gold)
         modos[modo] = {
             "k": corrida.k,
+            # `None` for the RRF ablation, which orders by fusion and has no
+            # ranker. Published so a machine reader can tell a measured order
+            # from a stand-in one without parsing the Spanish smoke banner.
+            "ranker": {
+                "modelo": corrida.ranker_modelo,
+                "sintetico": corrida.ranker_sintetico,
+            },
             "metricas": {
                 "n_respondibles": corrida.metricas.n_respondibles,
                 "hit_rate_at_5": corrida.metricas.hit_rate_at_5,
+                # Re-ratified 2026-08-23: hit@10 is scored as its own bar, so it
+                # is published as its own figure. A bar whose number does not
+                # appear in the JSON is a verdict nobody can re-derive.
+                "hit_rate_at_10": corrida.metricas.hit_rate_at_10,
                 "mrr": corrida.metricas.mrr,
                 "citation_precision": corrida.metricas.citation_precision,
                 "n_citation_precision": corrida.metricas.n_citation_precision,
@@ -642,7 +735,7 @@ def escribir_reporte(
     leaves nothing behind — a half-written `docs/rag/` entry is exactly the
     artifact somebody finds later and reads as a result.
     """
-    sintetico = _gate_sintetico(procedencia, permitir_sintetico)
+    sintetico = _gate_sintetico(procedencia, permitir_sintetico, resultado=resultado)
     markdown = renderizar_markdown(
         resultado,
         procedencia,

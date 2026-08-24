@@ -1019,6 +1019,37 @@ def registrar_procedencia(
     return getattr(resultado, "rowcount", 0) or 0
 
 
+TEXTOS_INDEXADOS_SQL = text(
+    """
+    SELECT citation_key, texto_indexado
+    FROM rag_unidad
+    WHERE corpus_sha = :corpus_sha AND citation_key = ANY(:claves)
+    """
+)
+
+
+def textos_indexados(db: Session, corpus_sha: str, claves: Sequence[str]) -> dict[str, str]:
+    """`{citation_key: texto_indexado}` for the candidate pool about to be ranked.
+
+    Read for the 50 candidates rather than carried in the BM25 index, and the
+    split is deliberate: the index is a postings list of lexemes (measured ~2 MB
+    for 1398 units) and holding every unit's full text alongside it would make it
+    an order of magnitude larger to serve a set that is never more than fifty
+    strings wide.
+
+    `texto_indexado`, not `texto`: it is what the cross-encoder scored in the
+    measured configuration, because it carries the epigraph and the structural
+    path that say WHICH article this is. The verbatim `texto` remains the only
+    thing ever shown as a citation.
+    """
+    if not claves:
+        return {}
+    filas = db.execute(
+        TEXTOS_INDEXADOS_SQL, {"corpus_sha": corpus_sha, "claves": list(claves)}
+    ).all()
+    return {fila[0]: fila[1] for fila in filas}
+
+
 HYDRATE_SQL = text(
     """
     SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,

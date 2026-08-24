@@ -121,8 +121,15 @@ class CitaRecuperada(BaseModel):
     source_offset: int
 
     #: Fused RRF score. A sum of `1/(k+rank+1)` terms — NOT a blend of the legs'
-    #: own metrics, which are not commensurable and are never combined.
-    score_rrf: float
+    #: own metrics, which are not commensurable and are never combined. `None` in
+    #: `bm25_ce`, which does not fuse anything: its order is the cross-encoder's
+    #: alone, and reporting an RRF number there would name a computation that
+    #: never ran.
+    score_rrf: float | None = None
+    #: The cross-encoder logit that ORDERED this page, in `bm25_ce` only. It is
+    #: the ranking score in full: no lexical term is blended into it, because
+    #: every measured blend made retrieval worse (`design.md:1136-1138`).
+    score_ce: float | None = None
     #: Per-leg position and raw metric, `None` when the leg did not return the
     #: unit at all. Carried so the eval report can show what each leg actually
     #: saw rather than only the fused outcome (design.md D6).
@@ -130,6 +137,11 @@ class CitaRecuperada(BaseModel):
     valor_fts: float | None = None
     rango_vector: int | None = None
     distancia_vector: float | None = None
+    #: Where BM25 placed this unit in the candidate pool, and with what score.
+    #: Carried for disclosure only — it is what SELECTED the unit and explicitly
+    #: not what ranked it.
+    rango_bm25: int | None = None
+    valor_bm25: float | None = None
 
 
 class ResultadoRecuperacion(BaseModel):
@@ -145,3 +157,11 @@ class ResultadoRecuperacion(BaseModel):
     #: Candidates each leg returned BEFORE fusion and before `k` truncation.
     n_fts: int = 0
     n_vector: int = 0
+    #: Size of the BM25 candidate pool that reached the reranker (`bm25_ce`).
+    n_bm25: int = 0
+    #: Identity of the ranker that produced the order, in `bm25_ce`. Carried for
+    #: the same reason `rag_corpus` records which model wrote the embeddings: a
+    #: ranking is only interpretable next to the thing that produced it, and a
+    #: synthetic ranker must be visible rather than inferred.
+    reranker_modelo: str | None = None
+    reranker_sintetico: bool | None = None
