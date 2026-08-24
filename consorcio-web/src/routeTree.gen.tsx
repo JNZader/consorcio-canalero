@@ -59,6 +59,7 @@ const ReunionesPanel = lazy(() => import('./components/admin/management/Reunione
 const PadronPanel = lazy(() => import('./components/admin/management/PadronPanel'));
 const FinanzasPanel = lazy(() => import('./components/admin/management/FinanzasPanel'));
 const DemPipelinePanel = lazy(() => import('./components/admin/DemPipelinePanel'));
+const ConocimientoPanel = lazy(() => import('./components/admin/ConocimientoPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -672,6 +673,16 @@ const adminDemPipelineRoute = createRoute({
   component: () => <DemPipelinePanel />,
 });
 
+// Mailbox of legal consultations (U8, task 8.1). `adminGuard` on the parent
+// admits admin AND operador; the panel's own `ProtectedRoute allowedRoles={['admin']}`
+// narrows the in-page state to admin, matching the server's `require_admin`.
+// Neither gate is the boundary — the server is (retrieval delta:37-41).
+const adminConocimientoRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/conocimiento',
+  component: () => <ConocimientoPanel />,
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -688,6 +699,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminReunionesRoute,
   adminPadronRoute,
   adminFinanzasRoute,
+  adminConocimientoRoute,
 ]);
 
 export const routeTree = rootRouteWithComponent.addChildren([

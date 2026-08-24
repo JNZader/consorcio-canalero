@@ -793,20 +793,20 @@ re-estimated before the chain strategy is picked.)*
 
 ## Phase 8: `consorcio-web` page (U8)
 
-- [ ] 8.1 GREEN: child route `/admin/conocimiento` under `adminLayoutRoute`
+- [x] 8.1 GREEN: child route `/admin/conocimiento` under `adminLayoutRoute`
       (`src/routeTree.gen.tsx:590-595`) + `ProtectedRoute allowedRoles={['admin']}`.
-- [ ] 8.2 GREEN: `src/lib/api/conocimiento.ts` + `src/hooks/useConocimientoQA.ts` (TanStack Query, finite
+- [x] 8.2 GREEN: `src/lib/api/conocimiento.ts` + `src/hooks/useConocimientoQA.ts` (TanStack Query, finite
       `staleTime` ≈ 5 min, **no** `localStorage`/`IndexedDB` persistence) — `design.md:506-510`.
       *(amended 2026-08-23: async queue model — the client submits and then polls the item-status/listing
       surfaces rather than awaiting an answer from the submit call. The no-persistence rule is unchanged.)*
-- [ ] 8.3 GREEN: `components/admin/ConocimientoPanel.tsx` — five states + `redireccion_parcial`; citation
+- [x] 8.3 GREEN: `components/admin/ConocimientoPanel.tsx` — five states + `redireccion_parcial`; citation
       cards with vigencia badge, secundaria chip, verbatim `relevancia_consorcio` banner, verbatim `texto`,
       `fuente_url` link; no paraphrase (`design.md:754-775`).
       *(amended 2026-08-23: async queue model — the page is a **bandeja (mailbox)**: a list of the user's
       questions with question text, state and the answer when it exists. It renders `pendiente` honestly
       (including the staleness message from 7.3) alongside the five terminal states. Citation-card rules are
       unchanged.)*
-- [ ] 8.4 RED: the panel cannot render a card for an excluded unit — the serialized list is already filtered
+- [x] 8.4 RED: the panel cannot render a card for an excluded unit — the serialized list is already filtered
       server-side to payload keys (`design.md:765-768`).
 
 ## Phase 9: Eval extension (U9)

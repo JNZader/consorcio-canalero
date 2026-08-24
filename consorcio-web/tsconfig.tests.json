@@ -86,6 +86,15 @@
     // compiles clean today; if the 62-file widening lands first, this line and
     // its neighbours disappear together.
     "__mocks__/@tanstack/react-router.ts",
-    "tests/components/mapRouterHarness.test.tsx"
+    "tests/components/mapRouterHarness.test.tsx",
+    // Conocimiento mailbox (U8). Not rainfall, so the ENROLMENT RULE above does
+    // not compel these — enrolled anyway because they ARE typed contract tests:
+    // every one of them asserts against the shapes `src/lib/api/conocimiento.ts`
+    // mirrors from the backend's Pydantic schemas, which is exactly the drift
+    // this project exists to catch. They compile clean today.
+    "tests/unit/conocimientoApi.test.ts",
+    "tests/hooks/useConocimientoQA.test.tsx",
+    "tests/unit/ConocimientoPanel.test.tsx",
+    "tests/components/conocimientoRouteWiring.test.tsx"
   ]
 }
