@@ -79,8 +79,13 @@ from app.domains.conocimiento.eval.router import (  # noqa: E402
     EntradaRouter,
     correr_eval_router,
 )
+from app.domains.conocimiento.recuperacion.reranker import (  # noqa: E402
+    BGEReranker,
+    RerankerDeterministico,
+    RerankerNoDisponible,
+)
 from app.domains.conocimiento.routing import SetRouterNoRatificado  # noqa: E402
-from app.domains.conocimiento.service import procedencia_embeddings  # noqa: E402
+from app.domains.conocimiento.service import MODOS, procedencia_embeddings  # noqa: E402
 
 DESTINO_POR_DEFECTO = Path(__file__).resolve().parent.parent.parent / "docs" / "rag"
 
@@ -131,8 +136,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--modo",
         action="append",
-        choices=MODOS_ABLACION,
-        help="repeatable; defaults to all three (the ablation)",
+        choices=MODOS,
+        help=(
+            "repeatable; defaults to the three-mode ablation. `bm25_ce` is the "
+            "GATED arm (task 9.1b) and needs a reranker — see --reranker."
+        ),
+    )
+    parser.add_argument(
+        "--reranker",
+        default="bge",
+        choices=("bge", "deterministic"),
+        help=(
+            "cross-encoder for `--modo bm25_ce`. `deterministic` is a stand-in "
+            "for smoke runs ONLY: the report it produces carries no verdict and "
+            "its filename says SINTETICO, because in `bm25_ce` the order is the "
+            "cross-encoder's alone and a stand-in replaces the ranking entirely."
+        ),
+    )
+    parser.add_argument(
+        "--reranker-device",
+        default="cuda",
+        help="device for the real cross-encoder. CPU at depth 50 is ~99 s/query.",
     )
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--destino", type=Path, default=DESTINO_POR_DEFECTO)
@@ -237,6 +261,19 @@ def _embedder(nombre: str, *, device: str, model_id: str):
     # `query`: the eval turns gold QUESTIONS into vectors. Ignored by the
     # symmetric models, load-bearing for e5 (see `E5Embedder`).
     return get_embedder(nombre, rol="query", device=device, model_id=model_id)
+
+
+def _reranker(nombre: str, *, device: str):
+    """The stand-in is selectable, and only selectable ON PURPOSE.
+
+    Exactly like `_embedder`: it is not a fallback. A `bm25_ce` arm ordered by
+    `RerankerDeterministico` is refused at the publish gate
+    (`report._gate_sintetico`) unless `--allow-synthetic` is also passed, and what
+    comes out then is a SMOKE RUN with no verdict.
+    """
+    if nombre == "deterministic":
+        return RerankerDeterministico()
+    return BGEReranker(device=device)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -374,7 +411,36 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return SALIDA_SIN_DEPENDENCIA
 
-        resultado = evaluar(db, args.corpus_sha, gold, modos=modos, k=args.k, embedder=embedder)
+        reranker = None
+        if "bm25_ce" in modos:
+            try:
+                reranker = _reranker(args.reranker, device=args.reranker_device)
+            except (RerankerNoDisponible, RuntimeError, ImportError) as falta:
+                # Same bucket and same reason as the embedder branch above:
+                # nothing was queried, nothing was written, and the fix is to
+                # invoke the script differently. There is deliberately NO CPU
+                # fallback — the ratified numbers were measured on this model,
+                # and 99 s/query at depth 50 is an outage that answers.
+                print(f"\nERROR: {falta}", file=sys.stderr)
+                print(
+                    "\nO bien corré la ablación sin el arm gateado:\n"
+                    "    python scripts/rag_eval.py --modo fts …\n"
+                    "Para un smoke SIN GPU (sin veredicto, archivo SINTETICO-):\n"
+                    "    python scripts/rag_eval.py --modo bm25_ce "
+                    "--reranker deterministic --allow-synthetic …",
+                    file=sys.stderr,
+                )
+                return SALIDA_SIN_DEPENDENCIA
+
+        resultado = evaluar(
+            db,
+            args.corpus_sha,
+            gold,
+            modos=modos,
+            k=args.k,
+            embedder=embedder,
+            reranker=reranker,
+        )
 
     entrada_router = _entrada_router(embedder, pasos=args.router_pasos)
 
@@ -402,6 +468,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {modo:<7} {veredicto}", end="")
         if decision.barras_fallidas:
             print(f"  (fallan: {', '.join(decision.barras_fallidas)})", end="")
+        if decision.barras_no_evaluables:
+            # Separate line item, never merged into "fallan": these were not
+            # measured at all, and an operator who reads them as failures goes
+            # looking for a retrieval bug that does not exist (task 9.1b/9.5).
+            print(f"  (not-evaluable: {', '.join(decision.barras_no_evaluables)})", end="")
         if corrida.cobertura.leg_fts_degradada:
             print("  [LEG FTS DEGRADADA — ver RAG4-001]", end="")
         print()

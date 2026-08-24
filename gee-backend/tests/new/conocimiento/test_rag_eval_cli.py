@@ -23,6 +23,8 @@ from app.domains.conocimiento.embedding import (
     E5Embedder,
 )
 from app.domains.conocimiento.eval.harness import cargar_gold_set as cargar_gold_set_real
+from app.domains.conocimiento.eval.report import ETIQUETA_SMOKE
+from app.domains.conocimiento.recuperacion.reranker import RerankerNoDisponible
 from app.domains.conocimiento.repository import registrar_procedencia
 from scripts import rag_eval
 
@@ -653,3 +655,111 @@ class TestLatenciaEnLaCLI:
         assert "rag_query_latency.py" in error
         assert not (tmp_path / "nunca").exists()
         assert espia_embedder.llamadas == []
+
+
+class TestArmGateado:
+    """Task 9.1b — `--modo bm25_ce` is reachable from the CLI, with its refusals.
+
+    The arm the amended serving gate names could not be requested at all before
+    this: `--modo` only accepted the three ablation modes, so the one
+    configuration the change must clear was the one the command could not run.
+    """
+
+    def test_bm25_ce_es_un_modo_aceptado(self):
+        parser = rag_eval.build_parser()
+        args = parser.parse_args(["--corpus-sha", SHA, "--modo", "bm25_ce"])
+        assert args.modo == ["bm25_ce"]
+
+    def test_el_default_sigue_siendo_la_ablacion_de_tres(self):
+        """Adding the arm must not silently make every run pay for a GPU."""
+        parser = rag_eval.build_parser()
+        args = parser.parse_args(["--corpus-sha", SHA])
+        assert args.modo is None
+
+    def test_sin_cross_encoder_sale_2_y_no_escribe_nada(self, cli, tmp_path, monkeypatch, capsys):
+        """No CPU fallback, and no half-written `docs/rag/` entry.
+
+        The measured CPU cost at depth 50 is ~99 s per query, so falling back is
+        not a degraded mode — it is an outage that answers. The CLI says so and
+        exits in the usage bucket, because nothing was queried or written.
+        """
+        marcar(cli, sintetico=False)
+
+        def sin_gpu(nombre, *, device):
+            raise RerankerNoDisponible("no CUDA device is available")
+
+        monkeypatch.setattr(rag_eval, "_reranker", sin_gpu)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "bm25_ce",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 2
+        error = capsys.readouterr().err
+        assert "no CUDA device" in error
+        assert "--reranker deterministic" in error
+        assert not (tmp_path / "nunca").exists()
+
+    def test_un_stand_in_sin_allow_synthetic_sale_1(self, cli, tmp_path, capsys):
+        """The U2 publish gate, reached through the CLI's new path.
+
+        `bm25_ce`'s order is the cross-encoder's alone, so a stand-in does not
+        degrade the ranking — it replaces it. Publishing that as a margin is the
+        exact failure `_gate_sintetico` exists to refuse.
+        """
+        marcar(cli, sintetico=False)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "bm25_ce",
+                "--reranker",
+                "deterministic",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 1
+        assert "SYNTHETIC" in capsys.readouterr().err
+        assert not (tmp_path / "nunca").exists()
+
+    def test_el_smoke_publica_el_bloque_de_margen_sin_veredicto(self, cli, tmp_path, capsys):
+        marcar(cli, sintetico=False)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "bm25_ce",
+                "--reranker",
+                "deterministic",
+                "--allow-synthetic",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        md = tmp_path / "retrieval-eval-SINTETICO-dddddddd-2026-08-10.md"
+        assert md.is_file()
+        texto = md.read_text(encoding="utf-8")
+        assert "Margen contra el baseline FTS-only" in texto
+        assert "0.138" in texto
+        assert ETIQUETA_SMOKE in texto
