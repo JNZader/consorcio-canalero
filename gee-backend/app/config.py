@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     # Geo Worker tile service (internal URL within Docker network)
     geo_worker_tile_url: str = "http://geo-worker:8001"
 
+    # Conocimiento query-embedding sidecar (internal URL within Docker network).
+    # Same shape and same reason as ``geo_worker_tile_url``: the model lives in
+    # its own process because torch must never enter the server image
+    # (``design.md:41-50``). The backend holds only the URL and a timeout — no
+    # model, no weights, no torch import.
+    conocimiento_embed_url: str = "http://conocimiento-embed:8002"
+    conocimiento_embed_timeout_s: float = 10.0
+
     # Martin tile server (Vector Tiles)
     martin_internal_url: str = "http://martin:3000"  # Internal Docker network URL
     martin_public_url: str = ""  # Public-facing base URL for tile URL templates
