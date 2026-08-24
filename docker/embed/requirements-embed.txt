@@ -14,7 +14,14 @@
 #       --python-version 3.11 --generate-hashes \
 #       --extra-index-url https://download.pytorch.org/whl/cpu \
 #       --index-strategy unsafe-best-match \
+#       --emit-index-url \
 #       --output-file docker/embed/requirements-embed.lock
+#
+# `--emit-index-url` is not cosmetic: `torch==2.8.0+cpu` exists on the PyTorch CPU
+# index and nowhere else, so a lock that does not record where its wheels came
+# from is only reproducible for whoever already knows. The emitted
+# `--index-url` / `--extra-index-url` lines make the lock self-describing, and pip
+# honours them from the requirements file itself.
 #
 # The image installs the LOCK with `--require-hashes`; this file is only the input.
 torch==2.8.0+cpu

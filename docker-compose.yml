@@ -348,11 +348,18 @@ services:
   # not learn how — torch in the backend image would break the D8 guard test by
   # design and put two 2.2 GB model copies on a 2-vCPU box.
   #
-  # Not started by default: `docker compose up -d conocimiento-embed` when the
-  # semantic surface is being exercised. Nothing in V0 retrieval depends on it,
-  # and the ratified B50 serving path reads no vector column at all.
+  # Not started by default, and the `profiles:` below is what MAKES that true —
+  # a comment saying so over a profile-less service is just a wish, and a bare
+  # `docker compose up -d` on the box would pull 2.2 GB of weights nobody asked
+  # for. Nothing in V0 retrieval depends on it, and the ratified B50 serving path
+  # reads no vector column at all. Start it explicitly when the semantic surface
+  # is being exercised — naming the service enables its profile:
+  #
+  #   docker compose up -d conocimiento-embed
+  #   COMPOSE_PROFILES=conocimiento docker compose up -d
   # ============================================
   conocimiento-embed:
+    profiles: ["conocimiento"]
     build:
       context: .
       dockerfile: docker/embed/Dockerfile

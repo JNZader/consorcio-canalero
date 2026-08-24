@@ -100,10 +100,38 @@ class TestCierreDeDependenciasDelSidecar:
         assert sueltos == []
 
     def test_every_pin_carries_hashes(self, lock_del_sidecar):
-        """`--require-hashes` is refused by pip unless EVERY entry has one."""
-        pines = re.findall(r"^([a-zA-Z0-9._-]+)==\S+", lock_del_sidecar, re.MULTILINE)
-        assert pines, "the lock declares no requirements at all"
-        assert lock_del_sidecar.count("--hash=sha256:") >= len(pines)
+        """`--require-hashes` is refused by pip unless EVERY entry has one.
+
+        Counted PER PIN rather than globally. A global count passes as long as
+        the total is high enough, and the realistic failure is not "no hashes at
+        all" — it is one hand-added line among thirty-six generated ones, which a
+        sum over `charset-normalizer`'s eighty hashes hides completely.
+        """
+        hashes_por_pin: dict[str, int] = {}
+        actual: str | None = None
+        for linea in lock_del_sidecar.splitlines():
+            pin = re.match(r"^([a-zA-Z0-9._-]+)==\S+", linea)
+            if pin is not None:
+                actual = pin.group(1)
+                hashes_por_pin[actual] = 0
+            elif "--hash=sha256:" in linea and actual is not None:
+                hashes_por_pin[actual] += 1
+
+        assert hashes_por_pin, "the lock declares no requirements at all"
+        sin_hash = [nombre for nombre, cuantos in hashes_por_pin.items() if cuantos == 0]
+        assert sin_hash == []
+
+    def test_the_lock_records_the_index_its_wheels_came_from(self, lock_del_sidecar):
+        """`torch==2.8.0+cpu` is on the PyTorch CPU index and on no other.
+
+        A lock that does not say where it resolved from is reproducible only for
+        whoever already knows, and the `+cpu` local version makes that failure
+        loud in a different way each time: plain PyPI has no such file, so a
+        regeneration without the extra index either fails outright or quietly
+        resolves the CUDA build. Recording it in the artifact — not only in the
+        Dockerfile's install line — is what makes the two agree by construction.
+        """
+        assert "--extra-index-url https://download.pytorch.org/whl/cpu" in lock_del_sidecar
 
     def test_torch_is_the_cpu_wheel_and_the_cuda_stack_is_absent(self, lock_del_sidecar):
         """The box has no GPU and 2 shared vCPU. The CUDA stack is ~6 GB of dead weight."""
@@ -458,6 +486,32 @@ class TestCanonicalizacionDeRevision:
         with pytest.raises(RevisionNoResoluble):
             canonicalizar_revision(ref)
 
+    def test_the_refusal_names_the_pin_and_what_to_do_about_it(self):
+        """This message IS the operator's whole error report on the ingest path.
+
+        `BGEM3Embedder.__init__` now ends in `resolver_revision`, so it can raise
+        `RevisionNoResoluble` where it previously could not, and
+        `rag_embed_batch.py:260` catches `RuntimeError`/`ImportError` only — a
+        `ValueError` subclass goes straight through as a traceback and the batch
+        dies before writing anything. That direction is right (a corpus embedded
+        under a provenance nobody can compare is worse than no corpus) but it
+        makes the message the entire operator-facing surface of a fail-closed
+        crash, so it has to name the value it refused AND the way out. A refusal
+        that only explains itself leaves the operator with a stack trace and no
+        next move.
+        """
+        with pytest.raises(RevisionNoResoluble) as refusal:
+            canonicalizar_revision("v1.5")
+
+        mensaje = str(refusal.value)
+        assert "v1.5" in mensaje, "the refused value is not named"
+        assert "40-hex" in mensaje, "the required shape is not stated"
+        # The two places a resolved hash can actually be pinned — the serving
+        # side and the ingest side. Naming only one leaves half the operators
+        # reading a fix that does not apply to them.
+        assert "EMBED_REVISION_HF" in mensaje
+        assert "revision_hf" in mensaje
+
     def test_null_stays_null(self):
         assert canonicalizar_revision(None) is None
 
@@ -728,3 +782,82 @@ class TestVectorDeConsultaProvistoPorElLlamador:
         )
 
         assert capturado == [qvec]
+
+
+class RerankerInerte:
+    """A ranker that is present and correct, so its absence cannot explain a refusal.
+
+    It is never called by the tests below — that is the point. Passing a valid
+    reranker removes `RerankerRequerido` from the possible outcomes, leaving the
+    `qvec` refusal as the only thing a raised error can be about.
+    """
+
+    model_id = "inerte-de-prueba"
+    revision = None
+    sintetico = True
+
+    def puntuar(self, pregunta: str, textos: Sequence[str]) -> list[float]:
+        raise AssertionError("the qvec refusal must fire before any ranking work")
+
+
+class TestQvecEnUnModoSinPiernaVectorial:
+    """`modo='bm25_ce'` + `qvec` refuses (`service.py:571-581`).
+
+    `bm25_ce` reads no vector column at all: BM25 selects the candidates and the
+    cross-encoder orders them. Accepting a `qvec` there and discarding it would
+    leave the caller believing a vector reached the ranking, and that belief has
+    NO symptom — the run succeeds, the numbers look ordinary, and the router's
+    stage-2 vector silently influenced nothing. The realistic origin is exactly
+    that: the router computes one query vector for its own classification and
+    hands it down the same call, which is right for `vector`/`hybrid` and a
+    wiring mistake here.
+
+    Nothing is seeded in these tests on purpose — the refusal must precede every
+    database access, and an empty corpus is what proves it did.
+    """
+
+    def test_bm25_ce_with_a_qvec_refuses_even_when_the_reranker_is_present(self, db):
+        with pytest.raises(ValueError) as refusal:
+            service.recuperar(
+                db,
+                SHA,
+                "¿quién mantiene el canal?",
+                modo="bm25_ce",
+                reranker=RerankerInerte(),
+                qvec=[1.0] + [0.0] * (EMBEDDING_DIMENSIONS - 1),
+            )
+
+        mensaje = str(refusal.value)
+        assert "qvec" in mensaje
+        # It names where the vector DOES belong. A refusal that only says "no"
+        # sends the caller looking for the bug in the wrong half of the wiring.
+        assert "vector" in mensaje and "hybrid" in mensaje
+
+    def test_the_qvec_refusal_is_reported_before_the_missing_reranker(self, db):
+        """Two things are wrong; the one with no symptom is the one to report.
+
+        A missing reranker already fails loudly on its own (`RerankerRequerido`),
+        so ordering the `qvec` check first is what keeps the silent mistake from
+        being masked by the noisy one — and a caller who fixes the reranker would
+        otherwise get a green run that still discards the vector.
+        """
+        with pytest.raises(ValueError) as refusal:
+            service.recuperar(
+                db,
+                SHA,
+                "¿quién mantiene el canal?",
+                modo="bm25_ce",
+                qvec=[1.0] + [0.0] * (EMBEDDING_DIMENSIONS - 1),
+            )
+
+        assert not isinstance(refusal.value, service.RerankerRequerido)
+        assert "qvec" in str(refusal.value)
+
+    def test_bm25_ce_without_a_qvec_is_untouched_by_the_new_refusal(self, db):
+        """Regression: the guard must not have turned into "bm25_ce is broken".
+
+        Without a `qvec` the path reaches its own pre-existing requirement, and
+        that is the error the caller should still see.
+        """
+        with pytest.raises(service.RerankerRequerido):
+            service.recuperar(db, SHA, "¿quién mantiene el canal?", modo="bm25_ce")

@@ -105,7 +105,12 @@ def canonicalizar_revision(valor: str | None) -> str | None:
     raise RevisionNoResoluble(
         f"{valor!r} is not a resolved 40-hex commit hash. Comparing symbolic refs "
         "would pass two different commits that happen to share a tag, which is "
-        "exactly the mismatch the provenance guard exists to catch."
+        "exactly the mismatch the provenance guard exists to catch. "
+        f"To fix it, resolve {valor!r} to the commit it points at (the model "
+        "page's commit list, or `huggingface-cli scan-cache` for what is already "
+        "on disk) and pin THAT hash: as `EMBED_REVISION_HF` for the sidecar, or "
+        "by re-running the embedding batch so the manifest stamps the resolved "
+        "value into `revision_hf`."
     )
 
 
