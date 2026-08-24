@@ -130,6 +130,45 @@ def _centroides_de_ejes() -> routing.Centroides:
     return routing.Centroides({clase: tuple(vec) for clase, vec in EJE.items()})
 
 
+def _resultado_sintetico(
+    *,
+    exactitud: float | None = None,
+    op_legal: int = 0,
+    mixto_legal: int = 0,
+) -> routing.ResultadoRouterLOOCV:
+    """A held-out matrix with the exact figures a bar test needs.
+
+    Built from counts rather than from a run, because the bar is being asserted
+    here and not the router: a test that has to steer 49 embeddings into an
+    accuracy of exactly 0.69 asserts mostly its own fixture. `n = 100` makes
+    every ratio exact in two decimals, so `0.70` is `0.70` and not `0.7000001`.
+
+    Errors that belong to neither named cell are `legal -> operational`: a
+    redirect of a legal question, which is the cheap failure by design.
+    """
+    total = 100
+    nombradas = [(routing.CLASE_OPERATIONAL, routing.CLASE_LEGAL)] * op_legal
+    nombradas += [(routing.CLASE_MIXTO, routing.CLASE_LEGAL)] * mixto_legal
+    aciertos = total - len(nombradas) if exactitud is None else round(exactitud * total)
+    resto = total - aciertos - len(nombradas)
+    assert resto >= 0, "the requested figures do not fit in 100 items"
+
+    pares = (
+        [(routing.CLASE_LEGAL, routing.CLASE_LEGAL)] * aciertos
+        + nombradas
+        + [(routing.CLASE_LEGAL, routing.CLASE_OPERATIONAL)] * resto
+    )
+    matriz = routing.matriz_desde(pares)
+    return routing.ResultadoRouterLOOCV(
+        n=total,
+        parametros_shipped=routing.PARAMETROS_SIN_CALIBRAR,
+        centroides_shipped={},
+        folds=(),
+        matriz=matriz,
+        matriz_same_sample=matriz,
+    )
+
+
 # ---------------------------------------------------------------------------
 # 4.1 — stage-1 deterministic lexicon
 # ---------------------------------------------------------------------------
@@ -220,6 +259,35 @@ class TestEtapaUnoLexico:
     def test_toda_superficie_pertenece_al_conjunto_del_spec(self):
         """`routing spec:31` names four and only four."""
         assert set(routing.SUPERFICIES) == {"/tramites", "/finanzas", "/denuncias", "/mapa"}
+
+    def test_la_superficie_operacional_por_defecto_es_la_ratificada(self):
+        """S-1 — RATIFIED by the owner on 2026-08-24 (tasks.md 4.1).
+
+        `/tramites` was raised as an implementation decision (`routing spec:31`
+        requires a named surface; design.md G1 does not say which one when the
+        subject family is unresolved) and the owner answered it as a decision:
+        `/tramites` is the most general of the four, so it is the one an
+        operator lands on carrying the fewest wrong assumptions about what their
+        own question was about.
+
+        Pinned as a literal rather than as `== SUPERFICIE_TRAMITES`: the alias
+        would follow the constant wherever a refactor moved it, and what was
+        ratified is the destination, not the name of the variable.
+        """
+        assert routing.SUPERFICIE_OPERACIONAL_POR_DEFECTO == "/tramites"
+        assert routing.SUPERFICIE_OPERACIONAL_POR_DEFECTO in routing.SUPERFICIES
+
+        # And it is really the fallback: a bare padrón-shaped name fires the
+        # marker with no family attached, so nothing else can supply a surface.
+        decision = routing.clasificar(
+            "Necesito los datos de Marcelo Gutiérrez",
+            embedder=EmbedderFalso(),
+            centroides=_centroides_de_ejes(),
+            parametros=routing.PARAMETROS_SIN_CALIBRAR,
+        )
+        assert decision.clase == "operational"
+        assert decision.motivo == routing.MOTIVO_REGLA
+        assert decision.superficie == "/tramites"
 
 
 # ---------------------------------------------------------------------------
@@ -533,7 +601,12 @@ class TestRegistroDeDecisiones:
         repository.registrar_decision_ruta(db, self._decision("vieja"))
         repository.registrar_decision_ruta(db, self._decision("nueva"))
         db.flush()
-        vieja = repository.listar_decisiones_ruta(db)[0]
+        # By question text, NOT by position. Both rows take `decidida_en` from
+        # the same `now()` inside one transaction, so `listar_decisiones_ruta`
+        # breaks the tie on a random UUID and index 0 was whichever id happened
+        # to sort first — this test failed 3 runs in 6 before the fix, and the
+        # thing it was failing about was its own fixture.
+        vieja = next(f for f in repository.listar_decisiones_ruta(db) if f.pregunta == "vieja")
         vieja.decidida_en = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=91)
         db.flush()
 
@@ -543,21 +616,51 @@ class TestRegistroDeDecisiones:
         assert [f.pregunta for f in repository.listar_decisiones_ruta(db)] == ["nueva"]
 
     def test_la_purga_respeta_el_borde_exacto(self, db):
-        """A row at exactly the window edge survives. The boundary is nailed
-        down here so a future `<` / `<=` flip is a failure, not a data loss."""
+        """A row at EXACTLY the window edge survives (`<`, not `<=`).
+
+        The previous version of this test placed the row 30 seconds INSIDE the
+        window and asserted it survived — which is true under `<` and equally
+        true under `<=`, so the flip it claimed to guard was never guarded. It
+        could not have been: with the clock read inside the purge, a row written
+        at `now - 90d` is already strictly older by the time the query runs.
+
+        So the clock is an argument now. `ahora` is frozen, the row is placed at
+        `ahora - 90d` to the microsecond, and BOTH sides of the boundary are
+        asserted: the edge survives, one microsecond past it does not. Flip the
+        comparator and the first assertion fails.
+        """
         import datetime as dt
 
         from app.domains.conocimiento import repository
 
+        ahora = dt.datetime(2026, 8, 24, 12, 0, 0, tzinfo=dt.timezone.utc)
+        borde = ahora - dt.timedelta(days=routing.RETENCION_DECISIONES_DIAS)
+
         repository.registrar_decision_ruta(db, self._decision("justo en el borde"))
         db.flush()
         fila = repository.listar_decisiones_ruta(db)[0]
-        fila.decidida_en = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
-            days=routing.RETENCION_DECISIONES_DIAS, seconds=-30
-        )
+        fila.decidida_en = borde
         db.flush()
 
-        assert repository.purgar_decisiones_ruta(db) == 0
+        assert repository.purgar_decisiones_ruta(db, ahora=ahora) == 0, (
+            "a row AT the edge is not older than the window — the ratified side "
+            "of the boundary is `<`, so the edge survives"
+        )
+
+        # One microsecond older is over the edge, and the same call deletes it.
+        fila.decidida_en = borde - dt.timedelta(microseconds=1)
+        db.flush()
+        assert repository.purgar_decisiones_ruta(db, ahora=ahora) == 1
+
+    def test_la_purga_rechaza_un_reloj_sin_zona(self, db):
+        """`decidida_en` is TIMESTAMPTZ. A naive `ahora` would be read against
+        the server's local offset and shift the whole retention window."""
+        import datetime as dt
+
+        from app.domains.conocimiento import repository
+
+        with pytest.raises(ValueError, match="aware"):
+            repository.purgar_decisiones_ruta(db, ahora=dt.datetime(2026, 8, 24, 12, 0, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -748,19 +851,25 @@ class TestEvalRouter:
         assert vacia.exactitud is None
         assert vacia.fraccion_operational_a_legal is None
 
-    def test_la_barra_no_ratificada_reporta_y_no_dictamina(self):
-        """The gate runs, prints, and refuses to say pass or fail."""
+    def test_una_barra_sin_ratificar_reporta_y_no_dictamina(self):
+        """The state SURVIVES the ratification (2026-08-24).
+
+        The owner fixed THIS bar; the next one — a new labeled set, a re-derived
+        threshold — starts unratified again, and a mechanism that only ever
+        holds one value is a mechanism nobody can re-enter. So the unratified
+        path is still asserted to measure, print, and refuse a verdict.
+        """
         from app.domains.conocimiento.eval import router as eval_router
 
         embedder = EmbedderFalso()
         resultado = eval_router.correr_eval_router(embedder, pasos=3)
-        evaluacion = routing.evaluar_barra(resultado)
+        evaluacion = routing.evaluar_barra(resultado, routing.BarraRouter(ratificada=False))
 
         assert evaluacion.estado == routing.ESTADO_BARRA_NO_RATIFICADA
         assert evaluacion.veredicto is None, (
             "a verdict against an unratified bar is a bar somebody invented"
         )
-        assert evaluacion.barra.ratificada is False
+        assert evaluacion.componentes_fallidos == (), "nothing was judged, so nothing failed"
         assert evaluacion.exactitud is not None, "it must still MEASURE"
 
         bloque = "\n".join(eval_router.bloque_router(resultado, embedder, evaluacion))
@@ -769,30 +878,87 @@ class TestEvalRouter:
         assert eval_router.ETIQUETA_UPPER_BOUND in bloque
         assert "PASA" not in bloque and "NO PASA" not in bloque
 
-    def test_una_barra_ratificada_si_dictamina(self):
-        """The mechanism is not decorative: flip `ratificada` and it decides."""
-        from app.domains.conocimiento.eval import router as eval_router
+    def test_la_barra_ratificada_es_la_que_el_owner_fijo(self):
+        """RATIFIED 2026-08-24 (tasks.md 0.3), pinned as three literals.
 
-        resultado = eval_router.correr_eval_router(EmbedderFalso(), pasos=3)
-        holgada = routing.evaluar_barra(resultado, routing.BarraRouter(1.0, 0.0, ratificada=True))
-        assert holgada.estado == routing.ESTADO_BARRA_EVALUADA
-        assert holgada.veredicto is True
+        The numbers were fixed AFTER measuring on the ratified n=49 set, which
+        is the whole discipline decision 0.3 protected. Pinning them here makes
+        a later edit a change to a ratified value rather than a tuning knob.
+        """
+        barra = routing.BARRA_RATIFICADA
+        assert barra.ratificada is True
+        assert barra.exactitud_minima == 0.70
+        assert barra.operational_a_legal_max == 0
+        assert barra.mixto_a_legal_max == 2
+        assert routing.BarraRouter() == barra, "the default IS the ratified bar"
 
-        imposible = routing.evaluar_barra(
-            resultado, routing.BarraRouter(0.0, 1.01, ratificada=True)
+    @pytest.mark.parametrize(
+        "matriz_pares, pasa, motivo",
+        [
+            # accuracy: the exact edge passes, one item below it does not.
+            (("exactitud", 0.70), True, "0.70 exact is ON the bar, and the bar is >="),
+            (("exactitud", 0.69), False, "0.69 is below 0.70"),
+            # `operational -> legal` is a HARD cell: one is already too many.
+            (("op_legal", 0), True, "zero is the ratified value"),
+            (("op_legal", 1), False, "one fabricated debt figure is not a rounding error"),
+            # `mixto -> legal` is the measured 2, ratified AT the measurement.
+            (("mixto_legal", 2), True, "2 of 13 is what was measured and ratified"),
+            (("mixto_legal", 3), False, "3 is over the ratified ceiling"),
+        ],
+    )
+    def test_cada_componente_de_la_barra_decide_en_su_borde_exacto(
+        self, matriz_pares, pasa, motivo
+    ):
+        """Both directions, per component. A bar asserted only from the passing
+        side is a bar that would still pass with the comparison inverted."""
+        componente, valor = matriz_pares
+        resultado = _resultado_sintetico(**{componente: valor})
+        evaluacion = routing.evaluar_barra(resultado)
+
+        assert evaluacion.estado == routing.ESTADO_BARRA_EVALUADA
+        assert evaluacion.veredicto is pasa, motivo
+        assert bool(evaluacion.componentes_fallidos) is (not pasa)
+
+    def test_una_muestra_vacia_no_pasa_la_barra(self):
+        """`exactitud is None` is the absence of a measurement, and an absent
+        measurement must never read as a clean one."""
+        vacio = routing.ResultadoRouterLOOCV(
+            n=0,
+            parametros_shipped=routing.PARAMETROS_SIN_CALIBRAR,
+            centroides_shipped={},
+            folds=(),
+            matriz=routing.matriz_desde([]),
+            matriz_same_sample=routing.matriz_desde([]),
         )
-        assert imposible.veredicto is False
+        evaluacion = routing.evaluar_barra(vacio)
+        assert evaluacion.veredicto is False
+        assert any("n/a" in fallo for fallo in evaluacion.componentes_fallidos)
 
     def test_el_json_lleva_la_etiqueta_de_upper_bound(self):
         """A same-sample figure that travels without its label is a held-out
         figure to whoever reads the JSON next."""
         from app.domains.conocimiento.eval import router as eval_router
 
-        datos = eval_router.a_json(eval_router.correr_eval_router(EmbedderFalso(), pasos=3))
+        resultado = eval_router.correr_eval_router(EmbedderFalso(), pasos=3)
+        datos = eval_router.a_json(resultado)
         assert datos["same_sample_label"] == eval_router.ETIQUETA_UPPER_BOUND
-        assert datos["barra"]["veredicto"] is None
-        assert datos["barra"]["estado"] == routing.ESTADO_BARRA_NO_RATIFICADA
         assert len(datos["folds"]) == datos["n"] == 49
+
+        # The bar is ratified, so the JSON carries a real verdict and the three
+        # figures it was computed from — a verdict nobody can re-derive from the
+        # same document is a verdict nobody can check.
+        assert datos["barra"]["estado"] == routing.ESTADO_BARRA_EVALUADA
+        assert datos["barra"]["ratificada"] is True
+        assert datos["barra"]["veredicto"] in (True, False)
+        assert datos["mixto_a_legal"] == resultado.matriz.mixto_a_legal
+        assert datos["operational_a_legal"] == resultado.matriz.operational_a_legal
+
+        # And an unratified bar still travels as `None`, not as a False.
+        sin_ratificar = eval_router.a_json(
+            resultado, routing.evaluar_barra(resultado, routing.BarraRouter(ratificada=False))
+        )
+        assert sin_ratificar["barra"]["veredicto"] is None
+        assert sin_ratificar["barra"]["estado"] == routing.ESTADO_BARRA_NO_RATIFICADA
 
     def test_loocv_no_deja_que_el_item_retenido_arme_su_propio_centroide(self):
         """Refitting only the parameters leaks the held-out item through the
@@ -804,6 +970,110 @@ class TestEvalRouter:
         completo = routing.centroides_desde(senales)
         sin_uno = routing.centroides_desde(senales[1:])
         assert completo.como_mapa() != sin_uno.como_mapa()
+
+    def test_la_matriz_held_out_cambia_si_el_item_retenido_arma_su_centroide(self):
+        """The guardian for the one-token mutation the test above survives.
+
+        `centroides_desde(senales) != centroides_desde(senales[1:])` compares a
+        helper against itself; swapping `centroides_fold` for
+        `centroides_shipped` inside `calibrar_loocv` leaves it — and the other
+        49 tests — perfectly green while the held-out matrix silently becomes a
+        training fit. So this asserts the OUTPUT of the real function on a set
+        built to make the leak visible.
+
+        The geometry, stated rather than hoped (`e1` legal, `e2` operational,
+        `e3` geospatial): `X` is labeled `operational` and points at
+        `(0, 0.6, 0.8)` — nearer the geospatial axis than the operational one.
+        With `X` inside the operational centroid, that centroid tilts toward it
+        and `X` scores 0.809 against itself-plus-friends versus 0.800 against
+        geospatial, so the leak predicts `operational`. Fitted WITHOUT `X`, the
+        operational centroid is `e2` exactly, `X` scores 0.6 against it and 0.8
+        against geospatial, and the honest answer is a miss.
+
+        The pair `{operational, geoespacial}` is deliberately not a `mixto`
+        signature (design.md:165-168), so no parameter choice can reach this
+        item: what the fold changes is the centroid and nothing else.
+        """
+        retenido = "X-operational-cerca-de-geo"
+
+        def senal(ident: str, clase: str, vector: tuple[float, float, float]):
+            return routing.SenalRuta(
+                id=ident,
+                pregunta=f"pregunta {ident}",
+                clase_esperada=clase,
+                borde=False,
+                # Explicitly None: a stage-1 hit short-circuits `predecir` and
+                # would make the centroids irrelevant to this item.
+                clase_regla=None,
+                vector=vector,
+            )
+
+        senales = (
+            senal("L-1", "legal", (1.0, 0.0, 0.0)),
+            senal("L-2", "legal", (1.0, 0.0, 0.0)),
+            senal("L-3", "legal", (1.0, 0.0, 0.0)),
+            senal("O-1", "operational", (0.0, 1.0, 0.0)),
+            senal("O-2", "operational", (0.0, 1.0, 0.0)),
+            senal(retenido, "operational", (0.0, 0.6, 0.8)),
+            senal("G-1", "geoespacial", (0.0, 0.0, 1.0)),
+            senal("G-2", "geoespacial", (0.0, 0.0, 1.0)),
+            senal("G-3", "geoespacial", (0.0, 0.0, 1.0)),
+        )
+
+        resultado = routing.calibrar_loocv(senales, pasos=7)
+        fold = next(f for f in resultado.folds if f.id == retenido)
+
+        assert fold.clase_predicha == "geoespacial", (
+            "the held-out item was classified against a centroid it helped build: "
+            "`calibrar_loocv` must rebuild the CENTROIDS per fold, not only the "
+            "parameters"
+        )
+        assert resultado.matriz.celda("operational", "geoespacial") == 1
+        assert resultado.matriz.celda("operational", "operational") == 2
+
+        # The same-sample matrix is the leak, measured on purpose: it gets the
+        # item right, and that gap between 8/9 and 9/9 is exactly what the
+        # `upper bound` label warns a reader about.
+        assert resultado.matriz_same_sample.celda("operational", "operational") == 3
+        assert resultado.matriz.exactitud == pytest.approx(8 / 9)
+        assert resultado.matriz_same_sample.exactitud == pytest.approx(1.0)
+
+    def test_una_regla_de_etapa_uno_decide_sin_tocar_el_sidecar(self):
+        """S-3 — the stage-1 short-circuit, pinned by call count.
+
+        `EmbedderCaido` already proves a rule survives a DOWN sidecar. It does
+        not prove the sidecar was never CALLED: an implementation that embedded
+        first and then let the rule win would fail that test only because the
+        double happens to raise. The spy counts, so zero is zero.
+        """
+        espia = EmbedderFalso()
+        decision = routing.clasificar(
+            "¿cuánto debe Juan Pérez?",
+            embedder=espia,
+            centroides=_centroides_de_ejes(),
+            parametros=routing.PARAMETROS_SIN_CALIBRAR,
+        )
+
+        assert decision.motivo == routing.MOTIVO_REGLA
+        assert espia.llamadas == [], "stage 1 decided; nothing had to be embedded"
+        assert decision.qvec is None and decision.puntajes == {}
+
+        # Same property on the calibration path: `predecir` must not consult the
+        # centroids for an item stage 1 already decided.
+        class CentroidesQueGritan(routing.Centroides):
+            def puntajes(self, qvec):  # pragma: no cover - must never run
+                raise AssertionError("a rule-decided item asked the centroids for a score")
+
+        senal = routing.SenalRuta(
+            id="R-1",
+            pregunta="¿cuánto debe Juan Pérez?",
+            clase_esperada="operational",
+            borde=False,
+            clase_regla="operational",
+            vector=(1.0, 0.0, 0.0),
+        )
+        gritones = CentroidesQueGritan({clase: tuple(v) for clase, v in EJE.items()})
+        assert routing.predecir(senal, gritones, routing.PARAMETROS_SIN_CALIBRAR) == "operational"
 
     def test_mixto_no_tiene_centroide(self):
         """design.md:165-168 — it is recognized by its top-2 signature."""
