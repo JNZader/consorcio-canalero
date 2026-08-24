@@ -265,8 +265,11 @@ class TestLaCompuertaNoSeElude:
 
         with pytest.raises(CompuertaEludida):
             dataclasses.replace(payload, claves=frozenset({"acta-interna#art1"}))
-        with pytest.raises(CompuertaEludida):
-            copy.replace(payload, claves=frozenset())
+        # `copy.replace` existe desde Python 3.13 (el CI corre 3.11); en las
+        # versiones que lo tienen, despacha a nuestro `__replace__` que raisea.
+        if hasattr(copy, "replace"):
+            with pytest.raises(CompuertaEludida):
+                copy.replace(payload, claves=frozenset())
         with pytest.raises(CompuertaEludida):
             copy.copy(payload)
         with pytest.raises(CompuertaEludida):
