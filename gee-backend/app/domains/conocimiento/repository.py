@@ -917,6 +917,33 @@ class ProcedenciaEmbeddings:
         return self.modelo is not None
 
 
+CORPUS_ACTIVO_SQL = text(
+    """
+    SELECT corpus_sha
+    FROM rag_corpus
+    WHERE activo IS TRUE
+    ORDER BY ingested_at DESC, corpus_sha
+    LIMIT 1
+    """
+)
+
+
+def corpus_activo(db: Session) -> str | None:
+    """The snapshot the serving path answers from, or `None` if none is active.
+
+    `None` is a real, reportable state — a deployment that ingested nothing yet —
+    and the caller must refuse rather than pick "the newest snapshot" as a
+    fallback. Answering a legal question from whichever snapshot happens to be
+    latest is how an answer gets certified against a corpus revision nobody
+    activated.
+
+    The `ORDER BY` is defensive: `activo` is not unique in the schema, and two
+    active rows must resolve deterministically rather than by whatever order
+    Postgres returns.
+    """
+    return db.execute(CORPUS_ACTIVO_SQL).scalar_one_or_none()
+
+
 LEER_PROCEDENCIA_SQL = text(
     """
     SELECT corpus_sha, embedding_modelo, embedding_revision_hf, embedding_sintetico,
@@ -1171,6 +1198,48 @@ def purgar_decisiones_ruta(
     borradas = (
         db.query(RagDecisionRuta)
         .filter(RagDecisionRuta.decidida_en < corte)
+        .delete(synchronize_session=False)
+    )
+    return int(borradas)
+
+
+def purgar_consultas(
+    db: Session,
+    dias: int | None = None,
+    *,
+    ahora: datetime.datetime | None = None,
+) -> int:
+    """Delete mailbox items older than the SAME ratified retention window.
+
+    The mailbox stores the verbatim question too (amendment A3), so the privacy
+    fact that made `purgar_decisiones_ruta` necessary attaches identically here.
+    Without this, U7 would repeal `conocimiento_006`'s 90-day retention by
+    copying the text into a second table nobody purges — the routing record
+    would expire while the question it recorded sat in `rag_consulta` forever.
+
+    Deletes by SUBMISSION age, not by processing age: an item nobody ever
+    processed is exactly the one whose question has been sitting around longest,
+    and keying the purge on `procesada_en` would exempt it.
+
+    Same boundary and same `ahora` discipline as the decision purge: strictly
+    older than survives-at-the-edge, and a naive `ahora` refuses rather than
+    silently reading the server's local offset as UTC.
+    """
+    from app.domains.conocimiento.models import RagConsulta
+    from app.domains.conocimiento.routing import RETENCION_DECISIONES_DIAS
+
+    ventana = datetime.timedelta(days=RETENCION_DECISIONES_DIAS if dias is None else dias)
+    referencia = ahora if ahora is not None else datetime.datetime.now(datetime.timezone.utc)
+    if referencia.tzinfo is None:
+        raise ValueError(
+            "purgar_consultas needs an aware `ahora`: `creada_en` is stored "
+            "TIMESTAMPTZ, and comparing it against a naive datetime silently "
+            "reads the server's local offset as UTC and shifts the window."
+        )
+    corte = referencia - ventana
+    borradas = (
+        db.query(RagConsulta)
+        .filter(RagConsulta.creada_en < corte)
         .delete(synchronize_session=False)
     )
     return int(borradas)

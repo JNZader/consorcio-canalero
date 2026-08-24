@@ -89,6 +89,23 @@ class SidecarEmbedder:
         self.dims = dims
         self.token_ceiling = token_ceiling
 
+    def close(self) -> None:
+        """Release the HTTP pool. Idempotent, and NOT optional for short-lived uses.
+
+        Added in U7 for the same reason `PuenteGenerador.close` exists: the
+        readiness gate builds one of these every TTL to ask `/ready` and throws
+        it away, and a leaked pool per probe is a descriptor leak that shows up
+        as a server that stops answering and blames the sidecar. A long-lived
+        adapter never needs this; the probe does.
+        """
+        self._cliente.close()
+
+    def __enter__(self) -> SidecarEmbedder:
+        return self
+
+    def __exit__(self, *_excepcion: object) -> None:
+        self.close()
+
     def count_tokens(self, texto: str) -> int:
         """Refused on purpose. This is a QUERY seam; token counting is INGESTION.
 
@@ -192,35 +209,44 @@ def conectar_sidecar(
     container. Nothing in production passes it.
     """
     cliente = httpx.Client(base_url=url, timeout=timeout, transport=transporte)
-    sonda = SidecarEmbedder(
-        cliente,
-        model_id="",
-        revision=None,
-        dims=EMBEDDING_DIMENSIONS,
-        token_ceiling=TOKEN_CEILING,
-    )
-    cuerpo = sonda._pedir("GET", "/ready")
-
-    if not cuerpo.get("listo"):
-        raise SidecarNoDisponible(CAUSA_NO_LISTO, str(cuerpo.get("detalle") or cuerpo))
-
-    modelo = cuerpo.get("modelo")
-    if not isinstance(modelo, str) or not modelo:
-        raise SidecarNoDisponible(
-            CAUSA_RESPUESTA_INVALIDA,
-            f"/ready reported modelo={modelo!r}. An embedder with no identity "
-            "cannot be compared against the snapshot's recorded provenance, and "
-            "assuming one would make the guard agree with itself.",
+    # Every refusal below closes the pool on the way out. U7's readiness gate
+    # calls this once per TTL and discards the result, so a client leaked on the
+    # FAILURE path leaks once every few seconds for as long as the sidecar is
+    # down — the exact condition under which the server can least afford to run
+    # out of descriptors (bounded correction, U7).
+    try:
+        sonda = SidecarEmbedder(
+            cliente,
+            model_id="",
+            revision=None,
+            dims=EMBEDDING_DIMENSIONS,
+            token_ceiling=TOKEN_CEILING,
         )
-    revision = cuerpo.get("revision_hf")
-    if revision is not None and not isinstance(revision, str):
-        raise SidecarNoDisponible(
-            CAUSA_RESPUESTA_INVALIDA, f"/ready reported revision_hf={revision!r}"
-        )
+        cuerpo = sonda._pedir("GET", "/ready")
 
-    dims = cuerpo.get("dims")
-    if not isinstance(dims, int) or dims <= 0:
-        raise SidecarNoDisponible(CAUSA_RESPUESTA_INVALIDA, f"/ready reported dims={dims!r}")
+        if not cuerpo.get("listo"):
+            raise SidecarNoDisponible(CAUSA_NO_LISTO, str(cuerpo.get("detalle") or cuerpo))
+
+        modelo = cuerpo.get("modelo")
+        if not isinstance(modelo, str) or not modelo:
+            raise SidecarNoDisponible(
+                CAUSA_RESPUESTA_INVALIDA,
+                f"/ready reported modelo={modelo!r}. An embedder with no identity "
+                "cannot be compared against the snapshot's recorded provenance, and "
+                "assuming one would make the guard agree with itself.",
+            )
+        revision = cuerpo.get("revision_hf")
+        if revision is not None and not isinstance(revision, str):
+            raise SidecarNoDisponible(
+                CAUSA_RESPUESTA_INVALIDA, f"/ready reported revision_hf={revision!r}"
+            )
+
+        dims = cuerpo.get("dims")
+        if not isinstance(dims, int) or dims <= 0:
+            raise SidecarNoDisponible(CAUSA_RESPUESTA_INVALIDA, f"/ready reported dims={dims!r}")
+    except BaseException:
+        cliente.close()
+        raise
 
     techo = cuerpo.get("token_ceiling")
     return SidecarEmbedder(

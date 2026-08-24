@@ -961,6 +961,10 @@ class TestUnionDeEstados:
         `RespuestaConocimiento(estado=...)` that used to stand for all six no
         longer stands for that one — an answer with neither is exactly the shape
         the invariant removed.
+
+        `redireccion` joined it in U7 for the same reason from the other side: a
+        PURE redirect that names no surface is a refusal wearing a redirect's
+        label, and `design.md:775-777` says the redirect IS the response.
         """
         for estado in ESTADOS:
             if estado == "respuesta":
@@ -969,9 +973,28 @@ class TestUnionDeEstados:
                     respuesta="Corresponde el permiso [ley-9750#art1].",
                     citas=[hit("ley-9750")],
                 )
+            elif estado == "redireccion":
+                item = RespuestaConocimiento(
+                    estado=estado,
+                    redireccion=Redireccion(superficie="/tramites", motivo="regla"),
+                )
             else:
                 item = RespuestaConocimiento(estado=estado)
             assert item.estado == estado
+
+    def test_una_redireccion_pura_sin_superficie_es_inconstruible(self):
+        """U7: the redirect IS the response, so it has to say WHERE."""
+        with pytest.raises(ValidationError):
+            RespuestaConocimiento(estado="redireccion")
+
+    def test_ningun_otro_estado_lleva_el_bloque_de_redireccion_PURA(self):
+        """Two fields holding the same fact is how a partial redirect starts
+        reading as a total one."""
+        with pytest.raises(ValidationError):
+            RespuestaConocimiento(
+                estado="abstencion",
+                redireccion=Redireccion(superficie="/tramites", motivo="regla"),
+            )
 
     def test_una_respuesta_sin_prosa_o_sin_citas_es_inconstruible(self):
         """The POSITIVE invariant. The negative rules alone left this hole.

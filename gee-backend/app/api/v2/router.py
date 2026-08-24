@@ -17,6 +17,7 @@ from app.domains.finanzas.router import router as finanzas_router
 from app.domains.reuniones.router import router as reuniones_router
 from app.domains.tramites.router import router as tramites_router
 from app.domains.capas.router import router as capas_router
+from app.domains.conocimiento.router import router as conocimiento_router
 from app.domains.geo.router import router as geo_router
 from app.domains.geo.router_admin_suelos import router as admin_suelos_router
 from app.domains.monitoring.router import router as monitoring_router
@@ -35,6 +36,13 @@ api_router.include_router(finanzas_router)
 api_router.include_router(tramites_router)
 api_router.include_router(reuniones_router)
 api_router.include_router(capas_router)
+
+# Conocimiento: the CD's legal-question mailbox (/conocimiento/*). Mounted and
+# INERT by default: `conocimiento_qa_enabled` is False, so every route answers
+# 503 until a deployment turns the surface on AND the three ANDed facts hold
+# (U7, `design.md:714-742`). V0 shipped no router at all on purpose; V1 adds it
+# now that there is a contract to test.
+api_router.include_router(conocimiento_router)
 
 # Geo processing + GEE endpoints
 api_router.include_router(geo_router, prefix="/geo")

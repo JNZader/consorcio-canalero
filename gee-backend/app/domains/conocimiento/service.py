@@ -441,6 +441,18 @@ class RerankerRequerido(RuntimeError):
     """
 
 
+class CorpusNoServible(RuntimeError):
+    """The active snapshot must not be served from, and the reason is named.
+
+    Today that means SYNTHETIC embeddings (task 7.6, `design.md:751-752`): the
+    diagnostic endpoint reports `sintetico`, and serving refuses OUTRIGHT rather
+    than answering a legal question from vectors nobody trained. The eval harness
+    has the same guard on the publish side (`report._gate_sintetico`); this is
+    the serving side of it, and the two exist for the same reason — a stand-in
+    that is only reported, never refused, gets read as a measurement.
+    """
+
+
 def _recuperar_bm25_ce(
     db: Session,
     corpus_sha: str,
