@@ -5,11 +5,17 @@ whole point is that there is exactly ONE path from a retrieved page to an
 external provider call:
 
 1. **The payload gate (G2b).** `construir_payload` is the only constructor of a
-   `PayloadGeneracion`, and it is the only place that calls
-   `service.assert_unidades_publicas`. A `PayloadGeneracion` built any other way
-   raises `CompuertaEludida` at construction — the gate is a precondition of the
-   type, not a step a caller is trusted to remember. `privado` text never
-   travels, and an empty payload is abstención before any provider exists.
+   `PayloadGeneracion` and the only caller of `service.assert_unidades_publicas`.
+   A payload built the naive way — by hand, by `dataclasses.replace`, by
+   `copy`/`pickle` — raises `CompuertaEludida`, so the gate is a precondition of
+   the type rather than a step a caller is trusted to remember. That is a
+   guardrail against a second code path, NOT a sandbox: any code running in this
+   process can forge a frozen dataclass with `__new__` and `object.__setattr__`,
+   and nothing written in Python changes that. What actually decides
+   shippability is the DB-authoritative classification behind the gate, and what
+   actually keeps the number of paths at one is the structural call-site count
+   in `test_generacion.py`. `privado` text never travels, and an empty payload
+   is abstención before any provider exists.
 
 2. **The enforcement (G3), post-hoc and mechanical.** Generate, then parse the
    keys, then compare against the POST-EXCLUSION payload, then run the
@@ -108,6 +114,12 @@ class Plantillas:
 
     abreviaturas: frozenset[str]
     boilerplate: frozenset[str]
+    #: The enumerated claim-free enumeration lead-ins, normalized. Replaces
+    #: "the line ends with a colon", which a claim can satisfy too.
+    lead_ins: frozenset[str]
+    #: The same lead-ins as the model must WRITE them, in artifact order. Same
+    #: side-by-side arrangement as `marcadores` / `marcadores_prosa`.
+    lead_ins_prosa: tuple[str, ...]
     marcadores: Mapping[str, str]
     marcadores_prosa: Mapping[str, str]
     abstencion: str
@@ -134,6 +146,8 @@ def cargar_plantillas(path: Path | None = None) -> Plantillas:
     return Plantillas(
         abreviaturas=frozenset(str(a).lower() for a in crudo["abreviaturas"]),
         boilerplate=frozenset(normalizar(str(b)) for b in crudo["boilerplate"]),
+        lead_ins=frozenset(normalizar(str(li)) for li in crudo["lead_ins"]),
+        lead_ins_prosa=tuple(str(li) for li in crudo["lead_ins"]),
         marcadores={k: normalizar(str(v)) for k, v in crudo["marcadores"].items()},
         marcadores_prosa=dict(crudo["marcadores_prosa"]),
         abstencion=str(crudo["abstencion"]),
@@ -157,6 +171,13 @@ class CompuertaEludida(RuntimeError):
     than filtering because a payload assembled off the gate's path has unknown
     provenance: we cannot say which classification its units carried. The one
     legitimate constructor is `construir_payload`.
+
+    Scope, stated so nobody reads more into it than it does: it fires on the
+    naive constructions — direct instantiation, `dataclasses.replace`,
+    `copy.replace`, `copy.copy`, `copy.deepcopy`, `pickle`. It cannot fire on
+    `__new__` + `object.__setattr__`, on a subclass that overrides
+    `__post_init__`, or on anything else with arbitrary in-process execution.
+    See `PayloadGeneracion` for where the real defence lives.
     """
 
 
@@ -172,6 +193,24 @@ class PayloadGeneracion:
     key belonging to a unit whose text was never in the prompt — a key the model
     can only have hallucinated, and one whose citation card would then render a
     private document's provenance to the reader (`design.md:522-529`).
+
+    What the constructor token actually buys, stated exactly, because a security
+    claim that overstates itself is worse than none: it makes the NAIVE
+    construction fail loudly — `PayloadGeneracion(...)` written by hand, and
+    (because the token is cleared below) `dataclasses.replace`, `copy.replace`,
+    `copy.copy`, `copy.deepcopy` and `pickle` round-trips. It does NOT stop an
+    in-process attacker: `__new__` plus `object.__setattr__` reconstructs any
+    frozen dataclass, and no Python object can prevent that.
+
+    The load-bearing defences are elsewhere and are not this token:
+
+    * the DB-authoritative classification in `assert_unidades_publicas`, which is
+      what decides shippability — the payload only carries the verdict; and
+    * the structural tests in `test_generacion.py` that count call sites: one
+      holder of the token, one caller of the gate, one caller of the provider
+      port. Those catch the realistic failure, which is a well-meaning second
+      code path added in a diff nobody read closely, not an adversary with
+      arbitrary execution inside the process.
     """
 
     claves: frozenset[str]
@@ -189,6 +228,37 @@ class PayloadGeneracion:
                 "assembled anywhere else has not been through the classification "
                 "gate and must never reach a provider."
             )
+        # Consume the token. `dataclasses.replace` and `copy.replace` rebuild the
+        # instance from its init fields, so a token that stayed on the instance
+        # would let a "copy with one field changed" walk straight past the gate.
+        # Clearing it makes every such rebuild raise instead.
+        object.__setattr__(self, "compuerta", None)
+
+    def __reduce__(self) -> tuple[object, ...]:
+        """Refuse pickling. The default protocol restores `__dict__` DIRECTLY.
+
+        That bypasses `__init__` and `__post_init__` entirely, so without this a
+        `pickle.loads(pickle.dumps(payload))` would hand back a payload that
+        never met the gate. `copy.copy`/`copy.deepcopy` go through the same
+        protocol and are refused with it.
+        """
+        raise CompuertaEludida(
+            "PayloadGeneracion is not serialisable: the pickle protocol restores "
+            "state without running the classification gate. Rebuild it with "
+            "construir_payload() against a live session instead."
+        )
+
+    def __replace__(self, /, **cambios: object) -> "PayloadGeneracion":
+        """Refuse `copy.replace` (PEP 3.13) with the reason, not a stray failure.
+
+        `dataclasses.replace` does not route through this hook — it calls the
+        module-level `_replace` — but it is refused anyway by the cleared token.
+        """
+        raise CompuertaEludida(
+            "PayloadGeneracion cannot be copied-with-changes: the result would "
+            "carry the gate's verdict for a set of units the gate never saw. "
+            "Use construir_payload() or _recortar()."
+        )
 
     @property
     def vacio(self) -> bool:
@@ -364,9 +434,34 @@ SYSTEM_PROMPT = (
     "Cada afirmación sustantiva lleva al menos una cita con la forma [clave], "
     "donde `clave` es exactamente el atributo `clave` de un bloque <unidad>. "
     "No inventes ni completes claves.\n"
+    "Un encabezado tiene que ser un título corto y sin verbo; si vas a afirmar "
+    "algo, escribilo como oración con su cita, nunca como encabezado.\n"
+    "Para introducir una enumeración usá exactamente una de estas frases: "
+    + "; ".join(PLANTILLAS.lead_ins_prosa)
+    + ". Cualquier otra introducción es una afirmación y lleva cita.\n"
     "Si el material no alcanza, respondé exactamente: "
     f"{PLANTILLAS.abstencion}"
 )
+
+
+def _escapar_texto(valor: str) -> str:
+    """`&`, `<` and `>` neutralised inside a delimited body.
+
+    Without this a unit's own text can close its `<texto>`/`<unidad>` block and
+    open a SIBLING one — a forged unit with any `clave` the corpus author wants.
+    That does not mint a citation on its own (membership binds to
+    `payload.claves`, which corpus text cannot reach), but it does let the corpus
+    dictate the *shape* of the context, which is the one thing the delimiters
+    exist to own. Escaping is a departure from byte-exact verbatim inside the
+    prompt and nowhere else: `CitaRecuperada.texto` is still what the citation
+    card renders.
+    """
+    return valor.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _escapar_atributo(valor: str) -> str:
+    """Body escaping plus `"`, so a value cannot end its own attribute."""
+    return _escapar_texto(valor).replace('"', "&quot;")
 
 
 def _bloque_unidad(unidad: CitaRecuperada) -> str:
@@ -377,20 +472,27 @@ def _bloque_unidad(unidad: CitaRecuperada) -> str:
     particular is NOT reduced to a boolean and NOT dropped for brevity
     (generation spec:26-31) — it is the field that covers the document which is
     derecho aplicable by `tipo` and still must not ground a consorcio obligation.
+
+    Every field of unit-controlled provenance is escaped on the way in: a corpus
+    document is data, and data that can write the delimiters is instruction.
     """
     campos = [
-        f'clave="{unidad.citation_key}"',
-        f'tipo="{unidad.tipo}"',
+        f'clave="{_escapar_atributo(unidad.citation_key)}"',
+        f'tipo="{_escapar_atributo(unidad.tipo)}"',
         f'es_secundaria="{str(unidad.es_secundaria).lower()}"',
-        f'jurisdiccion="{unidad.jurisdiccion}"',
-        f'estado_vigencia="{unidad.estado_vigencia or ""}"',
+        f'jurisdiccion="{_escapar_atributo(unidad.jurisdiccion)}"',
+        f'estado_vigencia="{_escapar_atributo(unidad.estado_vigencia or "")}"',
     ]
     encabezado = "<unidad " + " ".join(campos) + ">"
     cuerpo = [encabezado]
     if unidad.relevancia_consorcio:
-        cuerpo.append(f"<relevancia_consorcio>{unidad.relevancia_consorcio}</relevancia_consorcio>")
+        cuerpo.append(
+            "<relevancia_consorcio>"
+            f"{_escapar_texto(unidad.relevancia_consorcio)}"
+            "</relevancia_consorcio>"
+        )
     cuerpo.append("<texto>")
-    cuerpo.append(unidad.texto)
+    cuerpo.append(_escapar_texto(unidad.texto))
     cuerpo.append("</texto>")
     cuerpo.append("</unidad>")
     return "\n".join(cuerpo)
@@ -426,7 +528,9 @@ def armar_prompt(
         partes.extend(f"- {v}" for v in violaciones)
         partes.append("</violaciones_del_intento_anterior>")
     partes.append("")
-    partes.append(f"<pregunta>{pregunta}</pregunta>")
+    # The question is user input and gets the same treatment as corpus text: it
+    # is the second string in this prompt that nobody on our side wrote.
+    partes.append(f"<pregunta>{_escapar_texto(pregunta)}</pregunta>")
     return "\n".join(partes)
 
 
@@ -481,23 +585,66 @@ def _es_fragmento(oracion: str, plantillas: Plantillas) -> bool:
     return not any(t in plantillas.verbos_frecuentes for t in tokens)
 
 
+_ENCABEZADO_RE = re.compile(r"^#+")
+
+
+def lineas_de(oracion: str) -> tuple[str, ...]:
+    """The non-empty lines of one segment — the unit the rule actually binds to.
+
+    `segmentar` cuts on `[.!?]` and NEVER on a newline, so a markdown heading
+    followed by a claim is a single segment. Classifying that segment as one
+    thing is how `"## Fundamento\\n<claim>."` used to be excused whole: the
+    heading marker decided for the claim underneath it. Lines are the smallest
+    unit on which a heading or a lead-in can honestly speak for itself.
+    """
+    return tuple(linea.strip() for linea in oracion.splitlines() if linea.strip())
+
+
+def _nucleo(linea: str) -> str:
+    """The line minus its heading hashes and its trailing enumeration colons.
+
+    What is left is the line's actual content, and it is that content — not the
+    marker — that has to pass the fragment test. A marker is a claim about
+    shape; it is not evidence that nothing was asserted.
+    """
+    nucleo = _ENCABEZADO_RE.sub("", linea).strip()
+    while nucleo.endswith(":"):
+        nucleo = nucleo[:-1].strip()
+    return nucleo
+
+
+def _linea_es_sustantiva(linea: str, plantillas: Plantillas) -> bool:
+    """One line's verdict. `#` and `:` no longer excuse anything by themselves."""
+    desnudo = linea.strip()
+    if not desnudo:
+        return False
+    if normalizar(desnudo) in plantillas.boilerplate:
+        return False
+    nucleo = _nucleo(desnudo)
+    if not nucleo:  # `##`, `:` or a bare rule — no content at all
+        return False
+    normalizado = normalizar(nucleo)
+    if normalizado in plantillas.boilerplate or normalizado in plantillas.lead_ins:
+        return False
+    return not _es_fragmento(nucleo, plantillas)
+
+
 def es_afirmacion_sustantiva(oracion: str, plantillas: Plantillas = PLANTILLAS) -> bool:
     """Everything that is not positively recognised as excluded IS a claim.
 
     The default direction is the whole point: an unrecognised sentence shape is
     treated as a claim, so the failure mode of this rule is a rejected answer,
     never a served uncited one (`design.md:597-599`).
+
+    "Pure heading" and "pure enumeration lead-in" (`design.md:596`) are enforced
+    as PURITY, not as the presence of a marker character. A line is excused only
+    when what remains after stripping its `#` or its trailing `:` is itself a
+    fragment by the checked-in artifact, or is a checked-in boilerplate framing.
+    `"## Fundamento"` still costs nothing; `"## <claim>"`, `"<claim> y los
+    requisitos son:"` and `"## Fundamento\\n<claim>."` are claims and must carry
+    a key. A segment is a claim when ANY of its lines is.
     """
-    desnudo = oracion.strip()
-    if not desnudo:
-        return False
-    if desnudo.startswith("#"):  # a pure markdown heading
-        return False
-    if desnudo.endswith(":"):  # a pure enumeration lead-in
-        return False
-    if normalizar(desnudo) in plantillas.boilerplate:
-        return False
-    return not _es_fragmento(desnudo, plantillas)
+    return any(_linea_es_sustantiva(linea, plantillas) for linea in lineas_de(oracion))
 
 
 def esta_vigente(estado_vigencia: str | None) -> bool:
@@ -533,6 +680,10 @@ class VerificacionCitas:
     #: A cited non-vigente / secundaria unit served without its framing.
     marcadores_faltantes: tuple[str, ...]
     truncado: bool = False
+    #: The draft was blank. Every other check passes vacuously on empty text —
+    #: no invented key, no uncited claim, no missing marker — so without this an
+    #: empty provider response is CERTIFIED and served as an answer.
+    sin_contenido: bool = False
 
     @property
     def acepta(self) -> bool:
@@ -541,11 +692,14 @@ class VerificacionCitas:
             or self.afirmaciones_sin_cita
             or self.marcadores_faltantes
             or self.truncado
+            or self.sin_contenido
         )
 
     def violaciones(self) -> tuple[str, ...]:
         """The list the retry prompt carries, in a stable order."""
         salida: list[str] = []
+        if self.sin_contenido:
+            salida.append("respuesta vacía: el proveedor no devolvió texto")
         if self.truncado:
             salida.append("truncado: la respuesta anterior se cortó por max_tokens")
         for clave in sorted(self.claves_inventadas):
@@ -568,10 +722,13 @@ def verificar(
     citadas = claves_citadas(texto)
     inventadas = citadas - payload.claves
 
+    # LINE, not segment: a key on the heading line must not certify the claim on
+    # the line below it, for the same reason the heading must not excuse it.
     sin_cita = tuple(
-        oracion
+        linea
         for oracion in segmentar(texto, plantillas)
-        if es_afirmacion_sustantiva(oracion, plantillas) and not claves_citadas(oracion)
+        for linea in lineas_de(oracion)
+        if _linea_es_sustantiva(linea, plantillas) and not claves_citadas(linea)
     )
 
     por_clave = {u.citation_key: u for u in payload.unidades}
@@ -591,6 +748,7 @@ def verificar(
         afirmaciones_sin_cita=sin_cita,
         marcadores_faltantes=tuple(faltantes),
         truncado=truncado,
+        sin_contenido=not texto.strip(),
     )
 
 

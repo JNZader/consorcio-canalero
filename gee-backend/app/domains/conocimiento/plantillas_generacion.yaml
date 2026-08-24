@@ -58,6 +58,24 @@ boilerplate:
   # Secundaria framing — required whenever a cited unit is es_secundaria.
   - Advertencia la fuente citada es secundaria y no es derecho aplicable
 
+# The enumeration lead-ins that introduce a list and assert nothing on their
+# own. Matched on the normalized form of the line MINUS its trailing colon.
+#
+# This block exists because "ends with a colon" was doing this job and could not:
+# a colon is a character a claim can also end with, so `"El plazo de oposición
+# vence a los treinta días hábiles y los requisitos son:"` was excused as a
+# lead-in. The excusable lead-ins are therefore ENUMERATED here — a reviewed
+# diff — instead of inferred from punctuation. A lead-in that is not on this list
+# and is not a short verbless fragment must carry a key, which a model can always
+# satisfy by writing `Los requisitos son los siguientes [clave]:`.
+#
+# The answer prompt names this list, so the rule and the prompt stay one artifact
+# (design.md:601-602). Adding an entry here means editing the prompt.
+lead_ins:
+  - Los requisitos son los siguientes
+  - Corresponde lo siguiente
+  - En particular
+
 # The framing sentence the marker check demands per condition, in NORMALIZED
 # form — this is what the check compares against, and it is listed separately
 # from the `boilerplate` block so the check reads as what it enforces rather

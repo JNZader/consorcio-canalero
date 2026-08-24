@@ -199,6 +199,11 @@ class RespuestaConocimiento(BaseModel):
 
     `generacion_fallida` carries no prose and no rejected draft. That is a
     validated invariant here, not a convention the caller is trusted to keep.
+
+    The invariants run in both directions. The non-answer states carry no prose
+    and no citations; `respuesta` carries BOTH, non-empty. An answer-shaped item
+    with neither is the one shape U8 must never render, and it is unconstructible
+    rather than merely undocumented.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -247,3 +252,24 @@ class RespuestaConocimiento(BaseModel):
                 f"estado={self.estado!r} must carry no citations: a citation "
                 "block next to a non-answer reads as a partial answer."
             )
+        if self.estado == "respuesta":
+            # The POSITIVE half of the invariant. The four rules above are all
+            # negative — they say what the non-answer states must not carry — and
+            # negative rules alone leave `estado='respuesta', respuesta=None,
+            # citas=[]` constructible: an answer-shaped item with no answer and
+            # no grounds, which U8 would render as a blank card under a heading
+            # that promises a legal answer. The shape the panel must never render
+            # is made unconstructible here rather than trusted not to occur.
+            if not (self.respuesta or "").strip():
+                raise ValueError(
+                    "estado='respuesta' requires answer prose. An empty answer is "
+                    "an abstención, a generacion_fallida or a no_disponible, and "
+                    "which one it is is information the caller is owed."
+                )
+            if not self.citas:
+                raise ValueError(
+                    "estado='respuesta' requires at least one citation. The whole "
+                    "enforcement chain exists so that no served claim is uncited; "
+                    "an answer with an empty citation block is that failure "
+                    "reaching the reader with the panel showing nothing amiss."
+                )
