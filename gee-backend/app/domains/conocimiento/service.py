@@ -23,7 +23,11 @@ import yaml
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.domains.conocimiento.embedding import Embedder
+from app.domains.conocimiento.embedding import (
+    Embedder,
+    RevisionNoResoluble,
+    canonicalizar_revision,
+)
 from app.domains.conocimiento.expectations import CorpusExpectations, load_expectations
 from app.domains.conocimiento.fusion import RRF_K, reciprocal_rank_fusion
 from app.domains.conocimiento.gates import GateReport, run_all_gates
@@ -201,6 +205,13 @@ MODOS = ("fts", "vector", "hybrid", "bm25_ce")
 MODOS_RRF = ("fts", "vector", "hybrid")
 
 
+#: The value both sides collapse to under the deterministic-embedder exemption.
+#: A sentinel rather than a `revision is None` short-circuit so the comparison
+#: stays ONE tuple check: an exemption written as an early `return` is an
+#: exemption that a later field added to the tuple silently skips.
+_REVISION_SINTETICA = "<sintetica>"
+
+
 class EmbedderRequerido(RuntimeError):
     """A vector-using mode was requested without an embedder to build the query.
 
@@ -355,13 +366,68 @@ def verificar_embedder(db: Session, corpus_sha: str, embedder: Embedder) -> None
             "would be FTS wearing a hybrid label. Run scripts/rag_embed_batch.py "
             "and scripts/rag_load_vectors.py, or ask for modo='fts'."
         )
-    if procedencia.modelo != embedder.model_id:
+    # Both revisions are canonicalized to their resolved commit hash BEFORE the
+    # comparison, and a value that does not resolve is refused rather than
+    # string-compared (`design.md:73-84`). Doing it here, on both operands, is
+    # what keeps the guard from firing on two processes running the same weights
+    # — a false positive whose symptom at the query surface is identical to the
+    # true positive's, which is the worst possible shape for a guard.
+    try:
+        revision_almacenada = canonicalizar_revision(procedencia.revision_hf)
+    except RevisionNoResoluble as no_resoluble:
+        raise EmbedderMismatch(
+            f"snapshot {corpus_sha} records embedding_revision_hf="
+            f"{procedencia.revision_hf!r}, which is not a resolved commit hash. "
+            "That is unknown provenance, not a match: two different commits can "
+            "share a tag. Re-load a manifest that carries the resolved revision."
+        ) from no_resoluble
+    try:
+        revision_del_embedder = canonicalizar_revision(embedder.revision)
+    except RevisionNoResoluble as no_resoluble:
+        raise EmbedderMismatch(
+            f"the query embedder reports revision {embedder.revision!r}, which is "
+            "not a resolved commit hash. Load it from a resolved revision — the "
+            "sidecar reports what transformers recorded on the config, never the "
+            "symbolic pin it was started from."
+        ) from no_resoluble
+
+    # NULL is UNKNOWN, not a wildcard. Rows loaded before the sidecar existed
+    # hold `revision_hf IS NULL`, and treating that as "matches anything" would
+    # restore the hole this check closes. The ONE exemption is the deterministic
+    # fake, whose `revision` is `None` by construction (`embedding.py:304`) and
+    # whose artifacts stamp `revision_hf: null` — and it is keyed on the
+    # embedder's own `sintetico` flag rather than on the NULLs themselves, so a
+    # REAL embedder reporting no revision is still unknown provenance
+    # (`design.md:99-105`).
+    if revision_almacenada is None and revision_del_embedder is None and embedder.sintetico:
+        revision_almacenada = revision_del_embedder = _REVISION_SINTETICA
+    elif revision_almacenada is None or revision_del_embedder is None:
+        # Every operand is named, the model included: this branch also catches
+        # the synthetic-rows/real-embedder pair, and a message that mentioned
+        # only the revisions would report a model mismatch as a NULL problem.
         raise EmbedderMismatch(
             f"snapshot {corpus_sha} holds vectors produced by "
-            f"{procedencia.modelo!r} (sintetico={procedencia.sintetico}), but the "
-            f"query embedder is {embedder.model_id!r}. Distances across two "
-            "different models are arithmetic without meaning: the leg would "
-            "return a confident, fully attributed, entirely fabricated ranking."
+            f"{procedencia.modelo!r} at revision {procedencia.revision_hf!r}, and "
+            f"the query embedder is {embedder.model_id!r} at revision "
+            f"{embedder.revision!r}. A NULL revision on a real embedder is unknown "
+            "provenance, not a wildcard: two BGE-M3 revisions report the same "
+            "model_id and produce different vectors, so 'matches anything' is the "
+            "hole this check exists to close. Re-load a manifest that carries the "
+            "resolved revision (scripts/rag_embed_batch.py + rag_load_vectors.py)."
+        )
+
+    # One tuple check rather than two ifs, so a field cannot later be added to
+    # one side only (`design.md:94-97`).
+    if (procedencia.modelo, revision_almacenada) != (embedder.model_id, revision_del_embedder):
+        raise EmbedderMismatch(
+            f"snapshot {corpus_sha} holds vectors produced by "
+            f"{procedencia.modelo!r} at revision {procedencia.revision_hf!r} "
+            f"(sintetico={procedencia.sintetico}), but the query embedder is "
+            f"{embedder.model_id!r} at revision {embedder.revision!r}. Distances "
+            "across two different models — or two revisions of one model — are "
+            "arithmetic without meaning: the leg would return a confident, fully "
+            "attributed, entirely fabricated ranking. A NULL recorded revision is "
+            "unknown provenance and is refused for the same reason."
         )
 
 
@@ -461,6 +527,7 @@ def recuperar(
     modo: str = "hybrid",
     k: int = 10,
     embedder: Embedder | None = None,
+    qvec: Sequence[float] | None = None,
     reranker: Reranker | None = None,
     limite_leg: int = LEG_LIMIT,
     rrf_k: int = RRF_K,
@@ -488,11 +555,30 @@ def recuperar(
     `EmbedderMismatch` when the query embedder is not the one that wrote the
     column: both are ways for the vector leg to contribute nothing, or nonsense,
     while the result still looks fused.
+
+    `qvec` lets a caller that already embedded this question hand the vector in
+    rather than pay a second sidecar hop for the same text under the same model
+    (`design.md:145-160`). It bypasses no guard: `require_vector_support` and
+    `verificar_embedder` still run, and `embedder` is still required for the
+    vector modes, because the identity `verificar_embedder` compares lives on the
+    embedder and not on the vector. Handing in a `qvec` computed by a DIFFERENT
+    embedder than the one passed is a caller bug this guard structurally cannot
+    see; the one call site that does this builds both from the same adapter.
     """
     if modo not in MODOS:
         raise ValueError(f"unknown modo {modo!r} (expected one of {MODOS})")
 
     if modo == "bm25_ce":
+        if qvec is not None:
+            # Accepting and ignoring it would be worse than refusing: the caller
+            # would believe a vector reached the ranking, and `bm25_ce` reads no
+            # vector column at all (`design.md:1129-1131`). The router computes
+            # one query vector for its own stage 2; handing it here is a wiring
+            # mistake, and a silent one has no symptom.
+            raise ValueError(
+                "modo='bm25_ce' has no vector leg, so a caller-supplied qvec "
+                "would be silently discarded. Pass it only to 'vector'/'hybrid'."
+            )
         if reranker is None:
             raise RerankerRequerido(
                 "modo='bm25_ce' needs a reranker: BM25 selects the candidate pool "
@@ -531,8 +617,16 @@ def recuperar(
         hits_fts = fts_search(db, corpus_sha, pregunta, limite=limite_leg)
     if modo in ("vector", "hybrid"):
         assert embedder is not None  # guarded above; keeps mypy honest
-        (qvec,) = embedder.encode([pregunta])
-        hits_vector = vector_search(db, corpus_sha, qvec, limite=limite_leg)
+        # One question, one embedding. The router's stage 2 and this leg need the
+        # SAME vector of the SAME text under the SAME model; embedding twice
+        # costs a second sidecar hop on the critical path and, worse, creates a
+        # state where the router classified one vector and retrieval searched
+        # another (`design.md:145-160`). `qvec` is a shortcut past the second
+        # ENCODE and past nothing else — `require_vector_support` and
+        # `verificar_embedder` already ran above, unconditionally, because the
+        # identity they compare lives on the embedder and not on the vector.
+        vector_de_consulta = qvec if qvec is not None else embedder.encode([pregunta])[0]
+        hits_vector = vector_search(db, corpus_sha, vector_de_consulta, limite=limite_leg)
 
     fusionado = reciprocal_rank_fusion(
         [[hit.citation_key for hit in hits_fts], [hit.citation_key for hit in hits_vector]],

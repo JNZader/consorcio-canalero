@@ -340,6 +340,50 @@ services:
       start_period: 15s
 
   # ============================================
+  # CONOCIMIENTO-EMBED - BGE-M3 query embedding sidecar
+  #
+  # Same shape as geo-worker (design.md:49-50): an internal service reached over
+  # the compose network via `settings.conocimiento_embed_url`, never published to
+  # the host. It exists because the server image cannot embed a query and must
+  # not learn how — torch in the backend image would break the D8 guard test by
+  # design and put two 2.2 GB model copies on a 2-vCPU box.
+  #
+  # Not started by default: `docker compose up -d conocimiento-embed` when the
+  # semantic surface is being exercised. Nothing in V0 retrieval depends on it,
+  # and the ratified B50 serving path reads no vector column at all.
+  # ============================================
+  conocimiento-embed:
+    build:
+      context: .
+      dockerfile: docker/embed/Dockerfile
+    container_name: consorcio-conocimiento-embed
+    restart: unless-stopped
+    expose:
+      - "8002"
+    environment:
+      - EMBED_MODEL_ID=${EMBED_MODEL_ID:-BAAI/bge-m3}
+      # An INPUT pin, symbolic or hash. What the service REPORTS is always the
+      # resolved 40-hex commit (design.md:73-84), so setting a tag here is safe
+      # and setting nothing takes the model's default revision.
+      - EMBED_REVISION_HF=${EMBED_REVISION_HF:-}
+      - EMBED_DEVICE=cpu
+    volumes:
+      # The model is pulled once into this cache, not baked into the image.
+      - conocimiento-embed-cache:/cache/huggingface
+    networks:
+      - consorcio-network
+    healthcheck:
+      # `/health` and NOT `/ready`: the model takes 30-60 s to load and a
+      # readiness-based healthcheck would restart-loop the container through its
+      # own cold start forever. Readiness is the surface's question, answered per
+      # request as `embedder_no_listo`.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=5).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
   # MARTIN - PostGIS Vector Tile Server
   # ============================================
   martin:
@@ -467,3 +511,5 @@ volumes:
     name: consorcio-denuncia-uploads
   celery-beat-schedule:
     name: consorcio-celery-beat-schedule
+  conocimiento-embed-cache:
+    name: consorcio-conocimiento-embed-cache

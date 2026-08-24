@@ -1,0 +1,14 @@
+# Scoped to `docker/embed/Dockerfile` only (BuildKit reads `<dockerfile>.dockerignore`
+# in preference to the context root's), so adding it here cannot change what the
+# backend, frontend or geo-worker builds see.
+#
+# The build context has to be the repository root — the image imports the
+# backend's `BGEM3Embedder` instead of re-implementing it — but the four files it
+# actually needs are tiny. Everything else is excluded rather than shipped and
+# then unused: an unbounded context is how a secret or a stray artifact ends up
+# in a layer nobody meant to publish.
+*
+!docker/embed/app.py
+!docker/embed/requirements-embed.lock
+!gee-backend/app/domains/conocimiento/ddl.py
+!gee-backend/app/domains/conocimiento/embedding.py
