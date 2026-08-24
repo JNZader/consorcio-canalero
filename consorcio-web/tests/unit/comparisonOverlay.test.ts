@@ -16,8 +16,35 @@ import { WATERWAY_DEFS } from '../../src/hooks/useWaterways';
 import { ALL_ETAPAS } from '../../src/types/canales';
 
 const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
+
+/**
+ * Renderable UI ids that are vectors but are DELIBERATELY absent from the
+ * comparison overlay.
+ *
+ * ⚠️ THE RULE, RATIFIED BY THE OWNER ON 2026-08-23: ⚠️
+ * *"toda capa cuyos datos requieren panel autenticado + disclaimer queda fuera
+ * del comparador"* — any layer whose data requires an authenticated panel plus
+ * a disclaimer stays out of the comparator.
+ *
+ * That is a RULE, not a per-layer excuse: the comparison slider renders map
+ * paint and nothing else, so a layer that can only be read honestly alongside a
+ * panel (and the sentence that panel carries) has no honest rendering there.
+ * Membership of this set is therefore decided by the rule, and a member that
+ * does NOT satisfy it is an oversight, exactly as an unlisted layer would be.
+ *
+ *   - `road_flow` (flujo-caminos, design D6) — satisfies both halves: its route
+ *     is `require_admin_or_operator`, the selector entry is role-gated, and
+ *     RFA-R4 requires the non-hydraulic disclaimer to accompany the ranking
+ *     wherever it is read (`RoadFlowDisclaimer`, surfaces `lista`/`hoja`/`chip`).
+ *     Rendering the points in the slider would show a ranking stripped of the
+ *     statement of what it is not. D6 does not place this layer in the
+ *     comparison view and no task wires its data into that view's inputs, so it
+ *     is excluded rather than half-mounted.
+ */
+const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow']);
+
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(
-  (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id)
+  (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id) && !NOT_IN_COMPARISON_UI_LAYER_IDS.has(id)
 );
 
 interface FakeMapHarness {

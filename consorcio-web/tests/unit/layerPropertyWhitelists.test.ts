@@ -13,11 +13,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  LAYER_PROPERTY_FORMATTERS,
+  LAYER_PROPERTY_LABELS,
   LAYER_PROPERTY_WHITELISTS,
   getDisplayableProperties,
   resolveLayerWhitelistKey,
 } from '../../src/components/map2d/layerPropertyWhitelists';
+import { buildClickableLayers } from '../../src/components/map2d/useMapInteractionEffects';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
+import { ROAD_FLOW_LAYER_IDS } from '../../src/components/map2d/roadFlowLayers';
 
 describe('LAYER_PROPERTY_WHITELISTS', () => {
   it('defines the 7 caminos keys in the documented order', () => {
@@ -195,5 +199,39 @@ describe('getDisplayableProperties', () => {
     const keys = rows.map((r) => r.key);
     expect(keys).toEqual(['nombre', 'cuenca', 'superficie_ha']);
     expect(rows.find((r) => r.key === 'superficie_ha')?.formatted).toBe('7.652,7 ha');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flujo-caminos S4 — task 4.5, RETIRED by the owner decision of 2026-08-23
+// ---------------------------------------------------------------------------
+
+/**
+ * Task 4.5 whitelisted the properties of a CROSSING POPUP. The ratified wiring
+ * builds no such popup: a crossing click opens `TramoSurveySheet` for its
+ * segment, and the two `road_flow` ml layers are deliberately absent from
+ * `buildClickableLayers`, so InfoPanel never receives one of those features.
+ *
+ * These assertions replace the ones that exercised the dead table. They pin the
+ * RETIREMENT rather than deleting the coverage silently: re-adding a whitelist
+ * here without also making those layers clickable (and mounting a disclaimer in
+ * whatever surface reads them) would fail this file.
+ */
+describe('road-flow whitelist — retired with the popup (owner decision 2026-08-23)', () => {
+  it('neither ml layer resolves to a whitelist key', () => {
+    expect(resolveLayerWhitelistKey(ROAD_FLOW_LAYER_IDS.FLUJO)).toBeNull();
+    expect(resolveLayerWhitelistKey(ROAD_FLOW_LAYER_IDS.CANAL)).toBeNull();
+  });
+
+  it('no `road-flow` table survives in any of the three registries', () => {
+    expect(LAYER_PROPERTY_WHITELISTS['road-flow']).toBeUndefined();
+    expect(LAYER_PROPERTY_LABELS['road-flow']).toBeUndefined();
+    expect(LAYER_PROPERTY_FORMATTERS['road-flow']).toBeUndefined();
+  });
+
+  it('those layers are not clickable, which is WHY there is no whitelist', () => {
+    const clickable = buildClickableLayers('idle');
+    expect(clickable).not.toContain(ROAD_FLOW_LAYER_IDS.FLUJO);
+    expect(clickable).not.toContain(ROAD_FLOW_LAYER_IDS.CANAL);
   });
 });

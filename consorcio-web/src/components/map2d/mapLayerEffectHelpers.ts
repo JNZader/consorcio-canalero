@@ -27,6 +27,15 @@ import {
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
 import {
+  ROAD_FLOW_ALL_KINDS_VISIBLE,
+  ROAD_FLOW_LAYER_IDS,
+  type RoadFlowKindVisibility,
+  applyRoadFlowKindFilter,
+  buildRoadFlowCanalPaint,
+  buildRoadFlowFlujoPaint,
+  buildRoadFlowTipoFilter,
+} from './roadFlowLayers';
+import {
   YPF_ESTACION_BOMBEO_GEOJSON,
   YPF_ESTACION_BOMBEO_LAYER_ID,
   YPF_ESTACION_BOMBEO_SOURCE_ID,
@@ -214,6 +223,65 @@ export function syncRoadLayers(
   }
 
   setLayerVisibility(map, roadLayerId, isVisible && !!roadsCollection);
+}
+
+/**
+ * Mount / update the two ranked-crossing circle layers (flujo-caminos, D6).
+ *
+ * `crossings` is the `features` member of the SAME `RoadFlowCrossingsResponse`
+ * object the ranked list renders — one fetch, one payload, two surfaces. That is
+ * what makes RFA-R2 ("the two views do not disagree about any of those four
+ * values") a structural property instead of a discipline the next contributor
+ * has to remember.
+ *
+ * `totalFlujoNatural` graduates the radius scale. It comes from the response's
+ * own counter, never from `features.length`: the collection also carries the
+ * unranked canal points, and a scale whose top end moved with canal coverage
+ * would be meaningless.
+ */
+export function syncRoadFlowLayers(
+  map: maplibregl.Map,
+  crossings: FeatureCollection<Point> | null | undefined,
+  totalFlujoNatural: number,
+  isVisible: boolean,
+  kindVisibility: RoadFlowKindVisibility = ROAD_FLOW_ALL_KINDS_VISIBLE
+) {
+  ensureGeoJsonSource(map, SOURCE_IDS.ROAD_FLOW, crossings ?? asFeatureCollection([]));
+
+  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.FLUJO)) {
+    map.addLayer({
+      id: ROAD_FLOW_LAYER_IDS.FLUJO,
+      type: 'circle',
+      source: SOURCE_IDS.ROAD_FLOW,
+      filter: buildRoadFlowTipoFilter('flujo_natural'),
+      paint: buildRoadFlowFlujoPaint(totalFlujoNatural),
+    });
+  } else {
+    // The run size changes between recalculations; the scale must follow it.
+    map.setPaintProperty(
+      ROAD_FLOW_LAYER_IDS.FLUJO,
+      'circle-radius',
+      buildRoadFlowFlujoPaint(totalFlujoNatural)['circle-radius']
+    );
+  }
+
+  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CANAL)) {
+    map.addLayer({
+      id: ROAD_FLOW_LAYER_IDS.CANAL,
+      type: 'circle',
+      source: SOURCE_IDS.ROAD_FLOW,
+      filter: buildRoadFlowTipoFilter('canal'),
+      paint: buildRoadFlowCanalPaint(),
+    });
+  }
+
+  // The panel's kind selection is a FILTER, never an unmount — see
+  // `applyRoadFlowKindFilter`.
+  applyRoadFlowKindFilter(map, kindVisibility);
+
+  const mounted = isVisible && !!crossings;
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.FLUJO, mounted);
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CANAL, mounted);
 }
 
 export function syncBasinLayers(

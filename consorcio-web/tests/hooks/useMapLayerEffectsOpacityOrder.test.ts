@@ -36,6 +36,7 @@ vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
   syncBaseTileVisibility: vi.fn(),
   syncBasinLayers: vi.fn(),
   syncCatastroLayers: vi.fn(),
+  syncRoadFlowLayers: vi.fn(),
   syncRoadLayers: vi.fn(),
   syncSoilLayers: vi.fn(),
   syncWaterwayLayers: vi.fn(),

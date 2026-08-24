@@ -17,11 +17,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_LAYER_ORDER,
   LAYER_RENDER_REGISTRY,
+  type MapLayerImperativeApi,
   OPACITY_PROP,
   RENDERABLE_UI_LAYER_IDS,
   applyLayerOpacity,
   applyLayerOrder,
-  type MapLayerImperativeApi,
 } from '../../src/components/map2d/layerRenderRegistry';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { CATASTRO_FILL_OPACITY as CATASTRO_FILL_OPACITY_FROM_PAINT } from '../../src/components/map2d/mapLayerEffectHelpers';
@@ -239,5 +239,60 @@ describe('applyLayerOrder', () => {
     const { map, moveLayer } = makeMap();
     expect(() => applyLayerOrder(map, undefined as unknown as readonly string[])).not.toThrow();
     expect(moveLayer).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flujo-caminos S4 — task 4.1
+// ---------------------------------------------------------------------------
+
+describe('layerRenderRegistry — road_flow (flujo-caminos, design D6)', () => {
+  it('registers road_flow EXACTLY ONCE in each of the three places', () => {
+    const inRenderable = RENDERABLE_UI_LAYER_IDS.filter((id) => id === 'road_flow');
+    const inOrder = DEFAULT_LAYER_ORDER.filter((id) => id === 'road_flow');
+    const inRegistry = Object.keys(LAYER_RENDER_REGISTRY).filter((id) => id === 'road_flow');
+
+    expect(inRenderable).toHaveLength(1);
+    expect(inOrder).toHaveLength(1);
+    expect(inRegistry).toHaveLength(1);
+  });
+
+  it('the SINGLE entry owns BOTH ml layers (the `waterways` sub-filter precedent)', () => {
+    // Two top-level ids for two paint variants of one dataset would be the first
+    // exception to the rule `layerRenderRegistry.ts:73-78` states explicitly.
+    const entry = LAYER_RENDER_REGISTRY.road_flow;
+    expect(entry).toBeDefined();
+
+    const ids = entry.mlLayers.map((ml) => ml.id);
+    expect(ids).toHaveLength(2);
+    expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-flujo`);
+    expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-canal`);
+
+    // Both are circle layers: `symbol` has no single opacity paint property the
+    // registry could drive (design D6).
+    for (const ml of entry.mlLayers) {
+      expect(ml.opacityProp).toBe(OPACITY_PROP.circle);
+    }
+  });
+
+  it('OPACITY_PROP is UNTOUCHED — no `symbol` entry was added', () => {
+    expect(OPACITY_PROP).toEqual({
+      fill: 'fill-opacity',
+      line: 'line-opacity',
+      raster: 'raster-opacity',
+      circle: 'circle-opacity',
+    });
+    expect(Object.keys(OPACITY_PROP)).not.toContain('symbol');
+    expect(Object.values(OPACITY_PROP)).not.toContain('icon-opacity');
+    expect(Object.values(OPACITY_PROP)).not.toContain('text-opacity');
+  });
+
+  it('no registry entry anywhere declares a symbol opacity property', () => {
+    const valid = new Set<string>(Object.values(OPACITY_PROP));
+    for (const [uiId, entry] of Object.entries(LAYER_RENDER_REGISTRY)) {
+      for (const ml of entry.mlLayers) {
+        expect(valid.has(ml.opacityProp), `${uiId}/${ml.id} uses ${ml.opacityProp}`).toBe(true);
+      }
+    }
   });
 });
