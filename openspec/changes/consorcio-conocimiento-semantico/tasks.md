@@ -811,16 +811,16 @@ re-estimated before the chain strategy is picked.)*
 
 ## Phase 9: Eval extension (U9)
 
-- [ ] 9.1 GREEN: `eval/answers.py` + `answer_set.yaml` — invented-citation and uncited-claim scored against
+- [x] 9.1 GREEN: `eval/answers.py` + `answer_set.yaml` — invented-citation and uncited-claim scored against
       the **post-exclusion payload**, via the same `assert_unidades_publicas` call the request path uses
       (`design.md:787-794`, `generation spec:134-138`).
-- [ ] 9.2 GREEN: owner-graded citation faithfulness on n ≥ 30 **answers** *(RATIFIED 2026-08-23, decision
+- [x] 9.2 GREEN: owner-graded citation faithfulness on n ≥ 30 **answers** *(RATIFIED 2026-08-23, decision
       0.6 — no longer a proposal)*, publishing `n_respuestas`,
       `n_afirmaciones` and the per-answer claim distribution; intra-rater re-grade on max(10%, 15 claims),
       below 15 ⇒ `not-evaluable` (`design.md:819-837`).
-- [ ] 9.3 GREEN: graded artifacts pinned to `(prompt_version, provider_model_pin, corpus_sha)`; refuse on
+- [x] 9.3 GREEN: graded artifacts pinned to `(prompt_version, provider_model_pin, corpus_sha)`; refuse on
       divergence naming both operands, per `harness.py:254-269` (`design.md:839-845`).
-- [ ] 9.4 GREEN: **end-to-end (post-exclusion) abstention** as its own row next to the retrieval-level LOOCV
+- [x] 9.4 GREEN: **end-to-end (post-exclusion) abstention** as its own row next to the retrieval-level LOOCV
       pair, pinned to `(corpus_sha, expected_clasificacion_sha256)`; a reclassification re-triggers the
       measurement even with `corpus_sha` unmoved (`design.md:796-812`).
 - [x] 9.1b GREEN — **publish the `bm25_ce` arm beside the FTS-only baselines** *(added 2026-08-23; owns the

@@ -110,8 +110,18 @@ _PLANTILLAS_PATH = Path(__file__).parent / "plantillas_generacion.yaml"
 
 @dataclass(frozen=True)
 class Plantillas:
-    """The uncited-claim rule and the marker framings, as loaded from YAML."""
+    """The uncited-claim rule and the marker framings, as loaded from YAML.
 
+    `version` is the PROMPT version, and it is load-bearing outside this module:
+    a faithfulness grade is a judgment about text a specific prompt produced, so
+    the graded answer set pins it and refuses on divergence (task 9.3). The
+    artifact carried the number all along and nothing read it, which meant the
+    pin's only possible source was a constant somebody would forget to bump —
+    and this file's own docstring says editing a framing here IS editing the
+    prompt.
+    """
+
+    version: int
     abreviaturas: frozenset[str]
     boilerplate: frozenset[str]
     #: The enumerated claim-free enumeration lead-ins, normalized. Replaces
@@ -144,6 +154,7 @@ def normalizar(texto: str) -> str:
 def cargar_plantillas(path: Path | None = None) -> Plantillas:
     crudo = yaml.safe_load((path or _PLANTILLAS_PATH).read_text(encoding="utf-8"))
     return Plantillas(
+        version=int(crudo["version"]),
         abreviaturas=frozenset(str(a).lower() for a in crudo["abreviaturas"]),
         boilerplate=frozenset(normalizar(str(b)) for b in crudo["boilerplate"]),
         lead_ins=frozenset(normalizar(str(li)) for li in crudo["lead_ins"]),
@@ -729,6 +740,33 @@ class VerificacionCitas:
         return tuple(salida)
 
 
+def lineas_sustantivas(texto: str, plantillas: Plantillas = PLANTILLAS) -> tuple[str, ...]:
+    """Every line of `texto` that makes a claim, cited or not.
+
+    Extracted so the eval harness can compute the uncited-claim RATE without a
+    second implementation of "what counts as a claim" (task 9.1). A denominator
+    derived from a different rule than the enforcement uses would publish a rate
+    for a function production does not run — the same failure the invented-
+    citation universe correction fixed on the numerator side.
+
+    LINE, not segment: a key on the heading line must not certify the claim on
+    the line below it, for the same reason the heading must not excuse it.
+    """
+    return tuple(
+        linea
+        for oracion in segmentar(texto, plantillas)
+        for linea in lineas_de(oracion)
+        if _linea_es_sustantiva(linea, plantillas)
+    )
+
+
+def afirmaciones_sin_cita(texto: str, plantillas: Plantillas = PLANTILLAS) -> tuple[str, ...]:
+    """The substantive lines carrying no citation key. The eval numerator."""
+    return tuple(
+        linea for linea in lineas_sustantivas(texto, plantillas) if not claves_citadas(linea)
+    )
+
+
 def verificar(
     texto: str,
     payload: PayloadGeneracion,
@@ -739,15 +777,7 @@ def verificar(
     """Generate → parse → membership → uncited-claim → markers. In that order."""
     citadas = claves_citadas(texto)
     inventadas = citadas - payload.claves
-
-    # LINE, not segment: a key on the heading line must not certify the claim on
-    # the line below it, for the same reason the heading must not excuse it.
-    sin_cita = tuple(
-        linea
-        for oracion in segmentar(texto, plantillas)
-        for linea in lineas_de(oracion)
-        if _linea_es_sustantiva(linea, plantillas) and not claves_citadas(linea)
-    )
+    sin_cita = afirmaciones_sin_cita(texto, plantillas)
 
     por_clave = {u.citation_key: u for u in payload.unidades}
     normalizado = normalizar(texto)

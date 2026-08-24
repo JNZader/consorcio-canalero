@@ -71,6 +71,15 @@ from app.domains.conocimiento.eval.harness import (  # noqa: E402
     evaluar,
     verificar_corpus_sha,
 )
+from app.domains.conocimiento.eval.answers import (  # noqa: E402
+    ConjuntoRespuestasInvalido,
+    ConjuntoRespuestasNoRatificado,
+    EntradaRespuestas,
+    PayloadDivergente,
+    PinRespuestasDivergente,
+    RespuestasSinteticas,
+    cargar_y_puntuar,
+)
 from app.domains.conocimiento.eval.report import (  # noqa: E402
     EvalSinteticoNoEsEval,
     escribir_reporte,
@@ -79,6 +88,7 @@ from app.domains.conocimiento.eval.router import (  # noqa: E402
     EntradaRouter,
     correr_eval_router,
 )
+from app.domains.conocimiento.generacion import PLANTILLAS  # noqa: E402
 from app.domains.conocimiento.recuperacion.reranker import (  # noqa: E402
     BGEReranker,
     RerankerDeterministico,
@@ -197,6 +207,25 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--answer-set",
+        type=Path,
+        default=None,
+        help=(
+            "graded answer set (tasks 9.1-9.4). Defaults to NOT scoring the "
+            "answer-level block, which the report then states in words. The "
+            "answers themselves come from the GPU worker through the runbook; "
+            "this command grades nothing and scores what it is handed."
+        ),
+    )
+    parser.add_argument(
+        "--provider-model-pin",
+        default=None,
+        help=(
+            "the model this run's answers were produced by, compared against the "
+            "artifact's pin. Defaults to `settings.conocimiento_modelo`."
+        ),
+    )
+    parser.add_argument(
         "--generado-en",
         help=(
             "ISO-8601 timestamp for the report header. Defaults to the wall "
@@ -261,6 +290,52 @@ def _embedder(nombre: str, *, device: str, model_id: str):
     # `query`: the eval turns gold QUESTIONS into vectors. Ignored by the
     # symmetric models, load-bearing for e5 (see `E5Embedder`).
     return get_embedder(nombre, rol="query", device=device, model_id=model_id)
+
+
+#: Why the report says the answer-level block was not scored on a run that was
+#: not handed an answer set. Same discipline as `MOTIVO_ROUTER_SIN_EMBEDDER`: the
+#: document states the command that WOULD score it, rather than leaving a gap
+#: where a section belongs — an absent section reads as a section that was fine.
+MOTIVO_SIN_ANSWER_SET = (
+    "El bloque de métricas por respuesta no se puntuó: esta corrida no recibió "
+    "`--answer-set`. Las respuestas las produce el worker con GPU (runbook G9) "
+    "contra el pin real, y el owner las gradúa; recién entonces hay artefacto "
+    "que pasarle a este comando."
+)
+
+
+def _entrada_respuestas(db, args) -> EntradaRespuestas:
+    """Load, pin-check and score the graded answer set, or say why there is none.
+
+    Every refusal degrades into a STATED `not-evaluable` rather than killing the
+    run, and that asymmetry is deliberate: the retrieval ablation is a separate,
+    complete measurement, and losing it because an answer set is unratified would
+    make the report's most expensive half hostage to its cheapest.
+
+    The one thing that never happens is a figure with no provenance behind it.
+    """
+    if args.answer_set is None:
+        return EntradaRespuestas.no_evaluable(MOTIVO_SIN_ANSWER_SET)
+
+    from app.config import settings
+
+    pin = args.provider_model_pin or settings.conocimiento_modelo
+    try:
+        return cargar_y_puntuar(
+            db,
+            ruta=args.answer_set,
+            prompt_version=PLANTILLAS.version,
+            provider_model_pin=pin,
+            corpus_sha=args.corpus_sha,
+        )
+    except (
+        ConjuntoRespuestasNoRatificado,
+        ConjuntoRespuestasInvalido,
+        PinRespuestasDivergente,
+        PayloadDivergente,
+        RespuestasSinteticas,
+    ) as motivo:
+        return EntradaRespuestas.no_evaluable(str(motivo))
 
 
 def _reranker(nombre: str, *, device: str):
@@ -442,6 +517,12 @@ def main(argv: list[str] | None = None) -> int:
             reranker=reranker,
         )
 
+        # Inside the session, because `verificar_payload` re-derives the
+        # shippable set from the LIVE classification with the same call the
+        # request path makes. That is the check that catches a reclassification
+        # with `corpus_sha` unmoved, and it cannot be done from a header.
+        entrada_respuestas = _entrada_respuestas(db, args)
+
     entrada_router = _entrada_router(embedder, pasos=args.router_pasos)
 
     try:
@@ -454,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
             permitir_sintetico=args.allow_synthetic,
             latencia=latencia,
             router=entrada_router,
+            respuestas=entrada_respuestas,
         )
     except EvalSinteticoNoEsEval as error:
         print(f"ERROR: {error}", file=sys.stderr)

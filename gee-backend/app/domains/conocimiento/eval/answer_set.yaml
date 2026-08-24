@@ -1,0 +1,83 @@
+# Answer-level eval set — the GRADED artifact (tasks 9.1-9.4, design.md G7).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THIS FILE IS A SHELL ON PURPOSE. It carries the schema, the pins and the
+# refusal, and NO answers — because there are none yet and inventing them would
+# be the exact failure the whole harness exists to prevent.
+#
+# The answers are produced by running the ratified questions through the REAL
+# serving path on the owner's GPU worker (runbook G9): real BM25 + real
+# `bge-reranker-v2-m3` + the pinned provider. Then the owner grades every claim.
+# `eval/answers.py` loads, checks and scores what comes back; it never writes it.
+#
+# Until `estado` starts with RATIFICADO, `cargar_conjunto_respuestas` raises
+# `ConjuntoRespuestasNoRatificado` and the report prints `not-evaluable` where
+# the figures would go. That is the generation spec's own rule: "the owner MUST
+# ratify the answer set before any threshold is scored".
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1
+
+# One of: `BORRADOR …` (nothing is scored) or `RATIFICADO <fecha> — <nota>`.
+estado: "BORRADOR — sin corridas reales; las respuestas las produce el worker con GPU (runbook G9)"
+
+# ── The three pins of task 9.3 ──────────────────────────────────────────────
+# A faithfulness label is a judgment about a specific answer produced by a
+# specific prompt, a specific model and a specific corpus. Move any of the three
+# and the labels stop describing this system: `verificar_pines` refuses, names
+# both operands, and says the fix is a RE-GRADE — never a re-scoring.
+prompt_version: 1
+provider_model_pin: "deepseek-v4-flash"
+corpus_sha: "12043582bf8016288a7e8084e85a4b713a97af2f"
+
+# ── The fourth pin, which task 9.4 needs and `corpus_sha` cannot give ───────
+# A reclassification changes payloads WITHOUT changing corpus bytes, so pinning
+# `corpus_sha` alone would let a widened allowlist reuse figures measured under
+# a narrower one. sha256 of `expected_clasificacion.yaml`'s bytes; produce it
+# with `python -c "import hashlib,pathlib;
+# print(hashlib.sha256(pathlib.Path('app/domains/conocimiento/eval/
+# expected_clasificacion.yaml').read_bytes()).hexdigest())"`.
+#
+# `verificar_payload` is the belt to this braces: it re-derives the shippable set
+# from the live database with the same `assert_unidades_publicas` call the
+# request path uses, and refuses on divergence even if this header was not
+# updated.
+expected_clasificacion_sha256: ""
+
+# Did a stand-in write these answers? A `GeneradorDeterministico` produces text
+# engineered to satisfy every mechanical check, so its invented-citation rate is
+# `0.00` BY CONSTRUCTION. `false` is only honest once a real run exists; `null`
+# means "no run at all", which `assert_publicable` refuses just as loudly.
+generador_sintetico: null
+
+# ── Schema of each entry, for whoever fills this in ─────────────────────────
+#
+# respuestas:
+#   - id: R-01                       # unique; traceable back to the run
+#     pregunta_ref: G-12             # the gold-set item, when it comes from there
+#     pregunta: "…"                  # or the literal text, for a `publico` item
+#     debe_abstenerse: false         # the GOLD label, not the observed outcome
+#     estado_servido: respuesta      # respuesta | abstencion | redireccion |
+#                                    # generacion_fallida | no_disponible
+#     claves_recuperadas: ["9750#1", "8548#3"]   # the retrieved page
+#     claves_payload: ["9750#1"]                 # POST-exclusion; a subset
+#     texto: |
+#       El consorcio administra el canal [9750#1].
+#     afirmaciones:                  # one entry per claim the owner graded
+#       - id: R-01-a1
+#         texto: "El consorcio administra el canal."
+#         clave: "9750#1"
+#         grado: sostenida           # sostenida | parcial | contradicha
+#     regrado:                       # blind second pass, >= 1 day later
+#       R-01-a1: sostenida
+#
+# Two rules the loader enforces and that are easy to get wrong by hand:
+#
+#   * `claves_payload` MUST be a subset of `claves_recuperadas`. The payload is
+#     the retrieved page FILTERED; a key in it that was never retrieved did not
+#     come from this request.
+#   * an `estado_servido: respuesta` with empty `texto` is refused. Every
+#     mechanical check passes vacuously on empty text — no invented key, no
+#     uncited claim, no missing marker — so it would score a perfect row.
+#
+respuestas: []

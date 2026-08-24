@@ -57,6 +57,11 @@ from app.domains.conocimiento.eval.harness import (
     decidir_go_no_go,
     resumen_metodologico,
 )
+from app.domains.conocimiento.eval.answers import (
+    EntradaRespuestas,
+    bloque_para as bloque_respuestas_para,
+    json_para as json_respuestas_para,
+)
 from app.domains.conocimiento.eval.router import (
     EntradaRouter,
     bloque_para as bloque_router_para,
@@ -637,6 +642,7 @@ def renderizar_markdown(
     permitir_sintetico: bool = False,
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
+    respuestas: EntradaRespuestas | None = None,
 ) -> str:
     """Render the report. Pure: same arguments in, byte-identical string out."""
     sintetico = _gate_sintetico(procedencia, permitir_sintetico, resultado=resultado)
@@ -723,6 +729,7 @@ def renderizar_markdown(
     # facts were impossible to tell apart from the artifact.
     lineas += [*bloque_margen_baseline(resultado), ""]
     lineas += [*bloque_router_para(router), ""]
+    lineas += [*bloque_respuestas_para(respuestas), ""]
 
     return "\n".join(lineas) + "\n"
 
@@ -736,6 +743,7 @@ def _a_json(
     sintetico: bool,
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
+    respuestas: EntradaRespuestas | None = None,
 ) -> dict[str, Any]:
     versiones = runtime_versions()
     modos: dict[str, Any] = {}
@@ -877,6 +885,10 @@ def _a_json(
         # Always a key, and `evaluado` is always a boolean: a machine reader must
         # not have to infer "the router was not scored" from an absent field.
         "router": json_router_para(router),
+        # Answer-level metrics (G7). Always a key, always with `evaluado`: the
+        # checked-in answer set is an unratified shell, and "the figures were not
+        # scored" must not be inferable only from a missing field.
+        "respuestas": json_respuestas_para(respuestas),
         "modos": modos,
     }
 
@@ -891,6 +903,7 @@ def escribir_reporte(
     permitir_sintetico: bool = False,
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
+    respuestas: EntradaRespuestas | None = None,
 ) -> ReporteEscrito:
     """Write the markdown and its machine-readable twin, side by side.
 
@@ -907,6 +920,7 @@ def escribir_reporte(
         permitir_sintetico=permitir_sintetico,
         latencia=latencia,
         router=router,
+        respuestas=respuestas,
     )
     datos = _a_json(
         resultado,
@@ -916,6 +930,7 @@ def escribir_reporte(
         sintetico=sintetico,
         latencia=latencia,
         router=router,
+        respuestas=respuestas,
     )
 
     destino.mkdir(parents=True, exist_ok=True)

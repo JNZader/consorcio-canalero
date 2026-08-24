@@ -763,3 +763,81 @@ class TestArmGateado:
         assert "Margen contra el baseline FTS-only" in texto
         assert "0.138" in texto
         assert ETIQUETA_SMOKE in texto
+
+
+class TestAnswerSetEnLaCLI:
+    """Tasks 9.1-9.4 reaching the artifact a person actually reads."""
+
+    def test_sin_answer_set_el_reporte_dice_por_que(self, cli, tmp_path):
+        """An absent section reads as a section that was fine. So it is present."""
+        marcar(cli, sintetico=False)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        md = (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").read_text(encoding="utf-8")
+        assert "Métricas por respuesta" in md
+        assert "worker con GPU" in md
+        js = json.loads(
+            (tmp_path / "retrieval-eval-dddddddd-2026-08-10.results.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert js["respuestas"]["evaluado"] is False
+
+    def test_un_answer_set_sin_ratificar_degrada_pero_no_mata_la_corrida(self, cli, tmp_path):
+        """The ablation is a complete measurement on its own.
+
+        Losing it because the answer set is unratified would make the report's
+        most expensive half hostage to its cheapest.
+        """
+        marcar(cli, sintetico=False)
+        conjunto = tmp_path / "answer_set.yaml"
+        conjunto.write_text(
+            "version: 1\nestado: 'BORRADOR'\nprompt_version: 1\n"
+            "provider_model_pin: x\ncorpus_sha: y\nrespuestas: []\n",
+            encoding="utf-8",
+        )
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--answer-set",
+                str(conjunto),
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        md = (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").read_text(encoding="utf-8")
+        assert "not-evaluable" in md
+        assert "BORRADOR" in md
+
+    def test_el_pin_del_prompt_sale_del_artefacto_de_plantillas(self):
+        """Not a constant somebody must remember to bump.
+
+        `plantillas_generacion.yaml` carries `version` and its own docstring says
+        that editing a framing there IS editing the prompt. Reading it is what
+        makes the 9.3 pin able to notice.
+        """
+        from app.domains.conocimiento.generacion import PLANTILLAS, cargar_plantillas
+
+        assert PLANTILLAS.version == cargar_plantillas().version
+        assert isinstance(PLANTILLAS.version, int)
