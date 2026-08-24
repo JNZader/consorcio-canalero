@@ -77,6 +77,12 @@ def _raster_crs(path: str):
 
 def _copiar_a_scratch(dem_path: str, *, scratch_root: str) -> tuple[str, str]:
     """A private copy, so a pipeline mid-run cannot change what we are reading."""
+    # ``mkdtemp(dir=...)`` refuses a root that does not exist yet, so a
+    # misconfigured (or simply first-run) ``CRUCES_SCRATCH_ROOT`` would surface as
+    # an ``error_inesperado`` AFTER the job was already claimed. Fase A creates its
+    # own tree with ``mkdir(parents=True)``; do the same here so the two phases
+    # behave identically against the same environment variable.
+    os.makedirs(scratch_root, exist_ok=True)
     scratch = tempfile.mkdtemp(prefix="clasif_tramo_", dir=scratch_root)
     # The caller only learns this path from the RETURN value, so a failure
     # between mkdtemp and return would leak the directory forever with no owner:
@@ -92,6 +98,12 @@ def _copiar_a_scratch(dem_path: str, *, scratch_root: str) -> tuple[str, str]:
 
 
 def _fail(db, jobs, job_id: str, *, expected: str, motivo: str, area_id: str) -> None:
+    """Compare-and-set to FAILED with a motivo naming the area and the reason.
+
+    Same ``f"{motivo}: area {area_id}"`` shape as Fase A's ``_fail``: an operator
+    reading ``geo_jobs.error`` sees WHICH area failed without joining back to
+    ``parametros``.
+    """
     from app.domains.geo.models import EstadoGeoJob
 
     jobs.update_job_status_if_current(
@@ -99,7 +111,7 @@ def _fail(db, jobs, job_id: str, *, expected: str, motivo: str, area_id: str) ->
         uuid.UUID(job_id),
         expected_estado=expected,
         estado=EstadoGeoJob.FAILED.value,
-        error=motivo,
+        error=f"{motivo}: area {area_id}",
     )
     db.commit()
     logger.warning("clasificador_tramo.rechazado", area_id=area_id, motivo=motivo)
