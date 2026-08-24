@@ -27,6 +27,24 @@ discovery.
 A machine cannot do the verification part. It can only refuse to pretend it was
 done, which is what it does today: the shipped record is `verificado: false`.
 
+> **Where the gate is called from — read this before enabling anything.** As of
+> 2026-08-24 `verificar_terminos` is called by tests and by **nothing on the
+> serving path**. U6 built the mechanism; the consumer is the first ANDed fact of
+> the feature-flag dependency and lands with **task 7.2**, as
+>
+> ```python
+> verificar_terminos(
+>     cargar_terminos(),
+>     modelo=settings.conocimiento_modelo,
+>     pool=settings.conocimiento_pool,
+> )   # ⇒ 503 base_de_conocimiento_no_lista, cause `terminos_no_verificados`
+> ```
+>
+> Until that lands, this gate guards nothing: flipping `conocimiento_qa_enabled`
+> to `true` today would serve questions with the record still unverified, and the
+> only thing enforcing A2's "if those terms cannot be verified, the flag is not
+> enabled" would be somebody remembering. **Do not enable the flag before 7.2.**
+
 ## Procedure
 
 ### 1. The exact model id, as the pool actually exposes it
@@ -59,6 +77,14 @@ to-the-vendor one). Two criteria, both hard:
 - **A bounded retention window**, in days. "They keep it for a while" is not a
   retention term. `0` is a legitimate value and means the provider publishes that
   it retains nothing.
+
+  **Upper bound: 1095 days** (`proveedores.RETENCION_MAX_DIAS`, three years).
+  Beyond it the record refuses. A very large number is not a bounded window with
+  a big value in it; it is indefinite retention written in days, and the
+  questions a CD member asks about their own consorcio are not archive material
+  for the provider. If a provider's published term is genuinely longer and the
+  pin is still wanted, that is a decision to take and to raise the constant
+  with — not a value to slip past a type check.
 
 Note that the pool is an intermediary: verify the terms of the operator that
 actually receives the traffic. The same model id behind a different pool is a
