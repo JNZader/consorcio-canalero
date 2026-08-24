@@ -15,7 +15,11 @@
  *    and there must not be one: one set, one place (design G6);
  *  - the SERVER's markers — `estado_vigencia`, `es_secundaria`,
  *    `relevancia_consorcio` — displayed as given. The panel never re-derives a
- *    vigencia from the text and never paraphrases anything inside a citation;
+ *    vigencia from the text and never paraphrases anything inside a citation.
+ *    The one derived thing is PRESENTATION: the badge COLOUR reads the marker's
+ *    prefix, while the badge TEXT is always the server's string verbatim. A
+ *    colour is a claim too, so it is derived conservatively — see
+ *    {@link colorDeVigencia};
  *  - the redirect surface the SERVER named. The classification→surface mapping
  *    is deterministic and server-side (routing spec:31); a lookup table in the
  *    frontend would be a second mapping free to drift from it.
@@ -72,6 +76,31 @@ const PRESENTACION_ESTADO: Record<ConocimientoEstado, { titulo: string; color: s
   [CONOCIMIENTO_ESTADOS.GENERACION_FALLIDA]: { titulo: 'No se pudo generar', color: 'orange' },
   [CONOCIMIENTO_ESTADOS.NO_DISPONIBLE]: { titulo: 'Servicio no disponible', color: 'red' },
 };
+
+/**
+ * The presentation for one state, with an explicit fallback for a state this
+ * table does not name.
+ *
+ * The table above is exhaustive over the CURRENT contract, and the type system
+ * says so — which is exactly why the runtime needs this. The server can add a
+ * seventh state, or a deployment can run a newer backend than this bundle, and
+ * indexing the table then yields `undefined`. Reading `.titulo` off that throws
+ * inside `ConocimientoItemCard`, and with no error boundary above the list ONE
+ * unrecognized item blanks the entire bandeja — every other answer included.
+ *
+ * The fallback names the value verbatim instead of guessing a meaning for it:
+ * this panel does not know what the state means, and inventing "Procesando" or
+ * "Error" for an unknown value would be the panel deciding something only the
+ * server can decide.
+ */
+export function presentacionDeEstado(estado: string): { titulo: string; color: string } {
+  return (
+    PRESENTACION_ESTADO[estado as ConocimientoEstado] ?? {
+      titulo: `Estado no reconocido: ${estado}`,
+      color: 'gray',
+    }
+  );
+}
 
 /**
  * Explanations of the non-answer states, in the panel's own words.
@@ -139,6 +168,24 @@ function ProsaConCitas({ prosa }: Readonly<{ prosa: string }>) {
   );
 }
 
+/**
+ * The badge COLOUR for a `estado_vigencia`. The TEXT is never touched.
+ *
+ * The spec's marker is prefix-shaped: the only two prefixes with a defined
+ * meaning are `VIGENTE…` and `DEROGADA…`. Everything else the corpus can carry —
+ * `EN REVISIÓN`, `SIN DATOS`, a value added after this file was written — is
+ * UNKNOWN, and painting the unknown red would tell the reader "do not cite this"
+ * about a norm nobody said anything against. A red badge is an assertion about
+ * the law, so it is spent only on the prefix that actually asserts it; anything
+ * else gets a neutral badge and the reader gets the server's own words.
+ */
+export function colorDeVigencia(estadoVigencia: string): 'teal' | 'red' | 'gray' {
+  const normalizado = estadoVigencia.trim().toUpperCase();
+  if (normalizado.startsWith('DEROGADA')) return 'red';
+  if (normalizado.startsWith('VIGENTE')) return 'teal';
+  return 'gray';
+}
+
 /** One citation card. Every field here is server-authored and shown as given. */
 export function ConocimientoCitaCard({ cita }: Readonly<{ cita: ConocimientoCita }>) {
   return (
@@ -157,8 +204,9 @@ export function ConocimientoCitaCard({ cita }: Readonly<{ cita: ConocimientoCita
             <Badge
               size="sm"
               variant="light"
-              color={cita.estado_vigencia.toUpperCase().startsWith('VIGENTE') ? 'teal' : 'red'}
+              color={colorDeVigencia(cita.estado_vigencia)}
               data-testid="cita-vigencia"
+              data-color-vigencia={colorDeVigencia(cita.estado_vigencia)}
             >
               {cita.estado_vigencia}
             </Badge>
@@ -247,7 +295,7 @@ function BloqueRedireccion({
  * rendering assertion.
  */
 export function ConocimientoItemCard({ item }: Readonly<{ item: ConocimientoItem }>) {
-  const presentacion = PRESENTACION_ESTADO[item.estado];
+  const presentacion = presentacionDeEstado(item.estado);
   const respuesta = item.respuesta;
   const explicacion = EXPLICACION_ESTADO[item.estado];
 
@@ -337,14 +385,40 @@ export function ConocimientoItemCard({ item }: Readonly<{ item: ConocimientoItem
  * folded into a generic error box.
  */
 const CAUSA_LEGIBLE: Record<string, string> = {
+  // `enforce_conocimiento_qa_enabled`'s three ANDed dependency facts.
   terminos_no_verificados:
     'los términos del proveedor de generación no están verificados para el modelo configurado',
   credencial_ausente: 'falta la credencial del proveedor de generación',
   embedder_no_listo: 'el servicio de embeddings no está listo',
+  // The kill switch. This is the MOST likely 503 on a fresh deployment — the
+  // default state of a deployment with no flag set is OFF — so leaking the raw
+  // setting name here would make the commonest case the least readable one.
+  conocimiento_qa_enabled: 'el buzón de consultas no está habilitado en este entorno',
+  // The quota/ceiling refusals. The server sends `type(exc).__name__`, so the
+  // wire value is the Python CLASS name, not the snake_case `causa` attribute.
+  CuotaAgotada: 'se agotó tu cuota diaria de consultas',
+  CuotaNoConfigurada: 'la cuota diaria de consultas no está configurada',
+  TechoDeGasto: 'se alcanzó el techo de gasto configurado para el período',
+  TechoNoConfigurado: 'el techo de gasto no está configurado',
+  VentanaNoConfigurada: 'la ventana de gasto está mal configurada',
 };
 
+/**
+ * A cause the operator can read.
+ *
+ * Unmapped causes are still SHOWN — the identifier is the operator's only lead
+ * and dropping it would be worse than an ugly one — but framed as an identifier
+ * rather than dropped into the middle of a Spanish sentence as if it were one.
+ */
+export function causaLegible(causa: string | null): string | null {
+  if (!causa) return null;
+  const conocida = CAUSA_LEGIBLE[causa];
+  if (conocida) return conocida;
+  return `una dependencia del servicio reportó «${causa}»`;
+}
+
 export function EstadoDelServicio({ error }: Readonly<{ error: ConocimientoApiError }>) {
-  const causa = error.causa ? (CAUSA_LEGIBLE[error.causa] ?? error.causa) : null;
+  const causa = causaLegible(error.causa);
   return (
     <Alert
       color="orange"
@@ -368,7 +442,70 @@ function esRefusalDeServicio(error: unknown): error is ConocimientoApiError {
   return error instanceof ConocimientoApiError && error.status === 503;
 }
 
-function ConocimientoBandeja() {
+function esSesionExpirada(error: unknown): error is ConocimientoApiError {
+  return error instanceof ConocimientoApiError && error.status === 401;
+}
+
+/**
+ * The 401 surface `lib/api/conocimiento.ts` promises.
+ *
+ * That module's header justifies bypassing `apiFetch`'s one-shot 401
+ * refresh/retry with "the panel says the session expired instead of silently
+ * refreshing". That sentence is the whole argument for accepting the known
+ * limit, so this component has to exist — without it the trade buys nothing and
+ * a 401 lands in the generic red box next to a form that will keep 401ing.
+ *
+ * A plain anchor rather than the router's `Link`: the token this bundle is
+ * holding is the thing the server just refused, and a full document load is the
+ * cheapest way to be sure nothing in memory survives into the next session.
+ */
+export function SesionExpirada() {
+  return (
+    <Alert
+      color="red"
+      variant="light"
+      icon={<IconAlertTriangle size={16} />}
+      title="Tu sesión expiró"
+      data-testid="sesion-expirada"
+    >
+      <Stack gap={4}>
+        <Text size="sm">
+          El servidor rechazó la sesión de este navegador. Iniciá sesión de nuevo para volver a la
+          bandeja; las consultas que ya enviaste siguen encoladas.
+        </Text>
+        <Anchor href="/login" data-testid="sesion-expirada-login">
+          Ir a iniciar sesión
+        </Anchor>
+      </Stack>
+    </Alert>
+  );
+}
+
+/**
+ * What to tell the user about a REJECTED submit.
+ *
+ * The rate-limit envelope is `{error: "limite_de_tasa", retry_after: <s>}` and
+ * carries no `detalle`, so the client's generic "No se pudo contactar el buzón
+ * de consultas (error 429)" is both wrong (it was contacted) and useless (it
+ * does not say when to retry). The `retry_after` the client already parses into
+ * `extra` is the one piece of information the user needs, so it is spoken.
+ */
+export function mensajeDeErrorEnvio(error: ConocimientoApiError | Error): string {
+  if (!(error instanceof ConocimientoApiError) || error.status !== 429) return error.message;
+
+  const segundos = segundosDeReintento(error.extra.retry_after);
+  const base = 'Límite de consultas alcanzado.';
+  return segundos === null ? base : `${base} Probá de nuevo en ~${segundos} s.`;
+}
+
+/** `retry_after` arrives as a number of seconds; a numeric string is accepted too. */
+function segundosDeReintento(valor: unknown): number | null {
+  const numero = typeof valor === 'string' ? Number(valor) : valor;
+  if (typeof numero !== 'number' || !Number.isFinite(numero) || numero <= 0) return null;
+  return Math.ceil(numero);
+}
+
+export function ConocimientoBandeja() {
   const { items, isLoading, isError, error, refetch, enviar, isEnviando, errorEnvio } =
     useConocimientoQA();
   const [pregunta, setPregunta] = useState('');
@@ -376,13 +513,18 @@ function ConocimientoBandeja() {
   const enviarPregunta = () => {
     const limpia = pregunta.trim();
     if (limpia.length === 0) return;
-    enviar(limpia);
-    setPregunta('');
+    // Cleared on ACCEPTANCE only. Clearing here would destroy up to 2000
+    // characters the moment the server says 429 or 422 — the two cases where
+    // the user's next move is to send that exact same text again.
+    enviar(limpia, { onSuccess: () => setPregunta('') });
   };
 
   const errorDeServicio = [error, errorEnvio].find(esRefusalDeServicio);
-  const otroErrorEnvio = errorEnvio && !esRefusalDeServicio(errorEnvio) ? errorEnvio : null;
-  const otroErrorListado = error && !esRefusalDeServicio(error) ? error : null;
+  const sesionExpirada = [error, errorEnvio].some(esSesionExpirada);
+  const yaMostrado = (candidato: unknown) =>
+    esRefusalDeServicio(candidato) || esSesionExpirada(candidato);
+  const otroErrorEnvio = errorEnvio && !yaMostrado(errorEnvio) ? errorEnvio : null;
+  const otroErrorListado = error && !yaMostrado(error) ? error : null;
 
   return (
     <Stack gap="lg" p="md">
@@ -394,6 +536,7 @@ function ConocimientoBandeja() {
         </Text>
       </Box>
 
+      {sesionExpirada ? <SesionExpirada /> : null}
       {errorDeServicio ? <EstadoDelServicio error={errorDeServicio} /> : null}
 
       <Paper withBorder radius="md" p="md">
@@ -411,7 +554,7 @@ function ConocimientoBandeja() {
           />
           {otroErrorEnvio ? (
             <Alert color="red" variant="light" data-testid="error-envio">
-              {otroErrorEnvio.message}
+              {mensajeDeErrorEnvio(otroErrorEnvio)}
             </Alert>
           ) : null}
           <Group justify="space-between">

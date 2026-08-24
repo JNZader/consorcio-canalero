@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  CONOCIMIENTO_POLL_ESCALERA_MS,
   CONOCIMIENTO_POLL_MS,
   intervaloDeSondeo,
   useConocimientoQA,
@@ -88,6 +89,48 @@ describe('intervaloDeSondeo', () => {
   });
 });
 
+// A 500, a proxy's HTML error page and a network `TypeError` are all OUTSIDE the
+// terminal-refusal list, so without a ladder the bandeja would re-ask every
+// fifteen seconds forever while a `pendiente` sits there. The escalation is the
+// whole point of the failure count reaching this function.
+describe('intervaloDeSondeo backs off, capped, on non-terminal failures', () => {
+  const quinientos = new ConocimientoApiError(500, 'error_desconocido', 'boom');
+
+  it('polls at the base cadence while nothing is failing', () => {
+    expect(intervaloDeSondeo([item('pendiente')], null, 0)).toBe(CONOCIMIENTO_POLL_ESCALERA_MS[0]);
+  });
+
+  it.each([
+    [1, CONOCIMIENTO_POLL_ESCALERA_MS[1]],
+    [2, CONOCIMIENTO_POLL_ESCALERA_MS[2]],
+  ])('escalates to step %i after that many consecutive failures', (fallos, esperado) => {
+    expect(intervaloDeSondeo([item('pendiente')], quinientos, fallos)).toBe(esperado);
+  });
+
+  it('caps at the last step instead of growing without bound', () => {
+    for (const fallos of [3, 7, 500]) {
+      expect(intervaloDeSondeo([item('pendiente')], quinientos, fallos)).toBe(
+        CONOCIMIENTO_POLL_ESCALERA_MS[CONOCIMIENTO_POLL_ESCALERA_MS.length - 1]
+      );
+    }
+  });
+
+  it('backs off on a network TypeError too, which carries no HTTP status at all', () => {
+    expect(intervaloDeSondeo([item('pendiente')], new TypeError('Failed to fetch'), 2)).toBe(
+      CONOCIMIENTO_POLL_ESCALERA_MS[2]
+    );
+  });
+
+  it('returns to the base cadence when the failure count resets on success', () => {
+    expect(intervaloDeSondeo([item('pendiente')], null, 0)).toBe(CONOCIMIENTO_POLL_MS);
+  });
+
+  it('still refuses to poll a terminal refusal, however many failures preceded it', () => {
+    const rateLimit = new ConocimientoApiError(429, 'limite_de_tasa', 'demasiadas');
+    expect(intervaloDeSondeo([item('pendiente')], rateLimit, 5)).toBe(false);
+  });
+});
+
 describe('useConocimientoQA', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -148,5 +191,33 @@ describe('useConocimientoQA', () => {
 
     await waitFor(() => expect(result.current.errorEnvio).toBeInstanceOf(ConocimientoApiError));
     expect((result.current.errorEnvio as ConocimientoApiError).causa).toBe('credencial_ausente');
+  });
+
+  // The composer clears on this callback and nowhere else, so a callback that
+  // fired on rejection would be the optimistic clear wearing a different hat.
+  it('runs the caller onSuccess only when the question was accepted', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, []))
+      .mockResolvedValueOnce(
+        jsonResponse(429, { detail: { error: 'limite_de_tasa', retry_after: 30 } })
+      )
+      .mockResolvedValue(
+        jsonResponse(202, { id: '9', estado: 'pendiente', creada_en: '2026-08-24T12:00:00Z' })
+      );
+
+    const alAceptar = vi.fn();
+    const { result } = renderHook(() => useConocimientoQA(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.items).toEqual([]));
+
+    act(() => {
+      result.current.enviar('¿Qué dice el estatuto?', { onSuccess: alAceptar });
+    });
+    await waitFor(() => expect(result.current.errorEnvio).toBeInstanceOf(ConocimientoApiError));
+    expect(alAceptar).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.enviar('¿Qué dice el estatuto?', { onSuccess: alAceptar });
+    });
+    await waitFor(() => expect(alAceptar).toHaveBeenCalledTimes(1));
   });
 });

@@ -26,9 +26,11 @@
  *
  * KNOWN LIMIT, stated rather than discovered: bypassing `apiFetch` also bypasses
  * its one-shot 401 refresh/retry. A 401 here surfaces as a `ConocimientoApiError`
- * and the panel says the session expired instead of silently refreshing. The
- * bandeja is a polled read behind an admin layout that already runs the auth
- * guard, so the blast radius is one visible error state, not a silent failure.
+ * and the panel says the session expired instead of silently refreshing —
+ * literally: `ConocimientoPanel.tsx::SesionExpirada`, which names the state and
+ * links to `/login`. The bandeja is a polled read behind an admin layout that
+ * already runs the auth guard, so the blast radius is one visible error state
+ * with a way out, not a silent failure.
  */
 
 import { API_PREFIX, API_URL, getAuthToken } from './core';

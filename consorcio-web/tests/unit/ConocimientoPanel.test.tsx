@@ -19,13 +19,20 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ConocimientoBandeja,
   ConocimientoItemCard,
   EstadoDelServicio,
+  causaLegible,
+  colorDeVigencia,
+  mensajeDeErrorEnvio,
+  presentacionDeEstado,
 } from '../../src/components/admin/ConocimientoPanel';
 import {
   type ConocimientoCita,
@@ -34,8 +41,36 @@ import {
   ConocimientoApiError,
 } from '../../src/lib/api/conocimiento';
 
+vi.mock('../../src/lib/api/core', async () => {
+  const actual = await vi.importActual<typeof import('../../src/lib/api/core')>(
+    '../../src/lib/api/core'
+  );
+  return { ...actual, getAuthToken: vi.fn(async () => 'token-de-prueba') };
+});
+
 function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
+}
+
+function renderBandeja() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <MantineProvider env="test">
+      <QueryClientProvider client={client}>
+        <ConocimientoBandeja />
+      </QueryClientProvider>
+    </MantineProvider>
+  );
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as unknown as Response;
 }
 
 function cita(overrides: Partial<ConocimientoCita> = {}): ConocimientoCita {
@@ -294,5 +329,222 @@ describe('an excluded unit can never become a card', () => {
     // The key is disclosed; the unit's TEXT and provenance are not — the server
     // never sends them, and the panel has no other source for them.
     expect(screen.getByTestId('claves-excluidas')).toHaveTextContent('10demayo#acta-privada#art1');
+  });
+});
+
+// The badge colour is the ONE derived thing on a citation card, and a red badge
+// is an assertion about the law: it says "this norm was repealed". Painting
+// every non-VIGENTE marker red says that about `EN REVISIÓN` and `SIN DATOS`
+// too, which is a claim the corpus never made.
+describe('the vigencia badge colour is derived conservatively from the prefix', () => {
+  it.each([
+    ['VIGENTE', 'teal'],
+    ['VIGENTE al 2026-01-01', 'teal'],
+    ['DEROGADA por ley 10.234', 'red'],
+    ['derogada por ley 10.234', 'red'],
+    ['EN REVISIÓN', 'gray'],
+    ['SIN DATOS', 'gray'],
+    ['MODIFICADA parcialmente', 'gray'],
+    ['', 'gray'],
+  ])('paints %s as %s', (marcador, esperado) => {
+    expect(colorDeVigencia(marcador)).toBe(esperado);
+  });
+
+  it('renders the marker VERBATIM whatever colour it got', () => {
+    for (const marcador of ['VIGENTE', 'DEROGADA por ley 10.234', 'EN REVISIÓN']) {
+      const { unmount } = renderWithMantine(
+        <ConocimientoItemCard
+          item={item('respuesta', {
+            respuesta: 'Ver [10demayo#estatuto#art12].',
+            citas: [cita({ estado_vigencia: marcador })],
+          })}
+        />
+      );
+      const badge = screen.getByTestId('cita-vigencia');
+      expect(badge).toHaveTextContent(marcador);
+      expect(badge).toHaveAttribute('data-color-vigencia', colorDeVigencia(marcador));
+      unmount();
+    }
+  });
+
+  it('reserves red for DEROGADA and never spends it on an unknown marker', () => {
+    renderWithMantine(
+      <ConocimientoItemCard
+        item={item('respuesta', {
+          respuesta: 'Ver [10demayo#estatuto#art12].',
+          citas: [cita({ estado_vigencia: 'EN REVISIÓN' })],
+        })}
+      />
+    );
+
+    expect(screen.getByTestId('cita-vigencia')).not.toHaveAttribute('data-color-vigencia', 'red');
+  });
+});
+
+// A state this bundle does not know about must degrade to a row, not to a
+// TypeError: there is no error boundary above the list, so one unrecognized item
+// would otherwise blank every other answer in the bandeja.
+describe('an unrecognized estado degrades instead of tumbling the page', () => {
+  const inventado = 'estado_del_futuro' as ConocimientoItem['estado'];
+
+  it('names the value verbatim rather than inventing a meaning for it', () => {
+    expect(presentacionDeEstado(inventado)).toEqual({
+      titulo: 'Estado no reconocido: estado_del_futuro',
+      color: 'gray',
+    });
+  });
+
+  it('renders the row, keeping the question and the timestamps readable', () => {
+    renderWithMantine(<ConocimientoItemCard item={item(inventado)} />);
+
+    expect(screen.getByTestId('estado-badge')).toHaveTextContent(
+      'Estado no reconocido: estado_del_futuro'
+    );
+    expect(screen.getByText('¿Quién aprueba el presupuesto?')).toBeInTheDocument();
+  });
+
+  it('leaves the other rows alive when one item carries the unknown state', () => {
+    renderWithMantine(
+      <>
+        <ConocimientoItemCard item={item(inventado, null, { id: 'raro' })} />
+        <ConocimientoItemCard
+          item={item('abstencion', { motivo: 'Ninguna norma aplicable.' }, { id: 'sano' })}
+        />
+      </>
+    );
+
+    expect(screen.getAllByTestId('item-buzon')).toHaveLength(2);
+    expect(screen.getByTestId('estado-motivo')).toHaveTextContent('Ninguna norma aplicable.');
+  });
+});
+
+// The kill switch is the most likely 503 on a fresh deployment, and its cause is
+// the raw setting name. Leaking it verbatim makes the commonest case read like a
+// config key someone forgot to translate.
+describe('every cause the server can send reads as prose', () => {
+  it.each([
+    ['conocimiento_qa_enabled', /no está habilitado en este entorno/i],
+    ['CuotaAgotada', /cuota diaria/i],
+    ['TechoNoConfigurado', /techo de gasto/i],
+    ['VentanaNoConfigurada', /ventana de gasto/i],
+  ])('translates %s', (causa, esperado) => {
+    renderWithMantine(
+      <EstadoDelServicio
+        error={new ConocimientoApiError(503, 'funcionalidad_no_disponible', 'detalle', causa)}
+      />
+    );
+
+    expect(screen.getByTestId('estado-servicio')).toHaveTextContent(esperado);
+  });
+
+  it('frames an unmapped cause as an identifier instead of dropping it', () => {
+    expect(causaLegible('CausaQueNadieMapeoTodavia')).toBe(
+      'una dependencia del servicio reportó «CausaQueNadieMapeoTodavia»'
+    );
+  });
+
+  it('says nothing when the server named no cause', () => {
+    expect(causaLegible(null)).toBeNull();
+  });
+});
+
+// The 429 envelope is `{error, retry_after}` with no `detalle`, so the client's
+// generic fallback message is both wrong ("no se pudo contactar" — it was
+// contacted) and useless (it never says when to retry).
+describe('the rate-limit refusal says what happened and when to retry', () => {
+  it('speaks the parsed retry_after', () => {
+    const error = new ConocimientoApiError(429, 'limite_de_tasa', 'ignorado', null, {
+      retry_after: 42,
+    });
+    expect(mensajeDeErrorEnvio(error)).toBe('Límite de consultas alcanzado. Probá de nuevo en ~42 s.');
+  });
+
+  it('rounds a fractional window up, because a rounded-down wait 429s again', () => {
+    const error = new ConocimientoApiError(429, 'limite_de_tasa', 'ignorado', null, {
+      retry_after: 12.3,
+    });
+    expect(mensajeDeErrorEnvio(error)).toContain('~13 s');
+  });
+
+  it('still names the limit when the envelope carries no retry_after', () => {
+    const error = new ConocimientoApiError(429, 'limite_de_tasa', 'ignorado');
+    expect(mensajeDeErrorEnvio(error)).toBe('Límite de consultas alcanzado.');
+  });
+
+  it('leaves every other error message untouched', () => {
+    const error = new ConocimientoApiError(422, 'pregunta_invalida', 'La pregunta es muy larga.');
+    expect(mensajeDeErrorEnvio(error)).toBe('La pregunta es muy larga.');
+  });
+});
+
+describe('the bandeja, mounted against the network', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // `lib/api/conocimiento.ts` justifies bypassing apiFetch's one-shot 401
+  // refresh with "the panel says the session expired". This is that sentence.
+  it('renders the session-expired state with a way back to the login', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, { detail: { error: 'no_autenticado', detalle: 'token vencido' } })
+    );
+
+    renderBandeja();
+
+    const alerta = await screen.findByTestId('sesion-expirada');
+    expect(alerta).toHaveTextContent(/sesión expiró/i);
+    expect(screen.getByTestId('sesion-expirada-login')).toHaveAttribute('href', '/login');
+    // Not ALSO dumped into the generic red box: one refusal, one surface.
+    expect(screen.queryByTestId('error-bandeja')).not.toBeInTheDocument();
+  });
+
+  // 2000 characters is the ceiling and a rejected question is exactly the case
+  // where the user's next move is to send that same text again.
+  it('KEEPS the typed question when the submit is refused', async () => {
+    const usuario = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, []))
+      .mockResolvedValue(
+        jsonResponse(429, { detail: { error: 'limite_de_tasa', retry_after: 30 } })
+      );
+
+    renderBandeja();
+    await screen.findByTestId('bandeja-vacia');
+
+    const textarea = screen.getByTestId('pregunta-input');
+    await usuario.type(textarea, '¿Quién aprueba el presupuesto?');
+    await usuario.click(screen.getByTestId('pregunta-enviar'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error-envio')).toHaveTextContent(/límite de consultas/i)
+    );
+    expect(screen.getByTestId('error-envio')).toHaveTextContent('~30 s');
+    expect(textarea).toHaveValue('¿Quién aprueba el presupuesto?');
+  });
+
+  it('clears the composer once the question is ACCEPTED', async () => {
+    const usuario = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, []))
+      .mockResolvedValueOnce(
+        jsonResponse(202, { id: '9', estado: 'pendiente', creada_en: '2026-08-24T12:00:00Z' })
+      )
+      .mockResolvedValue(jsonResponse(200, []));
+
+    renderBandeja();
+    await screen.findByTestId('bandeja-vacia');
+
+    const textarea = screen.getByTestId('pregunta-input');
+    await usuario.type(textarea, '¿Quién aprueba el presupuesto?');
+    await usuario.click(screen.getByTestId('pregunta-enviar'));
+
+    await waitFor(() => expect(textarea).toHaveValue(''));
   });
 });
