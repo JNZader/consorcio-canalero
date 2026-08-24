@@ -28,6 +28,22 @@ which is the queue absorbing the GPU's intermittence — the entire point of the
 amendment. Fail-closed still holds: no CPU fallback, no smaller model, and a
 SYNTHETIC ranker is refused outright below rather than quietly ordering a real
 answer.
+
+**The pre-claim guard, and why three things live in it.** Before a single row is
+claimed, `procesar_uno` refuses on a synthetic ranker, on an unverified provider
+TERMS record, and on a provider adapter that cannot be built at all. All three
+are DEPLOYMENT facts, identical for every item in the queue, and every one of
+them would otherwise be discovered after a claim — after routing, after B50
+retrieval — and be recorded as though that particular question had failed. An
+item consumed by a wiring fault is a CD member told "your question could not be
+answered" about a box that never tried.
+
+The terms check is here and not only at the HTTP door because the worker is who
+actually sends the text out. `POST /preguntas` verifying the record at ENQUEUE
+time says nothing about the moment of transmission: a record flipped to
+`verificado: false` after a hundred items were queued would have been discovered
+by nobody, and the worker would have sent all hundred. Flipping it now stops the
+worker instead of failing the items — the items are not what went wrong.
 """
 
 from __future__ import annotations
@@ -38,6 +54,7 @@ from typing import Any, Callable, ContextManager, Sequence
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.domains.conocimiento import buzon, repository, routing, service
 from app.domains.conocimiento.embed_sidecar import SidecarNoDisponible
 from app.domains.conocimiento.generacion import (
@@ -50,7 +67,11 @@ from app.domains.conocimiento.generacion import (
     assert_generador_publicable,
     generar_respuesta,
 )
-from app.domains.conocimiento.proveedores import PresupuestoDeItem
+from app.domains.conocimiento.proveedores import (
+    PresupuestoDeItem,
+    cargar_terminos,
+    verificar_terminos,
+)
 from app.domains.conocimiento.recuperacion.reranker import RerankerNoDisponible
 from app.domains.conocimiento.schemas import Redireccion, RespuestaConocimiento
 
@@ -76,6 +97,23 @@ class RerankerSintetico(RuntimeError):
     """
 
 
+def verificar_terminos_vigentes() -> None:
+    """The provider terms gate, read from disk against the CURRENT pin.
+
+    Uncached on purpose. It is one `stat` and one read of a few-hundred-byte
+    YAML per call, and the call happens once per queue poll — measured against
+    the B50 retrieval and the hosted generation that follow it, the cost is not
+    observable. A TTL cache here would buy nothing and would introduce a window
+    in which the record says the pin is not authorised and the worker keeps
+    transmitting, which is the exact failure the gate exists to close.
+    """
+    verificar_terminos(
+        cargar_terminos(),
+        modelo=settings.conocimiento_modelo,
+        pool=settings.conocimiento_pool,
+    )
+
+
 def procesar_uno(
     db: Session,
     *,
@@ -88,16 +126,24 @@ def procesar_uno(
     k: int = K_SERVING,
     item_deadline_s: float = 60.0,
     ahora: datetime.datetime | None = None,
+    verificar_terminos_fn: Callable[[], None] = verificar_terminos_vigentes,
 ) -> Any | None:
     """Process the oldest waiting item, or return `None` when none is waiting.
 
     The caller owns the transaction: on return the item is written but not
     committed, so a worker that crashes before committing releases the claim and
     leaves the item exactly as it found it.
-    """
-    assert_generador_publicable_de(reranker)
 
-    item = buzon.reclamar_pendiente(db)
+    Raises `RerankerSintetico`, `TerminosNoVerificados` or
+    `ProveedorMalConfigurado` BEFORE claiming anything — see the module
+    docstring's pre-claim guard. None of the three is an item state and none of
+    them may consume an item.
+    """
+    _exigir_cableado_publicable(reranker, crear_generador, verificar_terminos_fn, item_deadline_s)
+
+    # The claim carries the item deadline into Postgres as a transaction-local
+    # `statement_timeout`, so the row lock cannot outlive the item's own budget.
+    item = buzon.reclamar_pendiente(db, deadline_s=item_deadline_s)
     if item is None:
         return None
 
@@ -208,6 +254,27 @@ def procesar_uno(
             respuesta = _no_disponible(f"{type(exc).__name__}: {exc}", parcial)
 
     return _terminar(db, item, respuesta, decision_ruta_id=decision_id, ahora=ahora)
+
+
+def _exigir_cableado_publicable(
+    reranker: Any,
+    crear_generador: CrearGenerador,
+    verificar_terminos_fn: Callable[[], None],
+    item_deadline_s: float,
+) -> None:
+    """The three deployment facts, checked before a row is claimed.
+
+    The provider check builds a throwaway adapter and closes it immediately.
+    That is not a wasted connection — `conectar_puente` opens no socket, it
+    validates the pin, the pool and the credential and constructs a client — and
+    it is the only way to learn that the adapter cannot be built without first
+    spending a claim, a routing call and a full B50 retrieval on an item that was
+    never going to reach the provider.
+    """
+    assert_generador_publicable_de(reranker)
+    verificar_terminos_fn()
+    with crear_generador(PresupuestoDeItem(item_deadline_s)) as sonda:
+        assert_generador_publicable(sonda)
 
 
 def assert_generador_publicable_de(reranker: Any) -> None:

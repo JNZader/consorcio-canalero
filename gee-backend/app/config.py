@@ -177,6 +177,18 @@ class Settings(BaseSettings):
     # disables the message rather than marking every fresh submission stuck.
     conocimiento_worker_stale_after_s: float = 900.0
 
+    # How long `scripts/rag_worker.py` sleeps when the queue is empty. It is a
+    # POLL and not a LISTEN/NOTIFY subscription because the claim is already
+    # `FOR UPDATE SKIP LOCKED`: a notification would only tell the worker
+    # something it re-checks anyway, and would add a second delivery mechanism
+    # that can silently stop working while the queue still drains.
+    #
+    # Seconds, and deliberately not sub-second: the surface is admin-only and
+    # low-volume, an item takes tens of seconds to process, and a tight loop
+    # would spend a database round trip per interval forever to shave latency
+    # nobody is waiting on synchronously (that is the whole point of A3).
+    conocimiento_worker_poll_s: float = 5.0
+
     # Own limiter, own Redis namespace (`ratelimit:conocimiento:`), keyed on the
     # authenticated USER ID. A shared limiter would let a legal question throttle
     # the operator geo routes (`design.md:747-754`).

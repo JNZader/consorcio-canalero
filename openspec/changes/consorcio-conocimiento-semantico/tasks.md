@@ -596,6 +596,23 @@ re-estimated before the chain strategy is picked.)*
       gave it nowhere to say WHERE, so the state was constructible but empty. U7 adds `redireccion:
       Redireccion | None`, present iff `estado='redireccion'` and mutually exclusive with the orthogonal
       `redireccion_parcial`.)*
+      *(bounded corrections, 2026-08-24, from the U7 verify:*
+      *(e) **the two READ routes no longer take the enablement AND** — only the kill switch and
+      `require_admin`. Reading an answer already in the database needs no embedder, no credential and no
+      verified terms: nothing leaves the box and nothing is computed. Gating them on the AND made the bandeja
+      and the `demorado` badge that explains the silence disappear at exactly the moment something was wrong.
+      `POST /preguntas` keeps the full AND, because submitting is what spends a quota slot and sends the
+      question out. `/estado` was already exempt for the same reason.*
+      *(f) **`limite` is validated** — `Query(ge=1, le=200)`. It reaches `LIMIT` directly, and a negative one
+      was a `ProgrammingError` rendered as a 500: a broken-deployment report for a caller's typo.*
+      *(g) **the item deadline now bounds the TRANSACTION, not only the Python budget.** (a) above claimed the
+      open transaction was "bounded by `conocimiento_item_deadline_s`" and nothing enforced it: a hung
+      reranker or provider held the claimed row's lock for as long as the process lived. `reclamar_pendiente`
+      now sets a transaction-local `statement_timeout` from that deadline in the same transaction it takes the
+      lock in (the `ficha_statement_timeout_ms` precedent, `design.md:647`), so Postgres cancels, the
+      transaction aborts and the item is `pendiente` again — coherent with a claim that never wrote an
+      intermediate state. The docstring now states the honest limit too: `statement_timeout` bounds each
+      STATEMENT, so a hang in pure Python between queries is `PresupuestoDeItem`'s to bound, not this.)*
 - [x] 7.2 GREEN: `conocimiento_qa_enabled: bool = False` + `enforce_conocimiento_qa_enabled` as the FIRST
       dependency, ANDed with **(0) the provider TERMS GATE**, (1) credential presence and (2) sidecar `/ready`
       (cached probe) — `design.md:678-698`.
@@ -637,6 +654,25 @@ re-estimated before the chain strategy is picked.)*
       it leaks a pool every few seconds for as long as the sidecar is down — the exact condition under which
       the box can least afford to run out of descriptors. It now closes on the way out, and `SidecarEmbedder`
       gained the `close()`/context-manager pair `PuenteGenerador` already had.)*
+      *(bounded corrections, 2026-08-24, from the U7 verify:*
+      *(h) **the WORKER verifies the terms too**, and it is the one that matters: the worker is who actually
+      transmits. Verifying at ENQUEUE says nothing about the moment of transmission — a record flipped to
+      `verificado: false` after a hundred items were queued would have been discovered by nobody and all
+      hundred would have been sent. `procesar_uno` now checks it in its pre-claim guard and
+      `scripts/rag_worker.py` checks it again at startup. A flipped record STOPS THE WORKER and leaves the
+      items `pendiente`: a policy the owner revoked is not those questions' fault, and `generacion_fallida`
+      would blame them for it. Uncached — one small YAML read per poll, against a B50 retrieval and a hosted
+      generation.*
+      *(i) **the pre-claim guard also refuses an unbuildable provider**, beside the synthetic ranker.
+      `ProveedorMalConfigurado` is raised at construction; discovered where the adapter was previously built —
+      after routing and after a full B50 retrieval — every item in the queue would burn that work before
+      hitting the same wall.*
+      *(j) **a malformed `conocimiento_embed_url` is a named cause, not a 500.** Most bad values already
+      landed as `embedder_inalcanzable`; two families did not, because they are not `httpx.HTTPError` — an
+      unclosed IPv6 bracket raises inside `httpx.Client(...)` itself and an invalid IDNA host raises
+      `UnicodeError` at request time. Both were a 500 on a readiness gate, sending the operator to look for a
+      dead container instead of at the env var they mistyped. Caught by NAME, so a real bug still surfaces as
+      a bug.)*
 - [x] 7.3 GREEN: extend that first dependency with **reranker availability** (GPU/hosted endpoint) ⇒ 503
       `base_de_conocimiento_no_lista` cause `reranker_no_disponible`. Fail-closed only: the design authorizes
       no CPU fallback and no smaller model (`design.md:1132-1134`, decision 0.5).
@@ -673,6 +709,18 @@ re-estimated before the chain strategy is picked.)*
       `test_gee_public_contract` tests that ran after it — a failure with no relationship to the code that
       caused it. The module now stands the deployment-wide limiter down for itself and asserts the
       conocimiento route's OWN limiter directly instead.)*
+      *(bounded corrections, 2026-08-24, from the U7 verify:*
+      *(m) **`mixto` is now covered end to end** — submit → queue → worker → read, for BOTH routing spec
+      scenarios: the legal leg answered with the redirect still present (#6) and the legal leg abstaining with
+      the redirect still present (#7). The `parcial` variable in `procesar_uno` was set on every branch and
+      asserted on none, so `parcial = None` was a live mutant and the spec's "MUST NOT drop the redirect
+      because a legal answer was produced" had no test. Dropping it has no symptom on the page: the answer
+      looks complete and the operational half of the question vanishes. The `mixto` class is produced by
+      GEOMETRY — centroids equidistant from the query vector, margin exactly 0, inside `banda` and above
+      `piso` — not by patching the classifier.*
+      *(n) `GET /preguntas/{id}` gained its own 401/403 tests. It was the only route in the family without
+      them, and the only one whose response body is a specific person's verbatim question rather than a list
+      of the caller's own.)*
 - [x] 7.5 RED (threat: question text leaving the box): the routing record round-trips the verbatim question
       AND the question appears in exactly **one** outbound payload — the generation call; embed and routing
       paths asserted local (`design.md:1075`, retrieval `spec.md:156-161`).
@@ -704,6 +752,44 @@ re-estimated before the chain strategy is picked.)*
       Serving's own refusal is separate and is in the WORKER, where retrieval happens: `_recuperar` raises
       `service.CorpusNoServible` on a snapshot with synthetic embeddings and the item ends `no_disponible`,
       rather than answering a legal question from vectors nobody trained.
+      *(bounded corrections, 2026-08-24, from the U7 verify:*
+      *(k) **`causa_no_listo` now follows the GATE's order** — terms → credential → embedder. It reported them
+      terms → embedder → credential, so with all three false the diagnostic named the SIDECAR while the 503
+      the operator was actually receiving named the TERMS record: two answers to "what is wrong" that sent
+      them to different places. All three booleans are still reported; only which one the single `causa` line
+      quotes changed.*
+      *(l) **the queue-wide `worker_demorado` reuses `buzon.esta_demorado`'s arithmetic** (extracted as
+      `espera_excedida`) instead of recomputing it. They were two copies of one comparison, and drift between
+      them is silent: the banner and the per-item badge would disagree about the same worker.)*
+
+- [x] 7.7 GREEN — **the mailbox's postman** *(added 2026-08-24; closes the CRITICAL the U7 verify raised:
+      `procesar_uno` shipped with NO caller — no loop, no CLI, no scheduled task — so `POST /preguntas` wrote
+      `pendiente` rows nothing would ever pick up and `GET /estado` would have reported a permanently delayed
+      worker forever)*: `gee-backend/scripts/rag_worker.py`, the runner process.
+      **DONE 2026-08-24.** Thin entry point on the house precedent (`scripts/rag_ingest.py`): every processing
+      rule stays in `trabajador.py`. It builds the real dependencies once — the sidecar embedder, the CUDA
+      cross-encoder, the router's centroids and thresholds fitted at boot on the RATIFIED labeled set with the
+      CURRENT embedder, and a per-item generator factory — then polls, opening ONE transaction per item and
+      committing per item.
+      *(Shutdown is trivial and that is a property of the claim, not of the loop: `reclamar_pendiente` never
+      commits an intermediate state, so a SIGTERM mid-item abandons the transaction, Postgres releases the
+      lock and the item is still `pendiente` — the state it never left. Aborting costs the work spent on that
+      one item and loses nothing else, so the handler only sets a flag and there is no drain phase to get
+      wrong. The flag is a `threading.Event` so the empty-queue sleep wakes on it instead of taking up to a
+      full `conocimiento_worker_poll_s` to notice.)*
+      *(Deployment refusals — unverified terms, an unbuildable provider, a missing or synthetic reranker — are
+      logged with their cause and the loop keeps polling: the ITEMS stay `pendiente` and are not failed,
+      because a revoked policy or a missing credential is not those questions' fault. An unnamed exception
+      propagates instead, since a loop that swallows bugs is a worker that reports itself alive while
+      processing nothing.)*
+      New knob: `conocimiento_worker_poll_s` (5.0). Exit codes: 0 clean stop on a signal · 1 refused to start
+      · 2 usage, including "this interpreter has no torch" (`venv-rag`, D8 — no CPU rerank fallback exists).
+      Tests: `tests/new/conocimiento/test_rag_worker.py`, every seam faked and no wall-clock sleeping.
+      **Deployment is 10.2's, not this task's**: the `conocimiento-embed` compose block lives in the box's
+      EXTERNAL compose file, and this worker needs its own service beside it (the `venv-rag` image, the GPU
+      device reservation, `restart: unless-stopped`, and the same `.env`). U10 records that block verbatim
+      along with the sidecar's; until it does, the worker is started by hand and `GET /estado` is how anyone
+      finds out it is not running.
 
 ## Phase 8: `consorcio-web` page (U8)
 
@@ -781,6 +867,11 @@ re-estimated before the chain strategy is picked.)*
       recovery, plus the reboot re-derivation probe matrix (`design.md:914-944`).
 - [ ] 10.2 GREEN: record the `conocimiento-embed` compose block verbatim (it lives in the **external**
       compose file) + `CONOCIMIENTO_EMBED_URL` on the backend (`design.md:888-912`).
+      *(extended 2026-08-24 by task 7.7: the SAME block must also declare the **worker** service that runs
+      `scripts/rag_worker.py` — the `venv-rag` image, the GPU device reservation, `restart: unless-stopped`
+      and the same `.env` as the backend. The queue has a postman as of 7.7; until this task records how the
+      box starts it, the postman is started by hand and a box that reboots stops answering with the only
+      symptom being items ageing on `GET /estado`.)*
 - [ ] 10.3 GREEN: reconcile the runbook with the amendment — step 9 still loads vectors and step 10 still
       smokes the vector extension, but the serving smoke is a `modo="bm25_ce"` retrieval; state that the
       stored corpus vectors have no serving consumer post-B50 (see task 2.7).

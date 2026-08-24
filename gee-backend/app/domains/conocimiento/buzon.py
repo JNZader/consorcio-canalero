@@ -19,12 +19,23 @@ left. There is nothing to reap because nothing was orphaned, and no seventh stat
 was added to a union the design fixed at six.
 
 The cost is stated rather than hidden: the item's transaction stays open for the
-duration of its processing, holding one connection and one row lock. That is
-bounded by `conocimiento_item_deadline_s` (60 s), which is the same budget the
-provider attempts are already bounded by, and the surface is admin-only and
-low-volume by construction. If throughput ever makes a 60 s transaction the
-binding constraint, the fix is a lease column plus a reaper — and it must be
-taken as a decision, with the orphan window written down, not slid in.
+duration of its processing, holding one connection and one row lock. That bound
+is ENFORCED rather than hoped for: `reclamar_pendiente` sets a transaction-local
+`statement_timeout` from the item deadline in the same transaction it takes the
+lock in, so a hung reranker or a hung provider cannot hold the row past the
+item's own budget — Postgres cancels the statement, the transaction aborts, the
+lock is released and the item is `pendiente` again, which is exactly the state
+the claim never moved it out of.
+
+The honest limit of that: `statement_timeout` bounds each STATEMENT, not the
+transaction's wall clock, so a worker that hangs in pure Python between two
+queries is not cancelled by it. What it does cover is the case that motivated it
+— a query, a lock wait or a dependency call that never returns while the row is
+held. The Python side is bounded by `PresupuestoDeItem`, and the two together
+are why there is no lease column here. If throughput ever makes a 60 s
+transaction the binding constraint, the fix is a lease column plus a reaper —
+and it must be taken as a decision, with the orphan window written down, not
+slid in.
 
 **Staleness needs no heartbeat.** A3's honesty obligation is that an item must
 not sit `pendiente` forever with no explanation. The signal is the item's own
@@ -39,7 +50,7 @@ import datetime
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.domains.conocimiento.models import ESTADO_PENDIENTE, RagConsulta
@@ -119,13 +130,46 @@ def listar(db: Session, *, usuario_id: uuid.UUID | None, limite: int = 50) -> li
     )
 
 
-def reclamar_pendiente(db: Session) -> Any:
+def aplicar_deadline(db: Session, segundos: float) -> None:
+    """Bound every statement of THIS transaction by the item's own deadline.
+
+    `set_config(..., is_local => true)` is `SET LOCAL` semantics with a bound
+    parameter, the same precedent the ficha uses (`ficha_service.py:319-337`),
+    so the value never leaks onto the pooled connection.
+
+    Without this the module docstring's "bounded by
+    `conocimiento_item_deadline_s`" was a claim about the Python budget only: a
+    reranker or a provider call that never returns would hold the claimed row's
+    lock for as long as the process lived, and the item would be invisible to
+    every other worker the whole time. With it, Postgres cancels, the
+    transaction aborts, and the item is `pendiente` again — which is coherent
+    with a claim that never wrote an intermediate state.
+
+    A non-positive deadline is not applied: `statement_timeout = 0` means NO
+    timeout in Postgres, so passing a spent budget straight through would turn
+    the bound off at exactly the moment it is most needed. The spent budget is
+    `PresupuestoDeItem`'s refusal to make, not this one's.
+    """
+    if segundos <= 0:
+        return
+    db.execute(
+        text("SELECT set_config('statement_timeout', :ms, true)"),
+        {"ms": str(int(segundos * 1000))},
+    )
+
+
+def reclamar_pendiente(db: Session, *, deadline_s: float | None = None) -> Any:
     """The oldest unclaimed `pendiente`, locked for THIS transaction, or `None`.
 
     `SKIP LOCKED` is what makes two workers safe without a coordination table:
     each takes the oldest row the other is not already holding. See the module
     docstring for why the row is NOT flipped to an intermediate state.
+
+    `deadline_s` is applied BEFORE the select, so the claim itself is inside the
+    bound rather than the one statement that could hang outside it.
     """
+    if deadline_s is not None:
+        aplicar_deadline(db, deadline_s)
     return db.execute(
         select(RagConsulta)
         .where(RagConsulta.estado == ESTADO_PENDIENTE)
@@ -213,6 +257,34 @@ def ultima_corrida(db: Session) -> datetime.datetime | None:
     ).scalar_one_or_none()
 
 
+def espera_excedida(
+    creada_en: datetime.datetime | None,
+    *,
+    ventana_s: float,
+    ahora: datetime.datetime | None = None,
+) -> bool:
+    """Has something submitted at `creada_en` waited longer than the window?
+
+    The ARITHMETIC of A3's honesty obligation, with no opinion about state, so
+    the per-item answer and the queue-wide one on `GET /estado` cannot drift.
+    They were two copies of this comparison and drift there is silent: the
+    banner and the item badge would disagree about the same worker.
+
+    `ventana_s <= 0` disables the check rather than making everything delayed:
+    an unset window must not paint every fresh submission as a stuck one.
+    """
+    if ventana_s <= 0 or creada_en is None:
+        return False
+    referencia = ahora or datetime.datetime.now(datetime.timezone.utc)
+    creada = creada_en
+    if creada.tzinfo is None:
+        # `creada_en` is TIMESTAMPTZ; a naive value here means the row was built
+        # in memory and never round-tripped. Comparing it against an aware `now`
+        # raises, so it is read as UTC rather than crashing the diagnostic.
+        creada = creada.replace(tzinfo=datetime.timezone.utc)
+    return (referencia - creada).total_seconds() > ventana_s
+
+
 def esta_demorado(
     item: RagConsulta,
     *,
@@ -224,19 +296,7 @@ def esta_demorado(
     True only for a `pendiente` older than the window. A terminal item is never
     delayed — it is finished — and saying otherwise would put a warning next to
     an answer that arrived.
-
-    `ventana_s <= 0` disables the check rather than making everything delayed:
-    an unset window must not paint every fresh submission as a stuck one.
     """
-    if item.estado != ESTADO_PENDIENTE or ventana_s <= 0:
+    if item.estado != ESTADO_PENDIENTE:
         return False
-    referencia = ahora or datetime.datetime.now(datetime.timezone.utc)
-    creada = item.creada_en
-    if creada is None:
-        return False
-    if creada.tzinfo is None:
-        # `creada_en` is TIMESTAMPTZ; a naive value here means the row was built
-        # in memory and never round-tripped. Comparing it against an aware `now`
-        # raises, so it is read as UTC rather than crashing the diagnostic.
-        creada = creada.replace(tzinfo=datetime.timezone.utc)
-    return (referencia - creada).total_seconds() > ventana_s
+    return espera_excedida(item.creada_en, ventana_s=ventana_s, ahora=ahora)

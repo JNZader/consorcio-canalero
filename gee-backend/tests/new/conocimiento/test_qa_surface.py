@@ -214,6 +214,33 @@ class TestAuth:
         assert cliente.get(PREGUNTAS).status_code == 403
         assert cliente.get(f"{BASE}/estado").status_code == 403
 
+    @pytest.mark.parametrize("rol", ["operador", "ciudadano"])
+    def test_el_detalle_de_UN_item_tambien_es_403(
+        self, app_client, habilitado, db_session_factory, rol
+    ):
+        """The by-id route carries the verbatim question a CD member asked.
+
+        It was the one route in the family with no auth test of its own, and the
+        one whose response body is a person's question rather than a list of
+        their own. The id is real so the assertion cannot pass on a 404.
+        """
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        creado = cliente.post(PREGUNTAS, json={"pregunta": "pregunta privada"}).json()
+        _como(app, rol)
+        assert cliente.get(f"{PREGUNTAS}/{creado['id']}").status_code == 403
+
+    def test_el_detalle_de_UN_item_es_401_para_un_anonimo(
+        self, app_client, habilitado, db_session_factory
+    ):
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        creado = cliente.post(PREGUNTAS, json={"pregunta": "pregunta privada"}).json()
+        from app.auth.dependencies import current_active_user
+
+        app.dependency_overrides.pop(current_active_user, None)
+        assert cliente.get(f"{PREGUNTAS}/{creado['id']}").status_code == 401
+
     def test_con_el_flag_apagado_hasta_un_admin_recibe_503(self, app_client):
         """The kill switch, and its default. No flag set anywhere is OFF."""
         app, cliente = app_client
@@ -312,6 +339,140 @@ class TestLaHabilitacionEsUnAND:
         monkeypatch.setattr(conocimiento_router, "cargar_terminos", lambda: None)
         self._causa(cliente)
         assert sonda.consultas == 0
+
+
+class TestLasLecturasNoTomanElAND:
+    """W5: reading a stored answer needs no embedder, credential or terms.
+
+    Nothing leaves the box and nothing is computed. Gating the reads on the full
+    AND made the bandeja — and the `demorado` badge that explains the silence —
+    disappear at exactly the moment something was wrong, which is when a CD
+    member most needs to look at it.
+    """
+
+    @pytest.fixture
+    def _con_todo_roto(self, habilitado, monkeypatch, sonda):
+        """Flag ON, every other enablement fact FALSE."""
+        monkeypatch.setattr(conocimiento_router, "cargar_terminos", lambda: None)
+        monkeypatch.setattr(habilitado, "conocimiento_proveedor_api_key", "")
+        sonda.fallo = SidecarNoDisponible("embedder_no_listo", "container down")
+        return habilitado
+
+    def test_el_listado_se_lee_con_el_sidecar_caido(
+        self, app_client, habilitado, db_session_factory, monkeypatch, sonda
+    ):
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        assert cliente.post(PREGUNTAS, json={"pregunta": "¿qué dice la ley?"}).status_code == 202
+        sonda.fallo = SidecarNoDisponible("embedder_no_listo", "container down")
+        monkeypatch.setattr(habilitado, "conocimiento_proveedor_api_key", "")
+        monkeypatch.setattr(conocimiento_router, "cargar_terminos", lambda: None)
+        listado = cliente.get(PREGUNTAS)
+        assert listado.status_code == 200
+        assert [item["pregunta"] for item in listado.json()] == ["¿qué dice la ley?"]
+
+    def test_el_detalle_se_lee_con_el_sidecar_caido(
+        self, app_client, habilitado, db_session_factory, monkeypatch, sonda
+    ):
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        creado = cliente.post(PREGUNTAS, json={"pregunta": "¿qué dice la ley?"}).json()
+        sonda.fallo = SidecarNoDisponible("embedder_no_listo", "container down")
+        monkeypatch.setattr(habilitado, "conocimiento_proveedor_api_key", "")
+        monkeypatch.setattr(conocimiento_router, "cargar_terminos", lambda: None)
+        detalle = cliente.get(f"{PREGUNTAS}/{creado['id']}")
+        assert detalle.status_code == 200
+        assert detalle.json()["estado"] == "pendiente"
+
+    def test_el_SUBMIT_sigue_exigiendo_el_AND_completo(
+        self, app_client, _con_todo_roto, db_session_factory
+    ):
+        """The other direction, and the one that matters: submitting is what
+        spends a quota slot and sends the question out of the box."""
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        resp = cliente.post(PREGUNTAS, json={"pregunta": "¿qué dice la ley?"})
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["causa"] == "terminos_no_verificados"
+
+    def test_las_lecturas_SIGUEN_detras_del_kill_switch(self, app_client, db_session_factory):
+        """Exempt from the AND is not exempt from the flag: a deployment that
+        never turned the surface on exposes none of it."""
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        assert cliente.get(PREGUNTAS).status_code == 503
+        assert cliente.get(f"{PREGUNTAS}/{uuid.uuid4()}").status_code == 503
+
+    def test_las_lecturas_NO_consultan_la_sonda(
+        self, app_client, habilitado, db_session_factory, sonda
+    ):
+        """Not just tolerated — not asked at all. A readiness probe on a read is
+        a network call added to an operation that needs no network."""
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        cliente.post(PREGUNTAS, json={"pregunta": "¿qué dice la ley?"})
+        antes = sonda.consultas
+        cliente.get(PREGUNTAS)
+        assert sonda.consultas == antes
+
+
+class TestElLimiteDelListado:
+    """W6: `limite` reaches `LIMIT`, so it is validated rather than trusted."""
+
+    @pytest.mark.parametrize("valor", [-1, 0, 201])
+    def test_un_limite_fuera_de_rango_es_422_y_no_un_500(
+        self, app_client, habilitado, db_session_factory, valor
+    ):
+        """A negative `LIMIT` is a `ProgrammingError` rendered as a 500, which
+        reports a broken deployment for a caller's typo."""
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        assert cliente.get(PREGUNTAS, params={"limite": valor}).status_code == 422
+
+    def test_el_tope_exacto_se_acepta(self, app_client, habilitado, db_session_factory):
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        tope = conocimiento_router.LIMITE_MAXIMO
+        assert cliente.get(PREGUNTAS, params={"limite": tope}).status_code == 200
+        assert cliente.get(PREGUNTAS, params={"limite": 1}).status_code == 200
+
+
+class TestLaSondaNoConvierteUnaConfigRotaEn500:
+    """S4: a malformed `conocimiento_embed_url` is a config fault, not a 500.
+
+    Most bad values already land as `embedder_inalcanzable` through the sidecar
+    adapter, and that is asserted here too so the fix cannot be read as covering
+    more than it does. Two families escape it because they are not
+    `httpx.HTTPError`, which is the only family the adapter translates: an
+    unclosed IPv6 bracket raises inside `httpx.Client(...)` itself, and an
+    invalid IDNA host raises `UnicodeError` at request time. Both were a 500 on
+    a readiness gate, which sends the operator to look for a dead container
+    instead of at the env var they mistyped.
+    """
+
+    def _refusal(self, monkeypatch, url):
+        from app.config import settings
+        from app.domains.conocimiento.embed_sidecar import SidecarNoDisponible as Refusal
+
+        monkeypatch.setattr(settings, "conocimiento_embed_url", url)
+        monkeypatch.setattr(settings, "conocimiento_embed_timeout_s", 0.5)
+        sonda = conocimiento_router.SondaSidecar(ttl_s=0.0)
+        with pytest.raises(Refusal) as capturado:
+            sonda.exigir_listo()
+        return capturado.value
+
+    @pytest.mark.parametrize("url", ["http://[::1", "http://xn--", "http://" + "a" * 300 + ".test"])
+    def test_una_url_que_NINGUNA_capa_nombraba_es_embedder_no_listo(self, monkeypatch, url):
+        assert self._refusal(monkeypatch, url).causa == conocimiento_router.CAUSA_EMBEDDER
+
+    @pytest.mark.parametrize("url", ["ftp://embed:8002", "no-es-una-url", ""])
+    def test_las_que_YA_estaban_cubiertas_siguen_siendo_del_adaptador(self, monkeypatch, url):
+        """Unchanged on purpose: an unset or unroutable URL is the adapter's
+        named refusal and stays that way."""
+        assert self._refusal(monkeypatch, url).causa in {
+            "embedder_inalcanzable",
+            conocimiento_router.CAUSA_EMBEDDER,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -530,6 +691,39 @@ class TestDiagnostico:
         assert resp.json()["embedder_listo"] is False
         assert "embedder_no_listo" in resp.json()["causa_no_listo"]
 
+    def test_la_causa_sigue_el_MISMO_orden_que_el_gate(
+        self, app_client, habilitado, monkeypatch, sonda
+    ):
+        """W2: terms -> credential -> embedder, exactly as the 503 refuses.
+
+        With all three false the diagnostic used to name the SIDECAR while the
+        503 the operator was actually getting named the TERMS record, sending
+        them to restart a container over a policy file. The three booleans are
+        still all reported; this pins which one the single `causa` line quotes.
+        """
+        app, cliente = app_client
+        _como(app, "admin")
+        monkeypatch.setattr(conocimiento_router, "cargar_terminos", lambda: None)
+        monkeypatch.setattr(habilitado, "conocimiento_proveedor_api_key", "")
+        sonda.fallo = SidecarNoDisponible("embedder_no_listo", "down")
+        cuerpo = cliente.get(f"{BASE}/estado").json()
+        assert cuerpo["causa_no_listo"].startswith("terminos_no_verificados")
+        assert (cuerpo["terminos_verificados"], cuerpo["credencial_presente"]) == (False, False)
+        assert cuerpo["embedder_listo"] is False
+
+    def test_con_los_terminos_ok_la_causa_es_la_CREDENCIAL_y_no_el_sidecar(
+        self, app_client, habilitado, monkeypatch, sonda
+    ):
+        """The rung that actually moved: the credential is checked BEFORE the
+        embedder in the gate, and now here too."""
+        app, cliente = app_client
+        _como(app, "admin")
+        monkeypatch.setattr(habilitado, "conocimiento_proveedor_api_key", "")
+        sonda.fallo = SidecarNoDisponible("embedder_no_listo", "down")
+        assert (
+            cliente.get(f"{BASE}/estado").json()["causa_no_listo"].startswith("credencial_ausente")
+        )
+
     def test_reporta_embeddings_sinteticos(self, app_client, habilitado, db_session_factory):
         app, cliente = app_client
         _como(app, "admin")
@@ -605,6 +799,7 @@ class TestLaPreguntaNoSeEscapa:
             _resultado_con_un_hit,
             centroides_hacia,
             seed,
+            terminos_ok,
         )
 
         pregunta = "¿Qué obligaciones impone la ley 9750 al consorcista?"
@@ -640,11 +835,121 @@ class TestLaPreguntaNoSeEscapa:
             parametros=PARAMETROS,
             reranker=RerankerFalso(),
             crear_generador=_crear,
+            verificar_terminos_fn=terminos_ok,
         )
 
         assert item.estado == "respuesta"
+        # The pre-claim wiring probe builds an adapter and closes it without
+        # sending anything, so the outbound count below still measures ONE call.
         con_la_pregunta = [cuerpo for cuerpo in salientes if pregunta.encode("utf-8") in cuerpo]
         assert len(salientes) == 1, "more than one outbound call left the box"
         assert len(con_la_pregunta) == 1, (
             "the question must appear in EXACTLY one outbound payload — the generation call"
         )
+
+
+# ---------------------------------------------------------------------------
+# W4 — `mixto`, end to end: submit -> queue -> worker -> read
+# ---------------------------------------------------------------------------
+
+
+class TestMixtoDeExtremoAExtremo:
+    """Routing spec scenarios #6 and #7, over the real submit/read surface.
+
+    `mixto` is the one class whose contract spans BOTH legs of the response, and
+    it was the only worker path with no end-to-end coverage: the `parcial`
+    variable in `trabajador.procesar_uno` was set on every branch and asserted on
+    none, so `parcial = None` was a live mutant — every test would still have
+    passed with the redirect silently dropped. That is exactly the failure the
+    spec names ("MUST NOT drop the redirect because a legal answer was
+    produced"), and dropping it has no symptom on the page: the answer looks
+    complete and the operational half of the question simply vanishes.
+
+    Both scenarios go through `POST /preguntas` and are read back through
+    `GET /preguntas/{id}`, so the redirect has to survive the worker AND the
+    serialization the panel reads.
+    """
+
+    @pytest.fixture
+    def _mixto(self, app_client, habilitado, db_session_factory, monkeypatch):
+        """Submit the spec's `mixto` question and return a runner for the worker."""
+        from app.domains.conocimiento import service, trabajador
+        from tests.new.conocimiento import test_trabajador as fixtures
+
+        app, cliente = app_client
+        _como(app, "admin", _usuario(db_session_factory))
+        creado = cliente.post(PREGUNTAS, json={"pregunta": fixtures.PREGUNTA_MIXTA}).json()
+        assert creado["estado"] == "pendiente"
+
+        def _procesar(resultado, guion):
+            sesion = db_session_factory()
+            try:
+                fixtures.seed(sesion)
+                fixtures.seed_privado(sesion)
+                monkeypatch.setattr(service, "recuperar", lambda *a, **k: resultado())
+                trabajador.procesar_uno(
+                    sesion,
+                    corpus_sha=fixtures.SHA,
+                    embedder=fixtures.EmbedderFalso(),
+                    centroides=fixtures.centroides_mixto(),
+                    parametros=fixtures.PARAMETROS,
+                    reranker=fixtures.RerankerFalso(),
+                    crear_generador=lambda _p: fixtures.GeneradorFalso(guion),
+                    verificar_terminos_fn=fixtures.terminos_ok,
+                )
+                sesion.commit()
+            finally:
+                sesion.close()
+            return cliente.get(f"{PREGUNTAS}/{creado['id']}").json()
+
+        return _procesar
+
+    def test_la_pata_legal_se_responde_y_el_redirect_SIGUE_ahi(self, _mixto):
+        """Spec scenario #6. The mutant this kills is `parcial = None`.
+
+        A `mixto` answer with the redirect dropped is indistinguishable from a
+        complete answer, and the operational half of the question — "cuánto debo
+        yo" — disappears with no trace anywhere in the response.
+        """
+        from app.domains.conocimiento.generacion import SalidaProveedor
+        from tests.new.conocimiento.test_trabajador import _resultado_con_un_hit
+
+        item = _mixto(
+            _resultado_con_un_hit,
+            SalidaProveedor(texto="Corresponde [ley-9750#art1].", truncado=False),
+        )
+        assert item["estado"] == "respuesta"
+        assert item["respuesta"]["citas"][0]["citation_key"] == "ley-9750#art1"
+
+        parcial = item["respuesta"]["redireccion_parcial"]
+        assert parcial is not None, "the redirect was dropped because a legal answer existed"
+        assert parcial["superficie"] == "/finanzas"
+        # The answer text makes no claim about the caller's balance: the debt leg
+        # is a redirect, and the legal leg only ever cites the corpus.
+        assert item["respuesta"]["respuesta"] == "Corresponde [ley-9750#art1]."
+
+    def test_la_pata_legal_ABSTIENE_y_el_redirect_SIGUE_ahi(self, _mixto):
+        """Spec scenario #7, and the harder half of the same contract.
+
+        `estado` is the LEGAL leg and `redireccion_parcial` is orthogonal to it,
+        which is the whole reason the schema has two fields: a single
+        mutually-exclusive tag could not hold `abstencion` and a redirect at
+        once. Here the only retrieved unit is `privado`, so the payload is empty
+        after exclusion and no provider is called at all — and the operational
+        redirect must survive that.
+        """
+        from tests.new.conocimiento.test_trabajador import _resultado_solo_privado
+
+        item = _mixto(
+            _resultado_solo_privado,
+            AssertionError("an empty payload must never reach the provider"),
+        )
+        assert item["estado"] == "abstencion"
+        assert item["respuesta"]["motivo"] == "exclusion_por_clasificacion"
+        # The excluded KEY travels; the text and the provenance of a unit that
+        # may not leave the box do not.
+        assert item["respuesta"]["citas"] == []
+
+        parcial = item["respuesta"]["redireccion_parcial"]
+        assert parcial is not None, "the redirect must survive the legal part abstaining"
+        assert parcial["superficie"] == "/finanzas"

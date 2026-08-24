@@ -21,21 +21,24 @@ row is written. The quota runs AFTER `require_admin` precisely so a user id
 exists to key on — the ficha's `_client_ip` keying is the wrong precedent behind
 an authenticated route and a proxy (`design.md:751-754`).
 
-**Why `/estado` does not take the full AND.** It takes the flag and
-`require_admin` and then REPORTS the three availability facts instead of
-enforcing them. A3 moved the "worker is down" fault off the per-question path and
-onto this endpoint; an endpoint that 503s whenever the sidecar is down would be
-unreachable during exactly the outage it exists to describe.
+**Only `POST /preguntas` takes the full AND.** The two READ routes and `/estado`
+take the flag and `require_admin` only. The AND exists to stop a question being
+accepted that the deployment cannot process and that will spend a quota slot and
+leave the box; reading a stored answer does none of those things. Gating the
+reads on it made the bandeja — and the `demorado` badge that explains the silence
+— vanish during exactly the outage the CD member needs them for, and `/estado`
+was already exempt for the same reason: an endpoint that 503s whenever the
+sidecar is down cannot describe a sidecar being down.
 """
 
 from __future__ import annotations
 
-import datetime
 import threading
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.requests import ClientDisconnect
@@ -123,6 +126,28 @@ class SondaSidecar:
                 return None
         except SidecarNoDisponible as exc:
             return exc
+        except (httpx.InvalidURL, UnicodeError) as exc:
+            # A malformed `conocimiento_embed_url` can break OUTSIDE everything
+            # the sidecar adapter names. Most bad values do reach the adapter's
+            # `embedder_inalcanzable` (`ftp://`, a missing scheme, a host that
+            # does not resolve), but two families do not: `http://[::1` raises
+            # `httpx.InvalidURL` inside `httpx.Client(...)` itself, and an
+            # unencodable or invalid IDNA host raises `UnicodeError`/`IDNAError`
+            # at request time — and neither is an `httpx.HTTPError`, which is
+            # the only family `_pedir` translates.
+            #
+            # Left alone both are a 500 on a readiness gate, which sends the
+            # operator to look for a dead container instead of at the env var
+            # they mistyped. It is the same fact as an unset URL — there is no
+            # sidecar to be ready — so it gets the same cause. Caught by NAME
+            # rather than as a bare `Exception`, so a genuine bug in the adapter
+            # still surfaces as a bug.
+            return SidecarNoDisponible(
+                CAUSA_EMBEDDER,
+                f"conocimiento_embed_url={settings.conocimiento_embed_url!r} is not a "
+                f"usable URL ({type(exc).__name__}: {exc}). This is a configuration "
+                "fault, not an outage.",
+            )
 
     def exigir_listo(self, *, ahora: float | None = None) -> None:
         """Raise `SidecarNoDisponible` unless the sidecar answered `/ready`."""
@@ -474,25 +499,39 @@ async def encolar_pregunta(
     return ConsultaEncolada(id=item.id, creada_en=item.creada_en)
 
 
-@router.get(
-    "/preguntas",
-    response_model=list[ItemBuzon],
-    dependencies=[Depends(enforce_conocimiento_qa_enabled), Depends(_require_admin())],
-)
+#: What the two READ routes take: the kill switch and the role, and NOT the
+#: three availability facts.
+#:
+#: Reading an answer that is already in the database needs no embedder, no
+#: provider credential and no verified terms — nothing leaves the box and
+#: nothing is computed. Gating them on the full AND made the bandeja disappear
+#: at exactly the moment it is most useful: the sidecar container dies, and the
+#: CD member loses access to the answers they already have plus the `demorado`
+#: badge that would explain the silence. `GET /estado` was already exempted for
+#: this reason and the same argument covers these two (bounded correction,
+#: 2026-08-24).
+#:
+#: `POST /preguntas` keeps the full AND: submitting is the operation that will
+#: spend a quota slot and send the question out of the box.
+_SOLO_LECTURA = [Depends(enforce_conocimiento_flag), Depends(_require_admin())]
+
+#: The listing's page ceiling. Validated rather than trusted: `limite` reaches
+#: `LIMIT` and a negative one is a `ProgrammingError` rendered as a 500, which
+#: reports a broken deployment for a caller's typo.
+LIMITE_MAXIMO = 200
+
+
+@router.get("/preguntas", response_model=list[ItemBuzon], dependencies=_SOLO_LECTURA)
 def listar_preguntas(
     usuario: Any = Depends(_require_admin()),
     db: Session = Depends(get_db),
-    limite: int = 50,
+    limite: int = Query(50, ge=1, le=LIMITE_MAXIMO),
 ) -> list[ItemBuzon]:
     """The requester's own bandeja, newest first."""
     return [_a_item(fila) for fila in buzon.listar(db, usuario_id=usuario.id, limite=limite)]
 
 
-@router.get(
-    "/preguntas/{consulta_id}",
-    response_model=ItemBuzon,
-    dependencies=[Depends(enforce_conocimiento_qa_enabled), Depends(_require_admin())],
-)
+@router.get("/preguntas/{consulta_id}", response_model=ItemBuzon, dependencies=_SOLO_LECTURA)
 def ver_pregunta(
     consulta_id: uuid.UUID,
     usuario: Any = Depends(_require_admin()),
@@ -539,6 +578,13 @@ def estado_del_buzon(
     corpus_sha = repository.corpus_activo(db)
     procedencia = repository.leer_procedencia(db, corpus_sha) if corpus_sha else None
 
+    # The three facts are evaluated in the GATE's order — terms, credential,
+    # embedder — and `causa_no_listo` names the first false one. Reporting them
+    # in a different order than `enforce_conocimiento_qa_enabled` refuses in
+    # meant the diagnostic could name the sidecar while the 503 the operator was
+    # actually getting named the credential, sending them to fix the wrong
+    # thing. All three booleans are still computed and returned; only which one
+    # the single `causa` line quotes depends on the order.
     terminos_ok: bool
     causa: str | None = None
     try:
@@ -552,6 +598,10 @@ def estado_del_buzon(
         terminos_ok = False
         causa = f"{CAUSA_TERMINOS}: {exc}"
 
+    credencial_ok = bool(settings.conocimiento_proveedor_api_key)
+    if not credencial_ok:
+        causa = causa or f"{CAUSA_CREDENCIAL}: conocimiento_proveedor_api_key is unset"
+
     embedder_ok: bool
     try:
         sonda.exigir_listo()
@@ -560,21 +610,12 @@ def estado_del_buzon(
         embedder_ok = False
         causa = causa or f"{CAUSA_EMBEDDER}: {exc}"
 
-    credencial_ok = bool(settings.conocimiento_proveedor_api_key)
-    if not credencial_ok:
-        causa = causa or f"{CAUSA_CREDENCIAL}: conocimiento_proveedor_api_key is unset"
-
     mas_antiguo = buzon.mas_antiguo_pendiente(db)
-    ventana = settings.conocimiento_worker_stale_after_s
-    demorado = False
-    if mas_antiguo is not None and ventana > 0:
-        referencia = datetime.datetime.now(datetime.timezone.utc)
-        creada = (
-            mas_antiguo
-            if mas_antiguo.tzinfo is not None
-            else mas_antiguo.replace(tzinfo=datetime.timezone.utc)
-        )
-        demorado = (referencia - creada).total_seconds() > ventana
+    # The SAME comparison the per-item `demorado` badge uses, so the banner and
+    # the badge cannot disagree about the same worker.
+    demorado = buzon.espera_excedida(
+        mas_antiguo, ventana_s=settings.conocimiento_worker_stale_after_s
+    )
 
     return EstadoBuzon(
         corpus_sha=corpus_sha,

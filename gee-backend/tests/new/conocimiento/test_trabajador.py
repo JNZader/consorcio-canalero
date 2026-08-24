@@ -27,6 +27,11 @@ from app.domains.conocimiento.generacion import (
     SalidaProveedor,
 )
 from app.domains.conocimiento.models import RagDecisionRuta
+from app.domains.conocimiento.proveedores import (
+    ProveedorMalConfigurado,
+    TerminosNoVerificados,
+    conectar_puente,
+)
 
 SHA = "b" * 40
 
@@ -55,6 +60,35 @@ def seed(db) -> None:
             "(:sha, 'ley-9750#art1', 'ley-9750', 'articulo', :t, :t, 'f.md', 0)"
         ),
         {"sha": SHA, "t": "El consorcio administra la red de canales."},
+    )
+    db.flush()
+
+
+CLAVE_PRIVADA = "acta-2020#p3"
+
+
+def seed_privado(db) -> None:
+    """A unit the classification gate must drop before the provider sees it.
+
+    Used to drive the legal leg of a `mixto` question to an abstention WITHOUT
+    touching the abstention threshold: the payload is empty after exclusion, so
+    `generar_respuesta` abstains and no provider exists in the story.
+    """
+    db.execute(
+        text(
+            "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+            "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+            "(:sha, 'acta-2020', 'acta', true, 'consorcio', 'vigente', 'privado')"
+        ),
+        {"sha": SHA},
+    )
+    db.execute(
+        text(
+            "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
+            "texto, texto_indexado, source_file, source_offset) VALUES "
+            "(:sha, :clave, 'acta-2020', 'seccion-secundaria', :t, :t, 'a.md', 0)"
+        ),
+        {"sha": SHA, "clave": CLAVE_PRIVADA, "t": "Acta interna de la comisión."},
     )
     db.flush()
 
@@ -100,6 +134,10 @@ class GeneradorFalso:
     def __init__(self, guion) -> None:
         self._guion = guion
         self.cerrado = False
+        #: Counted, not just flagged: `procesar_uno` builds TWO adapters per item
+        #: — the pre-claim wiring probe and the item's own — and a leak in either
+        #: one is the same descriptor leak.
+        self.cierres = 0
 
     def generar(self, prompt: str, *, max_tokens: int):
         if isinstance(self._guion, BaseException):
@@ -108,6 +146,7 @@ class GeneradorFalso:
 
     def close(self) -> None:
         self.cerrado = True
+        self.cierres += 1
 
     def __enter__(self):
         return self
@@ -127,7 +166,39 @@ def centroides_hacia(clase: str) -> routing.Centroides:
     return routing.Centroides({clase: ganador, **base})
 
 
+def centroides_mixto() -> routing.Centroides:
+    """Legal and operational EQUIDISTANT from `EmbedderFalso`'s `(1, 0, 0)`.
+
+    Cosine is `1/sqrt(2)` against both, so the top-2 margin is exactly 0 — inside
+    `banda` and above `piso`. That is the `mixto` signature the design fixes
+    (`design.md:162-165`), produced by geometry rather than by patching the
+    classifier.
+    """
+    return routing.Centroides(
+        {
+            routing.CLASE_LEGAL: (1.0, 1.0, 0.0),
+            routing.CLASE_OPERATIONAL: (1.0, -1.0, 0.0),
+            routing.CLASE_GEOESPACIAL: (0.0, 0.0, 1.0),
+        }
+    )
+
+
+#: The routing spec's own `mixto` example (spec:57-63). It carries a LEGAL
+#: marker ("norma"), so stage 1 declines and stage 2 is the stage that can see
+#: both legs; and an operational one ("cuota"), so the redirect names
+#: `/finanzas` rather than the default surface.
+PREGUNTA_MIXTA = "¿qué dice la norma sobre la cuota y cuánto debo yo?"
+
 PARAMETROS = routing.ParametrosRuta(umbral=0.1, banda=0.05, piso=0.5)
+
+
+def terminos_ok() -> None:
+    """The terms gate, satisfied. The REAL record ships `verificado: false`.
+
+    Every test below that is not about the terms gate passes this, for the same
+    reason `test_qa_surface` writes a temp record: the checked-in one refusing is
+    itself an asserted fact and must not be edited to make other tests run.
+    """
 
 
 def correr(
@@ -140,6 +211,8 @@ def correr(
     item_deadline_s: float = 60.0,
     monkeypatch=None,
     recuperar_falla: Exception | None = None,
+    crear_generador=None,
+    verificar_terminos_fn=terminos_ok,
 ):
     if recuperar_falla is not None:
 
@@ -160,8 +233,9 @@ def correr(
         centroides=centroides or centroides_hacia(routing.CLASE_LEGAL),
         parametros=PARAMETROS,
         reranker=reranker or RerankerFalso(),
-        crear_generador=lambda _presupuesto: gen,
+        crear_generador=crear_generador or (lambda _presupuesto: gen),
         item_deadline_s=item_deadline_s,
+        verificar_terminos_fn=verificar_terminos_fn,
     )
 
 
@@ -176,24 +250,109 @@ class TestColaVacia:
                 parametros=PARAMETROS,
                 reranker=RerankerFalso(),
                 crear_generador=lambda _p: GeneradorFalso(None),
+                verificar_terminos_fn=terminos_ok,
             )
             is None
         )
 
 
-class TestRerankerSintetico:
-    def test_un_ranker_de_relleno_se_rechaza_ANTES_de_tocar_la_cola(self, db):
-        """Fail-closed: no CPU fallback, no smaller model, no stand-in.
+class TestElGuardiaAntesDelClaim:
+    """Three DEPLOYMENT facts, refused before a row is claimed.
 
-        And refused BEFORE the claim, so the refusal cannot consume an item: a
-        wiring fault must not be recorded as "your question could not be
-        answered".
-        """
+    Each of the three is identical for every item in the queue, so discovering
+    any of them after a claim would record a wiring fault as "your question
+    could not be answered" — about a box that never tried.
+    """
+
+    def test_un_ranker_de_relleno_se_rechaza_ANTES_de_tocar_la_cola(self, db):
+        """Fail-closed: no CPU fallback, no smaller model, no stand-in."""
         item = buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley?")
         with pytest.raises(trabajador.RerankerSintetico):
             correr(db, reranker=RerankerFalsoSintetico())
         db.refresh(item)
         assert item.estado == "pendiente"
+
+    def test_un_proveedor_MAL_CONFIGURADO_se_rechaza_ANTES_de_tocar_la_cola(self, db):
+        """S5: the same class of fault as a synthetic ranker, and the same effect.
+
+        `conectar_puente` refuses at construction on a missing pin, pool or
+        credential. Discovered where the adapter is built — after routing and
+        after a full B50 retrieval — every item in the queue would burn that work
+        before hitting the same wall.
+        """
+        seed(db)
+        item = buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+
+        def _crear_roto(_presupuesto):
+            return conectar_puente(
+                "http://gateway.test", modelo="m", pool="p", api_key="", timeout_s=5.0
+            )
+
+        with pytest.raises(ProveedorMalConfigurado):
+            correr(db, crear_generador=_crear_roto)
+        db.refresh(item)
+        assert item.estado == "pendiente"
+
+    def test_los_terminos_SIN_VERIFICAR_frenan_al_worker_y_no_fallan_al_item(self, db):
+        """W1: the worker is who actually sends the text out of the box.
+
+        `POST /preguntas` verifying the record at ENQUEUE time says nothing about
+        the moment of transmission. A record flipped to `verificado: false` after
+        a hundred items were queued must stop the worker — and the items stay
+        `pendiente`, because a policy the owner revoked is not those questions'
+        fault and `generacion_fallida` would blame them for it.
+        """
+        seed(db)
+        item = buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+
+        def _revocados():
+            raise TerminosNoVerificados("the record is marked unverified")
+
+        with pytest.raises(TerminosNoVerificados):
+            correr(db, verificar_terminos_fn=_revocados)
+        db.refresh(item)
+        assert item.estado == "pendiente"
+        assert item.respuesta is None
+        assert item.procesada_en is None
+
+    def test_los_terminos_se_verifican_ANTES_de_construir_el_generador(self, db):
+        """Order inside the guard: nothing is built for a route that is not authorised."""
+        seed(db)
+        buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+        construidos: list[int] = []
+
+        def _crear(_presupuesto):
+            construidos.append(1)
+            return GeneradorFalso(None)
+
+        with pytest.raises(TerminosNoVerificados):
+            correr(
+                db,
+                crear_generador=_crear,
+                verificar_terminos_fn=lambda: (_ for _ in ()).throw(
+                    TerminosNoVerificados("revoked")
+                ),
+            )
+        assert construidos == []
+
+    def test_por_defecto_el_registro_del_repo_frena_al_worker(self, db):
+        """End to end against the REAL checked-in record, through the default seam.
+
+        It ships unverified, so a worker started today against this repository
+        refuses — which is the honest state until the owner performs task 6.7.
+        """
+        seed(db)
+        buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+        with pytest.raises(TerminosNoVerificados):
+            trabajador.procesar_uno(
+                db,
+                corpus_sha=SHA,
+                embedder=EmbedderFalso(),
+                centroides=centroides_hacia(routing.CLASE_LEGAL),
+                parametros=PARAMETROS,
+                reranker=RerankerFalso(),
+                crear_generador=lambda _p: GeneradorFalso(None),
+            )
 
 
 class TestRedireccionPura:
@@ -324,15 +483,92 @@ class TestCaminoFeliz:
         assert item.respuesta["citas"][0]["citation_key"] == "ley-9750#art1"
         assert item.procesada_en is not None
 
-    def test_el_adaptador_del_proveedor_se_cierra_siempre(self, db, monkeypatch):
-        """One adapter per item, closed per item: an unclosed pool per item is a
-        descriptor leak that shows up as a worker that stops answering."""
+    def test_TODO_adaptador_del_proveedor_se_cierra(self, db, monkeypatch):
+        """An unclosed pool per item is a descriptor leak that shows up as a
+        worker that stops answering and blames the provider.
+
+        TWO adapters are built per item — the pre-claim wiring probe and the
+        item's own — and the count is asserted rather than a boolean, because a
+        probe that leaked would leave `cerrado` True from the second one and the
+        leak would be invisible.
+        """
         seed(db)
         buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
         monkeypatch.setattr(service, "recuperar", lambda *a, **k: _resultado_con_un_hit())
-        generador = GeneradorFalso(GeneracionNoDisponible("caído"))
-        correr(db, generador=generador)
-        assert generador.cerrado
+        construidos: list[GeneradorFalso] = []
+
+        def _crear(_presupuesto):
+            construidos.append(GeneradorFalso(GeneracionNoDisponible("caído")))
+            return construidos[-1]
+
+        correr(db, crear_generador=_crear)
+        assert len(construidos) == 2
+        assert all(gen.cierres == 1 for gen in construidos)
+
+
+class TestElDeadlineAcotaLaTransaccion:
+    """W3: the claim's row lock cannot outlive the item's own budget.
+
+    Before this the module docstring's "bounded by
+    `conocimiento_item_deadline_s`" was a claim about the PYTHON budget only. A
+    hung dependency inside the item's transaction would hold the claimed row's
+    lock for as long as the process lived, and the item would be invisible to
+    every other worker for that whole time — the orphan the no-reaper argument
+    says cannot happen.
+    """
+
+    def test_una_sentencia_lenta_se_cancela_y_el_item_vuelve_a_pendiente(self, db):
+        """Real Postgres, real `statement_timeout`, real cancellation.
+
+        `pg_sleep` stands in for the hung reranker: what is being asserted is
+        that the DEADLINE reaches the database at claim time, not that
+        `pg_sleep` is slow.
+        """
+        from sqlalchemy.exc import OperationalError
+
+        item = buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+        db.flush()
+
+        # The item's processing runs in a SAVEPOINT here only because the test
+        # harness already holds the outer transaction open; in production the
+        # worker's own transaction is what aborts. The observable behaviour under
+        # test is identical: the cancellation unwinds everything the claim did.
+        procesamiento = db.begin_nested()
+        reclamado = buzon.reclamar_pendiente(db, deadline_s=0.25)
+        assert reclamado.id == item.id
+
+        with pytest.raises(OperationalError) as capturado:
+            db.execute(text("SELECT pg_sleep(3)"))
+        # 57014 = query_canceled. Asserted by CODE rather than by message so the
+        # test cannot pass on some other database fault that also raised.
+        assert getattr(capturado.value.orig, "pgcode", None) == "57014"
+
+        procesamiento.rollback()
+        # The abort released the lock and the row never left `pendiente` — which
+        # is the whole reason there is no lease column and no reaper.
+        vivo = buzon.reclamar_pendiente(db)
+        assert vivo is not None and vivo.id == item.id and vivo.estado == "pendiente"
+
+    def test_un_deadline_no_positivo_NO_apaga_el_timeout(self, db):
+        """`statement_timeout = 0` means NO timeout in Postgres.
+
+        So a spent budget passed straight through would remove the bound at
+        exactly the moment it matters most. Refusing the item is
+        `PresupuestoDeItem`'s job; this function's job is to never widen it.
+        """
+        antes = db.execute(text("SHOW statement_timeout")).scalar_one()
+        buzon.aplicar_deadline(db, 0.0)
+        buzon.aplicar_deadline(db, -5.0)
+        assert db.execute(text("SHOW statement_timeout")).scalar_one() == antes
+
+    def test_el_deadline_es_LOCAL_a_la_transaccion(self, db):
+        """`SET LOCAL` semantics: the value must never leak onto the pooled
+        connection, where it would silently bound unrelated requests."""
+        interno = db.begin_nested()
+        buzon.aplicar_deadline(db, 7.0)
+        assert db.execute(text("SHOW statement_timeout")).scalar_one() == "7s"
+        interno.rollback()
+        assert db.execute(text("SHOW statement_timeout")).scalar_one() != "7s"
 
 
 class TestElItemNoSeOrfana:
@@ -376,6 +612,34 @@ def _resultado_con_un_hit():
                 jurisdiccion="provincial",
                 estado_vigencia="vigente",
                 source_file="f.md",
+                source_offset=0,
+            )
+        ],
+        reranker_modelo="falso-ce",
+        reranker_sintetico=False,
+    )
+
+
+def _resultado_solo_privado():
+    """A retrieved page whose ONLY unit is one the gate will drop."""
+    from app.domains.conocimiento.schemas import CitaRecuperada, ResultadoRecuperacion
+
+    return ResultadoRecuperacion(
+        corpus_sha=SHA,
+        pregunta=PREGUNTA_MIXTA,
+        modo="bm25_ce",
+        k=10,
+        hits=[
+            CitaRecuperada(
+                citation_key=CLAVE_PRIVADA,
+                documento_id="acta-2020",
+                tipo_chunk="seccion-secundaria",
+                texto="Acta interna de la comisión.",
+                tipo="acta",
+                es_secundaria=True,
+                jurisdiccion="consorcio",
+                estado_vigencia="vigente",
+                source_file="a.md",
                 source_offset=0,
             )
         ],
