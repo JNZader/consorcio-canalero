@@ -92,6 +92,17 @@ class TechoNoConfigurado(_Refusal):
     causa = "techo_no_configurado"
 
 
+class VentanaNoConfigurada(_Refusal):
+    """`conocimiento_spend_window_h` is not a usable window.
+
+    Its own cause rather than a `TechoNoConfigurado`, because the operator action
+    differs: the ceiling is a number nobody has derived yet, and this is a number
+    somebody set wrong.
+    """
+
+    causa = "ventana_no_configurada"
+
+
 # ---------------------------------------------------------------------------
 # The counter store
 # ---------------------------------------------------------------------------
@@ -242,11 +253,28 @@ class MedidorDeGasto:
     ) -> None:
         self._almacen = almacen
         self._techo = techo_usd
-        self._ventana_h = max(1, ventana_h)
+        # Stored VERBATIM. The first cut wrote `max(1, ventana_h)`, which silently
+        # repaired a misconfigured window toward the permissive side: a window of
+        # 0 or a negative one became a one-hour window, so a ceiling meant to hold
+        # over a day started resetting every hour and the deployment could spend
+        # 24x the number the operator thought they had set — with nothing
+        # anywhere saying so (bounded correction, 2026-08-24). An unusable window
+        # now refuses, like every other unset control in this module.
+        self._ventana_h = ventana_h
         self._costo = costo_intento_usd
         self._reloj = reloj or _ahora
 
     def _claves_de_la_ventana(self) -> list[str]:
+        # The choke point for BOTH `gastado()` and `cobrar_intento()`, which is
+        # why the window check lives here: a window that refuses on spend but
+        # reports USD 0.00 on read would be a diagnostic that lies.
+        if self._ventana_h < 1:
+            raise VentanaNoConfigurada(
+                f"conocimiento_spend_window_h={self._ventana_h} is not a window. "
+                "It is not quietly rounded up to 1 h: that would shrink the "
+                "ceiling's period without shrinking the ceiling, and let the "
+                "deployment spend it again every hour."
+            )
         ahora = self._reloj().astimezone(ZONA_CUOTA)
         return [
             f"{CLAVE_GASTO}:{(ahora - timedelta(hours=h)).strftime('%Y-%m-%dT%H')}"
@@ -254,13 +282,17 @@ class MedidorDeGasto:
         ]
 
     def _exigir_configuracion(self) -> None:
-        if self._techo <= 0 or self._costo <= 0:
+        faltantes = []
+        if self._techo <= 0:
+            faltantes.append(f"conocimiento_spend_ceiling_usd={self._techo!r}")
+        if self._costo <= 0:
+            faltantes.append(f"conocimiento_costo_intento_usd={self._costo!r}")
+        if faltantes:
             raise TechoNoConfigurado(
-                "conocimiento_spend_ceiling_usd and conocimiento_costo_intento_usd "
-                "are both unset, blocked on the cost re-derivation against the "
-                "deepseek-v4-flash pin (amendments A2/A6). A per-attempt cost of 0 "
-                "never reaches any ceiling, which is a ceiling that has been "
-                "deleted while still looking configured."
+                f"unset: {', '.join(faltantes)}. Blocked on the cost re-derivation "
+                "against the deepseek-v4-flash pin (amendments A2/A6). A "
+                "per-attempt cost of 0 never reaches any ceiling, which is a "
+                "ceiling that has been deleted while still looking configured."
             )
 
     def gastado(self) -> float:

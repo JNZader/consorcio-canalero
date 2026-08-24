@@ -39,5 +39,14 @@ sha256_terminos: null
 no_entrenamiento: null
 # The published retention window for API traffic, in days. Must be a bounded
 # number: "they keep it for a while" is not a retention term. 0 means the
-# provider publishes that it retains nothing.
+# provider publishes that it retains nothing, and 0 is a legitimate value here —
+# the best one.
+#
+# UPPER BOUND: 1095 days (3 years, `proveedores.RETENCION_MAX_DIAS`). Anything
+# larger REFUSES. A very large number is not a bounded window with a big value in
+# it; it is indefinite retention written in days, and the questions a CD member
+# asks about their own consorcio are not archive material for the provider. If a
+# provider's published term is genuinely longer and the owner still wants the
+# pin, that is a decision to record and to raise the constant with, not a value
+# to slip past a type check.
 retencion_dias: null

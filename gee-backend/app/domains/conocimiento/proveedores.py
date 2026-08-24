@@ -46,8 +46,32 @@ from app.domains.conocimiento.costos import MedidorDeGasto
 from app.domains.conocimiento.generacion import (
     GeneracionNoDisponible,
     GeneracionTransporte,
+    PresupuestoAgotado,
     SalidaProveedor,
 )
+
+#: Re-exported for the readers who look for it next to the budget that raises it.
+#: It is DEFINED in `generacion.py` because `generar_respuesta` has to catch it,
+#: and that module cannot import this one without a cycle. A terminal state the
+#: state machine cannot name is a state it cannot reach.
+__all__ = [
+    "CAMPOS_CORTE",
+    "CAMPOS_TEXTO",
+    "CORTE_COMPLETO",
+    "CORTE_POR_LONGITUD",
+    "EVIDENCIA_REQUERIDA",
+    "RETENCION_MAX_DIAS",
+    "RUTA_GENERAR",
+    "TERMINOS_PATH",
+    "PresupuestoAgotado",
+    "PresupuestoDeItem",
+    "ProveedorMalConfigurado",
+    "PuenteGenerador",
+    "TerminosNoVerificados",
+    "cargar_terminos",
+    "conectar_puente",
+    "verificar_terminos",
+]
 
 #: The bridge's generation route. One constant, because it is the seam between
 #: this repo and a service configured outside it.
@@ -122,17 +146,6 @@ class TerminosNoVerificados(RuntimeError):
     """
 
 
-class PresupuestoAgotado(RuntimeError):
-    """The worker's budget for this item ran out. Terminal `generacion_fallida`.
-
-    Deliberately NOT a `GeneracionTransporte`: transport failures are retried
-    inside a small budget, and a deadline that may be retried past is a
-    suggestion. Also deliberately not a `GeneracionNoDisponible`: the box was
-    available, the item simply did not finish, and telling an operator "not
-    available" would send them to look at a dependency that was fine.
-    """
-
-
 # ---------------------------------------------------------------------------
 # 6.5 — the worker's per-item budget
 # ---------------------------------------------------------------------------
@@ -175,6 +188,18 @@ class PresupuestoDeItem:
 #: each of these is required and its absence refuses.
 EVIDENCIA_REQUERIDA = ("verificado_el", "verificado_por", "fuente_url", "sha256_terminos")
 
+#: The upper bound on a retention window that still counts as BOUNDED. Three
+#: years, and the number is arguable — which is why it is a named constant and an
+#: overridable argument rather than a literal buried in a comparison.
+#:
+#: The point is that "bounded" was previously satisfied by any non-negative
+#: integer, so `retencion_dias: 36500` passed the gate. A hundred-year retention
+#: of the questions a CD member asks about their own consorcio is not a retention
+#: term with a large number in it; it is indefinite retention written in days,
+#: and reading it as bounded is exactly the pretending this gate exists to
+#: prevent (bounded correction, 2026-08-24).
+RETENCION_MAX_DIAS = 365 * 3
+
 
 def cargar_terminos(path: Path | None = None) -> Mapping[str, Any] | None:
     """Read the terms record, or `None` when there is not one.
@@ -195,6 +220,7 @@ def verificar_terminos(
     *,
     modelo: str,
     pool: str,
+    retencion_max_dias: int = RETENCION_MAX_DIAS,
 ) -> None:
     """Refuse unless the record verifiably covers THIS pin. Fail-closed.
 
@@ -202,6 +228,9 @@ def verificar_terminos(
     the pool exposes it and (b) published no-training-on-input plus a bounded
     retention window, the flag is not enabled. This function is that gate; the
     reading of the terms is the owner's act and lands in the record.
+
+    `retencion_max_dias` is where "bounded" stops being a type check: beyond it
+    the window is indefinite retention written in days, and the record refuses.
     """
     if registro is None:
         raise TerminosNoVerificados(
@@ -235,7 +264,16 @@ def verificar_terminos(
     if not isinstance(retencion, int) or isinstance(retencion, bool) or retencion < 0:
         raise TerminosNoVerificados(
             f"retencion_dias={retencion!r} is not a bounded window. 'They keep it "
-            "for a while' is not a retention term."
+            "for a while' is not a retention term. (`True` is not 30 days either: "
+            "a bool is an int in Python and would otherwise read as 1.)"
+        )
+    if retencion > retencion_max_dias:
+        raise TerminosNoVerificados(
+            f"retencion_dias={retencion} exceeds the {retencion_max_dias}-day "
+            "ceiling on what still counts as a BOUNDED window. A retention this "
+            "long is indefinite retention written in days, and the questions a CD "
+            "member asks about their own consorcio are not archive material for "
+            "the provider."
         )
     faltantes = [c for c in EVIDENCIA_REQUERIDA if not registro.get(c)]
     if faltantes:
@@ -339,22 +377,42 @@ class PuenteGenerador:
 
     @staticmethod
     def _leer(respuesta: httpx.Response) -> SalidaProveedor:
+        """Read a body the gateway ALREADY answered 200 for.
+
+        Every refusal below is `GeneracionNoDisponible`, and that is a bounded
+        correction against the first cut (2026-08-24), which raised
+        `GeneracionTransporte` here. A 200 whose body this adapter cannot read is
+        a CONTRACT MISMATCH — a gateway configured to a shape we do not speak, or
+        a pool whose response envelope changed — and not an outage. Classifying
+        it as transport meant the request was retried inside the transport budget
+        and BILLED TWICE to arrive at exactly the same unreadable body, then
+        reported to the operator as a network fault pointing at a healthy socket.
+        A misconfiguration does not fix itself on the second attempt.
+        """
         try:
             cuerpo = respuesta.json()
         except ValueError as no_json:
-            raise GeneracionTransporte(f"{RUTA_GENERAR} returned non-JSON") from no_json
+            raise GeneracionNoDisponible(
+                f"{RUTA_GENERAR} answered 200 with a non-JSON body. That is a "
+                "gateway contract mismatch, not an outage: retrying re-bills the "
+                "attempt to receive the same body again."
+            ) from no_json
         if not isinstance(cuerpo, Mapping):
-            raise GeneracionTransporte(f"{RUTA_GENERAR} returned {cuerpo!r}")
+            raise GeneracionNoDisponible(
+                f"{RUTA_GENERAR} answered 200 with {cuerpo!r}, which is not an "
+                "object. Contract mismatch, not an outage."
+            )
 
         texto = next(
             (cuerpo[c] for c in CAMPOS_TEXTO if isinstance(cuerpo.get(c), str) and cuerpo[c]),
             None,
         )
         if texto is None:
-            raise GeneracionTransporte(
-                f"{RUTA_GENERAR} returned no text. An empty answer served as an "
-                "answer is worse than a failed item: it cites nothing and reads "
-                "like a finding."
+            raise GeneracionNoDisponible(
+                f"{RUTA_GENERAR} answered 200 with no text under any of "
+                f"{CAMPOS_TEXTO}. An empty answer served as an answer is worse "
+                "than a failed item: it cites nothing and reads like a finding. "
+                "Contract mismatch, so it refuses instead of retrying."
             )
 
         corte = next((cuerpo[c] for c in CAMPOS_CORTE if isinstance(cuerpo.get(c), str)), None)
@@ -364,12 +422,33 @@ class PuenteGenerador:
             return SalidaProveedor(texto=texto, truncado=False)
         # Unreadable stop reason. Reading it as "complete" would serve a possibly
         # truncated legal answer as a whole one, and the design forbids exactly
-        # that distinction being re-derived by sniffing the prose.
-        raise GeneracionTransporte(
+        # that distinction being re-derived by sniffing the prose. Refusing
+        # without a retry is the other half: a provider that reports a stop
+        # reason this adapter does not know reports the same one every time.
+        raise GeneracionNoDisponible(
             f"{RUTA_GENERAR} reported stop reason {corte!r}, which cannot be read "
             "as complete or truncated. Assuming complete would serve a cut-off "
-            "answer as a finished one."
+            "answer as a finished one; retrying would pay twice for the same "
+            "unreadable report."
         )
+
+    # -- lifetime ---------------------------------------------------------
+    def close(self) -> None:
+        """Release the underlying connection pool.
+
+        `conectar_puente` OPENS an `httpx.Client`, and an adapter built per
+        queued item without this leaks a pool per item until the worker's
+        file-descriptor limit notices. Idempotent, because a worker that fails an
+        item in a `finally` must be able to close a client the happy path already
+        closed.
+        """
+        self._cliente.close()
+
+    def __enter__(self) -> PuenteGenerador:
+        return self
+
+    def __exit__(self, *_excepcion: object) -> None:
+        self.close()
 
 
 def conectar_puente(
@@ -387,6 +466,16 @@ def conectar_puente(
 
     `transporte` exists so every refusal above is testable without a gateway.
     Nothing in production passes it.
+
+    **Lifetime — the caller owns it.** This function OPENS an `httpx.Client` and
+    hands it over; the returned adapter must be closed, and it is a context
+    manager so the ordinary way is `with conectar_puente(...) as puente:`. The
+    per-item budget (`presupuesto`) is per ITEM, so the worker builds one adapter
+    per queued item and closing it is not optional at that rate: an unclosed pool
+    per item is a descriptor leak that shows up as a worker that stops answering
+    after N items and blames the provider. A long-lived adapter shared across
+    items is legitimate ONLY without a `presupuesto`, since a budget started when
+    the adapter was built would bound the wrong item.
     """
     if not modelo:
         raise ProveedorMalConfigurado(

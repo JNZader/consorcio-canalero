@@ -45,19 +45,22 @@ from app.domains.conocimiento.costos import (
     MedidorDeGasto,
     TechoDeGasto,
     TechoNoConfigurado,
+    VentanaNoConfigurada,
     segundos_a_medianoche,
 )
 from app.domains.conocimiento.generacion import (
     GeneracionNoDisponible,
     GeneracionTransporte,
     Generador,
+    PresupuestoAgotado,
     SalidaProveedor,
 )
+from app.domains.conocimiento import proveedores
 from app.domains.conocimiento.proveedores import (
+    RETENCION_MAX_DIAS,
     RUTA_GENERAR,
     TERMINOS_PATH,
     PresupuestoDeItem,
-    PresupuestoAgotado,
     ProveedorMalConfigurado,
     PuenteGenerador,
     TerminosNoVerificados,
@@ -187,16 +190,43 @@ class TestTraduccionDeFallas:
 
     def test_un_stop_reason_desconocido_se_rechaza_en_vez_de_asumirse_completo(self) -> None:
         """Assuming 'complete' on an unreadable stop reason serves a truncated
-        answer as a whole one. The response did not arrive intact: transport."""
-        with pytest.raises(GeneracionTransporte):
+        answer as a whole one, so it refuses. It refuses as `no_disponible` and
+        NOT as transport (bounded correction, 2026-08-24): a gateway that reports
+        a stop reason this adapter does not speak reports the same one on the
+        retry, so classifying it as transport bought a second billed attempt to
+        receive the identical unreadable body."""
+        with pytest.raises(GeneracionNoDisponible) as fallo:
             _puente(_eco([], stop="quien-sabe")).generar("q", max_tokens=10)
+        assert not isinstance(fallo.value, GeneracionTransporte)
 
-    def test_un_cuerpo_sin_texto_es_transporte_y_no_una_respuesta_vacia(self) -> None:
+    def test_un_cuerpo_sin_texto_no_es_una_respuesta_vacia_ni_un_reintento(self) -> None:
         def manejador(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"stop_reason": "stop"})
 
-        with pytest.raises(GeneracionTransporte):
+        with pytest.raises(GeneracionNoDisponible) as fallo:
             _puente(manejador).generar("q", max_tokens=10)
+        assert not isinstance(fallo.value, GeneracionTransporte)
+
+    @pytest.mark.parametrize(
+        "cuerpo",
+        [b"no soy json", b"[1, 2, 3]"],
+        ids=["no-json", "json-que-no-es-objeto"],
+    )
+    def test_un_200_con_cuerpo_ilegible_es_config_rota_y_no_un_outage(self, cuerpo: bytes) -> None:
+        """A 200 whose body this adapter cannot read is a CONTRACT MISMATCH — a
+        gateway configured to a shape we do not speak — not a network fault. As
+        transport it was retried, billed twice and then reported to the operator
+        as an outage pointing at a healthy socket."""
+        registro: list[httpx.Request] = []
+
+        def manejador(request: httpx.Request) -> httpx.Response:
+            registro.append(request)
+            return httpx.Response(200, content=cuerpo)
+
+        with pytest.raises(GeneracionNoDisponible) as fallo:
+            _puente(manejador).generar("q", max_tokens=10)
+        assert not isinstance(fallo.value, GeneracionTransporte)
+        assert len(registro) == 1
 
     def test_un_timeout_es_transporte_y_puede_reintentarse(self) -> None:
         def manejador(request: httpx.Request) -> httpx.Response:
@@ -239,6 +269,77 @@ class TestTraduccionDeFallas:
                 timeout_s=20.0,
                 transporte=httpx.MockTransport(_eco([])),
             )
+
+
+class TestAliasDelCuerpoDeRespuesta:
+    """Every alias the adapter claims to accept is EXERCISED here, one by one.
+
+    The alias tuples exist because the gateway's exact body shape is configured
+    outside this repo. That makes them a claim about interoperability, and an
+    unexercised claim is a guess: an alias nobody tests can be dropped, renamed
+    or typo'd and every test still passes, right up until the one deployment that
+    used that name fails closed at 3 a.m.
+
+    The names below are written out as LITERALS on purpose. Parametrising over
+    `CAMPOS_TEXTO` itself would make the test agree with whatever the tuple says,
+    so deleting an alias would delete its own test case instead of turning red.
+    """
+
+    @pytest.mark.parametrize("campo", ["text", "content", "completion", "output"])
+    def test_cada_alias_de_texto_se_lee(self, campo: str) -> None:
+        def manejador(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={campo: "Respuesta.", "stop_reason": "stop"})
+
+        assert _puente(manejador).generar("q", max_tokens=10).texto == "Respuesta."
+
+    @pytest.mark.parametrize("campo", ["stop_reason", "finish_reason", "stop"])
+    def test_cada_alias_de_corte_se_lee_como_truncado(self, campo: str) -> None:
+        def manejador(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"text": "Cortada", campo: "max_tokens"})
+
+        assert _puente(manejador).generar("q", max_tokens=10).truncado is True
+
+    @pytest.mark.parametrize("valor", ["stop", "end_turn", "stop_sequence", "eos"])
+    def test_cada_valor_de_corte_completo_se_lee_como_completo(self, valor: str) -> None:
+        assert _puente(_eco([], stop=valor)).generar("q", max_tokens=10).truncado is False
+
+    @pytest.mark.parametrize("valor", ["max_tokens", "length", "max_output_tokens"])
+    def test_cada_valor_de_corte_por_longitud_se_lee_como_truncado(self, valor: str) -> None:
+        assert _puente(_eco([], stop=valor)).generar("q", max_tokens=10).truncado is True
+
+    def test_las_tuplas_no_perdieron_ningun_alias_por_el_camino(self) -> None:
+        """The literals above and the tuples in the module must agree. Without
+        this, ADDING an alias silently ships an untested one — the tests above
+        only catch deletions and renames."""
+        from app.domains.conocimiento.proveedores import (
+            CAMPOS_CORTE,
+            CAMPOS_TEXTO,
+            CORTE_COMPLETO,
+            CORTE_POR_LONGITUD,
+        )
+
+        assert set(CAMPOS_TEXTO) == {"text", "content", "completion", "output"}
+        assert set(CAMPOS_CORTE) == {"stop_reason", "finish_reason", "stop"}
+        assert set(CORTE_COMPLETO) == {"stop", "end_turn", "stop_sequence", "eos"}
+        assert set(CORTE_POR_LONGITUD) == {"max_tokens", "length", "max_output_tokens"}
+
+
+class TestVidaUtilDelAdaptador:
+    """`conectar_puente` OPENS a connection pool, so somebody has to close it."""
+
+    def test_close_libera_el_cliente_y_es_idempotente(self) -> None:
+        puente = _puente(_eco([]))
+        puente.close()
+        assert puente._cliente.is_closed
+        puente.close()  # a `finally` must be able to close what the happy path closed
+
+    def test_el_adaptador_es_context_manager(self) -> None:
+        """The worker builds one adapter per queued ITEM, because the item budget
+        is per item. At that rate an unclosed pool per item is a descriptor leak
+        that surfaces as a worker which stops answering and blames the provider."""
+        with _puente(_eco([])) as puente:
+            assert puente.generar("q", max_tokens=10).texto
+        assert puente._cliente.is_closed
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +415,55 @@ class TestCompuertaDeTerminos:
                 cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
             )
 
+    def test_retencion_cero_es_legitima_y_es_la_mejor(self, tmp_path: Path) -> None:
+        """0 days is not "unset": it is the provider publishing that it retains
+        nothing, which is the best possible answer to this criterion. A gate that
+        rejected it would refuse exactly the provider it most wants."""
+        datos = _terminos_completos() | {"retencion_dias": 0}
+        verificar_terminos(
+            cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
+        )  # does not raise
+
+    @pytest.mark.parametrize("valor", [True, False], ids=["true", "false"])
+    def test_un_booleano_no_es_una_ventana_de_retencion(self, tmp_path: Path, valor: bool) -> None:
+        """`bool` is a subclass of `int` in Python, so without the explicit
+        `isinstance(..., bool)` guard `retencion_dias: true` would read as a
+        one-day retention window that nobody published."""
+        datos = _terminos_completos() | {"retencion_dias": valor}
+        with pytest.raises(TerminosNoVerificados):
+            verificar_terminos(
+                cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
+            )
+
+    def test_una_retencion_enorme_no_es_una_ventana_acotada(self, tmp_path: Path) -> None:
+        """Bounded was previously satisfied by any non-negative integer, so a
+        hundred-year retention passed. That is indefinite retention written in
+        days (bounded correction, 2026-08-24)."""
+        datos = _terminos_completos() | {"retencion_dias": RETENCION_MAX_DIAS + 1}
+        with pytest.raises(TerminosNoVerificados) as fallo:
+            verificar_terminos(
+                cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
+            )
+        assert str(RETENCION_MAX_DIAS) in str(fallo.value)
+
+    def test_el_limite_de_retencion_es_configurable_y_no_un_literal(self, tmp_path: Path) -> None:
+        """The three-year default is arguable, which is exactly why it is an
+        argument. A stricter deployment tightens it without editing this module."""
+        datos = _terminos_completos() | {"retencion_dias": 30}
+        verificar_terminos(
+            cargar_terminos(_escribir(tmp_path, datos)),
+            modelo=MODELO,
+            pool=POOL,
+            retencion_max_dias=30,
+        )  # exactly at the bound is inside it
+        with pytest.raises(TerminosNoVerificados):
+            verificar_terminos(
+                cargar_terminos(_escribir(tmp_path, datos)),
+                modelo=MODELO,
+                pool=POOL,
+                retencion_max_dias=29,
+            )
+
     @pytest.mark.parametrize(
         "faltante", ["verificado_el", "verificado_por", "fuente_url", "sha256_terminos"]
     )
@@ -322,6 +472,32 @@ class TestCompuertaDeTerminos:
     ) -> None:
         """A record nobody can audit is a claim, not a verification."""
         datos = {k: v for k, v in _terminos_completos().items() if k != faltante}
+        with pytest.raises(TerminosNoVerificados):
+            verificar_terminos(
+                cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
+            )
+
+    @pytest.mark.parametrize(
+        "campo",
+        [
+            "verificado_el",
+            "verificado_por",
+            "fuente_url",
+            "sha256_terminos",
+            "no_entrenamiento",
+            "verificado",
+        ],
+    )
+    def test_la_clave_presente_con_valor_null_tampoco_verifica(
+        self, tmp_path: Path, campo: str
+    ) -> None:
+        """THE SHAPE THE REAL YAML SHIPS. `proveedor_terminos.yaml` writes every
+        one of these keys with an explicit `null` so the owner has a labelled
+        slot to fill; the sibling test above only ever DELETES the key. A gate
+        written as `campo in registro` instead of a truthiness check would pass
+        every one of those deletion tests and admit the checked-in record
+        untouched — which is the one input this gate must refuse."""
+        datos = _terminos_completos() | {campo: None}
         with pytest.raises(TerminosNoVerificados):
             verificar_terminos(
                 cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
@@ -454,6 +630,55 @@ class TestMedidorDeGasto:
         with pytest.raises(TechoNoConfigurado):
             medidor.cobrar_intento()
 
+    def test_el_rechazo_nombra_QUE_falta_y_no_solo_que_algo_falta(self) -> None:
+        """An operator reading "both are unset" when only one of them is has to
+        go and check both. The refusal names the knob and its value."""
+        medidor, _ = self._medidor(techo=1.0, costo=0.0)
+        with pytest.raises(TechoNoConfigurado) as fallo:
+            medidor.cobrar_intento()
+        assert "conocimiento_costo_intento_usd" in str(fallo.value)
+        assert "conocimiento_spend_ceiling_usd" not in str(fallo.value)
+
+        medidor, _ = self._medidor(techo=0.0, costo=0.1)
+        with pytest.raises(TechoNoConfigurado) as fallo:
+            medidor.cobrar_intento()
+        assert "conocimiento_spend_ceiling_usd" in str(fallo.value)
+        assert "conocimiento_costo_intento_usd" not in str(fallo.value)
+
+    @pytest.mark.parametrize("ventana", [0, -1], ids=["cero", "negativa"])
+    def test_una_ventana_invalida_refusa_en_vez_de_redondearse_hacia_arriba(
+        self, ventana: int
+    ) -> None:
+        """The first cut wrote `max(1, ventana_h)`, which repaired a misconfigured
+        window toward the PERMISSIVE side: a ceiling meant to hold over a day
+        started resetting every hour, so the deployment could spend it 24 times a
+        day with nothing anywhere saying so (bounded correction, 2026-08-24)."""
+        almacen = AlmacenEnMemoria()
+        reloj = lambda: datetime(2026, 8, 24, 15, 0, tzinfo=CORDOBA)  # noqa: E731
+        medidor = MedidorDeGasto(
+            almacen, techo_usd=1.0, ventana_h=ventana, costo_intento_usd=0.1, reloj=reloj
+        )
+        with pytest.raises(VentanaNoConfigurada):
+            medidor.cobrar_intento()
+        assert almacen.claves() == [], "a refusal never charges"
+
+    def test_una_ventana_invalida_tampoco_reporta_cero_gastado(self) -> None:
+        """The read side refuses too. A meter that refused to spend but reported
+        USD 0.00 when asked would be a diagnostic that lies to the operator
+        chasing the refusal."""
+        medidor = MedidorDeGasto(
+            AlmacenEnMemoria(), techo_usd=1.0, ventana_h=0, costo_intento_usd=0.1
+        )
+        with pytest.raises(VentanaNoConfigurada):
+            medidor.gastado()
+
+    def test_la_ventana_invalida_tiene_causa_propia(self) -> None:
+        """Its own cause, because the operator action differs: the ceiling is a
+        number nobody derived yet, this is a number somebody set wrong."""
+        assert VentanaNoConfigurada.causa == "ventana_no_configurada"
+        assert issubclass(VentanaNoConfigurada, GeneracionNoDisponible)
+        assert not issubclass(VentanaNoConfigurada, TechoNoConfigurado)
+
     def test_la_ventana_rueda_por_horas_y_lo_viejo_sale(self) -> None:
         almacen = AlmacenEnMemoria()
         instante = datetime(2026, 8, 24, 0, 30, tzinfo=CORDOBA)
@@ -516,6 +741,16 @@ class TestPresupuestoDeItem:
     def test_no_es_transporte_porque_un_deadline_no_se_reintenta(self) -> None:
         """A deadline that the transport budget may retry past is a suggestion."""
         assert not issubclass(PresupuestoAgotado, GeneracionTransporte)
+
+    def test_la_excepcion_vive_donde_la_maquina_de_estados_puede_atraparla(self) -> None:
+        """It is raised here and DEFINED in `generacion.py`, because
+        `generar_respuesta` has to catch it and cannot import this module without
+        a cycle. It escaped uncaught until 2026-08-24 for exactly that reason, so
+        the import direction is the fix and this pins it. Still re-exported here,
+        next to the budget that raises it."""
+        from app.domains.conocimiento import generacion
+
+        assert proveedores.PresupuestoAgotado is generacion.PresupuestoAgotado
 
     def test_el_restante_acota_el_timeout_del_intento(self) -> None:
         """20 s per attempt against 4 s of item budget left is a 4 s attempt: the
