@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import struct
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -70,6 +71,69 @@ ROLES = tuple(PREFIJO_E5)
 #: (real embedder over synthetic rows, synthetic embedder over real rows). See
 #: migration `conocimiento_004` and ledger RAG3-001.
 DETERMINISTIC_MODEL_ID = "deterministic"
+
+#: A resolved HuggingFace commit: exactly forty lowercase hex characters. This is
+#: the ONLY shape the provenance guard is allowed to compare, and the regex is
+#: the enforcement rather than a description of a convention.
+_REVISION_RESUELTA = re.compile(r"[0-9a-f]{40}")
+
+
+class RevisionNoResoluble(ValueError):
+    """A revision that is not a resolved commit hash, and therefore not comparable.
+
+    Tags, branches and `main` all reach here. The guard refuses instead of
+    string-comparing them because two different commits can both be tagged
+    `main`, and a tag comparison would pass them — producing the same confident,
+    fully-attributed, entirely fabricated ranking the identity guard exists to
+    refuse, this time wearing a green check (`design.md:73-84`).
+    """
+
+
+def canonicalizar_revision(valor: str | None) -> str | None:
+    """Normalize one operand of the revision comparison, or refuse it.
+
+    `None` survives as `None` — it is the deliberate `DeterministicEmbedder`
+    exemption and, on a stored row, it is *unknown provenance*. Which of the two
+    it means is the caller's decision, not this function's; all that happens here
+    is that a value which cannot be compared never becomes one that silently can.
+    """
+    if valor is None:
+        return None
+    normalizado = valor.strip().lower()
+    if _REVISION_RESUELTA.fullmatch(normalizado):
+        return normalizado
+    raise RevisionNoResoluble(
+        f"{valor!r} is not a resolved 40-hex commit hash. Comparing symbolic refs "
+        "would pass two different commits that happen to share a tag, which is "
+        "exactly the mismatch the provenance guard exists to catch. "
+        f"To fix it, resolve {valor!r} to the commit it points at (the model "
+        "page's commit list, or `huggingface-cli scan-cache` for what is already "
+        "on disk) and pin THAT hash: as `EMBED_REVISION_HF` for the sidecar, or "
+        "by re-running the embedding batch so the manifest stamps the resolved "
+        "value into `revision_hf`."
+    )
+
+
+def resolver_revision(solicitada: str | None, commit_hash: str | None) -> str | None:
+    """The RESOLVED hash wins over the symbolic argument. Never the other way round.
+
+    `embedding.py` used to end `BGEM3Embedder.__init__` with
+    `revision or _commit_hash`, so what the seam reported depended on how the
+    object happened to be constructed: `revision=None` reported the resolved hash
+    transformers recorded on the config, and `revision="<tag>"` reported the
+    string it was handed. The offline batch and the serving sidecar are started
+    by different operators at different times, so the realistic pair is a
+    manifest stamped with a hash and a sidecar started from
+    `EMBED_REVISION_HF=<tag>` — and under the old precedence those two refuse
+    each other while running identical weights.
+
+    So the requested pin is an INPUT and the resolved hash is the REPORT
+    (`design.md:73-84`). The argument survives only when nothing was resolved,
+    and then it has to be a hash itself or it is not comparable at all.
+    """
+    resuelto = commit_hash if commit_hash is not None else solicitada
+    return canonicalizar_revision(resuelto)
+
 
 #: FLT_DECIMAL_DIG: nine significant digits is the shortest decimal form that
 #: recovers a float32 exactly. pgvector stores float4, so writing the float64
@@ -369,7 +433,13 @@ class BGEM3Embedder:
         self._tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         self._model = AutoModel.from_pretrained(model_id, revision=revision).to(device).eval()
         self.dims = int(self._model.config.hidden_size)
-        self.revision = revision or getattr(self._model.config, "_commit_hash", None)
+        #: The pin the caller asked for, kept next to the resolved value rather
+        #: than in place of it. It is an input to the load and evidence in a bug
+        #: report; it is never what the provenance guard compares.
+        self.revision_solicitada = revision
+        self.revision = resolver_revision(
+            revision, getattr(self._model.config, "_commit_hash", None)
+        )
 
     def count_tokens(self, texto: str) -> int:
         """Exact count with the model's own tokenizer — no truncation.

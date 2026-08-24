@@ -1,0 +1,37 @@
+# Serving closure for the `conocimiento-embed` sidecar. NOT `requirements-rag.txt`.
+#
+# `requirements-rag.txt` is a RANGE spec (`torch>=2.0.0`, `transformers>=4.40.0`)
+# for the offline batch on the workstation, and it also pulls
+# `sentence-transformers`, which exists there only for the E5 baseline
+# (`requirements-rag.txt:23-33`). Neither property is acceptable in a serving
+# container: a serving image whose torch version floats is a serving image whose
+# vectors can change on rebuild, which is exactly the drift the provenance guard
+# exists to catch — and production is the expensive place to catch it
+# (`design.md:122-128`).
+#
+# Regenerate the lock (hashes included, CPU wheels only):
+#   uv pip compile docker/embed/requirements-embed.txt \
+#       --python-version 3.11 --generate-hashes \
+#       --extra-index-url https://download.pytorch.org/whl/cpu \
+#       --index-strategy unsafe-best-match \
+#       --emit-index-url \
+#       --output-file docker/embed/requirements-embed.lock
+#
+# `--emit-index-url` is not cosmetic: `torch==2.8.0+cpu` exists on the PyTorch CPU
+# index and nowhere else, so a lock that does not record where its wheels came
+# from is only reproducible for whoever already knows. The emitted
+# `--index-url` / `--extra-index-url` lines make the lock self-describing, and pip
+# honours them from the requirements file itself.
+#
+# The image installs the LOCK with `--require-hashes`; this file is only the input.
+torch==2.8.0+cpu
+transformers==4.56.1
+fastapi==0.116.1
+uvicorn==0.35.0
+# Present ONLY because the image reuses the backend's `BGEM3Embedder` verbatim
+# rather than re-implementing CLS pooling + L2 normalization (see the Dockerfile:
+# two encode implementations for one model is the drift the provenance guard
+# cannot see). `embedding.py` imports one constant from `ddl.py`, and `ddl.py`
+# imports `sqlalchemy.text`. It is pure Python and megabytes next to torch; the
+# sidecar opens no database connection and is given no DATABASE_URL.
+sqlalchemy==2.0.51
