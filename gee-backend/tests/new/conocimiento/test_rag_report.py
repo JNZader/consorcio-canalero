@@ -438,3 +438,123 @@ class TestCriterioDeLatencia:
             resultado, proc, generado_en=MOMENTO, device_consulta="cpu", latencia=self.LATENCIA
         )
         assert primera == segunda
+
+
+class TestBloqueRouter:
+    """W-2 — the command tasks.md declares must actually print the router block.
+
+    `bloque_router` had no caller outside its own tests, so `make rag-eval`
+    produced a report with no router section at all. A missing section and a
+    router that was never a problem look identical on the page, which is the
+    exact confusion the `not-evaluable` vocabulary exists to prevent — so the
+    section is now ALWAYS rendered: scored, or saying in words that it was not
+    and naming the command that would score it.
+    """
+
+    def _entrada(self, *, pasos: int = 3):
+        from app.domains.conocimiento.eval.router import EntradaRouter, correr_eval_router
+
+        from .test_routing import EmbedderFalso
+
+        embedder = EmbedderFalso()
+        return EntradaRouter(resultado=correr_eval_router(embedder, pasos=pasos), embedder=embedder)
+
+    def test_the_report_carries_the_router_block(self, corrida):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(
+            resultado,
+            proc,
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            router=self._entrada(),
+        )
+        assert "## Router (question classification)" in markdown
+        assert "operational -> legal" in markdown
+        assert "mixto -> legal" in markdown
+        # The bar is ratified (2026-08-24), so the block now issues a verdict
+        # rather than printing `barra_no_ratificada` next to the figures.
+        assert "Veredicto:" in markdown
+        assert "barra_no_ratificada" not in markdown
+
+    def test_a_run_that_scored_no_router_says_so_instead_of_omitting_it(self, corrida):
+        """Silence would read as "the router was fine"."""
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(resultado, proc, generado_en=MOMENTO, device_consulta="cpu")
+        assert "## Router (question classification)" in markdown
+        assert "`not-evaluable`" in markdown
+        assert "rag-eval" in markdown, "it must name the command that WOULD score it"
+
+    def test_an_unratified_set_lands_as_not_evaluable_and_not_as_a_crash(self, corrida):
+        """The `SetRouterNoRatificado` refusal reaches the page as a reason."""
+        from app.domains.conocimiento.eval.router import EntradaRouter
+
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        markdown = renderizar_markdown(
+            resultado,
+            proc,
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            router=EntradaRouter.no_evaluable("estado='BORRADOR' — el owner no ratificó el set"),
+        )
+        assert "`not-evaluable`" in markdown
+        assert "BORRADOR" in markdown
+
+    def test_a_result_without_its_embedder_is_unconstructible(self, corrida):
+        """A matrix whose provenance nobody can read cannot say whether it
+        measured the router or the plumbing."""
+        from app.domains.conocimiento.eval.router import EntradaRouter, correr_eval_router
+        from app.domains.conocimiento.routing import SetRouterNoRatificado
+
+        from .test_routing import EmbedderFalso
+
+        with pytest.raises(SetRouterNoRatificado):
+            EntradaRouter(resultado=correr_eval_router(EmbedderFalso(), pasos=3))
+        with pytest.raises(SetRouterNoRatificado):
+            EntradaRouter()
+
+    def test_the_json_twin_carries_the_same_figures_and_the_same_refusal(self, corrida, tmp_path):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        con = escribir_reporte(
+            resultado,
+            proc,
+            destino=tmp_path / "con",
+            generado_en=MOMENTO,
+            device_consulta="cpu",
+            router=self._entrada(),
+        )
+        sin = escribir_reporte(
+            resultado, proc, destino=tmp_path / "sin", generado_en=MOMENTO, device_consulta="cpu"
+        )
+
+        datos = json.loads(con.json.read_text(encoding="utf-8"))["router"]
+        assert datos["evaluado"] is True
+        assert datos["n"] == 49
+        assert datos["embedder"]["sintetico"] is True
+        assert datos["barra"]["ratificada"] is True
+        assert datos["barra"]["exactitud_minima"] == 0.70
+        assert datos["barra"]["operational_a_legal_max"] == 0
+        assert datos["barra"]["mixto_a_legal_max"] == 2
+        assert datos["barra"]["veredicto"] in (True, False)
+
+        vacio = json.loads(sin.json.read_text(encoding="utf-8"))["router"]
+        assert vacio["evaluado"] is False, (
+            "always a key and always a boolean: a machine reader must not infer "
+            "'not scored' from an absent field"
+        )
+        assert vacio["motivo"]
+
+    def test_rendering_the_router_block_still_reads_no_clock(self, corrida):
+        db, resultado = corrida
+        proc = procedencia(db, sintetico=False)
+        entrada = self._entrada()
+        primera = renderizar_markdown(
+            resultado, proc, generado_en=MOMENTO, device_consulta="cpu", router=entrada
+        )
+        segunda = renderizar_markdown(
+            resultado, proc, generado_en=MOMENTO, device_consulta="cpu", router=entrada
+        )
+        assert primera == segunda

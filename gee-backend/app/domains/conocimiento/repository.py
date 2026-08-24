@@ -1079,3 +1079,98 @@ def hydrate_citations(
         return {}
     filas = db.execute(HYDRATE_SQL, {"corpus_sha": corpus_sha, "claves": list(claves)}).all()
     return {fila[0]: dict(fila._mapping) for fila in filas}
+
+
+# ---------------------------------------------------------------------------
+# Routing decision record (design.md:188-196, routing spec:85, 94-98)
+# ---------------------------------------------------------------------------
+
+
+def registrar_decision_ruta(db: Session, decision: Any) -> Any:
+    """Persist one routing decision and return its id.
+
+    Takes a `routing.DecisionRuta` and copies the five fields the spec names
+    plus the surface and the motive. It deliberately does NOT copy `qvec` or
+    `puntajes`: the record exists so a human can read what was decided and why,
+    and a 1024-float column would make it a second embedding store that nothing
+    reads and everything has to migrate.
+
+    Typed as `Any` to keep `repository` free of an import from `routing` —
+    `routing` already imports the embedder seam, and a cycle here would be paid
+    for at import time by every script in the domain.
+    """
+    from app.domains.conocimiento.models import RagDecisionRuta
+
+    fila = RagDecisionRuta(
+        pregunta=decision.pregunta,
+        clase=decision.clase,
+        superficie=decision.superficie,
+        motivo=decision.motivo,
+        margen=decision.margen,
+        umbral_vigente=decision.umbral_vigente,
+    )
+    db.add(fila)
+    db.flush()
+    return fila.id
+
+
+def listar_decisiones_ruta(db: Session, limite: int = 200) -> list[Any]:
+    """Oldest first. Admin-read only — the dependency lives on the V1 router.
+
+    The ordering is `decidida_en` then `id`, never `decidida_en` alone: two
+    decisions in the same clock tick would otherwise come back in whatever order
+    Postgres felt like, and "the routing record for that request" (routing
+    spec:96-98) has to be a stable thing to point at.
+    """
+    from app.domains.conocimiento.models import RagDecisionRuta
+
+    return list(
+        db.query(RagDecisionRuta)
+        .order_by(RagDecisionRuta.decidida_en.asc(), RagDecisionRuta.id.asc())
+        .limit(limite)
+        .all()
+    )
+
+
+def purgar_decisiones_ruta(
+    db: Session,
+    dias: int | None = None,
+    *,
+    ahora: datetime.datetime | None = None,
+) -> int:
+    """Delete decisions older than the RATIFIED retention window.
+
+    90 days by default (tasks.md decision 0.6 / design.md A5). "Bounded
+    retention" that nothing ever executes is retention forever with a comment,
+    so this is a real statement with a real row count — the caller can log what
+    it removed rather than assume.
+
+    Strictly OLDER THAN: a row at exactly the window edge SURVIVES. The boundary
+    has to be nailed down somewhere and this is the conservative side of it.
+
+    `ahora` exists so that boundary can actually be asserted. With the clock read
+    inside, a test can only place a row *near* the edge — by the time the query
+    computes its own `now()`, a row written at `now - 90d` is already strictly
+    older and gets deleted, so the only tests anyone can write are the ones that
+    pass under `<` and under `<=` alike. That is not a border test; it is a
+    border test's costume. Production callers pass nothing and read the clock
+    here, unchanged.
+    """
+    from app.domains.conocimiento.models import RagDecisionRuta
+    from app.domains.conocimiento.routing import RETENCION_DECISIONES_DIAS
+
+    ventana = datetime.timedelta(days=RETENCION_DECISIONES_DIAS if dias is None else dias)
+    referencia = ahora if ahora is not None else datetime.datetime.now(datetime.timezone.utc)
+    if referencia.tzinfo is None:
+        raise ValueError(
+            "purgar_decisiones_ruta needs an aware `ahora`: `decidida_en` is stored "
+            "TIMESTAMPTZ, and comparing it against a naive datetime silently reads "
+            "the server's local offset as UTC and shifts the retention window."
+        )
+    corte = referencia - ventana
+    borradas = (
+        db.query(RagDecisionRuta)
+        .filter(RagDecisionRuta.decidida_en < corte)
+        .delete(synchronize_session=False)
+    )
+    return int(borradas)
