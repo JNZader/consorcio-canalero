@@ -16,15 +16,22 @@ class structure at all, so a confusion matrix built on one measures the
 plumbing — which is worth running, and worth never confusing with a measurement
 of the router.
 
-**The BAR is unratified and this module issues no verdict.** It prints the
-held-out figures, the proposed bar next to them, and the state
-`barra_no_ratificada` (`routing.evaluar_barra`). The same-sample matrix is
+**The BAR is RATIFIED (owner, 2026-08-24) and this module now prints a verdict.**
+The held-out figures come first, the bar next to them, then PASA/NO PASA with
+the failing components named. The `barra_no_ratificada` branch stays: a future
+bar nobody has fixed re-enters it and gets no verdict. The same-sample matrix is
 printed too and is labelled `upper bound (fit on the scoring sample)` wherever
 it appears, exactly as `ResultadoLOOCV`'s same-sample pair is.
+
+`EntradaRouter` at the bottom is what makes `make rag-eval` actually print this
+block. Before it, `bloque_router` had no caller outside the tests: the command
+the tasks file declared produced a report with no router section at all, which
+is a measurement that exists in a module and nowhere a reader would look.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -34,6 +41,7 @@ from app.domains.conocimiento.embedding import Embedder
 from app.domains.conocimiento.routing import (
     CLASES,
     ESTADO_BARRA_NO_RATIFICADA,
+    BarraRouter,
     EvaluacionBarra,
     ItemRuta,
     MatrizConfusion,
@@ -159,6 +167,11 @@ def bloque_router(
         "This is the cell that fabricates an answer about a real person's debt, and it is "
         "reported explicitly because routing spec:85 requires it to be.",
         "",
+        f"**`mixto -> legal` = {resultado.matriz.mixto_a_legal}** "
+        f"({_fmt(resultado.matriz.fraccion_mixto_a_legal)} of the mixto items). A mixed "
+        "question answered as purely legal drops its operational leg with no symptom on the "
+        "page, which is why the ratified bar names this cell too.",
+        "",
         f"Overall accuracy (held-out): {_fmt(resultado.matriz.exactitud)}",
         "",
         f"### Confusion matrix — {ETIQUETA_UPPER_BOUND}",
@@ -172,19 +185,28 @@ def bloque_router(
         "### Bar",
         "",
     ]
+    lineas += [
+        f"- accuracy (held-out) >= {evaluacion.barra.exactitud_minima}",
+        f"- `operational -> legal` <= {evaluacion.barra.operational_a_legal_max} (hard cell)",
+        f"- `mixto -> legal` <= {evaluacion.barra.mixto_a_legal_max}",
+        "",
+    ]
     if evaluacion.estado == ESTADO_BARRA_NO_RATIFICADA:
         lineas += [
             "**Estado: `barra_no_ratificada` — no verdict is issued.**",
             "",
-            f"The proposed bar (`operational -> legal` <= "
-            f"{evaluacion.barra.operational_a_legal_max}, overall >= "
-            f"{evaluacion.barra.exactitud_minima}, design.md:175-186) is printed here next to "
-            "the measured figures so the owner can fix the bar WITH the numbers in hand. It "
-            "is a proposal until then (tasks.md 0.3 / design.md A4), and nothing in this "
-            "pipeline turns it into a pass or a fail.",
+            "The bar above is printed next to the measured figures so the owner can fix it "
+            "WITH the numbers in hand. Nothing in this pipeline turns an unratified bar into "
+            "a pass or a fail (routing spec:100-104).",
         ]
     else:
-        lineas.append(f"Veredicto: **{'PASA' if evaluacion.veredicto else 'NO PASA'}**")
+        lineas += [
+            "Ratificada por el owner el 2026-08-24 (tasks.md 0.3).",
+            "",
+            f"Veredicto: **{'PASA' if evaluacion.veredicto else 'NO PASA'}**",
+        ]
+        for fallo in evaluacion.componentes_fallidos:
+            lineas.append(f"- falla: {fallo}")
     return lineas
 
 
@@ -223,14 +245,18 @@ def a_json(
         "same_sample_label": ETIQUETA_UPPER_BOUND,
         "operational_a_legal": resultado.matriz.operational_a_legal,
         "fraccion_operational_a_legal": resultado.matriz.fraccion_operational_a_legal,
+        "mixto_a_legal": resultado.matriz.mixto_a_legal,
+        "fraccion_mixto_a_legal": resultado.matriz.fraccion_mixto_a_legal,
         "exactitud_held_out": resultado.matriz.exactitud,
         "exactitud_same_sample": resultado.matriz_same_sample.exactitud,
         "barra": {
             "estado": evaluacion.estado,
             "ratificada": evaluacion.barra.ratificada,
-            "operational_a_legal_max_propuesto": evaluacion.barra.operational_a_legal_max,
-            "exactitud_minima_propuesta": evaluacion.barra.exactitud_minima,
+            "operational_a_legal_max": evaluacion.barra.operational_a_legal_max,
+            "mixto_a_legal_max": evaluacion.barra.mixto_a_legal_max,
+            "exactitud_minima": evaluacion.barra.exactitud_minima,
             "veredicto": evaluacion.veredicto,
+            "componentes_fallidos": list(evaluacion.componentes_fallidos),
         },
         "folds": [
             {
@@ -240,6 +266,94 @@ def a_json(
             }
             for fold in resultado.folds
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# The seam the report renders through
+# ---------------------------------------------------------------------------
+
+
+#: What the report prints when nobody asked for a router run at all. Named and
+#: printed rather than omitted: a report with no router section reads as a report
+#: whose router was fine, and that is the exact confusion the `not-evaluable`
+#: vocabulary exists to prevent.
+MOTIVO_NO_CORRIDO = (
+    "El bloque del router no se corrió en esta corrida: no se construyó un embebedor real. "
+    "Para correrlo: `make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python`, que arma BGE-M3 y "
+    "puntúa el set ratificado."
+)
+
+
+@dataclass(frozen=True)
+class EntradaRouter:
+    """A scored router run, or the stated reason there is none.
+
+    One argument instead of three (`resultado`, `embedder`, `motivo`) because
+    the three are not independent: a result without its embedder is a matrix
+    whose provenance nobody can read, and the `sintetico` flag is exactly what
+    separates "the router scores 0.755" from "the harness runs". Bundling them
+    makes the illegal combination unconstructible.
+
+    The report renders through here; it never computes. `renderizar_markdown` is
+    asserted pure over its own AST, and embedding 49 questions inside a renderer
+    would make the document a side effect of printing it.
+    """
+
+    resultado: ResultadoRouterLOOCV | None = None
+    embedder: Embedder | None = None
+    motivo_no_evaluable: str | None = None
+    barra: BarraRouter | None = None
+
+    def __post_init__(self) -> None:
+        if (self.resultado is None) != (self.embedder is None):
+            raise SetRouterNoRatificado(
+                "a router result and the embedder that produced it travel together: a "
+                "matrix without its embedder cannot say whether it measured the router "
+                "or the plumbing."
+            )
+        if self.resultado is None and not self.motivo_no_evaluable:
+            raise SetRouterNoRatificado(
+                "a router entry with no result must name why: `not-evaluable` with no "
+                "reason is indistinguishable from a section somebody forgot to fill in."
+            )
+
+    @classmethod
+    def no_evaluable(cls, motivo: str) -> "EntradaRouter":
+        return cls(motivo_no_evaluable=motivo)
+
+    def evaluacion(self) -> EvaluacionBarra | None:
+        if self.resultado is None:
+            return None
+        return (
+            evaluar_barra(self.resultado)
+            if self.barra is None
+            else evaluar_barra(self.resultado, self.barra)
+        )
+
+
+def bloque_para(entrada: EntradaRouter | None) -> list[str]:
+    """The router section of the report, always present, never invented."""
+    if entrada is None:
+        return bloque_no_evaluable(MOTIVO_NO_CORRIDO)
+    if entrada.resultado is None or entrada.embedder is None:
+        return bloque_no_evaluable(entrada.motivo_no_evaluable or MOTIVO_NO_CORRIDO)
+    return bloque_router(entrada.resultado, entrada.embedder, entrada.evaluacion())
+
+
+def json_para(entrada: EntradaRouter | None) -> dict[str, Any]:
+    """The machine-readable twin of `bloque_para`. Same refusal, same reason."""
+    if entrada is None:
+        return {"evaluado": False, "motivo": MOTIVO_NO_CORRIDO}
+    if entrada.resultado is None or entrada.embedder is None:
+        return {"evaluado": False, "motivo": entrada.motivo_no_evaluable or MOTIVO_NO_CORRIDO}
+    return {
+        "evaluado": True,
+        "embedder": {
+            "modelo": entrada.embedder.model_id,
+            "sintetico": bool(entrada.embedder.sintetico),
+        },
+        **a_json(entrada.resultado, entrada.evaluacion()),
     }
 
 

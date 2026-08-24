@@ -57,6 +57,11 @@ from app.domains.conocimiento.eval.harness import (
     decidir_go_no_go,
     resumen_metodologico,
 )
+from app.domains.conocimiento.eval.router import (
+    EntradaRouter,
+    bloque_para as bloque_router_para,
+    json_para as json_router_para,
+)
 from app.domains.conocimiento.fusion import RRF_K
 from app.domains.conocimiento.service import FTS_OPERADOR, LEG_LIMIT, ProcedenciaEmbeddings
 
@@ -498,6 +503,7 @@ def renderizar_markdown(
     device_consulta: str,
     permitir_sintetico: bool = False,
     latencia: dict[str, Any] | None = None,
+    router: EntradaRouter | None = None,
 ) -> str:
     """Render the report. Pure: same arguments in, byte-identical string out."""
     sintetico = _gate_sintetico(procedencia, permitir_sintetico, resultado=resultado)
@@ -573,6 +579,13 @@ def renderizar_markdown(
         lineas += ["", *_bloque_exencion(corrida)]
         lineas += ["", "**Por pregunta**", "", *_tabla_preguntas(corrida), ""]
 
+    # The router block is ALWAYS present — scored, or saying in words that it was
+    # not and how to score it. `make rag-eval` is the command tasks.md names for
+    # this measurement, and until now it produced a document with no router
+    # section at all: the code existed, the report did not carry it, and the two
+    # facts were impossible to tell apart from the artifact.
+    lineas += [*bloque_router_para(router), ""]
+
     return "\n".join(lineas) + "\n"
 
 
@@ -584,6 +597,7 @@ def _a_json(
     device_consulta: str,
     sintetico: bool,
     latencia: dict[str, Any] | None = None,
+    router: EntradaRouter | None = None,
 ) -> dict[str, Any]:
     versiones = runtime_versions()
     modos: dict[str, Any] = {}
@@ -715,6 +729,9 @@ def _a_json(
             "no_resueltas": list(resultado.gold.no_resueltas),
             "evaluable": resultado.gold.precondicion().evaluable,
         },
+        # Always a key, and `evaluado` is always a boolean: a machine reader must
+        # not have to infer "the router was not scored" from an absent field.
+        "router": json_router_para(router),
         "modos": modos,
     }
 
@@ -728,6 +745,7 @@ def escribir_reporte(
     device_consulta: str,
     permitir_sintetico: bool = False,
     latencia: dict[str, Any] | None = None,
+    router: EntradaRouter | None = None,
 ) -> ReporteEscrito:
     """Write the markdown and its machine-readable twin, side by side.
 
@@ -743,6 +761,7 @@ def escribir_reporte(
         device_consulta=device_consulta,
         permitir_sintetico=permitir_sintetico,
         latencia=latencia,
+        router=router,
     )
     datos = _a_json(
         resultado,
@@ -751,6 +770,7 @@ def escribir_reporte(
         device_consulta=device_consulta,
         sintetico=sintetico,
         latencia=latencia,
+        router=router,
     )
 
     destino.mkdir(parents=True, exist_ok=True)

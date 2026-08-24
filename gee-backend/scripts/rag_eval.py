@@ -75,6 +75,11 @@ from app.domains.conocimiento.eval.report import (  # noqa: E402
     EvalSinteticoNoEsEval,
     escribir_reporte,
 )
+from app.domains.conocimiento.eval.router import (  # noqa: E402
+    EntradaRouter,
+    correr_eval_router,
+)
+from app.domains.conocimiento.routing import SetRouterNoRatificado  # noqa: E402
 from app.domains.conocimiento.service import procedencia_embeddings  # noqa: E402
 
 DESTINO_POR_DEFECTO = Path(__file__).resolve().parent.parent.parent / "docs" / "rag"
@@ -88,6 +93,35 @@ SALIDA_IDENTIDAD = 4
 #: script differently (`venv-rag/bin/python`, or `--modo fts`) — exactly what an
 #: argument error means. `scripts/rag_query_latency.py` already used 2 for it.
 SALIDA_SIN_DEPENDENCIA = 2
+
+
+#: Why the report says the router was not scored on a run that built no
+#: embedder. Named at the edge, so the document states the command that WOULD
+#: score it instead of leaving a silent gap where a section belongs.
+MOTIVO_ROUTER_SIN_EMBEDDER = (
+    "El bloque del router no se puntuó: esta corrida no construyó un embebedor "
+    "(`--modo fts` no necesita uno). Para puntuarlo: "
+    "`make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python`."
+)
+
+
+def _entrada_router(embedder, *, pasos: int) -> EntradaRouter:
+    """Score the ratified router set, or state why this run cannot.
+
+    Reuses the embedder the ablation already built rather than making a second
+    one: two embedders in one process is two model loads, and — the part that
+    matters — a report whose retrieval and router figures could quietly come
+    from different weights.
+    """
+    if embedder is None:
+        return EntradaRouter.no_evaluable(MOTIVO_ROUTER_SIN_EMBEDDER)
+    try:
+        resultado = correr_eval_router(embedder, pasos=pasos)
+    except SetRouterNoRatificado as motivo:
+        # The set is not ratified, or is ratified and too thin. Either way this
+        # is `not-evaluable` in the report, never a missing section.
+        return EntradaRouter.no_evaluable(str(motivo))
+    return EntradaRouter(resultado=resultado, embedder=embedder)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,6 +160,16 @@ def build_parser() -> argparse.ArgumentParser:
             "JSON written by scripts/rag_query_latency.py --json. Its p50/p95 and "
             "its LOCAL/ESTIMATE label are rendered into the report; without it "
             "the report states that the latency criterion was not evaluated."
+        ),
+    )
+    parser.add_argument(
+        "--router-pasos",
+        type=int,
+        default=7,
+        help=(
+            "grid resolution for the router's LOOCV calibration. 7 is the "
+            "shipped value (~3 min at 1024 dimensions over the ratified n=49 "
+            "set); lower it for a quick smoke, never to publish a figure."
         ),
     )
     parser.add_argument(
@@ -332,6 +376,8 @@ def main(argv: list[str] | None = None) -> int:
 
         resultado = evaluar(db, args.corpus_sha, gold, modos=modos, k=args.k, embedder=embedder)
 
+    entrada_router = _entrada_router(embedder, pasos=args.router_pasos)
+
     try:
         escrito = escribir_reporte(
             resultado,
@@ -341,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             device_consulta=args.device,
             permitir_sintetico=args.allow_synthetic,
             latencia=latencia,
+            router=entrada_router,
         )
     except EvalSinteticoNoEsEval as error:
         print(f"ERROR: {error}", file=sys.stderr)
@@ -358,6 +405,21 @@ def main(argv: list[str] | None = None) -> int:
         if corrida.cobertura.leg_fts_degradada:
             print("  [LEG FTS DEGRADADA — ver RAG4-001]", end="")
         print()
+
+    evaluacion_router = entrada_router.evaluacion()
+    if evaluacion_router is None:
+        print(f"  {'router':<7} NO EVALUABLE")
+    elif evaluacion_router.veredicto is None:
+        print(f"  {'router':<7} SIN VEREDICTO (barra_no_ratificada)")
+    else:
+        print(
+            f"  {'router':<7} {'PASA' if evaluacion_router.veredicto else 'NO PASA'}"
+            + (
+                ""
+                if evaluacion_router.veredicto
+                else f"  (fallan: {'; '.join(evaluacion_router.componentes_fallidos)})"
+            )
+        )
 
     print(f"\nreporte: {escrito.markdown}")
     print(f"json   : {escrito.json}")

@@ -1132,7 +1132,12 @@ def listar_decisiones_ruta(db: Session, limite: int = 200) -> list[Any]:
     )
 
 
-def purgar_decisiones_ruta(db: Session, dias: int | None = None) -> int:
+def purgar_decisiones_ruta(
+    db: Session,
+    dias: int | None = None,
+    *,
+    ahora: datetime.datetime | None = None,
+) -> int:
     """Delete decisions older than the RATIFIED retention window.
 
     90 days by default (tasks.md decision 0.6 / design.md A5). "Bounded
@@ -1140,14 +1145,29 @@ def purgar_decisiones_ruta(db: Session, dias: int | None = None) -> int:
     so this is a real statement with a real row count — the caller can log what
     it removed rather than assume.
 
-    Strictly OLDER THAN: a row at exactly the window edge survives. The boundary
+    Strictly OLDER THAN: a row at exactly the window edge SURVIVES. The boundary
     has to be nailed down somewhere and this is the conservative side of it.
+
+    `ahora` exists so that boundary can actually be asserted. With the clock read
+    inside, a test can only place a row *near* the edge — by the time the query
+    computes its own `now()`, a row written at `now - 90d` is already strictly
+    older and gets deleted, so the only tests anyone can write are the ones that
+    pass under `<` and under `<=` alike. That is not a border test; it is a
+    border test's costume. Production callers pass nothing and read the clock
+    here, unchanged.
     """
     from app.domains.conocimiento.models import RagDecisionRuta
     from app.domains.conocimiento.routing import RETENCION_DECISIONES_DIAS
 
     ventana = datetime.timedelta(days=RETENCION_DECISIONES_DIAS if dias is None else dias)
-    corte = datetime.datetime.now(datetime.timezone.utc) - ventana
+    referencia = ahora if ahora is not None else datetime.datetime.now(datetime.timezone.utc)
+    if referencia.tzinfo is None:
+        raise ValueError(
+            "purgar_decisiones_ruta needs an aware `ahora`: `decidida_en` is stored "
+            "TIMESTAMPTZ, and comparing it against a naive datetime silently reads "
+            "the server's local offset as UTC and shifts the retention window."
+        )
+    corte = referencia - ventana
     borradas = (
         db.query(RagDecisionRuta)
         .filter(RagDecisionRuta.decidida_en < corte)

@@ -36,12 +36,12 @@ correct and be dangerous:
   it does not redirect, because a redirect is a *classification claim* and
   making that claim because a container is down is a fabricated classification.
 
-**Nothing here turns a measurement into a verdict.** The numeric bar
-(`operational -> legal <= 0.05`, `overall >= 0.85`) is a PROPOSAL awaiting owner
-ratification (design.md:175-186, tasks.md 0.3, design.md A4). `evaluar_barra`
-reports the figures under the state `barra_no_ratificada` and issues no
-pass/fail — the same shape `harness.SenalAbstencionNoRatificada` uses for the
-abstention pair.
+**The numeric bar is RATIFIED and `evaluar_barra` now issues a real verdict**
+(owner, 2026-08-24; tasks.md 0.3). It is `accuracy (held-out) >= 0.70`,
+`operational -> legal == 0` as a hard cell, and `mixto -> legal <= 2`. The
+`barra_no_ratificada` state is NOT removed: it is the mechanism a future set or
+a future bar re-enters when nobody has ratified it yet, and deleting it would
+mean the next unratified number gets a verdict by default.
 """
 
 from __future__ import annotations
@@ -209,8 +209,14 @@ _MARCADORES_SIN_FAMILIA: tuple[tuple[str, str], ...] = (
 #: The surface a wholly `operational` question names when no family marker fired
 #: — a bare padrón-shaped name, or a stage-2 `operational` with no lexicon hit.
 #:
-#: **This is an implementation decision, not a design one, and it is flagged as
-#: such.** routing spec:31 REQUIRES the redirect to name a surface, design.md G1
+#: **RATIFIED by the owner on 2026-08-24** (S-1, tasks.md 4.1): `/tramites`
+#: stands, because it is the most general of the four surfaces — the one a
+#: reader lands on with the least wrong assumption about what their question was
+#: about. It was raised as an implementation decision and answered as a
+#: decision, so `test_la_superficie_operacional_por_defecto_es_la_ratificada`
+#: pins the literal: changing it is now a change to a ratified value.
+#:
+#: routing spec:31 REQUIRES the redirect to name a surface, design.md G1
 #: does not say which one when the subject family is unresolved, and returning
 #: `None` would break the spec's own requirement. `/tramites` is chosen because
 #: it is the general "your records with the consorcio" surface. What makes the
@@ -416,21 +422,36 @@ PARAMETROS_SIN_CALIBRAR = ParametrosRuta(umbral=0.0, banda=0.0, piso=0.0)
 
 @dataclass(frozen=True)
 class BarraRouter:
-    """The PROPOSED numeric bar. Config, with the design's proposals as defaults.
+    """The numeric bar. RATIFIED by the owner on 2026-08-24 (tasks.md 0.3).
 
-    `ratificada` is False and stays False until the owner fixes the bar with the
-    measured numbers in hand (tasks.md 0.3, design.md A4). Nothing reads these
-    values to decide anything while that flag is False; `evaluar_barra` reports
-    them next to the figures so the owner can see what was proposed against what
-    was measured.
+    Three components, and each one is a different kind of statement:
+
+    - `exactitud_minima = 0.70` — held-out overall accuracy. Set with the
+      measured numbers in hand (held-out 0.755 on the ratified n=49 set), not
+      before, which is the whole discipline decision 0.3 was about.
+    - `operational_a_legal_max = 0` — a HARD CELL, a COUNT and not a fraction.
+      One operational question answered as legal is one fabricated figure about
+      a real person's debt, and there is no sample size at which that becomes a
+      rounding error. Measured 0 of 12.
+    - `mixto_a_legal_max = 2` — a mixed question answered as purely legal drops
+      its operational leg silently. Measured 2 of 13, and the owner ratified the
+      bar AT the measurement with a named follow-up to bring it down rather than
+      pretending the current number is comfortable.
+
+    `ratificada` now defaults to True. The False path is deliberately kept
+    reachable: a bar the owner has not fixed — a new labeled set, a re-derived
+    threshold — must re-enter `barra_no_ratificada` and issue no verdict, and a
+    flag that only ever holds one value is a flag nobody can use.
     """
 
-    operational_a_legal_max: float = 0.05
-    exactitud_minima: float = 0.85
-    ratificada: bool = False
+    exactitud_minima: float = 0.70
+    operational_a_legal_max: int = 0
+    mixto_a_legal_max: int = 2
+    ratificada: bool = True
 
 
-BARRA_PROPUESTA = BarraRouter()
+#: The ratified bar. `evaluar_barra` uses it when the caller names none.
+BARRA_RATIFICADA = BarraRouter()
 
 
 class Centroides:
@@ -723,6 +744,21 @@ class MatrizConfusion:
         total = self.total_esperado(CLASE_OPERATIONAL)
         return None if total == 0 else self.operational_a_legal / total
 
+    @property
+    def mixto_a_legal(self) -> int:
+        """The second cell the ratified bar names.
+
+        A `mixto` question classified as purely `legal` gets its operational leg
+        dropped without a word: the reader sees a complete-looking legal answer
+        and no redirect, so the missing half is invisible rather than wrong.
+        """
+        return self.celda(CLASE_MIXTO, CLASE_LEGAL)
+
+    @property
+    def fraccion_mixto_a_legal(self) -> float | None:
+        total = self.total_esperado(CLASE_MIXTO)
+        return None if total == 0 else self.mixto_a_legal / total
+
 
 def matriz_desde(pares: Iterable[tuple[str, str]]) -> MatrizConfusion:
     conteos: dict[tuple[str, str], int] = {}
@@ -886,11 +922,11 @@ ESTADO_BARRA_EVALUADA = "barra_evaluada"
 
 @dataclass(frozen=True)
 class EvaluacionBarra:
-    """Figures, the proposed bar next to them, and NO verdict while unratified.
+    """Figures, the bar next to them, and a verdict only when it is ratified.
 
-    `veredicto` is `None` under `barra_no_ratificada`. That is the whole point:
-    the gate exists, it runs, it prints — and it refuses to say pass or fail
-    against numbers nobody has ratified. A gate that dictates against an
+    `veredicto` is `None` under `barra_no_ratificada`. The bar is ratified now
+    (2026-08-24) so the ordinary path issues a real pass/fail, but the state is
+    kept for the next bar nobody has fixed yet: a gate that dictates against an
     unratified bar is a bar somebody invented; a gate that prints nothing is a
     measurement nobody can ratify from.
     """
@@ -898,15 +934,20 @@ class EvaluacionBarra:
     estado: str
     operational_a_legal: int
     fraccion_operational_a_legal: float | None
+    mixto_a_legal: int
     exactitud: float | None
     n: int
     barra: BarraRouter
     veredicto: bool | None
+    #: Which components failed, by name. Empty on a pass, and empty under
+    #: `barra_no_ratificada` because nothing was judged. A bare `False` makes
+    #: the reader re-derive the reason from three figures.
+    componentes_fallidos: tuple[str, ...] = ()
 
 
 def evaluar_barra(
     resultado: ResultadoRouterLOOCV,
-    barra: BarraRouter = BARRA_PROPUESTA,
+    barra: BarraRouter = BARRA_RATIFICADA,
 ) -> EvaluacionBarra:
     """Report the held-out figures against the bar. Verdict only if ratified."""
     matriz = resultado.matriz
@@ -915,25 +956,39 @@ def evaluar_barra(
             estado=ESTADO_BARRA_NO_RATIFICADA,
             operational_a_legal=matriz.operational_a_legal,
             fraccion_operational_a_legal=matriz.fraccion_operational_a_legal,
+            mixto_a_legal=matriz.mixto_a_legal,
             exactitud=matriz.exactitud,
             n=matriz.n,
             barra=barra,
             veredicto=None,
         )
-    fraccion = matriz.fraccion_operational_a_legal
+
     exactitud = matriz.exactitud
-    veredicto = (
-        fraccion is not None
-        and exactitud is not None
-        and fraccion <= barra.operational_a_legal_max
-        and exactitud >= barra.exactitud_minima
-    )
+    fallidos: list[str] = []
+    if matriz.operational_a_legal > barra.operational_a_legal_max:
+        fallidos.append(
+            f"operational -> legal = {matriz.operational_a_legal} "
+            f"(bar: <= {barra.operational_a_legal_max}, hard)"
+        )
+    if matriz.mixto_a_legal > barra.mixto_a_legal_max:
+        fallidos.append(
+            f"mixto -> legal = {matriz.mixto_a_legal} (bar: <= {barra.mixto_a_legal_max})"
+        )
+    if exactitud is None:
+        # No denominator, so no measurement. This is a FAILED bar and not a
+        # passed one: an empty sample must never read as clean.
+        fallidos.append("accuracy = n/a (empty sample: there is no measurement to compare)")
+    elif exactitud < barra.exactitud_minima:
+        fallidos.append(f"accuracy = {exactitud:.3f} (bar: >= {barra.exactitud_minima})")
+
     return EvaluacionBarra(
         estado=ESTADO_BARRA_EVALUADA,
         operational_a_legal=matriz.operational_a_legal,
-        fraccion_operational_a_legal=fraccion,
+        fraccion_operational_a_legal=matriz.fraccion_operational_a_legal,
+        mixto_a_legal=matriz.mixto_a_legal,
         exactitud=exactitud,
         n=matriz.n,
         barra=barra,
-        veredicto=veredicto,
+        veredicto=not fallidos,
+        componentes_fallidos=tuple(fallidos),
     )
