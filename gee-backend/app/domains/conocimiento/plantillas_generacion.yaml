@@ -1,0 +1,123 @@
+# Checked-in artifact for the uncited-claim rule and the pre-serve marker check
+# (design.md:587-612, task 5.7/5.8).
+#
+# It is a FIXTURE, not a regex buried in a function, for one reason: the rule
+# that decides which sentences must carry a citation is the difference between
+# "no uncited claim is served" and "no uncited claim we happened to recognise is
+# served". A change to it has to show up as an artifact diff a reviewer reads.
+#
+# The answer prompt (`generacion.armar_prompt`) is written to produce EXACTLY the
+# boilerplate below, so the rule and the prompt are one artifact reviewed
+# together. If you edit a framing here you are editing the prompt.
+
+version: 1
+
+# Abbreviations whose trailing period must NOT end a sentence. Compared on the
+# normalized token (accents stripped, lowercased) immediately before the period.
+abreviaturas:
+  - art
+  - arts
+  - inc
+  - incs
+  - cap
+  - res
+  - dec
+  - dto
+  - ley
+  - decr
+  - expte
+  - pag
+  - pags
+  - ss
+  - sig
+  - cf
+  - cfr
+  - etc
+  - sr
+  - sra
+  - dr
+  - dra
+  - ing
+  - n
+  - nro
+  - num
+
+# Sentences that are NOT substantive claims and therefore need no citation.
+# Matched on the normalized form (accents stripped, lowercased, whitespace
+# collapsed, trailing sentence punctuation removed) — never by substring, so a
+# claim that merely CONTAINS a framing is still a claim.
+boilerplate:
+  # The abstention sentence.
+  - No se encontro una norma aplicable en el corpus consultado
+  # Fixed disclaimer / framing.
+  - Esta respuesta se apoya unicamente en las unidades citadas
+  - Las citas se transcriben textualmente de la fuente
+  # Vigencia framing — required in the prose whenever a cited unit is not
+  # vigente (design.md:604-612).
+  - Advertencia la norma citada no figura como vigente y no se invoca como derecho aplicable
+  # Secundaria framing — required whenever a cited unit is es_secundaria.
+  - Advertencia la fuente citada es secundaria y no es derecho aplicable
+
+# The framing sentence the marker check demands per condition, in NORMALIZED
+# form — this is what the check compares against, and it is listed separately
+# from the `boilerplate` block so the check reads as what it enforces rather
+# than as an index into a list.
+marcadores:
+  no_vigente: Advertencia la norma citada no figura como vigente y no se invoca como derecho aplicable
+  secundaria: Advertencia la fuente citada es secundaria y no es derecho aplicable
+
+# The same two sentences as the model must WRITE them — accented, punctuated,
+# real Spanish. `marcadores` above is their normalized image; these are what the
+# prompt asks for. Kept side by side deliberately: the day someone edits one and
+# not the other, every marker check fails loudly instead of quietly passing.
+marcadores_prosa:
+  no_vigente: "Advertencia: la norma citada no figura como vigente y no se invoca como derecho aplicable."
+  secundaria: "Advertencia: la fuente citada es secundaria y no es derecho aplicable."
+
+# The abstention sentence as it is emitted. It normalizes onto the first
+# `boilerplate` entry, so an abstention never counts as an uncited claim.
+abstencion: No se encontró una norma aplicable en el corpus consultado.
+
+# A sentence is treated as a verbless fragment (a heading, a label, an
+# enumeration item stub) ONLY when it is at most this many tokens AND contains
+# no form from `verbos_frecuentes`. Both conditions, because either alone fails
+# in the dangerous direction: a token cap alone would excuse "La ley 8548 rige",
+# and a verb list alone would excuse every claim built on a verb nobody listed.
+# The cost is named rather than hidden: a substantive claim of three tokens or
+# fewer built on a listed verb is still excluded. The prompt does not produce
+# one, and the residue is what owner grading measures (design.md:610-612).
+maximo_tokens_fragmento: 3
+verbos_frecuentes:
+  - es
+  - son
+  - era
+  - fue
+  - sera
+  - esta
+  - estan
+  - hay
+  - debe
+  - deben
+  - puede
+  - pueden
+  - corresponde
+  - establece
+  - establecen
+  - dispone
+  - disponen
+  - exige
+  - exigen
+  - prohibe
+  - prohiben
+  - requiere
+  - requieren
+  - fija
+  - fijan
+  - regula
+  - regulan
+  - rige
+  - rigen
+  - aplica
+  - aplican
+  - preve
+  - preven
