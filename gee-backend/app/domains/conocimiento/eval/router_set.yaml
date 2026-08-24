@@ -1,0 +1,324 @@
+# Router labeled set — RATIFIED
+#
+# The four-class set the router is calibrated and scored on. Ratified verbatim by
+# the owner on 2026-08-24 (tasks.md decision 0.3, design.md A4 at :1285-1293).
+# Provenance: `artifacts/rag/router_gold_draft-2026-08-24.yaml`, which is NOT
+# committed; this file is its ratified projection, item for item, with the ids
+# preserved so a question can be traced back to the draft that was reviewed.
+#
+# WHY THIS ONE IS COMMITTABLE AND `gold_set.yaml` IS NOT (fully). Every question
+# here is SYNTHETIC: written for this set, in an operator's register, about no
+# real person, no real expediente and no real parcel. None was transcribed from a
+# `privado` document, so none inherits a classification (see `gold_set.yaml`'s
+# header for the rule that governs the retrieval gold). Disjunction from the
+# retrieval gold was verified mechanically on the 49 x 26 pairs: zero exact
+# duplicates, maximum content-token Jaccard 0.214.
+#
+# ---------------------------------------------------------------------------
+# WHAT THE FIELDS MEAN
+# ---------------------------------------------------------------------------
+# estado          Must start with `RATIFICADO`. `eval.router.cargar_router_set`
+#                 REFUSES to score anything else and the report block says
+#                 `not-evaluable` instead of printing numbers (routing
+#                 spec:100-104).
+# id              Stable. Never reordered, never recycled.
+# pregunta        Verbatim. Four entries carry deliberate typos (no accents, no
+#                 opening question mark) — L-05, O-04, G-04, M-04 — because that
+#                 is how text arrives from a real keyboard.
+# clase_esperada  legal | operational | geoespacial | mixto
+# borde           true = deliberately hard; expected to be what hurts in the
+#                 confusion matrix. Carried so a regression can be read as
+#                 "the borderline items moved" rather than as a flat accuracy drop.
+# justificacion   One line: why that class.
+#
+# ---------------------------------------------------------------------------
+# WHAT THIS FILE DOES **NOT** CONTAIN
+# ---------------------------------------------------------------------------
+# The numeric bar. `operational -> legal <= 0.05` and `overall >= 0.85` are still
+# PROPOSALS (design.md:175-186) and decision 0.3 is explicit that the bar is
+# fixed only AFTER measuring on this set. Nothing here, and nothing in
+# `routing.py`, turns a measurement into a pass or a fail; `evaluar_barra`
+# reports the figures under the state `barra_no_ratificada` and issues no verdict.
+
+version: 1
+estado: 'RATIFICADO (owner, 2026-08-24 — los 5 casos dudosos resueltos con las etiquetas del borrador:
+  L-13=legal, O-11=operational, G-09=geoespacial, M-09=mixto, M-12=mixto)'
+fecha_ratificacion: '2026-08-24'
+fuente_draft: artifacts/rag/router_gold_draft-2026-08-24.yaml
+n: 49
+piso_por_clase: 10
+conteos:
+  legal: 13
+  operational: 12
+  geoespacial: 11
+  mixto: 13
+preguntas:
+- id: L-01
+  pregunta: ¿Qué quórum pide el estatuto para que la asamblea ordinaria pueda sesionar?
+  clase_esperada: legal
+  borde: false
+  justificacion: Pregunta directa por lo que el estatuto dice; sin dato de la app.
+- id: L-02
+  pregunta: che, ¿cuánto dura el mandato de la comisión directiva?
+  clase_esperada: legal
+  borde: false
+  justificacion: Registro coloquial y corta, pero el sujeto es una regla del estatuto.
+- id: L-03
+  pregunta: ¿La ley provincial de aguas prevé alguna multa para el que obstruye un canal con un terraplén?
+  clase_esperada: legal
+  borde: false
+  justificacion: Consecuencia jurídica prevista por la norma; el corpus la cubre.
+- id: L-04
+  pregunta: ¿Qué dice la normativa sobre el vuelco de efluentes de un tambo a un canal del consorcio?
+  clase_esperada: legal
+  borde: false
+  justificacion: Régimen normativo de vuelco; ningún dato operativo involucrado.
+- id: L-05
+  pregunta: que plazo tengo para impugnar una resolucion de la dipas
+  clase_esperada: legal
+  borde: false
+  justificacion: Typo deliberado (sin tildes ni signos); el sujeto sigue siendo un plazo normativo.
+- id: L-06
+  pregunta: ¿En base a qué norma el consorcio le puede cobrar la cuota a un propietario que nunca vino
+    a una asamblea?
+  clase_esperada: legal
+  borde: true
+  justificacion: 'BORDE: ''cuota'' es marcador operativo de etapa 1 (design.md:138), pero se pregunta
+    por el fundamento normativo, no por un saldo.'
+- id: L-07
+  pregunta: ¿Qué procedimiento fija la ley para expropiar una franja de campo destinada a obra hídrica?
+  clase_esperada: legal
+  borde: false
+  justificacion: 'Procedimiento expropiatorio: puro corpus legal provincial.'
+- id: L-08
+  pregunta: Necesito saber si la normativa provincial le exige personería jurídica al consorcio para firmar
+    un convenio con un municipio, y en ese caso bajo qué figura se inscribe.
+  clase_esperada: legal
+  borde: false
+  justificacion: Larga y formal, pero enteramente sobre requisitos que fija la norma.
+- id: L-09
+  pregunta: ¿El estatuto dice algo sobre cómo se reemplaza a un vocal que renuncia a mitad de mandato?
+  clase_esperada: legal
+  borde: false
+  justificacion: Regla de reemplazo estatutaria; sin referencia a personas reales.
+- id: L-10
+  pregunta: ¿Qué requisitos pone la norma para que un consorcista pueda pedir una asamblea extraordinaria?
+  clase_esperada: legal
+  borde: false
+  justificacion: 'Requisitos formales de convocatoria: contenido del estatuto/ley.'
+- id: L-11
+  pregunta: ¿Es legal que le cobren distinto por hectárea a un campo con riego y a uno de secano?
+  clase_esperada: legal
+  borde: true
+  justificacion: 'BORDE: ''cobren''/''hectárea'' tiran a operativo y suena a caso propio, pero pregunta
+    por la licitud del criterio, no por un monto.'
+- id: L-12
+  pregunta: ¿Qué norma regula el registro administrativo de consorcios canaleros en la provincia?
+  clase_esperada: legal
+  borde: false
+  justificacion: Pregunta por la norma que crea el registro, no por un asiento concreto.
+- id: L-13
+  pregunta: che, ¿quién limpia la cuneta?
+  clase_esperada: legal
+  borde: true
+  justificacion: 'BORDE DURO: cortísima y sin marcador; ''quién limpia'' es una obligación normativa (consorcio
+    vs. propietario frentista), pero puede leerse como pedido de asignación de trabajo.'
+- id: O-01
+  pregunta: ¿Cuánto debe de cuota el consorcista del padrón 447?
+  clase_esperada: operational
+  borde: false
+  justificacion: 'Deuda de una persona concreta: vive en /finanzas, el corpus no la tiene. Es la celda
+    peligrosa si se rutea a legal.'
+- id: O-02
+  pregunta: ¿En qué estado está el trámite de alta que presenté el mes pasado?
+  clase_esperada: operational
+  borde: false
+  justificacion: Estado de un expediente en la app → /tramites.
+- id: O-03
+  pregunta: che, ¿me llegó a entrar la denuncia que cargué por la alcantarilla tapada?
+  clase_esperada: operational
+  borde: false
+  justificacion: Confirmación de una denuncia cargada → /denuncias.
+- id: O-04
+  pregunta: cuanto gastamos el año pasado en gasoil para la retro
+  clase_esperada: operational
+  borde: false
+  justificacion: Typo deliberado; gasto ejecutado del ejercicio → /finanzas.
+- id: O-05
+  pregunta: ¿Pagó Rodríguez la cuota de julio?
+  clase_esperada: operational
+  borde: false
+  justificacion: 'Nombre con forma de padrón + cuota: marcador operativo textual de etapa 1.'
+- id: O-06
+  pregunta: Necesito el listado de consorcistas morosos con más de dos ejercicios de atraso para llevarlo
+    a la próxima reunión de comisión.
+  clase_esperada: operational
+  borde: false
+  justificacion: 'Listado de morosos: dato de la app, no del corpus → /finanzas.'
+- id: O-07
+  pregunta: ¿Cuántas hectáreas tiene declaradas en el padrón el establecimiento de los Bianchi?
+  clase_esperada: operational
+  borde: true
+  justificacion: 'BORDE: es padrón puro, pero ''hectáreas'' de un establecimiento puede empujar a geoespacial;
+    además la superficie asignada al padrón no es una de las cuatro superficies nombradas en spec.md:31.'
+- id: O-08
+  pregunta: ¿Cuántas denuncias por canal obstruido tenemos abiertas este mes?
+  clase_esperada: operational
+  borde: false
+  justificacion: Conteo sobre el registro de denuncias → /denuncias.
+- id: O-09
+  pregunta: ¿Se aprobó el presupuesto de este ejercicio?
+  clase_esperada: operational
+  borde: true
+  justificacion: 'BORDE: ''aprobó'' puede leerse como el procedimiento de aprobación que fija el estatuto;
+    acá se pregunta por el hecho registrado, que es dato de /finanzas.'
+- id: O-10
+  pregunta: quiero ver el recibo de la cuota que pagué en marzo
+  clase_esperada: operational
+  borde: false
+  justificacion: Imperativo sin signo de pregunta; comprobante propio → /finanzas.
+- id: O-11
+  pregunta: ¿A quién le figura hoy la titularidad de la parcela que está al lado del puente?
+  clase_esperada: operational
+  borde: true
+  justificacion: 'BORDE: dos patas de app (padrón + ubicación) y ninguna legal; se etiqueta operational
+    porque el sujeto pedido es la titularidad, no la traza. Ver casos_dudosos.'
+- id: O-12
+  pregunta: ¿Cuándo vence el plazo para presentar la documentación del trámite 2026-118?
+  clase_esperada: operational
+  borde: true
+  justificacion: 'BORDE: ''plazo'' es léxico normativo, pero el vencimiento pedido es el del expediente
+    concreto → /tramites.'
+- id: G-01
+  pregunta: ¿Por dónde pasa exactamente el canal que bordea el lote 12?
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Traza sobre el territorio → /mapa; el corpus no tiene geometrías.
+- id: G-02
+  pregunta: che, ¿dónde queda la alcantarilla nueva?
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Cortísima y coloquial, con el marcador '¿dónde…?' de etapa 1.
+- id: G-03
+  pregunta: ¿Cuánto llovió en la zona norte la semana pasada?
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Análisis de lluvia de la plataforma; ninguna norma responde esto.
+- id: G-04
+  pregunta: me podes mostrar en el mapa que campos estan dentro del area de influencia del canal principal
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Typo deliberado; pedido explícito de capa sobre el mapa.
+- id: G-05
+  pregunta: ¿Qué distancia hay entre la toma y el puente de la ruta?
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Medición sobre el territorio → /mapa.
+- id: G-06
+  pregunta: ¿Cuántas hectáreas de la cuenca quedaron bajo agua después de la última tormenta?
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: 'Superficie anegada: producto de análisis territorial, no de norma.'
+- id: G-07
+  pregunta: Necesito ver la capa de curvas de nivel superpuesta con las parcelas para decidir por dónde
+    tirar el desagüe nuevo.
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Larga y operativa, pero enteramente un pedido de capas del mapa.
+- id: G-08
+  pregunta: ¿El campo de Pereyra está aguas arriba o aguas abajo de la compuerta?
+  clase_esperada: geoespacial
+  borde: true
+  justificacion: 'BORDE: lleva un apellido con forma de padrón (marcador operativo de etapa 1), pero lo
+    que se pide es una relación topológica en el terreno.'
+- id: G-09
+  pregunta: ¿Hasta dónde llega la línea de ribera en el tramo que pasa por mi campo?
+  clase_esperada: geoespacial
+  borde: true
+  justificacion: 'BORDE DURO: ''línea de ribera'' es un concepto definido por norma, pero ''hasta dónde
+    llega en mi campo'' pide una demarcación concreta que el corpus no puede dar. Ver casos_dudosos.'
+- id: G-10
+  pregunta: ¿Se puede ver en el mapa qué tramos se limpiaron este año?
+  clase_esperada: geoespacial
+  borde: true
+  justificacion: 'BORDE: ''limpieza'' es tema legal recurrente, pero el pedido es una visualización de
+    tramos ejecutados → /mapa.'
+- id: G-11
+  pregunta: ¿Qué canal desemboca en la laguna del sur?
+  clase_esperada: geoespacial
+  borde: false
+  justificacion: Conectividad hídrica del territorio; dato de capas, no de norma.
+- id: M-01
+  pregunta: ¿La ley obliga a pagar la cuota aunque no use el canal, y de paso cuánto tengo yo de deuda?
+  clase_esperada: mixto
+  borde: false
+  justificacion: Pata legal (obligación de pago) + pata operativa (saldo propio) → respuesta con redireccion_parcial
+    a /finanzas.
+- id: M-02
+  pregunta: ¿Qué establece el estatuto sobre la mora y quiénes están morosos hoy?
+  clase_esperada: mixto
+  borde: false
+  justificacion: Régimen de mora (legal) + listado actual (operativo).
+- id: M-03
+  pregunta: ¿La norma exige permiso del lindero para meter la máquina, y me mostrás en el mapa qué linderos
+    toca el canal 7?
+  clase_esperada: mixto
+  borde: false
+  justificacion: 'Top-2 {legal, geoespacial}: requisito normativo + traza sobre el mapa.'
+- id: M-04
+  pregunta: que dice la ley sobre las denuncias por contaminacion y cuantas tenemos cargadas
+  clase_esperada: mixto
+  borde: false
+  justificacion: Typo deliberado; régimen de denuncias (legal) + conteo del sistema (/denuncias).
+- id: M-05
+  pregunta: ¿Cuál es el procedimiento legal para dar de baja a un consorcista y en qué estado está el
+    trámite de baja de Gómez?
+  clase_esperada: mixto
+  borde: false
+  justificacion: Procedimiento normativo + expediente concreto de una persona → /tramites.
+- id: M-06
+  pregunta: Che, ¿el estatuto me deja impugnar la asamblea? Y aparte fijate si quedó registrada mi asistencia.
+  clase_esperada: mixto
+  borde: false
+  justificacion: 'Dos oraciones, dos patas: impugnación (legal) + registro de asistencia (operativo).'
+- id: M-07
+  pregunta: ¿Qué norma regula la línea de ribera y hasta dónde llega en la parcela 320?
+  clase_esperada: mixto
+  borde: false
+  justificacion: 'Versión explícitamente mixta de G-09: nombra la norma Y pide la demarcación concreta.'
+- id: M-08
+  pregunta: ¿La ley fija un plazo para responder un reclamo y hace cuánto que está abierto el mío?
+  clase_esperada: mixto
+  borde: false
+  justificacion: Plazo normativo + antigüedad de un reclamo propio → /denuncias o /tramites.
+- id: M-09
+  pregunta: ¿Puedo negarme a que entren a limpiar y a quién le reclamo?
+  clase_esperada: mixto
+  borde: true
+  justificacion: 'BORDE DURO: la primera pata es legal clarísima; la segunda (''a quién le reclamo'')
+    puede ser una vía de reclamo normativa —y entonces sería legal puro— o la superficie de denuncias.
+    Ver casos_dudosos.'
+- id: M-10
+  pregunta: ¿Qué exige la resolución de la APRHI para una obra nueva y qué obras tenemos registradas en
+    el sistema?
+  clase_esperada: mixto
+  borde: false
+  justificacion: Requisito resolutivo (legal) + inventario de la app (operativo).
+- id: M-11
+  pregunta: ¿Corresponde legalmente cobrar por hectárea o por parcela, y cuántas hectáreas tengo yo declaradas?
+  clase_esperada: mixto
+  borde: true
+  justificacion: 'BORDE: la pata legal es casi idéntica a L-11, así que separar mixto de legal acá depende
+    del segundo miembro (''cuántas tengo yo declaradas'').'
+- id: M-12
+  pregunta: ¿La normativa exige alcantarilla en cada acceso? Porque la mía está tapada.
+  clase_esperada: mixto
+  borde: true
+  justificacion: 'BORDE DURO: la segunda oración es un HECHO, no una pregunta operativa; si el router
+    exige dos preguntas, esto es legal puro. Ver casos_dudosos.'
+- id: M-13
+  pregunta: ¿Qué recurso administrativo prevé la norma contra una resolución provincial, y cuál fue la
+    última que nos notificaron?
+  clase_esperada: mixto
+  borde: false
+  justificacion: Recurso previsto (legal) + notificación registrada (operativo/trámites).

@@ -3,7 +3,10 @@
 See `openspec/changes/consorcio-rag/design.md` D1 for the full schema
 rationale. Three deliberate deviations from the house convention
 (`app/db/base.py:33`, `UUIDMixin` + timestamps on every table), all
-load-bearing:
+load-bearing — and all three scoped to the three SNAPSHOT tables
+(`rag_corpus`, `rag_documento`, `rag_unidad`). `RagDecisionRuta` at the bottom
+of this file is an event log rather than a snapshot and follows the house
+convention normally; its own docstring says why:
 
 1. Natural composite primary keys (`corpus_sha` + a document/citation key)
    instead of `UUIDMixin`. The corpus's own citation keys ARE the identity —
@@ -32,6 +35,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -42,7 +46,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.schema import Computed
 
-from app.db.base import Base
+from app.db.base import Base, UUIDMixin
 
 # Single source of truth for the generated FTS column expression, shared
 # between this ORM mapping and migration `conocimiento_001_rag_corpus_schema`
@@ -260,3 +264,65 @@ class RagUnidad(Base):
 
     # `embedding vector(1024)` is deliberately NOT mapped — see module
     # docstring point 3 and `ddl.py`.
+
+
+class RagDecisionRuta(Base, UUIDMixin):
+    """One routing decision, kept so a misclassification can be TRACED.
+
+    Three deliberate departures from the rest of this module, all load-bearing:
+
+    1. **It uses `UUIDMixin`.** The other three tables carry natural composite
+       keys because a corpus snapshot's own citation keys ARE the identity.
+       There is no natural key for "a question somebody asked at 14:32", and
+       inventing one out of `(pregunta, ts)` would collide the moment two people
+       ask the same thing in the same second.
+    2. **`pregunta` is stored VERBATIM, not hashed.** routing spec:85 and its
+       scenario at :94-98 require the record to show "the question, the class
+       assigned and the confidence"; a hash satisfies none of that, because
+       reconstructing a question from its hash is the thing hashes exist to
+       prevent. This does not touch the Privacy Boundary: that boundary governs
+       what LEAVES the deployment, and this is the box's own Postgres
+       (design.md:188-196). The constraints that keep it internal — never in an
+       eval payload, never in a generation payload, admin-read only, bounded
+       retention — are enforced by `repository.purgar_decisiones_ruta`, by the
+       eval harness never reading this table, and by the admin dependency on the
+       V1 HTTP surface (G5).
+    3. **It is not snapshot-scoped.** A routing decision happens BEFORE
+       retrieval and is about the question, not about a corpus revision. Adding
+       `corpus_sha` here would suggest a routing outcome depends on which
+       snapshot is active, which it does not.
+
+    `margen` and `umbral_vigente` are nullable together and are NULL for every
+    stage-1 decision: a lexicon rule computed neither, and writing 0.0 would put
+    a confidence on a decision that never produced one.
+    """
+
+    __tablename__ = "rag_decision_ruta"
+    __table_args__ = (
+        CheckConstraint(
+            "clase IN ('legal', 'operational', 'geoespacial', 'mixto')",
+            name="ck_rag_decision_ruta_clase",
+        ),
+        CheckConstraint(
+            "superficie IS NULL OR superficie IN ('/tramites', '/finanzas', '/denuncias', '/mapa')",
+            name="ck_rag_decision_ruta_superficie",
+        ),
+        # The retention purge scans by age and nothing else.
+        Index("ix_rag_decision_ruta_decidida_en", "decidida_en"),
+    )
+
+    pregunta: Mapped[str] = mapped_column(Text, nullable=False)
+    clase: Mapped[str] = mapped_column(Text, nullable=False)
+    #: NULL for `legal` only: a question that proceeds to retrieval redirects
+    #: nowhere. The CHECK admits NULL for exactly that case.
+    superficie: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: `regla` | `centroide` | `mixto` | `duda`. Carried so a redirect made under
+    #: DOUBT is never read back as a confident classification.
+    motivo: Mapped[str] = mapped_column(Text, nullable=False)
+    margen: Mapped[float | None] = mapped_column(Float, nullable=True)
+    umbral_vigente: Mapped[float | None] = mapped_column(Float, nullable=True)
+    decidida_en: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
