@@ -742,13 +742,29 @@ class TestMigracionDecisionRuta:
         assert "ck_rag_decision_ruta_superficie" in str(fallo.value)
 
     def test_el_arbol_sigue_con_una_sola_cabeza(self):
-        """`conocimiento_006` chains onto the tip, not onto an already-parented
-        revision. A fork is invisible to every test that names a revision."""
+        """`conocimiento_006` is on the mainline, and the tree has ONE head.
+
+        *(amended in U7: the assertion used to be `heads == [conocimiento_006]`,
+        which is a PIN on the tip rather than on this migration. Every later unit
+        that adds a revision has to edit it, and an assertion routinely edited to
+        make a suite pass stops being read as evidence. The invariant U4 actually
+        needs is that its revision is still an ANCESTOR of the single head — i.e.
+        it was not stranded on a fork — and that is what this now says. The
+        "exactly one head" half is unchanged, because a fork makes
+        `alembic upgrade head` refuse and turns `check_alembic_health_sync` into
+        the outage.)*
+        """
         from alembic.config import Config
         from alembic.script import ScriptDirectory
 
-        heads = ScriptDirectory.from_config(Config(str(ALEMBIC_INI_PATH))).get_heads()
-        assert list(heads) == [_HEAD_U4], f"expected a single head at {_HEAD_U4}, got {heads}"
+        script = ScriptDirectory.from_config(Config(str(ALEMBIC_INI_PATH)))
+        heads = list(script.get_heads())
+        assert len(heads) == 1, f"the migration tree forked: {heads}"
+        linea = {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
+        assert _HEAD_U4 in linea, (
+            f"{_HEAD_U4} is not an ancestor of the head {heads[0]}: the routing "
+            "decision record was stranded on a branch nothing upgrades through"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ convention normally; its own docstring says why:
 from __future__ import annotations
 
 import datetime
+import uuid
 
 from sqlalchemy import (
     CHAR,
@@ -36,13 +37,15 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
     Text,
     func,
+    text,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.schema import Computed
 
@@ -79,6 +82,20 @@ TIPO_CHUNK_VALUES = (
 )
 
 CLASIFICACION_VALUES = ("publico", "privado")
+
+# The six item states of the mailbox (amendment A3, `design.md:1350-1356`): the
+# five of the response union plus `pendiente`, the initial state of every queued
+# item. Mirrored in `schemas.RespuestaConocimiento` and in migration
+# `conocimiento_007_buzon_consultas`.
+ESTADO_PENDIENTE = "pendiente"
+ESTADOS_CONSULTA = (
+    ESTADO_PENDIENTE,
+    "respuesta",
+    "abstencion",
+    "redireccion",
+    "generacion_fallida",
+    "no_disponible",
+)
 
 
 class RagCorpus(Base):
@@ -325,4 +342,84 @@ class RagDecisionRuta(Base, UUIDMixin):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+
+class RagConsulta(Base, UUIDMixin):
+    """One queued question — the unit of the bandeja (amendment A3).
+
+    The product is an asynchronous mailbox, not a synchronous answerer: `POST
+    /preguntas` writes this row with `estado='pendiente'` and returns its id, a
+    worker with a GPU processes it, and the answer becomes visible when it
+    exists. Nobody is waiting on a socket while that happens, which is what makes
+    the whole 60 s item budget a WORKER budget rather than a user-facing deadline
+    (`design.md:1337`).
+
+    Like `RagDecisionRuta` this is an event log, not a corpus snapshot, so it
+    follows the house convention (`UUIDMixin`) rather than the snapshot tables'
+    natural composite keys.
+
+    **`respuesta` is the serialized `RespuestaConocimiento`, and `estado` is a
+    column rather than only a key inside it.** The claim scan and the diagnostic
+    read state without deserializing a payload, and a partial index on a JSONB
+    key would be an index on a document that a code change can reshape. The
+    duplication is real and is closed at both ends: `buzon.persistir_resultado`
+    refuses a payload whose `estado` disagrees with the column, and the DB CHECKs
+    couple `pendiente` to the payload and the timestamp being absent, so neither
+    end can drift alone.
+
+    **Retention.** The verbatim question lands here as well as in the routing
+    record, so the same ratified 90-day window applies and
+    `repository.purgar_consultas` executes it. Copying the text into a second
+    table nobody purges would repeal `conocimiento_006`'s retention by accident.
+    """
+
+    __tablename__ = "rag_consulta"
+    __table_args__ = (
+        CheckConstraint(
+            "estado IN (" + ", ".join(f"'{estado}'" for estado in ESTADOS_CONSULTA) + ")",
+            name="ck_rag_consulta_estado",
+        ),
+        CheckConstraint(
+            "(estado = 'pendiente') = (respuesta IS NULL)",
+            name="ck_rag_consulta_payload_iff_terminal",
+        ),
+        CheckConstraint(
+            "(estado = 'pendiente') = (procesada_en IS NULL)",
+            name="ck_rag_consulta_procesada_iff_terminal",
+        ),
+        Index(
+            "ix_rag_consulta_pendientes",
+            "creada_en",
+            postgresql_where=text("estado = 'pendiente'"),
+        ),
+        Index("ix_rag_consulta_usuario", "usuario_id", "creada_en"),
+    )
+
+    #: Nullable with `ON DELETE SET NULL`, the house convention. A deleted user's
+    #: items stay countable in the diagnostic and stop being listed by anyone,
+    #: rather than vanishing out from under a worker mid-batch.
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pregunta: Mapped[str] = mapped_column(Text, nullable=False)
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default=ESTADO_PENDIENTE)
+    #: `SET NULL`, never `CASCADE`: the routing record's ratified 90-day purge
+    #: must not become a purge of answered questions.
+    decision_ruta_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("rag_decision_ruta.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    respuesta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    creada_en: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    procesada_en: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )

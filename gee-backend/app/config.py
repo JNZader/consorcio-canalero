@@ -153,6 +153,39 @@ class Settings(BaseSettings):
     # reaches any ceiling, so 0 refuses rather than admitting everything.
     conocimiento_costo_intento_usd: float = 0.0
 
+    # ── Conocimiento HTTP surface (U7) ────────────────────────────────────
+    # THE KILL SWITCH. Default False, env-backed, never a DB row (G4,
+    # `design.md:714-723`): `system_settings` is admin-writable at runtime, so
+    # the switch for an admin-only answerer would live INSIDE the surface it
+    # gates, and a seeded row makes "no configuration present" unrepresentable.
+    #
+    # It is an AND, not a flag. `enforce_conocimiento_qa_enabled` additionally
+    # requires, in this order: (0) the provider TERMS record verifiably covering
+    # this pin, (1) the credential present, (2) the sidecar's `/ready` true. A
+    # surface that is "on" and 500s on every request is not on, and the terms
+    # gate specifically had NO caller on the serving path until this dependency
+    # (U6 bounded correction, task 7.2).
+    conocimiento_qa_enabled: bool = False
+
+    # Cached `/ready` probe TTL. Short on purpose: the gate must cost nothing per
+    # request and still flip within seconds of the sidecar container dying.
+    conocimiento_ready_ttl_s: float = 5.0
+
+    # A3's honesty obligation (`design.md:1363-1366`): a queued item must not sit
+    # `pendiente` forever with no explanation. Past this age the surface says the
+    # worker has not picked it up instead of showing an indefinite spinner. 0
+    # disables the message rather than marking every fresh submission stuck.
+    conocimiento_worker_stale_after_s: float = 900.0
+
+    # Own limiter, own Redis namespace (`ratelimit:conocimiento:`), keyed on the
+    # authenticated USER ID. A shared limiter would let a legal question throttle
+    # the operator geo routes (`design.md:747-754`).
+    conocimiento_rate_limit_requests: int = 10
+    conocimiento_rate_limit_window: int = 60
+    # Bounds the BYTES; `buzon.PREGUNTA_MAX_CHARS` bounds the TEXT. A deployment
+    # needs both — a 1 MB body of valid UTF-8 is one question.
+    conocimiento_max_body_bytes: int = 16 * 1024
+
     # Martin tile server (Vector Tiles)
     martin_internal_url: str = "http://martin:3000"  # Internal Docker network URL
     martin_public_url: str = ""  # Public-facing base URL for tile URL templates

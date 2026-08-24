@@ -1,12 +1,14 @@
-"""Pydantic v2 result shapes for the conocimiento ingestion pipeline.
+"""Pydantic v2 result shapes for the conocimiento pipeline and its HTTP surface.
 
-House pattern (`app/domains/*/schemas.py`) minus a `router.py`: V0 ships no HTTP
-surface at all, so these are script/report shapes, not request/response bodies
-(design.md D8).
+House pattern (`app/domains/*/schemas.py`). Most of this file is script/report
+shapes from V0's ingestion pipeline; the block at the bottom is U7's request and
+response bodies for the mailbox (`router.py`, amendment A3).
 """
 
 from __future__ import annotations
 
+import datetime
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -229,9 +231,33 @@ class RespuestaConocimiento(BaseModel):
     violaciones: list[str] = Field(default_factory=list)
     intentos: int = 0
     llamadas_proveedor: int = 0
+    #: The PURE redirect's surface, present iff `estado='redireccion'`.
+    #:
+    #: Added in U7. `design.md:775-777` says the pure redirect "carries no answer,
+    #: no citation and no `redireccion_parcial` — the redirect IS the response",
+    #: and the round-1 schema gave it nowhere to say WHERE. `estado='redireccion'`
+    #: was therefore constructible but empty: a redirect that names no surface is
+    #: the thing the whole router exists to avoid. This is the pure slot;
+    #: `redireccion_parcial` remains the orthogonal one, and the validator below
+    #: makes them mutually exclusive so the same fact is never carried twice.
+    redireccion: Redireccion | None = None
     redireccion_parcial: Redireccion | None = None
 
     def model_post_init(self, __context: object) -> None:
+        if self.estado == "redireccion" and self.redireccion is None:
+            raise ValueError(
+                "estado='redireccion' requires the surface it redirects TO. The "
+                "redirect is the whole response (design.md:775-777); one that "
+                "names no surface tells the reader their question was refused "
+                "and nothing else."
+            )
+        if self.estado != "redireccion" and self.redireccion is not None:
+            raise ValueError(
+                f"estado={self.estado!r} must not carry a PURE redirect: the "
+                "orthogonal block is `redireccion_parcial`. Two fields holding "
+                "the same fact is how a partial redirect starts reading as a "
+                "total one."
+            )
         if self.estado == "generacion_fallida" and self.respuesta is not None:
             raise ValueError(
                 "generacion_fallida carries no prose and no rejected draft "
@@ -273,3 +299,93 @@ class RespuestaConocimiento(BaseModel):
                     "an answer with an empty citation block is that failure "
                     "reaching the reader with the panel showing nothing amiss."
                 )
+
+
+# ---------------------------------------------------------------------------
+# U7 — the mailbox's HTTP bodies (amendment A3, `design.md:1344-1348`)
+# ---------------------------------------------------------------------------
+
+
+class PreguntaEntrada(BaseModel):
+    """The submit body. One field, because the surface asks one thing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pregunta: str
+
+
+class ConsultaEncolada(BaseModel):
+    """What `POST /preguntas` returns: an identifier and `pendiente`.
+
+    It NEVER carries an answer. That is the whole restructuring of A3: the
+    submit call cannot answer, because answering needs a GPU whose availability
+    is intermittent by design, and a request that waited for it would be a CD
+    member watching a spinner for an outcome the queue can deliver honestly.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    estado: Literal["pendiente"] = "pendiente"
+    creada_en: datetime.datetime
+
+
+class ItemBuzon(BaseModel):
+    """One row of the bandeja: the question, its state, the answer when it exists.
+
+    `demorado` is A3's honesty obligation made a field rather than a UI guess:
+    "pendiente" is only honest while it is true, so a `pendiente` older than the
+    configured window says so here and the panel renders that instead of an
+    indefinite spinner.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    pregunta: str
+    estado: Literal[
+        "pendiente",
+        "respuesta",
+        "abstencion",
+        "redireccion",
+        "generacion_fallida",
+        "no_disponible",
+    ]
+    creada_en: datetime.datetime
+    procesada_en: datetime.datetime | None = None
+    demorado: bool = False
+    #: Absent exactly while `estado='pendiente'` — nothing has been decided yet.
+    respuesta: RespuestaConocimiento | None = None
+
+
+class EstadoBuzon(BaseModel):
+    """The admin diagnostic (`GET /estado`, tasks 7.6 + A3).
+
+    This is where a permanently-misconfigured worker becomes visible, because
+    under A3 it is no longer a per-question 503: a GPU that is not currently up
+    is the normal case and items simply stay `pendiente`. The three queue fields
+    are what separate "the worker is between batches" from "the worker has been
+    down for a day", and neither is inferable from a single item.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: Provenance of the vectors in the active snapshot. `sintetico=True` is a
+    #: snapshot serving REFUSES to answer from (task 7.6).
+    corpus_sha: str | None = None
+    embedding_modelo: str | None = None
+    embedding_sintetico: bool | None = None
+    embeddings_loaded_at: datetime.datetime | None = None
+    #: The three ANDed enablement facts, reported rather than enforced here — a
+    #: diagnostic that refuses when the thing it diagnoses is broken is not a
+    #: diagnostic. `None` means "not checked", never "fine".
+    terminos_verificados: bool | None = None
+    credencial_presente: bool | None = None
+    embedder_listo: bool | None = None
+    causa_no_listo: str | None = None
+    profundidad_cola: int = 0
+    mas_antiguo_pendiente: datetime.datetime | None = None
+    ultima_corrida_worker: datetime.datetime | None = None
+    #: True when the oldest pending item has been waiting past the window. The
+    #: operational fault A3 moved OFF the per-question path lands here.
+    worker_demorado: bool = False

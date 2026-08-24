@@ -771,6 +771,47 @@ class TestPresupuestoDeItem:
         assert presupuesto.restante() > 0
         assert presupuesto.vencido() is False
 
+    def test_el_reloj_POR_DEFECTO_es_monotonico(self) -> None:
+        """*(added in U7 — the monotonic claim was documented and UNASSERTED.)*
+
+        A mutation swapping `time.monotonic` for `time.time` in the default
+        survived the whole suite: every existing test injects its own `reloj`, so
+        nothing ever exercised the default, and the one property the default is
+        chosen FOR is invisible to a test that replaces it.
+
+        Why it matters concretely: an NTP correction during a 60 s item would
+        extend or collapse the budget on a wall clock — a step backwards makes an
+        already-spent budget look fresh and lets the item keep issuing billed
+        provider attempts past its ceiling. The assertion is structural because
+        the claim is structural: this budget measures ELAPSED PROCESSING, and
+        elapsed processing is exactly what a monotonic clock is.
+        """
+        import time
+
+        presupuesto = PresupuestoDeItem(60.0)
+        assert presupuesto._reloj is time.monotonic, (
+            "the item budget's default clock must be monotonic: it measures "
+            "elapsed processing, and a wall clock can step"
+        )
+
+    def test_un_reloj_QUE_RETROCEDE_no_resucita_un_presupuesto_gastado(self) -> None:
+        """The behavioural half of the same claim, on an injected clock.
+
+        `restante()` is `segundos - (ahora - inicio)`, so a clock that steps
+        BACKWARDS past the start makes the remainder larger than the budget ever
+        was. Monotonicity is what makes this unreachable in production; the test
+        pins what the arithmetic would do if it were not.
+        """
+        instante = [1000.0]
+        presupuesto = PresupuestoDeItem(60.0, reloj=lambda: instante[0])
+        instante[0] = 1100.0
+        assert presupuesto.vencido() is True
+        instante[0] = 900.0
+        assert presupuesto.restante() > 60.0, (
+            "arithmetic check: a backwards step inflates the remainder beyond the "
+            "configured budget, which is why the default clock cannot step"
+        )
+
 
 class TestSemaforoRetirado:
     def test_no_queda_semaforo_ni_su_timeout_en_el_dominio(self) -> None:
