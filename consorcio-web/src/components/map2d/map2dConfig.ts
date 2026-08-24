@@ -64,6 +64,13 @@ export const SOURCE_IDS = {
   DEM_RASTER: 'map2d-dem-raster',
   PRECIP_NORMAL: 'map2d-precip-normal',
   MARTIN_PUNTOS: 'map2d-martin-puntos',
+  // ── flujo-caminos (design D6) — ranked road crossings ──
+  // ONE geojson source feeding BOTH `road_flow-flujo` and `road_flow-canal`,
+  // populated from the SAME response object the ranked list renders, so the two
+  // surfaces cannot disagree about a direction, an area, a rank or a segment
+  // (RFA-R2). It is NOT a Martin source: the payload is authenticated and
+  // operator-only, and this capability publishes nothing.
+  ROAD_FLOW: 'road_flow',
   // ── Pilar Verde (Phase 2/7) ──
   // Values match the `PilarVerdeLayerId` tuple in `stores/mapLayerSyncStore.ts`
   // so the source id == the visibility-toggle id (no translation table).
@@ -92,6 +99,18 @@ export const SOURCE_IDS = {
   // (Batch C locked the identical-string contract — see apply-progress #2061).
   ESCUELAS: 'escuelas',
 } as const;
+
+/**
+ * Default `area_id` the ranked crossings are read for while the DEM catalogue
+ * has not answered yet (flujo-caminos).
+ *
+ * `zona_principal` is a ROLLOUT FACT — the single processing area of this
+ * deployment, recorded in the change's task 2.2 — never a rule. The read
+ * endpoint takes `area_id` as a query parameter precisely so a second area
+ * costs a dispatch and not an edit, and the container prefers whatever area the
+ * catalogue actually reports over this fallback.
+ */
+export const DEFAULT_ROAD_FLOW_AREA_ID = 'zona_principal';
 
 type WaterwayDef = (typeof WATERWAY_DEFS)[number];
 

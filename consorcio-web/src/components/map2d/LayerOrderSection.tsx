@@ -50,6 +50,10 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   soil: 'Suelos',
   catastro: 'Catastro',
   puntos_conflicto: 'Puntos de conflicto',
+  // One label for the single `road_flow` id — the two paint variants (natural
+  // drainage and canal) are one user-facing layer here, and the kind filter
+  // lives in the crossings panel, not in the order list.
+  road_flow: 'Cruces de camino',
   precip_normal: 'Precipitación CHIRPS',
   pilar_verde_bpa_historico: 'BPA histórico',
   pilar_verde_agro_aceptada: 'Agroforestal aceptada',
@@ -129,6 +133,27 @@ export function resolveEffectiveBottomToTop(
   return result;
 }
 
+/**
+ * Fold the reordered VISIBLE list back into the complete order (SUG-1).
+ *
+ * Hiding a row must never shrink what gets written: `applyLayerOrder` requires
+ * a COMPLETE bottom→top ordering, and a partial list would hoist its members
+ * above the layers it omitted. So the hidden ids stay ANCHORED at the indices
+ * they occupy in `full`, and the reordered visible ids are poured back into the
+ * remaining slots in their new order.
+ *
+ * Direction-agnostic, like `reorderLayerIds`: the component uses it on the
+ * DISPLAY list and reverses the result for the store.
+ */
+export function mergeHiddenLayerIds(
+  full: readonly RenderableUiLayerId[],
+  reorderedVisible: readonly RenderableUiLayerId[],
+  hidden: ReadonlySet<string>
+): RenderableUiLayerId[] {
+  const queue = [...reorderedVisible];
+  return full.map((id) => (hidden.has(id) ? id : (queue.shift() ?? id)));
+}
+
 interface SortableLayerRowProps {
   readonly id: RenderableUiLayerId;
   readonly label: string;
@@ -193,6 +218,15 @@ export interface LayerOrderSectionProps {
   readonly vectorVisibility: Record<string, boolean>;
   /** Optional label overrides sourced from the panel's `layerItems`. */
   readonly labelById?: Record<string, string>;
+  /**
+   * Ids to keep OUT OF THE LIST while still keeping them in every write
+   * (SUG-1). This exists for layers that are not OFFERED to the current
+   * session at all — `road_flow` is role-gated to staff — because a reorder row
+   * for a layer the selector refuses to show is a leak of what exists and a
+   * control over something the user cannot see. They are never dropped from the
+   * order itself: see `mergeHiddenLayerIds`.
+   */
+  readonly hiddenIds?: readonly string[];
 }
 
 export function LayerOrderSection({
@@ -200,6 +234,7 @@ export function LayerOrderSection({
   onLayerOrderChange,
   vectorVisibility,
   labelById,
+  hiddenIds,
 }: LayerOrderSectionProps) {
   // Small activation constraint so a plain click on the grip doesn't start a
   // drag before the pointer actually moves (keeps the ActionIcon tappable).
@@ -208,11 +243,19 @@ export function LayerOrderSection({
   const bottomToTop = resolveEffectiveBottomToTop(orderByLayer);
   // Display TOP→BOTTOM (top of list = top of map).
   const displayIds = [...bottomToTop].reverse();
+  const hidden = new Set<string>(hiddenIds ?? []);
+  // What the user SEES. The write below still covers `displayIds` entirely.
+  const visibleIds = displayIds.filter((id) => !hidden.has(id));
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const newDisplay = reorderLayerIds(displayIds, String(active.id), String(over.id));
+    const newVisible = reorderLayerIds(
+      visibleIds,
+      String(active.id),
+      String(over.id)
+    ) as RenderableUiLayerId[];
+    const newDisplay = mergeHiddenLayerIds(displayIds, newVisible, hidden);
     // Store keeps bottom→top → reverse the display order back before writing.
     onLayerOrderChange([...newDisplay].reverse());
   };
@@ -254,9 +297,9 @@ export function LayerOrderSection({
         Arrastrá para reordenar. Arriba = se dibuja encima.
       </Text>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={displayIds} strategy={verticalListSortingStrategy}>
+        <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
           <Stack gap={2}>
-            {displayIds.map((id) => (
+            {visibleIds.map((id) => (
               <SortableLayerRow
                 key={id}
                 id={id}

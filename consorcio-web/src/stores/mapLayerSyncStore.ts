@@ -139,6 +139,12 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // Single master toggle, default OFF. Opt-in per spec REQ-ESC-9.
   // No sub-toggles — the one layer carries all 7 features.
   escuelas: false,
+  // ── flujo-caminos (design Migration/Rollout) ──
+  // Ranked road crossings mount HIDDEN. The rollout order ships the frontend
+  // last, so between the migration and the first crossing run the layer would
+  // otherwise be an empty toggle an operator has to be told to ignore. Default
+  // OFF means a half-rolled-out state shows nothing wrong at all.
+  road_flow: false,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };

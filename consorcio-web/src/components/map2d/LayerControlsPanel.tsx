@@ -893,6 +893,18 @@ export function LayerControlsPanel({
                   onLayerOrderChange={layerFineControl.onLayerOrderChange}
                   vectorVisibility={vectorVisibility}
                   labelById={Object.fromEntries(layerItems.map((item) => [item.id, item.label]))}
+                  /* SUG-1 — coherence with the OFFER gate: `road_flow` is the
+                     one reorderable layer whose selector entry is role-gated
+                     (staff only, `buildVectorLayerItems`), so a session that is
+                     not offered the layer is not offered a row for it either.
+                     The check is "did the selector offer it", not a second copy
+                     of the role rule. It is deliberately NOT generalised to
+                     "everything missing from layerItems": several reorderable
+                     ids (canales masters, escuelas) never appear there and must
+                     keep their rows. */
+                  hiddenIds={
+                    layerItems.some((item) => item.id === 'road_flow') ? undefined : ['road_flow']
+                  }
                 />
               </CollapsibleSection>
             </>

@@ -32,6 +32,11 @@
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
+import {
+  ROAD_FLOW_CANAL_FILL_OPACITY,
+  ROAD_FLOW_FLUJO_FILL_OPACITY,
+  ROAD_FLOW_LAYER_IDS,
+} from './roadFlowLayers';
 
 /** MapLibre opacity paint property, keyed by layer geometry type. */
 export const OPACITY_PROP = {
@@ -93,6 +98,10 @@ export const RENDERABLE_UI_LAYER_IDS = [
   'canales_relevados',
   'canales_propuestos',
   'escuelas',
+  // ONE id for the two road-crossing paint variants (flujo-caminos, design D6).
+  // Kind filtering is a PANEL control (`applyRoadFlowKindFilter`), not a second
+  // registry id — the same rule the `waterways_*` sub-filters follow above.
+  'road_flow',
 ] as const;
 
 export type RenderableUiLayerId = (typeof RENDERABLE_UI_LAYER_IDS)[number];
@@ -138,6 +147,13 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   'pilar_verde_bpa_historico',
   'canales_relevados',
   'canales_propuestos',
+  // Slotted BELOW `escuelas` on purpose: "escuelas is the topmost reorderable
+  // layer" is a pinned contract of an earlier change (the z-order test above),
+  // and a new layer is not a reason to quietly move somebody else's ceiling.
+  // Above the canales stack, since these are the points being actively read.
+  // It mounts HIDDEN by default (`defaultVisibleVectors`), so a half-rolled-out
+  // state shows an operator nothing wrong rather than an empty layer.
+  'road_flow',
   'escuelas',
 ] as const;
 
@@ -326,6 +342,26 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   escuelas: {
     // buildEscuelasCirclePaint sets no circle-opacity → MapLibre default 1.0.
     mlLayers: [{ id: ESCUELAS_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 }],
+  },
+  road_flow: {
+    // ONE ui id, TWO ml layers — the opacity/order controls drive them together
+    // as one user-facing layer (design D6). `defaultOpacity` MIRRORS the
+    // `circle-opacity` literals in `roadFlowLayers.ts`: the canal kind is a
+    // near-hollow RING under a heavy stroke, which is a deliberate 0.15, not a
+    // typo, and the mirror keeps a persisted opacity multiplier from scaling the
+    // wrong base.
+    mlLayers: [
+      {
+        id: ROAD_FLOW_LAYER_IDS.FLUJO,
+        opacityProp: OPACITY_PROP.circle,
+        defaultOpacity: ROAD_FLOW_FLUJO_FILL_OPACITY,
+      },
+      {
+        id: ROAD_FLOW_LAYER_IDS.CANAL,
+        opacityProp: OPACITY_PROP.circle,
+        defaultOpacity: ROAD_FLOW_CANAL_FILL_OPACITY,
+      },
+    ],
   },
 };
 

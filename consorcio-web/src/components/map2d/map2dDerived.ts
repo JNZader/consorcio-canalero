@@ -135,6 +135,20 @@ export function buildVectorLayerItems(params: {
    * see no behavior change).
    */
   showEscuelas?: boolean;
+  /**
+   * Whether the ranked road-crossing layer (`road_flow`) is offered at all.
+   *
+   * Every OTHER entry in this list is gated on DATA (`!!collection`), because
+   * every other layer is readable by anybody. This one is not: both routes it
+   * feeds (`/geo/intelligence/cruces-camino` and `/geo/relevamiento/*`) are
+   * `require_admin_or_operator` server-side, so a citizen who ticked the box
+   * would get a 403 and a panel with nothing in it. The DATA gate the other
+   * entries use is unavailable here by construction — the fetch is only enabled
+   * once the layer is ON — so the caller passes the ROLE instead
+   * (`useAuth().isStaff`). Defaults to `false`: callers that have not wired a
+   * session see no change.
+   */
+  showRoadFlow?: boolean;
 }) {
   const {
     basins,
@@ -144,6 +158,7 @@ export function buildVectorLayerItems(params: {
     showPilarVerde = false,
     showPilarAzul = false,
     showEscuelas = false,
+    showRoadFlow = false,
   } = params;
 
   return [
@@ -193,6 +208,14 @@ export function buildVectorLayerItems(params: {
       label: 'Puntos conflicto',
       category: LAYER_CATEGORY.ANALISIS,
       show: intersectionsLength > 0,
+    },
+    {
+      // Same label the render-order list already uses for this id
+      // (`LayerOrderSection.tsx:56`) — one name for one layer.
+      id: 'road_flow',
+      label: 'Cruces de camino',
+      category: LAYER_CATEGORY.ANALISIS,
+      show: showRoadFlow,
     },
     // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──
     {

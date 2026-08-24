@@ -69,6 +69,24 @@ export const LAYER_PROPERTY_WHITELISTS: Record<string, readonly string[]> = {
    * what an operator actually reads.
    */
   'approved-zones': ['nombre', 'cuenca', 'superficie_ha', 'basin_count', 'member_basin_names'],
+
+  /*
+   * ⚠️ THERE IS NO `road-flow` ENTRY, ON PURPOSE (owner decision, 2026-08-23).
+   *
+   * Task 4.5 added one for a CROSSING POPUP that the ratified wiring does not
+   * build: clicking a crossing opens `TramoSurveySheet` for its segment, and
+   * the two `road_flow` ml layers are deliberately absent from
+   * `buildClickableLayers` (`useMapInteractionEffects.ts:192`), so InfoPanel
+   * can never receive one of those features. The whitelist, its label table and
+   * its formatters were therefore unreachable code claiming a surface that does
+   * not exist — and a whitelist nobody routes to is indistinguishable from an
+   * oversight the day somebody DOES make those layers clickable.
+   *
+   * The disclaimer that popup was meant to carry now travels with the three
+   * surfaces that DO exist (`RoadFlowDisclaimer`: `lista`, `hoja`, `chip`).
+   * Re-adding an entry here is only correct together with adding those layer
+   * ids to `buildClickableLayers` and mounting a disclaimer in that popup.
+   */
 } as const;
 
 /**
@@ -180,6 +198,8 @@ export function resolveLayerWhitelistKey(layerId: string | undefined | null): st
     layerId === `${SOURCE_IDS.APPROVED_ZONES}-line`
   )
     return 'approved-zones';
+  // No `road_flow` branch — see the note in `LAYER_PROPERTY_WHITELISTS`. Those
+  // ml layers are not clickable, so InfoPanel never resolves one.
   return null;
 }
 
