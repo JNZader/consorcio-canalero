@@ -7,6 +7,8 @@ surface at all, so these are script/report shapes, not request/response bodies
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -165,3 +167,109 @@ class ResultadoRecuperacion(BaseModel):
     #: synthetic ranker must be visible rather than inferred.
     reranker_modelo: str | None = None
     reranker_sintetico: bool | None = None
+
+
+class Redireccion(BaseModel):
+    """Where a non-legal question (or the non-legal half of a `mixto`) belongs.
+
+    Carries NO answer surface — no prose, no figure, no citation (routing
+    spec:38). A redirect with an answer field is one refactor away from having
+    an answer in it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    superficie: str
+    motivo: str
+
+
+class RespuestaConocimiento(BaseModel):
+    """One item of the bandeja. `estado` is the LEGAL leg; the redirect is not.
+
+    `estado` holds SIX mutually exclusive values (`design.md:711-749`, plus
+    `pendiente` from amendment A3) and `redireccion_parcial` is ORTHOGONAL to
+    all of them: it answers a different question ("was part of this
+    non-legal?") than `estado` does ("what happened to the legal part?"). That
+    is what makes `mixto` representable at all — a single mutually-exclusive tag
+    could not hold `abstencion` and `redireccion` at once, and the routing spec
+    requires the redirect to SURVIVE the legal part abstaining.
+
+    `estado='redireccion'` is the PURE redirect and never carries a partial one:
+    a partial redirect alongside a total one would be the same fact twice.
+
+    `generacion_fallida` carries no prose and no rejected draft. That is a
+    validated invariant here, not a convention the caller is trusted to keep.
+
+    The invariants run in both directions. The non-answer states carry no prose
+    and no citations; `respuesta` carries BOTH, non-empty. An answer-shaped item
+    with neither is the one shape U8 must never render, and it is unconstructible
+    rather than merely undocumented.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    estado: Literal[
+        "pendiente",
+        "respuesta",
+        "abstencion",
+        "redireccion",
+        "generacion_fallida",
+        "no_disponible",
+    ]
+    respuesta: str | None = None
+    #: Exactly the POST-EXCLUSION payload, so the panel physically cannot render
+    #: a card for a unit the generator never saw (G6, `design.md:765-768`).
+    citas: list[CitaRecuperada] = Field(default_factory=list)
+    #: Retrieved and dropped by the classification gate. The keys only — never
+    #: the text, never the provenance of a unit that may not travel.
+    claves_excluidas: list[str] = Field(default_factory=list)
+    motivo: str | None = None
+    #: The enforcement violations of the LAST rejected draft, on an abstention.
+    #: The violations, not the draft: the draft is never surfaced.
+    violaciones: list[str] = Field(default_factory=list)
+    intentos: int = 0
+    llamadas_proveedor: int = 0
+    redireccion_parcial: Redireccion | None = None
+
+    def model_post_init(self, __context: object) -> None:
+        if self.estado == "generacion_fallida" and self.respuesta is not None:
+            raise ValueError(
+                "generacion_fallida carries no prose and no rejected draft "
+                "(generation spec:79-87). Surfacing the last draft is exactly "
+                "the uncertified answer the enforcement refused to serve."
+            )
+        if self.estado == "redireccion" and self.redireccion_parcial is not None:
+            raise ValueError(
+                "estado='redireccion' is the PURE redirect and never carries a "
+                "partial one (design.md:730-732)."
+            )
+        if self.estado != "respuesta" and self.respuesta is not None:
+            raise ValueError(
+                f"estado={self.estado!r} must carry no answer prose; only 'respuesta' does."
+            )
+        if self.estado != "respuesta" and self.citas:
+            raise ValueError(
+                f"estado={self.estado!r} must carry no citations: a citation "
+                "block next to a non-answer reads as a partial answer."
+            )
+        if self.estado == "respuesta":
+            # The POSITIVE half of the invariant. The four rules above are all
+            # negative — they say what the non-answer states must not carry — and
+            # negative rules alone leave `estado='respuesta', respuesta=None,
+            # citas=[]` constructible: an answer-shaped item with no answer and
+            # no grounds, which U8 would render as a blank card under a heading
+            # that promises a legal answer. The shape the panel must never render
+            # is made unconstructible here rather than trusted not to occur.
+            if not (self.respuesta or "").strip():
+                raise ValueError(
+                    "estado='respuesta' requires answer prose. An empty answer is "
+                    "an abstención, a generacion_fallida or a no_disponible, and "
+                    "which one it is is information the caller is owed."
+                )
+            if not self.citas:
+                raise ValueError(
+                    "estado='respuesta' requires at least one citation. The whole "
+                    "enforcement chain exists so that no served claim is uncited; "
+                    "an answer with an empty citation block is that failure "
+                    "reaching the reader with the panel showing nothing amiss."
+                )
