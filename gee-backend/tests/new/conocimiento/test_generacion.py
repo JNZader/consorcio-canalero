@@ -38,6 +38,7 @@ from app.domains.conocimiento.generacion import (
     GeneradorDeterministico,
     GeneradorSintetico,
     PayloadGeneracion,
+    PresupuestoAgotado,
     SalidaProveedor,
     assert_generador_publicable,
     claves_citadas,
@@ -897,6 +898,34 @@ class TestPresupuesto:
         assert respuesta.estado == "no_disponible"
         assert respuesta.respuesta is None
         assert len(generador.llamadas) == 1, "a ceiling is not retried"
+
+    def test_el_presupuesto_del_item_agotado_es_generacion_fallida_y_no_una_excepcion(self, db):
+        """The docstring of `PresupuestoAgotado` promises "Terminal
+        `generacion_fallida`", and until 2026-08-24 nothing delivered it: the
+        exception was raised by the worker's item budget inside
+        `PuenteGenerador.generar`, was caught by neither the transport budget nor
+        `generar_respuesta`, and escaped this function entirely. A promise in a
+        docstring that the one path owning every terminal state does not keep is
+        a crash wearing the name of a state."""
+        seed(db, {"ley-9750": {"clasificacion": "publico"}})
+        generador = GeneradorDeterministico(
+            [PresupuestoAgotado("the item budget of 60.0s is spent")]
+        )
+
+        respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
+
+        assert respuesta.estado == "generacion_fallida"
+        assert respuesta.motivo.startswith("presupuesto_item_agotado")
+        assert respuesta.respuesta is None
+        assert respuesta.citas == []
+        assert len(generador.llamadas) == 1, "a spent deadline is not retried past"
+
+    def test_el_presupuesto_agotado_no_es_transporte_ni_no_disponible(self):
+        """Not transport, because a deadline the transport budget may retry past
+        is a suggestion. Not `no_disponible`, because the box was available and
+        that state would send an operator to inspect a healthy dependency."""
+        assert not issubclass(PresupuestoAgotado, GeneracionTransporte)
+        assert not issubclass(PresupuestoAgotado, GeneracionNoDisponible)
 
     def test_la_abstencion_por_presupuesto_no_devuelve_el_ultimo_borrador(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})

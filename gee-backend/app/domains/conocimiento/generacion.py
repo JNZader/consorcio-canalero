@@ -373,6 +373,24 @@ class GeneracionNoDisponible(RuntimeError):
     """
 
 
+class PresupuestoAgotado(RuntimeError):
+    """The worker's budget for ONE queued item ran out. Terminal `generacion_fallida`.
+
+    Lives HERE, next to the other two, and not in `proveedores.py` where it is
+    raised: `generar_respuesta` has to catch it, and a module the state machine
+    cannot import is a state the state machine cannot terminate. It escaped
+    uncaught until 2026-08-24, so a spent item budget crashed the worker instead
+    of failing the item — the docstring below promised a terminal state that
+    nothing delivered.
+
+    Deliberately NOT a `GeneracionTransporte`: transport failures are retried
+    inside a small budget, and a deadline that may be retried past is a
+    suggestion. Also deliberately not a `GeneracionNoDisponible`: the box was
+    available, the item simply did not finish, and telling an operator "not
+    available" would send them to look at a dependency that was fine.
+    """
+
+
 class GeneradorSintetico(RuntimeError):
     """Refusal to serve or publish on a stand-in generator."""
 
@@ -829,6 +847,14 @@ def generar_respuesta(
             salida = _llamar_con_presupuesto_de_transporte(
                 generador, prompt, max_tokens=tokens_actuales, traza=traza, pausa=pausa
             )
+        except PresupuestoAgotado as exc:
+            # The item budget is spent. Terminal, and terminal HERE: it is not
+            # retried (a deadline the transport budget may retry past is a
+            # suggestion) and it is not `no_disponible` (the box was fine). Left
+            # uncaught it propagated out of the one path that is supposed to own
+            # every terminal state, which turned a bounded item into a worker
+            # traceback.
+            return _fallar(payload, redireccion_parcial, f"presupuesto_item_agotado: {exc}", traza)
         except GeneracionTransporte as exc:
             return _fallar(payload, redireccion_parcial, f"transporte_agotado: {exc}", traza)
         except GeneracionNoDisponible as exc:
