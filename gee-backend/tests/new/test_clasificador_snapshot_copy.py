@@ -191,6 +191,13 @@ def _scratch_root(tmp_path, nombre: str) -> str:
     return str(root)
 
 
+_ERROR_NAMES_THE_AREA = (
+    "``geo_jobs.error`` carries the motivo AND the area, exactly as Fase A writes "
+    "it: an operator reading the row must not have to join back to ``parametros`` "
+    "to learn which area failed"
+)
+
+
 class TestPreCheckRefusesEarly:
     """A DEM job PENDING **or** RUNNING makes the run refuse before it claims.
 
@@ -221,6 +228,7 @@ class TestPreCheckRefusesEarly:
             "PENDING → FAILED is the transition that keeps the row honest"
         )
         assert "dem_job_running_pre_check" in error
+        assert f"area {AREA}" in error, _ERROR_NAMES_THE_AREA
         assert _candidata_count(db) == 0, "a refused run writes NOTHING"
 
     def test_a_dem_job_for_another_area_does_not_block(self, db, seeded, session_factory, tmp_path):
@@ -291,6 +299,7 @@ class TestPostCopyRecheck:
         estado_final, error = _job_estado(db, job_id)
         assert estado_final == "failed"
         assert "dem_job_started_during_copy" in error
+        assert f"area {AREA}" in error, _ERROR_NAMES_THE_AREA
         assert _candidata_count(db) == 0
 
     def test_the_mark_is_the_database_clock_not_the_workers(
@@ -356,6 +365,7 @@ class TestTheRealFilledDemOrNothing:
         estado_final, error = _job_estado(db, job_id)
         assert estado_final == "failed", "a named refusal is not a row left RUNNING"
         assert "dem_filled_no_disponible" in error
+        assert f"area {AREA}" in error, _ERROR_NAMES_THE_AREA
         assert _candidata_count(db) == 0, (
             "no candidate is better than a candidate computed against a surface nobody chose"
         )
@@ -406,6 +416,39 @@ class TestScratchIsAlwaysRemoved:
         assert list(root.iterdir()) == [], (
             "even an aborted run leaks at most one area's worth of temporary rasters"
         )
+
+
+class TestTheScratchRootIsCreatedNotAssumed:
+    """A scratch root that does not exist yet is not a failure mode.
+
+    ``mkdtemp(dir=...)`` refuses a missing parent, so before this the very first
+    run under a fresh ``CRUCES_SCRATCH_ROOT`` — a new deployment, a tmpfs wiped on
+    reboot, a typo'd path whose parent is writable — died as ``error_inesperado``
+    AFTER claiming the job. Fase A creates its own tree with
+    ``mkdir(parents=True)``; both phases now behave the same against the same
+    environment variable.
+    """
+
+    def test_a_missing_root_is_created_and_the_run_completes(
+        self, db, seeded, session_factory, tmp_path
+    ):
+        root = tmp_path / "todavia" / "no" / "existe"
+        assert not root.exists(), "the whole point is that nobody created it"
+        job_id = _classification_job(db)
+
+        result = clasificador_service.run_classification_task(
+            area_id=AREA,
+            job_id=job_id,
+            session_factory=session_factory,
+            scratch_root=str(root),
+        )
+
+        assert result["status"] == "completed", (
+            "a missing scratch root is a directory to create, not a post-claim crash"
+        )
+        assert root.is_dir(), "the whole tree is created, parents included"
+        assert list(root.iterdir()) == [], "and the run still cleans up after itself"
+        assert _candidata_count(db) == 1
 
 
 class TestScratchIsNotLeakedOnCopyFailure:
@@ -486,6 +529,7 @@ class TestNoZombieRunning:
         estado_final, error = _job_estado(db, job_id)
         assert estado_final == "failed", "no post-claim exception may strand the row in RUNNING"
         assert "error_inesperado" in error
+        assert f"area {AREA}" in error, _ERROR_NAMES_THE_AREA
         assert _candidata_count(db) == 0
 
 
@@ -528,6 +572,7 @@ class TestACorruptCopyIsNamedNotAveraged:
         estado_final, error = _job_estado(db, job_id)
         assert estado_final == "failed"
         assert "copia_corrupta_post_check" in error
+        assert f"area {AREA}" in error, _ERROR_NAMES_THE_AREA
         assert "DEM job" not in (error or ""), (
             "the observation is an unreadable copy; blaming a DEM job would be a "
             "cause this check never looked for"
