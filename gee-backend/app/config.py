@@ -95,6 +95,64 @@ class Settings(BaseSettings):
     conocimiento_embed_url: str = "http://conocimiento-embed:8002"
     conocimiento_embed_timeout_s: float = 10.0
 
+    # ── Conocimiento generation provider (U6) ─────────────────────────────
+    # THE MODEL PIN LIVES HERE AND NOT IN CODE (amendment A2, decision 0.4).
+    # `deepseek-v4-flash` through the opencode-go pool, routed by mcp-llm-bridge.
+    # Changing the model must be a config edit; `proveedores.py` writes no model
+    # name anywhere, so an env change is the whole change.
+    #
+    # Enabling the surface additionally requires the TERMS RECORD next to the pin
+    # (`app/domains/conocimiento/proveedor_terminos.yaml`) to verifiably cover
+    # this exact `(conocimiento_modelo, conocimiento_pool)` pair. That record is
+    # unverified today, so the gate refuses today — see task 6.7.
+    conocimiento_proveedor_url: str = "http://127.0.0.1:3456"
+    conocimiento_modelo: str = "deepseek-v4-flash"
+    conocimiento_pool: str = "opencode-cli"
+    # Empty = the adapter refuses to be constructed at all. Fail-closed at wiring
+    # time rather than on the first question.
+    conocimiento_proveedor_api_key: str = ""
+
+    # The two surviving timeouts, both WORKER-side (amendment A3: the async
+    # mailbox replaced the synchronous request, so neither bounds an HTTP call).
+    # The in-flight semaphore and `conocimiento_semaforo_timeout_s` are DROPPED
+    # with it — saturation is queue depth now, not a refusal at the door — and a
+    # knob that survives its own decision is a knob someone will set expecting an
+    # effect that no longer exists.
+    #
+    # 20 s bounds ONE provider attempt: ~2.5x the top of the 3-8 s estimate, so
+    # it fires on a hung call rather than on a merely slow one. Re-derive it
+    # against the pinned provider's published p99 (`design.md:659-660`).
+    conocimiento_provider_timeout_s: float = 20.0
+    # 60 s bounds the processing of ONE queued item, end to end. The arithmetic
+    # worst case (4 attempts) is >= 87 s and deliberately does NOT fit: the
+    # budget is the binding constraint, and an item that exceeds it ends in
+    # `generacion_fallida` (`design.md:614-664`, re-scoped worker-side by A3).
+    conocimiento_item_deadline_s: float = 60.0
+
+    # Cost controls, all fail-CLOSED (`design.md:458-470`). A rate limiter caps
+    # rate, not total.
+    #
+    # ALL THREE NUMBERS BELOW ARE UNSET, AND UNSET REFUSES. They are blocked on
+    # the cost re-derivation against the `deepseek-v4-flash` pin (amendment A6):
+    # the USD figures in the design body were derived from Claude-class list
+    # pricing and are stale by construction. A plausible-looking placeholder here
+    # would be a ceiling nobody measured, which is worse than no ceiling because
+    # it looks like one.
+    #
+    # Questions per authenticated user per CALENDAR DAY in
+    # America/Argentina/Cordoba (`design.md:471-481`), keyed on the user id and
+    # never on `request.client.host` — behind a proxy the IP collapses every
+    # admin into one bucket.
+    conocimiento_quota_diaria_usuario: int = 0
+    # Deployment-wide spend ceiling over a rolling window.
+    conocimiento_spend_ceiling_usd: float = 0.0
+    conocimiento_spend_window_h: int = 24
+    # Charged PER ATTEMPT, not per item: one item can issue up to 4 billed
+    # provider calls and a transport retry is charged even when the response
+    # never arrives intact (`design.md:666-673`). A per-attempt cost of 0 never
+    # reaches any ceiling, so 0 refuses rather than admitting everything.
+    conocimiento_costo_intento_usd: float = 0.0
+
     # Martin tile server (Vector Tiles)
     martin_internal_url: str = "http://martin:3000"  # Internal Docker network URL
     martin_public_url: str = ""  # Public-facing base URL for tile URL templates
