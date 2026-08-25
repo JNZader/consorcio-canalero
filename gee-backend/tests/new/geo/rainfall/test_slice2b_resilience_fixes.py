@@ -660,6 +660,7 @@ def test_every_new_rainfall_event_is_documented_in_the_observability_workbook():
         ("rainfall.analysis.policy_revision_stale", "2.1"),
         ("rainfall.analysis.requeue_failed", "2.1"),
         ("rainfall.baseline.duplicate_slots", "2.3"),
+        ("rainfall.window_baseline.duplicate_slots", "2.3"),
     ):
         table = _table_with_header(_section(workbook, heading), "Event")
         assert any(row[0] == f"`{event}`" for row in _data_rows(table)), (

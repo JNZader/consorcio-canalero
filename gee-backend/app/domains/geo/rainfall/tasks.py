@@ -229,6 +229,7 @@ def _persist_analysis_revision(
         RainfallRepository,
         acquire_fingerprint_lock,
         baseline_cumulatives,
+        baseline_daily_values,
         intervals_in_window,
         persist_revision,
     )
@@ -310,10 +311,12 @@ def _persist_analysis_revision(
     # today. With no lag the two dates are identical.
     comparison_end_date = temporal.comparison_end(row.year, temporal.buenos_aires_date(now))
     baseline_unavailable_reason = BASELINE_SCOPE_UNMAPPED
+    window_baseline_unavailable_reason = BASELINE_SCOPE_UNMAPPED
     try:
         baseline_asset = asset_name_for(scope.kind, scope.id)
     except UnknownProviderScope:
         baseline = None
+        window_baseline = None
     else:
         try:
             baseline = baseline_cumulatives(
@@ -349,6 +352,57 @@ def _persist_analysis_revision(
                 scope_version=row.scope_version,
                 year=row.year,
             )
+
+        # design.md D2 (lluvia-antecedente-referencia): the WINDOW reference
+        # reads the SAME provider-asset key as a raw daily series, bounded to
+        # [1991-01-01, 2021-01-01). Its consumer
+        # (`compute._antecedent_reference_metrics`) lands in the next slice;
+        # the read is wired HERE, with its containment, because the
+        # containment is the part that must never arrive late.
+        #
+        # A `try` OF ITS OWN, deliberately not the one above widened to cover
+        # both reads. The wider scan sees duplicates `baseline_cumulatives`
+        # STRUCTURALLY cannot -- its windows stop at each baseline year's
+        # cutoff, so a duplicate later in a year is invisible there and
+        # visible here -- so the two reads can disagree about baseline
+        # validity within one build. That divergence is intended: same
+        # evidence, two honest answers, because the two surfaces make
+        # different claims. One shared handler would collapse them, and the
+        # annual pair would suppress as `baseline_evidence_invalid` on a
+        # duplicate its own read never met: a metric degraded by another
+        # metric's evidence, with nothing on any surface to say so.
+        #
+        # And it must exist AT ALL for LI2B-004's reason: an escaping
+        # exception makes the key permanently unbuildable (no retry can
+        # un-duplicate persisted data) and feeds LI2B-001's re-enqueue loop.
+        try:
+            window_baseline = baseline_daily_values(
+                db, source_id=RAINFALL_HISTORICAL_SOURCE, asset=baseline_asset
+            )
+        except DuplicateBaselineSlotError as exc:
+            window_baseline = None
+            window_baseline_unavailable_reason = BASELINE_EVIDENCE_INVALID
+            # The loud part. Suppression alone reads to an operator as an
+            # ordinary thin baseline; the numbers name the broken invariant.
+            record_event(
+                "rainfall.window_baseline.duplicate_slots",
+                source_id=exc.source_id,
+                asset=exc.asset,
+                baseline_year=exc.year,
+                matched_rows=exc.matched,
+                distinct_slots=exc.distinct_slots,
+                scope_kind=row.scope_kind,
+                scope_id=row.scope_id,
+                scope_version=row.scope_version,
+                year=row.year,
+            )
+
+    # Resolved and contained here, consumed in the next slice: the six window
+    # reference metrics are built by `compute._antecedent_reference_metrics`,
+    # which does not exist yet. Bound to names rather than dropped so the
+    # containment above has an observable result and the consumer's wiring is
+    # a signature change, not a new failure path.
+    del window_baseline, window_baseline_unavailable_reason
 
     snapshot = build_snapshot(
         scope=scope,
