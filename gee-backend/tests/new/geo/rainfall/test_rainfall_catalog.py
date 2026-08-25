@@ -370,6 +370,54 @@ def test_tier_is_in_the_identity_key_so_both_tiers_persist_at_one_start_date(db)
     assert tiers == ["alta", "extrema"]
 
 
+def test_a_second_row_reusing_one_event_key_is_refused_even_at_a_new_identity(db):
+    """2.4 (D2): `uq_rainfall_extreme_event_key`, exercised on the collision it
+    exists to prevent rather than on the one the identity index already covers.
+
+    `event_key` is the SERVED id — what the imagery bridge resolves a request
+    through — so two rows wearing one key inside a generation make that lookup
+    ambiguous, and an append-only table cannot repair the ambiguity later. The
+    distinguishing case is a DIFFERENT identity reusing a key: `tier` differs
+    here, so the partial identity index is satisfied and lets both rows past.
+    Only the `event_key` unique refuses, which is why this test asserts the
+    constraint by NAME (F-10's pattern) — an unnamed `IntegrityError` here
+    would be indistinguishable from the identity index doing the work, and the
+    key unique could then be dropped with the suite staying green.
+    """
+    db.add(_detected(tier="extrema", event_key="ext_20150312"))
+    db.flush()
+
+    with pytest.raises(IntegrityError) as raised, _savepoint(db):
+        db.add(_detected(tier="alta", event_key="ext_20150312", max_percentile=99.1))
+        db.flush()
+    _assert_refused_by(raised, "uq_rainfall_extreme_event_key")
+
+
+def test_the_serving_index_exists_for_the_generation_ordered_read(db):
+    """2.4 (D12), STRUCTURE, read back from Postgres.
+
+    The serving read is "one generation, optionally one tier, newest first", and
+    an index is a PERFORMANCE contract: dropping it changes no result, so no
+    behavioural test in this file can notice. Pinned for exactly the reason the
+    partial identity index is pinned — the difference is that here even a
+    sequential scan returns the right rows, so without this the index could
+    vanish from both the model and the migration and the only symptom would be
+    a slow serving endpoint in production.
+    """
+    definition = db.execute(
+        text(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_rainfall_extreme_event_serving'"
+        )
+    ).scalar_one()
+
+    # Matched on the columns and the ordering, not on one exact rendering: see
+    # `test_the_identity_index_is_partial_on_detected_rows` for why pinning
+    # Postgres' spelling turns a column-type change into a puzzling failure.
+    assert "detector_revision" in definition, definition
+    assert "tier" in definition, definition
+    assert "start_date DESC" in definition, f"the newest-first ordering is gone: {definition}"
+
+
 def test_a_persisted_catalog_row_refuses_mutation_and_deletion_at_flush(db):
     """2.7 (D13): append-only enforced at RUNTIME.
 
@@ -391,6 +439,21 @@ def test_a_persisted_catalog_row_refuses_mutation_and_deletion_at_flush(db):
         db.flush()
 
 
+def _assert_refused_by(raised, constraint):
+    """ "The database said no" sharpened into "THIS constraint said no".
+
+    `psycopg2` exposes the offending constraint on the driver error's
+    `diag`, and without reading it a refusal test passes on ANY
+    `IntegrityError` — including one raised by a constraint the case was not
+    written about (a NOT NULL, the unique index, a leftover FK). That is how a
+    parametrization keeps reporting seven green cases while the CHECK it names
+    no longer exists: something else refuses the row and the test cannot tell
+    the difference.
+    """
+    name = raised.value.orig.diag.constraint_name
+    assert name == constraint, f"refused by {name!r}, expected {constraint!r}: {raised.value}"
+
+
 @pytest.mark.parametrize(
     ("label", "overrides"),
     [
@@ -399,7 +462,12 @@ def test_a_persisted_catalog_row_refuses_mutation_and_deletion_at_flush(db):
         ("detected row with no fired_windows", {"fired_windows": None}),
         ("detected row with no sealed params", {"sealed_detection_params": None}),
         ("detected row with no peak_date", {"peak_date": None}),
-        ("detected row with no climatology span", {"climatology_span_start": None}),
+        ("detected row with no climatology span start", {"climatology_span_start": None}),
+        # The span is half-open, so its two ends are two separate obligations:
+        # a row carrying only a start describes no period at all, and
+        # `clipped_at_span_end` — derived, never stored (D8) — is a function of
+        # the END. Asserted rather than assumed to follow from the start case.
+        ("detected row with no climatology span end", {"climatology_span_end": None}),
         ("detected row carrying a curated payload", {"curated_payload": {"name": "x"}}),
     ],
 )
@@ -409,9 +477,10 @@ def test_ck_detected_complete_refuses_a_half_ranked_detected_row(db, label, over
     expressed as plain NOT NULL columns — those would make the curated seed
     unsatisfiable, and spec R6 forbids fabricating a statistic to satisfy it.
     """
-    with pytest.raises(IntegrityError), _savepoint(db):
+    with pytest.raises(IntegrityError) as raised, _savepoint(db):
         db.add(_detected(**overrides))
         db.flush()
+    _assert_refused_by(raised, "ck_detected_complete")
 
 
 @pytest.mark.parametrize(
@@ -422,7 +491,14 @@ def test_ck_detected_complete_refuses_a_half_ranked_detected_row(db, label, over
         ("curated row carrying fired windows", {"fired_windows": {"d1": {}}}),
         ("curated row carrying sealed params", {"sealed_detection_params": SEALED}),
         ("curated row carrying a peak date", {"peak_date": date(2015, 3, 15)}),
-        ("curated row carrying a climatology span", {"climatology_span_start": date(1991, 1, 1)}),
+        (
+            "curated row carrying a climatology span start",
+            {"climatology_span_start": date(1991, 1, 1)},
+        ),
+        # Both ends again, and for the sharper reason on this side: a curated
+        # anchor was never ranked against ANY climatology, so a span end on one
+        # is an invented provenance for a number that does not exist.
+        ("curated row carrying a climatology span end", {"climatology_span_end": date(2026, 1, 1)}),
         ("curated row with no payload at all", {"curated_payload": None}),
     ],
 )
@@ -431,30 +507,55 @@ def test_ck_curated_unranked_refuses_a_curated_row_wearing_statistics(db, label,
     anchor was never ranked, so any statistic on it is invented — and an
     invented statistic in an append-only catalog is permanent.
     """
-    with pytest.raises(IntegrityError), _savepoint(db):
+    with pytest.raises(IntegrityError) as raised, _savepoint(db):
         db.add(_curated(**overrides))
         db.flush()
+    _assert_refused_by(raised, "ck_curated_unranked")
 
 
 @pytest.mark.parametrize(
-    ("label", "factory_overrides"),
+    ("label", "factory_overrides", "constraint"),
     [
         (
             "curated provenance without the revision sentinel",
             ("curated", {"detector_revision": "rev-under-test"}),
+            "ck_curated_revision_sentinel",
         ),
         (
             "detected provenance wearing the curated sentinel",
             ("detected", {"detector_revision": "curated"}),
+            "ck_curated_revision_sentinel",
         ),
-        ("a tier outside the ratified domain", ("detected", {"tier": "catastrofica"})),
-        ("a provenance outside the domain", ("detected", {"provenance": "guessed"})),
-        ("end_date before start_date", ("detected", {"end_date": date(2015, 3, 11)})),
-        ("peak_date before the span", ("detected", {"peak_date": date(2015, 3, 1)})),
-        ("peak_date after the span", ("detected", {"peak_date": date(2015, 3, 20)})),
+        (
+            "a tier outside the ratified domain",
+            ("detected", {"tier": "catastrofica"}),
+            "ck_tier_domain",
+        ),
+        (
+            "a provenance outside the domain",
+            ("detected", {"provenance": "guessed"}),
+            "ck_provenance_domain",
+        ),
+        (
+            "end_date before start_date",
+            ("detected", {"end_date": date(2015, 3, 11)}),
+            "ck_dates_ordered",
+        ),
+        (
+            "peak_date before the span",
+            ("detected", {"peak_date": date(2015, 3, 1)}),
+            "ck_dates_ordered",
+        ),
+        (
+            "peak_date after the span",
+            ("detected", {"peak_date": date(2015, 3, 20)}),
+            "ck_dates_ordered",
+        ),
     ],
 )
-def test_the_domain_and_ordering_checks_refuse_an_uninterpretable_row(db, label, factory_overrides):
+def test_the_domain_and_ordering_checks_refuse_an_uninterpretable_row(
+    db, label, factory_overrides, constraint
+):
     """2.6: `ck_curated_revision_sentinel`, `ck_tier_domain`,
     `ck_provenance_domain` and `ck_dates_ordered`.
 
@@ -465,9 +566,13 @@ def test_the_domain_and_ordering_checks_refuse_an_uninterpretable_row(db, label,
     """
     provenance, overrides = factory_overrides
     factory = _detected if provenance == "detected" else _curated
-    with pytest.raises(IntegrityError), _savepoint(db):
+    with pytest.raises(IntegrityError) as raised, _savepoint(db):
         db.add(factory(**overrides))
         db.flush()
+    # Four DIFFERENT constraints are exercised here; without naming the one that
+    # fired, every case would be satisfied by any of the other three, and three
+    # of them could be dropped with this test still reporting seven passes.
+    _assert_refused_by(raised, constraint)
 
 
 # ===========================================================================
@@ -598,9 +703,24 @@ def test_a_second_identical_run_writes_absolutely_nothing(db):
     """2.8(b) / spec R2 S1: the property the whole slice exists to make true.
 
     Asserted on the STATEMENTS, not on `count(*)` — see `_write_log`.
+
+    **`expire_all()` is the assertion, not tidiness.** The comparison this test
+    exists to exercise is between a freshly computed payload and one that came
+    BACK FROM POSTGRES — the tuple-to-list trip through the JSON codec is the
+    whole reason `repository._jsonable` exists. Without the expiry the second
+    `_persist` compares against whatever the identity map still holds, i.e.
+    against the very Python object the first run built, and the round trip is
+    never exercised at all. Measured, not reasoned about: with the row held by a
+    strong reference, dropping the normalization from `seal_detection_params`
+    leaves this test GREEN (recorded in the B1b mutant table as m-F1). It goes
+    red today only because the session's identity map is WEAKLY referenced and
+    CPython happens to collect the row after the flush — a pass that depends on
+    refcount timing is not a pass. Expiring first makes the read deterministic
+    and the mutant reliably lethal.
     """
     assert _persist(db, [_event()]) == {"inserted": 1, "skipped": 0}
     db.flush()
+    db.expire_all()
 
     with _write_log(db) as statements:
         assert _persist(db, [_event()]) == {"inserted": 0, "skipped": 1}
@@ -621,16 +741,32 @@ def test_a_row_differing_in_any_single_field_aborts_the_run_loudly(db):
     Parametrized over one differing field at a time, because a comparison that
     only looks at the percentile is indistinguishable from a correct one until
     the day an end date moves.
+
+    Covers every entry of `_COMPARED_FIELDS` that a caller can actually make
+    diverge from here, which is all of them but two:
+
+    * `sealed_detection_params` diverges through a different kwarg
+      (`detection_constants`, independent of `detector_revision`) and has its
+      own test below — it is the REAL-WORLD path, not a contrived one.
+    * `event_key` is DEAD BY CONSTRUCTION and deliberately has no test. It is
+      computed as `f"{prefix}_{start_date}"` from `tier` and `start_date`, and
+      both of those are part of the identity the lookup selected on, so a row
+      found at one identity can never carry a different key. A test would have
+      to fabricate a row the writer cannot emit and would then assert on the
+      fabrication rather than on the writer. It stays in `_COMPARED_FIELDS`
+      because the comparison must not depend on that derivation staying true.
     """
     from app.domains.geo.rainfall.repository import CatalogDivergenceError
 
     assert _persist(db, [_event()]) == {"inserted": 1, "skipped": 0}
     db.flush()
+    db.expire_all()
 
     for field, diverged in (
         ("max_percentile", _event(max_percentile=99.82)),
         ("end_date", _event(end_date=date(2015, 3, 16))),
         ("peak_date", _event(peak_date=date(2015, 3, 13))),
+        ("climatology_span_start", _event(climatology_span_start=date(1990, 1, 1))),
         ("climatology_span_end", _event(climatology_span_end=date(2027, 1, 1))),
     ):
         with _write_log(db) as statements:
@@ -669,6 +805,38 @@ def test_a_diverging_fired_windows_payload_is_a_divergence_too(db):
     with pytest.raises(CatalogDivergenceError, match="fired_windows"), _savepoint(db):
         _persist(db, [diverged])
         db.flush()
+
+
+def test_constants_moved_without_a_revision_bump_is_a_divergence(db):
+    """2.8(c), the `sealed_detection_params` half — and the one divergence path
+    that is not contrived.
+
+    `persist_events` takes `detector_revision` and `detection_constants` as
+    INDEPENDENT keyword arguments. D5's lockstep is a discipline about editing
+    the detector module, not a signature that makes the pair inseparable, so a
+    caller can hand over bumped constants under the OLD revision — which is
+    exactly what a constants edit that forgot its revision bump looks like from
+    in here. The identity resolves to the existing row, the sealed block does
+    not, and that is precisely the case `ON CONFLICT DO NOTHING` would bury:
+    one revision string permanently serving two different tellings of the same
+    weather, with the second one's parameters lost.
+    """
+    from app.domains.geo.rainfall.repository import CatalogDivergenceError
+
+    assert _persist(db, [_event()]) == {"inserted": 1, "skipped": 0}
+    db.flush()
+    db.expire_all()
+
+    moved = {**dict(SEALED), "gap_days": 2}
+    moved.pop("constants_digest")
+    with _write_log(db) as statements:
+        with pytest.raises(CatalogDivergenceError) as raised, _savepoint(db):
+            _persist(db, [_event()], detection_constants=moved)
+            db.flush()
+
+    assert "sealed_detection_params" in str(raised.value), str(raised.value)
+    assert "ext_20150312" in str(raised.value), "and the identity it disagrees about"
+    assert _writes_touching_the_catalog(statements) == []
 
 
 def test_a_revision_bump_appends_and_leaves_the_previous_generation_readable(db):
@@ -852,6 +1020,30 @@ def test_mar_2015_carries_its_buffer_explicitly_not_by_epoch_coincidence(
     assert "days_buffer" not in rows["sep_2025"].curated_payload
 
 
+def test_the_seeded_anchors_still_say_what_the_router_literal_says():
+    """2.11: the seed is a COPY of `router_gee_support.HISTORIC_FLOODS`, and a
+    copy nobody compares is a fork.
+
+    Until B2 deletes the literal and points the endpoint at the catalog, both
+    exist and both are served — the migration's rows to whoever reads the table,
+    the literal to `/floods`. A drift between them is a deployment that answers
+    the same question two ways depending on which surface was asked.
+
+    **This test is written to EXPIRE.** When B2 removes `HISTORIC_FLOODS` the
+    import fails, and the correct response is to DELETE this test rather than to
+    reintroduce the literal to keep it green: at that point the catalog is the
+    only source and there is nothing left to disagree with it.
+    """
+    from app.db.migrations.versions.lluvia_ext_002_seed_curated_flood_anchors import ANCHORS
+    from app.domains.geo.router_gee_support import HISTORIC_FLOODS
+
+    seeded = {key: {"date": day, **payload} for key, day, payload in ANCHORS}
+    served = {
+        flood["id"]: {k: v for k, v in flood.items() if k != "id"} for flood in HISTORIC_FLOODS
+    }
+    assert seeded == served
+
+
 def test_the_deployed_schema_refuses_what_the_model_schema_refuses(catalog_migration_db):
     """2.11/2.12: the CHECKs and the PARTIAL identity index exist in the schema
     a DEPLOY builds, not only in the one `create_all` builds from the model.
@@ -909,6 +1101,21 @@ def test_the_deployed_schema_refuses_what_the_model_schema_refuses(catalog_migra
 
 
 def _schema_shape(connection):
+    # COLUMNS FIRST, and they are not decoration. `pg_constraint` does not
+    # expose NOT NULL at all in PG16 (it is an attribute flag, `attnotnull`, not
+    # a catalogued constraint), so a parity check built only on constraints and
+    # indexes cannot see a column that is nullable in the migration and NOT NULL
+    # in the model — nor a renamed column, a `String(64)` that drifted to
+    # `String(128)`, a type change, or a server default present on one side
+    # only. The test this feeds is named "the same schema"; before this it
+    # measured two thirds of one.
+    columns = connection.execute(
+        text(
+            "SELECT column_name, data_type, character_maximum_length, is_nullable, "
+            "column_default FROM information_schema.columns "
+            "WHERE table_name = 'rainfall_extreme_event' ORDER BY column_name"
+        )
+    ).all()
     constraints = connection.execute(
         text(
             "SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint "
@@ -924,6 +1131,7 @@ def _schema_shape(connection):
     return (
         [(name, definition) for name, definition in constraints],
         [(name, definition) for name, definition in indexes],
+        [tuple(column) for column in columns],
     )
 
 
@@ -952,6 +1160,7 @@ def test_the_migrated_schema_and_the_model_schema_are_the_same_schema(
 
     assert migrated[0] == modelled[0], "constraints differ between migration and model"
     assert migrated[1] == modelled[1], "indexes differ between migration and model"
+    assert migrated[2] == modelled[2], "columns differ between migration and model"
 
 
 def test_downgrading_both_revisions_leaves_no_catalog_behind(catalog_migration_db):
@@ -1071,6 +1280,11 @@ def test_reading_detecting_and_persisting_twice_yields_the_same_catalog(db):
         }
 
     before = _dump()
+    # Same reason as `test_a_second_identical_run_writes_absolutely_nothing`:
+    # the second pass must compare against values Postgres handed back, not
+    # against the objects the first pass left in the identity map. Expiring
+    # emits no SQL, so the write-log assertion below still measures the writer.
+    db.expire_all()
     with _write_log(db) as statements:
         second = _persist(db, events)
         db.flush()

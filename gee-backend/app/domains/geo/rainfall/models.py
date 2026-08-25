@@ -350,7 +350,24 @@ _IMMUTABLE_TYPES = (
 def _prevent_rainfall_audit_mutation(
     session: Session, _flush_context: object, _instances: object
 ) -> None:
-    """Reject normal updates/deletes; expiry purge is a database-only controlled path."""
+    """Reject normal updates/deletes; expiry purge is a database-only controlled path.
+
+    **The scope is the ORM FLUSH, and the limits are load-bearing.** This hook
+    inspects `session.dirty` / `session.deleted`, i.e. instances the unit of work
+    is tracking, so a bulk `update()` / `delete()` routed through
+    `session.execute` and any raw SQL bypass it entirely — neither goes through a
+    flush, so neither presents anything for this to inspect. Nothing in-tree
+    takes either path against these tables today (grep-verified at B1b review),
+    which makes this guard sufficient NOW rather than sufficient by
+    construction; a future bulk path would need its own refusal.
+
+    In-place mutation of a JSON payload is likewise invisible here, and the
+    reason is worth stating plainly rather than leaving as a gap: these are
+    plain `JSON` columns, not `MutableDict`, so mutating a loaded payload's
+    contents does not mark the attribute dirty. Such a change is therefore both
+    undetected by this hook AND never persisted — it is discarded with the
+    session rather than written behind the guard's back.
+    """
     changed = set(session.dirty).union(session.deleted)
     for instance in changed:
         if isinstance(instance, _IMMUTABLE_TYPES):
