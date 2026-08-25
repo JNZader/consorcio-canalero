@@ -679,34 +679,165 @@ class TestModeNamesAreDistinct:
         assert assignment in CLIMATOLOGY_SOURCE.read_text(encoding="utf-8")
 
 
-class TestAbsoluteModeHasNoConsumer:
-    """Task 1.11 / risk #4 — the standing guard.
+REPO_ROOT = APP_ROOT.parent.parent  # .../<repo>/gee-backend/app -> .../<repo>
+FRONTEND_SOURCE_ROOT = REPO_ROOT / "consorcio-web" / "src"
 
-    ``absolute_window_samples`` ships consumerless BY DECISION, for the future
-    detector. Spec R3 forbids the absolute mode substituting for a suppressed
-    seasonal one, and the cheapest way to keep that true is a test that fails
-    the day a consumer appears. No task in this plan adds one.
+# The absolute mode is no longer consumerless: the extreme-event detector is
+# its ONE legitimate consumer (rainfall-analysis MODIFIED, S4). Retiring the
+# old "referenced nowhere" guard by DELETION would read as the regression the
+# proposal's own risk row names, so it is REPLACED, in the same slice that
+# introduces the consumer, by a narrower snapshot-path isolation guard.
+ABSOLUTE_MODE_ALLOWLIST = frozenset(
+    {
+        "domains/geo/rainfall/climatology.py",
+        "domains/geo/rainfall/detector.py",
+    }
+)
+# The two rank NAMES stay tighter still: the detector ranks, but it never
+# reaches for the wire label, and `ABSOLUTE_WEIBULL_RANK` must never reach a
+# served metric.
+RANK_NAME_ALLOWLIST = frozenset({"domains/geo/rainfall/climatology.py"})
+
+# Every rainfall module that participates in building, computing or rendering
+# the antecedent card's snapshot. Named explicitly rather than derived as "the
+# rest of the package", so adding a module to the snapshot path is a decision
+# somebody makes here rather than a default it inherits.
+SNAPSHOT_PATH_MODULES = (
+    "compute.py",
+    "policy.py",
+    "metrics.py",
+    "service.py",
+    "router.py",
+    "schemas.py",
+    "series.py",
+    "export.py",
+    "repository.py",
+    "models.py",
+    "tasks.py",
+    "scope.py",
+    "temporal.py",
+    "feature_flags.py",
+)
+
+ABSOLUTE_MODE_SYMBOLS = ("absolute_window_samples", "absolute_window_percentile")
+ABSOLUTE_RANK_NAMES = ("absolute_weibull_rank", "ABSOLUTE_WEIBULL_RANK")
+
+
+def _readable_sources(root: Path, suffixes: tuple[str, ...]) -> tuple[Path, ...]:
+    """Every source file under *root*, minus vendored trees.
+
+    ``venv`` / ``.venv`` / ``node_modules`` are excluded by PATH PART, not by a
+    prefix match on the whole path: an unbounded ``rglob`` walks whatever the
+    developer happens to have installed beside the code and tests THAT instead
+    of the repository (BL-RGLOB-VENV-BLIND-EXCLUSION). Decode errors are
+    tolerated for the same reason — one stray binary must not decide whether an
+    isolation guard runs at all.
+    """
+    excluded = {"venv", ".venv", "node_modules", "__pycache__", "dist", "build"}
+    return tuple(
+        path
+        for path in sorted(root.rglob("*"))
+        if path.suffix in suffixes and path.is_file() and not excluded.intersection(path.parts)
+    )
+
+
+def _text(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def referencing_app_modules(symbol: str) -> frozenset[str]:
+    """Every module under ``app/`` whose source mentions *symbol*."""
+    return frozenset(
+        str(module.relative_to(APP_ROOT))
+        for module in _readable_sources(APP_ROOT, (".py",))
+        if symbol in _text(module)
+    )
+
+
+def allowlist_violations(consumers: frozenset[str], allowlist: frozenset[str]) -> tuple[str, ...]:
+    """The referencing modules the allowlist does not admit."""
+    return tuple(sorted(consumers - allowlist))
+
+
+class TestAbsoluteModeStaysOffTheSnapshotPath:
+    """The guard that REPLACES ``TestAbsoluteModeHasNoConsumer``.
+
+    Spec ``rainfall-analysis`` MODIFIED: the absolute mode now has exactly one
+    consumer, so the "no consumer at all" guard is retired IN THE SAME SLICE
+    that introduces that consumer and is replaced — not merely deleted — by a
+    narrower isolation guard. What still must hold is the substantive rule: a
+    suppressed seasonal percentile is never backfilled by the absolute one, and
+    the cheapest structural proof of that is that no snapshot, compute or
+    rendering module can even reach the absolute-mode symbols.
     """
 
-    @pytest.mark.parametrize(
-        "symbol",
-        [
-            "absolute_window_samples",
-            "absolute_window_percentile",
-            "absolute_weibull_rank",
-            "ABSOLUTE_WEIBULL_RANK",
-        ],
-    )
-    def test_the_symbol_is_defined_here_and_referenced_nowhere_else(self, symbol: str) -> None:
+    @pytest.mark.parametrize("symbol", ABSOLUTE_MODE_SYMBOLS)
+    def test_the_referencing_module_set_is_exactly_climatology_and_detector(
+        self, symbol: str
+    ) -> None:
         assert symbol in CLIMATOLOGY_SOURCE.read_text(encoding="utf-8")
 
-        consumers = sorted(
-            str(module.relative_to(APP_ROOT))
-            for module in APP_ROOT.rglob("*.py")
-            if module.resolve() != CLIMATOLOGY_SOURCE
-            and symbol in module.read_text(encoding="utf-8")
+        assert referencing_app_modules(symbol) == ABSOLUTE_MODE_ALLOWLIST
+
+    @pytest.mark.parametrize("symbol", ABSOLUTE_RANK_NAMES)
+    def test_the_rank_name_never_leaves_the_climatology_module(self, symbol: str) -> None:
+        assert referencing_app_modules(symbol) == RANK_NAME_ALLOWLIST
+
+    @pytest.mark.parametrize("module", SNAPSHOT_PATH_MODULES)
+    @pytest.mark.parametrize("symbol", ABSOLUTE_MODE_SYMBOLS + ABSOLUTE_RANK_NAMES)
+    def test_no_snapshot_compute_or_rendering_module_references_the_absolute_mode(
+        self, symbol: str, module: str
+    ) -> None:
+        source = APP_ROOT / "domains" / "geo" / "rainfall" / module
+        assert source.exists(), f"{module} moved; the guard is scanning nothing"
+
+        assert symbol not in _text(source)
+
+    @pytest.mark.parametrize("symbol", ABSOLUTE_RANK_NAMES)
+    def test_the_rank_name_never_reaches_the_frontend(self, symbol: str) -> None:
+        assert FRONTEND_SOURCE_ROOT.is_dir(), (
+            f"{FRONTEND_SOURCE_ROOT} is missing; a wire-leak scan over a tree "
+            "that does not exist is a guard that tests nothing"
         )
-        assert consumers == [], f"{symbol} acquired a consumer: {consumers}"
+
+        leaks = [
+            str(path.relative_to(FRONTEND_SOURCE_ROOT))
+            for path in _readable_sources(FRONTEND_SOURCE_ROOT, (".ts", ".tsx", ".js", ".jsx"))
+            if symbol in _text(path)
+        ]
+
+        assert leaks == [], f"{symbol} reached the wire: {leaks}"
+
+
+class TestTheIsolationGuardActuallyRejects:
+    """The allowlist comparison itself, exercised on synthetic inputs.
+
+    An allowlist that is never shown rejecting anything is indistinguishable
+    from an allowlist that admits everything. These two cases are what the
+    "allowlist widened" mutant has to get past, and they are pure set logic, so
+    they need no third module to actually exist.
+    """
+
+    def test_a_third_module_is_rejected(self) -> None:
+        consumers = ABSOLUTE_MODE_ALLOWLIST | {"domains/geo/router_gee_support.py"}
+
+        assert allowlist_violations(consumers, ABSOLUTE_MODE_ALLOWLIST) == (
+            "domains/geo/router_gee_support.py",
+        )
+
+    def test_compute_is_rejected_specifically(self) -> None:
+        consumers = ABSOLUTE_MODE_ALLOWLIST | {"domains/geo/rainfall/compute.py"}
+
+        assert allowlist_violations(consumers, ABSOLUTE_MODE_ALLOWLIST) == (
+            "domains/geo/rainfall/compute.py",
+        )
+
+    def test_the_detector_alone_does_not_satisfy_the_rank_name_allowlist(self) -> None:
+        consumers = frozenset({"domains/geo/rainfall/detector.py"})
+
+        assert allowlist_violations(consumers, RANK_NAME_ALLOWLIST) == (
+            "domains/geo/rainfall/detector.py",
+        )
 
 
 class TestModuleIsPureByImport:
