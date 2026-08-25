@@ -1,7 +1,7 @@
 """Rainfall snapshot reads/writes and PostGIS-only parcel scope resolution."""
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
@@ -16,6 +16,7 @@ from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
 from app.domains.geo.rainfall.compute import correction_revision, revision_family
 from app.domains.geo.rainfall.models import (
     RainfallAnalysisRevision,
+    RainfallExtremeEvent,
     RainfallIntervalLifecycle,
     RainfallIntervalValue,
     RainfallOutbox,
@@ -403,10 +404,24 @@ def baseline_daily_values(
     *,
     source_id: str,
     asset: str,
+    span_start: datetime = BASELINE_SPAN_START,
+    span_end: datetime = BASELINE_SPAN_END,
 ) -> tuple[tuple[date, float], ...]:
-    """The baseline as a RAW DAILY SERIES over ``[BASELINE_SPAN_START,
-    BASELINE_SPAN_END)``, ordered, one entry per persisted UTC day
-    (design.md D2, lluvia-antecedente-referencia).
+    """The baseline as a RAW DAILY SERIES over ``[span_start, span_end)``,
+    ordered, one entry per persisted UTC day (design.md D2,
+    lluvia-antecedente-referencia).
+
+    The span is a PARAMETER whose defaults are the card's own constants
+    (lluvia-eventos-extremos D14), so every pre-existing caller is
+    byte-unchanged and the card keeps ranking against the period its envelope
+    names. The extreme-event detector is the one caller that passes a wider
+    span explicitly -- and it seals the span it used into every row it writes,
+    so a widened read can never silently relabel a persisted statistic.
+
+    Deliberately NOT a sibling ``detector_daily_values``: that would duplicate
+    the supersession anti-join and the duplicate-slot guard below, which is the
+    exact shape this module argues (:437-443) can quietly make a validity claim
+    false while each copy looks correct on its own.
 
     Same fixed provider-asset key and same supersession anti-join as
     :func:`baseline_cumulatives`; what differs is the SHAPE, and the reason
@@ -452,8 +467,8 @@ def baseline_daily_values(
         .where(RainfallIntervalValue.scope_kind == "provider_asset")
         .where(RainfallIntervalValue.scope_id == asset)
         .where(RainfallIntervalValue.scope_version == BASELINE_ASSET_VERSION)
-        .where(RainfallIntervalValue.interval_start >= BASELINE_SPAN_START)
-        .where(RainfallIntervalValue.interval_start < BASELINE_SPAN_END)
+        .where(RainfallIntervalValue.interval_start >= span_start)
+        .where(RainfallIntervalValue.interval_start < span_end)
         .where(~superseded.exists())
         .order_by(RainfallIntervalValue.interval_start)
     )
@@ -489,6 +504,175 @@ def baseline_daily_values(
         day = temporal.utc_day(interval_start)
         daily[day] = daily.get(day, 0.0) + float(value)
     return tuple(sorted(daily.items()))
+
+
+#: The `event_key` prefix per tier (D2). The key is the SERVED id, so it has to
+#: distinguish the two tiers: both are persisted and an `alta` span is a
+#: superset of the `extrema` spans inside it, so a single prefix would collide
+#: on `uq_rainfall_extreme_event_key` the first time that happened.
+_EVENT_KEY_PREFIXES = {"extrema": "ext", "alta": "alt"}
+
+#: Everything compared before a re-run is called a no-op. The identity columns
+#: are excluded because they are what selected the row; every OTHER persisted
+#: column is here, so "identical" means field-for-field and not "close enough
+#: on the number somebody remembered to check".
+_COMPARED_FIELDS = (
+    "event_key",
+    "end_date",
+    "peak_date",
+    "max_percentile",
+    "fired_windows",
+    "sealed_detection_params",
+    "climatology_span_start",
+    "climatology_span_end",
+)
+
+
+class CatalogDivergenceError(ValueError):
+    """A second computation disagrees with a persisted catalog row (D7).
+
+    The alternative -- ``ON CONFLICT DO NOTHING`` -- is only safe given a proof
+    that no second computation of one identity can ever differ. D5's constants
+    pin makes divergence UNLIKELY; it does not make it impossible (a code
+    defect, moved evidence, a superseded interval). DO NOTHING would convert
+    every such disagreement into silence and seal the first computation
+    forever, and in an append-only catalog "forever" is not a figure of speech.
+
+    So the run stops, naming the identity and the fields that disagree.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        event_key: str,
+        differing_fields: Sequence[str],
+    ) -> None:
+        super().__init__(message)
+        self.event_key = event_key
+        self.differing_fields = tuple(differing_fields)
+
+
+def _jsonable(value: object) -> object:
+    """The value as Postgres will hand it back: plain dicts, lists, floats.
+
+    The comparison in :func:`persist_events` is between a freshly computed
+    payload and one that has ROUND-TRIPPED through a JSON column, so the two
+    must be normalized to the same shape first. Without this a tuple-vs-list
+    difference makes every second run look divergent -- and a writer that cries
+    wolf on every run gets its guard deleted, which is how the silence the
+    guard exists to prevent comes back through the front door.
+    """
+    return json.loads(json.dumps(value, default=dict))
+
+
+def seal_detection_params(constants: Mapping[str, object] | None = None) -> dict:
+    """The full frozen constants block plus its digest, ready to store (D5).
+
+    Sealed PER ROW so each row is self-describing: a reader can tell what
+    produced the statistic without finding the code that wrote it, and a later
+    constants bump cannot retroactively relabel an already-persisted
+    generation.
+    """
+    from app.domains.geo.rainfall import detector
+
+    block = detector.DETECTION_CONSTANTS if constants is None else constants
+    sealed = _jsonable(block)
+    sealed["constants_digest"] = detector.constants_digest(block)
+    return sealed
+
+
+def persist_events(
+    db: Session,
+    *,
+    source_id: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    events: Sequence[object],
+    detector_revision: str | None = None,
+    detection_constants: Mapping[str, object] | None = None,
+) -> dict[str, int]:
+    """Write detected events: INSERT, skip-if-identical, or RAISE (D7).
+
+    Explicitly NOT ``ON CONFLICT DO NOTHING``; see
+    :class:`CatalogDivergenceError` for why that shape is the failure this
+    function replaces rather than the shortcut it declines.
+
+    ``detector_revision`` and ``detection_constants`` default TOGETHER to the
+    detector module's frozen pair, and a caller that overrides one overrides
+    both -- which is exactly what a revision bump is (D5's lockstep). Sealing
+    the block that was actually used, rather than whatever the module currently
+    holds, is what keeps a row's own account of itself true.
+    """
+    from app.domains.geo.rainfall import detector
+
+    revision = detector.DETECTOR_REVISION if detector_revision is None else detector_revision
+    sealed = seal_detection_params(detection_constants)
+
+    inserted = 0
+    skipped = 0
+    for event in events:
+        prefix = _EVENT_KEY_PREFIXES.get(event.tier)
+        if prefix is None:
+            raise ValueError(
+                f"no event_key prefix for tier {event.tier!r}: the tier domain "
+                f"({sorted(_EVENT_KEY_PREFIXES)}) and the detector's tiers disagree"
+            )
+        candidate = {
+            "event_key": f"{prefix}_{event.start_date.strftime('%Y%m%d')}",
+            "end_date": event.end_date,
+            "peak_date": event.peak_date,
+            "max_percentile": event.max_percentile,
+            "fired_windows": _jsonable(event.fired_windows_payload),
+            "sealed_detection_params": sealed,
+            "climatology_span_start": event.climatology_span_start,
+            "climatology_span_end": event.climatology_span_end,
+        }
+        existing = db.execute(
+            select(RainfallExtremeEvent)
+            .where(RainfallExtremeEvent.source_id == source_id)
+            .where(RainfallExtremeEvent.scope_kind == scope_kind)
+            .where(RainfallExtremeEvent.scope_id == scope_id)
+            .where(RainfallExtremeEvent.scope_version == scope_version)
+            .where(RainfallExtremeEvent.detector_revision == revision)
+            .where(RainfallExtremeEvent.provenance == "detected")
+            .where(RainfallExtremeEvent.tier == event.tier)
+            .where(RainfallExtremeEvent.start_date == event.start_date)
+        ).scalar_one_or_none()
+
+        if existing is None:
+            db.add(
+                RainfallExtremeEvent(
+                    source_id=source_id,
+                    scope_kind=scope_kind,
+                    scope_id=scope_id,
+                    scope_version=scope_version,
+                    detector_revision=revision,
+                    provenance="detected",
+                    tier=event.tier,
+                    start_date=event.start_date,
+                    **candidate,
+                )
+            )
+            inserted += 1
+            continue
+
+        differing = [
+            field for field in _COMPARED_FIELDS if getattr(existing, field) != candidate[field]
+        ]
+        if differing:
+            raise CatalogDivergenceError(
+                "the catalog already holds a different row at this identity "
+                f"(event_key={existing.event_key!r}, revision={revision!r}, "
+                f"tier={event.tier!r}, start_date={event.start_date.isoformat()}): "
+                f"differing fields {differing}",
+                event_key=existing.event_key,
+                differing_fields=differing,
+            )
+        skipped += 1
+
+    return {"inserted": inserted, "skipped": skipped}
 
 
 def daily_series_rows(
