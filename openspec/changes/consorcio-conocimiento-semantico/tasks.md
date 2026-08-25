@@ -793,21 +793,40 @@ re-estimated before the chain strategy is picked.)*
 
 ## Phase 8: `consorcio-web` page (U8)
 
-- [ ] 8.1 GREEN: child route `/admin/conocimiento` under `adminLayoutRoute`
+- [x] 8.1 GREEN: child route `/admin/conocimiento` under `adminLayoutRoute`
       (`src/routeTree.gen.tsx:590-595`) + `ProtectedRoute allowedRoles={['admin']}`.
-- [ ] 8.2 GREEN: `src/lib/api/conocimiento.ts` + `src/hooks/useConocimientoQA.ts` (TanStack Query, finite
+- [x] 8.2 GREEN: `src/lib/api/conocimiento.ts` + `src/hooks/useConocimientoQA.ts` (TanStack Query, finite
       `staleTime` ≈ 5 min, **no** `localStorage`/`IndexedDB` persistence) — `design.md:506-510`.
       *(amended 2026-08-23: async queue model — the client submits and then polls the item-status/listing
       surfaces rather than awaiting an answer from the submit call. The no-persistence rule is unchanged.)*
-- [ ] 8.3 GREEN: `components/admin/ConocimientoPanel.tsx` — five states + `redireccion_parcial`; citation
+- [x] 8.3 GREEN: `components/admin/ConocimientoPanel.tsx` — five states + `redireccion_parcial`; citation
       cards with vigencia badge, secundaria chip, verbatim `relevancia_consorcio` banner, verbatim `texto`,
       `fuente_url` link; no paraphrase (`design.md:754-775`).
       *(amended 2026-08-23: async queue model — the page is a **bandeja (mailbox)**: a list of the user's
       questions with question text, state and the answer when it exists. It renders `pendiente` honestly
       (including the staleness message from 7.3) alongside the five terminal states. Citation-card rules are
       unchanged.)*
-- [ ] 8.4 RED: the panel cannot render a card for an excluded unit — the serialized list is already filtered
+- [x] 8.4 RED: the panel cannot render a card for an excluded unit — the serialized list is already filtered
       server-side to payload keys (`design.md:765-768`).
+- [x] 8.5 Fix-forward on the U8 verify findings *(2026-08-24; six warnings + one suggestion, no new surface)*:
+      **W1** the vigencia badge's colour polarity was inverted — `!VIGENTE ⇒ red` painted `EN REVISIÓN` and
+      `SIN DATOS` with the same red as `DEROGADA`, which is the panel asserting a repeal the corpus never
+      stated. Now `DEROGADA*` ⇒ red, `VIGENTE*` ⇒ teal, everything else NEUTRAL, via the exported pure
+      `colorDeVigencia`; the badge TEXT stays verbatim and the file's "never re-derives" claim is now true of
+      the colour too. **W2** an `estado` outside `PRESENTACION_ESTADO` threw a `TypeError` with no error
+      boundary above the list, so one unrecognized item blanked the whole bandeja; `presentacionDeEstado`
+      degrades to `Estado no reconocido: <valor>` verbatim. **W3** `lib/api/conocimiento.ts` justified
+      bypassing `apiFetch`'s one-shot 401 refresh with a panel-side session-expired state that did not
+      exist — `SesionExpirada` now renders it with a link to `/login`. **W4** the poll's stop list covers only
+      401/403/429/503, so a 500, a proxy HTML page or a network `TypeError` re-fetched every 15 s forever;
+      `intervaloDeSondeo` stays pure and folds `fetchFailureCount` into a capped 15 s → 30 s → 60 s ladder
+      that TanStack resets on success. **W5** the composer cleared synchronously on submit, destroying up to
+      2000 characters on a 429/422 — it now clears in `onSuccess` only. **W6** `retry_after` was parsed into
+      `extra` and never shown; the 429 (whose envelope carries no `detalle`) now reads "Límite de consultas
+      alcanzado. Probá de nuevo en ~N s.". **S1** `CAUSA_LEGIBLE` covered only the three enablement facts, so
+      the kill switch — the likeliest 503 on a fresh deployment — surfaced as the raw `conocimiento_qa_enabled`
+      setting name, and the ceiling refusals arrived as Python class names (`type(exc).__name__`); all are
+      mapped, and an unmapped cause is framed as an identifier rather than dropped.
 
 ## Phase 9: Eval extension (U9)
 
@@ -870,24 +889,69 @@ re-estimated before the chain strategy is picked.)*
 
 ## Phase 10: Runbook, deploy, docs (U10)
 
-- [ ] 10.1 GREEN: write the G9 runbook (`docs/`) with the 11 ordered steps, each naming failure state and
+- [x] 10.1 GREEN: write the G9 runbook (`docs/`) with the 11 ordered steps, each naming failure state and
       recovery, plus the reboot re-derivation probe matrix (`design.md:914-944`).
-- [ ] 10.2 GREEN: record the `conocimiento-embed` compose block verbatim (it lives in the **external**
+      **DONE 2026-08-24** — `docs/rag/runbook-encendido.md`. Steps 1–11 in the design's sealed order, plus
+      **7a** as its own numbered step: the owner's terms verification (task 6.7) had no place in the sequence
+      and a blocking manual gate that appears only in a prose paragraph is a gate that gets skipped. The probe
+      matrix carries all seven rows including the two NON-database probes (image tag, sidecar identity), and
+      the sealed rollback order closes it. The joint ceremony with `flujo-caminos` is stated at the top with
+      its interleaving rule: **one shared `alembic upgrade head`**, neither arc running its own, and both
+      flags flipping last.
+- [x] 10.2 GREEN: record the `conocimiento-embed` compose block verbatim (it lives in the **external**
       compose file) + `CONOCIMIENTO_EMBED_URL` on the backend (`design.md:888-912`).
       *(extended 2026-08-24 by task 7.7: the SAME block must also declare the **worker** service that runs
       `scripts/rag_worker.py` — the `venv-rag` image, the GPU device reservation, `restart: unless-stopped`
       and the same `.env` as the backend. The queue has a postman as of 7.7; until this task records how the
       box starts it, the postman is started by hand and a box that reboots stops answering with the only
       symptom being items ageing on `GET /estado`.)*
-- [ ] 10.3 GREEN: reconcile the runbook with the amendment — step 9 still loads vectors and step 10 still
+      **DONE 2026-08-24** — runbook §0.1 (sidecar) and §0.2 (worker), each with the knob table and defaults.
+      *Three corrections against the design's draft block, recorded IN the runbook rather than applied
+      silently, because U3 shipped the sidecar and the repository's `docker-compose.yml` is the authority on
+      its shape: `expose: 8002` (not a published loopback port — so the reboot probe is a `docker compose
+      exec`, not a host `curl`), the volume is `conocimiento-embed-cache:/cache/huggingface` (the image's real
+      `HF_HOME`), and the healthcheck hits `/health` through the image's own Python (`/ready` restart-loops
+      the container through its own cold start, and `curl` is not in the image). `profiles: ["conocimiento"]`
+      is deliberately NOT carried to the box: it exists to stop a developer's bare `up -d` from pulling 2.2 GB
+      of weights, and on the box it would mean a reboot brings everything back with the answerer absent.*
+      *The WORKER block carries two facts the task did not anticipate and that would have burned a
+      maintenance window: **(a) it does not belong on the box at all** — it reranks on CUDA and the CX33 has
+      no GPU, so per A3 its compose block belongs to the GPU host's file, reaching the box's Postgres over the
+      same `DATABASE_URL`; **(b) no image in this repository builds `requirements-rag.txt`** (D8 keeps the
+      CUDA stack out of every built image, and `Dockerfile.worker` is the Celery/GDAL geo worker — a different
+      process). So the runbook ships the RUNNABLE form today, a systemd unit over the host `venv-rag`, and
+      records the compose block as the target shape with its missing Dockerfile marked in the block itself.
+      A compose block that names an image nobody can build is a runbook lying in YAML.*
+- [x] 10.3 GREEN: reconcile the runbook with the amendment — step 9 still loads vectors and step 10 still
       smokes the vector extension, but the serving smoke is a `modo="bm25_ce"` retrieval; state that the
       stored corpus vectors have no serving consumer post-B50 (see task 2.7).
+      **DONE 2026-08-24** — runbook §2. Says in words that the vectors are eval and future-option
+      infrastructure, that step 9 can be deferred without blocking enablement, and that steps 8, 7a and §4.3
+      cannot — so nobody later reads step 9 as evidence that serving is vector-backed.
 - [ ] 10.4 Measurement on the **box**, not the workstation: CPU query-embedding latency
       (`scripts/rag_query_latency.py`) and sidecar RAM + cold-start under `docker stats`
       (`design.md:107-115`). Both precede runbook step 2.
-- [ ] 10.5 GREEN: step 8 diff — all 35 rows of `rag_documento` (class **and** evidence) against
+      **STAYS OPEN — this is the honest state.** The PROCEDURE landed 2026-08-24 (runbook §4.1, with the
+      exact commands and the `--threads 2` / cold-cache discipline that makes two runs on the same machine
+      agree); the MEASUREMENT is an act on the Hetzner box and no artifact of it exists. Nothing here may be
+      marked done from a workstation. *One correction to the procedure: `scripts/rag_query_latency.py`'s
+      docstring names `docs/rag/preguntas-latencia.txt`, which does not exist in this repository. The runbook
+      uses `--gold-set app/domains/conocimiento/eval/gold_set.yaml`, which does — a runbook command that
+      cannot run is worse than no runbook.*
+- [x] 10.5 GREEN: step 8 diff — all 35 rows of `rag_documento` (class **and** evidence) against
       `expected_clasificacion.yaml`, never a `count(*)` (`design.md:924`).
-- [ ] 10.6 GREEN: `pytest tests/` green (the real CI scope, not `tests/new/`) before the flag is flipped.
+      **DONE 2026-08-24** — `gee-backend/scripts/rag_verificar_clasificacion.py` + 14 tests in
+      `tests/new/conocimiento/test_rag_verificar_clasificacion.py`, RED before GREEN. The tests are written
+      against the failures a count cannot see: a class SWAP that preserves every per-class count, a right
+      class reached through the WRONG evidence string, a document in the artifact and missing from the
+      snapshot, and the reverse. Two preconditions REFUSE with exit 2 rather than scoring — an artifact
+      pinned to another `corpus_sha`, and a `regla_clasificacion_sha256()` that moved since the artifact was
+      generated — because "0 divergences" out of an invalid comparison is the most expensive output this
+      script could produce. Exit 0 clean · 1 divergence (STOP, flag off) · 2 refused/usage.
+- [x] 10.6 GREEN: `pytest tests/` green (the real CI scope, not `tests/new/`) before the flag is flipped.
+      **DONE 2026-08-24** — run against the whole `tests/` scope; result recorded in the apply report with
+      its exact exit code. `ruff check` and `ruff format --check` both exit 0; `alembic heads` is a single
+      head, `conocimiento_007`.
 
 ## Follow-ups (explicitly OUT of the apply gate)
 
