@@ -687,6 +687,146 @@ def persist_events(
     return {"inserted": inserted, "skipped": skipped}
 
 
+#: The sentinel `detector_revision` every curated row carries (D2). Public
+#: because the serving read and the seed migration must agree on it, and a
+#: second spelling is how a curated row starts being swept up by a generation
+#: filter that was never meant to see it.
+CURATED_REVISION = "curated"
+
+#: The three revision states the served contract can honestly report. `current`
+#: and `stale` are D12's; `empty` is the state D12 did not name -- a catalog
+#: nobody has written yet. Calling that one `current` would claim a generation
+#: exists and serve zero rows as a complete telling of the weather.
+REVISION_STATES = ("current", "stale", "empty")
+
+
+class CatalogGeneration:
+    """One served generation: its detected rows, every curated row, and a label.
+
+    A plain object rather than a tuple because the LABEL is half the answer:
+    a caller that receives rows without knowing whether they are the current
+    generation or a superseded one cannot tell a fresh catalog from a stale
+    one, and D12's whole point is that the difference is disclosed rather than
+    inferred.
+    """
+
+    __slots__ = ("revision", "revision_state", "detected", "curated")
+
+    def __init__(
+        self,
+        *,
+        revision: str | None,
+        revision_state: str,
+        detected: Sequence[RainfallExtremeEvent],
+        curated: Sequence[RainfallExtremeEvent],
+    ) -> None:
+        if revision_state not in REVISION_STATES:
+            raise ValueError(f"unknown revision_state {revision_state!r}; known: {REVISION_STATES}")
+        self.revision = revision
+        self.revision_state = revision_state
+        self.detected = tuple(detected)
+        self.curated = tuple(curated)
+
+
+def read_events(
+    db: Session,
+    *,
+    source_id: str,
+    scope_kind: str,
+    scope_id: str,
+    scope_version: str,
+    revision: str | None = None,
+) -> CatalogGeneration:
+    """The served generation, per D12's three-part rule.
+
+    1. detected rows at the current ``detector_revision`` when any exist
+       (``revision_state="current"``);
+    2. otherwise the most recent generation that HAS rows, by
+       ``max(created_at)`` per revision, labelled ``stale`` and named -- never
+       an empty list. This closes the deploy-ordering hazard the hand-run
+       runbook creates: a deploy that bumps the constant before an operator
+       runs the detector would otherwise serve a blank picker with a 200 and
+       nothing anywhere to notice. It is the repo's own precedent, not an
+       invention -- `policy.py:193-197` serves each row under its OWN revision
+       and labels a stale refresh rather than serving nothing;
+    3. curated rows ALWAYS, at every state, because they are institutional
+       memory rather than detector output (D2's sentinel revision is what makes
+       them revision-exempt structurally instead of by policy).
+
+    Ordering is left to the caller: curated precedence, the read-time
+    confirmation derivation and pagination all operate on the merged set, and
+    ordering one half in SQL would only have to be redone.
+    """
+    from app.domains.geo.rainfall import detector
+
+    current = detector.DETECTOR_REVISION if revision is None else revision
+
+    def _detected_at(target: str) -> list[RainfallExtremeEvent]:
+        return list(
+            db.execute(
+                select(RainfallExtremeEvent)
+                .where(RainfallExtremeEvent.source_id == source_id)
+                .where(RainfallExtremeEvent.scope_kind == scope_kind)
+                .where(RainfallExtremeEvent.scope_id == scope_id)
+                .where(RainfallExtremeEvent.scope_version == scope_version)
+                .where(RainfallExtremeEvent.provenance == "detected")
+                .where(RainfallExtremeEvent.detector_revision == target)
+            )
+            .scalars()
+            .all()
+        )
+
+    curated = list(
+        db.execute(
+            select(RainfallExtremeEvent)
+            .where(RainfallExtremeEvent.source_id == source_id)
+            .where(RainfallExtremeEvent.scope_kind == scope_kind)
+            .where(RainfallExtremeEvent.scope_id == scope_id)
+            .where(RainfallExtremeEvent.scope_version == scope_version)
+            .where(RainfallExtremeEvent.provenance == "curated")
+            .order_by(RainfallExtremeEvent.start_date)
+        )
+        .scalars()
+        .all()
+    )
+
+    detected = _detected_at(current)
+    if detected:
+        return CatalogGeneration(
+            revision=current, revision_state="current", detected=detected, curated=curated
+        )
+
+    newest = db.execute(
+        select(RainfallExtremeEvent.detector_revision)
+        .where(RainfallExtremeEvent.source_id == source_id)
+        .where(RainfallExtremeEvent.scope_kind == scope_kind)
+        .where(RainfallExtremeEvent.scope_id == scope_id)
+        .where(RainfallExtremeEvent.scope_version == scope_version)
+        .where(RainfallExtremeEvent.provenance == "detected")
+        .group_by(RainfallExtremeEvent.detector_revision)
+        # The revision name is a tie-break, not a preference: two generations
+        # written inside ONE transaction share `now()` to the microsecond, and
+        # a fallback that picked either one at the planner's discretion would
+        # serve a different catalog on different days for the same rows.
+        .order_by(
+            func.max(RainfallExtremeEvent.created_at).desc(),
+            RainfallExtremeEvent.detector_revision.desc(),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+
+    if newest is None:
+        return CatalogGeneration(
+            revision=current, revision_state="empty", detected=(), curated=curated
+        )
+    return CatalogGeneration(
+        revision=newest,
+        revision_state="stale",
+        detected=_detected_at(newest),
+        curated=curated,
+    )
+
+
 def daily_series_rows(
     db: Session,
     *,

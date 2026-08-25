@@ -59,12 +59,43 @@ def test_protected_gee_is_401_unauthenticated(app_client) -> None:
         ("admin", 200),
     ],
 )
-def test_protected_gee_enforces_role_matrix(app_client, role: str, expected_status: int) -> None:
+def test_protected_gee_enforces_role_matrix(
+    app_client, db, role: str, expected_status: int
+) -> None:
+    """The role gate, over the CATALOG-backed list (lluvia-eventos-extremos B2a).
+
+    `db` and the `get_db` override are load-bearing now that the handler reads
+    `rainfall_extreme_event`: without them this module never touches the
+    session-scoped engine fixture, so the table would not exist when it runs
+    alone and a 500 would masquerade as a role-gate failure. The seeded curated
+    anchor keeps `total > 0` a real claim about the payload rather than one
+    about three module constants.
+    """
+    from datetime import date
+
     from app.auth.dependencies import current_active_user
     from app.auth.models import UserRole
+    from app.db.session import get_db
+    from app.domains.geo.rainfall.models import RainfallExtremeEvent
 
     app, client = app_client
+    db.add(
+        RainfallExtremeEvent(
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id="zona_cc_ampliada",
+            scope_version="v1",
+            detector_revision="curated",
+            provenance="curated",
+            event_key="mar_2015",
+            start_date=date(2015, 3, 15),
+            end_date=date(2015, 3, 15),
+            curated_payload={"name": "Inundacion Marzo 2015", "severity": "alta"},
+        )
+    )
+    db.flush()
     app.dependency_overrides[current_active_user] = lambda: SimpleNamespace(role=UserRole(role))
+    app.dependency_overrides[get_db] = lambda: db
 
     response = client.get("/api/v2/geo/gee/images/historic-floods")
 
