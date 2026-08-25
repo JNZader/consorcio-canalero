@@ -886,6 +886,34 @@ re-estimated before the chain strategy is picked.)*
       silently confident fabrication.
 - [x] 9.7 GREEN: mutation targets per `openspec/config.yaml` — `routing.py`, `generacion.py`,
       `eval/answers.py`, plus `recuperacion/bm25.py`; keep the module thresholds the repo already enforces.
+- [x] 9.8 Fix-forward on the U9 verify findings *(2026-08-24; two CRITICALs, two warnings, two
+      suggestions, no new surface)*: **C1** the whole `NO EVALUABLE` machinery of the `bm25_ce` arm was
+      unguarded — three separate mutations survived the suite, and each turned owner decision 0.1
+      (OPEN) into a published verdict about the retriever: dropping `or barras_no_evaluables` makes the
+      verdict read `NO-GO` (measured and fell short — it was not), dropping `and not no_evaluable`
+      lists the two unmeasured bars under "fallan:", and `no_evaluable=False` does both plus prints a
+      denominator for a measurement that never happened. `test_eval_no_evaluable_guard.py` pins the
+      four properties the verify prescribed — the pair renders `valor=None` / `n = —` /
+      `not-evaluable`, the verdict is `NO EVALUABLE` and never `NO-GO`, a retrieval bar that REALLY
+      fell short still appears in `barras_fallidas` (the guard is not a place failures hide), and the
+      six re-ratified bars are still scored in this mode (spec:131). All three mutants RED, revert
+      green. **W2** `answers._veredicto` scored its table off `barra.pasa` alone, so a three-answer set
+      — below the ratified minimum, `not-evaluable` on its own page — still printed `sí` next to
+      `0.000` for the spec'd bars: the arithmetic is real and the VERDICT is not emittable, the same
+      discipline `GoNoGo.veredicto` applies below n = 20. `pasa_publicable` now gates both the markdown
+      and the JSON on `metricas.evaluable`, and the block says why. **W3** the SLM bench never
+      re-derived the post-exclusion universe, which made it the way around task 9.4: same recorded
+      payloads, same `corpus_sha`, no database read. `cargar_y_comparar(db, ruta)` now runs
+      `verificar_payload` over BOTH arms (parity compares `claves_payload`, not `claves_recuperadas`,
+      so one arm can be stale while parity is clean), `verificar_paridad` additionally requires a
+      coherent `expected_clasificacion_sha256` between arms, `PIN_REFERENCIA` — a dead constant until
+      now — is compared against the reference arm, and the CLI's `_bench_slm` moved INSIDE the session
+      block. **S1** `generador_sintetico` is now mandatory: `null` is not `false`, and a set with
+      answers and no declaration was being published on the assumption that a real generator wrote
+      them. **S3** the bench's inline arms are parsed through the new `answers.cargar_desde_mapping`
+      instead of a `NamedTemporaryFile` round trip that wrote every arm's verbatim question and answer
+      text — the exact bytes threat 7.5 names — to a world-readable `/tmp` file to read them straight
+      back.
 
 ## Phase 10: Runbook, deploy, docs (U10)
 

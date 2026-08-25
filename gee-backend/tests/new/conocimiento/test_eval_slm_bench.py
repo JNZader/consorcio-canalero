@@ -19,10 +19,12 @@ from pathlib import Path
 
 import pytest
 import yaml
+from sqlalchemy import text
 
 from app.domains.conocimiento.eval import slm_bench
 from app.domains.conocimiento.eval.answers import (
     ConjuntoRespuestasNoRatificado,
+    PayloadDivergente,
     RespuestasSinteticas,
 )
 from app.domains.conocimiento.eval.slm_bench import (
@@ -50,13 +52,20 @@ def _codigo_ejecutable() -> str:
     )
 
 
-def respuesta(id: str, *, texto: str, payload=("9750#1",), grados=("sostenida",)) -> dict:
+def respuesta(
+    id: str,
+    *,
+    texto: str,
+    payload=("9750#1",),
+    recuperadas=None,
+    grados=("sostenida",),
+) -> dict:
     return {
         "id": id,
         "pregunta": "quién administra el canal",
         "debe_abstenerse": False,
         "estado_servido": "respuesta",
-        "claves_recuperadas": list(payload),
+        "claves_recuperadas": list(payload if recuperadas is None else recuperadas),
         "claves_payload": list(payload),
         "texto": texto,
         "afirmaciones": [
@@ -178,16 +187,52 @@ class TestParidad:
             cargar_bench(escribir(tmp_path, datos))
         assert "un solo brazo" in str(fallo.value)
 
+    def test_expected_clasificacion_distinta_entre_brazos_refusa(self, tmp_path):
+        """The FOURTH pin. A reclassification moves payloads, not corpus bytes.
+
+        Two arms pinned to different classification artifacts scored against two
+        different shippable universes, and the gap between them would be read as
+        the candidate generator being worse.
+        """
+        datos = bench_datos()
+        datos["candidato"]["expected_clasificacion_sha256"] = "b" * 64
+        with pytest.raises(BenchSLMInvalido) as fallo:
+            cargar_bench(escribir(tmp_path, datos))
+        assert "expected_clasificacion" in str(fallo.value)
+
+    def test_una_referencia_que_no_es_el_pin_de_produccion_refusa(self, tmp_path):
+        """`PIN_REFERENCIA` is compared, not decorative.
+
+        The ladder's rule is "clears the SAME bars as the reference". A bench
+        whose reference arm is some other model publishes a delta against a
+        baseline nobody operates, and the rung would be decided against it.
+        """
+        datos = bench_datos()
+        datos["referencia"]["provider_model_pin"] = "gpt-otro-cualquiera"
+        with pytest.raises(BenchSLMInvalido) as fallo:
+            cargar_bench(escribir(tmp_path, datos))
+        assert slm_bench.PIN_REFERENCIA in str(fallo.value)
+        assert "producción" in str(fallo.value)
+
 
 class TestSinCorridasRealesNoPublica:
-    def test_un_brazo_sintetico_refusa_nombrando_cual(self, tmp_path):
+    def test_un_brazo_sintetico_refusa_nombrando_cual(self, tmp_path, db):
         datos = bench_datos()
         datos["candidato"]["generador_sintetico"] = True
         with pytest.raises(RespuestasSinteticas) as fallo:
-            cargar_y_comparar(escribir(tmp_path, datos))
+            cargar_y_comparar(db, escribir(tmp_path, datos))
         assert "candidato" in str(fallo.value)
 
-    def test_un_brazo_vacio_refusa(self, tmp_path):
+    def test_un_brazo_sin_declarar_generador_refusa(self, tmp_path, db):
+        """`null` is not `false` — an undeclared arm is refused, not assumed real."""
+        datos = bench_datos()
+        datos["candidato"]["generador_sintetico"] = None
+        with pytest.raises(RespuestasSinteticas) as fallo:
+            cargar_y_comparar(db, escribir(tmp_path, datos))
+        assert "candidato" in str(fallo.value)
+        assert "generador_sintetico" in str(fallo.value)
+
+    def test_un_brazo_vacio_refusa(self, tmp_path, db):
         """Parity holds for two empty arms, which is exactly the trap.
 
         Both cover "the same" (empty) question set, so `verificar_paridad`
@@ -198,8 +243,123 @@ class TestSinCorridasRealesNoPublica:
         datos["referencia"]["respuestas"] = []
         datos["candidato"]["respuestas"] = []
         with pytest.raises(RespuestasSinteticas) as fallo:
-            cargar_y_comparar(escribir(tmp_path, datos))
+            cargar_y_comparar(db, escribir(tmp_path, datos))
         assert "referencia" in str(fallo.value)
+
+
+class TestElUniversoSeReDeriva:
+    """9.4's discipline, applied to BOTH arms — the bench is not the way around it."""
+
+    def seed(self, db, *, clasificacion_8548: str) -> None:
+        db.execute(
+            text(
+                "INSERT INTO rag_corpus (corpus_sha, repo_url, manifest_version, "
+                "articulos_declarados, activo) VALUES (:sha, 'u', '2', 2, true)"
+            ),
+            {"sha": SHA},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'ley-9750', 'ley-provincial', false, 'provincial', 'vigente', "
+                "'publico')"
+            ),
+            {"sha": SHA},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'ley-8548', 'ley-provincial', false, 'provincial', 'vigente', :clas)"
+            ),
+            {"sha": SHA, "clas": clasificacion_8548},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
+                "texto, texto_indexado, source_file, source_offset) VALUES "
+                "(:sha, :key, :doc, 'articulo', 't', 't', 'f.md', 0)"
+            ),
+            [
+                {"sha": SHA, "key": "9750#1", "doc": "ley-9750"},
+                {"sha": SHA, "key": "8548#3", "doc": "ley-8548"},
+            ],
+        )
+        db.flush()
+
+    def _bench_con_payload_estrecho(self) -> dict:
+        """Both arms graded when `ley-8548` was `privado`, so `8548#3` was excluded.
+
+        Parity holds — same ids, same payloads — which is exactly the trap: two
+        arms scored against the SAME universe that no longer exists still look
+        like a clean comparison.
+        """
+        return bench_datos(
+            referencia=brazo(
+                "deepseek-v4-flash",
+                [
+                    respuesta(
+                        "R-1", texto=LIMPIA, payload=("9750#1",), recuperadas=("9750#1", "8548#3")
+                    )
+                ],
+                tps=60.0,
+            ),
+            candidato=brazo(
+                "Qwen3-8B-Instruct-Q5",
+                [
+                    respuesta(
+                        "R-1", texto=LIMPIA, payload=("9750#1",), recuperadas=("9750#1", "8548#3")
+                    )
+                ],
+                tps=18.0,
+            ),
+        )
+
+    def test_una_reclasificacion_viva_refusa_el_bench(self, db, tmp_path):
+        self.seed(db, clasificacion_8548="publico")
+        with pytest.raises(PayloadDivergente) as fallo:
+            cargar_y_comparar(db, escribir(tmp_path, self._bench_con_payload_estrecho()))
+        mensaje = str(fallo.value)
+        assert "8548#3" in mensaje
+        assert "referencia" in mensaje, "the refusal has to name WHICH arm"
+
+    def test_el_brazo_candidato_tambien_se_re_deriva(self, db, tmp_path):
+        """Checking only the reference would leave half the table unverified.
+
+        Parity compares `claves_payload`, not `claves_recuperadas`, so two arms
+        can agree on the payload and disagree on the page it was filtered from.
+        Here the reference's recorded payload matches the live classification and
+        the candidate's does not — and parity passes, so the only thing that can
+        catch it is re-deriving BOTH arms.
+        """
+        self.seed(db, clasificacion_8548="publico")
+        datos = bench_datos(
+            referencia=brazo(
+                "deepseek-v4-flash",
+                [respuesta("R-1", texto=LIMPIA, payload=("9750#1",))],
+                tps=60.0,
+            ),
+            candidato=brazo(
+                "Qwen3-8B-Instruct-Q5",
+                [
+                    respuesta(
+                        "R-1", texto=LIMPIA, payload=("9750#1",), recuperadas=("9750#1", "8548#3")
+                    )
+                ],
+                tps=18.0,
+            ),
+        )
+        # Parity itself is clean — proving the refusal below is the payload check.
+        cargar_bench(escribir(tmp_path, datos))
+        with pytest.raises(PayloadDivergente) as fallo:
+            cargar_y_comparar(db, escribir(tmp_path, datos))
+        assert "candidato" in str(fallo.value)
+
+    def test_un_bench_al_dia_pasa(self, db, tmp_path):
+        self.seed(db, clasificacion_8548="privado")
+        bench = cargar_y_comparar(db, escribir(tmp_path, self._bench_con_payload_estrecho()))
+        assert bench.referencia.pin == slm_bench.PIN_REFERENCIA
 
 
 class TestLaTabla:
@@ -293,5 +453,17 @@ def test_los_dos_artefactos_comparten_esquema_de_brazo():
     — so a bench with its own parser would be a way to get a figure past them.
     """
     fuente = Path(slm_bench.__file__).read_text(encoding="utf-8")
-    assert "cargar_conjunto_respuestas" in fuente
+    assert "cargar_desde_mapping" in fuente
     assert "yaml.safe_load" in fuente  # only for the bench's own envelope
+
+
+def test_ningun_brazo_pasa_por_un_archivo_temporal():
+    """Threat 7.5: the verbatim question and answer text never leave the process.
+
+    The arms are already decoded in memory. Serializing them to a temp file to
+    read them straight back writes exactly that text to disk, outside the box,
+    for nothing — the round trip's only product is the objects it started from.
+    """
+    codigo = _codigo_ejecutable()
+    for prohibido in ("tempfile", "NamedTemporaryFile", "yaml.safe_dump", "/tmp"):
+        assert prohibido not in codigo, f"{prohibido} puts arm text on disk"

@@ -605,6 +605,154 @@ class TestBloqueDelReporte:
         assert "barra_no_ratificada" in bloque
 
 
+class TestUnSetNoEvaluableNoRindeVeredicto:
+    """The harness's own discipline, applied to the answer-level table.
+
+    Three graded answers are below the ratified minimum (decision 0.6), so the
+    set is `not-evaluable`. The ARITHMETIC still works — every cited key is in
+    its payload, so `invented-citation rate` is `0.000` and clears a `<= 0.00`
+    bar — and that is precisely the trap: `sí` beside `0.000` is the single most
+    quotable cell in this report, and it would be quoted without the caveat
+    printed under it. `GoNoGo.veredicto` refuses the same way below n = 20.
+    """
+
+    UNA = ({"id": "a", "texto": "…", "clave": "9750#1", "grado": "sostenida"},)
+
+    #: The spec'd bars — the ones `barras()` marks `ratificada=True`.
+    SPECD = (
+        "invented-citation rate",
+        "uncited-claim rate",
+        "abstención e2e recall",
+        "abstención e2e precision",
+    )
+
+    def conjunto_de_tres(self, tmp_path):
+        return cargar_conjunto_respuestas(
+            escribir(
+                tmp_path,
+                artefacto(
+                    [
+                        respuesta(f"R-{i}", afirmaciones=self.UNA, debe_abstenerse=False)
+                        for i in range(1, 4)
+                    ]
+                ),
+            )
+        )
+
+    def test_el_set_de_tres_no_es_evaluable(self, tmp_path):
+        metricas = puntuar(self.conjunto_de_tres(tmp_path))
+        assert metricas.n_respuestas == 3
+        assert metricas.evaluable is False
+
+    def test_las_barras_spec_d_salen_not_evaluable_en_la_tabla(self, tmp_path):
+        conjunto = self.conjunto_de_tres(tmp_path)
+        metricas = puntuar(conjunto)
+        # The value IS computable, which is why the verdict has to be refused
+        # rather than the row omitted.
+        assert metricas.tasa_cita_inventada == 0.0
+        lineas = answers.bloque_para(EntradaRespuestas(conjunto=conjunto, metricas=metricas))
+        for nombre in self.SPECD:
+            fila = next(linea for linea in lineas if linea.startswith(f"| {nombre} "))
+            assert fila.rstrip().endswith("| not-evaluable |"), fila
+
+    def test_ninguna_fila_rinde_si_sobre_cero_coma_cero_cero_cero(self, tmp_path):
+        conjunto = self.conjunto_de_tres(tmp_path)
+        bloque = "\n".join(
+            answers.bloque_para(EntradaRespuestas(conjunto=conjunto, metricas=puntuar(conjunto)))
+        )
+        assert "| 0.000 | ≤ 0.00 " in bloque, "the figure itself is still printed"
+        assert "| sí |" not in bloque
+
+    def test_el_json_no_dice_que_pasa(self, tmp_path):
+        conjunto = self.conjunto_de_tres(tmp_path)
+        datos = answers.json_para(EntradaRespuestas(conjunto=conjunto, metricas=puntuar(conjunto)))
+        assert datos["evaluable"] is False
+        assert all(barra["pasa"] is None for barra in datos["barras"])
+
+    def test_el_bloque_dice_por_que_no_hay_veredicto(self, tmp_path):
+        conjunto = self.conjunto_de_tres(tmp_path)
+        bloque = "\n".join(
+            answers.bloque_para(EntradaRespuestas(conjunto=conjunto, metricas=puntuar(conjunto)))
+        )
+        assert "El conjunto NO es evaluable" in bloque
+        assert "Motivos de `not-evaluable`" in bloque
+
+    def test_un_set_evaluable_si_rinde_si_o_NO(self, tmp_path):
+        """The guard must not swallow the verdict of a set that earned one."""
+        conjunto = cargar_conjunto_respuestas(
+            escribir(
+                tmp_path,
+                artefacto(
+                    [
+                        # The blind second pass covers the required sample
+                        # (`max(15, 10% de n)`), or the set is not evaluable for
+                        # a second, unrelated reason.
+                        respuesta(
+                            f"R-{i}",
+                            afirmaciones=self.UNA,
+                            regrado={"a": "sostenida"} if i <= 15 else None,
+                        )
+                        for i in range(1, 31)
+                    ]
+                ),
+            )
+        )
+        metricas = puntuar(conjunto)
+        assert metricas.evaluable is True
+        lineas = answers.bloque_para(EntradaRespuestas(conjunto=conjunto, metricas=metricas))
+        fila = next(linea for linea in lineas if linea.startswith("| invented-citation rate "))
+        assert fila.rstrip().endswith("| sí |")
+
+
+class TestElGeneradorSeDeclaraSiempre:
+    """S1 — `null` is not `false`. Nothing about provenance is assumed."""
+
+    def test_un_artefacto_sin_declarar_el_generador_refusa(self, tmp_path):
+        datos = artefacto([respuesta("R-1")], sintetico=None)
+        conjunto = cargar_conjunto_respuestas(escribir(tmp_path, datos))
+        assert conjunto.generador_sintetico is None
+        with pytest.raises(RespuestasSinteticas) as fallo:
+            answers.assert_publicable(conjunto)
+        assert "generador_sintetico" in str(fallo.value)
+
+    def test_declararlo_false_con_corridas_reales_publica(self, tmp_path):
+        conjunto = cargar_conjunto_respuestas(
+            escribir(tmp_path, artefacto([respuesta("R-1")], sintetico=False))
+        )
+        answers.assert_publicable(conjunto)
+
+    def test_el_shell_que_se_commitea_no_lo_declara_y_por_eso_no_publica(self):
+        """The shipped `answer_set.yaml` says `null` — and its comment now holds."""
+        crudo = yaml.safe_load(answers.RUTA_ANSWER_SET.read_text(encoding="utf-8"))
+        assert crudo["generador_sintetico"] is None
+
+
+class TestElParserSeCompartePorMapping:
+    """S3 — the same rules, without a round trip through the filesystem."""
+
+    def test_cargar_desde_mapping_aplica_las_mismas_reglas(self):
+        with pytest.raises(ConjuntoRespuestasInvalido) as fallo:
+            answers.cargar_desde_mapping(
+                artefacto([respuesta("R-1", recuperadas=("9750#1",), payload=("8548#9",))]),
+                "en memoria",
+            )
+        assert "subset" in str(fallo.value)
+
+    def test_el_origen_viaja_en_el_mensaje(self):
+        """A refusal that cannot name WHICH arm is a refusal nobody can act on."""
+        with pytest.raises(ConjuntoRespuestasNoRatificado) as fallo:
+            answers.cargar_desde_mapping(
+                artefacto([respuesta("R-1")], estado="BORRADOR"), "brazo 'candidato' del bench"
+            )
+        assert "brazo 'candidato' del bench" in str(fallo.value)
+
+    def test_el_archivo_y_el_mapping_producen_lo_mismo(self, tmp_path):
+        datos = artefacto([respuesta("R-1")])
+        assert answers.cargar_desde_mapping(datos, "en memoria") == cargar_conjunto_respuestas(
+            escribir(tmp_path, datos)
+        )
+
+
 # ---------------------------------------------------------------------------
 # 9.7 — mutation targets
 # ---------------------------------------------------------------------------

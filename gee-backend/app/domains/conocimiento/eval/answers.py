@@ -279,12 +279,23 @@ def _afirmaciones_de(crudo: Mapping[str, Any], respuesta_id: str) -> tuple[Afirm
 def cargar_conjunto_respuestas(ruta: Path | None = None) -> ConjuntoRespuestas:
     """Parse the graded artifact, or REFUSE when it is not owner-ratified."""
     ruta = ruta or RUTA_ANSWER_SET
-    datos = yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}
+    return cargar_desde_mapping(yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}, ruta.name)
 
+
+def cargar_desde_mapping(datos: Mapping[str, Any], origen: str) -> ConjuntoRespuestas:
+    """The parser itself, over an already-decoded mapping.
+
+    Split out from the file reader so an in-memory arm (the SLM bench's two
+    inline arms) is validated by exactly these rules without a round trip
+    through the filesystem. That round trip mattered: `RespuestaGraduada.texto`
+    and `pregunta` are the verbatim question and answer text, and threat 7.5 is
+    about precisely that text leaving the box — writing it to a world-readable
+    `/tmp` file to re-parse it is the box leaking to make a copy of itself.
+    """
     estado = str(datos.get("estado", ""))
     if not estado.startswith("RATIFICADO"):
         raise ConjuntoRespuestasNoRatificado(
-            f"{ruta.name} reports estado={estado!r}. Answer-level thresholds are "
+            f"{origen} reports estado={estado!r}. Answer-level thresholds are "
             "not-evaluable until the owner ratifies the set (generation spec, "
             "`Answer-Level Eval Metrics With Ratified Thresholds`). The answers "
             "themselves are produced by the GPU worker through the runbook; this "
@@ -426,7 +437,20 @@ def assert_publicable(conjunto: ConjuntoRespuestas) -> None:
     ships in — the answers come from the GPU worker through the runbook — and
     publishing 0/0 as a rate would report "no failures found" for a measurement
     that never ran.
+
+    A set that never DECLARES which of the two it is refuses as well. `null` is
+    not `false`: an artifact with answers and no declaration would be published
+    on the assumption that a real generator wrote them, which is the one thing
+    this gate exists not to assume.
     """
+    if conjunto.generador_sintetico is None:
+        raise RespuestasSinteticas(
+            "el artefacto no declara `generador_sintetico`. Un `null` no es un "
+            "`false`: dice que nadie registró qué escribió estas respuestas, y "
+            "publicarlas asumiendo un generador real es exactamente la "
+            "suposición que este chequeo existe para no hacer. Declaralo en el "
+            "artefacto (`false` sólo cuando la corrida real existe)."
+        )
     if conjunto.generador_sintetico:
         raise RespuestasSinteticas(
             "las respuestas de este artefacto las escribió un generador "
@@ -779,10 +803,25 @@ def _fmt(valor: float | None, decimales: int = 3) -> str:
     return "n/d" if valor is None else f"{valor:.{decimales}f}"
 
 
-def _veredicto(barra: BarraRespuestas) -> str:
+def pasa_publicable(barra: BarraRespuestas, *, evaluable: bool) -> bool | None:
+    """`barra.pasa`, but `None` while the SET itself is not evaluable.
+
+    The bar arithmetic is fine on three answers — every citation is in its
+    payload, so `invented-citation rate` is `0.000` and clears a `<= 0.00`
+    bar. What is not fine is printing that as a pass: it is a rate over a
+    sample the ratified minimum (`decisión 0.6`) already rejected, and a `sí`
+    in a table is the single most quotable cell in this report. The retrieval
+    harness applies exactly this rule below n = 20 (`GoNoGo.veredicto`), and a
+    reader must not be able to lift the answer-level row out of the caveat
+    printed under it.
+    """
+    return None if not evaluable else barra.pasa
+
+
+def _veredicto(barra: BarraRespuestas, *, evaluable: bool) -> str:
     if not barra.ratificada:
         return ESTADO_BARRA_NO_RATIFICADA
-    if barra.pasa is None:
+    if pasa_publicable(barra, evaluable=evaluable) is None:
         return ESTADO_NO_EVALUABLE
     return "sí" if barra.pasa else "NO"
 
@@ -845,7 +884,8 @@ def bloque_para(entrada: EntradaRespuestas | None) -> list[str]:
         comparador = {"<=": "≤", ">=": "≥", "==": "="}[barra.comparador]
         lineas.append(
             f"| {barra.nombre} | {_fmt(barra.valor)} | {comparador} {barra.limite:.2f} "
-            f"| {barra.fuente} | {denominadores[barra.nombre]} | {_veredicto(barra)} |"
+            f"| {barra.fuente} | {denominadores[barra.nombre]} "
+            f"| {_veredicto(barra, evaluable=metricas.evaluable)} |"
         )
 
     lineas += [
@@ -886,7 +926,16 @@ def bloque_para(entrada: EntradaRespuestas | None) -> list[str]:
         "primeras sí están en el spec de generación y sí se puntúan.",
     ]
     if metricas.motivos_no_evaluable:
-        lineas += ["", "**Motivos de `not-evaluable`:**", ""]
+        lineas += [
+            "",
+            f"> El conjunto NO es evaluable, así que las barras ratificadas de la "
+            f"tabla salen `{ESTADO_NO_EVALUABLE}` y no `sí`/`NO`. Los VALORES "
+            "siguen impresos porque son aritmética real sobre lo que hay; lo que "
+            "no puede emitirse es el veredicto, que es la celda que se cita sola.",
+            "",
+            "**Motivos de `not-evaluable`:**",
+            "",
+        ]
         lineas += [f"- {motivo}" for motivo in metricas.motivos_no_evaluable]
     if metricas.respuestas_con_cita_inventada:
         lineas += [
@@ -958,7 +1007,7 @@ def json_para(entrada: EntradaRespuestas | None) -> dict[str, Any]:
                 "comparador": barra.comparador,
                 "fuente": barra.fuente,
                 "ratificada": barra.ratificada,
-                "pasa": barra.pasa,
+                "pasa": pasa_publicable(barra, evaluable=metricas.evaluable),
             }
             for barra in barras(metricas)
         ],

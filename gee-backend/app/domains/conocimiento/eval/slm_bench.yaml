@@ -42,9 +42,24 @@
 #
 # ── PARITY, which `verificar_paridad` enforces ──────────────────────────────
 #
-# Same `prompt_version`, same `corpus_sha`, same answer ids, same per-answer
-# `claves_payload`, and two DIFFERENT pins. A model handed less context is not a
-# worse model, and a model benched against itself measures sampling variance.
+# Same `prompt_version`, same `corpus_sha`, same `expected_clasificacion_sha256`,
+# same answer ids, same per-answer `claves_payload`, and two DIFFERENT pins. A
+# model handed less context is not a worse model, and a model benched against
+# itself measures sampling variance. The classification pin is in that list
+# because a reclassification moves payloads WITHOUT moving corpus bytes: two arms
+# pinned to different classification artifacts measured two different shippable
+# universes, and the gap would read as the candidate being worse.
+#
+# The reference arm's pin must be `slm_bench.PIN_REFERENCIA` — the pin in
+# production config. The ladder's rule is "clears the SAME bars as the
+# reference", so a delta against a model nobody runs decides nothing.
+#
+# ── THE LIVE UNIVERSE, which `verificar_payload_bench` re-derives ───────────
+#
+# Both arms' `claves_payload` are recomputed from the LIVE classification with
+# the same `assert_unidades_publicas` call the request path makes, exactly as the
+# single-arm answer set's are (task 9.4). A bench that skipped it would be the
+# way around it.
 
 version: 1
 

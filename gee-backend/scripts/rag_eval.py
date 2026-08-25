@@ -353,7 +353,7 @@ def _entrada_respuestas(db, args) -> EntradaRespuestas:
         return EntradaRespuestas.no_evaluable(str(motivo))
 
 
-def _bench_slm(args) -> tuple[object | None, str | None]:
+def _bench_slm(db, args) -> tuple[object | None, str | None]:
     """The SLM bench, or the stated reason there is none.
 
     Degrades into a reason rather than killing the run, exactly like the answer
@@ -361,16 +361,20 @@ def _bench_slm(args) -> tuple[object | None, str | None]:
     not be lost because a bench artifact is unratified.
 
     Nothing here reads a clock, opens a socket or loads a model. Both arms are
-    already-graded artifacts; the comparison is arithmetic.
+    already-graded artifacts and the comparison is arithmetic — but the session
+    IS required, because both arms' post-exclusion universe is re-derived from
+    the live classification (task 9.4), the same way the single-arm answer set's
+    is.
     """
     if args.slm_bench is None:
         return None, None
     try:
-        return cargar_y_comparar(args.slm_bench), None
+        return cargar_y_comparar(db, args.slm_bench), None
     except (
         ConjuntoRespuestasNoRatificado,
         ConjuntoRespuestasInvalido,
         BenchSLMInvalido,
+        PayloadDivergente,
         RespuestasSinteticas,
     ) as motivo:
         return None, str(motivo)
@@ -561,7 +565,9 @@ def main(argv: list[str] | None = None) -> int:
         # with `corpus_sha` unmoved, and it cannot be done from a header.
         entrada_respuestas = _entrada_respuestas(db, args)
 
-    bench, motivo_bench = _bench_slm(args)
+        # Same reason, same session: `verificar_payload_bench` re-derives BOTH
+        # arms' shippable sets from the live classification.
+        bench, motivo_bench = _bench_slm(db, args)
 
     entrada_router = _entrada_router(embedder, pasos=args.router_pasos)
 

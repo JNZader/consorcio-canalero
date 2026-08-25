@@ -42,15 +42,18 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from sqlalchemy.orm import Session
 
 from app.domains.conocimiento.eval.answers import (
     ConjuntoRespuestas,
     ConjuntoRespuestasInvalido,
     ConjuntoRespuestasNoRatificado,
     MetricasRespuestas,
+    PayloadDivergente,
     RespuestasSinteticas,
     assert_publicable,
     puntuar,
+    verificar_payload,
 )
 
 RUTA_BENCH = Path(__file__).with_name("slm_bench.yaml")
@@ -122,7 +125,7 @@ def _brazo(crudo: Any, nombre: str) -> BrazoBench:
     # Reuse the answer-set loader wholesale rather than a parallel parser: the
     # arms must be validated by the SAME rules the single-arm eval uses, or the
     # bench becomes a way to get a figure past the checks answers.py enforces.
-    conjunto = _conjunto_desde(datos, modulo_answers)
+    conjunto = _conjunto_desde(datos, modulo_answers, nombre)
     return BrazoBench(
         nombre=nombre,
         pin=pin,
@@ -131,22 +134,20 @@ def _brazo(crudo: Any, nombre: str) -> BrazoBench:
     )
 
 
-def _conjunto_desde(datos: dict[str, Any], modulo_answers: Any) -> ConjuntoRespuestas:
-    """Parse an inline arm through `answers.cargar_conjunto_respuestas`.
+def _conjunto_desde(datos: dict[str, Any], modulo_answers: Any, nombre: str) -> ConjuntoRespuestas:
+    """Parse an inline arm through `answers.cargar_desde_mapping`.
 
-    Written to a temporary file rather than reimplemented, because a second
-    parser is a second set of schema rules — and the ones in `answers.py` are the
-    ones the invented-citation and uncited-claim scores depend on.
+    Reused rather than reimplemented, because a second parser is a second set of
+    schema rules — and the ones in `answers.py` are the ones the
+    invented-citation and uncited-claim scores depend on.
+
+    It parses IN MEMORY. The previous version serialized the arm to a
+    `NamedTemporaryFile` and read it back, which put every arm's verbatim
+    question and answer text — the exact bytes threat 7.5 is about — into a
+    world-readable `/tmp` file, on disk, outside the box, for a round trip whose
+    only product was the same objects that were already in this process.
     """
-    import tempfile
-
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", encoding="utf-8", delete=False) as tmp:
-        yaml.safe_dump(datos, tmp, allow_unicode=True)
-        ruta = Path(tmp.name)
-    try:
-        return modulo_answers.cargar_conjunto_respuestas(ruta)
-    finally:
-        ruta.unlink(missing_ok=True)
+    return modulo_answers.cargar_desde_mapping(datos, f"brazo {nombre!r} del bench")
 
 
 def cargar_bench(ruta: Path | None = None) -> BenchSLM:
@@ -192,6 +193,35 @@ def verificar_paridad(bench: BenchSLM) -> None:
                 f"el brazo {brazo.nombre!r} está pineado a corpus_sha "
                 f"{brazo.conjunto.corpus_sha!r} y el bench a {bench.corpus_sha!r}"
             )
+
+    # The FOURTH pin (task 9.4), which `corpus_sha` cannot give: a
+    # reclassification moves payloads without moving corpus bytes. Two arms
+    # pinned to different classification artifacts saw two different shippable
+    # universes, so their invented-citation rates are not on the same scale —
+    # and that difference would be read as the candidate model being worse.
+    sha_ref = bench.referencia.conjunto.expected_clasificacion_sha256
+    sha_can = bench.candidato.conjunto.expected_clasificacion_sha256
+    if sha_ref != sha_can:
+        raise BenchSLMInvalido(
+            f"los dos brazos declaran expected_clasificacion distintas "
+            f"({sha_ref!r} vs {sha_can!r}): una reclasificación mueve los payloads "
+            "sin mover el corpus, así que los dos brazos midieron sobre universos "
+            "distintos y la diferencia se leería como calidad del generador."
+        )
+
+    # `PIN_REFERENCIA` is the pin in production config, and the reference arm is
+    # supposed to BE it. Left uncompared the constant was decoration: a bench
+    # whose "reference" is some other model publishes a delta against a baseline
+    # nobody runs, and the ladder's rule ("clears the SAME bars as the
+    # reference") would be decided against the wrong thing.
+    if bench.referencia.pin != PIN_REFERENCIA:
+        raise BenchSLMInvalido(
+            f"el brazo de referencia declara el pin {bench.referencia.pin!r} y la "
+            f"referencia de este arnés es {PIN_REFERENCIA!r}. La regla de escalera "
+            "se decide contra el pin que está EN producción; un delta contra otro "
+            "modelo mide una comparación que nadie va a operar. Si el pin de "
+            "producción se movió, movelo también acá, en el mismo cambio."
+        )
 
     ids_ref = tuple(r.id for r in bench.referencia.conjunto.respuestas)
     ids_can = tuple(r.id for r in bench.candidato.conjunto.respuestas)
@@ -401,10 +431,35 @@ def json_para(bench: BenchSLM | None, motivo: str | None = None) -> dict[str, An
     }
 
 
-def cargar_y_comparar(ruta: Path | None = None) -> BenchSLM:
-    """Load, check parity, refuse a synthetic or empty arm. Then hand it over."""
+def verificar_payload_bench(db: Session, bench: BenchSLM) -> None:
+    """Re-derive the post-exclusion universe of BOTH arms — task 9.4's discipline.
+
+    The single-arm eval already refuses on a payload the live classification no
+    longer produces (`answers.verificar_payload`). The bench was skipping that
+    check entirely, which made it the way around it: the same recorded payloads,
+    the same `corpus_sha`, no database read — so a reclassification that
+    invalidates the single-arm figures leaves the bench publishing a delta
+    between two arms both scored against a universe that no longer exists. A
+    bench is where the decision to MOVE THE PIN gets made, so it is the last
+    place that check may be weaker.
+    """
+    for brazo in (bench.referencia, bench.candidato):
+        try:
+            verificar_payload(db, brazo.conjunto)
+        except PayloadDivergente as exc:
+            raise PayloadDivergente(f"brazo {brazo.nombre!r}: {exc}") from exc
+
+
+def cargar_y_comparar(db: Session, ruta: Path | None = None) -> BenchSLM:
+    """Load, check parity, refuse a synthetic or empty arm, re-derive the universe.
+
+    `db` is not optional: the ordering mirrors `answers.cargar_y_puntuar`'s —
+    the pure string comparisons run first and cost nothing, and the database is
+    opened only for the one check that cannot be done from a header.
+    """
     bench = cargar_bench(ruta)
     assert_bench_publicable(bench)
+    verificar_payload_bench(db, bench)
     return bench
 
 
@@ -417,6 +472,7 @@ __all__ = [
     "FilaComparacion",
     "PIN_REFERENCIA",
     "PISO_DE_SEGURIDAD",
+    "PayloadDivergente",
     "REGLA_ESCALERA",
     "RUTA_BENCH",
     "bloque_para",
@@ -425,4 +481,5 @@ __all__ = [
     "comparar",
     "json_para",
     "verificar_paridad",
+    "verificar_payload_bench",
 ]

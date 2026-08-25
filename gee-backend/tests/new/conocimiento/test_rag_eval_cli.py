@@ -14,8 +14,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+from pathlib import Path
 
 import pytest
+import yaml
+from sqlalchemy import text
 
 from app.domains.conocimiento.embedding import (
     DETERMINISTIC_MODEL_ID,
@@ -24,11 +27,16 @@ from app.domains.conocimiento.embedding import (
 )
 from app.domains.conocimiento.eval.harness import cargar_gold_set as cargar_gold_set_real
 from app.domains.conocimiento.eval.report import ETIQUETA_SMOKE
+from app.domains.conocimiento.eval.slm_bench import PIN_REFERENCIA
 from app.domains.conocimiento.recuperacion.reranker import RerankerNoDisponible
 from app.domains.conocimiento.repository import registrar_procedencia
 from scripts import rag_eval
 
 from .test_rag_eval_harness import PREGUNTAS, SHA, gold_item, gold_set, seed
+
+#: The bench tests seed their OWN two-document snapshot, so they use their own
+#: snapshot id: sharing `SHA` would collide with `seed`'s corpus row.
+SHA_BENCH = "b" * 40
 
 MOMENTO = "2026-08-10T16:30:00+00:00"
 
@@ -841,3 +849,128 @@ class TestAnswerSetEnLaCLI:
 
         assert PLANTILLAS.version == cargar_plantillas().version
         assert isinstance(PLANTILLAS.version, int)
+
+
+class TestElBenchCorreDentroDeLaSesion:
+    """W3 — the bench's universe is re-derived, so it needs the open session.
+
+    `_bench_slm` used to take only `args` and ran AFTER the session closed,
+    which is what made the bench the one path around task 9.4: same recorded
+    payloads, same `corpus_sha`, no database read, so a reclassification that
+    invalidates the single-arm figures left the bench publishing a delta between
+    two arms both scored against a universe that no longer exists.
+    """
+
+    def sembrar(self, db, *, clasificacion: str) -> None:
+        db.execute(
+            text(
+                "INSERT INTO rag_corpus (corpus_sha, repo_url, manifest_version, "
+                "articulos_declarados, activo) VALUES (:sha, 'u', '2', 2, true)"
+            ),
+            {"sha": SHA_BENCH},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'ley-9750', 'ley-provincial', false, 'provincial', 'vigente', "
+                "'publico')"
+            ),
+            {"sha": SHA_BENCH},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'ley-8548', 'ley-provincial', false, 'provincial', 'vigente', :clas)"
+            ),
+            {"sha": SHA_BENCH, "clas": clasificacion},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
+                "texto, texto_indexado, source_file, source_offset) VALUES "
+                "(:sha, :key, :doc, 'articulo', 't', 't', 'f.md', 0)"
+            ),
+            [
+                {"sha": SHA_BENCH, "key": "9750#1", "doc": "ley-9750"},
+                {"sha": SHA_BENCH, "key": "8548#3", "doc": "ley-8548"},
+            ],
+        )
+        db.flush()
+
+    def escribir_bench(self, tmp_path):
+        def brazo(pin):
+            return {
+                "estado": "RATIFICADO 2026-08-24 — prueba",
+                "prompt_version": 1,
+                "provider_model_pin": pin,
+                "corpus_sha": SHA_BENCH,
+                "expected_clasificacion_sha256": "a" * 64,
+                "generador_sintetico": False,
+                "tokens_por_segundo": 40.0,
+                "respuestas": [
+                    {
+                        "id": "R-1",
+                        "pregunta": "quién administra el canal",
+                        "debe_abstenerse": False,
+                        "estado_servido": "respuesta",
+                        "claves_recuperadas": ["9750#1", "8548#3"],
+                        # Graded under the NARROWER allowlist.
+                        "claves_payload": ["9750#1"],
+                        "texto": "El consorcio administra el canal [9750#1].",
+                        "afirmaciones": [
+                            {"id": "a", "texto": "…", "clave": "9750#1", "grado": "sostenida"}
+                        ],
+                        "regrado": {},
+                    }
+                ],
+            }
+
+        ruta = tmp_path / "slm_bench.yaml"
+        ruta.write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "estado": "RATIFICADO 2026-08-24 — prueba",
+                    "prompt_version": 1,
+                    "corpus_sha": SHA_BENCH,
+                    "referencia": brazo(PIN_REFERENCIA),
+                    "candidato": brazo("Qwen3-8B-Instruct-Q5"),
+                },
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+        return ruta
+
+    def test_una_reclasificacion_viva_degrada_el_bloque_a_su_motivo(self, db, tmp_path):
+        """It degrades into a STATED reason, never into a crash and never into a table."""
+        self.sembrar(db, clasificacion="publico")
+        args = rag_eval.build_parser().parse_args(
+            ["--corpus-sha", SHA_BENCH, "--slm-bench", str(self.escribir_bench(tmp_path))]
+        )
+        bench, motivo = rag_eval._bench_slm(db, args)
+        assert bench is None
+        assert motivo is not None
+        assert "8548#3" in motivo
+
+    def test_un_bench_al_dia_se_carga(self, db, tmp_path):
+        self.sembrar(db, clasificacion="privado")
+        args = rag_eval.build_parser().parse_args(
+            ["--corpus-sha", SHA_BENCH, "--slm-bench", str(self.escribir_bench(tmp_path))]
+        )
+        bench, motivo = rag_eval._bench_slm(db, args)
+        assert motivo is None
+        assert bench is not None and bench.referencia.pin == PIN_REFERENCIA
+
+    def test_el_bench_se_arma_dentro_del_bloque_de_sesion(self):
+        """A structural check, because getting this wrong is silent again.
+
+        `_bench_slm` outside the `with` block would either take no session (the
+        defect this closes) or take a closed one. The call has to be indented
+        INSIDE the block that opens it.
+        """
+        fuente = Path(rag_eval.__file__).read_text(encoding="utf-8")
+        linea = next(texto for texto in fuente.splitlines() if "= _bench_slm(db, args)" in texto)
+        assert linea.startswith("        "), linea
