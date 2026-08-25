@@ -388,6 +388,40 @@ def _firings(
     return fired
 
 
+def count_firing_end_days(
+    *,
+    daily: Sequence[tuple[date, float]],
+    tier: str,
+    window_lengths: Sequence[int] = WINDOW_LENGTHS,
+    min_samples: int = MIN_WINDOW_SAMPLES,
+    tier_percentiles: Mapping[str, float] = TIER_PERCENTILES,
+) -> dict[int, int]:
+    """How many end-days fired, per window length, BEFORE D1's merge.
+
+    The calibration gate (tasks.md 3.9) needs both halves: the raw firing count
+    per length says what the threshold selected, and the post-merge event count
+    says what the clustering factor did to it. D4's ~30 / ~150 is a MODEL of the
+    second; only the pair tells the owner which of the two a surprise came from.
+
+    Exists here, rather than as a private-symbol import from the runbook, so the
+    firing rule is defined exactly once: a caller that re-derived the count from
+    the events would count the strongest firing per length per event, which is a
+    different number wearing the same name.
+    """
+    if tier not in tier_percentiles:
+        raise ValueError(f"unknown tier {tier!r}; known tiers are {sorted(tier_percentiles)}")
+    firings = _firings(
+        daily=daily,
+        window_lengths=window_lengths,
+        threshold=tier_percentiles[tier],
+        min_samples=min_samples,
+    )
+    counts = dict.fromkeys(window_lengths, 0)
+    for firing in firings:
+        counts[firing.days] += 1
+    return counts
+
+
 def _coverage(firing: _Firing) -> tuple[date, ...]:
     """The ``[E-L+1, E]`` days a firing window vouches for.
 

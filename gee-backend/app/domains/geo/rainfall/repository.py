@@ -510,7 +510,25 @@ def baseline_daily_values(
 #: distinguish the two tiers: both are persisted and an `alta` span is a
 #: superset of the `extrema` spans inside it, so a single prefix would collide
 #: on `uq_rainfall_extreme_event_key` the first time that happened.
-_EVENT_KEY_PREFIXES = {"extrema": "ext", "alta": "alt"}
+EVENT_KEY_PREFIXES = {"extrema": "ext", "alta": "alt"}
+
+
+def event_key(event) -> str:
+    """The served id for a detected event -- one definition, one caller shape.
+
+    Public because the runbook CLI needs the same string to talk about a row it
+    has not written yet (an aborted batch names the identity it stopped on), and
+    a second rendering of the same key in another module is how the served id
+    and the persisted id start to disagree.
+    """
+    prefix = EVENT_KEY_PREFIXES.get(event.tier)
+    if prefix is None:
+        raise ValueError(
+            f"no event_key prefix for tier {event.tier!r}: the tier domain "
+            f"({sorted(EVENT_KEY_PREFIXES)}) and the detector's tiers disagree"
+        )
+    return f"{prefix}_{event.start_date.strftime('%Y%m%d')}"
+
 
 #: Everything compared before a re-run is called a no-op. The identity columns
 #: are excluded because they are what selected the row; every OTHER persisted
@@ -613,14 +631,8 @@ def persist_events(
     inserted = 0
     skipped = 0
     for event in events:
-        prefix = _EVENT_KEY_PREFIXES.get(event.tier)
-        if prefix is None:
-            raise ValueError(
-                f"no event_key prefix for tier {event.tier!r}: the tier domain "
-                f"({sorted(_EVENT_KEY_PREFIXES)}) and the detector's tiers disagree"
-            )
         candidate = {
-            "event_key": f"{prefix}_{event.start_date.strftime('%Y%m%d')}",
+            "event_key": event_key(event),
             "end_date": event.end_date,
             "peak_date": event.peak_date,
             "max_percentile": event.max_percentile,
