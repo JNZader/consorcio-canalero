@@ -23,6 +23,7 @@ import {
   IconChartBar,
   IconCoin,
   IconHome,
+  IconInbox,
   IconLogout,
   IconMap,
   IconMountain,
@@ -50,6 +51,11 @@ const NAV_SECTIONS = [
       { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
       { label: 'Padron', to: '/admin/padron', icon: IconUser },
       { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
+      // U8: the mailbox of legal consultations. Listed here because a route with
+      // no entry point is a page nobody reaches — the hidden page was never the
+      // access boundary anyway (the server's `require_admin` is), so hiding the
+      // link would buy no security and cost the only way in.
+      { label: 'Consultas normativas', to: '/admin/conocimiento', icon: IconInbox },
     ],
   },
 ];

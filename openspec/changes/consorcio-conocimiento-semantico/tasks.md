@@ -793,21 +793,40 @@ re-estimated before the chain strategy is picked.)*
 
 ## Phase 8: `consorcio-web` page (U8)
 
-- [ ] 8.1 GREEN: child route `/admin/conocimiento` under `adminLayoutRoute`
+- [x] 8.1 GREEN: child route `/admin/conocimiento` under `adminLayoutRoute`
       (`src/routeTree.gen.tsx:590-595`) + `ProtectedRoute allowedRoles={['admin']}`.
-- [ ] 8.2 GREEN: `src/lib/api/conocimiento.ts` + `src/hooks/useConocimientoQA.ts` (TanStack Query, finite
+- [x] 8.2 GREEN: `src/lib/api/conocimiento.ts` + `src/hooks/useConocimientoQA.ts` (TanStack Query, finite
       `staleTime` ≈ 5 min, **no** `localStorage`/`IndexedDB` persistence) — `design.md:506-510`.
       *(amended 2026-08-23: async queue model — the client submits and then polls the item-status/listing
       surfaces rather than awaiting an answer from the submit call. The no-persistence rule is unchanged.)*
-- [ ] 8.3 GREEN: `components/admin/ConocimientoPanel.tsx` — five states + `redireccion_parcial`; citation
+- [x] 8.3 GREEN: `components/admin/ConocimientoPanel.tsx` — five states + `redireccion_parcial`; citation
       cards with vigencia badge, secundaria chip, verbatim `relevancia_consorcio` banner, verbatim `texto`,
       `fuente_url` link; no paraphrase (`design.md:754-775`).
       *(amended 2026-08-23: async queue model — the page is a **bandeja (mailbox)**: a list of the user's
       questions with question text, state and the answer when it exists. It renders `pendiente` honestly
       (including the staleness message from 7.3) alongside the five terminal states. Citation-card rules are
       unchanged.)*
-- [ ] 8.4 RED: the panel cannot render a card for an excluded unit — the serialized list is already filtered
+- [x] 8.4 RED: the panel cannot render a card for an excluded unit — the serialized list is already filtered
       server-side to payload keys (`design.md:765-768`).
+- [x] 8.5 Fix-forward on the U8 verify findings *(2026-08-24; six warnings + one suggestion, no new surface)*:
+      **W1** the vigencia badge's colour polarity was inverted — `!VIGENTE ⇒ red` painted `EN REVISIÓN` and
+      `SIN DATOS` with the same red as `DEROGADA`, which is the panel asserting a repeal the corpus never
+      stated. Now `DEROGADA*` ⇒ red, `VIGENTE*` ⇒ teal, everything else NEUTRAL, via the exported pure
+      `colorDeVigencia`; the badge TEXT stays verbatim and the file's "never re-derives" claim is now true of
+      the colour too. **W2** an `estado` outside `PRESENTACION_ESTADO` threw a `TypeError` with no error
+      boundary above the list, so one unrecognized item blanked the whole bandeja; `presentacionDeEstado`
+      degrades to `Estado no reconocido: <valor>` verbatim. **W3** `lib/api/conocimiento.ts` justified
+      bypassing `apiFetch`'s one-shot 401 refresh with a panel-side session-expired state that did not
+      exist — `SesionExpirada` now renders it with a link to `/login`. **W4** the poll's stop list covers only
+      401/403/429/503, so a 500, a proxy HTML page or a network `TypeError` re-fetched every 15 s forever;
+      `intervaloDeSondeo` stays pure and folds `fetchFailureCount` into a capped 15 s → 30 s → 60 s ladder
+      that TanStack resets on success. **W5** the composer cleared synchronously on submit, destroying up to
+      2000 characters on a 429/422 — it now clears in `onSuccess` only. **W6** `retry_after` was parsed into
+      `extra` and never shown; the 429 (whose envelope carries no `detalle`) now reads "Límite de consultas
+      alcanzado. Probá de nuevo en ~N s.". **S1** `CAUSA_LEGIBLE` covered only the three enablement facts, so
+      the kill switch — the likeliest 503 on a fresh deployment — surfaced as the raw `conocimiento_qa_enabled`
+      setting name, and the ceiling refusals arrived as Python class names (`type(exc).__name__`); all are
+      mapped, and an unmapped cause is framed as an identifier rather than dropped.
 
 ## Phase 9: Eval extension (U9)
 
