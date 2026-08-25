@@ -41,11 +41,14 @@ Why the absolute mode is a separate function
 
 An earlier revision materialized the absolute distribution alongside the
 seasonal one, building ~32.6k windows per snapshot build across three window
-lengths for a consumer that does not exist yet. :func:`absolute_window_samples`
+lengths for a consumer that did not exist yet. :func:`absolute_window_samples`
 is therefore a function the snapshot path never calls, kept here so the
-detector inherits the same evidence rules, and guarded by a test asserting it
-has no consumer. Its percentile takes an explicit ``min_samples``: more samples
-is not an exemption from stating a floor.
+detector inherits the same evidence rules. It now has exactly ONE consumer --
+``rainfall/detector.py`` -- and the old "no consumer at all" guard is replaced,
+in the same slice that introduced that consumer, by a snapshot-path isolation
+guard asserting the referencing module set is exactly
+``{climatology, detector}``. Its percentile takes an explicit ``min_samples``:
+more samples is not an exemption from stating a floor.
 """
 
 from __future__ import annotations
@@ -284,7 +287,8 @@ def absolute_window_samples(
     deliberately. Materializing this eagerly beside the seasonal sample built
     ~32.6k windows per snapshot build for three window lengths with no consumer
     at all -- "for free" was simply false. Nothing on the snapshot path calls
-    this, and a test asserts that no consumer exists.
+    this, and a test asserts that the only modules referencing it are this one
+    and ``rainfall/detector.py``.
 
     The span is INFERRED from the ``min`` and ``max`` of the surviving days, so
     the "a hole never shortens the record" guarantee holds for INTERIOR holes
