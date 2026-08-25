@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
 
 from app.domains.geo.models import GeoApprovedZoning
+from app.domains.geo.rainfall import temporal
 from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
 from app.domains.geo.rainfall.compute import correction_revision, revision_family
 from app.domains.geo.rainfall.models import (
@@ -32,6 +33,22 @@ from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
 # a caller can retry, rather than a silent hang. 5s is far beyond a
 # legitimate sibling's own per-row work; anything longer is pathological.
 _FINGERPRINT_LOCK_TIMEOUT_MS = 5000
+
+# design.md D2 (lluvia-antecedente-referencia): the bounds of the persisted
+# baseline `baseline_daily_values` reads, half-open -- `[1991-01-01,
+# 2021-01-01)`, the period every served envelope names "1991-2020".
+#
+# LOAD-BEARING, not hygiene. The 2021-2025 backfill has landed under the SAME
+# `(scope_kind="provider_asset", scope_id=<asset>, scope_version=
+# BASELINE_ASSET_VERSION)` key as the baseline -- measured on the box, not
+# assumed: one key, 12,784 rows, 35 unbroken years 1991-2025, every year at
+# exactly its calendar day count. So an unbounded read would silently widen
+# the ranked distribution past the period the disclosure keeps naming: a
+# reference that says one period and ranks against another, with nothing on
+# any surface to reveal it. Named constants rather than inline literals
+# because the upper bound and its exclusivity are both mutation-gated.
+BASELINE_SPAN_START = datetime(1991, 1, 1, tzinfo=UTC)
+BASELINE_SPAN_END = datetime(2021, 1, 1, tzinfo=UTC)  # exclusive
 
 
 class ScopeConfigurationError(ValueError):
@@ -379,6 +396,99 @@ def baseline_cumulatives(
             )
         totals[int(year)] = (float(total), int(matched), expected_days_by_year[int(year)])
     return totals
+
+
+def baseline_daily_values(
+    db: Session,
+    *,
+    source_id: str,
+    asset: str,
+) -> tuple[tuple[date, float], ...]:
+    """The baseline as a RAW DAILY SERIES over ``[BASELINE_SPAN_START,
+    BASELINE_SPAN_END)``, ordered, one entry per persisted UTC day
+    (design.md D2, lluvia-antecedente-referencia).
+
+    Same fixed provider-asset key and same supersession anti-join as
+    :func:`baseline_cumulatives`; what differs is the SHAPE, and the reason
+    is structural. A rolling window of fixed length has no year anchor, so
+    that function's year-start ``GROUP BY`` (:322-333) is not reusable here
+    -- there is no group a January-crossing window could be split across.
+    Every window is rolled in Python from this one bounded read
+    (``climatology.seasonal_climatology``), so ``expected_days == days``
+    always, including for a window reaching back into the prior year.
+
+    Days are bucketed through :func:`temporal.utc_day`, never a bare
+    ``.date()`` (LI3A-005): ``interval_start`` comes back from ``psycopg2``
+    rendered in the SESSION's zone, so under any zone west of UTC a bare
+    ``.date()`` files ``1991-01-01T00:00Z`` under 1990-12-31 -- the very day
+    the span starts on, and one the ``>=`` bound above admitted. Rows that
+    share a bucketed day are summed, which is what makes the entry a DAILY
+    total rather than one arbitrary row of that day.
+
+    Raises :class:`DuplicateBaselineSlotError` on two non-superseded rows for
+    one ``interval_start``, exactly like :func:`baseline_cumulatives` and
+    deliberately UNLIKE :func:`baseline_curve_rows`, which tolerates the same
+    residue and dedups downstream (series.py:289). That trade is right for a
+    workbook curve -- one day drawn slightly wrong beats no curve -- and
+    wrong for a ranked statistic: a duplicated slot inflates the window total
+    while leaving the window looking complete, so the rank moves and nothing
+    discloses it.
+
+    Note that this read sees duplicates ``baseline_cumulatives``
+    STRUCTURALLY cannot: its windows stop at each year's cutoff, so a
+    duplicate later in a year is invisible there and visible here. The two
+    reads may therefore disagree about baseline validity within one build.
+    That is intended (design.md D2) -- each degrades only its own metrics --
+    and it is the reason ``tasks._persist_analysis_revision`` contains this
+    read in a handler of its OWN rather than widening the existing one.
+    """
+    superseded = select(RainfallIntervalLifecycle.interval_value_id).where(
+        RainfallIntervalLifecycle.event_type == "superseded",
+        RainfallIntervalLifecycle.interval_value_id == RainfallIntervalValue.id,
+    )
+    query = (
+        select(RainfallIntervalValue.interval_start, RainfallIntervalValue.value)
+        .where(RainfallIntervalValue.source_id == source_id)
+        .where(RainfallIntervalValue.scope_kind == "provider_asset")
+        .where(RainfallIntervalValue.scope_id == asset)
+        .where(RainfallIntervalValue.scope_version == BASELINE_ASSET_VERSION)
+        .where(RainfallIntervalValue.interval_start >= BASELINE_SPAN_START)
+        .where(RainfallIntervalValue.interval_start < BASELINE_SPAN_END)
+        .where(~superseded.exists())
+        .order_by(RainfallIntervalValue.interval_start)
+    )
+
+    rows = db.execute(query).all()
+
+    # Counted per YEAR, over the WHOLE read, before anything is summed: the
+    # payload `tasks` puts on its event has to mean the same thing
+    # `baseline_cumulatives`' does (that year's rows over that year's distinct
+    # slots), so it cannot be a partial count taken at the first repeat.
+    matched_by_year: dict[int, int] = {}
+    slots_by_year: dict[int, set[datetime]] = {}
+    for interval_start, _value in rows:
+        year = temporal.utc_day(interval_start).year
+        matched_by_year[year] = matched_by_year.get(year, 0) + 1
+        slots_by_year.setdefault(year, set()).add(interval_start)
+    for year in sorted(matched_by_year):
+        matched, distinct_slots = matched_by_year[year], len(slots_by_year[year])
+        if matched != distinct_slots:
+            raise DuplicateBaselineSlotError(
+                "baseline_daily_values received duplicated interval_start slots "
+                f"(source_id={source_id!r}, asset={asset!r}, year={year}: "
+                f"{matched} rows over {distinct_slots} slots)",
+                source_id=source_id,
+                asset=asset,
+                year=year,
+                matched=matched,
+                distinct_slots=distinct_slots,
+            )
+
+    daily: dict[date, float] = {}
+    for interval_start, value in rows:
+        day = temporal.utc_day(interval_start)
+        daily[day] = daily.get(day, 0.0) + float(value)
+    return tuple(sorted(daily.items()))
 
 
 def daily_series_rows(

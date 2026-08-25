@@ -421,3 +421,464 @@ def test_persist_analysis_revision_suppresses_baseline_for_unmapped_basin(db):
     revision = RainfallRepository().get_snapshot(db, fingerprint)
     assert revision is not None
     assert revision.snapshot["annual"]["selected"]["state"] == "available"
+
+
+# ===========================================================================
+# lluvia-antecedente-referencia, slice S1b -- `baseline_daily_values`
+#
+# The rolling-window reference (design.md D2) needs the baseline as a RAW
+# DAILY SERIES, not as `baseline_cumulatives`' per-year aggregate: a
+# fixed-length window has no year anchor, so there is no year-start GROUP BY
+# for a January-crossing window to be split across. Same provider-asset key,
+# same supersession anti-join, same strict duplicate guard -- and explicitly
+# bounded to [1991-01-01, 2021-01-01), because the 2021-2025 backfill has
+# landed under that SAME key (verified on the box, tasks.md phase 0).
+# ===========================================================================
+
+
+def _persist_baseline_days(db, *, asset, days, source_id="chirps-v3-final", revision="v3-final"):
+    """Persist one daily row per ``(date, value)`` pair under the baseline key."""
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+    from app.domains.geo.rainfall.ports import SourceInterval
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    rows = []
+    for day, value in days:
+        start = datetime(day.year, day.month, day.day, tzinfo=UTC)
+        rows.append(SourceInterval(start, start + timedelta(days=1), value, "mm", revision))
+    return persist_intervals(
+        db,
+        source_id=source_id,
+        scope_kind="provider_asset",
+        scope_id=asset,
+        scope_version=BASELINE_ASSET_VERSION,
+        rows=rows,
+    )
+
+
+def test_baseline_daily_values_returns_one_value_per_persisted_day(db):
+    """2.1: one ``(date, value)`` per persisted baseline day, ordered, under
+    the same provider-asset key and the same supersession anti-join
+    ``baseline_cumulatives`` reads through -- a superseded row is invisible
+    here for exactly the reason it is invisible there."""
+    from sqlalchemy import text
+
+    from app.domains.geo.rainfall.repository import baseline_daily_values
+
+    asset = "baseline-daily-values-shape"
+    _persist_baseline_days(
+        db,
+        asset=asset,
+        days=[(date(1991, 3, 1), 1.5), (date(1991, 3, 2), 2.5), (date(1995, 7, 9), 4.0)],
+    )
+    # A correction for 1991-03-02: `persist_intervals` appends the new row and
+    # marks the old one superseded, so the anti-join must serve 9.0 -- ONE
+    # entry for that day, not two and not the stale 2.5.
+    superseded = _persist_baseline_days(db, asset=asset, days=[(date(1991, 3, 2), 9.0)])
+    assert superseded["superseded"] == 1
+
+    result = baseline_daily_values(db, source_id="chirps-v3-final", asset=asset)
+
+    assert result == (
+        (date(1991, 3, 1), 1.5),
+        (date(1991, 3, 2), 9.0),
+        (date(1995, 7, 9), 4.0),
+    )
+
+    # A different asset under the same source is a different baseline.
+    assert baseline_daily_values(db, source_id="chirps-v3-final", asset="no-such-asset") == ()
+    # And a different source under the same asset likewise.
+    assert baseline_daily_values(db, source_id="chirps-v3-sat", asset=asset) == ()
+
+    # LI3A-005, asserted on the boundary day: `interval_start` comes back from
+    # psycopg2 rendered in the SESSION's zone, so a bare `.date()` files
+    # 1991-01-01T00:00Z under 1990-12-31 whenever that zone is west of UTC --
+    # the day the whole span starts on. `temporal.utc_day` is the only reader.
+    # The `db` fixture rolls this transaction back, so the SET cannot leak.
+    _persist_baseline_days(db, asset=asset, days=[(date(1991, 1, 1), 7.25)])
+    db.execute(text("SET TIME ZONE 'America/Argentina/Buenos_Aires'"))
+
+    bucketed = dict(baseline_daily_values(db, source_id="chirps-v3-final", asset=asset))
+    assert date(1991, 1, 1) in bucketed
+    assert date(1990, 12, 31) not in bucketed
+    assert bucketed[date(1991, 1, 1)] == pytest.approx(7.25)
+
+
+def test_baseline_span_constants_are_the_d2_values_and_the_end_is_exclusive(db):
+    """2.3: the span is `[1991-01-01, 2021-01-01)` -- module CONSTANTS (task
+    4.5 mutation-gates them by name) and an EXCLUSIVE upper bound. A `<=`
+    admits 2021-01-01 into a distribution the served envelope keeps calling
+    "1991-2020"."""
+    from app.domains.geo.rainfall.repository import (
+        BASELINE_SPAN_END,
+        BASELINE_SPAN_START,
+        baseline_daily_values,
+    )
+
+    assert BASELINE_SPAN_START == datetime(1991, 1, 1, tzinfo=UTC)
+    assert BASELINE_SPAN_END == datetime(2021, 1, 1, tzinfo=UTC)
+
+    asset = "baseline-daily-values-span-edges"
+    _persist_baseline_days(
+        db,
+        asset=asset,
+        days=[
+            (date(1990, 12, 31), 111.0),  # below the span start
+            (date(1991, 1, 1), 1.0),  # the first admitted day
+            (date(2020, 12, 31), 2.0),  # the last admitted day
+            (date(2021, 1, 1), 222.0),  # the first excluded day (`<`, not `<=`)
+        ],
+    )
+
+    assert baseline_daily_values(db, source_id="chirps-v3-final", asset=asset) == (
+        (date(1991, 1, 1), 1.0),
+        (date(2020, 12, 31), 2.0),
+    )
+
+
+def test_baseline_daily_values_excludes_rows_dated_2021_and_later(db):
+    """2.4: the whole reason the bounds are load-bearing rather than hygiene.
+
+    The 2021-2025 backfill shares the `(chirps-v3-final, <asset>, v1)` key
+    with the 1991-2020 baseline -- verified on the box (tasks.md phase 0:
+    12,784 rows, 35 years 1991-2025, every year at its exact calendar day
+    count). So an UNBOUNDED read silently widens the distribution past the
+    period the envelope names.
+
+    Asserted on all three surfaces the widening reaches, because they are NOT
+    equally protected and saying so is the point:
+
+    * the read's own result -- the contract every consumer inherits;
+    * the ABSOLUTE-mode distribution, which infers its span from ``min``/
+      ``max`` of the series it is handed and therefore has NO bound of its
+      own: this read's upper bound is its ONLY protection;
+    * the seasonal ``normal``, where the bound is defence in depth --
+      ``seasonal_climatology`` is also given ``span_end`` and an explicit year
+      set, so this value alone cannot prove the bound holds (verified by
+      mutation: deleting the upper bound leaves the normal untouched).
+    """
+    from app.domains.geo.rainfall.climatology import (
+        absolute_window_samples,
+        seasonal_climatology,
+        window_normal,
+    )
+    from app.domains.geo.rainfall.repository import (
+        BASELINE_SPAN_END,
+        BASELINE_SPAN_START,
+        baseline_daily_values,
+    )
+
+    asset = "baseline-daily-values-excludes-2021"
+    baseline_years = range(1991, 2021)
+    _persist_baseline_days(
+        db,
+        asset=asset,
+        days=[(date(year, 6, 15), 10.0) for year in baseline_years],
+    )
+
+    def _read():
+        return baseline_daily_values(db, source_id="chirps-v3-final", asset=asset)
+
+    def _normal(daily) -> float | None:
+        clim = seasonal_climatology(
+            daily=daily,
+            days=1,
+            anchor=date(2024, 6, 15),
+            years=baseline_years,
+            span_start=BASELINE_SPAN_START.date(),
+            span_end=BASELINE_SPAN_END.date(),
+        )
+        return window_normal(clim, min_years=20)
+
+    before_daily = _read()
+    before_absolute = absolute_window_samples(daily=before_daily, days=1)
+    before_normal = _normal(before_daily)
+    assert before_normal == pytest.approx(10.0)
+    assert before_absolute[-1].end == date(2020, 6, 15)
+
+    # The backfill lands: five post-2020 years under the SAME key, wet enough
+    # that a widened distribution could not possibly go unnoticed.
+    _persist_baseline_days(
+        db,
+        asset=asset,
+        days=[(date(year, 6, 15), 500.0) for year in range(2021, 2026)],
+    )
+
+    after_daily = _read()
+    assert after_daily == before_daily
+    after_absolute = absolute_window_samples(daily=after_daily, days=1)
+    assert after_absolute[-1].end == date(2020, 6, 15)
+    assert len(after_absolute) == len(before_absolute)
+    assert _normal(after_daily) == pytest.approx(before_normal)
+
+
+def test_baseline_daily_values_raises_on_a_duplicated_non_superseded_slot(db):
+    """2.5: STRICT, deliberately not `baseline_curve_rows`' tolerance
+    (repository.py:422-466, dedup at series.py:289). A workbook curve that
+    draws one duplicated day slightly wrong still beats no curve; a RANKED
+    statistic cannot take that trade, because a duplicated slot inflates the
+    window total silently and the window still looks complete."""
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+    from app.domains.geo.rainfall.models import RainfallIntervalValue
+    from app.domains.geo.rainfall.repository import (
+        DuplicateBaselineSlotError,
+        baseline_daily_values,
+    )
+
+    asset = "baseline-daily-values-duplicated-slot"
+    day = datetime(1994, 8, 3, tzinfo=UTC)
+    _persist_baseline_days(db, asset=asset, days=[(day.date(), 10.0)])
+    # A SECOND non-superseded row for the same slot: the residue of a
+    # correction whose supersession link never landed.
+    db.add(
+        RainfallIntervalValue(
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            interval_start=day,
+            interval_end=day + timedelta(days=1),
+            provider_revision="v3-final+r1",
+            value=9.0,
+            unit="mm",
+        )
+    )
+    db.flush()
+
+    with pytest.raises(DuplicateBaselineSlotError, match="duplicat") as raised:
+        baseline_daily_values(db, source_id="chirps-v3-final", asset=asset)
+
+    # Still a ValueError (the LI2A-005 contract) and it carries the numbers
+    # the caller's event payload needs, so nobody re-parses the message.
+    assert isinstance(raised.value, ValueError)
+    assert (raised.value.year, raised.value.matched, raised.value.distinct_slots) == (1994, 2, 1)
+    assert raised.value.asset == asset
+
+
+# ---------------------------------------------------------------------------
+# S1b -- the build's OWN containment for the window baseline (design.md D2)
+# ---------------------------------------------------------------------------
+
+
+def _event_payload(caplog, event_name: str) -> dict:
+    import json
+
+    for record in caplog.records:
+        if record.name == "rainfall" and record.message.startswith(f"{event_name} "):
+            return json.loads(record.message[len(event_name) + 1 :])
+    raise AssertionError(
+        f"no {event_name!r} event captured; got {[r.message for r in caplog.records]}"
+    )
+
+
+def _event_names(caplog) -> set[str]:
+    return {
+        record.message.split(" ", 1)[0] for record in caplog.records if record.name == "rainfall"
+    }
+
+
+def _selected_year_rows(year: int, count: int, value: float):
+    from app.domains.geo.rainfall.ports import SourceInterval
+
+    rows = []
+    for offset in range(count):
+        start = datetime(year, 1, 1, tzinfo=UTC) + timedelta(days=offset)
+        rows.append(SourceInterval(start, start + timedelta(days=1), value, "mm", "v3-nrt"))
+    return rows
+
+
+def _outbox_for(db, *, scope_id: str, year: int):
+    from app.domains.geo.rainfall.models import RainfallOutbox
+    from app.domains.geo.rainfall.service import analysis_request_fingerprint
+
+    fingerprint = analysis_request_fingerprint(
+        {"scope": {"kind": "zone", "id": scope_id, "version": "v1"}, "year": year}
+    )
+    outbox = RainfallOutbox(
+        source_id="chirps-v3-sat",
+        role="daily",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        year=year,
+        work_labels=["analysis_missing"],
+        interval_start=datetime(year, 1, 1, tzinfo=UTC),
+        interval_end=datetime(year + 1, 1, 1, tzinfo=UTC),
+        status="pending",
+        request_fingerprint=fingerprint,
+    )
+    db.add(outbox)
+    db.flush()
+    return outbox
+
+
+def _nrt_batch(scope_id: str) -> dict:
+    return {
+        "source_id": "chirps-v3-sat",
+        "provider_revision": "v3-nrt",
+        "unit": "mm",
+        "cadence_seconds": 86400.0,
+        "coverage": 1.0,
+        "completeness": 1.0,
+        "quality": {"scale_m": 5500, "provider_revision": "v3-nrt"},
+        "discrepancies": [],
+        "checksum": f"sha256:fixture-{scope_id}",
+    }
+
+
+def test_a_duplicated_window_baseline_slot_degrades_only_the_window_reference(db, caplog):
+    """2.6 + 2.8: the containment, and the divergence that makes it necessary.
+
+    The duplicated slot sits in JUNE 1991, past that baseline year's own
+    cutoff -- so ``baseline_cumulatives`` cannot see it (its windows stop at
+    each year's cutoff) and the wider daily read can. Both reads look at the
+    same evidence and answer differently, on purpose: each degrades only the
+    metrics it feeds.
+
+    So the annual pair must NOT be relabelled ``baseline_evidence_invalid``
+    here, the antecedent totals must still build, the workbook curve's own
+    (deliberately tolerant) read must still answer, and the revision must
+    LAND. Without a handler of its own the exception escapes
+    ``_persist_analysis_revision`` and reinstates LI2B-004: a key that no
+    retry can ever build, feeding the re-enqueue loop.
+    """
+    import logging
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION, asset_name_for
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallIntervalValue
+    from app.domains.geo.rainfall.repository import baseline_curve_rows, persist_intervals
+
+    scope_id = "zone-s1b-window-baseline-duplicate"
+    year = 2025
+    now = datetime(year, 2, 20, 12, 0, tzinfo=UTC)
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_selected_year_rows(year, 51, 3.0),
+    )
+
+    asset = asset_name_for("zone", scope_id)
+    duplicated_day = datetime(1991, 6, 15, tzinfo=UTC)
+    _persist_baseline_days(db, asset=asset, days=[(duplicated_day.date(), 8.0)])
+    db.add(
+        RainfallIntervalValue(
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            interval_start=duplicated_day,
+            interval_end=duplicated_day + timedelta(days=1),
+            provider_revision="v3-final+r1",
+            value=9.0,
+            unit="mm",
+        )
+    )
+    db.flush()
+
+    outbox = _outbox_for(db, scope_id=scope_id, year=year)
+    caplog.set_level(logging.INFO, logger="rainfall")
+    result = tasks._persist_analysis_revision(
+        db, outbox_id=str(outbox.id), batch=_nrt_batch(scope_id), now=now
+    )
+
+    # (0) The build LANDS. This is the whole of LI2B-004's lesson.
+    assert result["decision"] == "write"
+    assert result["revision_id"] is not None
+    stored = db.get(RainfallAnalysisRevision, result["revision_id"]).snapshot
+
+    # (a) The three antecedent TOTALS still build -- they read the selected
+    #     year's own intervals and never touch the baseline.
+    assert set(stored["antecedents"]) == {"d7", "d30", "d90"}
+    assert stored["antecedents"]["d7"]["state"] == "available"
+    assert stored["antecedents"]["d7"]["value"] == pytest.approx(21.0)
+    assert stored["antecedents"]["d30"]["state"] == "available"
+    assert stored["annual"]["selected"]["value"] == pytest.approx(153.0)
+
+    # (b) The ANNUAL pair keeps its own honest answer. This fixture is thin,
+    #     so it is `baseline_years_below_minimum` -- what matters is that it
+    #     is NOT the window read's failure wearing the annual read's label,
+    #     which is exactly what one shared `try` would produce.
+    for metric in ("normal", "percentile"):
+        assert stored["annual"][metric]["state"] == "suppressed"
+        assert stored["annual"][metric]["reason"] == "baseline_years_below_minimum"
+    assert "rainfall.baseline.duplicate_slots" not in _event_names(caplog)
+
+    # (c) The workbook normal curve's own read still answers over the same
+    #     evidence: it is deliberately tolerant (series.py:289 dedups), and a
+    #     curve drawn one day wrong beats no curve. The ranked statistic
+    #     cannot take that trade -- same evidence, two honest answers.
+    assert baseline_curve_rows(
+        db, source_id="chirps-v3-final", asset=asset, dates=[date(1991, 12, 31)]
+    )
+
+    # (d) The degradation is LOUD. Suppression alone reads to an operator as
+    #     an ordinary thin baseline, so the event carries the numbers.
+    event = _event_payload(caplog, "rainfall.window_baseline.duplicate_slots")
+    assert event["baseline_year"] == 1991
+    assert event["matched_rows"] == 2
+    assert event["distinct_slots"] == 1
+    assert event["asset"] == asset
+    assert event["scope_id"] == scope_id
+    assert event["year"] == year
+
+
+def test_the_window_baseline_is_read_during_the_build_and_spends_no_provider_call(db, monkeypatch):
+    """2.9 (spec R1 S3): the reference is built from PERSISTED interval rows
+    only. The read happens inside the build -- asserted, not assumed, since a
+    read nobody calls cannot degrade anything -- and no adapter and no GEE
+    client is touched while it does."""
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters import gee_client
+    from app.domains.geo.rainfall.adapters.chirps import ChirpsV3Adapter
+    from app.domains.geo.rainfall.adapters.imerg import ImergV07Adapter
+    from app.domains.geo.rainfall.adapters.gee_client import asset_name_for
+    from app.domains.geo.rainfall import repository
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("the reference build must spend no provider call")
+
+    monkeypatch.setattr(tasks, "_concrete_fetch", _forbidden)
+    monkeypatch.setattr(ChirpsV3Adapter, "fetch", _forbidden)
+    monkeypatch.setattr(ImergV07Adapter, "fetch", _forbidden)
+    monkeypatch.setattr(gee_client.GeeZonalClient, "__init__", _forbidden)
+
+    scope_id = "zone-s1b-window-baseline-no-fetch"
+    year = 2025
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_selected_year_rows(year, 51, 3.0),
+    )
+    asset = asset_name_for("zone", scope_id)
+    _persist_baseline_days(
+        db, asset=asset, days=[(date(1991, 6, 15), 8.0), (date(1992, 6, 15), 12.0)]
+    )
+    db.flush()
+
+    calls: list[tuple[str, str]] = []
+    real_read = repository.baseline_daily_values
+
+    def spy(db_, *, source_id, asset):
+        calls.append((source_id, asset))
+        return real_read(db_, source_id=source_id, asset=asset)
+
+    monkeypatch.setattr(repository, "baseline_daily_values", spy)
+
+    outbox = _outbox_for(db, scope_id=scope_id, year=year)
+    result = tasks._persist_analysis_revision(
+        db,
+        outbox_id=str(outbox.id),
+        batch=_nrt_batch(scope_id),
+        now=datetime(year, 2, 20, 12, 0, tzinfo=UTC),
+    )
+
+    assert result["decision"] == "write"
+    assert calls == [("chirps-v3-final", asset)]
