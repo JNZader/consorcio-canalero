@@ -16,6 +16,14 @@ from typing import Any, Literal, NamedTuple
 
 from app.domains.geo.rainfall import temporal
 from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
+
+# ``weibull_percentile`` now lives in ``climatology.py`` so the annual pair and
+# the antecedent-window pair rank by ONE definition. It is re-exported here --
+# one direction, no cycle -- because every existing caller imports it from
+# ``compute``. The move was verified safe by grep: the symbol has zero
+# ``mock.patch`` call sites, which is what makes a re-export a genuine cover
+# rather than a name that patches the wrong module object.
+from app.domains.geo.rainfall.climatology import weibull_percentile
 from app.domains.geo.rainfall.policy import (
     RAINFALL_METRIC_POLICY,
     RAINFALL_METRIC_POLICY_REVISION,
@@ -273,27 +281,6 @@ def _selected_metric_rankable(
     return _selected_metric_disclosable(policy, annual_selected) and (
         annual_selected["completeness"] >= _BASELINE_YEAR_COMPLETENESS_THRESHOLD
     )
-
-
-def weibull_percentile(baseline_values: Sequence[float], selected_value: float) -> float:
-    """Empirical Weibull plotting-position rank (design.md D5) -- pure, no
-    suppression logic; the caller applies the two-layer floor (per-year
-    completeness, then :data:`MIN_BASELINE_YEARS`) before ever calling this.
-
-    Sample = *baseline_values* plus *selected_value* (``N = n + 1``);
-    returns ``p = 100 * i / (N + 1)`` where ``i`` is the 1-based ascending
-    rank of *selected_value* within the combined sample, ties taking the
-    MEAN of their tied positions. Including the selected year in its own
-    sample avoids a degenerate 0/100 rank and keeps the range 3.1-96.9 at
-    n=30 baseline years (the lowest/highest possible ranks, i=1 and i=N).
-    """
-    combined = sorted([*baseline_values, selected_value])
-    n = len(combined)
-    tied_positions = [
-        position + 1 for position, value in enumerate(combined) if value == selected_value
-    ]
-    mean_rank = sum(tied_positions) / len(tied_positions)
-    return 100 * mean_rank / (n + 1)
 
 
 def _normal_and_percentile_metrics(
