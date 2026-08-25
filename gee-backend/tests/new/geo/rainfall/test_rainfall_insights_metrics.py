@@ -121,12 +121,32 @@ def test_no_metric_suppressed_as_policy_threshold_unset(db):
         revision.snapshot, expected_policy_revision=RAINFALL_METRIC_POLICY_REVISION
     )
 
+    # Enumerated over the SERVED envelope rather than a hand-written list
+    # (SDD lluvia-antecedente-referencia task 4.4): the six antecedent
+    # reference metrics joined this group in S2a, and the next key to join it
+    # is covered here the day it is emitted rather than the day someone
+    # remembers to extend a literal. `apply_metric_policy` suppresses any
+    # metric absent from EITHER policy dict as `policy_threshold_unset`
+    # (policy.py:163), so this loop is the disclosure-level enumeration of
+    # both dicts.
     checked = {
-        "annual.normal": normalized["annual"]["normal"],
-        "annual.percentile": normalized["annual"]["percentile"],
-        "antecedents.d7": normalized["antecedents"]["d7"],
-        "antecedents.d30": normalized["antecedents"]["d30"],
-        "antecedents.d90": normalized["antecedents"]["d90"],
+        f"{group}.{name}": metric
+        for group in ("annual", "antecedents")
+        for name, metric in normalized[group].items()
+    }
+    assert set(checked) == {
+        "annual.selected",
+        "annual.normal",
+        "annual.percentile",
+        "antecedents.d7",
+        "antecedents.d7_normal",
+        "antecedents.d7_percentile",
+        "antecedents.d30",
+        "antecedents.d30_normal",
+        "antecedents.d30_percentile",
+        "antecedents.d90",
+        "antecedents.d90_normal",
+        "antecedents.d90_percentile",
     }
     for name, metric in checked.items():
         assert metric["reason"] != "policy_threshold_unset", (name, metric)

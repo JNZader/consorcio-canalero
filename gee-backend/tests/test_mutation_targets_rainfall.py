@@ -2145,6 +2145,162 @@ class TestBaselineFloorBindsAtDisclosure:
             assert (coverage[window], quality[window]) == (0.9, 0.8)
 
 
+class TestWindowBaselineFloorBindsAtDisclosure:
+    """Task 4.1 (SDD lluvia-antecedente-referencia S2b): LI2A-003 re-run one
+    scale down, for the six antecedent reference metrics.
+
+    ``TestBaselineFloorBindsAtDisclosure`` above pins the ANNUAL pair. The six
+    window metrics repeat its shape exactly -- ``quality["score"]`` IS
+    ``completeness`` (compute.py, D4), which for these is the
+    eligible/derivable baseline-YEAR fraction -- so any policy fraction above
+    ``MIN_WINDOW_BASELINE_YEARS / 30`` silently dominates the compute floor and
+    relabels the whole reachable 20-26 band as ``coverage_below_threshold``: a
+    sample-size shortfall wearing a coverage label, with the distinct reason D5
+    promises never reaching a reader.
+
+    The distinction from S2a's ``test_the_six_policy_entries_are_pinned_to_the
+    _compute_floor_and_the_revision_moved`` is the LAYER, and it is the whole
+    point of this pin. That test reads the two policy dicts directly; this one
+    goes through ``apply_metric_policy`` via ``normalize_snapshot`` -- the layer
+    a user actually sees -- so it catches a policy entry drifting from the
+    compute floor even where the dicts still look plausible, and it catches the
+    drift by its SERVED REASON rather than by a float comparison.
+    """
+
+    _NOW = datetime(2024, 6, 15, 12, 0, tzinfo=UTC)
+    # The last day the selected windows cover: `window_end` clips to
+    # `_NOW`'s day start, so the anchor is the day before. A 90-day window
+    # ending 14 June starts on 17 March, inside the same calendar year, so
+    # every one of the thirty baseline years is DERIVABLE and the
+    # eligible/derivable fraction below has a denominator of exactly 30.
+    _ANCHOR = date(2024, 6, 14)
+    _SPAN = (date(1991, 1, 1), date(2021, 1, 1))
+    _WINDOW_DAYS = 90
+    _REFERENCE_KEYS = (
+        "d7_normal",
+        "d7_percentile",
+        "d30_normal",
+        "d30_percentile",
+        "d90_normal",
+        "d90_percentile",
+    )
+
+    @classmethod
+    def _baseline(cls, eligible_years: int) -> list[tuple[date, float]]:
+        """The 90-day window of each baseline year, with the ANCHOR DAY
+        dropped in the years that must not be eligible.
+
+        The anchor day belongs to all three windows (d7, d30 and d90 all end
+        on it), so one dropped day makes that year ineligible for every window
+        at once -- which is what keeps `eligible_years` a single number rather
+        than three. Under complete-or-nothing (D0/D4) a year is eligible iff
+        its window is whole, so no partial-credit floor can soften this.
+        """
+        rows: list[tuple[date, float]] = []
+        years = range(1991, 2021)
+        ineligible = set(list(years)[eligible_years:])
+        for year in years:
+            value = float(year - 1990)
+            anchor = date(year, cls._ANCHOR.month, cls._ANCHOR.day)
+            for offset in range(cls._WINDOW_DAYS):
+                day = anchor - timedelta(days=cls._WINDOW_DAYS - 1 - offset)
+                if year in ineligible and day == anchor:
+                    continue
+                rows.append((day, value))
+        return rows
+
+    @classmethod
+    def _normalized_antecedents(cls, eligible_years: int) -> dict[str, Any]:
+        from app.domains.geo.rainfall.compute import build_snapshot
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY_REVISION
+        from app.domains.geo.rainfall.service import normalize_snapshot
+
+        snapshot = build_snapshot(
+            scope=_ZONE_SCOPE,
+            year=2024,
+            role="daily",
+            source_id="chirps-v3-final",
+            # Complete selected coverage through the anchor, so every
+            # antecedent TOTAL is present and the percentile reaches its own
+            # branch instead of stopping at precedence row 4.
+            intervals=_daily_intervals(start=date(2024, 1, 1), values=[5.5] * 166),
+            batch=_fixture_batch_evidence(source_id="chirps-v3-final"),
+            now=cls._NOW,
+            window_baseline=cls._baseline(eligible_years),
+            window_baseline_unavailable_reason="baseline_scope_unmapped",
+            window_baseline_span=cls._SPAN,
+        )
+        normalized = normalize_snapshot(
+            snapshot, expected_policy_revision=RAINFALL_METRIC_POLICY_REVISION
+        )
+        return normalized["antecedents"]
+
+    def test_the_fixture_moves_only_the_eligible_year_count(self) -> None:
+        """Guard for the three tests below: they are only about the FLOOR if
+        the denominator stays 30 and the numerator is the number asked for. A
+        fixture that also moved derivability would make a passing floor test
+        mean nothing."""
+        antecedents = self._normalized_antecedents(21)
+        for key in self._REFERENCE_KEYS:
+            metric = antecedents[key]
+            assert metric["quality"]["baseline_years_derivable"] == 30, (key, metric)
+            assert len(metric["quality"]["eligible_years"]) == 21, (key, metric)
+            # D4 again, at disclosure: the policy gate reads `quality["score"]`
+            # and `completeness`, and for these six they are the same number.
+            assert metric["quality"]["score"] == metric["completeness"], (key, metric)
+            assert metric["coverage"] == metric["completeness"], (key, metric)
+
+    def test_19_years_suppresses_with_the_distinct_sample_size_reason(self) -> None:
+        antecedents = self._normalized_antecedents(19)
+        for key in self._REFERENCE_KEYS:
+            metric = antecedents[key]
+            assert metric["state"] == "suppressed", (key, metric)
+            assert metric["reason"] == "baseline_years_below_minimum", (key, metric)
+            assert metric["value"] is None, (key, metric)
+
+    def test_the_reachable_band_is_served_not_relabelled_a_coverage_shortfall(self) -> None:
+        """21 of 30 eligible years: above ``MIN_WINDOW_BASELINE_YEARS``, and
+        0.7 -- below any policy fraction a reader would casually call
+        "reasonable". Under a 0.9 entry these six would suppress as
+        ``coverage_below_threshold`` for a sample the floor itself accepts."""
+        antecedents = self._normalized_antecedents(21)
+        for key in self._REFERENCE_KEYS:
+            metric = antecedents[key]
+            assert metric["reason"] != "coverage_below_threshold", (key, metric)
+            assert metric["reason"] != "quality_below_threshold", (key, metric)
+            assert metric["state"] == "available", (key, metric)
+            assert metric["value"] is not None, (key, metric)
+
+    def test_exactly_the_floor_is_served_at_the_float_equality_boundary(self) -> None:
+        """The threshold IS ``MIN_WINDOW_BASELINE_YEARS / 30`` -- the same
+        float division ``completeness`` performs at 20 eligible of 30
+        derivable -- so the boundary compares equal and is served. A
+        hand-rounded 0.6667 would suppress the exact sample the floor
+        admits."""
+        antecedents = self._normalized_antecedents(20)
+        for key in self._REFERENCE_KEYS:
+            metric = antecedents[key]
+            assert metric["state"] == "available", (key, metric)
+            assert metric["completeness"] == pytest.approx(20 / 30), (key, metric)
+
+    def test_thresholds_track_the_window_floor_rather_than_drifting_from_it(self) -> None:
+        """Computed, never written: the pin cannot drift from the floor it is
+        pinned to. Asserted on BOTH dicts because ``apply_metric_policy``
+        compares the quality threshold against the same ``quality["score"]``,
+        so a quality-only drift re-suppresses the same band under
+        ``quality_below_threshold`` -- the same misattribution, a different
+        label."""
+        from app.domains.geo.rainfall.compute import MIN_WINDOW_BASELINE_YEARS
+        from app.domains.geo.rainfall.policy import RAINFALL_METRIC_POLICY
+        from app.domains.geo.rainfall.temporal import baseline_years_for
+
+        baseline_years = len(baseline_years_for(self._ANCHOR))  # 30, non-Feb-29
+        expected = MIN_WINDOW_BASELINE_YEARS / baseline_years
+        for key in self._REFERENCE_KEYS:
+            assert RAINFALL_METRIC_POLICY.minimum_coverage_by_metric[key] == expected, key
+            assert RAINFALL_METRIC_POLICY.minimum_quality_by_metric[key] == expected, key
+
+
 class TestSelectedEvidenceRankGate:
     """Ops.6 (archive-report.md 2026-08-11 section 10):
     ``compute._selected_metric_rankable`` is a CONJUNCTION -- the selected
