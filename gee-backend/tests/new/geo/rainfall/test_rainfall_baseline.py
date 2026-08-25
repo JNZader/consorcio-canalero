@@ -939,6 +939,8 @@ def test_a_duplicated_window_baseline_slot_degrades_the_six_reference_metrics(db
     """
     import logging
 
+    from sqlalchemy.dialects import postgresql
+
     from app.domains.geo.rainfall import tasks
     from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION, asset_name_for
     from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallIntervalValue
@@ -981,8 +983,34 @@ def test_a_duplicated_window_baseline_slot_degrades_the_six_reference_metrics(db
     )
 
     assert result["decision"] == "write"
+    # Expire first, so the row below is genuinely re-SELECTed out of PostgreSQL
+    # rather than handed back from the identity map: the key ORDER assertion
+    # further down is about what survives the DATABASE, not about the dict the
+    # build returned.
+    db.flush()
+    db.expire_all()
     stored = db.get(RainfallAnalysisRevision, result["revision_id"]).snapshot
     antecedents = stored["antecedents"]
+
+    # D1, round-tripped: the nine keys come back in insertion order,
+    # total -> normal -> percentile per window. This is what the design's
+    # JSON-not-JSONB choice buys (models.py: `postgresql.JSON`); JSONB stores a
+    # parsed object and would hand these back sorted, silently scrambling the
+    # order the fold renders. Asserted after a real read because the in-memory
+    # dict would pass regardless of the column type.
+    assert list(antecedents) == [
+        "d7",
+        "d7_normal",
+        "d7_percentile",
+        "d30",
+        "d30_normal",
+        "d30_percentile",
+        "d90",
+        "d90_normal",
+        "d90_percentile",
+    ]
+    assert isinstance(RainfallAnalysisRevision.__table__.c.snapshot.type, postgresql.JSON)
+    assert not isinstance(RainfallAnalysisRevision.__table__.c.snapshot.type, postgresql.JSONB)
 
     # The six reference metrics carry the WINDOW read's failure.
     for name in _REFERENCE_METRICS:

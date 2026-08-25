@@ -141,7 +141,8 @@ baseline evidence and MUST NOT spend a new provider fetch. The `normal` is a
 baseline average and MUST NOT be gated by the selected window's own evidence; the
 `percentile` MUST be.
 
-The three reference metrics per window are served **inside** the antecedents
+The two reference metrics per window — `normal` and `percentile`, six in total
+across the three windows — are served **inside** the antecedents
 group. This requirement MUST NOT add any value to the always-visible answer
 surface governed by "Answer-First Rainfall Presentation Hierarchy".
 
@@ -177,21 +178,32 @@ counting against completeness.
 ### Requirement: Antecedent Percentile Anti-Bias Guards
 
 An antecedent `percentile` MUST be suppressed rather than served whenever any of
-three independent floors fails, and the disclosed reason MUST name which one:
+three independent floors fails. Rows 1 and 3 suppress the metric directly and the
+disclosed reason MUST name which one; row 2 suppresses nothing on its own — it
+removes a year from the sample, and its disclosure channel is the metric's own
+completeness (and, when enough years fall out, row 1's named reason):
 
-| Floor | Applies to | Suppression reason class |
+| Floor | Applies to | Disclosure channel |
 |---|---|---|
-| Baseline sample size (minimum eligible years, per window) | `percentile` and `normal` | sample-size |
-| Per-baseline-year completeness inside that year's window | excludes that year from the sample | baseline-evidence |
-| Selected window's own day completeness | `percentile` only | selected-evidence |
+| Baseline sample size (minimum eligible years, per window) | `percentile` and `normal` | named reason: sample-size |
+| Per-baseline-year window completeness (complete-or-nothing: floor is 1.0) | excludes that year from the sample | the metric's disclosed completeness — never a reason of its own |
+| Selected window's own day completeness | `percentile` only | named reason: selected-evidence |
 
-The three reasons MUST be distinguishable from each other and from coverage or
-quality suppression. A percentile computed over a sample below the floor MUST
-NEVER be served, softened, or annotated — it is suppressed.
+NOTE (design D0/CRITICAL-2): row 2's floor is 1.0, not 0.95 — a baseline year
+contributes its window or it does not exist in the sample, because a window total
+exists only when every slot inside it does. The earlier "0.95" wording came from
+the delta spec, which predates the r2 anti-bias rule that made partial windows
+unrepresentable; the implementation has been complete-or-nothing since. The
+stricter number is stated here because an implementation stricter than its spec
+is still a spec that lies.
 
-#### Scenario: A baseline year below the completeness floor is excluded
+The two suppression reasons MUST be distinguishable from each other and from
+coverage or quality suppression. A percentile computed over a sample below the
+floor MUST NEVER be served, softened, or annotated — it is suppressed.
 
-- GIVEN a baseline year whose window completeness is 0.94, below the 0.95 floor
+#### Scenario: A baseline year without a complete window is excluded
+
+- GIVEN a baseline year whose window is missing any day inside the persisted span
 - WHEN the sample is assembled
 - THEN that year does not contribute to `normal` or to the ranked sample
 - AND its exclusion is reflected in the metric's disclosed completeness
@@ -263,7 +275,7 @@ served set, rendered as zero, or rendered as an empty value.
 
 #### Scenario: Fold shows the suppressed reference
 
-- GIVEN `antecedents.d90.percentile` is suppressed for sample size
+- GIVEN `antecedents.d90_percentile` is suppressed for sample size
 - WHEN staff expand the antecedents fold
 - THEN the row is present with its suppressed state and its sample-size reason
 - AND it carries the same provenance and interval metadata as an available row

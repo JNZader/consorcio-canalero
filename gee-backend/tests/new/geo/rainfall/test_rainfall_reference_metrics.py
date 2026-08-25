@@ -394,9 +394,9 @@ def test_the_window_floor_is_a_constant_of_its_own_and_not_the_annual_one():
     """
     from app.domains.geo.rainfall import compute
 
-    assert compute.MIN_WINDOW_BASELINE_YEARS is not compute.MIN_BASELINE_YEARS or isinstance(
-        compute.MIN_WINDOW_BASELINE_YEARS, int
-    )
+    # Object identity proves nothing here -- CPython interns small ints, so any
+    # comparison between two 20s is decided by the interpreter, not by the
+    # source. Only the source can show two independent assignments.
     source = __import__("inspect").getsource(compute)
     assert "MIN_WINDOW_BASELINE_YEARS = 20" in source
     assert "MIN_BASELINE_YEARS = 20" in source
@@ -664,6 +664,41 @@ def test_every_field_of_the_six_metrics_is_built_explicitly():
             # The whole contract, validated by the schema the disclosure path
             # validates with -- extra="forbid" on both models.
             MetricResult.model_validate(metric)
+
+
+def test_the_served_interval_follows_the_handed_span_not_a_local_constant():
+    """D9 + D2: the envelope bounds are DERIVED from the caller's
+    ``window_baseline_span``, never re-stated here.
+
+    ``_antecedent_reference_metrics`` receives the span the caller actually
+    read; a literal start date inside it would be a second copy of
+    ``repository.BASELINE_SPAN_START`` living where no test of the read ever
+    reaches it -- the exact duplication ``build_snapshot``'s own docstring
+    refuses for the VALUES, and the failure mode is silent: move the persisted
+    span and every metric keeps announcing the period it no longer ranks
+    against.
+
+    The span below is shifted at BOTH ends: the start moves the announced
+    interval directly, the exclusive end moves it through the derivable year
+    set (1995..2014, twenty years -- still at the sample-size floor, so the
+    metrics stay ``available`` and the assertion is about the envelope, not
+    about suppression).
+    """
+    shifted = (date(1995, 1, 1), date(2015, 1, 1))
+    antecedents = _snapshot(
+        window_baseline=_dense_baseline(years=range(1995, 2015)),
+        window_baseline_span=shifted,
+    )["antecedents"]
+
+    expected_start = datetime(1995, 1, 1, tzinfo=UTC).isoformat()
+    expected_end = datetime(2014, 6, 15, tzinfo=UTC).isoformat()  # 2014 anchor + 1 day
+    for key in _REFERENCE_KEYS:
+        metric = antecedents[key]
+        assert metric["state"] == "available", key
+        assert metric["interval_start"] == expected_start, key
+        assert metric["interval_end"] == expected_end, key
+        assert metric["provenance"]["available_through"] == expected_end, key
+        assert metric["quality"]["baseline_years_derivable"] == 20, key
 
 
 def test_a_suppressed_reference_metric_keeps_the_whole_field_contract():

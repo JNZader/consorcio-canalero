@@ -713,20 +713,36 @@ def _antecedent_reference_metrics(
             )
             percentile_state, percentile_reason = "available", None
 
-    # D9: the interval is the BASELINE envelope, not the selected window --
-    # 1991-01-01 through the last derivable year's anchor + one day, mirroring
-    # `annual_normal` (compute.py:452-453). The interval must describe the
-    # sample the value speaks FOR; the selected window's own bounds would tell
-    # a reader that a thirty-year climatology was measured over seven days.
+    # D9: the interval is the BASELINE envelope, not the selected window -- the
+    # handed span's start through the last derivable year's anchor + one day,
+    # mirroring `annual_normal` (compute.py:452-453). The interval must describe
+    # the sample the value speaks FOR; the selected window's own bounds would
+    # tell a reader that a thirty-year climatology was measured over seven days.
+    #
+    # The start is DERIVED from `span`, never re-stated: a literal here would be
+    # a second copy of `repository.BASELINE_SPAN_START` living where no test of
+    # the read reaches it -- the same duplication `build_snapshot`'s docstring
+    # refuses for the values -- and moving the persisted span would leave every
+    # metric announcing a period it no longer ranks against. With no span there
+    # is no baseline either (every branch above suppressed), so the fallback is
+    # the derivable year set, symmetric with `last_year`.
     last_year = max(derivable) if derivable else max(possible_years)
-    envelope_start = datetime(1991, 1, 1, tzinfo=UTC)
+    envelope_start = (
+        datetime(span[0].year, span[0].month, span[0].day, tzinfo=UTC)
+        if span is not None
+        else datetime(min(possible_years), 1, 1, tzinfo=UTC)
+    )
     envelope_end = datetime(last_year, anchor.month, anchor.day, tzinfo=UTC) + timedelta(days=1)
 
     quality = {
         "score": completeness,
         "eligible_years": [sample.end.year for sample in eligible],
         "baseline_years_derivable": len(derivable),
-        # D7: the zone limit, declared on the metric that carries it.
+        # D7: the zone limit, declared on the metric that carries it. This is
+        # the REQUIRED scope of the reference, not the scope this analysis ran
+        # at -- it is emitted off-zone too, where it sits beside
+        # `provenance.spatial_scope` and the pair reads "required zone, got
+        # basin", which is what makes the suppression reason checkable.
         "reference_scope": _REFERENCE_SCOPE_KIND,
     }
 
