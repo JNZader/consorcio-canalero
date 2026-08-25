@@ -942,7 +942,23 @@ def test_revision_bump_lands_enriched_envelope_not_conflict_skipped(db):
     assert landed.policy_revision == RAINFALL_METRIC_POLICY_REVISION
     # ... and it is the ENRICHED envelope, which is what the bump bought.
     assert set(landed.snapshot["annual"]) == {"selected", "normal", "percentile"}
-    assert set(landed.snapshot["antecedents"]) == {"d7", "d30", "d90"}
+    # lluvia-antecedente-referencia S2a: the enriched envelope this bump buys
+    # is now NINE antecedent metrics -- the three totals plus each window's
+    # baseline `normal` and seasonal `percentile`. This is the whole reason the
+    # revision had to move: `data_revision` hashes evidence only, so for a key
+    # whose evidence has not changed the six new keys would otherwise hit
+    # `persist_revision`'s ON CONFLICT DO NOTHING and never reach a reader.
+    assert set(landed.snapshot["antecedents"]) == {
+        "d7",
+        "d7_normal",
+        "d7_percentile",
+        "d30",
+        "d30_normal",
+        "d30_percentile",
+        "d90",
+        "d90_normal",
+        "d90_percentile",
+    }
 
 
 def test_stale_policy_revision_served_and_requeued(db):

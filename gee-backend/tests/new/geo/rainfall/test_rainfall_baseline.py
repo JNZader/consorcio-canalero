@@ -791,8 +791,20 @@ def test_a_duplicated_window_baseline_slot_degrades_only_the_window_reference(db
     stored = db.get(RainfallAnalysisRevision, result["revision_id"]).snapshot
 
     # (a) The three antecedent TOTALS still build -- they read the selected
-    #     year's own intervals and never touch the baseline.
-    assert set(stored["antecedents"]) == {"d7", "d30", "d90"}
+    #     year's own intervals and never touch the baseline. Since S2a the
+    #     group also carries the six reference metrics; they degrade with the
+    #     window read's own reason, which is asserted by the S2a test below.
+    assert set(stored["antecedents"]) == {
+        "d7",
+        "d7_normal",
+        "d7_percentile",
+        "d30",
+        "d30_normal",
+        "d30_percentile",
+        "d90",
+        "d90_normal",
+        "d90_percentile",
+    }
     assert stored["antecedents"]["d7"]["state"] == "available"
     assert stored["antecedents"]["d7"]["value"] == pytest.approx(21.0)
     assert stored["antecedents"]["d30"]["state"] == "available"
@@ -882,3 +894,149 @@ def test_the_window_baseline_is_read_during_the_build_and_spends_no_provider_cal
 
     assert result["decision"] == "write"
     assert calls == [("chirps-v3-final", asset)]
+
+
+# ===========================================================================
+# S2a task 3.0 -- the `del` handoff, enforced.
+#
+# S1b bound `window_baseline` / `window_baseline_unavailable_reason` and then
+# `del`d them, because the consumer did not exist. The hazard that `del` was
+# holding open is that S2a builds the six reference metrics from a SECOND read
+# performed inside `compute.py` -- which would have no span bound and no
+# duplicate containment, while every S1b test stayed green. These two tests
+# close it: the first proves the CONTAINED value is what the metrics consume,
+# the second pins the summation limb of the contained read itself.
+# ===========================================================================
+
+
+_REFERENCE_METRICS = (
+    "d7_normal",
+    "d7_percentile",
+    "d30_normal",
+    "d30_percentile",
+    "d90_normal",
+    "d90_percentile",
+)
+
+
+def test_a_duplicated_window_baseline_slot_degrades_the_six_reference_metrics(db, caplog):
+    """3.0 (the half of old task 2.6 carried here): with a duplicate planted,
+    the SIX reference metrics carry ``baseline_evidence_invalid``.
+
+    This is the enforcing assertion for the S1b handoff. It can only pass if
+    the metrics are built from the value ``tasks`` produced -- bounded by
+    ``[BASELINE_SPAN_START, BASELINE_SPAN_END)`` and contained by the handler
+    S1b installed. A second read inside ``compute.py`` would raise
+    ``DuplicateBaselineSlotError`` out of the build (or, if it swallowed it,
+    would answer over an unbounded span), so there is no implementation that
+    satisfies this test and also duplicates the read.
+
+    Same JUNE 1991 fixture as the containment test above, and for the same
+    reason: past that baseline year's own cutoff, so ``baseline_cumulatives``
+    structurally cannot see the duplicate and the wider daily read can. The
+    annual pair therefore keeps its OWN reason here while these six carry the
+    window read's -- two honest answers over one body of evidence.
+    """
+    import logging
+
+    from app.domains.geo.rainfall import tasks
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION, asset_name_for
+    from app.domains.geo.rainfall.models import RainfallAnalysisRevision, RainfallIntervalValue
+    from app.domains.geo.rainfall.repository import persist_intervals
+
+    scope_id = "zone-s2a-reference-degrades"
+    year = 2025
+    now = datetime(year, 2, 20, 12, 0, tzinfo=UTC)
+    persist_intervals(
+        db,
+        source_id="chirps-v3-sat",
+        scope_kind="zone",
+        scope_id=scope_id,
+        scope_version="v1",
+        rows=_selected_year_rows(year, 51, 3.0),
+    )
+
+    asset = asset_name_for("zone", scope_id)
+    duplicated_day = datetime(1991, 6, 15, tzinfo=UTC)
+    _persist_baseline_days(db, asset=asset, days=[(duplicated_day.date(), 8.0)])
+    db.add(
+        RainfallIntervalValue(
+            source_id="chirps-v3-final",
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+            interval_start=duplicated_day,
+            interval_end=duplicated_day + timedelta(days=1),
+            provider_revision="v3-final+r1",
+            value=9.0,
+            unit="mm",
+        )
+    )
+    db.flush()
+
+    outbox = _outbox_for(db, scope_id=scope_id, year=year)
+    caplog.set_level(logging.INFO, logger="rainfall")
+    result = tasks._persist_analysis_revision(
+        db, outbox_id=str(outbox.id), batch=_nrt_batch(scope_id), now=now
+    )
+
+    assert result["decision"] == "write"
+    stored = db.get(RainfallAnalysisRevision, result["revision_id"]).snapshot
+    antecedents = stored["antecedents"]
+
+    # The six reference metrics carry the WINDOW read's failure.
+    for name in _REFERENCE_METRICS:
+        assert antecedents[name]["state"] == "suppressed", name
+        assert antecedents[name]["reason"] == "baseline_evidence_invalid", name
+        assert antecedents[name]["value"] is None, name
+
+    # The three TOTALS are untouched -- they never read the baseline at all.
+    assert antecedents["d7"]["state"] == "available"
+    assert antecedents["d7"]["value"] == pytest.approx(21.0)
+    assert antecedents["d30"]["state"] == "available"
+
+    # And the ANNUAL pair still keeps its own, different reason.
+    for metric in ("normal", "percentile"):
+        assert stored["annual"][metric]["reason"] == "baseline_years_below_minimum"
+
+
+def test_baseline_daily_values_sums_rows_sharing_one_utc_day(db):
+    """3.0 (S1b verify F-5): the summation limb, exercised rather than merely
+    claimed by a docstring.
+
+    ``repository.baseline_daily_values`` buckets by ``temporal.utc_day`` and
+    accumulates (``daily.get(day, 0.0) + value``), which is what makes an entry
+    a DAILY TOTAL rather than one arbitrary row of that day. Two rows on one
+    day at DIFFERENT ``interval_start`` values are not a duplicated slot -- the
+    strict guard counts rows against distinct slots -- so this path is live and
+    was untested: a ``daily[day] = value`` would keep only the later row and
+    silently drop the earlier one from every window that covers it.
+    """
+    from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+    from app.domains.geo.rainfall.ports import SourceInterval
+    from app.domains.geo.rainfall.repository import baseline_daily_values, persist_intervals
+
+    asset = "baseline-daily-values-same-day-sum"
+    midnight = datetime(1994, 4, 5, tzinfo=UTC)
+    noon = datetime(1994, 4, 5, 12, 0, tzinfo=UTC)
+    next_midnight = midnight + timedelta(days=1)
+    persist_intervals(
+        db,
+        source_id="chirps-v3-final",
+        scope_kind="provider_asset",
+        scope_id=asset,
+        scope_version=BASELINE_ASSET_VERSION,
+        rows=[
+            SourceInterval(midnight, noon, 4.0, "mm", "v3-final"),
+            SourceInterval(noon, next_midnight, 2.5, "mm", "v3-final"),
+            # A neighbouring day, so the assertion below cannot pass by
+            # accident on a read that collapses everything into one bucket.
+            SourceInterval(next_midnight, next_midnight + timedelta(days=1), 1.0, "mm", "v3-final"),
+        ],
+    )
+    db.flush()
+
+    assert baseline_daily_values(db, source_id="chirps-v3-final", asset=asset) == (
+        (date(1994, 4, 5), 6.5),
+        (date(1994, 4, 6), 1.0),
+    )
