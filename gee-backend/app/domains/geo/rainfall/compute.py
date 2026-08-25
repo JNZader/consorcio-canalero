@@ -23,6 +23,7 @@ from app.domains.geo.rainfall.adapters.manifests import CANDIDATE_MANIFESTS
 # ``compute``. The move was verified safe by grep: the symbol has zero
 # ``mock.patch`` call sites, which is what makes a re-export a genuine cover
 # rather than a name that patches the wrong module object.
+from app.domains.geo.rainfall import climatology
 from app.domains.geo.rainfall.climatology import weibull_percentile
 from app.domains.geo.rainfall.policy import (
     RAINFALL_METRIC_POLICY,
@@ -212,6 +213,14 @@ BASELINE_EVIDENCE_INVALID = "baseline_evidence_invalid"
 # selected year is missing days INSIDE the window it is ranked over.
 SELECTED_EVIDENCE_BELOW_THRESHOLD = "selected_evidence_below_threshold"
 
+# The sample-size reason both the annual pair and the window reference
+# disclose. ONE definition on purpose: the two FLOORS are deliberately
+# separate constants (MIN_BASELINE_YEARS vs MIN_WINDOW_BASELINE_YEARS, D5), so
+# they can never be moved as one -- but the sentence a reader is shown when
+# either floor binds says the same thing, and two literals of it is how a
+# rename reaches one surface and not the other.
+BASELINE_YEARS_BELOW_MINIMUM = "baseline_years_below_minimum"
+
 
 def _selected_metric_disclosable(
     policy: MetricThresholdPolicy, annual_selected: dict[str, Any]
@@ -363,8 +372,8 @@ def _normal_and_percentile_metrics(
         # design.md D5: the per-year completeness floor already trimmed
         # `eligible_years` above; Feb 29 (only 8 leap years in 1991-2020)
         # suppresses HERE, unconditionally -- 8 < MIN_BASELINE_YEARS.
-        normal_state, normal_reason = "suppressed", "baseline_years_below_minimum"
-        percentile_state, percentile_reason = "suppressed", "baseline_years_below_minimum"
+        normal_state, normal_reason = "suppressed", BASELINE_YEARS_BELOW_MINIMUM
+        percentile_state, percentile_reason = "suppressed", BASELINE_YEARS_BELOW_MINIMUM
         normal_value = percentile_value = None
     else:
         normal_value = sum(baseline[year][0] for year in eligible_years) / len(eligible_years)
@@ -564,6 +573,248 @@ def _antecedent_metric(
     }
 
 
+# ---------------------------------------------------------------------------
+# antecedents.{d7,d30,d90}_{normal,percentile} — the rolling-window
+# climatological reference (lluvia-antecedente-referencia, D0/D4-D9)
+# ---------------------------------------------------------------------------
+
+# D4: eligible baseline YEARS below this floor suppress both reference metrics
+# with `BASELINE_YEARS_BELOW_MINIMUM`. Deliberately a SECOND constant beside
+# `MIN_BASELINE_YEARS` even though both read 20 today (D5): the annual floor
+# counts years of a whole-year accumulation and this one counts years of a
+# `days`-long window, so a future move of one must not silently carry the
+# other. February 29 is the standing proof that this floor is load-bearing on
+# its own -- `temporal.baseline_years_for` yields 8 leap years there, 8 < 20,
+# and the 20/30 policy entry PASSES on that path (completeness is 8/8 = 1.0),
+# so this constant is the SOLE gate, not a belt beside a policy brace.
+MIN_WINDOW_BASELINE_YEARS = 20
+
+# D7 (owner-ratified 2026-08-25): the reference is available for `zone` scope
+# only, and that limit is declared PER METRIC -- `quality["reference_scope"]`
+# plus this suppression reason off-zone -- never as a root flag.
+# `export.py:339` projects root flags as ANALYSIS-level workbook rows, so a
+# root "reference scope: zone" row would state a limit about an analysis whose
+# antecedent TOTALS are not zone-limited.
+REFERENCE_SCOPE_UNSUPPORTED = "reference_scope_unsupported"
+_REFERENCE_SCOPE_KIND = "zone"
+
+
+def _antecedent_reference_metrics(
+    *,
+    window: str,
+    days: int,
+    total_metric: dict[str, Any],
+    daily_baseline: Sequence[tuple[date, float]] | None,
+    baseline_unavailable_reason: str,
+    span: tuple[date, date] | None,
+    anchor: date,
+    selected_source_id: str,
+    nominal_resolution: str,
+    scope: AnalysisScope,
+    now: datetime,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``antecedents.{window}_normal`` and ``..._percentile`` (D6/D8/D9).
+
+    *daily_baseline* is the value ``tasks._persist_analysis_revision`` read
+    through ``repository.baseline_daily_values`` -- span-bounded and contained
+    by that caller's own ``DuplicateBaselineSlotError`` handler -- or ``None``
+    when it could not be resolved. It is HANDED IN rather than read here on
+    purpose: a second read inside this pure module would carry neither the
+    ``[1991-01-01, 2021-01-01)`` bound nor the containment, and every existing
+    test would have stayed green while the six metrics silently ranked against
+    a distribution the envelope keeps calling "1991-2020".
+
+    *anchor* is the last day the SELECTED window actually covers
+    (:func:`_cutoff_date` of the clipped ``window_end``). Every baseline sample
+    is the ``days``-long window ending on that same month and day -- the
+    seasonal mode, and the only mode the card may serve (D8).
+
+    Reason precedence (D6), applied in this order, earlier rows winning:
+
+    ==  =========================  ============================  ==================================
+    #   condition                  ``normal``                    ``percentile``
+    ==  =========================  ============================  ==================================
+    1   scope is not ``zone``      ``reference_scope_unsupported``  same
+    2   baseline unresolvable      *baseline_unavailable_reason*    same
+    3   eligible years < 20        ``baseline_years_below_minimum`` same
+    4   antecedent total is None   **served**                       ``selected_evidence_below_threshold``
+    5   otherwise                  ``window_mean``                  seasonal Weibull rank
+    ==  =========================  ============================  ==================================
+
+    Row 4 is the whole of the selected-evidence floor and it is REACHABLE: by
+    D0 an antecedent total is absent exactly when its window is not whole
+    (``temporal.rolling_total`` demands the exact slot tuple), which is
+    precisely the evidence shortfall Ops.6 named. The ``normal`` is still
+    served there because a baseline average ranks nothing -- the same asymmetry
+    :func:`_normal_and_percentile_metrics` encodes for the annual pair. r1's
+    extra row, "total present AND completeness < 0.95", is deleted: D0 proves
+    its domain empty. So is the second reason string r1 proposed for an absent
+    total -- ``_antecedent_metric`` emits exactly ONE
+    (``antecedent_window_incomplete``, covering both the holed window and the
+    unsupported-cadence path), so a second name would have an empty domain too,
+    and a dead branch against a hypothetical future reason is how r1's defect
+    was born. A test asserts that name appears nowhere in the tree.
+    """
+    possible_years = temporal.baseline_years_for(anchor)
+    on_scope = scope.kind == _REFERENCE_SCOPE_KIND
+
+    clim = (
+        climatology.seasonal_climatology(
+            daily=daily_baseline,
+            days=days,
+            anchor=anchor,
+            years=possible_years,
+            span_start=span[0],
+            span_end=span[1],
+        )
+        if daily_baseline is not None and span is not None and on_scope
+        else None
+    )
+    eligible = clim.eligible if clim is not None else ()
+    derivable = clim.derivable_years if clim is not None else ()
+
+    # D4: the eligible/derivable YEAR fraction, NOT matched_days/expected_days
+    # -- which is a constant 1.0 for every eligible year under
+    # complete-or-nothing and would say nothing at all. `coverage` is the same
+    # number deliberately: `apply_metric_policy` compares the threshold against
+    # BOTH, so giving coverage the annual path's per-year day completeness
+    # would leave half the policy gate permanently satisfied.
+    completeness = (len(eligible) / len(derivable)) if derivable else 0.0
+    coverage = completeness
+
+    total_value = total_metric["value"]
+    normal_value: float | None
+    percentile_value: float | None
+
+    if not on_scope:
+        normal_value = percentile_value = None
+        normal_state = percentile_state = "suppressed"
+        normal_reason = percentile_reason = REFERENCE_SCOPE_UNSUPPORTED
+    elif daily_baseline is None:
+        normal_value = percentile_value = None
+        normal_state = percentile_state = "suppressed"
+        normal_reason = percentile_reason = baseline_unavailable_reason
+    elif len(eligible) < MIN_WINDOW_BASELINE_YEARS:
+        normal_value = percentile_value = None
+        normal_state = percentile_state = "suppressed"
+        normal_reason = percentile_reason = BASELINE_YEARS_BELOW_MINIMUM
+    else:
+        normal_value = climatology.window_normal(clim, min_years=MIN_WINDOW_BASELINE_YEARS)
+        normal_state, normal_reason = "available", None
+        if total_value is None:
+            percentile_value = None
+            percentile_state, percentile_reason = (
+                "suppressed",
+                SELECTED_EVIDENCE_BELOW_THRESHOLD,
+            )
+        else:
+            percentile_value = climatology.seasonal_window_percentile(
+                clim, total_value, min_years=MIN_WINDOW_BASELINE_YEARS
+            )
+            percentile_state, percentile_reason = "available", None
+
+    # D9: the interval is the BASELINE envelope, not the selected window -- the
+    # handed span's start through the last derivable year's anchor + one day,
+    # mirroring `annual_normal` (compute.py:452-453). The interval must describe
+    # the sample the value speaks FOR; the selected window's own bounds would
+    # tell a reader that a thirty-year climatology was measured over seven days.
+    #
+    # The start is DERIVED from `span`, never re-stated: a literal here would be
+    # a second copy of `repository.BASELINE_SPAN_START` living where no test of
+    # the read reaches it -- the same duplication `build_snapshot`'s docstring
+    # refuses for the values -- and moving the persisted span would leave every
+    # metric announcing a period it no longer ranks against. With no span there
+    # is no baseline either (every branch above suppressed), so the fallback is
+    # the derivable year set, symmetric with `last_year`.
+    last_year = max(derivable) if derivable else max(possible_years)
+    envelope_start = (
+        datetime(span[0].year, span[0].month, span[0].day, tzinfo=UTC)
+        if span is not None
+        else datetime(min(possible_years), 1, 1, tzinfo=UTC)
+    )
+    envelope_end = datetime(last_year, anchor.month, anchor.day, tzinfo=UTC) + timedelta(days=1)
+
+    quality = {
+        "score": completeness,
+        "eligible_years": [sample.end.year for sample in eligible],
+        "baseline_years_derivable": len(derivable),
+        # D7: the zone limit, declared on the metric that carries it. This is
+        # the REQUIRED scope of the reference, not the scope this analysis ran
+        # at -- it is emitted off-zone too, where it sits beside
+        # `provenance.spatial_scope` and the pair reads "required zone, got
+        # basin", which is what makes the suppression reason checkable.
+        "reference_scope": _REFERENCE_SCOPE_KIND,
+    }
+
+    # Carried verbatim from the annual pair (compute.py:428-432): silence here
+    # would rank an NRT-sourced window against a Final-sourced baseline with no
+    # disclosure at all, and the baseline has no channel of its own.
+    discrepancies = (
+        []
+        if selected_source_id == _BASELINE_SOURCE_ID
+        else [f"cross_source_baseline={_BASELINE_SOURCE_ID}_vs_{selected_source_id}"]
+    )
+
+    def _provenance(method: str) -> dict[str, Any]:
+        return {
+            "source_id": _BASELINE_SOURCE_ID,
+            "source_class": _source_class_for(_BASELINE_SOURCE_ID),
+            # D8: the MODE reaches the wire through the field that already
+            # renders as `Método` and already exports, so the two modes become
+            # non-interchangeable in the served contract at zero new fields.
+            # Only the seasonal mode's two names reach here; the absolute
+            # mode's name is not written anywhere in this module, and task
+            # 1.11's standing guard in `test_rainfall_climatology.py` fails the
+            # day it is -- naming it even in prose is how a consumer starts.
+            "method": method,
+            "nominal_resolution": nominal_resolution,
+            "aggregation": "daily",
+            "spatial_scope": scope.kind,
+            "freshness": now.isoformat(),
+            "available_through": envelope_end.isoformat(),
+        }
+
+    normal_metric = {
+        "metric": f"{window}_normal",
+        "value": normal_value,
+        "unit": "mm",
+        "state": normal_state,
+        "reason": normal_reason,
+        "interval_start": envelope_start.isoformat(),
+        "interval_end": envelope_end.isoformat(),
+        "coverage": coverage,
+        "completeness": completeness,
+        "quality": dict(quality),
+        "discrepancies": list(discrepancies),
+        # A completed 1991-2020 climatology is final whatever the selected
+        # window is; only the RANK inherits the selected total's state.
+        "temporal_state": "final",
+        "revision": RAINFALL_METRIC_POLICY_REVISION,
+        "provenance": _provenance(climatology.WINDOW_MEAN),
+        "fallback_used": False,
+    }
+    percentile_metric = {
+        "metric": f"{window}_percentile",
+        "value": percentile_value,
+        "unit": "percentil",
+        "state": percentile_state,
+        "reason": percentile_reason,
+        "interval_start": envelope_start.isoformat(),
+        "interval_end": envelope_end.isoformat(),
+        "coverage": coverage,
+        "completeness": completeness,
+        "quality": dict(quality),
+        "discrepancies": list(discrepancies),
+        "temporal_state": (
+            "provisional" if total_metric["temporal_state"] == "provisional" else "final"
+        ),
+        "revision": RAINFALL_METRIC_POLICY_REVISION,
+        "provenance": _provenance(climatology.SEASONAL_WEIBULL_RANK),
+        "fallback_used": False,
+    }
+    return normal_metric, percentile_metric
+
+
 def build_snapshot(
     *,
     scope: AnalysisScope,
@@ -576,6 +827,9 @@ def build_snapshot(
     fallback_used: bool = False,
     baseline: dict[int, tuple[float, int, int]] | None = None,
     baseline_unavailable_reason: str = BASELINE_SCOPE_UNMAPPED,
+    window_baseline: Sequence[tuple[date, float]] | None = None,
+    window_baseline_unavailable_reason: str = BASELINE_SCOPE_UNMAPPED,
+    window_baseline_span: tuple[date, date] | None = None,
 ) -> dict[str, Any]:
     """Build the snapshot envelope: root keys are a subset of
     ``SNAPSHOT_ROOT_KEYS``. v1 shipped only ``annual.selected`` (decision
@@ -608,7 +862,23 @@ def build_snapshot(
     ``(interval_start, interval_end, value)`` — the resolved, non-superseded
     rows for the whole requested year (repository.intervals_in_window's
     result, stripped of its ORM identity by the caller).
+
+    ``window_baseline`` is the caller's raw baseline DAILY SERIES
+    (``repository.baseline_daily_values``, D2) — ``((day, mm), ...)`` bounded
+    to ``[BASELINE_SPAN_START, BASELINE_SPAN_END)``, or ``None`` when the
+    caller could not resolve one, in which case the six reference metrics
+    suppress with ``window_baseline_unavailable_reason``. ``window_baseline_span``
+    carries that read's own bounds: it is REQUIRED alongside the values and is
+    not defaulted here, because the span is the only thing that separates a day
+    that was never persisted (structural, out of the denominator) from a HOLE
+    inside the record (evidence loss, which must count against completeness).
+    A default here would be a second copy of ``repository``'s constants living
+    where no test of the read would ever reach it — and ``repository.py``
+    imports this module (repository.py:16), so importing them is a cycle.
     """
+    if window_baseline is not None and window_baseline_span is None:
+        raise ValueError("window_baseline requires its window_baseline_span bounds")
+
     starts = [interval_start for interval_start, _interval_end, _value in intervals]
     if len(starts) != len(set(starts)):
         # intervals_in_window's anti-join is supposed to guarantee at most
@@ -714,9 +984,24 @@ def build_snapshot(
     # windows suppress anyway: their last expected slot (end - cadence) is
     # never earlier than year_start, so it would have been in `in_window`
     # had it existed.
+    #
+    # lluvia-antecedente-referencia D1: each window's baseline `normal` and
+    # `percentile` are emitted as FLAT SIBLINGS beside the total, in
+    # total -> normal -> percentile order. The `snapshot` column is
+    # `postgresql.JSON`, not JSONB, so that insertion order genuinely survives
+    # the round trip and is the order the fold renders. Nesting them inside
+    # `d30` was rejected: `MetricResult` is `extra="forbid"`, so a nested key
+    # would make the TOTAL itself `metric_contract_invalid`.
+    #
+    # `ANTECEDENT_ORDER` (RainfallDetailPanel.tsx) is deliberately NOT
+    # extended, which is what keeps the always-visible collapsed header at
+    # exactly three entries and the answer-surface requirement true by
+    # construction.
     cadence = timedelta(seconds=cadence_seconds) if cadence_seconds > 0 else timedelta()
-    antecedents = {
-        name: _antecedent_metric(
+    reference_anchor = _cutoff_date(window_end)
+    antecedents: dict[str, Any] = {}
+    for name, days in _ANTECEDENT_WINDOWS:
+        total_metric = _antecedent_metric(
             name=name,
             days=days,
             intervals=intervals,
@@ -731,8 +1016,22 @@ def build_snapshot(
             temporal_state=annual_metric["temporal_state"],
             fallback_used=fallback_used,
         )
-        for name, days in _ANTECEDENT_WINDOWS
-    }
+        normal_reference, percentile_reference = _antecedent_reference_metrics(
+            window=name,
+            days=days,
+            total_metric=total_metric,
+            daily_baseline=window_baseline,
+            baseline_unavailable_reason=window_baseline_unavailable_reason,
+            span=window_baseline_span,
+            anchor=reference_anchor,
+            selected_source_id=source_id,
+            nominal_resolution=nominal_resolution,
+            scope=scope,
+            now=now,
+        )
+        antecedents[name] = total_metric
+        antecedents[f"{name}_normal"] = normal_reference
+        antecedents[f"{name}_percentile"] = percentile_reference
 
     return {
         "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},

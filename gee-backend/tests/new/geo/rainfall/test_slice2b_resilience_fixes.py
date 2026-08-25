@@ -516,7 +516,21 @@ def test_duplicate_baseline_slots_degrade_normal_and_percentile_only(db, caplog)
     stored = db.get(RainfallAnalysisRevision, result["revision_id"]).snapshot
     assert stored["annual"]["selected"]["state"] == "available"
     assert stored["annual"]["selected"]["value"] == pytest.approx(153.0)
-    assert set(stored["antecedents"]) == {"d7", "d30", "d90"}
+    # S2a: nine antecedent metrics. The three TOTALS are what this test is
+    # about -- they must survive the ANNUAL baseline read's duplicate -- and
+    # the six reference metrics are named explicitly so this pin keeps failing
+    # the day the key set moves again.
+    assert set(stored["antecedents"]) == {
+        "d7",
+        "d7_normal",
+        "d7_percentile",
+        "d30",
+        "d30_normal",
+        "d30_percentile",
+        "d90",
+        "d90_normal",
+        "d90_percentile",
+    }
     for metric in ("normal", "percentile"):
         assert stored["annual"][metric]["state"] == "suppressed"
         assert stored["annual"][metric]["reason"] == "baseline_evidence_invalid"

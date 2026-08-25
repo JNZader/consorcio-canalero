@@ -131,6 +131,184 @@ The system MUST suppress `annual.percentile` when the selected year's evidence i
 - THEN the system suppresses it with a selected-evidence reason, even when the selected-year cumulative total is still presented
 - AND still presents the 1991–2020 normal
 
+### Requirement: Antecedent Window Climatological Reference
+
+Each antecedent window (`d7`, `d30`, `d90`) MUST carry, alongside its absolute
+millimetre total, a `normal` and a `percentile` derived from the persisted
+1991–2020 baseline for the same window length ending on the same month and day as
+the disclosed antecedent end. The reference MUST be derived from already-persisted
+baseline evidence and MUST NOT spend a new provider fetch. The `normal` is a
+baseline average and MUST NOT be gated by the selected window's own evidence; the
+`percentile` MUST be.
+
+The two reference metrics per window — `normal` and `percentile`, six in total
+across the three windows — are served **inside** the antecedents
+group. This requirement MUST NOT add any value to the always-visible answer
+surface governed by "Answer-First Rainfall Presentation Hierarchy".
+
+#### Scenario: Reference is served for a complete window
+
+- GIVEN a zone whose baseline holds enough eligible years for the window's end date
+- AND the selected 30-day window has every expected daily slot
+- WHEN the analysis is served
+- THEN `antecedents.d30` carries its total, its baseline `normal` and its `percentile`
+- AND each carries its own state, interval, coverage and provenance
+
+#### Scenario: Window crosses the calendar-year boundary
+
+- GIVEN a 90-day antecedent window whose start falls in the preceding calendar year
+- WHEN the reference is derived
+- THEN each baseline year contributes the 90-day window ending on the same month and
+  day, spanning that baseline year's own preceding-year days
+- AND no baseline year is dropped merely because its window crosses January 1
+
+NOTE (design D4): "merely" excludes structural impossibility. The first baseline
+year cannot supply a window reaching before the persisted baseline span begins —
+those days were never persisted — so such a year is not derivable rather than
+dropped, and it is excluded from the eligible-year denominator instead of
+counting against completeness.
+
+#### Scenario: No new provider call is spent
+
+- GIVEN the persisted baseline is present for the scope's provider asset
+- WHEN the antecedent reference is built
+- THEN it is computed from persisted interval rows only
+- AND no provider fetch is issued for the reference
+
+### Requirement: Antecedent Percentile Anti-Bias Guards
+
+An antecedent `percentile` MUST be suppressed rather than served whenever any of
+three independent floors fails. Rows 1 and 3 suppress the metric directly and the
+disclosed reason MUST name which one; row 2 suppresses nothing on its own — it
+removes a year from the sample, and its disclosure channel is the metric's own
+completeness (and, when enough years fall out, row 1's named reason):
+
+| Floor | Applies to | Disclosure channel |
+|---|---|---|
+| Baseline sample size (minimum eligible years, per window) | `percentile` and `normal` | named reason: sample-size |
+| Per-baseline-year window completeness (complete-or-nothing: floor is 1.0) | excludes that year from the sample | the metric's disclosed completeness — never a reason of its own |
+| Selected window's own day completeness | `percentile` only | named reason: selected-evidence |
+
+NOTE (design D0/CRITICAL-2): row 2's floor is 1.0, not 0.95 — a baseline year
+contributes its window or it does not exist in the sample, because a window total
+exists only when every slot inside it does. The earlier "0.95" wording came from
+the delta spec, which predates the r2 anti-bias rule that made partial windows
+unrepresentable; the implementation has been complete-or-nothing since. The
+stricter number is stated here because an implementation stricter than its spec
+is still a spec that lies.
+
+The two suppression reasons MUST be distinguishable from each other and from
+coverage or quality suppression. A percentile computed over a sample below the
+floor MUST NEVER be served, softened, or annotated — it is suppressed.
+
+#### Scenario: A baseline year without a complete window is excluded
+
+- GIVEN a baseline year whose window is missing any day inside the persisted span
+- WHEN the sample is assembled
+- THEN that year does not contribute to `normal` or to the ranked sample
+- AND its exclusion is reflected in the metric's disclosed completeness
+
+#### Scenario: Exactly the minimum number of eligible years passes
+
+- GIVEN exactly 20 baseline years clear the per-year completeness floor for the window
+- WHEN the reference is derived
+- THEN `normal` and `percentile` are served
+- AND neither is suppressed for sample size
+
+#### Scenario: One year short of the minimum suppresses both
+
+- GIVEN only 19 baseline years clear the per-year completeness floor for the window
+- WHEN the reference is derived
+- THEN `normal` and `percentile` are both suppressed with the sample-size reason
+- AND neither is served as a number or as zero
+
+#### Scenario: Selected window holed inside its span
+
+- GIVEN the selected 30-day window is missing a day inside its span
+- WHEN the analysis is served
+- THEN `antecedents.d30` total is suppressed as an incomplete window, never partially summed
+- AND its `percentile` is suppressed with the selected-evidence reason
+- AND its `normal` is still served, because a baseline average ranks nothing
+
+### Requirement: Two Named, Non-Interchangeable Window-Percentile Modes
+
+The system MUST define exactly two window-percentile modes and MUST give them
+distinct, non-interchangeable names in the code and in the served contract:
+
+- **seasonal window percentile** — ranks the selected window against baseline
+  windows ending on the SAME calendar month and day (~one sample per baseline
+  year). This is the ONLY mode the antecedent card may serve.
+- **absolute window percentile** — ranks the selected window against ALL rolling
+  baseline windows of that length. It MUST be exposed as a reusable pure function
+  over baseline rows, callable without the snapshot-rendering path.
+
+Neither mode's value MAY be served under the other's name, and the absolute mode
+MUST NOT be substituted when the seasonal mode is suppressed.
+
+#### Scenario: Card serves only the seasonal mode
+
+- GIVEN both modes are computable for a window
+- WHEN the snapshot is built
+- THEN the served antecedent percentile is the seasonal one
+- AND its mode is identifiable from the served contract
+
+#### Scenario: Suppressed seasonal percentile is not backfilled by the absolute mode
+
+- GIVEN the seasonal percentile is suppressed for any of the three floors
+- WHEN the snapshot is served
+- THEN the metric stays suppressed with its reason
+- AND no absolute-mode value is served in its place
+
+#### Scenario: Detector consumes the climatology without the snapshot path
+
+- GIVEN a future consumer holds baseline rows and a window length
+- WHEN it calls the window-climatology function directly
+- THEN it obtains the window distribution and both modes' ranking
+- AND no snapshot, analysis revision or rendering path is required
+
+### Requirement: Suppressed Antecedent Reference Rows Stay Visible With Their Reason
+
+A suppressed antecedent reference metric MUST still be served and rendered as a
+row inside the antecedents fold, carrying its state and its named reason, in the
+same shape as any other metric of the card. It MUST NOT be dropped from the
+served set, rendered as zero, or rendered as an empty value.
+
+#### Scenario: Fold shows the suppressed reference
+
+- GIVEN `antecedents.d90_percentile` is suppressed for sample size
+- WHEN staff expand the antecedents fold
+- THEN the row is present with its suppressed state and its sample-size reason
+- AND it carries the same provenance and interval metadata as an available row
+- AND it is not shown as `0` and not omitted
+
+### Requirement: Antecedent Reference Scope Is Declared as Zone-Only
+
+The antecedent climatological reference is available for `zone` scope only. The
+served contract MUST declare that limit explicitly and machine-readably **on
+each reference metric itself** (per-metric quality metadata, not a root-level
+snapshot flag), so a reader cannot mistake a zone reference for basin or parcel
+coverage, and so the declaration never overstates its subject: a root flag would
+be projected by the workbook export as an analysis-level statement about totals
+that are not zone-limited. For any other scope the reference metrics MUST be
+suppressed with a scope reason, and the antecedent totals MUST remain
+unaffected. *(Amended 2026-08-25 by owner ratification: the earlier "same manner
+as `regional_estimate`" wording implied root placement; the ratified intent is
+explicit machine-readable declaration, per-metric.)*
+
+#### Scenario: Zone request declares the scope of its reference
+
+- GIVEN a zone-scope analysis carrying antecedent reference metrics
+- WHEN the analysis is served
+- THEN the response declares the reference as zone-scoped
+- AND the fold states that limit where the reference is displayed
+
+#### Scenario: Non-zone scope suppresses the reference, not the totals
+
+- GIVEN an analysis whose scope is not `zone`
+- WHEN the analysis is served
+- THEN each antecedent `normal` and `percentile` is suppressed with a scope reason
+- AND the antecedent millimetre totals are still served under their own states
+
 ### Requirement: Campaign Display Preset
 
 The system MAY offer a "campaign since September 1" display preset that reformats an existing calendar-year analysis for viewing. It MUST NOT be offered or accepted as an analysis period, and results MUST remain labelled as derived from the underlying calendar-year analysis.
@@ -291,13 +469,36 @@ The system MUST visibly distinguish partial data, suppressed metrics, and unavai
 
 ### Requirement: Policy Thresholds for New Metrics
 
-Every metric published under `annual.normal`, `annual.percentile`, and `antecedents.{d7,d30,d90}` MUST have a coverage and quality threshold in `RAINFALL_METRIC_POLICY` before being served; the revision MUST be bumped when thresholds are added.
+Every metric published under `annual.normal`, `annual.percentile`,
+`antecedents.{d7,d30,d90}`, and each antecedent's `normal` and `percentile` MUST
+have a coverage and quality threshold in `RAINFALL_METRIC_POLICY` before being
+served; the revision MUST be bumped when thresholds are added.
+
+Because a stored snapshot is only re-served, never re-normalized against a newer
+policy, adding these thresholds MUST bump `RAINFALL_METRIC_POLICY_REVISION` so the
+enriched envelope becomes a distinct snapshot row and reaches keys whose evidence
+has not moved. A snapshot stored under the previous revision MUST keep being
+served, normalized under its OWN `policy_revision`, until its refresh lands.
 
 #### Scenario: Complete analysis has no unthresholded metric
 
 - GIVEN eligible data satisfies each new metric's threshold
 - WHEN an analysis builds
 - THEN no required outcome is suppressed as `policy_threshold_unset`
+
+#### Scenario: A previously materialized key re-serves the enriched envelope
+
+- GIVEN a key was materialized under the previous policy revision
+- WHEN it is polled after the bump and its refresh has been processed
+- THEN a later snapshot is served carrying the antecedent reference metrics
+- AND the earlier revision is retained rather than overwritten
+
+#### Scenario: An old snapshot is served under its own revision
+
+- GIVEN a stored snapshot written under the superseded policy revision
+- WHEN it is polled before its refresh lands
+- THEN it is served normalized under its own `policy_revision`
+- AND it does not present antecedent reference metrics it never carried
 
 ### Requirement: Provisional Data and Revision Visibility
 

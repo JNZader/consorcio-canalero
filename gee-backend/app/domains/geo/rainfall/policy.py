@@ -199,6 +199,17 @@ def apply_metric_policy(
 # History of this constant, newest first -- every entry is a build-time
 # envelope change that had to REACH already-materialized keys:
 #
+# - `-antecedent-ref` (lluvia-antecedente-referencia S2a, design.md D4):
+#   `antecedents` grows from three metrics to nine -- each window's baseline
+#   `normal` and seasonal `percentile` beside its millimetre total. The SERVED
+#   KEY SET moves, which is exactly the class of change `data_revision` cannot
+#   see: it hashes source/family/scope/year/comparison_end/intervals, so for
+#   every key whose evidence has not moved the enriched envelope would hit
+#   `persist_revision`'s ON CONFLICT DO NOTHING and never land. Without this
+#   bump the six new metrics would reach only keys that happened to get fresh
+#   evidence, and a completed year -- which neither scheduled sweep revisits
+#   -- would never carry them at all.
+#
 # - `-insights-r2` (Ops.6, archive-report.md 2026-08-11 §10): the evidence
 #   gate coupling `annual.percentile` to the selected year's own day
 #   completeness (`compute._selected_metric_rankable`) is decided at BUILD
@@ -214,7 +225,7 @@ def apply_metric_policy(
 #   from "rainfall-v2-2026-08" so the enriched envelope
 #   (annual.normal/percentile + antecedents) could land on keys whose
 #   evidence had not moved.
-RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08-insights-r2"
+RAINFALL_METRIC_POLICY_REVISION = "rainfall-v2-2026-08-antecedent-ref"
 
 # LI2A-003 (lluvia-insights slice 2b, design.md D4 note): annual_normal and
 # annual_percentile carry `completeness = eligible baseline years / 30`, and
@@ -248,6 +259,24 @@ RAINFALL_METRIC_POLICY = MetricThresholdPolicy(
         "d7": 0.9,
         "d30": 0.9,
         "d90": 0.9,
+        # lluvia-antecedente-referencia S2a (design.md D4): the six window
+        # reference metrics, pinned to the SAME 20/30 fraction and for exactly
+        # the LI2A-003 reason re-run one scale down. Their `completeness` is
+        # the eligible/derivable BASELINE-YEAR fraction and their
+        # `quality["score"]` IS that same number, so any value above 20/30
+        # silently dominates `compute.MIN_WINDOW_BASELINE_YEARS` and relabels
+        # the whole reachable 20-26 band as `coverage_below_threshold` -- a
+        # sample-size problem wearing a coverage label, with the distinct
+        # `baseline_years_below_minimum` reason never reaching a reader.
+        # Pinned to the constant, not a hand-rounded 0.6667, so the boundary
+        # case compares EQUAL against the same float division `completeness`
+        # itself performs.
+        "d7_normal": _BASELINE_SAMPLE_FRACTION,
+        "d7_percentile": _BASELINE_SAMPLE_FRACTION,
+        "d30_normal": _BASELINE_SAMPLE_FRACTION,
+        "d30_percentile": _BASELINE_SAMPLE_FRACTION,
+        "d90_normal": _BASELINE_SAMPLE_FRACTION,
+        "d90_percentile": _BASELINE_SAMPLE_FRACTION,
     },
     minimum_quality_by_metric={
         "annual": 0.8,
@@ -261,6 +290,17 @@ RAINFALL_METRIC_POLICY = MetricThresholdPolicy(
         "d7": 0.8,
         "d30": 0.8,
         "d90": 0.8,
+        # The same fraction as the coverage entries above, for the same reason
+        # the annual pair carries it twice: `quality["score"]` for these six IS
+        # `completeness`, so a higher value here would re-suppress the exact
+        # 20-26 band under `quality_below_threshold` instead -- the same
+        # misattribution wearing a different label.
+        "d7_normal": _BASELINE_SAMPLE_FRACTION,
+        "d7_percentile": _BASELINE_SAMPLE_FRACTION,
+        "d30_normal": _BASELINE_SAMPLE_FRACTION,
+        "d30_percentile": _BASELINE_SAMPLE_FRACTION,
+        "d90_normal": _BASELINE_SAMPLE_FRACTION,
+        "d90_percentile": _BASELINE_SAMPLE_FRACTION,
     },
     duration_threshold=None,
 )

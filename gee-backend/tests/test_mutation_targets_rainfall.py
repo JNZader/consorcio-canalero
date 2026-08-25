@@ -1427,7 +1427,26 @@ class TestBuildSnapshotEnvelope:
         # PRESENT (never omitted from the envelope) but suppressed, task
         # 2a.7's baseline_scope_unmapped branch.
         assert set(snapshot["annual"]) == {"selected", "normal", "percentile"}
-        assert set(snapshot["antecedents"]) == {"d7", "d30", "d90"}
+        # lluvia-antecedente-referencia S2a: the antecedents group carries NINE
+        # metrics -- each window's total plus its baseline `normal` and
+        # seasonal `percentile` as FLAT SIBLINGS (design.md D1). No baseline
+        # was wired here either, so the six reference metrics are present and
+        # suppressed, exactly like the annual pair above: a served analysis has
+        # one metric shape whatever the baseline coverage.
+        assert set(snapshot["antecedents"]) == {
+            "d7",
+            "d7_normal",
+            "d7_percentile",
+            "d30",
+            "d30_normal",
+            "d30_percentile",
+            "d90",
+            "d90_normal",
+            "d90_percentile",
+        }
+        for name in ("d7_normal", "d7_percentile", "d90_normal", "d90_percentile"):
+            assert snapshot["antecedents"][name]["state"] == "suppressed"
+            assert snapshot["antecedents"][name]["reason"] == "baseline_scope_unmapped"
         assert snapshot["annual"]["normal"]["state"] == "suppressed"
         assert snapshot["annual"]["normal"]["reason"] == "baseline_scope_unmapped"
         assert snapshot["annual"]["percentile"]["state"] == "suppressed"
@@ -1465,8 +1484,14 @@ class TestBuildSnapshotEnvelope:
             ("annual", "normal"),
             ("annual", "percentile"),
             ("antecedents", "d7"),
+            ("antecedents", "d7_normal"),
+            ("antecedents", "d7_percentile"),
             ("antecedents", "d30"),
+            ("antecedents", "d30_normal"),
+            ("antecedents", "d30_percentile"),
             ("antecedents", "d90"),
+            ("antecedents", "d90_normal"),
+            ("antecedents", "d90_percentile"),
         ):
             assert set(snapshot[group_name][member_name]) == expected_fields
 

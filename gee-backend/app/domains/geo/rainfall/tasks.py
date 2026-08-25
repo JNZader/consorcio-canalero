@@ -225,6 +225,8 @@ def _persist_analysis_revision(
         RAINFALL_METRIC_POLICY_REVISION,
     )
     from app.domains.geo.rainfall.repository import (
+        BASELINE_SPAN_END,
+        BASELINE_SPAN_START,
         DuplicateBaselineSlotError,
         RainfallRepository,
         acquire_fingerprint_lock,
@@ -397,13 +399,6 @@ def _persist_analysis_revision(
                 year=row.year,
             )
 
-    # Resolved and contained here, consumed in the next slice: the six window
-    # reference metrics are built by `compute._antecedent_reference_metrics`,
-    # which does not exist yet. Bound to names rather than dropped so the
-    # containment above has an observable result and the consumer's wiring is
-    # a signature change, not a new failure path.
-    del window_baseline, window_baseline_unavailable_reason
-
     snapshot = build_snapshot(
         scope=scope,
         year=row.year,
@@ -418,6 +413,20 @@ def _persist_analysis_revision(
         fallback_used=fallback_used_for(row.role, row.source_id),
         baseline=baseline,
         baseline_unavailable_reason=baseline_unavailable_reason,
+        # S2a task 3.0: the six window reference metrics consume THIS value --
+        # the span-bounded read above, degraded by the handler above -- and
+        # `compute.py` performs no read of its own. A second read there would
+        # carry neither the [1991-01-01, 2021-01-01) bound nor the duplicate
+        # containment, and every test of this read would have stayed green
+        # while the served metrics ranked against a wider distribution. The
+        # span travels WITH the values because it is the only thing that
+        # separates a never-persisted day from a hole in the record.
+        window_baseline=window_baseline,
+        window_baseline_unavailable_reason=window_baseline_unavailable_reason,
+        window_baseline_span=(
+            temporal.utc_day(BASELINE_SPAN_START),
+            temporal.utc_day(BASELINE_SPAN_END),
+        ),
     )
 
     family = revision_family(batch["provider_revision"])
