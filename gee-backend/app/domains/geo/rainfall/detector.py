@@ -83,6 +83,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from types import MappingProxyType
 
 from app.domains.geo.rainfall.climatology import (
     WindowSample,
@@ -99,7 +100,15 @@ DETECTOR_CLIMATOLOGY_END = datetime(2026, 1, 1, tzinfo=UTC)  # exclusive, whole 
 WINDOW_LENGTHS = (1, 3, 7)
 GAP_DAYS = 1
 MIN_WINDOW_SAMPLES = 3650
-TIER_PERCENTILES = {"extrema": 99.75, "alta": 98.8}  # owner-ratified 2026-08-26
+# READ-ONLY, not merely "by convention". D5 seals these to the revision, but a
+# plain dict is sealed only to the SOURCE: any module in the process could run
+# `TIER_PERCENTILES["extrema"] = 99.0` at import time, change what fires for the
+# whole run, and leave the digest test green -- the digest is computed FROM the
+# mapping the mutation just edited, so it agrees with the mutation instead of
+# catching it. `MappingProxyType` makes that write raise rather than land.
+TIER_PERCENTILES: Mapping[str, float] = MappingProxyType(
+    {"extrema": 99.75, "alta": 98.8}  # owner-ratified 2026-08-26
+)
 
 # Whole calendar years ONLY, so the ranking distribution cannot shift mid-year
 # as new days land (D0). A partial trailing year would make the same window
@@ -138,14 +147,20 @@ TIER_PERCENTILES = {"extrema": 99.75, "alta": 98.8}  # owner-ratified 2026-08-26
 # out of the catalog, recoverable later by a constants change plus a revision
 # bump -- which the lockstep below makes a single audited move.
 
-DETECTION_CONSTANTS: Mapping[str, object] = {
-    "climatology_span_start": DETECTOR_CLIMATOLOGY_START.date().isoformat(),
-    "climatology_span_end": DETECTOR_CLIMATOLOGY_END.date().isoformat(),
-    "window_lengths": list(WINDOW_LENGTHS),
-    "gap_days": GAP_DAYS,
-    "min_window_samples": MIN_WINDOW_SAMPLES,
-    "tier_percentiles": dict(TIER_PERCENTILES),
-}
+# Read-only all the way down, for the same reason: a frozen outer mapping
+# holding a mutable inner one seals nothing. `window_lengths` is a TUPLE rather
+# than the list it used to be; `json` renders both as the same array, so the
+# pinned digest below did not move when the types did.
+DETECTION_CONSTANTS: Mapping[str, object] = MappingProxyType(
+    {
+        "climatology_span_start": DETECTOR_CLIMATOLOGY_START.date().isoformat(),
+        "climatology_span_end": DETECTOR_CLIMATOLOGY_END.date().isoformat(),
+        "window_lengths": WINDOW_LENGTHS,
+        "gap_days": GAP_DAYS,
+        "min_window_samples": MIN_WINDOW_SAMPLES,
+        "tier_percentiles": TIER_PERCENTILES,
+    }
+)
 
 
 def constants_digest(constants: Mapping[str, object]) -> str:
@@ -154,8 +169,15 @@ def constants_digest(constants: Mapping[str, object]) -> str:
     Canonical JSON (sorted keys, no incidental whitespace) so the digest is a
     function of the VALUES and never of dict insertion order or of how the
     literal happened to be formatted.
+
+    ``default=dict`` is what lets the READ-ONLY constants above be hashed:
+    ``json`` refuses a ``mappingproxy`` outright (it is not a ``dict``
+    subclass), at any nesting depth. It normalizes the CONTAINER only, never a
+    value, so the digest stays a function of the values -- a proxy and the dict
+    it wraps hash identically, which is why sealing the constants did not move
+    the pinned literal.
     """
-    payload = json.dumps(constants, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(constants, sort_keys=True, separators=(",", ":"), default=dict)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -199,6 +221,15 @@ class InsufficientClimatologyError(ValueError):
     Unreachable for the zone asset at ~12.7k samples; reachable for any future
     asset with a short record, which is exactly when a silent non-fire would be
     most misleading.
+
+    Two shapes, distinguishable by message and both loud:
+
+    * MARGINAL -- the population exists but sits below *min_samples*
+      (``_critical_total``);
+    * GROSS -- the record is shorter than the requested window, so
+      ``absolute_window_samples`` answers ``()`` and there is no population at
+      all (``_firings``). Stopping less loudly for the WORSE evidence would be
+      backwards, so this case raises too rather than skipping the length.
     """
 
 
@@ -323,7 +354,19 @@ def _firings(
     for days in window_lengths:
         samples = absolute_window_samples(daily=daily, days=days)
         if not samples:
-            continue
+            # GROSS insufficiency, and it must be LOUDER than the marginal kind
+            # `_critical_total` raises below. `absolute_window_samples` answers
+            # `()` when the record is shorter than the window, so a `continue`
+            # here would drop the whole length silently -- the catalog would
+            # then be a true statement about the lengths that fit and a false
+            # one about the length that did not, in the same rows, with nothing
+            # marking which. That is the fabricated absence
+            # `InsufficientClimatologyError` exists to prevent, reached through
+            # the one branch the floor check below never sees.
+            raise InsufficientClimatologyError(
+                f"the persisted record is shorter than the {days}-day window: "
+                "the ranked population is empty"
+            )
         critical = _critical_total(samples, threshold=threshold, min_samples=min_samples)
         if critical is None:
             continue
@@ -414,8 +457,10 @@ def detect_events(
     defaults are the sealed values; :data:`DETECTOR_CONSTANTS_DIGEST` pins them.
 
     Raises :class:`InsufficientClimatologyError` rather than returning an empty
-    tuple when the population is below *min_samples*: an empty catalog and a
-    catalog that could not be computed are different facts.
+    tuple when the population is below *min_samples*, and likewise when the
+    record is shorter than a requested window and there is no population at
+    all: an empty catalog and a catalog that could not be computed are
+    different facts.
     """
     if tier not in tier_percentiles:
         raise ValueError(f"unknown tier {tier!r}; known tiers are {sorted(tier_percentiles)}")
@@ -437,6 +482,13 @@ def detect_events(
     events: list[DetectedEvent] = []
     for start, end in _spans(sorted(covered), gap_days=gap_days):
         inside = [firing for firing in firings if start <= firing.end <= end]
+        # BY DECISION, `max_percentile` compares percentiles taken over
+        # DIFFERENT populations: each firing's percentile is a rank within its
+        # own window-length distribution, so a d1 p99.8 and a d7 p99.6 are not
+        # measurements of the same quantity. Ranking them against each other is
+        # the intended reading -- "the strongest single statement this event
+        # supports" -- and not an oversight to be normalized away later.
+        # Ties break on the EARLIEST end-day, hence the negated ordinal.
         peak = max(inside, key=lambda firing: (firing.percentile, -firing.end.toordinal()))
         events.append(
             DetectedEvent(
