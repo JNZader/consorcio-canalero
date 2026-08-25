@@ -14,8 +14,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+from pathlib import Path
 
 import pytest
+import yaml
+from sqlalchemy import text
 
 from app.domains.conocimiento.embedding import (
     DETERMINISTIC_MODEL_ID,
@@ -23,10 +26,17 @@ from app.domains.conocimiento.embedding import (
     E5Embedder,
 )
 from app.domains.conocimiento.eval.harness import cargar_gold_set as cargar_gold_set_real
+from app.domains.conocimiento.eval.report import ETIQUETA_SMOKE
+from app.domains.conocimiento.eval.slm_bench import PIN_REFERENCIA
+from app.domains.conocimiento.recuperacion.reranker import RerankerNoDisponible
 from app.domains.conocimiento.repository import registrar_procedencia
 from scripts import rag_eval
 
 from .test_rag_eval_harness import PREGUNTAS, SHA, gold_item, gold_set, seed
+
+#: The bench tests seed their OWN two-document snapshot, so they use their own
+#: snapshot id: sharing `SHA` would collide with `seed`'s corpus row.
+SHA_BENCH = "b" * 40
 
 MOMENTO = "2026-08-10T16:30:00+00:00"
 
@@ -653,3 +663,314 @@ class TestLatenciaEnLaCLI:
         assert "rag_query_latency.py" in error
         assert not (tmp_path / "nunca").exists()
         assert espia_embedder.llamadas == []
+
+
+class TestArmGateado:
+    """Task 9.1b — `--modo bm25_ce` is reachable from the CLI, with its refusals.
+
+    The arm the amended serving gate names could not be requested at all before
+    this: `--modo` only accepted the three ablation modes, so the one
+    configuration the change must clear was the one the command could not run.
+    """
+
+    def test_bm25_ce_es_un_modo_aceptado(self):
+        parser = rag_eval.build_parser()
+        args = parser.parse_args(["--corpus-sha", SHA, "--modo", "bm25_ce"])
+        assert args.modo == ["bm25_ce"]
+
+    def test_el_default_sigue_siendo_la_ablacion_de_tres(self):
+        """Adding the arm must not silently make every run pay for a GPU."""
+        parser = rag_eval.build_parser()
+        args = parser.parse_args(["--corpus-sha", SHA])
+        assert args.modo is None
+
+    def test_sin_cross_encoder_sale_2_y_no_escribe_nada(self, cli, tmp_path, monkeypatch, capsys):
+        """No CPU fallback, and no half-written `docs/rag/` entry.
+
+        The measured CPU cost at depth 50 is ~99 s per query, so falling back is
+        not a degraded mode — it is an outage that answers. The CLI says so and
+        exits in the usage bucket, because nothing was queried or written.
+        """
+        marcar(cli, sintetico=False)
+
+        def sin_gpu(nombre, *, device):
+            raise RerankerNoDisponible("no CUDA device is available")
+
+        monkeypatch.setattr(rag_eval, "_reranker", sin_gpu)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "bm25_ce",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 2
+        error = capsys.readouterr().err
+        assert "no CUDA device" in error
+        assert "--reranker deterministic" in error
+        assert not (tmp_path / "nunca").exists()
+
+    def test_un_stand_in_sin_allow_synthetic_sale_1(self, cli, tmp_path, capsys):
+        """The U2 publish gate, reached through the CLI's new path.
+
+        `bm25_ce`'s order is the cross-encoder's alone, so a stand-in does not
+        degrade the ranking — it replaces it. Publishing that as a margin is the
+        exact failure `_gate_sintetico` exists to refuse.
+        """
+        marcar(cli, sintetico=False)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "bm25_ce",
+                "--reranker",
+                "deterministic",
+                "--destino",
+                str(tmp_path / "nunca"),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 1
+        assert "SYNTHETIC" in capsys.readouterr().err
+        assert not (tmp_path / "nunca").exists()
+
+    def test_el_smoke_publica_el_bloque_de_margen_sin_veredicto(self, cli, tmp_path, capsys):
+        marcar(cli, sintetico=False)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "bm25_ce",
+                "--reranker",
+                "deterministic",
+                "--allow-synthetic",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        md = tmp_path / "retrieval-eval-SINTETICO-dddddddd-2026-08-10.md"
+        assert md.is_file()
+        texto = md.read_text(encoding="utf-8")
+        assert "Margen contra el baseline FTS-only" in texto
+        assert "0.138" in texto
+        assert ETIQUETA_SMOKE in texto
+
+
+class TestAnswerSetEnLaCLI:
+    """Tasks 9.1-9.4 reaching the artifact a person actually reads."""
+
+    def test_sin_answer_set_el_reporte_dice_por_que(self, cli, tmp_path):
+        """An absent section reads as a section that was fine. So it is present."""
+        marcar(cli, sintetico=False)
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        md = (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").read_text(encoding="utf-8")
+        assert "Métricas por respuesta" in md
+        assert "worker con GPU" in md
+        js = json.loads(
+            (tmp_path / "retrieval-eval-dddddddd-2026-08-10.results.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert js["respuestas"]["evaluado"] is False
+
+    def test_un_answer_set_sin_ratificar_degrada_pero_no_mata_la_corrida(self, cli, tmp_path):
+        """The ablation is a complete measurement on its own.
+
+        Losing it because the answer set is unratified would make the report's
+        most expensive half hostage to its cheapest.
+        """
+        marcar(cli, sintetico=False)
+        conjunto = tmp_path / "answer_set.yaml"
+        conjunto.write_text(
+            "version: 1\nestado: 'BORRADOR'\nprompt_version: 1\n"
+            "provider_model_pin: x\ncorpus_sha: y\nrespuestas: []\n",
+            encoding="utf-8",
+        )
+        code = rag_eval.main(
+            [
+                "--corpus-sha",
+                SHA,
+                "--database-url",
+                "postgresql://unused/unused",
+                "--modo",
+                "fts",
+                "--answer-set",
+                str(conjunto),
+                "--destino",
+                str(tmp_path),
+                "--generado-en",
+                MOMENTO,
+            ]
+        )
+        assert code == 0
+        md = (tmp_path / "retrieval-eval-dddddddd-2026-08-10.md").read_text(encoding="utf-8")
+        assert "not-evaluable" in md
+        assert "BORRADOR" in md
+
+    def test_el_pin_del_prompt_sale_del_artefacto_de_plantillas(self):
+        """Not a constant somebody must remember to bump.
+
+        `plantillas_generacion.yaml` carries `version` and its own docstring says
+        that editing a framing there IS editing the prompt. Reading it is what
+        makes the 9.3 pin able to notice.
+        """
+        from app.domains.conocimiento.generacion import PLANTILLAS, cargar_plantillas
+
+        assert PLANTILLAS.version == cargar_plantillas().version
+        assert isinstance(PLANTILLAS.version, int)
+
+
+class TestElBenchCorreDentroDeLaSesion:
+    """W3 — the bench's universe is re-derived, so it needs the open session.
+
+    `_bench_slm` used to take only `args` and ran AFTER the session closed,
+    which is what made the bench the one path around task 9.4: same recorded
+    payloads, same `corpus_sha`, no database read, so a reclassification that
+    invalidates the single-arm figures left the bench publishing a delta between
+    two arms both scored against a universe that no longer exists.
+    """
+
+    def sembrar(self, db, *, clasificacion: str) -> None:
+        db.execute(
+            text(
+                "INSERT INTO rag_corpus (corpus_sha, repo_url, manifest_version, "
+                "articulos_declarados, activo) VALUES (:sha, 'u', '2', 2, true)"
+            ),
+            {"sha": SHA_BENCH},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'ley-9750', 'ley-provincial', false, 'provincial', 'vigente', "
+                "'publico')"
+            ),
+            {"sha": SHA_BENCH},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                "(:sha, 'ley-8548', 'ley-provincial', false, 'provincial', 'vigente', :clas)"
+            ),
+            {"sha": SHA_BENCH, "clas": clasificacion},
+        )
+        db.execute(
+            text(
+                "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
+                "texto, texto_indexado, source_file, source_offset) VALUES "
+                "(:sha, :key, :doc, 'articulo', 't', 't', 'f.md', 0)"
+            ),
+            [
+                {"sha": SHA_BENCH, "key": "9750#1", "doc": "ley-9750"},
+                {"sha": SHA_BENCH, "key": "8548#3", "doc": "ley-8548"},
+            ],
+        )
+        db.flush()
+
+    def escribir_bench(self, tmp_path):
+        def brazo(pin):
+            return {
+                "estado": "RATIFICADO 2026-08-24 — prueba",
+                "prompt_version": 1,
+                "provider_model_pin": pin,
+                "corpus_sha": SHA_BENCH,
+                "expected_clasificacion_sha256": "a" * 64,
+                "generador_sintetico": False,
+                "tokens_por_segundo": 40.0,
+                "respuestas": [
+                    {
+                        "id": "R-1",
+                        "pregunta": "quién administra el canal",
+                        "debe_abstenerse": False,
+                        "estado_servido": "respuesta",
+                        "claves_recuperadas": ["9750#1", "8548#3"],
+                        # Graded under the NARROWER allowlist.
+                        "claves_payload": ["9750#1"],
+                        "texto": "El consorcio administra el canal [9750#1].",
+                        "afirmaciones": [
+                            {"id": "a", "texto": "…", "clave": "9750#1", "grado": "sostenida"}
+                        ],
+                        "regrado": {},
+                    }
+                ],
+            }
+
+        ruta = tmp_path / "slm_bench.yaml"
+        ruta.write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "estado": "RATIFICADO 2026-08-24 — prueba",
+                    "prompt_version": 1,
+                    "corpus_sha": SHA_BENCH,
+                    "referencia": brazo(PIN_REFERENCIA),
+                    "candidato": brazo("Qwen3-8B-Instruct-Q5"),
+                },
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+        return ruta
+
+    def test_una_reclasificacion_viva_degrada_el_bloque_a_su_motivo(self, db, tmp_path):
+        """It degrades into a STATED reason, never into a crash and never into a table."""
+        self.sembrar(db, clasificacion="publico")
+        args = rag_eval.build_parser().parse_args(
+            ["--corpus-sha", SHA_BENCH, "--slm-bench", str(self.escribir_bench(tmp_path))]
+        )
+        bench, motivo = rag_eval._bench_slm(db, args)
+        assert bench is None
+        assert motivo is not None
+        assert "8548#3" in motivo
+
+    def test_un_bench_al_dia_se_carga(self, db, tmp_path):
+        self.sembrar(db, clasificacion="privado")
+        args = rag_eval.build_parser().parse_args(
+            ["--corpus-sha", SHA_BENCH, "--slm-bench", str(self.escribir_bench(tmp_path))]
+        )
+        bench, motivo = rag_eval._bench_slm(db, args)
+        assert motivo is None
+        assert bench is not None and bench.referencia.pin == PIN_REFERENCIA
+
+    def test_el_bench_se_arma_dentro_del_bloque_de_sesion(self):
+        """A structural check, because getting this wrong is silent again.
+
+        `_bench_slm` outside the `with` block would either take no session (the
+        defect this closes) or take a closed one. The call has to be indented
+        INSIDE the block that opens it.
+        """
+        fuente = Path(rag_eval.__file__).read_text(encoding="utf-8")
+        linea = next(texto for texto in fuente.splitlines() if "= _bench_slm(db, args)" in texto)
+        assert linea.startswith("        "), linea

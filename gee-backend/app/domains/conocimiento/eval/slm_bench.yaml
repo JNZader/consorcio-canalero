@@ -1,0 +1,92 @@
+# SLM candidate bench — the artifact the provider pin's fate is decided on.
+# Task 9.6b (owner-requested, 2026-08-23). Harness: `eval/slm_bench.py`.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THIS FILE IS A SHELL ON PURPOSE, for the same reason `answer_set.yaml` is:
+# both arms are REAL runs and this machine cannot produce either. The reference
+# arm needs the hosted pin; the candidate arm needs the SLM served on the
+# owner's RTX worker. Both go through the runbook (G9), and the owner grades the
+# claims of both with the SAME rubric.
+#
+# `cargar_bench` refuses until `estado` starts with RATIFICADO, and
+# `assert_bench_publicable` refuses a synthetic or empty arm on top of that. A
+# bench is exactly where a stand-in is most tempting — the point of it is to
+# avoid paying for two real runs — so it is where the refusal is loudest.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# WHY THIS BENCH EXISTS, stated so nobody has to reconstruct it:
+#
+#   If the SLM clears the same bars as the reference, the provider pin MAY move
+#   to the embedded model — which kills task 6.7's terms-verification dependency
+#   and the external-provider surface ENTIRELY. That is the largest single
+#   reduction available in this system's compliance and attack area, and it is
+#   the kind of decision that otherwise gets made on impressions.
+#
+# THE LADDER IS THE OWNER'S AND IS TRANSCRIBED, NEVER RE-DECIDED:
+#
+#   1. `deepseek-v4-flash` (reference) vs `Qwen3-8B-Instruct` Q5 (candidate).
+#   2. ONLY if the 8B clears the same bars, a smaller rung (<=2B, e.g.
+#      `Qwen3-1.7B`) is benched on this same artifact.
+#   3. ONLY if THAT holds, a fine-tuned <=1B becomes a project — distillation
+#      from the corpus, a SEPARATE change, not this one.
+#
+#   The ladder never skips a rung, and every rung is decided by this same graded
+#   artifact. `slm_bench.py` prints the rule; it does not evaluate it and it
+#   does not move a pin.
+#
+# THE SAFETY FLOOR that makes a small model admissible here at all:
+#
+#   Citation enforcement (U5) validates every citation against the payload
+#   POST-HOC, so a weaker generator degrades into more rejections and more
+#   abstentions — VISIBLE failures — never into silently confident fabrication.
+#
+# ── PARITY, which `verificar_paridad` enforces ──────────────────────────────
+#
+# Same `prompt_version`, same `corpus_sha`, same `expected_clasificacion_sha256`,
+# same answer ids, same per-answer `claves_payload`, and two DIFFERENT pins. A
+# model handed less context is not a worse model, and a model benched against
+# itself measures sampling variance. The classification pin is in that list
+# because a reclassification moves payloads WITHOUT moving corpus bytes: two arms
+# pinned to different classification artifacts measured two different shippable
+# universes, and the gap would read as the candidate being worse.
+#
+# The reference arm's pin must be `slm_bench.PIN_REFERENCIA` — the pin in
+# production config. The ladder's rule is "clears the SAME bars as the
+# reference", so a delta against a model nobody runs decides nothing.
+#
+# ── THE LIVE UNIVERSE, which `verificar_payload_bench` re-derives ───────────
+#
+# Both arms' `claves_payload` are recomputed from the LIVE classification with
+# the same `assert_unidades_publicas` call the request path makes, exactly as the
+# single-arm answer set's are (task 9.4). A bench that skipped it would be the
+# way around it.
+
+version: 1
+
+estado: "BORRADOR — sin corridas reales de ninguno de los dos brazos"
+
+prompt_version: 1
+corpus_sha: "12043582bf8016288a7e8084e85a4b713a97af2f"
+
+# Each arm is an `answer_set.yaml` body (same schema, same loader, same
+# refusals) plus a `tokens_por_segundo` measured ON THE WORKER — this process
+# has no GPU, and timing a report would time the report.
+referencia:
+  estado: "BORRADOR — sin corridas reales"
+  prompt_version: 1
+  provider_model_pin: "deepseek-v4-flash"
+  corpus_sha: "12043582bf8016288a7e8084e85a4b713a97af2f"
+  expected_clasificacion_sha256: ""
+  generador_sintetico: null
+  tokens_por_segundo: null
+  respuestas: []
+
+candidato:
+  estado: "BORRADOR — sin corridas reales"
+  prompt_version: 1
+  provider_model_pin: "Qwen3-8B-Instruct-Q5"
+  corpus_sha: "12043582bf8016288a7e8084e85a4b713a97af2f"
+  expected_clasificacion_sha256: ""
+  generador_sintetico: null
+  tokens_por_segundo: null
+  respuestas: []

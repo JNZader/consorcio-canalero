@@ -301,7 +301,13 @@ def _recuperar(
     k: int,
     reranker: Any,
 ) -> Sequence[Any]:
-    """B50 retrieval, and the synthetic-embeddings refusal that precedes it."""
+    """B50 retrieval, and the two refusals that precede it.
+
+    Both are `CorpusNoServible` and both land in `no_disponible` rather than in
+    an abstention, because "this base must not be served from" and "the corpus
+    has no applicable norm" are opposite statements and only one of them is true
+    about the law.
+    """
     procedencia = service.procedencia_embeddings(db, corpus_sha)
     if procedencia is not None and procedencia.sintetico:
         raise service.CorpusNoServible(
@@ -309,6 +315,10 @@ def _recuperar(
             "them would answer a legal question from vectors nobody trained "
             "(task 7.6, `design.md:751-752`)."
         )
+    # Task 9.6: the shipped abstention threshold must belong to THIS snapshot and
+    # this vector space. A `no_derivado` artifact — today's state, while owner
+    # decision 0.1 is open — passes silently.
+    service.verificar_umbral_abstencion(db, corpus_sha)
     resultado = service.recuperar(
         db,
         corpus_sha,

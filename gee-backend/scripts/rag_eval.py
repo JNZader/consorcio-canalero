@@ -71,6 +71,15 @@ from app.domains.conocimiento.eval.harness import (  # noqa: E402
     evaluar,
     verificar_corpus_sha,
 )
+from app.domains.conocimiento.eval.answers import (  # noqa: E402
+    ConjuntoRespuestasInvalido,
+    ConjuntoRespuestasNoRatificado,
+    EntradaRespuestas,
+    PayloadDivergente,
+    PinRespuestasDivergente,
+    RespuestasSinteticas,
+    cargar_y_puntuar,
+)
 from app.domains.conocimiento.eval.report import (  # noqa: E402
     EvalSinteticoNoEsEval,
     escribir_reporte,
@@ -79,8 +88,18 @@ from app.domains.conocimiento.eval.router import (  # noqa: E402
     EntradaRouter,
     correr_eval_router,
 )
+from app.domains.conocimiento.eval.slm_bench import (  # noqa: E402
+    BenchSLMInvalido,
+    cargar_y_comparar,
+)
+from app.domains.conocimiento.generacion import PLANTILLAS  # noqa: E402
+from app.domains.conocimiento.recuperacion.reranker import (  # noqa: E402
+    BGEReranker,
+    RerankerDeterministico,
+    RerankerNoDisponible,
+)
 from app.domains.conocimiento.routing import SetRouterNoRatificado  # noqa: E402
-from app.domains.conocimiento.service import procedencia_embeddings  # noqa: E402
+from app.domains.conocimiento.service import MODOS, procedencia_embeddings  # noqa: E402
 
 DESTINO_POR_DEFECTO = Path(__file__).resolve().parent.parent.parent / "docs" / "rag"
 
@@ -131,8 +150,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--modo",
         action="append",
-        choices=MODOS_ABLACION,
-        help="repeatable; defaults to all three (the ablation)",
+        choices=MODOS,
+        help=(
+            "repeatable; defaults to the three-mode ablation. `bm25_ce` is the "
+            "GATED arm (task 9.1b) and needs a reranker — see --reranker."
+        ),
+    )
+    parser.add_argument(
+        "--reranker",
+        default="bge",
+        choices=("bge", "deterministic"),
+        help=(
+            "cross-encoder for `--modo bm25_ce`. `deterministic` is a stand-in "
+            "for smoke runs ONLY: the report it produces carries no verdict and "
+            "its filename says SINTETICO, because in `bm25_ce` the order is the "
+            "cross-encoder's alone and a stand-in replaces the ranking entirely."
+        ),
+    )
+    parser.add_argument(
+        "--reranker-device",
+        default="cuda",
+        help="device for the real cross-encoder. CPU at depth 50 is ~99 s/query.",
     )
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--destino", type=Path, default=DESTINO_POR_DEFECTO)
@@ -170,6 +208,36 @@ def build_parser() -> argparse.ArgumentParser:
             "grid resolution for the router's LOOCV calibration. 7 is the "
             "shipped value (~3 min at 1024 dimensions over the ratified n=49 "
             "set); lower it for a quick smoke, never to publish a figure."
+        ),
+    )
+    parser.add_argument(
+        "--answer-set",
+        type=Path,
+        default=None,
+        help=(
+            "graded answer set (tasks 9.1-9.4). Defaults to NOT scoring the "
+            "answer-level block, which the report then states in words. The "
+            "answers themselves come from the GPU worker through the runbook; "
+            "this command grades nothing and scores what it is handed."
+        ),
+    )
+    parser.add_argument(
+        "--slm-bench",
+        type=Path,
+        default=None,
+        help=(
+            "SLM candidate bench (task 9.6b): two graded arms over the SAME "
+            "answers, same prompt, same payloads, same graders. Both arms are "
+            "REAL runs from the GPU worker; this command compares them and "
+            "issues no verdict — moving the provider pin is the owner's call."
+        ),
+    )
+    parser.add_argument(
+        "--provider-model-pin",
+        default=None,
+        help=(
+            "the model this run's answers were produced by, compared against the "
+            "artifact's pin. Defaults to `settings.conocimiento_modelo`."
         ),
     )
     parser.add_argument(
@@ -237,6 +305,92 @@ def _embedder(nombre: str, *, device: str, model_id: str):
     # `query`: the eval turns gold QUESTIONS into vectors. Ignored by the
     # symmetric models, load-bearing for e5 (see `E5Embedder`).
     return get_embedder(nombre, rol="query", device=device, model_id=model_id)
+
+
+#: Why the report says the answer-level block was not scored on a run that was
+#: not handed an answer set. Same discipline as `MOTIVO_ROUTER_SIN_EMBEDDER`: the
+#: document states the command that WOULD score it, rather than leaving a gap
+#: where a section belongs — an absent section reads as a section that was fine.
+MOTIVO_SIN_ANSWER_SET = (
+    "El bloque de métricas por respuesta no se puntuó: esta corrida no recibió "
+    "`--answer-set`. Las respuestas las produce el worker con GPU (runbook G9) "
+    "contra el pin real, y el owner las gradúa; recién entonces hay artefacto "
+    "que pasarle a este comando."
+)
+
+
+def _entrada_respuestas(db, args) -> EntradaRespuestas:
+    """Load, pin-check and score the graded answer set, or say why there is none.
+
+    Every refusal degrades into a STATED `not-evaluable` rather than killing the
+    run, and that asymmetry is deliberate: the retrieval ablation is a separate,
+    complete measurement, and losing it because an answer set is unratified would
+    make the report's most expensive half hostage to its cheapest.
+
+    The one thing that never happens is a figure with no provenance behind it.
+    """
+    if args.answer_set is None:
+        return EntradaRespuestas.no_evaluable(MOTIVO_SIN_ANSWER_SET)
+
+    from app.config import settings
+
+    pin = args.provider_model_pin or settings.conocimiento_modelo
+    try:
+        return cargar_y_puntuar(
+            db,
+            ruta=args.answer_set,
+            prompt_version=PLANTILLAS.version,
+            provider_model_pin=pin,
+            corpus_sha=args.corpus_sha,
+        )
+    except (
+        ConjuntoRespuestasNoRatificado,
+        ConjuntoRespuestasInvalido,
+        PinRespuestasDivergente,
+        PayloadDivergente,
+        RespuestasSinteticas,
+    ) as motivo:
+        return EntradaRespuestas.no_evaluable(str(motivo))
+
+
+def _bench_slm(db, args) -> tuple[object | None, str | None]:
+    """The SLM bench, or the stated reason there is none.
+
+    Degrades into a reason rather than killing the run, exactly like the answer
+    set: the retrieval ablation is a complete measurement on its own and must
+    not be lost because a bench artifact is unratified.
+
+    Nothing here reads a clock, opens a socket or loads a model. Both arms are
+    already-graded artifacts and the comparison is arithmetic — but the session
+    IS required, because both arms' post-exclusion universe is re-derived from
+    the live classification (task 9.4), the same way the single-arm answer set's
+    is.
+    """
+    if args.slm_bench is None:
+        return None, None
+    try:
+        return cargar_y_comparar(db, args.slm_bench), None
+    except (
+        ConjuntoRespuestasNoRatificado,
+        ConjuntoRespuestasInvalido,
+        BenchSLMInvalido,
+        PayloadDivergente,
+        RespuestasSinteticas,
+    ) as motivo:
+        return None, str(motivo)
+
+
+def _reranker(nombre: str, *, device: str):
+    """The stand-in is selectable, and only selectable ON PURPOSE.
+
+    Exactly like `_embedder`: it is not a fallback. A `bm25_ce` arm ordered by
+    `RerankerDeterministico` is refused at the publish gate
+    (`report._gate_sintetico`) unless `--allow-synthetic` is also passed, and what
+    comes out then is a SMOKE RUN with no verdict.
+    """
+    if nombre == "deterministic":
+        return RerankerDeterministico()
+    return BGEReranker(device=device)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -374,7 +528,46 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return SALIDA_SIN_DEPENDENCIA
 
-        resultado = evaluar(db, args.corpus_sha, gold, modos=modos, k=args.k, embedder=embedder)
+        reranker = None
+        if "bm25_ce" in modos:
+            try:
+                reranker = _reranker(args.reranker, device=args.reranker_device)
+            except (RerankerNoDisponible, RuntimeError, ImportError) as falta:
+                # Same bucket and same reason as the embedder branch above:
+                # nothing was queried, nothing was written, and the fix is to
+                # invoke the script differently. There is deliberately NO CPU
+                # fallback — the ratified numbers were measured on this model,
+                # and 99 s/query at depth 50 is an outage that answers.
+                print(f"\nERROR: {falta}", file=sys.stderr)
+                print(
+                    "\nO bien corré la ablación sin el arm gateado:\n"
+                    "    python scripts/rag_eval.py --modo fts …\n"
+                    "Para un smoke SIN GPU (sin veredicto, archivo SINTETICO-):\n"
+                    "    python scripts/rag_eval.py --modo bm25_ce "
+                    "--reranker deterministic --allow-synthetic …",
+                    file=sys.stderr,
+                )
+                return SALIDA_SIN_DEPENDENCIA
+
+        resultado = evaluar(
+            db,
+            args.corpus_sha,
+            gold,
+            modos=modos,
+            k=args.k,
+            embedder=embedder,
+            reranker=reranker,
+        )
+
+        # Inside the session, because `verificar_payload` re-derives the
+        # shippable set from the LIVE classification with the same call the
+        # request path makes. That is the check that catches a reclassification
+        # with `corpus_sha` unmoved, and it cannot be done from a header.
+        entrada_respuestas = _entrada_respuestas(db, args)
+
+        # Same reason, same session: `verificar_payload_bench` re-derives BOTH
+        # arms' shippable sets from the live classification.
+        bench, motivo_bench = _bench_slm(db, args)
 
     entrada_router = _entrada_router(embedder, pasos=args.router_pasos)
 
@@ -388,6 +581,9 @@ def main(argv: list[str] | None = None) -> int:
             permitir_sintetico=args.allow_synthetic,
             latencia=latencia,
             router=entrada_router,
+            respuestas=entrada_respuestas,
+            bench=bench,
+            motivo_bench=motivo_bench,
         )
     except EvalSinteticoNoEsEval as error:
         print(f"ERROR: {error}", file=sys.stderr)
@@ -402,6 +598,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {modo:<7} {veredicto}", end="")
         if decision.barras_fallidas:
             print(f"  (fallan: {', '.join(decision.barras_fallidas)})", end="")
+        if decision.barras_no_evaluables:
+            # Separate line item, never merged into "fallan": these were not
+            # measured at all, and an operator who reads them as failures goes
+            # looking for a retrieval bug that does not exist (task 9.1b/9.5).
+            print(f"  (not-evaluable: {', '.join(decision.barras_no_evaluables)})", end="")
         if corrida.cobertura.leg_fts_degradada:
             print("  [LEG FTS DEGRADADA — ver RAG4-001]", end="")
         print()

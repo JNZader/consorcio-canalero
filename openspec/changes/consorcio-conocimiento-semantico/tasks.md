@@ -830,19 +830,19 @@ re-estimated before the chain strategy is picked.)*
 
 ## Phase 9: Eval extension (U9)
 
-- [ ] 9.1 GREEN: `eval/answers.py` + `answer_set.yaml` — invented-citation and uncited-claim scored against
+- [x] 9.1 GREEN: `eval/answers.py` + `answer_set.yaml` — invented-citation and uncited-claim scored against
       the **post-exclusion payload**, via the same `assert_unidades_publicas` call the request path uses
       (`design.md:787-794`, `generation spec:134-138`).
-- [ ] 9.2 GREEN: owner-graded citation faithfulness on n ≥ 30 **answers** *(RATIFIED 2026-08-23, decision
+- [x] 9.2 GREEN: owner-graded citation faithfulness on n ≥ 30 **answers** *(RATIFIED 2026-08-23, decision
       0.6 — no longer a proposal)*, publishing `n_respuestas`,
       `n_afirmaciones` and the per-answer claim distribution; intra-rater re-grade on max(10%, 15 claims),
       below 15 ⇒ `not-evaluable` (`design.md:819-837`).
-- [ ] 9.3 GREEN: graded artifacts pinned to `(prompt_version, provider_model_pin, corpus_sha)`; refuse on
+- [x] 9.3 GREEN: graded artifacts pinned to `(prompt_version, provider_model_pin, corpus_sha)`; refuse on
       divergence naming both operands, per `harness.py:254-269` (`design.md:839-845`).
-- [ ] 9.4 GREEN: **end-to-end (post-exclusion) abstention** as its own row next to the retrieval-level LOOCV
+- [x] 9.4 GREEN: **end-to-end (post-exclusion) abstention** as its own row next to the retrieval-level LOOCV
       pair, pinned to `(corpus_sha, expected_clasificacion_sha256)`; a reclassification re-triggers the
       measurement even with `corpus_sha` unmoved (`design.md:796-812`).
-- [ ] 9.1b GREEN — **publish the `bm25_ce` arm beside the FTS-only baselines** *(added 2026-08-23; owns the
+- [x] 9.1b GREEN — **publish the `bm25_ce` arm beside the FTS-only baselines** *(added 2026-08-23; owns the
       requirement the amended V1 serving gate created and no task delivered)*. The amended gate in
       `specs/knowledge-hybrid-retrieval/spec.md` requires the report to publish the `bm25_ce` arm side by
       side with the recorded FTS-only baselines "so the margin is visible rather than asserted" — and the
@@ -858,10 +858,17 @@ re-estimated before the chain strategy is picked.)*
 - [ ] 9.5 **BLOCKED by decision 0.1** — encode whichever abstention bar the owner ratifies into
       `eval/umbral_abstencion.yaml` and the go/no-go block. Until then the row prints `not-evaluable` and the
       flag stays off. Do not pick a bar in code.
-- [ ] 9.6 GREEN: `eval/umbral_abstencion.yaml` header `(corpus_sha, embedding_modelo, embedding_revision_hf,
+      *(U9 apply, 2026-08-24: left OPEN deliberately, and the surrounding machinery was built so it
+      stays honest while it is. `eval/umbral_abstencion.yaml` ships `estado: no_derivado` with `umbral:
+      null` and the measured reason (`0.489` precision at recall `1.000` for the reranker-confidence
+      candidate); `derivar_desde` REFUSES to produce a threshold for a mode with no ratified signal;
+      `harness.MODOS_SIN_SENAL_RATIFICADA` makes the `bm25_ce` abstention pair print `not-evaluable`
+      rather than `NO-GO`, so the arm's retrieval margin publishes without the open decision reading as
+      a retrieval failure. No bar was picked in code.)*
+- [x] 9.6 GREEN: `eval/umbral_abstencion.yaml` header `(corpus_sha, embedding_modelo, embedding_revision_hf,
       n, metodologia)`; serving reads it and refuses with `base_de_conocimiento_no_lista` on mismatch
       (`design.md:852-859`).
-- [ ] 9.6b GREEN — **SLM candidate bench** *(owner-requested 2026-08-23)*: the graded n ≥ 30 answer
+- [x] 9.6b GREEN — **SLM candidate bench** *(owner-requested 2026-08-23)*: the graded n ≥ 30 answer
       set of 9.2 is run against BOTH the pinned provider model (`deepseek-v4-flash`, reference) AND one
       embedded SLM candidate (`Qwen3-8B-Instruct` quantized Q5, served on the owner's RTX worker —
       the async-queue model already absorbs its latency). Same prompt, same payloads, same graders,
@@ -877,29 +884,102 @@ re-estimated before the chain strategy is picked.)*
       here: citation enforcement (U5) validates every citation against the payload post-hoc, so a
       weaker generator degrades into more rejections/abstentions — visible failures — never into
       silently confident fabrication.
-- [ ] 9.7 GREEN: mutation targets per `openspec/config.yaml` — `routing.py`, `generacion.py`,
+- [x] 9.7 GREEN: mutation targets per `openspec/config.yaml` — `routing.py`, `generacion.py`,
       `eval/answers.py`, plus `recuperacion/bm25.py`; keep the module thresholds the repo already enforces.
+- [x] 9.8 Fix-forward on the U9 verify findings *(2026-08-24; two CRITICALs, two warnings, two
+      suggestions, no new surface)*: **C1** the whole `NO EVALUABLE` machinery of the `bm25_ce` arm was
+      unguarded — three separate mutations survived the suite, and each turned owner decision 0.1
+      (OPEN) into a published verdict about the retriever: dropping `or barras_no_evaluables` makes the
+      verdict read `NO-GO` (measured and fell short — it was not), dropping `and not no_evaluable`
+      lists the two unmeasured bars under "fallan:", and `no_evaluable=False` does both plus prints a
+      denominator for a measurement that never happened. `test_eval_no_evaluable_guard.py` pins the
+      four properties the verify prescribed — the pair renders `valor=None` / `n = —` /
+      `not-evaluable`, the verdict is `NO EVALUABLE` and never `NO-GO`, a retrieval bar that REALLY
+      fell short still appears in `barras_fallidas` (the guard is not a place failures hide), and the
+      six re-ratified bars are still scored in this mode (spec:131). All three mutants RED, revert
+      green. **W2** `answers._veredicto` scored its table off `barra.pasa` alone, so a three-answer set
+      — below the ratified minimum, `not-evaluable` on its own page — still printed `sí` next to
+      `0.000` for the spec'd bars: the arithmetic is real and the VERDICT is not emittable, the same
+      discipline `GoNoGo.veredicto` applies below n = 20. `pasa_publicable` now gates both the markdown
+      and the JSON on `metricas.evaluable`, and the block says why. **W3** the SLM bench never
+      re-derived the post-exclusion universe, which made it the way around task 9.4: same recorded
+      payloads, same `corpus_sha`, no database read. `cargar_y_comparar(db, ruta)` now runs
+      `verificar_payload` over BOTH arms (parity compares `claves_payload`, not `claves_recuperadas`,
+      so one arm can be stale while parity is clean), `verificar_paridad` additionally requires a
+      coherent `expected_clasificacion_sha256` between arms, `PIN_REFERENCIA` — a dead constant until
+      now — is compared against the reference arm, and the CLI's `_bench_slm` moved INSIDE the session
+      block. **S1** `generador_sintetico` is now mandatory: `null` is not `false`, and a set with
+      answers and no declaration was being published on the assumption that a real generator wrote
+      them. **S3** the bench's inline arms are parsed through the new `answers.cargar_desde_mapping`
+      instead of a `NamedTemporaryFile` round trip that wrote every arm's verbatim question and answer
+      text — the exact bytes threat 7.5 names — to a world-readable `/tmp` file to read them straight
+      back.
 
 ## Phase 10: Runbook, deploy, docs (U10)
 
-- [ ] 10.1 GREEN: write the G9 runbook (`docs/`) with the 11 ordered steps, each naming failure state and
+- [x] 10.1 GREEN: write the G9 runbook (`docs/`) with the 11 ordered steps, each naming failure state and
       recovery, plus the reboot re-derivation probe matrix (`design.md:914-944`).
-- [ ] 10.2 GREEN: record the `conocimiento-embed` compose block verbatim (it lives in the **external**
+      **DONE 2026-08-24** — `docs/rag/runbook-encendido.md`. Steps 1–11 in the design's sealed order, plus
+      **7a** as its own numbered step: the owner's terms verification (task 6.7) had no place in the sequence
+      and a blocking manual gate that appears only in a prose paragraph is a gate that gets skipped. The probe
+      matrix carries all seven rows including the two NON-database probes (image tag, sidecar identity), and
+      the sealed rollback order closes it. The joint ceremony with `flujo-caminos` is stated at the top with
+      its interleaving rule: **one shared `alembic upgrade head`**, neither arc running its own, and both
+      flags flipping last.
+- [x] 10.2 GREEN: record the `conocimiento-embed` compose block verbatim (it lives in the **external**
       compose file) + `CONOCIMIENTO_EMBED_URL` on the backend (`design.md:888-912`).
       *(extended 2026-08-24 by task 7.7: the SAME block must also declare the **worker** service that runs
       `scripts/rag_worker.py` — the `venv-rag` image, the GPU device reservation, `restart: unless-stopped`
       and the same `.env` as the backend. The queue has a postman as of 7.7; until this task records how the
       box starts it, the postman is started by hand and a box that reboots stops answering with the only
       symptom being items ageing on `GET /estado`.)*
-- [ ] 10.3 GREEN: reconcile the runbook with the amendment — step 9 still loads vectors and step 10 still
+      **DONE 2026-08-24** — runbook §0.1 (sidecar) and §0.2 (worker), each with the knob table and defaults.
+      *Three corrections against the design's draft block, recorded IN the runbook rather than applied
+      silently, because U3 shipped the sidecar and the repository's `docker-compose.yml` is the authority on
+      its shape: `expose: 8002` (not a published loopback port — so the reboot probe is a `docker compose
+      exec`, not a host `curl`), the volume is `conocimiento-embed-cache:/cache/huggingface` (the image's real
+      `HF_HOME`), and the healthcheck hits `/health` through the image's own Python (`/ready` restart-loops
+      the container through its own cold start, and `curl` is not in the image). `profiles: ["conocimiento"]`
+      is deliberately NOT carried to the box: it exists to stop a developer's bare `up -d` from pulling 2.2 GB
+      of weights, and on the box it would mean a reboot brings everything back with the answerer absent.*
+      *The WORKER block carries two facts the task did not anticipate and that would have burned a
+      maintenance window: **(a) it does not belong on the box at all** — it reranks on CUDA and the CX33 has
+      no GPU, so per A3 its compose block belongs to the GPU host's file, reaching the box's Postgres over the
+      same `DATABASE_URL`; **(b) no image in this repository builds `requirements-rag.txt`** (D8 keeps the
+      CUDA stack out of every built image, and `Dockerfile.worker` is the Celery/GDAL geo worker — a different
+      process). So the runbook ships the RUNNABLE form today, a systemd unit over the host `venv-rag`, and
+      records the compose block as the target shape with its missing Dockerfile marked in the block itself.
+      A compose block that names an image nobody can build is a runbook lying in YAML.*
+- [x] 10.3 GREEN: reconcile the runbook with the amendment — step 9 still loads vectors and step 10 still
       smokes the vector extension, but the serving smoke is a `modo="bm25_ce"` retrieval; state that the
       stored corpus vectors have no serving consumer post-B50 (see task 2.7).
+      **DONE 2026-08-24** — runbook §2. Says in words that the vectors are eval and future-option
+      infrastructure, that step 9 can be deferred without blocking enablement, and that steps 8, 7a and §4.3
+      cannot — so nobody later reads step 9 as evidence that serving is vector-backed.
 - [ ] 10.4 Measurement on the **box**, not the workstation: CPU query-embedding latency
       (`scripts/rag_query_latency.py`) and sidecar RAM + cold-start under `docker stats`
       (`design.md:107-115`). Both precede runbook step 2.
-- [ ] 10.5 GREEN: step 8 diff — all 35 rows of `rag_documento` (class **and** evidence) against
+      **STAYS OPEN — this is the honest state.** The PROCEDURE landed 2026-08-24 (runbook §4.1, with the
+      exact commands and the `--threads 2` / cold-cache discipline that makes two runs on the same machine
+      agree); the MEASUREMENT is an act on the Hetzner box and no artifact of it exists. Nothing here may be
+      marked done from a workstation. *One correction to the procedure: `scripts/rag_query_latency.py`'s
+      docstring names `docs/rag/preguntas-latencia.txt`, which does not exist in this repository. The runbook
+      uses `--gold-set app/domains/conocimiento/eval/gold_set.yaml`, which does — a runbook command that
+      cannot run is worse than no runbook.*
+- [x] 10.5 GREEN: step 8 diff — all 35 rows of `rag_documento` (class **and** evidence) against
       `expected_clasificacion.yaml`, never a `count(*)` (`design.md:924`).
-- [ ] 10.6 GREEN: `pytest tests/` green (the real CI scope, not `tests/new/`) before the flag is flipped.
+      **DONE 2026-08-24** — `gee-backend/scripts/rag_verificar_clasificacion.py` + 14 tests in
+      `tests/new/conocimiento/test_rag_verificar_clasificacion.py`, RED before GREEN. The tests are written
+      against the failures a count cannot see: a class SWAP that preserves every per-class count, a right
+      class reached through the WRONG evidence string, a document in the artifact and missing from the
+      snapshot, and the reverse. Two preconditions REFUSE with exit 2 rather than scoring — an artifact
+      pinned to another `corpus_sha`, and a `regla_clasificacion_sha256()` that moved since the artifact was
+      generated — because "0 divergences" out of an invalid comparison is the most expensive output this
+      script could produce. Exit 0 clean · 1 divergence (STOP, flag off) · 2 refused/usage.
+- [x] 10.6 GREEN: `pytest tests/` green (the real CI scope, not `tests/new/`) before the flag is flipped.
+      **DONE 2026-08-24** — run against the whole `tests/` scope; result recorded in the apply report with
+      its exact exit code. `ruff check` and `ruff format --check` both exit 0; `alembic heads` is a single
+      head, `conocimiento_007`.
 
 ## Follow-ups (explicitly OUT of the apply gate)
 

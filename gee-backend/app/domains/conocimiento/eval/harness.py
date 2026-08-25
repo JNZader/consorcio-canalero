@@ -43,6 +43,7 @@ from app.domains.conocimiento.eval.metrics import (
     PreguntaEvaluada,
     metricas_recuperacion,
 )
+from app.domains.conocimiento.recuperacion.reranker import Reranker
 from app.domains.conocimiento.schemas import ResultadoRecuperacion
 
 GOLD_SET_PATH = Path(__file__).parent / "gold_set.yaml"
@@ -65,6 +66,13 @@ LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
     "fts": ("fts",),
     "vector": ("vector",),
     "hybrid": ("fts", "vector"),
+    # `bm25_ce`'s ONE candidate leg is BM25 — not `fts`, and that distinction is
+    # the whole finding of the candidate-recall campaign: `ts_rank_cd` as the
+    # candidate scorer measured 0.655 against BM25's 0.759 on the same pool and
+    # the same reranker. Naming the leg `fts` here would make the coverage block
+    # report an empty lexical leg for an arm that never asked for one, and would
+    # annotate the leg that DOES run as "not run in this mode" (task 9.1b).
+    "bm25_ce": ("bm25",),
 }
 
 #: Modes whose ONLY leg is the vector one, and therefore the only modes in which
@@ -72,6 +80,24 @@ LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
 #: `fts` and `hybrid` the lexical leg reaches those units, so nothing is exempt
 #: there and every item stays in every denominator.
 MODOS_SIN_ALCANCE_LEXICO = ("vector",)
+
+#: Modes that carry NO ratified abstention signal, so the harness builds none for
+#: them and the report prints `not-evaluable` instead of a pair.
+#:
+#: This is the seam task 9.1b needed and did not have. `senales_desde` refuses on
+#: `bm25_ce` (`SenalAbstencionNoRatificada`), which was correct and also meant the
+#: arm could not be RUN at all: `correr_modo` built a signal per question, so the
+#: exception that protects the abstention gate also blocked the retrieval margin
+#: the amended serving gate requires. The two are separable and are now separated
+#: — the arm is scored, its abstention row says `not-evaluable`, and no threshold
+#: is selected from a signal nobody ratified (owner decision 0.1, OPEN).
+MODOS_SIN_SENAL_RATIFICADA = ("bm25_ce",)
+
+#: What `fuente_senal` says for those modes. NOT `FUENTE_RRF`, which is what the
+#: empty-signals fallback used to return: naming a fusion that never ran, on the
+#: one arm whose whole point is that its signal is unratified, is the RJDB-002
+#: pathology wearing a different hat.
+FUENTE_NO_RATIFICADA = "sin señal ratificada (decisión 0.1 del owner, ABIERTA)"
 
 #: The owner's RE-RATIFIED bars (`design.md:1141-1145`, amendment of 2026-08-23),
 #: fixed against 116 measured configurations rather than proposed in advance.
@@ -383,6 +409,10 @@ class DetallePregunta:
     margen: float
     n_fts: int
     n_vector: int
+    #: Size of the BM25 candidate pool. `0` in every fused mode, which never asks
+    #: for one — and a real, reportable outcome in `bm25_ce`, where an empty pool
+    #: means the cross-encoder ranked nothing at all.
+    n_bm25: int = 0
 
 
 @dataclass(frozen=True)
@@ -411,6 +441,11 @@ class CoberturaLegs:
     n_preguntas: int
     sin_candidatos_fts: int
     sin_candidatos_vector: int
+    #: How often the BM25 candidate pool came back empty. Its own counter rather
+    #: than a reuse of `sin_candidatos_fts`, because BM25 and `ts_rank_cd` select
+    #: different pools from the same index and the arm being gated is the one
+    #: whose empty leg would otherwise be the only invisible one (task 9.1b).
+    sin_candidatos_bm25: int = 0
     #: Which legs this mode actually RAN. A leg that was never asked to run
     #: trivially returned nothing for every question, and calling that
     #: "degraded" is a warning that fires on every `--modo fts` run — which is
@@ -439,6 +474,20 @@ class CoberturaLegs:
     @property
     def leg_vector_degradada(self) -> bool:
         return "vector" in self.legs_corridas and self.fraccion_sin_candidatos_vector > 0.5
+
+    @property
+    def fraccion_sin_candidatos_bm25(self) -> float:
+        return self.sin_candidatos_bm25 / self.n_preguntas if self.n_preguntas else 0.0
+
+    @property
+    def leg_bm25_degradada(self) -> bool:
+        """A strict majority of questions got no BM25 candidates at all.
+
+        In `bm25_ce` this is not a caveat on the metric, it IS the metric: the
+        cross-encoder can only rank what BM25 selected, so an empty pool is an
+        unanswerable question by construction rather than a ranking failure.
+        """
+        return "bm25" in self.legs_corridas and self.fraccion_sin_candidatos_bm25 > 0.5
 
 
 @dataclass(frozen=True)
@@ -512,6 +561,7 @@ class ResultadoModo:
                 n_preguntas=len(self.detalles),
                 sin_candidatos_fts=sum(1 for d in self.detalles if d.n_fts == 0),
                 sin_candidatos_vector=sum(1 for d in self.detalles if d.n_vector == 0),
+                sin_candidatos_bm25=sum(1 for d in self.detalles if d.n_bm25 == 0),
                 legs_corridas=LEGS_POR_MODO.get(self.modo, ()),
             ),
         )
@@ -523,7 +573,16 @@ class ResultadoModo:
         Read off the signals themselves rather than re-derived from `modo`, so
         the report can never name a scale the numbers were not on.
         """
-        return self.senales[0].fuente_senal if self.senales else FUENTE_RRF
+        if self.senales:
+            return self.senales[0].fuente_senal
+        if self.modo in MODOS_SIN_SENAL_RATIFICADA:
+            return FUENTE_NO_RATIFICADA
+        return FUENTE_RRF
+
+    @property
+    def senal_ratificada(self) -> bool:
+        """Does this mode have an abstention signal at all? (task 9.1b)"""
+        return self.modo not in MODOS_SIN_SENAL_RATIFICADA
 
     @property
     def senal_constante(self) -> bool:
@@ -721,8 +780,15 @@ def correr_modo(
     modo: str,
     k: int = 10,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
 ) -> ResultadoModo:
     """Run every RESOLVED gold question through `service.recuperar` in one mode.
+
+    `reranker` is threaded through for exactly the same reason `embedder` is: it
+    is the dependency ONE mode needs, and `service.recuperar` is the single code
+    path. Passing it here rather than constructing one inside means the eval and
+    the serving path rank with the same object, and that `ranker_sintetico`
+    travels up truthfully instead of being re-derived from the mode name.
 
     Unresolved items are skipped here and blocked at the precondition, rather
     than silently shrinking the denominator: `precondicion()` already refuses a
@@ -759,6 +825,7 @@ def correr_modo(
             modo=modo,
             k=k,
             embedder=embedder,
+            reranker=reranker,
         )
         if resultado.reranker_modelo is not None:
             rankers.add(resultado.reranker_modelo)
@@ -767,11 +834,15 @@ def correr_modo(
         fuera_de_alcance = item_fuera_de_alcance(item, claves_exentas)
         if fuera_de_alcance:
             exentas_ids.append(item.id)
-        senal = senales_desde(item, resultado)
+        # A mode with no ratified signal gets NO signal, rather than a refusal
+        # that also takes its retrieval metrics down with it. The two concerns
+        # were entangled and are now not: see `MODOS_SIN_SENAL_RATIFICADA`.
+        senal = senales_desde(item, resultado) if modo not in MODOS_SIN_SENAL_RATIFICADA else None
         preguntas.append(
             _pregunta_evaluada(item, resultado, precision_no_evaluable=fuera_de_alcance)
         )
-        senales.append(senal)
+        if senal is not None:
+            senales.append(senal)
         detalles.append(
             DetallePregunta(
                 id=item.id,
@@ -779,10 +850,14 @@ def correr_modo(
                 pregunta=item.pregunta,
                 citas_esperadas=item.citas_esperadas,
                 claves_devueltas=tuple(hit.citation_key for hit in resultado.hits),
-                score_top1=senal.score_top1,
-                margen=senal.margen,
+                # `0.0` is not a measurement here and is not read as one: the
+                # report prints `not-evaluable` for this mode's abstention row
+                # and never a top-1 score column that came from nowhere.
+                score_top1=senal.score_top1 if senal is not None else 0.0,
+                margen=senal.margen if senal is not None else 0.0,
                 n_fts=resultado.n_fts,
                 n_vector=resultado.n_vector,
+                n_bm25=resultado.n_bm25,
             )
         )
 
@@ -822,10 +897,14 @@ def evaluar(
     modos: Sequence[str] = MODOS_ABLACION,
     k: int = 10,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
 ) -> ResultadoEval:
     """The ablation: the same questions, the same k, one code path, N modes."""
     por_modo = {
-        modo: correr_modo(db, corpus_sha, gold, modo=modo, k=k, embedder=embedder) for modo in modos
+        modo: correr_modo(
+            db, corpus_sha, gold, modo=modo, k=k, embedder=embedder, reranker=reranker
+        )
+        for modo in modos
     }
     return ResultadoEval(
         corpus_sha=corpus_sha,
@@ -855,6 +934,11 @@ class Barra:
     minimo: float
     comparador: str
     fuente: str
+    #: The bar was not SCORED, as opposed to scored and failed. A `NO` in the
+    #: table means "measured, below the bar"; this means "there is no measurement
+    #: and inventing one would decide a go/no-go nobody chose" — today only the
+    #: abstention pair of a mode with no ratified signal (task 9.1b / 9.5).
+    no_evaluable: bool = False
 
     @property
     def pasa(self) -> bool:
@@ -884,12 +968,24 @@ class GoNoGo:
     legs_degradadas: tuple[str, ...] = ()
 
     @property
+    def barras_no_evaluables(self) -> tuple[str, ...]:
+        return tuple(barra.nombre for barra in self.barras if barra.no_evaluable)
+
+    @property
     def pasa(self) -> bool:
         return self.evaluable and all(barra.pasa for barra in self.barras)
 
     @property
     def veredicto(self) -> str:
-        if not self.evaluable:
+        """`NO EVALUABLE` also when a BAR could not be scored at all.
+
+        A bar with no measurement must not read as a failure: `NO-GO` says the
+        system was measured and fell short, and quoting that about the `bm25_ce`
+        arm — whose retrieval figures may be perfectly fine — would attribute to
+        the retriever a gap that belongs to an OPEN owner decision (0.1). It must
+        not read as a pass either, which is why `pasa` stays False regardless.
+        """
+        if not self.evaluable or self.barras_no_evaluables:
             return "NO EVALUABLE"
         return "GO" if self.pasa else "NO-GO"
 
@@ -922,7 +1018,16 @@ class GoNoGo:
 
     @property
     def barras_fallidas(self) -> tuple[str, ...]:
-        return tuple(barra.nombre for barra in self.barras if not barra.pasa)
+        """Bars that were MEASURED and fell short. Not the unmeasured ones.
+
+        Listing a `not-evaluable` bar under "fallan:" tells an operator the
+        retriever missed a target it was never scored against — which is how an
+        open owner decision gets read as a defect and then gets "fixed" by
+        lowering something.
+        """
+        return tuple(
+            barra.nombre for barra in self.barras if not barra.pasa and not barra.no_evaluable
+        )
 
 
 def decidir_go_no_go(
@@ -941,6 +1046,8 @@ def decidir_go_no_go(
     precondicion = gold.precondicion(minimo_respondibles)
     metricas = corrida.metricas
     loocv = corrida.loocv
+    sin_senal = not corrida.senal_ratificada
+    fuente_abstencion = FUENTE_NO_RATIFICADA if sin_senal else "LOOCV held-out"
 
     barras = (
         Barra("hit-rate@5", metricas.hit_rate_at_5, BARRA_HIT_RATE, ">=", "answerable subset"),
@@ -978,8 +1085,26 @@ def decidir_go_no_go(
         # STRICT, and read from the held-out predictions. A single false-confident
         # answer — one unanswerable question that got an answer — fails go/no-go
         # regardless of every other bar.
-        Barra("abstention recall", loocv.recall, RECALL_OBJETIVO, "==", "LOOCV held-out"),
-        Barra("abstention precision", loocv.precision, PRECISION_MINIMA, ">=", "LOOCV held-out"),
+        #
+        # …unless this mode has no ratified signal, in which case the pair was
+        # never computed and says so. `valor=None` renders `n/d`, `pasa` stays
+        # False, and `veredicto` becomes NO EVALUABLE rather than NO-GO.
+        Barra(
+            "abstention recall",
+            loocv.recall if sin_senal is False else None,
+            RECALL_OBJETIVO,
+            "==",
+            fuente_abstencion,
+            no_evaluable=sin_senal,
+        ),
+        Barra(
+            "abstention precision",
+            loocv.precision if sin_senal is False else None,
+            PRECISION_MINIMA,
+            ">=",
+            fuente_abstencion,
+            no_evaluable=sin_senal,
+        ),
     )
 
     # Only a FUSED mode can have its verdict misread as being about both legs.
@@ -995,10 +1120,21 @@ def decidir_go_no_go(
             if degradada
         )
 
+    motivos = () if forzar_evaluable else precondicion.motivos
+    if sin_senal:
+        # Appended rather than substituted: a `bm25_ce` run on a thin gold set has
+        # BOTH problems and the reader needs both named.
+        motivos = motivos + (
+            f"modo {corrida.modo!r}: el par de abstención es `not-evaluable` — no "
+            "hay señal ratificada para este arm y la decisión 0.1 del owner sigue "
+            "ABIERTA. Las métricas de recuperación de arriba SÍ están medidas; lo "
+            "que no puede emitirse es el veredicto de habilitación (task 9.5).",
+        )
+
     return GoNoGo(
         modo=corrida.modo,
         evaluable=forzar_evaluable or precondicion.evaluable,
-        motivos_no_evaluable=() if forzar_evaluable else precondicion.motivos,
+        motivos_no_evaluable=motivos,
         barras=barras,
         legs_degradadas=degradadas,
     )

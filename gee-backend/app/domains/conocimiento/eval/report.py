@@ -57,6 +57,16 @@ from app.domains.conocimiento.eval.harness import (
     decidir_go_no_go,
     resumen_metodologico,
 )
+from app.domains.conocimiento.eval.answers import (
+    EntradaRespuestas,
+    bloque_para as bloque_respuestas_para,
+    json_para as json_respuestas_para,
+)
+from app.domains.conocimiento.eval.slm_bench import (
+    BenchSLM,
+    bloque_para as bloque_bench_para,
+    json_para as json_bench_para,
+)
 from app.domains.conocimiento.eval.router import (
     EntradaRouter,
     bloque_para as bloque_router_para,
@@ -193,15 +203,24 @@ def _tabla_metricas(corrida: ResultadoModo, go_no_go) -> list[str]:
     for barra in go_no_go.barras:
         comparador = "=" if barra.comparador == "==" else "≥"
         atributo = _DENOMINADOR_PROPIO.get(barra.nombre)
-        if atributo is not None:
+        if barra.no_evaluable:
+            # No denominator, because there is no measurement. `0` would be a
+            # count and `n_respondibles` would be the count of a sample this bar
+            # was never computed over.
+            n = "—"
+        elif atributo is not None:
             n = str(getattr(corrida.metricas, atributo))
         elif barra.fuente == "LOOCV held-out":
             n = str(corrida.loocv.n)
         else:
             n = str(corrida.metricas.n_respondibles)
+        # Three states, not two: `sí` (measured, clears), `NO` (measured, falls
+        # short) and `not-evaluable` (never measured). Collapsing the third into
+        # the second reports an open owner decision as a failure of the system.
+        veredicto_barra = "not-evaluable" if barra.no_evaluable else ("sí" if barra.pasa else "NO")
         lineas.append(
             f"| {barra.nombre} | {_fmt(barra.valor)} | {comparador} {barra.minimo:.2f} "
-            f"| {barra.fuente} | {n} | {'sí' if barra.pasa else 'NO'} |"
+            f"| {barra.fuente} | {n} | {veredicto_barra} |"
         )
     return lineas
 
@@ -260,7 +279,18 @@ def _bloque_cobertura(corrida: ResultadoModo) -> list[str]:
         f"({cobertura.fraccion_sin_candidatos_fts:.1%}){_no_corrio(cobertura, 'fts')}",
         f"- sin candidatos vector: {cobertura.sin_candidatos_vector} "
         f"({cobertura.fraccion_sin_candidatos_vector:.1%}){_no_corrio(cobertura, 'vector')}",
+        f"- sin candidatos BM25: {cobertura.sin_candidatos_bm25} "
+        f"({cobertura.fraccion_sin_candidatos_bm25:.1%}){_no_corrio(cobertura, 'bm25')}",
     ]
+    if cobertura.leg_bm25_degradada:
+        lineas += [
+            "",
+            "> ⚠️ **PIERNA DEGRADADA (BM25)** — la mayoría de las preguntas no "
+            "obtuvo ningún candidato BM25. En `bm25_ce` esto no es un matiz sobre "
+            "la métrica: el cross-encoder sólo puede ordenar lo que BM25 "
+            "seleccionó, así que un pool vacío es una pregunta sin respuesta "
+            "posible, no un ranking malo.",
+        ]
     if cobertura.leg_fts_degradada:
         lineas += [
             "",
@@ -364,6 +394,119 @@ def _bloque_exencion(corrida: ResultadoModo) -> list[str]:
         "ablación, no ruido.",
     ]
     return lineas
+
+
+#: The RECORDED FTS-only baselines, quoted from the amended retrieval spec
+#: (`specs/knowledge-hybrid-retrieval/spec.md:84`). They are CONSTANTS and are
+#: never recomputed here, which is the point of the block below: the spec calls
+#: FTS-only a *measured* NO-GO, and a margin quoted against a baseline this run
+#: happened to re-derive would be a comparison against a moving number. Re-running
+#: `--modo fts` publishes its own arm two sections up; this block states the
+#: figures the gate was written against.
+BASELINE_FTS: dict[str, float] = {
+    "hit-rate@5": 0.138,
+    "MRR": 0.091,
+    "citation-precision": 0.040,
+}
+
+#: The gated arm. `bm25_ce` and not `hybrid` since the 2026-08-23 amendment.
+MODO_GATEADO = "bm25_ce"
+
+#: One question out of the answerable 29 is worth this much hit-rate@5. The spec
+#: requires the rider to travel WITH the margin, so it is a constant here rather
+#: than a sentence somebody may drop while editing prose.
+PESO_DE_UNA_PREGUNTA = 0.034
+
+#: The three metric names, and how to read each one off `MetricasRecuperacion`.
+_ATRIBUTO_BASELINE = {
+    "hit-rate@5": "hit_rate_at_5",
+    "MRR": "mrr",
+    "citation-precision": "citation_precision",
+}
+
+
+def bloque_margen_baseline(resultado: ResultadoEval | None) -> list[str]:
+    """The gated arm beside the recorded FTS-only baselines, or why there is none.
+
+    The requirement this satisfies (retrieval spec:88) is that the report "MUST
+    publish the `bm25_ce` arm side by side with the recorded FTS-only baselines
+    so the margin is visible rather than asserted". Before task 9.1b the harness
+    could not produce that arm at all, so the requirement had no deliverable and
+    the margin lived only in a campaign document.
+
+    Always present, like the router block and for the same reason: a report with
+    no margin section reads as a report whose margin was fine.
+    """
+    cabecera = ["## Margen contra el baseline FTS-only", ""]
+    corrida = None if resultado is None else resultado.por_modo.get(MODO_GATEADO)
+    if corrida is None:
+        return cabecera + [
+            f"**`not-evaluable`** — el arm `{MODO_GATEADO}` **no se corrió** en esta "
+            "corrida, así que no hay margen que publicar.",
+            "",
+            "Para correrlo: `make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python "
+            f"RAG_EVAL_MODOS='--modo {MODO_GATEADO}'`, que arma el cross-encoder "
+            "`BAAI/bge-reranker-v2-m3` sobre los candidatos BM25.",
+        ]
+
+    lineas = cabecera + [
+        f"| métrica | baseline FTS-only (registrado) | `{MODO_GATEADO}` (medido) | margen |",
+        "|---|---:|---:|---:|",
+    ]
+    for nombre, base in BASELINE_FTS.items():
+        valor = getattr(corrida.metricas, _ATRIBUTO_BASELINE[nombre])
+        margen = "n/d" if valor is None else f"{valor - base:+.3f}"
+        lineas.append(f"| {nombre} | {base:.3f} | {_fmt(valor)} | {margen} |")
+
+    lineas += [
+        "",
+        "> Las cifras de la columna del baseline son **las registradas** en "
+        "`specs/knowledge-hybrid-retrieval/spec.md:84`, no un recálculo de esta "
+        "corrida: FTS-only es un NO-GO **medido**, y un margen contra un número "
+        "que se recalcula en cada corrida no es un margen.",
+        "",
+        f"> **Rider de honestidad (obligatorio, spec:88)** — el subconjunto "
+        f"respondible del gold set es `n = 29`, así que **una sola pregunta vale "
+        f"{PESO_DE_UNA_PREGUNTA:.3f} de hit-rate@5**. Un margen de dos o tres "
+        "centésimas es una pregunta, no una mejora. Ensanchar el gold set es el "
+        "follow-up F2; bajar la barra no lo es.",
+        "",
+        "> La fila de abstención de este arm queda `not-evaluable` mientras la "
+        "decisión 0.1 del owner siga abierta (spec:90): `bm25_ce` no lleva score "
+        "fusionado y la señal candidata medida — confianza del reranker — resultó "
+        "PEOR que la coseno que reemplazaría. Publicar el margen de recuperación "
+        "no requiere cerrar esa decisión.",
+    ]
+    return lineas
+
+
+def _json_margen_baseline(resultado: ResultadoEval | None) -> dict[str, Any]:
+    """Same figures, same refusal, no Spanish to parse."""
+    corrida = None if resultado is None else resultado.por_modo.get(MODO_GATEADO)
+    if corrida is None:
+        return {
+            "evaluado": False,
+            "modo": MODO_GATEADO,
+            "motivo": f"el arm {MODO_GATEADO} no se corrió en esta corrida",
+            "baseline_fts": dict(BASELINE_FTS),
+        }
+    medido = {
+        nombre: getattr(corrida.metricas, atributo)
+        for nombre, atributo in _ATRIBUTO_BASELINE.items()
+    }
+    return {
+        "evaluado": True,
+        "modo": MODO_GATEADO,
+        "baseline_fts": dict(BASELINE_FTS),
+        "medido": medido,
+        "margen": {
+            nombre: (None if valor is None else valor - BASELINE_FTS[nombre])
+            for nombre, valor in medido.items()
+        },
+        "peso_de_una_pregunta_hit5": PESO_DE_UNA_PREGUNTA,
+        "n_respondibles": corrida.metricas.n_respondibles,
+        "abstencion": "not-evaluable (decisión 0.1 del owner, abierta)",
+    }
 
 
 def _tabla_preguntas(corrida: ResultadoModo) -> list[str]:
@@ -504,6 +647,9 @@ def renderizar_markdown(
     permitir_sintetico: bool = False,
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
+    respuestas: EntradaRespuestas | None = None,
+    bench: BenchSLM | None = None,
+    motivo_bench: str | None = None,
 ) -> str:
     """Render the report. Pure: same arguments in, byte-identical string out."""
     sintetico = _gate_sintetico(procedencia, permitir_sintetico, resultado=resultado)
@@ -569,7 +715,11 @@ def renderizar_markdown(
             f"**Veredicto: {veredicto}**",
             "",
         ]
-        if not go_no_go.evaluable:
+        # Keyed on the MOTIVES, not on `evaluable`: a mode whose gold set is fine
+        # but whose abstention pair has no ratified signal is `evaluable=True`
+        # with a NO EVALUABLE verdict, and the reason for it must not be the one
+        # line the report drops.
+        if go_no_go.motivos_no_evaluable:
             for motivo in go_no_go.motivos_no_evaluable:
                 lineas.append(f"- {motivo}")
             lineas.append("")
@@ -584,7 +734,10 @@ def renderizar_markdown(
     # this measurement, and until now it produced a document with no router
     # section at all: the code existed, the report did not carry it, and the two
     # facts were impossible to tell apart from the artifact.
+    lineas += [*bloque_margen_baseline(resultado), ""]
     lineas += [*bloque_router_para(router), ""]
+    lineas += [*bloque_respuestas_para(respuestas), ""]
+    lineas += [*bloque_bench_para(bench, motivo_bench), ""]
 
     return "\n".join(lineas) + "\n"
 
@@ -598,6 +751,9 @@ def _a_json(
     sintetico: bool,
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
+    respuestas: EntradaRespuestas | None = None,
+    bench: BenchSLM | None = None,
+    motivo_bench: str | None = None,
 ) -> dict[str, Any]:
     versiones = runtime_versions()
     modos: dict[str, Any] = {}
@@ -648,8 +804,10 @@ def _a_json(
                 "n_preguntas": corrida.cobertura.n_preguntas,
                 "sin_candidatos_fts": corrida.cobertura.sin_candidatos_fts,
                 "sin_candidatos_vector": corrida.cobertura.sin_candidatos_vector,
+                "sin_candidatos_bm25": corrida.cobertura.sin_candidatos_bm25,
                 "leg_fts_degradada": corrida.cobertura.leg_fts_degradada,
                 "leg_vector_degradada": corrida.cobertura.leg_vector_degradada,
+                "leg_bm25_degradada": corrida.cobertura.leg_bm25_degradada,
                 "hibrido_degenerado": corrida.hibrido_degenerado,
             },
             "go_no_go": {
@@ -671,6 +829,7 @@ def _a_json(
                         "comparador": barra.comparador,
                         "fuente": barra.fuente,
                         "pasa": barra.pasa,
+                        "no_evaluable": barra.no_evaluable,
                     }
                     for barra in go_no_go.barras
                 ],
@@ -685,6 +844,7 @@ def _a_json(
                     "margen": detalle.margen,
                     "n_fts": detalle.n_fts,
                     "n_vector": detalle.n_vector,
+                    "n_bm25": detalle.n_bm25,
                 }
                 for detalle in corrida.detalles
             ],
@@ -729,9 +889,20 @@ def _a_json(
             "no_resueltas": list(resultado.gold.no_resueltas),
             "evaluable": resultado.gold.precondicion().evaluable,
         },
+        # The machine-readable twin of `bloque_margen_baseline`. Always a key, and
+        # `evaluado` is always a boolean, for the same reason the router block is.
+        "margen_baseline": _json_margen_baseline(resultado),
         # Always a key, and `evaluado` is always a boolean: a machine reader must
         # not have to infer "the router was not scored" from an absent field.
         "router": json_router_para(router),
+        # Answer-level metrics (G7). Always a key, always with `evaluado`: the
+        # checked-in answer set is an unratified shell, and "the figures were not
+        # scored" must not be inferable only from a missing field.
+        "respuestas": json_respuestas_para(respuestas),
+        # The SLM candidate bench (9.6b). Its `veredicto` is ALWAYS `null`:
+        # moving the provider pin is the owner's decision on this table, and
+        # nothing in this pipeline takes it.
+        "slm_bench": json_bench_para(bench, motivo_bench),
         "modos": modos,
     }
 
@@ -746,6 +917,9 @@ def escribir_reporte(
     permitir_sintetico: bool = False,
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
+    respuestas: EntradaRespuestas | None = None,
+    bench: BenchSLM | None = None,
+    motivo_bench: str | None = None,
 ) -> ReporteEscrito:
     """Write the markdown and its machine-readable twin, side by side.
 
@@ -762,6 +936,9 @@ def escribir_reporte(
         permitir_sintetico=permitir_sintetico,
         latencia=latencia,
         router=router,
+        respuestas=respuestas,
+        bench=bench,
+        motivo_bench=motivo_bench,
     )
     datos = _a_json(
         resultado,
@@ -771,6 +948,9 @@ def escribir_reporte(
         sintetico=sintetico,
         latencia=latencia,
         router=router,
+        respuestas=respuestas,
+        bench=bench,
+        motivo_bench=motivo_bench,
     )
 
     destino.mkdir(parents=True, exist_ok=True)
