@@ -1350,3 +1350,92 @@ describe('RainfallDetailPanel — cache freshness on parcel change', () => {
     expect(fetchRainfallAnalysis).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The antecedents surfaces after the six rolling-window reference metrics
+ * joined the group (SDD S3; backend design D1's closing paragraph).
+ *
+ * D1 makes the answer-surface requirement hold BY CONSTRUCTION rather than by
+ * discipline: `ANTECEDENT_ORDER` is an explicit three-item list, and
+ * `RainfallAnswerCard` reads only `snapshot.annual.*`. Both are one-line edits
+ * away from being wrong, and neither has a test that would notice — so this
+ * block is the standing guard, not a restatement of the fold test.
+ */
+describe('RainfallDetailPanel — nine rows in the fold, three in the header (S3)', () => {
+  /** The nine keys `build_snapshot` emits into `antecedents`, in its order. */
+  function nineAntecedents(): Record<string, RainfallMetric> {
+    const reference = (name: string, unit: string, value: number | null): RainfallMetric =>
+      metric({
+        metric: name,
+        unit,
+        value,
+        state: value === null ? 'suppressed' : 'available',
+        reason: value === null ? 'baseline_years_below_minimum' : null,
+        quality: { score: 1, reference_scope: 'zone' },
+      });
+    return {
+      d7: metric({ metric: 'd7', value: 21 }),
+      d7_normal: reference('d7_normal', 'mm', 7),
+      d7_percentile: reference('d7_percentile', 'percentil', 96.9),
+      d30: metric({ metric: 'd30', value: 90 }),
+      d30_normal: reference('d30_normal', 'mm', 30),
+      d30_percentile: reference('d30_percentile', 'percentil', 96.9),
+      d90: metric({ metric: 'd90', value: null, state: 'suppressed', reason: 'antecedent_window_incomplete' }),
+      d90_normal: reference('d90_normal', 'mm', null),
+      d90_percentile: reference('d90_percentile', 'percentil', null),
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setAuth('operador');
+    vi.mocked(resolveRainfallScopes).mockResolvedValue({
+      kind: 'choices',
+      choices: [ZONE],
+      regional_estimate: false,
+    });
+    vi.mocked(fetchRainfallAnalysis).mockResolvedValue({
+      type: 'ready',
+      snapshot: snapshot({ antecedents: nineAntecedents() }),
+    });
+  });
+  afterEach(() => setAuth(null));
+
+  it('the ALWAYS-VISIBLE collapsed header still states exactly three windows', async () => {
+    // The contract `ANTECEDENT_ORDER` exists to hold: a header whose items
+    // move with the data is a header nobody can learn to scan, and nine
+    // entries in ~26 characters at 348 px is the badge-truncation defect
+    // reproduced at the container level. Nine rows are one click away.
+    renderPanel();
+    const header = await screen.findByTestId('rainfall-antecedents-summary');
+
+    expect(header.textContent?.split('·')).toHaveLength(3);
+    expect(header.textContent).toContain('7d');
+    expect(header.textContent).toContain('30d');
+    expect(header.textContent).toContain('90d');
+    // No reference value leaked into it — the header states the TOTALS.
+    expect(header.textContent).not.toMatch(/normal|percentil/i);
+  });
+
+  it('the fold, once opened, renders all NINE rows', async () => {
+    renderPanel();
+    const antecedents = await expandFold('rainfall-antecedents');
+
+    for (const key of Object.keys(nineAntecedents())) {
+      expect(within(antecedents).getByTestId(`rainfall-metric-${key}`)).toBeInTheDocument();
+    }
+    // Spec R5: the fold STATES the zone limit where the reference is shown.
+    expect(antecedents.textContent).toContain('Alcance de la referencia: zona');
+  });
+
+  it('the answer card above the folds still speaks only for the ANNUAL metrics', async () => {
+    // `RainfallAnswerCard` reads `snapshot.annual.*` and nothing else. Six new
+    // sibling keys in another group must not reach the one surface a reader
+    // sees without operating a control — the answer-surface requirement.
+    renderPanel();
+    const card = await screen.findByTestId('rainfall-answer-card');
+
+    expect(card.textContent).not.toMatch(/Antecedente/);
+    expect(card.textContent).not.toMatch(/Alcance de la referencia/);
+  });
+});

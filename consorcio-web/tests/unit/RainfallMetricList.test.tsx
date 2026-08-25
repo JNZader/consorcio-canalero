@@ -20,7 +20,10 @@ import { render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import { RainfallMetricList } from '../../src/components/map2d/rainfall/RainfallMetricList';
+import {
+  RainfallMetricGroup,
+  RainfallMetricList,
+} from '../../src/components/map2d/rainfall/RainfallMetricList';
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../src/lib/api/rainfall';
 
 function metric(overrides: Partial<RainfallMetric> = {}): RainfallMetric {
@@ -430,5 +433,112 @@ describe('RainfallMetricList — the key-driven renderer (R6, design D8)', () =>
 
     expect(screen.queryByTestId('rainfall-metric-x1')).toBeNull();
     expect(screen.getByTestId('rainfall-metric-selected')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The antecedents fold, after the six rolling-window reference metrics joined
+ * the group (SDD S3, backend design D1/D7).
+ *
+ * The fold mounts `RainfallMetricGroup` directly — that is what these tests
+ * render, rather than driving the whole panel, so a failure names the renderer
+ * and not the panel's plumbing.
+ */
+describe('RainfallMetricGroup — the antecedent reference rows (S3)', () => {
+  /** The nine keys `compute.build_snapshot` emits into `antecedents`, in the
+   *  order it emits them (total → normal → percentile, per window). */
+  function antecedentsGroup(): Record<string, RainfallMetric> {
+    const reference = (name: string, unit: string, value: number | null): RainfallMetric =>
+      metric({
+        metric: name,
+        unit,
+        value,
+        state: value === null ? 'suppressed' : 'available',
+        reason: value === null ? 'baseline_years_below_minimum' : null,
+        quality: { score: 1, reference_scope: 'zone' },
+      });
+    return {
+      d7: metric({ metric: 'd7', value: 21 }),
+      d7_normal: reference('d7_normal', 'mm', 7),
+      d7_percentile: reference('d7_percentile', 'percentil', 96.9),
+      d30: metric({ metric: 'd30', value: 90 }),
+      d30_normal: reference('d30_normal', 'mm', 30),
+      d30_percentile: reference('d30_percentile', 'percentil', 96.9),
+      d90: metric({ metric: 'd90', value: null, state: 'suppressed', reason: 'antecedent_window_incomplete' }),
+      d90_normal: reference('d90_normal', 'mm', null),
+      d90_percentile: reference('d90_percentile', 'percentil', null),
+    };
+  }
+
+  function renderGroup(group: Record<string, RainfallMetric>, baseline = '1991-2020') {
+    return render(
+      <MantineProvider env="test">
+        <RainfallMetricGroup group={group} baseline={baseline} />
+      </MantineProvider>
+    );
+  }
+
+  it('states the reference scope in NAMED Spanish, not as a raw quality fragment', () => {
+    // D7's correction to r1: `quality` renders through `stringifyUnknownFields`
+    // as raw English `key=value` under `Calidad:`, and `reference_scope=zone`
+    // does not discharge the spec's "the fold STATES that limit". One named
+    // line, beside the quality line, is what does.
+    renderGroup(antecedentsGroup());
+
+    expect(screen.getByTestId('rainfall-metric-d7_normal')).toHaveTextContent(
+      'Alcance de la referencia: zona'
+    );
+  });
+
+  it('states it on a SUPPRESSED reference metric too', () => {
+    // The limit is the REQUIRED scope of the reference, not the scope this
+    // analysis ran at — so it is exactly as true when the value is withheld,
+    // and that is the case where a reader most needs to know what was asked
+    // for. (`compute._antecedent_reference_metrics` emits it off-zone too.)
+    renderGroup(antecedentsGroup());
+
+    const row = screen.getByTestId('rainfall-metric-d90_percentile');
+    expect(row).toHaveTextContent('Alcance de la referencia: zona');
+    expect(row).toHaveTextContent('Motivo: baseline_years_below_minimum');
+  });
+
+  it('never emits the line for a metric that does not carry the key', () => {
+    // The whole failure mode of a scope line: a row that always prints one
+    // states a limit about a metric that has none. The antecedent TOTALS are
+    // the live example — they are not zone-limited, and they sit in this very
+    // group beside the six that are.
+    renderGroup(antecedentsGroup());
+
+    expect(screen.getByTestId('rainfall-metric-d7')).not.toHaveTextContent(
+      'Alcance de la referencia'
+    );
+    // …and a reference metric served with NO quality at all, which is the
+    // stripped four-field shape `service._unavailable` rewrites to.
+    renderGroup({
+      d7_normal: metric({ metric: 'd7_normal', value: null, state: 'unavailable', quality: {} }),
+    });
+    expect(screen.getAllByTestId('rainfall-metric-d7_normal').at(-1)).not.toHaveTextContent(
+      'Alcance de la referencia'
+    );
+  });
+
+  it('renders all NINE antecedent rows, each under its own Spanish name', () => {
+    // Spec R4 S1: a suppressed row is still a row. Nine keys in, nine rows out
+    // — the fold is where the reader goes for what was served, and a dropped
+    // suppression is a suppression nobody can act on.
+    renderGroup(antecedentsGroup(), '2001-2030');
+
+    for (const key of Object.keys(antecedentsGroup())) {
+      expect(screen.getByTestId(`rainfall-metric-${key}`)).toBeInTheDocument();
+    }
+    // The period travels to the three window normals, exactly as it does to
+    // the annual one — the LI4-004 comparison, on the surface it happens on.
+    for (const key of ['d7_normal', 'd30_normal', 'd90_normal']) {
+      expect(screen.getByTestId(`rainfall-metric-${key}`)).toHaveTextContent('2001-2030');
+    }
+    // …and NOT to the percentiles.
+    for (const key of ['d7_percentile', 'd30_percentile', 'd90_percentile']) {
+      expect(screen.getByTestId(`rainfall-metric-${key}`)).not.toHaveTextContent('2001-2030');
+    }
   });
 });

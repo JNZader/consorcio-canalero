@@ -26,6 +26,7 @@ import {
   type ProvenanceField,
   provenanceFieldValue,
   type RainfallProvenanceHoist,
+  referenceScopeLine,
   stringifyUnknownFields,
 } from './rainfallFormat';
 
@@ -334,6 +335,13 @@ export function RainfallMetricRow({ name, metric, baseline, hoist }: RainfallMet
           (D9a rule 2). Not `evidenceFooter`, which says "en este análisis" and
           is a claim about the whole envelope (UXJA-205). */}
       <MetadataLine text={metricEvidenceLine(metric)} />
+      {/* The metric's OWN scope limit, NAMED (design D7). Beside the raw
+          `Calidad:` line below rather than instead of it: that line is the
+          machine-readable evidence, this one is the statement the spec
+          requires the fold to make where the reference is displayed. Rendered
+          only for a metric that carries the key — the antecedent totals in
+          this same group are not zone-limited. */}
+      <MetadataLine text={referenceScopeLine(metric)} />
       <MetadataLine
         text={
           stringifyUnknownFields(metric.quality).length > 0

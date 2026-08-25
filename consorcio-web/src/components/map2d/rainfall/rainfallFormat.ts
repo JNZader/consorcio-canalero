@@ -42,7 +42,40 @@ const RAINFALL_METRIC_LABELS: Record<string, string> = {
   d7: 'Antecedente 7 días',
   d30: 'Antecedente 30 días',
   d90: 'Antecedente 90 días',
+  // The rolling-window climatological reference (backend design D1). Flat
+  // siblings of the totals above, so the wire key IS the vocabulary key —
+  // these strings mirror `service.SUMMARY_METRIC_LABELS` one for one, which is
+  // the coherence rule: the narrative the backend writes and the badge this
+  // file draws must name the same metric with the same words.
+  d7_normal: 'Antecedente 7 días normal',
+  d30_normal: 'Antecedente 30 días normal',
+  d90_normal: 'Antecedente 90 días normal',
+  d7_percentile: 'Antecedente 7 días percentil',
+  d30_percentile: 'Antecedente 30 días percentil',
+  d90_percentile: 'Antecedente 90 días percentil',
 };
+
+/**
+ * The metric keys whose LABEL names a baseline period.
+ *
+ * A SET, not the `key === 'normal'` identity test it replaced. That identity
+ * was correct for an envelope with one normal in it; the backend now serves
+ * four (`annual_normal` plus one per antecedent window), and an identity test
+ * puts "Normal 1991-2020" three rows above a period-less "Antecedente 7 días
+ * normal" in one fold — LI4-004, with the reader left to guess whether the two
+ * numbers are computed over the same thirty years.
+ *
+ * The three window PERCENTILES are deliberately absent, for the same reason
+ * `percentile` is: a rank's period belongs to the sentence that states it
+ * ("Percentil 27 de 1991-2020"), not to the metric's name. Mirrors
+ * `service.BASELINE_LABELED_METRICS` on the backend.
+ */
+const BASELINE_LABELLED_METRICS: ReadonlySet<string> = new Set([
+  'normal',
+  'd7_normal',
+  'd30_normal',
+  'd90_normal',
+]);
 
 /**
  * How a resolved analysis scope is NAMED on screen.
@@ -231,7 +264,7 @@ const RAINFALL_STATE_LABELS: Record<RainfallMetricState, string> = {
  */
 export function metricLabel(key: string, baseline?: string | null): string {
   const label = RAINFALL_METRIC_LABELS[key] ?? key;
-  return key === 'normal' && baseline ? `${label} ${baseline}` : label;
+  return BASELINE_LABELLED_METRICS.has(key) && baseline ? `${label} ${baseline}` : label;
 }
 
 /**
@@ -709,6 +742,35 @@ export function stringifyUnknownFields(value: unknown): string {
     )
     .map(([key, entry]) => `${key}=${String(entry)}`)
     .join('; ');
+}
+
+/**
+ * The scope limit of ONE metric, in the reader's language (backend design D7).
+ *
+ * The six rolling-window reference metrics carry `quality.reference_scope`,
+ * and the spec requires the fold to STATE that limit where the reference is
+ * displayed. `quality` already reaches the row through
+ * {@link stringifyUnknownFields}, but as a raw English `reference_scope=zone`
+ * fragment inside a `Calidad:` line — a machine-readable fact, not a statement
+ * a reader can act on. So this is one named line beside it, not instead of it.
+ *
+ * Rendered ONLY for a metric that carries the key. A row that always printed
+ * one would state a limit about a metric that has none: the antecedent TOTALS
+ * sit in the same group and are not zone-limited, which is the whole
+ * conflation D7 rejected a root-level flag to avoid.
+ *
+ * The scope word comes from {@link RAINFALL_SCOPE_LABELS} rather than from a
+ * second literal — one vocabulary, so the panel's scope control and this line
+ * cannot come to call the same scope two different things. An unmodelled value
+ * prints as ITSELF: an untranslated fact beats a dropped line.
+ */
+export function referenceScopeLine(metric: RainfallMetric): string | null {
+  const quality = metric.quality;
+  if (quality === null || typeof quality !== 'object' || Array.isArray(quality)) return null;
+  const scope = (quality as Record<string, unknown>).reference_scope;
+  if (typeof scope !== 'string' || scope.length === 0) return null;
+  const known = RAINFALL_SCOPE_LABELS[scope as keyof typeof RAINFALL_SCOPE_LABELS];
+  return `Alcance de la referencia: ${known === undefined ? scope : known.toLowerCase()}`;
 }
 
 /**
