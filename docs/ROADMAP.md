@@ -6,7 +6,7 @@
 > los checkouts locales — y la memoria persistente de sesión (engram, proyecto
 > `consorcio-canalero`).
 >
-> Última actualización: **2026-08-24** · Mantiene: @javier
+> Última actualización: **2026-08-25** · Mantiene: @javier
 
 ---
 
@@ -22,23 +22,21 @@
 | **RAG U2** — retrieval B50 | #219 | BM25 in-process + bge-reranker-v2-m3, fiel línea-a-línea a la campaña medida (hit@5 0.759). Barras ratificadas. |
 | **RAG U3** — sidecar de embeddings | #220 | Container BGE-M3 CPU-only con lock `--require-hashes`; guard de identidad por tupla `(modelo, revision_hf)` canonicalizada. |
 
-## 🔄 En vuelo
+## ✅ RAG — cadena COMPLETA (2026-08-25)
 
-| Ítem | Estado |
-|---|---|
-| **RAG U4** — router | PR #222 abierto. Barra ratificada CON datos (accuracy held-out ≥0.70 · `operational→legal`=0 como conteo · `mixto→legal`≤2 con follow-up). Gold set de 49 preguntas ratificado. |
-| **RAG U5** — generación | Fix-forward del verify en curso (CRITICAL: regla sin-cita evadible por título markdown pegado — clasificación por línea). La compuerta de privacidad sobrevivió el bypass-hunt completo. |
+Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #219 · U3 #220 · U4 #222 · U5 #224 · U6 #225 · U7 #226 · U8 #227 · U9 #228 · U10 #229. Cada una con ciclo apply → verify adversarial → fix-forward. El runbook de encendido vive en `docs/rag/runbook-encendido.md`.
 
-## 📋 La cola de la semana (orden acordado)
+## 📋 La cola actual (orden acordado)
 
-1. **RAG U6-U10**: proveedores (`deepseek-v4-flash` vía bridge + verificación de términos no-training ANTES de encender) → buzón asincrónico HTTP → página CD en consorcio-web → eval (answer-set n≥30 graded + brazo bm25_ce desde la GPU + **escalera SLM 9.6b**: 8B→2B→≤1B, cada peldaño por medición) → runbook G9.
-   - Decisión del owner pendiente en el camino: **abstención (0.1)** — se corta en U9 con más gold. Única decisión de Fase 0 abierta.
-2. **🎉 Ceremonia de encendido conjunto** (decisión 2026-08-24: caminos + RAG en UN viaje al box):
-   deploy backend → `alembic upgrade head` (el box está en `conocimiento_004`; camina 0021→0022→0023→005→006 de una) → ETL red_vial (dry-run vs GEE PRIMERO) → task de cruces → verificación no-regresión → re-ingest corpus RAG con tres clases → runbook RAG → flags.
-   Después: **archives** de flujo-caminos y consorcio-conocimiento-semantico.
-3. **Multi-hazard viewer re-cut** — retomar en 2/7: faltan b3 (lifecycle, el grande), b3b, c6, c5, e2e+CI estricto.
-4. **Lluvia v2** — exploración lista (`openspec/changes/lluvia-intensidad-subdiaria/explore.md`): recomendación = `lluvia-antecedente-referencia` (normal+percentil por ventana, CERO GEE nuevo) + higiene del bug mm/hr de IMERG como fix-entre-SDDs. Espera el "dale" del owner.
-5. **Pared de "Discrepancias" en la ficha territorial** — fix UI propuesto (comprimir 153 `expected_interval` a un rango); espera el "dale".
+1. **Actos del owner para el encendido** (gate §4.3 del runbook — nada defaultea):
+   - Firma de términos del proveedor (6.7 — procedimiento en `docs/rag/proveedor-terminos.md`)
+   - Decisión de abstención (0.1 — la única de Fase 0 abierta; se corta con los datos de la eval)
+   - Corridas GPU en la workstation: `answer_set` n≥30 por el path real + grading + re-grade ciego ≥1 día · `slm_bench` (deepseek vs Qwen3-8B — la escalera 9.6b) · margen real de `bm25_ce` · knobs de costo (A2)
+2. **🎉 LA CEREMONIA DE ENCENDIDO CONJUNTO** — `docs/rag/runbook-encendido.md` paso a paso: el box camina 6 revisiones (004→0021→0022→0023→005→006→007), ETL red_vial con dry-run vs GEE, task de cruces, re-ingest con 3 clases, sidecar, worker por systemd en la workstation, flags al final. Incluye el O.1 de flujo-caminos.
+3. **Archives**: `flujo-caminos` y `consorcio-conocimiento-semantico` (post-ceremonia; 10.4 se marca con la medición real del box).
+4. **Multi-hazard viewer re-cut** — retomar en 2/7: b3 (lifecycle), b3b, c6, c5, e2e+CI estricto.
+5. **Lluvia v2** — `lluvia-antecedente-referencia` (exploración lista, espera el dale) + higiene mm/hr de IMERG.
+6. **Pared de "Discrepancias" en la ficha** — fix UI propuesto, espera el dale.
 
 ## 🗄️ Backlog (anotado, sin apuro)
 
