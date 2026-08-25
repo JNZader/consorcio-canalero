@@ -125,6 +125,26 @@ enqueues, and a worker with a GPU processes items in batches. **Without this
 process the queue has no consumer**: items sit `pendiente` forever and the only
 symptom is `GET /api/v2/conocimiento/estado` reporting them ageing.
 
+**Where the postman itself comes from, stated explicitly and not left to a table
+cell.** The two artifacts this section commands — the entrypoint
+`gee-backend/scripts/rag_worker.py` and the knob `CONOCIMIENTO_WORKER_POLL_S`
+(`conocimiento_worker_poll_s` in `app/config.py`) — **ship with the U7 postman
+commit**, `feat(conocimiento): U7 — asynchronous mailbox: queue, worker, HTTP
+surface and its postman (#226)`, which is already on `main`. The branch this
+runbook was written on was cut before that commit landed, so **in this
+pre-replant tree neither file nor knob exists**: `app/domains/conocimiento/
+trabajador.py` is here, its command-line entrypoint is not. Nothing in this
+section is therefore runnable from this branch alone, and that is a property of
+the branch, not of the procedure — replanting onto `main` is what makes the
+systemd unit below name a script that exists, at which point this paragraph is
+trivially true rather than a caveat. **Verify it rather than assume it**, on the
+tree that will actually be deployed:
+
+```
+ls gee-backend/scripts/rag_worker.py
+rg -n 'conocimiento_worker_poll_s' gee-backend/app/config.py
+```
+
 **Where it runs, stated before the block, because getting this wrong wastes a
 maintenance window.** The worker reranks with `bge-reranker-v2-m3` on **CUDA**.
 The Hetzner box is a CX33: 2 shared vCPU, **no GPU**. A3 resolved the GPU host as
@@ -161,6 +181,14 @@ KillSignal=SIGTERM
 [Install]
 WantedBy=multi-user.target
 ```
+
+  ⚠ **`EnvironmentFile=` is systemd's parser, not compose's `env_file:`** — it
+  applies its own shell-style quoting rules (surrounding quotes are stripped, a
+  trailing `\` continues the line onto the next), so the same `.env` that the
+  backend container reads can reach the worker with *different* values; a quoted
+  secret and anything sharing a line with a `#` are the usual two. Read back what
+  the process actually got, never what the file looks like:
+  `tr '\0' '\n' < /proc/$(systemctl show -p MainPID --value consorcio-conocimiento-worker)/environ`.
 
   `SIGTERM` is the correct stop signal and needs no drain: `reclamar_pendiente`
   never commits an intermediate state, so an abandoned transaction leaves the
@@ -290,19 +318,41 @@ docker compose exec conocimiento-embed python -c \
 
 ### Step 3 — health-verify the sidecar
 
-Not "is it up": **is it the pinned pair.**
+Not "is it up": **is it the pinned pair, and does it actually produce vectors.**
+Three probes, in the design's order — `/health`, `/ready`, and **one real embed
+of a known string**. All three run through `docker compose exec`, because the
+service is `expose`d and not host-published (§0.1).
 
 ```
 docker compose exec conocimiento-embed python -c \
+  "import json,urllib.request;print(json.load(urllib.request.urlopen('http://localhost:8002/health',timeout=5)))"
+docker compose exec conocimiento-embed python -c \
   "import json,urllib.request;print(json.load(urllib.request.urlopen('http://localhost:8002/ready',timeout=5)))"
+docker compose exec conocimiento-embed python -c \
+  "import json,urllib.request; p=urllib.request.Request('http://localhost:8002/embed', data=json.dumps({'textos':['consorcio canalero']}).encode('utf-8'), headers={'Content-Type':'application/json'}); d=json.load(urllib.request.urlopen(p,timeout=60)); v=d['vectores'][0]; print(d['modelo'], d['revision_hf'], d['dims'], len(v), v[:3])"
 ```
 
-Assert the reported `modelo` is `BAAI/bge-m3` and `revision_hf` is the pinned
-**resolved 40-hex commit** — the sidecar reports the resolved hash, never the
-symbolic tag it was asked for (`revision_solicitada` is reported separately, and
-is not the identity).
+`/health` answers `{"vivo": true}` the moment the process is up and says nothing
+about the model. `/ready` answers `{"listo": true, ...}` only after the weights
+loaded **and** the warm-up embed completed; until then both it and `/embed` are
+`503` with `causa: embedder_no_listo`.
 
-* **Failure state:** a different revision is reported ⇒ **STOP**.
+Assert, on **`/ready` and on the `/embed` response alike**, that `modelo` is
+`BAAI/bge-m3` and `revision_hf` is the pinned **resolved 40-hex commit** — the
+sidecar reports the resolved hash, never the symbolic tag it was asked for
+(`revision_solicitada` is reported separately and is not the identity). Then
+assert the vector itself: `len(v)` equals the reported `dims`, and the numbers
+are floats, not an empty list.
+
+**The embed is not ceremony.** `/ready` is a statement about load state; it is
+`/embed` that exercises the encoder the corpus vectors were produced with, and
+the identity travels back **with the batch** precisely so the caller compares
+what produced *these* numbers rather than what a separate `/ready` call reported
+at some other moment. "The model says it loaded" and "the model returns a
+vector" are different facts, and only the second one is what the surface needs.
+
+* **Failure state:** a different revision is reported by *either* endpoint, the
+  embed 503s, or the vector length disagrees with `dims` ⇒ **STOP**.
 * **Recovery:** fix `EMBED_REVISION_HF` and restart. Proceeding here means every
   later step is calibrated against the wrong vector space.
 
@@ -331,12 +381,34 @@ docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q postgres)"
 
 ### Step 6 — `alembic upgrade head`
 
-The box is on **`conocimiento_004`**. Head is **`conocimiento_007`**, so this
-walks `005` (widen the `clasificacion` CHECK to admit `institucional`, add the
-nullable `clasificacion_evidencia` column), `006` (`decision_ruta`) and `007`
-(`buzon_consultas`).
+The box is on **`conocimiento_004`**. Head is **`conocimiento_007`**, and the
+path between them is **six revisions, not three**: `conocimiento_005`'s
+`down_revision` is `0023_add_relevamiento_tramo`, so the `flujo-caminos`
+revisions sit *inside* this arc's own upgrade path. That is not an accident of
+enumeration — it is the structural reason the ceremony is joint and the upgrade
+runs exactly once.
+
+| # | Revision | What it creates |
+|---|---|---|
+| 1 | `0021_add_red_vial` | `red_vial` — `flujo-caminos` |
+| 2 | `0022_add_cruce_camino` | `cruce_camino` — `flujo-caminos` |
+| 3 | `0023_add_relevamiento_tramo` | `relevamiento_tramo` **and** `tramo_clasificacion_candidata` — `flujo-caminos` |
+| 4 | `conocimiento_005` | widens the `clasificacion` CHECK to admit `institucional`; adds the nullable `clasificacion_evidencia` column |
+| 5 | `conocimiento_006` | `decision_ruta` |
+| 6 | `conocimiento_007` | `buzon_consultas` |
+
+**Four road tables appearing during this step — `red_vial`, `cruce_camino`,
+`relevamiento_tramo`, `tramo_clasificacion_candidata` — is EXPECTED and is not
+this arc running more than it was asked to.** They are `flujo-caminos` O.1's
+objects, carried by the single shared upgrade the interleaving rule at the top
+of this file (point 3) already committed to. An operator who sees them and stops
+the migration halfway is creating the one failure state this step calls
+dangerous.
+
+Print the plan before running it, so the six are seen before they are applied:
 
 ```
+docker compose run --rm backend alembic history -r conocimiento_004:head
 docker compose run --rm backend alembic upgrade head
 docker compose run --rm backend alembic heads   # expect: conocimiento_007 (head)
 ```
@@ -574,6 +646,28 @@ of the design listed four probes, all of them database reads, and therefore had
 no probe at all for the two steps whose failure mode is a container that came
 back wrong.
 
+### Every correction this runbook makes to the design's G9 section, in one list
+
+The design is the sealed plan; this document is the plan meeting the tree that
+was actually built. Where the two disagree, **the tree wins and the disagreement
+is written down here** rather than applied silently — a runbook that quietly
+diverges from its design leaves the next reader with two documents and no way to
+tell which one was checked.
+
+| # | The design says | This runbook says, and the tree's evidence |
+|---|---|---|
+| 1 | `ports: - "127.0.0.1:8002:8002"` on the sidecar (`design.md:933-955`) | `expose: - "8002"` — `docker-compose.yml:368-369`. The surface reaches it over the compose network; a host port buys nothing |
+| 2 | `hf-cache:/root/.cache/huggingface` | `conocimiento-embed-cache:/cache/huggingface` — `docker-compose.yml:379`, the image's real `HF_HOME` |
+| 3 | `healthcheck` on `/ready` via `curl`, `start_period: 180s` | `/health` through the image's own Python — `docker-compose.yml:382-391`. `/ready` restart-loops the container through its own cold start, and `curl` is not in the image |
+| 4 | Reboot probe for step 3: `curl -fsS http://127.0.0.1:8002/ready` from the host | `docker compose exec conocimiento-embed python -c ...` — the direct consequence of **1** and **3**: no host port to curl, and no curl to do it with |
+| 5 | Step 6 "now also carries **`conocimiento_005`**" — three revisions from `conocimiento_004` | **six** revisions. `conocimiento_005`'s `down_revision` is `0023_add_relevamiento_tramo`, so `0021`/`0022`/`0023` are on this arc's upgrade path. Enumerated in full at step 6 |
+| 6 | Probe for step 9: `SELECT embedding_modelo, embedding_revision_hf, sintetico FROM rag_corpus` (`design.md:988`) | the column is **`embedding_sintetico`** — `models.py:150`. `sintetico` is the spelling of the *artifact manifest* field (`rag_load_vectors.py:444`) and of `ProcedenciaEmbeddings.sintetico` (`repository.py:911`), never of the column; run as written the probe fails with `column "sintetico" does not exist`, which is a probe that cannot answer the question it exists for |
+
+Corrections **5** and **6** are the two that would have fired during a window
+rather than before one: 5 as an operator halting a correct migration because
+four unexpected road tables appeared, 6 as a reboot probe erroring out at the
+exact moment somebody needs to know whether the vectors survived.
+
 ### Sealed rollback order
 
 **flag off → `alembic downgrade conocimiento_001` → revert the image.**
@@ -712,6 +806,33 @@ enforces them but this list.
 | 9 | `CONOCIMIENTO_QUOTA_DIARIA_USUARIO` and `CONOCIMIENTO_SPEND_CEILING_USD` set to real values | both ship as `0`, blocked on the A2 cost re-derivation |
 | 10 | The **worker is running** — §0.2 deployed, not started by hand | `GET /estado`: `ultima_corrida_worker` recent, `worker_demorado` false |
 | 11 | Box measurements taken (§4.1) | `artifacts/rag/latencia-box.json` and the `docker stats` record |
+| 12 | The **abstention-threshold artifact belongs to the snapshot about to be served** | the header of `app/domains/conocimiento/eval/umbral_abstencion.yaml` against `rag_corpus`'s provenance row — the pre-flight below |
+
+**Fact 12 is a pre-flight precisely so it is not a post-mortem.**
+`service.verificar_umbral_abstencion` reads that artifact **per retrieval**, and
+a `derivado` threshold whose `corpus_sha`, `embedding_modelo` or
+`embedding_revision_hf` does not match the active snapshot raises
+`UmbralAbstencionNoCorresponde` — a `CorpusNoServible`, which the worker turns
+into `no_disponible` and the synchronous surface into `503
+base_de_conocimiento_no_lista`. Discovering that *after* step 11 means every
+question a CD member asks comes back refused with nothing else having changed.
+Read both operands before flipping the flag:
+
+```
+docker compose exec backend python -c \
+  "from app.domains.conocimiento.eval.umbral_abstencion import cargar_umbral as c; u=c(); print(u.estado, u.corpus_sha, u.embedding_modelo, u.embedding_revision_hf, u.umbral)"
+docker compose exec postgres psql -U consorcio -d consorcio -c \
+  "SELECT embedding_modelo, embedding_revision_hf, embedding_sintetico FROM rag_corpus WHERE corpus_sha = '12043582bf8016288a7e8084e85a4b713a97af2f';"
+```
+
+**What passes:** `estado: no_derivado` — the shipped state today, while owner
+decision 0.1 is open — passes **silently and by design**: there is no number, so
+nothing can be served against the wrong one. **What must match:** if the
+artifact ever reads `derivado`, all three of its pins must equal the row above,
+and `cargar_umbral` additionally refuses a `derivado` artifact whose header is
+incomplete, because `None == None` against a snapshot with absent provenance is
+a vacuous pass. This pre-flight *confirms* which of the two states the box is in;
+it does not assume the shipped one.
 
 **Fact 8 is a stop, not a caveat.** The owner explicitly deferred the abstention
 policy: reranker confidence is a measurably worse signal than cosine, and the two
