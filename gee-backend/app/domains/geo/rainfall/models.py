@@ -1,11 +1,12 @@
 """Append-only Rainfall evidence and immutable interval facts."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     Index,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, Session, mapped_column, validates
@@ -192,11 +194,155 @@ Index(
 )
 
 
+class RainfallExtremeEvent(UUIDMixin, Base):
+    """One extreme-rainfall event span, detected or curated (design.md D2/D8).
+
+    Append-only, like every other table in this module (D13, ``_IMMUTABLE_TYPES``
+    below): a catalog row is a permanent public statement about the weather, so
+    the detector never edits one -- a changed telling is a NEW generation under
+    a new ``detector_revision``, with the old rows retained and still readable
+    under their OWN sealed parameters.
+
+    **Two provenances with genuinely different obligations.** A ``detected`` row
+    was ranked and must carry the whole evidence set; a ``curated`` row is
+    institutional memory that was NEVER ranked. Declaring the statistics NOT
+    NULL would leave only two ways to seed the three legacy anchors: fabricate
+    numbers for an unranked event -- which spec R6 (No Invented Events) forbids
+    outright -- or fail the migration. So the rule lives in the
+    provenance-conditional CHECK pair (``ck_detected_complete`` /
+    ``ck_curated_unranked``), which says the true thing instead.
+
+    ``clipped_at_span_end`` is DERIVED, never a column: whether an event was cut
+    by the frozen span's last day is a function of ``end_date`` and the span
+    sealed on the row, and a stored copy would go stale the moment a later
+    generation widened the span.
+
+    **Every JSON column here is ``none_as_null=True``, and that is load-bearing,
+    not style.** SQLAlchemy's default renders a Python ``None`` into a JSON
+    ``null`` VALUE, which is emphatically not SQL ``NULL``: without the flag a
+    detected row written with ``fired_windows=None`` satisfies ``fired_windows
+    IS NOT NULL`` and sails straight through ``ck_detected_complete``. Measured,
+    not reasoned about -- three cases of this suite passed a row the CHECK was
+    written to refuse until the flag was set. The CHECK pair is the whole reason
+    the statistics can be nullable at all, so a JSON default that quietly
+    satisfies it defeats the schema's only real invariant.
+    """
+
+    __tablename__ = "rainfall_extreme_event"
+    __table_args__ = (
+        # The path lookup the imagery bridge resolves an id through. FULL, not
+        # partial: `event_key` is NOT NULL on both provenances (curated rows
+        # carry the legacy slugs), so there is no NULL here to make rows
+        # spuriously distinct -- which is exactly the reason the OTHER unique
+        # index, over a nullable `tier`, has to be partial.
+        UniqueConstraint(
+            "source_id",
+            "scope_kind",
+            "scope_id",
+            "scope_version",
+            "detector_revision",
+            "event_key",
+            name="uq_rainfall_extreme_event_key",
+        ),
+        CheckConstraint(
+            "provenance <> 'detected' OR ("
+            "tier IS NOT NULL AND max_percentile IS NOT NULL AND "
+            "fired_windows IS NOT NULL AND sealed_detection_params IS NOT NULL AND "
+            "peak_date IS NOT NULL AND climatology_span_start IS NOT NULL AND "
+            "climatology_span_end IS NOT NULL AND curated_payload IS NULL)",
+            name="ck_detected_complete",
+        ),
+        CheckConstraint(
+            "provenance <> 'curated' OR ("
+            "tier IS NULL AND max_percentile IS NULL AND "
+            "fired_windows IS NULL AND sealed_detection_params IS NULL AND "
+            "peak_date IS NULL AND climatology_span_start IS NULL AND "
+            "climatology_span_end IS NULL AND curated_payload IS NOT NULL)",
+            name="ck_curated_unranked",
+        ),
+        # Enforced in BOTH directions on purpose. The forward half is what makes
+        # CRITICAL-4 ("curated rows vanish on a revision bump") structurally
+        # impossible rather than policy-dependent; the reverse half stops a
+        # detected row from wearing the sentinel and being swept up by every
+        # curated read for free. A NULL revision would have served the same
+        # exemption while quietly defeating the `event_key` unique above.
+        CheckConstraint(
+            "(provenance = 'curated') = (detector_revision = 'curated')",
+            name="ck_curated_revision_sentinel",
+        ),
+        CheckConstraint("tier IS NULL OR tier IN ('extrema', 'alta')", name="ck_tier_domain"),
+        CheckConstraint("provenance IN ('detected', 'curated')", name="ck_provenance_domain"),
+        CheckConstraint(
+            "end_date >= start_date AND "
+            "(peak_date IS NULL OR (peak_date >= start_date AND peak_date <= end_date))",
+            name="ck_dates_ordered",
+        ),
+    )
+
+    source_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    scope_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    scope_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    detector_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    provenance: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: The SERVED id -- `ext_YYYYMMDD` / `alt_YYYYMMDD` for detected rows, the
+    #: legacy slugs (`mar_2015`, ...) for curated ones. The UUID primary key is
+    #: a database key and never leaves the database.
+    event_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    tier: Mapped[str | None] = mapped_column(String(16))
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    peak_date: Mapped[date | None] = mapped_column(Date)
+    max_percentile: Mapped[float | None] = mapped_column(Float)
+    fired_windows: Mapped[dict | None] = mapped_column(JSON(none_as_null=True))
+    #: The full frozen constants block (D5) plus its digest, sealed PER ROW so
+    #: the row is self-describing without reading the code that wrote it.
+    sealed_detection_params: Mapped[dict | None] = mapped_column(JSON(none_as_null=True))
+    climatology_span_start: Mapped[date | None] = mapped_column(Date)
+    climatology_span_end: Mapped[date | None] = mapped_column(Date)  # exclusive
+    curated_payload: Mapped[dict | None] = mapped_column(JSON(none_as_null=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# The identity of a DETECTED row. PARTIAL, and the partiality is the whole
+# point: `tier` is NULL on every curated row, and in Postgres NULL != NULL, so
+# a plain unique over these columns would treat every curated row as distinct
+# from every other -- the constraint would keep existing while it stopped
+# constraining, with no error anywhere to notice. Restricting it to detected
+# rows makes it say exactly what it means. `tier` is IN the key because both
+# tiers are persisted (spec R1 S2) and an `alta` span is a superset of the
+# `extrema` spans inside it, so one `start_date` routinely hosts one row of
+# each: a key without `tier` collides on the ratified behaviour.
+Index(
+    "uq_rainfall_extreme_event_identity",
+    RainfallExtremeEvent.source_id,
+    RainfallExtremeEvent.scope_kind,
+    RainfallExtremeEvent.scope_id,
+    RainfallExtremeEvent.scope_version,
+    RainfallExtremeEvent.detector_revision,
+    RainfallExtremeEvent.tier,
+    RainfallExtremeEvent.start_date,
+    unique=True,
+    postgresql_where=(RainfallExtremeEvent.provenance == "detected"),
+)
+
+# The serving read (D12): one generation, optionally one tier, newest first.
+Index(
+    "ix_rainfall_extreme_event_serving",
+    RainfallExtremeEvent.detector_revision,
+    RainfallExtremeEvent.tier,
+    text("start_date DESC"),
+)
+
+
 _IMMUTABLE_TYPES = (
     RainfallSourceEligibility,
     RainfallIntervalValue,
     RainfallIntervalLifecycle,
     RainfallAnalysisRevision,
+    RainfallExtremeEvent,
 )
 
 
