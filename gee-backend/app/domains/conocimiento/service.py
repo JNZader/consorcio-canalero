@@ -453,6 +453,50 @@ class CorpusNoServible(RuntimeError):
     """
 
 
+class UmbralAbstencionNoCorresponde(CorpusNoServible):
+    """The shipped abstention threshold was calibrated for a different base.
+
+    A subclass of `CorpusNoServible` rather than a new category, because the
+    consequence is identical and already wired: the worker turns it into
+    `no_disponible` naming the exception, and the synchronous surface answers
+    `base_de_conocimiento_no_lista`. Both say "this deployment is not ready",
+    which is what an abstention threshold belonging to another corpus means —
+    as opposed to "the corpus has nothing applicable", which is the one thing it
+    must never be confused with.
+    """
+
+
+def verificar_umbral_abstencion(db: Session, corpus_sha: str) -> None:
+    """Task 9.6 — serving reads the threshold artifact and refuses on mismatch.
+
+    Read per retrieval and against LOADED state, for the same reason the three
+    enablement facts are: re-deriving the threshold is a deploy, never a code
+    change, and a check that ran once at import would keep serving against a
+    stale number for as long as the process lived.
+
+    A `no_derivado` artifact passes silently. That is not laxity: there is no
+    number, so nothing can be served against the wrong one, and whether the
+    surface may be enabled at all with no ratified abstention bar is owner
+    decision 0.1 — a flag, not this function.
+    """
+    from app.domains.conocimiento.eval.umbral_abstencion import (
+        UmbralAbstencionDivergente,
+        cargar_umbral,
+        verificar_identidad,
+    )
+
+    procedencia = procedencia_embeddings(db, corpus_sha)
+    try:
+        verificar_identidad(
+            cargar_umbral(),
+            corpus_sha=corpus_sha,
+            embedding_modelo=procedencia.modelo if procedencia else None,
+            embedding_revision_hf=procedencia.revision_hf if procedencia else None,
+        )
+    except UmbralAbstencionDivergente as exc:
+        raise UmbralAbstencionNoCorresponde(str(exc)) from exc
+
+
 def _recuperar_bm25_ce(
     db: Session,
     corpus_sha: str,

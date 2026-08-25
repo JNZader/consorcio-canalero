@@ -121,6 +121,58 @@ module-path = [
   # "app/domains/conocimiento/fusion.py",
   # "app/domains/conocimiento/abstention.py",
   # "app/domains/conocimiento/eval/metrics.py",
+  #
+  # ── consorcio-rag (task 9.7): los cuatro targets que el diseno nombra para
+  #    V1. MISMO estado que el bloque de arriba y por el MISMO motivo: los tests
+  #    existen y no tocan la base, pero el unico interprete local no tiene
+  #    cosmic-ray instalado, y la regla del repo es no cablear lo no medido.
+  #
+  #    Por que estos cuatro y no otros:
+  #      routing.py       -> la matriz de confusion decide si una pregunta
+  #                          operativa se contesta como legal. La celda
+  #                          `operational -> legal` es la que fabrica una
+  #                          afirmacion sobre la deuda de una persona real, asi
+  #                          que un mutante vivo ahi es una barra decorativa.
+  #                          tests/new/conocimiento/test_routing.py
+  #      generacion.py    -> la verificacion de citas post-hoc: clave inventada,
+  #                          afirmacion sin cita, marcador faltante, truncado y
+  #                          respuesta vacia. Es el piso de seguridad entero del
+  #                          sistema — lo que hace que un generador mas debil
+  #                          degrade en rechazos visibles y no en fabricacion
+  #                          silenciosa. tests/new/conocimiento/test_generacion.py
+  #      eval/answers.py  -> las metricas por respuesta (9.1-9.4): el universo
+  #                          post-exclusion, el par de abstencion end-to-end y
+  #                          los pines. Un mutante que sobreviva aca publica una
+  #                          cifra que decide la habilitacion del serving.
+  #                          tests/new/conocimiento/test_eval_answers.py
+  #      recuperacion/bm25.py -> el scorer de candidatos del arm gateado. El IDF
+  #                          es lo unico que separa BM25 de `ts_rank_cd` (0.759
+  #                          contra 0.655 medido), y el test de IDF esta escrito
+  #                          justo con la forma que la mutacion sabe auditar:
+  #                          un corpus donde tf y longitud son constantes, asi
+  #                          que borrar el factor IDF cambia el orden.
+  #                          tests/new/conocimiento/test_recuperacion_bm25.py
+  #
+  #    Umbrales: NO se inventa ninguno nuevo. Estos entran al gate con el mismo
+  #    piso de 0.30 que `cosmic_gate.py` ya aplica y que
+  #    `tests/test_ci_workflow_contracts.py` clava como literal en backend.yml y
+  #    deploy.yml — moverlo es un cambio aparte.
+  #
+  #    Comando de medicion (cuando haya un 3.11 con cosmic-ray):
+  #      cosmic-ray init .cosmic-ray.conocimiento.toml /tmp/cr-rag.sqlite
+  #        (test-command "python3.11 -m pytest
+  #         tests/new/conocimiento/test_routing.py
+  #         tests/new/conocimiento/test_generacion.py
+  #         tests/new/conocimiento/test_eval_answers.py
+  #         tests/new/conocimiento/test_recuperacion_bm25.py -q")
+  #      cosmic-ray exec /tmp/cr-rag.sqlite && scripts/cosmic_gate.py
+  #    y recien ahi decidir gate compartido o job propio. NO cablear a CI antes
+  #    de tener el numero.
+  # issue: measure
+  # "app/domains/conocimiento/routing.py",
+  # "app/domains/conocimiento/generacion.py",
+  # "app/domains/conocimiento/eval/answers.py",
+  # "app/domains/conocimiento/recuperacion/bm25.py",
   # TODO(mutation-coverage): falta la etapa 3 -- auth/refresh_tokens.py (300
   # mutantes, el de mayor valor y el mas caro). La receta ya esta probada dos
   # veces y NO es "correr los tests con DB mas rapido": el service no toca la

@@ -839,10 +839,17 @@ re-estimated before the chain strategy is picked.)*
 - [ ] 9.5 **BLOCKED by decision 0.1** — encode whichever abstention bar the owner ratifies into
       `eval/umbral_abstencion.yaml` and the go/no-go block. Until then the row prints `not-evaluable` and the
       flag stays off. Do not pick a bar in code.
-- [ ] 9.6 GREEN: `eval/umbral_abstencion.yaml` header `(corpus_sha, embedding_modelo, embedding_revision_hf,
+      *(U9 apply, 2026-08-24: left OPEN deliberately, and the surrounding machinery was built so it
+      stays honest while it is. `eval/umbral_abstencion.yaml` ships `estado: no_derivado` with `umbral:
+      null` and the measured reason (`0.489` precision at recall `1.000` for the reranker-confidence
+      candidate); `derivar_desde` REFUSES to produce a threshold for a mode with no ratified signal;
+      `harness.MODOS_SIN_SENAL_RATIFICADA` makes the `bm25_ce` abstention pair print `not-evaluable`
+      rather than `NO-GO`, so the arm's retrieval margin publishes without the open decision reading as
+      a retrieval failure. No bar was picked in code.)*
+- [x] 9.6 GREEN: `eval/umbral_abstencion.yaml` header `(corpus_sha, embedding_modelo, embedding_revision_hf,
       n, metodologia)`; serving reads it and refuses with `base_de_conocimiento_no_lista` on mismatch
       (`design.md:852-859`).
-- [ ] 9.6b GREEN — **SLM candidate bench** *(owner-requested 2026-08-23)*: the graded n ≥ 30 answer
+- [x] 9.6b GREEN — **SLM candidate bench** *(owner-requested 2026-08-23)*: the graded n ≥ 30 answer
       set of 9.2 is run against BOTH the pinned provider model (`deepseek-v4-flash`, reference) AND one
       embedded SLM candidate (`Qwen3-8B-Instruct` quantized Q5, served on the owner's RTX worker —
       the async-queue model already absorbs its latency). Same prompt, same payloads, same graders,
@@ -858,7 +865,7 @@ re-estimated before the chain strategy is picked.)*
       here: citation enforcement (U5) validates every citation against the payload post-hoc, so a
       weaker generator degrades into more rejections/abstentions — visible failures — never into
       silently confident fabrication.
-- [ ] 9.7 GREEN: mutation targets per `openspec/config.yaml` — `routing.py`, `generacion.py`,
+- [x] 9.7 GREEN: mutation targets per `openspec/config.yaml` — `routing.py`, `generacion.py`,
       `eval/answers.py`, plus `recuperacion/bm25.py`; keep the module thresholds the repo already enforces.
 
 ## Phase 10: Runbook, deploy, docs (U10)

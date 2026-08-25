@@ -88,6 +88,10 @@ from app.domains.conocimiento.eval.router import (  # noqa: E402
     EntradaRouter,
     correr_eval_router,
 )
+from app.domains.conocimiento.eval.slm_bench import (  # noqa: E402
+    BenchSLMInvalido,
+    cargar_y_comparar,
+)
 from app.domains.conocimiento.generacion import PLANTILLAS  # noqa: E402
 from app.domains.conocimiento.recuperacion.reranker import (  # noqa: E402
     BGEReranker,
@@ -218,6 +222,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--slm-bench",
+        type=Path,
+        default=None,
+        help=(
+            "SLM candidate bench (task 9.6b): two graded arms over the SAME "
+            "answers, same prompt, same payloads, same graders. Both arms are "
+            "REAL runs from the GPU worker; this command compares them and "
+            "issues no verdict — moving the provider pin is the owner's call."
+        ),
+    )
+    parser.add_argument(
         "--provider-model-pin",
         default=None,
         help=(
@@ -336,6 +351,29 @@ def _entrada_respuestas(db, args) -> EntradaRespuestas:
         RespuestasSinteticas,
     ) as motivo:
         return EntradaRespuestas.no_evaluable(str(motivo))
+
+
+def _bench_slm(args) -> tuple[object | None, str | None]:
+    """The SLM bench, or the stated reason there is none.
+
+    Degrades into a reason rather than killing the run, exactly like the answer
+    set: the retrieval ablation is a complete measurement on its own and must
+    not be lost because a bench artifact is unratified.
+
+    Nothing here reads a clock, opens a socket or loads a model. Both arms are
+    already-graded artifacts; the comparison is arithmetic.
+    """
+    if args.slm_bench is None:
+        return None, None
+    try:
+        return cargar_y_comparar(args.slm_bench), None
+    except (
+        ConjuntoRespuestasNoRatificado,
+        ConjuntoRespuestasInvalido,
+        BenchSLMInvalido,
+        RespuestasSinteticas,
+    ) as motivo:
+        return None, str(motivo)
 
 
 def _reranker(nombre: str, *, device: str):
@@ -523,6 +561,8 @@ def main(argv: list[str] | None = None) -> int:
         # with `corpus_sha` unmoved, and it cannot be done from a header.
         entrada_respuestas = _entrada_respuestas(db, args)
 
+    bench, motivo_bench = _bench_slm(args)
+
     entrada_router = _entrada_router(embedder, pasos=args.router_pasos)
 
     try:
@@ -536,6 +576,8 @@ def main(argv: list[str] | None = None) -> int:
             latencia=latencia,
             router=entrada_router,
             respuestas=entrada_respuestas,
+            bench=bench,
+            motivo_bench=motivo_bench,
         )
     except EvalSinteticoNoEsEval as error:
         print(f"ERROR: {error}", file=sys.stderr)

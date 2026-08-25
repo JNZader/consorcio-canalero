@@ -1,0 +1,54 @@
+# The SHIPPED abstention threshold (task 9.6, design.md:897-904).
+#
+# Seeded from the eval artifact, never hand-typed: the number that decides
+# whether the surface answers or abstains has to be traceable to the run that
+# calibrated it, and to the corpus and vector space it was calibrated in.
+#
+# ── WHY THIS FILE SHIPS WITH NO NUMBER ──────────────────────────────────────
+#
+# Task 9.5 is BLOCKED on owner decision 0.1, and the serving arm is `bm25_ce`,
+# which carries no ratified abstention signal at all. The candidate signal that
+# was measured — reranker confidence — scored WORSE than the cosine one it would
+# replace: LOOCV precision 0.489 at recall 1.000. Writing a number here anyway
+# would set the enablement gate to whatever the sweep happened to return and
+# present it as a decision somebody made.
+#
+# So: `estado: no_derivado`, `umbral: null`, and `derivar_desde` refuses to
+# produce one for a mode with no ratified signal. `cargar_umbral` refuses a
+# `no_derivado` artifact that carries a number, and refuses a `derivado` one
+# whose header is incomplete — a derived threshold with a missing pin passes the
+# identity check VACUOUSLY and gets served against an unknown corpus.
+#
+# ── WHAT THE SERVING PATH DOES WITH IT ──────────────────────────────────────
+#
+# `service.verificar_umbral_abstencion` reads this file per retrieval and
+# refuses when a DERIVED threshold does not belong to the active snapshot —
+# `corpus_sha`, `embedding_modelo` or `embedding_revision_hf`. Two revisions of
+# the same model id are two different vector spaces, and a cosine threshold is a
+# statement about a space. A `no_derivado` artifact is not a mismatch and does
+# not refuse: there is no number, so nothing can be served against the wrong one.
+#
+# ── HOW TO RE-DERIVE IT, ONCE 0.1 CLOSES ────────────────────────────────────
+#
+#   make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python
+#
+# and copy the block the report emits under "Umbral de abstención". Editing the
+# numbers below by hand defeats the entire point of the pin.
+
+estado: no_derivado
+
+# ── The header the design names, in its order ───────────────────────────────
+corpus_sha: null
+embedding_modelo: null
+embedding_revision_hf: null
+n: null
+metodologia: ""
+
+umbral: null
+
+motivo: >-
+  el arm servido (`bm25_ce`) no tiene señal de abstención ratificada: la decisión
+  0.1 del owner sigue ABIERTA y la señal candidata medida (confianza del
+  reranker) resultó peor que la coseno que reemplazaría — precisión LOOCV 0.489
+  con recall 1.000. Hasta que se ratifique una señal, la fila de abstención del
+  reporte es `not-evaluable` y el flag de habilitación queda apagado (task 9.5).

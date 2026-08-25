@@ -62,6 +62,11 @@ from app.domains.conocimiento.eval.answers import (
     bloque_para as bloque_respuestas_para,
     json_para as json_respuestas_para,
 )
+from app.domains.conocimiento.eval.slm_bench import (
+    BenchSLM,
+    bloque_para as bloque_bench_para,
+    json_para as json_bench_para,
+)
 from app.domains.conocimiento.eval.router import (
     EntradaRouter,
     bloque_para as bloque_router_para,
@@ -643,6 +648,8 @@ def renderizar_markdown(
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
     respuestas: EntradaRespuestas | None = None,
+    bench: BenchSLM | None = None,
+    motivo_bench: str | None = None,
 ) -> str:
     """Render the report. Pure: same arguments in, byte-identical string out."""
     sintetico = _gate_sintetico(procedencia, permitir_sintetico, resultado=resultado)
@@ -730,6 +737,7 @@ def renderizar_markdown(
     lineas += [*bloque_margen_baseline(resultado), ""]
     lineas += [*bloque_router_para(router), ""]
     lineas += [*bloque_respuestas_para(respuestas), ""]
+    lineas += [*bloque_bench_para(bench, motivo_bench), ""]
 
     return "\n".join(lineas) + "\n"
 
@@ -744,6 +752,8 @@ def _a_json(
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
     respuestas: EntradaRespuestas | None = None,
+    bench: BenchSLM | None = None,
+    motivo_bench: str | None = None,
 ) -> dict[str, Any]:
     versiones = runtime_versions()
     modos: dict[str, Any] = {}
@@ -889,6 +899,10 @@ def _a_json(
         # checked-in answer set is an unratified shell, and "the figures were not
         # scored" must not be inferable only from a missing field.
         "respuestas": json_respuestas_para(respuestas),
+        # The SLM candidate bench (9.6b). Its `veredicto` is ALWAYS `null`:
+        # moving the provider pin is the owner's decision on this table, and
+        # nothing in this pipeline takes it.
+        "slm_bench": json_bench_para(bench, motivo_bench),
         "modos": modos,
     }
 
@@ -904,6 +918,8 @@ def escribir_reporte(
     latencia: dict[str, Any] | None = None,
     router: EntradaRouter | None = None,
     respuestas: EntradaRespuestas | None = None,
+    bench: BenchSLM | None = None,
+    motivo_bench: str | None = None,
 ) -> ReporteEscrito:
     """Write the markdown and its machine-readable twin, side by side.
 
@@ -921,6 +937,8 @@ def escribir_reporte(
         latencia=latencia,
         router=router,
         respuestas=respuestas,
+        bench=bench,
+        motivo_bench=motivo_bench,
     )
     datos = _a_json(
         resultado,
@@ -931,6 +949,8 @@ def escribir_reporte(
         latencia=latencia,
         router=router,
         respuestas=respuestas,
+        bench=bench,
+        motivo_bench=motivo_bench,
     )
 
     destino.mkdir(parents=True, exist_ok=True)

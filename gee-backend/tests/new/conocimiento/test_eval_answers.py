@@ -603,3 +603,62 @@ class TestBloqueDelReporte:
             answers.bloque_para(EntradaRespuestas(conjunto=conjunto, metricas=metricas))
         )
         assert "barra_no_ratificada" in bloque
+
+
+# ---------------------------------------------------------------------------
+# 9.7 — mutation targets
+# ---------------------------------------------------------------------------
+
+
+class TestObjetivosDeMutacion:
+    """Task 9.7 — the four V1 targets are REGISTERED, honestly.
+
+    The repo rule is `no cablear lo no medido`: a target enters the active gate
+    only with a measured kill rate behind it, and the one local interpreter has
+    no cosmic-ray. So they are registered as a documented, commented block with
+    the measurement command — the same shape task 4.13's four targets and the
+    rainfall block already use.
+
+    Registering them in a comment is not a formality. The alternative is what
+    happened to rainfall before its block existed: a design that names targets,
+    a config that does not, and nobody able to tell "measured and excluded on
+    purpose" from "forgotten".
+    """
+
+    RUTA_CONFIG = Path(__file__).resolve().parents[3] / ".cosmic-ray.toml"
+
+    def test_los_cuatro_targets_de_v1_estan_registrados(self):
+        config = self.RUTA_CONFIG.read_text(encoding="utf-8")
+        for objetivo in (
+            "app/domains/conocimiento/routing.py",
+            "app/domains/conocimiento/generacion.py",
+            "app/domains/conocimiento/eval/answers.py",
+            "app/domains/conocimiento/recuperacion/bm25.py",
+        ):
+            assert objetivo in config, f"{objetivo} no está registrado en .cosmic-ray.toml"
+
+    def test_estan_comentados_porque_no_estan_medidos(self):
+        """Wiring an unmeasured target to CI adds survivors, not coverage.
+
+        Measured for real once already (`.cosmic-ray.candidate.toml`): the 74
+        finanzas mutants scored 0.00% because the test-command never imported
+        the module. Adding a target does not measure it.
+        """
+        config = self.RUTA_CONFIG.read_text(encoding="utf-8")
+        activos = [
+            linea.strip() for linea in config.splitlines() if linea.strip().startswith('"app/')
+        ]
+        assert not any("conocimiento" in linea for linea in activos), (
+            "un target de conocimiento entró al gate activo sin numero medido"
+        )
+
+    def test_el_bloque_nombra_el_comando_de_medicion(self):
+        config = self.RUTA_CONFIG.read_text(encoding="utf-8")
+        assert "test_eval_answers.py" in config
+        assert "cosmic_gate.py" in config
+
+    def test_no_se_inventa_un_umbral_nuevo(self):
+        """The floor stays 0.30 — pinned by `test_ci_workflow_contracts.py`."""
+        config = self.RUTA_CONFIG.read_text(encoding="utf-8")
+        assert "0.30" in config
+        assert "min-kill-rate 0.4" not in config
