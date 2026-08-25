@@ -926,6 +926,25 @@ re-estimated before the chain strategy is picked.)*
       the sealed rollback order closes it. The joint ceremony with `flujo-caminos` is stated at the top with
       its interleaving rule: **one shared `alembic upgrade head`**, neither arc running its own, and both
       flags flipping last.
+      *(Fix-forward 2026-08-24, from the U10 verify — six corrections to the runbook itself, each checked
+      against the tree rather than against the design:* **(a)** *step 6 enumerated three revisions and the
+      real path from `conocimiento_004` is **six** — `conocimiento_005.down_revision` is
+      `0023_add_relevamiento_tramo`, so `0021`/`0022`/`0023` are ON this arc's upgrade path and four road
+      tables appearing during that step is EXPECTED, not an over-run;* **(b)** *step 3 asserted identity from
+      `/ready` alone and the design asks for `/health` + `/ready` + one embed of a known string — the embed
+      is restored, as a `docker compose exec` POST to `/embed` with `{"textos": [...]}`, asserting the pinned
+      pair on the RESPONSE and `len(vector) == dims`, because "the model says it loaded" is not "the model
+      returns a vector";* **(c)** *§0.2 now states in prose that `scripts/rag_worker.py` and
+      `conocimiento_worker_poll_s` arrive with the U7 postman commit (#226, already on `main`) and are
+      absent from this pre-replant branch;* **(d)** *§4.3 gains operator fact **12**, a pre-flight of the
+      `umbral_abstencion.yaml` header against `rag_corpus`'s provenance row, so a `derivado` artifact
+      pinned to another vector space surfaces BEFORE the flag rather than as
+      `base_de_conocimiento_no_lista` on every question after it;* **(e)** *all six corrections against
+      `design.md`'s G9 section are now listed in one table at the end of §3, including the sixth: the
+      design's step-9 probe reads `sintetico`, and the COLUMN is `embedding_sintetico` — `sintetico` is the
+      manifest/`ProcedenciaEmbeddings` spelling, so the probe as designed errors instead of answering;*
+      **(f)** *the systemd unit carries a one-line warning that `EnvironmentFile=` is not compose's
+      `env_file:` and the way to read back what the process actually got.)*
 - [x] 10.2 GREEN: record the `conocimiento-embed` compose block verbatim (it lives in the **external**
       compose file) + `CONOCIMIENTO_EMBED_URL` on the backend (`design.md:888-912`).
       *(extended 2026-08-24 by task 7.7: the SAME block must also declare the **worker** service that runs
