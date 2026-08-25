@@ -183,6 +183,12 @@ def seasonal_climatology(
     thin sample is suppressed downstream by the sample-size floor. There is no
     leap-day branch here, and adding one would be the special case that quietly
     ranks a 29 February window against 28 February windows.
+
+    That filtering is a PRECONDITION, not a convenience: a 29 February anchor
+    handed an unfiltered year set raises ``ValueError`` out of the ``date()``
+    construction on the first non-leap year, by design, so callers pass
+    ``temporal.baseline_years_for(anchor)`` rather than let this module invent
+    a substitute day.
     """
     if days < 1:
         raise ValueError(f"window length must be positive, got {days}")
@@ -280,9 +286,13 @@ def absolute_window_samples(
     at all -- "for free" was simply false. Nothing on the snapshot path calls
     this, and a test asserts that no consumer exists.
 
-    The window COUNT is a property of the span, not of which days survived: a
-    hole leaves its windows present and incomplete rather than deleting them,
-    so a gap can never masquerade as a shorter record.
+    The span is INFERRED from the ``min`` and ``max`` of the surviving days, so
+    the "a hole never shortens the record" guarantee holds for INTERIOR holes
+    only: an interior hole leaves its windows present and incomplete, while a
+    LEADING or TRAILING hole moves the inferred bound and deletes the edge
+    windows outright. A caller that needs fixed-span semantics passes a series
+    dense at both ends, or filters the result itself; this function cannot tell
+    an edge hole from a shorter record because nothing here carries the span.
     """
     if days < 1:
         raise ValueError(f"window length must be positive, got {days}")

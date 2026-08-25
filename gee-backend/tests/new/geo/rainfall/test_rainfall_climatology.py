@@ -12,7 +12,10 @@ bias a floor reintroduces is a bias in the number, not in a reason string.
 
 from __future__ import annotations
 
+import ast
 import dataclasses
+import sys
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -48,16 +51,29 @@ def daily_series(
     start: date,
     end: date,
     value: float = 1.0,
+    value_for: Callable[[date], float] | None = None,
     holes: frozenset[date] = frozenset(),
 ) -> tuple[tuple[date, float], ...]:
     """A dense ``(day, mm)`` series over ``[start, end]`` minus *holes*.
 
     A hole is an ABSENT day, never a zero: a zero is a measured dry day and
     completeness must not confuse the two.
+
+    *value_for* makes the series POSITION-DEPENDENT. A flat 1.0 mm/day series
+    cannot see a window-start off-by-one at all — any ``days`` consecutive days
+    sum to the same number — so every test that means to pin WHICH days a
+    window covers passes *value_for* and asserts the total exactly.
     """
     span = (end - start).days + 1
     days = (start + timedelta(days=offset) for offset in range(span))
-    return tuple((day, value) for day in days if day not in holes)
+    return tuple(
+        (day, value if value_for is None else value_for(day)) for day in days if day not in holes
+    )
+
+
+def ordinal_mod_7(day: date) -> float:
+    """A position-dependent daily value with period 7 and per-week sum 21."""
+    return float(day.toordinal() % 7)
 
 
 class TestWindowSample:
@@ -162,9 +178,25 @@ class TestDerivability:
         PRECEDING calendar year. There is no year-start ``GROUP BY`` here to
         split it, so ``expected_days == days`` always and the sample spans that
         baseline year's own preceding-year days.
+
+        The series is POSITION-DEPENDENT on purpose. Under a flat 1.0 mm/day
+        fixture this whole path is blind to a window-start off-by-one -- any 90
+        consecutive days total 90.0 -- and re-deriving the start from
+        ``first.end`` would only restate the line already asserted above it.
+        So the total is pinned to a number computed here, independently:
+
+            start 1991-11-18 has ordinal 727154, and 727154 % 7 == 1, so the
+            window's daily residues run 1,2,3,4,5,6,0 repeating.
+            90 days == 12 whole weeks + 6 days.
+            12 weeks x (0+1+2+3+4+5+6 == 21) == 252
+            trailing 6 days resume at residue 1: 1+2+3+4+5+6 == 21
+            total == 252 + 21 == 273.0 mm
+
+        A start one day earlier totals 267.0, so the assertion below sees the
+        off-by-one that the flat fixture could not.
         """
         clim = seasonal_climatology(
-            daily=daily_series(start=SPAN_START, end=date(2020, 12, 31)),
+            daily=daily_series(start=SPAN_START, end=date(2020, 12, 31), value_for=ordinal_mod_7),
             days=90,
             anchor=date(2020, 2, 15),
             years=BASELINE_YEARS,
@@ -176,9 +208,28 @@ class TestDerivability:
         assert all(sample.complete for sample in clim.samples)
         first = clim.samples[0]
         assert first.end == date(1992, 2, 15)
-        assert first.end - timedelta(days=89) == date(1991, 11, 18)  # preceding year
         assert first.matched_days == 90
-        assert first.total_mm == pytest.approx(90.0)
+        assert first.total_mm == pytest.approx(273.0)
+
+    def test_the_window_start_is_the_inclusive_day_days_minus_one_back(self) -> None:
+        """The window is [end - (days - 1), end] INCLUSIVE, pinned on a series
+        whose values differ day by day.
+
+        d3 ending 1991-01-03 must cover 1 to 3 January. Residues: 1991-01-01 has
+        ordinal 726833, 726833 % 7 == 2, so the three days are 2, 3, 4 and the
+        total is 2+3+4 == 9.0. A start one day back would cover 31 December to
+        2 January (residues 1, 2, 3) and total 6.0.
+        """
+        samples = absolute_window_samples(
+            daily=daily_series(
+                start=date(1990, 12, 25), end=date(1991, 1, 10), value_for=ordinal_mod_7
+            ),
+            days=3,
+        )
+
+        third = next(sample for sample in samples if sample.end == date(1991, 1, 3))
+        assert third.matched_days == 3
+        assert third.total_mm == pytest.approx(9.0)
 
     def test_short_window_keeps_every_baseline_year_derivable(self) -> None:
         """A d7 anchored mid-February fits inside 1991, so nothing truncates:
@@ -198,20 +249,123 @@ class TestDerivability:
         assert clim.derivable_years[0] == 1991
 
     def test_window_reaching_past_the_span_end_is_underivable(self) -> None:
-        """``span_end`` is exclusive: a window whose last day is 2021-01-01
-        reaches evidence the bounded read never returned.
+        """``span_end`` is exclusive: a window whose last day IS 2021-01-01 --
+        the exclusive bound itself, not merely beyond it -- reaches evidence the
+        bounded read never returned.
+
+        The anchor is 1 January precisely so that the 2021 window ends ON
+        ``span_end``. An earlier revision of this test anchored on 31 December,
+        whose 2021 window ends a whole year past the bound: it read as a
+        boundary case but exercised none, and ``end > span_end`` would have
+        passed it unharmed.
         """
         clim = seasonal_climatology(
             daily=daily_series(start=SPAN_START, end=date(2020, 12, 31)),
             days=7,
-            anchor=date(2020, 12, 31),
+            anchor=date(2020, 1, 1),
             years=(*BASELINE_YEARS, 2021),
             span_start=SPAN_START,
             span_end=SPAN_END,
         )
 
+        assert date(2021, 1, 1) == SPAN_END  # the 2021 window ends exactly here
         assert 2021 not in clim.derivable_years
         assert clim.derivable_years[-1] == 2020
+
+    def test_a_window_starting_exactly_on_the_span_start_is_derivable(self) -> None:
+        """``span_start`` is INCLUSIVE. A d30 window ending 1991-01-30 starts on
+        1991-01-01, the first persisted day, so every day it needs exists and
+        the year contributes.
+
+        This is the tight edge of ``end - timedelta(days=days - 1) <
+        span_start``: ``days`` instead of ``days - 1`` would reach one day
+        before the span, and ``<=`` instead of ``<`` would reject a window that
+        starts precisely on the bound. Both discard a year of real evidence.
+        """
+        clim = seasonal_climatology(
+            daily=daily_series(start=SPAN_START, end=date(2020, 12, 31)),
+            days=30,
+            anchor=date(2020, 1, 30),
+            years=(1991,),
+            span_start=SPAN_START,
+            span_end=SPAN_END,
+        )
+
+        assert clim.derivable_years == (1991,)
+        sample = clim.samples[0]
+        assert sample.end == date(1991, 1, 30)
+        assert sample.end - timedelta(days=29) == SPAN_START
+        assert sample.complete
+
+    def test_the_same_window_one_day_earlier_is_underivable(self) -> None:
+        """Shift that window a single day back and its first day is 1990-12-31,
+        which the bounded read never returned: structurally underivable, not a
+        completeness loss.
+        """
+        clim = seasonal_climatology(
+            daily=daily_series(start=SPAN_START, end=date(2020, 12, 31)),
+            days=30,
+            anchor=date(2020, 1, 29),
+            years=(1991,),
+            span_start=SPAN_START,
+            span_end=SPAN_END,
+        )
+
+        assert clim.derivable_years == ()
+        assert clim.samples == ()
+
+
+class TestInputGuards:
+    """The refusals — each one is a defence with no other line of retreat."""
+
+    def test_a_duplicate_day_is_refused_by_the_seasonal_path(self) -> None:
+        """D2: the ONLY defence against silent duplicate inflation.
+
+        ``dict()`` over pairs would keep the last value and say nothing; summing
+        them would inflate a ranked total. Neither failure is visible in the
+        served number, so the guard raises and this test is what keeps it there.
+        """
+        day = date(1991, 1, 10)
+        with pytest.raises(ValueError, match="duplicate baseline day"):
+            seasonal_climatology(
+                daily=((day, 1.0), (date(1991, 1, 11), 1.0), (day, 5.0)),
+                days=7,
+                anchor=date(2020, 1, 15),
+                years=BASELINE_YEARS,
+                span_start=SPAN_START,
+                span_end=SPAN_END,
+            )
+
+    def test_a_duplicate_day_is_refused_by_the_absolute_path(self) -> None:
+        day = date(1991, 1, 10)
+        with pytest.raises(ValueError, match="duplicate baseline day"):
+            absolute_window_samples(daily=((day, 1.0), (day, 5.0)), days=3)
+
+    @pytest.mark.parametrize("days", [0, -1])
+    def test_seasonal_climatology_refuses_a_non_positive_window(self, days: int) -> None:
+        """A zero-length window is complete-by-vacuity: ``matched == expected ==
+        0``, so without this guard it would rank a 0.0 mm total as evidence."""
+        with pytest.raises(ValueError, match="window length must be positive"):
+            seasonal_climatology(
+                daily=daily_series(start=SPAN_START, end=date(1991, 12, 31)),
+                days=days,
+                anchor=date(2020, 1, 30),
+                years=BASELINE_YEARS,
+                span_start=SPAN_START,
+                span_end=SPAN_END,
+            )
+
+    @pytest.mark.parametrize("days", [0, -1])
+    def test_absolute_window_samples_refuses_a_non_positive_window(self, days: int) -> None:
+        with pytest.raises(ValueError, match="window length must be positive"):
+            absolute_window_samples(
+                daily=daily_series(start=date(1991, 1, 1), end=date(1991, 1, 10)), days=days
+            )
+
+    def test_absolute_window_samples_on_an_empty_series_yields_nothing(self) -> None:
+        """No days means no span to infer: an empty result, not a crash inside
+        ``min()`` and not a fabricated window."""
+        assert absolute_window_samples(daily=(), days=3) == ()
 
 
 def complete_climatology(
@@ -355,6 +509,26 @@ class TestFebruary29SuppressesStructurally:
         assert window_normal(clim, min_years=20) is None
         assert seasonal_window_percentile(clim, 7.0, min_years=20) is None
 
+    def test_an_unfiltered_year_set_raises_rather_than_substituting_a_day(self) -> None:
+        """The filtering contract is a PRECONDITION and the failure is LOUD.
+
+        Handing the full 1991-2020 range to a 29 February anchor hits
+        ``date(1991, 2, 29)`` and raises. That is the designed behaviour: the
+        alternative -- a leap-day branch quietly falling back to 28 February --
+        is exactly the special case D5 refuses, because it would rank a
+        29 February window against 28 February windows under the same name.
+        Callers filter with ``temporal.baseline_years_for(anchor)``.
+        """
+        with pytest.raises(ValueError, match=r"day 29 must be in range 1\.\.28 for month 2"):
+            seasonal_climatology(
+                daily=daily_series(start=SPAN_START, end=date(2020, 12, 31)),
+                days=7,
+                anchor=date(2020, 2, 29),
+                years=BASELINE_YEARS,  # unfiltered: 1991 is not a leap year
+                span_start=SPAN_START,
+                span_end=SPAN_END,
+            )
+
 
 # ---------------------------------------------------------------------------
 # Absolute mode (the detector's entry point) — tasks 1.10 to 1.12
@@ -401,6 +575,45 @@ class TestAbsoluteWindowSamples:
             date(1991, 1, 7),
         ]
         assert all(sample.matched_days == 2 for sample in touched)
+
+    def test_a_leading_edge_hole_shrinks_the_inferred_span_and_deletes_windows(
+        self,
+    ) -> None:
+        """The interior-hole guarantee does NOT extend to the edges, and the
+        contract now says so.
+
+        The span is inferred from ``min``/``max`` of the surviving days, so a
+        missing FIRST day is indistinguishable here from a record that simply
+        started a day later: the window count drops from 8 to 7 and the loss is
+        recorded nowhere. Pinned rather than merely documented, because a caller
+        needing fixed-span semantics has to know it must pass a dense series.
+        """
+        dense = absolute_window_samples(
+            daily=daily_series(start=date(1991, 1, 1), end=date(1991, 1, 10)), days=3
+        )
+        leading_hole = absolute_window_samples(
+            daily=daily_series(
+                start=date(1991, 1, 1), end=date(1991, 1, 10), holes=frozenset({date(1991, 1, 1)})
+            ),
+            days=3,
+        )
+
+        assert len(dense) == 8
+        assert len(leading_hole) == 7  # not 8-with-an-incomplete-window
+        assert leading_hole[0].end == date(1991, 1, 4)
+        assert all(sample.complete for sample in leading_hole)  # the loss is invisible
+
+    def test_a_trailing_edge_hole_shrinks_the_inferred_span_too(self) -> None:
+        trailing_hole = absolute_window_samples(
+            daily=daily_series(
+                start=date(1991, 1, 1), end=date(1991, 1, 10), holes=frozenset({date(1991, 1, 10)})
+            ),
+            days=3,
+        )
+
+        assert len(trailing_hole) == 7
+        assert trailing_hole[-1].end == date(1991, 1, 9)
+        assert all(sample.complete for sample in trailing_hole)
 
     def test_a_span_shorter_than_the_window_yields_nothing(self) -> None:
         samples = absolute_window_samples(
@@ -481,6 +694,69 @@ class TestAbsoluteModeHasNoConsumer:
             and symbol in module.read_text(encoding="utf-8")
         )
         assert consumers == [], f"{symbol} acquired a consumer: {consumers}"
+
+
+class TestModuleIsPureByImport:
+    """The purity claim in the module docstring, enforced instead of asserted.
+
+    "No ``Session``, no network, no ``policy`` import" is only true for as long
+    as nobody adds one, and the day somebody does, the import graph is the first
+    place it shows. This parses the source rather than importing it, so it also
+    holds if a future import is guarded or lazy at call time.
+    """
+
+    def _import_roots(self) -> set[str]:
+        tree = ast.parse(CLIMATOLOGY_SOURCE.read_text(encoding="utf-8"))
+        roots: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                roots.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                assert node.level == 0, "a relative import would reach back into the app package"
+                assert node.module is not None
+                roots.add(node.module.split(".")[0])
+        return roots
+
+    def test_every_import_is_stdlib(self) -> None:
+        roots = self._import_roots()
+        non_stdlib = sorted(root for root in roots if root not in sys.stdlib_module_names)
+        assert non_stdlib == [], f"climatology.py grew a non-stdlib import: {non_stdlib}"
+
+    def test_the_current_import_set_is_the_expected_one(self) -> None:
+        """Named explicitly so an addition is a deliberate edit here, not a
+        silent widening under a rule that only checks "stdlib"."""
+        assert self._import_roots() == {"__future__", "collections", "dataclasses", "datetime"}
+
+
+class TestWeibullPercentileIsPinnedNumerically:
+    """Task 1.8 — one exact rank, hand-computed, through the seasonal wiring.
+
+    The other ranking tests assert ORDER (lowest < highest). Order survives a
+    wrong denominator, a 0-based rank or a dropped ``+ 1``; only an exact value
+    sees them.
+    """
+
+    def test_the_seasonal_percentile_is_the_exact_weibull_position(self) -> None:
+        """Baseline totals 10, 20, 30, 40; selected 25.0.
+
+        combined ascending == [10, 20, 25, 30, 40]  ->  N == 5
+        the 1-based rank of 25.0 is i == 3
+        p == 100 * i / (N + 1) == 100 * 3 / 6 == 50.0
+        """
+        clim = complete_climatology(4, totals=(10.0, 20.0, 30.0, 40.0))
+
+        assert seasonal_window_percentile(clim, 25.0, min_years=4) == pytest.approx(50.0)
+        # ... and the same arithmetic straight through the primitive.
+        assert weibull_percentile([10.0, 20.0, 30.0, 40.0], 25.0) == pytest.approx(50.0)
+
+    def test_a_tie_takes_the_mean_of_the_tied_positions(self) -> None:
+        """Baseline totals 10, 20, 20, 40; selected 20.0.
+
+        combined ascending == [10, 20, 20, 20, 40]  ->  N == 5
+        20.0 sits at 1-based positions 2, 3, 4  ->  mean rank == 3
+        p == 100 * 3 / 6 == 50.0
+        """
+        assert weibull_percentile([10.0, 20.0, 20.0, 40.0], 20.0) == pytest.approx(50.0)
 
 
 class TestWeibullPercentileRelocation:
