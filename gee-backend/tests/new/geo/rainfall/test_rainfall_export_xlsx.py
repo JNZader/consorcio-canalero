@@ -801,6 +801,77 @@ def test_an_analysis_with_no_evidence_still_exports_both_sheets(db):
     assert all(row[1] is None for row in series_rows[1:])
 
 
+def test_the_six_reference_metrics_reach_both_exports_named_and_suppressed(db):
+    """SDD S3 task 5.5 + spec R4 S1, on the artifact that outlives the screen.
+
+    The fixture serves BOTH halves in one workbook, which is why it is the one
+    used: `d7`/`d30` have a full window and their reference pair is available,
+    while `d90` reaches past the seeded evidence and all three of its rows are
+    suppressed. So this single build proves the two properties that matter to a
+    reader holding the file:
+
+      - a served window normal is NAMED with the period it was computed over,
+        beside the annual "Normal <period>" read off the same envelope. Without
+        the `BASELINE_LABELED_METRICS` entry the cell reads "Antecedente 7 días
+        normal" with no period at all, two rows under one that has one --
+        LI4-004 in a file with no poll to correct it;
+      - a SUPPRESSED reference metric is still a ROW, carrying its state and
+        its named reason. Dropping it would hide the suppression, and a `0`
+        would invent a measurement; both are worse than the empty cells.
+
+    The baseline is doctored off 1991-2020 so a period pasted from a constant
+    anywhere in the label path shows up as a period this envelope never served.
+    """
+    from app.domains.geo.rainfall.export import RESUMEN_SHEET, build_workbook
+    from app.domains.geo.rainfall.service import (
+        metric_rows,
+        metric_rows_csv,
+        normalize_snapshot,
+        summary_metric_label,
+    )
+
+    revision = _seeded_revision(db, scope_id="zone-s3-reference-export")
+    retargeted = {**revision.snapshot, "baseline": "2001-2030"}
+    stand_in = _revision_stand_in(retargeted, revision=revision)
+
+    table = _metric_table(_rows(_sheets(build_workbook(db, stand_in).content)[RESUMEN_SHEET]))
+    by_label = {row["Métrica"]: row for row in table}
+
+    # Every one of the six is a row, under its own Spanish name.
+    for name in ("d7_normal", "d30_normal", "d90_normal"):
+        label = summary_metric_label(name, "2001-2030")
+        assert label.endswith(" 2001-2030"), label
+        assert label in by_label, sorted(by_label)
+    for name in ("d7_percentile", "d30_percentile", "d90_percentile"):
+        assert summary_metric_label(name, "2001-2030") in by_label, sorted(by_label)
+
+    # The available half: named with the period, and carrying its number.
+    served = by_label[summary_metric_label("d7_normal", "2001-2030")]
+    assert served["Estado"] == "disponible"
+    assert served["Valor"] is not None
+
+    # The suppressed half: present, stated, and never zero-filled.
+    withheld = by_label[summary_metric_label("d90_normal", "2001-2030")]
+    assert withheld["Estado"] == "suprimida"
+    assert withheld["Motivo"] == "baseline_years_below_minimum"
+    assert withheld["Valor"] is None
+    # Same provenance and interval metadata as an available row: a suppression
+    # withholds the VALUE, not the evidence about what was looked at.
+    for column in ("Unidad", "Desde", "Hasta", "Fuente"):
+        assert withheld[column] is not None, column
+
+    # The audit CSV is the same projection and must not have dropped them.
+    normalized = normalize_snapshot(retargeted, expected_policy_revision=revision.policy_revision)
+    body = metric_rows_csv(metric_rows(normalized))
+    reader = list(csv.DictReader(StringIO(body)))
+    csv_rows = {row["metric"]: row for row in reader}
+    for name in ("d7_normal", "d30_normal", "d90_normal", "d7_percentile", "d90_percentile"):
+        assert name in csv_rows, sorted(csv_rows)
+    assert csv_rows["d90_percentile"]["state"] == "suppressed"
+    assert csv_rows["d90_percentile"]["reason"] == "baseline_years_below_minimum"
+    assert csv_rows["d90_percentile"]["value"] == ""
+
+
 def test_xlsx_served_event_is_documented_in_the_observability_workbook():
     """LI2B-005's rule applied to this slice's own new event: an event that
     fires in production and appears nowhere in the catalogue is undocumented

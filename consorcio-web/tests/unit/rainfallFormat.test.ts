@@ -98,6 +98,73 @@ describe('metricLabel', () => {
   it('falls back to the raw key for an unknown metric', () => {
     expect(metricLabel('p95')).toBe('p95');
   });
+
+  /**
+   * The rolling-window reference pair (SDD S3, design D1).
+   *
+   * `metricLabel` used to append the period on the IDENTITY `key === 'normal'`,
+   * which is exactly right for a snapshot with one normal in it and exactly
+   * wrong for one with four. The backend now serves `d7_normal`, `d30_normal`
+   * and `d90_normal` beside `annual_normal`, and an identity test labels three
+   * of the four without a period — one fold, four normals, one of them
+   * announcing 1991-2020 and three announcing nothing.
+   */
+  describe('the antecedent window reference metrics', () => {
+    const WINDOW_NORMALS = ['d7_normal', 'd30_normal', 'd90_normal'] as const;
+    const WINDOW_PERCENTILES = ['d7_percentile', 'd30_percentile', 'd90_percentile'] as const;
+
+    it('gives each of the six a Spanish label of its own', () => {
+      // NOT the raw key: an unlabelled key degrades to its wire name, which is
+      // honest and unreadable. `metricLabel` cannot distinguish the two, so the
+      // assertion is that the label is not the key.
+      for (const key of [...WINDOW_NORMALS, ...WINDOW_PERCENTILES]) {
+        expect(metricLabel(key)).not.toBe(key);
+      }
+      // Six keys, six distinct labels: two rows carrying two numbers under one
+      // name is the same unreadable screen from the other direction.
+      const labels = new Set([...WINDOW_NORMALS, ...WINDOW_PERCENTILES].map((k) => metricLabel(k)));
+      expect(labels.size).toBe(6);
+    });
+
+    it('appends the SERVED baseline to every window normal, by membership', () => {
+      // Derived from the argument, never a constant: regenerating the normals
+      // over another period must move all four labels with no frontend edit.
+      for (const key of WINDOW_NORMALS) {
+        expect(metricLabel(key, '2001-2030')).toBe(`${metricLabel(key)} 2001-2030`);
+      }
+    });
+
+    it('leaves the window percentiles period-less, like the annual one', () => {
+      // A percentile's period belongs to the SENTENCE that states the rank
+      // ("Percentil 27 de 1991-2020"), not to the metric's name — the reason
+      // `percentile` was never in this set either.
+      for (const key of WINDOW_PERCENTILES) {
+        expect(metricLabel(key, '1991-2020')).toBe(metricLabel(key));
+      }
+    });
+
+    it('names a window normal without a period when none is served', () => {
+      expect(metricLabel('d7_normal', '')).toBe(metricLabel('d7_normal'));
+      expect(metricLabel('d7_normal', null)).toBe(metricLabel('d7_normal'));
+    });
+
+    it('LI4-004: one fold, four normals, one period', () => {
+      // The defect this slice exists to close, asserted as the comparison a
+      // reader actually makes: the annual normal and the three window normals
+      // on one screen, every one of them stating the same thirty years.
+      const labels = ['normal', ...WINDOW_NORMALS].map((k) => metricLabel(k, '2001-2030'));
+      expect(labels.every((label) => label.endsWith(' 2001-2030'))).toBe(true);
+      expect(labels.filter((label) => label.includes('1991'))).toEqual([]);
+      expect(new Set(labels).size).toBe(labels.length);
+    });
+
+    it('still falls back to the raw key for an unknown key ending in _normal', () => {
+      // The membership set is a SET, not a suffix match: a `d15_normal` this
+      // frontend has never met renders under its raw key, which is visible,
+      // rather than under an invented label with a period attached to it.
+      expect(metricLabel('d15_normal', '1991-2020')).toBe('d15_normal');
+    });
+  });
 });
 
 describe('formatMetricValue', () => {

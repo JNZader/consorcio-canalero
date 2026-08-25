@@ -541,6 +541,19 @@ SUMMARY_METRIC_LABELS: dict[str, str] = {
     "d7": "Antecedente 7 días",
     "d30": "Antecedente 30 días",
     "d90": "Antecedente 90 días",
+    # The rolling-window reference pair (design.md D1, SDD S3). Their wire
+    # names ARE these keys -- the antecedents group is flat, so the group
+    # member key, the `metric` field and this vocabulary key are one string,
+    # unlike the annual pair which needs an export alias to bridge
+    # `annual_normal` to `normal`. The normal's label names a baseline and
+    # therefore takes the served period below; the percentile's does not, for
+    # the same reason `percentile` does not.
+    "d7_normal": "Antecedente 7 días normal",
+    "d30_normal": "Antecedente 30 días normal",
+    "d90_normal": "Antecedente 90 días normal",
+    "d7_percentile": "Antecedente 7 días percentil",
+    "d30_percentile": "Antecedente 30 días percentil",
+    "d90_percentile": "Antecedente 90 días percentil",
     "p30": "P30",
     "p60": "P60",
     "p3h": "P3h",
@@ -567,7 +580,17 @@ SUMMARY_EMPTY = "Este análisis no divulga métricas."
 # derived from one. `percentile` is deliberately absent: its period belongs to
 # the sentence that states the rank ("Percentil 27 de 1991-2020",
 # `percentilePhrase` on the client), not to the metric's name.
-BASELINE_LABELED_METRICS: frozenset[str] = frozenset({"normal"})
+#
+# The three WINDOW normals join it (design.md D1, SDD S3), and the three window
+# percentiles do not, for exactly the reason above. Membership is what makes
+# this set a set rather than the `key == "normal"` identity test it replaced on
+# both sides of the wire: without the three, one screen shows "Normal
+# 1991-2020" beside a period-LESS "Antecedente 7 días normal", and a reader
+# comparing the two numbers cannot tell whether the second was computed over
+# the same thirty years -- LI4-004, one metric over.
+BASELINE_LABELED_METRICS: frozenset[str] = frozenset(
+    {"normal", "d7_normal", "d30_normal", "d90_normal"}
+)
 
 
 def snapshot_baseline(snapshot: dict[str, Any]) -> str | None:

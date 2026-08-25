@@ -141,6 +141,18 @@ def normal_curve_label(baseline: str | None = None) -> str:
 # named the same way in the narrative, on the badge and in this sheet, which is
 # the coherence rule the summary requirement states (spec delta, D4) -- and the
 # baseline period has to travel with it, which a flattened label dict cannot do.
+#
+# The six rolling-window reference metrics (SDD S3) have NO entry here, and the
+# absence is the decision rather than an omission. An alias exists to bridge a
+# wire name onto a DIFFERENT vocabulary key; `d7_normal` is its own vocabulary
+# key in `SUMMARY_METRIC_LABELS`, because the antecedents group is flat, so an
+# entry would map the string onto itself. A self-mapping is not a no-op in the
+# way that matters -- it reads as load-bearing to the next person, and the one
+# genuinely available mistake here is aliasing `d7_normal` onto `normal`, which
+# would put two rows carrying two different numbers under one "Normal
+# 1991-2020" label in one sheet. `test_rainfall_reference_disclosure.py`
+# asserts the BEHAVIOUR (the period travels, the six labels stay distinct)
+# rather than the presence of a mapping.
 EXPORT_METRIC_ALIASES: dict[str, str] = {
     "annual": "selected",
     "annual_normal": "normal",
