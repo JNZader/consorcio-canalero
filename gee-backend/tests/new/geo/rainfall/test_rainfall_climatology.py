@@ -91,7 +91,12 @@ class TestWindowSample:
             end=date(2020, 1, 30), total_mm=30.0, matched_days=30, expected_days=30
         )
         assert not hasattr(sample, "__dict__")
-        with pytest.raises(AttributeError):
+        # The invariant is "assignment of an unknown attribute is refused".
+        # WHICH exception carries the refusal is interpreter-dependent: 3.12+
+        # raises AttributeError; 3.11's generated frozen __setattr__ hits the
+        # known stale-super() path on frozen+slots dataclasses and raises
+        # TypeError instead. Pin the refusal, not the interpreter's choice.
+        with pytest.raises((AttributeError, TypeError)):
             sample.unexpected = 1  # type: ignore[attr-defined]
 
     @pytest.mark.parametrize(
@@ -518,8 +523,16 @@ class TestFebruary29SuppressesStructurally:
         is exactly the special case D5 refuses, because it would rank a
         29 February window against 28 February windows under the same name.
         Callers filter with ``temporal.baseline_years_for(anchor)``.
+
+        The message regex accepts both interpreter eras: Python <= 3.12 says
+        "day is out of range for month", newer versions name the day and range.
+        Pinning one exact message is a version pin in disguise (bug-class:
+        local 3.14 vs CI 3.11 drift, second occurrence in this repo).
         """
-        with pytest.raises(ValueError, match=r"day 29 must be in range 1\.\.28 for month 2"):
+        with pytest.raises(
+            ValueError,
+            match=r"day is out of range for month|day 29 must be in range 1\.\.28 for month 2",
+        ):
             seasonal_climatology(
                 daily=daily_series(start=SPAN_START, end=date(2020, 12, 31)),
                 days=7,
