@@ -15,7 +15,15 @@ behaviours and neither survives a double:
 * the older row is a distinct row, not an overwrite: it keeps being served,
   normalized under its OWN ``policy_revision``, until its refresh lands.
 
-Both tests therefore pin the ROW SET, not just the served payload.
+4.2 therefore pins the ROW SET at storage -- that the older row survives the
+bump as a distinct row with its own snapshot intact -- rather than proving
+through the read path that it is the one served. That is a fixture limitation
+with no production analogue: both rows are written inside the SAME test
+transaction, so ``created_at`` (a ``server_default=func.now()``, i.e. the
+transaction timestamp) is identical for both and the production selector's
+``created_at DESC, id DESC`` has no determinate answer here. Real writes land
+in separate transactions. The full read path is covered by 4.3, which polls
+the router and asserts on what actually comes back.
 """
 
 import json
@@ -140,6 +148,12 @@ def _seed_complete_evidence(db, *, scope_id: str, year: int, now: datetime) -> i
 
 
 def _revision_rows(db, fingerprint: str) -> list[RainfallAnalysisRevision]:
+    """Every revision row for *fingerprint*. The ordering is for readability
+    only -- callers must key by ``policy_revision``, never by position:
+    ``created_at`` defaults to ``now()``, which is the TRANSACTION timestamp,
+    so rows written inside one test transaction tie exactly and any order
+    between them is heap order.
+    """
     from sqlalchemy import select
 
     return list(
@@ -267,12 +281,18 @@ def test_a_key_materialized_under_the_previous_revision_gains_the_reference_metr
     rows = _revision_rows(db, fingerprint)
 
     # (a) The earlier revision is RETAINED, not overwritten.
+    #
+    # Keyed by ``policy_revision``, never by list position: ``created_at`` is a
+    # ``server_default=func.now()`` and ``now()`` is the TRANSACTION timestamp,
+    # so both rows written inside this one test transaction carry a
+    # byte-identical ``created_at`` and their relative order is heap order. A
+    # positional assertion would eventually fail here looking exactly like "the
+    # older row was overwritten" -- the one thing this test exists to detect.
     assert len(rows) == 2
-    assert [row.policy_revision for row in rows] == [
-        _PREVIOUS_POLICY_REVISION,
-        RAINFALL_METRIC_POLICY_REVISION,
-    ]
-    older, newer = rows
+    by_revision = {row.policy_revision: row for row in rows}
+    assert set(by_revision) == {_PREVIOUS_POLICY_REVISION, RAINFALL_METRIC_POLICY_REVISION}
+    older = by_revision[_PREVIOUS_POLICY_REVISION]
+    newer = by_revision[RAINFALL_METRIC_POLICY_REVISION]
     assert older.data_revision == newer.data_revision
     for key in _REFERENCE_KEYS:
         assert key not in older.snapshot["antecedents"], key
@@ -295,6 +315,33 @@ def test_a_key_materialized_under_the_previous_revision_gains_the_reference_metr
     assert antecedents["d7_normal"]["value"] == pytest.approx(7 * 5.0)
     assert antecedents["d30_normal"]["value"] == pytest.approx(30 * 5.0)
     assert antecedents["d90_normal"]["value"] == pytest.approx(90 * 5.0)
+
+    # The percentiles are pinned by VALUE too. A presence check is served just
+    # as happily by an INVERTED orientation, and this fixture makes the right
+    # answer determinate: every eligible baseline window is 5.0 mm/day and the
+    # selected year is 3.0 mm/day, so the selected total is strictly below
+    # every baseline total in the sample and takes rank i = 1.
+    #
+    # Eligible years are 22, not 30, and that is the fixture's own doing: it
+    # seeds each baseline year with the same COUNT of days from 1 January, so
+    # in the eight leap years of 1991-2020 that run ends on 14 April and the
+    # window ending on the 15 April anchor is one day short -- derivable
+    # (denominator stays 30) but not complete, hence not eligible. 22 still
+    # clears MIN_WINDOW_BASELINE_YEARS, which is why the six metrics serve.
+    #
+    # ``climatology.weibull_percentile`` ranks the selected value INSIDE its
+    # own sample, so n = 22 + 1 = 23 and
+    #     p = 100 * i / (n + 1) = 100 * 1 / 24 = 4.1666...
+    expected_percentile = 100 * 1 / 24
+    for key in ("d7_percentile", "d30_percentile", "d90_percentile"):
+        metric = antecedents[key]
+        assert len(metric["quality"]["eligible_years"]) == 22, (key, metric)
+        assert metric["quality"]["baseline_years_derivable"] == 30, (key, metric)
+        assert metric["value"] == pytest.approx(expected_percentile), (key, metric)
+
+    # And exactly nine keys: the three antecedent totals plus the six reference
+    # metrics, with nothing invented alongside them.
+    assert set(newer.snapshot["antecedents"]) == {"d7", "d30", "d90", *_REFERENCE_KEYS}
 
     # The three antecedent TOTALS are unchanged across the bump -- the same
     # evidence, so the same millimetres. Only the reference is new.

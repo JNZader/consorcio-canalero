@@ -2281,7 +2281,12 @@ class TestWindowBaselineFloorBindsAtDisclosure:
         for key in self._REFERENCE_KEYS:
             metric = antecedents[key]
             assert metric["state"] == "available", (key, metric)
-            assert metric["completeness"] == pytest.approx(20 / 30), (key, metric)
+            # EXACT equality, not ``approx``: the thesis of this test is that
+            # the two sides are the same float division, and ``approx`` is the
+            # one matcher that cannot express that -- it would keep passing
+            # against a hand-rounded 0.6667 threshold, which is the drift the
+            # test exists to catch.
+            assert metric["completeness"] == 20 / 30, (key, metric)
 
     def test_thresholds_track_the_window_floor_rather_than_drifting_from_it(self) -> None:
         """Computed, never written: the pin cannot drift from the floor it is
