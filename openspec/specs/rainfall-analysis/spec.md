@@ -114,6 +114,24 @@ The system MUST support calendar-year selection only. It MUST compare the select
 
 The system MUST suppress `annual.percentile` when baseline years available for the comparison date fall below a defined minimum, disclosing an insufficient-sample reason distinct from coverage or quality suppression.
 
+NOTE (BL-EMPTY-BASELINE-REASON, 2026-08-26): the insufficient-sample reason is
+true only of a baseline that was READ and found short. A baseline read that
+returns NOTHING — an empty result rather than an unresolvable one — weighed no
+year against the minimum, and MUST disclose a third, distinguishable
+baseline-evidence reason naming an absent read, on both the annual pair and the
+antecedent reference. Until this note the empty case fell through to the
+sample-size reason on both paths, telling the reader a sample had been assessed
+and found thin when none existed; that is the wrong-explanation class this
+capability's honesty register exists to forbid, and a suppressed metric's reason
+is the only thing the reader gets.
+
+#### Scenario: A baseline read that returns nothing
+
+- GIVEN the baseline read resolves and returns no years at all
+- WHEN the reference metrics are derived
+- THEN `normal` and `percentile` are suppressed with an absent-evidence reason
+- AND that reason is distinguishable from the insufficient-sample reason, from an unmapped-scope reason, and from a read that refused to answer
+
 #### Scenario: February 29 rank on a small sample
 
 - GIVEN the comparison date is February 29 with only ~7 contributing baseline years
@@ -200,6 +218,14 @@ is still a spec that lies.
 The two suppression reasons MUST be distinguishable from each other and from
 coverage or quality suppression. A percentile computed over a sample below the
 floor MUST NEVER be served, softened, or annotated — it is suppressed.
+
+NOTE (BL-EMPTY-BASELINE-REASON, 2026-08-26): "the two" counts the reasons the
+three FLOORS above produce. It has never been the total number of reasons an
+antecedent reference can disclose — an off-zone scope and an unresolvable
+baseline read each carry their own — and it does not bound the addition of the
+absent-read reason required under "Percentile Minimum Sample Size". What the
+sentence binds is the property, and the property is unchanged and now holds in
+one more case: every reason MUST name what actually happened.
 
 #### Scenario: A baseline year without a complete window is excluded
 

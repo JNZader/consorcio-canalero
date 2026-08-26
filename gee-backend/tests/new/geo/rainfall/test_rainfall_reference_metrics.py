@@ -909,3 +909,152 @@ def test_the_period_label_refuses_a_span_it_cannot_name_honestly():
         temporal.baseline_period_label(
             datetime(2021, 1, 1, tzinfo=UTC), datetime(1991, 1, 1, tzinfo=UTC)
         )
+
+
+# ---------------------------------------------------------------------------
+# BL-EMPTY-BASELINE-REASON — an empty read is not a small sample
+# ---------------------------------------------------------------------------
+
+
+def _annual_snapshot(*, baseline, reason: str) -> dict:
+    """``build_snapshot`` with the ANNUAL baseline argument under test.
+
+    ``_snapshot`` above drives the antecedent (window) pair and never passes
+    ``baseline``; this drives the other half, so the two paths of the same
+    defect are exercised through the same public entry point.
+    """
+    from app.domains.geo.rainfall.compute import build_snapshot
+
+    return build_snapshot(
+        scope=_ZONE,
+        year=2024,
+        role="historical",
+        source_id="chirps-v3-final",
+        intervals=_selected_intervals(),
+        batch=_batch(),
+        now=_NOW,
+        baseline=baseline,
+        baseline_unavailable_reason=reason,
+    )
+
+
+def test_an_annual_baseline_with_nothing_in_it_discloses_the_absent_evidence_reason():
+    """An EMPTY-but-not-``None`` annual baseline served the SAMPLE-SIZE reason.
+
+    Nothing was read, yet the disclosure said the sample was too small -- the
+    reader is told the baseline is thin when the truth is that there is no
+    baseline. The spec's honesty register ("the two suppression reasons MUST be
+    distinguishable from each other", rainfall-analysis "Antecedent Percentile
+    Anti-Bias Guards") is exactly what an empty read shipping the sample-size
+    reason violates: a suppressed metric's reason is the only thing the reader
+    gets, so it has to be true.
+
+    The reason is a THIRD string, not the caller's. The caller's reason
+    explains why it handed in ``None``; serving it for an empty read would
+    announce "baseline_scope_unmapped" for a scope that IS mapped -- which is
+    the same class of wrong sentence one branch over, and is what the first
+    draft of this fix actually produced against the duplicate-slot fixture.
+    """
+    from app.domains.geo.rainfall.compute import (
+        BASELINE_EVIDENCE_ABSENT,
+        BASELINE_SCOPE_UNMAPPED,
+    )
+
+    annual = _annual_snapshot(baseline={}, reason=BASELINE_SCOPE_UNMAPPED)["annual"]
+    for name in ("normal", "percentile"):
+        assert annual[name]["state"] == "suppressed", name
+        assert annual[name]["reason"] == BASELINE_EVIDENCE_ABSENT, (name, annual[name])
+
+
+def test_an_annual_baseline_the_caller_could_not_read_keeps_the_callers_reason():
+    """``None`` is UNCHANGED, and the two cases stay distinguishable.
+
+    Pinned beside the branch above because the cheap version of this fix --
+    widening ``is None`` to ``not baseline`` -- makes them identical, and the
+    caller's sentence is the one that is then wrong.
+    """
+    from app.domains.geo.rainfall.compute import (
+        BASELINE_EVIDENCE_ABSENT,
+        BASELINE_EVIDENCE_INVALID,
+    )
+
+    annual = _annual_snapshot(baseline=None, reason=BASELINE_EVIDENCE_INVALID)["annual"]
+    for name in ("normal", "percentile"):
+        assert annual[name]["reason"] == BASELINE_EVIDENCE_INVALID, (name, annual[name])
+    assert BASELINE_EVIDENCE_ABSENT != BASELINE_EVIDENCE_INVALID
+
+
+def test_a_thin_but_real_annual_baseline_still_discloses_the_sample_size_reason():
+    """The other side of the same distinction, so the fix cannot collapse it.
+
+    Nineteen eligible years is one short of ``MIN_BASELINE_YEARS``: evidence
+    WAS read and the sample is genuinely too small, which is the one case the
+    sample-size reason is true of.
+    """
+    from app.domains.geo.rainfall.compute import (
+        BASELINE_YEARS_BELOW_MINIMUM,
+        MIN_BASELINE_YEARS,
+    )
+
+    years = range(1991, 1991 + MIN_BASELINE_YEARS - 1)
+    thin = {year: (365.0, 365, 365) for year in years}
+    annual = _annual_snapshot(baseline=thin, reason="baseline_evidence_invalid")["annual"]
+    for name in ("normal", "percentile"):
+        assert annual[name]["reason"] == BASELINE_YEARS_BELOW_MINIMUM, (name, annual[name])
+
+
+@pytest.mark.parametrize("empty", [(), []], ids=["empty-tuple", "empty-list"])
+def test_a_window_baseline_with_nothing_in_it_discloses_the_absent_evidence_reason(empty):
+    """The MIRROR of the annual defect on the antecedent path.
+
+    Same wrong sentence, same fix, asserted over all six reference metrics
+    because the reason is set once for the pair and a per-window regression
+    would otherwise hide behind d7.
+    """
+    from app.domains.geo.rainfall.compute import (
+        BASELINE_EVIDENCE_ABSENT,
+        BASELINE_SCOPE_UNMAPPED,
+    )
+
+    antecedents = _snapshot(
+        window_baseline=empty,
+        window_baseline_unavailable_reason=BASELINE_SCOPE_UNMAPPED,
+    )["antecedents"]
+    for key in _REFERENCE_KEYS:
+        assert antecedents[key]["state"] == "suppressed", key
+        assert antecedents[key]["reason"] == BASELINE_EVIDENCE_ABSENT, (key, antecedents[key])
+
+
+def test_a_window_baseline_the_caller_could_not_read_keeps_the_callers_reason():
+    """``None`` on the window path is UNCHANGED too -- the duplicate-slot
+    handler in ``tasks`` hands in ``None`` with ``baseline_evidence_invalid``,
+    and that sentence must survive this fix intact."""
+    from app.domains.geo.rainfall.compute import BASELINE_EVIDENCE_INVALID
+
+    antecedents = _snapshot(
+        window_baseline=None,
+        window_baseline_unavailable_reason=BASELINE_EVIDENCE_INVALID,
+    )["antecedents"]
+    for key in _REFERENCE_KEYS:
+        assert antecedents[key]["reason"] == BASELINE_EVIDENCE_INVALID, key
+
+
+def test_an_off_scope_empty_window_baseline_still_discloses_the_scope_reason():
+    """Precedence is unchanged: the scope floor outranks the baseline one.
+
+    A basin scope cannot have a zone reference AT ALL, so the reader is told
+    that first -- the empty baseline downstream is a consequence, not the
+    explanation. Pinned because the fix edits exactly the branch below it.
+    """
+    from app.domains.geo.rainfall.compute import (
+        BASELINE_SCOPE_UNMAPPED,
+        REFERENCE_SCOPE_UNSUPPORTED,
+    )
+
+    antecedents = _snapshot(
+        scope=_BASIN,
+        window_baseline=(),
+        window_baseline_unavailable_reason=BASELINE_SCOPE_UNMAPPED,
+    )["antecedents"]
+    for key in _REFERENCE_KEYS:
+        assert antecedents[key]["reason"] == REFERENCE_SCOPE_UNSUPPORTED, key

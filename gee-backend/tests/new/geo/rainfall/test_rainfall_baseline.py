@@ -810,13 +810,20 @@ def test_a_duplicated_window_baseline_slot_degrades_only_the_window_reference(db
     assert stored["antecedents"]["d30"]["state"] == "available"
     assert stored["annual"]["selected"]["value"] == pytest.approx(153.0)
 
-    # (b) The ANNUAL pair keeps its own honest answer. This fixture is thin,
-    #     so it is `baseline_years_below_minimum` -- what matters is that it
-    #     is NOT the window read's failure wearing the annual read's label,
-    #     which is exactly what one shared `try` would produce.
+    # (b) The ANNUAL pair keeps its own honest answer. This fixture persists a
+    #     single baseline day PAST 1991's own cutoff, so `baseline_cumulatives`
+    #     -- whose windows stop at each year's cutoff -- returns an EMPTY
+    #     mapping: nothing was read. The reason is therefore
+    #     `baseline_evidence_absent` (BL-EMPTY-BASELINE-REASON), not the
+    #     sample-size reason this asserted while the empty case fell through to
+    #     it, and which claimed a sample had been weighed and found short.
+    #     What the assertion has always been FOR is unchanged and is what makes
+    #     the third string worth having: it is still NOT the window read's
+    #     failure (`baseline_evidence_invalid`) wearing the annual read's
+    #     label, which is exactly what one shared `try` would produce.
     for metric in ("normal", "percentile"):
         assert stored["annual"][metric]["state"] == "suppressed"
-        assert stored["annual"][metric]["reason"] == "baseline_years_below_minimum"
+        assert stored["annual"][metric]["reason"] == "baseline_evidence_absent"
     assert "rainfall.baseline.duplicate_slots" not in _event_names(caplog)
 
     # (c) The workbook normal curve's own read still answers over the same
@@ -1023,9 +1030,13 @@ def test_a_duplicated_window_baseline_slot_degrades_the_six_reference_metrics(db
     assert antecedents["d7"]["value"] == pytest.approx(21.0)
     assert antecedents["d30"]["state"] == "available"
 
-    # And the ANNUAL pair still keeps its own, different reason.
+    # And the ANNUAL pair still keeps its own, DIFFERENT reason: its read
+    # returned nothing (`baseline_evidence_absent`, BL-EMPTY-BASELINE-REASON),
+    # which is not the window read's refusal above. The point of the assertion
+    # is the difference, and the difference survives.
     for metric in ("normal", "percentile"):
-        assert stored["annual"][metric]["reason"] == "baseline_years_below_minimum"
+        assert stored["annual"][metric]["reason"] == "baseline_evidence_absent"
+        assert stored["annual"][metric]["reason"] != antecedents["d7_normal"]["reason"]
 
 
 def test_baseline_daily_values_sums_rows_sharing_one_utc_day(db):

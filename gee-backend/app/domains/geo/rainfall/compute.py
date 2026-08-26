@@ -205,6 +205,23 @@ _BASELINE_SOURCE_ID = "chirps-v3-final"
 BASELINE_SCOPE_UNMAPPED = "baseline_scope_unmapped"
 BASELINE_EVIDENCE_INVALID = "baseline_evidence_invalid"
 
+# BL-EMPTY-BASELINE-REASON: the THIRD baseline-evidence outcome, and the one
+# that had no name. The two above are chosen by the CALLER and describe why it
+# handed in ``None``: no provider asset for the scope, or a read that refused
+# to answer. This one is not the caller's to choose -- it describes a read that
+# ran, succeeded, and returned nothing, which neither of those sentences is
+# true of, and which is not the sample-size floor either: no year was weighed
+# and found wanting, because no year was read.
+#
+# Before this constant an empty-but-not-``None`` baseline fell through to
+# ``BASELINE_YEARS_BELOW_MINIMUM``, so the reader was told the baseline was
+# thin when the truth was that there was no baseline. That is the same
+# wrong-explanation defect LI2A-003 fixed on the sample-size side and LI2B-004
+# fixed on the unmapped side; the honesty register (spec: "the two suppression
+# reasons MUST be distinguishable") is satisfied only by a THIRD string,
+# because a suppressed metric's reason is the only thing the reader gets.
+BASELINE_EVIDENCE_ABSENT = "baseline_evidence_absent"
+
 # Ops.6 (archive-report.md 2026-08-11 section 10): the percentile ranks the
 # SELECTED year's total, so it inherits that total's evidence problems. Its
 # own reason string, distinct from `coverage_below_threshold` (which speaks
@@ -373,6 +390,18 @@ def _normal_and_percentile_metrics(
     if baseline is None:
         normal_state, normal_reason = "suppressed", baseline_unavailable_reason
         percentile_state, percentile_reason = "suppressed", baseline_unavailable_reason
+        normal_value = percentile_value = None
+    elif not baseline:
+        # BL-EMPTY-BASELINE-REASON. Deliberately its OWN branch, between the
+        # caller's reason and the sample-size floor, because it is neither.
+        # `None` means the caller could not read a baseline and says why;
+        # empty means the read RAN and returned nothing, which the caller's
+        # reason does not describe -- serving it here would announce
+        # "baseline_scope_unmapped" for a scope that is mapped. And the floor
+        # below weighs eligible years against a minimum, which is a sentence
+        # about evidence that exists.
+        normal_state, normal_reason = "suppressed", BASELINE_EVIDENCE_ABSENT
+        percentile_state, percentile_reason = "suppressed", BASELINE_EVIDENCE_ABSENT
         normal_value = percentile_value = None
     elif len(eligible_years) < MIN_BASELINE_YEARS:
         # design.md D5: the per-year completeness floor already trimmed
@@ -700,6 +729,16 @@ def _antecedent_reference_metrics(
         normal_value = percentile_value = None
         normal_state = percentile_state = "suppressed"
         normal_reason = percentile_reason = baseline_unavailable_reason
+    elif not daily_baseline:
+        # BL-EMPTY-BASELINE-REASON, the MIRROR of the annual path's branch: an
+        # empty sequence is a read that returned nothing -- neither the
+        # caller's None-reason nor the sample-size floor. Ordered AFTER the
+        # scope floor deliberately: an off-zone scope has no zone reference at
+        # all, so the empty baseline under it is a consequence, never the
+        # explanation.
+        normal_value = percentile_value = None
+        normal_state = percentile_state = "suppressed"
+        normal_reason = percentile_reason = BASELINE_EVIDENCE_ABSENT
     elif len(eligible) < MIN_WINDOW_BASELINE_YEARS:
         normal_value = percentile_value = None
         normal_state = percentile_state = "suppressed"
