@@ -135,7 +135,7 @@ class IntelligenceRepositoryMetricsMixin:
         stmt = (
             select(AlertaGeo)
             .where(AlertaGeo.activa.is_(True))
-            .order_by(AlertaGeo.created_at.desc())
+            .order_by(AlertaGeo.created_at.desc(), AlertaGeo.id.desc())
             .limit(limit)
         )
         return list(db.execute(stmt).scalars().all())

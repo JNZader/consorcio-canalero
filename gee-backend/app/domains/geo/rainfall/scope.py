@@ -1,7 +1,29 @@
 """Scope contract: only stable regional zone and basin computations execute."""
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
+
+
+def normalized_basin_name(cuenca: str) -> str:
+    """``zonas_operativas.cuenca`` free text reduced to its basin-identity form.
+
+    NFKD-decompose, drop combining marks, trim, case-fold. Deliberately NOT a
+    slugifier: it must not invent a mapping by rewriting separators, because
+    every rewrite it performs is a chance to land on a DIFFERENT watershed's
+    asset name and reduce over the wrong geometry.
+
+    This lives HERE, next to the scope contract, rather than inside the GEE
+    adapter that used to own it, because both ends of the system must agree on
+    what makes two rows the same watershed: ``repository.resolve_parcel_scopes``
+    when it groups rows into a scope, and ``gee_client.asset_name_for`` when it
+    maps that scope to an asset. Two copies of this rule -- or one copy and one
+    raw comparison -- means the identity of a scope depends on which half is
+    looking at it, which is exactly the defect this function's single home
+    exists to prevent.
+    """
+    decomposed = unicodedata.normalize("NFKD", cuenca)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).strip().casefold()
 
 
 class UnsupportedDirectScope(ValueError):

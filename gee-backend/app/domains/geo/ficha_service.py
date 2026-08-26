@@ -769,7 +769,7 @@ def _raster_path(db: Session, tipo: str) -> str | None:
     layer = (
         db.query(GeoLayer)
         .filter(GeoLayer.tipo == tipo)
-        .order_by(GeoLayer.created_at.desc())
+        .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
         .first()
     )
     if layer is None:

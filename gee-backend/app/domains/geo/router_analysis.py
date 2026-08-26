@@ -59,7 +59,7 @@ def compute_zonal_statistics(
     layer = (
         db.query(GeoLayer)
         .filter(GeoLayer.tipo == body.layer_tipo)
-        .order_by(GeoLayer.created_at.desc())
+        .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
     )
     if body.area_id:
         layer = layer.filter(GeoLayer.area_id == body.area_id)
@@ -154,7 +154,7 @@ def get_zona_flood_risk(
         layer = (
             db.query(GeoLayer)
             .filter(GeoLayer.tipo == tipo)
-            .order_by(GeoLayer.created_at.desc())
+            .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
             .first()
         )
         if layer:

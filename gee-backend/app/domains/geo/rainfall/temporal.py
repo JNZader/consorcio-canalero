@@ -4,6 +4,56 @@ and explicit event windows."""
 from datetime import UTC, date, datetime, timedelta
 
 
+# design.md D2 (lluvia-antecedente-referencia): the bounds of the persisted
+# baseline `repository.baseline_daily_values` reads, half-open --
+# `[1991-01-01, 2021-01-01)`, the period every served envelope names
+# "1991-2020".
+#
+# LOAD-BEARING, not hygiene. The 2021-2025 backfill has landed under the SAME
+# `(scope_kind="provider_asset", scope_id=<asset>, scope_version=
+# BASELINE_ASSET_VERSION)` key as the baseline -- measured on the box, not
+# assumed: one key, 12,784 rows, 35 unbroken years 1991-2025, every year at
+# exactly its calendar day count. So an unbounded read would silently widen
+# the ranked distribution past the period the disclosure keeps naming: a
+# reference that says one period and ranks against another, with nothing on
+# any surface to reveal it. Named constants rather than inline literals
+# because the upper bound and its exclusivity are both mutation-gated.
+#
+# They live HERE, not in `repository.py`, for one reason (BL-BASELINE-STRING-
+# SOURCE): `compute.py` must derive the period STRING it serves from the same
+# bounds the read applies, and `repository` already imports `compute`, so
+# `compute` importing `repository` would close a cycle. `temporal` is the
+# module both already depend on and the one that owns calendar facts, so the
+# span has exactly one definition and both directions reach it. `repository`
+# re-exports the two names, which is where every existing caller imports them
+# from.
+BASELINE_SPAN_START = datetime(1991, 1, 1, tzinfo=UTC)
+BASELINE_SPAN_END = datetime(2021, 1, 1, tzinfo=UTC)  # exclusive
+
+
+def baseline_period_label(span_start: datetime, span_end: datetime) -> str:
+    """The human period name for a half-open baseline span: ``"1991-2020"``.
+
+    The end year is ``span_end.year - 1`` because the bound is EXCLUSIVE --
+    the same exclusivity `baseline_daily_values` applies. Deriving the string
+    is the whole point: it was a literal in `compute.build_snapshot`, so
+    moving the span left fourteen surfaces (four label cells, six sheet rows,
+    four badges) naming a period the reference no longer ranks against.
+
+    Rejects a span that does not end on a January 1 rather than inventing a
+    name for it: "1991-2020" is only true of a whole-calendar-year span, and a
+    silently wrong period name is exactly the defect this replaces.
+    """
+    if span_end <= span_start:
+        raise ValueError(f"baseline span is empty: [{span_start}, {span_end})")
+    if (span_end.month, span_end.day) != (1, 1) or (span_start.month, span_start.day) != (1, 1):
+        raise ValueError(
+            "baseline period label is only defined for a whole-calendar-year span, "
+            f"got [{span_start.date()}, {span_end.date()})"
+        )
+    return f"{span_start.year}-{span_end.year - 1}"
+
+
 class EventSuppressed(ValueError):
     """The requested event metric cannot be qualified under the policy."""
 

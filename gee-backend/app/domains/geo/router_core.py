@@ -305,7 +305,12 @@ def list_public_geo_layers(
     if fuente:
         query = query.filter(GeoLayer.fuente == fuente)
     total = query.count()
-    items = query.order_by(GeoLayer.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    items = (
+        query.order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
 
     return PaginatedResponse[GeoLayerListResponse].create(
         items=[GeoLayerListResponse.model_validate(layer) for layer in items],

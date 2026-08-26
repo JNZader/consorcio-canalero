@@ -996,7 +996,13 @@ def _process_outbox_batch(db: Session, now: datetime | None = None) -> dict[str,
             select(RainfallOutbox.id)
             .where(RainfallOutbox.status == "pending")
             .where(RainfallOutbox.next_attempt_at <= datetime.now(UTC))
-            .order_by(RainfallOutbox.created_at)
+            # BL-ORDER-BY-CREATED-AT-SWEEP: `created_at` is a
+            # `server_default=func.now()`, i.e. the TRANSACTION timestamp, so every
+            # row enqueued by one request ties exactly. With a LIMIT on top, the tie
+            # decides which rows enter the batch AT ALL -- heap order, re-evaluated
+            # each cycle, which is how one row gets skipped repeatedly. `id` breaks
+            # it deterministically; FIFO across transactions is unchanged.
+            .order_by(RainfallOutbox.created_at, RainfallOutbox.id)
             .limit(MAX_OUTBOX_BATCH)
         )
         .scalars()
