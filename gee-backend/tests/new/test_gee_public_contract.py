@@ -90,7 +90,15 @@ def test_protected_gee_enforces_role_matrix(
             event_key="mar_2015",
             start_date=date(2015, 3, 15),
             end_date=date(2015, 3, 15),
-            curated_payload={"name": "Inundacion Marzo 2015", "severity": "alta"},
+            curated_payload={
+                "name": "Inundacion Marzo 2015",
+                # Not decoration: the read model REFUSES a curated payload
+                # without prose, because `isHistoricFlood` drops a record
+                # missing `name` silently and a description-less card renders
+                # blank. The seed provides both on every anchor.
+                "description": "Evento historico para revisar con Landsat 8 y Sentinel-1",
+                "severity": "alta",
+            },
         )
     )
     db.flush()

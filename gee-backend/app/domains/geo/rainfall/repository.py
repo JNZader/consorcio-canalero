@@ -735,7 +735,6 @@ def read_events(
     scope_kind: str,
     scope_id: str,
     scope_version: str,
-    revision: str | None = None,
 ) -> CatalogGeneration:
     """The served generation, per D12's three-part rule.
 
@@ -756,10 +755,17 @@ def read_events(
     Ordering is left to the caller: curated precedence, the read-time
     confirmation derivation and pagination all operate on the merged set, and
     ordering one half in SQL would only have to be redone.
+
+    There is deliberately NO ``revision`` override. Every reader of this
+    catalog -- the list handler here, and the imagery bridge in B2a's sibling
+    slice, whose own requirement is that an id resolves against *the same
+    generation the list serves* -- wants the rule above, not a pinned revision;
+    a parameter letting one of them pin a different one is the mechanism by
+    which the list and the bridge start disagreeing about which events exist.
     """
     from app.domains.geo.rainfall import detector
 
-    current = detector.DETECTOR_REVISION if revision is None else revision
+    current = detector.DETECTOR_REVISION
 
     def _detected_at(target: str) -> list[RainfallExtremeEvent]:
         return list(

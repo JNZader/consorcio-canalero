@@ -121,6 +121,19 @@ def _detected(
     return row
 
 
+def _payload(name, severity, **extra):
+    """A minimal curated payload with the two fields the seed ALWAYS provides.
+
+    `name` and `description` are not optional in the served contract: the
+    frontend's `isHistoricFlood` drops a nameless record silently, so a payload
+    missing either is a broken seed and the read model raises on it. Building
+    them here keeps every fixture honest about that.
+    """
+    return {"name": name, "description": f"{name} -- descripcion curada", "severity": severity} | (
+        extra
+    )
+
+
 def _curated(db, *, event_key="mar_2015", day=date(2015, 3, 15), payload=None):
     """Persist one curated anchor exactly as `lluvia_ext_002` seeds it."""
     from app.domains.geo.rainfall.models import RainfallExtremeEvent
@@ -235,6 +248,28 @@ def test_the_most_recent_non_empty_generation_wins_the_stale_fallback(client, db
     assert [record["id"] for record in body["floods"]] == ["ext_20020206"]
 
 
+def test_two_generations_written_in_one_transaction_break_the_tie_by_revision(client, db):
+    """4.2, the tie the timestamp CANNOT break (WARNING, fix-forward).
+
+    `created_at` defaults to `now()`, which in Postgres is TRANSACTION start
+    time: two generations written inside ONE transaction share it to the
+    microsecond. `max(created_at) DESC` alone then leaves the choice to the
+    planner, and the picker would serve a different catalog on different days
+    for the same rows. `detector_revision DESC` is the tie-break that makes the
+    answer a property of the data -- untested until this test, and a mutant
+    that flipped it to ASC survived the whole suite.
+    """
+    same_instant = datetime(2026, 1, 1, tzinfo=UTC)
+    _detected(db, revision="rev-a", start=date(2001, 1, 5), created_at=same_instant)
+    _detected(db, revision="rev-b", start=date(2002, 2, 6), created_at=same_instant)
+
+    body = _body(client)
+
+    assert body["revision_state"] == "stale"
+    assert body["detector_revision"] == "rev-b"
+    assert [record["id"] for record in body["floods"]] == ["ext_20020206"]
+
+
 def test_an_empty_catalog_is_labelled_empty_rather_than_current(client, db):
     """A catalog nobody has written yet has no generation to call current.
 
@@ -330,6 +365,115 @@ def test_a_confirmed_anchor_is_one_card_carrying_both_provenances(client, db):
     assert record["confirmation_offset_days"] == 2
 
 
+def test_every_row_confirming_an_anchor_is_merged_not_served_as_a_second_card(client, db):
+    """4.5, the case D8's precedence actually has to survive (CRITICAL, fix-forward).
+
+    Both tiers hold rows for one storm BY CONSTRUCTION -- an `alta` span is a
+    superset of the `extrema` spans inside it (`repository.EVENT_KEY_PREFIXES`
+    exists precisely because both are persisted for the same days). Suppressing
+    only the SINGLE nearest confirming row therefore leaves every other row of
+    the same storm in the list, and the DEFAULT `extrema` response serves the
+    curated `feb_2017` card AND `ext_20170219` as a second card for the same
+    flood: exactly the r1 failure ("two cards for one flood") that D8's
+    precedence exists to remove, arriving through the tier the caller did not
+    even ask about.
+
+    One card in BOTH tier views, and it is the CURATED one carrying the
+    confirmation. The confirming row NAMED is the nearest across the whole
+    served generation -- confirmation is derived against the generation, not
+    against the filtered page -- so it is the same id under either tier.
+    """
+    _curated(
+        db,
+        event_key="feb_2017",
+        day=date(2017, 2, 20),
+        payload=_payload("Inundacion Febrero 2017", "alta"),
+    )
+    _detected(
+        db,
+        tier="alta",
+        start=date(2017, 2, 16),
+        end=date(2017, 2, 18),
+        peak=date(2017, 2, 18),
+        percentile=99.68,
+    )
+    _detected(
+        db,
+        tier="extrema",
+        start=date(2017, 2, 19),
+        end=date(2017, 2, 19),
+        peak=date(2017, 2, 19),
+        percentile=99.9,
+    )
+
+    for tier in ("extrema", "alta"):
+        body = _body(client, tier=tier)
+
+        assert [record["id"] for record in body["floods"]] == ["feb_2017"], tier
+        record = body["floods"][0]
+        assert record["confirmation"] == "detector_confirmed", tier
+        assert record["confirmed_by"] == "ext_20170219", tier
+        assert record["confirmation_offset_days"] == 1, tier
+        assert record["name"] == "Inundacion Febrero 2017", tier
+        assert body["total"] == 1, tier
+
+
+def test_an_anchor_the_year_filter_excludes_suppresses_nothing(client, db):
+    """The other edge of suppression, which the year filter opens.
+
+    A curated anchor dated 2016-12-31 is confirmed by rain that fell on
+    2017-01-02, two days away. Ask for 2017 and the anchor is NOT in the
+    response -- its own dates are 2016 -- so suppressing its confirming row
+    would delete the detector's only record of that storm from the very year
+    the caller asked about: a 200 with an empty list and nothing anywhere to
+    notice. Suppression only applies for anchors this response actually serves.
+    """
+    _curated(
+        db,
+        event_key="dic_2016",
+        day=date(2016, 12, 31),
+        payload=_payload("Inundacion Diciembre 2016", "alta"),
+    )
+    _detected(db, start=date(2017, 1, 2), end=date(2017, 1, 2), peak=date(2017, 1, 2))
+
+    body = _body(client, year=2017)
+
+    assert [record["id"] for record in body["floods"]] == ["ext_20170102"]
+    assert body["absence"] is None
+
+    both_years = _body(client)
+    assert [record["id"] for record in both_years["floods"]] == ["dic_2016"], (
+        "unfiltered, the anchor IS served and the same row is merged into it"
+    )
+
+
+def test_a_confirmed_anchor_leaves_no_false_absence(client, db):
+    """4.9 / spec R6 (WARNING, fix-forward). The absence is computed from the
+    detected records that SURVIVE suppression, so a generation whose only
+    qualifying row was merged into the curated card used to report
+    `no_qualifying_window` -- a reason that is false, beside a non-empty list,
+    while the evidence it denies is being served inside the card. R6's own
+    wording: a false reason is worse than no field.
+
+    A row suppressed INTO a card is still evidence the detector produced.
+    """
+    _curated(
+        db,
+        event_key="feb_2017",
+        day=date(2017, 2, 20),
+        payload=_payload("Inundacion Febrero 2017", "alta"),
+    )
+    _detected(
+        db, tier="alta", start=date(2017, 2, 18), end=date(2017, 2, 18), peak=date(2017, 2, 18)
+    )
+
+    body = _body(client, tier="alta")
+
+    assert [record["id"] for record in body["floods"]] == ["feb_2017"]
+    assert body["floods"][0]["confirmation"] == "detector_confirmed"
+    assert body["absence"] is None
+
+
 def test_an_unconfirmed_anchor_is_still_served_and_flagged(client, db):
     """4.6 (spec R4 S2). `mar_2015`'s nearest detected event ends 8 days away;
     CHIRPS is blind to that local convective. The anchor stays, flagged."""
@@ -345,17 +489,28 @@ def test_an_unconfirmed_anchor_is_still_served_and_flagged(client, db):
     assert "alt_20150305" in _by_id(body), "the far-away detected row is its own card"
 
 
+@pytest.mark.parametrize("direction", [-1, 1], ids=["before-the-anchor", "after-the-anchor"])
 @pytest.mark.parametrize(
     ("offset_days", "confirmed"),
     [(0, True), (1, True), (3, True), (4, False), (8, False)],
 )
-def test_the_confirmation_tolerance_is_exactly_three_days(client, db, offset_days, confirmed):
+def test_the_confirmation_tolerance_is_exactly_three_days(
+    client, db, offset_days, confirmed, direction
+):
     """4.6 (owner-ratified 2026-08-26). Both boundaries asserted: exactly three
     days confirms, four does not. A tolerance nobody pinned at its edges is a
-    tolerance that can widen to "anything in the same month" unnoticed."""
+    tolerance that can widen to "anything in the same month" unnoticed.
+
+    Both DIRECTIONS too. `confirmation_offset_days` has two symmetric branches
+    -- the rain before the anchor and the rain after it -- and every fixture
+    written for the real `feb_2017` case plants it BEFORE, which exercises one
+    of them. The other branch could return a constant 0 (confirming anything
+    dated after the anchor, at any distance) and the whole suite would stay
+    green: measured, that mutant survived until this parametrization.
+    """
     anchor = date(2017, 2, 20)
-    fired = anchor - timedelta(days=offset_days)
-    _curated(db, event_key="feb_2017", day=anchor, payload={"name": "a", "severity": "alta"})
+    fired = anchor + direction * timedelta(days=offset_days)
+    _curated(db, event_key="feb_2017", day=anchor, payload=_payload("a", "alta"))
     _detected(db, tier="alta", start=fired, end=fired, peak=fired)
 
     record = _by_id(_body(client, tier="alta"))["feb_2017"]
@@ -372,7 +527,7 @@ def test_confirmation_is_derived_at_read_and_never_stored(client, db):
     from app.domains.geo.rainfall.models import RainfallExtremeEvent
 
     anchor = _curated(
-        db, event_key="feb_2017", day=date(2017, 2, 20), payload={"name": "a", "severity": "alta"}
+        db, event_key="feb_2017", day=date(2017, 2, 20), payload=_payload("a", "alta")
     )
     _detected(
         db, tier="alta", start=date(2017, 2, 18), end=date(2017, 2, 18), peak=date(2017, 2, 18)
@@ -382,7 +537,7 @@ def test_confirmation_is_derived_at_read_and_never_stored(client, db):
 
     db.expire_all()
     stored = db.get(RainfallExtremeEvent, anchor.id)
-    assert set(stored.curated_payload) == {"name", "severity"}
+    assert set(stored.curated_payload) == {"name", "description", "severity"}
     assert stored.tier is None and stored.max_percentile is None
 
 
@@ -421,6 +576,42 @@ def test_the_wire_severity_stays_inside_the_palette_the_frontend_styles(client, 
     assert "extrema" not in {extrema["severity"], alta["severity"]}
 
 
+@pytest.mark.parametrize("missing", ["name", "description"])
+def test_a_curated_payload_missing_its_prose_is_loud_rather_than_silent(missing):
+    """4.7's other half. `payload.get("name")` answering `None` recreates the
+    exact CRITICAL-7 failure the synthesis exists to remove: `isHistoricFlood`
+    requires `name: string` and DROPS the record silently, so a curated anchor
+    with a broken payload vanishes from the picker with a 200 and no error
+    anywhere. The seed (`lluvia_ext_002`) provides both fields on all three
+    anchors, so a payload without them is a violated assumption -- and a
+    violated assumption should raise, not vanish a card.
+
+    The ONE assertion in this file that does not go through `TestClient`, for a
+    measured reason: `app.main`'s catch-all handler turns any exception into a
+    500 and calls `logger.exception`, and under the dev structlog renderer that
+    hands the traceback to `rich`, which pretty-prints the SQLAlchemy row in
+    every frame's locals. Measured: the request had not returned after 60 s.
+    The claim here is about the READ MODEL's refusal anyway, not about the
+    status code that refusal is eventually rendered as.
+    """
+    from app.domains.geo.rainfall import catalog_view
+
+    payload = _payload("Inundacion Marzo 2015", "alta")
+    del payload[missing]
+    anchor = SimpleNamespace(
+        event_key="mar_2015",
+        start_date=date(2015, 3, 15),
+        end_date=date(2015, 3, 15),
+        curated_payload=payload,
+    )
+    generation = SimpleNamespace(
+        revision="curated", revision_state="empty", detected=(), curated=(anchor,)
+    )
+
+    with pytest.raises(ValueError, match=missing):
+        catalog_view.build_catalog_response(generation)
+
+
 def test_curated_severity_is_served_verbatim(client, db):
     """4.10, second half (D8). `sep_2025` keeps `media` without implying a tier
     for a row that was never ranked."""
@@ -428,7 +619,7 @@ def test_curated_severity_is_served_verbatim(client, db):
         db,
         event_key="sep_2025",
         day=date(2025, 9, 5),
-        payload={"name": "Inundacion Septiembre 2025", "severity": "media"},
+        payload=_payload("Inundacion Septiembre 2025", "media"),
     )
 
     record = _by_id(_body(client))["sep_2025"]
@@ -505,6 +696,73 @@ def test_the_response_root_declares_zone_only_coverage(client, db):
     assert body["catalog_span"] == {"start": "1991-01-01", "end": "2025-12-31"}
 
 
+def test_the_catalog_span_is_the_served_rows_span_not_the_module_constants(client, db):
+    """4.8, root half (WARNING, fix-forward). The span read off
+    `DETECTOR_CLIMATOLOGY_*` is the span the CODE currently holds, not the one
+    the served rows were ranked against -- so a stale generation served after a
+    constants bump announces a span its own rows never saw, contradicting
+    `event_from_row`'s docstring and every synthesized description underneath
+    (those DO read the row).
+    """
+    _detected(
+        db,
+        revision="rev-narrow",
+        start=date(2001, 1, 5),
+        span_end=date(2021, 1, 1),
+    )
+
+    body = _body(client)
+
+    assert body["revision_state"] == "stale"
+    assert body["catalog_span"] == {"start": "1991-01-01", "end": "2020-12-31"}
+    assert "1991-2020" in body["floods"][0]["description"], "the row's own prose agrees"
+
+
+def test_a_generation_holding_two_spans_refuses_to_name_one(db):
+    """The span is uniform within a generation BY CONSTRUCTION (D5 seals one
+    constants block per `detector_revision`, and `persist_events` refuses a row
+    that disagrees at an existing identity). Two spans therefore mean the
+    catalog is broken in a way no single `catalog_span` can describe -- and
+    picking either one would put a number at the response root that half the
+    cards underneath contradict. Asserted at the read model for the same reason
+    as the curated-payload refusal above.
+    """
+    from app.domains.geo.rainfall import catalog_view
+
+    def _row(span_end):
+        # `alta` rows under the default `extrema` request: the span claim is
+        # about the GENERATION, so it has to be refused even when not one row
+        # of it reaches the page the caller asked for.
+        return SimpleNamespace(
+            tier="alta",
+            start_date=date(2001, 1, 5),
+            end_date=date(2001, 1, 5),
+            climatology_span_start=date(1991, 1, 1),
+            climatology_span_end=span_end,
+        )
+
+    generation = SimpleNamespace(
+        revision="rev-mixed",
+        revision_state="current",
+        detected=(_row(date(2021, 1, 1)), _row(date(2026, 1, 1))),
+        curated=(),
+    )
+
+    with pytest.raises(ValueError, match="different climatology spans"):
+        catalog_view.build_catalog_response(generation)
+
+
+def test_an_empty_catalog_announces_no_span_at_all(client, db):
+    """The other half: with no generation there is no ranked span, and naming
+    the module's constants would claim a catalog that does not exist."""
+    _curated(db)
+
+    body = _body(client)
+
+    assert body["revision_state"] == "empty"
+    assert body["catalog_span"] is None
+
+
 # ===========================================================================
 # 4.9 -- R6: absence is never a bare success
 # ===========================================================================
@@ -519,7 +777,7 @@ def test_a_year_with_no_qualifying_window_serves_a_reason(client, db):
         db,
         event_key="sep_2025",
         day=date(2025, 9, 5),
-        payload={"name": "Inundacion Septiembre 2025", "severity": "media"},
+        payload=_payload("Inundacion Septiembre 2025", "media"),
     )
 
     body = _body(client, year=2025)
@@ -527,6 +785,46 @@ def test_a_year_with_no_qualifying_window_serves_a_reason(client, db):
     assert body["absence"]["reason"] == "no_qualifying_window"
     assert body["absence"]["detail"]
     assert [record["id"] for record in body["floods"]] == ["sep_2025"]
+
+
+@pytest.mark.parametrize("year", [2015, 2016])
+def test_a_year_straddling_event_is_served_under_both_of_its_years(client, db, year):
+    """4.9, the case a `start_date.year == year` filter silently loses.
+
+    A wet spell that runs 28-dic to 03-ene belongs to BOTH years for a caller
+    asking "what happened in 2016": filtering on the start year alone would
+    drop it from 2016 with a 200 and an absence reason claiming the detector
+    found nothing.
+    """
+    _detected(db, start=date(2015, 12, 28), end=date(2016, 1, 3), peak=date(2015, 12, 31))
+
+    body = _body(client, year=year)
+
+    assert [record["id"] for record in body["floods"]] == ["ext_20151228"]
+    assert body["absence"] is None
+
+
+def test_a_detected_record_declares_whether_its_span_was_clipped(client, db):
+    """4.8, the derived flag (`DetectedEvent.clipped_at_span_end`). An event
+    reaching the frozen span's LAST day may have been cut by the span rather
+    than by the weather, and the served record has to say so -- derived from
+    the span sealed ON the row, never stored, because the same days under a
+    wider span in a later revision are a different row.
+    """
+    _detected(
+        db,
+        start=date(2025, 12, 29),
+        end=date(2025, 12, 31),
+        peak=date(2025, 12, 30),
+        span_end=date(2026, 1, 1),
+        percentile=99.9,
+    )
+    _detected(db, start=date(2015, 3, 12), span_end=date(2026, 1, 1), percentile=99.8)
+
+    served = _by_id(_body(client))
+
+    assert served["ext_20251229"]["clipped_at_span_end"] is True
+    assert served["ext_20150312"]["clipped_at_span_end"] is False
 
 
 def test_a_year_with_a_detected_event_carries_no_absence(client, db):

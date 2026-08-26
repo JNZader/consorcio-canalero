@@ -31,8 +31,6 @@ from typing import Any, Mapping, Sequence
 
 from app.domains.geo.rainfall.detector import (
     CHIRPS_DISCLOSURE,
-    DETECTOR_CLIMATOLOGY_END,
-    DETECTOR_CLIMATOLOGY_START,
     DetectedEvent,
     FiredWindow,
     synthesize_description,
@@ -169,23 +167,26 @@ def confirmation_offset_days(anchor: date, row) -> int:
     return (anchor - row.end_date).days
 
 
-def confirming_row(anchor: date, detected: Sequence[Any]):
-    """The detected row that confirms *anchor*, or ``None``.
+def confirming_rows(anchor: date, detected: Sequence[Any]) -> list[Any]:
+    """EVERY detected row within the tolerance of *anchor*, nearest first.
+
+    Plural on purpose. One storm produces rows at BOTH tiers by construction --
+    an ``alta`` span is a superset of the ``extrema`` spans inside it, which is
+    the whole reason ``repository.EVENT_KEY_PREFIXES`` has to keep their keys
+    apart -- and a long wet spell can also split into several spans at one
+    tier. Treating only the nearest row as "the confirmation" is correct for
+    NAMING it and wrong for SUPPRESSING it: every other row of the same storm
+    then survives into the list as a second card for one flood, which is the
+    r1 failure D8's precedence exists to remove.
 
     Nearest span wins; ties go to the strongest tier and then to the higher
-    percentile, so the answer does not depend on row order. Returning the ROW
-    rather than a boolean is what lets the served confirmation NAME the
-    confirming event, which the ratified requirement demands: "confirmed" with
-    nothing behind it cannot be checked against the catalog it claims to
-    summarize.
+    percentile, so the answer does not depend on row order.
     """
     candidates = [
         (confirmation_offset_days(anchor, row), row)
         for row in detected
         if confirmation_offset_days(anchor, row) <= CONFIRMATION_TOLERANCE_DAYS
     ]
-    if not candidates:
-        return None
     candidates.sort(
         key=lambda pair: (
             pair[0],
@@ -193,7 +194,19 @@ def confirming_row(anchor: date, detected: Sequence[Any]):
             -(pair[1].max_percentile or 0.0),
         )
     )
-    return candidates[0][1]
+    return [row for _offset, row in candidates]
+
+
+def confirming_row(anchor: date, detected: Sequence[Any]):
+    """The detected row that NAMES *anchor*'s confirmation, or ``None``.
+
+    The nearest of :func:`confirming_rows`. Returning the ROW rather than a
+    boolean is what lets the served confirmation name the confirming event,
+    which the ratified requirement demands: "confirmed" with nothing behind it
+    cannot be checked against the catalog it claims to summarize.
+    """
+    rows = confirming_rows(anchor, detected)
+    return rows[0] if rows else None
 
 
 def _detected_record(row) -> dict[str, Any]:
@@ -239,11 +252,25 @@ def _curated_record(row, confirming) -> dict[str, Any]:
     """
     payload = dict(row.curated_payload or {})
     candidate, note = _imagery(row.end_date)
+    for required in ("name", "description"):
+        # LOUD, deliberately. `payload.get("name")` answering None recreates
+        # CRITICAL-7 exactly: `isHistoricFlood` requires `name: string` and
+        # DROPS the record silently, so a broken payload vanishes an anchor
+        # from the picker with a 200 and no error anywhere. Every seeded anchor
+        # (`lluvia_ext_002`) carries both fields, so their absence is a
+        # violated assumption -- and a violated assumption should raise rather
+        # than serve a card the frontend will delete on arrival.
+        value = payload.get(required)
+        if not isinstance(value, str) or not value:
+            raise ValueError(
+                f"curated event {row.event_key!r} has no usable {required!r} in its payload "
+                f"(got {value!r}); the frontend drops a record without one silently"
+            )
     record: dict[str, Any] = {
         "id": row.event_key,
-        "name": payload.get("name"),
+        "name": payload["name"],
         "date": row.start_date.isoformat(),
-        "description": payload.get("description", ""),
+        "description": payload["description"],
         # Verbatim from the payload (D8): `sep_2025` keeps `media` without
         # implying a tier for a row that was never ranked.
         "severity": payload.get("severity"),
@@ -313,27 +340,36 @@ def build_catalog_response(
     Order of operations is load-bearing. Confirmation is derived against the
     WHOLE served generation, not against the filtered page, or an anchor would
     read "confirmed" or "not confirmed" depending on which tier the caller
-    asked for. Precedence then removes the confirming detected row from the
-    list -- one card per flood -- and only afterwards is the result filtered,
-    ordered and paginated.
+    asked for. Precedence then removes EVERY confirming detected row from the
+    list -- one card per flood, at every tier -- and only afterwards is the
+    result filtered, ordered and paginated.
     """
     detected = [row for row in generation.detected if row.tier == tier]
-    confirmations = {
-        curated.event_key: confirming_row(curated.start_date, generation.detected)
+    confirming = {
+        curated.event_key: confirming_rows(curated.start_date, generation.detected)
         for curated in generation.curated
     }
-    suppressed = {row.event_key for row in confirmations.values() if row is not None}
+
+    # Only the anchors this response actually SERVES suppress anything. An
+    # anchor filtered out by `year` carries no evidence into the payload, so
+    # suppressing its confirming rows would delete the detector's own record of
+    # that storm from the year the caller asked about -- a silent drop with a
+    # 200, which is the failure this whole module is written against.
+    served_curated = [row for row in generation.curated if _intersects_year(row, year)]
+    suppressed = {
+        row.event_key for anchor in served_curated for row in confirming[anchor.event_key]
+    }
 
     curated_records = [
-        _curated_record(row, confirmations[row.event_key])
-        for row in generation.curated
-        if _intersects_year(row, year)
+        _curated_record(row, confirming_row(row.start_date, generation.detected))
+        for row in served_curated
     ]
-    detected_records = [
-        _detected_record(row)
-        for row in detected
-        if row.event_key not in suppressed and _intersects_year(row, year)
-    ]
+    in_page = [row for row in detected if _intersects_year(row, year)]
+    detected_records = [_detected_record(row) for row in in_page if row.event_key not in suppressed]
+    # Rows merged INTO a curated card are still evidence the detector produced;
+    # they are simply not their own card. `_absence` has to see them or it will
+    # announce "no qualifying window" beside the very window it is denying.
+    merged_into_a_card = [row for row in in_page if row.event_key in suppressed]
     # `max_percentile DESC, start_date DESC` (D12) as ONE key: two successive
     # `sort` calls would work by stability, and a later reader "simplifying"
     # them into the wrong order would silently reverse the tie-break.
@@ -359,21 +395,61 @@ def build_catalog_response(
             "start": IMAGERY_GOLDEN_WINDOW[0].isoformat(),
             "end": IMAGERY_GOLDEN_WINDOW[1].isoformat(),
         },
-        "catalog_span": {
-            "start": DETECTOR_CLIMATOLOGY_START.date().isoformat(),
-            # The frozen span is half-open; the served claim names the last day
-            # that is actually IN it.
-            "end": (DETECTOR_CLIMATOLOGY_END.date() - timedelta(days=1)).isoformat(),
-        },
+        "catalog_span": _catalog_span(generation),
         "detector_revision": generation.revision,
         "revision_state": generation.revision_state,
-        "absence": _absence(generation, detected_records),
+        "absence": _absence(
+            generation, has_detector_evidence=bool(detected_records or merged_into_a_card)
+        ),
         "dataset_disclosure": DATASET_DISCLOSURE,
         "chirps_disclosure": CHIRPS_DISCLOSURE,
     }
 
 
-def _absence(generation, detected_records: Sequence[Mapping[str, Any]]) -> dict[str, str] | None:
+def _catalog_span(generation) -> dict[str, str] | None:
+    """The span the SERVED ROWS were ranked against, off their sealed columns.
+
+    Never the module constants (the same rule :func:`event_from_row` states and
+    every synthesized description already follows). A stale generation served
+    after a constants bump -- exactly D12's rule-2 case, the one the deploy
+    ordering makes routine -- would otherwise announce at the response root a
+    span its own rows never saw, while each card underneath printed the true
+    one. The root claim and the cards would disagree, and the root is the one a
+    reader trusts for coverage.
+
+    ``None`` when there is no generation to speak for: an empty catalog has no
+    ranked span, and naming the constants would claim a catalog that does not
+    exist yet.
+
+    Uniform within a generation by construction -- D5 seals one constants block
+    per ``detector_revision``, and :func:`repository.persist_events` refuses a
+    row that disagrees with a persisted one at the same identity -- so more
+    than one span here means the catalog is broken in a way no served payload
+    can describe honestly. It raises rather than picking one.
+    """
+    spans = {
+        (row.climatology_span_start, row.climatology_span_end)
+        for row in generation.detected
+        if row.climatology_span_start is not None and row.climatology_span_end is not None
+    }
+    if not spans:
+        return None
+    if len(spans) > 1:
+        raise ValueError(
+            f"generation {generation.revision!r} holds rows ranked against "
+            f"{len(spans)} different climatology spans ({sorted(spans)}); "
+            "no single catalog_span can describe it"
+        )
+    start, end = next(iter(spans))
+    return {
+        "start": start.isoformat(),
+        # The frozen span is half-open; the served claim names the last day
+        # that is actually IN it.
+        "end": (end - timedelta(days=1)).isoformat(),
+    }
+
+
+def _absence(generation, *, has_detector_evidence: bool) -> dict[str, str] | None:
     """Spec R6: an empty result is never a bare success.
 
     The absence is about the DETECTOR's evidence, which is why curated rows can
@@ -381,8 +457,14 @@ def _absence(generation, detected_records: Sequence[Mapping[str, Any]]) -> dict[
     for this year" are different statements, and collapsing them would let a
     year covered only by institutional memory read as a year the detector
     examined and cleared.
+
+    *has_detector_evidence* counts rows SUPPRESSED into a curated card as
+    evidence, not only the rows that kept their own card. Computing it from the
+    post-suppression list instead reports `no_qualifying_window` while the
+    window it denies is being served, merged, one field away -- a false reason
+    beside a non-empty list, which R6 rates worse than no field at all.
     """
-    if detected_records:
+    if has_detector_evidence:
         return None
     if generation.revision_state == "empty":
         return {
