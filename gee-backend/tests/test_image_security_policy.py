@@ -414,21 +414,28 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # RECLASIFICADO por la DB de CRITICAL a HIGH — mismo paquete, misma
     # version, mismo status `affected`, sigue sin FixedVersion. El reparto
     # pasa de 13 HIGH + 5 CRITICAL a 14 HIGH + 4 CRITICAL.
-    assert len(backend_findings) == 18
-    assert sum(finding["count"] for finding in backend_findings) == 18
+    # 18 -> 17 el 2026-08-26: hotfix CVE-2026-14456 (trixie-security publico
+    # openssl 3.5.7-1~deb13u2; los 3 paquetes se actualizan en el stage de
+    # produccion, ver Dockerfile) saca las 3 filas openssl; entran 2 filas
+    # HIGH `affected` de libsqlite3-0 (CVE-2026-11822 / CVE-2026-11824, sin
+    # FixedVersion) reveladas por la DB actual. El reparto pasa de
+    # 14 HIGH + 4 CRITICAL a 13 HIGH + 4 CRITICAL.
+    assert len(backend_findings) == 17
+    assert sum(finding["count"] for finding in backend_findings) == 17
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 14
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 13
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 4
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 12
-    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 6
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 14
+    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 3
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
     assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-53615"] == []
-    deferred_openssl_findings = [
-        finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"
+    assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"] == []
+    sqlite_findings = [
+        finding for finding in backend_findings if finding["pkg_id"].startswith("libsqlite3-0@")
     ]
-    assert len(deferred_openssl_findings) == 3
+    assert len(sqlite_findings) == 2
     assert {
         (
             finding["cve"],
@@ -436,11 +443,10 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
             finding["severity"],
             finding["status"],
         )
-        for finding in deferred_openssl_findings
+        for finding in sqlite_findings
     } == {
-        ("CVE-2026-14456", "libssl3t64", "HIGH", "fix_deferred"),
-        ("CVE-2026-14456", "openssl", "HIGH", "fix_deferred"),
-        ("CVE-2026-14456", "openssl-provider-legacy", "HIGH", "fix_deferred"),
+        ("CVE-2026-11822", "libsqlite3-0", "HIGH", "affected"),
+        ("CVE-2026-11824", "libsqlite3-0", "HIGH", "affected"),
     }
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
