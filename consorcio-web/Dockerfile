@@ -92,6 +92,13 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
       org.opencontainers.image.description="React + Vite frontend for Consorcio Canalero" \
       org.opencontainers.image.vendor="Consorcio Canalero"
 
+# CVE-2026-14456 (OpenSSL DoS, HIGH x2: libcrypto3 + libssl3): the digest-pinned
+# base ships 3.5.7-r0 and the fix is published as 3.5.8-r0. The surgical upgrade
+# keeps the digest pin while pulling only the patched packages; REMOVE this line
+# when the nginx:1.30.4-alpine digest is bumped to one carrying >=3.5.8-r0.
+# (Caught by the Final Frontend Image Gate on main, 2026-08-26.)
+RUN apk upgrade --no-cache libcrypto3 libssl3
+
 # BusyBox wget handles health checks; remove curl inherited from the base image.
 RUN apk --no-network del curl
 
