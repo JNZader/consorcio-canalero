@@ -22,6 +22,7 @@
 | **RAG U2** — retrieval B50 | #219 | BM25 in-process + bge-reranker-v2-m3, fiel línea-a-línea a la campaña medida (hit@5 0.759). Barras ratificadas. |
 | **RAG U3** — sidecar de embeddings | #220 | Container BGE-M3 CPU-only con lock `--require-hashes`; guard de identidad por tupla `(modelo, revision_hf)` canonicalizada. |
 | **Lluvia v2 — antecedente-referencia** (normal + percentil estacional por ventana d7/d30/d90) | #231-#235 | Cadena de 5 slices, TODA en main 2026-08-25/26. Verify final: matriz 16/16 SATISFIED, 0 CRITICAL. ARCHIVADO (`openspec/changes/archive/2026-08-26-*`). Regla nueva D0: complete-or-nothing en ambos lados del rank. 5 tickets de backlog heredados (ver Follow-ups del tasks.md archivado). |
+| **Lluvia — eventos extremos** (detector + catálogo persistido + picker catalog-backed + puente de imágenes) | #237-#242 | Cadena de 6 slices en main 2026-08-26. HISTORIC_FLOODS hardcodeado MUERTO: el picker sirve el catálogo (calibración REAL con datos del box: 36 extrema/144 alta; sep-2025 detectado, feb-2017 confirmado ±3d, mar-2015 curado honesto). Falta SOLO el paso de ceremonia en el box (alembic upgrade + una corrida de `detector_cli` → 183 eventos reales) y el archive. 7 tickets de backlog en el tasks.md (destacan BL-GHA-CACHE-CEILING y BL-RATE-LIMIT-SUITE-CASCADE). |
 
 ## ✅ RAG — cadena COMPLETA (2026-08-25)
 
@@ -37,7 +38,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 3. **Archives**: `flujo-caminos` y `consorcio-conocimiento-semantico` (post-ceremonia; 10.4 se marca con la medición real del box).
 4. **Multi-hazard viewer re-cut** — retomar en 2/7: b3 (lifecycle), b3b, c6, c5, e2e+CI estricto.
 5. ~~**Lluvia v2** — `lluvia-antecedente-referencia`~~ ✅ CERRADO 2026-08-26 (#231-#235, archivado). Queda la higiene mm/hr de IMERG (backlog).
-6. **Lluvia — eventos extremos** (`lluvia-eventos-extremos`, el pedido del histórico + imágenes de impacto): S0 backfill 2021-2025 ✅ HECHO en el box (baseline 1991-2025 continuo, key v1 única, cero duplicados); exploración ✅ (HISTORIC_FLOODS = 3 dicts hardcodeados con UI completa; puente a imágenes ya existe; ventana dorada satelital 2017-2021). Próximo: B1/B2 — el catálogo persistido que alimenta HISTORIC_FLOODS, cero UI nueva.
+6. ~~**Lluvia — eventos extremos**~~ ✅ CÓDIGO CERRADO 2026-08-26 (#237-#242, verify final + archive en curso). Al box en la ceremonia: `alembic upgrade head` + `docker compose exec backend python -m app.domains.geo.rainfall.detector_cli`.
 7. **Pared de "Discrepancias" en la ficha** — fix UI propuesto, espera el dale.
 
 ## 🗄️ Backlog (anotado, sin apuro)
