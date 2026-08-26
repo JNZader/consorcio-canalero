@@ -961,3 +961,109 @@ def test_the_response_is_privately_cached_for_five_minutes(client, db):
 # the bridge and deleted the symbol in the same commit, which is what that note
 # promised. Its successor is `test_rainfall_catalog_bridge.py`, where the bridge
 # resolves ids against this same catalog.
+
+
+# ===========================================================================
+# 6.4 (B2c) -- the CROSS-TREE fixture pin
+# ===========================================================================
+#
+# `consorcio-web/tests/components/ImageExplorerInfoPanels.test.tsx` runs its
+# assertions against fixtures copied from the payload asserted above. A
+# hand-written frontend fixture drifts from the backend that feeds it silently:
+# the vitest suite stays green while the served record grows, loses or renames a
+# key, and "the frontend needs no change" becomes a claim about a shape nobody
+# serves. The predecessor's BL-LABEL-VOCAB-GATE is exactly this class of
+# hand-duplicated cross-language contract, mirror-asserted in prose and tested
+# by nothing.
+#
+# The precedent for a pytest reading TS source is in this same directory
+# (`test_rainfall_reference_metrics.py`, the ANTECEDENT_ORDER guard).
+#
+# These tests live in the BACKEND tree on purpose: only the backend can produce
+# the authoritative record, so only the backend can say the fixture is stale.
+
+
+_FIXTURE_TSX = "consorcio-web/tests/components/ImageExplorerInfoPanels.test.tsx"
+
+
+def _fixture_keys(marker: str) -> set[str]:
+    """Top-level keys of one delimited fixture literal in the vitest harness.
+
+    The `// >>> NAME` / `// <<< NAME` delimiters in that file are load-bearing
+    and say so in its header. Keys of the object literal sit at exactly two
+    spaces of indentation; nested objects (``fired_windows``) sit deeper and are
+    deliberately not collected -- the pin is about the RECORD's key set.
+    """
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[4].parent / _FIXTURE_TSX).read_text(encoding="utf-8")
+    assert f"// >>> {marker}" in source, f"{marker} delimiter missing from {_FIXTURE_TSX}"
+    block = source.split(f"// >>> {marker}", 1)[1].split(f"// <<< {marker}", 1)[0]
+    return set(re.findall(r"^  ([A-Za-z_][A-Za-z0-9_]*):", block, re.MULTILINE))
+
+
+def test_the_vitest_detected_fixture_carries_the_served_key_set(client, db):
+    """6.4. The detected record the picker is tested against is the detected
+    record the router serves -- key for key, in both directions. A key added
+    here and not there means the frontend suite defends a shape that no longer
+    exists; a key there and not here means it defends one that never did."""
+    _detected(db, start=date(2015, 3, 12), end=date(2015, 3, 15), peak=date(2015, 3, 14))
+
+    served = set(_body(client)["floods"][0])
+
+    assert _fixture_keys("SERVED_DETECTED") == served
+
+
+def test_the_vitest_curated_fixtures_carry_the_served_key_sets(client, db):
+    """6.4, the two curated shapes. `feb_2017` is served CONFIRMED (its rain
+    fired 2 days off the anchor, inside the ratified +/-3-day tolerance) and so
+    carries the confirmation trio; `mar_2015` is served unconfirmed and carries
+    `confirmation_label` alone. The fixtures must distinguish them, because the
+    picker renders both and D8's precedence is what decides which card wins."""
+    _curated(db, event_key="mar_2015", day=date(2015, 3, 15))
+    _curated(
+        db,
+        event_key="feb_2017",
+        day=date(2017, 2, 20),
+        payload={
+            "name": "Inundacion Febrero 2017",
+            # The read model is LOUD about a missing curated description
+            # (post-B2a-fix); the seed always provides one.
+            "description": "Gran inundacion que afecto Bell Ville y zona rural",
+            "severity": "alta",
+            "sensor": "landsat8",
+        },
+    )
+    _detected(
+        db, tier="alta", start=date(2017, 2, 18), end=date(2017, 2, 19), peak=date(2017, 2, 18)
+    )
+
+    records = _by_id(_body(client))
+
+    assert records["feb_2017"]["confirmation"] == "detector_confirmed"
+    assert records["mar_2015"]["confirmation"] == "not_confirmed"
+    assert _fixture_keys("SERVED_CURATED_CONFIRMED") == set(records["feb_2017"])
+    assert _fixture_keys("SERVED_CURATED_UNCONFIRMED") == set(records["mar_2015"])
+
+
+def test_the_vitest_fixtures_carry_the_served_values_the_picker_reads(client, db):
+    """6.4, second half: matching key sets with drifted VALUES would let the
+    frontend suite assert a red badge for a severity the backend stopped
+    emitting. The four fields the picker actually renders -- `id`, `name`,
+    `date`, `description` -- plus `severity`, which drives the palette, and
+    `tier`, which D9 exists to keep OFF the palette."""
+    import re
+    from pathlib import Path
+
+    _detected(db, start=date(2015, 3, 12), end=date(2015, 3, 15), peak=date(2015, 3, 14))
+
+    served = _body(client)["floods"][0]
+    source = (Path(__file__).resolve().parents[4].parent / _FIXTURE_TSX).read_text(encoding="utf-8")
+    block = source.split("// >>> SERVED_DETECTED", 1)[1].split("// <<< SERVED_DETECTED", 1)[0]
+    # TS single-quoted string literals; the harness carries no escaped quotes.
+    literals = set(re.findall(r"'([^'\n]*)'", block))
+
+    for field in ("id", "name", "date", "description", "severity", "tier"):
+        assert served[field] in literals, f"{field}={served[field]!r} is not in the vitest fixture"
+    assert served["severity"] == "alta" and served["tier"] == "extrema"
