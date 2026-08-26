@@ -427,11 +427,44 @@ class TestGetTileClient:
 
 class TestHistoricFloods:
     def test_historic_floods_list(self):
-        from app.domains.geo.router_gee_support import HISTORIC_FLOODS
+        """The shape assertion moved from the literal to the SERVED payload.
 
-        assert len(HISTORIC_FLOODS) >= 2
-        assert all("id" in f for f in HISTORIC_FLOODS)
-        assert all("date" in f for f in HISTORIC_FLOODS)
+        It used to read `router_gee_support.HISTORIC_FLOODS` directly; that
+        symbol died in B2b, and the reason this test existed -- every card the
+        picker renders carries an `id` and a `date` -- is a property of what the
+        endpoint serves, not of a module constant. `catalog_view` builds that
+        payload for both the list and the imagery bridge, so asserting on its
+        output covers what the literal read covered and the literal read never
+        could: the records that come out of the catalog.
+        """
+        from app.domains.geo.rainfall import catalog_view
+
+        rows = [
+            SimpleNamespace(
+                event_key="mar_2015",
+                start_date=date(2015, 3, 15),
+                end_date=date(2015, 3, 15),
+                curated_payload={"name": "Inundacion Marzo 2015", "severity": "alta"},
+            ),
+            SimpleNamespace(
+                event_key="sep_2025",
+                start_date=date(2025, 9, 5),
+                end_date=date(2025, 9, 5),
+                curated_payload={"name": "Inundacion Septiembre 2025", "severity": "media"},
+            ),
+        ]
+        generation = SimpleNamespace(
+            detected=[],
+            curated=rows,
+            revision="rev",
+            revision_state="current",
+        )
+
+        floods = catalog_view.build_catalog_response(generation)["floods"]
+
+        assert len(floods) >= 2
+        assert all("id" in f for f in floods)
+        assert all("date" in f for f in floods)
 
 
 # ---------------------------------------------------------------------------

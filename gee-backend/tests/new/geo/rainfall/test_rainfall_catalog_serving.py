@@ -930,23 +930,13 @@ def test_the_response_is_privately_cached_for_five_minutes(client, db):
 
 
 # ===========================================================================
-# The literal survives this slice, by design
+# The literal is gone
 # ===========================================================================
 
-
-def test_the_module_literal_is_dead_but_still_present_for_the_un_rewired_bridge(client, db):
-    """B2a's deliberate sequencing note. `HISTORIC_FLOODS` is no longer read by
-    the list handler, but `get_historic_flood_tiles_impl` still scans it; the
-    symbol and everything bound to it die together in B2b. Deleting it here
-    would drag the bridge, five dispatcher tests and the shape move into this
-    slice — one ~1,100-line PR whose production component crosses 400."""
-    from app.domains.geo import router_gee_support
-
-    _detected(db)
-
-    assert [flood["id"] for flood in router_gee_support.HISTORIC_FLOODS] == [
-        "mar_2015",
-        "feb_2017",
-        "sep_2025",
-    ]
-    assert _body(client)["floods"][0]["id"] == "ext_20150312", "the list no longer reads it"
+# RETIRED IN B2b, as designed. `test_the_module_literal_is_dead_but_still
+# _present_for_the_un_rewired_bridge` pinned B2a's deliberate sequencing note:
+# the list had stopped reading `HISTORIC_FLOODS` but the imagery bridge still
+# scanned it, so the symbol had to survive exactly one merge window. B2b rewired
+# the bridge and deleted the symbol in the same commit, which is what that note
+# promised. Its successor is `test_rainfall_catalog_bridge.py`, where the bridge
+# resolves ids against this same catalog.

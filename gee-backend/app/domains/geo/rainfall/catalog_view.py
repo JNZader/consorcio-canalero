@@ -54,6 +54,13 @@ TIER_DOMAIN = ("extrema", "alta")
 DEFAULT_LIMIT = 200
 MAX_LIMIT = 500
 
+#: `typeGuards.ts:406-411` rejects a restored selection whose `days_buffer`
+#: falls outside [1, 30], and the rejection is SILENT -- the persisted selection
+#: simply stops restoring, with nothing anywhere to notice. A curated payload is
+#: hand-written data, so the ceiling is enforced here rather than trusted.
+MIN_DAYS_BUFFER = 1
+MAX_DAYS_BUFFER = 30
+
 #: Sentinel-2A from 2015, Sentinel-1A from 2014 (`explore.md:87-96`); before
 #: that only Landsat 5/7 at a 16-day revisit, cloudy and with no SAR. The
 #: cutoff is a claim about SENSORS, so it is pinned to that table rather than
@@ -292,6 +299,10 @@ def _curated_record(row, confirming) -> dict[str, Any]:
     for optional in ("sensor", "max_cloud", "days_buffer"):
         if optional in payload:
             record[optional] = payload[optional]
+    if "days_buffer" in record:
+        record["days_buffer"] = max(
+            MIN_DAYS_BUFFER, min(MAX_DAYS_BUFFER, int(record["days_buffer"]))
+        )
 
     if confirming is not None:
         offset = confirmation_offset_days(row.start_date, confirming)
@@ -447,6 +458,33 @@ def _catalog_span(generation) -> dict[str, str] | None:
         # that is actually IN it.
         "end": (end - timedelta(days=1)).isoformat(),
     }
+
+
+def resolve_event(generation, event_key: str) -> dict[str, Any] | None:
+    """The served record for one id inside *generation*, or ``None`` (D12).
+
+    This is the imagery bridge's whole lookup, and it lives HERE rather than in
+    the router for the reason this module's docstring gives: the list and the
+    bridge answering "which events exist" from two renderings of the same
+    contract is BLOCKER-1 arriving through the other door. Both callers get the
+    same dict, built by the same two functions.
+
+    Revision scoping is structural, not a filter written twice: *generation* is
+    whatever ``read_events`` decided to serve -- current, or the previous one
+    labelled stale -- so an id from a superseded generation is simply not in it,
+    and the bridge can never hand out tiles for a card the list does not show.
+
+    Curated first, matching D8's precedence: when an anchor is confirmed the
+    curated row wins the card, and the bridge has to use the same record the
+    picker rendered or the tiles would be searched around a different date.
+    """
+    for row in generation.curated:
+        if row.event_key == event_key:
+            return _curated_record(row, confirming_row(row.start_date, generation.detected))
+    for row in generation.detected:
+        if row.event_key == event_key:
+            return _detected_record(row)
+    return None
 
 
 def _absence(generation, *, has_detector_evidence: bool) -> dict[str, str] | None:
