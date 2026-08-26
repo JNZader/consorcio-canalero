@@ -31,9 +31,7 @@ from pathlib import Path
 # The eight labels the frontend pruned on purpose (rainfallFormat.ts:28-36).
 # Pinned as a literal rather than derived from either map: derived, it would
 # absorb whatever divergence appears and assert nothing.
-_BACKEND_ONLY_KEYS = frozenset(
-    {"p30", "p60", "p3h", "p24h", "i30", "i60", "peak", "duration"}
-)
+_BACKEND_ONLY_KEYS = frozenset({"p30", "p60", "p3h", "p24h", "i30", "i60", "peak", "duration"})
 
 _ENTRY = re.compile(r"^\s*'?(?P<key>[A-Za-z0-9_]+)'?\s*:\s*'(?P<value>[^']*)',\s*$")
 

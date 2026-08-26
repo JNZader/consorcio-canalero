@@ -359,7 +359,13 @@ def _normal_and_percentile_metrics(
     )
 
     last_baseline_year = max(possible_years)
-    envelope_start = datetime(1991, 1, 1, tzinfo=UTC)
+    # Same defect, same fix (BL-BASELINE-STRING-SOURCE): a literal here is a
+    # second copy of the span start living where no test of the read reaches
+    # it, so moving the span would leave the annual pair's disclosed interval
+    # announcing a period it no longer ranks against. The antecedent path
+    # already derives its own envelope start and says so in
+    # `_antecedent_reference_metrics`; this is the one that did not.
+    envelope_start = temporal.BASELINE_SPAN_START
     envelope_end = datetime(
         last_baseline_year, baseline_cutoff.month, baseline_cutoff.day, tzinfo=UTC
     ) + timedelta(days=1)
@@ -1038,7 +1044,16 @@ def build_snapshot(
         "regional_estimate": scope.regional_estimate,
         "year": year,
         "comparison_end": comparison_end_date.isoformat(),
-        "baseline": "1991-2020",
+        # BL-BASELINE-STRING-SOURCE: DERIVED from the same two bounds
+        # `repository.baseline_daily_values` reads between, never a literal.
+        # This one string is the period fourteen served surfaces name (four
+        # label cells, six sheet rows, four badges), so a literal here made
+        # moving the span a silent lie on every one of them. Read through the
+        # module rather than imported by name so the value follows the
+        # constant instead of the import moment.
+        "baseline": temporal.baseline_period_label(
+            temporal.BASELINE_SPAN_START, temporal.BASELINE_SPAN_END
+        ),
         "metric_policy": {
             "revision": RAINFALL_METRIC_POLICY_REVISION,
             "minimum_coverage_by_metric": dict(RAINFALL_METRIC_POLICY.minimum_coverage_by_metric),

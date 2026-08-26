@@ -839,3 +839,73 @@ def test_the_six_keys_are_served_even_when_no_baseline_was_wired_at_all():
     for key in _REFERENCE_KEYS:
         assert antecedents[key]["state"] == "suppressed", key
         assert antecedents[key]["reason"] == "baseline_scope_unmapped", key
+
+
+# ---------------------------------------------------------------------------
+# BL-BASELINE-STRING-SOURCE — the served period NAME is derived, not restated
+# ---------------------------------------------------------------------------
+
+
+def test_the_served_baseline_period_moves_when_the_span_constants_move(monkeypatch):
+    """The envelope's ``baseline`` string must FOLLOW the persisted span.
+
+    It was the literal ``"1991-2020"`` in ``build_snapshot``, independent of
+    ``BASELINE_SPAN_START``/``BASELINE_SPAN_END`` -- the W8 class at its
+    source. Move the span and fourteen surfaces (four label cells, six sheet
+    rows, four badges) keep naming a period the reference no longer ranks
+    against, with nothing anywhere to reveal it.
+
+    Patched on ``temporal``, which is where the two constants are DEFINED;
+    ``repository`` re-exports them. The patch reaches ``build_snapshot``
+    because it reads them through the module at call time, which is exactly
+    the property a literal does not have -- against the literal this test is
+    RED, and against a name imported at module scope it would be too.
+    """
+    from app.domains.geo.rainfall import temporal
+
+    assert _snapshot()["baseline"] == "1991-2020"
+
+    monkeypatch.setattr(temporal, "BASELINE_SPAN_START", datetime(1981, 1, 1, tzinfo=UTC))
+    monkeypatch.setattr(temporal, "BASELINE_SPAN_END", datetime(2011, 1, 1, tzinfo=UTC))
+    assert _snapshot()["baseline"] == "1981-2010"
+
+
+def test_the_annual_pairs_disclosed_interval_starts_at_the_span_start(monkeypatch):
+    """The SECOND copy of the same literal: ``_normal_and_percentile_metrics``
+    opened its disclosed interval at a hardcoded ``1991-01-01``.
+
+    The antecedent path already derives its own start from the handed span and
+    documents why; the annual path did not, so the two halves of one envelope
+    could disagree about the period after a span move.
+    """
+    from app.domains.geo.rainfall import temporal
+
+    annual = _snapshot()["annual"]
+    assert annual["normal"]["interval_start"].startswith("1991-01-01")
+
+    monkeypatch.setattr(temporal, "BASELINE_SPAN_START", datetime(1981, 1, 1, tzinfo=UTC))
+    moved = _snapshot()["annual"]
+    assert moved["normal"]["interval_start"].startswith("1981-01-01")
+
+
+def test_the_period_label_refuses_a_span_it_cannot_name_honestly():
+    """``baseline_period_label`` is only defined for a whole-calendar-year
+    half-open span. A mid-year bound has no "YYYY-YYYY" name, and inventing
+    one is the same silent-wrong-period defect in a new place.
+    """
+    from app.domains.geo.rainfall import temporal
+
+    assert (
+        temporal.baseline_period_label(
+            datetime(1991, 1, 1, tzinfo=UTC), datetime(2021, 1, 1, tzinfo=UTC)
+        )
+        == "1991-2020"
+    )
+    with pytest.raises(ValueError, match="whole-calendar-year"):
+        temporal.baseline_period_label(
+            datetime(1991, 7, 1, tzinfo=UTC), datetime(2021, 1, 1, tzinfo=UTC)
+        )
+    with pytest.raises(ValueError, match="baseline span is empty"):
+        temporal.baseline_period_label(
+            datetime(2021, 1, 1, tzinfo=UTC), datetime(1991, 1, 1, tzinfo=UTC)
+        )

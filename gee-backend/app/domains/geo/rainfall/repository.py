@@ -35,21 +35,14 @@ from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
 # legitimate sibling's own per-row work; anything longer is pathological.
 _FINGERPRINT_LOCK_TIMEOUT_MS = 5000
 
-# design.md D2 (lluvia-antecedente-referencia): the bounds of the persisted
-# baseline `baseline_daily_values` reads, half-open -- `[1991-01-01,
-# 2021-01-01)`, the period every served envelope names "1991-2020".
-#
-# LOAD-BEARING, not hygiene. The 2021-2025 backfill has landed under the SAME
-# `(scope_kind="provider_asset", scope_id=<asset>, scope_version=
-# BASELINE_ASSET_VERSION)` key as the baseline -- measured on the box, not
-# assumed: one key, 12,784 rows, 35 unbroken years 1991-2025, every year at
-# exactly its calendar day count. So an unbounded read would silently widen
-# the ranked distribution past the period the disclosure keeps naming: a
-# reference that says one period and ranks against another, with nothing on
-# any surface to reveal it. Named constants rather than inline literals
-# because the upper bound and its exclusivity are both mutation-gated.
-BASELINE_SPAN_START = datetime(1991, 1, 1, tzinfo=UTC)
-BASELINE_SPAN_END = datetime(2021, 1, 1, tzinfo=UTC)  # exclusive
+# design.md D2 (lluvia-antecedente-referencia): the bounds this module's
+# `baseline_daily_values` applies. DEFINED in `temporal.py` (see the comment
+# there) and re-exported here, which is where every existing caller -- app and
+# test alike -- imports them from. The move exists so `compute.py` can derive
+# the served period string from the same two values without importing
+# `repository`, which imports `compute` (BL-BASELINE-STRING-SOURCE).
+BASELINE_SPAN_START = temporal.BASELINE_SPAN_START
+BASELINE_SPAN_END = temporal.BASELINE_SPAN_END  # exclusive
 
 
 class ScopeConfigurationError(ValueError):
