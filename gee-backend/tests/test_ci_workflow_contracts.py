@@ -653,7 +653,7 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
 
 def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     backend = _read(".github/workflows/backend.yml")
-    release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch')"
+    release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')"
 
     assert release_gate in _job_block(backend, "mutation")
     # VTK offscreen corre en proceso pytest SEPARADO (segfaults compartiendo
@@ -662,7 +662,12 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     assert "pytest tests/new/test_geo_visualization_renderer.py -v --cov=app" in backend
     assert "--ignore=tests/new/test_geo_visualization_renderer.py" in backend
     assert "--cov-append --cov-fail-under=60" in backend
-    assert "python3 scripts/cosmic_gate.py --min-kill-rate 0.30" in backend
+    assert "python3 scripts/cosmic_gate.py --config .cosmic-ray.selected.toml" in backend
+    assert "mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}" in backend
+    assert "matrix: ${{ fromJSON(needs.changes.outputs.mutation_matrix) }}" in _job_block(
+        backend, "mutation"
+    )
+    assert "scripts/cosmic_mutation_plan.py --target" in backend
 
     security = _job_block(backend, "security")
     # Trivy NO puede depender de `mutation`: un job salteado arrastra al salteo
@@ -1224,12 +1229,77 @@ def test_changes_job_detects_areas_without_third_party_actions() -> None:
         assert "fetch-depth: 0" in changes
         # Tres puntos = merge-base. Con dos, un avance de la rama base
         # posterior a la apertura del PR contaria como cambio del PR.
-        assert 'git diff --name-only "$BASE_SHA...HEAD"' in changes
+        assert (
+            f'git diff --name-{("status" if area == "backend" else "only")} "$BASE_SHA...HEAD"'
+            in changes
+        )
         # Fuera de un pull_request se declara todo cambiado: correr de mas es
         # preferible a saltear en silencio.
         assert '[ "$GITHUB_EVENT_NAME" != "pull_request" ]' in changes
         assert f"{area}=true" in changes
         assert f"{area}=false" in changes
+
+
+def test_backend_changes_prefilter_checks_both_sides_of_rename_records(tmp_path: Path) -> None:
+    """R3-001 regression: rename/copy name-status records carry TWO paths.
+
+    A ``R100``/``C`` record is ``status<TAB>old<TAB>new``. A bare ``cut -f2-``
+    keeps both paths in ONE line, so the anchored backend regex only inspected
+    the OLD path: a rename from ``docs/`` into ``gee-backend/`` matched
+    nothing, set ``backend=false``, and skipped backend tests, mutation, and
+    security. The extractor must split fields 2 and 3 into separate lines so
+    the anchored regex sees each path on its own.
+    """
+    changes = _job_block(_read(".github/workflows/backend.yml"), "changes")
+
+    match = re.search(r'CHANGED="\$\((?P<extract>cut [^()]+)\)"\n', changes)
+    assert match is not None, "the changes job must extract changed paths into CHANGED"
+    extract = match.group("extract").replace("$RUNNER_TEMP", str(tmp_path))
+    assert "tr" in extract and "\\t" in extract and "\\n" in extract, (
+        "the extractor must split rename old/new paths into separate lines; "
+        "a single-line cut leaves the new path invisible to the anchored regex"
+    )
+    # The planner still receives the FULL name-status file: rename/copy records
+    # reach it and keep the fail-closed full-suite behavior for non-A/M statuses.
+    assert (
+        "python3 gee-backend/scripts/cosmic_mutation_plan.py "
+        '--status-file "$RUNNER_TEMP/backend-changes.txt"'
+    ) in changes
+
+    backend_pattern = re.compile(r"^(gee-backend/|\.github/workflows/)", re.MULTILINE)
+    status_file = tmp_path / "backend-changes.txt"
+
+    def extract_paths() -> list[str]:
+        result = subprocess.run(extract, shell=True, check=True, capture_output=True, text=True)
+        return result.stdout.splitlines()
+
+    # Rename INTO the backend: only the NEW path points at gee-backend/.
+    status_file.write_text(
+        "R100\tdocs/old-name.py\tgee-backend/app/domains/padron/new-name.py\n"
+        "M\tconsorcio-web/src/App.tsx\n",
+        encoding="utf-8",
+    )
+    extracted = extract_paths()
+    assert any(backend_pattern.search(path) for path in extracted), extracted
+    assert "gee-backend/app/domains/padron/new-name.py" in extracted
+
+    # Rename OUT of the backend: only the OLD path points at gee-backend/.
+    status_file.write_text(
+        "R100\tgee-backend/app/domains/padron/service.py\tdocs/service.py\n",
+        encoding="utf-8",
+    )
+    assert any(backend_pattern.search(path) for path in extract_paths())
+
+    # Rename between two workflow files: detected via the NEW path.
+    status_file.write_text(
+        "R100\t.github/workflows/old.yml\t.github/workflows/backend.yml\n",
+        encoding="utf-8",
+    )
+    assert any(backend_pattern.search(path) for path in extract_paths())
+
+    # Plain modify records still yield exactly one path line each.
+    status_file.write_text("M\tgee-backend/app/main.py\n", encoding="utf-8")
+    assert extract_paths() == ["gee-backend/app/main.py"]
 
 
 def test_pull_requests_to_develop_reach_ci() -> None:

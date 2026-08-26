@@ -6,6 +6,7 @@
 credentials/
 *.json
 !security/frozen-image-debt.json
+!scripts/cosmic_mutation_targets.json
 !tests/fixtures/image_security/*.json
 !tests/new/geo/rainfall/fixtures/approval-audit.json
 !package.json
