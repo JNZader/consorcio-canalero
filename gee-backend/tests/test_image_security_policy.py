@@ -284,6 +284,21 @@ def _util_linux_hotfix_body() -> str:
     return hotfix.split("RUN ", 1)[1].strip()
 
 
+OPENSSL_HOTFIX_PACKAGES = (
+    "libssl3t64",
+    "openssl",
+    "openssl-provider-legacy",
+)
+
+
+def _openssl_hotfix_body() -> str:
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
+    hotfix = dockerfile.split("# Security hotfix (CVE-2026-14456", 1)[1].split(
+        "# Security hotfix (CVE-2026-53615)", 1
+    )[0]
+    return hotfix.split("RUN ", 1)[1].strip()
+
+
 def _write_fake_executable(path: Path, body: str) -> None:
     path.write_text(f"#!/bin/sh\nset -eu\n{body}", encoding="utf-8")
     path.chmod(0o755)
@@ -469,6 +484,30 @@ def test_backend_dockerfile_enforces_fixed_util_linux_source_version() -> None:
         for line in version_gate.splitlines()
     }
     for package in UTIL_LINUX_PACKAGES:
+        assert package in install_lines
+        assert package in gate_lines
+
+
+def test_backend_dockerfile_enforces_fixed_openssl_source_version() -> None:
+    hotfix = _openssl_hotfix_body()
+
+    assert hotfix.count('fixed_version="3.5.7-1~deb13u2"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="3.5.7-1~deb13u2"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    for package in OPENSSL_HOTFIX_PACKAGES:
         assert package in install_lines
         assert package in gate_lines
 
