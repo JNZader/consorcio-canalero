@@ -36,6 +36,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from sqlalchemy import event as sa_event
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
@@ -165,6 +166,52 @@ def _run(monkeypatch, capsys, cli_sessions, *, asset, argv=None):
     return code, captured.out, captured.err
 
 
+def _reported_event_counts(out):
+    """The ``events after merge`` block of the run's own stdout, parsed.
+
+    Read off the PRINTED report rather than off a returned dict: the operator's
+    gate is the text, and a report object that disagreed with what was printed
+    would be invisible to a test that only inspected the object.
+    """
+    lines = out.splitlines()
+    start = lines.index("events after merge:")
+    counts: dict[str, int] = {}
+    for line in lines[start + 1 :]:
+        if not line.startswith("  "):
+            break
+        tier, _, total = line.strip().partition(": ")
+        counts[tier] = int(total)
+    return counts
+
+
+def _plant_control_row(db, *, asset, event_key="control_row"):
+    """One curated row that the run must NOT touch.
+
+    Every "the catalog is empty afterwards" assertion is passed by a CLI that
+    wipes the table, and by a rollback that took the fixture's own rows with it.
+    A planted row that must SURVIVE is what separates "the aborted batch wrote
+    nothing" from "nothing is there".
+    """
+    db.execute(
+        text(
+            "INSERT INTO rainfall_extreme_event "
+            "(id, source_id, scope_kind, scope_id, scope_version, detector_revision, "
+            " provenance, event_key, start_date, end_date, curated_payload) "
+            "VALUES (gen_random_uuid(), :source_id, 'provider_asset', :asset, :version, "
+            " 'curated', 'curated', :event_key, DATE '2017-02-20', DATE '2017-02-20', "
+            " '{}'::json)"
+        ),
+        {
+            "source_id": SOURCE_ID,
+            "asset": f"{asset}-control",
+            "version": BASELINE_ASSET_VERSION,
+            "event_key": event_key,
+        },
+    )
+    db.flush()
+    return event_key
+
+
 def _catalog_writes(db):
     """Statements the ambient connection emitted against the catalog table."""
     seen: list[str] = []
@@ -191,8 +238,63 @@ def test_the_cli_carries_the_same_exit_code_labels_as_the_backfill_runner():
 
     assert detector_cli.EXIT_OK == backfill_cli.EXIT_OK == 0
     assert detector_cli.EXIT_STOPPED == backfill_cli.EXIT_STOPPED == 1
-    assert detector_cli.EXIT_INVALID_RANGE == backfill_cli.EXIT_INVALID_RANGE == 2
+    assert detector_cli.EXIT_INVALID_RANGE == backfill_cli.EXIT_INVALID_RANGE
     assert detector_cli.EXIT_OK != detector_cli.EXIT_STOPPED
+    # `EXIT_REPORT_FAILED` is deliberately NOT shared: it means the opposite of
+    # a stop (the rows are committed), so it must not collide with one.
+    assert detector_cli.EXIT_REPORT_FAILED not in (
+        detector_cli.EXIT_OK,
+        detector_cli.EXIT_STOPPED,
+        detector_cli.EXIT_INVALID_RANGE,
+    )
+
+
+def test_main_reaches_for_the_deployment_session_factory_when_nobody_passes_one():
+    """3.1 / B1c verify F6: the DEFAULT is the binding nothing else asserts.
+
+    Every test here injects `cli_sessions`, so the production wiring -- the
+    thing the runbook's `python -m ...` invocation actually uses -- is exercised
+    by no test at all. A default of `None`, or of some other factory, passes the
+    entire suite and fails on the box the first time it is hand-run.
+    """
+    import inspect
+
+    from app.db.session import SessionLocal
+    from app.domains.geo.rainfall import detector_cli
+
+    default = inspect.signature(detector_cli.main).parameters["session_factory"].default
+    assert default is SessionLocal
+
+
+def test_an_inverted_frozen_span_exits_invalid_range_before_reading_anything(
+    db, cli_sessions, monkeypatch, capsys
+):
+    """3.1 / B1c verify F8: the guard is REACHED, not merely present.
+
+    The constant equality above says the number is 2; it says nothing about the
+    guard existing. Deleting the whole `SPAN_START >= SPAN_END` block leaves the
+    suite green and turns a defective constants block into an empty read, which
+    every reader downstream renders as "no events" -- a fabricated absence in
+    the one runbook that writes permanent rows.
+
+    The read itself is replaced by a refusal, because "invalid range" has to be
+    decided BEFORE the baseline is touched.
+    """
+    from app.domains.geo.rainfall import detector_cli
+
+    def _refuse(*_args, **_kwargs):
+        raise AssertionError("the run read the baseline under an inverted span")
+
+    monkeypatch.setattr(detector_cli, "baseline_daily_values", _refuse)
+    start, end = detector_cli.SPAN_START, detector_cli.SPAN_END
+    monkeypatch.setattr(detector_cli, "SPAN_START", end)
+    monkeypatch.setattr(detector_cli, "SPAN_END", start)
+
+    code, out, err = _run(monkeypatch, capsys, cli_sessions, asset="detector-cli-inverted-span")
+
+    assert code == detector_cli.EXIT_INVALID_RANGE
+    assert "invalid range" in err
+    assert out.strip() == ""
 
 
 @pytest.mark.parametrize(
@@ -363,6 +465,7 @@ def test_a_duplicate_baseline_slot_stops_the_run_labelled_and_writes_nothing(
     """
     asset = "detector-cli-duplicate-slot"
     _persist_baseline_days(db, asset=asset, days=_full_span_series())
+    control = _plant_control_row(db, asset=asset)
     db.execute(
         text(
             "INSERT INTO rainfall_interval_value "
@@ -386,7 +489,10 @@ def test_a_duplicate_baseline_slot_stops_the_run_labelled_and_writes_nothing(
     assert code == 1
     assert "STOPPED" in err
     assert "reason=duplicate_baseline_slot" in err
-    assert _catalog_rows(fresh_reader) == []
+    # The CONTROL row survives: "the catalog is empty" is also what a CLI that
+    # wiped the table, or a rollback that swallowed the outer transaction,
+    # would leave behind.
+    assert [row.event_key for row in _catalog_rows(fresh_reader)] == [control]
     assert out.strip() == ""
 
 
@@ -484,6 +590,14 @@ def test_an_intra_batch_identity_repeat_is_resolved_without_autoflush(
     The CLI closes it before handing the batch over: identical repeats collapse
     to one row. Asserted on a `autoflush=False` session, which is the only place
     the hazard exists.
+
+    It also pins the OTHER half of that resolution, which is the whole reason
+    the module exists (B1c verify, F1): the report must describe the rows that
+    were WRITTEN, not a third recomputation of the batch. When `main` let
+    `calibration_report` re-run `plan_events` itself, the doubled batch here
+    produced a catalog of N rows and a printed report of 2N — a recomputation
+    with nothing comparing it against the persisted result, which is precisely
+    the failure an append-only catalog's runbook exists to prevent.
     """
     from app.domains.geo.rainfall import detector_cli
 
@@ -505,6 +619,9 @@ def test_an_intra_batch_identity_repeat_is_resolved_without_autoflush(
     keys = [row.event_key for row in _catalog_rows(fresh_reader)]
     assert len(keys) == len(set(keys))
     assert f"inserted={len(keys)}" in out
+    # The report describes the RESOLVED batch -- the rows the catalog now holds.
+    reported = _reported_event_counts(out)
+    assert sum(reported.values()) == len(keys)
 
 
 def test_an_intra_batch_identity_disagreement_stops_labelled_with_zero_rows(
@@ -522,7 +639,7 @@ def test_an_intra_batch_identity_disagreement_stops_labelled_with_zero_rows(
 
     asset = "detector-cli-intra-batch-disagreement"
     _persist_baseline_days(db, asset=asset, days=_full_span_series())
-    db.flush()
+    control = _plant_control_row(db, asset=asset)
 
     real_plan = detector_cli.plan_events
 
@@ -538,8 +655,145 @@ def test_an_intra_batch_identity_disagreement_stops_labelled_with_zero_rows(
     assert code == 1
     assert "reason=catalog_divergence" in err
     assert "within a single run" in err.lower()
-    assert _catalog_rows(fresh_reader) == []
+    assert [row.event_key for row in _catalog_rows(fresh_reader)] == [control]
     assert out.strip() == ""
+
+
+def test_an_integrity_error_at_commit_stops_labelled_as_catalog_integrity(
+    db, cli_sessions, fresh_reader, monkeypatch, capsys
+):
+    """3.4(b)'s production shape, and the one stop reason no test reached.
+
+    `catalog_integrity` exists because production is `autoflush=False`: when the
+    in-module resolution does not catch a collision, it surfaces at `commit()`
+    as a raw `IntegrityError` on `uq_rainfall_extreme_event_identity` -- a
+    different type, from a different place, with no field list. The suite could
+    not reach it (the fixture's own resolution closes the hazard first), so the
+    entry could be deleted with everything green and the deployment would answer
+    a duplicate identity with a bare traceback.
+
+    Forced here through the writer, with the batch's rows already pending, so
+    the rollback obligation is exercised on this path too.
+    """
+    from app.domains.geo.rainfall import detector_cli
+
+    asset = "detector-cli-integrity"
+    _persist_baseline_days(db, asset=asset, days=_full_span_series())
+    control = _plant_control_row(db, asset=asset)
+
+    real_persist = detector_cli.persist_events
+
+    def _persist_then_collide(session, **kwargs):
+        real_persist(session, **kwargs)
+        raise IntegrityError(
+            "INSERT INTO rainfall_extreme_event ...",
+            {},
+            Exception(
+                "duplicate key value violates unique constraint "
+                '"uq_rainfall_extreme_event_identity"'
+            ),
+        )
+
+    monkeypatch.setattr(detector_cli, "persist_events", _persist_then_collide)
+
+    code, out, err = _run(monkeypatch, capsys, cli_sessions, asset=asset)
+
+    assert code == detector_cli.EXIT_STOPPED
+    assert "STOPPED" in err
+    assert "reason=catalog_integrity" in err
+    assert "uq_rainfall_extreme_event_identity" in err
+    assert [row.event_key for row in _catalog_rows(fresh_reader)] == [control]
+    assert out.strip() == ""
+
+
+def test_an_unexpected_failure_stops_labelled_with_a_traceback_and_zero_rows(
+    db, cli_sessions, fresh_reader, monkeypatch, capsys
+):
+    """B1c verify F4: `build_parser`'s "never a bare traceback" made TRUE.
+
+    Only four exception types were labelled; anything else -- an `OperationalError`
+    on a dropped connection, a `KeyError` from a future refactor -- escaped
+    `main` as a raw traceback with exit code 1 borrowed from the interpreter, so
+    an operator's `|| exit 1` wrapper could not tell it from a named stop.
+
+    Zero rows already held on this path (`Session.__exit__` discards an
+    uncommitted session), but it is asserted anyway, with a planted control row:
+    the guarantee has to survive the catch-all being added, not depend on it.
+    """
+    from app.domains.geo.rainfall import detector_cli
+
+    asset = "detector-cli-unexpected"
+    _persist_baseline_days(db, asset=asset, days=_full_span_series())
+    control = _plant_control_row(db, asset=asset)
+
+    def _explode(_daily):
+        raise RuntimeError("the shape of a failure nobody enumerated")
+
+    monkeypatch.setattr(detector_cli, "plan_events", _explode)
+
+    code, out, err = _run(monkeypatch, capsys, cli_sessions, asset=asset)
+
+    assert code == detector_cli.EXIT_STOPPED
+    assert "STOPPED" in err
+    assert "reason=unexpected" in err
+    # The diagnosis still reaches stderr -- labelled is not the same as swallowed.
+    assert "Traceback (most recent call last)" in err
+    assert "the shape of a failure nobody enumerated" in err
+    assert [row.event_key for row in _catalog_rows(fresh_reader)] == [control]
+    assert out.strip() == ""
+
+
+def test_a_report_that_fails_to_render_never_claims_the_run_wrote_nothing(
+    db, cli_sessions, fresh_reader, monkeypatch, capsys
+):
+    """B1c verify F3: the "exit 1 = ZERO rows written" contract, on every path.
+
+    The report is rendered AFTER `db.commit()`, so a rendering failure happens
+    with the rows already permanent. Letting that exit `EXIT_STOPPED` -- or
+    letting it escape as a traceback whose exit code is also 1 -- would tell the
+    operator the exact opposite of what the catalog now holds, and the documented
+    reaction to a stop is "re-run it", which is only safe because a stop wrote
+    nothing.
+
+    So a post-commit rendering failure gets its own code, `EXIT_REPORT_FAILED`,
+    and says so: the rows ARE written and the run must NOT be read as aborted.
+    """
+    from app.domains.geo.rainfall import detector_cli
+
+    asset = "detector-cli-report-render-failure"
+    _persist_baseline_days(db, asset=asset, days=_full_span_series())
+    db.flush()
+
+    def _explode(_report):
+        raise RuntimeError("the report could not be rendered")
+
+    monkeypatch.setattr(detector_cli, "format_report", _explode)
+
+    code, out, err = _run(monkeypatch, capsys, cli_sessions, asset=asset)
+
+    assert code == detector_cli.EXIT_REPORT_FAILED
+    assert code not in (detector_cli.EXIT_OK, detector_cli.EXIT_STOPPED)
+    assert "reason=report_render_failed" in err
+    assert "STOPPED" not in err, "a committed run is not a stop"
+    assert "Traceback (most recent call last)" in err
+    # The rows the operator was never shown are nonetheless there, and the
+    # message has to be readable as saying so.
+    assert _catalog_rows(fresh_reader)
+    assert "committed" in err.lower()
+    assert out.strip() == ""
+
+
+def test_the_help_and_the_docstring_document_the_post_commit_report_exit(monkeypatch):
+    """B1c verify F3's other half: an exit code an operator cannot read about is
+    an undocumented number in a wrapper script.
+    """
+    from app.domains.geo.rainfall import detector_cli
+
+    help_text = detector_cli.build_parser().format_help()
+    assert "report_render_failed" in help_text
+    assert str(detector_cli.EXIT_REPORT_FAILED) in help_text
+    doc = detector_cli.__doc__ or ""
+    assert "report_render_failed" in doc
 
 
 # ===========================================================================
@@ -562,14 +816,14 @@ def test_a_record_below_the_sample_floor_stops_labelled_rather_than_not_firing(
     """
     asset = "detector-cli-short-record"
     _persist_baseline_days(db, asset=asset, days=_full_span_series(length=500))
-    db.flush()
+    control = _plant_control_row(db, asset=asset)
 
     code, out, err = _run(monkeypatch, capsys, cli_sessions, asset=asset)
 
     assert code == 1
     assert "reason=insufficient_climatology" in err
     assert "TypeError" not in err
-    assert _catalog_rows(fresh_reader) == []
+    assert [row.event_key for row in _catalog_rows(fresh_reader)] == [control]
     assert out.strip() == ""
 
 
@@ -579,14 +833,21 @@ def test_a_record_below_the_sample_floor_stops_labelled_rather_than_not_firing(
 
 
 def test_the_three_gold_anchors_are_the_ones_the_curated_seed_holds():
-    """3.6: the anchor set is the seed's, not a second list free to drift."""
+    """3.6 / B1c verify F7: the anchor set IS the seed's, keys AND dates.
+
+    Written as a literal, this test was a THIRD copy of the same three dates
+    (the seed's `ANCHORS`, the CLI's `GOLD_ANCHORS`, and itself), which is the
+    shape where a curated date moves in the seed and the validation gate keeps
+    checking the old one -- silently reporting "no detectado" for an anchor the
+    catalog holds on a different day. Bound to the seed instead, so a curated
+    date can only move in one place.
+    """
+    from app.db.migrations.versions.lluvia_ext_002_seed_curated_flood_anchors import ANCHORS
     from app.domains.geo.rainfall import detector_cli
 
-    assert dict(detector_cli.GOLD_ANCHORS) == {
-        "mar_2015": date(2015, 3, 15),
-        "feb_2017": date(2017, 2, 20),
-        "sep_2025": date(2025, 9, 5),
-    }
+    seeded = {key: date.fromisoformat(day) for key, day, _payload in ANCHORS}
+
+    assert dict(detector_cli.GOLD_ANCHORS) == seeded
 
 
 def test_every_anchor_gets_an_explicit_verdict_even_when_none_is_detected():
@@ -655,6 +916,40 @@ def test_the_report_names_every_anchor_with_its_verdict(db, cli_sessions, monkey
     for anchor in ("mar_2015", "feb_2017", "sep_2025"):
         assert anchor in out
     assert out.count("no detectado") == 3
+    # No curated row was seeded for this scope, and the section SAYS so: three
+    # "no detectado" lines look identical whether the seed ran or never did.
+    assert "seed ausente" in out
+
+
+def test_the_anchor_section_stops_saying_the_seed_is_absent_once_it_is_there(
+    db, cli_sessions, monkeypatch, capsys
+):
+    """3.6 / B1c verify S12: the note is a MEASUREMENT of the catalog.
+
+    A note that printed unconditionally would be one more constant. Same run,
+    same anchors, one curated row planted in the run's own scope -- and the
+    header changes.
+    """
+    asset = "detector-cli-anchor-report-seeded"
+    _persist_baseline_days(db, asset=asset, days=_full_span_series())
+    db.execute(
+        text(
+            "INSERT INTO rainfall_extreme_event "
+            "(id, source_id, scope_kind, scope_id, scope_version, detector_revision, "
+            " provenance, event_key, start_date, end_date, curated_payload) "
+            "VALUES (gen_random_uuid(), :source_id, 'provider_asset', :asset, :version, "
+            " 'curated', 'curated', 'feb_2017', DATE '2017-02-20', DATE '2017-02-20', "
+            " '{}'::json)"
+        ),
+        {"source_id": SOURCE_ID, "asset": asset, "version": BASELINE_ASSET_VERSION},
+    )
+    db.flush()
+
+    code, out, err = _run(monkeypatch, capsys, cli_sessions, asset=asset)
+
+    assert code == 0, err
+    assert "gold anchors:" in out
+    assert "seed ausente" not in out
 
 
 # ===========================================================================

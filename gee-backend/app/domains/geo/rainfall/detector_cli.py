@@ -23,8 +23,9 @@ findings in that review (a truncated event sealed forever, and permanently lost
 deferrals). A ``--since`` flag would let a run seal rows under a span it never
 ranked against, which is the one thing an append-only catalog cannot take back.
 
-**Stops are LABELLED and write NOTHING.** Three named aborts, each exiting
-``EXIT_STOPPED`` with a distinguishable ``reason=``:
+**Stops are LABELLED and write NOTHING.** Every abort exits ``EXIT_STOPPED``
+with a distinguishable ``reason=``, and the last of them is a catch-all so that
+sentence has no exceptions:
 
 ``duplicate_baseline_slot``
     Two non-superseded rows for one day. The duplicate inflates a window total
@@ -39,6 +40,22 @@ ranked against, which is the one thing an append-only catalog cannot take back.
     A second computation disagrees with a persisted row at one identity -- or
     with itself, within a single run. ``ON CONFLICT DO NOTHING`` would convert
     that into permanent silence.
+``catalog_integrity``
+    A raw ``IntegrityError`` at ``commit()`` -- the shape the intra-batch
+    collision takes in production, where nothing autoflushes.
+``unexpected``
+    Anything else. The label is what makes the sentence above true: without a
+    catch-all, an ``OperationalError`` on a dropped connection left ``main`` as
+    a bare traceback whose interpreter exit code is ALSO 1, indistinguishable
+    from a named stop by the wrapper script that reads it.
+
+**And one exit that is NOT a stop.** The calibration report is rendered AFTER
+``commit()``, so a failure to render it happens with the rows already permanent.
+Reporting that as ``EXIT_STOPPED`` would tell the operator the opposite of what
+the catalog holds -- and the documented reaction to a stop is "fix it and re-run",
+which is only safe because a stop wrote nothing. A post-commit rendering failure
+therefore exits ``EXIT_REPORT_FAILED`` (``3``) with ``reason=report_render_failed``
+and says outright that the rows WERE committed.
 
 On every one of them the session is **rolled back before the process exits**.
 That is this module's obligation and not the writer's: ``persist_events``
@@ -71,6 +88,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 from collections.abc import Mapping, Sequence
 from dataclasses import fields as dataclass_fields
 from datetime import date
@@ -93,6 +111,7 @@ from app.domains.geo.rainfall.detector import (
     count_firing_end_days,
     detect_events,
 )
+from app.domains.geo.rainfall.models import RainfallExtremeEvent
 from app.domains.geo.rainfall.repository import (
     CatalogDivergenceError,
     DuplicateBaselineSlotError,
@@ -104,6 +123,11 @@ from app.domains.geo.rainfall.repository import (
 EXIT_OK = 0
 EXIT_STOPPED = 1
 EXIT_INVALID_RANGE = 2
+#: NOT a stop, and deliberately outside ``backfill_cli``'s shared vocabulary:
+#: this run COMMITTED and then failed to render its report. See the module
+#: docstring -- "exit 1 wrote zero rows" has to hold on every path, so the one
+#: failure that happens after ``commit()`` cannot borrow that code.
+EXIT_REPORT_FAILED = 3
 
 #: The span is passed EXPLICITLY on every read. ``baseline_daily_values``
 #: defaults to the antecedent-reference card's own ``[1991, 2021)`` bounds,
@@ -146,7 +170,12 @@ def build_parser() -> argparse.ArgumentParser:
             "baseline. Always full-span: there is no --since/--from flag and "
             "the omission is deliberate (design.md D6). Idempotent -- a second "
             "run inserts, updates and deletes nothing. Stops LABELLED, never a "
-            "bare traceback, and a stop writes ZERO rows."
+            "bare traceback, and a stop writes ZERO rows. Exit codes: "
+            f"{EXIT_OK}=ok, {EXIT_STOPPED}=labelled stop (zero rows written, "
+            f"safe to re-run), {EXIT_INVALID_RANGE}=invalid frozen span, "
+            f"{EXIT_REPORT_FAILED}=reason=report_render_failed -- the rows WERE "
+            "committed and only the report failed to render, so this is NOT a "
+            "stop and re-running it will find the catalog already written."
         ),
     )
     parser.add_argument(
@@ -245,15 +274,50 @@ def anchor_verdicts(events: Sequence[DetectedEvent]) -> dict[str, dict[str, obje
     return verdicts
 
 
-def calibration_report(daily: Sequence[tuple[date, float]]) -> dict[str, object]:
+def curated_anchor_rows(db, *, source_id: str, asset: str) -> int:
+    """How many ``curated`` rows the catalog holds for this scope.
+
+    Only ever rendered as a NOTE on the anchor section (see
+    :func:`format_report`): a deployment whose curated seed never ran serves
+    three unconfirmed anchors and a catalog that does not contain them, and
+    those are different facts that print identically otherwise.
+    """
+    return (
+        db.query(RainfallExtremeEvent)
+        .filter_by(
+            provenance="curated",
+            source_id=source_id,
+            scope_kind="provider_asset",
+            scope_id=asset,
+            scope_version=BASELINE_ASSET_VERSION,
+        )
+        .count()
+    )
+
+
+def calibration_report(
+    daily: Sequence[tuple[date, float]],
+    *,
+    events: Sequence[DetectedEvent] | None = None,
+    curated_rows: int | None = None,
+) -> dict[str, object]:
     """The measured shape of one full-span run (tasks.md 3.9).
 
     Every number here is COMPUTED from *daily*. Printing the design's modelled
     ~30 / ~150 -- or any other constant -- would make the owner's calibration
     gate unable to disagree with the model it exists to check.
+
+    *events* is the batch the run actually RESOLVED and handed to the writer.
+    ``main`` passes it, and that is the point (B1c verify, F1): recomputing the
+    batch here and never comparing it against the persisted one is exactly the
+    class of failure this module exists to prevent -- the intra-batch resolution
+    would collapse two rows into one and the report would still describe two.
+    It stays optional so the calibration harness can call this on a bare series.
     """
-    events = plan_events(daily)
+    if events is None:
+        events = plan_events(daily)
     return {
+        "curated_rows": curated_rows,
         "baseline_days": len(daily),
         "span": (SPAN_START.date(), SPAN_END.date()),
         "firing_end_days": {
@@ -275,7 +339,16 @@ def format_report(report: Mapping[str, object]) -> str:
     lines = [
         f"span: [{span_start.isoformat()}, {span_end.isoformat()}) revision={DETECTOR_REVISION}",
         f"baseline days: {report['baseline_days']}",
-        "firing end-days (before the D1 merge):",
+        # ANNOTATED, not removed (B1c verify, F2). A window's firing end-days
+        # are the days whose total ranks at or above the tier percentile, so on
+        # a real record the count is ~N*(1-p) BY CONSTRUCTION -- the measured
+        # run gives 31/31/31 at every window length, which carries no
+        # information about the record. It stays because it is the arithmetic's
+        # sanity check (a 0 or a 300 there means the ranking is broken), and it
+        # is labelled so nobody reads it as a finding. The number that carries
+        # the calibration is `events after merge`.
+        "firing end-days (before the D1 merge) "
+        "(≈N·(1−p) por construcción — control de sanidad, no señal):",
     ]
     for tier, counts in report["firing_end_days"].items():
         rendered = " ".join(f"d{days}={counts[days]}" for days in WINDOW_LENGTHS)
@@ -285,7 +358,13 @@ def format_report(report: Mapping[str, object]) -> str:
         lines.append(f"  {tier}: {total}")
     clipped = report["clipped_at_span_end"]
     lines.append(f"clipped_at_span_end: {', '.join(clipped) if clipped else '(ninguno)'}")
-    lines.append("gold anchors:")
+    # An absent seed is DISCLOSED rather than inferred from three "no detectado"
+    # lines, which is what an un-seeded deployment and a seeded one that
+    # confirmed nothing both look like.
+    if report.get("curated_rows") == 0:
+        lines.append("gold anchors: (seed ausente — anclas no sembradas)")
+    else:
+        lines.append("gold anchors:")
     for name, verdict in report["anchors"].items():
         if not verdict["detected"]:
             lines.append(f"  {name} ({verdict['date'].isoformat()}): no detectado")
@@ -333,7 +412,13 @@ def main(argv: Sequence[str] | None = None, *, session_factory=SessionLocal) -> 
                 scope_version=BASELINE_ASSET_VERSION,
                 events=events,
             )
-            report = calibration_report(daily)
+            # The RESOLVED batch, not a third recomputation of it: the report
+            # has to describe the rows this run wrote.
+            report = calibration_report(
+                daily,
+                events=events,
+                curated_rows=curated_anchor_rows(db, source_id=args.source_id, asset=args.asset),
+            )
             db.commit()
         except tuple(kind for kind, _ in _STOP_REASONS) as exc:
             # THE obligation of this module (tasks.md 3.4a): everything the
@@ -345,9 +430,33 @@ def main(argv: Sequence[str] | None = None, *, session_factory=SessionLocal) -> 
             reason = next(label for kind, label in _STOP_REASONS if isinstance(exc, kind))
             print(f"STOPPED (reason={reason}): {exc}", file=sys.stderr)
             return EXIT_STOPPED
+        except Exception as exc:  # noqa: BLE001 -- deliberate catch-all, see below
+            # The parser promises "Stops LABELLED, never a bare traceback". Four
+            # enumerated types do not make that true: everything else escaped
+            # with the interpreter's own exit code -- also 1 -- and no reason=
+            # for a wrapper script to read. Rolled back for the same reason the
+            # named stops are, and the traceback still goes to stderr, because
+            # labelled is not the same as swallowed.
+            db.rollback()
+            print(f"STOPPED (reason=unexpected): {exc!r}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            return EXIT_STOPPED
 
-    print(format_report(report))
-    print(f"catalog: inserted={written['inserted']} skipped={written['skipped']}")
+    # PAST the commit. A failure here is not a stop and must not be reported as
+    # one: the rows are permanent and the operator was simply never shown them.
+    try:
+        print(format_report(report))
+        print(f"catalog: inserted={written['inserted']} skipped={written['skipped']}")
+    except Exception as exc:  # noqa: BLE001 -- see EXIT_REPORT_FAILED
+        print(
+            f"REPORT FAILED (reason=report_render_failed): the run COMMITTED "
+            f"inserted={written['inserted']} skipped={written['skipped']} and then "
+            f"failed to render its report: {exc!r}. The catalog IS written; do not "
+            "read this as an aborted run.",
+            file=sys.stderr,
+        )
+        traceback.print_exc(file=sys.stderr)
+        return EXIT_REPORT_FAILED
     return EXIT_OK
 
 
