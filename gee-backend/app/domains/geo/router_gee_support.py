@@ -42,45 +42,12 @@ async def _run_blocking(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-# DEAD AS OF B2a, DELETED IN B2b. The list handler below reads the catalog
-# (`rainfall_extreme_event`, seeded with these three anchors verbatim by
-# migration `lluvia_ext_002`); the ONLY remaining reader is
-# `get_historic_flood_tiles_impl`, which still resolves an id by scanning this
-# literal and is rewired in the next slice.
-#
-# Kept deliberately for one merge window rather than deleted here: removing it
-# now would drag the bridge rewiring, the five dispatcher tests bound to these
-# ids (one of which monkeypatches this very symbol) and the router shape
-# assertions into this slice — one ~1,100-line PR whose production component
-# crosses the 400 ceiling. Everything bound to the symbol dies WITH the symbol,
-# in B2b.
-HISTORIC_FLOODS = [
-    {
-        "id": "mar_2015",
-        "name": "Inundacion Marzo 2015",
-        "date": "2015-03-15",
-        "description": "Evento historico para revisar con Landsat 8/Landsat 7 y Sentinel-1",
-        "severity": "alta",
-        "sensor": "landsat8",
-        "max_cloud": 80,
-        "days_buffer": 30,
-    },
-    {
-        "id": "feb_2017",
-        "name": "Inundacion Febrero 2017",
-        "date": "2017-02-20",
-        "description": "Gran inundacion que afecto Bell Ville y zona rural",
-        "severity": "alta",
-        "sensor": "sentinel2",
-    },
-    {
-        "id": "sep_2025",
-        "name": "Inundacion Septiembre 2025",
-        "date": "2025-09-05",
-        "description": "Evento de anegamiento por lluvias intensas",
-        "severity": "media",
-    },
-]
+# The three `HISTORIC_FLOODS` anchors that used to live here are gone as of
+# B2b. They are rows now: migration `lluvia_ext_002` seeds them verbatim into
+# `rainfall_extreme_event` as curated events, and BOTH handlers below read that
+# table. The symbol survived exactly one merge window (B2a made the list
+# catalog-backed, B2b the bridge) so that the deletion and every reader bound
+# to it could land in one commit rather than leaving `main` red in between.
 
 
 async def list_gee_layers_impl(lazy_gee_service) -> JSONResponse:
@@ -541,8 +508,30 @@ async def get_historic_flood_tiles_impl(
     flood_id: str,
     visualization: str,
     ensure_gee,
+    db: Session = Depends(get_db),
 ):
-    flood = next((f for f in HISTORIC_FLOODS if f["id"] == flood_id), None)
+    """The imagery bridge, resolved against the catalog (D12, BLOCKER-1).
+
+    It used to scan a module literal, which meant every id the catalog-backed
+    list serves would 404 on the exact click this feature exists for. It now
+    resolves through :func:`catalog_view.resolve_event` -- the SAME derivation
+    the list renders with, against the SAME generation -- so the two surfaces
+    cannot disagree about which events exist.
+
+    Nor about WHICH RECORD an id names. ``resolve_event`` applies the list's own
+    D8 precedence: a detected id the list suppressed behind a confirmed curated
+    card resolves to that card, so the tiles are searched around the date, at
+    the buffer and with the sensor the picker actually rendered. Serving the
+    suppressed detected row instead would centre the search on a different day
+    for a card the user never saw.
+
+    ``db`` reaches here through ``_gee_async`` (`router.py:142-154`), which
+    rebuilds the signature filtering out only ``ensure_gee``; no new wrapper.
+    The read is offloaded through :func:`_run_blocking` for the reason this
+    module's docstring records.
+    """
+    generation = await _run_blocking(read_events, db, **CATALOG_SCOPE)
+    flood = catalog_view.resolve_event(generation, flood_id)
     if not flood:
         raise NotFoundError(
             message=f"Inundacion '{flood_id}' no encontrada",

@@ -1020,28 +1020,16 @@ def test_mar_2015_carries_its_buffer_explicitly_not_by_epoch_coincidence(
     assert "days_buffer" not in rows["sep_2025"].curated_payload
 
 
-def test_the_seeded_anchors_still_say_what_the_router_literal_says():
-    """2.11: the seed is a COPY of `router_gee_support.HISTORIC_FLOODS`, and a
-    copy nobody compares is a fork.
-
-    Until B2 deletes the literal and points the endpoint at the catalog, both
-    exist and both are served — the migration's rows to whoever reads the table,
-    the literal to `/floods`. A drift between them is a deployment that answers
-    the same question two ways depending on which surface was asked.
-
-    **This test is written to EXPIRE.** When B2 removes `HISTORIC_FLOODS` the
-    import fails, and the correct response is to DELETE this test rather than to
-    reintroduce the literal to keep it green: at that point the catalog is the
-    only source and there is nothing left to disagree with it.
-    """
-    from app.db.migrations.versions.lluvia_ext_002_seed_curated_flood_anchors import ANCHORS
-    from app.domains.geo.router_gee_support import HISTORIC_FLOODS
-
-    seeded = {key: {"date": day, **payload} for key, day, payload in ANCHORS}
-    served = {
-        flood["id"]: {k: v for k, v in flood.items() if k != "id"} for flood in HISTORIC_FLOODS
-    }
-    assert seeded == served
+# RETIRED IN B2b, as designed. `test_the_seeded_anchors_still_say_what_the
+# _router_literal_says` compared the `lluvia_ext_002` seed against
+# `router_gee_support.HISTORIC_FLOODS`, because while both existed a drift
+# between them was a deployment answering the same question two ways. B2b
+# deleted the literal, so the seed is now the ONLY source and there is nothing
+# left for it to disagree with. Its successors: the seed's own content is
+# pinned by `test_mar_2015_carries_its_buffer_explicitly_not_by_epoch_coincidence`,
+# and what the endpoints do with those rows by
+# `geo/rainfall/test_rainfall_catalog_serving.py` (the list) and
+# `geo/rainfall/test_rainfall_catalog_bridge.py` (the imagery bridge).
 
 
 def test_the_deployed_schema_refuses_what_the_model_schema_refuses(catalog_migration_db):
