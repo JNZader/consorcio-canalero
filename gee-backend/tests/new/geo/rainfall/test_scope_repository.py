@@ -425,3 +425,40 @@ def test_the_asset_seam_normalises_the_stored_watershed_name(stored):
     resolved = asset_name_for("basin", stored)
     assert resolved == stored.strip().lower()
     assert resolved in BASIN_ASSET_NAMES
+
+
+def test_divergent_spellings_of_one_watershed_are_one_basin_scope(db):
+    """``cuenca`` is free text, so ONE watershed reaches the resolver spelled
+    several ways ("Norte", "norte", " norte ").
+
+    Grouping on the RAW value made each spelling its own scope -- three
+    choices, three ``scope_version`` values, three storage keys -- for a
+    watershed the provider has exactly one asset for. The seam already decides
+    basin identity in the normalised space (``normalized_basin_name``), so the
+    resolver must decide it there too: the identity of a scope cannot depend on
+    which half of the system is looking at it.
+    """
+    _seed_basins(db, ("sub-a", "Norte"), ("sub-b", "norte"), ("sub-c", " norte "))
+
+    choices = RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+    assert [(item.kind, item.id) for item in choices] == [("basin", "norte")]
+
+
+def test_a_basin_scope_version_ignores_the_spelling_of_its_watershed(db):
+    """The version is a GEOMETRY identity of the whole group, so re-typing a
+    member's ``cuenca`` -- same rows, same geometries, different spelling --
+    must not move it. If it did, a cosmetic edit in an operator's table would
+    orphan every baseline row already persisted under the old key.
+    """
+    _seed_basins(db, ("sub-a", "norte"), ("sub-b", "norte"))
+    repo = RainfallRepository()
+
+    first = repo.resolve_parcel_scopes(db, "parcel-1")[0].version
+
+    db.query(ZonaOperativa).filter_by(nombre="sub-b").one().cuenca = "  NORTE "
+    db.flush()
+
+    resolved = repo.resolve_parcel_scopes(db, "parcel-1")
+    assert [item.id for item in resolved] == ["norte"]
+    assert resolved[0].version == first

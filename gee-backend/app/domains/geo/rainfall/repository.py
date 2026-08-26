@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Mapping, Sequence
+from hashlib import md5
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
@@ -22,7 +23,7 @@ from app.domains.geo.rainfall.models import (
     RainfallOutbox,
 )
 from app.domains.geo.rainfall.ports import SourceInterval
-from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch
+from app.domains.geo.rainfall.scope import AnalysisScope, NoScopeMatch, normalized_basin_name
 
 # R1-001 (review-ledger.md "Pre-PR review — PR3"): mirrors
 # app/auth/refresh_tokens.py's `_LOCK_TIMEOUT_MS` convention (defense-in-
@@ -83,6 +84,33 @@ class DuplicateBaselineSlotError(ValueError):
         self.year = year
         self.matched = matched
         self.distinct_slots = distinct_slots
+
+
+def _basin_groups(members: Sequence[tuple[str, str, str]]) -> list[tuple[str, str]]:
+    """Fold ``(cuenca, row id, geometry hash)`` rows into ``(scope id, version)``.
+
+    The scope id is the NORMALISED watershed name, so every spelling variant of
+    one watershed lands in one group. The version is the group's aggregate
+    geometry identity -- the member hashes joined in row-id order and hashed --
+    which therefore depends on the member GEOMETRIES and not on how anyone
+    happened to type ``cuenca``.
+    """
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    for cuenca, row_id, geometry_hash in members:
+        scope_id = normalized_basin_name(cuenca)
+        if not scope_id:
+            # `btrim(cuenca) <> ''` already dropped blanks, but a value made
+            # only of combining marks normalises to empty and would otherwise
+            # become a nameless scope no asset can ever map.
+            continue
+        grouped.setdefault(scope_id, []).append((row_id, geometry_hash))
+    return [
+        (
+            scope_id,
+            md5(",".join(h for _, h in sorted(rows)).encode(), usedforsecurity=False).hexdigest(),
+        )
+        for scope_id, rows in sorted(grouped.items())
+    ]
 
 
 class RainfallRepository:
@@ -192,19 +220,28 @@ class RainfallRepository:
             # concatenated in a deterministic id order. It is stable across
             # reads (it is part of the persisted storage key) and moves when
             # any member's geometry does.
-            basins = db.execute(
+            #
+            # The GROUPING happens in Python, not in SQL, because `cuenca` is
+            # free text and the identity of a basin is its NORMALISED name
+            # (`scope.normalized_basin_name`) -- the same rule the asset seam
+            # applies. A raw `GROUP BY zonas_operativas.cuenca` made "Norte",
+            # "norte" and " norte " three scopes with three `scope_version`
+            # values, hence three storage keys, for the one watershed the
+            # provider owns a single asset for. Reducing the DB to a plain
+            # per-row read keeps that rule in one place instead of restating it
+            # as SQL that would then have to be kept in step with it.
+            members = db.execute(
                 text("""
                 SELECT zonas_operativas.cuenca,
-                       md5(string_agg(
-                           md5(encode(ST_AsEWKB(ST_Normalize(zonas_operativas.geometria)), 'hex')),
-                           ',' ORDER BY zonas_operativas.id))
+                       zonas_operativas.id::text,
+                       md5(encode(ST_AsEWKB(ST_Normalize(zonas_operativas.geometria)), 'hex'))
                 FROM zonas_operativas CROSS JOIN (SELECT geometria FROM parcelas_catastro WHERE nomenclatura = :name) AS parcel
                 WHERE ST_Area(ST_Intersection(parcel.geometria, zonas_operativas.geometria)) > 0
                   AND zonas_operativas.cuenca IS NOT NULL AND btrim(zonas_operativas.cuenca) <> ''
-                GROUP BY zonas_operativas.cuenca ORDER BY 1
             """),
                 {"name": nomenclature},
             ).all()
+            basins = _basin_groups(members)
         except SQLAlchemyError as exc:
             raise ScopeConfigurationError("approved zoning geometry is invalid") from exc
         choices = [AnalysisScope("zone", row[0], row[1], True) for row in zones]

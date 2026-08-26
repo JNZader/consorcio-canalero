@@ -23,12 +23,12 @@ fail-closed edge.
 
 from __future__ import annotations
 
-import unicodedata
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from app.domains.geo.rainfall.adapters.resilience import AdapterError
+from app.domains.geo.rainfall.scope import normalized_basin_name
 
 DEFAULT_ZONE_ASSET = "zona_cc_ampliada"
 BASIN_ASSET_NAMES = frozenset({"candil", "ml", "noroeste", "norte"})
@@ -44,18 +44,6 @@ BASELINE_ASSET_VERSION = "v1"
 
 class UnknownProviderScope(ValueError):
     """No GEE asset is mapped to the requested provider scope."""
-
-
-def _normalized_basin_name(scope_id: str) -> str:
-    """``cuenca`` free text reduced to its asset-name form.
-
-    NFKD-decompose, drop combining marks, trim, case-fold. Deliberately NOT a
-    slugifier: it must not invent a mapping by rewriting separators, because
-    every rewrite it performs is a chance to land on a DIFFERENT watershed's
-    asset name and reduce over the wrong geometry.
-    """
-    decomposed = unicodedata.normalize("NFKD", scope_id)
-    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).strip().casefold()
 
 
 def asset_name_for(scope_kind: str, scope_id: str) -> str:
@@ -82,7 +70,7 @@ def asset_name_for(scope_kind: str, scope_id: str) -> str:
         # geometry, which is the property that must survive this fix: it was
         # what the UUID mismatch provided by accident, and it is now provided
         # on purpose.
-        normalized = _normalized_basin_name(scope_id)
+        normalized = normalized_basin_name(scope_id)
         if normalized in BASIN_ASSET_NAMES:
             return normalized
         raise UnknownProviderScope(
