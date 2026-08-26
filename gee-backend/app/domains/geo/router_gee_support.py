@@ -4,11 +4,16 @@ import asyncio
 from datetime import date
 from typing import Literal
 
+from fastapi import Depends, Query
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy.orm import Session
 
 from app.core.cache import get_cache
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
 from app.core.logging import get_logger
+from app.db.session import get_db
+from app.domains.geo.rainfall import catalog_view
+from app.domains.geo.rainfall.repository import read_events
 
 logger = get_logger(__name__)
 
@@ -37,6 +42,18 @@ async def _run_blocking(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
+# DEAD AS OF B2a, DELETED IN B2b. The list handler below reads the catalog
+# (`rainfall_extreme_event`, seeded with these three anchors verbatim by
+# migration `lluvia_ext_002`); the ONLY remaining reader is
+# `get_historic_flood_tiles_impl`, which still resolves an id by scanning this
+# literal and is rewired in the next slice.
+#
+# Kept deliberately for one merge window rather than deleted here: removing it
+# now would drag the bridge rewiring, the five dispatcher tests bound to these
+# ids (one of which monkeypatches this very symbol) and the router shape
+# assertions into this slice — one ~1,100-line PR whose production component
+# crosses the 400 ceiling. Everything bound to the symbol dies WITH the symbol,
+# in B2b.
 HISTORIC_FLOODS = [
     {
         "id": "mar_2015",
@@ -473,10 +490,49 @@ async def get_available_visualizations_impl():
     )
 
 
-async def get_historic_floods_impl():
+#: The catalog key every served read resolves against: the same
+#: `(source_id, scope_kind, scope_id, scope_version)` the persisted baseline
+#: and the curated seed (`lluvia_ext_002`) use. Spelled out here rather than
+#: imported from the runbook CLI, which owns the WRITE side and takes both as
+#: command-line arguments -- a served read that followed an operator's flag
+#: would answer a different question on every box.
+CATALOG_SCOPE = {
+    "source_id": "chirps-v3-final",
+    "scope_kind": "provider_asset",
+    "scope_id": "zona_cc_ampliada",
+    "scope_version": "v1",
+}
+
+
+async def get_historic_floods_impl(
+    *,
+    tier: Literal["extrema", "alta"] = catalog_view.DEFAULT_TIER,
+    year: int | None = None,
+    limit: int = Query(catalog_view.DEFAULT_LIMIT, ge=1, le=catalog_view.MAX_LIMIT),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """The catalog-backed historic-flood list (D8-D12).
+
+    The read is offloaded through :func:`_run_blocking` for the reason this
+    module's own docstring records: both historic-flood handlers are
+    ``async def``, and blocking work on the event loop inside exactly these
+    handlers is what produced the 21-161 s tail latency on an unrelated PostGIS
+    endpoint. Detection NEVER happens here -- the catalog is written by the
+    hand-run runbook (D6) and this handler only reads it.
+    """
+    generation = await _run_blocking(read_events, db, **CATALOG_SCOPE)
+    payload = catalog_view.build_catalog_response(
+        generation, tier=tier, year=year, limit=limit, offset=offset
+    )
     return JSONResponse(
-        content={"floods": HISTORIC_FLOODS, "total": len(HISTORIC_FLOODS)},
-        headers={"Cache-Control": "public, max-age=86400"},
+        content=payload,
+        # `private`, and five minutes rather than a day (D12). Over three
+        # module constants `public, max-age=86400` was harmless; over a
+        # DB-backed, filtered response on a router gated by
+        # `Depends(_require_operator())` it is both a shared-cache leak and a
+        # day-long staleness window after a detector run.
+        headers={"Cache-Control": "private, max-age=300"},
     )
 
 

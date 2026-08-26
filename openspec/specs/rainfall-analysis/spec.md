@@ -245,6 +245,15 @@ distinct, non-interchangeable names in the code and in the served contract:
 Neither mode's value MAY be served under the other's name, and the absolute mode
 MUST NOT be substituted when the seasonal mode is suppressed.
 
+The absolute mode now has exactly ONE consumer: the extreme-event detector. The
+"no consumer at all" guard is therefore retired IN THE SAME SLICE that introduces that
+consumer, and MUST be replaced — not merely deleted — by a narrower **snapshot-path
+isolation guard** asserting that the absolute-mode symbols are referenced only by the
+climatology module itself and the detector, and never reached from the card's snapshot,
+compute or rendering path.
+(Previously: the absolute mode was declared consumerless by decision, guarded by a test
+asserting it was referenced nowhere outside the climatology module.)
+
 #### Scenario: Card serves only the seasonal mode
 
 - GIVEN both modes are computable for a window
@@ -261,10 +270,17 @@ MUST NOT be substituted when the seasonal mode is suppressed.
 
 #### Scenario: Detector consumes the climatology without the snapshot path
 
-- GIVEN a future consumer holds baseline rows and a window length
+- GIVEN the extreme-event detector holds baseline rows and a window length
 - WHEN it calls the window-climatology function directly
 - THEN it obtains the window distribution and both modes' ranking
 - AND no snapshot, analysis revision or rendering path is required
+
+#### Scenario: The absolute mode never reaches the snapshot path
+
+- GIVEN the absolute-mode symbols now have a legitimate consumer
+- WHEN the isolation guard enumerates every module referencing them
+- THEN the only referencing modules are the climatology module and the detector
+- AND any reference from the snapshot, compute or rendering path fails the guard
 
 ### Requirement: Suppressed Antecedent Reference Rows Stay Visible With Their Reason
 
