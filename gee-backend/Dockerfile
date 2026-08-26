@@ -80,6 +80,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libosmesa6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (CVE-2026-14456, OpenSSL DoS via unbounded memory, HIGH):
+# Debian trixie-security ships the fixed openssl 3.5.7-1~deb13u2, but the
+# pinned slim-trixie base still carries 3.5.6-1~deb13u2. Same pattern as the
+# util-linux hotfix below: --only-upgrade + installed-version assertion, base
+# digest untouched. This block sits BEFORE the CVE-2026-53615 marker on purpose:
+# tests/test_image_security_policy.py extracts that hotfix by comment markers
+# and executes it. REMOVE this block when the python:3.11-slim-trixie digest
+# is bumped to one carrying openssl >= 3.5.7-1~deb13u2.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libssl3t64 \
+    openssl \
+    openssl-provider-legacy; \
+    fixed_version="3.5.7-1~deb13u2"; \
+    for package in \
+        libssl3t64 \
+        openssl \
+        openssl-provider-legacy; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
 # Security hotfix (CVE-2026-53615): Debian trixie-security ships the fixed
 # util-linux 2.41.5-0+deb13u1, but both pinned slim-trixie base images still
 # carry the vulnerable 2.41-5 binaries. Upgrade the nine affected packages in
