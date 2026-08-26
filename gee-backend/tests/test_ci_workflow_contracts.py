@@ -642,7 +642,7 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
 
 def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     backend = _read(".github/workflows/backend.yml")
-    release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch')"
+    release_gate = "(github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')"
 
     assert release_gate in _job_block(backend, "mutation")
     # VTK offscreen corre en proceso pytest SEPARADO (segfaults compartiendo
@@ -651,7 +651,12 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     assert "pytest tests/new/test_geo_visualization_renderer.py -v --cov=app" in backend
     assert "--ignore=tests/new/test_geo_visualization_renderer.py" in backend
     assert "--cov-append --cov-fail-under=60" in backend
-    assert "python3 scripts/cosmic_gate.py --min-kill-rate 0.30" in backend
+    assert "python3 scripts/cosmic_gate.py --config .cosmic-ray.selected.toml" in backend
+    assert "mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}" in backend
+    assert "matrix: ${{ fromJSON(needs.changes.outputs.mutation_matrix) }}" in _job_block(
+        backend, "mutation"
+    )
+    assert "scripts/cosmic_mutation_plan.py --target" in backend
 
     security = _job_block(backend, "security")
     # Trivy NO puede depender de `mutation`: un job salteado arrastra al salteo
@@ -1213,7 +1218,10 @@ def test_changes_job_detects_areas_without_third_party_actions() -> None:
         assert "fetch-depth: 0" in changes
         # Tres puntos = merge-base. Con dos, un avance de la rama base
         # posterior a la apertura del PR contaria como cambio del PR.
-        assert 'git diff --name-only "$BASE_SHA...HEAD"' in changes
+        assert (
+            f'git diff --name-{("status" if area == "backend" else "only")} "$BASE_SHA...HEAD"'
+            in changes
+        )
         # Fuera de un pull_request se declara todo cambiado: correr de mas es
         # preferible a saltear en silencio.
         assert '[ "$GITHUB_EVENT_NAME" != "pull_request" ]' in changes

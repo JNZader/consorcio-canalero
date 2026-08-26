@@ -14,6 +14,9 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
+  schedule:
+    # Baseline canonica semanal: conserva evidencia completa aunque los PRs seleccionen dominio.
+    - cron: "30 3 * * 0"
 
 concurrency:
   group: backend-${{ github.ref }}
@@ -30,6 +33,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
+      mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,15 +50,19 @@ jobs:
           # cambiado: preferimos correr de mas antes que saltear en silencio.
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
+            python3 gee-backend/scripts/cosmic_mutation_plan.py --full --github-output "$GITHUB_OUTPUT"
             exit 0
           fi
           # Tres puntos = merge-base. Con dos puntos, un avance de la rama base
           # posterior a la apertura del PR aparecerria como cambio del PR.
-          CHANGED="$(git diff --name-only "$BASE_SHA...HEAD")"
+          git diff --name-status "$BASE_SHA...HEAD" > "$RUNNER_TEMP/backend-changes.txt"
+          CHANGED="$(cut -f2- "$RUNNER_TEMP/backend-changes.txt")"
           if printf '%s\n' "$CHANGED" | grep -qE '^(gee-backend/|\.github/workflows/)'; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
+            python3 gee-backend/scripts/cosmic_mutation_plan.py --status-file "$RUNNER_TEMP/backend-changes.txt" --github-output "$GITHUB_OUTPUT"
           else
             echo "backend=false" >> "$GITHUB_OUTPUT"
+            echo 'mutation_matrix={"include":[]}' >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -130,15 +138,18 @@ jobs:
           --cov=app --cov-append --cov-fail-under=60
 
   mutation:
-    name: Mutation tests (cosmic-ray)
+    name: Mutation tests (cosmic-ray — ${{ matrix.target }})
     # Solo en el PR de release (develop -> main) o a mano. Son 12 minutos de
     # runner por PR: correrlo en cada PR a develop fue parte de lo que hizo que
     # bloquearan la cuenta por consumo. La calidad de los tests no se degrada
     # de un PR al siguiente al punto de justificar ese peaje diario.
-    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     needs: [changes, test]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.mutation_matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -147,6 +158,11 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --require-hashes -r requirements-dev.lock
+      # The versioned manifest selects only the changed domain. Tests, configs,
+      # workflows, dependencies, unknown paths, renames and deletes run all targets.
+      - run: >
+          python3 scripts/cosmic_mutation_plan.py --target "${{ matrix.target }}"
+          --write-config .cosmic-ray.selected.toml
       # Phase 4 / F4-B: raised the floor from 0.12 → 0.30 after seeding
       # the two test files referenced by ``.cosmic-ray.toml`` (they did
       # NOT exist before this batch — the gate had been mis-configured
@@ -176,7 +192,9 @@ jobs:
       # Inside the 35-min timeout below, but the margin is now ~13 min and
       # not the ~20 it used to be: stage 3 (refresh_tokens, +300 mutations)
       # does NOT fit here and needs its own job.
-      - run: python3 scripts/cosmic_gate.py --min-kill-rate 0.30
+      - run: >
+          python3 scripts/cosmic_gate.py --config .cosmic-ray.selected.toml
+          --session ".cosmic-ray-${{ matrix.target }}.sqlite" --min-kill-rate 0.30
 
   security:
     name: Security scan (Trivy)

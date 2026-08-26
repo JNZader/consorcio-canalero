@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "targets": [
+    {"name":"denuncias-service","module":"app/domains/denuncias/service.py","owns":["app/domains/denuncias/"],"tests":["tests/test_mutation_targets.py"],"min_kill_rate":0.30},
+    {"name":"monitoring-service","module":"app/domains/monitoring/service.py","owns":["app/domains/monitoring/"],"tests":["tests/test_mutation_targets.py"],"min_kill_rate":0.30},
+    {"name":"tramites-schemas","module":"app/domains/tramites/schemas.py","owns":["app/domains/tramites/"],"tests":["tests/test_tramites_schema.py","tests/test_mutation_targets.py"],"min_kill_rate":0.30},
+    {"name":"finanzas-service","module":"app/domains/finanzas/service.py","owns":["app/domains/finanzas/"],"tests":["tests/test_mutation_targets_finanzas.py"],"min_kill_rate":0.30},
+    {"name":"padron-service","module":"app/domains/padron/service.py","owns":["app/domains/padron/"],"tests":["tests/test_mutation_targets_padron.py"],"min_kill_rate":0.30}
+  ]
+}
