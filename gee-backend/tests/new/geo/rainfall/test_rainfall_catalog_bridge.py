@@ -117,14 +117,22 @@ def _curated(db, *, event_key="mar_2015", day=date(2015, 3, 15), payload=None):
         tier=None,
         start_date=day,
         end_date=day,
-        curated_payload=payload
-        or {
+        # The seed ALWAYS provides name/description/severity, and the read model
+        # (post-B2a-fix) is LOUD about their absence -- a KeyError there becomes
+        # a 500 the suite renders as a hang. A helper claiming "exactly as
+        # lluvia_ext_002 seeds it" must honor that floor even when a test
+        # overrides the rest; sensor/max_cloud/days_buffer stay default-only so
+        # explicit payloads do not inherit fields their assertions never asked for.
+        curated_payload={
             "name": "Inundacion Marzo 2015",
             "description": "Evento historico para revisar con Landsat 8/Landsat 7 y Sentinel-1",
             "severity": "alta",
-            "sensor": "landsat8",
-            "max_cloud": 80,
-            "days_buffer": 30,
+            **(
+                {"sensor": "landsat8", "max_cloud": 80, "days_buffer": 30}
+                if payload is None
+                else {}
+            ),
+            **(payload or {}),
         },
     )
     db.add(row)

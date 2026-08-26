@@ -253,7 +253,10 @@ def _curated(db, *, event_key: str, day: date, payload: Dict[str, Any]):
         tier=None,
         start_date=day,
         end_date=day,
-        curated_payload=payload,
+        # The read model (post-B2a-fix) is LOUD about a missing curated
+        # name/description; the seed always provides both, so a helper claiming
+        # "exactly as lluvia_ext_002 does" injects the floor a caller omits.
+        curated_payload={"description": "Evento historico", **payload},
     )
     db.add(row)
     db.flush()

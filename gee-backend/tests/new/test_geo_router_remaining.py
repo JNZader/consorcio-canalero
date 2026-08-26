@@ -444,13 +444,21 @@ class TestHistoricFloods:
                 event_key="mar_2015",
                 start_date=date(2015, 3, 15),
                 end_date=date(2015, 3, 15),
-                curated_payload={"name": "Inundacion Marzo 2015", "severity": "alta"},
+                curated_payload={
+                    "name": "Inundacion Marzo 2015",
+                    "description": "Evento historico",
+                    "severity": "alta",
+                },
             ),
             SimpleNamespace(
                 event_key="sep_2025",
                 start_date=date(2025, 9, 5),
                 end_date=date(2025, 9, 5),
-                curated_payload={"name": "Inundacion Septiembre 2025", "severity": "media"},
+                curated_payload={
+                    "name": "Inundacion Septiembre 2025",
+                    "description": "Evento historico",
+                    "severity": "media",
+                },
             ),
         ]
         generation = SimpleNamespace(
