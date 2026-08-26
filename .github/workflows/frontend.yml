@@ -201,9 +201,11 @@ jobs:
       # menos de 48 h. La causa no es la caducidad por 7 dias sin uso que
       # documenta el `schedule` de arriba, es el techo DURO de 10 GB por repo:
       # medido ese mismo dia, 12.1 GB en 259 entradas y CERO entradas stryker.
-      # Los cuatro `cache-to: type=gha,mode=max` de las imagenes (frontend,
-      # backend, geo-worker, deploy) escriben blobs de 300-400 MB por corrida y
-      # el LRU se come las baselines de ~1 MB antes que nada.
+      # Los `cache-to: type=gha,mode=max` de las imagenes escriben blobs de
+      # 300-400 MB por corrida y el LRU se come las baselines de ~1 MB antes
+      # que nada. Desde la higiene A (2026-08-26) solo quedan DOS, los dos de
+      # `deploy.yml`; los candidatos de PR (frontend, backend, geo-worker)
+      # pasaron a `mode=min`.
       #
       # La caché entonces no es un almacen del que uno pueda depender; el
       # artifact SI (14 dias de retencion, fuera del LRU). Este paso lo usa como
@@ -420,7 +422,26 @@ jobs:
           push: false
           tags: ${{ env.CANDIDATE_IMAGE }}
           cache-from: type=gha,scope=frontend-image
-          cache-to: type=gha,mode=max,scope=frontend-image
+          # BL-GHA-CACHE-CEILING (higiene A, 2026-08-26): `mode=max` aca escribia
+          # TODAS las capas intermedias — 300-400 MB por corrida — contra el techo
+          # DURO de 10 GB del repo (medido: 12.1 GB en 259 entradas). El LRU se
+          # comia las baselines de Stryker de ~1 MB en menos de 48 h, que es el
+          # incidente del PR #242. Esta imagen es un GATE: se construye, se
+          # escanea y se tira, no la consume ninguna corrida posterior — asi que
+          # publicar sus capas intermedias solo compraba desalojos. `mode=min`
+          # sigue sembrando la capa final, que es lo unico que el `cache-from`
+          # de la proxima corrida puede reusar de verdad.
+          #
+          # CONSECUENCIA ACEPTADA, dicha y no sugerida: el scope
+          # `frontend-image` YA NO TIENE ningun productor `mode=max` en todo el
+          # repo (`deploy.yml` solo publica backend y geo-worker). O sea que el
+          # `cache-from` de arriba solo va a encontrar la capa final, y las
+          # etapas intermedias del build se rehacen en cada corrida. Es tiempo
+          # de build a cambio de no desalojar las baselines: se elige a
+          # proposito. Si algun dia el frontend necesita cache intermedia de
+          # verdad, el lugar es un productor en `deploy.yml` (main), no este
+          # candidato desechable.
+          cache-to: type=gha,mode=min,scope=frontend-image
       - name: Scan frontend candidate image
         # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

@@ -142,8 +142,38 @@ def configure_structlog(
         # Production: JSON output
         renderer: Processor = structlog.processors.JSONRenderer()
     else:
-        # Development: Pretty console output
-        renderer = structlog.dev.ConsoleRenderer(colors=True)
+        # Development: Pretty console output.
+        #
+        # BL-RICH-RENDER-500-HANG: ``ConsoleRenderer``'s DEFAULT exception
+        # formatter is ``RichTracebackFormatter(show_locals=True, max_frames=100)``,
+        # so every ``logger.exception`` — including ``app.main``'s catch-all for
+        # unhandled 500s — hands rich the locals of up to 100 frames to
+        # pretty-print. In the geo/rainfall stacks those locals are SQLAlchemy
+        # sessions, engines and result rows. Measured on a probe request whose
+        # real work took 2.25 ms (26-frame stack, session + engine + 50 result
+        # rows per frame):
+        #
+        #   rich, show_locals=True  (the default)  2.64 s   ~1000x the work
+        #   rich, show_locals=False                1.24 s   still ~500x
+        #   plain_traceback                        0.01 s
+        #
+        # The locals dump is the biggest single cost but NOT the only one:
+        # rich re-reads and syntax-highlights the source of every frame, which
+        # is why disabling locals alone still leaves a second-scale penalty.
+        # The original report is the same mechanism at full size — a request
+        # that had not returned after 60 s and could not be interrupted with
+        # SIGINT, and a wide test run of 12 min against 56 s once no test
+        # provoked a 500.
+        #
+        # A traceback is read, not admired; ``plain_traceback`` renders the
+        # standard library's, which is complete, instant, and does not paste
+        # credentials or PII into a dev console the way a locals dump does.
+        # Production is unaffected: it renders JSON (``json_format=True``) and
+        # never reaches this branch.
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=True,
+            exception_formatter=structlog.dev.plain_traceback,
+        )
 
     structlog.configure(
         processors=shared_processors
