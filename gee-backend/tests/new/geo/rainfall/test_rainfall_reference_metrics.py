@@ -861,7 +861,13 @@ def test_the_served_baseline_period_moves_when_the_span_constants_move(monkeypat
     the property a literal does not have -- against the literal this test is
     RED, and against a name imported at module scope it would be too.
     """
-    from app.domains.geo.rainfall import temporal
+    from app.domains.geo.rainfall import repository, temporal
+
+    # `repository` re-exports the constants BY VALUE, so it couples to
+    # `temporal` only at import time -- pin that identity or the re-export can
+    # silently drift into a second definition without any test noticing.
+    assert repository.BASELINE_SPAN_START is temporal.BASELINE_SPAN_START
+    assert repository.BASELINE_SPAN_END is temporal.BASELINE_SPAN_END
 
     assert _snapshot()["baseline"] == "1991-2020"
 
