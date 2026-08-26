@@ -481,3 +481,74 @@ def test_unmapped_basin_scope_raises_unknown_provider_scope():
         asset_name_for("basin", "basin-42")
     with pytest.raises(UnknownProviderScope, match="unsupported provider scope kind"):
         asset_name_for("parcel", "p1")
+
+
+# ---------------------------------------------------------------------------
+# BL-BASIN-SCOPE-BROKEN — the seam builds a basin asset path
+# ---------------------------------------------------------------------------
+
+
+def test_a_basin_scope_reaches_the_seam_as_a_watershed_asset_path(monkeypatch):
+    """``GeeZonalClient.geometry`` composes ``asset_name_for`` into the asset
+    path, so a basin scope must produce the watershed asset's path.
+
+    Mocked at the ``ee`` boundary and nowhere inside: the seam's own
+    ``asset_path`` and ``ensure_initialized`` are injected (the pattern the
+    EEException tests above use) and only ``ee.FeatureCollection`` is replaced,
+    so the composition under test is the real one. Before
+    BL-BASIN-SCOPE-BROKEN this path was unreachable for any DB-resolved basin
+    scope: ``asset_name_for`` raised on the row UUID the resolver emitted.
+
+    UNVERIFIED here and unverifiable without credentials: that the asset at
+    this path exists and covers that watershed. This asserts the path the seam
+    ASKS FOR, which is the half the defect was in.
+    """
+    import ee
+
+    seen: list[str] = []
+
+    class _FakeCollection:
+        def __init__(self, asset: str) -> None:
+            seen.append(asset)
+
+        def geometry(self) -> str:
+            return "geometry-of-" + seen[-1]
+
+    monkeypatch.setattr(ee, "FeatureCollection", _FakeCollection)
+
+    client = GeeZonalClient(
+        asset_path=lambda asset_name: f"projects/p/assets/{asset_name}",
+        ensure_initialized=lambda: None,
+    )
+
+    assert (
+        client.geometry(scope_kind="basin", scope_id="Noroeste")
+        == "geometry-of-projects/p/assets/noroeste"
+    )
+    assert seen == ["projects/p/assets/noroeste"]
+
+
+def test_an_unmapped_basin_scope_never_reaches_the_ee_boundary(monkeypatch):
+    """Fail-closed, asserted where it matters: nothing is asked of GEE at all.
+
+    ``UnknownProviderScope`` is not an ``EEException``, so it propagates out of
+    ``geometry`` rather than being wrapped as a transient AdapterError the
+    resilience layer would retry -- an unmapped watershed is a configuration
+    fact, not an outage.
+    """
+    import ee
+
+    from app.domains.geo.rainfall.adapters.gee_client import UnknownProviderScope
+
+    def _explode(asset: str):  # pragma: no cover - must never run
+        raise AssertionError(f"ee.FeatureCollection was called with {asset!r}")
+
+    monkeypatch.setattr(ee, "FeatureCollection", _explode)
+
+    client = GeeZonalClient(
+        asset_path=lambda asset_name: f"projects/p/assets/{asset_name}",
+        ensure_initialized=lambda: None,
+    )
+
+    with pytest.raises(UnknownProviderScope, match="no GEE asset mapped"):
+        client.geometry(scope_kind="basin", scope_id="auto_delineated")

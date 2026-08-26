@@ -8,13 +8,22 @@ read-only in the 2026-08-07 spike (engram obs #12820).
 
 Asset mapping (validated at spike time): the deployment owns a single zone
 asset, ``zona_cc_ampliada``; basin scopes map to the same-named operational
-assets. No DB→asset table exists yet for arbitrary basin ids, so an unmapped
-basin raises ``UnknownProviderScope`` instead of silently reducing over the
-wrong geometry.
+WATERSHED assets. A basin scope id is the watershed name
+``resolve_parcel_scopes`` grouped by (``zonas_operativas.cuenca``), matched
+here on a normalised form -- NOT a ``zonas_operativas`` row UUID, which is what
+it used to be and which no asset is or could be named after
+(BL-BASIN-SCOPE-BROKEN). An unmapped watershed still raises
+``UnknownProviderScope`` instead of silently reducing over the wrong geometry.
+
+UNVERIFIED against live GEE: that each named asset's footprint is in fact the
+same watershed the ``cuenca`` groups. That needs a credentialled call and has
+not been made; what is verified here is the identity mapping and its
+fail-closed edge.
 """
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -37,6 +46,18 @@ class UnknownProviderScope(ValueError):
     """No GEE asset is mapped to the requested provider scope."""
 
 
+def _normalized_basin_name(scope_id: str) -> str:
+    """``cuenca`` free text reduced to its asset-name form.
+
+    NFKD-decompose, drop combining marks, trim, case-fold. Deliberately NOT a
+    slugifier: it must not invent a mapping by rewriting separators, because
+    every rewrite it performs is a chance to land on a DIFFERENT watershed's
+    asset name and reduce over the wrong geometry.
+    """
+    decomposed = unicodedata.normalize("NFKD", scope_id)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).strip().casefold()
+
+
 def asset_name_for(scope_kind: str, scope_id: str) -> str:
     """Resolve a rainfall scope to its GEE asset name."""
     if scope_kind == "provider_asset":
@@ -49,8 +70,21 @@ def asset_name_for(scope_kind: str, scope_id: str) -> str:
         # are zoning feature ids (geo_approved_zonings), not GEE asset names.
         return DEFAULT_ZONE_ASSET
     if scope_kind == "basin":
-        if scope_id in BASIN_ASSET_NAMES:
-            return scope_id
+        # BL-BASIN-SCOPE-BROKEN: the id arriving here is the WATERSHED name
+        # `resolve_parcel_scopes` grouped by, read straight out of
+        # `zonas_operativas.cuenca` -- free text a human typed into a table.
+        # So the match is on a normalised form: case-folded, trimmed, and with
+        # combining accents stripped, because "Noroeste" and "noroeste" name
+        # one watershed and one asset.
+        #
+        # Normalisation widens the accepted SPELLING, never the set. An
+        # unmapped watershed still raises rather than reducing over the wrong
+        # geometry, which is the property that must survive this fix: it was
+        # what the UUID mismatch provided by accident, and it is now provided
+        # on purpose.
+        normalized = _normalized_basin_name(scope_id)
+        if normalized in BASIN_ASSET_NAMES:
+            return normalized
         raise UnknownProviderScope(
             f"no GEE asset mapped for basin scope {scope_id!r}; "
             f"known basin assets: {sorted(BASIN_ASSET_NAMES)}"

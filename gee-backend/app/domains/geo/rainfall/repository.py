@@ -175,11 +175,33 @@ class RainfallRepository:
             ).all()
             if any(row[0] is None or not row[0] for row in zones):
                 raise ScopeConfigurationError("intersecting approved zone has no stable id")
+            # BL-BASIN-SCOPE-BROKEN: the basin scope's identity is the parent
+            # WATERSHED (`cuenca`), not the `zonas_operativas` row.
+            #
+            # This emitted `id::text` -- a per-row UUID -- which no GEE asset
+            # is or could be named after, so `asset_name_for("basin", ...)`
+            # raised `UnknownProviderScope` for every basin scope this resolver
+            # ever produced: basin coverage was broken end to end. And a row id
+            # was never merely the wrong SPELLING of the right identity: a
+            # `zonas_operativas` row is a sub-basin, while the deployment's
+            # four assets each cover a whole watershed, so honouring a row id
+            # would mean reducing over a geometry the scope does not name.
+            #
+            # `scope_version` stays a geometry identity, now aggregated over
+            # the group: md5 of each member's normalised-geometry hash,
+            # concatenated in a deterministic id order. It is stable across
+            # reads (it is part of the persisted storage key) and moves when
+            # any member's geometry does.
             basins = db.execute(
                 text("""
-                SELECT id::text, md5(encode(ST_AsEWKB(ST_Normalize(zonas_operativas.geometria)), 'hex'))
+                SELECT zonas_operativas.cuenca,
+                       md5(string_agg(
+                           md5(encode(ST_AsEWKB(ST_Normalize(zonas_operativas.geometria)), 'hex')),
+                           ',' ORDER BY zonas_operativas.id))
                 FROM zonas_operativas CROSS JOIN (SELECT geometria FROM parcelas_catastro WHERE nomenclatura = :name) AS parcel
-                WHERE ST_Area(ST_Intersection(parcel.geometria, zonas_operativas.geometria)) > 0 ORDER BY 1, 2
+                WHERE ST_Area(ST_Intersection(parcel.geometria, zonas_operativas.geometria)) > 0
+                  AND zonas_operativas.cuenca IS NOT NULL AND btrim(zonas_operativas.cuenca) <> ''
+                GROUP BY zonas_operativas.cuenca ORDER BY 1
             """),
                 {"name": nomenclature},
             ).all()
