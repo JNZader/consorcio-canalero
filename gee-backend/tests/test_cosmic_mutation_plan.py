@@ -76,6 +76,37 @@ def test_renamed_or_deleted_path_fails_closed(tmp_path: Path) -> None:
     assert len(_targets(payload)) == 5
 
 
+def test_default_manifest_is_script_relative_when_run_from_the_repo_root(
+    tmp_path: Path,
+) -> None:
+    """Regression for the backend.yml `Detect changed areas` failure.
+
+    The workflow invokes ``python3 gee-backend/scripts/cosmic_mutation_plan.py``
+    from the repository root WITHOUT ``--manifest``. A cwd-relative default
+    resolved to ``scripts/cosmic_mutation_targets.json`` at the repo root and
+    failed closed with ``[Errno 2] No such file or directory``.
+    """
+    status, output = tmp_path / "changed.txt", tmp_path / "github-output.txt"
+    status.write_text("M\tgee-backend/app/domains/padron/repository.py\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PLANNER),
+            "--status-file",
+            str(status),
+            "--github-output",
+            str(output),
+        ],
+        cwd=BACKEND.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output.read_text(encoding="utf-8").split("=", 1)[1])
+    assert _targets(payload) == ["padron-service"]
+
+
 def test_target_config_uses_manifest_module_and_focused_tests(tmp_path: Path) -> None:
     config = tmp_path / "selected.toml"
     result = subprocess.run(

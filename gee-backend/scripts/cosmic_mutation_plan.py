@@ -13,6 +13,11 @@ from typing import Any
 REPO_PREFIX = "gee-backend/"
 WORKFLOW_PREFIX = ".github/workflows/"
 
+# Resolved against the script, not the caller's cwd: the workflow invokes this
+# planner from the repository root, so a cwd-relative default fails closed with
+# "[Errno 2] No such file or directory" even though the manifest exists.
+DEFAULT_MANIFEST = Path(__file__).resolve().parent / "cosmic_mutation_targets.json"
+
 
 @dataclass(frozen=True)
 class MutationTarget:
@@ -120,9 +125,7 @@ def write_config(target: MutationTarget, destination: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plan fail-closed Cosmic Ray mutation targets")
-    parser.add_argument(
-        "--manifest", type=Path, default=Path("scripts/cosmic_mutation_targets.json")
-    )
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--status-file", type=Path)
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--github-output", type=Path)

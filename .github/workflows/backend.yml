@@ -56,7 +56,12 @@ jobs:
           # Tres puntos = merge-base. Con dos puntos, un avance de la rama base
           # posterior a la apertura del PR aparecerria como cambio del PR.
           git diff --name-status "$BASE_SHA...HEAD" > "$RUNNER_TEMP/backend-changes.txt"
-          CHANGED="$(cut -f2- "$RUNNER_TEMP/backend-changes.txt")"
+          # Rename/copy records carry TWO tab-separated paths (old and new). A
+          # bare `cut -f2-` keeps both in ONE line, so the anchored regex below would only see
+          # the OLD path: a rename INTO gee-backend/ would set backend=false and
+          # skip tests, mutation, and security. Split both fields into separate
+          # lines so each path is matched on its own.
+          CHANGED="$(cut -f2- "$RUNNER_TEMP/backend-changes.txt" | tr '\t' '\n')"
           if printf '%s\n' "$CHANGED" | grep -qE '^(gee-backend/|\.github/workflows/)'; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
             python3 gee-backend/scripts/cosmic_mutation_plan.py --status-file "$RUNNER_TEMP/backend-changes.txt" --github-output "$GITHUB_OUTPUT"
