@@ -263,3 +263,46 @@ def pgvector_db(db):
     db.flush()
 
     yield db
+
+
+# ---------------------------------------------------------------------------
+# BL-RATE-LIMIT-SUITE-CASCADE — the suite must not throttle itself
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _disable_global_rate_limiter(request, monkeypatch):
+    """Neutralize the process-wide generic/auth rate limiters for every test.
+
+    ``DistributedRateLimitMiddleware`` keeps ONE in-memory sliding window per
+    key for the whole process (Redis is unreachable under test, so the limiter
+    falls back to ``_memory_store``). Every ``TestClient`` request in a suite
+    run shares the key ``ip:testclient`` against a 100 req / 60 s budget, and
+    nothing reset it between tests: past request ~100 the rest of the run got
+    429s that had nothing to do with the behavior under test (measured on this
+    box: 64 such failures in `pytest tests/new/`). It was also SPEED-dependent
+    — the window is wall-clock, so a faster runner failed harder, which is
+    exactly the kind of red that teaches people to ignore reds.
+
+    The seam is ``settings.rate_limit_disabled``, the same one production
+    already honors (and that `app/config.py` refuses to start with outside
+    dev), so this suppresses the limiter without reaching into private state.
+
+    Opt-out: mark a test ``@pytest.mark.rate_limited`` to exercise the limiter
+    for real. Marked tests get FLUSHED buckets instead of a disabled limiter,
+    so they start from a known-empty window rather than inheriting whatever
+    the preceding tests left behind.
+
+    Out of scope on purpose: the per-router limiters (``ficha``,
+    ``conocimiento``) are separate instances injected per test, so their own
+    429 contracts keep running untouched.
+    """
+    from app.config import settings
+    from app.core import rate_limit as rate_limit_module
+
+    if "rate_limited" in request.keywords:
+        for getter in (rate_limit_module.get_rate_limiter, rate_limit_module.get_auth_rate_limiter):
+            getter()._memory_store.clear()
+        yield
+        return
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", True)
+    yield
