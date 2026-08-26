@@ -169,12 +169,21 @@ jobs:
       actions: read
     strategy:
       fail-fast: false
+      # Rebalance MEDIDO (PR #247, run 33013524468): el shard a corrio 55m25s
+      # contra 19m01s del b (25.18 vs 11.16 tests por mutante), con 27 de sus
+      # 28 timeouts concentrados en UN archivo, authStore.ts (cuyos mutantes
+      # cubren hasta 55 tests cada uno: el store esta en todo blast radius).
+      # Se mueve authStore.ts -> b y, como reciproco, src/lib/api/core.ts -> a:
+      # es el UNICO portador de timeouts del b (4 de 4) y su segundo bloque de
+      # mutantes mas grande (278). typeGuards.ts (478 mutantes, el mayor) se
+      # descarto como reciproco: sobrecorregia y volvia a concentrar el costo
+      # en a. La matriz de `mutation-full` usa la MISMA asignacion.
       matrix:
         include:
           - shard: a
-            mutate: src/lib/auth.ts,src/stores/authStore.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
+            mutate: src/lib/api/core.ts,src/lib/auth.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
           - shard: b
-            mutate: src/lib/api/core.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
+            mutate: src/stores/authStore.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
     env:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
@@ -288,9 +297,9 @@ jobs:
       matrix:
         include:
           - shard: a
-            mutate: src/lib/auth.ts,src/stores/authStore.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
+            mutate: src/lib/api/core.ts,src/lib/auth.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
           - shard: b
-            mutate: src/lib/api/core.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
+            mutate: src/stores/authStore.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
     env:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}

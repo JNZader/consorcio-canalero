@@ -15,21 +15,24 @@ TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c
 TRIVY_VERSION = "v0.70.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
-# NOT rebalanced (hygiene batch A, 2026-08-26). A first pass moved
-# ``RainfallMetricList.tsx`` from shard a to shard b to even out the wall clock;
-# it was REVERTED before merge because the move only RELOCATES the risk. That
-# file's ~185 STATIC mutants each force a full test-suite re-run, and that cost
-# travels WITH the file: if the "~85% of shard a's time" reading is right, shard
-# b goes from ~37 min to ~109 min against the same 120-minute ceiling and the
-# next cold run dies on the other shard instead. The real fix is measured, not
-# guessed -- see the BL-GHA-CACHE-CEILING follow-up in
-# ``openspec/changes/archive/2026-08-26-lluvia-eventos-extremos/tasks.md``.
-# What stays pinned here is the PARTITION contract: the two shards are disjoint
-# and their union is exactly the canonical ``stryker.config.mjs`` target list.
+# REBALANCED on measured PR #247 evidence (2026-08-26, run 33013524468). The
+# first-pass move of ``RainfallMetricList.tsx`` from shard a to b was reverted
+# before merge because it only relocated an UNMEASURED guess; this is the
+# measured move that comment asked for. Shard a ran 55m25s against shard b's
+# 19m01s (671 vs 318 incremental mutants, 25.18 vs 11.16 tests per mutant),
+# and 27 of shard a's 28 timeouts sat in ONE file, ``authStore.ts``, whose
+# mutants are covered by up to 55 tests each -- the store is in every blast
+# radius. Reciprocal: ``src/lib/api/core.ts`` moves b -> a. It is shard b's
+# ONLY timeout carrier (4 of 4) and its second-largest mutant block (278), so
+# it compensates measured cost instead of just mutant count. ``typeGuards.ts``
+# (478 mutants, the largest, 0 timeouts) was rejected as the reciprocal: it
+# would overshoot (a -> 1860 mutants) and re-concentrate cost in a. What stays
+# pinned here is the PARTITION contract: the two shards are disjoint and their
+# union is exactly the canonical ``stryker.config.mjs`` target list.
 STRYKER_SHARDS = {
     "a": [
+        "src/lib/api/core.ts",
         "src/lib/auth.ts",
-        "src/stores/authStore.ts",
         "src/lib/validators.ts",
         "src/components/map2d/bpaPracticas.ts",
         "src/components/admin/pilarVerdeWidget/computeKpis.ts",
@@ -38,7 +41,7 @@ STRYKER_SHARDS = {
         "src/components/map2d/rainfall/RainfallMetricList.tsx",
     ],
     "b": [
-        "src/lib/api/core.ts",
+        "src/stores/authStore.ts",
         "src/stores/configStore.ts",
         "src/lib/formatters.ts",
         "src/lib/errorHandler.ts",
