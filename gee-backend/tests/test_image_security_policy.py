@@ -284,6 +284,21 @@ def _util_linux_hotfix_body() -> str:
     return hotfix.split("RUN ", 1)[1].strip()
 
 
+OPENSSL_HOTFIX_PACKAGES = (
+    "libssl3t64",
+    "openssl",
+    "openssl-provider-legacy",
+)
+
+
+def _openssl_hotfix_body() -> str:
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
+    hotfix = dockerfile.split("# Security hotfix (CVE-2026-14456", 1)[1].split(
+        "# Security hotfix (CVE-2026-53615)", 1
+    )[0]
+    return hotfix.split("RUN ", 1)[1].strip()
+
+
 def _write_fake_executable(path: Path, body: str) -> None:
     path.write_text(f"#!/bin/sh\nset -eu\n{body}", encoding="utf-8")
     path.chmod(0o755)
@@ -399,21 +414,28 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # RECLASIFICADO por la DB de CRITICAL a HIGH — mismo paquete, misma
     # version, mismo status `affected`, sigue sin FixedVersion. El reparto
     # pasa de 13 HIGH + 5 CRITICAL a 14 HIGH + 4 CRITICAL.
-    assert len(backend_findings) == 18
-    assert sum(finding["count"] for finding in backend_findings) == 18
+    # 18 -> 17 el 2026-08-26: hotfix CVE-2026-14456 (trixie-security publico
+    # openssl 3.5.7-1~deb13u2; los 3 paquetes se actualizan en el stage de
+    # produccion, ver Dockerfile) saca las 3 filas openssl; entran 2 filas
+    # HIGH `affected` de libsqlite3-0 (CVE-2026-11822 / CVE-2026-11824, sin
+    # FixedVersion) reveladas por la DB actual. El reparto pasa de
+    # 14 HIGH + 4 CRITICAL a 13 HIGH + 4 CRITICAL.
+    assert len(backend_findings) == 17
+    assert sum(finding["count"] for finding in backend_findings) == 17
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 14
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 13
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 4
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 12
-    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 6
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 14
+    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 3
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
     assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-53615"] == []
-    deferred_openssl_findings = [
-        finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"
+    assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"] == []
+    sqlite_findings = [
+        finding for finding in backend_findings if finding["pkg_id"].startswith("libsqlite3-0@")
     ]
-    assert len(deferred_openssl_findings) == 3
+    assert len(sqlite_findings) == 2
     assert {
         (
             finding["cve"],
@@ -421,11 +443,10 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
             finding["severity"],
             finding["status"],
         )
-        for finding in deferred_openssl_findings
+        for finding in sqlite_findings
     } == {
-        ("CVE-2026-14456", "libssl3t64", "HIGH", "fix_deferred"),
-        ("CVE-2026-14456", "openssl", "HIGH", "fix_deferred"),
-        ("CVE-2026-14456", "openssl-provider-legacy", "HIGH", "fix_deferred"),
+        ("CVE-2026-11822", "libsqlite3-0", "HIGH", "affected"),
+        ("CVE-2026-11824", "libsqlite3-0", "HIGH", "affected"),
     }
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
@@ -469,6 +490,30 @@ def test_backend_dockerfile_enforces_fixed_util_linux_source_version() -> None:
         for line in version_gate.splitlines()
     }
     for package in UTIL_LINUX_PACKAGES:
+        assert package in install_lines
+        assert package in gate_lines
+
+
+def test_backend_dockerfile_enforces_fixed_openssl_source_version() -> None:
+    hotfix = _openssl_hotfix_body()
+
+    assert hotfix.count('fixed_version="3.5.7-1~deb13u2"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="3.5.7-1~deb13u2"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    for package in OPENSSL_HOTFIX_PACKAGES:
         assert package in install_lines
         assert package in gate_lines
 
