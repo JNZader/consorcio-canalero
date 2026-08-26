@@ -325,16 +325,38 @@ def test_antecedent_total_unavailable_appears_nowhere_in_the_tree():
     """
     from pathlib import Path
 
+    # BL-RGLOB-VENV-BLIND-EXCLUSION: the walk used to start at ``gee-backend/``
+    # and drop only path parts named LITERALLY ``venv``, so a sibling
+    # virtualenv (``venv-rag/``, ``.venv311/``) was walked as if it were
+    # repository source and a latin-1 ``site-packages`` file raised
+    # ``UnicodeDecodeError``. Three guards, same shape as the newer one in
+    # ``test_rainfall_climatology.py::_readable_sources``: name the source roots
+    # explicitly, exclude vendored parts by PREFIX, and tolerate decode errors
+    # so one stray binary cannot decide whether an isolation guard runs at all.
     root = Path(__file__).resolve().parents[4].parent
+    source_roots = (
+        (root / "gee-backend/app", ("*.py",)),
+        (root / "gee-backend/tests", ("*.py",)),
+        (root / "gee-backend/scripts", ("*.py",)),
+        (root / "gee-backend/migrations", ("*.py",)),
+        (root / "consorcio-web/src", ("*.ts", "*.tsx")),
+    )
+    excluded_exact = {"node_modules", "__pycache__", "dist", "build"}
+
+    def _is_vendored(path: Path) -> bool:
+        return any(
+            part in excluded_exact or part.startswith("venv") or part.startswith(".venv")
+            for part in path.parts
+        )
+
     offenders = [
         path
-        for path in list((root / "gee-backend").rglob("*.py"))
-        + list((root / "consorcio-web/src").rglob("*.ts"))
-        + list((root / "consorcio-web/src").rglob("*.tsx"))
-        if "venv" not in path.parts
-        and "node_modules" not in path.parts
+        for source_root, patterns in source_roots
+        for pattern in patterns
+        for path in sorted(source_root.rglob(pattern))
+        if not _is_vendored(path)
         and path.name != Path(__file__).name
-        and "antecedent_total_unavailable" in path.read_text(encoding="utf-8")
+        and "antecedent_total_unavailable" in path.read_text(encoding="utf-8", errors="replace")
     ]
     assert offenders == []
 
