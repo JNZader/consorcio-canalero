@@ -733,11 +733,22 @@ def _readable_sources(root: Path, suffixes: tuple[str, ...]) -> tuple[Path, ...]
     tolerated for the same reason — one stray binary must not decide whether an
     isolation guard runs at all.
     """
-    excluded = {"venv", ".venv", "node_modules", "__pycache__", "dist", "build"}
+    excluded = {"node_modules", "__pycache__", "dist", "build"}
+
+    def _vendored(path: Path) -> bool:
+        # By PREFIX, not exact match: ``venv-rag`` / ``.venv311`` are vendored
+        # too, and an exact-match set is precisely how the older guard in
+        # ``test_rainfall_reference_metrics.py`` stayed blind to them
+        # (BL-RGLOB-VENV-BLIND-EXCLUSION).
+        return any(
+            part in excluded or part.startswith("venv") or part.startswith(".venv")
+            for part in path.parts
+        )
+
     return tuple(
         path
         for path in sorted(root.rglob("*"))
-        if path.suffix in suffixes and path.is_file() and not excluded.intersection(path.parts)
+        if path.suffix in suffixes and path.is_file() and not _vendored(path)
     )
 
 

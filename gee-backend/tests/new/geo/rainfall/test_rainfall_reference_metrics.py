@@ -322,19 +322,62 @@ def test_antecedent_total_unavailable_appears_nowhere_in_the_tree():
     unsupported-cadence path, so a second reason string would have an empty
     domain too -- and a dead branch against a hypothetical future reason is how
     r1's defect was born.
+
+    "Nowhere in the tree" means the source roots named in ``source_roots``
+    below -- ``gee-backend/{app,tests,scripts,migrations,data}`` and
+    ``consorcio-web/src`` -- not literally every file in the checkout. Each
+    root is asserted to EXIST before it is walked, because ``rglob`` on a
+    missing directory yields nothing in silence, which is the exact failure
+    class this guard was rewritten to close.
     """
     from pathlib import Path
 
+    # BL-RGLOB-VENV-BLIND-EXCLUSION: the walk used to start at ``gee-backend/``
+    # and drop only path parts named LITERALLY ``venv``, so a sibling
+    # virtualenv (``venv-rag/``, ``.venv311/``) was walked as if it were
+    # repository source and a latin-1 ``site-packages`` file raised
+    # ``UnicodeDecodeError``. Three guards, same shape as the newer one in
+    # ``test_rainfall_climatology.py::_readable_sources``: name the source roots
+    # explicitly, exclude vendored parts by PREFIX, and tolerate decode errors
+    # so one stray binary cannot decide whether an isolation guard runs at all.
     root = Path(__file__).resolve().parents[4].parent
+    source_roots = (
+        (root / "gee-backend/app", ("*.py",)),
+        (root / "gee-backend/tests", ("*.py",)),
+        (root / "gee-backend/scripts", ("*.py",)),
+        (root / "gee-backend/migrations", ("*.py",)),
+        # Real source, not fixtures: ``data/waterways/download_waterways.py``
+        # fell out of the rewrite's first root list.
+        (root / "gee-backend/data", ("*.py",)),
+        (root / "consorcio-web/src", ("*.ts", "*.tsx")),
+    )
+    # A root that is renamed or moved must FAIL here, loudly. Without this,
+    # ``rglob`` over a nonexistent directory returns an empty iterator and the
+    # guard reports "no offenders" while scanning nothing at all.
+    for source_root, _patterns in source_roots:
+        assert source_root.is_dir(), source_root
+
+    excluded_exact = {"node_modules", "__pycache__", "dist", "build"}
+
+    def _is_vendored(path: Path) -> bool:
+        # ``startswith`` over ``path.parts`` matches FILE basenames too, not
+        # just directories: a future ``venv_bootstrap.py`` would silently drop
+        # out of the scan. Accepted -- the cost of a missed file is a weaker
+        # guard, while the cost of walking a sibling virtualenv is the decode
+        # explosion this rewrite exists to stop -- but stated, not implied.
+        return any(
+            part in excluded_exact or part.startswith("venv") or part.startswith(".venv")
+            for part in path.parts
+        )
+
     offenders = [
         path
-        for path in list((root / "gee-backend").rglob("*.py"))
-        + list((root / "consorcio-web/src").rglob("*.ts"))
-        + list((root / "consorcio-web/src").rglob("*.tsx"))
-        if "venv" not in path.parts
-        and "node_modules" not in path.parts
+        for source_root, patterns in source_roots
+        for pattern in patterns
+        for path in sorted(source_root.rglob(pattern))
+        if not _is_vendored(path)
         and path.name != Path(__file__).name
-        and "antecedent_total_unavailable" in path.read_text(encoding="utf-8")
+        and "antecedent_total_unavailable" in path.read_text(encoding="utf-8", errors="replace")
     ]
     assert offenders == []
 

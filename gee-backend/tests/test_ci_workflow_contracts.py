@@ -15,6 +15,17 @@ TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c
 TRIVY_VERSION = "v0.70.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
+# NOT rebalanced (hygiene batch A, 2026-08-26). A first pass moved
+# ``RainfallMetricList.tsx`` from shard a to shard b to even out the wall clock;
+# it was REVERTED before merge because the move only RELOCATES the risk. That
+# file's ~185 STATIC mutants each force a full test-suite re-run, and that cost
+# travels WITH the file: if the "~85% of shard a's time" reading is right, shard
+# b goes from ~37 min to ~109 min against the same 120-minute ceiling and the
+# next cold run dies on the other shard instead. The real fix is measured, not
+# guessed -- see the BL-GHA-CACHE-CEILING follow-up in
+# ``openspec/changes/archive/2026-08-26-lluvia-eventos-extremos/tasks.md``.
+# What stays pinned here is the PARTITION contract: the two shards are disjoint
+# and their union is exactly the canonical ``stryker.config.mjs`` target list.
 STRYKER_SHARDS = {
     "a": [
         "src/lib/auth.ts",
@@ -1866,3 +1877,42 @@ def test_rainfall_harness_workflow_stays_optional_and_unreferenced() -> None:
     assert "retention-days: 14" in harness
     assert "if-no-files-found: error" in harness
     assert "if: always()" in harness
+
+
+def test_only_the_publishing_workflow_writes_full_buildkit_layer_caches() -> None:
+    """BL-GHA-CACHE-CEILING: `mode=max` belongs to deploy.yml and nowhere else.
+
+    The GitHub Actions cache has a HARD 10 GB per-repo ceiling and evicts by
+    LRU, silently. Measured 2026-08-26: 12.1 GB across 259 entries and ZERO
+    Stryker entries -- the ~1 MB mutation baselines the cron publishes were
+    evicted inside 48 h by 300-400 MB of BuildKit layer blobs, and the PR #242
+    mutation job then ran cold and died on the clock at 96%.
+
+    The rule this pins: a workflow that BUILDS A CANDIDATE TO SCAN AND THROW
+    AWAY (backend.yml, frontend.yml -- PR/dispatch only) writes `mode=min`; the
+    workflow that PUBLISHES from main and actually feeds later runs
+    (deploy.yml, `workflow_dispatch`) keeps `mode=max`. Reversing that is the
+    incident, so it fails here instead of two days later in someone else's job.
+
+    Matched by regex, not by substring: ``cache-to`` takes its parameters in ANY
+    order, so ``type=gha,scope=frontend-image,mode=max`` is the same directive
+    as ``type=gha,mode=max,scope=frontend-image``. A literal
+    ``"cache-to: type=gha,mode=max" not in workflow`` would read as green while
+    the reordered form silently reopened the incident.
+    """
+    # Comment-stripped input, so a `mode=max` mentioned in prose (there are
+    # several, explaining exactly this rule) never counts as a directive.
+    mode_max = re.compile(r"^\s*cache-to:\s*(?=[^\n]*\btype=gha\b)[^\n]*\bmode=max\b", re.M)
+    mode_min = re.compile(r"^\s*cache-to:\s*(?=[^\n]*\btype=gha\b)[^\n]*\bmode=min\b", re.M)
+
+    for path, expected_min in (
+        (".github/workflows/backend.yml", 2),  # backend-image + geo-worker-image
+        (".github/workflows/frontend.yml", 1),  # frontend-image
+    ):
+        workflow = _without_comments(_read(path))
+        assert mode_max.findall(workflow) == [], path
+        assert len(mode_min.findall(workflow)) == expected_min, path
+
+    deploy = _without_comments(_read(".github/workflows/deploy.yml"))
+    assert len(mode_max.findall(deploy)) == 2
+    assert mode_min.findall(deploy) == []

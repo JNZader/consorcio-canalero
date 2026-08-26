@@ -239,7 +239,14 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=backend-image
-          cache-to: type=gha,mode=max,scope=backend-image
+          # BL-GHA-CACHE-CEILING (higiene A, 2026-08-26): este workflow SOLO
+          # corre en PR / dispatch, y la imagen es un candidato que se escanea y
+          # se descarta. Quien alimenta el scope `backend-image` para corridas
+          # futuras es deploy.yml (publicacion desde main), que conserva
+          # `mode=max`. Con `mode=max` aca cada PR escribia 300-400 MB de capas
+          # intermedias contra el techo de 10 GB y el LRU desalojaba las
+          # baselines de mutacion de ~1 MB (incidente PR #242).
+          cache-to: type=gha,mode=min,scope=backend-image
       - name: Prepare backend evidence directory
         working-directory: ${{ github.workspace }}
         run: mkdir -p "${{ github.workspace }}/image-security"
@@ -329,7 +336,12 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=geo-worker-image
-          cache-to: type=gha,mode=max,scope=geo-worker-image
+          # BL-GHA-CACHE-CEILING (higiene A, 2026-08-26): mismo razonamiento que
+          # el build del backend de arriba — candidato de PR que se escanea y se
+          # tira. El productor del scope `geo-worker-image` es deploy.yml, que
+          # mantiene `mode=max`. Y esta es la imagen mas cara (GDAL), o sea la
+          # que mas blobs escribia por corrida.
+          cache-to: type=gha,mode=min,scope=geo-worker-image
       - name: Prepare Geo evidence directory
         working-directory: ${{ github.workspace }}
         run: mkdir -p "${{ github.workspace }}/image-security"

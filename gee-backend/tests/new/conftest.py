@@ -263,3 +263,58 @@ def pgvector_db(db):
     db.flush()
 
     yield db
+
+
+# ---------------------------------------------------------------------------
+# BL-RATE-LIMIT-SUITE-CASCADE — the suite must not throttle itself
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _disable_global_rate_limiter(request, monkeypatch):
+    """Neutralize the process-wide generic/auth rate limiters for every test.
+
+    ``DistributedRateLimitMiddleware`` keeps ONE in-memory sliding window per
+    key for the whole process (Redis is unreachable under test, so the limiter
+    falls back to ``_memory_store``). Every ``TestClient`` request in a suite
+    run shares the key ``ip:testclient`` against a 100 req / 60 s budget, and
+    nothing reset it between tests: past request ~100 the rest of the run got
+    429s that had nothing to do with the behavior under test (measured on this
+    box: 64 such failures in `pytest tests/new/`). It was also SPEED-dependent
+    — the window is wall-clock, so a faster runner failed harder, which is
+    exactly the kind of red that teaches people to ignore reds.
+
+    The seam is ``settings.rate_limit_disabled``, the same one production
+    already honors (and that `app/config.py` refuses to start with outside
+    dev), so this suppresses the limiter without reaching into private state.
+
+    Opt-out: mark a test ``@pytest.mark.rate_limited`` to exercise the limiter
+    for real. Marked tests get FLUSHED buckets instead of a disabled limiter,
+    so they start from a known-empty window rather than inheriting whatever
+    the preceding tests left behind.
+
+    The per-router limiters are NOT all out of scope, and the difference
+    matters:
+
+    * ``ficha`` ALSO honors this flag — ``enforce_ficha_rate_limit``
+      (``app/domains/geo/router_ficha.py:206``) returns early on
+      ``settings.rate_limit_disabled``, so this fixture silences it too. Any
+      ficha 429 test must pin the flag back to ``False`` ITSELF; the existing
+      ones already do (``test_ficha_error_contract.py`` lines 366, 401 and
+      437), which is the only reason they still pass under this fixture. A new
+      ficha 429 test that forgets that pin will go green without ever reaching
+      the limiter.
+    * ``conocimiento``'s limiter never reads the flag — ``enforce_qa_rate_limit``
+      (``app/domains/conocimiento/router.py:368``) goes straight to its injected
+      ``DistributedRateLimiter``, so its 429 contracts are genuinely untouched
+      by this fixture.
+    """
+    from app.config import settings
+    from app.core import rate_limit as rate_limit_module
+
+    if "rate_limited" in request.keywords:
+        for getter in (rate_limit_module.get_rate_limiter, rate_limit_module.get_auth_rate_limiter):
+            getter()._memory_store.clear()
+        yield
+        return
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", True)
+    yield
