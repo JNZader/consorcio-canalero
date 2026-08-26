@@ -15,14 +15,17 @@ TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c
 TRIVY_VERSION = "v0.70.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
-# REBALANCED by hygiene batch A (BL-GHA-CACHE-CEILING, 2026-08-26):
-# ``RainfallMetricList.tsx`` moved a -> b. Shard a measured 1,565 mutants /
-# ~85 min against shard b's ~37 min, and that single file was ~85% of shard a's
-# time (185 static mutants) -- it is what put the COLD run at ~88 min against a
-# 90-minute axe in the PR #242 incident. The partition contract below is
-# unchanged: the two shards stay disjoint and their union stays exactly the
-# canonical ``stryker.config.mjs`` target list. This pin caught the workflow
-# edit exactly as designed; it is updated WITH the edit, never bypassed.
+# NOT rebalanced (hygiene batch A, 2026-08-26). A first pass moved
+# ``RainfallMetricList.tsx`` from shard a to shard b to even out the wall clock;
+# it was REVERTED before merge because the move only RELOCATES the risk. That
+# file's ~185 STATIC mutants each force a full test-suite re-run, and that cost
+# travels WITH the file: if the "~85% of shard a's time" reading is right, shard
+# b goes from ~37 min to ~109 min against the same 120-minute ceiling and the
+# next cold run dies on the other shard instead. The real fix is measured, not
+# guessed -- see the BL-GHA-CACHE-CEILING follow-up in
+# ``openspec/changes/archive/2026-08-26-lluvia-eventos-extremos/tasks.md``.
+# What stays pinned here is the PARTITION contract: the two shards are disjoint
+# and their union is exactly the canonical ``stryker.config.mjs`` target list.
 STRYKER_SHARDS = {
     "a": [
         "src/lib/auth.ts",
@@ -32,6 +35,7 @@ STRYKER_SHARDS = {
         "src/components/admin/pilarVerdeWidget/computeKpis.ts",
         "src/components/map2d/canalesFormat.ts",
         "src/components/map2d/rainfall/rainfallFormat.ts",
+        "src/components/map2d/rainfall/RainfallMetricList.tsx",
     ],
     "b": [
         "src/lib/api/core.ts",
@@ -43,7 +47,6 @@ STRYKER_SHARDS = {
         "src/lib/api/rainfall.ts",
         "src/hooks/useRainfallAnalysis.ts",
         "src/components/map2d/rainfall/RainfallDetailPanel.tsx",
-        "src/components/map2d/rainfall/RainfallMetricList.tsx",
     ],
 }
 NGINX_RUNTIME_IMAGE = (
@@ -1890,12 +1893,26 @@ def test_only_the_publishing_workflow_writes_full_buildkit_layer_caches() -> Non
     workflow that PUBLISHES from main and actually feeds later runs
     (deploy.yml, `workflow_dispatch`) keeps `mode=max`. Reversing that is the
     incident, so it fails here instead of two days later in someone else's job.
+
+    Matched by regex, not by substring: ``cache-to`` takes its parameters in ANY
+    order, so ``type=gha,scope=frontend-image,mode=max`` is the same directive
+    as ``type=gha,mode=max,scope=frontend-image``. A literal
+    ``"cache-to: type=gha,mode=max" not in workflow`` would read as green while
+    the reordered form silently reopened the incident.
     """
-    for path in (".github/workflows/backend.yml", ".github/workflows/frontend.yml"):
+    # Comment-stripped input, so a `mode=max` mentioned in prose (there are
+    # several, explaining exactly this rule) never counts as a directive.
+    mode_max = re.compile(r"^\s*cache-to:\s*(?=[^\n]*\btype=gha\b)[^\n]*\bmode=max\b", re.M)
+    mode_min = re.compile(r"^\s*cache-to:\s*(?=[^\n]*\btype=gha\b)[^\n]*\bmode=min\b", re.M)
+
+    for path, expected_min in (
+        (".github/workflows/backend.yml", 2),  # backend-image + geo-worker-image
+        (".github/workflows/frontend.yml", 1),  # frontend-image
+    ):
         workflow = _without_comments(_read(path))
-        assert "cache-to: type=gha,mode=max" not in workflow, path
-        assert "cache-to: type=gha,mode=min" in workflow, path
+        assert mode_max.findall(workflow) == [], path
+        assert len(mode_min.findall(workflow)) == expected_min, path
 
     deploy = _without_comments(_read(".github/workflows/deploy.yml"))
-    assert deploy.count("cache-to: type=gha,mode=max") == 2
-    assert "cache-to: type=gha,mode=min" not in deploy
+    assert len(mode_max.findall(deploy)) == 2
+    assert mode_min.findall(deploy) == []

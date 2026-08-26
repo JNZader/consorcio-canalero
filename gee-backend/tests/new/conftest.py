@@ -291,9 +291,21 @@ def _disable_global_rate_limiter(request, monkeypatch):
     so they start from a known-empty window rather than inheriting whatever
     the preceding tests left behind.
 
-    Out of scope on purpose: the per-router limiters (``ficha``,
-    ``conocimiento``) are separate instances injected per test, so their own
-    429 contracts keep running untouched.
+    The per-router limiters are NOT all out of scope, and the difference
+    matters:
+
+    * ``ficha`` ALSO honors this flag — ``enforce_ficha_rate_limit``
+      (``app/domains/geo/router_ficha.py:206``) returns early on
+      ``settings.rate_limit_disabled``, so this fixture silences it too. Any
+      ficha 429 test must pin the flag back to ``False`` ITSELF; the existing
+      ones already do (``test_ficha_error_contract.py`` lines 366, 401 and
+      437), which is the only reason they still pass under this fixture. A new
+      ficha 429 test that forgets that pin will go green without ever reaching
+      the limiter.
+    * ``conocimiento``'s limiter never reads the flag — ``enforce_qa_rate_limit``
+      (``app/domains/conocimiento/router.py:368``) goes straight to its injected
+      ``DistributedRateLimiter``, so its 429 contracts are genuinely untouched
+      by this fixture.
     """
     from app.config import settings
     from app.core import rate_limit as rate_limit_module

@@ -322,6 +322,13 @@ def test_antecedent_total_unavailable_appears_nowhere_in_the_tree():
     unsupported-cadence path, so a second reason string would have an empty
     domain too -- and a dead branch against a hypothetical future reason is how
     r1's defect was born.
+
+    "Nowhere in the tree" means the source roots named in ``source_roots``
+    below -- ``gee-backend/{app,tests,scripts,migrations,data}`` and
+    ``consorcio-web/src`` -- not literally every file in the checkout. Each
+    root is asserted to EXIST before it is walked, because ``rglob`` on a
+    missing directory yields nothing in silence, which is the exact failure
+    class this guard was rewritten to close.
     """
     from pathlib import Path
 
@@ -339,11 +346,25 @@ def test_antecedent_total_unavailable_appears_nowhere_in_the_tree():
         (root / "gee-backend/tests", ("*.py",)),
         (root / "gee-backend/scripts", ("*.py",)),
         (root / "gee-backend/migrations", ("*.py",)),
+        # Real source, not fixtures: ``data/waterways/download_waterways.py``
+        # fell out of the rewrite's first root list.
+        (root / "gee-backend/data", ("*.py",)),
         (root / "consorcio-web/src", ("*.ts", "*.tsx")),
     )
+    # A root that is renamed or moved must FAIL here, loudly. Without this,
+    # ``rglob`` over a nonexistent directory returns an empty iterator and the
+    # guard reports "no offenders" while scanning nothing at all.
+    for source_root, _patterns in source_roots:
+        assert source_root.is_dir(), source_root
+
     excluded_exact = {"node_modules", "__pycache__", "dist", "build"}
 
     def _is_vendored(path: Path) -> bool:
+        # ``startswith`` over ``path.parts`` matches FILE basenames too, not
+        # just directories: a future ``venv_bootstrap.py`` would silently drop
+        # out of the scan. Accepted -- the cost of a missed file is a weaker
+        # guard, while the cost of walking a sibling virtualenv is the decode
+        # explosion this rewrite exists to stop -- but stated, not implied.
         return any(
             part in excluded_exact or part.startswith("venv") or part.startswith(".venv")
             for part in path.parts
