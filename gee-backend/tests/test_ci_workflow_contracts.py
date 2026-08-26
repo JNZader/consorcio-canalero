@@ -1570,7 +1570,13 @@ def test_frontend_mutation_matrices_partition_the_canonical_scope() -> None:
     assert len(canonical) == len(pr_shards["a"] + pr_shards["b"])
     for job in ("mutation", "mutation-full"):
         assert workflow["jobs"][job]["strategy"]["fail-fast"] is False
-        assert workflow["jobs"][job]["timeout-minutes"] == 90
+        # 90 -> 120 (PR #242 incident, 2026-08-26): a COLD shard-a run measures
+        # ~88 min and the previous frontend PR passed the 90-min axe by 23
+        # seconds; the job was killed at 96% with ~2 min left. 120 is the
+        # safety margin BEHIND the artifact-fallback baseline recovery (the
+        # real fix) -- warm runs stay ~15-20 min. This pin caught the workflow
+        # edit exactly as designed; acknowledge changes here, never bypass.
+        assert workflow["jobs"][job]["timeout-minutes"] == 120
 
 
 def test_frontend_mutation_shards_use_isolated_reports_artifacts_and_caches() -> None:

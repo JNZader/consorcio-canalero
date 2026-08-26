@@ -153,8 +153,20 @@ jobs:
     # abajo: si entrara aca tambien, lanzaria dos Stryker completos en paralelo.
     if: ${{ github.base_ref == 'main' && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # 90 -> 120. El peor caso de este job NO es la corrida incremental: es la
+    # corrida completa que queda cuando la baseline no aparece. Medido: el shard
+    # `a` completo tarda 81m30s en `mutation-full` (run 32710461062, 2026-08-24)
+    # y el PR #242 murio a los 90 min EN EL 96% (1558/1565 mutantes, ~2 min de
+    # cola) — no por lentitud nueva, sino porque el techo estaba 2 minutos por
+    # debajo del numero real. Con 120 el fallback en frio termina en verde y el
+    # gate sigue midiendo; sin el, el gate se cae por reloj y no mide nada.
+    timeout-minutes: 120
     needs: [changes, typecheck, smoke]
+    permissions:
+      contents: read
+      # Para que el paso de rescate de baseline pueda leer los artifacts de la
+      # ultima corrida de `mutation-full`.
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -175,12 +187,49 @@ jobs:
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - name: Restore shard mutation baseline
+        id: baseline-cache
         uses: actions/cache/restore@v4
         with:
           path: consorcio-web/reports/mutation/stryker-incremental-${{ matrix.shard }}.json
           key: stryker-incremental-v2-${{ matrix.shard }}-${{ github.sha }}
           restore-keys: |
             stryker-incremental-v2-${{ matrix.shard }}-
+      # INCIDENTE PR #242 (2026-08-26): "Cache not found for input keys:
+      # stryker-incremental-v2-a-<sha>, stryker-incremental-v2-a-". El cron del
+      # 2026-08-24 SI habia publicado la baseline (run 32710461062, job
+      # `Publish full mutation baselines` en verde) — la caché desaparecio en
+      # menos de 48 h. La causa no es la caducidad por 7 dias sin uso que
+      # documenta el `schedule` de arriba, es el techo DURO de 10 GB por repo:
+      # medido ese mismo dia, 12.1 GB en 259 entradas y CERO entradas stryker.
+      # Los cuatro `cache-to: type=gha,mode=max` de las imagenes (frontend,
+      # backend, geo-worker, deploy) escriben blobs de 300-400 MB por corrida y
+      # el LRU se come las baselines de ~1 MB antes que nada.
+      #
+      # La caché entonces no es un almacen del que uno pueda depender; el
+      # artifact SI (14 dias de retencion, fuera del LRU). Este paso lo usa como
+      # respaldo. Si tampoco aparece, avisa y deja correr el scope completo: el
+      # gate NUNCA se ablanda por no encontrar la baseline, solo tarda mas.
+      - name: Recover the baseline from the last published artifact
+        if: steps.baseline-cache.outputs.cache-matched-key == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/mutation
+          for event in schedule workflow_dispatch; do
+            for run_id in $(gh run list --workflow frontend.yml --branch main \
+                --event "$event" --status success --limit 8 \
+                --json databaseId --jq '.[].databaseId'); do
+              if gh run download "$run_id" \
+                  --name "mutation-full-${SHARD}-${run_id}" \
+                  --dir reports/mutation 2>/dev/null; then
+                echo "Baseline for shard ${SHARD} recovered from run ${run_id} (${event})."
+                exit 0
+              fi
+            done
+          done
+          echo "::warning::No published baseline artifact for shard ${SHARD}; running the full scope cold."
       - run: npm run mutation:run -- --mutate "$MUTATE"
       - name: Upload shard mutation reports
         if: always()
@@ -227,7 +276,11 @@ jobs:
     # execute from the default branch. Dispatch launches this Stryker job only.
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # 90 -> 120, por el mismo margen que el job incremental: el shard `a` ya
+    # tarda 81m30s (run 32710461062). Este job SIEMPRE corre el scope completo,
+    # asi que era el que estaba mas cerca del techo. Si se cae por reloj no se
+    # publica baseline, y sin baseline cada PR paga la corrida en frio.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
