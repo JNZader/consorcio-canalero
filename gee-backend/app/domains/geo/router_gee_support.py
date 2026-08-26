@@ -518,6 +518,13 @@ async def get_historic_flood_tiles_impl(
     the list renders with, against the SAME generation -- so the two surfaces
     cannot disagree about which events exist.
 
+    Nor about WHICH RECORD an id names. ``resolve_event`` applies the list's own
+    D8 precedence: a detected id the list suppressed behind a confirmed curated
+    card resolves to that card, so the tiles are searched around the date, at
+    the buffer and with the sensor the picker actually rendered. Serving the
+    suppressed detected row instead would centre the search on a different day
+    for a card the user never saw.
+
     ``db`` reaches here through ``_gee_async`` (`router.py:142-154`), which
     rebuilds the signature filtering out only ``ensure_gee``; no new wrapper.
     The read is offloaded through :func:`_run_blocking` for the reason this

@@ -300,9 +300,22 @@ def _curated_record(row, confirming) -> dict[str, Any]:
         if optional in payload:
             record[optional] = payload[optional]
     if "days_buffer" in record:
-        record["days_buffer"] = max(
-            MIN_DAYS_BUFFER, min(MAX_DAYS_BUFFER, int(record["days_buffer"]))
-        )
+        # LOUD for the same reason the prose above is. This is the ONE served
+        # field coerced out of hand-written data, and `int(None)` is a bare
+        # `TypeError` that reaches the operator as a 500 naming an int cast
+        # rather than the row that broke it.
+        raw_buffer = record["days_buffer"]
+        try:
+            buffer_days = int(raw_buffer)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"curated event {row.event_key!r} has a non-integer 'days_buffer' in its "
+                f"payload (got {raw_buffer!r}); the served buffer is a number the frontend "
+                "range-checks, not free-form data"
+            ) from exc
+        # BOTH ends of `typeGuards.ts:406-411`'s [1, 30]: a rejection there is
+        # silent either way, and 0 is also a search window with no days in it.
+        record["days_buffer"] = max(MIN_DAYS_BUFFER, min(MAX_DAYS_BUFFER, buffer_days))
 
     if confirming is not None:
         offset = confirmation_offset_days(row.start_date, confirming)
@@ -474,13 +487,34 @@ def resolve_event(generation, event_key: str) -> dict[str, Any] | None:
     labelled stale -- so an id from a superseded generation is simply not in it,
     and the bridge can never hand out tiles for a card the list does not show.
 
-    Curated first, matching D8's precedence: when an anchor is confirmed the
-    curated row wins the card, and the bridge has to use the same record the
-    picker rendered or the tiles would be searched around a different date.
+    D8's precedence applies HERE too, and applying it is what makes the claim
+    above true. :func:`build_catalog_response` SUPPRESSES every detected row
+    within :data:`CONFIRMATION_TOLERANCE_DAYS` of a served curated anchor: that
+    id has no card of its own, and the picker only ever shows the curated one.
+    Resolving it off the raw detected rows would answer with a record centred
+    on a different date, at a different buffer and possibly a different sensor
+    than the card that was clicked -- the two surfaces disagreeing about ONE
+    event instead of about which events exist, which is the same failure by a
+    shorter route. A suppressed id therefore resolves to the anchor that
+    suppressed it, through the same :func:`confirming_rows` derivation the list
+    suppresses with -- not a second copy of the tolerance rule.
+
+    The mechanism is that tolerance test, NOT the order of the loops below:
+    curated and detected keys cannot collide (``repository.EVENT_KEY_PREFIXES``
+    keeps the detected ones under their tier prefix), so nothing here depends
+    on which loop runs first. An id matching no anchor, and no row suppressed
+    behind one, falls through to the detected rows unchanged; an id in neither
+    is ``None``.
+
+    Unlike the list, no ``year`` narrows the anchors: the bridge serves the
+    whole generation, so every curated row it holds is a serving anchor.
     """
     for row in generation.curated:
-        if row.event_key == event_key:
-            return _curated_record(row, confirming_row(row.start_date, generation.detected))
+        confirming = confirming_rows(row.start_date, generation.detected)
+        if row.event_key == event_key or any(
+            suppressed.event_key == event_key for suppressed in confirming
+        ):
+            return _curated_record(row, confirming[0] if confirming else None)
     for row in generation.detected:
         if row.event_key == event_key:
             return _detected_record(row)

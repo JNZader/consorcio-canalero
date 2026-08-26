@@ -15,6 +15,7 @@ from typing import Any, Dict
 import pytest
 
 from app.core.exceptions import AppException, NotFoundError
+from tests.new.geo.rainfall.curated_payloads import curated_payload
 
 TARGET = date(2015, 3, 15)
 LANDSAT_SENSORS_IDS = ("landsat8", "landsat7", "landsat5")
@@ -254,9 +255,9 @@ def _curated(db, *, event_key: str, day: date, payload: Dict[str, Any]):
         start_date=day,
         end_date=day,
         # The read model (post-B2a-fix) is LOUD about a missing curated
-        # name/description; the seed always provides both, so a helper claiming
-        # "exactly as lluvia_ext_002 does" injects the floor a caller omits.
-        curated_payload={"description": "Evento historico", **payload},
+        # name/description; the floor a caller omits comes from the shared
+        # `curated_payloads` helper, the same one the catalog fixtures use.
+        curated_payload=curated_payload(**payload),
     )
     db.add(row)
     db.flush()

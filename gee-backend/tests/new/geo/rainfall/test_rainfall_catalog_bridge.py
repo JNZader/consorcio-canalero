@@ -36,6 +36,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+from tests.new.geo.rainfall.curated_payloads import curated_payload
 
 URL = "/api/v2/geo/gee/images/historic-floods"
 
@@ -117,23 +118,18 @@ def _curated(db, *, event_key="mar_2015", day=date(2015, 3, 15), payload=None):
         tier=None,
         start_date=day,
         end_date=day,
-        # The seed ALWAYS provides name/description/severity, and the read model
-        # (post-B2a-fix) is LOUD about their absence -- a KeyError there becomes
-        # a 500 the suite renders as a hang. A helper claiming "exactly as
-        # lluvia_ext_002 seeds it" must honor that floor even when a test
-        # overrides the rest; sensor/max_cloud/days_buffer stay default-only so
-        # explicit payloads do not inherit fields their assertions never asked for.
-        curated_payload={
-            "name": "Inundacion Marzo 2015",
-            "description": "Evento historico para revisar con Landsat 8/Landsat 7 y Sentinel-1",
-            "severity": "alta",
+        # The floor comes from `curated_payloads` (shared with the dispatcher
+        # and serving fixtures); `mar_2015`'s imagery overrides apply only when
+        # the caller supplies no payload of its own, so an explicit payload
+        # never inherits fields its assertions never asked for.
+        curated_payload=curated_payload(
             **(
                 {"sensor": "landsat8", "max_cloud": 80, "days_buffer": 30}
                 if payload is None
                 else {}
             ),
             **(payload or {}),
-        },
+        ),
     )
     db.add(row)
     db.flush()
@@ -365,6 +361,98 @@ def test_the_served_buffer_never_exceeds_the_frontend_ceiling(client, db, explor
 
     assert explorer.call["days_buffer"] == 30
     assert body["flood_info"]["days_buffer"] == 30
+
+
+def test_the_served_buffer_never_falls_below_the_frontend_floor(client, db, explorer):
+    """The OTHER end of the same `[1, 30]` window, pinned for the same reason.
+
+    `typeGuards.ts:406-411` rejects `days_buffer: 0` exactly as silently as it
+    rejects 45, and a zero-day buffer is also a search window with no days in
+    it -- the provider would be asked for imagery on a single instant. A clamp
+    written as `min(MAX, ...)` alone, or as `max(0, ...)`, passes every ceiling
+    test in this file and ships the empty window.
+    """
+    _curated(
+        db,
+        event_key="feb_2017",
+        day=date(2017, 2, 20),
+        payload={"name": "Febrero 2017", "severity": "alta", "days_buffer": 0},
+    )
+
+    body = _tiles(client, "feb_2017").json()
+
+    assert explorer.call["days_buffer"] == 1
+    assert body["flood_info"]["days_buffer"] == 1
+
+
+# ===========================================================================
+# 5.4, the precedence the list already applies -- at the bridge
+# ===========================================================================
+
+
+def test_a_suppressed_detected_id_resolves_to_the_card_that_suppressed_it(client, db, explorer):
+    """D8's precedence, at the BRIDGE.
+
+    `feb_2017`'s rain fired on 02-18 while the anchor is dated 02-20, so the
+    list serves ONE card -- the curated one -- and suppresses `ext_20170218`
+    behind it. A bridge that resolved that id off the raw detected rows would
+    hand back a record centred on a DIFFERENT date, with a different buffer and
+    a different sensor than the card the picker rendered: two surfaces, one
+    click, two answers. The suppressed id resolves to the SAME record the list
+    serves.
+    """
+    _curated(
+        db,
+        event_key="feb_2017",
+        day=date(2017, 2, 20),
+        payload={
+            "name": "Inundacion Febrero 2017",
+            "severity": "alta",
+            "sensor": "landsat8",
+            "days_buffer": 20,
+        },
+    )
+    _detected(db, start=date(2017, 2, 18))
+
+    listed = client.get(URL).json()["floods"]
+    assert [record["id"] for record in listed] == ["feb_2017"], (
+        "precondition: the detected row is suppressed behind the curated card"
+    )
+
+    body = _tiles(client, "ext_20170218").json()
+
+    assert body["flood_info"]["id"] == "feb_2017"
+    assert body["flood_info"]["date"] == "2017-02-20", "the CURATED date, not the detected peak"
+    assert body["flood_info"] == listed[0], "the same record, field for field"
+    assert explorer.call["target_date"] == date(2017, 2, 20)
+    assert explorer.call["sensor"] == "landsat8"
+    assert explorer.call["days_buffer"] == 20
+
+
+def test_a_detected_id_outside_the_tolerance_still_resolves_as_itself(client, db, explorer):
+    """The other half of the same rule: only a SUPPRESSED id redirects.
+
+    `ext_20170310` is 18 days from the anchor -- outside
+    `CONFIRMATION_TOLERANCE_DAYS`, so the list gives it its own card and the
+    bridge must keep resolving it to its own record. A redirect written as
+    "any detected row while a curated anchor exists" would swallow it.
+    """
+    _curated(
+        db,
+        event_key="feb_2017",
+        day=date(2017, 2, 20),
+        payload={"name": "Inundacion Febrero 2017", "severity": "alta"},
+    )
+    _detected(db, start=date(2017, 3, 10))
+
+    listed = {record["id"] for record in client.get(URL).json()["floods"]}
+    assert listed == {"feb_2017", "ext_20170310"}, "precondition: two cards, nothing suppressed"
+
+    body = _tiles(client, "ext_20170310").json()
+
+    assert body["flood_info"]["id"] == "ext_20170310"
+    assert body["flood_info"]["provenance"] == "detected"
+    assert explorer.call["target_date"] == date(2017, 3, 10)
 
 
 # ===========================================================================

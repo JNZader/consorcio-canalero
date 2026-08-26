@@ -41,6 +41,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.domains.geo.rainfall.adapters.gee_client import BASELINE_ASSET_VERSION
+from tests.new.geo.rainfall.curated_payloads import curated_payload
 
 URL = "/api/v2/geo/gee/images/historic-floods"
 
@@ -122,16 +123,13 @@ def _detected(
 
 
 def _payload(name, severity, **extra):
-    """A minimal curated payload with the two fields the seed ALWAYS provides.
+    """This file's positional spelling of the shared curated floor.
 
-    `name` and `description` are not optional in the served contract: the
-    frontend's `isHistoricFlood` drops a nameless record silently, so a payload
-    missing either is a broken seed and the read model raises on it. Building
-    them here keeps every fixture honest about that.
+    The rule it honors -- `name`, `description` and `severity` are not optional
+    in the served contract -- lives in `curated_payloads`, shared with the
+    bridge and dispatcher fixtures.
     """
-    return {"name": name, "description": f"{name} -- descripcion curada", "severity": severity} | (
-        extra
-    )
+    return curated_payload(name=name, severity=severity, **extra)
 
 
 def _curated(db, *, event_key="mar_2015", day=date(2015, 3, 15), payload=None):
@@ -146,15 +144,7 @@ def _curated(db, *, event_key="mar_2015", day=date(2015, 3, 15), payload=None):
         tier=None,
         start_date=day,
         end_date=day,
-        curated_payload=payload
-        or {
-            "name": "Inundacion Marzo 2015",
-            "description": "Evento historico para revisar con Landsat 8/Landsat 7 y Sentinel-1",
-            "severity": "alta",
-            "sensor": "landsat8",
-            "max_cloud": 80,
-            "days_buffer": 30,
-        },
+        curated_payload=payload or curated_payload(sensor="landsat8", max_cloud=80, days_buffer=30),
     )
     db.add(row)
     db.flush()
@@ -609,6 +599,37 @@ def test_a_curated_payload_missing_its_prose_is_loud_rather_than_silent(missing)
     )
 
     with pytest.raises(ValueError, match=missing):
+        catalog_view.build_catalog_response(generation)
+
+
+@pytest.mark.parametrize("buffer_value", [None, "abc", [30]])
+def test_a_non_integer_curated_buffer_is_loud_rather_than_a_bare_type_error(buffer_value):
+    """The same refusal as the prose above, for the one field that is COERCED.
+
+    The clamp calls `int(record["days_buffer"])` on hand-written data. On
+    `None` that is a bare `TypeError`, on `"abc"` a bare `ValueError`, and
+    either one leaves the operator with a 500 that names an int cast rather
+    than the row that broke -- the very asymmetry the loud name/description
+    check two lines above exists to remove. The failure mode is identical, so
+    the message must be too: it names the anchor and the field.
+
+    Off `TestClient` for the same measured reason as the prose test: the
+    catch-all handler's `logger.exception` hands a SQLAlchemy row to `rich`
+    and the request does not return.
+    """
+    from app.domains.geo.rainfall import catalog_view
+
+    anchor = SimpleNamespace(
+        event_key="mar_2015",
+        start_date=date(2015, 3, 15),
+        end_date=date(2015, 3, 15),
+        curated_payload=_payload("Inundacion Marzo 2015", "alta", days_buffer=buffer_value),
+    )
+    generation = SimpleNamespace(
+        revision="curated", revision_state="empty", detected=(), curated=(anchor,)
+    )
+
+    with pytest.raises(ValueError, match="mar_2015.*days_buffer"):
         catalog_view.build_catalog_response(generation)
 
 
