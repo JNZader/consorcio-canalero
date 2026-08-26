@@ -62,7 +62,11 @@ class DenunciaRepository:
 
         # Paginated items
         offset = (page - 1) * limit
-        items_stmt = base.order_by(Denuncia.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(Denuncia.created_at.desc(), Denuncia.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -88,7 +92,7 @@ class DenunciaRepository:
         offset = (page - 1) * limit
         items_stmt = (
             base.options(selectinload(Denuncia.historial))
-            .order_by(Denuncia.created_at.desc())
+            .order_by(Denuncia.created_at.desc(), Denuncia.id.desc())
             .offset(offset)
             .limit(limit)
         )

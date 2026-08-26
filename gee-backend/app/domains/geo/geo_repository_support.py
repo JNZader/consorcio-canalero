@@ -64,7 +64,7 @@ def compute_raster_zone_features(
         layer = (
             db.query(GeoLayer)
             .filter(GeoLayer.tipo == tipo)
-            .order_by(GeoLayer.created_at.desc())
+            .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
             .first()
         )
         if not layer:

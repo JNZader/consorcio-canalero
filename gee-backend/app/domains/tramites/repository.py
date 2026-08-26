@@ -58,7 +58,9 @@ class TramiteRepository:
 
         # Paginated items
         offset = (page - 1) * limit
-        items_stmt = base.order_by(Tramite.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(Tramite.created_at.desc(), Tramite.id.desc()).offset(offset).limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
