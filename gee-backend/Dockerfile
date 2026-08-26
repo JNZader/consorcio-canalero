@@ -132,6 +132,38 @@ RUN set -eu; \
     done; \
     rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (CVE-2026-14456, OpenSSL DoS via unbounded memory, HIGH):
+# Debian trixie-security ships the fixed openssl 3.5.7-1~deb13u2, but the
+# pinned slim-trixie base still carries 3.5.6-1~deb13u2. Same pattern as the
+# util-linux hotfix above: --only-upgrade + installed-version assertion, base
+# digest untouched. REMOVE this block when the python:3.11-slim-trixie digest
+# is bumped to one carrying openssl >= 3.5.7-1~deb13u2.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libssl3t64 \
+    openssl \
+    openssl-provider-legacy; \
+    fixed_version="3.5.7-1~deb13u2"; \
+    for package in \
+        libssl3t64 \
+        openssl \
+        openssl-provider-legacy; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
 # COPY merges directories, so remove the base image's packaging artifacts
 # before importing the prepared build tree. Otherwise stale setuptools
 # dist-info can shadow the secure runtime version.
