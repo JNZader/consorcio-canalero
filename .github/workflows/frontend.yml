@@ -172,9 +172,9 @@ jobs:
       matrix:
         include:
           - shard: a
-            mutate: src/lib/auth.ts,src/stores/authStore.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
+            mutate: src/lib/auth.ts,src/stores/authStore.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts
           - shard: b
-            mutate: src/lib/api/core.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
+            mutate: src/lib/api/core.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx,src/components/map2d/rainfall/RainfallMetricList.tsx
     env:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
@@ -286,9 +286,9 @@ jobs:
       matrix:
         include:
           - shard: a
-            mutate: src/lib/auth.ts,src/stores/authStore.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
+            mutate: src/lib/auth.ts,src/stores/authStore.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts
           - shard: b
-            mutate: src/lib/api/core.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
+            mutate: src/lib/api/core.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx,src/components/map2d/rainfall/RainfallMetricList.tsx
     env:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
@@ -420,7 +420,16 @@ jobs:
           push: false
           tags: ${{ env.CANDIDATE_IMAGE }}
           cache-from: type=gha,scope=frontend-image
-          cache-to: type=gha,mode=max,scope=frontend-image
+          # BL-GHA-CACHE-CEILING (higiene A, 2026-08-26): `mode=max` here wrote
+          # EVERY intermediate layer — 300-400 MB per corrida — contra el techo
+          # DURO de 10 GB del repo (medido: 12.1 GB en 259 entradas). El LRU se
+          # comia las baselines de Stryker de ~1 MB en menos de 48 h, que es el
+          # incidente del PR #242. Esta imagen es un GATE: se construye, se
+          # escanea y se tira, no la consume ninguna corrida posterior — asi que
+          # publicar sus capas intermedias solo compraba desalojos. `mode=min`
+          # sigue sembrando la capa final, que es lo unico que el `cache-from`
+          # de la proxima corrida puede reusar de verdad.
+          cache-to: type=gha,mode=min,scope=frontend-image
       - name: Scan frontend candidate image
         # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

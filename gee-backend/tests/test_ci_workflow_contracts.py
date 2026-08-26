@@ -15,6 +15,14 @@ TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c
 TRIVY_VERSION = "v0.70.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
+# REBALANCED by hygiene batch A (BL-GHA-CACHE-CEILING, 2026-08-26):
+# ``RainfallMetricList.tsx`` moved a -> b. Shard a measured 1,565 mutants /
+# ~85 min against shard b's ~37 min, and that single file was ~85% of shard a's
+# time (185 static mutants) -- it is what put the COLD run at ~88 min against a
+# 90-minute axe in the PR #242 incident. The partition contract below is
+# unchanged: the two shards stay disjoint and their union stays exactly the
+# canonical ``stryker.config.mjs`` target list. This pin caught the workflow
+# edit exactly as designed; it is updated WITH the edit, never bypassed.
 STRYKER_SHARDS = {
     "a": [
         "src/lib/auth.ts",
@@ -24,7 +32,6 @@ STRYKER_SHARDS = {
         "src/components/admin/pilarVerdeWidget/computeKpis.ts",
         "src/components/map2d/canalesFormat.ts",
         "src/components/map2d/rainfall/rainfallFormat.ts",
-        "src/components/map2d/rainfall/RainfallMetricList.tsx",
     ],
     "b": [
         "src/lib/api/core.ts",
@@ -36,6 +43,7 @@ STRYKER_SHARDS = {
         "src/lib/api/rainfall.ts",
         "src/hooks/useRainfallAnalysis.ts",
         "src/components/map2d/rainfall/RainfallDetailPanel.tsx",
+        "src/components/map2d/rainfall/RainfallMetricList.tsx",
     ],
 }
 NGINX_RUNTIME_IMAGE = (
@@ -1866,3 +1874,28 @@ def test_rainfall_harness_workflow_stays_optional_and_unreferenced() -> None:
     assert "retention-days: 14" in harness
     assert "if-no-files-found: error" in harness
     assert "if: always()" in harness
+
+
+def test_only_the_publishing_workflow_writes_full_buildkit_layer_caches() -> None:
+    """BL-GHA-CACHE-CEILING: `mode=max` belongs to deploy.yml and nowhere else.
+
+    The GitHub Actions cache has a HARD 10 GB per-repo ceiling and evicts by
+    LRU, silently. Measured 2026-08-26: 12.1 GB across 259 entries and ZERO
+    Stryker entries -- the ~1 MB mutation baselines the cron publishes were
+    evicted inside 48 h by 300-400 MB of BuildKit layer blobs, and the PR #242
+    mutation job then ran cold and died on the clock at 96%.
+
+    The rule this pins: a workflow that BUILDS A CANDIDATE TO SCAN AND THROW
+    AWAY (backend.yml, frontend.yml -- PR/dispatch only) writes `mode=min`; the
+    workflow that PUBLISHES from main and actually feeds later runs
+    (deploy.yml, `workflow_dispatch`) keeps `mode=max`. Reversing that is the
+    incident, so it fails here instead of two days later in someone else's job.
+    """
+    for path in (".github/workflows/backend.yml", ".github/workflows/frontend.yml"):
+        workflow = _without_comments(_read(path))
+        assert "cache-to: type=gha,mode=max" not in workflow, path
+        assert "cache-to: type=gha,mode=min" in workflow, path
+
+    deploy = _without_comments(_read(".github/workflows/deploy.yml"))
+    assert deploy.count("cache-to: type=gha,mode=max") == 2
+    assert "cache-to: type=gha,mode=min" not in deploy

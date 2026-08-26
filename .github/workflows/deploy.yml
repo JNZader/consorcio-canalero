@@ -227,6 +227,13 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=backend-image
+          # BL-GHA-CACHE-CEILING (higiene A, 2026-08-26): `mode=max` se QUEDA
+          # aca a proposito. Este es el unico productor real del scope: corre
+          # solo en `workflow_dispatch` desde main (o sea, a mano, al desplegar)
+          # y sus capas intermedias son las que despues reusan los candidatos de
+          # PR en backend.yml. Los cuatro escritores de PR pasaron a `mode=min`;
+          # dejar este en `max` cuesta pocos blobs por deploy manual y mantiene
+          # la cache util en vez de vacia.
           cache-to: type=gha,mode=max,scope=backend-image
       - name: Capture backend build manifest digest
         id: capture-manifest
@@ -345,6 +352,9 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=geo-worker-image
+          # BL-GHA-CACHE-CEILING (higiene A, 2026-08-26): igual que el backend
+          # de arriba — productor unico del scope, solo en deploy manual desde
+          # main. Se queda en `mode=max`.
           cache-to: type=gha,mode=max,scope=geo-worker-image
       - name: Capture geo-worker build manifest digest
         id: capture-manifest
