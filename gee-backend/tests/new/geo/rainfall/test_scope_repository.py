@@ -312,3 +312,153 @@ def test_resolve_parcel_accepts_polygon_and_multi_polygon_active_zoning(db):
         ("zone", "multi-polygon"),
         ("zone", "polygon"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# BL-BASIN-SCOPE-BROKEN — the resolver's basin identity must be the provider's
+# ---------------------------------------------------------------------------
+
+
+def _seed_basins(db, *rows):
+    """A parcel plus one ``ZonaOperativa`` per ``(nombre, cuenca)``, all
+    overlapping the parcel. No approved zoning, so the choices are basins only.
+    """
+    db.add(ParcelaCatastro(nomenclatura="parcel-1", geometria=_polygon(0, 0, 2, 2)))
+    for index, (nombre, cuenca) in enumerate(rows):
+        db.add(
+            ZonaOperativa(
+                nombre=nombre,
+                cuenca=cuenca,
+                superficie_ha=1,
+                geometria=_polygon(1, 1, 3 + index, 3 + index),
+            )
+        )
+    db.flush()
+
+
+def test_a_resolved_basin_scope_maps_to_a_gee_asset(db):
+    """BL-BASIN-SCOPE-BROKEN, end to end and in ONE test, because the defect
+    lived in neither half.
+
+    The resolver emitted ``zonas_operativas.id::text`` -- a per-ROW UUID --
+    while ``asset_name_for`` accepts only the four operational WATERSHED asset
+    names, so every basin scope this resolver ever produced raised
+    ``UnknownProviderScope``: basin coverage was broken end to end, not
+    partially served. Each half was internally consistent and separately
+    tested, which is exactly why nothing caught it; the composition is the
+    contract, so the composition is what is asserted here.
+
+    A sub-basin ROW was never the right identity either. The GEE asset covers
+    the whole parent watershed, so resolving a row id to it would reduce over
+    a geometry the scope does not name -- the failure ``gee_client``'s docstring
+    refuses by raising. Grouping by ``cuenca`` makes the emitted identity the
+    one the provider actually has imagery for.
+    """
+    from app.domains.geo.rainfall.adapters.gee_client import asset_name_for
+
+    _seed_basins(db, ("sub-basin-a", "norte"), ("sub-basin-b", "norte"))
+
+    choices = RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+    # Two intersecting sub-basins of ONE watershed are ONE scope, not two.
+    assert [(item.kind, item.id) for item in choices] == [("basin", "norte")]
+    assert asset_name_for("basin", choices[0].id) == "norte"
+
+
+def test_two_watersheds_stay_two_basin_scopes_ordered(db):
+    """The grouping collapses rows, never watersheds: a parcel straddling two
+    watersheds still gets one choice per watershed, ordered."""
+    _seed_basins(db, ("b", "norte"), ("a", "candil"), ("c", "norte"))
+
+    choices = RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+    assert [item.id for item in choices] == ["candil", "norte"]
+
+
+def test_a_basin_scope_version_is_stable_and_moves_with_its_members(db):
+    """``scope_version`` is a GEOMETRY identity, so it must survive a re-read
+    unchanged and must move when any member sub-basin's geometry does.
+
+    Stability is the half that matters for storage: the version is part of the
+    persisted key, so a version that reshuffles per query would orphan every
+    row written under the previous read.
+    """
+    _seed_basins(db, ("sub-a", "norte"), ("sub-b", "norte"))
+    repo = RainfallRepository()
+
+    first = repo.resolve_parcel_scopes(db, "parcel-1")[0].version
+    assert repo.resolve_parcel_scopes(db, "parcel-1")[0].version == first
+
+    moved = db.query(ZonaOperativa).filter_by(nombre="sub-b").one()
+    moved.geometria = _polygon(1, 1, 9, 9)
+    db.flush()
+
+    assert repo.resolve_parcel_scopes(db, "parcel-1")[0].version != first
+
+
+def test_a_watershed_with_no_gee_asset_still_fails_closed(db):
+    """The fix must not become "resolve anything". A watershed the deployment
+    owns no asset for still raises rather than reducing over the wrong
+    geometry -- the property the UUID mismatch was accidentally providing and
+    which must now be provided on purpose.
+    """
+    from app.domains.geo.rainfall.adapters.gee_client import UnknownProviderScope, asset_name_for
+
+    _seed_basins(db, ("sub", "auto_delineated"))
+
+    choices = RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+    assert [item.id for item in choices] == ["auto_delineated"]
+    with pytest.raises(UnknownProviderScope, match="no GEE asset mapped"):
+        asset_name_for("basin", choices[0].id)
+
+
+@pytest.mark.parametrize("stored", ["Norte", " norte ", "NORTE", "Noroeste"])
+def test_the_asset_seam_normalises_the_stored_watershed_name(stored):
+    """``cuenca`` is free text a human typed into a table, so the seam matches
+    on a normalised form rather than requiring the database to have been
+    lowercase all along. Unmapped is still unmapped -- normalisation widens the
+    spelling, never the set.
+    """
+    from app.domains.geo.rainfall.adapters.gee_client import BASIN_ASSET_NAMES, asset_name_for
+
+    resolved = asset_name_for("basin", stored)
+    assert resolved == stored.strip().lower()
+    assert resolved in BASIN_ASSET_NAMES
+
+
+def test_divergent_spellings_of_one_watershed_are_one_basin_scope(db):
+    """``cuenca`` is free text, so ONE watershed reaches the resolver spelled
+    several ways ("Norte", "norte", " norte ").
+
+    Grouping on the RAW value made each spelling its own scope -- three
+    choices, three ``scope_version`` values, three storage keys -- for a
+    watershed the provider has exactly one asset for. The seam already decides
+    basin identity in the normalised space (``normalized_basin_name``), so the
+    resolver must decide it there too: the identity of a scope cannot depend on
+    which half of the system is looking at it.
+    """
+    _seed_basins(db, ("sub-a", "Norte"), ("sub-b", "norte"), ("sub-c", " norte "))
+
+    choices = RainfallRepository().resolve_parcel_scopes(db, "parcel-1")
+
+    assert [(item.kind, item.id) for item in choices] == [("basin", "norte")]
+
+
+def test_a_basin_scope_version_ignores_the_spelling_of_its_watershed(db):
+    """The version is a GEOMETRY identity of the whole group, so re-typing a
+    member's ``cuenca`` -- same rows, same geometries, different spelling --
+    must not move it. If it did, a cosmetic edit in an operator's table would
+    orphan every baseline row already persisted under the old key.
+    """
+    _seed_basins(db, ("sub-a", "norte"), ("sub-b", "norte"))
+    repo = RainfallRepository()
+
+    first = repo.resolve_parcel_scopes(db, "parcel-1")[0].version
+
+    db.query(ZonaOperativa).filter_by(nombre="sub-b").one().cuenca = "  NORTE "
+    db.flush()
+
+    resolved = repo.resolve_parcel_scopes(db, "parcel-1")
+    assert [item.id for item in resolved] == ["norte"]
+    assert resolved[0].version == first

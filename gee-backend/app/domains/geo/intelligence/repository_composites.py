@@ -97,7 +97,14 @@ class IntelligenceRepositoryCompositesMixin:
 
     def get_latest_batch(self, db: Session) -> Optional[uuid.UUID]:
         return db.execute(
-            select(CanalSuggestion.batch_id).order_by(CanalSuggestion.created_at.desc()).limit(1)
+            select(CanalSuggestion.batch_id)
+            # BL-ORDER-BY-CREATED-AT-SWEEP: one batch's rows share a transaction
+            # timestamp, so LIMIT 1 over `created_at` alone returns an arbitrary row
+            # of an arbitrary batch whenever two batches tie. `id` makes the pick
+            # deterministic; a genuinely monotonic batch key would make it MEANINGFUL,
+            # which this read does not have.
+            .order_by(CanalSuggestion.created_at.desc(), CanalSuggestion.id.desc())
+            .limit(1)
         ).scalar_one_or_none()
 
     def get_summary(

@@ -44,7 +44,11 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(Sugerencia.created_at.desc(), Sugerencia.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -67,7 +71,11 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = base.order_by(Sugerencia.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(Sugerencia.created_at.desc(), Sugerencia.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
@@ -140,7 +148,7 @@ class MonitoringRepository:
         stmt = (
             select(Sugerencia)
             .where(Sugerencia.estado == EstadoSugerencia.REVISADA)
-            .order_by(Sugerencia.created_at.desc())
+            .order_by(Sugerencia.created_at.desc(), Sugerencia.id.desc())
             .limit(20)
         )
         return list(db.execute(stmt).scalars().all())
@@ -184,13 +192,21 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = base.order_by(AnalisisGee.created_at.desc()).offset(offset).limit(limit)
+        items_stmt = (
+            base.order_by(AnalisisGee.created_at.desc(), AnalisisGee.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total
 
     def get_latest_analyses(self, db: Session, *, limit: int = 5) -> list[AnalisisGee]:
-        stmt = select(AnalisisGee).order_by(AnalisisGee.created_at.desc()).limit(limit)
+        stmt = (
+            select(AnalisisGee)
+            .order_by(AnalisisGee.created_at.desc(), AnalisisGee.id.desc())
+            .limit(limit)
+        )
         return list(db.execute(stmt).scalars().all())
 
     # ── DASHBOARD STATS ────────────────────────
