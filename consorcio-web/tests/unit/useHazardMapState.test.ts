@@ -97,6 +97,31 @@ describe('useHazardMapState', () => {
     expect(mocks.hazardStore.reset).toHaveBeenCalledOnce();
   });
 
+  it('turns absent canonical layers off while restoring captured values exactly', () => {
+    mocks.shared.map2d.visibleVectors = { roads: true, flood_risk: true, soil: false };
+
+    const { rerender } = renderHook(
+      ({ hazard }) => {
+        mocks.url.hazard = hazard;
+        return useHazardMapState({ mapRef: createMapRef(), mapReady: false });
+      },
+      { initialProps: { hazard: true } }
+    );
+
+    vi.clearAllMocks();
+    act(() => rerender({ hazard: false }));
+
+    for (const layerId of CANONICAL_LAYER_IDS) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith(
+        'map2d',
+        layerId,
+        layerId === 'flood_risk'
+      );
+    }
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'roads', true);
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'soil', false);
+  });
+
   it('does not mutate visibility while the gate is closed', () => {
     mocks.gateOpen = false;
     mocks.url.hazard = true;

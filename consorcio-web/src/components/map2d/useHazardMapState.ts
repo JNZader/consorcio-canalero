@@ -69,8 +69,18 @@ export function useHazardMapState({
     }
 
     if (!isHazardActive && wasHazardActive && snapshotRef.current) {
-      for (const [layerId, visible] of Object.entries(snapshotRef.current.values)) {
-        setVectorVisibility('map2d', layerId, visible);
+      const snapshotValues = snapshotRef.current.values;
+      for (const layerId of HAZARD_CANONICAL_LAYER_IDS) {
+        setVectorVisibility('map2d', layerId, snapshotValues[layerId] ?? false);
+      }
+      for (const [layerId, visible] of Object.entries(snapshotValues)) {
+        if (
+          !HAZARD_CANONICAL_LAYER_IDS.includes(
+            layerId as (typeof HAZARD_CANONICAL_LAYER_IDS)[number]
+          )
+        ) {
+          setVectorVisibility('map2d', layerId, visible);
+        }
       }
       snapshotRef.current = null;
       reset();
