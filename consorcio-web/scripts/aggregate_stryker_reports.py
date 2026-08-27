@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate exactly two Stryker mutation reports into one fail-closed score."""
+"""Aggregate four or more Stryker reports into one fail-closed score."""
 
 from __future__ import annotations
 
@@ -32,17 +32,15 @@ def minimum_score(value: str) -> Decimal:
     return parsed
 
 
-def source_paths(values: list[str]) -> set[str]:
+def source_paths(values: list[str], option: str) -> set[str]:
     provided = [source.strip() for value in values for source in value.split(",")]
     if not provided or any(not source for source in provided):
-        raise ReportError("at least one expected source file path is required")
+        raise ReportError(f"at least one {option} path is required")
     duplicates = sorted(
         source for source, count in Counter(provided).items() if count > 1
     )
     if duplicates:
-        raise ReportError(
-            f"duplicate expected source file paths: {', '.join(duplicates)}"
-        )
+        raise ReportError(f"duplicate {option} paths: {', '.join(duplicates)}")
     return set(provided)
 
 
@@ -56,47 +54,183 @@ def load_report(path: Path) -> dict[str, Any]:
     files = report.get("files")
     if not isinstance(files, dict):
         raise ReportError(f"report {path} field 'files' must be an object")
+    if not files:
+        raise ReportError(f"report {path} contains no source files")
     return files
 
 
-def count_report(path: Path, seen_files: set[str]) -> Counter[str]:
-    counts: Counter[str] = Counter()
-    files = load_report(path)
-    if not files:
-        raise ReportError(f"report {path} contains no source files")
-    duplicates = sorted(seen_files.intersection(files))
-    if duplicates:
+def _position(
+    value: Any, path: Path, source: str, index: int, name: str
+) -> tuple[int, int]:
+    if not isinstance(value, dict):
         raise ReportError(
-            f"duplicate source file paths across reports: {', '.join(duplicates)}"
+            f"report {path} file {source!r} mutant {index} has no {name} location"
         )
-    seen_files.update(files)
+    line = value.get("line")
+    column = value.get("column")
+    if not isinstance(line, int) or isinstance(line, bool) or line < 1:
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has invalid {name} line"
+        )
+    if not isinstance(column, int) or isinstance(column, bool) or column < 0:
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has invalid {name} column"
+        )
+    return line, column
 
-    for source, file_report in files.items():
-        if not isinstance(source, str) or not isinstance(file_report, dict):
-            raise ReportError(f"report {path} contains an invalid file entry")
-        mutants = file_report.get("mutants")
-        if not isinstance(mutants, list):
+
+def mutant_identity(
+    mutant: dict[str, Any], path: Path, source: str, index: int
+) -> tuple[object, ...]:
+    mutator = mutant.get("mutatorName")
+    replacement = mutant.get("replacement")
+    location = mutant.get("location")
+    if not isinstance(mutator, str) or not mutator:
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has no mutator name"
+        )
+    if not isinstance(replacement, str):
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has no replacement"
+        )
+    if not isinstance(location, dict):
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has no location"
+        )
+    start = _position(location.get("start"), path, source, index, "start")
+    end = _position(location.get("end"), path, source, index, "end")
+    if end < start:
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has an inverted location"
+        )
+    return source, start, end, mutator, replacement
+
+
+def _validate_coverage(
+    mutant: dict[str, Any], path: Path, source: str, index: int
+) -> None:
+    for field in ("coveredBy", "killedBy"):
+        value = mutant.get(field)
+        if value is not None and (
+            not isinstance(value, list)
+            or any(not isinstance(test, str) for test in value)
+        ):
             raise ReportError(
-                f"report {path} file {source!r} field 'mutants' must be a list"
+                f"report {path} file {source!r} mutant {index} has invalid {field} metadata"
             )
-        for index, mutant in enumerate(mutants):
-            if not isinstance(mutant, dict):
+    completed = mutant.get("testsCompleted")
+    if completed is not None and (
+        not isinstance(completed, int) or isinstance(completed, bool) or completed < 0
+    ):
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has invalid testsCompleted metadata"
+        )
+    static = mutant.get("static")
+    if static is not None and not isinstance(static, bool):
+        raise ReportError(
+            f"report {path} file {source!r} mutant {index} has invalid static metadata"
+        )
+
+
+def merge_reports(
+    reports: list[Path], expected_files: set[str], ranged_files: set[str]
+) -> dict[str, list[dict[str, Any]]]:
+    if len(reports) < 4:
+        raise ReportError("at least four shard reports are required")
+
+    merged_files: dict[str, dict[str, Any]] = {}
+    identities: dict[tuple[object, ...], str] = {}
+    merged_mutants: dict[str, list[tuple[tuple[object, ...], dict[str, Any]]]] = {}
+
+    for path in reports:
+        files = load_report(path)
+        report_mutants = 0
+        for source, file_report in files.items():
+            if (
+                not isinstance(source, str)
+                or not source
+                or not isinstance(file_report, dict)
+            ):
+                raise ReportError(f"report {path} contains an invalid file entry")
+            mutants = file_report.get("mutants")
+            if not isinstance(mutants, list):
                 raise ReportError(
-                    f"report {path} file {source!r} mutant {index} must be an object"
+                    f"report {path} file {source!r} field 'mutants' must be a list"
                 )
-            status = mutant.get("status")
-            if not isinstance(status, str) or not status:
+            language = file_report.get("language")
+            source_text = file_report.get("source")
+            if not isinstance(language, str) or not isinstance(source_text, str):
                 raise ReportError(
-                    f"report {path} file {source!r} mutant {index} has no status"
+                    f"report {path} file {source!r} has invalid file metadata"
                 )
-            if status not in KNOWN:
-                raise ReportError(f"report {path} has unknown mutant status {status!r}")
-            if status == "Pending":
-                raise ReportError(f"report {path} contains Pending mutants")
-            counts[status] += 1
-    if not counts:
-        raise ReportError(f"report {path} contains no mutants")
-    return counts
+
+            prior = merged_files.get(source)
+            if prior is not None and source not in ranged_files:
+                raise ReportError(
+                    f"duplicate non-ranged source path across reports: {source}"
+                )
+            if prior is None:
+                merged_files[source] = {
+                    "language": language,
+                    "source": source_text,
+                }
+            elif prior["language"] != language or prior["source"] != source_text:
+                raise ReportError(
+                    f"conflicting file metadata across reports for source path: {source}"
+                )
+
+            for index, mutant in enumerate(mutants):
+                if not isinstance(mutant, dict):
+                    raise ReportError(
+                        f"report {path} file {source!r} mutant {index} must be an object"
+                    )
+                status = mutant.get("status")
+                if not isinstance(status, str) or not status:
+                    raise ReportError(
+                        f"report {path} file {source!r} mutant {index} has no status"
+                    )
+                if status not in KNOWN:
+                    raise ReportError(
+                        f"report {path} has unknown mutant status {status!r}"
+                    )
+                if status == "Pending":
+                    raise ReportError(f"report {path} contains Pending mutants")
+                identity = mutant_identity(mutant, path, source, index)
+                _validate_coverage(mutant, path, source, index)
+                previous_status = identities.get(identity)
+                if previous_status is not None:
+                    if previous_status != status:
+                        raise ReportError(
+                            f"conflicting status for overlapping mutant identity in {source}"
+                        )
+                    raise ReportError(
+                        f"overlapping mutant identity across reports in {source}"
+                    )
+                identities[identity] = status
+                merged_mutants.setdefault(source, []).append((identity, mutant))
+                report_mutants += 1
+        if report_mutants == 0:
+            raise ReportError(f"report {path} contains no mutants")
+
+    seen_files = set(merged_files)
+    missing = sorted(expected_files - seen_files)
+    unexpected = sorted(seen_files - expected_files)
+    if missing or unexpected:
+        details = []
+        if missing:
+            details.append(f"missing source file paths: {', '.join(missing)}")
+        if unexpected:
+            details.append(f"unexpected source file paths: {', '.join(unexpected)}")
+        raise ReportError("; ".join(details))
+    if not identities:
+        raise ReportError("aggregate contains no mutants")
+
+    # Preserve all mutant and coverage metadata in a deterministic source/location
+    # order, independent of the order in which matrix jobs finish or upload reports.
+    return {
+        source: [mutant for _, mutant in sorted(mutants)]
+        for source, mutants in sorted(merged_mutants.items())
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,31 +242,40 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="expected report source path; repeat or pass comma-separated paths",
     )
-    parser.add_argument("reports", nargs=2, type=Path, metavar="REPORT")
+    parser.add_argument(
+        "--ranged-source",
+        action="append",
+        default=[],
+        help="source path allowed to appear in multiple reports when mutant identities are disjoint",
+    )
+    parser.add_argument("reports", nargs="+", type=Path, metavar="REPORT")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
-        expected_files = source_paths(args.expected_source)
-        counts: Counter[str] = Counter()
-        seen_files: set[str] = set()
-        for report in args.reports:
-            counts.update(count_report(report, seen_files))
-        missing = sorted(expected_files - seen_files)
-        unexpected = sorted(seen_files - expected_files)
-        if missing or unexpected:
-            details = []
-            if missing:
-                details.append(f"missing source file paths: {', '.join(missing)}")
-            if unexpected:
-                details.append(f"unexpected source file paths: {', '.join(unexpected)}")
-            raise ReportError("; ".join(details))
+        expected_files = source_paths(args.expected_source, "expected source file")
+        ranged_files = (
+            source_paths(args.ranged_source, "ranged source file")
+            if args.ranged_source
+            else set()
+        )
+        unknown_ranged = sorted(ranged_files - expected_files)
+        if unknown_ranged:
+            raise ReportError(
+                f"ranged source paths are not expected sources: {', '.join(unknown_ranged)}"
+            )
+        merged_mutants = merge_reports(args.reports, expected_files, ranged_files)
     except ReportError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
 
+    counts = Counter(
+        mutant["status"]
+        for source in sorted(merged_mutants)
+        for mutant in merged_mutants[source]
+    )
     detected = sum(counts[status] for status in DETECTED)
     undetected = sum(counts[status] for status in UNDETECTED)
     excluded = sum(counts[status] for status in EXCLUDED)

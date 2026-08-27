@@ -28,8 +28,10 @@
  */
 const shard = process.env.STRYKER_SHARD;
 
-if (shard && shard !== 'a' && shard !== 'b') {
-  throw new Error(`Invalid STRYKER_SHARD ${JSON.stringify(shard)}; expected "a" or "b"`);
+if (shard && !['a', 'b', 'auth1', 'auth2'].includes(shard)) {
+  throw new Error(
+    `Invalid STRYKER_SHARD ${JSON.stringify(shard)}; expected "a", "b", "auth1", or "auth2"`,
+  );
 }
 
 const shardMode = Boolean(shard);
