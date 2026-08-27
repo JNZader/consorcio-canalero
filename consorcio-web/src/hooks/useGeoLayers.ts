@@ -175,7 +175,13 @@ export function useGeoLayers() {
  */
 export function buildTileUrl(
   layerId: string,
-  options?: { colormap?: string; hideClasses?: number[]; hideRanges?: number[] }
+  options?: {
+    colormap?: string;
+    hideClasses?: number[];
+    hideRanges?: number[];
+    rescaleMin?: number;
+    rescaleMax?: number;
+  }
 ): string {
   const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
   const params = new URLSearchParams();
@@ -188,10 +194,15 @@ export function buildTileUrl(
   if (options?.hideRanges && options.hideRanges.length > 0) {
     params.set('hide_ranges', options.hideRanges.join(','));
   }
+  if (options?.rescaleMin !== undefined) {
+    params.set('rescale_min', String(options.rescaleMin));
+  }
+  if (options?.rescaleMax !== undefined) {
+    params.set('rescale_max', String(options.rescaleMax));
+  }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
 }
-
 
 export function selectDemLayers(layers: readonly GeoLayerInfo[]): GeoLayerInfo[] {
   return layers
@@ -232,7 +243,8 @@ export function dedupePrecipNormalLayers(layers: readonly GeoLayerInfo[]): GeoLa
 
 export function buildPrecipNormalCatalogEndpoint(token: string | null, role: unknown): string {
   const canUseOperatorCatalog =
-    token !== null && MULTI_HAZARD_ALLOWED_ROLES.includes(role as (typeof MULTI_HAZARD_ALLOWED_ROLES)[number]);
+    token !== null &&
+    MULTI_HAZARD_ALLOWED_ROLES.includes(role as (typeof MULTI_HAZARD_ALLOWED_ROLES)[number]);
   const path = canUseOperatorCatalog ? '/api/v2/geo/layers' : '/api/v2/geo/layers/public';
   return `${API_URL}${path}?limit=100&tipo=precip_normal&fuente=gee`;
 }
