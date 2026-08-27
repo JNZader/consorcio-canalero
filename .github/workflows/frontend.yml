@@ -169,21 +169,19 @@ jobs:
       actions: read
     strategy:
       fail-fast: false
-      # Rebalance MEDIDO (PR #247, run 33013524468): el shard a corrio 55m25s
-      # contra 19m01s del b (25.18 vs 11.16 tests por mutante), con 27 de sus
-      # 28 timeouts concentrados en UN archivo, authStore.ts (cuyos mutantes
-      # cubren hasta 55 tests cada uno: el store esta en todo blast radius).
-      # Se mueve authStore.ts -> b y, como reciproco, src/lib/api/core.ts -> a:
-      # es el UNICO portador de timeouts del b (4 de 4) y su segundo bloque de
-      # mutantes mas grande (278). typeGuards.ts (478 mutantes, el mayor) se
-      # descarto como reciproco: sobrecorregia y volvia a concentrar el costo
-      # en a. La matriz de `mutation-full` usa la MISMA asignacion.
+      # Measured PR #249 evidence shows authStore dominates elapsed time. Its
+      # 238/239 boundary has no spanning mutants, so two contiguous ranges keep
+      # every mutant in exactly one shard. The full baseline matrix is identical.
       matrix:
         include:
+          - shard: auth1
+            mutate: src/stores/authStore.ts:1-238
+          - shard: auth2
+            mutate: src/stores/authStore.ts:239-324
           - shard: a
-            mutate: src/lib/api/core.ts,src/lib/auth.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
+            mutate: src/components/map2d/rainfall/rainfallFormat.ts,src/lib/formatters.ts,src/hooks/useRainfallAnalysis.ts,src/stores/configStore.ts,src/lib/auth.ts,src/components/map2d/bpaPracticas.ts,src/components/map2d/canalesFormat.ts
           - shard: b
-            mutate: src/stores/authStore.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
+            mutate: src/components/map2d/rainfall/RainfallMetricList.tsx,src/components/map2d/rainfall/RainfallDetailPanel.tsx,src/lib/api/core.ts,src/lib/validators.ts,src/lib/typeGuards.ts,src/lib/errorHandler.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/lib/api/rainfall.ts
     env:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
@@ -241,6 +239,13 @@ jobs:
             done
           done
           echo "::warning::No published baseline artifact for shard ${SHARD}; running the full scope cold."
+      - name: Restrict incremental baseline to this shard scope
+        # Stryker intentionally retains out-of-scope baseline mutants. Without
+        # this fail-closed filter, moved/ranged mutants leak into multiple shard
+        # reports and can duplicate or bypass the global score gate.
+        run: >-
+          python3 scripts/filter_stryker_incremental.py --mutate "$MUTATE"
+          "reports/mutation/stryker-incremental-${STRYKER_SHARD}.json"
       - run: npm run mutation:run -- --mutate "$MUTATE"
       - name: Upload shard mutation reports
         if: always()
@@ -263,7 +268,7 @@ jobs:
       MUTATION_RESULT: ${{ needs.mutation.result }}
     steps:
       - uses: actions/checkout@v4
-      - name: Require both mutation shards
+      - name: Require all mutation shards
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_RESULT" = "success"
       - name: Download shard mutation reports
@@ -277,6 +282,8 @@ jobs:
           EXPECTED_SOURCES="$(node --input-type=module -e "import { mutationTargets } from './stryker.config.mjs'; process.stdout.write(mutationTargets.join(','))")"
           python3 scripts/aggregate_stryker_reports.py --minimum 75 \
             --expected-source "$EXPECTED_SOURCES" \
+            --ranged-source src/stores/authStore.ts \
+            reports/mutation/mutation-auth1.json reports/mutation/mutation-auth2.json \
             reports/mutation/mutation-a.json reports/mutation/mutation-b.json
 
   mutation-full:
@@ -296,10 +303,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - shard: auth1
+            mutate: src/stores/authStore.ts:1-238
+          - shard: auth2
+            mutate: src/stores/authStore.ts:239-324
           - shard: a
-            mutate: src/lib/api/core.ts,src/lib/auth.ts,src/lib/validators.ts,src/components/map2d/bpaPracticas.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/components/map2d/canalesFormat.ts,src/components/map2d/rainfall/rainfallFormat.ts,src/components/map2d/rainfall/RainfallMetricList.tsx
+            mutate: src/components/map2d/rainfall/rainfallFormat.ts,src/lib/formatters.ts,src/hooks/useRainfallAnalysis.ts,src/stores/configStore.ts,src/lib/auth.ts,src/components/map2d/bpaPracticas.ts,src/components/map2d/canalesFormat.ts
           - shard: b
-            mutate: src/stores/authStore.ts,src/stores/configStore.ts,src/lib/formatters.ts,src/lib/errorHandler.ts,src/lib/typeGuards.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/lib/api/rainfall.ts,src/hooks/useRainfallAnalysis.ts,src/components/map2d/rainfall/RainfallDetailPanel.tsx
+            mutate: src/components/map2d/rainfall/RainfallMetricList.tsx,src/components/map2d/rainfall/RainfallDetailPanel.tsx,src/lib/api/core.ts,src/lib/validators.ts,src/lib/typeGuards.ts,src/lib/errorHandler.ts,src/components/admin/pilarVerdeWidget/fmt.ts,src/components/admin/pilarVerdeWidget/computeKpis.ts,src/lib/api/rainfall.ts
     env:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
@@ -334,7 +345,7 @@ jobs:
       MUTATION_FULL_RESULT: ${{ needs.mutation-full.result }}
     steps:
       - uses: actions/checkout@v4
-      - name: Require both full mutation shards
+      - name: Require all full mutation shards
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_FULL_RESULT" = "success"
       - name: Download full shard mutation reports
@@ -348,7 +359,19 @@ jobs:
           EXPECTED_SOURCES="$(node --input-type=module -e "import { mutationTargets } from './stryker.config.mjs'; process.stdout.write(mutationTargets.join(','))")"
           python3 scripts/aggregate_stryker_reports.py --minimum 75 \
             --expected-source "$EXPECTED_SOURCES" \
+            --ranged-source src/stores/authStore.ts \
+            reports/mutation/mutation-auth1.json reports/mutation/mutation-auth2.json \
             reports/mutation/mutation-a.json reports/mutation/mutation-b.json
+      - name: Save mutation baseline for shard auth1
+        uses: actions/cache/save@v4
+        with:
+          path: consorcio-web/reports/mutation/stryker-incremental-auth1.json
+          key: stryker-incremental-v2-auth1-${{ github.sha }}
+      - name: Save mutation baseline for shard auth2
+        uses: actions/cache/save@v4
+        with:
+          path: consorcio-web/reports/mutation/stryker-incremental-auth2.json
+          key: stryker-incremental-v2-auth2-${{ github.sha }}
       - name: Save mutation baseline for shard a
         uses: actions/cache/save@v4
         with:

@@ -15,41 +15,32 @@ TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c
 TRIVY_VERSION = "v0.70.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
-# REBALANCED on measured PR #247 evidence (2026-08-26, run 33013524468). The
-# first-pass move of ``RainfallMetricList.tsx`` from shard a to b was reverted
-# before merge because it only relocated an UNMEASURED guess; this is the
-# measured move that comment asked for. Shard a ran 55m25s against shard b's
-# 19m01s (671 vs 318 incremental mutants, 25.18 vs 11.16 tests per mutant),
-# and 27 of shard a's 28 timeouts sat in ONE file, ``authStore.ts``, whose
-# mutants are covered by up to 55 tests each -- the store is in every blast
-# radius. Reciprocal: ``src/lib/api/core.ts`` moves b -> a. It is shard b's
-# ONLY timeout carrier (4 of 4) and its second-largest mutant block (278), so
-# it compensates measured cost instead of just mutant count. ``typeGuards.ts``
-# (478 mutants, the largest, 0 timeouts) was rejected as the reciprocal: it
-# would overshoot (a -> 1860 mutants) and re-concentrate cost in a. What stays
-# pinned here is the PARTITION contract: the two shards are disjoint and their
-# union is exactly the canonical ``stryker.config.mjs`` target list.
+# PR #249 measured that moving authStore between two file-level shards only
+# flipped the bottleneck. The 238/239 boundary has no spanning mutants, so two
+# contiguous ranges form a lossless partition while the remaining files stay
+# cost-balanced. This contract keeps the PR and full-baseline matrices identical.
 STRYKER_SHARDS = {
+    "auth1": ["src/stores/authStore.ts:1-238"],
+    "auth2": ["src/stores/authStore.ts:239-324"],
     "a": [
-        "src/lib/api/core.ts",
-        "src/lib/auth.ts",
-        "src/lib/validators.ts",
-        "src/components/map2d/bpaPracticas.ts",
-        "src/components/admin/pilarVerdeWidget/computeKpis.ts",
-        "src/components/map2d/canalesFormat.ts",
         "src/components/map2d/rainfall/rainfallFormat.ts",
-        "src/components/map2d/rainfall/RainfallMetricList.tsx",
+        "src/lib/formatters.ts",
+        "src/hooks/useRainfallAnalysis.ts",
+        "src/stores/configStore.ts",
+        "src/lib/auth.ts",
+        "src/components/map2d/bpaPracticas.ts",
+        "src/components/map2d/canalesFormat.ts",
     ],
     "b": [
-        "src/stores/authStore.ts",
-        "src/stores/configStore.ts",
-        "src/lib/formatters.ts",
-        "src/lib/errorHandler.ts",
-        "src/lib/typeGuards.ts",
-        "src/components/admin/pilarVerdeWidget/fmt.ts",
-        "src/lib/api/rainfall.ts",
-        "src/hooks/useRainfallAnalysis.ts",
+        "src/components/map2d/rainfall/RainfallMetricList.tsx",
         "src/components/map2d/rainfall/RainfallDetailPanel.tsx",
+        "src/lib/api/core.ts",
+        "src/lib/validators.ts",
+        "src/lib/typeGuards.ts",
+        "src/lib/errorHandler.ts",
+        "src/components/admin/pilarVerdeWidget/fmt.ts",
+        "src/components/admin/pilarVerdeWidget/computeKpis.ts",
+        "src/lib/api/rainfall.ts",
     ],
 }
 NGINX_RUNTIME_IMAGE = (
@@ -111,6 +102,10 @@ def _stryker_config_targets() -> list[str]:
 def _mutation_matrix(workflow: dict[str, object], job: str) -> dict[str, list[str]]:
     include = workflow["jobs"][job]["strategy"]["matrix"]["include"]
     return {entry["shard"]: entry["mutate"].split(",") for entry in include}
+
+
+def _mutation_source(target: str) -> str:
+    return target.split(":", 1)[0]
 
 
 def _assert_fail_closed_trivy(job: str) -> None:
@@ -1648,10 +1643,20 @@ def test_frontend_mutation_matrices_partition_the_canonical_scope() -> None:
     assert len(canonical) == len(set(canonical)) == 17
     assert pr_shards == STRYKER_SHARDS
     assert full_shards == STRYKER_SHARDS
-    assert set(pr_shards) == {"a", "b"}
+    assert set(pr_shards) == {"a", "b", "auth1", "auth2"}
+    ordinary_shards = pr_shards["a"] + pr_shards["b"]
     assert set(pr_shards["a"]).isdisjoint(pr_shards["b"])
-    assert set(pr_shards["a"] + pr_shards["b"]) == set(canonical)
-    assert len(canonical) == len(pr_shards["a"] + pr_shards["b"])
+    assert len(ordinary_shards) == len(set(ordinary_shards)) == 16
+    assert set(_mutation_source(target) for target in ordinary_shards) == set(canonical) - {
+        "src/stores/authStore.ts"
+    }
+    assert pr_shards["auth1"] == ["src/stores/authStore.ts:1-238"]
+    assert pr_shards["auth2"] == ["src/stores/authStore.ts:239-324"]
+    auth_ranges = [(1, 238), (239, 324)]
+    assert auth_ranges[0][1] + 1 == auth_ranges[1][0]
+    assert auth_ranges[0][1] < auth_ranges[1][0]
+    auth_store = REPO_ROOT / "consorcio-web/src/stores/authStore.ts"
+    assert auth_ranges[-1][1] == len(auth_store.read_text(encoding="utf-8").splitlines())
     for job in ("mutation", "mutation-full"):
         assert workflow["jobs"][job]["strategy"]["fail-fast"] is False
         # 90 -> 120 (PR #242 incident, 2026-08-26): a COLD shard-a run measures
@@ -1697,10 +1702,11 @@ def test_frontend_mutation_shards_use_isolated_reports_artifacts_and_caches() ->
     assert publish.index('test "$MUTATION_FULL_RESULT" = "success"') < publish.index(
         "uses: actions/cache/save@v4"
     )
-    assert publish.count("uses: actions/cache/save@v4") == 2
-    for shard in ("a", "b"):
+    assert publish.count("uses: actions/cache/save@v4") == 4
+    for shard in ("a", "b", "auth1", "auth2"):
         assert f"stryker-incremental-{shard}.json" in publish
         assert f"stryker-incremental-v2-{shard}-${{{{ github.sha }}}}" in publish
+    assert 'filter_stryker_incremental.py --mutate "$MUTATE"' in mutation
 
 
 def test_frontend_mutation_aggregate_and_required_gate_fail_closed() -> None:
@@ -1724,7 +1730,12 @@ def test_frontend_mutation_aggregate_and_required_gate_fail_closed() -> None:
     for aggregate_job in (aggregate, full_aggregate):
         assert expected_source_loader in aggregate_job
         assert '--expected-source "$EXPECTED_SOURCES"' in aggregate_job
+        assert "--ranged-source src/stores/authStore.ts" in aggregate_job
         assert "python3 scripts/aggregate_stryker_reports.py --minimum 75" in aggregate_job
+        assert (
+            "reports/mutation/mutation-auth1.json reports/mutation/mutation-auth2.json"
+            in aggregate_job
+        )
         assert "reports/mutation/mutation-a.json reports/mutation/mutation-b.json" in aggregate_job
 
     assert {"mutation", "mutation-gate"} <= _needs(frontend, "ci-gate")
@@ -1736,7 +1747,29 @@ def test_frontend_mutation_aggregate_and_required_gate_fail_closed() -> None:
     assert 'require mutation-gate "$MUTATION_GATE_RESULT"' in gate
 
 
-def _write_mutation_report(path: Path, files: dict[str, list[str]]) -> None:
+def _write_mutation_report(
+    path: Path, files: dict[str, list[str] | list[dict[str, object]]]
+) -> None:
+    def mutant(entry: str | dict[str, object], index: int) -> dict[str, object]:
+        if isinstance(entry, dict):
+            return entry
+        return {
+            # IDs intentionally repeat across files: the aggregator must use
+            # stable location/mutator/replacement identity instead of this ID.
+            "id": str(index),
+            "mutatorName": "BooleanLiteral",
+            "replacement": "false",
+            "status": entry,
+            "static": False,
+            "coveredBy": ["test"],
+            "killedBy": ["test"] if entry in {"Killed", "Timeout"} else [],
+            "testsCompleted": 1,
+            "location": {
+                "start": {"line": index + 1, "column": 0},
+                "end": {"line": index + 1, "column": 1},
+            },
+        }
+
     path.write_text(
         json.dumps(
             {
@@ -1745,10 +1778,7 @@ def _write_mutation_report(path: Path, files: dict[str, list[str]]) -> None:
                     source: {
                         "language": "typescript",
                         "source": "",
-                        "mutants": [
-                            {"id": str(index), "status": status}
-                            for index, status in enumerate(statuses)
-                        ],
+                        "mutants": [mutant(status, index) for index, status in enumerate(statuses)],
                     }
                     for source, statuses in files.items()
                 },
@@ -1762,7 +1792,8 @@ def _run_stryker_aggregate(
     tmp_path: Path,
     *reports: Path,
     minimum: str = "75",
-    expected_sources: tuple[str, ...] = ("src/a.ts", "src/b.ts"),
+    expected_sources: tuple[str, ...] = ("src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"),
+    ranged_sources: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     script = REPO_ROOT / "consorcio-web" / "scripts" / "aggregate_stryker_reports.py"
     return subprocess.run(
@@ -1776,6 +1807,7 @@ def _run_stryker_aggregate(
                 for source in expected_sources
                 for argument in ("--expected-source", source)
             ),
+            *(argument for source in ranged_sources for argument in ("--ranged-source", source)),
             *(str(report) for report in reports),
         ],
         cwd=tmp_path,
@@ -1788,37 +1820,49 @@ def _run_stryker_aggregate(
 def test_stryker_aggregate_global_score_boundaries_and_status_semantics(tmp_path: Path) -> None:
     first = tmp_path / "a.json"
     second = tmp_path / "b.json"
+    third = tmp_path / "c.json"
+    fourth = tmp_path / "d.json"
     _write_mutation_report(first, {"src/a.ts": ["Killed", "Timeout", "Survived", "Ignored"]})
     _write_mutation_report(
         second, {"src/b.ts": ["Killed", "NoCoverage", "CompileError", "RuntimeError"]}
     )
+    _write_mutation_report(third, {"src/c.ts": ["Killed"]})
+    _write_mutation_report(fourth, {"src/d.ts": ["Survived"]})
 
-    at_boundary = _run_stryker_aggregate(tmp_path, first, second, minimum="60")
+    at_boundary = _run_stryker_aggregate(tmp_path, first, second, third, fourth, minimum="57.14")
     assert at_boundary.returncode == 0, at_boundary.stderr
     assert (
-        "detected=3 undetected=2 valid=5 excluded=3 score=60.00% minimum=60.00%"
+        "detected=4 undetected=3 valid=7 excluded=3 score=57.14% minimum=57.14%"
         in at_boundary.stdout
     )
 
-    below = _run_stryker_aggregate(tmp_path, first, second, minimum="60.01")
+    below = _run_stryker_aggregate(tmp_path, first, second, third, fourth, minimum="57.15")
     assert below.returncode != 0
 
     _write_mutation_report(first, {"src/a.ts": ["Killed"] * 3})
     _write_mutation_report(second, {"src/b.ts": ["NoCoverage"]})
-    exact_75 = _run_stryker_aggregate(tmp_path, first, second)
+    _write_mutation_report(third, {"src/c.ts": ["Ignored"]})
+    _write_mutation_report(fourth, {"src/d.ts": ["RuntimeError"]})
+    exact_75 = _run_stryker_aggregate(tmp_path, first, second, third, fourth)
     assert exact_75.returncode == 0
     assert "score=75.00%" in exact_75.stdout
 
     _write_mutation_report(first, {"src/a.ts": ["Killed"] * 7499})
     _write_mutation_report(second, {"src/b.ts": ["Survived"] * 2501})
-    just_below = _run_stryker_aggregate(tmp_path, first, second)
+    _write_mutation_report(third, {"src/c.ts": ["Ignored"]})
+    _write_mutation_report(fourth, {"src/d.ts": ["RuntimeError"]})
+    just_below = _run_stryker_aggregate(tmp_path, first, second, third, fourth)
     assert just_below.returncode != 0
     assert "score=74.99%" in just_below.stdout
 
 
 def test_stryker_aggregate_rejects_incomplete_or_invalid_reports(tmp_path: Path) -> None:
     valid = tmp_path / "valid.json"
+    third = tmp_path / "third.json"
+    fourth = tmp_path / "fourth.json"
     _write_mutation_report(valid, {"src/a.ts": ["Killed"]})
+    _write_mutation_report(third, {"src/c.ts": ["Killed"]})
+    _write_mutation_report(fourth, {"src/d.ts": ["Killed"]})
 
     cases: list[tuple[str, Path]] = []
     missing = tmp_path / "missing.json"
@@ -1853,51 +1897,165 @@ def test_stryker_aggregate_rejects_incomplete_or_invalid_reports(tmp_path: Path)
     cases.append(("missing status", missing_status))
 
     for label, invalid in cases:
-        result = _run_stryker_aggregate(tmp_path, valid, invalid)
+        result = _run_stryker_aggregate(tmp_path, valid, invalid, third, fourth)
         assert result.returncode != 0, label
 
     duplicate = tmp_path / "duplicate.json"
     _write_mutation_report(duplicate, {"src/a.ts": ["Killed"]})
-    result = _run_stryker_aggregate(tmp_path, valid, duplicate)
+    result = _run_stryker_aggregate(tmp_path, valid, duplicate, third, fourth)
     assert result.returncode != 0
 
 
 def test_stryker_aggregate_requires_exact_canonical_source_union(tmp_path: Path) -> None:
     canonical = tuple(_stryker_config_targets())
-    midpoint = len(canonical) // 2
-    first = tmp_path / "a.json"
-    second = tmp_path / "b.json"
+    first, second, third, fourth = (tmp_path / f"{name}.json" for name in "abcd")
+    quarter = len(canonical) // 4
 
-    _write_mutation_report(first, {source: ["Killed"] for source in canonical[:midpoint]})
-    _write_mutation_report(second, {source: ["Killed"] for source in canonical[midpoint:]})
+    _write_mutation_report(first, {source: ["Killed"] for source in canonical[:quarter]})
+    _write_mutation_report(
+        second, {source: ["Killed"] for source in canonical[quarter : quarter * 2]}
+    )
+    _write_mutation_report(
+        third, {source: ["Killed"] for source in canonical[quarter * 2 : quarter * 3]}
+    )
+    _write_mutation_report(fourth, {source: ["Killed"] for source in canonical[quarter * 3 :]})
     exact = _run_stryker_aggregate(
         tmp_path,
         first,
         second,
-        expected_sources=(",".join(canonical[:midpoint]), *canonical[midpoint:]),
+        third,
+        fourth,
+        expected_sources=(",".join(canonical),),
     )
     assert exact.returncode == 0, exact.stderr
 
-    _write_mutation_report(second, {source: ["Killed"] for source in canonical[midpoint:-1]})
+    _write_mutation_report(fourth, {source: ["Killed"] for source in canonical[quarter * 3 : -1]})
     missing = _run_stryker_aggregate(
-        tmp_path, first, second, expected_sources=(",".join(canonical),)
+        tmp_path, first, second, third, fourth, expected_sources=(",".join(canonical),)
     )
     assert missing.returncode == 2
     assert f"missing source file paths: {canonical[-1]}" in missing.stderr
 
     unexpected_source = "src/lib/renamed-target.ts"
     _write_mutation_report(
-        second,
+        fourth,
         {
-            **{source: ["Killed"] for source in canonical[midpoint:]},
+            **{source: ["Killed"] for source in canonical[quarter * 3 :]},
             unexpected_source: ["Killed"],
         },
     )
     unexpected = _run_stryker_aggregate(
-        tmp_path, first, second, expected_sources=(",".join(canonical),)
+        tmp_path, first, second, third, fourth, expected_sources=(",".join(canonical),)
     )
     assert unexpected.returncode == 2
     assert f"unexpected source file paths: {unexpected_source}" in unexpected.stderr
+
+
+def test_stryker_aggregate_merges_disjoint_ranges_and_rejects_overlap_or_conflict(
+    tmp_path: Path,
+) -> None:
+    auth1, auth2, a, b = (tmp_path / f"{name}.json" for name in ("auth1", "auth2", "a", "b"))
+    auth_source = "src/stores/authStore.ts"
+    first_mutant = {
+        "id": "0",
+        "mutatorName": "BooleanLiteral",
+        "replacement": "false",
+        "status": "Killed",
+        "static": True,
+        "coveredBy": [],
+        "killedBy": [],
+        "testsCompleted": 0,
+        "location": {"start": {"line": 1, "column": 0}, "end": {"line": 1, "column": 1}},
+    }
+    second_mutant = {
+        **first_mutant,
+        "location": {"start": {"line": 239, "column": 0}, "end": {"line": 239, "column": 1}},
+    }
+    _write_mutation_report(auth1, {auth_source: [first_mutant]})
+    _write_mutation_report(auth2, {auth_source: [second_mutant]})
+    _write_mutation_report(a, {"src/a.ts": ["Killed"]})
+    _write_mutation_report(b, {"src/b.ts": ["Killed"]})
+    arguments = {
+        "expected_sources": (auth_source, "src/a.ts", "src/b.ts"),
+        "ranged_sources": (auth_source,),
+    }
+    merged = _run_stryker_aggregate(tmp_path, auth1, auth2, a, b, **arguments)
+    assert merged.returncode == 0, merged.stderr
+
+    _write_mutation_report(auth2, {auth_source: [first_mutant]})
+    overlap = _run_stryker_aggregate(tmp_path, auth1, auth2, a, b, **arguments)
+    assert overlap.returncode == 2
+    assert "overlapping mutant identity" in overlap.stderr
+
+    _write_mutation_report(auth2, {auth_source: [{**first_mutant, "status": "Survived"}]})
+    conflict = _run_stryker_aggregate(tmp_path, auth1, auth2, a, b, **arguments)
+    assert conflict.returncode == 2
+    assert "conflicting status" in conflict.stderr
+
+
+def test_stryker_incremental_filter_removes_stale_paths_and_out_of_range_mutants(
+    tmp_path: Path,
+) -> None:
+    baseline = tmp_path / "baseline.json"
+    _write_mutation_report(
+        baseline,
+        {
+            "src/stores/authStore.ts": [
+                {
+                    "id": "in",
+                    "mutatorName": "BooleanLiteral",
+                    "replacement": "false",
+                    "status": "Killed",
+                    "location": {
+                        "start": {"line": 1, "column": 0},
+                        "end": {"line": 238, "column": 1},
+                    },
+                },
+                {
+                    "id": "out",
+                    "mutatorName": "BooleanLiteral",
+                    "replacement": "false",
+                    "status": "Killed",
+                    "location": {
+                        "start": {"line": 239, "column": 0},
+                        "end": {"line": 239, "column": 1},
+                    },
+                },
+                {
+                    "id": "spans",
+                    "mutatorName": "BooleanLiteral",
+                    "replacement": "false",
+                    "status": "Killed",
+                    "location": {
+                        "start": {"line": 238, "column": 0},
+                        "end": {"line": 239, "column": 1},
+                    },
+                },
+            ],
+            "src/lib/stale.ts": ["Killed"],
+        },
+    )
+    script = REPO_ROOT / "consorcio-web" / "scripts" / "filter_stryker_incremental.py"
+    filtered = subprocess.run(
+        [sys.executable, str(script), "--mutate", "src/stores/authStore.ts:1-238", str(baseline)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert filtered.returncode == 0, filtered.stderr
+    files = json.loads(baseline.read_text(encoding="utf-8"))["files"]
+    assert set(files) == {"src/stores/authStore.ts"}
+    assert [mutant["id"] for mutant in files["src/stores/authStore.ts"]["mutants"]] == ["in"]
+
+    baseline.write_text('{"files":{"src/stores/authStore.ts":{"mutants":[{}]}}}', encoding="utf-8")
+    malformed = subprocess.run(
+        [sys.executable, str(script), "--mutate", "src/stores/authStore.ts:1-238", str(baseline)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert malformed.returncode == 2
+    assert "has no location" in malformed.stderr
 
 
 RAINFALL_HARNESS_WORKFLOW = ".github/workflows/rainfall-multi-parcel-e2e.yml"
