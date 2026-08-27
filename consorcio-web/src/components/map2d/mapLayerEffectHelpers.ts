@@ -12,6 +12,7 @@ import {
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
+import type { HazardBasinFilter } from './hazardBasinFilter';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
@@ -123,7 +124,11 @@ export function syncSoilLayers(
  */
 export { CATASTRO_FILL_OPACITY };
 
-export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
+export function syncCatastroLayers(
+  map: maplibregl.Map,
+  isVisible: boolean,
+  filter: HazardBasinFilter = null
+) {
   if (!map.getSource(SOURCE_IDS.CATASTRO)) {
     map.addSource(SOURCE_IDS.CATASTRO, {
       type: 'vector',
@@ -179,6 +184,8 @@ export function syncCatastroLayers(map: maplibregl.Map, isVisible: boolean) {
 
   setLayerVisibility(map, `${SOURCE_IDS.CATASTRO}-fill`, isVisible);
   setLayerVisibility(map, `${SOURCE_IDS.CATASTRO}-line`, isVisible);
+  map.setFilter(`${SOURCE_IDS.CATASTRO}-fill`, filter);
+  map.setFilter(`${SOURCE_IDS.CATASTRO}-line`, filter);
 }
 
 /** Find the first waterway *-line layer currently mounted on the map, if any. */

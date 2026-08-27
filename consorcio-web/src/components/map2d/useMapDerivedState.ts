@@ -127,7 +127,7 @@ export function useMapDerivedState(params: {
   // (2026-08-01), asi que dejan de excluirse de las opciones DEM. Su leyenda la
   // resuelve RasterLegend via LAYER_LEGEND_CONFIG y el tile URL sale de
   // allGeoLayers, igual que el resto de los tipos tile-capable.
-  const demLayers = allGeoLayers;
+  const demLayers = allGeoLayers.filter((layer) => layer.tipo !== 'precip_normal');
 
   const activeLegendItems = useMemo(
     () =>

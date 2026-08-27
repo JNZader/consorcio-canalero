@@ -20,6 +20,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@tanstack/react-router');
 /**
  * MapLibre needs a real WebGL context, which happy-dom does not have. Only the
  * surface `useMapInitialization` touches is stubbed — this file asserts on the

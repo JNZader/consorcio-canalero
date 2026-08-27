@@ -7,6 +7,7 @@ import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import { YPF_ESTACION_BOMBEO_COLOR, YPF_ESTACION_BOMBEO_LABEL } from './ypfEstacionBombeoLayer';
+import type { PrecipitationRange } from './precipRanges';
 
 interface LegendItem {
   color: string;
@@ -306,6 +307,8 @@ interface LeyendaPanelProps {
    * orphan against the previous section.
    */
   readonly pilarAzulEscuelasVisible?: boolean;
+  /** Hazard precipitation legend, derived from the exact tile rescale range. */
+  readonly hazardPrecipitationRange?: PrecipitationRange | null;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -325,6 +328,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   pilarAzulCanalesRelevadosVisible = false,
   pilarAzulCanalesPropuestosVisible = false,
   pilarAzulEscuelasVisible = false,
+  hazardPrecipitationRange = null,
   propuestasEtapasVisibility,
   onSetEtapaVisible,
 }: LeyendaPanelProps) {
@@ -418,6 +422,32 @@ export const LeyendaPanel = memo(function LeyendaPanel({
                   ))}
                 </Stack>
               )}
+            </>
+          )}
+          {hazardPrecipitationRange && (
+            <>
+              <Divider my={4} />
+              <Stack gap={2} data-testid="hazard-precipitation-legend">
+                <Text fw={500} size="xs">
+                  {hazardPrecipitationRange.label}
+                </Text>
+                <Box
+                  data-testid="hazard-precipitation-gradient"
+                  style={{
+                    background: `linear-gradient(to right, ${hazardPrecipitationRange.colorStops.join(', ')})`,
+                    borderRadius: 'var(--mantine-radius-xs)',
+                    height: 12,
+                  }}
+                />
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">
+                    {hazardPrecipitationRange.min} {hazardPrecipitationRange.unit}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {hazardPrecipitationRange.max} {hazardPrecipitationRange.unit}
+                  </Text>
+                </Group>
+              </Stack>
             </>
           )}
           {pilarVerdeBpaHistoricoVisible && (

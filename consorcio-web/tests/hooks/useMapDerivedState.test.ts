@@ -15,14 +15,26 @@ describe('useMapDerivedState', () => {
       useMapDerivedState({
         capas: {
           zona: featureCollection([
-            { type: 'Feature', geometry: { type: 'Point', coordinates: [-62.6, -32.6] }, properties: {} },
+            {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [-62.6, -32.6] },
+              properties: {},
+            },
           ]),
         },
         caminos: featureCollection([
-          { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: { color: '#fff' } },
+          {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [] },
+            properties: { color: '#fff' },
+          },
         ]),
         soilMap: featureCollection([
-          { type: 'Feature', geometry: { type: 'Point', coordinates: [-62.6, -32.6] }, properties: { cap: 'III' } },
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [-62.6, -32.6] },
+            properties: { cap: 'III' },
+          },
         ]),
         basins: featureCollection([
           {
@@ -36,7 +48,11 @@ describe('useMapDerivedState', () => {
             nombre: 'Canales existentes',
             style: { color: '#0B3D91' },
             data: featureCollection([
-              { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: {} },
+              {
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: [] },
+                properties: {},
+              },
             ]),
           },
         ],
@@ -58,7 +74,7 @@ describe('useMapDerivedState', () => {
         },
         hasApprovedZones: false,
         intersectionsLength: 1,
-      }),
+      })
     );
 
     expect(result.current.zonaCollection?.features).toHaveLength(1);
@@ -79,6 +95,7 @@ describe('useMapDerivedState', () => {
           { id: 'dem-1', tipo: 'dem_raw', nombre: 'Elevacion (DEM)' },
           { id: 'flood-1', tipo: 'flood_risk', nombre: 'flood_risk_area' },
           { id: 'drain-1', tipo: 'drainage_need', nombre: 'drainage_need_area' },
+          { id: 'precip-annual', tipo: 'precip_normal', nombre: 'precip_normal_anual' },
         ],
         approvedZones: null,
         hiddenClasses: {},

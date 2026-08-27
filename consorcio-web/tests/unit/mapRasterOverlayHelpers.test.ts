@@ -13,7 +13,15 @@ function createMap() {
   return {
     getSource: vi.fn((id: string) => sources.get(id)),
     getLayer: vi.fn((id: string) => (layers.has(id) ? { id } : undefined)),
-    addSource: vi.fn((id: string, source: { tiles: string[] }) => sources.set(id, source)),
+    addSource: vi.fn((id: string, source: { tiles: string[] }) => {
+      const rasterSource = {
+        ...source,
+        setTiles: vi.fn((tiles: string[]) => {
+          rasterSource.tiles = tiles;
+        }),
+      };
+      sources.set(id, rasterSource);
+    }),
     addLayer: vi.fn((layer: { id: string }) => layers.add(layer.id)),
     removeSource: vi.fn((id: string) => sources.delete(id)),
     removeLayer: vi.fn((id: string) => layers.delete(id)),
@@ -60,6 +68,36 @@ describe('hazard raster lifecycle', () => {
       expect.objectContaining({ paint: { 'raster-opacity': 0.55 } }),
       'vector-layers-start'
     );
+  });
+
+  it('switches an existing precipitation source from annual to monthly tiles without remounting', () => {
+    const map = createMap();
+    const januaryPrecipitation = {
+      ...annualPrecipitation,
+      id: 'precip-january',
+      metadata_extra: { mes: '01' },
+    };
+
+    syncPrecipNormalLayer(map, {
+      isHazardActive: true,
+      precipMonth: 'anual',
+      allGeoLayers: [annualPrecipitation, januaryPrecipitation],
+    });
+    const source = map.getSource('map2d-precip-normal') as {
+      setTiles: ReturnType<typeof vi.fn>;
+    };
+    vi.clearAllMocks();
+
+    syncPrecipNormalLayer(map, {
+      isHazardActive: true,
+      precipMonth: '01',
+      allGeoLayers: [annualPrecipitation, januaryPrecipitation],
+    });
+
+    expect(source.setTiles).toHaveBeenCalledWith([expect.stringContaining('precip-january')]);
+    expect(map.addSource).not.toHaveBeenCalled();
+    expect(map.removeSource).not.toHaveBeenCalled();
+    expect(map.removeLayer).not.toHaveBeenCalled();
   });
 
   it('switches a mounted risk source without changing the DEM source', () => {
