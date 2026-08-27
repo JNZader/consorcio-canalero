@@ -6,8 +6,9 @@ runners:
     lint:
       - npm run lint
     build:
-      - rm -rf dist/ && npm run build && { chown -R "$(stat -c %u:%g .)" dist/ 2>/dev/null || true; } && mkdir -p node_modules/.vite-temp node_modules/.vite && chmod -R a+w node_modules/.vite-temp node_modules/.vite
+      - npm run typecheck
     test:
+      - rm -rf dist/ && npm run build && { chown -R "$(stat -c %u:%g .)" dist/ 2>/dev/null || true; } && mkdir -p node_modules/.vite-temp node_modules/.vite && chmod -R a+w node_modules/.vite-temp node_modules/.vite
       - npm run test:run
   - name: backend
     stack: python
