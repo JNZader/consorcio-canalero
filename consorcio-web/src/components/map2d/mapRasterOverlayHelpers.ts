@@ -1,5 +1,7 @@
 import type maplibregl from 'maplibre-gl';
 
+import { buildTileUrl, findPrecipNormalLayer, type GeoLayerInfo } from '../../hooks/useGeoLayers';
+import { HAZARD_RISK_CLASSES } from '../../hooks/useHazardUrlState';
 import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { SOURCE_IDS } from './map2dConfig';
 import { IGN_IMAGE_URL, IGN_MAPLIBRE_COORDS, setLayerVisibility } from './map2dUtils';
@@ -48,6 +50,109 @@ function getRasterTiles(source: maplibregl.Source | undefined): string[] | undef
     | (maplibregl.Source & { serialize?: () => { tiles?: string[] }; tiles?: string[] })
     | undefined;
   return serializableSource?.serialize?.().tiles ?? serializableSource?.tiles;
+}
+
+type RasterTileSourceWithSetter = maplibregl.RasterTileSource & {
+  setTiles?: (tiles: string[]) => void;
+};
+
+function syncHazardRasterSource(
+  map: maplibregl.Map,
+  sourceId: string,
+  tileUrl: string | null,
+  visible: boolean
+) {
+  const layerId = `${sourceId}-layer`;
+  if (!visible || !tileUrl) {
+    setLayerVisibility(map, layerId, false);
+    return;
+  }
+
+  const source = map.getSource(sourceId) as maplibregl.RasterTileSource | undefined;
+  if (!source) {
+    map.addSource(sourceId, { type: 'raster', tiles: [tileUrl], tileSize: 256 });
+  } else if (getRasterTiles(source)?.[0] !== tileUrl) {
+    const mutableSource = source as RasterTileSourceWithSetter;
+    if (mutableSource.setTiles) {
+      mutableSource.setTiles([tileUrl]);
+    } else {
+      removeRasterOverlay(map, sourceId);
+      map.addSource(sourceId, { type: 'raster', tiles: [tileUrl], tileSize: 256 });
+    }
+  }
+
+  if (!map.getLayer(layerId)) {
+    map.addLayer(
+      {
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: { 'raster-opacity': 0.55 },
+      },
+      'vector-layers-start'
+    );
+  } else {
+    setLayerVisibility(map, layerId, true);
+  }
+}
+
+export function syncPrecipNormalLayer(
+  map: maplibregl.Map,
+  params: {
+    readonly isHazardActive: boolean;
+    readonly precipMonth: string;
+    readonly allGeoLayers: readonly GeoLayerInfo[];
+  }
+) {
+  const layer = findPrecipNormalLayer(params.allGeoLayers, params.precipMonth);
+  const rescaleMax = params.precipMonth === 'anual' ? 1800 : 200;
+  syncHazardRasterSource(
+    map,
+    SOURCE_IDS.PRECIP_NORMAL,
+    layer ? buildTileUrl(layer.id, { rescaleMin: 0, rescaleMax }) : null,
+    params.isHazardActive
+  );
+}
+
+function findRiskLayer(
+  allGeoLayers: readonly GeoLayerInfo[],
+  type: string
+): GeoLayerInfo | undefined {
+  return (
+    allGeoLayers.find((layer) => layer.tipo === type && layer.variante === 'relevado') ??
+    allGeoLayers.find((layer) => layer.tipo === type)
+  );
+}
+
+function hiddenRiskRanges(activeRiskClasses: readonly string[]): number[] {
+  return HAZARD_RISK_CLASSES.flatMap((riskClass, index) =>
+    activeRiskClasses.includes(riskClass) ? [] : [index]
+  );
+}
+
+export function syncHazardRiskLayers(
+  map: maplibregl.Map,
+  params: {
+    readonly isHazardActive: boolean;
+    readonly activeRiskClasses: readonly string[];
+    readonly allGeoLayers: readonly GeoLayerInfo[];
+  }
+) {
+  const hideRanges = hiddenRiskRanges(params.activeRiskClasses);
+  const riskLayers = [
+    [SOURCE_IDS.FLOOD_RISK, 'flood_risk'],
+    [SOURCE_IDS.DRAINAGE_NEED, 'drainage_need'],
+  ] as const;
+
+  for (const [sourceId, type] of riskLayers) {
+    const layer = findRiskLayer(params.allGeoLayers, type);
+    syncHazardRasterSource(
+      map,
+      sourceId,
+      layer ? buildTileUrl(layer.id, { hideRanges }) : null,
+      params.isHazardActive
+    );
+  }
 }
 
 export function syncDemRasterLayer(

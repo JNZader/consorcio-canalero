@@ -63,6 +63,8 @@ export const SOURCE_IDS = {
   COMPARISON_RIGHT: 'map2d-comparison-right',
   DEM_RASTER: 'map2d-dem-raster',
   PRECIP_NORMAL: 'map2d-precip-normal',
+  FLOOD_RISK: 'map2d-flood-risk',
+  DRAINAGE_NEED: 'map2d-drainage-need',
   MARTIN_PUNTOS: 'map2d-martin-puntos',
   // ── flujo-caminos (design D6) — ranked road crossings ──
   // ONE geojson source feeding BOTH `road_flow-flujo` and `road_flow-canal`,
