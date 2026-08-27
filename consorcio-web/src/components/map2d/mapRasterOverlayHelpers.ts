@@ -118,10 +118,10 @@ function findRiskLayer(
   allGeoLayers: readonly GeoLayerInfo[],
   type: string
 ): GeoLayerInfo | undefined {
-  return (
-    allGeoLayers.find((layer) => layer.tipo === type && layer.variante === 'relevado') ??
-    allGeoLayers.find((layer) => layer.tipo === type)
-  );
+  // Operational overlays must only ever reflect the relevado (current-reality)
+  // variant. When it is absent the catalog entry is treated as missing — a
+  // natural/escenario layer must never be mounted as generic current risk.
+  return allGeoLayers.find((layer) => layer.tipo === type && layer.variante === 'relevado');
 }
 
 function hiddenRiskRanges(activeRiskClasses: readonly string[]): number[] {
