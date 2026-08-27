@@ -44,7 +44,8 @@ import { syncParcelaHighlightLayers } from './map2d/parcelaHighlightLayers';
 import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
 import { useMapDragSignal } from './map2d/useMapDragSignal';
 import { useGEELayers } from '../hooks/useGEELayers';
-import { useGeoLayers } from '../hooks/useGeoLayers';
+import { combineHazardGeoLayers, useGeoLayers, usePrecipNormalLayers } from '../hooks/useGeoLayers';
+import { useHazardBasinMembership } from '../hooks/useHazardBasinMembership';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
@@ -98,6 +99,10 @@ import { reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
+import { HazardMapControls } from './map2d/HazardMapControls';
+import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
+import { useHazardMapState } from './map2d/useHazardMapState';
+import type { HazardRiskClass } from '../hooks/useHazardUrlState';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -122,6 +127,16 @@ const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
  */
 function isFichaOverlayPainting(enabled: boolean, data: unknown): boolean {
   return enabled && data != null;
+}
+
+function toggleHazardRiskClass(
+  riskClasses: readonly HazardRiskClass[],
+  riskClass: HazardRiskClass,
+  visible: boolean
+): HazardRiskClass[] {
+  return visible
+    ? [...new Set([...riskClasses, riskClass])]
+    : riskClasses.filter((currentRiskClass) => currentRiskClass !== riskClass);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -255,6 +270,8 @@ export default function MapaMapLibre() {
     reload: reloadGeoLayers,
     enabled: geoLayersEnabled,
   } = useGeoLayers();
+  const { layers: precipNormalLayers } = usePrecipNormalLayers();
+  const hazardGeoLayers = combineHazardGeoLayers(allGeoLayers, precipNormalLayers);
   const { approvedZones, hasApprovedZones } = useApprovedZones();
 
   // Cruces de camino (flujo-caminos, S4). ONE hook owns the whole capability —
@@ -513,6 +530,18 @@ export default function MapaMapLibre() {
     clearMeasurements,
     handleParcelasCapReached
   );
+  // Memoized: `useHazardMapState` feeds these options to the basin-zoom
+  // effect's deps — a fresh identity per render would re-fire fitBounds.
+  const hazardBasins = useMemo(() => buildHazardBasinOptions(basins), [basins]);
+  const hazard = useHazardMapState({
+    mapRef,
+    mapReady,
+    allGeoLayers: hazardGeoLayers,
+    basinIds: hazardBasins.map((basin) => basin.id),
+    basinOptions: hazardBasins,
+    fichaActive: fichaInteraction.request !== null,
+  });
+  const basinMembership = useHazardBasinMembership(hazard.isHazardActive ? hazard.url.basin : null);
 
   // Canal-selection mode gate (A6). Declared here so it can feed BOTH the
   // vt_canal_network cyan-line effect below AND `useMapLayerEffects`, which is
@@ -558,6 +587,7 @@ export default function MapaMapLibre() {
     roadFlowCrossings: roadFlow.mapCollection,
     roadFlowTotalFlujoNatural: roadFlow.totalFlujoNatural,
     roadFlowKinds: roadFlow.kinds,
+    catastroMembership: basinMembership.membership,
   });
 
   useMapInteractionEffects({
@@ -934,15 +964,16 @@ export default function MapaMapLibre() {
     vectorVisibility,
     etapaGate
   );
-  const activeLayerCount = sumFamilyActiveCounts(
-    buildFamilyActiveCounts({
-      layerItems: vectorLayerItems,
-      vectorVisibility,
-      canalChildIds,
-      showIGNOverlay,
-      showDemOverlay,
-    })
-  );
+  const activeLayerCount =
+    sumFamilyActiveCounts(
+      buildFamilyActiveCounts({
+        layerItems: vectorLayerItems,
+        vectorVisibility,
+        canalChildIds,
+        showIGNOverlay,
+        showDemOverlay,
+      })
+    ) + hazard.visibleRasterLayers.length;
 
   // ONE definition of the base-layer controls (capa base + the satellite view
   // mode slot), consumed by BOTH placements below so they cannot drift: the
@@ -1175,6 +1206,28 @@ export default function MapaMapLibre() {
               onSubmitTramoSurvey={roadFlow.onSubmitTramoSurvey}
               onCloseTramoSurvey={roadFlow.onCloseTramoSurvey}
             />
+            <HazardMapControls
+              active={hazard.isHazardActive}
+              desktop={isDesktop}
+              desktopCollapsed={!hazard.panelOpen}
+              mobileCollapsed={!hazard.mobileExpanded}
+              onDesktopCollapsedChange={(collapsed) => hazard.setPanelOpen(!collapsed)}
+              onMobileCollapsedChange={(collapsed) => hazard.setMobileExpanded(!collapsed)}
+              controls={{
+                basins: hazardBasins,
+                selectedBasinId: hazard.url.basin,
+                onBasinChange: hazard.url.setBasin,
+                visibleRiskClasses: hazard.url.riskClasses,
+                onRiskClassChange: (riskClass, visible) =>
+                  hazard.url.setRiskClasses(
+                    toggleHazardRiskClass(hazard.url.riskClasses, riskClass, visible)
+                  ),
+                precipitationPeriod: hazard.url.precipMonth,
+                onPrecipitationPeriodChange: hazard.url.setPrecipMonth,
+                onReset: hazard.url.resetToDefaults,
+                fichaOpen: fichaInteraction.request !== null,
+              }}
+            />
           </Box>
         }
         controls={
@@ -1207,6 +1260,12 @@ export default function MapaMapLibre() {
               canalesPropuestosItems={canalesPropuestosItems}
               etapaGate={etapaGate}
               layerFineControl={layerFineControl}
+              hazardLayerControl={{
+                active: hazard.isHazardActive,
+                activeLayerCount: hazard.visibleRasterLayers.length,
+                onActiveChange: hazard.url.setHazard,
+                visible: hazard.gateOpen,
+              }}
               pilarVerdeLayersLoading={pilarVerdeLayersLoading}
               pilarVerdeLayersError={pilarVerdeLayersError}
               layerHealth={layerHealth}
@@ -1230,6 +1289,7 @@ export default function MapaMapLibre() {
                   pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
                   pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
                   pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
+                  hazardPrecipitationRange={hazard.precipitationRange}
                   propuestasEtapasVisibility={propuestasEtapasVisibility}
                   onSetEtapaVisible={setEtapaVisible}
                 />

@@ -9,6 +9,7 @@ import { ALL_ETAPAS } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
+import { buildHazardBasinFilter, type HazardBasinMembership } from './hazardBasinFilter';
 import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
 import {
   syncAgroAceptadaLayer,
@@ -49,6 +50,7 @@ interface UseMapLayerEffectsParams {
   mapReady: boolean;
   baseLayer: 'osm' | 'satellite';
   vectorVisibility: Record<string, boolean>;
+  catastroMembership?: HazardBasinMembership | null;
   soilCollection: FeatureCollection | null;
   roadsCollection: FeatureCollection | null | undefined;
   basins: FeatureCollection | null | undefined;
@@ -113,6 +115,7 @@ export function useMapLayerEffects({
   mapReady,
   baseLayer,
   vectorVisibility,
+  catastroMembership = null,
   soilCollection,
   roadsCollection,
   basins,
@@ -157,8 +160,12 @@ export function useMapLayerEffects({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncCatastroLayers(map, !!vectorVisibility.catastro);
-  }, [mapReady, mapRef, vectorVisibility.catastro]);
+    syncCatastroLayers(
+      map,
+      !!vectorVisibility.catastro,
+      buildHazardBasinFilter(catastroMembership)
+    );
+  }, [catastroMembership, mapReady, mapRef, vectorVisibility.catastro]);
 
   useEffect(() => {
     const map = mapRef.current;

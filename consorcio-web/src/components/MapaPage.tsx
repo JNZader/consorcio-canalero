@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { Suspense, lazy, useState } from 'react';
 import { useGeoLayers } from '../hooks/useGeoLayers';
+import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
 import { useDashboardStats } from '../lib/query';
@@ -36,6 +37,7 @@ type MapViewMode = '2d' | '3d';
 export function MapaContent() {
   // Verificar permisos - solo miembros de la comision (admin/operador) ven las estadisticas
   const isCommissionMember = useCanAccess(['admin', 'operador']);
+  const multiHazardEnabled = useMultiHazardGate();
 
   // Obtener estadisticas reales del API (auth-aware hook)
   const { stats, isLoading: statsLoading } = useDashboardStats('30d');
@@ -96,6 +98,11 @@ export function MapaContent() {
                   Explora las cuencas, caminos e infraestructura del consorcio
                 </Text>
               </Stack>
+              {multiHazardEnabled && (
+                <Badge size="sm" color="blue" variant="light">
+                  Visor de riesgos disponible
+                </Badge>
+              )}
 
               {/* Selected satellite image info */}
               {selectedImage ? (

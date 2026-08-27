@@ -6,6 +6,7 @@ import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { SOURCE_IDS } from './map2dConfig';
 import { IGN_IMAGE_URL, IGN_MAPLIBRE_COORDS, setLayerVisibility } from './map2dUtils';
 import { PILAR_VERDE_Z_ORDER } from './pilarVerdeLayers';
+import { getPrecipitationRange } from './precipRanges';
 
 interface LayerLike {
   id: string;
@@ -105,11 +106,16 @@ export function syncPrecipNormalLayer(
   }
 ) {
   const layer = findPrecipNormalLayer(params.allGeoLayers, params.precipMonth);
-  const rescaleMax = params.precipMonth === 'anual' ? 1800 : 200;
+  const precipitationRange = getPrecipitationRange(params.precipMonth);
   syncHazardRasterSource(
     map,
     SOURCE_IDS.PRECIP_NORMAL,
-    layer ? buildTileUrl(layer.id, { rescaleMin: 0, rescaleMax }) : null,
+    layer
+      ? buildTileUrl(layer.id, {
+          rescaleMin: precipitationRange.min,
+          rescaleMax: precipitationRange.max,
+        })
+      : null,
     params.isHazardActive
   );
 }
@@ -153,6 +159,24 @@ export function syncHazardRiskLayers(
       params.isHazardActive
     );
   }
+}
+
+/** Lists only hazard rasters that use the same catalog selection as the map mutators. */
+export function getVisibleHazardRasterLayers(params: {
+  readonly allGeoLayers: readonly GeoLayerInfo[];
+  readonly isHazardActive: boolean;
+  readonly precipMonth: string;
+}): Array<{ tipo: string }> {
+  if (!params.isHazardActive) return [];
+
+  const layers: Array<{ tipo: string }> = [];
+  if (findPrecipNormalLayer(params.allGeoLayers, params.precipMonth)) {
+    layers.push({ tipo: 'precip_normal' });
+  }
+  for (const type of ['flood_risk', 'drainage_need']) {
+    if (findRiskLayer(params.allGeoLayers, type)) layers.push({ tipo: type });
+  }
+  return layers;
 }
 
 export function syncDemRasterLayer(

@@ -36,7 +36,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
    - Corridas GPU en la workstation: `answer_set` n≥30 por el path real + grading + re-grade ciego ≥1 día · `slm_bench` (deepseek vs Qwen3-8B — la escalera 9.6b) · margen real de `bm25_ce` · knobs de costo (A2)
 2. **🎉 LA CEREMONIA DE ENCENDIDO CONJUNTO** — `docs/rag/runbook-encendido.md` paso a paso: el box camina 6 revisiones (004→0021→0022→0023→005→006→007), ETL red_vial con dry-run vs GEE, task de cruces, re-ingest con 3 clases, sidecar, worker por systemd en la workstation, flags al final. Incluye el O.1 de flujo-caminos.
 3. **Archives**: `flujo-caminos` y `consorcio-conocimiento-semantico` (post-ceremonia; 10.4 se marca con la medición real del box).
-4. **Multi-hazard viewer re-cut** — retomar en 2/7: b3 (lifecycle), b3b, c6, c5, e2e+CI estricto.
+4. **Multi-hazard viewer re-cut** — 4/7 completado: c3, c1, b3 (lifecycle) y b3b (integración visible). Sigue c6, c5 y e2e+CI estricto.
 5. ~~**Lluvia v2** — `lluvia-antecedente-referencia`~~ ✅ CERRADO 2026-08-26 (#231-#235, archivado). Queda la higiene mm/hr de IMERG (backlog).
 6. ~~**Lluvia — eventos extremos**~~ ✅ CÓDIGO CERRADO 2026-08-26 (#237-#242, verify final + archive en curso). Al box en la ceremonia: `alembic upgrade head` + `docker compose exec backend python -m app.domains.geo.rainfall.detector_cli`.
 7. **Pared de "Discrepancias" en la ficha** — fix UI propuesto, espera el dale.

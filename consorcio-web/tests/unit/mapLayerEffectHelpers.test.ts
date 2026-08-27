@@ -52,6 +52,7 @@ function createMapMock(options?: {
     removeSource: vi.fn((id: string) => {
       sourceRecords.delete(id);
     }),
+    setFilter: vi.fn(),
     setLayoutProperty: vi.fn(),
     // A real MapLibre `Map` always exposes these; the mock was simply
     // incomplete. `syncCatastroLayers` now registers hover handlers to give the
@@ -194,6 +195,20 @@ describe('mapLayerEffectHelpers', () => {
       'fill-opacity': CATASTRO_FILL_OPACITY,
     });
     expect(CATASTRO_FILL_OPACITY).toBeGreaterThan(0.08);
+  });
+
+  it('applies membership filters after creating catastro layers and clears them fail-open', () => {
+    const map = createMapMock();
+    const filter = ['in', ['get', 'nomenclatura'], ['literal', ['19-01-001']]] as const;
+
+    syncCatastroLayers(map as never, true, filter);
+
+    expect(map.setFilter).toHaveBeenCalledWith('map2d-catastro-fill', filter);
+    expect(map.setFilter).toHaveBeenCalledWith('map2d-catastro-line', filter);
+
+    syncCatastroLayers(map as never, true, null);
+
+    expect(map.setFilter).toHaveBeenLastCalledWith('map2d-catastro-line', null);
   });
 
   it('gives the catastro fill a pointer cursor without clobbering the measure crosshair', () => {

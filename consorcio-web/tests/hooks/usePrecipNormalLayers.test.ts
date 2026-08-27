@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildPrecipNormalCatalogEndpoint,
+  combineHazardGeoLayers,
   dedupePrecipNormalLayers,
   findPrecipNormalLayer,
   selectDemLayers,
@@ -34,7 +35,17 @@ describe('precipitation catalog contract', () => {
 
   it('keeps precipitation out of the legacy DEM selector', () => {
     const dem = { ...layer('anual', '2026-01-01', 'dem'), tipo: 'dem_raw', fuente: 'dem_pipeline' };
-    expect(selectDemLayers([dem, layer('anual', '2026-01-01')]).map((item) => item.id)).toEqual(['dem']);
+    expect(selectDemLayers([dem, layer('anual', '2026-01-01')]).map((item) => item.id)).toEqual([
+      'dem',
+    ]);
+  });
+
+  it('adds the dedicated precipitation catalog only to the hazard lifecycle catalog', () => {
+    const dem = { ...layer('anual', '2026-01-01', 'dem'), tipo: 'dem_raw', fuente: 'dem_pipeline' };
+    const hazardLayers = combineHazardGeoLayers([dem], [layer('anual', '2026-01-01', 'annual')]);
+
+    expect(hazardLayers.map((item) => item.id)).toEqual(['dem', 'annual']);
+    expect(selectDemLayers(hazardLayers).map((item) => item.id)).toEqual(['dem']);
   });
 
   it('keeps twelve normalized months plus annual after regeneration deduplication', () => {
@@ -48,13 +59,27 @@ describe('precipitation catalog contract', () => {
 
     expect(deduped).toHaveLength(13);
     expect(deduped.map((item) => item.id)).toEqual([
-      'new-1', 'new-2', 'new-3', 'new-4', 'new-5', 'new-6',
-      'new-7', 'new-8', 'new-9', 'new-10', 'new-11', 'new-12', 'new-anual',
+      'new-1',
+      'new-2',
+      'new-3',
+      'new-4',
+      'new-5',
+      'new-6',
+      'new-7',
+      'new-8',
+      'new-9',
+      'new-10',
+      'new-11',
+      'new-12',
+      'new-anual',
     ]);
   });
 
   it('looks up normalized numeric months and annual', () => {
-    const layers = dedupePrecipNormalLayers([layer('01', '2026-01-01'), layer('anual', '2026-01-01')]);
+    const layers = dedupePrecipNormalLayers([
+      layer('01', '2026-01-01'),
+      layer('anual', '2026-01-01'),
+    ]);
 
     expect(findPrecipNormalLayer(layers, 1)?.metadata_extra?.mes).toBe('01');
     expect(findPrecipNormalLayer(layers, 'ANUAL')?.id).toBe('anual');

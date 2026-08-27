@@ -13,10 +13,12 @@ const mockedApiFetch = vi.mocked(apiFetch);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((currentResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((currentResolve, currentReject) => {
     resolve = currentResolve;
+    reject = currentReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -79,6 +81,39 @@ describe('useHazardBasinMembership', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.membership).toBeNull();
     expect(result.current.error).toEqual(new Error('Forbidden'));
+  });
+
+  it('clears cached membership while a same-basin refetch is pending or fails', async () => {
+    const refetch = deferred<{
+      basin_id: string;
+      feature_id_property: 'nomenclatura';
+      intersecting_feature_ids: string[];
+    }>();
+    mockedApiFetch
+      .mockResolvedValueOnce({
+        basin_id: 'basin-a',
+        feature_id_property: 'nomenclatura',
+        intersecting_feature_ids: ['A-01'],
+      })
+      .mockReturnValueOnce(refetch.promise);
+
+    const { result, rerender } = renderHook(
+      ({ basinId }: { basinId: string | null }) => useHazardBasinMembership(basinId),
+      { initialProps: { basinId: 'basin-a' }, wrapper: createQueryWrapper() }
+    );
+
+    await waitFor(() =>
+      expect(result.current.membership?.intersectingFeatureIds).toEqual(['A-01'])
+    );
+    rerender({ basinId: null });
+    rerender({ basinId: 'basin-a' });
+
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledTimes(2));
+    expect(result.current.membership).toBeNull();
+
+    refetch.reject(new Error('Refetch failed'));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.membership).toBeNull();
   });
 
   it('keeps the current basin membership when a prior basin response settles late', async () => {

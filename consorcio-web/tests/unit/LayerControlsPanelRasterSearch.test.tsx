@@ -88,4 +88,25 @@ describe('<LayerControlsPanel /> — raster search (T3c fix 2)', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps()} />);
     expect(screen.queryByTestId('layer-controls-raster')).toBeNull();
   });
+
+  it('shows the gated hazard toggle and includes its mounted rasters in the base count', () => {
+    const onActiveChange = vi.fn();
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps()}
+        hazardLayerControl={{
+          active: true,
+          activeLayerCount: 3,
+          onActiveChange,
+          visible: true,
+        }}
+      />
+    );
+
+    const hazardToggle = screen.getByLabelText('Visor de riesgos');
+    expect(hazardToggle).toBeChecked();
+    fireEvent.click(hazardToggle);
+
+    expect(onActiveChange).toHaveBeenCalledWith(false);
+  });
 });

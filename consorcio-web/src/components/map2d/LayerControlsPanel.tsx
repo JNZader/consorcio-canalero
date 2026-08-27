@@ -69,6 +69,13 @@ export interface LayerFineControl {
   readonly onLayerOrderChange: (orderedIds: string[]) => void;
 }
 
+export interface HazardLayerControl {
+  readonly active: boolean;
+  readonly activeLayerCount: number;
+  readonly onActiveChange: (active: boolean) => void;
+  readonly visible: boolean;
+}
+
 /**
  * No-op default so panels/tests that don't wire fine-controls keep working —
  * the sliders seed from `?? 1` (untouched) and the order section falls back to
@@ -153,6 +160,8 @@ interface LayerControlsPanelProps {
    * `DEFAULT_LAYER_ORDER`).
    */
   readonly layerFineControl?: LayerFineControl;
+  /** Operator-only hazard toggle and the raster count it owns. */
+  readonly hazardLayerControl?: HazardLayerControl;
   /**
    * Pilar Verde render-payload status (R4-001 / R4-002). The ~1.0 MB GeoJSON
    * group is lazy: it only downloads once a `pilar_verde_*` toggle is on, so
@@ -413,6 +422,7 @@ export function LayerControlsPanel({
   canalesPropuestosItems,
   etapaGate = null,
   layerFineControl = NOOP_FINE_CONTROL,
+  hazardLayerControl,
   pilarVerdeLayersLoading = false,
   pilarVerdeLayersError = null,
   layerHealth,
@@ -542,7 +552,8 @@ export function LayerControlsPanel({
       if (isSearching && !BASE_SEARCH_LABELS.some((label) => label.includes(normalizedQuery))) {
         continue;
       }
-      const baseActiveCount = familyActiveCounts[LAYER_CATEGORY.BASE];
+      const baseActiveCount =
+        familyActiveCounts[LAYER_CATEGORY.BASE] + (hazardLayerControl?.activeLayerCount ?? 0);
       // The DEM catalog (`geo_layers`) lives in BASE, and this branch `continue`s
       // before the shared vector-family loop — without this row the banner would
       // count a failure the panel never explains.
@@ -584,6 +595,15 @@ export function LayerControlsPanel({
                 checked={showIGNOverlay}
                 onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
               />
+              {hazardLayerControl?.visible && (
+                <Checkbox
+                  label="Visor de riesgos"
+                  checked={hazardLayerControl.active}
+                  onChange={(event) =>
+                    hazardLayerControl.onActiveChange(event.currentTarget.checked)
+                  }
+                />
+              )}
               {demEnabled && (
                 <>
                   <Checkbox

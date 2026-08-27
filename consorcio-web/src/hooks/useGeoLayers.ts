@@ -241,6 +241,14 @@ export function dedupePrecipNormalLayers(layers: readonly GeoLayerInfo[]): GeoLa
     .map(([, layer]) => layer);
 }
 
+/** Keeps the dedicated precipitation catalog out of generic map-layer consumers. */
+export function combineHazardGeoLayers(
+  geoLayers: readonly GeoLayerInfo[],
+  precipNormalLayers: readonly GeoLayerInfo[]
+): GeoLayerInfo[] {
+  return [...geoLayers, ...dedupePrecipNormalLayers(precipNormalLayers)];
+}
+
 export function buildPrecipNormalCatalogEndpoint(token: string | null, role: unknown): string {
   const canUseOperatorCatalog =
     token !== null &&
