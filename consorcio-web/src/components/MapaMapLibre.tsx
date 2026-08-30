@@ -101,6 +101,7 @@ import { useReportHighlight } from './map2d/useReportHighlight';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 import { HazardMapControls } from './map2d/HazardMapControls';
 import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
+import { buildHazardLegendView } from './map2d/hazardLegend';
 import { useHazardMapState } from './map2d/useHazardMapState';
 import type { HazardRiskClass } from '../hooks/useHazardUrlState';
 
@@ -540,6 +541,12 @@ export default function MapaMapLibre() {
     basinIds: hazardBasins.map((basin) => basin.id),
     basinOptions: hazardBasins,
     fichaActive: fichaInteraction.request !== null,
+  });
+  const hazardLegend = buildHazardLegendView({
+    active: hazard.isHazardActive,
+    riskClasses: hazard.url.riskClasses,
+    selectedBasinId: hazard.url.basin,
+    basinOptions: hazardBasins,
   });
   const basinMembership = useHazardBasinMembership(hazard.isHazardActive ? hazard.url.basin : null);
 
@@ -1290,6 +1297,7 @@ export default function MapaMapLibre() {
                   pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
                   pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
                   hazardPrecipitationRange={hazard.precipitationRange}
+                  hazardLegend={hazardLegend}
                   propuestasEtapasVisibility={propuestasEtapasVisibility}
                   onSetEtapaVisible={setEtapaVisible}
                 />
