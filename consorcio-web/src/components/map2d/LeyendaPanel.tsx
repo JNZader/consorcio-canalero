@@ -7,6 +7,11 @@ import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import { YPF_ESTACION_BOMBEO_COLOR, YPF_ESTACION_BOMBEO_LABEL } from './ypfEstacionBombeoLayer';
+import {
+  colorForHazardRiskClass,
+  HAZARD_BASIN_OUTLINE_COLOR,
+  type HazardLegendView,
+} from './hazardLegend';
 import type { PrecipitationRange } from './precipRanges';
 
 interface LegendItem {
@@ -309,6 +314,8 @@ interface LeyendaPanelProps {
   readonly pilarAzulEscuelasVisible?: boolean;
   /** Hazard precipitation legend, derived from the exact tile rescale range. */
   readonly hazardPrecipitationRange?: PrecipitationRange | null;
+  /** Hazard URL risk-class chips, hidden-class indicator, and selected-basin label. */
+  readonly hazardLegend?: HazardLegendView | null;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -329,6 +336,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   pilarAzulCanalesPropuestosVisible = false,
   pilarAzulEscuelasVisible = false,
   hazardPrecipitationRange = null,
+  hazardLegend = null,
   propuestasEtapasVisibility,
   onSetEtapaVisible,
 }: LeyendaPanelProps) {
@@ -448,6 +456,56 @@ export const LeyendaPanel = memo(function LeyendaPanel({
                   </Text>
                 </Group>
               </Stack>
+            </>
+          )}
+          {hazardLegend && (
+            <>
+              <Divider my={4} />
+              <Text size="xs" c="dimmed" fw={500}>
+                Clases de riesgo
+              </Text>
+              <Group gap="xs" wrap="wrap" data-testid="hazard-risk-class-legend">
+                {hazardLegend.visibleClasses.map((riskClass) => {
+                  const color = colorForHazardRiskClass(riskClass);
+                  return (
+                    <Group key={riskClass} gap={4} wrap="nowrap">
+                      <span
+                        data-color={color}
+                        aria-label={riskClass}
+                        style={{
+                          display: 'inline-block',
+                          width: 12,
+                          height: 12,
+                          backgroundColor: color,
+                          border: '1px solid rgba(0, 0, 0, 0.25)',
+                          borderRadius: 2,
+                        }}
+                      />
+                      <Text size="xs">{riskClass}</Text>
+                    </Group>
+                  );
+                })}
+              </Group>
+              {hazardLegend.hasHiddenClasses && (
+                <Text size="xs" c="dimmed" data-testid="hazard-hidden-classes-indicator">
+                  algunas clases ocultas
+                </Text>
+              )}
+              {hazardLegend.basinLabel && (
+                <>
+                  <Text size="xs" c="dimmed" fw={500}>
+                    Cuenca seleccionada
+                  </Text>
+                  <Group gap="xs" wrap="nowrap" data-testid="hazard-basin-legend">
+                    <Box
+                      aria-label={`Contorno de cuenca ${hazardLegend.basinLabel}`}
+                      className={styles.legendItemBorder}
+                      style={{ border: `2px solid ${HAZARD_BASIN_OUTLINE_COLOR}` }}
+                    />
+                    <Text size="xs">{hazardLegend.basinLabel}</Text>
+                  </Group>
+                </>
+              )}
             </>
           )}
           {pilarVerdeBpaHistoricoVisible && (
