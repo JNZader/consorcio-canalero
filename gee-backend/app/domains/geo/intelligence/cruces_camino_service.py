@@ -259,9 +259,28 @@ def run_crossing_task(
         finally:
             db.close()
 
-        gdf, excluidos, run_parametros = detectar_cruces_camino_flujo(
-            roads, canals, flow_dir_copy, flow_acc_copy, **parametros
-        )
+        from app.domains.geo.job_heartbeat import heartbeat_running_job
+
+        def _touch_running() -> bool:
+            if job_id is None:
+                return False
+            touch_db = session_factory()
+            try:
+                ok = jobs.update_job_status_if_current(
+                    touch_db,
+                    uuid.UUID(job_id),
+                    expected_estado=EstadoGeoJob.RUNNING.value,
+                    estado=EstadoGeoJob.RUNNING.value,
+                )
+                touch_db.commit()
+                return ok
+            finally:
+                touch_db.close()
+
+        with heartbeat_running_job(_touch_running):
+            gdf, excluidos, run_parametros = detectar_cruces_camino_flujo(
+                roads, canals, flow_dir_copy, flow_acc_copy, **parametros
+            )
         run_parametros["variante"] = variante.variante
         run_parametros["area_id"] = area_id
 

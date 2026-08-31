@@ -24,6 +24,9 @@ CELERY_VISIBILITY_TIMEOUT_SECONDS = int(
     os.environ.get("CELERY_VISIBILITY_TIMEOUT_SECONDS", "14400")
 )
 GEO_STALE_JOB_MINUTES = int(os.environ.get("GEO_STALE_JOB_MINUTES", "300"))
+# Idle timeout for tipos that CAS/heartbeat during compute. Must stay below
+# GEO_STALE_JOB_MINUTES. GEE flood/class keep the long floor (no mid-run CAS).
+GEO_HEARTBEAT_STALE_JOB_MINUTES = int(os.environ.get("GEO_HEARTBEAT_STALE_JOB_MINUTES", "45"))
 CELERY_OUTBOX_BATCH_SIZE = max(
     1,
     min(int(os.environ.get("CELERY_OUTBOX_BATCH_SIZE", "25")), 100),
@@ -261,6 +264,7 @@ def reconcile_stale_geo_jobs_task() -> dict[str, int]:
         counts = reconcile_stale_geo_jobs(
             db,
             stale_after=timedelta(minutes=GEO_STALE_JOB_MINUTES),
+            heartbeat_stale_after=timedelta(minutes=GEO_HEARTBEAT_STALE_JOB_MINUTES),
         )
         db.commit()
         return counts
