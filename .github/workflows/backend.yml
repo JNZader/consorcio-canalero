@@ -437,17 +437,29 @@ jobs:
       - name: Require both image policy jobs
         working-directory: ${{ github.workspace }}
         run: |
+          # Image jobs `needs:` lint/typecheck/test. If lint fails they are
+          # skipped, and `always()` still runs this policy. Demanding success
+          # then double-fails and hides the audit/lint cause. Both skipped =
+          # policy N/A (Backend CI already fails the skipped-upstream job).
+          # One skipped + one success/failure is inconsistent — fail closed.
+          if [ "$IMAGE_BACKEND_RESULT" = "skipped" ] && [ "$IMAGE_GEO_WORKER_RESULT" = "skipped" ]; then
+            echo "image jobs skipped; policy N/A"
+            echo "policy_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           test "$IMAGE_BACKEND_RESULT" = "success"
           test "$IMAGE_GEO_WORKER_RESULT" = "success"
+          echo "policy_needed=true" >> "$GITHUB_OUTPUT"
+        id: gate
       - name: Download image security evidence
         uses: actions/download-artifact@v4
-        if: always()
+        if: ${{ always() && steps.gate.outputs.policy_needed == 'true' }}
         with:
           pattern: image-security-*
           path: ${{ github.workspace }}/evidence
           merge-multiple: true
       - name: Require every raw and SARIF report
-        if: always()
+        if: ${{ always() && steps.gate.outputs.policy_needed == 'true' }}
         working-directory: ${{ github.workspace }}
         run: |
           test -s "${{ github.workspace }}/evidence/backend-trivy.json"
