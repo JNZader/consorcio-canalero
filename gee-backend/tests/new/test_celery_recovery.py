@@ -19,6 +19,7 @@ from app.domains.geo.models import (
 def test_delivery_policy_is_scoped_and_timeouts_are_compatible() -> None:
     from app.core.celery_app import (
         CELERY_VISIBILITY_TIMEOUT_SECONDS,
+        GEO_HEARTBEAT_STALE_JOB_MINUTES,
         GEO_STALE_JOB_MINUTES,
         LONG_TASK_SOFT_TIME_LIMIT_SECONDS,
         LONG_TASK_TIME_LIMIT_SECONDS,
@@ -55,6 +56,7 @@ def test_delivery_policy_is_scoped_and_timeouts_are_compatible() -> None:
     assert 600 < LONG_TASK_SOFT_TIME_LIMIT_SECONDS < LONG_TASK_TIME_LIMIT_SECONDS
     assert LONG_TASK_TIME_LIMIT_SECONDS < CELERY_VISIBILITY_TIMEOUT_SECONDS
     assert CELERY_VISIBILITY_TIMEOUT_SECONDS < GEO_STALE_JOB_MINUTES * 60
+    assert 15 < GEO_HEARTBEAT_STALE_JOB_MINUTES < GEO_STALE_JOB_MINUTES
     assert celery_app.conf.broker_transport_options["visibility_timeout"] == (
         CELERY_VISIBILITY_TIMEOUT_SECONDS
     )
@@ -216,7 +218,7 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
     assert unpublished.estado == EstadoGeoJob.PENDING
     assert recently_published.estado == EstadoGeoJob.PENDING
     assert stale_running.estado == EstadoGeoJob.FAILED
-    assert "stale" in (stale_running.error or "").lower()
+    assert stale_running.error == "worker_lost"
     assert recent_pending.estado == EstadoGeoJob.PENDING
     assert completed_job.estado == EstadoGeoJob.COMPLETED
 
@@ -233,7 +235,7 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
     assert stale_published_analysis.estado == EstadoGeoJob.FAILED
     assert "stale" in (stale_published_analysis.error or "").lower()
     assert stale_running_analysis.estado == EstadoGeoJob.FAILED
-    assert "stale" in (stale_running_analysis.error or "").lower()
+    assert stale_running_analysis.error == "worker_lost"
     assert legacy_pending_analysis.estado == EstadoGeoJob.FAILED
     assert "stale" in (legacy_pending_analysis.error or "").lower()
 
@@ -275,7 +277,7 @@ def test_reconciliation_terminalizes_worker_loss_and_fences_redelivery(db) -> No
     assert reconciled["geo_jobs"] == 1
     assert orphaned.estado == EstadoGeoJob.FAILED
     reconciled_error = orphaned.error
-    assert "stale" in (reconciled_error or "").lower()
+    assert reconciled_error == "worker_lost"
 
     # A late-ack redelivery cannot re-claim the terminalized tracker.
     assert not repo.update_job_status_if_current(
@@ -465,3 +467,48 @@ def test_analisis_claim_cannot_resurrect_or_overwrite_terminal_rows(db) -> None:
     assert completed.estado == EstadoGeoJob.COMPLETED
     assert completed.resultado == {"winner": True}
     assert completed.error is None
+
+
+def test_heartbeat_tipos_reap_sooner_than_gee_geojobs(db) -> None:
+    from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+
+    now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
+    idle = now - timedelta(minutes=50)
+    dem = GeoJob(
+        tipo=TipoGeoJob.DEM_PIPELINE,
+        estado=EstadoGeoJob.RUNNING,
+        parametros={"area_id": "dem-orphan"},
+        updated_at=idle,
+    )
+    crossings = GeoJob(
+        tipo=TipoGeoJob.ROAD_FLOW_CROSSINGS,
+        estado=EstadoGeoJob.RUNNING,
+        parametros={"area_id": "cruces-orphan"},
+        updated_at=idle,
+    )
+    gee = GeoJob(
+        tipo=TipoGeoJob.GEE_FLOOD,
+        estado=EstadoGeoJob.RUNNING,
+        updated_at=idle,
+    )
+    db.add_all([dem, crossings, gee])
+    db.flush()
+
+    counts = reconcile_stale_geo_jobs(
+        db,
+        now=now,
+        stale_after=timedelta(minutes=300),
+        heartbeat_stale_after=timedelta(minutes=45),
+    )
+    db.flush()
+    db.refresh(dem)
+    db.refresh(crossings)
+    db.refresh(gee)
+
+    assert counts == {"geo_jobs": 2, "gee_analyses": 0}
+    assert dem.estado == EstadoGeoJob.FAILED
+    assert dem.error == "worker_lost"
+    assert crossings.estado == EstadoGeoJob.FAILED
+    assert crossings.error == "worker_lost"
+    assert gee.estado == EstadoGeoJob.RUNNING
+    assert gee.error is None

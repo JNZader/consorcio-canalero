@@ -223,7 +223,19 @@ def run_classification_task(
                 crs=4326,
             ).to_crs(_raster_crs(dem_copia))
 
-            for tramo_ref, geometria in zip(gdf["id"], gdf.geometry):
+            for index, (tramo_ref, geometria) in enumerate(zip(gdf["id"], gdf.geometry)):
+                if index % 10 == 0:
+                    touch_db = session_factory()
+                    try:
+                        jobs.update_job_status_if_current(
+                            touch_db,
+                            uuid.UUID(job_id),
+                            expected_estado=EstadoGeoJob.RUNNING.value,
+                            estado=EstadoGeoJob.RUNNING.value,
+                        )
+                        touch_db.commit()
+                    finally:
+                        touch_db.close()
                 resultado = clasificar_tramo(geometria, dem_copia, **parametros)
                 if resultado is None:
                     sin_cobertura.append(str(tramo_ref))

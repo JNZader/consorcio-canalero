@@ -147,7 +147,12 @@ def _run_step(
     kwargs = kwargs or {}
     logger.info(f"{step_name}.start", job_id=job_id)
     try:
-        result = fn(*args, **kwargs)
+        from app.domains.geo.job_heartbeat import heartbeat_running_job
+
+        with heartbeat_running_job(
+            lambda: _update_job(job_id, expected_estado=EstadoGeoJob.RUNNING),
+        ):
+            result = fn(*args, **kwargs)
         logger.info(f"{step_name}.done", job_id=job_id, output=result)
         return result
     except Exception:
