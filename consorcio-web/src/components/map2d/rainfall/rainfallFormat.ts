@@ -744,6 +744,112 @@ export function stringifyUnknownFields(value: unknown): string {
     .join('; ');
 }
 
+const EXPECTED_INTERVAL_PREFIX = 'expected_interval=';
+const DAY_MS = 86_400_000;
+
+interface ParsedExpectedInterval {
+  readonly iso: string;
+  readonly ms: number;
+}
+
+/** `expected_interval=<ISO-8601>` with a parseable timestamp; anything else is opaque. */
+function parseExpectedInterval(token: string): ParsedExpectedInterval | null {
+  if (!token.startsWith(EXPECTED_INTERVAL_PREFIX)) return null;
+  const iso = token.slice(EXPECTED_INTERVAL_PREFIX.length);
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  return { iso, ms };
+}
+
+function gcd(a: number, b: number): number {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y !== 0) {
+    const remainder = x % y;
+    x = y;
+    y = remainder;
+  }
+  return x;
+}
+
+/** Regular step for a sorted run: UTC-midnight dates are daily; otherwise gcd, then median. */
+function rangeStep(timestamps: readonly number[]): number {
+  if (timestamps.length < 2) return DAY_MS;
+  if (timestamps.every((ms) => ms % DAY_MS === 0)) return DAY_MS;
+
+  const deltas: number[] = [];
+  for (let i = 1; i < timestamps.length; i++) {
+    const delta = timestamps[i] - timestamps[i - 1];
+    if (delta > 0) deltas.push(delta);
+  }
+  if (deltas.length === 0) return DAY_MS;
+
+  const byGcd = deltas.reduce((acc, delta) => gcd(acc, delta));
+  if (byGcd > 0) return byGcd;
+
+  const ordered = [...deltas].sort((left, right) => left - right);
+  const median = ordered[Math.floor(ordered.length / 2)];
+  return median > 0 ? median : DAY_MS;
+}
+
+function formatIntervalRange(items: readonly ParsedExpectedInterval[]): string {
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (items.length === 1) return `${EXPECTED_INTERVAL_PREFIX}${first.iso}`;
+  return `${EXPECTED_INTERVAL_PREFIX}${first.iso} → ${last.iso} (${items.length})`;
+}
+
+function compressIntervalRun(tokens: readonly string[]): string[] {
+  const parsed = tokens
+    .map(parseExpectedInterval)
+    .filter((item): item is ParsedExpectedInterval => item !== null)
+    .sort((left, right) => left.ms - right.ms);
+  if (parsed.length === 0) return [...tokens];
+
+  const step = rangeStep(parsed.map((item) => item.ms));
+  const fragments: string[] = [];
+  let runStart = 0;
+  for (let i = 1; i <= parsed.length; i++) {
+    const continues = i < parsed.length && parsed[i].ms === parsed[i - 1].ms + step;
+    if (continues) continue;
+    fragments.push(formatIntervalRange(parsed.slice(runStart, i)));
+    runStart = i;
+  }
+  return fragments;
+}
+
+/**
+ * Collapse a discrepancy list so N consecutive `expected_interval=<ISO>`
+ * tokens become one `expected_interval=<first> → <last> (N)` fragment.
+ *
+ * Consecutive means adjacent in the list AND a regular time step (UTC-midnight
+ * daily, else gcd/median of adjacent deltas). A gap starts a new range.
+ * Non-interval tokens keep their original relative order. Empty → `''`.
+ */
+export function formatDiscrepancies(discrepancies: readonly string[]): string {
+  if (discrepancies.length === 0) return '';
+
+  const fragments: string[] = [];
+  let intervalRun: string[] = [];
+
+  const flushIntervalRun = (): void => {
+    if (intervalRun.length === 0) return;
+    fragments.push(...compressIntervalRun(intervalRun));
+    intervalRun = [];
+  };
+
+  for (const token of discrepancies) {
+    if (parseExpectedInterval(token) !== null) {
+      intervalRun.push(token);
+    } else {
+      flushIntervalRun();
+      fragments.push(token);
+    }
+  }
+  flushIntervalRun();
+  return fragments.join('; ');
+}
+
 /**
  * The scope limit of ONE metric, in the reader's language (backend design D7).
  *

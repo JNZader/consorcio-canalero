@@ -40,8 +40,8 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 4. ~~**Multi-hazard viewer re-cut**~~ ✅ CÓDIGO CERRADO 2026-08-31 (#250-#255).
 5. ~~**Lluvia v2** — `lluvia-antecedente-referencia`~~ ✅ CERRADO 2026-08-26 (#231-#235, archivado). Queda la higiene mm/hr de IMERG (backlog).
 6. ~~**Lluvia — eventos extremos**~~ ✅ CÓDIGO CERRADO 2026-08-26 (#237-#242, verify final + archive en curso). Al box en la ceremonia: `alembic upgrade head` + `docker compose exec backend python -m app.domains.geo.rainfall.detector_cli`.
-7. **Pared de "Discrepancias" en la ficha** — fix UI propuesto; el owner autorizó 2026-08-31 “todo lo de código, producto después”.
-8. **Código restante (no box)** — (a) archive SDD multi-hazard; (b) ~~issue #164 pre-push harness~~ ✅ CERRADO 2026-08-31 (#257); (c) ~~CVE-2026-66046 `libexpat1`~~ congelado 2026-08-31 (#258); (d) sunset image-policy **sigue** 2026-09-18 — no se prorrogó; (e) ~~reaper de `geo_jobs`~~ heartbeat + idle 45 min (DEM/cruces; GEE sigue 300); (f) `auto-corridor` 4.3 UX operativa. `ficha-territorial` A7 **ya está en main** (#108/#110/#111, 2026-08-02) — los checkboxes OpenSpec están stale. `lluvia-intensidad-subdiaria` es solo explore, no hay proposal.
+7. ~~**Pared de "Discrepancias" en la ficha**~~ ✅ CERRADO 2026-08-31 — la UI comprime `expected_interval` consecutivos a un rango+conteo (`expected_interval=<first> → <last> (N)`).
+8. **Código restante (no box)** — (a) archive SDD multi-hazard; (b) ~~issue #164 pre-push harness~~ ✅ CERRADO 2026-08-31 (#257); (c) ~~CVE-2026-66046 `libexpat1`~~ congelado 2026-08-31 (#258); (d) sunset image-policy **sigue** 2026-09-18 — no se prorrogó; (e) ~~reaper de `geo_jobs`~~ heartbeat + idle 45 min (DEM/cruces; GEE sigue 300); (f) ~~`auto-corridor` 4.3 UX operativa~~ ABANDONED. Feature landed WIP `8c862d11` and was deleted the same day in admin cleanup `7c1297c3`/`0610cde6`. OpenSpec 11/12 is stale. Not restored. `ficha-territorial` A7 **ya está en main** (#108/#110/#111, 2026-08-02) — los checkboxes OpenSpec están stale. `lluvia-intensidad-subdiaria` es solo explore, no hay proposal.
 
 ## 🗄️ Backlog (anotado, sin apuro)
 

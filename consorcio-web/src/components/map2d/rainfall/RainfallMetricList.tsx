@@ -16,6 +16,7 @@ import { Badge, Group, Stack, Text } from '@mantine/core';
 
 import type { RainfallAnalysisSnapshot, RainfallMetric } from '../../../lib/api/rainfall';
 import {
+  formatDiscrepancies,
   formatMetricValue,
   hoistProvenance,
   metricEvidenceLine,
@@ -218,6 +219,13 @@ function intervalLine(metric: RainfallMetric): string | null {
   return `Intervalo: ${start} → ${end}`;
 }
 
+/** Prefix only when there is something to say — an empty list omits the line. */
+function discrepanciesLine(metric: RainfallMetric): string | null {
+  if (!Array.isArray(metric.discrepancies)) return null;
+  const formatted = formatDiscrepancies(metric.discrepancies);
+  return formatted.length > 0 ? `Discrepancias: ${formatted}` : null;
+}
+
 /** Provisional-or-final and fallback use, in TEXT, on every row that serves
  *  them. The coloured markers above are presentation and only appear in the
  *  exceptional case; this line is the contract, and the enumerated floor asks
@@ -349,13 +357,7 @@ export function RainfallMetricRow({ name, metric, baseline, hoist }: RainfallMet
             : null
         }
       />
-      <MetadataLine
-        text={
-          Array.isArray(metric.discrepancies) && metric.discrepancies.length > 0
-            ? `Discrepancias: ${metric.discrepancies.join('; ')}`
-            : null
-        }
-      />
+      <MetadataLine text={discrepanciesLine(metric)} />
       <MetadataLine text={temporalOriginLine(metric)} />
     </Stack>
   );
