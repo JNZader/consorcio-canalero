@@ -103,7 +103,7 @@ import { HazardMapControls } from './map2d/HazardMapControls';
 import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
 import { buildHazardLegendView } from './map2d/hazardLegend';
 import { useHazardMapState } from './map2d/useHazardMapState';
-import type { HazardRiskClass } from '../hooks/useHazardUrlState';
+import { resolveBasinCatalogStatus, type HazardRiskClass } from '../hooks/useHazardUrlState';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -263,7 +263,7 @@ export default function MapaMapLibre() {
   // visibleLayers.soil === true (kmzBuilder.ts::shouldIncludeLayer).
   const soilEnabled = !!vectorVisibility.soil;
   const { soilMap, error: soilError, reload: reloadSoil } = useSoilMap({ enabled: soilEnabled });
-  const { basins, error: basinsError, reload: reloadBasins } = useBasins();
+  const { basins, error: basinsError, loading: basinsLoading, reload: reloadBasins } = useBasins();
   const { waterways, error: waterwaysError, reload: reloadWaterways } = useWaterways();
   const {
     layers: allGeoLayers,
@@ -539,6 +539,10 @@ export default function MapaMapLibre() {
     mapReady,
     allGeoLayers: hazardGeoLayers,
     basinIds: hazardBasins.map((basin) => basin.id),
+    basinCatalogStatus: resolveBasinCatalogStatus({
+      loading: basinsLoading,
+      error: basinsError,
+    }),
     basinOptions: hazardBasins,
     fichaActive: fichaInteraction.request !== null,
   });

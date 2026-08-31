@@ -304,6 +304,21 @@ describe('JD-B3B-003 — basin zoom on selection', () => {
     expect(noGeometryMap.fitBounds).not.toHaveBeenCalled();
     expect(mocks.hazardStore.setPendingBasinZoom).not.toHaveBeenCalled();
   });
+
+  it('does not zoom when a selected basin has no catalog geometry (catalog error/loading)', () => {
+    mocks.url.basin = 'shared-basin';
+    const map = createZoomMap();
+    renderHook(() =>
+      useHazardMapState({
+        mapRef: { current: map as unknown as maplibregl.Map },
+        mapReady: true,
+        basinOptions: [],
+      })
+    );
+
+    expect(map.fitBounds).not.toHaveBeenCalled();
+    expect(mocks.hazardStore.setPendingBasinZoom).not.toHaveBeenCalled();
+  });
 });
 
 const PRE_HAZARD = { roads: true, soil: false, canales_relevados: true };

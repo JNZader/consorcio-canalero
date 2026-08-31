@@ -2,7 +2,7 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 import type maplibregl from 'maplibre-gl';
 
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
-import { useHazardUrlState } from '../../hooks/useHazardUrlState';
+import { useHazardUrlState, type BasinCatalogStatus } from '../../hooks/useHazardUrlState';
 import { useMultiHazardGate } from '../../hooks/useMultiHazardGate';
 import { useAuthLoading } from '../../stores/authStore';
 import { useHazardMapStore } from '../../stores/hazardMapStore';
@@ -83,6 +83,7 @@ export interface UseHazardMapStateParams {
   readonly mapReady: boolean;
   readonly allGeoLayers?: readonly GeoLayerInfo[];
   readonly basinIds?: readonly string[];
+  readonly basinCatalogStatus?: BasinCatalogStatus;
   readonly basinOptions?: readonly HazardBasinOption[];
   readonly fichaActive?: boolean;
 }
@@ -100,12 +101,13 @@ export function useHazardMapState({
   mapReady,
   allGeoLayers = [],
   basinIds,
+  basinCatalogStatus,
   basinOptions = NO_BASIN_OPTIONS,
   fichaActive = false,
 }: UseHazardMapStateParams) {
   const gateOpen = useMultiHazardGate();
   const authPending = useAuthLoading();
-  const url = useHazardUrlState({ basinIds });
+  const url = useHazardUrlState({ basinIds, basinCatalogStatus });
   const isHazardActive = gateOpen && url.hazard;
   const snapshotRef = useRef<VisibilitySnapshot | null>(null);
   const wasHazardActiveRef = useRef(false);

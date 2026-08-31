@@ -27,9 +27,32 @@ export interface HazardUrlState {
   precipMonth: HazardPrecipMonth;
 }
 
+export const BASIN_CATALOG_STATUS = {
+  LOADING: 'loading',
+  READY: 'ready',
+  ERROR: 'error',
+} as const;
+
+export type BasinCatalogStatus = (typeof BASIN_CATALOG_STATUS)[keyof typeof BASIN_CATALOG_STATUS];
+
+export interface BasinCatalogStatusInput {
+  loading: boolean;
+  error: string | null;
+}
+
 export interface HazardUrlStateOptions {
   gateOpen: boolean;
   basinIds?: readonly string[];
+  basinCatalogStatus?: BasinCatalogStatus;
+}
+
+export function resolveBasinCatalogStatus({
+  loading,
+  error,
+}: BasinCatalogStatusInput): BasinCatalogStatus {
+  if (loading) return BASIN_CATALOG_STATUS.LOADING;
+  if (error) return BASIN_CATALOG_STATUS.ERROR;
+  return BASIN_CATALOG_STATUS.READY;
 }
 
 const DEFAULT_HAZARD_URL_STATE: HazardUrlState = {
@@ -60,10 +83,25 @@ function normalizeRiskClasses(value: unknown): HazardRiskClass[] {
   return HAZARD_RISK_CLASSES.filter((riskClass) => unique.has(riskClass));
 }
 
-function normalizeBasin(value: unknown, basinIds: readonly string[] | undefined): string | null {
+function isBasinCatalogResolved(
+  catalogStatus: BasinCatalogStatus | undefined,
+  basinIds: readonly string[] | undefined
+): boolean {
+  if (catalogStatus === BASIN_CATALOG_STATUS.LOADING) return false;
+  if (catalogStatus === BASIN_CATALOG_STATUS.ERROR) return false;
+  if (catalogStatus === BASIN_CATALOG_STATUS.READY) return true;
+  return basinIds !== undefined;
+}
+
+function normalizeBasin(
+  value: unknown,
+  basinIds: readonly string[] | undefined,
+  catalogStatus: BasinCatalogStatus | undefined
+): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
   const basin = value.trim();
-  return basinIds === undefined || basinIds.includes(basin) ? basin : null;
+  if (!isBasinCatalogResolved(catalogStatus, basinIds)) return basin;
+  return basinIds?.includes(basin) ? basin : null;
 }
 
 function normalizePrecipMonth(value: unknown): HazardPrecipMonth {
@@ -81,14 +119,14 @@ function isHazardRequested(value: unknown): boolean {
 
 export function parseHazardUrlState(
   search: HazardSearchInput,
-  { gateOpen, basinIds }: HazardUrlStateOptions
+  { gateOpen, basinIds, basinCatalogStatus }: HazardUrlStateOptions
 ): HazardUrlState {
   if (!gateOpen || !isHazardRequested(search.hazard)) return { ...DEFAULT_HAZARD_URL_STATE };
 
   const riskClasses = normalizeRiskClasses(search.riskClasses);
   return {
     hazard: true,
-    basin: normalizeBasin(search.basin, basinIds),
+    basin: normalizeBasin(search.basin, basinIds, basinCatalogStatus),
     riskClasses: riskClasses.length > 0 ? riskClasses : [...HAZARD_RISK_CLASSES],
     precipMonth: normalizePrecipMonth(search.precipMonth),
   };
@@ -119,14 +157,15 @@ function sameSearch(left: HazardSearchInput, right: Record<string, string>): boo
 
 export interface UseHazardUrlStateOptions {
   basinIds?: readonly string[];
+  basinCatalogStatus?: BasinCatalogStatus;
 }
 
-export function useHazardUrlState({ basinIds }: UseHazardUrlStateOptions = {}) {
+export function useHazardUrlState({ basinIds, basinCatalogStatus }: UseHazardUrlStateOptions = {}) {
   const gateOpen = useMultiHazardGate();
   const authPending = useAuthLoading();
   const navigate = useNavigate();
   const search = useSearch({ from: '/mapa' });
-  const state = parseHazardUrlState(search, { gateOpen, basinIds });
+  const state = parseHazardUrlState(search, { gateOpen, basinIds, basinCatalogStatus });
   const canonicalSearch = toHazardSearch(state, gateOpen);
 
   useEffect(() => {
@@ -137,7 +176,10 @@ export function useHazardUrlState({ basinIds }: UseHazardUrlStateOptions = {}) {
   }, [authPending, canonicalSearch, navigate, search]);
 
   const update = (patch: HazardSearchInput) => {
-    const nextState = parseHazardUrlState({ ...search, ...patch }, { gateOpen, basinIds });
+    const nextState = parseHazardUrlState(
+      { ...search, ...patch },
+      { gateOpen, basinIds, basinCatalogStatus }
+    );
     void navigate({ to: '/mapa', search: toHazardSearch(nextState, gateOpen) });
   };
 
