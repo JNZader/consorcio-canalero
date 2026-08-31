@@ -454,9 +454,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         ("CVE-2026-11822", "libsqlite3-0", "HIGH", "affected"),
         ("CVE-2026-11824", "libsqlite3-0", "HIGH", "affected"),
     }
-    expat_findings = [
-        finding for finding in backend_findings if finding["cve"] == "CVE-2026-66046"
-    ]
+    expat_findings = [finding for finding in backend_findings if finding["cve"] == "CVE-2026-66046"]
     assert len(expat_findings) == 1
     assert (
         expat_findings[0]["pkg_id"],
@@ -471,9 +469,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert geo_provenance["report_sha256"] == (
         "sha256:21eedc171a92b12f338aa9f714fc15fd701a0f2f35aed3997fa1bf711d09db51"
     )
-    assert backend_provenance["source_revision"] == (
-        "0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb"
-    )
+    assert backend_provenance["source_revision"] == ("0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb")
     # geo-worker baseline is NOT refreshed by this change (distinct revision):
     assert geo_provenance["source_revision"] == ("96cf15d0f36577c2500d2708dc5c1b899035177f")
     assert backend_provenance["platform"] == "linux/amd64"
