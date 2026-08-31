@@ -18,8 +18,8 @@ import {
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useCallback, useEffect, useState } from 'react';
-import { type TramiteEstadoCanonico, formatTramiteEstado } from '../../../constants/tramites';
+import { useEffect, useState } from 'react';
+import { formatTramiteEstado } from '../../../constants/tramites';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { LoadingState } from '../../ui/LoadingState';
@@ -30,7 +30,7 @@ interface TramiteListItem {
   tipo: string;
   titulo: string;
   solicitante: string;
-  estado: TramiteEstadoCanonico;
+  estado: string;
   prioridad: string;
   fecha_ingreso: string;
   fecha_resolucion: string | null;
@@ -82,7 +82,7 @@ export default function TramitesPanel() {
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
 
-  const fetchTramites = useCallback(async () => {
+  const fetchTramites = async () => {
     setLoading(true);
     try {
       const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
@@ -92,7 +92,7 @@ export default function TramitesPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   const fetchDetalle = async (id: string) => {
     try {
@@ -106,8 +106,9 @@ export default function TramitesPanel() {
   };
 
   useEffect(() => {
-    fetchTramites();
-  }, [fetchTramites]);
+    void fetchTramites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only fetch
+  }, []);
 
   const form = useForm<TramiteFormValues>({
     initialValues: {
@@ -353,7 +354,7 @@ export default function TramitesPanel() {
                 {selectedTramite.seguimiento.map((item) => (
                   <Timeline.Item
                     key={item.id}
-                    title={`${formatTramiteEstado(item.estado_anterior as TramiteEstadoCanonico)} → ${formatTramiteEstado(item.estado_nuevo as TramiteEstadoCanonico)}`}
+                    title={`${formatTramiteEstado(item.estado_anterior)} → ${formatTramiteEstado(item.estado_nuevo)}`}
                   >
                     <Text c="dimmed" size="sm">
                       {item.comentario}

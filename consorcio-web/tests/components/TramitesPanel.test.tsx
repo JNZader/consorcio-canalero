@@ -92,7 +92,7 @@ describe('TramitesPanel', () => {
 
     expect(await screen.findByText('Gestion de Tramites')).toBeInTheDocument();
     expect(screen.getByText(tramite.titulo)).toBeInTheDocument();
-    expect(screen.getByText('INGRESADO')).toBeInTheDocument();
+    expect(screen.getByText('Ingresado')).toBeInTheDocument();
     expect(screen.getByText(/obra · consorcio canalero/i)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: new RegExp(`ver seguimiento.*${tramite.titulo}`, 'i') })
