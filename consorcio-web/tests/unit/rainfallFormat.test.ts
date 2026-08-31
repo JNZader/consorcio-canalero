@@ -18,6 +18,7 @@ import {
   compactAntecedent,
   deriveFreshness,
   describeMetricState,
+  formatDiscrepancies,
   formatMetricValue,
   hoistProvenance,
   metricEvidenceLine,
@@ -686,6 +687,84 @@ describe('stringifyUnknownFields — object fields never print [object Object]',
     expect(stringifyUnknownFields(null)).toBe('');
     expect(stringifyUnknownFields(undefined)).toBe('');
     expect(stringifyUnknownFields([1, 2, 3])).toBe('');
+  });
+});
+
+describe('formatDiscrepancies — consecutive expected_interval tokens collapse to a range', () => {
+  const DAY_MS = 86_400_000;
+
+  function utcMidnightIso(ms: number): string {
+    return new Date(ms).toISOString().replace('.000Z', '+00:00');
+  }
+
+  function expectedInterval(dayOffset: number, startIso = '2024-01-02T00:00:00+00:00'): string {
+    return `expected_interval=${utcMidnightIso(Date.parse(startIso) + dayOffset * DAY_MS)}`;
+  }
+
+  function expectedIntervalDays(count: number, startOffset = 0): string[] {
+    return Array.from({ length: count }, (_, index) => expectedInterval(startOffset + index));
+  }
+
+  it('yields nothing for an empty list', () => {
+    expect(formatDiscrepancies([])).toBe('');
+  });
+
+  it('leaves a single interval unchanged', () => {
+    expect(formatDiscrepancies([expectedInterval(0)])).toBe(
+      'expected_interval=2024-01-02T00:00:00+00:00'
+    );
+  });
+
+  it('collapses two consecutive UTC days into one range with (2)', () => {
+    expect(formatDiscrepancies(expectedIntervalDays(2))).toBe(
+      'expected_interval=2024-01-02T00:00:00+00:00 → 2024-01-03T00:00:00+00:00 (2)'
+    );
+  });
+
+  it('collapses 153 consecutive UTC days into one fragment with first, last and count', () => {
+    const count = 153;
+    const firstIso = '2024-01-02T00:00:00+00:00';
+    const lastIso = utcMidnightIso(Date.parse(firstIso) + (count - 1) * DAY_MS);
+    const compressed = formatDiscrepancies(expectedIntervalDays(count));
+
+    expect(compressed).toBe(`expected_interval=${firstIso} → ${lastIso} (${count})`);
+    expect(compressed).toContain(firstIso);
+    expect(compressed).toContain(lastIso);
+    expect(compressed).toContain(String(count));
+    expect(compressed.split('; ')).toHaveLength(1);
+  });
+
+  it('splits a gap into two ranges', () => {
+    // day1, day2, skip, day4, day5 — two regular runs, not one range over the hole.
+    expect(
+      formatDiscrepancies([
+        expectedInterval(0),
+        expectedInterval(1),
+        expectedInterval(3),
+        expectedInterval(4),
+      ])
+    ).toBe(
+      'expected_interval=2024-01-02T00:00:00+00:00 → 2024-01-03T00:00:00+00:00 (2); expected_interval=2024-01-05T00:00:00+00:00 → 2024-01-06T00:00:00+00:00 (2)'
+    );
+  });
+
+  it('keeps non-interval tokens in original relative order', () => {
+    expect(
+      formatDiscrepancies([
+        'coverage_below_threshold',
+        expectedInterval(0),
+        expectedInterval(1),
+        'source_lag',
+      ])
+    ).toBe(
+      'coverage_below_threshold; expected_interval=2024-01-02T00:00:00+00:00 → 2024-01-03T00:00:00+00:00 (2); source_lag'
+    );
+  });
+
+  it('joins a list with zero interval tokens unchanged', () => {
+    expect(formatDiscrepancies(['coverage_below_threshold', 'source_lag'])).toBe(
+      'coverage_below_threshold; source_lag'
+    );
   });
 });
 

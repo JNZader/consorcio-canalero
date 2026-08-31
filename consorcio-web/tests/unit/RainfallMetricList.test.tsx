@@ -542,3 +542,44 @@ describe('RainfallMetricGroup — the antecedent reference rows (S3)', () => {
     }
   });
 });
+
+describe('RainfallMetricList — compressed discrepancies (ficha wall)', () => {
+  const DAY_MS = 86_400_000;
+
+  function expectedIntervalDays(count: number, startIso = '2024-01-02T00:00:00+00:00'): string[] {
+    const startMs = Date.parse(startIso);
+    return Array.from({ length: count }, (_, index) => {
+      const iso = new Date(startMs + index * DAY_MS).toISOString().replace('.000Z', '+00:00');
+      return `expected_interval=${iso}`;
+    });
+  }
+
+  it('renders many expected_interval values as one range, not the raw wall', () => {
+    const count = 153;
+    const firstIso = '2024-01-02T00:00:00+00:00';
+    const lastIso = new Date(Date.parse(firstIso) + (count - 1) * DAY_MS)
+      .toISOString()
+      .replace('.000Z', '+00:00');
+    renderList(
+      snapshot({
+        annual: {
+          selected: metric({ metric: 'selected', discrepancies: expectedIntervalDays(count) }),
+        },
+      })
+    );
+
+    const row = screen.getByTestId('rainfall-metric-selected');
+    expect(row).toHaveTextContent(
+      `Discrepancias: expected_interval=${firstIso} → ${lastIso} (${count})`
+    );
+    expect(row.textContent).not.toContain('expected_interval=2024-01-03T00:00:00+00:00');
+    expect(row.textContent).not.toMatch(
+      /expected_interval=2024-01-02T00:00:00\+00:00; expected_interval=/
+    );
+  });
+
+  it('omits the line when discrepancies are empty', () => {
+    renderList(snapshot());
+    expect(screen.getByTestId('rainfall-metric-selected')).not.toHaveTextContent('Discrepancias:');
+  });
+});
