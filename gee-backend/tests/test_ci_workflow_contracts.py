@@ -301,10 +301,9 @@ def _assert_non_publishing_image_gate(
             # el frontend. Nada mas puede saltear un gate de escaneo.
             "$" + "{{ github.event_name != 'schedule' "
             "&& needs.changes.outputs.frontend == 'true' }}",
-            # backend: solo el guard de area.
-            # backend: los image gates son ~17 min (GDAL), solo en el release.
+            # backend: image scans only when the production image can change.
             "$" + "{{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') "
-            "&& needs.changes.outputs.backend == 'true' }}",
+            "&& needs.changes.outputs.backend_image == 'true' }}",
         ), guard
     if policy_role is None:
         _assert_strict_image_trivy(job)

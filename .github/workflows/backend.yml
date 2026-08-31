@@ -33,6 +33,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
+      backend_image: ${{ steps.detect.outputs.backend_image }}
       mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +51,7 @@ jobs:
           # cambiado: preferimos correr de mas antes que saltear en silencio.
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "backend_image=true" >> "$GITHUB_OUTPUT"
             python3 gee-backend/scripts/cosmic_mutation_plan.py --full --github-output "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -68,6 +70,14 @@ jobs:
           else
             echo "backend=false" >> "$GITHUB_OUTPUT"
             echo 'mutation_matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+          fi
+          # Image scans (~17 min, GDAL) only when the production image bytes
+          # can change. Tests / requirements-dev.lock / workflow comments must
+          # not rebuild Debian just to rediscover libexpat CVEs.
+          if printf '%s\n' "$CHANGED" | grep -qE '^(gee-backend/Dockerfile|gee-backend/Dockerfile\.geo|gee-backend/requirements\.lock|gee-backend/requirements\.txt|gee-backend/requirements-geo\.txt|gee-backend/security/frozen-image-debt\.json|gee-backend/scripts/validate_image_security_policy\.py)'; then
+            echo "backend_image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend_image=false" >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -235,11 +245,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [changes, lint, typecheck, test]
-    # Solo en el PR de release: construir y escanear estas dos imagenes son
-    # ~17 minutos (el geo-worker trae GDAL). Lo que el escaneo busca son
-    # vulnerabilidades de SO y dependencias, que no cambian con cada commit de
-    # codigo de aplicacion.
-    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
+    # ~17 minutos (el geo-worker trae GDAL). Solo cuando el diff puede cambiar
+    # bytes de imagen (Dockerfile / runtime lock / frozen debt). Un PR de tests
+    # no redescubre CVEs de Debian.
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend_image == 'true' }}
     permissions:
       contents: read
       security-events: write
@@ -333,11 +342,10 @@ jobs:
     # haberle dado mas margen al escaner, cambiando un fallo confuso por otro.
     timeout-minutes: 45
     needs: [changes, lint, typecheck, test]
-    # Solo en el PR de release: construir y escanear estas dos imagenes son
-    # ~17 minutos (el geo-worker trae GDAL). Lo que el escaneo busca son
-    # vulnerabilidades de SO y dependencias, que no cambian con cada commit de
-    # codigo de aplicacion.
-    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
+    # ~17 minutos (el geo-worker trae GDAL). Solo cuando el diff puede cambiar
+    # bytes de imagen (Dockerfile / runtime lock / frozen debt). Un PR de tests
+    # no redescubre CVEs de Debian.
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend_image == 'true' }}
     permissions:
       contents: read
       security-events: write
