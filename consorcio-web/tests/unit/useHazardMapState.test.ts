@@ -4,6 +4,12 @@ import type { MutableRefObject } from 'react';
 import type maplibregl from 'maplibre-gl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  HAZARD_NORMAL_VISIBILITY,
+  HAZARD_VISIBILITY_SNAPSHOT_KEY,
+  clearHazardVisibilitySnapshot,
+  serializeHazardVisibilitySnapshot,
+} from '../../src/components/map2d/hazardVisibilitySnapshot';
 import { useHazardMapState } from '../../src/components/map2d/useHazardMapState';
 
 const CANONICAL_LAYER_IDS = [
@@ -17,6 +23,7 @@ const CANONICAL_LAYER_IDS = [
 
 const mocks = vi.hoisted(() => ({
   gateOpen: true,
+  authPending: false,
   url: {
     hazard: false,
     basin: null,
@@ -58,6 +65,10 @@ vi.mock('../../src/stores/hazardMapStore', () => ({
     selector(mocks.hazardStore),
 }));
 
+vi.mock('../../src/stores/authStore', () => ({
+  useAuthLoading: () => mocks.authPending,
+}));
+
 function createMapRef(): MutableRefObject<maplibregl.Map | null> {
   return { current: null };
 }
@@ -65,8 +76,11 @@ function createMapRef(): MutableRefObject<maplibregl.Map | null> {
 describe('useHazardMapState', () => {
   beforeEach(() => {
     mocks.gateOpen = true;
+    mocks.authPending = false;
     mocks.url.hazard = false;
     mocks.shared.map2d.visibleVectors = { roads: true, soil: false };
+    clearHazardVisibilitySnapshot();
+    window.sessionStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -94,9 +108,10 @@ describe('useHazardMapState', () => {
         mocks.url.hazard = hazard;
         return useHazardMapState({ mapRef: createMapRef(), mapReady: false });
       },
-      { initialProps: { hazard: true } }
+      { initialProps: { hazard: false } }
     );
 
+    act(() => rerender({ hazard: true }));
     vi.clearAllMocks();
     act(() => rerender({ hazard: false }));
 
@@ -113,9 +128,10 @@ describe('useHazardMapState', () => {
         mocks.url.hazard = hazard;
         return useHazardMapState({ mapRef: createMapRef(), mapReady: false });
       },
-      { initialProps: { hazard: true } }
+      { initialProps: { hazard: false } }
     );
 
+    act(() => rerender({ hazard: true }));
     vi.clearAllMocks();
     act(() => rerender({ hazard: false }));
 
@@ -143,16 +159,23 @@ describe('useHazardMapState', () => {
 describe('JD-B3B-001 — unmount while hazard is active', () => {
   beforeEach(() => {
     mocks.gateOpen = true;
+    mocks.authPending = false;
     mocks.url.hazard = false;
     mocks.shared.map2d.visibleVectors = { roads: true, soil: false, canales_relevados: true };
+    clearHazardVisibilitySnapshot();
+    window.sessionStorage.clear();
     vi.clearAllMocks();
   });
 
   it('restores the exact captured visibility on unmount, turning absent canonical layers off', () => {
-    const { unmount } = renderHook(() => {
-      mocks.url.hazard = true;
-      return useHazardMapState({ mapRef: createMapRef(), mapReady: false });
-    });
+    const { rerender, unmount } = renderHook(
+      ({ hazard }) => {
+        mocks.url.hazard = hazard;
+        return useHazardMapState({ mapRef: createMapRef(), mapReady: false });
+      },
+      { initialProps: { hazard: false } }
+    );
+    act(() => rerender({ hazard: true }));
 
     vi.clearAllMocks();
     unmount();
@@ -235,9 +258,12 @@ describe('JD-B3B-003 — basin zoom on selection', () => {
 
   beforeEach(() => {
     mocks.gateOpen = true;
+    mocks.authPending = false;
     mocks.url.hazard = true;
     mocks.url.basin = null;
     mocks.shared.map2d.visibleVectors = { roads: true };
+    clearHazardVisibilitySnapshot();
+    window.sessionStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -277,5 +303,97 @@ describe('JD-B3B-003 — basin zoom on selection', () => {
 
     expect(noGeometryMap.fitBounds).not.toHaveBeenCalled();
     expect(mocks.hazardStore.setPendingBasinZoom).not.toHaveBeenCalled();
+  });
+});
+
+const PRE_HAZARD = { roads: true, soil: false, canales_relevados: true };
+const CANONICAL_ON = {
+  roads: true,
+  ...Object.fromEntries(CANONICAL_LAYER_IDS.map((id) => [id, true])),
+};
+
+describe('C6 — versioned same-tab restoration', () => {
+  beforeEach(() => {
+    mocks.gateOpen = true;
+    mocks.authPending = false;
+    mocks.url.hazard = false;
+    mocks.shared.map2d.visibleVectors = { ...PRE_HAZARD };
+    clearHazardVisibilitySnapshot();
+    window.sessionStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  function renderHazard(hazard = false) {
+    return renderHook(
+      ({ hazard: next }) => {
+        mocks.url.hazard = next;
+        return useHazardMapState({ mapRef: createMapRef(), mapReady: false });
+      },
+      { initialProps: { hazard } }
+    );
+  }
+
+  function seed(raw: string | Record<string, boolean> = PRE_HAZARD) {
+    const value = typeof raw === 'string' ? raw : serializeHazardVisibilitySnapshot(raw);
+    window.sessionStorage.setItem(HAZARD_VISIBILITY_SNAPSHOT_KEY, value);
+  }
+
+  function stored() {
+    const raw = window.sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY);
+    return raw ? (JSON.parse(raw) as { values: Record<string, boolean> }).values : null;
+  }
+
+  it('persists a versioned sessionStorage snapshot on genuine entry and never localStorage', () => {
+    const { rerender } = renderHazard();
+    act(() => rerender({ hazard: true }));
+    expect(stored()).toMatchObject(PRE_HAZARD);
+    expect(window.localStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeFalsy();
+  });
+
+  it('hydrates a valid snapshot on reload with hazard=1 and does not recapture canonical state', () => {
+    seed();
+    mocks.shared.map2d.visibleVectors = { ...CANONICAL_ON };
+    const { rerender } = renderHazard(true);
+    expect(stored()).toMatchObject(PRE_HAZARD);
+    vi.clearAllMocks();
+    act(() => rerender({ hazard: false }));
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'roads', true);
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'soil', false);
+    expect(window.sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+  });
+
+  it('uses exported normal defaults when the snapshot is absent and canonical is already on', () => {
+    mocks.shared.map2d.visibleVectors = { ...CANONICAL_ON };
+    const { rerender } = renderHazard(true);
+    vi.clearAllMocks();
+    act(() => rerender({ hazard: false }));
+    for (const [layerId, visible] of Object.entries(HAZARD_NORMAL_VISIBILITY)) {
+      expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', layerId, visible);
+    }
+  });
+
+  it('clears stale snapshot data on an auth-resolved hazard-off mount without restoring it', () => {
+    seed();
+    renderHazard(false);
+    expect(window.sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
+    expect(mocks.shared.setVectorVisibility).not.toHaveBeenCalled();
+  });
+
+  it('performs no restore, clear, capture, or canonical write while auth is pending', () => {
+    seed();
+    mocks.authPending = true;
+    mocks.gateOpen = false;
+    mocks.shared.map2d.visibleVectors = { ...CANONICAL_ON };
+    const { rerender } = renderHazard(true);
+    expect(mocks.shared.setVectorVisibility).not.toHaveBeenCalled();
+    expect(stored()).toMatchObject(PRE_HAZARD);
+    mocks.authPending = false;
+    mocks.gateOpen = true;
+    act(() => rerender({ hazard: true }));
+    expect(stored()).toMatchObject(PRE_HAZARD);
+    vi.clearAllMocks();
+    act(() => rerender({ hazard: false }));
+    expect(mocks.shared.setVectorVisibility).toHaveBeenCalledWith('map2d', 'roads', true);
+    expect(window.sessionStorage.getItem(HAZARD_VISIBILITY_SNAPSHOT_KEY)).toBeNull();
   });
 });

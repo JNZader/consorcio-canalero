@@ -1,6 +1,7 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect } from 'react';
 
+import { useAuthLoading } from '../stores/authStore';
 import { useMultiHazardGate } from './useMultiHazardGate';
 
 export const HAZARD_RISK_CLASSES = ['Bajo', 'Medio', 'Alto', 'Crítico'] as const;
@@ -122,16 +123,18 @@ export interface UseHazardUrlStateOptions {
 
 export function useHazardUrlState({ basinIds }: UseHazardUrlStateOptions = {}) {
   const gateOpen = useMultiHazardGate();
+  const authPending = useAuthLoading();
   const navigate = useNavigate();
   const search = useSearch({ from: '/mapa' });
   const state = parseHazardUrlState(search, { gateOpen, basinIds });
   const canonicalSearch = toHazardSearch(state, gateOpen);
 
   useEffect(() => {
+    if (authPending) return;
     if (!sameSearch(search, canonicalSearch)) {
       void navigate({ to: '/mapa', search: canonicalSearch, replace: true });
     }
-  }, [canonicalSearch, navigate, search]);
+  }, [authPending, canonicalSearch, navigate, search]);
 
   const update = (patch: HazardSearchInput) => {
     const nextState = parseHazardUrlState({ ...search, ...patch }, { gateOpen, basinIds });

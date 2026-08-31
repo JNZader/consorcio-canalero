@@ -1,12 +1,19 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type maplibregl from 'maplibre-gl';
 
-import { useHazardUrlState } from '../../hooks/useHazardUrlState';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
+import { useHazardUrlState } from '../../hooks/useHazardUrlState';
 import { useMultiHazardGate } from '../../hooks/useMultiHazardGate';
+import { useAuthLoading } from '../../stores/authStore';
 import { useHazardMapStore } from '../../stores/hazardMapStore';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import type { HazardBasinOption } from './hazardControls.types';
+import {
+  HAZARD_NORMAL_VISIBILITY,
+  clearHazardVisibilitySnapshot,
+  readHazardVisibilitySnapshot,
+  writeHazardVisibilitySnapshot,
+} from './hazardVisibilitySnapshot';
 import { getFeatureCollectionBounds } from './map2dUtils';
 import {
   getVisibleHazardRasterLayers,
@@ -32,12 +39,7 @@ interface VisibilitySnapshot {
 
 type SetVectorVisibility = (view: 'map2d' | 'map3d', layerId: string, visible: boolean) => void;
 
-/**
- * Writes the captured pre-hazard visibility back into the shared layer store.
- * Canonical keys absent from the snapshot are written as hidden (`false`) —
- * the store has no key deletion, and `false` is the effective semantics of an
- * absent entry — so hazard-forced values never survive the mode.
- */
+/** Restore captured keys; canonical keys missing from the snapshot become hidden. */
 function applyVisibilitySnapshot(
   values: Record<string, boolean>,
   setVectorVisibility: SetVectorVisibility
@@ -52,6 +54,28 @@ function applyVisibilitySnapshot(
       setVectorVisibility('map2d', layerId, visible);
     }
   }
+}
+
+function applyCanonicalStack(setVectorVisibility: SetVectorVisibility) {
+  for (const layerId of HAZARD_CANONICAL_LAYER_IDS) {
+    setVectorVisibility('map2d', layerId, true);
+  }
+}
+
+function visibilityMatchesSnapshot(
+  current: Record<string, boolean>,
+  snapshot: Record<string, boolean>
+): boolean {
+  for (const layerId of HAZARD_CANONICAL_LAYER_IDS) {
+    if ((current[layerId] ?? false) !== (snapshot[layerId] ?? false)) return false;
+  }
+  return Object.entries(snapshot).every(([id, visible]) => (current[id] ?? false) === visible);
+}
+
+function rememberSnapshot(values: Record<string, boolean>): VisibilitySnapshot {
+  const snapshot = { values: { ...values } };
+  writeHazardVisibilitySnapshot(snapshot.values);
+  return snapshot;
 }
 
 export interface UseHazardMapStateParams {
@@ -80,10 +104,12 @@ export function useHazardMapState({
   fichaActive = false,
 }: UseHazardMapStateParams) {
   const gateOpen = useMultiHazardGate();
+  const authPending = useAuthLoading();
   const url = useHazardUrlState({ basinIds });
   const isHazardActive = gateOpen && url.hazard;
   const snapshotRef = useRef<VisibilitySnapshot | null>(null);
   const wasHazardActiveRef = useRef(false);
+  const hasResolvedAuthRef = useRef(false);
 
   const visibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
   const setVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
@@ -97,23 +123,41 @@ export function useHazardMapState({
   const reset = useHazardMapStore((state) => state.reset);
 
   useEffect(() => {
+    if (authPending) return;
+
     const wasHazardActive = wasHazardActiveRef.current;
 
-    if (isHazardActive && !wasHazardActive) {
-      snapshotRef.current = { values: { ...visibleVectors } };
-      for (const layerId of HAZARD_CANONICAL_LAYER_IDS) {
-        setVectorVisibility('map2d', layerId, true);
+    if (!hasResolvedAuthRef.current) {
+      hasResolvedAuthRef.current = true;
+      if (isHazardActive) {
+        snapshotRef.current = rememberSnapshot(
+          readHazardVisibilitySnapshot()?.values ?? { ...HAZARD_NORMAL_VISIBILITY }
+        );
+        if (visibilityMatchesSnapshot(visibleVectors, snapshotRef.current.values)) {
+          applyCanonicalStack(setVectorVisibility);
+        }
+      } else {
+        clearHazardVisibilitySnapshot();
+        snapshotRef.current = null;
       }
+      wasHazardActiveRef.current = isHazardActive;
+      return;
+    }
+
+    if (isHazardActive && !wasHazardActive) {
+      snapshotRef.current = rememberSnapshot(visibleVectors);
+      applyCanonicalStack(setVectorVisibility);
     }
 
     if (!isHazardActive && wasHazardActive && snapshotRef.current) {
       applyVisibilitySnapshot(snapshotRef.current.values, setVectorVisibility);
       snapshotRef.current = null;
+      clearHazardVisibilitySnapshot();
       reset();
     }
 
     wasHazardActiveRef.current = isHazardActive;
-  }, [isHazardActive, reset, setVectorVisibility, visibleVectors]);
+  }, [authPending, isHazardActive, reset, setVectorVisibility, visibleVectors]);
 
   // Unmount-only cleanup (JD-B3B-001): if the map shell unmounts while hazard
   // mode is still active, the transition branch above never runs — restore the
