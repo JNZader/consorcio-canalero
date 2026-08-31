@@ -54,7 +54,6 @@ describe('sugerenciasApi', () => {
     await sugerenciasApi.get('sug-1');
     await sugerenciasApi.update('sug-1', { estado: 'revisada' });
     await sugerenciasApi.agendar('sug-1', '2026-03-20');
-    await sugerenciasApi.delete('sug-1');
 
     expect(apiFetch).toHaveBeenNthCalledWith(1, '/sugerencias/sug-1');
     expect(apiFetch).toHaveBeenNthCalledWith(
@@ -67,25 +66,27 @@ describe('sugerenciasApi', () => {
       '/sugerencias/sug-1/agendar',
       expect.objectContaining({ method: 'POST' })
     );
-    expect(apiFetch).toHaveBeenNthCalledWith(4, '/sugerencias/sug-1', { method: 'DELETE' });
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/sugerencias/sug-1',
+      expect.objectContaining({ method: 'DELETE' })
+    );
   });
 
   it('calls stats and meeting endpoints', async () => {
     await sugerenciasApi.getStats();
     await sugerenciasApi.getProximaReunion();
-    await sugerenciasApi.createInternal({
-      titulo: 'Tema interno',
-      descripcion: 'Propuesta para proxima reunion',
-      prioridad: 'alta',
-    });
 
     expect(apiFetch).toHaveBeenNthCalledWith(1, '/sugerencias/stats');
     expect(apiFetch).toHaveBeenNthCalledWith(2, '/sugerencias/proxima-reunion');
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      3,
+    expect(apiFetch).not.toHaveBeenCalledWith(
       '/sugerencias/interna',
-      expect.objectContaining({ method: 'POST' })
+      expect.anything()
     );
+  });
+
+  it('does not expose unbacked interna create or delete clients', () => {
+    expect(sugerenciasApi).not.toHaveProperty('createInternal');
+    expect(sugerenciasApi).not.toHaveProperty('delete');
   });
 
   it('listMine paginates citizen-owned sugerencias', async () => {

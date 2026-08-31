@@ -1,4 +1,4 @@
-import { Button, Container, Group, Paper, SimpleGrid } from '@mantine/core';
+import { Container, Paper, SimpleGrid } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -12,11 +12,8 @@ import {
   IconCalendar,
   IconCheck,
   IconClock,
-  IconPlus,
-  IconTrash,
   IconUsers,
 } from '../../ui/icons';
-import { CreateInternalModal } from './components/CreateInternalModal';
 import { ProximaReunionSection } from './components/ProximaReunionSection';
 import { StatsCard } from './components/StatsCard';
 import { SugerenciasFilters } from './components/SugerenciasFilters';
@@ -40,18 +37,6 @@ export default function SugerenciasPanel() {
   const [proximaReunion, setProximaReunion] = useState<Sugerencia[]>([]);
   const [_loadingProxima, setLoadingProxima] = useState(true);
 
-  // Create internal modal
-  const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
-  const [newTitulo, setNewTitulo] = useState('');
-  const [newDescripcion, setNewDescripcion] = useState('');
-  const [newCategoria, setNewCategoria] = useState<string | null>(null);
-  const [newPrioridad, setNewPrioridad] = useState<string>('normal');
-  const [createErrors, setCreateErrors] = useState<{
-    titulo?: string;
-    descripcion?: string;
-  }>({});
-  const [creating, setCreating] = useState(false);
-
   // Filters
   const [filterEstado, setFilterEstado] = useState<string | null>(null);
   const [filterTipo, setFilterTipo] = useState<string | null>(null);
@@ -71,7 +56,6 @@ export default function SugerenciasPanel() {
   const [adminNotes, setAdminNotes] = useState('');
   const [publicComment, setPublicComment] = useState('');
   const [updating, setUpdating] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   // Agendar state
   const [agendarFecha, setAgendarFecha] = useState<Date | null>(null);
@@ -279,91 +263,11 @@ export default function SugerenciasPanel() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!selectedSugerencia) return;
-
-    setDeleting(true);
-    try {
-      await sugerenciasApi.delete(selectedSugerencia.id);
-      notifications.show({
-        title: 'Sugerencia eliminada',
-        message: 'La sugerencia fue eliminada correctamente',
-        color: 'green',
-        icon: <IconTrash size={16} />,
-      });
-      closeDetail();
-      refreshAll();
-    } catch (error) {
-      logger.error('Error deleting sugerencia:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo eliminar la sugerencia',
-        color: 'red',
-      });
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   // The "Incorporar a Canales existentes" workflow was retired on
   // 2026-04-29: it mutated a static GeoJSON file at runtime and the
   // operator can express the same intent by setting estado=implementada
   // + writing a respuesta. The state setter `setIncorporating` and the
   // related backend endpoint were removed in the same pass.
-
-  const handleCreateInternal = async () => {
-    const validationErrors = {
-      titulo: newTitulo.trim() ? undefined : 'Titulo requerido',
-      descripcion: newDescripcion.trim() ? undefined : 'Descripcion requerida',
-    };
-
-    if (validationErrors.titulo || validationErrors.descripcion) {
-      setCreateErrors(validationErrors);
-      notifications.show({
-        title: 'Error',
-        message: 'Titulo y descripcion son requeridos',
-        color: 'red',
-      });
-      return;
-    }
-
-    setCreating(true);
-    try {
-      await sugerenciasApi.createInternal({
-        titulo: newTitulo.trim(),
-        descripcion: newDescripcion.trim(),
-        categoria: newCategoria || undefined,
-        prioridad: newPrioridad,
-      });
-      notifications.show({
-        title: 'Tema creado',
-        message: 'El tema interno fue creado correctamente',
-        color: 'green',
-        icon: <IconCheck size={16} />,
-      });
-      closeCreate();
-      setNewTitulo('');
-      setNewDescripcion('');
-      setNewCategoria(null);
-      setNewPrioridad('normal');
-      setCreateErrors({});
-      refreshAll();
-    } catch (error) {
-      logger.error('Error creating internal:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo crear el tema interno',
-        color: 'red',
-      });
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleCloseCreate = () => {
-    setCreateErrors({});
-    closeCreate();
-  };
 
   // Filter sugerencias by search query
   const filteredSugerencias = useMemo(() => {
@@ -373,14 +277,6 @@ export default function SugerenciasPanel() {
   return (
     <LiveRegionProvider>
       <Container size="xl" py="md">
-        {/* El titulo vive en el contenedor (`ParticipacionPanel`); aca solo
-            queda la accion propia de la bandeja de sugerencias. */}
-        <Group justify="flex-end" mb="md">
-          <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
-            Nuevo Tema Interno
-          </Button>
-        </Group>
-
         {/* Stats Cards */}
         <SimpleGrid cols={{ base: 2, sm: 4 }} mb="xl">
           <StatsCard
@@ -456,36 +352,8 @@ export default function SugerenciasPanel() {
           setAgendarFecha={setAgendarFecha}
           onAgendar={handleAgendar}
           agendando={agendando}
-          onDelete={handleDelete}
-          deleting={deleting}
           onUpdate={handleUpdate}
           updating={updating}
-        />
-
-        <CreateInternalModal
-          opened={createOpened}
-          onClose={handleCloseCreate}
-          newTitulo={newTitulo}
-          setNewTitulo={(value) => {
-            setNewTitulo(value);
-            if (createErrors.titulo) {
-              setCreateErrors((current) => ({ ...current, titulo: undefined }));
-            }
-          }}
-          newDescripcion={newDescripcion}
-          setNewDescripcion={(value) => {
-            setNewDescripcion(value);
-            if (createErrors.descripcion) {
-              setCreateErrors((current) => ({ ...current, descripcion: undefined }));
-            }
-          }}
-          newCategoria={newCategoria}
-          setNewCategoria={setNewCategoria}
-          newPrioridad={newPrioridad}
-          setNewPrioridad={setNewPrioridad}
-          creating={creating}
-          onCreate={handleCreateInternal}
-          errors={createErrors}
         />
       </Container>
     </LiveRegionProvider>

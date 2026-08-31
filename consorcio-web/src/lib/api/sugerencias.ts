@@ -78,14 +78,6 @@ export interface RateLimitInfo {
   reset_seconds: number;
 }
 
-export interface SugerenciaInternaCreate {
-  titulo: string;
-  descripcion: string;
-  categoria?: string;
-  prioridad?: string;
-  cuenca_id?: string;
-}
-
 export interface SugerenciasStats {
   pendiente: number;
   en_agenda: number;
@@ -174,15 +166,6 @@ export const sugerenciasApi = {
   getProximaReunion: (): Promise<Sugerencia[]> => apiFetch('/sugerencias/proxima-reunion'),
 
   /**
-   * Crear tema interno (comision).
-   */
-  createInternal: (data: SugerenciaInternaCreate): Promise<Sugerencia> =>
-    apiFetch('/sugerencias/interna', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  /**
    * Obtener detalle de sugerencia.
    */
   get: (id: string): Promise<Sugerencia> => apiFetch(`/sugerencias/${id}`),
@@ -204,9 +187,4 @@ export const sugerenciasApi = {
       method: 'POST',
       body: JSON.stringify({ fecha_reunion: fecha }),
     }),
-
-  /**
-   * Eliminar sugerencia.
-   */
-  delete: (id: string): Promise<void> => apiFetch(`/sugerencias/${id}`, { method: 'DELETE' }),
 };

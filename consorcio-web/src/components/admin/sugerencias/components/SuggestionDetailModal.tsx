@@ -17,7 +17,7 @@ import {
 import { DatePicker } from '@mantine/dates';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
-import { IconHistory, IconTrash } from '../../../ui/icons';
+import { IconHistory } from '../../../ui/icons';
 import { CATEGORIA_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
 import type { SeguimientoEntry } from '../sugerenciasPanelTypes';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
@@ -43,8 +43,6 @@ export function SuggestionDetailModal({
   setAgendarFecha,
   onAgendar,
   agendando,
-  onDelete,
-  deleting,
   onUpdate,
   updating,
 }: Readonly<{
@@ -78,8 +76,6 @@ export function SuggestionDetailModal({
   setAgendarFecha: (value: Date | null) => void;
   onAgendar: () => void;
   agendando: boolean;
-  onDelete: () => void;
-  deleting: boolean;
   onUpdate: () => void;
   updating: boolean;
 }>) {
@@ -352,24 +348,13 @@ export function SuggestionDetailModal({
 
           <Divider />
 
-          <Group justify="space-between">
-            <Button
-              variant="light"
-              color="red"
-              leftSection={<IconTrash size={16} />}
-              onClick={onDelete}
-              loading={deleting}
-            >
-              Eliminar
+          <Group justify="flex-end">
+            <Button variant="light" onClick={onClose}>
+              Cancelar
             </Button>
-            <Group>
-              <Button variant="light" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button onClick={onUpdate} loading={updating}>
-                Registrar Gestión
-              </Button>
-            </Group>
+            <Button onClick={onUpdate} loading={updating}>
+              Registrar Gestión
+            </Button>
           </Group>
         </Stack>
       )}

@@ -26,9 +26,7 @@ vi.mock('../../src/lib/api', () => ({
     get: vi.fn(),
     getStats: vi.fn(),
     getProximaReunion: vi.fn(),
-    createInternal: vi.fn(),
     agendar: vi.fn(),
-    delete: vi.fn(),
   },
   apiFetch: vi.fn(async () => []),
   API_URL: 'http://localhost:8000',
@@ -188,6 +186,9 @@ describe('ParticipacionPanel', () => {
     expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
     expect(sugerenciasApi.getAll).toHaveBeenCalled();
     expect(useCanales).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /nuevo tema interno/i })).not.toBeInTheDocument();
+    expect(sugerenciasApi).not.toHaveProperty('createInternal');
+    expect(sugerenciasApi).not.toHaveProperty('delete');
   });
 
   it('keeps SugerenciasPanel mounted after switching back to Reportes', async () => {
