@@ -50,10 +50,12 @@ ci-full: ## Run full CI checks locally (lint + type-check + test + build)
 
 install-hooks: ## Install git hooks for pre-push validation
 	@echo "$(BLUE)Installing git hooks...$(NC)"
-	@cp .ci-local/hooks/pre-push .git/hooks/pre-push
-	@chmod +x .git/hooks/pre-push
+	@HOOK_DIR="$$(git rev-parse --git-common-dir)/hooks"; \
+	mkdir -p "$$HOOK_DIR"; \
+	cp .ci-local/hooks/pre-push "$$HOOK_DIR/pre-push"; \
+	chmod +x "$$HOOK_DIR/pre-push"
 	@chmod +x .ci-local/ci-local.sh
-	@echo "$(GREEN)Git hooks installed! Pre-push will run ci-local quick.$(NC)"
+	@echo "$(GREEN)Git hooks installed! Pre-push runs javi-forge ci --quick --no-docker (issue #164).$(NC)"
 
 # ==============================================
 # SETUP & INSTALL

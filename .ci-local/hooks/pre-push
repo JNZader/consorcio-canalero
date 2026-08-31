@@ -1,32 +1,22 @@
 #!/bin/bash
-# Pre-push: CI checks via javi-forge
-# Install: cp .ci-local/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
-# Or: make install-hooks
+# Pre-push: hybrid Node+Python runners from .javi-forge/ci.yaml.
+# Always --no-docker: a Node container has no Make/Python (issue #164).
+# Install: make install-hooks
 # To skip: git push --no-verify
 set -e
 
-if docker info &>/dev/null; then
-  echo "PRE-PUSH: Docker running — running full CI simulation..."
-  if command -v javi-forge &>/dev/null; then
-    javi-forge ci
-  else
-    npx javi-forge ci
-  fi || {
-    echo ""
-    echo "CI FAILED — push aborted. Fix the issues above."
-    echo "To skip: git push --no-verify"
-    exit 1
-  }
-else
-  echo "⚠ Docker not running — running quick checks only (lint + typecheck)"
+run_quick_checks() {
   if command -v javi-forge &>/dev/null; then
     javi-forge ci --quick --no-docker --no-security --no-ci-ghagga
   else
     npx javi-forge ci --quick --no-docker --no-security --no-ci-ghagga
-  fi || {
-    echo ""
-    echo "QUICK CHECKS FAILED — push aborted. Fix the issues above."
-    echo "To skip: git push --no-verify"
-    exit 1
-  }
-fi
+  fi
+}
+
+echo "PRE-PUSH: configured runners, native (no Node Docker image)"
+run_quick_checks || {
+  echo ""
+  echo "QUICK CHECKS FAILED — push aborted. Fix the issues above."
+  echo "To skip: git push --no-verify"
+  exit 1
+}

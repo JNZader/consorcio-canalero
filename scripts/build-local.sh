@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+if ! command -v make >/dev/null 2>&1; then
+  echo "[build-local] make is required and was not found on PATH" >&2
+  exit 127
+fi
+
 has_docker_access() {
   command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
 }
