@@ -149,6 +149,9 @@ describe('C5 — basin catalog race (B3B-NEW-003)', () => {
     expect(resolveBasinCatalogStatus({ loading: false, error: null })).toBe(
       BASIN_CATALOG_STATUS.READY
     );
+    expect(
+      resolveBasinCatalogStatus({ loading: false, error: null, hasData: false })
+    ).toBe(BASIN_CATALOG_STATUS.LOADING);
     expect(resolveBasinCatalogStatus({ loading: true, error: 'stale' })).toBe(
       BASIN_CATALOG_STATUS.LOADING
     );

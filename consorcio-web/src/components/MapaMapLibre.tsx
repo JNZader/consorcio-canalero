@@ -542,6 +542,7 @@ export default function MapaMapLibre() {
     basinCatalogStatus: resolveBasinCatalogStatus({
       loading: basinsLoading,
       error: basinsError,
+      hasData: basins != null,
     }),
     basinOptions: hazardBasins,
     fichaActive: fichaInteraction.request !== null,

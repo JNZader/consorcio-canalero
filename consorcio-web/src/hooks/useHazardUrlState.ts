@@ -38,6 +38,8 @@ export type BasinCatalogStatus = (typeof BASIN_CATALOG_STATUS)[keyof typeof BASI
 export interface BasinCatalogStatusInput {
   loading: boolean;
   error: string | null;
+  /** False while TanStack Query has no catalog payload yet (including paused pending). */
+  hasData?: boolean;
 }
 
 export interface HazardUrlStateOptions {
@@ -49,9 +51,11 @@ export interface HazardUrlStateOptions {
 export function resolveBasinCatalogStatus({
   loading,
   error,
+  hasData = true,
 }: BasinCatalogStatusInput): BasinCatalogStatus {
   if (loading) return BASIN_CATALOG_STATUS.LOADING;
   if (error) return BASIN_CATALOG_STATUS.ERROR;
+  if (!hasData) return BASIN_CATALOG_STATUS.LOADING;
   return BASIN_CATALOG_STATUS.READY;
 }
 
