@@ -56,7 +56,6 @@ export type {
   Sugerencia,
   SugerenciaCreate,
   RateLimitInfo,
-  SugerenciaInternaCreate,
   SugerenciasStats,
   HistorialEntry,
 } from './sugerencias';

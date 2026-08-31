@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,9 +14,7 @@ vi.mock('../../src/lib/api', () => ({
     get: vi.fn(),
     getStats: vi.fn(),
     getProximaReunion: vi.fn(),
-    createInternal: vi.fn(),
     agendar: vi.fn(),
-    delete: vi.fn(),
   },
   apiFetch: vi.fn(),
   API_URL: 'http://localhost:8000',
@@ -108,11 +106,6 @@ describe('SugerenciasPanel', () => {
       internas: 0,
     });
     vi.mocked(sugerenciasApi.getProximaReunion).mockResolvedValue([]);
-    vi.mocked(sugerenciasApi.createInternal).mockResolvedValue({
-      ...suggestion,
-      id: 'sug-internal',
-      tipo: 'interna',
-    });
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
       if (path === '/sugerencias/sug-1/historial') {
@@ -161,33 +154,17 @@ describe('SugerenciasPanel', () => {
     expect(
       within(modal).getByRole('region', { name: /historial de gestión de la sugerencia/i })
     ).toHaveAttribute('id', 'suggestion-history-region');
+    expect(within(modal).queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument();
   });
 
-  it('creates internal topic', async () => {
-    const user = userEvent.setup();
+  it('does not render create-internal or delete controls', async () => {
     renderPanel();
 
     await screen.findByText('Pendientes');
-    await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
-    const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
-
-    fireEvent.change(within(createModal).getByLabelText(/titulo/i), {
-      target: { value: 'Plan de mantenimiento trimestral' },
-    });
-    fireEvent.change(within(createModal).getByLabelText(/descripcion/i), {
-      target: { value: 'Definir cuadrillas y presupuesto para el trimestre' },
-    });
-    await user.click(within(createModal).getByRole('button', { name: /crear tema/i }));
-
-    await waitFor(() => {
-      expect(sugerenciasApi.createInternal).toHaveBeenCalledWith(
-        expect.objectContaining({ titulo: 'Plan de mantenimiento trimestral' })
-      );
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /nuevo tema interno/i })).not.toBeInTheDocument();
-    });
+    expect(screen.queryByRole('button', { name: /nuevo tema interno/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /nuevo tema interno/i })).not.toBeInTheDocument();
+    expect(sugerenciasApi).not.toHaveProperty('createInternal');
+    expect(sugerenciasApi).not.toHaveProperty('delete');
   });
 
   it('submits management update', async () => {
@@ -213,35 +190,6 @@ describe('SugerenciasPanel', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Sugerencia actualizada', color: 'green' })
     );
-  });
-
-  it('connects internal topic validation errors to required fields', async () => {
-    const user = userEvent.setup();
-    renderPanel();
-
-    await screen.findByText('Pendientes');
-    await user.click(screen.getByRole('button', { name: /nuevo tema interno/i }));
-    const createModal = await screen.findByRole('dialog', { name: /nuevo tema interno/i });
-
-    const titleInput = within(createModal).getByLabelText(/titulo/i);
-    const descriptionInput = within(createModal).getByLabelText(/descripcion/i);
-    await user.click(within(createModal).getByRole('button', { name: /crear tema/i }));
-
-    await waitFor(() => {
-      expect(titleInput).toHaveAttribute('aria-invalid', 'true');
-      expect(titleInput.getAttribute('aria-describedby')).toContain('internal-topic-title-error');
-      expect(descriptionInput).toHaveAttribute('aria-invalid', 'true');
-      expect(descriptionInput.getAttribute('aria-describedby')).toContain(
-        'internal-topic-description-error'
-      );
-    });
-
-    expect(within(createModal).getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
-    expect(within(createModal).getByText(/descripcion requerida/i)).toHaveAttribute(
-      'role',
-      'alert'
-    );
-    expect(sugerenciasApi.createInternal).not.toHaveBeenCalled();
   });
 
   it('shows empty state when no suggestions are returned', async () => {
@@ -306,29 +254,5 @@ describe('SugerenciasPanel', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Sugerencia agendada', color: 'blue' })
     );
-  });
-
-  it('shows error notification when delete fails', async () => {
-    const user = userEvent.setup();
-    vi.mocked(sugerenciasApi.delete).mockRejectedValueOnce(new Error('cannot delete'));
-
-    renderPanel();
-    const row = await screen.findByRole('row', {
-      name: /limpiar desagues secundarios infraestructura ciudadana pendiente/i,
-    });
-    await user.click(within(row).getByRole('button'));
-
-    const modal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
-    await user.click(within(modal).getByRole('button', { name: /eliminar/i }));
-
-    await waitFor(() => {
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-          message: 'No se pudo eliminar la sugerencia',
-          color: 'red',
-        })
-      );
-    });
   });
 });
