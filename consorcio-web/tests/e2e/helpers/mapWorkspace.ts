@@ -10,13 +10,35 @@ import type { Page } from '@playwright/test';
 
 export const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:5173';
 
-/** Navigate to /mapa and report whether the responsive workspace shell mounted. */
-export async function gotoMapWorkspace(page: Page): Promise<boolean> {
+export interface HazardSearchParams {
+  readonly hazard: string | null;
+  readonly basin: string | null;
+  readonly riskClasses: string | null;
+  readonly precipMonth: string | null;
+}
+
+/** Decode the /mapa hazard query keys written by `toHazardSearch`. */
+export function readHazardSearch(page: Page): HazardSearchParams {
+  const url = new URL(page.url());
+  return {
+    hazard: url.searchParams.get('hazard'),
+    basin: url.searchParams.get('basin'),
+    riskClasses: url.searchParams.get('riskClasses'),
+    precipMonth: url.searchParams.get('precipMonth'),
+  };
+}
+
+/**
+ * Navigate to /mapa (optional `?hazard=&basin=&riskClasses=&precipMonth=`)
+ * and report whether the responsive workspace shell mounted.
+ */
+export async function gotoMapWorkspace(page: Page, search = ''): Promise<boolean> {
   // goto is inside the try: with no dev server listening it throws
   // ERR_CONNECTION_REFUSED, and an unguarded throw turns every blind local run
   // into an error instead of the skip that `requireCondition` promises.
+  const query = search === '' ? '' : search.startsWith('?') ? search : `?${search}`;
   try {
-    await page.goto(`${APP_URL}/mapa`);
+    await page.goto(`${APP_URL}/mapa${query}`);
     // waitFor, NOT isVisible: `isVisible()` returns IMMEDIATELY and ignores
     // its timeout option (Playwright API contract). With the old call the
     // helper asked "is it visible right now?" one tick after goto — against
