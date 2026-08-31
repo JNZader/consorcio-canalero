@@ -19,7 +19,7 @@ import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
-import { type TramiteEstadoCanonico, formatTramiteEstado } from '../../../constants/tramites';
+import { formatTramiteEstado } from '../../../constants/tramites';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { LoadingState } from '../../ui/LoadingState';
@@ -30,7 +30,7 @@ interface TramiteListItem {
   tipo: string;
   titulo: string;
   solicitante: string;
-  estado: TramiteEstadoCanonico;
+  estado: string;
   prioridad: string;
   fecha_ingreso: string;
   fecha_resolucion: string | null;
@@ -353,7 +353,7 @@ export default function TramitesPanel() {
                 {selectedTramite.seguimiento.map((item) => (
                   <Timeline.Item
                     key={item.id}
-                    title={`${formatTramiteEstado(item.estado_anterior as TramiteEstadoCanonico)} → ${formatTramiteEstado(item.estado_nuevo as TramiteEstadoCanonico)}`}
+                    title={`${formatTramiteEstado(item.estado_anterior)} → ${formatTramiteEstado(item.estado_nuevo)}`}
                   >
                     <Text c="dimmed" size="sm">
                       {item.comentario}
