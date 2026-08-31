@@ -40,6 +40,8 @@ types-xlrd>=2.0.0  # Required by mypy strict on app/domains/padron/service.py
 bandit>=1.7.0  # Security linter
 safety>=3.0.0  # Dependency vulnerability scanner
 pip-audit>=2.7.0  # Another dependency scanner
+# Transitive via safety. 3.10.0 is PYSEC-2026-3726; pip-audit fails closed.
+nltk>=3.10.2
 
 # ===========================================
 # STRUCTURED LOGGING

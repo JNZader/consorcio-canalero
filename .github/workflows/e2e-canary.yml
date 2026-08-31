@@ -19,7 +19,8 @@ name: E2E canary (prod)
 #    `production.spec.ts`, `denuncias-public-flow`, `auth-protected-flow` and
 #    `rainfall-api` CREATE records (denuncias, sugerencias, users, assets) and
 #    demand `E2E_ADMIN_*`. Pointing those at the live site would have CI writing
-#    junk into production. The canary scope is the three read-only /mapa specs.
+#    junk into production. The canary scope is the four read-only /mapa specs
+#    (citizen hazard journey included; operator hazard journeys stay out).
 #
 #    That scope is ENFORCED, not just documented, by
 #    `test_e2e_canary_stays_read_only_against_production` in

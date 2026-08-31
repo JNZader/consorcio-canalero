@@ -301,10 +301,9 @@ def _assert_non_publishing_image_gate(
             # el frontend. Nada mas puede saltear un gate de escaneo.
             "$" + "{{ github.event_name != 'schedule' "
             "&& needs.changes.outputs.frontend == 'true' }}",
-            # backend: solo el guard de area.
-            # backend: los image gates son ~17 min (GDAL), solo en el release.
+            # backend: image scans only when the production image can change.
             "$" + "{{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') "
-            "&& needs.changes.outputs.backend == 'true' }}",
+            "&& needs.changes.outputs.backend_image == 'true' }}",
         ), guard
     if policy_role is None:
         _assert_strict_image_trivy(job)
@@ -863,14 +862,17 @@ def test_ci_workflows_never_run_production_writing_e2e() -> None:
         assert "PLAYWRIGHT_BASE_URL" not in text
 
 
-# The three read-only /mapa specs the canary is allowed to run. Any OTHER spec
+# The read-only /mapa specs the canary is allowed to run. Any OTHER spec
 # in `tests/e2e/` either creates records against the live site
 # (production/denuncias/auth flows) or needs admin credentials, so adding one to
 # the canary script must break this list on purpose.
+# Operator hazard journeys (`mapa-hazard-operator.spec.ts`) MUST stay out:
+# they call `loginAsAdmin` and the canary is forbidden from carrying `E2E_ADMIN_*`.
 CANARY_READ_ONLY_SPECS = (
     "tests/e2e/mapa-maplibre.spec.ts",
     "tests/e2e/mapa-viewport-movil.spec.ts",
     "tests/e2e/ficha-territorial.spec.ts",
+    "tests/e2e/mapa-hazard-citizen.spec.ts",
 )
 
 
@@ -912,6 +914,11 @@ def test_e2e_canary_stays_read_only_against_production() -> None:
     assert script.startswith("playwright test -c tests/e2e/playwright.config.ts ")
     listed = tuple(script.split()[4:])
     assert listed == CANARY_READ_ONLY_SPECS, listed
+
+    operator_spec = "tests/e2e/mapa-hazard-operator.spec.ts"
+    assert operator_spec not in listed
+    assert (REPO_ROOT / "consorcio-web" / operator_spec).is_file(), operator_spec
+    assert (REPO_ROOT / "consorcio-web" / "tests/e2e/mapa-hazard-citizen.spec.ts").is_file()
 
     # The deploy gate must reject a missing/short sha instead of matching `*`.
     assert '[ -n "$deployed" ]' in canary
@@ -2091,7 +2098,7 @@ def test_rainfall_harness_workflow_stays_optional_and_unreferenced() -> None:
         text = _read(path)
         assert RAINFALL_HARNESS_WORKFLOW not in text, path
 
-    # (c) NOT in the production canary three-spec read-only allowlist: the canary
+    # (c) NOT in the production canary read-only allowlist: the canary
     # script runs exactly CANARY_READ_ONLY_SPECS, and the harness spec is not one.
     package = json.loads(_read("consorcio-web/package.json"))
     canary_script = package["scripts"]["test:e2e:canary"]
