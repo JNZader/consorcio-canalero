@@ -18,7 +18,7 @@ import {
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
@@ -82,7 +82,7 @@ export default function TramitesPanel() {
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
 
-  const fetchTramites = async () => {
+  const fetchTramites = useCallback(async () => {
     setLoading(true);
     try {
       const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
@@ -92,7 +92,7 @@ export default function TramitesPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const fetchDetalle = async (id: string) => {
     try {
@@ -106,9 +106,8 @@ export default function TramitesPanel() {
   };
 
   useEffect(() => {
-    void fetchTramites();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only fetch
-  }, []);
+    fetchTramites();
+  }, [fetchTramites]);
 
   const form = useForm<TramiteFormValues>({
     initialValues: {
