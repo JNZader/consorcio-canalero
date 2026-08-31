@@ -74,19 +74,23 @@ vi.mock('maplibre-gl', () => {
   return { default: maplibregl, ...maplibregl };
 });
 
-vi.mock('../../src/hooks/useHazardUrlState', () => ({
-  useHazardUrlState: () => ({
-    basin: null,
-    hazard: false,
-    precipMonth: 'anual',
-    resetToDefaults: vi.fn(),
-    riskClasses: ['Bajo', 'Medio', 'Alto', 'Crítico'],
-    setBasin: vi.fn(),
-    setHazard: vi.fn(),
-    setPrecipMonth: vi.fn(),
-    setRiskClasses: vi.fn(),
-  }),
-}));
+vi.mock('../../src/hooks/useHazardUrlState', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/hooks/useHazardUrlState')>();
+  return {
+    ...actual,
+    useHazardUrlState: () => ({
+      basin: null,
+      hazard: false,
+      precipMonth: 'anual',
+      resetToDefaults: vi.fn(),
+      riskClasses: ['Bajo', 'Medio', 'Alto', 'Crítico'],
+      setBasin: vi.fn(),
+      setHazard: vi.fn(),
+      setPrecipMonth: vi.fn(),
+      setRiskClasses: vi.fn(),
+    }),
+  };
+});
 
 import MapaMapLibre from '../../src/components/MapaMapLibre';
 import { useAnalysisToolsGate } from '../../src/components/map2d/useAnalysisToolsGate';
