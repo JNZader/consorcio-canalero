@@ -1,19 +1,24 @@
 version: 1
+# Hybrid Node+Python repo. Without this file javi-forge auto-detects the root
+# package.json as Node-only and (when Docker is up) runs a Node image that has
+# no Make/Python — issue #164. Keep both runners explicit.
 runners:
   - name: frontend
     stack: node
     directory: consorcio-web
+    requires: [node, npm]
     lint:
       - npm run lint
+    # typecheck, never vite build: pre-commit/pre-push must not mutate version.json
     build:
       - npm run typecheck
     test:
-      - rm -rf dist/ && npm run build && { chown -R "$(stat -c %u:%g .)" dist/ 2>/dev/null || true; } && mkdir -p node_modules/.vite-temp node_modules/.vite && chmod -R a+w node_modules/.vite-temp node_modules/.vite
-      - npm run test:run
+      - npm run test:run -- tests/unit/api.test.ts
   - name: backend
     stack: python
     directory: gee-backend
+    requires: [python3, ruff]
     lint:
       - export RUFF_NO_CACHE=true && ruff check app/ && ruff format app/ --check
     test:
-      - echo 'backend pytest gated in GitHub Actions (needs live PostgreSQL); skipped in pre-push container'
+      - python3 -m pytest tests/test_ci_workflow_contracts.py tests/test_javi_forge_ci_config.py -q
