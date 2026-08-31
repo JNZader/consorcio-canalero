@@ -114,6 +114,16 @@ PLATFORM = "linux/amd64"
 # La palanca externa sigue siendo el point release Debian 13.7 (bajaria hasta
 # 5 HIGH y 1 CRITICAL: perl 5.40.1-8 + acl). Hay que volver a mirarlo antes
 # del 2026-09-18.
+#
+# Refresh 2026-08-31 (Trivy 0.70.0, DB v2 del dia, imagen de produccion en
+# 0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb). El ratchet exigia una fila
+# nueva: CVE-2026-66046 libexpat1@2.8.3-1~deb13u1 HIGH affected, sin
+# FixedVersion. Debian tracker: trixie-security == 2.8.3-1~deb13u1,
+# sid/forky unfixed, [trixie] no-dsa. No hay hotfix de paquete (no es el
+# caso util-linux/openssl). openssl CVE-2026-14456 sigue ausente por el
+# hotfix 3.5.7-1~deb13u2 en el Dockerfile. sqlite 11822/11824 siguen.
+# 17 -> 18 filas (13 HIGH + 4 CRITICAL -> 14 HIGH + 4 CRITICAL). El sunset
+# 2026-09-18 no se mueve: 66046 no lo remedia un point release 13.7.
 DEADLINE_CEILINGS = {
     "CRITICAL": "2026-09-18T00:00:00Z",
     "HIGH": "2026-09-18T00:00:00Z",
