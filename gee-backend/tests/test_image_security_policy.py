@@ -420,13 +420,19 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # HIGH `affected` de libsqlite3-0 (CVE-2026-11822 / CVE-2026-11824, sin
     # FixedVersion) reveladas por la DB actual. El reparto pasa de
     # 14 HIGH + 4 CRITICAL a 13 HIGH + 4 CRITICAL.
-    assert len(backend_findings) == 17
-    assert sum(finding["count"] for finding in backend_findings) == 17
+    # 17 -> 18 el 2026-08-31: Trivy 0.70.0 + DB v2 del dia revela
+    # CVE-2026-66046 libexpat1@2.8.3-1~deb13u1 HIGH affected, sin
+    # FixedVersion. Debian tracker: trixie/sid unfixed, no-dsa; no hay
+    # hotfix de paquete (a diferencia de util-linux/openssl). El ratchet
+    # exige la fila nueva. sqlite 11822/11824 y la ausencia de 14456 se
+    # mantienen. 13 HIGH + 4 CRITICAL -> 14 HIGH + 4 CRITICAL; affected 14->15.
+    assert len(backend_findings) == 18
+    assert sum(finding["count"] for finding in backend_findings) == 18
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 13
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 14
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 4
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 14
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 15
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 3
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -448,14 +454,26 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         ("CVE-2026-11822", "libsqlite3-0", "HIGH", "affected"),
         ("CVE-2026-11824", "libsqlite3-0", "HIGH", "affected"),
     }
+    expat_findings = [
+        finding for finding in backend_findings if finding["cve"] == "CVE-2026-66046"
+    ]
+    assert len(expat_findings) == 1
+    assert (
+        expat_findings[0]["pkg_id"],
+        expat_findings[0]["severity"],
+        expat_findings[0]["status"],
+        expat_findings[0]["fixed"],
+    ) == ("libexpat1@2.8.3-1~deb13u1", "HIGH", "affected", "")
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
-        "sha256:a156af189662f888c91197f748f09bdca494a08e868b4ec7c1caa87129f4c92f"
+        "sha256:e3d839cd6b359587a2a9c4d60432200c302ab894bae0172dba353992f6fed3c6"
     )
     assert geo_provenance["report_sha256"] == (
         "sha256:21eedc171a92b12f338aa9f714fc15fd701a0f2f35aed3997fa1bf711d09db51"
     )
-    assert backend_provenance["source_revision"] == ("197fdbf6dc89981bf1dfa1626a8b2bfbadcc9138")
+    assert backend_provenance["source_revision"] == (
+        "0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb"
+    )
     # geo-worker baseline is NOT refreshed by this change (distinct revision):
     assert geo_provenance["source_revision"] == ("96cf15d0f36577c2500d2708dc5c1b899035177f")
     assert backend_provenance["platform"] == "linux/amd64"

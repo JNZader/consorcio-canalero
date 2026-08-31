@@ -41,12 +41,12 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 5. ~~**Lluvia v2** — `lluvia-antecedente-referencia`~~ ✅ CERRADO 2026-08-26 (#231-#235, archivado). Queda la higiene mm/hr de IMERG (backlog).
 6. ~~**Lluvia — eventos extremos**~~ ✅ CÓDIGO CERRADO 2026-08-26 (#237-#242, verify final + archive en curso). Al box en la ceremonia: `alembic upgrade head` + `docker compose exec backend python -m app.domains.geo.rainfall.detector_cli`.
 7. **Pared de "Discrepancias" en la ficha** — fix UI propuesto; el owner autorizó 2026-08-31 “todo lo de código, producto después”.
-8. **Código restante (no box)** — (a) archive SDD multi-hazard; (b) issue #164 pre-push harness (`status:needs-review`); (c) CVE-2026-66046 `libexpat1` en el image gate (el próximo PR de Dockerfile/runtime lock lo dispara); (d) sunset image-policy antes del 2026-09-18; (e) reaper de `geo_jobs`; (f) `auto-corridor` 4.3 UX operativa. `ficha-territorial` A7 **ya está en main** (#108/#110/#111, 2026-08-02) — los checkboxes OpenSpec están stale. `lluvia-intensidad-subdiaria` es solo explore, no hay proposal.
+8. **Código restante (no box)** — (a) archive SDD multi-hazard; (b) ~~issue #164 pre-push harness~~ ✅ CERRADO 2026-08-31 (#257); (c) ~~CVE-2026-66046 `libexpat1`~~ congelado en el baseline 2026-08-31 (sin fix Debian; el ratchet ya no revienta el próximo PR de imagen); (d) sunset image-policy **sigue** 2026-09-18 — no se prorrogó; (e) reaper de `geo_jobs`; (f) `auto-corridor` 4.3 UX operativa. `ficha-territorial` A7 **ya está en main** (#108/#110/#111, 2026-08-02) — los checkboxes OpenSpec están stale. `lluvia-intensidad-subdiaria` es solo explore, no hay proposal.
 
 ## 🗄️ Backlog (anotado, sin apuro)
 
 - **Reaper de `geo_jobs`**: worker muerto post-claim → RUNNING huérfano (TODO el dominio, herencia de los pipelines DEM; un huérfano bloquea el pre-check de cruces del área). Diseño candidato en engram `backlog/geo-jobs-orphan-running-reaper`.
-- **Sunset image-policy: revisar antes del 2026-09-18** (18 CVEs sin fix documentadas). El image gate de backend falló 2026-08-31 en un PR de tests con **CVE-2026-66046 `libexpat1@2.8.3-1~deb13u1`**. #255 no tocó la imagen; el próximo PR de Dockerfile / `requirements.lock` lo vuelve a disparar.
+- **Sunset image-policy: revisar antes del 2026-09-18.** Baseline backend 18 filas (14 HIGH + 4 CRITICAL) al 2026-08-31, incluyendo CVE-2026-66046 `libexpat1@2.8.3-1~deb13u1` (Debian `no-dsa`, unfixed en sid). El sunset **no** se movió.
 - **Decisión estructural**: ¿commitear `openspec/changes/`? Hoy untracked — permitió el drift que U2 pagó. La reconciliación manual con `diff -r` es el paliativo vigente.
 - Follow-up router: bajar `mixto→legal` (hoy 2/13) vía tuning de banda/piso — re-medición en U9 con más gold.
 - Follow-ups RAG fuera del gate: re-chunk de las 10 unidades gigantes (fix principled de D-8), más gold de retrieval, juicio abierto del decreto 3780-C/65 (matchea por PDF de OTRO documento).

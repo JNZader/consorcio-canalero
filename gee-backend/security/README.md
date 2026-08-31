@@ -5,9 +5,10 @@ This directory contains the active, temporary, fail-closed image policy tracked 
 
 Stage 2B2 generated the baseline from the preserved final images built at
 `96cf15d0f36577c2500d2708dc5c1b899035177f` and their raw, unsuppressed Trivy 0.70.0 reports.
-The backend exception is the exact normalized 18-row multiset (14 HIGH, 4 CRITICAL); the former
-44-row PR17 set is invalid for this package closure. The Geo worker has an empty exception set, so
-any HIGH or CRITICAL Geo finding fails.
+The backend exception is the exact normalized 18-row multiset (14 HIGH, 4 CRITICAL) after the
+2026-08-31 honest rescan that added CVE-2026-66046 (`libexpat1@2.8.3-1~deb13u1`, no
+`FixedVersion`). The former 44-row PR17 set is invalid for this package closure. The Geo worker
+has an empty exception set, so any HIGH or CRITICAL Geo finding fails.
 
 The policy has no *automated* renewal mechanism — every extension is a one-line edit of a
 hard-coded constant in a reviewed commit (it has happened three times; see below). Its ceilings are:
@@ -18,12 +19,12 @@ hard-coded constant in a reviewed commit (it has happened three times; see below
 
 Both severity ceilings were first moved to the then-existing absolute sunset (CRITICAL on
 2026-07-30, HIGH on 2026-08-04), and on 2026-08-22 all three — the absolute sunset included, for
-the first time — moved to 2026-09-18, because every frozen finding is unfixable upstream: all 18
-rows span 13 distinct CVEs that Debian's security tracker still marks `vulnerable` in trixie
-with no fixed version, and none carries a `FixedVersion`. The 2026-08-22 extension re-verified
-that against a fresh build, a same-day Trivy 0.70.0 DB and the pinned base image's own `apt`
-(`Installed == Candidate` for every affected package); the Debian 13.7 point release that would
-remediate up to 5 HIGH and 1 CRITICAL has not shipped. See the consolidated evidence block
+the first time — moved to 2026-09-18, because every frozen finding is unfixable upstream. The 2026-08-31 backend
+rescan (Trivy 0.70.0, DB v2 of that day, production image at
+`0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb`) still has no `FixedVersion` on any
+row; CVE-2026-66046 is `no-dsa` / unfixed even in sid. The Debian 13.7 point
+release that would remediate some perl/acl HIGH/CRITICAL has not shipped, and
+would not remediate 66046. See the consolidated evidence block
 in `scripts/validate_image_security_policy.py`. The sunset binds the policy *JSON*: the
 validator checks it before the per-severity deadlines, and the ceiling check rejects any JSON
 deadline past it. The sunset constant itself is pinned by
