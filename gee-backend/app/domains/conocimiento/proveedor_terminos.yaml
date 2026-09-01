@@ -3,40 +3,48 @@
 #
 # This file is the record, not the verification. The verification is an
 # operational act the OWNER performs against the live pool and the provider's
-# published terms; the procedure is in `docs/rag/proveedor-terminos.md`. Until it
-# is performed, `verificar_terminos` refuses and the feature flag does not turn
-# on. Fail-closed, not a warning.
+# published terms; the procedure is in `docs/rag/proveedor-terminos.md`. The
+# record was filled 2026-08-31; `verificar_terminos` still refuses unless this
+# record covers the live pin. The serving flag is a separate AND and stays off.
+# Fail-closed, not a warning.
 #
 # It is checked in and lives next to the pin so that a silent terms change is a
 # diff rather than a discovery.
 
 # The exact model id AS THE POOL EXPOSES IT. Not the name from a blog post: the
 # pin is worthless if it does not name a real route (amendment A2, point 1).
-modelo_id: deepseek-v4-flash
+# Live `/v1/models` on 2026-08-31 listed `opencode-go/deepseek-v4-flash` and not
+# the bare `deepseek-v4-flash` id.
+modelo_id: opencode-go/deepseek-v4-flash
 # The pool the pin is routed through. The same model id behind a different
 # operator is different terms and different retention.
 pool: opencode-cli
 
-# UNVERIFIED. Flip to `true` only together with the evidence fields below, in the
+# VERIFIED 2026-08-31. Flip only together with the evidence fields below, in the
 # same commit, with the owner's name on it.
-verificado: false
+verificado: true
 
 # --- evidence (all four required; a record nobody can audit is a claim) -------
 # ISO date on which the terms were read.
-verificado_el: null
+verificado_el: "2026-08-31"
 # Who read them. A verification with no author is a rumour.
-verificado_por: null
+verificado_por: Javier
 # The URL of the published terms that were read.
-fuente_url: null
+# The Go privacy page is the document that publishes the two substantive
+# criteria (training + retention). The operator ToS at
+# https://opencode.ai/legal/terms-of-service was also read
+# (sha256 c62fb629e5b532fc9595e4d60f94cd9c46476908de86b067bbb9031f628840d4);
+# the schema has one fuente_url, so the privacy page is the recorded source.
+fuente_url: https://opencode.ai/docs/go/
 # sha256 of the terms text as read, so a later silent edit is detectable.
-sha256_terminos: null
+sha256_terminos: e879d65a9fa06316113e525a2a6ca3d3aa63a8eb5c84bb9dd0a783bfe2fd540d
 
 # --- the two substantive criteria --------------------------------------------
 # Does the provider publish that it does NOT train on API input? A provider that
 # trains on inputs is ineligible regardless of price or latency: the ratified
 # privacy amendment permits public law text plus the question to leave the box,
 # not to become training data.
-no_entrenamiento: null
+no_entrenamiento: true
 # The published retention window for API traffic, in days. Must be a bounded
 # number: "they keep it for a while" is not a retention term. 0 means the
 # provider publishes that it retains nothing, and 0 is a legitimate value here —
@@ -49,4 +57,10 @@ no_entrenamiento: null
 # provider's published term is genuinely longer and the owner still wants the
 # pin, that is a decision to record and to raise the constant with, not a value
 # to slip past a type check.
-retencion_dias: null
+#
+# DeepSeek V4 Flash on the Go privacy table: training Not used, retention 0
+# days*. Footnote: DeepSeek ZDR agreement is renewed monthly. The current
+# agreement is valid through August 31, 2026. After 2026-09-01 the owner must
+# re-verify or this record is stale. Do not pin Muse Spark (training Yes / not
+# ZDR).
+retencion_dias: 0

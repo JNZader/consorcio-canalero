@@ -4,14 +4,14 @@ U5 declared the port (`generacion.Generador`) and shipped only the stand-in. Thi
 module fills it with the real adapter, and everything here is arranged around
 three facts that the amendments ratified.
 
-**The pin is `deepseek-v4-flash` through the opencode-go pool, routed by
-mcp-llm-bridge, and it lives in CONFIG (amendment A2).** Changing the model must
-be a config edit and never a code edit, so no model name is written in this file:
-`model_id` is whatever `conocimiento_modelo` says, and it is carried verbatim
-into the outbound payload and out to `verificar_generador`-style provenance. A
-hardcoded name here would make the pin a lie the moment someone changed the env
-var — the same failure mode the sidecar's identity rule exists to prevent
-(`embed_sidecar.py`).
+**The pin is `opencode-go/deepseek-v4-flash` through the opencode-go pool,
+routed by mcp-llm-bridge, and it lives in CONFIG (amendment A2).** Changing the
+model must be a config edit and never a code edit, so no model name is written
+as a runtime value in this file: `model_id` is whatever `conocimiento_modelo`
+says, and it is carried verbatim into the outbound payload and out to
+`verificar_generador`-style provenance. A hardcoded name here would make the pin
+a lie the moment someone changed the env var — the same failure mode the
+sidecar's identity rule exists to prevent (`embed_sidecar.py`).
 
 **The terms are a pin CRITERION, not a footnote (`design.md:493-497`, task
 6.7).** A provider that trains on inputs is not eligible regardless of price or
@@ -20,8 +20,8 @@ question to leave the box — not to become training data. What lives in code is
 the MECHANISM: a checked-in record next to the pin, and a gate that refuses when
 that record is absent, unverified, unauditable or about a different model. The
 verification itself is the owner's operational act (see
-`docs/rag/proveedor-terminos.md`); the record shipped today is UNVERIFIED, so the
-gate refuses today. Fail-closed, not a warning.
+`docs/rag/proveedor-terminos.md`); the record was filled 2026-08-31. Fail-closed,
+not a warning.
 
 **The semaphore is gone and the timeouts moved (amendment A3).** There is no HTTP
 request to abort here: a queued item is processed by a worker, so

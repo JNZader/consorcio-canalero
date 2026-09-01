@@ -125,9 +125,10 @@ def habilitado(monkeypatch, tmp_path):
     """Every ANDed enablement fact TRUE, so the tests below can turn one off.
 
     The terms record is written to a temp file and pointed at through
-    `cargar_terminos`'s seam — never by editing the checked-in one, whose
-    `verificado: false` is itself an asserted fact (`test_el_registro_que_esta_
-    hoy_en_el_repo_no_habilita_el_flag`).
+    `cargar_terminos`'s seam — never by editing the checked-in one. Coverage of
+    the live pin is asserted by
+    `test_el_registro_QUE_ESTA_HOY_EN_EL_REPO_cubre_el_pin`; this fixture still
+    uses a temp record so it does not depend on the live yaml.
     """
     import yaml
 
@@ -281,12 +282,13 @@ class TestLaHabilitacionEsUnAND:
         assert detalle["error"] == "base_de_conocimiento_no_lista"
         assert detalle["causa"] == "terminos_no_verificados"
 
-    def test_el_registro_QUE_ESTA_HOY_EN_EL_REPO_no_habilita_la_superficie(
+    def test_el_registro_QUE_ESTA_HOY_EN_EL_REPO_cubre_el_pin(
         self, app_client, monkeypatch
     ):
-        """End to end, against the real checked-in record. It ships unverified,
-        so the surface refuses today — which is the honest state until the owner
-        performs `docs/rag/proveedor-terminos.md`."""
+        """End to end, against the real checked-in record. Task 6.7 filled it, so
+        the terms cause is no longer why POST refuses — quota is still 0 and the
+        serving flag is still a separate AND (`docs/rag/runbook-encendido.md`
+        step 7a)."""
         from app.config import settings
 
         app, cliente = app_client
@@ -295,7 +297,7 @@ class TestLaHabilitacionEsUnAND:
         monkeypatch.setattr(settings, "conocimiento_proveedor_api_key", "clave")
         codigo, detalle = self._causa(cliente)
         assert codigo == 503
-        assert detalle["causa"] == "terminos_no_verificados"
+        assert detalle["causa"] != "terminos_no_verificados"
 
     def test_la_credencial_ausente_refusa_con_su_causa_y_no_con_un_500(
         self, app_client, habilitado, monkeypatch

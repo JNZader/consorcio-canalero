@@ -193,11 +193,9 @@ PARAMETROS = routing.ParametrosRuta(umbral=0.1, banda=0.05, piso=0.5)
 
 
 def terminos_ok() -> None:
-    """The terms gate, satisfied. The REAL record ships `verificado: false`.
-
-    Every test below that is not about the terms gate passes this, for the same
-    reason `test_qa_surface` writes a temp record: the checked-in one refusing is
-    itself an asserted fact and must not be edited to make other tests run.
+    """The terms gate, satisfied. Used as a seam so most tests do not depend on
+    the live yaml. Coverage of the checked-in record is
+    `test_por_defecto_el_registro_del_repo_cubre_el_pin`.
     """
 
 
@@ -335,24 +333,24 @@ class TestElGuardiaAntesDelClaim:
             )
         assert construidos == []
 
-    def test_por_defecto_el_registro_del_repo_frena_al_worker(self, db):
+    def test_por_defecto_el_registro_del_repo_cubre_el_pin(self, db):
         """End to end against the REAL checked-in record, through the default seam.
 
-        It ships unverified, so a worker started today against this repository
-        refuses — which is the honest state until the owner performs task 6.7.
+        Task 6.7 filled the record, so a worker started today against this
+        repository is no longer refused by terms. The serving flag is a
+        separate AND and stays off.
         """
         seed(db)
         buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
-        with pytest.raises(TerminosNoVerificados):
-            trabajador.procesar_uno(
-                db,
-                corpus_sha=SHA,
-                embedder=EmbedderFalso(),
-                centroides=centroides_hacia(routing.CLASE_LEGAL),
-                parametros=PARAMETROS,
-                reranker=RerankerFalso(),
-                crear_generador=lambda _p: GeneradorFalso(None),
-            )
+        trabajador.procesar_uno(
+            db,
+            corpus_sha=SHA,
+            embedder=EmbedderFalso(),
+            centroides=centroides_hacia(routing.CLASE_LEGAL),
+            parametros=PARAMETROS,
+            reranker=RerankerFalso(),
+            crear_generador=lambda _p: GeneradorFalso(None),
+        )
 
 
 class TestRedireccionPura:
