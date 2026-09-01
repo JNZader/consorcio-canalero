@@ -6,7 +6,7 @@
 > los checkouts locales — y la memoria persistente de sesión (engram, proyecto
 > `consorcio-canalero`).
 >
-> Última actualización: **2026-08-31** · Mantiene: @javier
+> Última actualización: **2026-09-01** · Mantiene: @javier
 
 ---
 
@@ -32,7 +32,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 ## 📋 La cola actual (orden acordado)
 
 1. **Actos del owner para el encendido** (gate §4.3 del runbook — nada defaultea):
-   - Firma de términos del proveedor (6.7 — procedimiento en `docs/rag/proveedor-terminos.md`)
+   - Firma de términos del proveedor (6.7 — procedimiento en `docs/rag/proveedor-terminos.md`). Re-pinedo 2026-09-01 a `opencode-go/glm-5.3-flash` (0 días **sin** asterisco ZDR) después de que el pie mensual de DeepSeek V4 Flash quedara en "valid through August 31, 2026". El flag sigue off.
    - Decisión de abstención (0.1 — la única de Fase 0 abierta; se corta con los datos de la eval)
    - Corridas GPU en la workstation: `answer_set` n≥30 por el path real + grading + re-grade ciego ≥1 día · `slm_bench` (deepseek vs Qwen3-8B — la escalera 9.6b) · margen real de `bm25_ce` · knobs de costo (A2)
 2. **🎉 LA CEREMONIA DE ENCENDIDO CONJUNTO** — `docs/rag/runbook-encendido.md` paso a paso: el box camina 6 revisiones (004→0021→0022→0023→005→006→007), ETL red_vial con dry-run vs GEE, task de cruces, re-ingest con 3 clases, sidecar, worker por systemd en la workstation, flags al final. Incluye el O.1 de flujo-caminos.
