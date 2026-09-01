@@ -4,7 +4,7 @@ U5 declared the port (`generacion.Generador`) and shipped only the stand-in. Thi
 module fills it with the real adapter, and everything here is arranged around
 three facts that the amendments ratified.
 
-**The pin is `opencode-go/deepseek-v4-flash` through the opencode-go pool,
+**The pin is `opencode-go/glm-5.3-flash` through the opencode-go pool,
 routed by mcp-llm-bridge, and it lives in CONFIG (amendment A2).** Changing the
 model must be a config edit and never a code edit, so no model name is written
 as a runtime value in this file: `model_id` is whatever `conocimiento_modelo`
@@ -20,8 +20,8 @@ question to leave the box — not to become training data. What lives in code is
 the MECHANISM: a checked-in record next to the pin, and a gate that refuses when
 that record is absent, unverified, unauditable or about a different model. The
 verification itself is the owner's operational act (see
-`docs/rag/proveedor-terminos.md`); the record was filled 2026-08-31. Fail-closed,
-not a warning.
+`docs/rag/proveedor-terminos.md`); the record was filled 2026-09-01 for
+GLM-5.3-Flash. Fail-closed, not a warning.
 
 **The semaphore is gone and the timeouts moved (amendment A3).** There is no HTTP
 request to abort here: a queued item is processed by a worker, so

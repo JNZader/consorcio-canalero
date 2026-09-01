@@ -1,7 +1,8 @@
 # Provider terms verification — the pre-enablement gate (task 6.7)
 
-The generation surface is pinned to **`opencode-go/deepseek-v4-flash` through the
-opencode-go pool, routed by mcp-llm-bridge** (amendment A2, owner decision 0.4).
+The generation surface is pinned to **`opencode-go/glm-5.3-flash` through the
+opencode-go pool, routed by mcp-llm-bridge** (amendment A2; re-pinned 2026-09-01
+after DeepSeek V4 Flash's monthly ZDR footnote lapsed).
 The ratified privacy amendment permits public law text plus the CD member's
 question to leave the box. It does **not** permit either of them to become
 training data.
@@ -10,7 +11,7 @@ The pin is not complete until two things are verified against reality, and until
 they are, **the feature flag does not turn on**. This is fail-closed: not a
 warning, not a log line, not a TODO. `verificar_terminos` refuses unless the
 checked-in record covers this exact `(modelo, pool)` pair. The record was filled
-2026-08-31; the serving flag is still off.
+2026-09-01 for GLM-5.3-Flash; the serving flag is still off.
 
 ## What code does and what code cannot do
 
@@ -28,8 +29,8 @@ pin and checked in, so a later silent terms change is a diff rather than a
 discovery.
 
 A machine cannot do the verification part. It can only refuse to pretend it was
-done. The record was filled 2026-08-31 (`verificado: true`) against the live
-`opencode-go/deepseek-v4-flash` pin; verified terms are necessary and not
+done. The record was filled 2026-09-01 (`verificado: true`) against the live
+`opencode-go/glm-5.3-flash` pin; verified terms are necessary and not
 sufficient to turn the surface on.
 
 > **Where the gate is called from.** Task 7.2 has landed:
@@ -144,6 +145,7 @@ change in the terms until proven otherwise:
 - the model pin changes (`conocimiento_modelo`);
 - the pool changes (`conocimiento_pool`) — different operator, different terms;
 - `sha256_terminos` no longer matches the live document;
-- the DeepSeek ZDR agreement expires. It is renewed monthly; the agreement read
-  on 2026-08-31 is valid through 2026-08-31. From 2026-09-01 the record is stale
-  until re-verified against a renewed footnote.
+- a ZDR footnote that this pin depends on expires. GLM-5.3-Flash's published
+  0-day retention has no asterisk (read 2026-09-01). DeepSeek V4 Flash's
+  monthly ZDR is why that pin was dropped: the footnote stayed "valid through
+  August 31, 2026" on a page last updated September 1.

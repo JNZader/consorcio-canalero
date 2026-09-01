@@ -3,7 +3,7 @@
 Three mechanisms are bound here, and they fail in three different ways:
 
 * **the provider adapter** — it fills the `Generador` port U5 already declared
-  (`generacion.py`), it reaches `opencode-go/deepseek-v4-flash` through the
+  (`generacion.py`), it reaches `opencode-go/glm-5.3-flash` through the
   opencode-go pool routed by mcp-llm-bridge, and the model it asks for comes from
   CONFIG. Changing the model must be a config edit and never a code edit
   (amendment A2). No test here makes a network call: every one of them runs on
@@ -70,7 +70,7 @@ from app.domains.conocimiento.proveedores import (
     verificar_terminos,
 )
 
-MODELO = "opencode-go/deepseek-v4-flash"
+MODELO = "opencode-go/glm-5.3-flash"
 POOL = "opencode-cli"
 CORDOBA = ZoneInfo("America/Argentina/Cordoba")
 

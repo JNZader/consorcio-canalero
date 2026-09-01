@@ -231,7 +231,7 @@ WantedBy=multi-user.target
 | `CONOCIMIENTO_EMBED_URL` | `http://conocimiento-embed:8002` | Where the sidecar lives. |
 | `CONOCIMIENTO_EMBED_TIMEOUT_S` | `10.0` | Per-call timeout to the sidecar. |
 | `CONOCIMIENTO_PROVEEDOR_URL` | `http://127.0.0.1:3456` | mcp-llm-bridge gateway. |
-| `CONOCIMIENTO_MODELO` | `opencode-go/deepseek-v4-flash` | The pinned model. Changing it invalidates the terms record (step 7a) **and** every graded answer. |
+| `CONOCIMIENTO_MODELO` | `opencode-go/glm-5.3-flash` | The pinned model. Changing it invalidates the terms record (step 7a) **and** every graded answer. |
 | `CONOCIMIENTO_POOL` | `opencode-cli` | The pool the pin routes through. |
 | `CONOCIMIENTO_PROVEEDOR_API_KEY` | *(empty)* | Fact 2 of the enablement AND. Empty ⇒ the surface stays off. |
 | `CONOCIMIENTO_PROVIDER_TIMEOUT_S` | `20.0` | One provider call. |
@@ -483,11 +483,12 @@ venv/bin/python scripts/rag_ingest.py \
 read published terms; it can only refuse to pretend they were read. The
 procedure is `docs/rag/proveedor-terminos.md`.
 
-Performed 2026-08-31 against the live `opencode-go/deepseek-v4-flash` pin
+Performed 2026-09-01 against the live `opencode-go/glm-5.3-flash` pin
 (record in `proveedor_terminos.yaml`, `verificado: true`, owner's name on it).
+Replaced `opencode-go/deepseek-v4-flash` after its monthly ZDR footnote lapsed.
 `CONOCIMIENTO_QA_ENABLED` stays false until step 11. Re-run the same procedure
 when any re-verification trigger in that document fires (pin/pool change,
-digest mismatch, DeepSeek ZDR monthly expiry). The owner:
+digest mismatch, a ZDR footnote this pin depends on). The owner:
 
 1. confirms the exact model id **as the opencode-go pool exposes it**;
 2. reads the provider's published no-training-on-input and retention terms;

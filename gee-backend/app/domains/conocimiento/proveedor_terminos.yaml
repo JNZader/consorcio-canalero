@@ -3,41 +3,40 @@
 #
 # This file is the record, not the verification. The verification is an
 # operational act the OWNER performs against the live pool and the provider's
-# published terms; the procedure is in `docs/rag/proveedor-terminos.md`. The
-# record was filled 2026-08-31; `verificar_terminos` still refuses unless this
-# record covers the live pin. The serving flag is a separate AND and stays off.
-# Fail-closed, not a warning.
+# published terms; the procedure is in `docs/rag/proveedor-terminos.md`.
+# `verificar_terminos` refuses unless this record covers the live pin. The
+# serving flag is a separate AND and stays off. Fail-closed, not a warning.
 #
 # It is checked in and lives next to the pin so that a silent terms change is a
 # diff rather than a discovery.
 
 # The exact model id AS THE POOL EXPOSES IT. Not the name from a blog post: the
 # pin is worthless if it does not name a real route (amendment A2, point 1).
-# Live `/v1/models` on 2026-08-31 listed `opencode-go/deepseek-v4-flash` and not
-# the bare `deepseek-v4-flash` id.
-modelo_id: opencode-go/deepseek-v4-flash
+# Live `opencode models --refresh` on 2026-09-01 listed
+# `opencode-go/glm-5.3-flash`. The previous pin `opencode-go/deepseek-v4-flash`
+# published 0-day retention only under a monthly ZDR footnote valid through
+# 2026-08-31; that window lapsed.
+modelo_id: opencode-go/glm-5.3-flash
 # The pool the pin is routed through. The same model id behind a different
 # operator is different terms and different retention.
 pool: opencode-cli
 
-# VERIFIED 2026-08-31. Flip only together with the evidence fields below, in the
+# VERIFIED 2026-09-01. Flip only together with the evidence fields below, in the
 # same commit, with the owner's name on it.
 verificado: true
 
 # --- evidence (all four required; a record nobody can audit is a claim) -------
 # ISO date on which the terms were read.
-verificado_el: "2026-08-31"
+verificado_el: "2026-09-01"
 # Who read them. A verification with no author is a rumour.
 verificado_por: Javier
 # The URL of the published terms that were read.
 # The Go privacy page is the document that publishes the two substantive
-# criteria (training + retention). The operator ToS at
-# https://opencode.ai/legal/terms-of-service was also read
-# (sha256 c62fb629e5b532fc9595e4d60f94cd9c46476908de86b067bbb9031f628840d4);
-# the schema has one fuente_url, so the privacy page is the recorded source.
+# criteria (training + retention).
 fuente_url: https://opencode.ai/docs/go/
 # sha256 of the terms text as read, so a later silent edit is detectable.
-sha256_terminos: e879d65a9fa06316113e525a2a6ca3d3aa63a8eb5c84bb9dd0a783bfe2fd540d
+# `curl -sS https://opencode.ai/docs/go/ | sha256sum` on 2026-09-01.
+sha256_terminos: 269f390023d86338e906a55685f7c302b00486f05421174a26c9ac97b830e62f
 
 # --- the two substantive criteria --------------------------------------------
 # Does the provider publish that it does NOT train on API input? A provider that
@@ -58,9 +57,9 @@ no_entrenamiento: true
 # pin, that is a decision to record and to raise the constant with, not a value
 # to slip past a type check.
 #
-# DeepSeek V4 Flash on the Go privacy table: training Not used, retention 0
-# days*. Footnote: DeepSeek ZDR agreement is renewed monthly. The current
-# agreement is valid through August 31, 2026. After 2026-09-01 the owner must
-# re-verify or this record is stale. Do not pin Muse Spark (training Yes / not
-# ZDR).
+# GLM-5.3-Flash on the Go privacy table 2026-09-01 (Last updated Sep 1, 2026):
+# Model training Not used, Data retention 0 days — NO asterisk. The DeepSeek
+# monthly ZDR footnote does not apply to this row. Do not pin Muse Spark
+# (training Yes / not ZDR). Do not pin DeepSeek V4 Flash until its ZDR footnote
+# is current.
 retencion_dias: 0
