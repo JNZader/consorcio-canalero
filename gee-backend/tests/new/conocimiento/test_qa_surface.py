@@ -282,9 +282,7 @@ class TestLaHabilitacionEsUnAND:
         assert detalle["error"] == "base_de_conocimiento_no_lista"
         assert detalle["causa"] == "terminos_no_verificados"
 
-    def test_el_registro_QUE_ESTA_HOY_EN_EL_REPO_cubre_el_pin(
-        self, app_client, monkeypatch
-    ):
+    def test_el_registro_QUE_ESTA_HOY_EN_EL_REPO_cubre_el_pin(self, app_client, monkeypatch):
         """End to end, against the real checked-in record. Task 6.7 filled it, so
         the terms cause is no longer why POST refuses — quota is still 0 and the
         serving flag is still a separate AND (`docs/rag/runbook-encendido.md`
