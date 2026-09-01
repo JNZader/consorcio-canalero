@@ -1,13 +1,16 @@
 # Provider terms verification — the pre-enablement gate (task 6.7)
 
-The generation surface is pinned to **`deepseek-v4-flash` through the opencode-go
-pool, routed by mcp-llm-bridge** (amendment A2, owner decision 0.4). The ratified
-privacy amendment permits public law text plus the CD member's question to leave
-the box. It does **not** permit either of them to become training data.
+The generation surface is pinned to **`opencode-go/deepseek-v4-flash` through the
+opencode-go pool, routed by mcp-llm-bridge** (amendment A2, owner decision 0.4).
+The ratified privacy amendment permits public law text plus the CD member's
+question to leave the box. It does **not** permit either of them to become
+training data.
 
-So the pin is not complete until two things are verified against reality, and
-until they are, **the feature flag does not turn on**. This is fail-closed: not a
-warning, not a log line, not a TODO. `verificar_terminos` refuses.
+The pin is not complete until two things are verified against reality, and until
+they are, **the feature flag does not turn on**. This is fail-closed: not a
+warning, not a log line, not a TODO. `verificar_terminos` refuses unless the
+checked-in record covers this exact `(modelo, pool)` pair. The record was filled
+2026-08-31; the serving flag is still off.
 
 ## What code does and what code cannot do
 
@@ -25,12 +28,15 @@ pin and checked in, so a later silent terms change is a diff rather than a
 discovery.
 
 A machine cannot do the verification part. It can only refuse to pretend it was
-done, which is what it does today: the shipped record is `verificado: false`.
+done. The record was filled 2026-08-31 (`verificado: true`) against the live
+`opencode-go/deepseek-v4-flash` pin; verified terms are necessary and not
+sufficient to turn the surface on.
 
-> **Where the gate is called from — read this before enabling anything.** As of
-> 2026-08-24 `verificar_terminos` is called by tests and by **nothing on the
-> serving path**. U6 built the mechanism; the consumer is the first ANDed fact of
-> the feature-flag dependency and lands with **task 7.2**, as
+> **Where the gate is called from.** Task 7.2 has landed:
+> `enforce_conocimiento_qa_enabled` calls `verificar_terminos` as the first ANDed
+> fact of the serving path (`gee-backend/app/domains/conocimiento/router.py`). A
+> record that does not cover the pin refuses with 503
+> `base_de_conocimiento_no_lista`, cause `terminos_no_verificados`:
 >
 > ```python
 > verificar_terminos(
@@ -40,10 +46,8 @@ done, which is what it does today: the shipped record is `verificado: false`.
 > )   # ⇒ 503 base_de_conocimiento_no_lista, cause `terminos_no_verificados`
 > ```
 >
-> Until that lands, this gate guards nothing: flipping `conocimiento_qa_enabled`
-> to `true` today would serve questions with the record still unverified, and the
-> only thing enforcing A2's "if those terms cannot be verified, the flag is not
-> enabled" would be somebody remembering. **Do not enable the flag before 7.2.**
+> The serving flag (`conocimiento_qa_enabled`) is still off. Do not flip it from
+> this procedure; the rest of the enablement AND and the runbook still apply.
 
 ## Procedure
 
@@ -116,16 +120,19 @@ Get the digest from the text you read, not from a summary of it:
 curl -s <fuente_url> | sha256sum
 ```
 
-### 4. Flip the test that guards the gate
+### 4. Keep the tests that guard the gate
 
-`test_el_registro_que_esta_hoy_en_el_repo_no_habilita_el_flag` in
-`tests/new/conocimiento/test_costos.py` asserts that today's record refuses. That
-test is **meant to be edited**, once, by whoever performs this procedure: turning
-it into its positive form is the visible diff in which the verification is
-claimed, with the owner's name in the record beside it.
+Ceremony 6.7 already turned
+`test_el_registro_que_esta_hoy_en_el_repo_cubre_el_pin` in
+`tests/new/conocimiento/test_costos.py` (and
+`test_el_registro_QUE_ESTA_HOY_EN_EL_REPO_cubre_el_pin` in
+`tests/new/conocimiento/test_qa_surface.py`) into the positive form: the
+checked-in record must COVER the live pin. A re-verification keeps those tests
+green by updating the record in the same change as the evidence; do not turn
+them back into a refusal unless the pin is uncovered.
 
-Nothing else in the suite changes. If flipping the record makes any other test
-pass that was failing, something was depending on the gate being closed and that
+Nothing else in the suite should have to change. If updating the record makes
+any other test fail, something was depending on the previous snapshot and that
 is a finding, not a nuisance.
 
 ## Re-verification
@@ -136,4 +143,7 @@ change in the terms until proven otherwise:
 
 - the model pin changes (`conocimiento_modelo`);
 - the pool changes (`conocimiento_pool`) — different operator, different terms;
-- `sha256_terminos` no longer matches the live document.
+- `sha256_terminos` no longer matches the live document;
+- the DeepSeek ZDR agreement expires. It is renewed monthly; the agreement read
+  on 2026-08-31 is valid through 2026-08-31. From 2026-09-01 the record is stale
+  until re-verified against a renewed footnote.

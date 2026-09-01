@@ -3,10 +3,11 @@
 Three mechanisms are bound here, and they fail in three different ways:
 
 * **the provider adapter** — it fills the `Generador` port U5 already declared
-  (`generacion.py`), it reaches `deepseek-v4-flash` through the opencode-go pool
-  routed by mcp-llm-bridge, and the model it asks for comes from CONFIG. Changing
-  the model must be a config edit and never a code edit (amendment A2). No test
-  here makes a network call: every one of them runs on `httpx.MockTransport`;
+  (`generacion.py`), it reaches `opencode-go/deepseek-v4-flash` through the
+  opencode-go pool routed by mcp-llm-bridge, and the model it asks for comes from
+  CONFIG. Changing the model must be a config edit and never a code edit
+  (amendment A2). No test here makes a network call: every one of them runs on
+  `httpx.MockTransport`;
 * **the terms gate** — the pin is worthless unless the pool really exposes that
   model id and the provider really publishes no-training-on-input plus a bounded
   retention window. That verification is the OWNER's (task 6.7); what lives in
@@ -69,7 +70,7 @@ from app.domains.conocimiento.proveedores import (
     verificar_terminos,
 )
 
-MODELO = "deepseek-v4-flash"
+MODELO = "opencode-go/deepseek-v4-flash"
 POOL = "opencode-cli"
 CORDOBA = ZoneInfo("America/Argentina/Cordoba")
 
@@ -491,24 +492,23 @@ class TestCompuertaDeTerminos:
     def test_la_clave_presente_con_valor_null_tampoco_verifica(
         self, tmp_path: Path, campo: str
     ) -> None:
-        """THE SHAPE THE REAL YAML SHIPS. `proveedor_terminos.yaml` writes every
-        one of these keys with an explicit `null` so the owner has a labelled
-        slot to fill; the sibling test above only ever DELETES the key. A gate
-        written as `campo in registro` instead of a truthiness check would pass
-        every one of those deletion tests and admit the checked-in record
-        untouched — which is the one input this gate must refuse."""
+        """Null in a present key is not a filled slot. An unfilled record writes
+        every one of these keys with an explicit `null` so the owner has a
+        labelled slot to fill; the sibling test above only ever DELETES the key.
+        A gate written as `campo in registro` instead of a truthiness check
+        would pass every one of those deletion tests and admit an unfilled
+        record — which is the one input this gate must refuse."""
         datos = _terminos_completos() | {campo: None}
         with pytest.raises(TerminosNoVerificados):
             verificar_terminos(
                 cargar_terminos(_escribir(tmp_path, datos)), modelo=MODELO, pool=POOL
             )
 
-    def test_el_registro_que_esta_hoy_en_el_repo_no_habilita_el_flag(self) -> None:
-        """The shipped record is UNVERIFIED, because nobody has read the terms
-        yet. This test flipping is the visible diff in which the owner records
-        that they did (task 6.7) — it is meant to be edited, with evidence."""
-        with pytest.raises(TerminosNoVerificados):
-            verificar_terminos(cargar_terminos(TERMINOS_PATH), modelo=MODELO, pool=POOL)
+    def test_el_registro_que_esta_hoy_en_el_repo_cubre_el_pin(self) -> None:
+        """The visible diff of task 6.7: the checked-in record covers the live
+        pin. Re-verification keeps this green by updating the record with
+        evidence; it does not turn the serving flag on."""
+        verificar_terminos(cargar_terminos(TERMINOS_PATH), modelo=MODELO, pool=POOL)
 
 
 # ---------------------------------------------------------------------------

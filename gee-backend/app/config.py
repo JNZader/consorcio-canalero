@@ -97,16 +97,16 @@ class Settings(BaseSettings):
 
     # ── Conocimiento generation provider (U6) ─────────────────────────────
     # THE MODEL PIN LIVES HERE AND NOT IN CODE (amendment A2, decision 0.4).
-    # `deepseek-v4-flash` through the opencode-go pool, routed by mcp-llm-bridge.
-    # Changing the model must be a config edit; `proveedores.py` writes no model
-    # name anywhere, so an env change is the whole change.
+    # `opencode-go/deepseek-v4-flash` through the opencode-go pool, routed by
+    # mcp-llm-bridge. Changing the model must be a config edit; `proveedores.py`
+    # writes no model name anywhere, so an env change is the whole change.
     #
     # Enabling the surface additionally requires the TERMS RECORD next to the pin
     # (`app/domains/conocimiento/proveedor_terminos.yaml`) to verifiably cover
-    # this exact `(conocimiento_modelo, conocimiento_pool)` pair. That record is
-    # unverified today, so the gate refuses today — see task 6.7.
+    # this exact `(conocimiento_modelo, conocimiento_pool)` pair. That record was
+    # filled 2026-08-31 (task 6.7); the FLAG still stays off.
     conocimiento_proveedor_url: str = "http://127.0.0.1:3456"
-    conocimiento_modelo: str = "deepseek-v4-flash"
+    conocimiento_modelo: str = "opencode-go/deepseek-v4-flash"
     conocimiento_pool: str = "opencode-cli"
     # Empty = the adapter refuses to be constructed at all. Fail-closed at wiring
     # time rather than on the first question.
