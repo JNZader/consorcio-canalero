@@ -63,6 +63,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
+# rag_consulta.usuario_id FKs users.id; without this mapper SQLAlchemy
+# raises NoReferencedTableError on flush in the worker process.
+from app.auth.models import User as _User  # noqa: E402, F401
 from app.config import settings  # noqa: E402
 from app.domains.conocimiento import routing, trabajador  # noqa: E402
 from app.domains.conocimiento.embed_sidecar import (  # noqa: E402
