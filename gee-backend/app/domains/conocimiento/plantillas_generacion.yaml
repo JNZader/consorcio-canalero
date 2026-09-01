@@ -10,7 +10,7 @@
 # boilerplate below, so the rule and the prompt are one artifact reviewed
 # together. If you edit a framing here you are editing the prompt.
 
-version: 1
+version: 2
 
 # Abbreviations whose trailing period must NOT end a sentence. Compared on the
 # normalized token (accents stripped, lowercased) immediately before the period.
@@ -105,6 +105,13 @@ abstencion: No se encontró una norma aplicable en el corpus consultado.
 # fewer built on a listed verb is still excluded. The prompt does not produce
 # one, and the residue is what owner grading measures (design.md:610-612).
 maximo_tokens_fragmento: 3
+# Markdown headings (`## …` or a line wrapped in **bold**) are titles, not
+# claims, up to this many tokens if they still contain no listed verb. The
+# unmarked 3-token cap stays for everything else: raising it globally would
+# excuse "La ley 8548 rige". 8 covers Spanish legal titles such as
+# "Formalización en el estatuto" without covering
+# "## El plazo de oposición vence a los treinta días" (9 tokens).
+maximo_tokens_encabezado: 8
 verbos_frecuentes:
   - es
   - son
