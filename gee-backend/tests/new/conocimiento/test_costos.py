@@ -849,8 +849,12 @@ class TestKnobsDeConfig:
     def test_los_dos_timeouts_sobrevivientes_tienen_los_valores_del_diseno(self) -> None:
         from app.config import Settings
 
-        assert Settings.model_fields["conocimiento_provider_timeout_s"].default == 20.0
-        assert Settings.model_fields["conocimiento_item_deadline_s"].default == 60.0
+        assert Settings.model_fields["conocimiento_provider_timeout_s"].default == 1740.0
+        assert Settings.model_fields["conocimiento_item_deadline_s"].default == 2100.0
+        assert (
+            Settings.model_fields["conocimiento_provider_timeout_s"].default
+            < Settings.model_fields["conocimiento_item_deadline_s"].default
+        )
 
     def test_la_api_key_del_proveedor_arranca_vacia(self) -> None:
         from app.config import Settings
