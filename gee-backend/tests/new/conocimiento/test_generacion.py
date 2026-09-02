@@ -386,7 +386,7 @@ class TestInyeccionDePrompt:
         obediente = SalidaProveedor(
             texto="El permiso corresponde según la norma [ley-secreta#art1]."
         )
-        generador = GeneradorDeterministico([obediente, obediente])
+        generador = GeneradorDeterministico([obediente] * GENERACIONES_MAXIMAS)
 
         respuesta = generar_respuesta(db, SHA, "¿?", [inyectado], generador=generador)
 
@@ -643,7 +643,7 @@ class TestElMarcadorNoExcusaLaAfirmacion:
         """End to end: the draft that used to pass now spends the budget."""
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         sucia = SalidaProveedor(texto=f"Corresponde el permiso [ley-9750#art1].\n{self.PEGADO}")
-        generador = GeneradorDeterministico([sucia, sucia])
+        generador = GeneradorDeterministico([sucia] * GENERACIONES_MAXIMAS)
 
         respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
@@ -675,7 +675,7 @@ class TestRespuestaVacia:
     def test_un_proveedor_que_devuelve_vacio_no_sirve_una_respuesta(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         vacia = SalidaProveedor(texto="")
-        generador = GeneradorDeterministico([vacia, vacia])
+        generador = GeneradorDeterministico([vacia] * GENERACIONES_MAXIMAS)
 
         respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
@@ -692,7 +692,7 @@ class TestAfirmacionSinCita:
                 "El plazo de oposición vence a los treinta días hábiles."
             )
         )
-        generador = GeneradorDeterministico([sucia, sucia])
+        generador = GeneradorDeterministico([sucia] * GENERACIONES_MAXIMAS)
 
         respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
@@ -792,21 +792,21 @@ class TestMarcadores:
 
 
 class TestPresupuesto:
-    def test_exactamente_una_regeneracion_y_despues_abstiene(self, db):
+    def test_exactamente_el_presupuesto_y_despues_abstiene(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         mala = SalidaProveedor(texto="Corresponde el permiso [inventada#art1].")
-        generador = GeneradorDeterministico([mala, mala, mala])
+        generador = GeneradorDeterministico([mala] * (GENERACIONES_MAXIMAS + 1))
 
         respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
         assert respuesta.estado == "abstencion"
-        assert len(generador.llamadas) == GENERACIONES_MAXIMAS == 2
-        assert respuesta.intentos == 2
+        assert len(generador.llamadas) == GENERACIONES_MAXIMAS == 3
+        assert respuesta.intentos == 3
 
     def test_el_reintento_lleva_la_lista_de_violaciones(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         mala = SalidaProveedor(texto="Corresponde el permiso [inventada#art1].")
-        generador = GeneradorDeterministico([mala, mala])
+        generador = GeneradorDeterministico([mala] * GENERACIONES_MAXIMAS)
 
         generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
@@ -859,16 +859,19 @@ class TestPresupuesto:
         assert "ley-5589#art1" in primer_prompt
         assert "ley-5589#art1" not in segundo_prompt, "the payload was trimmed, not replayed"
 
-    def test_dos_truncaciones_terminan_en_generacion_fallida_no_en_abstencion(self, db):
+    def test_truncaciones_hasta_el_presupuesto_terminan_en_generacion_fallida_no_en_abstencion(
+        self, db
+    ):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         cortada = SalidaProveedor(texto="Corresponde", truncado=True)
-        generador = GeneradorDeterministico([cortada, cortada])
+        generador = GeneradorDeterministico([cortada] * GENERACIONES_MAXIMAS)
 
         respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
         assert respuesta.estado == "generacion_fallida"
         assert respuesta.motivo == "truncado_dos_veces"
         assert respuesta.respuesta is None
+        assert respuesta.intentos == GENERACIONES_MAXIMAS
 
     def test_el_fallo_de_transporte_no_consume_el_intento_y_cae_en_generacion_fallida(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
@@ -946,7 +949,7 @@ class TestPresupuesto:
     def test_la_abstencion_por_presupuesto_no_devuelve_el_ultimo_borrador(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         mala = SalidaProveedor(texto="Corresponde el permiso [inventada#art1].")
-        generador = GeneradorDeterministico([mala, mala])
+        generador = GeneradorDeterministico([mala] * GENERACIONES_MAXIMAS)
 
         respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
 
