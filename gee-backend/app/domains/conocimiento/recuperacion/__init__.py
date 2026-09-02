@@ -34,6 +34,7 @@ from app.domains.conocimiento.recuperacion.bm25 import (
     limpiar_cache_indices,
     obtener_indice,
 )
+from app.domains.conocimiento.recuperacion.expansion import expandir_consulta_recuperacion
 from app.domains.conocimiento.recuperacion.reranker import (
     MAX_LENGTH,
     MODELO_RERANKER,
@@ -61,6 +62,7 @@ __all__ = [
     "RerankerDeterministico",
     "RerankerNoDisponible",
     "construir_indice",
+    "expandir_consulta_recuperacion",
     "lexemas_de_consulta",
     "limpiar_cache_indices",
     "obtener_indice",

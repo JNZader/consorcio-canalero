@@ -37,6 +37,7 @@ from app.domains.conocimiento.recuperacion.bm25 import (
     lexemas_de_consulta,
     obtener_indice,
 )
+from app.domains.conocimiento.recuperacion.expansion import expandir_consulta_recuperacion
 from app.domains.conocimiento.recuperacion.reranker import Candidato, Reranker, ordenar_por_ce
 from app.domains.conocimiento.repository import (
     # Deliberate re-export (the redundant alias is how ruff is told so). The eval
@@ -518,9 +519,14 @@ def _recuperar_bm25_ce(
     * **no per-document cap** — REJECTED at ratification because it lifts hit@5
       to 0.793 while collapsing vigencia-correctness to 0.333
       (`design.md:1138-1139`).
+
+    A copy of the question may be expanded before both legs (`expansion.py`):
+    the original `pregunta` is what the result discloses and what the
+    generator sees. The fused ablation arms never take this path.
     """
+    pregunta_recuperacion = expandir_consulta_recuperacion(pregunta)
     indice = obtener_indice(db, corpus_sha)
-    lexemas = lexemas_de_consulta(db, pregunta)
+    lexemas = lexemas_de_consulta(db, pregunta_recuperacion)
     candidatos = indice.buscar(lexemas, limite=profundidad)
 
     textos = textos_indexados(db, corpus_sha, [hit.citation_key for hit in candidatos])
@@ -535,7 +541,7 @@ def _recuperar_bm25_ce(
 
     ordenados = ordenar_por_ce(
         reranker,
-        pregunta,
+        pregunta_recuperacion,
         [
             Candidato(citation_key=hit.citation_key, texto_indexado=textos[hit.citation_key])
             for hit in candidatos
