@@ -330,9 +330,7 @@ class TestEtapaUnoLexico:
         after `dónde` is `llega`, and `ribera` is deliberately not a legal
         marker. Restored as a locked stage-1 redirect.
         """
-        pregunta = (
-            "¿Hasta dónde llega la línea de ribera en el tramo que pasa por mi campo?"
-        )
+        pregunta = "¿Hasta dónde llega la línea de ribera en el tramo que pasa por mi campo?"
         assert routing.decidir_por_reglas(pregunta) == (
             routing.CLASE_GEOESPACIAL,
             routing.SUPERFICIE_MAPA,
