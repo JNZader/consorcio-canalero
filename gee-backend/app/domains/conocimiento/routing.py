@@ -180,7 +180,10 @@ _FAMILIAS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "mapa",
         SUPERFICIE_MAPA,
         (
-            r"\bdonde\b",
+            # Location-seeking forms only. Bare `\bdonde\b` treats "dónde
+            # publicarla" as `/mapa`; "dónde queda" / "por dónde" still fire.
+            r"\bdonde\s+(queda|esta|estan|pasa|pasan|se\s+encuentra|ubica)\b",
+            r"\bpor\s+donde\b",
             r"\bcanal\s*(n\s*[°ºo]?|nro\.?|numero)?\s*\d+",
             r"\bcoordenada(s)?\b",
             r"\btraza(s|do)?\b",
@@ -205,6 +208,10 @@ _MARCADORES_SIN_FAMILIA: tuple[tuple[str, str], ...] = (
     ("padron", r"\bpadron\b"),
     ("consorcista", r"\bconsorcista(s)?\b"),
 )
+
+#: Stage 1 does not fire on these alone: they name a row, not a surface.
+#: `nombre-padron` is outside this set (ratified default `/tramites`).
+_SOLO_SIN_FAMILIA = frozenset(nombre for nombre, _patron in _MARCADORES_SIN_FAMILIA)
 
 #: The surface a wholly `operational` question names when no family marker fired
 #: — a bare padrón-shaped name, or a stage-2 `operational` with no lexicon hit.
@@ -244,6 +251,10 @@ _MARCADORES_LEGALES = (
     r"\bjuridic(o|a|amente)\b",
     r"\bcorresponde\s+legalmente\b",
     r"\bque\s+dice\s+(la|el)\b",
+    r"\basamblea(s)?\b",
+    r"\bvot(ar|o|os|acion|aciones)\b",
+    r"\baprhi\b",
+    r"\bsancion(es)?\b",
 )
 
 #: A capitalized run of two words, read on the ORIGINAL text (case is the whole
@@ -272,6 +283,7 @@ _PALABRAS_NO_PERSONALES = frozenset(
         "municipio",
         "aguas",
         "agua",
+        "rio",
         "consorcio",
         "canalero",
         "canal",
@@ -363,11 +375,17 @@ def decidir_por_reglas(pregunta: str) -> tuple[str, str] | None:
     Returns None whenever a legal marker is present, no matter how many
     operational markers fired. That is not caution — it is the only way a mixed
     question reaches the stage that can see both of its legs.
+
+    Also returns None when the only operational hits are family-less
+    (`consorcista`/`padron`): those markers stay visible to
+    `marcadores_etapa_uno`, but they do not name a surface by themselves.
     """
     if marcadores_legales(pregunta):
         return None
     familias = marcadores_etapa_uno(pregunta)
     if not familias:
+        return None
+    if set(familias) <= _SOLO_SIN_FAMILIA:
         return None
     superficie = superficie_por_lexico(pregunta)
     if superficie == SUPERFICIE_MAPA:

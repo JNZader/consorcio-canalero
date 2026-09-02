@@ -289,6 +289,40 @@ class TestEtapaUnoLexico:
         assert decision.motivo == routing.MOTIVO_REGLA
         assert decision.superficie == "/tramites"
 
+    @pytest.mark.parametrize(
+        "pregunta",
+        [
+            "¿Con cuánta anticipación hay que avisar la asamblea y dónde hay que publicarla?",
+            "Hay socios que no pagan la cuota hace años. ¿Los podemos ejecutar? ¿Pueden votar?",
+            "La APRHI nos rechazó el legajo. ¿Qué presentamos, ante quién y en qué plazo?",
+            "Si le pedimos a la APRHI el expediente de una obra, ¿tenemos que explicarles para qué lo queremos?",
+            "El límite sur de nuestra zona es el Río Tercero. Si un consorcista hace una mensura ahí y no está determinada la Línea de Ribera, ¿qué retiro tiene que dejar?",
+            "Un consorcista tapó el canal / rompió el bordo. ¿Qué sanción le pueden aplicar?",
+        ],
+        ids=["C-3", "C-4", "C-6", "D-7", "C-8", "T-5"],
+    )
+    def test_pregunta_legal_de_oro_no_redirige_en_etapa_uno(self, pregunta):
+        """Gold legal questions stand down stage 1 so the centroid decides."""
+        assert routing.decidir_por_reglas(pregunta) is None
+
+    @pytest.mark.parametrize(
+        "pregunta",
+        [
+            "El límite sur de nuestra zona es el Río Tercero. Si un consorcista hace una mensura ahí y no está determinada la Línea de Ribera, ¿qué retiro tiene que dejar?",
+            "Un consorcista tapó el canal / rompió el bordo. ¿Qué sanción le pueden aplicar?",
+        ],
+        ids=["C-8", "T-5"],
+    )
+    def test_consorcista_sigue_siendo_marcador_pero_no_decide(self, pregunta):
+        assert "consorcista" in routing.marcadores_etapa_uno(pregunta)
+        assert routing.decidir_por_reglas(pregunta) is None
+
+    def test_consorcista_con_familia_de_finanzas_sigue_redirigiendo(self):
+        """Bare consorcista stands down; cuota+debe still names /finanzas."""
+        assert routing.decidir_por_reglas(
+            "¿Cuánto debe de cuota el consorcista del padrón 447?"
+        ) == (routing.CLASE_OPERATIONAL, routing.SUPERFICIE_FINANZAS)
+
 
 # ---------------------------------------------------------------------------
 # 4.2 — an operational question makes zero retrieval calls
