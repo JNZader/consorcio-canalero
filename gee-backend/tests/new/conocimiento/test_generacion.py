@@ -887,6 +887,55 @@ class TestPresupuesto:
         assert "violaciones_del_intento_anterior" not in primer_prompt
         assert "clave inventada: [inventada#art1]" in segundo_prompt
 
+    def test_el_reintento_por_cita_faltante_recorta_el_payload(self, db):
+        """D-4: gold was CE rank 0 and Fable still quoted the rank-1 distractor.
+
+        Replay of the same ten units is not a correction. The retry keeps the
+        highest-ranked half so the next prompt is a different page.
+        """
+        seed(
+            db,
+            {
+                "ley-a": {"clasificacion": "publico"},
+                "ley-b": {"clasificacion": "publico"},
+                "ley-c": {"clasificacion": "publico"},
+                "ley-d": {"clasificacion": "publico"},
+            },
+        )
+        sucia = SalidaProveedor(
+            texto=(
+                "Corresponde el permiso [ley-a#art1]. "
+                "El plazo de oposición vence a los treinta días hábiles."
+            )
+        )
+        generador = GeneradorDeterministico(
+            [sucia, SalidaProveedor(texto="Corresponde el permiso [ley-a#art1].")]
+        )
+
+        respuesta = generar_respuesta(
+            db,
+            SHA,
+            "¿?",
+            [hit("ley-a"), hit("ley-b"), hit("ley-c"), hit("ley-d")],
+            generador=generador,
+        )
+
+        assert respuesta.estado == "respuesta"
+        assert respuesta.intentos == 2
+        primer_prompt, _ = generador.llamadas[0]
+        segundo_prompt, _ = generador.llamadas[1]
+        assert primer_prompt.count("<unidad ") == 4
+        assert segundo_prompt.count("<unidad ") == 2
+        assert 'clave="ley-a#art1"' in segundo_prompt
+        assert 'clave="ley-b#art1"' in segundo_prompt
+        assert 'clave="ley-d#art1"' not in segundo_prompt
+
+    def test_el_system_prompt_prioriza_el_ranking(self):
+        assert "El orden de los bloques <unidad> es el ranking de relevancia." in (
+            generacion.SYSTEM_PROMPT
+        )
+        assert "no copies exigencias de un bloque vecino" in generacion.SYSTEM_PROMPT
+
     def test_la_truncacion_consume_el_intento_y_sube_max_tokens(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})
         cortada = SalidaProveedor(texto="Corresponde el permiso [ley-9750#art1", truncado=True)
