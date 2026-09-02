@@ -683,6 +683,78 @@ class TestRespuestaVacia:
         assert any("vacía" in v for v in respuesta.violaciones)
 
 
+class TestPlantillaDeAbstencionNoEsRespuesta:
+    """The canned abstention sentence is a STATE, not a served answer.
+
+    SYSTEM_PROMPT asks the model to emit exactly `PLANTILLAS.abstencion` when
+    material is insufficient. That sentence is boilerplate (not an uncited
+    claim) and nonempty (so `sin_contenido` is False). Without this check it
+    is certified and served as `estado=respuesta`.
+    """
+
+    def test_la_plantilla_exacta_no_se_certifica(self):
+        payload = payload_de(hit("ley-9750"))
+        verdict = verificar(generacion.PLANTILLAS.abstencion, payload)
+        assert not verdict.acepta
+        assert verdict.solo_plantilla_abstencion
+        assert not verdict.sin_contenido
+        assert verdict.afirmaciones_sin_cita == ()
+        assert not es_afirmacion_sustantiva(generacion.PLANTILLAS.abstencion)
+        assert any("plantilla de abstención" in v for v in verdict.violaciones())
+
+    def test_variantes_que_normalizan_a_la_plantilla_tambien_fallan(self):
+        payload = payload_de(hit("ley-9750"))
+        plantilla = generacion.PLANTILLAS.abstencion
+        variantes = (
+            f"  {plantilla}  ",
+            plantilla.replace(".", "!"),
+            plantilla.upper(),
+            plantilla + "\n",
+            plantilla.rstrip("."),
+        )
+        for texto in variantes:
+            verdict = verificar(texto, payload)
+            assert not verdict.acepta, texto
+            assert verdict.solo_plantilla_abstencion, texto
+
+    def test_una_respuesta_citada_sigue_aceptandose(self):
+        payload = payload_de(hit("ley-9750"))
+        verdict = verificar("Corresponde el permiso [ley-9750#art1].", payload)
+        assert verdict.acepta
+        assert not verdict.solo_plantilla_abstencion
+
+    def test_la_plantilla_en_todo_el_presupuesto_abstiene(self, db):
+        seed(db, {"ley-9750": {"clasificacion": "publico"}})
+        lata = SalidaProveedor(texto=generacion.PLANTILLAS.abstencion)
+        generador = GeneradorDeterministico([lata] * GENERACIONES_MAXIMAS)
+
+        respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
+
+        assert respuesta.estado == "abstencion"
+        assert respuesta.respuesta is None
+        assert respuesta.intentos == GENERACIONES_MAXIMAS == 3
+        assert any("plantilla de abstención" in v for v in respuesta.violaciones)
+
+    def test_un_primer_turno_enlatado_y_luego_citado_se_sirve(self, db):
+        seed(db, {"ley-9750": {"clasificacion": "publico"}})
+        generador = GeneradorDeterministico(
+            [
+                SalidaProveedor(texto=generacion.PLANTILLAS.abstencion),
+                SalidaProveedor(texto="Corresponde el permiso [ley-9750#art1]."),
+            ]
+        )
+
+        respuesta = generar_respuesta(db, SHA, "¿?", [hit("ley-9750")], generador=generador)
+
+        assert respuesta.estado == "respuesta"
+        assert respuesta.respuesta == "Corresponde el permiso [ley-9750#art1]."
+        assert respuesta.intentos == 2
+        primer_prompt, _ = generador.llamadas[0]
+        segundo_prompt, _ = generador.llamadas[1]
+        assert "violaciones_del_intento_anterior" not in primer_prompt
+        assert "plantilla de abstención" in segundo_prompt
+
+
 class TestAfirmacionSinCita:
     def test_un_parrafo_sin_cita_rechaza_y_no_se_recorta(self, db):
         seed(db, {"ley-9750": {"clasificacion": "publico"}})

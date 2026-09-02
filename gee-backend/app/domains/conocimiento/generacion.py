@@ -730,7 +730,12 @@ def _requiere_marcador(unidad: CitaRecuperada) -> tuple[bool, bool]:
 
 @dataclass(frozen=True)
 class VerificacionCitas:
-    """The mechanical verdict on one draft. Four ways to fail, all post-hoc."""
+    """The mechanical verdict on one draft. Failures are all post-hoc.
+
+    `solo_plantilla_abstencion` is a state error, not an uncited claim: the
+    plantilla is boilerplate, so `es_afirmacion_sustantiva` stays False, but a
+    nonempty payload must not be served as `estado=respuesta`.
+    """
 
     claves_citadas: frozenset[str]
     #: Cited but NOT in the payload. An excluded unit's key counts as invented,
@@ -744,6 +749,9 @@ class VerificacionCitas:
     #: no invented key, no uncited claim, no missing marker — so without this an
     #: empty provider response is CERTIFIED and served as an answer.
     sin_contenido: bool = False
+    #: The draft IS the canned abstention sentence (normalized). Nonempty, so
+    #: `sin_contenido` is False; boilerplate, so it is not an uncited claim.
+    solo_plantilla_abstencion: bool = False
 
     @property
     def acepta(self) -> bool:
@@ -753,6 +761,7 @@ class VerificacionCitas:
             or self.marcadores_faltantes
             or self.truncado
             or self.sin_contenido
+            or self.solo_plantilla_abstencion
         )
 
     def violaciones(self) -> tuple[str, ...]:
@@ -760,6 +769,11 @@ class VerificacionCitas:
         salida: list[str] = []
         if self.sin_contenido:
             salida.append("respuesta vacía: el proveedor no devolvió texto")
+        if self.solo_plantilla_abstencion:
+            salida.append(
+                "plantilla de abstención: el material entregado no está vacío; "
+                "citá unidades del corpus. El sistema abstendrá si el material no alcanza"
+            )
         if self.truncado:
             salida.append("truncado: la respuesta anterior se cortó por max_tokens")
         for clave in sorted(self.claves_inventadas):
@@ -828,6 +842,8 @@ def verificar(
         marcadores_faltantes=tuple(faltantes),
         truncado=truncado,
         sin_contenido=not texto.strip(),
+        solo_plantilla_abstencion=bool(texto.strip())
+        and normalizado == normalizar(plantillas.abstencion),
     )
 
 
