@@ -120,15 +120,19 @@ class Settings(BaseSettings):
     # knob that survives its own decision is a knob someone will set expecting an
     # effect that no longer exists.
     #
-    # 20 s bounds ONE provider attempt: ~2.5x the top of the 3-8 s estimate, so
-    # it fires on a hung call rather than on a merely slow one. Re-derive it
-    # against the pinned provider's published p99 (`design.md:659-660`).
-    conocimiento_provider_timeout_s: float = 20.0
-    # 60 s bounds the processing of ONE queued item, end to end. The arithmetic
-    # worst case (4 attempts) is >= 87 s and deliberately does NOT fit: the
-    # budget is the binding constraint, and an item that exceeds it ends in
-    # `generacion_fallida` (`design.md:614-664`, re-scoped worker-side by A3).
-    conocimiento_item_deadline_s: float = 60.0
+    # Bounds ONE provider attempt. The 3–8 s Claude-class estimate in
+    # `design.md:659-660` did not survive contact with GLM on K=10 legal
+    # prompts (eval items died at 720 s) and will not survive Fable 5.1
+    # (thinking always on). 1740 s sits just under the bridge CLI spawn
+    # budget (1800 s) so the worker owns the failure instead of spawnSync
+    # ETIMEDOUT. Override with CONOCIMIENTO_PROVIDER_TIMEOUT_S.
+    conocimiento_provider_timeout_s: float = 1740.0
+    # Bounds ONE queued item, end to end. The arithmetic worst case is
+    # still larger than this on purpose: the budget is the binding
+    # constraint (`design.md:614-664`). 2100 s lets one frontier attempt
+    # finish and leaves a thin remainder for a citation retry only when
+    # the first call was fast. Override with CONOCIMIENTO_ITEM_DEADLINE_S.
+    conocimiento_item_deadline_s: float = 2100.0
 
     # Cost controls, all fail-CLOSED (`design.md:458-470`). A rate limiter caps
     # rate, not total.
