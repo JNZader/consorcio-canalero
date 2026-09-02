@@ -323,6 +323,21 @@ class TestEtapaUnoLexico:
             "¿Cuánto debe de cuota el consorcista del padrón 447?"
         ) == (routing.CLASE_OPERATIONAL, routing.SUPERFICIE_FINANZAS)
 
+    def test_g09_hasta_donde_llega_ribera_sigue_siendo_mapa_por_regla(self):
+        """Ratified G-09 is geoespacial because of bare `dónde`, not the centroid.
+
+        Narrowing `\\bdonde\\b` to location-seeking verbs dropped this item:
+        after `dónde` is `llega`, and `ribera` is deliberately not a legal
+        marker. Restored as a locked stage-1 redirect.
+        """
+        pregunta = (
+            "¿Hasta dónde llega la línea de ribera en el tramo que pasa por mi campo?"
+        )
+        assert routing.decidir_por_reglas(pregunta) == (
+            routing.CLASE_GEOESPACIAL,
+            routing.SUPERFICIE_MAPA,
+        )
+
 
 # ---------------------------------------------------------------------------
 # 4.2 — an operational question makes zero retrieval calls

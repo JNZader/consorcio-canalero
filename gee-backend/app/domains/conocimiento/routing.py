@@ -180,10 +180,11 @@ _FAMILIAS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "mapa",
         SUPERFICIE_MAPA,
         (
-            # Location-seeking forms only. Bare `\bdonde\b` treats "dónde
-            # publicarla" as `/mapa`; "dónde queda" / "por dónde" still fire.
-            r"\bdonde\s+(queda|esta|estan|pasa|pasan|se\s+encuentra|ubica)\b",
-            r"\bpor\s+donde\b",
+            # Bare `dónde` is the ratified stage-1 geo marker (G-02, G-09).
+            # C-3 ("dónde publicarla") stands down via `asamblea`, not by
+            # narrowing this pattern: G-09 is "hasta dónde llega … ribera"
+            # and has no other mapa family hit.
+            r"\bdonde\b",
             r"\bcanal\s*(n\s*[°ºo]?|nro\.?|numero)?\s*\d+",
             r"\bcoordenada(s)?\b",
             r"\btraza(s|do)?\b",
