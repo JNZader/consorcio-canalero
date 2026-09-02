@@ -38,10 +38,10 @@ types-xlrd>=2.0.0  # Required by mypy strict on app/domains/padron/service.py
 # SECURITY
 # ===========================================
 bandit>=1.7.0  # Security linter
-safety>=3.0.0  # Dependency vulnerability scanner
-pip-audit>=2.7.0  # Another dependency scanner
-# Transitive via safety. 3.10.0 is PYSEC-2026-3726; pip-audit fails closed.
-nltk>=3.10.2
+pip-audit>=2.7.0  # Manifest vulnerability scanner (CI lint job, fail-closed)
+# `safety` is not pinned: safety 3.8.1 hard-depends on nltk>=3.9, and nltk
+# 3.10.3 (PyPI latest) is GHSA-8mgp-746c-j5xp / PYSEC-2026-3740 with no
+# patched release. That closed Backend CI on PRs that did not touch the lock.
 
 # ===========================================
 # STRUCTURED LOGGING
