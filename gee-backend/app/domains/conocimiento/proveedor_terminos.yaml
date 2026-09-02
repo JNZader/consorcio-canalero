@@ -12,37 +12,45 @@
 
 # The exact model id AS THE POOL EXPOSES IT. Not the name from a blog post: the
 # pin is worthless if it does not name a real route (amendment A2, point 1).
-# Live `opencode models --refresh` on 2026-09-01 listed
-# `opencode-go/glm-5.3-flash`. The previous pin `opencode-go/deepseek-v4-flash`
-# published 0-day retention only under a monthly ZDR footnote valid through
-# 2026-08-31; that window lapsed.
-modelo_id: opencode-go/glm-5.3-flash
+# Live `GET http://127.0.0.1:3456/v1/models` on 2026-09-02 listed
+# `claude-fable-5-1` on `claude-cli` (max_tokens 128000) after mcp-llm-bridge
+# #16 (`f1ad14f`). The previous pin `opencode-go/glm-5.3-flash` through
+# `opencode-cli` remains the GLM Go record; this file covers the Fable route.
+modelo_id: claude-fable-5-1
 # The pool the pin is routed through. The same model id behind a different
 # operator is different terms and different retention.
-pool: opencode-cli
+pool: claude-cli
 
-# VERIFIED 2026-09-01. Flip only together with the evidence fields below, in the
+# VERIFIED 2026-09-02. Flip only together with the evidence fields below, in the
 # same commit, with the owner's name on it.
 verificado: true
 
 # --- evidence (all four required; a record nobody can audit is a claim) -------
 # ISO date on which the terms were read.
-verificado_el: "2026-09-01"
+verificado_el: "2026-09-02"
 # Who read them. A verification with no author is a rumour.
 verificado_por: Javier
 # The URL of the published terms that were read.
-# The Go privacy page is the document that publishes the two substantive
-# criteria (training + retention).
-fuente_url: https://opencode.ai/docs/go/
+# Claude Code data-usage is the document that publishes training + retention
+# for Free/Pro/Max, including Claude Code on those plans (this pool).
+fuente_url: https://code.claude.com/docs/en/data-usage
 # sha256 of the terms text as read, so a later silent edit is detectable.
-# `curl -sS https://opencode.ai/docs/go/ | sha256sum` on 2026-09-01.
-sha256_terminos: 269f390023d86338e906a55685f7c302b00486f05421174a26c9ac97b830e62f
+# `curl -sS -L -A 'Mozilla/5.0' https://code.claude.com/docs/en/data-usage | sha256sum`
+# on 2026-09-02 (twice; same digest).
+sha256_terminos: ee6c7b84676ea10424204d91419e4f241d059e6cb3cb3e43b42a3971bcbe1d4e
 
 # --- the two substantive criteria --------------------------------------------
 # Does the provider publish that it does NOT train on API input? A provider that
 # trains on inputs is ineligible regardless of price or latency: the ratified
 # privacy amendment permits public law text plus the question to leave the box,
 # not to become training data.
+#
+# Claude Code data-usage 2026-09-02, consumer (Free/Pro/Max, including Claude
+# Code): Anthropic trains on inputs WHEN the "improve models" setting is on,
+# and does not when it is off. This pin is the Max/`claude-cli` route. The
+# owner authorized the pin on 2026-09-02 under the OFF setting
+# (claude.ai/settings/data-privacy-controls). If that toggle is on, this
+# record is a lie — re-run 6.7; do not keep no_entrenamiento: true.
 no_entrenamiento: true
 # The published retention window for API traffic, in days. Must be a bounded
 # number: "they keep it for a while" is not a retention term. 0 means the
@@ -50,16 +58,10 @@ no_entrenamiento: true
 # the best one.
 #
 # UPPER BOUND: 1095 days (3 years, `proveedores.RETENCION_MAX_DIAS`). Anything
-# larger REFUSES. A very large number is not a bounded window with a big value in
-# it; it is indefinite retention written in days, and the questions a CD member
-# asks about their own consorcio are not archive material for the provider. If a
-# provider's published term is genuinely longer and the owner still wants the
-# pin, that is a decision to record and to raise the constant with, not a value
-# to slip past a type check.
+# larger REFUSES.
 #
-# GLM-5.3-Flash on the Go privacy table 2026-09-01 (Last updated Sep 1, 2026):
-# Model training Not used, Data retention 0 days — NO asterisk. The DeepSeek
-# monthly ZDR footnote does not apply to this row. Do not pin Muse Spark
-# (training Yes / not ZDR). Do not pin DeepSeek V4 Flash until its ZDR footnote
-# is current.
-retencion_dias: 0
+# Claude Code data-usage 2026-09-02, consumer with model-improvement OFF:
+# 30-day retention. Fable 5.1 is a Covered Model; Anthropic also publishes a
+# 30-day minimum on those models. This is not Go's 0-day GLM row and is not
+# API ZDR (ZDR is not available on Max).
+retencion_dias: 30
