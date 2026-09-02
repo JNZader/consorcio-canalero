@@ -65,9 +65,11 @@ from app.domains.conocimiento.schemas import (
 
 logger = logging.getLogger(__name__)
 
-#: One regeneration, then abstain (`design.md:531-537`). The context is fixed
-#: across attempts, so a third attempt buys nothing and doubles the bill.
-GENERACIONES_MAXIMAS = 2
+#: Initial generation plus two citation-correction retries, then abstain.
+#: design.md:531-537 still describes a single regeneration; Fable eval
+#: 2026-09-02 exhausted budget=2 on 5/19 generate-path items with uncited
+#: claims, so the live budget is 3 until that note is re-ratified.
+GENERACIONES_MAXIMAS = 3
 #: Transport budget INSIDE one generation attempt: 2 tries, one short backoff.
 #: A transport failure is not the model failing to ground a claim, so it must
 #: not spend the correction budget (`design.md:548-553`).
