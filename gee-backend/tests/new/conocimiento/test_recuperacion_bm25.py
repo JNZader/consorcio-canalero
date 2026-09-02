@@ -53,6 +53,7 @@ from app.domains.conocimiento.recuperacion.bm25 import (
     obtener_indice,
     parse_tsv,
 )
+from app.domains.conocimiento.recuperacion.expansion import expandir_consulta_recuperacion
 from app.domains.conocimiento.recuperacion.reranker import (
     Candidato,
     RerankerDeterministico,
@@ -71,6 +72,7 @@ MOMENTO = dt.datetime(2026, 8, 23, 16, 30, tzinfo=dt.timezone.utc)
 DOCUMENTOS = {
     "ley-9750": ("ley-provincial", False),
     "ley-8548": ("ley-provincial", False),
+    "ley-9867": ("ley-provincial", False),
     "informe-f3": ("informe-operativo", True),
 }
 
@@ -449,6 +451,68 @@ class TestElOrdenEsDelCrossEncoderSolo:
         assert modulo_reranker.MODELO_RERANKER == "BAAI/bge-reranker-v2-m3"
         assert len(modulo_reranker.REVISION_RERANKER) == 40
         assert modulo_reranker.MAX_LENGTH == 1024
+
+
+class TestExpansionAprhiEsAutoridadDeAplicacion:
+    """D-5: the question names APRHI; Ley 9750 names Autoridad de Aplicación.
+
+    Expanding only BM25 lexemes leaves the gold at CE rank 27 — the original
+    question is still what the reranker scores. The rewrite has to reach BOTH
+    legs, and must not rewrite the user-facing question the result discloses.
+    """
+
+    PREGUNTA_D5 = "¿La APRHI nos puede intervenir? ¿Por cuánto tiempo?"
+
+    def test_aprhi_agrega_autoridad_de_aplicacion(self):
+        expandida = expandir_consulta_recuperacion(self.PREGUNTA_D5)
+        assert expandida.startswith(self.PREGUNTA_D5.rstrip())
+        assert "Autoridad de Aplicación" in expandida
+        assert expandida != self.PREGUNTA_D5
+
+    def test_sin_aprhi_es_identidad(self):
+        pregunta = "¿Quién mantiene el canal?"
+        assert expandir_consulta_recuperacion(pregunta) == pregunta
+
+    def test_ya_nombrada_no_duplica(self):
+        pregunta = "¿La APRHI Autoridad de Aplicación nos puede intervenir?"
+        assert expandir_consulta_recuperacion(pregunta) == pregunta
+
+    def test_aplicacion_sin_tilde_tampoco_duplica(self):
+        pregunta = "¿La APRHI autoridad de aplicacion nos puede intervenir?"
+        assert expandir_consulta_recuperacion(pregunta) == pregunta
+
+    def test_minusculas(self):
+        assert "Autoridad de Aplicación" in expandir_consulta_recuperacion(
+            "la aprhi puede intervenir"
+        )
+
+    def test_el_ce_recibe_la_consulta_expandida_y_el_resultado_la_original(self, db):
+        seed(
+            db,
+            [
+                ("ley-9750", "9750#42", "intervención autoridad de aplicación"),
+                ("ley-9867", "9867#20", "recursos de la APRHI"),
+            ],
+        )
+        reranker = RerankerFijo(
+            {
+                "intervención autoridad de aplicación": 1.0,
+                "recursos de la APRHI": 0.1,
+            }
+        )
+        resultado = service.recuperar(db, SHA, self.PREGUNTA_D5, modo="bm25_ce", reranker=reranker)
+
+        assert resultado.pregunta == self.PREGUNTA_D5
+        assert reranker.llamadas, "the CE must have scored the expanded query"
+        pregunta_al_ce, _textos = reranker.llamadas[0]
+        assert pregunta_al_ce != self.PREGUNTA_D5
+        assert "Autoridad de Aplicación" in pregunta_al_ce
+        assert self.PREGUNTA_D5.rstrip() in pregunta_al_ce
+
+    def test_solo_bm25_ce_expande(self):
+        assert "expandir_consulta_recuperacion" in inspect.getsource(service._recuperar_bm25_ce)
+        cuerpo_fusionado = inspect.getsource(service.recuperar)
+        assert "expandir_consulta_recuperacion" not in cuerpo_fusionado
 
 
 class TestModoBm25CeEnElServicio:
