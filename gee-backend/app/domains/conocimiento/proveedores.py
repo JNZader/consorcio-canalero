@@ -4,7 +4,7 @@ U5 declared the port (`generacion.Generador`) and shipped only the stand-in. Thi
 module fills it with the real adapter, and everything here is arranged around
 three facts that the amendments ratified.
 
-**The pin is `opencode-go/glm-5.3-flash` through the opencode-go pool,
+**The pin is `claude-fable-5-1` through the claude-cli pool,
 routed by mcp-llm-bridge, and it lives in CONFIG (amendment A2).** Changing the
 model must be a config edit and never a code edit, so no model name is written
 as a runtime value in this file: `model_id` is whatever `conocimiento_modelo`
