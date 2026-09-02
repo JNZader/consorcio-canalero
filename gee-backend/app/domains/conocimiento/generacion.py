@@ -134,6 +134,10 @@ class Plantillas:
     marcadores_prosa: Mapping[str, str]
     abstencion: str
     maximo_tokens_fragmento: int
+    #: Token cap for markdown headings only (`## …` / wrapping **bold**). The
+    #: unmarked `maximo_tokens_fragmento` stays at 3 so "La ley 8548 rige"
+    #: cannot hide as a fragment.
+    maximo_tokens_encabezado: int
     verbos_frecuentes: frozenset[str]
 
 
@@ -163,6 +167,7 @@ def cargar_plantillas(path: Path | None = None) -> Plantillas:
         marcadores_prosa=dict(crudo["marcadores_prosa"]),
         abstencion=str(crudo["abstencion"]),
         maximo_tokens_fragmento=int(crudo["maximo_tokens_fragmento"]),
+        maximo_tokens_encabezado=int(crudo["maximo_tokens_encabezado"]),
         verbos_frecuentes=frozenset(str(v).lower() for v in crudo["verbos_frecuentes"]),
     )
 
@@ -463,8 +468,9 @@ SYSTEM_PROMPT = (
     "Cada afirmación sustantiva lleva al menos una cita con la forma [clave], "
     "donde `clave` es exactamente el atributo `clave` de un bloque <unidad>. "
     "No inventes ni completes claves.\n"
-    "Un encabezado tiene que ser un título corto y sin verbo; si vas a afirmar "
-    "algo, escribilo como oración con su cita, nunca como encabezado.\n"
+    "Un encabezado markdown (`## …` o una línea envuelta en **negrita**) es un "
+    "título de hasta ocho palabras y sin verbo. Si vas a afirmar algo, "
+    "escribilo como oración con su cita, nunca como encabezado.\n"
     "Para introducir una enumeración usá exactamente una de estas frases: "
     + "; ".join(PLANTILLAS.lead_ins_prosa)
     + ". Cualquier otra introducción es una afirmación y lleva cita.\n"
@@ -606,15 +612,30 @@ def segmentar(texto: str, plantillas: Plantillas = PLANTILLAS) -> tuple[str, ...
     return tuple(oraciones)
 
 
-def _es_fragmento(oracion: str, plantillas: Plantillas) -> bool:
+def _es_fragmento(
+    oracion: str,
+    plantillas: Plantillas,
+    *,
+    max_tokens: int | None = None,
+) -> bool:
     """A heading or a label, recognised by BOTH conditions the artifact names."""
     tokens = normalizar(oracion).split()
-    if len(tokens) > plantillas.maximo_tokens_fragmento:
+    tope = plantillas.maximo_tokens_fragmento if max_tokens is None else max_tokens
+    if len(tokens) > tope:
         return False
     return not any(t in plantillas.verbos_frecuentes for t in tokens)
 
 
 _ENCABEZADO_RE = re.compile(r"^#+")
+_ENFASIS_ENVUELTO_RE = re.compile(r"^(\*\*|__)(.+)\1$")
+
+
+def _es_linea_encabezado_md(linea: str) -> bool:
+    """A markdown heading line: leading hashes, or the whole line wrapped in ** / __."""
+    desnudo = linea.strip()
+    if _ENCABEZADO_RE.match(desnudo):
+        return True
+    return bool(_ENFASIS_ENVUELTO_RE.fullmatch(desnudo))
 
 
 def lineas_de(oracion: str) -> tuple[str, ...]:
@@ -637,6 +658,9 @@ def _nucleo(linea: str) -> str:
     shape; it is not evidence that nothing was asserted.
     """
     nucleo = _ENCABEZADO_RE.sub("", linea).strip()
+    envuelto = _ENFASIS_ENVUELTO_RE.fullmatch(nucleo)
+    if envuelto:
+        nucleo = envuelto.group(2).strip()
     while nucleo.endswith(":"):
         nucleo = nucleo[:-1].strip()
     return nucleo
@@ -655,7 +679,12 @@ def _linea_es_sustantiva(linea: str, plantillas: Plantillas) -> bool:
     normalizado = normalizar(nucleo)
     if normalizado in plantillas.boilerplate or normalizado in plantillas.lead_ins:
         return False
-    return not _es_fragmento(nucleo, plantillas)
+    tope = (
+        plantillas.maximo_tokens_encabezado
+        if _es_linea_encabezado_md(desnudo)
+        else plantillas.maximo_tokens_fragmento
+    )
+    return not _es_fragmento(nucleo, plantillas, max_tokens=tope)
 
 
 def es_afirmacion_sustantiva(oracion: str, plantillas: Plantillas = PLANTILLAS) -> bool:

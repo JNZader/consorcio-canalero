@@ -561,6 +561,17 @@ class TestSegmentador:
         assert not es_afirmacion_sustantiva("Los requisitos son los siguientes:")
         assert not es_afirmacion_sustantiva("Marco normativo")
 
+    def test_un_encabezado_legal_de_cuatro_a_ocho_tokens_no_es_afirmacion(self):
+        """GLM writes Spanish legal titles; the 3-token unmarked cap is not for those.
+
+        The unmarked cap stays at 3 so `La ley 8548 rige` cannot hide. Markdown
+        headings get 8 tokens and still need no listed verb.
+        """
+        assert not es_afirmacion_sustantiva("## Formalización en el estatuto")
+        assert not es_afirmacion_sustantiva("**Régimen aplicable a la oposición**")
+        assert not es_afirmacion_sustantiva("**Retribución de la Comisión Directiva**")
+        assert not es_afirmacion_sustantiva("### Cargas económicas en ruta nacional")
+
     def test_una_forma_no_reconocida_se_trata_como_afirmacion(self):
         """The default direction is the whole rule (`design.md:597-599`)."""
         assert es_afirmacion_sustantiva("El plazo de oposición vence a los treinta días")
@@ -598,6 +609,11 @@ class TestElMarcadorNoExcusaLaAfirmacion:
         assert not es_afirmacion_sustantiva("En particular:")
         assert not es_afirmacion_sustantiva(generacion.PLANTILLAS.abstencion)
         assert not es_afirmacion_sustantiva("##")
+        assert not es_afirmacion_sustantiva("**Fundamento**")
+
+    def test_el_tope_de_tres_sigue_en_lineas_sin_marcado(self):
+        """Raising the heading cap must not excuse an unmarked four-token claim."""
+        assert es_afirmacion_sustantiva("La ley 8548 rige")
 
     def test_el_segmentador_sigue_sin_cortar_en_el_salto_de_linea(self):
         """The fix is in the classifier, not in the segmenter (which is shared)."""
