@@ -150,9 +150,9 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
     }));
     const { map, moveLayer } = makeMapMock();
     renderWithMap(map);
-    // waterways (5 line layers) + roads (1) = 6 hoists.
-    expect(moveLayer).toHaveBeenCalledTimes(6);
-    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-line');
+    // waterways (5 line layers) + roads (line + label) = 7 hoists.
+    expect(moveLayer).toHaveBeenCalledTimes(7);
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
   });
 
   it('FF-A3 async mount: opacity override lands once the layer mounts on a later re-render', () => {
@@ -198,7 +198,7 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
     const { rerender } = renderHook((props: HookParams) => useMapLayerEffects(props), {
       initialProps: baseParams(map, { mapRef, vectorVisibility: { roads: true } }),
     });
-    expect(moveLayer).toHaveBeenCalledTimes(6);
+    expect(moveLayer).toHaveBeenCalledTimes(7);
 
     moveLayer.mockClear();
     // A canales/visibility change re-runs sibling sync effects (which call
@@ -206,7 +206,7 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
     rerender(
       baseParams(map, { mapRef, vectorVisibility: { roads: true, canales_relevados: true } })
     );
-    expect(moveLayer).toHaveBeenCalledTimes(6);
-    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-line');
+    expect(moveLayer).toHaveBeenCalledTimes(7);
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
   });
 });

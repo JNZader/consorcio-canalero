@@ -46,6 +46,7 @@ describe('buildClickableLayers · z-order click precedence', () => {
     expect(layers).toContain(`${SOURCE_IDS.CATASTRO}-fill`);
     expect(layers).toContain(`${SOURCE_IDS.SOIL}-fill`);
     expect(layers).toContain(`${SOURCE_IDS.ROADS}-line`);
+    expect(layers).toContain(`${SOURCE_IDS.ROADS}-label`);
   });
 });
 

@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { logger } from '../../lib/logger';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
+import { MAP_GLYPHS_URL } from './roadLabelLayer';
 
 interface UseMapInitializationParams {
   maplibre: typeof maplibregl;
@@ -109,6 +110,7 @@ export function useMapInitialization({
       container: containerRef.current,
       style: {
         version: 8,
+        glyphs: MAP_GLYPHS_URL,
         sources: {
           'osm-base': {
             type: 'raster',
