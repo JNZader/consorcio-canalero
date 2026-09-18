@@ -92,12 +92,14 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
       org.opencontainers.image.description="React + Vite frontend for Consorcio Canalero" \
       org.opencontainers.image.vendor="Consorcio Canalero"
 
-# CVE-2026-14456 (OpenSSL DoS, HIGH x2: libcrypto3 + libssl3): the digest-pinned
-# base ships 3.5.7-r0 and the fix is published as 3.5.8-r0. The surgical upgrade
-# keeps the digest pin while pulling only the patched packages; REMOVE this line
-# when the nginx:1.30.4-alpine digest is bumped to one carrying >=3.5.8-r0.
-# (Caught by the Final Frontend Image Gate on main, 2026-08-26.)
-RUN apk upgrade --no-cache libcrypto3 libssl3
+# Digest-pinned nginx:1.30.4-alpine lags Alpine security updates. Surgical
+# apk upgrades keep the pin and pull only patched packages. REMOVE this RUN
+# when the digest is bumped to an image that already carries them.
+#   CVE-2026-14456 — libcrypto3/libssl3 3.5.8-r0 (caught 2026-08-26)
+#   CVE-2026-66046 / 76956 / 76957 — libexpat 2.8.4-r0
+#   CVE-2026-53612..76642 / 78408..78410 — libuuid 2.42.3-r* (Final Frontend
+#   Image Gate on #276, 2026-09-18)
+RUN apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.
 RUN apk --no-network del curl
