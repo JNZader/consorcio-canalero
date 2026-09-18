@@ -145,6 +145,9 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // otherwise be an empty toggle an operator has to be told to ignore. Default
   // OFF means a half-rolled-out state shows nothing wrong at all.
   road_flow: false,
+  // Along-road ditch-flow chevrons. Staff-only, default ON: this is the
+  // picture the operator asked for (sentido every 250 m), not a ranking.
+  sentido_camino: true,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
@@ -166,6 +169,7 @@ export const MAP3D_DEFAULT_VISIBLE_VECTORS: Record<string, boolean> = {
   // would load a heavy vector-tile fill on every 3D mount for zero user benefit.
   // The 3D side therefore keeps the historical OFF default.
   catastro: false,
+  sentido_camino: false,
 };
 const defaultMap3dVisibleVectors = MAP3D_DEFAULT_VISIBLE_VECTORS;
 
@@ -278,6 +282,8 @@ interface PilarAzulActions {
  *     correct call; the user can still switch it off afterwards and that
  *     choice persists. Only `catastro` is touched — every other persisted
  *     preference is carried through untouched.
+ *   v5 → v6: seed `sentido_camino = true` on map2d. New layer; a missing key
+ *     would otherwise stay off forever for returning staff.
  */
 export function migrateMapLayerState(
   persistedState: unknown,
@@ -347,6 +353,20 @@ export function migrateMapLayerState(
         map2d: {
           ...next.map2d,
           visibleVectors: { ...next.map2d.visibleVectors, catastro: true },
+        },
+      };
+    }
+  }
+  if (fromVersion < 6) {
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: {
+            ...next.map2d.visibleVectors,
+            sentido_camino: next.map2d.visibleVectors?.sentido_camino ?? true,
+          },
         },
       };
     }
@@ -545,7 +565,8 @@ export const useMapLayerSyncStore = create<
       //   returning visitors are not pinned to the old OFF default, which made
       //   the ficha territorial undiscoverable (clicking a parcel did nothing).
       //   map3d is untouched — the 3D viewer has no ficha.
-      version: 5,
+      //   v5 → v6: seed `sentido_camino = true` on map2d (new staff layer).
+      version: 6,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {

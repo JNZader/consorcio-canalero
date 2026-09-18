@@ -105,6 +105,7 @@ export const RENDERABLE_UI_LAYER_IDS = [
   // Kind filtering is a PANEL control (`applyRoadFlowKindFilter`), not a second
   // registry id — the same rule the `waterways_*` sub-filters follow above.
   'road_flow',
+  'sentido_camino',
 ] as const;
 
 export type RenderableUiLayerId = (typeof RENDERABLE_UI_LAYER_IDS)[number];
@@ -157,6 +158,7 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   // It mounts HIDDEN by default (`defaultVisibleVectors`), so a half-rolled-out
   // state shows an operator nothing wrong rather than an empty layer.
   'road_flow',
+  'sentido_camino',
   'escuelas',
 ] as const;
 
@@ -349,9 +351,6 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
     mlLayers: [{ id: ESCUELAS_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 }],
   },
   road_flow: {
-    // ONE ui id, five ml layers — the opacity/order controls drive them together
-    // as one user-facing layer (design D6). `defaultOpacity` MIRRORS the paint
-    // literals in `roadFlowLayers.ts`.
     mlLayers: [
       {
         id: ROAD_FLOW_LAYER_IDS.FLUJO,
@@ -363,6 +362,10 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
         opacityProp: OPACITY_PROP.circle,
         defaultOpacity: ROAD_FLOW_CANAL_FILL_OPACITY,
       },
+    ],
+  },
+  sentido_camino: {
+    mlLayers: [
       {
         id: ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
         opacityProp: OPACITY_PROP.icon,

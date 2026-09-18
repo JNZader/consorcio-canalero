@@ -54,6 +54,7 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   // drainage and canal) are one user-facing layer here, and the kind filter
   // lives in the crossings panel, not in the order list.
   road_flow: 'Cruces de camino',
+  sentido_camino: 'Sentido en camino',
   precip_normal: 'Precipitación CHIRPS',
   pilar_verde_bpa_historico: 'BPA histórico',
   pilar_verde_agro_aceptada: 'Agroforestal aceptada',

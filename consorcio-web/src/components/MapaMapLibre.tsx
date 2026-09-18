@@ -282,7 +282,8 @@ export default function MapaMapLibre() {
   const roadFlow = useRoadFlowWiring({
     mapRef,
     mapReady,
-    active: !!vectorVisibility.road_flow,
+    active: !!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino,
+    panelActive: !!vectorVisibility.road_flow,
     geoLayers: allGeoLayers,
     onDeactivate: deactivateRoadFlow,
   });

@@ -189,7 +189,7 @@ def construir_flechas_flujo_camino(
     red_vial_gdf: "gpd.GeoDataFrame",
     flow_dir_path: Optional[str],
     *,
-    step_m: float = 80.0,
+    step_m: float = 250.0,
     parallel_max_angle_deg: float = 45.0,
     bearing_window_m: float = 60.0,
 ):
