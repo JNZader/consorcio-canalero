@@ -190,17 +190,22 @@ class CruceCamino(UUIDMixin, TimestampMixin, Base):
     derives no risk grade and no slope, and a column that would have to be
     invented to be filled is a column that does not belong here.
 
-    The per-``tipo`` rules live in the four CHECKs rather than in ``nullable``,
+    The per-``tipo`` rules live in the CHECKs rather than in ``nullable``,
     because the same column is required on one ``tipo`` and meaningless on the
     other: ``flujo_natural`` needs direction, road bearing, side, area, rank and a
     confidence band and may carry no ``canal_ref``; ``canal`` needs a
     ``canal_ref`` and never carries a rank, since ranking is defined over the
-    natural-drainage set only.
+    natural-drainage set only; ``conduccion`` is along-road D8 flow (the ditch
+    case) — unranked, with direction and road bearing, and an optional
+    ``canal_ref`` naming the downhill canal sink on the same segment.
     """
 
     __tablename__ = "cruce_camino"
     __table_args__ = (
-        CheckConstraint("tipo IN ('flujo_natural', 'canal')", name="ck_cruce_tipo"),
+        CheckConstraint(
+            "tipo IN ('flujo_natural', 'canal', 'conduccion')",
+            name="ck_cruce_tipo",
+        ),
         CheckConstraint(
             "confianza IS NULL OR confianza IN ('alta', 'baja')",
             name="ck_cruce_confianza_valores",
@@ -224,6 +229,13 @@ class CruceCamino(UUIDMixin, TimestampMixin, Base):
             "tipo <> 'flujo_natural' OR confianza IS NOT NULL",
             name="ck_cruce_flujo_confianza",
         ),
+        CheckConstraint(
+            "tipo <> 'conduccion' OR ("
+            "orden_ranking IS NULL "
+            "AND direccion_flujo_deg IS NOT NULL "
+            "AND rumbo_camino_deg IS NOT NULL)",
+            name="ck_cruce_conduccion",
+        ),
         Index("ix_cruce_camino_area", "area_id", "tipo"),
         Index("ix_cruce_camino_tramo", "tramo_ref"),
     )
@@ -246,7 +258,7 @@ class CruceCamino(UUIDMixin, TimestampMixin, Base):
     tipo: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-        comment="flujo_natural | canal",
+        comment="flujo_natural | canal | conduccion",
     )
     geometria: Mapped[str] = mapped_column(
         Geometry("POINT", srid=4326),
@@ -276,7 +288,7 @@ class CruceCamino(UUIDMixin, TimestampMixin, Base):
     orden_ranking: Mapped[Optional[int]] = mapped_column(
         Integer,
         nullable=True,
-        comment="Rank over the flujo_natural rows only; always NULL on canal",
+        comment="Rank over the flujo_natural rows only; always NULL on canal and conduccion",
     )
     confianza: Mapped[Optional[str]] = mapped_column(
         Text,
@@ -303,7 +315,7 @@ class CruceCamino(UUIDMixin, TimestampMixin, Base):
         # its target and its ``RESTRICT`` delete rule against the real DDL.
         Text,
         nullable=True,
-        comment="Canal this crossing belongs to, for tipo='canal' (FK lives in 0022)",
+        comment="Canal for tipo='canal'; optional downhill sink for tipo='conduccion' (FK lives in 0022)",
     )
     geo_job_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

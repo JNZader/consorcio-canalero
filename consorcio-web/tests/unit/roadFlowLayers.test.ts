@@ -184,7 +184,7 @@ describe('applyRoadFlowKindFilter — the PANEL-level kind filter (task 4.10)', 
     const { map, setFilter } = makeMap();
     const registryBefore = JSON.stringify(LAYER_RENDER_REGISTRY.road_flow);
 
-    applyRoadFlowKindFilter(map, { flujo_natural: true, canal: false });
+    applyRoadFlowKindFilter(map, { flujo_natural: true, canal: false, conduccion: true });
 
     // BOTH layers still receive a filter — neither is removed.
     const touched = setFilter.mock.calls.map((call) => call[0]);
@@ -208,14 +208,14 @@ describe('applyRoadFlowKindFilter — the PANEL-level kind filter (task 4.10)', 
 
   it('shows both kinds when both are selected', () => {
     const { map, setFilter } = makeMap();
-    applyRoadFlowKindFilter(map, { flujo_natural: true, canal: true });
+    applyRoadFlowKindFilter(map, { flujo_natural: true, canal: true, conduccion: true });
     expect(JSON.stringify(setFilter.mock.calls)).toContain(ROAD_FLOW_KINDS.CANAL);
     expect(JSON.stringify(setFilter.mock.calls)).toContain(ROAD_FLOW_KINDS.FLUJO_NATURAL);
   });
 
   it('skips layers that are not mounted yet', () => {
     const { map, setFilter } = makeMap({ getLayer: () => undefined });
-    applyRoadFlowKindFilter(map, { flujo_natural: false, canal: true });
+    applyRoadFlowKindFilter(map, { flujo_natural: false, canal: true, conduccion: false });
     expect(setFilter).not.toHaveBeenCalled();
   });
 });

@@ -34,6 +34,9 @@ import { buildWaterwayLayerConfigs } from './map2dConfig';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
+  ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
+  ROAD_FLOW_CONDUCCION_CASING_OPACITY,
+  ROAD_FLOW_CONDUCCION_LINE_OPACITY,
   ROAD_FLOW_FLUJO_FILL_OPACITY,
   ROAD_FLOW_LAYER_IDS,
 } from './roadFlowLayers';
@@ -347,12 +350,9 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
     mlLayers: [{ id: ESCUELAS_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 }],
   },
   road_flow: {
-    // ONE ui id, TWO ml layers — the opacity/order controls drive them together
-    // as one user-facing layer (design D6). `defaultOpacity` MIRRORS the
-    // `circle-opacity` literals in `roadFlowLayers.ts`: the canal kind is a
-    // near-hollow RING under a heavy stroke, which is a deliberate 0.15, not a
-    // typo, and the mirror keeps a persisted opacity multiplier from scaling the
-    // wrong base.
+    // ONE ui id, five ml layers — the opacity/order controls drive them together
+    // as one user-facing layer (design D6). `defaultOpacity` MIRRORS the paint
+    // literals in `roadFlowLayers.ts`.
     mlLayers: [
       {
         id: ROAD_FLOW_LAYER_IDS.FLUJO,
@@ -363,6 +363,21 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
         id: ROAD_FLOW_LAYER_IDS.CANAL,
         opacityProp: OPACITY_PROP.circle,
         defaultOpacity: ROAD_FLOW_CANAL_FILL_OPACITY,
+      },
+      {
+        id: ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING,
+        opacityProp: OPACITY_PROP.line,
+        defaultOpacity: ROAD_FLOW_CONDUCCION_CASING_OPACITY,
+      },
+      {
+        id: ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
+        opacityProp: OPACITY_PROP.line,
+        defaultOpacity: ROAD_FLOW_CONDUCCION_LINE_OPACITY,
+      },
+      {
+        id: ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
+        opacityProp: OPACITY_PROP.text,
+        defaultOpacity: ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
       },
     ],
   },

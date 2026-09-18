@@ -81,6 +81,11 @@ pre-commit>=3.6.0
 scipy>=1.11.0
 rio-tiler>=7.0.0
 
-# Transitive pin: pip-audit gate. GHSA batch in gitpython 3.1.57,
-# fixed in 3.1.58. Dev-side transitive only.
-gitpython>=3.1.58
+# Transitive pin: pip-audit gate. Dev-side only.
+# gitpython 3.1.58 is PYSEC-2026-3982/3983/3984 (+ 3785–3788, 3837); 3.1.60
+# is the first release that closes that batch.
+gitpython>=3.1.60
+# rio-tiler pulls httpx2, which pulled httpcore2 2.9.1 (PYSEC-2026-3844) and
+# httpx2 2.9.1 (PYSEC-2026-3845–3849). Pin the patched floor.
+httpx2>=2.12.0
+httpcore2>=2.10.0

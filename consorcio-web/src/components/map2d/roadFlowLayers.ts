@@ -2,12 +2,10 @@
  * roadFlowLayers — paint specs and kind filter for the ranked road crossings
  * (flujo-caminos, design D6).
  *
- * Both kinds render as MapLibre `circle` layers. A `symbol` layer was rejected:
- * `OPACITY_PROP` enumerates exactly `{fill, line, raster, circle}`
- * (`layerRenderRegistry.ts:37-44`) and `symbol` opacity is split across
- * `icon-opacity` / `text-opacity` — it is not one property at all, so the
- * registry has nothing to drive. Drawing a square is not worth widening a union
- * consumed across the whole render pipeline.
+ * Crossing kinds render as MapLibre `circle` layers. Along-road conveyance
+ * (`conduccion`) is a line + text-arrow on a sibling source: `symbol` has no
+ * single opacity property, so the arrow uses `text-opacity` which the registry
+ * already drives (`OPACITY_PROP.text`).
  *
  * ⚠️ DISTINCTION IS NOT CARRIED BY COLOUR ⚠️
  * A different fill colour fails for the ~8 % of male operators with a
@@ -38,10 +36,13 @@ import type { ExpressionSpecification, FilterSpecification } from 'maplibre-gl';
 import { ROAD_FLOW_KINDS, type RoadFlowKind } from '../../lib/api/roadFlow';
 import { SOURCE_IDS } from './map2dConfig';
 
-/** The two MapLibre layer ids owned by the single `road_flow` registry entry. */
+/** MapLibre layer ids owned by the single `road_flow` registry entry. */
 export const ROAD_FLOW_LAYER_IDS = {
   FLUJO: `${SOURCE_IDS.ROAD_FLOW}-flujo`,
   CANAL: `${SOURCE_IDS.ROAD_FLOW}-canal`,
+  CONDUCCION_CASING: `${SOURCE_IDS.ROAD_FLOW}-conduccion-casing`,
+  CONDUCCION_LINE: `${SOURCE_IDS.ROAD_FLOW}-conduccion-line`,
+  CONDUCCION_ARROW: `${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`,
 } as const;
 
 export type RoadFlowLayerId = (typeof ROAD_FLOW_LAYER_IDS)[keyof typeof ROAD_FLOW_LAYER_IDS];
@@ -133,6 +134,64 @@ export function buildRoadFlowCanalPaint() {
   } as const;
 }
 
+/** Dark casing under the terracotta shaft — figure-ground on imagery, not hue. */
+export const ROAD_FLOW_CONDUCCION_CASING_OPACITY = 0.85;
+export const ROAD_FLOW_CONDUCCION_LINE_OPACITY = 0.95;
+export const ROAD_FLOW_CONDUCCION_ARROW_OPACITY = 0.95;
+
+export function buildRoadFlowConduccionCasingPaint() {
+  return {
+    'line-width': 5,
+    'line-color': '#3E2723',
+    'line-opacity': ROAD_FLOW_CONDUCCION_CASING_OPACITY,
+    'line-cap': 'round',
+    'line-join': 'round',
+  } as const;
+}
+
+export function buildRoadFlowConduccionLinePaint() {
+  return {
+    'line-width': 2.5,
+    'line-color': '#E07A3D',
+    'line-opacity': ROAD_FLOW_CONDUCCION_LINE_OPACITY,
+    'line-cap': 'round',
+    'line-join': 'round',
+  } as const;
+}
+
+export function buildRoadFlowConduccionArrowLayout() {
+  return {
+    'text-field': '▲',
+    'text-size': 14,
+    'text-rotate': ['get', 'along_azimuth_deg'] as ExpressionSpecification,
+    'text-rotation-alignment': 'map' as const,
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+    'symbol-placement': 'point' as const,
+  };
+}
+
+function buildConduccionGeometryFilter(
+  geometryType: 'LineString' | 'Point',
+  shown: boolean
+): ExpressionSpecification {
+  if (!shown) return buildRoadFlowTipoFilter(ROAD_FLOW_NO_KIND_SENTINEL);
+  return [
+    'all',
+    ['==', ['geometry-type'], geometryType],
+    ['==', ['get', 'tipo'], ROAD_FLOW_KINDS.CONDUCCION],
+  ];
+}
+
+export function buildRoadFlowConduccionArrowPaint() {
+  return {
+    'text-color': '#ffffff',
+    'text-halo-color': 'rgba(0,0,0,0.75)',
+    'text-halo-width': 1.2,
+    'text-opacity': ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
+  } as const;
+}
+
 /**
  * The `tipo` value a HIDDEN layer filters on: no feature carries it, so the
  * layer draws nothing while staying mounted. A sentinel rather than a removed
@@ -155,11 +214,13 @@ export function buildRoadFlowTipoFilter(
 export interface RoadFlowKindVisibility {
   readonly flujo_natural: boolean;
   readonly canal: boolean;
+  readonly conduccion: boolean;
 }
 
 export const ROAD_FLOW_ALL_KINDS_VISIBLE: RoadFlowKindVisibility = {
   flujo_natural: true,
   canal: true,
+  conduccion: true,
 };
 
 /**
@@ -203,5 +264,26 @@ export function applyRoadFlowKindFilter(
       layerId,
       shown ? buildRoadFlowTipoFilter(kind) : buildRoadFlowTipoFilter(ROAD_FLOW_NO_KIND_SENTINEL)
     );
+  }
+
+  const conduccionFilters: Array<
+    [string, ExpressionSpecification]
+  > = [
+    [
+      ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING,
+      buildConduccionGeometryFilter('LineString', visibility.conduccion),
+    ],
+    [
+      ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
+      buildConduccionGeometryFilter('LineString', visibility.conduccion),
+    ],
+    [
+      ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
+      buildConduccionGeometryFilter('Point', visibility.conduccion),
+    ],
+  ];
+  for (const [layerId, filter] of conduccionFilters) {
+    if (!map.getLayer(layerId)) continue;
+    map.setFilter(layerId, filter);
   }
 }

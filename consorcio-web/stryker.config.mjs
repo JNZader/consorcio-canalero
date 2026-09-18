@@ -101,6 +101,10 @@ export default {
     break: shardMode ? null : 75,
   },
   timeoutMS: 30000,
+  // Default dry-run timeout is 5 min. Shard b instruments ~1700 mutants in
+  // core.ts + rainfall panels; the initial vitest run on a GH runner hit that
+  // ceiling on PR #277 (21:20:59 → 21:26:00 "Initial test run timed out").
+  dryRunTimeoutMinutes: 10,
   concurrency: 4,
   // Incremental mode: on a PR, Stryker re-tests only the mutants the diff can
   // affect and reuses the stored verdicts for the rest. The full scope takes

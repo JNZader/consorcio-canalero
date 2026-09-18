@@ -335,33 +335,45 @@ describe('cruces de camino · filtro de tipo', () => {
     expect(kindFilterToVisibility(ROAD_FLOW_KIND_FILTER.AMBOS)).toEqual({
       flujo_natural: true,
       canal: true,
+      conduccion: true,
     });
     expect(kindFilterToVisibility(ROAD_FLOW_KIND_FILTER.FLUJO)).toEqual({
       flujo_natural: true,
       canal: false,
+      conduccion: true,
     });
     expect(kindFilterToVisibility(ROAD_FLOW_KIND_FILTER.CANAL)).toEqual({
       flujo_natural: false,
       canal: true,
+      conduccion: true,
+    });
+    expect(kindFilterToVisibility(ROAD_FLOW_KIND_FILTER.AMBOS, false)).toEqual({
+      flujo_natural: true,
+      canal: true,
+      conduccion: false,
     });
   });
 
   it('la posición del control se deriva del estado, sin una segunda copia', () => {
-    expect(visibilityToKindFilter({ flujo_natural: true, canal: true })).toBe(
-      ROAD_FLOW_KIND_FILTER.AMBOS
-    );
-    expect(visibilityToKindFilter({ flujo_natural: true, canal: false })).toBe(
-      ROAD_FLOW_KIND_FILTER.FLUJO
-    );
-    expect(visibilityToKindFilter({ flujo_natural: false, canal: true })).toBe(
-      ROAD_FLOW_KIND_FILTER.CANAL
-    );
+    expect(
+      visibilityToKindFilter({ flujo_natural: true, canal: true, conduccion: true })
+    ).toBe(ROAD_FLOW_KIND_FILTER.AMBOS);
+    expect(
+      visibilityToKindFilter({ flujo_natural: true, canal: false, conduccion: false })
+    ).toBe(ROAD_FLOW_KIND_FILTER.FLUJO);
+    expect(
+      visibilityToKindFilter({ flujo_natural: false, canal: true, conduccion: true })
+    ).toBe(ROAD_FLOW_KIND_FILTER.CANAL);
   });
 
   it('ocultar un tipo NO desmonta la lista del otro', () => {
     mockViewport(false);
     renderWithMantine(
-      <MapUiPanels {...roadFlowProps({ roadFlowKinds: { flujo_natural: true, canal: false } })} />
+      <MapUiPanels
+        {...roadFlowProps({
+          roadFlowKinds: { flujo_natural: true, canal: false, conduccion: true },
+        })}
+      />
     );
 
     // The kind filter is a map `setFilter`; the panel keeps rendering both sets,

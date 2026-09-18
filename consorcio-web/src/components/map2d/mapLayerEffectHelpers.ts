@@ -28,12 +28,17 @@ import {
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
 import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
+import { buildConduccionArrowCollection } from './roadFlowArrows';
 import {
   ROAD_FLOW_ALL_KINDS_VISIBLE,
   ROAD_FLOW_LAYER_IDS,
   type RoadFlowKindVisibility,
   applyRoadFlowKindFilter,
   buildRoadFlowCanalPaint,
+  buildRoadFlowConduccionArrowLayout,
+  buildRoadFlowConduccionArrowPaint,
+  buildRoadFlowConduccionCasingPaint,
+  buildRoadFlowConduccionLinePaint,
   buildRoadFlowFlujoPaint,
   buildRoadFlowTipoFilter,
 } from './roadFlowLayers';
@@ -293,6 +298,53 @@ export function syncRoadFlowLayers(
     });
   }
 
+  ensureGeoJsonSource(
+    map,
+    SOURCE_IDS.ROAD_FLOW_ARROWS,
+    buildConduccionArrowCollection(crossings)
+  );
+
+  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING)) {
+    map.addLayer({
+      id: ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING,
+      type: 'line',
+      source: SOURCE_IDS.ROAD_FLOW_ARROWS,
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'LineString'],
+        ['==', ['get', 'tipo'], 'conduccion'],
+      ],
+      paint: buildRoadFlowConduccionCasingPaint(),
+    });
+  }
+  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE)) {
+    map.addLayer({
+      id: ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
+      type: 'line',
+      source: SOURCE_IDS.ROAD_FLOW_ARROWS,
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'LineString'],
+        ['==', ['get', 'tipo'], 'conduccion'],
+      ],
+      paint: buildRoadFlowConduccionLinePaint(),
+    });
+  }
+  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW)) {
+    map.addLayer({
+      id: ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
+      type: 'symbol',
+      source: SOURCE_IDS.ROAD_FLOW_ARROWS,
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'Point'],
+        ['==', ['get', 'tipo'], 'conduccion'],
+      ],
+      layout: buildRoadFlowConduccionArrowLayout(),
+      paint: buildRoadFlowConduccionArrowPaint(),
+    });
+  }
+
   // The panel's kind selection is a FILTER, never an unmount — see
   // `applyRoadFlowKindFilter`.
   applyRoadFlowKindFilter(map, kindVisibility);
@@ -300,6 +352,9 @@ export function syncRoadFlowLayers(
   const mounted = isVisible && !!crossings;
   setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.FLUJO, mounted);
   setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CANAL, mounted);
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING, mounted);
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE, mounted);
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW, mounted);
 }
 
 export function syncBasinLayers(

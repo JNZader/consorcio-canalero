@@ -33,6 +33,7 @@ from shapely.geometry import LineString
 from app.domains.geo.intelligence.calculations_hydrology_support import (
     D8_OFFSETS,
     CruceDerivationError,
+    _azimut_a_lo_largo,
     _decompose_intersection,
     azimut_desde_transform,
     clasificar_banda_cruce,
@@ -485,31 +486,36 @@ class TestCrossingPredicateThreeBands:
     toss dressed as a measurement, so the middle band is kept AND marked.
     """
 
-    def test_flow_along_the_road_is_excluded_as_parallel(self, tmp_path):
+    def test_flow_along_the_road_is_stored_as_unranked_conduccion(self, tmp_path):
         roads, fd, fa = _predicate_case(tmp_path, 1, tag="par")  # E, road runs E
         gdf, excluidos, _ = _run(roads, _canals([]), fd, fa)
 
-        assert len(gdf) == 0
-        parallel = [e for e in excluidos if e["motivo"] == "flujo_paralelo"]
-        assert len(parallel) == 1
-        for key in ("theta_deg", "rumbo_camino_deg", "direccion_flujo_deg"):
-            assert key in parallel[0], f"the exclusion must carry {key} to be auditable"
-        assert parallel[0]["theta_deg"] == pytest.approx(0.0, abs=1e-6)
+        assert not [e for e in excluidos if e["motivo"] == "flujo_paralelo"]
+        assert len(gdf) == 1
+        row = gdf.iloc[0]
+        assert row["tipo"] == "conduccion"
+        assert row["orden_ranking"] is None
+        assert row["direccion_flujo_deg"] is not None
+        assert row["rumbo_camino_deg"] is not None
+        canal_ref = row["canal_ref"]
+        assert canal_ref is None or (isinstance(canal_ref, float) and canal_ref != canal_ref)
 
-    def test_flow_at_170_degrees_to_the_road_is_treated_as_10_and_excluded(self, tmp_path):
+    def test_flow_at_170_degrees_to_the_road_is_conduccion_not_a_crossing(self, tmp_path):
         """θ is ACUTE. Anti-parallel is parallel for the purpose of crossing."""
         roads, fd, fa = _predicate_case(tmp_path, 16, tag="anti")  # W, road runs E
         gdf, excluidos, _ = _run(roads, _canals([]), fd, fa)
 
-        assert len(gdf) == 0
-        parallel = [e for e in excluidos if e["motivo"] == "flujo_paralelo"]
-        assert parallel and parallel[0]["theta_deg"] == pytest.approx(0.0, abs=1e-6)
+        assert not [e for e in excluidos if e["motivo"] == "flujo_paralelo"]
+        assert len(gdf) == 1
+        assert gdf.iloc[0]["tipo"] == "conduccion"
+        assert gdf.iloc[0]["orden_ranking"] is None
 
     def test_a_perpendicular_flow_is_high_confidence(self, tmp_path):
         roads, fd, fa = _predicate_case(tmp_path, 4, tag="perp")  # N, road runs E → θ=90
         gdf, _, _ = _run(roads, _canals([]), fd, fa)
 
         assert len(gdf) == 1
+        assert gdf.iloc[0]["tipo"] == "flujo_natural"
         assert gdf.iloc[0]["confianza"] == "alta"
 
     def test_a_diagonal_flow_at_45_degrees_is_high_confidence(self, tmp_path):
@@ -615,6 +621,58 @@ class TestCrossingPredicateThreeBands:
         gdf_b, _, _ = _run(backward, _canals([]), fd, fa)
 
         assert gdf_f.iloc[0]["lado_cruce"] != gdf_b.iloc[0]["lado_cruce"]
+
+
+class TestAzimutALoLargo:
+    def test_flow_with_the_road_keeps_the_bearing(self):
+        assert _azimut_a_lo_largo(90.0, 90.0) == pytest.approx(90.0)
+
+    def test_anti_parallel_flow_reverses_the_bearing(self):
+        assert _azimut_a_lo_largo(270.0, 90.0) == pytest.approx(270.0)
+
+
+class TestConduccionCanalSink:
+    """The downhill canal on THIS segment is the mouth; the other way is not."""
+
+    def test_eastbound_parallel_flow_picks_the_eastern_canal(self, tmp_path):
+        roads, fd, fa = _predicate_case(tmp_path, 1, tag="sinkE")
+        canals = _canals(
+            [
+                {"id": "west", "geometry": _road_along_col(1, 0, 8)},
+                {"id": "east", "geometry": _road_along_col(7, 0, 8)},
+            ]
+        )
+        gdf, _, _ = _run(roads, canals, fd, fa)
+
+        conduccion = gdf[gdf["tipo"] == "conduccion"]
+        assert len(conduccion) == 1
+        assert conduccion.iloc[0]["canal_ref"] == "east"
+        assert conduccion.iloc[0]["orden_ranking"] is None
+
+    def test_westbound_parallel_flow_picks_the_western_canal(self, tmp_path):
+        roads, fd, fa = _predicate_case(tmp_path, 16, tag="sinkW")
+        canals = _canals(
+            [
+                {"id": "west", "geometry": _road_along_col(1, 0, 8)},
+                {"id": "east", "geometry": _road_along_col(7, 0, 8)},
+            ]
+        )
+        gdf, _, _ = _run(roads, canals, fd, fa)
+
+        conduccion = gdf[gdf["tipo"] == "conduccion"]
+        assert len(conduccion) == 1
+        assert conduccion.iloc[0]["canal_ref"] == "west"
+
+    def test_no_canal_downhill_leaves_canal_ref_null(self, tmp_path):
+        roads, fd, fa = _predicate_case(tmp_path, 1, tag="sinkNone")
+        canals = _canals([{"id": "west", "geometry": _road_along_col(1, 0, 8)}])
+        gdf, _, _ = _run(roads, canals, fd, fa)
+
+        conduccion = gdf[gdf["tipo"] == "conduccion"]
+        assert len(conduccion) == 1
+        canal_ref = conduccion.iloc[0]["canal_ref"]
+        assert canal_ref is None or (isinstance(canal_ref, float) and canal_ref != canal_ref)
+        assert "sin canal sumidero" in (conduccion.iloc[0]["nota"] or "")
 
 
 # ---------------------------------------------------------------------------

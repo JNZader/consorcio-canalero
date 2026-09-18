@@ -280,7 +280,8 @@ describe('RoadFlowRankedList — no hydraulic magnitude ANYWHERE', () => {
       'm3/s',
       'l/s',
       'profundidad',
-      'cuneta',
+      'ancho de cuneta',
+      'sección de cuneta',
       'capacidad',
       'período de retorno',
       'periodo de retorno',
@@ -294,6 +295,33 @@ describe('RoadFlowRankedList — no hydraulic magnitude ANYWHERE', () => {
 // ---------------------------------------------------------------------------
 // Empty / coverage states
 // ---------------------------------------------------------------------------
+
+describe('RoadFlowRankedList — conduccion is unranked', () => {
+  it('lists along-road conveyance in its own section, never as N.º de M', () => {
+    const data = buildResponse({
+      total_conduccion: 1,
+      features: {
+        type: 'FeatureCollection',
+        features: [
+          ...buildResponse().features.features,
+          feature({
+            id: 'd1',
+            tipo: 'conduccion',
+            tramo_ref: 'RV-3001',
+            canal_ref: 'CN-9',
+            orden_ranking: null,
+            confianza: null,
+          }),
+        ],
+      },
+    });
+    renderWithMantine(<RoadFlowRankedList data={data} />);
+    expect(screen.getByTestId('road-flow-conduccion-section')).toBeTruthy();
+    expect(screen.getByTestId('road-flow-conduccion-d1').textContent).toContain('sumidero CN-9');
+    expect(screen.queryByText(/de 6/)).toBeNull();
+    expect(screen.getByText('1.º de 3')).toBeTruthy();
+  });
+});
 
 describe('RoadFlowRankedList — empty run', () => {
   it('says so, and still shows the timestamp and the disclaimer', () => {
