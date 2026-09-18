@@ -17,10 +17,11 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import { apiFetch } from './core';
 
-/** The two crossing kinds. Only `flujo_natural` is ever ranked. */
+/** Crossing kinds plus along-road conveyance. Only `flujo_natural` is ever ranked. */
 export const ROAD_FLOW_KINDS = {
   FLUJO_NATURAL: 'flujo_natural',
   CANAL: 'canal',
+  CONDUCCION: 'conduccion',
 } as const;
 
 export type RoadFlowKind = (typeof ROAD_FLOW_KINDS)[keyof typeof ROAD_FLOW_KINDS];
@@ -72,6 +73,8 @@ export interface RoadFlowCrossingsResponse {
   /** M in the `N.º de M` label. NEVER the total row count (Law 7). */
   readonly total_flujo_natural: number;
   readonly total_canal: number;
+  /** Along-road conveyance. Unranked. Absent on payloads from before 0024. */
+  readonly total_conduccion?: number;
   readonly features: RoadFlowCrossingCollection;
   readonly excluidos: readonly RoadFlowExclusion[];
   readonly parametros: Record<string, unknown>;

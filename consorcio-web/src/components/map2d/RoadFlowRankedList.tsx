@@ -219,6 +219,41 @@ function CanalRow({
   );
 }
 
+function ConduccionRow({
+  feature,
+  onSelect,
+  onSurvey,
+}: {
+  readonly feature: RoadFlowCrossingFeature;
+  readonly onSelect?: (feature: RoadFlowCrossingFeature) => void;
+  readonly onSurvey?: (tramoRef: string) => void;
+}) {
+  const p = feature.properties;
+  const sink = p.canal_ref ? `sumidero ${p.canal_ref}` : 'sin canal sumidero en el tramo';
+  return (
+    <Group gap="xs" wrap="nowrap" align="flex-start">
+      <RowShell
+        testId={`road-flow-conduccion-${p.id}`}
+        selectLabel={`Centrar el mapa en la conducción del tramo ${p.tramo_ref}`}
+        onSelect={onSelect ? () => onSelect(feature) : undefined}
+      >
+        <Group gap="xs" wrap="wrap">
+          <Text size="sm">{p.tramo_ref}</Text>
+          <Text size="sm" c="dimmed">
+            {sink}
+          </Text>
+        </Group>
+        <Text size="xs" c="dimmed">
+          {`Conducción · flujo ${formatDegrees(p.direccion_flujo_deg)} · camino ${formatDegrees(
+            p.rumbo_camino_deg
+          )}`}
+        </Text>
+      </RowShell>
+      <SurveyAction tramoRef={p.tramo_ref} onSurvey={onSurvey} />
+    </Group>
+  );
+}
+
 interface RoadFlowRankedListProps {
   readonly data: RoadFlowCrossingsResponse;
   /**
@@ -238,6 +273,7 @@ export function RoadFlowRankedList({ data, onSelect, onSurvey }: RoadFlowRankedL
     .filter((f) => f.properties.tipo === ROAD_FLOW_KINDS.FLUJO_NATURAL)
     .sort((a, b) => (a.properties.orden_ranking ?? 0) - (b.properties.orden_ranking ?? 0));
   const canales = features.filter((f) => f.properties.tipo === ROAD_FLOW_KINDS.CANAL);
+  const conduccion = features.filter((f) => f.properties.tipo === ROAD_FLOW_KINDS.CONDUCCION);
 
   // M — the run's own count of ranked crossings. NOT `ranked.length`, and
   // emphatically not `features.length` (Law 7).
@@ -259,7 +295,7 @@ export function RoadFlowRankedList({ data, onSelect, onSurvey }: RoadFlowRankedL
         </Text>
       ) : null}
 
-      {ranked.length === 0 && canales.length === 0 ? (
+      {ranked.length === 0 && canales.length === 0 && conduccion.length === 0 ? (
         <Text size="sm" c="dimmed" data-testid="road-flow-empty">
           No hay cruces calculados para esta área.
         </Text>
@@ -289,6 +325,26 @@ export function RoadFlowRankedList({ data, onSelect, onSurvey }: RoadFlowRankedL
           </Text>
           {canales.map((f) => (
             <CanalRow key={f.properties.id} feature={f} onSelect={onSelect} onSurvey={onSurvey} />
+          ))}
+        </Stack>
+      ) : null}
+
+      {conduccion.length > 0 ? (
+        <Stack gap={2} data-testid="road-flow-conduccion-section">
+          <Text size="xs" fw={600}>
+            {`Conducción por cuneta (${data.total_conduccion ?? conduccion.length})`}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Agua que corre CON el camino (cuneta de hecho). No entra en el orden.
+            A 30 m es la pendiente regional de la traza, no la sección de la zanja.
+          </Text>
+          {conduccion.map((f) => (
+            <ConduccionRow
+              key={f.properties.id}
+              feature={f}
+              onSelect={onSelect}
+              onSurvey={onSurvey}
+            />
           ))}
         </Stack>
       ) : null}

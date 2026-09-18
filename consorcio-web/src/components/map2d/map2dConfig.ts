@@ -73,6 +73,12 @@ export const SOURCE_IDS = {
   // (RFA-R2). It is NOT a Martin source: the payload is authenticated and
   // operator-only, and this capability publishes nothing.
   ROAD_FLOW: 'road_flow',
+  // LineString arrows derived client-side from `tipo=conduccion` points.
+  // A second source because a circle layer ignores lines and a line layer
+  // ignores points — mixing geometries in ROAD_FLOW would make the arrows
+  // unpaintable without a second addLayer against a filtered geometry type
+  // MapLibre does not offer.
+  ROAD_FLOW_ARROWS: 'road_flow_arrows',
   // ── Pilar Verde (Phase 2/7) ──
   // Values match the `PilarVerdeLayerId` tuple in `stores/mapLayerSyncStore.ts`
   // so the source id == the visibility-toggle id (no translation table).

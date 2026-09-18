@@ -24,7 +24,7 @@
  * keeps a long ranked list scrollable inside a `pointer-events: none` card.
  */
 
-import { Alert, Loader, SegmentedControl, Stack, Text } from '@mantine/core';
+import { Alert, Loader, SegmentedControl, Stack, Switch, Text } from '@mantine/core';
 
 import type { CoberturaResponse } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
@@ -45,10 +45,14 @@ export const ROAD_FLOW_KIND_FILTER = {
 export type RoadFlowKindFilter = (typeof ROAD_FLOW_KIND_FILTER)[keyof typeof ROAD_FLOW_KIND_FILTER];
 
 /** Filter position → the visibility pair `applyRoadFlowKindFilter` consumes. */
-export function kindFilterToVisibility(filter: RoadFlowKindFilter): RoadFlowKindVisibility {
+export function kindFilterToVisibility(
+  filter: RoadFlowKindFilter,
+  conduccion = true
+): RoadFlowKindVisibility {
   return {
     flujo_natural: filter !== ROAD_FLOW_KIND_FILTER.CANAL,
     canal: filter !== ROAD_FLOW_KIND_FILTER.FLUJO,
+    conduccion,
   };
 }
 
@@ -116,12 +120,27 @@ export function RoadFlowPanel({
           aria-label="Filtrar por tipo de cruce"
           data-testid="road-flow-kind-filter"
           value={visibilityToKindFilter(kinds)}
-          onChange={(value) => onKindsChange(kindFilterToVisibility(value as RoadFlowKindFilter))}
+          onChange={(value) =>
+            onKindsChange(
+              kindFilterToVisibility(value as RoadFlowKindFilter, kinds.conduccion)
+            )
+          }
           data={[
             { value: ROAD_FLOW_KIND_FILTER.AMBOS, label: 'Ambos' },
             { value: ROAD_FLOW_KIND_FILTER.FLUJO, label: 'Flujo natural' },
             { value: ROAD_FLOW_KIND_FILTER.CANAL, label: 'Canal' },
           ]}
+        />
+
+        <Switch
+          size="xs"
+          label="Cuneta (paralelo)"
+          description="Agua que corre CON el camino. No es un cruce."
+          checked={kinds.conduccion}
+          onChange={(event) =>
+            onKindsChange({ ...kinds, conduccion: event.currentTarget.checked })
+          }
+          data-testid="road-flow-conduccion-switch"
         />
 
         {isLoading ? <Loader size="sm" data-testid="road-flow-loading" /> : null}

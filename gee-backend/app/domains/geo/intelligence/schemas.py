@@ -504,6 +504,13 @@ class CrucesCaminoResponse(BaseModel):
     total_canal: int = Field(
         default=0, description="Culvert/bridge candidates. Unranked, counted separately."
     )
+    total_conduccion: int = Field(
+        default=0,
+        description=(
+            "Along-road conveyance (ditch-as-canal). Unranked, counted separately "
+            "from both the crossing rank and the canal×road set."
+        ),
+    )
     features: dict[str, Any] = Field(
         default_factory=lambda: {"type": "FeatureCollection", "features": []},
         description="GeoJSON in EPSG:4326 — reprojected, never merely stamped.",
@@ -513,7 +520,8 @@ class CrucesCaminoResponse(BaseModel):
         description=(
             "The run's own account of what it decided not to keep, with motivo in "
             "{sin_direccion, flujo_paralelo, suprimido_por_separacion, "
-            "maximo_en_extremo}. A suppressed double crossing stays visible here."
+            "maximo_en_extremo}. Parallel D8 is stored as tipo=conduccion on new "
+            "runs; flujo_paralelo remains only on historical job JSON."
         ),
     )
     parametros: dict[str, Any] = Field(

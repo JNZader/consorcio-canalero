@@ -69,7 +69,12 @@ export function useRoadFlowInteraction({
     // One listener per layer id: `on(type, layerId, listener)` with a single id
     // is the form every MapLibre 4.x release supports, and the two ids belong
     // to one registry entry anyway.
-    const layerIds = [ROAD_FLOW_LAYER_IDS.FLUJO, ROAD_FLOW_LAYER_IDS.CANAL];
+    const layerIds = [
+      ROAD_FLOW_LAYER_IDS.FLUJO,
+      ROAD_FLOW_LAYER_IDS.CANAL,
+      ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
+      ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
+    ];
     for (const layerId of layerIds) {
       map.on('click', layerId, handler as never);
     }

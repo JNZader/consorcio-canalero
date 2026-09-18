@@ -212,6 +212,11 @@ def detectar_puntos_conflicto_impl(
 #: The closed set of reasons a `flujo_natural` candidate is not stored. Closed on
 #: purpose: `excluidos` is the run's own account of what it decided not to keep,
 #: and an open-ended motivo string is an account nobody can read.
+#:
+#: ``flujo_paralelo`` remains in the set because historical ``geo_jobs.resultado``
+#: documents it. New runs persist that case as ``tipo='conduccion'`` (unranked)
+#: instead of excluding it — along-road conveyance is a different object, not a
+#: failed crossing.
 MOTIVOS_EXCLUSION: frozenset[str] = frozenset(
     {
         "sin_direccion",
@@ -359,6 +364,78 @@ def _lado_cruce(flow_azimuth: float, road_bearing: float) -> str:
     rx, ry = math.sin(rr), math.cos(rr)
     cross = rx * fy - ry * fx
     return "izq_a_der" if cross > 0 else "der_a_izq"
+
+
+def _azimut_a_lo_largo(flow_azimuth: float, road_bearing: float) -> float:
+    """The along-road azimuth of a (near-)parallel D8 pointer.
+
+    ``_acute_angle`` folds 180° to 0°, which is correct for "is this a
+    crossing?" and useless for "which way along the road?". Cosine of the
+    difference keeps the sign: flow with the digitization stays on ``rumbo``,
+    anti-parallel flow reverses it.
+    """
+    delta = math.radians(flow_azimuth - road_bearing)
+    if math.cos(delta) >= 0.0:
+        return road_bearing % 360.0
+    return (road_bearing + 180.0) % 360.0
+
+
+def _mismo_sentido(a: float, b: float) -> bool:
+    """True when two azimuths agree to within a right angle (not acute-folded)."""
+    delta = abs(a - b) % 360.0
+    if delta > 180.0:
+        delta = 360.0 - delta
+    return delta <= 90.0
+
+
+def _asignar_canales_sumidero(rows: list[dict[str, Any]], roads) -> None:
+    """Stamp the nearest downhill same-tramo canal crossing as ``canal_ref``.
+
+    Walks only this segment. A canal on a different ``tramo_ref`` is a
+    different road piece; chaining them is a network question this slice does
+    not answer. No canal in the along-road direction leaves ``canal_ref`` NULL
+    and names that in ``nota`` — absence is a fact, not a guess at a farther
+    mouth.
+    """
+    if not len(roads):
+        return
+    roads_by_id = {str(road["id"]): road.geometry for _, road in roads.iterrows()}
+    canals = [row for row in rows if row.get("tipo") == "canal"]
+    for row in rows:
+        if row.get("tipo") != "conduccion":
+            continue
+        geom_road = roads_by_id.get(str(row["tramo_ref"]))
+        flow_az = row.get("direccion_flujo_deg")
+        rumbo = row.get("rumbo_camino_deg")
+        point = row.get("geometry")
+        if geom_road is None or flow_az is None or rumbo is None or point is None:
+            continue
+        along = _azimut_a_lo_largo(float(flow_az), float(rumbo))
+        going_forward = _mismo_sentido(along, float(rumbo))
+        s0 = geom_road.project(point)
+        best_ref: str | None = None
+        best_ds: float | None = None
+        for canal in canals:
+            if str(canal.get("tramo_ref")) != str(row["tramo_ref"]):
+                continue
+            canal_pt = canal.get("geometry")
+            if canal_pt is None:
+                continue
+            ds = geom_road.project(canal_pt) - s0
+            if going_forward and ds > 1.0:
+                if best_ds is None or ds < best_ds:
+                    best_ds = ds
+                    best_ref = str(canal["canal_ref"]) if canal.get("canal_ref") else None
+            elif (not going_forward) and ds < -1.0:
+                if best_ds is None or -ds < best_ds:
+                    best_ds = -ds
+                    best_ref = str(canal["canal_ref"]) if canal.get("canal_ref") else None
+        if best_ref is not None:
+            row["canal_ref"] = best_ref
+        else:
+            existing = row.get("nota")
+            suffix = "sin canal sumidero en este tramo; el agua sigue con el camino"
+            row["nota"] = f"{existing}; {suffix}" if existing else suffix
 
 
 def _maxima_runs(profile: list[float]) -> list[tuple[int, int]]:
@@ -838,15 +915,28 @@ def detectar_cruces_camino_flujo_impl(
             if confianza is None:
                 # Below half a D8 step. A drainage running alongside a road is
                 # extremely common — roadside cunetas are exactly that — and its
-                # maxima are not crossings at all. The exclusion carries θ, β and
-                # φ so it is auditable rather than mysterious.
-                excluidos.append(
+                # maxima are not crossings. They ARE along-road conveyance: store
+                # them as unranked ``conduccion`` so the operator can see the
+                # ditch dynamics without polluting the crossing rank.
+                from shapely.geometry import Point
+
+                row_i, col_i = candidate["cell"]
+                x, y = _cell_center(transform, row_i, col_i)
+                rows.append(
                     {
+                        "tipo": "conduccion",
+                        "geometry": Point(x, y),
                         "tramo_ref": candidate["tramo_ref"],
-                        "motivo": "flujo_paralelo",
-                        "theta_deg": theta,
-                        "rumbo_camino_deg": bearing,
+                        "canal_ref": None,
                         "direccion_flujo_deg": direccion,
+                        "rumbo_camino_deg": bearing,
+                        "lado_cruce": _lado_cruce(direccion, bearing),
+                        "area_aporte_ha": candidate["acumulacion"] * cell_area_m2 / 10_000,
+                        "orden_ranking": None,
+                        "confianza": None,
+                        "nota": (
+                            f"flujo paralelo al camino ({theta:.1f} grados): conducción, no cruce"
+                        ),
                     }
                 )
                 continue
@@ -898,6 +988,8 @@ def detectar_cruces_camino_flujo_impl(
 
     if not rows:
         return build_empty_geojson(list(CRUCE_COLUMNS)), excluidos, parametros
+
+    _asignar_canales_sumidero(rows, roads)
 
     gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs=work_crs)
 

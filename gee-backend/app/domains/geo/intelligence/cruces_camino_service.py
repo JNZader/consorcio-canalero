@@ -453,6 +453,7 @@ def get_cruces_camino(db, *, area_id: str) -> dict[str, Any]:
         "desactualizado": calcular_desactualizado(db, area_id, calculada_en),
         "total_flujo_natural": sum(1 for r in rows if r["tipo"] == "flujo_natural"),
         "total_canal": sum(1 for r in rows if r["tipo"] == "canal"),
+        "total_conduccion": sum(1 for r in rows if r["tipo"] == "conduccion"),
         "features": {"type": "FeatureCollection", "features": features},
         "excluidos": resultado.get("excluidos", []) or [],
         "parametros": parametros,
