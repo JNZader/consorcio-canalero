@@ -188,7 +188,12 @@ export const LAYER_PROPERTY_FORMATTERS: Record<string, Record<string, LayerValue
  */
 export function resolveLayerWhitelistKey(layerId: string | undefined | null): string | null {
   if (!layerId) return null;
-  if (layerId === `${SOURCE_IDS.ROADS}-line`) return 'caminos';
+  if (
+    layerId === `${SOURCE_IDS.ROADS}-line` ||
+    layerId === `${SOURCE_IDS.ROADS}-hit` ||
+    layerId === `${SOURCE_IDS.ROADS}-label`
+  )
+    return 'caminos';
   if (layerId === `${SOURCE_IDS.CATASTRO}-fill` || layerId === `${SOURCE_IDS.CATASTRO}-line`)
     return 'catastro';
   if (layerId === `${SOURCE_IDS.BASINS}-fill` || layerId === `${SOURCE_IDS.BASINS}-line`)

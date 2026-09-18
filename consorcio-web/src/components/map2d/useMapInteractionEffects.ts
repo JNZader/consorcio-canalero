@@ -219,7 +219,7 @@ export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[
     `${SOURCE_IDS.ESCUELAS}-symbol`,
     `${SOURCE_IDS.SOIL}-fill`,
     `${SOURCE_IDS.CATASTRO}-fill`,
-    `${SOURCE_IDS.ROADS}-line`,
+    `${SOURCE_IDS.ROADS}-hit`,
     `${SOURCE_IDS.BASINS}-fill`,
     `${SOURCE_IDS.APPROVED_ZONES}-fill`,
     `${SOURCE_IDS.MARTIN_PUNTOS}-circle`,
@@ -270,7 +270,14 @@ export function useMapInteractionEffects({
         return;
       }
 
-      const features = map.queryRenderedFeatures(event.point, {
+      // ±6 px: the painted road is 2 px; a point query misses it. Same
+      // pattern as the 3D viewer (`useTerrainInteractionEffects`).
+      const { x, y } = event.point;
+      const bbox: [[number, number], [number, number]] = [
+        [x - 6, y - 6],
+        [x + 6, y + 6],
+      ];
+      const features = map.queryRenderedFeatures(bbox, {
         layers: clickableLayers.filter((id) => map.getLayer(id)),
       });
 

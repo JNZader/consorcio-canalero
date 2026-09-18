@@ -13,6 +13,7 @@ import {
   applyLayerOrder,
 } from './layerRenderRegistry';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
+import { MAP_GLYPHS_URL } from './roadLabelLayer';
 import { setLayerVisibility } from './map2dUtils';
 import {
   syncAgroAceptadaLayer,
@@ -210,6 +211,7 @@ export function createComparisonOverlayController({
     attributionControl: false,
     style: {
       version: 8,
+      glyphs: MAP_GLYPHS_URL,
       sources: {},
       layers: [
         {

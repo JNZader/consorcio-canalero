@@ -42,6 +42,14 @@ describe('resolveLayerWhitelistKey', () => {
     expect(resolveLayerWhitelistKey(`${SOURCE_IDS.ROADS}-line`)).toBe('caminos');
   });
 
+  it('resolves the roads label layer id to the same whitelist key', () => {
+    expect(resolveLayerWhitelistKey(`${SOURCE_IDS.ROADS}-label`)).toBe('caminos');
+  });
+
+  it('resolves the roads hit layer id to the same whitelist key', () => {
+    expect(resolveLayerWhitelistKey(`${SOURCE_IDS.ROADS}-hit`)).toBe('caminos');
+  });
+
   it('returns catastro for CATASTRO fill/line layer ids', () => {
     expect(resolveLayerWhitelistKey(`${SOURCE_IDS.CATASTRO}-fill`)).toBe('catastro');
     expect(resolveLayerWhitelistKey(`${SOURCE_IDS.CATASTRO}-line`)).toBe('catastro');

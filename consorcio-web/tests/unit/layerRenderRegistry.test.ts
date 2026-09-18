@@ -181,6 +181,7 @@ describe('applyLayerOpacity', () => {
     applyLayerOpacity(map, { roads: 5 });
     // clamped to 1 → 0.9 * 1
     expect(setPaintProperty).toHaveBeenCalledWith('map2d-roads-line', 'line-opacity', 0.9);
+    expect(setPaintProperty).toHaveBeenCalledWith('map2d-roads-label', 'text-opacity', 0.95);
   });
 
   it('skips ml layers that are not yet mounted (getLayer undefined)', () => {
@@ -214,10 +215,10 @@ describe('applyLayerOrder', () => {
   it('hoists each UI id ml-layer group in list order', () => {
     const { map, moveLayer } = makeMap();
     applyLayerOrder(map, ['waterways', 'roads']);
-    // waterways = 5 line layers, roads = 1 → 6 moveLayer calls
-    expect(moveLayer).toHaveBeenCalledTimes(6);
-    // roads (last in list) is hoisted last → ends on top
-    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-line');
+    // waterways = 5 line layers, roads = line + hit + label → 8 moveLayer calls
+    expect(moveLayer).toHaveBeenCalledTimes(8);
+    // roads (last in list) is hoisted last → label ends on top of the group
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
   });
 
   it('swallows moveLayer throws (racing style edits)', () => {
@@ -275,16 +276,10 @@ describe('layerRenderRegistry — road_flow (flujo-caminos, design D6)', () => {
     }
   });
 
-  it('OPACITY_PROP is UNTOUCHED — no `symbol` entry was added', () => {
-    expect(OPACITY_PROP).toEqual({
-      fill: 'fill-opacity',
-      line: 'line-opacity',
-      raster: 'raster-opacity',
-      circle: 'circle-opacity',
-    });
+  it('OPACITY_PROP has no `symbol` / icon-opacity (road_flow stays circle)', () => {
     expect(Object.keys(OPACITY_PROP)).not.toContain('symbol');
     expect(Object.values(OPACITY_PROP)).not.toContain('icon-opacity');
-    expect(Object.values(OPACITY_PROP)).not.toContain('text-opacity');
+    expect(OPACITY_PROP.text).toBe('text-opacity');
   });
 
   it('no registry entry anywhere declares a symbol opacity property', () => {

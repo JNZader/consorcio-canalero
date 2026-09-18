@@ -13,4 +13,14 @@ describe('Cloudflare Pages security headers', () => {
     expect(cspLine).toContain('https://cc10demayo-api.javierzader.com');
     expect(cspLine).toContain('https://*.javierzader.com');
   });
+
+  it('allows MapLibre glyph PBFs in connect-src so road labels paint in production', () => {
+    const headers = readFileSync(join(process.cwd(), 'public/_headers'), 'utf8');
+    const cspLine = headers
+      .split('\n')
+      .find((line) => line.trim().startsWith('Content-Security-Policy:'));
+
+    expect(cspLine).toContain('connect-src');
+    expect(cspLine).toContain('https://demotiles.maplibre.org');
+  });
 });

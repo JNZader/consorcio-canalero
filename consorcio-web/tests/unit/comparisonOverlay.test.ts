@@ -247,6 +247,11 @@ describe('comparison overlay lifecycle', () => {
       'visibility',
       'none'
     );
+    expect(overlay.setLayoutProperty).toHaveBeenCalledWith(
+      'map2d-roads-label',
+      'visibility',
+      'none'
+    );
     expect(overlay.setPaintProperty).toHaveBeenCalledWith('map2d-roads-line', 'line-opacity', 0.45);
 
     controller.update(
@@ -257,9 +262,9 @@ describe('comparison overlay lifecycle', () => {
 
     expect(mapConstructor).toHaveBeenCalledTimes(1);
     expect(overlay.setPaintProperty).toHaveBeenLastCalledWith(
-      'map2d-roads-line',
-      'line-opacity',
-      0.225
+      'map2d-roads-label',
+      'text-opacity',
+      0.2375
     );
 
     controller.dispose();

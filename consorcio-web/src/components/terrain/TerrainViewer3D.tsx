@@ -33,6 +33,7 @@ import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
+import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
@@ -511,6 +512,7 @@ export default function TerrainViewer3D({
       container: mapContainer.current,
       style: {
         version: 8,
+        glyphs: MAP_GLYPHS_URL,
         sources: {
           'terrain-rgb': {
             type: 'raster-dem',

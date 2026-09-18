@@ -154,4 +154,28 @@ describe('terrainVectorLayerEffects paint constants (layer-visibility audit)', (
     expect(catastroLineIdx).toBeGreaterThan(soilFillIdx);
     expect(catastroLineIdx).toBeGreaterThan(soilLineIdx);
   });
+
+  it('adds along-line road labels next to the road line', () => {
+    const map = createMapMock();
+
+    syncTerrainVectorLayers(map as never, emptyCollections(), baselineVisibility());
+
+    const ids = map.addLayer.mock.calls.map(([layer]) => layer?.id as string);
+    const lineIdx = ids.indexOf(`${TERRAIN_SOURCE_IDS.roads}-line`);
+    const hitIdx = ids.indexOf(`${TERRAIN_SOURCE_IDS.roads}-hit`);
+    const labelIdx = ids.indexOf(`${TERRAIN_SOURCE_IDS.roads}-label`);
+    expect(lineIdx).toBeGreaterThanOrEqual(0);
+    expect(hitIdx).toBe(lineIdx + 1);
+    expect(labelIdx).toBe(hitIdx + 1);
+
+    const labelCall = map.addLayer.mock.calls.find(
+      ([layer]) => layer?.id === `${TERRAIN_SOURCE_IDS.roads}-label`
+    );
+    expect(labelCall?.[0]?.layout?.['symbol-placement']).toBe('line');
+    expect(map.setLayoutProperty).toHaveBeenCalledWith(
+      `${TERRAIN_SOURCE_IDS.roads}-label`,
+      'visibility',
+      'visible'
+    );
+  });
 });

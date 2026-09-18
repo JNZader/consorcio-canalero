@@ -44,6 +44,7 @@ export const OPACITY_PROP = {
   line: 'line-opacity',
   raster: 'raster-opacity',
   circle: 'circle-opacity',
+  text: 'text-opacity',
 } as const;
 
 export type OpacityProp = (typeof OPACITY_PROP)[keyof typeof OPACITY_PROP];
@@ -214,6 +215,8 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   roads: {
     mlLayers: [
       { id: `${SOURCE_IDS.ROADS}-line`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0.9 },
+      { id: `${SOURCE_IDS.ROADS}-hit`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0 },
+      { id: `${SOURCE_IDS.ROADS}-label`, opacityProp: OPACITY_PROP.text, defaultOpacity: 0.95 },
     ],
   },
   soil: {

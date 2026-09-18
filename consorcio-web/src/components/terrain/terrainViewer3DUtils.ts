@@ -175,7 +175,7 @@ export function buildClickableLayers3D(): string[] {
     // (terrainVectorLayerEffects.ts already imports from this module).
     'terrain-vector-soil-fill',
     'terrain-vector-catastro-line',
-    'terrain-vector-roads-line',
+    'terrain-vector-roads-hit',
     'terrain-vector-waterways-line',
     'terrain-vector-basins-fill',
     'terrain-vector-approved-zones-fill',
