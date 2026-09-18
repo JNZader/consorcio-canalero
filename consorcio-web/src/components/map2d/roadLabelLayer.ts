@@ -15,7 +15,11 @@
  * Basemap is satellite/aerial by default → white text + dark halo
  * (maplibre-cartography).
  */
-import type { LineLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
+import type {
+  ExpressionSpecification,
+  LineLayerSpecification,
+  SymbolLayerSpecification,
+} from 'maplibre-gl';
 
 /** SDF glyph template. Font folder names must match `text-font` exactly. */
 export const MAP_GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
@@ -30,12 +34,12 @@ export const ROAD_HIT_LINE_WIDTH = 16;
  * `ruta`; IDECOR-shaped payloads use `rtn` / `fna`. Do not fall back to
  * `nombre` — that is the long "Camino Provincial T269-03" string.
  */
-export const ROAD_LABEL_TEXT_FIELD = [
+export const ROAD_LABEL_TEXT_FIELD: ExpressionSpecification = [
   'coalesce',
   ['get', 'rtn'],
   ['get', 'ruta'],
   ['get', 'fna'],
-] as const;
+];
 
 export function buildRoadHitLayer(id: string, source: string): LineLayerSpecification {
   return {
@@ -59,7 +63,7 @@ export function buildRoadLabelLayer(id: string, source: string): SymbolLayerSpec
     layout: {
       'symbol-placement': 'line',
       'symbol-spacing': 280,
-      'text-field': [...ROAD_LABEL_TEXT_FIELD],
+      'text-field': ROAD_LABEL_TEXT_FIELD,
       'text-font': ['Noto Sans Regular'],
       'text-size': ['interpolate', ['linear'], ['zoom'], 11, 10, 14, 12],
       'text-keep-upright': true,
