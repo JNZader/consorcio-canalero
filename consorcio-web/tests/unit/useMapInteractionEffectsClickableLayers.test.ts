@@ -45,9 +45,9 @@ describe('buildClickableLayers · z-order click precedence', () => {
     // Sanity: baseline layers that existed before Phase 2 still present.
     expect(layers).toContain(`${SOURCE_IDS.CATASTRO}-fill`);
     expect(layers).toContain(`${SOURCE_IDS.SOIL}-fill`);
-    expect(layers).toContain(`${SOURCE_IDS.ROADS}-line`);
     expect(layers).toContain(`${SOURCE_IDS.ROADS}-hit`);
-    expect(layers).toContain(`${SOURCE_IDS.ROADS}-label`);
+    expect(layers).not.toContain(`${SOURCE_IDS.ROADS}-line`);
+    expect(layers).not.toContain(`${SOURCE_IDS.ROADS}-label`);
   });
 });
 
