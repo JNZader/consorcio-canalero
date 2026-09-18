@@ -35,13 +35,12 @@ import type { ExpressionSpecification, FilterSpecification } from 'maplibre-gl';
 
 import { ROAD_FLOW_KINDS, type RoadFlowKind } from '../../lib/api/roadFlow';
 import { SOURCE_IDS } from './map2dConfig';
+import { FLOW_ARROW_IMAGE_ID } from './roadFlowArrows';
 
 /** MapLibre layer ids owned by the single `road_flow` registry entry. */
 export const ROAD_FLOW_LAYER_IDS = {
   FLUJO: `${SOURCE_IDS.ROAD_FLOW}-flujo`,
   CANAL: `${SOURCE_IDS.ROAD_FLOW}-canal`,
-  CONDUCCION_CASING: `${SOURCE_IDS.ROAD_FLOW}-conduccion-casing`,
-  CONDUCCION_LINE: `${SOURCE_IDS.ROAD_FLOW}-conduccion-line`,
   CONDUCCION_ARROW: `${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`,
 } as const;
 
@@ -134,61 +133,31 @@ export function buildRoadFlowCanalPaint() {
   } as const;
 }
 
-/** Dark casing under the terracotta shaft — figure-ground on imagery, not hue. */
-export const ROAD_FLOW_CONDUCCION_CASING_OPACITY = 0.85;
-export const ROAD_FLOW_CONDUCCION_LINE_OPACITY = 0.95;
 export const ROAD_FLOW_CONDUCCION_ARROW_OPACITY = 0.95;
-
-export function buildRoadFlowConduccionCasingPaint() {
-  return {
-    'line-width': 5,
-    'line-color': '#3E2723',
-    'line-opacity': ROAD_FLOW_CONDUCCION_CASING_OPACITY,
-    'line-cap': 'round',
-    'line-join': 'round',
-  } as const;
-}
-
-export function buildRoadFlowConduccionLinePaint() {
-  return {
-    'line-width': 2.5,
-    'line-color': '#E07A3D',
-    'line-opacity': ROAD_FLOW_CONDUCCION_LINE_OPACITY,
-    'line-cap': 'round',
-    'line-join': 'round',
-  } as const;
-}
 
 export function buildRoadFlowConduccionArrowLayout() {
   return {
-    'text-field': '▲',
-    'text-size': 14,
-    'text-rotate': ['get', 'along_azimuth_deg'] as ExpressionSpecification,
-    'text-rotation-alignment': 'map' as const,
-    'text-allow-overlap': true,
-    'text-ignore-placement': true,
-    'symbol-placement': 'point' as const,
+    'icon-image': FLOW_ARROW_IMAGE_ID,
+    'icon-rotate': ['get', 'along_azimuth_deg'] as ExpressionSpecification,
+    'icon-rotation-alignment': 'map' as const,
+    'icon-size': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      10,
+      0.4,
+      14,
+      0.85,
+    ] as ExpressionSpecification,
+    'icon-allow-overlap': true,
+    'icon-ignore-placement': true,
+    'icon-anchor': 'center' as const,
   };
-}
-
-function buildConduccionGeometryFilter(
-  geometryType: 'LineString' | 'Point',
-  shown: boolean
-): ExpressionSpecification {
-  if (!shown) return buildRoadFlowTipoFilter(ROAD_FLOW_NO_KIND_SENTINEL);
-  return [
-    'all',
-    ['==', ['geometry-type'], geometryType],
-    ['==', ['get', 'tipo'], ROAD_FLOW_KINDS.CONDUCCION],
-  ];
 }
 
 export function buildRoadFlowConduccionArrowPaint() {
   return {
-    'text-color': '#ffffff',
-    'text-halo-color': 'rgba(0,0,0,0.75)',
-    'text-halo-width': 1.2,
-    'text-opacity': ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
+    'icon-opacity': ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
   } as const;
 }
 
@@ -266,24 +235,10 @@ export function applyRoadFlowKindFilter(
     );
   }
 
-  const conduccionFilters: Array<
-    [string, ExpressionSpecification]
-  > = [
-    [
-      ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING,
-      buildConduccionGeometryFilter('LineString', visibility.conduccion),
-    ],
-    [
-      ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
-      buildConduccionGeometryFilter('LineString', visibility.conduccion),
-    ],
-    [
+  if (map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW)) {
+    map.setFilter(
       ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
-      buildConduccionGeometryFilter('Point', visibility.conduccion),
-    ],
-  ];
-  for (const [layerId, filter] of conduccionFilters) {
-    if (!map.getLayer(layerId)) continue;
-    map.setFilter(layerId, filter);
+      visibility.conduccion ? null : buildRoadFlowTipoFilter(ROAD_FLOW_NO_KIND_SENTINEL)
+    );
   }
 }

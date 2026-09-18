@@ -28,7 +28,7 @@ import {
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
 import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
-import { buildConduccionArrowCollection } from './roadFlowArrows';
+import { ensureFlowArrowImage, pickArrowCollection } from './roadFlowArrows';
 import {
   ROAD_FLOW_ALL_KINDS_VISIBLE,
   ROAD_FLOW_LAYER_IDS,
@@ -37,8 +37,6 @@ import {
   buildRoadFlowCanalPaint,
   buildRoadFlowConduccionArrowLayout,
   buildRoadFlowConduccionArrowPaint,
-  buildRoadFlowConduccionCasingPaint,
-  buildRoadFlowConduccionLinePaint,
   buildRoadFlowFlujoPaint,
   buildRoadFlowTipoFilter,
 } from './roadFlowLayers';
@@ -267,7 +265,8 @@ export function syncRoadFlowLayers(
   crossings: FeatureCollection<Point> | null | undefined,
   totalFlujoNatural: number,
   isVisible: boolean,
-  kindVisibility: RoadFlowKindVisibility = ROAD_FLOW_ALL_KINDS_VISIBLE
+  kindVisibility: RoadFlowKindVisibility = ROAD_FLOW_ALL_KINDS_VISIBLE,
+  flechas?: FeatureCollection<Point> | null
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.ROAD_FLOW, crossings ?? asFeatureCollection([]));
 
@@ -298,48 +297,18 @@ export function syncRoadFlowLayers(
     });
   }
 
+  ensureFlowArrowImage(map);
   ensureGeoJsonSource(
     map,
     SOURCE_IDS.ROAD_FLOW_ARROWS,
-    buildConduccionArrowCollection(crossings)
+    pickArrowCollection(flechas, crossings)
   );
 
-  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING)) {
-    map.addLayer({
-      id: ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING,
-      type: 'line',
-      source: SOURCE_IDS.ROAD_FLOW_ARROWS,
-      filter: [
-        'all',
-        ['==', ['geometry-type'], 'LineString'],
-        ['==', ['get', 'tipo'], 'conduccion'],
-      ],
-      paint: buildRoadFlowConduccionCasingPaint(),
-    });
-  }
-  if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE)) {
-    map.addLayer({
-      id: ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
-      type: 'line',
-      source: SOURCE_IDS.ROAD_FLOW_ARROWS,
-      filter: [
-        'all',
-        ['==', ['geometry-type'], 'LineString'],
-        ['==', ['get', 'tipo'], 'conduccion'],
-      ],
-      paint: buildRoadFlowConduccionLinePaint(),
-    });
-  }
   if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW)) {
     map.addLayer({
       id: ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
       type: 'symbol',
       source: SOURCE_IDS.ROAD_FLOW_ARROWS,
-      filter: [
-        'all',
-        ['==', ['geometry-type'], 'Point'],
-        ['==', ['get', 'tipo'], 'conduccion'],
-      ],
       layout: buildRoadFlowConduccionArrowLayout(),
       paint: buildRoadFlowConduccionArrowPaint(),
     });
@@ -352,8 +321,6 @@ export function syncRoadFlowLayers(
   const mounted = isVisible && !!crossings;
   setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.FLUJO, mounted);
   setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CANAL, mounted);
-  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING, mounted);
-  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE, mounted);
   setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW, mounted);
 }
 

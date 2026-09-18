@@ -185,6 +185,28 @@ def detectar_cruces_camino_flujo(
     )
 
 
+def construir_flechas_flujo_camino(
+    red_vial_gdf: "gpd.GeoDataFrame",
+    flow_dir_path: Optional[str],
+    *,
+    step_m: float = 80.0,
+    parallel_max_angle_deg: float = 45.0,
+    bearing_window_m: float = 60.0,
+):
+    """Along-road ditch-flow arrows. See the impl."""
+    from app.domains.geo.intelligence.calculations_hydrology_support import (
+        construir_flechas_flujo_camino as impl,
+    )
+
+    return impl(
+        red_vial_gdf,
+        flow_dir_path,
+        step_m=step_m,
+        parallel_max_angle_deg=parallel_max_angle_deg,
+        bearing_window_m=bearing_window_m,
+    )
+
+
 def simular_escorrentia(
     flow_dir_path: str,
     flow_acc_path: str,

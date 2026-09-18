@@ -438,6 +438,122 @@ def _asignar_canales_sumidero(rows: list[dict[str, Any]], roads) -> None:
             row["nota"] = f"{existing}; {suffix}" if existing else suffix
 
 
+def construir_flechas_flujo_camino(
+    red_vial_gdf,
+    flow_dir_path: Optional[str],
+    *,
+    step_m: float = 80.0,
+    parallel_max_angle_deg: float = 45.0,
+    bearing_window_m: float = 60.0,
+) -> dict[str, Any]:
+    """Along-road flow arrows as a GeoJSON FeatureCollection in EPSG:4326.
+
+    Walks every road at ``step_m``, samples the D8 pointer, and keeps the sample
+    only when the pointer is within ``parallel_max_angle_deg`` of the road
+    (otherwise the water is crossing, not running in the ditch). The arrow
+    azimuth is the along-road component of that pointer — the direction an
+    operator can read on the trace.
+
+    Empty when there is no raster or no road: the caller stores the collection
+    as-is so the map never invents a direction.
+    """
+    empty: dict[str, Any] = {"type": "FeatureCollection", "features": []}
+    if not flow_dir_path or red_vial_gdf is None or len(red_vial_gdf) == 0:
+        return empty
+
+    import rasterio
+    from rasterio.transform import rowcol
+    from shapely.geometry import Point, mapping
+    import geopandas as gpd
+
+    with rasterio.open(flow_dir_path) as src:
+        transform = src.transform
+        fd_data = src.read(1)
+        fd_nodata = src.nodata
+        work_crs = src.crs
+
+    roads = red_vial_gdf.to_crs(work_crs)
+    half = max(bearing_window_m / 2.0, 1.0)
+    features: list[dict[str, Any]] = []
+    seq = 0
+    for _, road in roads.iterrows():
+        geom = road.geometry
+        if geom is None or geom.is_empty:
+            continue
+        length = float(geom.length)
+        if length <= 0:
+            continue
+        tramo_ref = str(road["id"])
+        d = 0.0
+        while d <= length:
+            point = geom.interpolate(d)
+            d0 = max(d - half, 0.0)
+            d1 = min(d + half, length)
+            a = geom.interpolate(d0)
+            b = geom.interpolate(d1)
+            if a.equals(b):
+                d += step_m
+                continue
+            bearing = math.degrees(math.atan2(b.x - a.x, b.y - a.y)) % 360.0
+            r, c = rowcol(transform, point.x, point.y)
+            r, c = int(r), int(c)
+            if not (0 <= r < fd_data.shape[0] and 0 <= c < fd_data.shape[1]):
+                d += step_m
+                continue
+            pointer = fd_data[r, c]
+            if fd_nodata is not None and pointer == fd_nodata:
+                d += step_m
+                continue
+            flow_az = azimut_desde_transform(pointer, transform)
+            if flow_az is None:
+                d += step_m
+                continue
+            theta = _acute_angle(flow_az, bearing)
+            if theta > parallel_max_angle_deg:
+                d += step_m
+                continue
+            along = _azimut_a_lo_largo(float(flow_az), bearing)
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": mapping(Point(point.x, point.y)),
+                    "properties": {
+                        "id": f"{tramo_ref}:{seq}",
+                        "tramo_ref": tramo_ref,
+                        "along_azimuth_deg": along,
+                        "direccion_flujo_deg": float(flow_az),
+                        "rumbo_camino_deg": bearing,
+                    },
+                }
+            )
+            seq += 1
+            d += step_m
+
+    if not features:
+        return empty
+    gdf = gpd.GeoDataFrame.from_features(features, crs=work_crs).to_crs(4326)
+    out: list[dict[str, Any]] = []
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None:
+            continue
+        props = {
+            "id": row["id"],
+            "tramo_ref": row["tramo_ref"],
+            "along_azimuth_deg": float(row["along_azimuth_deg"]),
+            "direccion_flujo_deg": float(row["direccion_flujo_deg"]),
+            "rumbo_camino_deg": float(row["rumbo_camino_deg"]),
+        }
+        out.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [geom.x, geom.y]},
+                "properties": props,
+            }
+        )
+    return {"type": "FeatureCollection", "features": out}
+
+
 def _maxima_runs(profile: list[float]) -> list[tuple[int, int]]:
     """``(start, end)`` index bounds of every strict local maximum run.
 

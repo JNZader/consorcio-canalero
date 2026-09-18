@@ -35,8 +35,6 @@ import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
   ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
-  ROAD_FLOW_CONDUCCION_CASING_OPACITY,
-  ROAD_FLOW_CONDUCCION_LINE_OPACITY,
   ROAD_FLOW_FLUJO_FILL_OPACITY,
   ROAD_FLOW_LAYER_IDS,
 } from './roadFlowLayers';
@@ -48,6 +46,7 @@ export const OPACITY_PROP = {
   raster: 'raster-opacity',
   circle: 'circle-opacity',
   text: 'text-opacity',
+  icon: 'icon-opacity',
 } as const;
 
 export type OpacityProp = (typeof OPACITY_PROP)[keyof typeof OPACITY_PROP];
@@ -365,18 +364,8 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
         defaultOpacity: ROAD_FLOW_CANAL_FILL_OPACITY,
       },
       {
-        id: ROAD_FLOW_LAYER_IDS.CONDUCCION_CASING,
-        opacityProp: OPACITY_PROP.line,
-        defaultOpacity: ROAD_FLOW_CONDUCCION_CASING_OPACITY,
-      },
-      {
-        id: ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
-        opacityProp: OPACITY_PROP.line,
-        defaultOpacity: ROAD_FLOW_CONDUCCION_LINE_OPACITY,
-      },
-      {
         id: ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
-        opacityProp: OPACITY_PROP.text,
+        opacityProp: OPACITY_PROP.icon,
         defaultOpacity: ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
       },
     ],

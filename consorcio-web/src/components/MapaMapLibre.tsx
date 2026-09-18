@@ -597,6 +597,7 @@ export default function MapaMapLibre() {
     escuelas: escuelasData,
     isFichaCanal,
     roadFlowCrossings: roadFlow.mapCollection,
+    roadFlowFlechas: roadFlow.mapFlechas,
     roadFlowTotalFlujoNatural: roadFlow.totalFlujoNatural,
     roadFlowKinds: roadFlow.kinds,
     catastroMembership: basinMembership.membership,

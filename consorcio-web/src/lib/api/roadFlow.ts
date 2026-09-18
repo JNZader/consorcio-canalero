@@ -80,6 +80,8 @@ export interface RoadFlowCrossingsResponse {
   readonly parametros: Record<string, unknown>;
   readonly variante: string | null;
   readonly segmentos_parcialmente_cubiertos: number;
+  /** Along-road ditch-flow arrows. Empty on runs that predate this field. */
+  readonly flechas?: FeatureCollection<Point>;
 }
 
 /**

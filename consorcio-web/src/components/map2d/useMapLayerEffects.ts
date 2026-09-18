@@ -100,6 +100,8 @@ interface UseMapLayerEffectsParams {
    * payload, two surfaces (RFA-R2). Do NOT add a second fetch for the map.
    */
   roadFlowCrossings?: FeatureCollection<Point> | null;
+  /** Along-road ditch-flow arrows (pixel chevrons). Empty until the run stores them. */
+  roadFlowFlechas?: FeatureCollection<Point> | null;
   /**
    * M, the run's own `flujo_natural` counter, which graduates the radius scale.
    * Never `features.length` — the collection also carries the unranked canal
@@ -136,6 +138,7 @@ export function useMapLayerEffects({
   escuelas,
   isFichaCanal = false,
   roadFlowCrossings = null,
+  roadFlowFlechas = null,
   roadFlowTotalFlujoNatural = 0,
   roadFlowKinds = ROAD_FLOW_ALL_KINDS_VISIBLE,
 }: UseMapLayerEffectsParams) {
@@ -191,12 +194,14 @@ export function useMapLayerEffects({
       roadFlowCrossings,
       roadFlowTotalFlujoNatural,
       !!vectorVisibility.road_flow,
-      roadFlowKinds
+      roadFlowKinds,
+      roadFlowFlechas
     );
   }, [
     mapReady,
     mapRef,
     roadFlowCrossings,
+    roadFlowFlechas,
     roadFlowKinds,
     roadFlowTotalFlujoNatural,
     vectorVisibility.road_flow,

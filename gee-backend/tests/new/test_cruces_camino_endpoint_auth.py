@@ -236,6 +236,7 @@ class TestNoHydraulicQuantityIsOffered:
         assert "total_flujo_natural" in body
         assert "total_canal" in body
         assert "total_conduccion" in body
+        assert "flechas" in body
 
     def test_the_response_carries_provenance_and_the_recorded_parameters(self, app_client):
         """A rank list can never be read without the parameters that produced it."""
