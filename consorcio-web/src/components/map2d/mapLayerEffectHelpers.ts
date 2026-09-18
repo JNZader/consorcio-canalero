@@ -27,7 +27,7 @@ import {
   buildBpaHistoricoLinePaint,
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
-import { buildRoadLabelLayer } from './roadLabelLayer';
+import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
 import {
   ROAD_FLOW_ALL_KINDS_VISIBLE,
   ROAD_FLOW_LAYER_IDS,
@@ -205,6 +205,7 @@ export function syncRoadLayers(
   ensureGeoJsonSource(map, SOURCE_IDS.ROADS, roadsCollection ?? asFeatureCollection([]));
 
   const roadLayerId = `${SOURCE_IDS.ROADS}-line`;
+  const roadHitId = `${SOURCE_IDS.ROADS}-hit`;
   const roadLabelId = `${SOURCE_IDS.ROADS}-label`;
   if (!map.getLayer(roadLayerId)) {
     map.addLayer({
@@ -217,6 +218,9 @@ export function syncRoadLayers(
         'line-opacity': 0.9,
       },
     });
+  }
+  if (!map.getLayer(roadHitId)) {
+    map.addLayer(buildRoadHitLayer(roadHitId, SOURCE_IDS.ROADS));
   }
   if (!map.getLayer(roadLabelId)) {
     map.addLayer(buildRoadLabelLayer(roadLabelId, SOURCE_IDS.ROADS));
@@ -235,6 +239,7 @@ export function syncRoadLayers(
   }
 
   setLayerVisibility(map, roadLayerId, isVisible && !!roadsCollection);
+  setLayerVisibility(map, roadHitId, isVisible && !!roadsCollection);
   setLayerVisibility(map, roadLabelId, isVisible && !!roadsCollection);
 }
 

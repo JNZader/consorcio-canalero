@@ -1,7 +1,7 @@
 import type { FeatureCollection } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 
-import { buildRoadLabelLayer } from '../map2d/roadLabelLayer';
+import { buildRoadHitLayer, buildRoadLabelLayer } from '../map2d/roadLabelLayer';
 import { type TerrainVectorLayerVisibility, asFeatureCollection } from './terrainViewer3DUtils';
 
 export const TERRAIN_SOURCE_IDS = {
@@ -136,6 +136,9 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       },
     });
   }
+  if (!map.getLayer(`${TERRAIN_SOURCE_IDS.roads}-hit`)) {
+    map.addLayer(buildRoadHitLayer(`${TERRAIN_SOURCE_IDS.roads}-hit`, TERRAIN_SOURCE_IDS.roads));
+  }
   if (!map.getLayer(`${TERRAIN_SOURCE_IDS.roads}-label`)) {
     map.addLayer(
       buildRoadLabelLayer(`${TERRAIN_SOURCE_IDS.roads}-label`, TERRAIN_SOURCE_IDS.roads)
@@ -225,6 +228,11 @@ export function syncTerrainVectorLayers(
   ensureLayerVisibility(
     map,
     `${TERRAIN_SOURCE_IDS.roads}-line`,
+    visibility.roads && !!collections.roadsCollection
+  );
+  ensureLayerVisibility(
+    map,
+    `${TERRAIN_SOURCE_IDS.roads}-hit`,
     visibility.roads && !!collections.roadsCollection
   );
   ensureLayerVisibility(

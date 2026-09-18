@@ -162,9 +162,11 @@ describe('terrainVectorLayerEffects paint constants (layer-visibility audit)', (
 
     const ids = map.addLayer.mock.calls.map(([layer]) => layer?.id as string);
     const lineIdx = ids.indexOf(`${TERRAIN_SOURCE_IDS.roads}-line`);
+    const hitIdx = ids.indexOf(`${TERRAIN_SOURCE_IDS.roads}-hit`);
     const labelIdx = ids.indexOf(`${TERRAIN_SOURCE_IDS.roads}-label`);
     expect(lineIdx).toBeGreaterThanOrEqual(0);
-    expect(labelIdx).toBe(lineIdx + 1);
+    expect(hitIdx).toBe(lineIdx + 1);
+    expect(labelIdx).toBe(hitIdx + 1);
 
     const labelCall = map.addLayer.mock.calls.find(
       ([layer]) => layer?.id === `${TERRAIN_SOURCE_IDS.roads}-label`

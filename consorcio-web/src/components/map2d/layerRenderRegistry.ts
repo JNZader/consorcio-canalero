@@ -215,6 +215,7 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   roads: {
     mlLayers: [
       { id: `${SOURCE_IDS.ROADS}-line`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0.9 },
+      { id: `${SOURCE_IDS.ROADS}-hit`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0 },
       { id: `${SOURCE_IDS.ROADS}-label`, opacityProp: OPACITY_PROP.text, defaultOpacity: 0.95 },
     ],
   },

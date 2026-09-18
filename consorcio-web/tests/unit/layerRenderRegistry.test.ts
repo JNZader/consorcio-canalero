@@ -215,8 +215,8 @@ describe('applyLayerOrder', () => {
   it('hoists each UI id ml-layer group in list order', () => {
     const { map, moveLayer } = makeMap();
     applyLayerOrder(map, ['waterways', 'roads']);
-    // waterways = 5 line layers, roads = line + label → 7 moveLayer calls
-    expect(moveLayer).toHaveBeenCalledTimes(7);
+    // waterways = 5 line layers, roads = line + hit + label → 8 moveLayer calls
+    expect(moveLayer).toHaveBeenCalledTimes(8);
     // roads (last in list) is hoisted last → label ends on top of the group
     expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
   });
