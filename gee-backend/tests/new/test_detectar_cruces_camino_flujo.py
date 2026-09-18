@@ -37,6 +37,7 @@ from app.domains.geo.intelligence.calculations_hydrology_support import (
     _decompose_intersection,
     azimut_desde_transform,
     clasificar_banda_cruce,
+    construir_flechas_flujo_camino,
     detectar_cruces_camino_flujo_impl,
 )
 
@@ -629,6 +630,27 @@ class TestAzimutALoLargo:
 
     def test_anti_parallel_flow_reverses_the_bearing(self):
         assert _azimut_a_lo_largo(270.0, 90.0) == pytest.approx(270.0)
+
+
+class TestFlechasFlujoCamino:
+    """Pixel-map arrows: D8 projected onto the road, skipped when it crosses."""
+
+    def test_eastbound_flow_emits_arrows_along_the_road(self, tmp_path):
+        roads, fd, _fa = _predicate_case(tmp_path, 1, tag="flechaE")
+        col = construir_flechas_flujo_camino(roads, fd, step_m=30.0)
+        assert col["features"], "parallel D8 must produce visible arrows"
+        azimuths = [f["properties"]["along_azimuth_deg"] for f in col["features"]]
+        assert any(abs(a - 90) < 15 for a in azimuths)
+
+    def test_perpendicular_flow_emits_no_along_road_arrow(self, tmp_path):
+        roads, fd, _fa = _predicate_case(tmp_path, 4, tag="flechaN")
+        col = construir_flechas_flujo_camino(roads, fd, step_m=30.0)
+        assert col["features"] == []
+
+    def test_empty_without_raster(self):
+        roads = _roads([{"id": "t1", "geometry": _road_along_row(4, 0, 8)}])
+        col = construir_flechas_flujo_camino(roads, None)
+        assert col == {"type": "FeatureCollection", "features": []}
 
 
 class TestConduccionCanalSink:

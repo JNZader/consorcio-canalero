@@ -159,7 +159,10 @@ def run_crossing_task(
     scratch_root: Optional[str] = None,
 ) -> dict[str, Any]:
     """See the Celery task's docstring for the five steps and why each exists."""
-    from app.domains.geo.intelligence.calculations import detectar_cruces_camino_flujo
+    from app.domains.geo.intelligence.calculations import (
+        construir_flechas_flujo_camino,
+        detectar_cruces_camino_flujo,
+    )
     from app.domains.geo.intelligence.repository import IntelligenceRepository
     from app.domains.geo.models import EstadoGeoJob, TipoGeoJob
     from app.domains.geo.repository import GeoRepository
@@ -281,6 +284,13 @@ def run_crossing_task(
             gdf, excluidos, run_parametros = detectar_cruces_camino_flujo(
                 roads, canals, flow_dir_copy, flow_acc_copy, **parametros
             )
+            flechas = construir_flechas_flujo_camino(
+                roads,
+                flow_dir_copy,
+                step_m=80.0,
+                parallel_max_angle_deg=parametros.get("parallel_high_angle_deg", 45.0),
+                bearing_window_m=parametros.get("bearing_window_m", 60.0),
+            )
         run_parametros["variante"] = variante.variante
         run_parametros["area_id"] = area_id
 
@@ -308,6 +318,7 @@ def run_crossing_task(
                 "cruces": len(rows),
                 "excluidos": excluidos,
                 "parametros": run_parametros,
+                "flechas": flechas,
             }
             if not rows and previos:
                 resultado["reemplazo_vacio"] = {"previos": previos}
@@ -459,6 +470,7 @@ def get_cruces_camino(db, *, area_id: str) -> dict[str, Any]:
         "parametros": parametros,
         "variante": parametros.get("variante"),
         "segmentos_parcialmente_cubiertos": parametros.get("segmentos_parcialmente_cubiertos", 0),
+        "flechas": resultado.get("flechas") or {"type": "FeatureCollection", "features": []},
     }
 
 

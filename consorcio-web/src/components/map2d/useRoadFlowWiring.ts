@@ -70,6 +70,8 @@ export interface RoadFlowWiring {
   readonly setKinds: (kinds: RoadFlowKindVisibility) => void;
   /** The `features` member of the SAME response the list renders (RFA-R2). */
   readonly mapCollection: FeatureCollection<Point> | null;
+  /** Along-road pixel arrows from the same response (`flechas`). */
+  readonly mapFlechas: FeatureCollection<Point> | null;
   readonly totalFlujoNatural: number;
   readonly onSelectCrossing: (feature: RoadFlowCrossingFeature) => void;
   readonly onSurveyTramo: (tramoRef: string) => void;
@@ -172,6 +174,7 @@ export function useRoadFlowWiring({
     // interface, so it does not satisfy GeoJSON's index-signature properties
     // type even though every field is compatible.
     mapCollection: (crossings.data?.features as unknown as FeatureCollection<Point>) ?? null,
+    mapFlechas: (crossings.data?.flechas as unknown as FeatureCollection<Point>) ?? null,
     totalFlujoNatural: crossings.data?.total_flujo_natural ?? 0,
     onSelectCrossing: flyToCrossing,
     onSurveyTramo,

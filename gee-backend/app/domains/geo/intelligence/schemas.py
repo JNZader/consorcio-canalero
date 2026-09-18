@@ -543,3 +543,10 @@ class CrucesCaminoResponse(BaseModel):
             "the edge can be missed when its ridge lies just outside it."
         ),
     )
+    flechas: dict[str, Any] = Field(
+        default_factory=lambda: {"type": "FeatureCollection", "features": []},
+        description=(
+            "Along-road ditch-flow arrows (EPSG:4326). Pixel-sized on the map; "
+            "absent or empty on runs that predate this field."
+        ),
+    )

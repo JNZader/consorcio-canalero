@@ -72,7 +72,6 @@ export function useRoadFlowInteraction({
     const layerIds = [
       ROAD_FLOW_LAYER_IDS.FLUJO,
       ROAD_FLOW_LAYER_IDS.CANAL,
-      ROAD_FLOW_LAYER_IDS.CONDUCCION_LINE,
       ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW,
     ];
     for (const layerId of layerIds) {

@@ -259,30 +259,24 @@ describe('layerRenderRegistry — road_flow (flujo-caminos, design D6)', () => {
   });
 
   it('the SINGLE entry owns the crossing circles and the conduccion arrows', () => {
-    // Two top-level ids for two paint variants of one dataset would be the first
-    // exception to the rule `layerRenderRegistry.ts:73-78` states explicitly.
     const entry = LAYER_RENDER_REGISTRY.road_flow;
     expect(entry).toBeDefined();
 
     const ids = entry.mlLayers.map((ml) => ml.id);
-    expect(ids).toHaveLength(5);
+    expect(ids).toHaveLength(3);
     expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-flujo`);
     expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-canal`);
-    expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-conduccion-casing`);
-    expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-conduccion-line`);
     expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`);
 
     const byId = Object.fromEntries(entry.mlLayers.map((ml) => [ml.id, ml.opacityProp]));
     expect(byId[`${SOURCE_IDS.ROAD_FLOW}-flujo`]).toBe(OPACITY_PROP.circle);
     expect(byId[`${SOURCE_IDS.ROAD_FLOW}-canal`]).toBe(OPACITY_PROP.circle);
-    expect(byId[`${SOURCE_IDS.ROAD_FLOW}-conduccion-casing`]).toBe(OPACITY_PROP.line);
-    expect(byId[`${SOURCE_IDS.ROAD_FLOW}-conduccion-line`]).toBe(OPACITY_PROP.line);
-    expect(byId[`${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`]).toBe(OPACITY_PROP.text);
+    expect(byId[`${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`]).toBe(OPACITY_PROP.icon);
   });
 
-  it('OPACITY_PROP has no `symbol` / icon-opacity (arrows use text-opacity)', () => {
+  it('OPACITY_PROP has no `symbol` key; arrows use icon-opacity', () => {
     expect(Object.keys(OPACITY_PROP)).not.toContain('symbol');
-    expect(Object.values(OPACITY_PROP)).not.toContain('icon-opacity');
+    expect(OPACITY_PROP.icon).toBe('icon-opacity');
     expect(OPACITY_PROP.text).toBe('text-opacity');
   });
 
