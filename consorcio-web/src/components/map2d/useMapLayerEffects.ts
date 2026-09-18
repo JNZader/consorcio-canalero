@@ -195,7 +195,8 @@ export function useMapLayerEffects({
       roadFlowTotalFlujoNatural,
       !!vectorVisibility.road_flow,
       roadFlowKinds,
-      roadFlowFlechas
+      roadFlowFlechas,
+      !!vectorVisibility.sentido_camino
     );
   }, [
     mapReady,
@@ -205,6 +206,7 @@ export function useMapLayerEffects({
     roadFlowKinds,
     roadFlowTotalFlujoNatural,
     vectorVisibility.road_flow,
+    vectorVisibility.sentido_camino,
   ]);
 
   useEffect(() => {

@@ -287,7 +287,7 @@ def run_crossing_task(
             flechas = construir_flechas_flujo_camino(
                 roads,
                 flow_dir_copy,
-                step_m=80.0,
+                step_m=250.0,
                 parallel_max_angle_deg=parametros.get("parallel_high_angle_deg", 45.0),
                 bearing_window_m=parametros.get("bearing_window_m", 60.0),
             )

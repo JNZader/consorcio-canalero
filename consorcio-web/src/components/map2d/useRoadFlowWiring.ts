@@ -52,8 +52,10 @@ interface GeoLayerAreaLike {
 interface UseRoadFlowWiringParams {
   readonly mapRef: RefObject<maplibregl.Map | null>;
   readonly mapReady: boolean;
-  /** `vectorVisibility.road_flow` — the single lifecycle switch. */
+  /** Fetch when either the crossings layer or the sentido layer is on. */
   readonly active: boolean;
+  /** Ranked-crossings panel. Independent of the sentido chevrons. */
+  readonly panelActive?: boolean;
   /** The DEM catalogue the map already loads; its `area_id` wins over the default. */
   readonly geoLayers: readonly GeoLayerAreaLike[];
   /** Turns the layer OFF. Closing the panel and hiding the layer are one act. */
@@ -91,6 +93,7 @@ export function useRoadFlowWiring({
   mapRef,
   mapReady,
   active,
+  panelActive,
   geoLayers,
   onDeactivate,
 }: UseRoadFlowWiringParams): RoadFlowWiring {
@@ -164,7 +167,7 @@ export function useRoadFlowWiring({
 
   return {
     showRoadFlow: isStaff,
-    roadFlowActive: active,
+    roadFlowActive: panelActive ?? active,
     crossings,
     cobertura,
     kinds,

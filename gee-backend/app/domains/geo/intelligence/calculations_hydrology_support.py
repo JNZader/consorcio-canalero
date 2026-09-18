@@ -442,13 +442,14 @@ def construir_flechas_flujo_camino(
     red_vial_gdf,
     flow_dir_path: Optional[str],
     *,
-    step_m: float = 80.0,
+    step_m: float = 250.0,
     parallel_max_angle_deg: float = 45.0,
     bearing_window_m: float = 60.0,
 ) -> dict[str, Any]:
     """Along-road flow arrows as a GeoJSON FeatureCollection in EPSG:4326.
 
-    Walks every road at ``step_m``, samples the D8 pointer, and keeps the sample
+    Walks every road at ``step_m`` (250 m — ~8 GLO-30 cells, stable along-road
+    D8 rather than a twitchy 80 m sample), samples the D8 pointer, and keeps the sample
     only when the pointer is within ``parallel_max_angle_deg`` of the road
     (otherwise the water is crossing, not running in the ditch). The arrow
     azimuth is the along-road component of that pointer — the direction an

@@ -923,7 +923,9 @@ export function LayerControlsPanel({
                      ids (canales masters, escuelas) never appear there and must
                      keep their rows. */
                   hiddenIds={
-                    layerItems.some((item) => item.id === 'road_flow') ? undefined : ['road_flow']
+                    layerItems.some((item) => item.id === 'road_flow')
+                      ? undefined
+                      : ['road_flow', 'sentido_camino']
                   }
                 />
               </CollapsibleSection>
