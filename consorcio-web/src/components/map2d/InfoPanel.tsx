@@ -47,7 +47,7 @@ import { PuntoInteresCard } from './PuntoInteresCard';
 import { normalizeBpaFlat } from './bpaPracticas';
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
-import { PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
+import { isPuntoInteresLayerId } from './puntosInteresLayers';
 
 /**
  * MapLibre attaches a `layer.id` to every feature returned by
@@ -287,7 +287,7 @@ function FeatureSection({
     );
   }
 
-  if (withLayer.layer?.id === PUNTOS_INTERES_LAYER_ID) {
+  if (isPuntoInteresLayerId(withLayer.layer?.id)) {
     return (
       <div data-testid="info-panel-feature-section">
         <PuntoInteresCard

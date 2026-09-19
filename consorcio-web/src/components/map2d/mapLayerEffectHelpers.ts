@@ -14,7 +14,14 @@ import {
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
-import { PUNTOS_INTERES_LAYER_ID, buildPuntosInteresCirclePaint } from './puntosInteresLayers';
+import {
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
+  PUNTOS_INTERES_LAYER_ID,
+  buildPuntosInteresCirclePaint,
+  buildPuntosInteresHitPaint,
+  buildPuntosInteresLabelLayer,
+} from './puntosInteresLayers';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   PILAR_VERDE_Z_ORDER,
@@ -839,17 +846,29 @@ export function syncPuntosInteresLayer(
   isVisible: boolean
 ): void {
   const sourceId = SOURCE_IDS.PUNTOS_INTERES;
-  const circleLayerId = PUNTOS_INTERES_LAYER_ID;
   ensureGeoJsonSource(map, sourceId, collection ?? asFeatureCollection([]));
-  if (!map.getLayer(circleLayerId)) {
+  if (!map.getLayer(PUNTOS_INTERES_HIT_LAYER_ID)) {
     map.addLayer({
-      id: circleLayerId,
+      id: PUNTOS_INTERES_HIT_LAYER_ID,
+      type: 'circle',
+      source: sourceId,
+      paint: buildPuntosInteresHitPaint(),
+    });
+  }
+  if (!map.getLayer(PUNTOS_INTERES_LAYER_ID)) {
+    map.addLayer({
+      id: PUNTOS_INTERES_LAYER_ID,
       type: 'circle',
       source: sourceId,
       paint: buildPuntosInteresCirclePaint(),
     });
   }
-  setLayerVisibility(map, circleLayerId, isVisible);
+  if (!map.getLayer(PUNTOS_INTERES_LABEL_LAYER_ID)) {
+    map.addLayer(buildPuntosInteresLabelLayer(PUNTOS_INTERES_LABEL_LAYER_ID, sourceId));
+  }
+  setLayerVisibility(map, PUNTOS_INTERES_HIT_LAYER_ID, isVisible);
+  setLayerVisibility(map, PUNTOS_INTERES_LAYER_ID, isVisible);
+  setLayerVisibility(map, PUNTOS_INTERES_LABEL_LAYER_ID, isVisible);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -141,8 +141,10 @@ describe('buildClickableLayers · Pilar Azul (Escuelas rurales) inclusion', () =
     const layers = buildClickableLayers();
     expect(layers[9]).toBe(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
     expect(layers[10]).toBe(`${SOURCE_IDS.ESCUELAS}-symbol`);
-    expect(layers[11]).toBe('puntos_interes-circle');
-    expect(layers[12]).toBe(`${SOURCE_IDS.SOIL}-fill`);
+    expect(layers[11]).toBe('puntos_interes-hit');
+    expect(layers[12]).toBe('puntos_interes-circle');
+    expect(layers[13]).toBe('puntos_interes-label');
+    expect(layers[14]).toBe(`${SOURCE_IDS.SOIL}-fill`);
   });
 
   it('escuelas sits AFTER canales_propuestos-line so canal wins on crossing overlap', () => {
@@ -175,11 +177,12 @@ describe('buildClickableLayers · Pilar Azul (Escuelas rurales) inclusion', () =
 });
 
 describe('buildClickableLayers · puntos de interés', () => {
-  it('includes the POI circle layer in the idle whitelist near escuelas', () => {
+  it('includes the POI hit, circle and label layers in the idle whitelist near escuelas', () => {
     const layers = buildClickableLayers('idle');
+    expect(layers).toContain('puntos_interes-hit');
     expect(layers).toContain('puntos_interes-circle');
+    expect(layers).toContain('puntos_interes-label');
     const escuelaIdx = layers.indexOf(`${SOURCE_IDS.ESCUELAS}-symbol`);
-    const poiIdx = layers.indexOf('puntos_interes-circle');
-    expect(poiIdx).toBe(escuelaIdx + 1);
+    expect(layers.indexOf('puntos_interes-hit')).toBe(escuelaIdx + 1);
   });
 });

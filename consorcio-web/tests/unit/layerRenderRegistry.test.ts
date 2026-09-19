@@ -251,7 +251,9 @@ describe('layerRenderRegistry — puntos_interes', () => {
   it('registers the circle layer id', () => {
     expect(RENDERABLE_UI_LAYER_IDS).toContain('puntos_interes');
     expect(LAYER_RENDER_REGISTRY.puntos_interes.mlLayers).toEqual([
+      { id: 'puntos_interes-hit', opacityProp: OPACITY_PROP.circle, defaultOpacity: 0 },
       { id: 'puntos_interes-circle', opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 },
+      { id: 'puntos_interes-label', opacityProp: OPACITY_PROP.text, defaultOpacity: 0.95 },
     ]);
   });
 

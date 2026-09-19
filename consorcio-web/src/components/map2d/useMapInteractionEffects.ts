@@ -3,7 +3,11 @@ import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
-import { PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
+import {
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
+  PUNTOS_INTERES_LAYER_ID,
+} from './puntosInteresLayers';
 
 /**
  * Whitelisted PUBLIC identity fields of a clicked catastro parcel, surfaced as a
@@ -222,7 +226,9 @@ export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[
     // canal-over-catastro). Schools WIN over soil/catastro/roads so the
     // EscuelaCard opens instead of the generic parcel dump.
     `${SOURCE_IDS.ESCUELAS}-symbol`,
+    PUNTOS_INTERES_HIT_LAYER_ID,
     PUNTOS_INTERES_LAYER_ID,
+    PUNTOS_INTERES_LABEL_LAYER_ID,
     `${SOURCE_IDS.SOIL}-fill`,
     `${SOURCE_IDS.CATASTRO}-fill`,
     `${SOURCE_IDS.ROADS}-hit`,

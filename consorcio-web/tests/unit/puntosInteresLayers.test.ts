@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
   PUNTOS_INTERES_LAYER_ID,
   PUNTOS_INTERES_SOURCE_ID,
   buildPuntosInteresCirclePaint,
+  buildPuntosInteresHitPaint,
+  buildPuntosInteresLabelLayer,
+  isPuntoInteresLayerId,
 } from '../../src/components/map2d/puntosInteresLayers';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { LAYER_RENDER_REGISTRY } from '../../src/components/map2d/layerRenderRegistry';
@@ -47,11 +52,36 @@ describe('buildPuntosInteresCirclePaint', () => {
   });
 });
 
+describe('puntosInteresLayers · hit and label', () => {
+  it('builds an invisible 16px hit target', () => {
+    const paint = buildPuntosInteresHitPaint();
+    expect(paint['circle-radius']).toBe(16);
+    expect(paint['circle-opacity']).toBe(0);
+  });
+
+  it('labels the pin with titulo in white on a dark halo', () => {
+    const layer = buildPuntosInteresLabelLayer(PUNTOS_INTERES_LABEL_LAYER_ID, PUNTOS_INTERES_SOURCE_ID);
+    expect(layer.type).toBe('symbol');
+    expect(layer.layout?.['text-field']).toEqual(['get', 'titulo']);
+    expect(layer.paint?.['text-color']).toBe('#ffffff');
+    expect(layer.paint?.['text-halo-color']).toBe('rgba(0,0,0,0.75)');
+  });
+
+  it('treats circle, hit and label as the same POI click target', () => {
+    expect(isPuntoInteresLayerId(PUNTOS_INTERES_LAYER_ID)).toBe(true);
+    expect(isPuntoInteresLayerId(PUNTOS_INTERES_HIT_LAYER_ID)).toBe(true);
+    expect(isPuntoInteresLayerId(PUNTOS_INTERES_LABEL_LAYER_ID)).toBe(true);
+    expect(isPuntoInteresLayerId('escuelas-symbol')).toBe(false);
+  });
+});
+
 describe('layerRenderRegistry · puntos_interes', () => {
-  it('registers a circle ml layer', () => {
+  it('registers hit, circle and label ml layers', () => {
     const entry = LAYER_RENDER_REGISTRY.puntos_interes;
     expect(entry.mlLayers).toEqual([
+      { id: PUNTOS_INTERES_HIT_LAYER_ID, opacityProp: 'circle-opacity', defaultOpacity: 0 },
       { id: PUNTOS_INTERES_LAYER_ID, opacityProp: 'circle-opacity', defaultOpacity: 1 },
+      { id: PUNTOS_INTERES_LABEL_LAYER_ID, opacityProp: 'text-opacity', defaultOpacity: 0.95 },
     ]);
   });
 });

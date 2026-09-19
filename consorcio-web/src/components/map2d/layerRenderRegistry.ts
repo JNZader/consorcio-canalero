@@ -32,7 +32,11 @@
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
-import { PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
+import {
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
+  PUNTOS_INTERES_LAYER_ID,
+} from './puntosInteresLayers';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
   ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
@@ -356,7 +360,9 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   },
   puntos_interes: {
     mlLayers: [
+      { id: PUNTOS_INTERES_HIT_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 0 },
       { id: PUNTOS_INTERES_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 },
+      { id: PUNTOS_INTERES_LABEL_LAYER_ID, opacityProp: OPACITY_PROP.text, defaultOpacity: 0.95 },
     ],
   },
   road_flow: {
