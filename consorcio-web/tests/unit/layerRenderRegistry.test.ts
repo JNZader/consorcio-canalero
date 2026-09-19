@@ -247,6 +247,22 @@ describe('applyLayerOrder', () => {
 // flujo-caminos S4 — task 4.1
 // ---------------------------------------------------------------------------
 
+describe('layerRenderRegistry — puntos_interes', () => {
+  it('registers the circle layer id', () => {
+    expect(RENDERABLE_UI_LAYER_IDS).toContain('puntos_interes');
+    expect(LAYER_RENDER_REGISTRY.puntos_interes.mlLayers).toEqual([
+      { id: 'puntos_interes-circle', opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 },
+    ]);
+  });
+
+  it('sits below escuelas so escuelas stays topmost', () => {
+    expect(DEFAULT_LAYER_ORDER.at(-1)).toBe('escuelas');
+    expect(DEFAULT_LAYER_ORDER.indexOf('puntos_interes')).toBeLessThan(
+      DEFAULT_LAYER_ORDER.indexOf('escuelas')
+    );
+  });
+});
+
 describe('layerRenderRegistry — road_flow (flujo-caminos, design D6)', () => {
   it('registers road_flow EXACTLY ONCE in each of the three places', () => {
     const inRenderable = RENDERABLE_UI_LAYER_IDS.filter((id) => id === 'road_flow');

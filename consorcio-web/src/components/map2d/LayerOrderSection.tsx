@@ -55,6 +55,7 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   // lives in the crossings panel, not in the order list.
   road_flow: 'Cruces de camino',
   sentido_camino: 'Sentido en camino',
+  puntos_interes: 'Puntos de interés',
   precip_normal: 'Precipitación CHIRPS',
   pilar_verde_bpa_historico: 'BPA histórico',
   pilar_verde_agro_aceptada: 'Agroforestal aceptada',

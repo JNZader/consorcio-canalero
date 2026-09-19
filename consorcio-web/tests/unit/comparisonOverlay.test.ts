@@ -43,8 +43,14 @@ const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
  *   - `sentido_camino` — same GET (`require_admin_or_operator`), same staff
  *     selector gate. Chevrons of ditch direction, not a ranking, but still
  *     operator-only data. The comparator does not fetch that payload.
+ *   - `puntos_interes` — staff-only unpublished pins. Same role gate, no
+ *     comparison fetch, not painted in the slider.
  */
-const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow', 'sentido_camino']);
+const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set([
+  'road_flow',
+  'sentido_camino',
+  'puntos_interes',
+]);
 
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(
   (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id) && !NOT_IN_COMPARISON_UI_LAYER_IDS.has(id)

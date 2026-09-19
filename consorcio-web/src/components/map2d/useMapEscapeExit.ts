@@ -12,6 +12,7 @@
  *   - `measuring-distance` / `measuring-area` → `onCancelMeasurement()`
  *   - `ficha-dibujo`                          → `onExitDraw()`
  *   - `ficha-canal`                           → `onExitCanal()`
+ *   - `placing-poi`                           → `onExitPoiPlace()`
  *   - `idle`                                  → no-op (Escape stays available to
  *     modals, menus and the browser)
  *
@@ -36,6 +37,8 @@ export interface UseMapEscapeExitParams {
   readonly onExitDraw: () => void;
   /** Leave ficha canal-selection mode. */
   readonly onExitCanal: () => void;
+  /** Leave staff pin-placement mode. */
+  readonly onExitPoiPlace?: () => void;
 }
 
 /** True when the event came from a field where Escape has its own meaning. */
@@ -50,6 +53,7 @@ export function useMapEscapeExit({
   onCancelMeasurement,
   onExitDraw,
   onExitCanal,
+  onExitPoiPlace,
 }: UseMapEscapeExitParams): void {
   useEffect(() => {
     if (mode === 'idle') return;
@@ -64,6 +68,8 @@ export function useMapEscapeExit({
         onExitDraw();
       } else if (mode === 'ficha-canal') {
         onExitCanal();
+      } else if (mode === 'placing-poi') {
+        onExitPoiPlace?.();
       }
     };
 
@@ -71,5 +77,5 @@ export function useMapEscapeExit({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [mode, onCancelMeasurement, onExitDraw, onExitCanal]);
+  }, [mode, onCancelMeasurement, onExitDraw, onExitCanal, onExitPoiPlace]);
 }

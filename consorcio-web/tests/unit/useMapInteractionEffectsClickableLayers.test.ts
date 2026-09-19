@@ -69,6 +69,12 @@ describe('buildClickableLayers · mode gate (A5.3, ficha free-draw)', () => {
   });
 });
 
+describe('buildClickableLayers · placing-poi', () => {
+  it('returns an EMPTY whitelist so a place click does not resolve a parcel', () => {
+    expect(buildClickableLayers('placing-poi')).toEqual([]);
+  });
+});
+
 describe('buildClickableLayers · canal mode (A6 + A7, ficha-canal)', () => {
   it('returns ONLY the curated relevados + propuestos line layers in ficha-canal', () => {
     // A7 slice 2 / JDB-013: a canal click must resolve a curated `canal_ref`, never
@@ -131,13 +137,12 @@ describe('buildClickableLayers · Pilar Azul (Escuelas rurales) inclusion', () =
     expect(layers).toContain(`${SOURCE_IDS.ESCUELAS}-symbol`);
   });
 
-  it('pins escuelas-symbol at array index 10 (between canales_propuestos-line @9 and soil-fill @11)', () => {
-    // Design `sdd/escuelas-rurales/design` §6.5 locks the exact array position
-    // so the click-precedence behavior is predictable and test-pinned.
+  it('pins escuelas-symbol at array index 10 (between canales_propuestos-line @9 and puntos_interes @11)', () => {
     const layers = buildClickableLayers();
     expect(layers[9]).toBe(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`);
     expect(layers[10]).toBe(`${SOURCE_IDS.ESCUELAS}-symbol`);
-    expect(layers[11]).toBe(`${SOURCE_IDS.SOIL}-fill`);
+    expect(layers[11]).toBe('puntos_interes-circle');
+    expect(layers[12]).toBe(`${SOURCE_IDS.SOIL}-fill`);
   });
 
   it('escuelas sits AFTER canales_propuestos-line so canal wins on crossing overlap', () => {
@@ -166,5 +171,15 @@ describe('buildClickableLayers · Pilar Azul (Escuelas rurales) inclusion', () =
     const escuelaIdx = layers.indexOf(`${SOURCE_IDS.ESCUELAS}-symbol`);
     const catastroIdx = layers.indexOf(`${SOURCE_IDS.CATASTRO}-fill`);
     expect(escuelaIdx).toBeLessThan(catastroIdx);
+  });
+});
+
+describe('buildClickableLayers · puntos de interés', () => {
+  it('includes the POI circle layer in the idle whitelist near escuelas', () => {
+    const layers = buildClickableLayers('idle');
+    expect(layers).toContain('puntos_interes-circle');
+    const escuelaIdx = layers.indexOf(`${SOURCE_IDS.ESCUELAS}-symbol`);
+    const poiIdx = layers.indexOf('puntos_interes-circle');
+    expect(poiIdx).toBe(escuelaIdx + 1);
   });
 });

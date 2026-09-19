@@ -63,6 +63,7 @@ export function useMapDerivedState(params: {
    * straight through so the gate has exactly one home.
    */
   showRoadFlow?: boolean;
+  showPuntosInteres?: boolean;
 }) {
   const {
     capas,
@@ -178,6 +179,7 @@ export function useMapDerivedState(params: {
         showPilarAzul,
         showEscuelas,
         showRoadFlow: params.showRoadFlow ?? false,
+        showPuntosInteres: params.showPuntosInteres ?? false,
       }),
     [
       approvedZonesCollection,
@@ -188,6 +190,7 @@ export function useMapDerivedState(params: {
       showPilarAzul,
       showEscuelas,
       params.showRoadFlow,
+      params.showPuntosInteres,
     ]
   );
 

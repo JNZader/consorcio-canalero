@@ -34,17 +34,20 @@ import { Badge, CloseButton, Divider, Group, Stack, Text, Title } from '@mantine
 import type { Feature } from 'geojson';
 import { memo, useMemo } from 'react';
 
+import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
 import styles from '../../styles/components/map.module.css';
-import { MapPanelShell } from './MapPanelShell';
 import type { CanalFeatureProperties } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
 import { EscuelaCard } from './EscuelaCard';
+import { MapPanelShell } from './MapPanelShell';
+import { PuntoInteresCard } from './PuntoInteresCard';
 import { normalizeBpaFlat } from './bpaPracticas';
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
+import { PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
 
 /**
  * MapLibre attaches a `layer.id` to every feature returned by
@@ -103,6 +106,8 @@ interface InfoPanelProps {
    */
   readonly minimized?: boolean;
   readonly onToggleMinimize?: () => void;
+  /** Staff-only: DELETE a pin then refetch. Citizens never have this layer. */
+  readonly onDeletePuntoInteres?: (id: string) => void;
   /** Opaque selection marker — a change reopens the mobile sheet at `peek`. */
   readonly resetKey?: unknown;
 }
@@ -219,9 +224,11 @@ function detectBpa(
 function FeatureSection({
   feature,
   bpaEnriched,
+  onDeletePuntoInteres,
 }: {
   readonly feature: Feature;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
+  readonly onDeletePuntoInteres?: (id: string) => void;
 }) {
   const withLayer = feature as FeatureWithLayer;
   const properties: Record<string, unknown> =
@@ -280,6 +287,17 @@ function FeatureSection({
     );
   }
 
+  if (withLayer.layer?.id === PUNTOS_INTERES_LAYER_ID) {
+    return (
+      <div data-testid="info-panel-feature-section">
+        <PuntoInteresCard
+          properties={properties as unknown as PuntoInteresProperties}
+          onDelete={onDeletePuntoInteres}
+        />
+      </div>
+    );
+  }
+
   return (
     <Stack gap={4} data-testid="info-panel-feature-section">
       {displayable.map(({ key, label, value, formatted }) => {
@@ -329,6 +347,7 @@ export const InfoPanel = memo(function InfoPanel({
   minimized = false,
   onToggleMinimize,
   resetKey,
+  onDeletePuntoInteres,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -374,7 +393,11 @@ export const InfoPanel = memo(function InfoPanel({
         {resolved.map((feat, idx) => (
           <div key={idx}>
             {idx > 0 && <Divider mb="sm" />}
-            <FeatureSection feature={feat} bpaEnriched={bpaEnriched} />
+            <FeatureSection
+              feature={feat}
+              bpaEnriched={bpaEnriched}
+              onDeletePuntoInteres={onDeletePuntoInteres}
+            />
           </div>
         ))}
       </Stack>
