@@ -77,7 +77,8 @@ export type MapInteractionMode =
   | 'measuring-distance'
   | 'measuring-area'
   | 'ficha-dibujo'
-  | 'ficha-canal';
+  | 'ficha-canal'
+  | 'placing-poi';
 
 /**
  * Back-compat alias kept for one release so existing imports

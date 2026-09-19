@@ -7,8 +7,9 @@
  *
  * Key invariants:
  *   - Registry has EXACTLY 13 entries.
- *   - Excluded keys (`puntos_conflicto`, `approved_zones`, `basins`) are NEVER
- *     present — the export mustn't leak heavy/MVT or draft-only layers.
+ *   - Excluded keys (`puntos_conflicto`, `approved_zones`, `basins`,
+ *     `puntos_interes`) are NEVER present — the export mustn't leak heavy/MVT,
+ *     draft-only, or staff-only unpublished pins.
  *   - Each entry's `color` must come from the same source-of-truth constant
  *     the MapLibre paint uses. If a layer's color isn't exported as a named
  *     constant (escuelas circle, roads line, catastro fill), the registry
@@ -58,7 +59,12 @@ const EXPECTED_KEYS = [
   'ypf-estacion-bombeo',
 ] as const;
 
-const EXPECTED_EXCLUDED = ['puntos_conflicto', 'approved_zones', 'basins'] as const;
+const EXPECTED_EXCLUDED = [
+  'puntos_conflicto',
+  'approved_zones',
+  'basins',
+  'puntos_interes',
+] as const;
 
 const LINE_KEYS = new Set<string>([
   'canales_relevados',
@@ -139,9 +145,9 @@ describe('KMZ_LAYER_REGISTRY · allowlist', () => {
 // ---------------------------------------------------------------------------
 
 describe('KMZ_EXCLUDED_LAYER_KEYS · denylist invariant', () => {
-  it('is a readonly tuple of exactly the 3 excluded keys', () => {
+  it('is a readonly tuple of exactly the 4 excluded keys', () => {
     expect(KMZ_EXCLUDED_LAYER_KEYS).toEqual(EXPECTED_EXCLUDED);
-    expect(KMZ_EXCLUDED_LAYER_KEYS).toHaveLength(3);
+    expect(KMZ_EXCLUDED_LAYER_KEYS).toHaveLength(4);
   });
 
   it('registry contains NONE of the excluded keys', () => {

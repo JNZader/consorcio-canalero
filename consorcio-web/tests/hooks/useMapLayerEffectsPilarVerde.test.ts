@@ -39,6 +39,7 @@ vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
   // ── Pilar Azul (Canales + Escuelas + YPF) ──
   syncCanalesLayers: vi.fn(),
   syncEscuelasLayer: vi.fn(() => Promise.resolve()),
+  syncPuntosInteresLayer: vi.fn(),
   syncYpfEstacionBombeoLayer: vi.fn(),
 }));
 

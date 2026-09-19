@@ -57,6 +57,7 @@ import { memo } from 'react';
 import styles from '../../../styles/components/map.module.css';
 import {
   IconLayers,
+  IconMapPin,
   IconPolygon,
   IconRoute,
   IconRuler,
@@ -122,6 +123,12 @@ export interface MeasurementToolbarProps {
    */
   readonly fichaMultiSelectActive?: boolean;
   readonly onToggleFichaMultiSelect?: () => void;
+  /**
+   * Staff-only pin placement. The 3D viewer omits both so the button is not
+   * rendered. This is NOT the retired citizen "Marcar punto" denuncia picker.
+   */
+  readonly poiPlaceActive?: boolean;
+  readonly onTogglePoiPlace?: () => void;
 }
 
 export const MeasurementToolbar = memo(function MeasurementToolbar({
@@ -139,6 +146,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onToggleFichaCanal,
   fichaMultiSelectActive = false,
   onToggleFichaMultiSelect,
+  poiPlaceActive = false,
+  onTogglePoiPlace,
 }: MeasurementToolbarProps) {
   // `mode` is the single interaction machine (JDB-012); it reads `ficha-dibujo`
   // while drawing, but the "Medir" cue must only light for measurement modes.
@@ -266,6 +275,25 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             >
               <IconRoute size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Canal</span>
+            </UnstyledButton>
+          </Tooltip>
+        )}
+
+        {onTogglePoiPlace && (
+          <Tooltip label="Marcar punto de interés" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Marcar punto de interés"
+              aria-pressed={poiPlaceActive}
+              onClick={onTogglePoiPlace}
+              className={styles.mapCtrlButton}
+              style={{
+                background: poiPlaceActive ? '#c45c26' : 'transparent',
+                color: poiPlaceActive ? '#fff' : '#333',
+              }}
+            >
+              <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
+              <span className={styles.mapCtrlButtonLabel}>Punto</span>
             </UnstyledButton>
           </Tooltip>
         )}

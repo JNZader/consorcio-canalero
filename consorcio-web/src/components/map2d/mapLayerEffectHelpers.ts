@@ -14,6 +14,7 @@ import {
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
+import { PUNTOS_INTERES_LAYER_ID, buildPuntosInteresCirclePaint } from './puntosInteresLayers';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   PILAR_VERDE_Z_ORDER,
@@ -829,6 +830,25 @@ export function syncEscuelasLayer(
   }
 
   // ── Visibility (master toggle) ──
+  setLayerVisibility(map, circleLayerId, isVisible);
+}
+
+export function syncPuntosInteresLayer(
+  map: maplibregl.Map,
+  collection: FeatureCollection<Point> | null,
+  isVisible: boolean
+): void {
+  const sourceId = SOURCE_IDS.PUNTOS_INTERES;
+  const circleLayerId = PUNTOS_INTERES_LAYER_ID;
+  ensureGeoJsonSource(map, sourceId, collection ?? asFeatureCollection([]));
+  if (!map.getLayer(circleLayerId)) {
+    map.addLayer({
+      id: circleLayerId,
+      type: 'circle',
+      source: sourceId,
+      paint: buildPuntosInteresCirclePaint(),
+    });
+  }
   setLayerVisibility(map, circleLayerId, isVisible);
 }
 

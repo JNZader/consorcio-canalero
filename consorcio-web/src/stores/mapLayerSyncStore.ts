@@ -148,6 +148,9 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // Along-road ditch-flow chevrons. Staff-only, default ON: this is the
   // picture the operator asked for (sentido every 250 m), not a ranking.
   sentido_camino: true,
+  // Staff notepad pins. Default ON like sentido_camino: operators asked for
+  // the layer, not an empty toggle they have to discover.
+  puntos_interes: true,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
@@ -170,6 +173,7 @@ export const MAP3D_DEFAULT_VISIBLE_VECTORS: Record<string, boolean> = {
   // The 3D side therefore keeps the historical OFF default.
   catastro: false,
   sentido_camino: false,
+  puntos_interes: false,
 };
 const defaultMap3dVisibleVectors = MAP3D_DEFAULT_VISIBLE_VECTORS;
 
@@ -284,6 +288,8 @@ interface PilarAzulActions {
  *     preference is carried through untouched.
  *   v5 → v6: seed `sentido_camino = true` on map2d. New layer; a missing key
  *     would otherwise stay off forever for returning staff.
+ *   v6 → v7: seed `puntos_interes = true` on map2d without flipping an
+ *     explicit false.
  */
 export function migrateMapLayerState(
   persistedState: unknown,
@@ -366,6 +372,20 @@ export function migrateMapLayerState(
           visibleVectors: {
             ...next.map2d.visibleVectors,
             sentido_camino: next.map2d.visibleVectors?.sentido_camino ?? true,
+          },
+        },
+      };
+    }
+  }
+  if (fromVersion < 7) {
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: {
+            ...next.map2d.visibleVectors,
+            puntos_interes: next.map2d.visibleVectors?.puntos_interes ?? true,
           },
         },
       };
@@ -566,7 +586,8 @@ export const useMapLayerSyncStore = create<
       //   the ficha territorial undiscoverable (clicking a parcel did nothing).
       //   map3d is untouched — the 3D viewer has no ficha.
       //   v5 → v6: seed `sentido_camino = true` on map2d (new staff layer).
-      version: 6,
+      //   v6 → v7: seed `puntos_interes = true` on map2d (staff notepad pins).
+      version: 7,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {

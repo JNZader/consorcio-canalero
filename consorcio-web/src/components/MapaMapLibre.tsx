@@ -28,29 +28,25 @@ const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { useApprovedZones } from '../hooks/useApprovedZones';
-import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
 import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
 import { useEscuelas } from '../hooks/useEscuelas';
-import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
-import { FICHA_MAX_BUFFER_M, FICHA_PARCELAS_MAX } from '../lib/api/ficha';
-import { showWarning } from '../lib/notifications';
-import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
-import { syncParcelaHighlightLayers } from './map2d/parcelaHighlightLayers';
-import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
-import { useMapDragSignal } from './map2d/useMapDragSignal';
+import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useGEELayers } from '../hooks/useGEELayers';
 import { combineHazardGeoLayers, useGeoLayers, usePrecipNormalLayers } from '../hooks/useGeoLayers';
 import { useHazardBasinMembership } from '../hooks/useHazardBasinMembership';
+import { type HazardRiskClass, resolveBasinCatalogStatus } from '../hooks/useHazardUrlState';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
+import { FICHA_MAX_BUFFER_M, FICHA_PARCELAS_MAX } from '../lib/api/ficha';
+import { showWarning } from '../lib/notifications';
 import { useConfigStore } from '../stores/configStore';
 import {
   PILAR_VERDE_LAYER_IDS,
@@ -58,52 +54,58 @@ import {
   useMapLayerSyncStore,
 } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
-import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import { RasterLegend } from './RasterLegend';
+import DrawControl, { type DrawControlHandle } from './map/DrawControl';
+import { HazardMapControls } from './map2d/HazardMapControls';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
-import { buildLayerProvenance } from './map2d/layerProvenance';
-import { useLayerHealth } from './map2d/useLayerHealth';
-import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { LeyendaPanel } from './map2d/LeyendaPanel';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
+import { PuntoInteresPlaceModal } from './map2d/PuntoInteresPlaceModal';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
+import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
 import {
   type ComparisonOverlayController,
   type ComparisonOverlaySyncInputs,
   createComparisonOverlayController,
 } from './map2d/comparisonOverlay';
+import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
+import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
+import { buildHazardLegendView } from './map2d/hazardLegend';
+import { buildLayerProvenance } from './map2d/layerProvenance';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
 import {
   buildFamilyActiveCounts,
   shouldLatchBpaJoin,
   sumFamilyActiveCounts,
 } from './map2d/map2dDerived';
-import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
+import { reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
-import { useComparisonSlider } from './map2d/useComparisonSlider';
-import { useMapExportHandlers } from './map2d/useMapActionHandlers';
-import { useMapDerivedState } from './map2d/useMapDerivedState';
-import { useMapInitialization } from './map2d/useMapInitialization';
+import { syncParcelaHighlightLayers } from './map2d/parcelaHighlightLayers';
 import { useAnalysisToolsGate } from './map2d/useAnalysisToolsGate';
+import { useComparisonSlider } from './map2d/useComparisonSlider';
 import { useFichaDrawWiring } from './map2d/useFichaDrawWiring';
 import { useFichaInteraction } from './map2d/useFichaInteraction';
-import { useMapEscapeExit } from './map2d/useMapEscapeExit';
-import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
-import { reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
-import { useMapLayerEffects } from './map2d/useMapLayerEffects';
-import { useReportHighlight } from './map2d/useReportHighlight';
-import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
-import { HazardMapControls } from './map2d/HazardMapControls';
-import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
-import { buildHazardLegendView } from './map2d/hazardLegend';
+import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
 import { useHazardMapState } from './map2d/useHazardMapState';
-import { resolveBasinCatalogStatus, type HazardRiskClass } from '../hooks/useHazardUrlState';
+import { useLayerHealth } from './map2d/useLayerHealth';
+import { useMapExportHandlers } from './map2d/useMapActionHandlers';
+import { useMapDerivedState } from './map2d/useMapDerivedState';
+import { useMapDragSignal } from './map2d/useMapDragSignal';
+import { useMapEscapeExit } from './map2d/useMapEscapeExit';
+import { useMapInitialization } from './map2d/useMapInitialization';
+import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
+import { useMapLayerEffects } from './map2d/useMapLayerEffects';
+import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
+import { useRasterTileHealth } from './map2d/useRasterTileHealth';
+import { useReportHighlight } from './map2d/useReportHighlight';
+import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
+import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -393,6 +395,10 @@ export default function MapaMapLibre() {
     canales: canalesData,
     escuelas: escuelasData,
     showRoadFlow: roadFlow.showRoadFlow,
+    // Same staff bit as road_flow (isStaff). Not "POIs follow the crossings
+    // toggle": useMapDerivedState runs before usePuntosInteresWiring, so the
+    // POI hook's showPuntosInteres is not in scope here.
+    showPuntosInteres: roadFlow.showRoadFlow,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -532,6 +538,20 @@ export default function MapaMapLibre() {
     clearMeasurements,
     handleParcelasCapReached
   );
+  const fichaDraw = useFichaDrawWiring({
+    interactionMode: fichaInteraction.interactionMode,
+    drawSession: fichaInteraction.state.drawing,
+    redrawPolygon: fichaInteraction.redrawPolygon,
+    drawControlRef,
+  });
+  const isFichaDrawSession = fichaDraw.isDrawSession;
+  const puntosInteres = usePuntosInteresWiring({
+    layerOn: !!vectorVisibility.puntos_interes,
+    fichaInteractionMode: fichaInteraction.interactionMode,
+    fichaDrawEscapeMode: fichaDraw.escapeMode,
+    onCancelMeasurement: cancelMeasurement,
+    onClearFicha: fichaInteraction.clearFicha,
+  });
   // Memoized: `useHazardMapState` feeds these options to the basin-zoom
   // effect's deps — a fresh identity per render would re-fire fitBounds.
   const hazardBasins = useMemo(() => buildHazardBasinOptions(basins), [basins]);
@@ -601,19 +621,21 @@ export default function MapaMapLibre() {
     roadFlowFlechas: roadFlow.mapFlechas,
     roadFlowTotalFlujoNatural: roadFlow.totalFlujoNatural,
     roadFlowKinds: roadFlow.kinds,
+    puntosInteresCollection: puntosInteres.collection,
     catastroMembership: basinMembership.membership,
   });
 
   useMapInteractionEffects({
     mapRef,
     mapReady,
-    measurementMode: fichaInteraction.interactionMode,
+    measurementMode: puntosInteres.interactionMode,
     setSelectedFeatures,
     onParcelaResolved: fichaInteraction.resolveParcela,
     // Mode transitions ALWAYS discard the selection, including with the sticky
     // touch mode on (where a null resolve means "you missed", not "clear").
     onClearParcelas: fichaInteraction.clearParcelas,
     onCanalResolved: fichaInteraction.resolveCanal,
+    onPoiPlace: puntosInteres.onPoiPlace,
   });
 
   // Ficha territorial fetch — owned by the container, threaded to MapUiPanels as
@@ -709,16 +731,6 @@ export default function MapaMapLibre() {
     syncParcelaHighlightLayers(map, parcelasSeleccionadas, catastroVisible, fichaOverlayPainting);
   }, [mapReady, parcelasSeleccionadas, catastroVisible, fichaOverlayPainting]);
 
-  // Free-draw session wiring (T4). Lives in its own hook so the escape-mode
-  // synthesis and the "Otro" path are unit-testable — see `useFichaDrawWiring`.
-  const fichaDraw = useFichaDrawWiring({
-    interactionMode: fichaInteraction.interactionMode,
-    drawSession: fichaInteraction.state.drawing,
-    redrawPolygon: fichaInteraction.redrawPolygon,
-    drawControlRef,
-  });
-  const isFichaDrawSession = fichaDraw.isDrawSession;
-
   // Canal mode (A6 + A7): the CURATED relevados/propuestos layers are the ficha
   // canal source now (their visibility in canal mode is owned by
   // `useMapLayerEffects` via `isFichaCanal`), so there is no separate clickable
@@ -741,26 +753,30 @@ export default function MapaMapLibre() {
   // ends drawing first (the reverse — draw cancelling measurement — is handled by
   // `useFichaInteraction.startDraw` → `clearMeasurements`).
   const handleStartMeasureDistance = useCallback(() => {
+    puntosInteres.cancelPlace();
     fichaInteraction.stopDraw();
     startMeasureDistance();
-  }, [fichaInteraction, startMeasureDistance]);
+  }, [fichaInteraction, puntosInteres.cancelPlace, startMeasureDistance]);
   const handleStartMeasureArea = useCallback(() => {
+    puntosInteres.cancelPlace();
     fichaInteraction.stopDraw();
     startMeasureArea();
-  }, [fichaInteraction, startMeasureArea]);
+  }, [fichaInteraction, puntosInteres.cancelPlace, startMeasureArea]);
   const handleToggleFichaDraw = useCallback(() => {
+    puntosInteres.cancelPlace();
     if (fichaInteraction.state.drawing) fichaInteraction.stopDraw();
     else fichaInteraction.startDraw();
-  }, [fichaInteraction]);
+  }, [fichaInteraction, puntosInteres.cancelPlace]);
   // Draw-mode sub-controls (T3c, fix 4). MapboxDraw returns to `simple_select`
   // after `draw.create`, so these re-enter draw mode / wipe the polygon without
   // toggling the whole ficha-draw mode off and on.
   const handleRedrawPolygon = fichaDraw.handleRedrawPolygon;
   const handleDeleteDrawnPolygon = fichaDraw.handleDeletePolygon;
   const handleToggleFichaCanal = useCallback(() => {
+    puntosInteres.cancelPlace();
     if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
     else fichaInteraction.startCanal();
-  }, [fichaInteraction]);
+  }, [fichaInteraction, puntosInteres.cancelPlace]);
   // T4 — the touch equivalent of holding ctrl. Unlike draw/canal this is NOT a
   // map interaction mode: clicks keep resolving parcels exactly as in idle, they
   // just accumulate, so nothing here touches `interactionMode`.
@@ -797,10 +813,11 @@ export default function MapaMapLibre() {
   useMapEscapeExit({
     // Escape must still leave the draw SESSION after the polygon is finished,
     // when `interactionMode` has already gone back to idle (T4).
-    mode: fichaDraw.escapeMode,
+    mode: puntosInteres.escapeMode,
     onCancelMeasurement: cancelMeasurement,
     onExitDraw: handleExitDraw,
     onExitCanal: handleExitCanal,
+    onExitPoiPlace: puntosInteres.cancelPlace,
   });
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
@@ -1070,7 +1087,7 @@ export default function MapaMapLibre() {
 
             {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
             <MeasurementToolbar
-              mode={fichaInteraction.interactionMode}
+              mode={puntosInteres.interactionMode}
               hasMeasurements={measurementState.measurements.length > 0}
               onStartDistance={handleStartMeasureDistance}
               onStartArea={handleStartMeasureArea}
@@ -1079,9 +1096,18 @@ export default function MapaMapLibre() {
               fichaDrawActive={isFichaDrawSession}
               fichaCanalActive={isFichaCanal}
               fichaMultiSelectActive={fichaInteraction.state.multiSelect}
+              poiPlaceActive={puntosInteres.placing}
+              onTogglePoiPlace={puntosInteres.onTogglePoiPlace}
               /* Draw / canal / multi-select callbacks are login-gated: absent for
                  anonymous visitors, so those buttons are not rendered at all. */
               {...analysisToolProps}
+            />
+            <PuntoInteresPlaceModal
+              opened={puntosInteres.modalOpen}
+              saving={puntosInteres.saving}
+              error={puntosInteres.saveError}
+              onClose={puntosInteres.closeModal}
+              onSave={puntosInteres.saveDraft}
             />
 
             {/* Canal analysis (A6 + A7): the influence-strip vs catchment control
@@ -1191,6 +1217,22 @@ export default function MapaMapLibre() {
               bpaLoading={bpaJoinLoading}
               bpaError={bpaJoinError}
               bpaHistory={pilarVerde?.bpaHistory}
+              onDeletePuntoInteres={async (id) => {
+                try {
+                  await puntosInteres.deletePunto(id);
+                } finally {
+                  setSelectedFeatures((current) =>
+                    current.filter((feature) => {
+                      const featureId = feature.id == null ? '' : String(feature.id);
+                      const propertyId =
+                        feature.properties && 'id' in feature.properties
+                          ? String(feature.properties.id)
+                          : '';
+                      return featureId !== id && propertyId !== id;
+                    })
+                  );
+                }
+              }}
               exportPngModalOpen={exportPngModalOpen}
               onCloseExportPngModal={() => setExportPngModalOpen(false)}
               exportTitle={exportTitle}

@@ -32,6 +32,7 @@
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
+import { PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
   ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
@@ -106,6 +107,7 @@ export const RENDERABLE_UI_LAYER_IDS = [
   // registry id — the same rule the `waterways_*` sub-filters follow above.
   'road_flow',
   'sentido_camino',
+  'puntos_interes',
 ] as const;
 
 export type RenderableUiLayerId = (typeof RENDERABLE_UI_LAYER_IDS)[number];
@@ -159,6 +161,8 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   // state shows an operator nothing wrong rather than an empty layer.
   'road_flow',
   'sentido_camino',
+  // Below `escuelas` on purpose: escuelas stays the topmost reorderable layer.
+  'puntos_interes',
   'escuelas',
 ] as const;
 
@@ -349,6 +353,11 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   escuelas: {
     // buildEscuelasCirclePaint sets no circle-opacity → MapLibre default 1.0.
     mlLayers: [{ id: ESCUELAS_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 }],
+  },
+  puntos_interes: {
+    mlLayers: [
+      { id: PUNTOS_INTERES_LAYER_ID, opacityProp: OPACITY_PROP.circle, defaultOpacity: 1 },
+    ],
   },
   road_flow: {
     mlLayers: [

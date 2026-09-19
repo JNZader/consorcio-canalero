@@ -149,6 +149,11 @@ export function buildVectorLayerItems(params: {
    * session see no change.
    */
   showRoadFlow?: boolean;
+  /**
+   * Staff-only unpublished pins. Same ROLE gate as `showRoadFlow`
+   * (`useAuth().isStaff`). Defaults to `false`.
+   */
+  showPuntosInteres?: boolean;
 }) {
   const {
     basins,
@@ -159,6 +164,7 @@ export function buildVectorLayerItems(params: {
     showPilarAzul = false,
     showEscuelas = false,
     showRoadFlow = false,
+    showPuntosInteres = false,
   } = params;
 
   return [
@@ -222,6 +228,12 @@ export function buildVectorLayerItems(params: {
       label: 'Sentido en camino',
       category: LAYER_CATEGORY.ANALISIS,
       show: showRoadFlow,
+    },
+    {
+      id: 'puntos_interes',
+      label: 'Puntos de interés',
+      category: LAYER_CATEGORY.ANALISIS,
+      show: showPuntosInteres,
     },
     // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──
     {

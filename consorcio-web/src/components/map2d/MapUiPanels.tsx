@@ -225,6 +225,7 @@ export interface MapUiPanelsProps {
   readonly bpaError?: string | null;
   /** Optional Pilar Verde historical BPA lookup — powers the BpaCard histórico footer. */
   readonly bpaHistory?: BpaHistoryFile | null;
+  readonly onDeletePuntoInteres?: (id: string) => void;
   readonly exportPngModalOpen: boolean;
   readonly onCloseExportPngModal: () => void;
   readonly exportTitle: string;
@@ -351,6 +352,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   bpaLoading,
   bpaError,
   bpaHistory,
+  onDeletePuntoInteres,
   exportPngModalOpen,
   onCloseExportPngModal,
   exportTitle,
@@ -615,6 +617,7 @@ export const MapUiPanels = memo(function MapUiPanels({
           onClose={onCloseInfoPanel}
           bpaEnriched={bpaEnriched}
           bpaHistory={bpaHistory}
+          onDeletePuntoInteres={onDeletePuntoInteres}
           minimized={infoMinimized}
           onToggleMinimize={toggleInfoMinimized}
           resetKey={selectedFeatures}

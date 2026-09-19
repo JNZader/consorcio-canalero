@@ -17,6 +17,7 @@
  *   - `puntos_conflicto` — derived analysis overlay, not raw map data
  *   - `approved_zones`   — draft/editorial zones with PII-shaped metadata
  *   - `basins`           — heavy MVT tiles, not meant for client export
+ *   - `puntos_interes`   — staff-only unpublished pins; not a public layer
  *
  * Key alignment with the store
  * ----------------------------
@@ -78,7 +79,12 @@ export interface KmzLayerEntry {
  * tuple as a defense-in-depth check — the registry already doesn't include
  * them, but the denylist makes the intent explicit.
  */
-export const KMZ_EXCLUDED_LAYER_KEYS = ['puntos_conflicto', 'approved_zones', 'basins'] as const;
+export const KMZ_EXCLUDED_LAYER_KEYS = [
+  'puntos_conflicto',
+  'approved_zones',
+  'basins',
+  'puntos_interes',
+] as const;
 
 /**
  * Primary waterway representative = Río Tercero (biggest / most prominent

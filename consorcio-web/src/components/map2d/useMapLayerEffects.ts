@@ -22,6 +22,7 @@ import {
   syncCanalesLayers,
   syncEscuelasLayer,
   syncPorcentajeForestacionLayer,
+  syncPuntosInteresLayer,
   syncRoadFlowLayers,
   syncRoadLayers,
   syncSoilLayers,
@@ -110,6 +111,8 @@ interface UseMapLayerEffectsParams {
   roadFlowTotalFlujoNatural?: number;
   /** Panel kind filter. A `setFilter`, never an unmount (RFA-R3). */
   roadFlowKinds?: RoadFlowKindVisibility;
+  /** Staff map pins. Empty collection while the layer is off or the user is not staff. */
+  puntosInteresCollection?: FeatureCollection<Point> | null;
 }
 
 export function useMapLayerEffects({
@@ -141,6 +144,7 @@ export function useMapLayerEffects({
   roadFlowFlechas = null,
   roadFlowTotalFlujoNatural = 0,
   roadFlowKinds = ROAD_FLOW_ALL_KINDS_VISIBLE,
+  puntosInteresCollection = null,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -433,6 +437,16 @@ export function useMapLayerEffects({
     > | null;
     syncEscuelasLayer(map, collection, !!vectorVisibility.escuelas);
   }, [mapReady, mapRef, escuelas?.collection, vectorVisibility.escuelas]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncPuntosInteresLayer(
+      map,
+      puntosInteresCollection,
+      !!vectorVisibility.puntos_interes && puntosInteresCollection !== null
+    );
+  }, [mapReady, mapRef, puntosInteresCollection, vectorVisibility.puntos_interes]);
 
   // ── YPF estación de bombeo (Monte Leña) ────────────────────────────────
   // Single hardcoded landmark — always-on, no toggle, no tear-down. The

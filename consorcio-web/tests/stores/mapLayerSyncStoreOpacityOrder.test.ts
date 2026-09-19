@@ -123,6 +123,7 @@ describe('migrateMapLayerState — v3 → v4', () => {
       catastro: true,
       escuelas: false,
       sentido_camino: true,
+      puntos_interes: true,
     });
     expect(migrated.map3d?.visibleVectors).toEqual({
       roads: true,
@@ -247,6 +248,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       escuelas: true,
       catastro: true,
       sentido_camino: true,
+      puntos_interes: true,
     });
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
@@ -299,6 +301,27 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     expect(migrated.map2d?.opacityByLayer).toEqual({});
     expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
     expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(true);
     expect(migrated.map3d?.visibleVectors?.catastro).toBeUndefined();
+  });
+
+  it('v6 → v7 seeds puntos_interes on without flipping an explicit false', () => {
+    const alreadyOff = {
+      map2d: {
+        visibleVectors: { catastro: true, puntos_interes: false },
+      },
+    };
+    const migrated = migrateMapLayerState(alreadyOff, 6);
+    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(false);
+  });
+
+  it('v6 → v7 seeds puntos_interes on when the key is missing', () => {
+    const missing = {
+      map2d: {
+        visibleVectors: { catastro: true },
+      },
+    };
+    const migrated = migrateMapLayerState(missing, 6);
+    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(true);
   });
 });

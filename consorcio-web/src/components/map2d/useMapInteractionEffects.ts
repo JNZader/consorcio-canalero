@@ -3,6 +3,7 @@ import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
+import { PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
 
 /**
  * Whitelisted PUBLIC identity fields of a clicked catastro parcel, surfaced as a
@@ -79,6 +80,8 @@ interface UseMapInteractionEffectsParams {
    * (design §6.3, JDB-013).
    */
   onCanalResolved?: (canal: CanalResuelta | null) => void;
+  /** Staff pin placement. Fired instead of feature selection while `placing-poi`. */
+  onPoiPlace?: (lngLat: { lng: number; lat: number }) => void;
 }
 
 /** A curated consorcio canal resolved from a click in `'ficha-canal'` mode. */
@@ -182,7 +185,9 @@ export function resolveCanalRef(features: FeatureWithLayer[]): CanalResuelta | n
  * **Mode gate (A5.3/A6, design §6.2/§6.3):** in `'ficha-dibujo'` the `DrawControl`
  * owns every click (the user is drawing a polygon, not selecting a feature), so
  * NOTHING on the map is clickable for feature selection and the whitelist is
- * empty. In `'ficha-canal'` the ONLY clickable layers are the two CURATED canal
+ * empty. `'placing-poi'` is also empty: the click handler reads `event.lngLat`
+ * and must not query features (a pin click would otherwise open InfoPanel).
+ * In `'ficha-canal'` the ONLY clickable layers are the two CURATED canal
  * line layers (relevados + propuestos) — parcels/BPA/soil are excluded so a canal
  * click can only ever resolve a curated `canal_ref`, never a parcel (JDB-013).
  * All other modes get the full ordered list; the `'idle'` default preserves the
@@ -190,7 +195,7 @@ export function resolveCanalRef(features: FeatureWithLayer[]): CanalResuelta | n
  * ficha modes are handled as early returns and never perturb it).
  */
 export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[] {
-  if (mode === 'ficha-dibujo') return [];
+  if (mode === 'ficha-dibujo' || mode === 'placing-poi') return [];
   if (mode === 'ficha-canal') return [...CANAL_FICHA_LAYER_IDS];
   return [
     // ── Pilar Verde (top-most — wins click precedence on overlap) ──
@@ -217,6 +222,7 @@ export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[
     // canal-over-catastro). Schools WIN over soil/catastro/roads so the
     // EscuelaCard opens instead of the generic parcel dump.
     `${SOURCE_IDS.ESCUELAS}-symbol`,
+    PUNTOS_INTERES_LAYER_ID,
     `${SOURCE_IDS.SOIL}-fill`,
     `${SOURCE_IDS.CATASTRO}-fill`,
     `${SOURCE_IDS.ROADS}-hit`,
@@ -234,6 +240,7 @@ export function useMapInteractionEffects({
   onParcelaResolved,
   onClearParcelas,
   onCanalResolved,
+  onPoiPlace,
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -244,6 +251,11 @@ export function useMapInteractionEffects({
     const clickableLayers = buildClickableLayers(measurementMode);
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
+      if (measurementMode === 'placing-poi') {
+        onPoiPlace?.({ lng: event.lngLat.lng, lat: event.lngLat.lat });
+        return;
+      }
+
       // A6/A7 — canal mode: resolve a curated `canal_ref` off the relevados /
       // propuestos layers ONLY. The InfoPanel/parcel path is bypassed entirely so
       // a canal click can never open a parcel card or fire a `tipo=parcela` ficha
@@ -333,5 +345,6 @@ export function useMapInteractionEffects({
     onParcelaResolved,
     onClearParcelas,
     onCanalResolved,
+    onPoiPlace,
   ]);
 }

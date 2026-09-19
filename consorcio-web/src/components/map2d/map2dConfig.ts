@@ -106,6 +106,9 @@ export const SOURCE_IDS = {
   // `defaultVisibleVectors` AND `ESCUELAS_SOURCE_ID` in `escuelasLayers.ts`
   // (Batch C locked the identical-string contract — see apply-progress #2061).
   ESCUELAS: 'escuelas',
+  // Staff-only unpublished pins. GeoJSON source, not Martin. Source id ==
+  // the visibility-toggle id (same contract as ESCUELAS / ROAD_FLOW).
+  PUNTOS_INTERES: 'puntos_interes',
 } as const;
 
 /**
