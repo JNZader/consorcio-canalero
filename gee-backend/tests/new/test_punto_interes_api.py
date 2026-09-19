@@ -37,9 +37,7 @@ def _as_operador(app) -> None:
     from app.auth.dependencies import current_active_user
     from app.auth.models import UserRole
 
-    app.dependency_overrides[current_active_user] = lambda: SimpleNamespace(
-        role=UserRole.OPERADOR
-    )
+    app.dependency_overrides[current_active_user] = lambda: SimpleNamespace(role=UserRole.OPERADOR)
 
 
 def test_operador_post_then_get_contains_the_point(db_session_factory):

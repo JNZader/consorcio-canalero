@@ -68,7 +68,9 @@ class TestPuntoInteresTable:
         ).scalar()
         assert exists == 1
 
-    @pytest.mark.parametrize("column", ["id", "geometria", "titulo", "tipo", "created_at", "updated_at"])
+    @pytest.mark.parametrize(
+        "column", ["id", "geometria", "titulo", "tipo", "created_at", "updated_at"]
+    )
     def test_required_columns_are_not_null(self, migrated, column: str):
         _, nullable = _columns(migrated)[column]
         assert nullable == "NO"
