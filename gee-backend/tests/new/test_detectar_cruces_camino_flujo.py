@@ -633,18 +633,35 @@ class TestAzimutALoLargo:
 
 
 class TestFlechasFlujoCamino:
-    """Pixel-map arrows: D8 projected onto the road, skipped when it crosses."""
+    """Downhill along the road from DEM z, not D8 of the catchment."""
 
-    def test_eastbound_flow_emits_arrows_along_the_road(self, tmp_path):
-        roads, fd, _fa = _predicate_case(tmp_path, 1, tag="flechaE")
-        col = construir_flechas_flujo_camino(roads, fd, step_m=30.0)
-        assert col["features"], "parallel D8 must produce visible arrows"
+    def _sloping_dem(self, tmp_path, *, east_down: bool, tag: str) -> tuple:
+        roads = _roads([{"id": "t1", "geometry": _road_along_row(4, 0, 8)}])
+        dem = np.zeros((9, 9), dtype="float64")
+        for c in range(9):
+            dem[:, c] = 100.0 - (c * 2.0 if east_down else -c * 2.0)
+        path = _write_raster(tmp_path / f"dem_{tag}.tif", dem)
+        return roads, path
+
+    def test_east_down_slope_points_east(self, tmp_path):
+        roads, dem = self._sloping_dem(tmp_path, east_down=True, tag="E")
+        col = construir_flechas_flujo_camino(roads, dem, step_m=30.0, min_drop_m=0.5)
+        assert col["features"], "a 2 m/cell drop must clear min_drop"
         azimuths = [f["properties"]["along_azimuth_deg"] for f in col["features"]]
         assert any(abs(a - 90) < 15 for a in azimuths)
 
-    def test_perpendicular_flow_emits_no_along_road_arrow(self, tmp_path):
-        roads, fd, _fa = _predicate_case(tmp_path, 4, tag="flechaN")
-        col = construir_flechas_flujo_camino(roads, fd, step_m=30.0)
+    def test_west_down_slope_points_west(self, tmp_path):
+        roads, dem = self._sloping_dem(tmp_path, east_down=False, tag="W")
+        col = construir_flechas_flujo_camino(roads, dem, step_m=30.0, min_drop_m=0.5)
+        azimuths = [f["properties"]["along_azimuth_deg"] for f in col["features"]]
+        assert col["features"]
+        assert any(abs(a - 270) < 15 for a in azimuths)
+
+    def test_flat_surface_emits_nothing(self, tmp_path):
+        roads = _roads([{"id": "t1", "geometry": _road_along_row(4, 0, 8)}])
+        dem = np.full((9, 9), 100.0)
+        path = _write_raster(tmp_path / "dem_flat.tif", dem)
+        col = construir_flechas_flujo_camino(roads, path, step_m=30.0, min_drop_m=0.5)
         assert col["features"] == []
 
     def test_empty_without_raster(self):
