@@ -266,7 +266,8 @@ export function syncRoadFlowLayers(
   totalFlujoNatural: number,
   isVisible: boolean,
   kindVisibility: RoadFlowKindVisibility = ROAD_FLOW_ALL_KINDS_VISIBLE,
-  flechas?: FeatureCollection<Point> | null
+  flechas?: FeatureCollection<Point> | null,
+  arrowsVisible = false
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.ROAD_FLOW, crossings ?? asFeatureCollection([]));
 
@@ -316,12 +317,16 @@ export function syncRoadFlowLayers(
 
   // The panel's kind selection is a FILTER, never an unmount — see
   // `applyRoadFlowKindFilter`.
-  applyRoadFlowKindFilter(map, kindVisibility);
+  applyRoadFlowKindFilter(map, {
+    ...kindVisibility,
+    conduccion: arrowsVisible,
+  });
 
-  const mounted = isVisible && !!crossings;
-  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.FLUJO, mounted);
-  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CANAL, mounted);
-  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW, mounted);
+  const circlesOn = isVisible && !!crossings;
+  const arrowsOn = arrowsVisible && !!crossings;
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.FLUJO, circlesOn);
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CANAL, circlesOn);
+  setLayerVisibility(map, ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW, arrowsOn);
 }
 
 export function syncBasinLayers(

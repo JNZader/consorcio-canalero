@@ -24,7 +24,7 @@
  * keeps a long ranked list scrollable inside a `pointer-events: none` card.
  */
 
-import { Alert, Loader, SegmentedControl, Stack, Switch, Text } from '@mantine/core';
+import { Alert, Loader, SegmentedControl, Stack, Text } from '@mantine/core';
 
 import type { CoberturaResponse } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
@@ -130,17 +130,6 @@ export function RoadFlowPanel({
             { value: ROAD_FLOW_KIND_FILTER.FLUJO, label: 'Flujo natural' },
             { value: ROAD_FLOW_KIND_FILTER.CANAL, label: 'Canal' },
           ]}
-        />
-
-        <Switch
-          size="xs"
-          label="Cuneta (paralelo)"
-          description="Agua que corre CON el camino. No es un cruce."
-          checked={kinds.conduccion}
-          onChange={(event) =>
-            onKindsChange({ ...kinds, conduccion: event.currentTarget.checked })
-          }
-          data-testid="road-flow-conduccion-switch"
         />
 
         {isLoading ? <Loader size="sm" data-testid="road-flow-loading" /> : null}

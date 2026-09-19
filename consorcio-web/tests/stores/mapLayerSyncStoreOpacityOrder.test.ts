@@ -122,6 +122,7 @@ describe('migrateMapLayerState — v3 → v4', () => {
       soil: false,
       catastro: true,
       escuelas: false,
+      sentido_camino: true,
     });
     expect(migrated.map3d?.visibleVectors).toEqual({
       roads: true,
@@ -245,6 +246,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       soil: true,
       escuelas: true,
       catastro: true,
+      sentido_camino: true,
     });
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
@@ -257,7 +259,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     });
   });
 
-  it('is a no-op for a state already at v5', () => {
+  it('is a no-op for a state already at v5 except seeding sentido_camino', () => {
     const v5State = {
       map2d: {
         activeRasterType: null,
@@ -271,6 +273,17 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
 
     // Already migrated → a later deliberate OFF is respected.
     expect(migrated.map2d?.visibleVectors?.catastro).toBe(false);
+    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(true);
+  });
+
+  it('v5 → v6 seeds sentido_camino on without flipping a later OFF', () => {
+    const alreadyOff = {
+      map2d: {
+        visibleVectors: { catastro: true, sentido_camino: false },
+      },
+    };
+    const migrated = migrateMapLayerState(alreadyOff, 5);
+    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(false);
   });
 
   it('runs as part of a full v1 → v5 upgrade chain', () => {
@@ -285,6 +298,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     expect(migrated.map3d?.visibleVectors?.roads).toBe(true);
     expect(migrated.map2d?.opacityByLayer).toEqual({});
     expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(true);
     expect(migrated.map3d?.visibleVectors?.catastro).toBeUndefined();
   });
 });

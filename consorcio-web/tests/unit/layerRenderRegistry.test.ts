@@ -258,20 +258,25 @@ describe('layerRenderRegistry — road_flow (flujo-caminos, design D6)', () => {
     expect(inRegistry).toHaveLength(1);
   });
 
-  it('the SINGLE entry owns the crossing circles and the conduccion arrows', () => {
+  it('the SINGLE entry owns the crossing circles; arrows live on sentido_camino', () => {
     const entry = LAYER_RENDER_REGISTRY.road_flow;
     expect(entry).toBeDefined();
 
     const ids = entry.mlLayers.map((ml) => ml.id);
-    expect(ids).toHaveLength(3);
+    expect(ids).toHaveLength(2);
     expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-flujo`);
     expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-canal`);
-    expect(ids).toContain(`${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`);
+    expect(ids).not.toContain(`${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`);
 
     const byId = Object.fromEntries(entry.mlLayers.map((ml) => [ml.id, ml.opacityProp]));
     expect(byId[`${SOURCE_IDS.ROAD_FLOW}-flujo`]).toBe(OPACITY_PROP.circle);
     expect(byId[`${SOURCE_IDS.ROAD_FLOW}-canal`]).toBe(OPACITY_PROP.circle);
-    expect(byId[`${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`]).toBe(OPACITY_PROP.icon);
+
+    const sentido = LAYER_RENDER_REGISTRY.sentido_camino;
+    expect(sentido.mlLayers.map((ml) => ml.id)).toEqual([
+      `${SOURCE_IDS.ROAD_FLOW}-conduccion-arrow`,
+    ]);
+    expect(sentido.mlLayers[0].opacityProp).toBe(OPACITY_PROP.icon);
   });
 
   it('OPACITY_PROP has no `symbol` key; arrows use icon-opacity', () => {

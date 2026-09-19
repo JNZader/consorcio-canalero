@@ -217,6 +217,12 @@ export function buildVectorLayerItems(params: {
       category: LAYER_CATEGORY.ANALISIS,
       show: showRoadFlow,
     },
+    {
+      id: 'sentido_camino',
+      label: 'Sentido en camino',
+      category: LAYER_CATEGORY.ANALISIS,
+      show: showRoadFlow,
+    },
     // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──
     {
       id: 'pilar_verde_bpa_historico',

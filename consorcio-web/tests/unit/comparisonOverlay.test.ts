@@ -40,8 +40,11 @@ const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
  *     statement of what it is not. D6 does not place this layer in the
  *     comparison view and no task wires its data into that view's inputs, so it
  *     is excluded rather than half-mounted.
+ *   - `sentido_camino` — same GET (`require_admin_or_operator`), same staff
+ *     selector gate. Chevrons of ditch direction, not a ranking, but still
+ *     operator-only data. The comparator does not fetch that payload.
  */
-const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow']);
+const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow', 'sentido_camino']);
 
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(
   (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id) && !NOT_IN_COMPARISON_UI_LAYER_IDS.has(id)
