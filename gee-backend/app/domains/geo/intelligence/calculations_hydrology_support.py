@@ -438,43 +438,53 @@ def _asignar_canales_sumidero(rows: list[dict[str, Any]], roads) -> None:
             row["nota"] = f"{existing}; {suffix}" if existing else suffix
 
 
+def _sample_z(data, transform, nodata, x: float, y: float) -> float | None:
+    from rasterio.transform import rowcol
+
+    r, c = rowcol(transform, x, y)
+    r, c = int(r), int(c)
+    if not (0 <= r < data.shape[0] and 0 <= c < data.shape[1]):
+        return None
+    z = float(data[r, c])
+    if math.isnan(z):
+        return None
+    if nodata is not None and z == nodata:
+        return None
+    return z
+
+
 def construir_flechas_flujo_camino(
     red_vial_gdf,
-    flow_dir_path: Optional[str],
+    dem_path: Optional[str],
     *,
     step_m: float = 250.0,
-    parallel_max_angle_deg: float = 45.0,
-    bearing_window_m: float = 60.0,
+    min_drop_m: float = 0.5,
 ) -> dict[str, Any]:
-    """Along-road flow arrows as a GeoJSON FeatureCollection in EPSG:4326.
+    """Along-road downhill arrows from the filled DEM, as GeoJSON in EPSG:4326.
 
-    Walks every road at ``step_m`` (250 m — ~8 GLO-30 cells, stable along-road
-    D8 rather than a twitchy 80 m sample), samples the D8 pointer, and keeps the sample
-    only when the pointer is within ``parallel_max_angle_deg`` of the road
-    (otherwise the water is crossing, not running in the ditch). The arrow
-    azimuth is the along-road component of that pointer — the direction an
-    operator can read on the trace.
+    Walks every road at ``step_m`` (250 m). Each arrow is the downhill of that
+    chord: sample z at both ends, skip if the drop is below ``min_drop_m``
+    (GLO-30 noise), otherwise point toward the lower end. This is the road's
+    longitudinal grade, not D8 of the catchment — still the 30 m loma, not the
+    ditch, but it stops lying with 45° pointer jumps.
 
-    Empty when there is no raster or no road: the caller stores the collection
-    as-is so the map never invents a direction.
+    Empty when there is no DEM or no road.
     """
     empty: dict[str, Any] = {"type": "FeatureCollection", "features": []}
-    if not flow_dir_path or red_vial_gdf is None or len(red_vial_gdf) == 0:
+    if not dem_path or red_vial_gdf is None or len(red_vial_gdf) == 0:
         return empty
 
     import rasterio
-    from rasterio.transform import rowcol
     from shapely.geometry import Point, mapping
     import geopandas as gpd
 
-    with rasterio.open(flow_dir_path) as src:
+    with rasterio.open(dem_path) as src:
         transform = src.transform
-        fd_data = src.read(1)
-        fd_nodata = src.nodata
+        z_data = src.read(1)
+        z_nodata = src.nodata
         work_crs = src.crs
 
     roads = red_vial_gdf.to_crs(work_crs)
-    half = max(bearing_window_m / 2.0, 1.0)
     features: list[dict[str, Any]] = []
     seq = 0
     for _, road in roads.iterrows():
@@ -486,49 +496,39 @@ def construir_flechas_flujo_camino(
             continue
         tramo_ref = str(road["id"])
         d = 0.0
-        while d <= length:
-            point = geom.interpolate(d)
-            d0 = max(d - half, 0.0)
-            d1 = min(d + half, length)
-            a = geom.interpolate(d0)
+        while d + 1.0 < length:
+            d1 = min(d + step_m, length)
+            a = geom.interpolate(d)
             b = geom.interpolate(d1)
             if a.equals(b):
-                d += step_m
+                break
+            z0 = _sample_z(z_data, transform, z_nodata, a.x, a.y)
+            z1 = _sample_z(z_data, transform, z_nodata, b.x, b.y)
+            if z0 is None or z1 is None:
+                d = d1
+                continue
+            drop = z0 - z1
+            if abs(drop) < min_drop_m:
+                d = d1
                 continue
             bearing = math.degrees(math.atan2(b.x - a.x, b.y - a.y)) % 360.0
-            r, c = rowcol(transform, point.x, point.y)
-            r, c = int(r), int(c)
-            if not (0 <= r < fd_data.shape[0] and 0 <= c < fd_data.shape[1]):
-                d += step_m
-                continue
-            pointer = fd_data[r, c]
-            if fd_nodata is not None and pointer == fd_nodata:
-                d += step_m
-                continue
-            flow_az = azimut_desde_transform(pointer, transform)
-            if flow_az is None:
-                d += step_m
-                continue
-            theta = _acute_angle(flow_az, bearing)
-            if theta > parallel_max_angle_deg:
-                d += step_m
-                continue
-            along = _azimut_a_lo_largo(float(flow_az), bearing)
+            along = bearing if drop > 0 else (bearing + 180.0) % 360.0
+            mid = geom.interpolate((d + d1) / 2.0)
             features.append(
                 {
                     "type": "Feature",
-                    "geometry": mapping(Point(point.x, point.y)),
+                    "geometry": mapping(Point(mid.x, mid.y)),
                     "properties": {
                         "id": f"{tramo_ref}:{seq}",
                         "tramo_ref": tramo_ref,
                         "along_azimuth_deg": along,
-                        "direccion_flujo_deg": float(flow_az),
                         "rumbo_camino_deg": bearing,
+                        "drop_m": round(abs(drop), 2),
                     },
                 }
             )
             seq += 1
-            d += step_m
+            d = d1
 
     if not features:
         return empty
@@ -538,18 +538,17 @@ def construir_flechas_flujo_camino(
         geom = row.geometry
         if geom is None:
             continue
-        props = {
-            "id": row["id"],
-            "tramo_ref": row["tramo_ref"],
-            "along_azimuth_deg": float(row["along_azimuth_deg"]),
-            "direccion_flujo_deg": float(row["direccion_flujo_deg"]),
-            "rumbo_camino_deg": float(row["rumbo_camino_deg"]),
-        }
         out.append(
             {
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [geom.x, geom.y]},
-                "properties": props,
+                "properties": {
+                    "id": row["id"],
+                    "tramo_ref": row["tramo_ref"],
+                    "along_azimuth_deg": float(row["along_azimuth_deg"]),
+                    "rumbo_camino_deg": float(row["rumbo_camino_deg"]),
+                    "drop_m": float(row["drop_m"]),
+                },
             }
         )
     return {"type": "FeatureCollection", "features": out}

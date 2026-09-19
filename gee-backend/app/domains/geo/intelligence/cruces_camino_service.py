@@ -249,6 +249,26 @@ def run_crossing_task(
             db.close()
         corroborar_copias(flow_dir_copy, flow_acc_copy)
 
+        dem_copy: Optional[str] = None
+        db = session_factory()
+        try:
+            from app.domains.geo.relevamiento.clasificador import (
+                DemFilledNoDisponible,
+                resolver_dem_filled,
+            )
+
+            try:
+                dem_src = resolver_dem_filled(repo.get_dem_resultados(db, area_id))
+            except DemFilledNoDisponible:
+                dem_src = None
+        finally:
+            db.close()
+        if dem_src:
+            dem_dest = scratch / "dem_filled.tif"
+            shutil.copy2(dem_src, dem_dest)
+            corroborar_copias(str(dem_dest))
+            dem_copy = str(dem_dest)
+
         # ── Step 4: compute, entirely from the private copies ───────────
         db = session_factory()
         try:
@@ -286,13 +306,14 @@ def run_crossing_task(
             )
             flechas = construir_flechas_flujo_camino(
                 roads,
-                flow_dir_copy,
+                dem_copy,
                 step_m=250.0,
-                parallel_max_angle_deg=parametros.get("parallel_high_angle_deg", 45.0),
-                bearing_window_m=parametros.get("bearing_window_m", 60.0),
+                min_drop_m=0.5,
             )
         run_parametros["variante"] = variante.variante
         run_parametros["area_id"] = area_id
+        run_parametros["flechas_fuente"] = "dem_filled" if dem_copy else "sin_dem"
+        run_parametros["flechas_min_drop_m"] = 0.5
 
         # ── Step 5: write, in ONE transaction ───────────────────────────
         calculada_en = now()
