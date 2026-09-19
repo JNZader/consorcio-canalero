@@ -1,17 +1,30 @@
 /**
  * puntosInteresLayers
  *
- * Staff-only circle layer for unpublished map pins. Circle, not symbol:
- * this style has no glyphs URL (see `escuelasLayers.ts`).
+ * Staff-only pins: painted circle + invisible hit target + `titulo` label.
+ * Glyphs come from `MAP_GLYPHS_URL` (same as road labels). White text + dark
+ * halo because the default basemap is satellite imagery.
  */
 
-import type { CircleLayerSpecification } from 'maplibre-gl';
+import type { CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
 
 import { PUNTO_INTERES_TIPOS } from '../../lib/api/puntosInteres';
 import { SOURCE_IDS } from './map2dConfig';
 
 export const PUNTOS_INTERES_SOURCE_ID = SOURCE_IDS.PUNTOS_INTERES;
 export const PUNTOS_INTERES_LAYER_ID = 'puntos_interes-circle' as const;
+export const PUNTOS_INTERES_HIT_LAYER_ID = 'puntos_interes-hit' as const;
+export const PUNTOS_INTERES_LABEL_LAYER_ID = 'puntos_interes-label' as const;
+
+const PUNTO_INTERES_LAYER_IDS = new Set<string>([
+  PUNTOS_INTERES_LAYER_ID,
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
+]);
+
+export function isPuntoInteresLayerId(layerId: string | undefined): boolean {
+  return layerId != null && PUNTO_INTERES_LAYER_IDS.has(layerId);
+}
 
 type CirclePaint = NonNullable<CircleLayerSpecification['paint']>;
 
@@ -38,5 +51,41 @@ export function buildPuntosInteresCirclePaint(): CirclePaint {
     ],
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 2,
+  };
+}
+
+/** Invisible 16 px target so a pin is selectable without a pixel-perfect hit. */
+export function buildPuntosInteresHitPaint(): CirclePaint {
+  return {
+    'circle-radius': 16,
+    'circle-color': '#000000',
+    'circle-opacity': 0,
+  };
+}
+
+export function buildPuntosInteresLabelLayer(
+  id: string,
+  source: string
+): SymbolLayerSpecification {
+  return {
+    id,
+    type: 'symbol',
+    source,
+    layout: {
+      'text-field': ['get', 'titulo'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 10, 11, 16, 13],
+      'text-anchor': 'bottom',
+      'text-offset': [0, -1.15],
+      'text-optional': true,
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: {
+      'text-color': '#ffffff',
+      'text-halo-color': 'rgba(0,0,0,0.75)',
+      'text-halo-width': 1.2,
+      'text-opacity': 0.95,
+    },
   };
 }
