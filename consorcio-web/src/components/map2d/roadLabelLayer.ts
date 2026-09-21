@@ -65,7 +65,7 @@ export function buildRoadLabelLayer(id: string, source: string): SymbolLayerSpec
       'symbol-spacing': 280,
       'text-field': ROAD_LABEL_TEXT_FIELD,
       'text-font': ['Noto Sans Regular'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 11, 10, 14, 12],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 11, 14, 14, 18],
       'text-keep-upright': true,
       'text-rotation-alignment': 'map',
       'text-pitch-alignment': 'viewport',
@@ -78,7 +78,7 @@ export function buildRoadLabelLayer(id: string, source: string): SymbolLayerSpec
     paint: {
       'text-color': '#ffffff',
       'text-halo-color': 'rgba(0,0,0,0.75)',
-      'text-halo-width': 1.2,
+      'text-halo-width': 1.6,
       'text-opacity': 0.95,
     },
   };

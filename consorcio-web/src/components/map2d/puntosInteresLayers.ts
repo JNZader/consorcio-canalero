@@ -74,7 +74,7 @@ export function buildPuntosInteresLabelLayer(
     layout: {
       'text-field': ['get', 'titulo'],
       'text-font': ['Noto Sans Regular'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 10, 11, 16, 13],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 18],
       'text-anchor': 'bottom',
       'text-offset': [0, -1.15],
       'text-optional': true,
@@ -84,7 +84,7 @@ export function buildPuntosInteresLabelLayer(
     paint: {
       'text-color': '#ffffff',
       'text-halo-color': 'rgba(0,0,0,0.75)',
-      'text-halo-width': 1.2,
+      'text-halo-width': 1.6,
       'text-opacity': 0.95,
     },
   };

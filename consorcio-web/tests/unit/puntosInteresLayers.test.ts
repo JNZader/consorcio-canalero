@@ -65,6 +65,8 @@ describe('puntosInteresLayers · hit and label', () => {
     expect(layer.layout?.['text-field']).toEqual(['get', 'titulo']);
     expect(layer.paint?.['text-color']).toBe('#ffffff');
     expect(layer.paint?.['text-halo-color']).toBe('rgba(0,0,0,0.75)');
+    expect(layer.layout?.['text-size']).toEqual(['interpolate', ['linear'], ['zoom'], 10, 14, 16, 18]);
+    expect(layer.paint?.['text-halo-width']).toBe(1.6);
   });
 
   it('treats circle, hit and label as the same POI click target', () => {

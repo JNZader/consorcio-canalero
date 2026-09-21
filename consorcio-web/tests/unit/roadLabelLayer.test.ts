@@ -27,6 +27,8 @@ describe('buildRoadLabelLayer', () => {
     expect(layer.layout?.['symbol-placement']).toBe('line');
     expect(layer.paint?.['text-color']).toBe('#ffffff');
     expect(layer.paint?.['text-halo-color']).toBe('rgba(0,0,0,0.75)');
+    expect(layer.layout?.['text-size']).toEqual(['interpolate', ['linear'], ['zoom'], 11, 14, 14, 18]);
+    expect(layer.paint?.['text-halo-width']).toBe(1.6);
   });
 
   it('points glyphs at a PBF template MapLibre 4.x can fetch', () => {
