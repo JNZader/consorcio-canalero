@@ -47,6 +47,9 @@ const MAP2D_TEXT_LAYERS: ReadonlyArray<{ id: string; base: ExpressionSpecificati
 ];
 
 export function applyMapLabelSize(map: MapLabelSizeApi, scale: number): void {
+  if (typeof map.getLayer !== 'function' || typeof map.setLayoutProperty !== 'function') {
+    return;
+  }
   const clamped = clampLabelSizeScale(scale);
   for (const layer of MAP2D_TEXT_LAYERS) {
     if (!map.getLayer(layer.id)) continue;

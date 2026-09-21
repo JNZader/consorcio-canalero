@@ -37,6 +37,10 @@ describe('scaleTextSizeExpression', () => {
 });
 
 describe('applyMapLabelSize', () => {
+  it('no-ops when the map mock has no layout API', () => {
+    expect(() => applyMapLabelSize({} as never, 1.5)).not.toThrow();
+  });
+
   it('sets layout text-size on mounted label layers', () => {
     const setLayoutProperty = vi.fn();
     applyMapLabelSize(
