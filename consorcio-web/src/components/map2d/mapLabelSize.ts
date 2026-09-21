@@ -6,7 +6,8 @@
  */
 import type { ExpressionSpecification } from 'maplibre-gl';
 
-import { SOURCE_IDS } from './map2dConfig';
+import { ALONG_LINE_LABEL_TEXT_SIZE } from './alongLineLabel';
+import { buildWaterwayLayerConfigs, SOURCE_IDS } from './map2dConfig';
 import { PUNTOS_INTERES_LABEL_LAYER_ID, PUNTO_INTERES_LABEL_TEXT_SIZE } from './puntosInteresLayers';
 import { ROAD_LABEL_TEXT_SIZE } from './roadLabelLayer';
 
@@ -44,6 +45,12 @@ export interface MapLabelSizeApi {
 const MAP2D_TEXT_LAYERS: ReadonlyArray<{ id: string; base: ExpressionSpecification }> = [
   { id: `${SOURCE_IDS.ROADS}-label`, base: ROAD_LABEL_TEXT_SIZE },
   { id: PUNTOS_INTERES_LABEL_LAYER_ID, base: PUNTO_INTERES_LABEL_TEXT_SIZE },
+  { id: `${SOURCE_IDS.CANALES_RELEVADOS}-label`, base: ALONG_LINE_LABEL_TEXT_SIZE },
+  { id: `${SOURCE_IDS.CANALES_PROPUESTOS}-label`, base: ALONG_LINE_LABEL_TEXT_SIZE },
+  ...buildWaterwayLayerConfigs([]).map((cfg) => ({
+    id: `${cfg.id}-label`,
+    base: ALONG_LINE_LABEL_TEXT_SIZE,
+  })),
 ];
 
 export function applyMapLabelSize(map: MapLabelSizeApi, scale: number): void {
