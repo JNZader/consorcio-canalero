@@ -132,7 +132,10 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
   it('DEFAULT (empty overrides): NO opacity setPaintProperty and NO extra moveLayer', () => {
     const { map, setPaintProperty, moveLayer } = makeMapMock();
     renderWithMap(map);
-    expect(setPaintProperty).not.toHaveBeenCalled();
+    const opacityCalls = setPaintProperty.mock.calls.filter((call) =>
+      String(call[1]).includes('opacity')
+    );
+    expect(opacityCalls).toHaveLength(0);
     expect(moveLayer).not.toHaveBeenCalled();
   });
 

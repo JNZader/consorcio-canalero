@@ -221,9 +221,11 @@ export default function MapaMapLibre() {
   const opacityByLayer = useMapLayerSyncStore((state) => state.map2d.opacityByLayer);
   const orderByLayer = useMapLayerSyncStore((state) => state.map2d.orderByLayer);
   const labelSizeScale = useMapLayerSyncStore((state) => state.map2d.labelSizeScale);
+  const lineWidthScale = useMapLayerSyncStore((state) => state.map2d.lineWidthScale);
   const setLayerOpacity = useMapLayerSyncStore((state) => state.setLayerOpacity);
   const setLayerOrder = useMapLayerSyncStore((state) => state.setLayerOrder);
   const setLabelSizeScale = useMapLayerSyncStore((state) => state.setLabelSizeScale);
+  const setLineWidthScale = useMapLayerSyncStore((state) => state.setLineWidthScale);
   const layerFineControl = {
     opacityByLayer,
     onLayerOpacityChange: (layerId: string, multiplier: number) =>
@@ -232,6 +234,8 @@ export default function MapaMapLibre() {
     onLayerOrderChange: (orderedIds: string[]) => setLayerOrder('map2d', orderedIds),
     labelSizeScale,
     onLabelSizeScaleChange: (scale: number) => setLabelSizeScale('map2d', scale),
+    lineWidthScale,
+    onLineWidthScaleChange: (scale: number) => setLineWidthScale('map2d', scale),
   };
 
   // Local visibility state (mirrors sharedVisibleVectors, drives setLayoutProperty)

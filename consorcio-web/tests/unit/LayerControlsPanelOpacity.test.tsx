@@ -45,6 +45,8 @@ function makeFineControl(overrides?: Partial<LayerFineControl>): LayerFineContro
     onLayerOrderChange: vi.fn(),
     labelSizeScale: 1,
     onLabelSizeScaleChange: vi.fn(),
+    lineWidthScale: 1,
+    onLineWidthScaleChange: vi.fn(),
     ...overrides,
   };
 }

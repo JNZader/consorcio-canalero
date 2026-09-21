@@ -29,9 +29,11 @@ describe('mapLayerSyncStore — opacity/order defaults', () => {
     expect(state.map2d.opacityByLayer).toEqual({});
     expect(state.map2d.orderByLayer).toEqual([]);
     expect(state.map2d.labelSizeScale).toBe(1);
+    expect(state.map2d.lineWidthScale).toBe(1);
     expect(state.map3d.opacityByLayer).toEqual({});
     expect(state.map3d.orderByLayer).toEqual([]);
     expect(state.map3d.labelSizeScale).toBe(1);
+    expect(state.map3d.lineWidthScale).toBe(1);
   });
 });
 
@@ -345,6 +347,16 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     const migrated = migrateMapLayerState(missing, 7);
     expect(migrated.map2d?.labelSizeScale).toBe(1);
     expect(migrated.map3d?.labelSizeScale).toBe(1);
+  });
+
+  it('v8 → v9 seeds lineWidthScale 1 when the key is missing', () => {
+    const missing = {
+      map2d: { visibleVectors: { catastro: true }, labelSizeScale: 1 },
+      map3d: { visibleVectors: {}, labelSizeScale: 1 },
+    };
+    const migrated = migrateMapLayerState(missing, 8);
+    expect(migrated.map2d?.lineWidthScale).toBe(1);
+    expect(migrated.map3d?.lineWidthScale).toBe(1);
   });
 });
 

@@ -25,6 +25,8 @@ export interface SharedMapLayerState {
    * default. Slider in Capas; persist so inspector screenshots survive reload.
    */
   labelSizeScale: number;
+  /** Multiplier on canal/road/outline `line-width`. `1` = hardcoded default. */
+  lineWidthScale: number;
 }
 
 type MapViewKey = 'map2d' | 'map3d';
@@ -38,6 +40,7 @@ interface SharedMapLayerActions {
   setLayerOrder: (view: MapViewKey, orderedIds: string[]) => void;
   /** Clamp 0.75–2.5. `1` restores the default interpolate. */
   setLabelSizeScale: (view: MapViewKey, value: number) => void;
+  setLineWidthScale: (view: MapViewKey, value: number) => void;
   hydrateViewState: (view: MapViewKey, payload: Partial<SharedMapLayerState>) => void;
   markViewInitialized: (view: MapViewKey) => void;
 }
@@ -201,6 +204,7 @@ const DEFAULT_MAP2D_LAYER_STATE: SharedMapLayerState = {
   opacityByLayer: {},
   orderByLayer: [],
   labelSizeScale: 1,
+  lineWidthScale: 1,
 };
 
 const DEFAULT_MAP3D_LAYER_STATE: SharedMapLayerState = {
@@ -209,6 +213,7 @@ const DEFAULT_MAP3D_LAYER_STATE: SharedMapLayerState = {
   opacityByLayer: {},
   orderByLayer: [],
   labelSizeScale: 1,
+  lineWidthScale: 1,
 };
 
 interface MapLayerSyncStoreState {
@@ -420,6 +425,26 @@ export function migrateMapLayerState(
       };
     }
   }
+  if (fromVersion < 9) {
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          lineWidthScale: next.map2d.lineWidthScale ?? 1,
+        },
+      };
+    }
+    if (next.map3d) {
+      next = {
+        ...next,
+        map3d: {
+          ...next.map3d,
+          lineWidthScale: next.map3d.lineWidthScale ?? 1,
+        },
+      };
+    }
+  }
   return next;
 }
 
@@ -485,6 +510,14 @@ export const useMapLayerSyncStore = create<
           },
           initializedViews: { ...state.initializedViews, [view]: true },
         })),
+      setLineWidthScale: (view, value) =>
+        set((state) => ({
+          [view]: {
+            ...state[view],
+            lineWidthScale: Math.min(2.5, Math.max(0.75, value)),
+          },
+          initializedViews: { ...state.initializedViews, [view]: true },
+        })),
       hydrateViewState: (view, payload) =>
         set((state) => ({
           [view]: {
@@ -498,6 +531,7 @@ export const useMapLayerSyncStore = create<
               : state[view].opacityByLayer,
             orderByLayer: payload.orderByLayer ?? state[view].orderByLayer,
             labelSizeScale: payload.labelSizeScale ?? state[view].labelSizeScale,
+            lineWidthScale: payload.lineWidthScale ?? state[view].lineWidthScale,
           },
           initializedViews: { ...state.initializedViews, [view]: true },
         })),
@@ -626,7 +660,8 @@ export const useMapLayerSyncStore = create<
       //   v5 → v6: seed `sentido_camino = true` on map2d (new staff layer).
       //   v6 → v7: seed `puntos_interes = true` on map2d (staff notepad pins).
       //   v7 → v8: seed `labelSizeScale = 1` (Capas slider for road/POI text).
-      version: 8,
+      //   v8 → v9: seed `lineWidthScale = 1` (Capas slider for canal/road width).
+      version: 9,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {
@@ -642,6 +677,7 @@ export const useMapLayerSyncStore = create<
           opacityByLayer: state.map2d.opacityByLayer,
           orderByLayer: state.map2d.orderByLayer,
           labelSizeScale: state.map2d.labelSizeScale,
+          lineWidthScale: state.map2d.lineWidthScale,
         },
         map3d: {
           ...state.map3d,
@@ -654,6 +690,7 @@ export const useMapLayerSyncStore = create<
           opacityByLayer: state.map3d.opacityByLayer,
           orderByLayer: state.map3d.orderByLayer,
           labelSizeScale: state.map3d.labelSizeScale,
+          lineWidthScale: state.map3d.lineWidthScale,
         },
         initializedViews: state.initializedViews,
         canalesPropuestasPrioridad: state.canalesPropuestasPrioridad,

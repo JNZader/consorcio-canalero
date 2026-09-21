@@ -70,6 +70,8 @@ export interface LayerFineControl {
   /** Multiplier on road + POI label size. `1` = hardcoded default. */
   readonly labelSizeScale: number;
   readonly onLabelSizeScaleChange: (scale: number) => void;
+  readonly lineWidthScale: number;
+  readonly onLineWidthScaleChange: (scale: number) => void;
 }
 
 export interface HazardLayerControl {
@@ -91,6 +93,8 @@ const NOOP_FINE_CONTROL: LayerFineControl = {
   onLayerOrderChange: () => {},
   labelSizeScale: 1,
   onLabelSizeScaleChange: () => {},
+  lineWidthScale: 1,
+  onLineWidthScaleChange: () => {},
 };
 
 interface LayerItem {
@@ -620,6 +624,36 @@ export function LayerControlsPanel({
                     aria-label="Restablecer tamaño de etiquetas"
                     data-testid="map-label-size-reset"
                     onClick={() => layerFineControl.onLabelSizeScaleChange(1)}
+                  >
+                    <IconRefresh size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <Text size="xs" fw={600} c="dimmed">
+                Grosor de líneas
+              </Text>
+              <Group gap={6} wrap="nowrap" data-testid="map-line-width">
+                <Slider
+                  style={{ flex: 1 }}
+                  min={75}
+                  max={250}
+                  step={5}
+                  value={Math.round(layerFineControl.lineWidthScale * 100)}
+                  onChange={(value) => layerFineControl.onLineWidthScaleChange(value / 100)}
+                  label={(value) => `${value}%`}
+                  thumbLabel="Grosor de líneas del mapa"
+                />
+                <Text size="9px" c="dimmed" w={36} ta="right">
+                  {Math.round(layerFineControl.lineWidthScale * 100)}%
+                </Text>
+                <Tooltip label="Restablecer grosor" withArrow>
+                  <ActionIcon
+                    variant="subtle"
+                    size="sm"
+                    color="gray"
+                    aria-label="Restablecer grosor de líneas"
+                    data-testid="map-line-width-reset"
+                    onClick={() => layerFineControl.onLineWidthScaleChange(1)}
                   >
                     <IconRefresh size={12} />
                   </ActionIcon>
