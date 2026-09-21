@@ -70,6 +70,7 @@ function makeMapMock() {
   const map = {
     getLayer: vi.fn(() => ({})), // every layer "mounted"
     setPaintProperty,
+    setLayoutProperty: vi.fn(),
     moveLayer,
     getStyle: vi.fn(() => ({ layers: [] })),
     getSource: vi.fn(() => ({})),
@@ -166,6 +167,7 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
     const map = {
       getLayer: vi.fn(() => (mounted ? {} : undefined)),
       setPaintProperty,
+      setLayoutProperty: vi.fn(),
       moveLayer: vi.fn(),
       getStyle: vi.fn(() => ({ layers: [] })),
       getSource: vi.fn(() => ({})),

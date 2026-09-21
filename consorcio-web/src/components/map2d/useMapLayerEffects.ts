@@ -9,6 +9,7 @@ import { ALL_ETAPAS } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
+import { applyMapLabelSize } from './mapLabelSize';
 import { buildHazardBasinFilter, type HazardBasinMembership } from './hazardBasinFilter';
 import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
 import {
@@ -464,6 +465,7 @@ export function useMapLayerEffects({
   // which case the apply helpers are guaranteed no-ops so the default
   // rendering stays byte-identical to before this feature existed.
   const opacityByLayer = useMapLayerSyncStore((s) => s.map2d.opacityByLayer);
+  const labelSizeScale = useMapLayerSyncStore((s) => s.map2d.labelSizeScale);
   const orderByLayer = useMapLayerSyncStore((s) => s.map2d.orderByLayer);
 
   // Async-mount / re-hoist re-run signal (FF-A3). The opacity/order effects
@@ -513,6 +515,13 @@ export function useMapLayerEffects({
     void layerMountSignal;
     applyLayerOpacity(map, opacityByLayer);
   }, [mapReady, mapRef, opacityByLayer, layerMountSignal]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    void layerMountSignal;
+    applyMapLabelSize(map, labelSizeScale);
+  }, [mapReady, mapRef, labelSizeScale, layerMountSignal]);
 
   // Order: when `orderByLayer` is non-empty, hoist each UI id's ml-layer group
   // to enforce the requested bottom → top order. Empty → no-op (today's

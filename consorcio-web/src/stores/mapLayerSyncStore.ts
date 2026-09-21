@@ -20,6 +20,11 @@ export interface SharedMapLayerState {
    * (`applyLayerOrder`) is a no-op on an empty list. Default `[]`.
    */
   orderByLayer: string[];
+  /**
+   * Multiplier on road + POI `text-size` interpolates. `1` is the hardcoded
+   * default. Slider in Capas; persist so inspector screenshots survive reload.
+   */
+  labelSizeScale: number;
 }
 
 type MapViewKey = 'map2d' | 'map3d';
@@ -31,6 +36,8 @@ interface SharedMapLayerActions {
   setLayerOpacity: (view: MapViewKey, layerId: string, value: number) => void;
   /** Replace the per-layer render order (bottom → top UI ids). */
   setLayerOrder: (view: MapViewKey, orderedIds: string[]) => void;
+  /** Clamp 0.75–2.5. `1` restores the default interpolate. */
+  setLabelSizeScale: (view: MapViewKey, value: number) => void;
   hydrateViewState: (view: MapViewKey, payload: Partial<SharedMapLayerState>) => void;
   markViewInitialized: (view: MapViewKey) => void;
 }
@@ -193,6 +200,7 @@ const DEFAULT_MAP2D_LAYER_STATE: SharedMapLayerState = {
   visibleVectors: defaultVisibleVectors,
   opacityByLayer: {},
   orderByLayer: [],
+  labelSizeScale: 1,
 };
 
 const DEFAULT_MAP3D_LAYER_STATE: SharedMapLayerState = {
@@ -200,6 +208,7 @@ const DEFAULT_MAP3D_LAYER_STATE: SharedMapLayerState = {
   visibleVectors: defaultMap3dVisibleVectors,
   opacityByLayer: {},
   orderByLayer: [],
+  labelSizeScale: 1,
 };
 
 interface MapLayerSyncStoreState {
@@ -391,6 +400,26 @@ export function migrateMapLayerState(
       };
     }
   }
+  if (fromVersion < 8) {
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          labelSizeScale: next.map2d.labelSizeScale ?? 1,
+        },
+      };
+    }
+    if (next.map3d) {
+      next = {
+        ...next,
+        map3d: {
+          ...next.map3d,
+          labelSizeScale: next.map3d.labelSizeScale ?? 1,
+        },
+      };
+    }
+  }
   return next;
 }
 
@@ -448,6 +477,14 @@ export const useMapLayerSyncStore = create<
           },
           initializedViews: { ...state.initializedViews, [view]: true },
         })),
+      setLabelSizeScale: (view, value) =>
+        set((state) => ({
+          [view]: {
+            ...state[view],
+            labelSizeScale: Math.min(2.5, Math.max(0.75, value)),
+          },
+          initializedViews: { ...state.initializedViews, [view]: true },
+        })),
       hydrateViewState: (view, payload) =>
         set((state) => ({
           [view]: {
@@ -460,6 +497,7 @@ export const useMapLayerSyncStore = create<
               ? { ...state[view].opacityByLayer, ...payload.opacityByLayer }
               : state[view].opacityByLayer,
             orderByLayer: payload.orderByLayer ?? state[view].orderByLayer,
+            labelSizeScale: payload.labelSizeScale ?? state[view].labelSizeScale,
           },
           initializedViews: { ...state.initializedViews, [view]: true },
         })),
@@ -587,7 +625,8 @@ export const useMapLayerSyncStore = create<
       //   map3d is untouched — the 3D viewer has no ficha.
       //   v5 → v6: seed `sentido_camino = true` on map2d (new staff layer).
       //   v6 → v7: seed `puntos_interes = true` on map2d (staff notepad pins).
-      version: 7,
+      //   v7 → v8: seed `labelSizeScale = 1` (Capas slider for road/POI text).
+      version: 8,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {
@@ -602,6 +641,7 @@ export const useMapLayerSyncStore = create<
           // Per-layer opacity/order overrides (Fase 3) — persisted verbatim.
           opacityByLayer: state.map2d.opacityByLayer,
           orderByLayer: state.map2d.orderByLayer,
+          labelSizeScale: state.map2d.labelSizeScale,
         },
         map3d: {
           ...state.map3d,
@@ -613,6 +653,7 @@ export const useMapLayerSyncStore = create<
           },
           opacityByLayer: state.map3d.opacityByLayer,
           orderByLayer: state.map3d.orderByLayer,
+          labelSizeScale: state.map3d.labelSizeScale,
         },
         initializedViews: state.initializedViews,
         canalesPropuestasPrioridad: state.canalesPropuestasPrioridad,
