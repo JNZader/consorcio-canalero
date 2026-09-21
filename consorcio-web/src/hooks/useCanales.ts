@@ -17,6 +17,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import { API_PREFIX, API_URL } from '../lib/api/core';
 import { logger } from '../lib/logger';
 import type { CanalesData, CanalesFeatureCollection, IndexFile } from '../types/canales';
 
@@ -68,6 +69,43 @@ async function loadAllCanales(): Promise<LoadResult> {
   return { data, anyFailed };
 }
 
+async function loadPublicCatalog(): Promise<LoadResult | null> {
+  try {
+    const res = await fetch(`${API_URL}${API_PREFIX}/geo/canales/publico`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      relevados?: CanalesFeatureCollection;
+      propuestas?: CanalesFeatureCollection;
+    };
+    if (body.relevados?.type !== 'FeatureCollection') return null;
+    const index = await fetchSlot<IndexFile>(CANALES_PATHS.index).catch(() => null);
+    const publishedIds = new Set(
+      [...(body.relevados.features ?? []), ...(body.propuestas?.features ?? [])].map(
+        (feature) => String(feature.properties?.id ?? feature.id ?? '')
+      )
+    );
+    const filteredIndex =
+      index == null
+        ? null
+        : {
+            ...index,
+            relevados: index.relevados.filter((row) => publishedIds.has(row.id)),
+            propuestas: index.propuestas.filter((row) => publishedIds.has(row.id)),
+          };
+    return {
+      data: {
+        relevados: body.relevados,
+        propuestas: body.propuestas ?? { type: 'FeatureCollection', features: [] },
+        index: filteredIndex,
+      },
+      anyFailed: false,
+    };
+  } catch (reason) {
+    logger.warn('[canales:fetch] public catalog unavailable, falling back to static files', reason);
+    return null;
+  }
+}
+
 function assignSlot(data: CanalesData, key: SlotKey, value: unknown): void {
   switch (key) {
     case 'relevados':
@@ -103,10 +141,16 @@ export interface UseCanalesResult {
   reload: () => void;
 }
 
-export function useCanales(): UseCanalesResult {
+export function useCanales(audience: 'public' | 'interno' = 'public'): UseCanalesResult {
   const query = useQuery({
-    queryKey: ['public', 'canales'] as const,
-    queryFn: loadAllCanales,
+    queryKey: ['public', 'canales', audience] as const,
+    queryFn: async () => {
+      if (audience === 'public') {
+        const catalog = await loadPublicCatalog();
+        if (catalog) return catalog;
+      }
+      return loadAllCanales();
+    },
     staleTime: Number.POSITIVE_INFINITY,
   });
 

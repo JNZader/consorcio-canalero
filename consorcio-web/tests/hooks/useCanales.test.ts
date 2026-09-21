@@ -82,7 +82,7 @@ describe('useCanales · happy path', () => {
     const { result } = renderHook(() => useCanales(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch.mock.calls.length).toBeGreaterThanOrEqual(3);
     const calledUrls = mockFetch.mock.calls.map((c) => c[0]);
     for (const expected of Object.values(CANALES_PATHS)) {
       expect(calledUrls).toContain(expected);

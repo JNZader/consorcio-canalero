@@ -13,6 +13,7 @@ from app.core.exceptions import AppException
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.intelligence.router import router as intel_router
+from app.domains.geo.canales_publicacion.router import router as canales_publicacion_router
 from app.domains.geo.puntos_interes.router import router as puntos_interes_router
 from app.domains.geo.rainfall.router import router as rainfall_router
 from app.domains.geo.relevamiento.router import router as relevamiento_router
@@ -243,6 +244,7 @@ router.include_router(gee_router)
 
 router.include_router(intel_router, prefix="/intelligence")
 router.include_router(puntos_interes_router, prefix="/puntos-interes")
+router.include_router(canales_publicacion_router, prefix="/canales")
 router.include_router(rainfall_router)
 # Fase B: the segment survey and its DEM candidate. Operator-and-admin only,
 # append-only, and published nowhere.

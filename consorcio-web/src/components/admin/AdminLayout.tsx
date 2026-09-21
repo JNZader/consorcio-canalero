@@ -41,6 +41,7 @@ const NAV_SECTIONS = [
       { label: 'Dashboard', to: '/admin', icon: IconChartBar },
       { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
       { label: 'DEM Pipeline', to: '/admin/dem-pipeline', icon: IconMountain },
+      { label: 'Publicación de canales', to: '/admin/canales', icon: IconMap },
     ],
   },
   {

@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
+import { useAuth } from '../hooks/useAuth';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
@@ -149,6 +150,7 @@ function toggleHazardRiskClass(
 export default function MapaMapLibre() {
   // ── Config & auth ─────────────────────────────────────────────────────────
   const config = useConfigStore((state) => state.config);
+  const { isStaff } = useAuth();
 
   const mapCenter = config?.map.center ?? {
     lat: MAP_CENTER[0],
@@ -327,7 +329,7 @@ export default function MapaMapLibre() {
     index: canalesIndex,
     error: canalesError,
     reload: reloadCanales,
-  } = useCanales();
+  } = useCanales(isStaff ? 'interno' : 'public');
   const canalesData = {
     relevados: canalesRelevados,
     propuestas: canalesPropuestas,

@@ -60,6 +60,7 @@ const PadronPanel = lazy(() => import('./components/admin/management/PadronPanel
 const FinanzasPanel = lazy(() => import('./components/admin/management/FinanzasPanel'));
 const DemPipelinePanel = lazy(() => import('./components/admin/DemPipelinePanel'));
 const ConocimientoPanel = lazy(() => import('./components/admin/ConocimientoPanel'));
+const CanalesPublicacionPanel = lazy(() => import('./components/admin/CanalesPublicacionPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -683,6 +684,12 @@ const adminConocimientoRoute = createRoute({
   component: () => <ConocimientoPanel />,
 });
 
+const adminCanalesRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/canales',
+  component: () => <CanalesPublicacionPanel />,
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -700,6 +707,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminPadronRoute,
   adminFinanzasRoute,
   adminConocimientoRoute,
+  adminCanalesRoute,
 ]);
 
 export const routeTree = rootRouteWithComponent.addChildren([
