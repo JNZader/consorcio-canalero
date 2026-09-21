@@ -28,8 +28,10 @@ describe('mapLayerSyncStore — opacity/order defaults', () => {
     const state = useMapLayerSyncStore.getState();
     expect(state.map2d.opacityByLayer).toEqual({});
     expect(state.map2d.orderByLayer).toEqual([]);
+    expect(state.map2d.labelSizeScale).toBe(1);
     expect(state.map3d.opacityByLayer).toEqual({});
     expect(state.map3d.orderByLayer).toEqual([]);
+    expect(state.map3d.labelSizeScale).toBe(1);
   });
 });
 
@@ -323,5 +325,36 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     };
     const migrated = migrateMapLayerState(missing, 6);
     expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(true);
+  });
+
+  it('v7 → v8 seeds labelSizeScale 1 without flipping a stored scale', () => {
+    const stored = {
+      map2d: { visibleVectors: { catastro: true }, labelSizeScale: 1.5 },
+      map3d: { visibleVectors: {}, labelSizeScale: 2 },
+    };
+    const migrated = migrateMapLayerState(stored, 7);
+    expect(migrated.map2d?.labelSizeScale).toBe(1.5);
+    expect(migrated.map3d?.labelSizeScale).toBe(2);
+  });
+
+  it('v7 → v8 seeds labelSizeScale 1 when the key is missing', () => {
+    const missing = {
+      map2d: { visibleVectors: { catastro: true } },
+      map3d: { visibleVectors: {} },
+    };
+    const migrated = migrateMapLayerState(missing, 7);
+    expect(migrated.map2d?.labelSizeScale).toBe(1);
+    expect(migrated.map3d?.labelSizeScale).toBe(1);
+  });
+});
+
+describe('mapLayerSyncStore — setLabelSizeScale', () => {
+  it('clamps to 0.75–2.5 on the targeted view', () => {
+    useMapLayerSyncStore.getState().setLabelSizeScale('map2d', 9);
+    const state = useMapLayerSyncStore.getState();
+    expect(state.map2d.labelSizeScale).toBe(2.5);
+    expect(state.map3d.labelSizeScale).toBe(1);
+    useMapLayerSyncStore.getState().setLabelSizeScale('map2d', 0.1);
+    expect(useMapLayerSyncStore.getState().map2d.labelSizeScale).toBe(0.75);
   });
 });

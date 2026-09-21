@@ -220,14 +220,18 @@ export default function MapaMapLibre() {
   // `layerFineControl` object threaded to MapUiPanels + LayerControlsPanel.
   const opacityByLayer = useMapLayerSyncStore((state) => state.map2d.opacityByLayer);
   const orderByLayer = useMapLayerSyncStore((state) => state.map2d.orderByLayer);
+  const labelSizeScale = useMapLayerSyncStore((state) => state.map2d.labelSizeScale);
   const setLayerOpacity = useMapLayerSyncStore((state) => state.setLayerOpacity);
   const setLayerOrder = useMapLayerSyncStore((state) => state.setLayerOrder);
+  const setLabelSizeScale = useMapLayerSyncStore((state) => state.setLabelSizeScale);
   const layerFineControl = {
     opacityByLayer,
     onLayerOpacityChange: (layerId: string, multiplier: number) =>
       setLayerOpacity('map2d', layerId, multiplier),
     orderByLayer,
     onLayerOrderChange: (orderedIds: string[]) => setLayerOrder('map2d', orderedIds),
+    labelSizeScale,
+    onLabelSizeScaleChange: (scale: number) => setLabelSizeScale('map2d', scale),
   };
 
   // Local visibility state (mirrors sharedVisibleVectors, drives setLayoutProperty)

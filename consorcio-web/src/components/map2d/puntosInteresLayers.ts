@@ -6,7 +6,11 @@
  * halo because the default basemap is satellite imagery.
  */
 
-import type { CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
+import type {
+  CircleLayerSpecification,
+  ExpressionSpecification,
+  SymbolLayerSpecification,
+} from 'maplibre-gl';
 
 import { PUNTO_INTERES_TIPOS } from '../../lib/api/puntosInteres';
 import { SOURCE_IDS } from './map2dConfig';
@@ -15,6 +19,16 @@ export const PUNTOS_INTERES_SOURCE_ID = SOURCE_IDS.PUNTOS_INTERES;
 export const PUNTOS_INTERES_LAYER_ID = 'puntos_interes-circle' as const;
 export const PUNTOS_INTERES_HIT_LAYER_ID = 'puntos_interes-hit' as const;
 export const PUNTOS_INTERES_LABEL_LAYER_ID = 'puntos_interes-label' as const;
+
+export const PUNTO_INTERES_LABEL_TEXT_SIZE: ExpressionSpecification = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  10,
+  14,
+  16,
+  18,
+];
 
 const PUNTO_INTERES_LAYER_IDS = new Set<string>([
   PUNTOS_INTERES_LAYER_ID,
@@ -74,7 +88,7 @@ export function buildPuntosInteresLabelLayer(
     layout: {
       'text-field': ['get', 'titulo'],
       'text-font': ['Noto Sans Regular'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 18],
+      'text-size': PUNTO_INTERES_LABEL_TEXT_SIZE,
       'text-anchor': 'bottom',
       'text-offset': [0, -1.15],
       'text-optional': true,

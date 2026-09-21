@@ -5,6 +5,7 @@ import {
   ROAD_HIT_LINE_WIDTH,
   ROAD_LABEL_MIN_ZOOM,
   ROAD_LABEL_TEXT_FIELD,
+  ROAD_LABEL_TEXT_SIZE,
   buildRoadHitLayer,
   buildRoadLabelLayer,
 } from '../../src/components/map2d/roadLabelLayer';
@@ -27,7 +28,7 @@ describe('buildRoadLabelLayer', () => {
     expect(layer.layout?.['symbol-placement']).toBe('line');
     expect(layer.paint?.['text-color']).toBe('#ffffff');
     expect(layer.paint?.['text-halo-color']).toBe('rgba(0,0,0,0.75)');
-    expect(layer.layout?.['text-size']).toEqual(['interpolate', ['linear'], ['zoom'], 11, 14, 14, 18]);
+    expect(layer.layout?.['text-size']).toEqual(ROAD_LABEL_TEXT_SIZE);
     expect(layer.paint?.['text-halo-width']).toBe(1.6);
   });
 

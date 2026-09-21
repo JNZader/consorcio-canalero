@@ -67,6 +67,9 @@ export interface LayerFineControl {
   readonly orderByLayer: readonly string[];
   /** Write a FULL bottom→top order (empty array = reset to default). */
   readonly onLayerOrderChange: (orderedIds: string[]) => void;
+  /** Multiplier on road + POI label size. `1` = hardcoded default. */
+  readonly labelSizeScale: number;
+  readonly onLabelSizeScaleChange: (scale: number) => void;
 }
 
 export interface HazardLayerControl {
@@ -86,6 +89,8 @@ const NOOP_FINE_CONTROL: LayerFineControl = {
   onLayerOpacityChange: () => {},
   orderByLayer: [],
   onLayerOrderChange: () => {},
+  labelSizeScale: 1,
+  onLabelSizeScaleChange: () => {},
 };
 
 interface LayerItem {
@@ -590,6 +595,36 @@ export function LayerControlsPanel({
                   <Divider my={4} />
                 </>
               )}
+              <Text size="xs" fw={600} c="dimmed">
+                Tamaño de etiquetas
+              </Text>
+              <Group gap={6} wrap="nowrap" data-testid="map-label-size">
+                <Slider
+                  style={{ flex: 1 }}
+                  min={75}
+                  max={250}
+                  step={5}
+                  value={Math.round(layerFineControl.labelSizeScale * 100)}
+                  onChange={(value) => layerFineControl.onLabelSizeScaleChange(value / 100)}
+                  label={(value) => `${value}%`}
+                  thumbLabel="Tamaño de etiquetas del mapa"
+                />
+                <Text size="9px" c="dimmed" w={36} ta="right">
+                  {Math.round(layerFineControl.labelSizeScale * 100)}%
+                </Text>
+                <Tooltip label="Restablecer tamaño" withArrow>
+                  <ActionIcon
+                    variant="subtle"
+                    size="sm"
+                    color="gray"
+                    aria-label="Restablecer tamaño de etiquetas"
+                    data-testid="map-label-size-reset"
+                    onClick={() => layerFineControl.onLabelSizeScaleChange(1)}
+                  >
+                    <IconRefresh size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
               <Checkbox
                 label="IGN Altimetría"
                 checked={showIGNOverlay}
