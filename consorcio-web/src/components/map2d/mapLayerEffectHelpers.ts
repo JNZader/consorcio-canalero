@@ -11,6 +11,7 @@ import {
   buildCanalesRelevadosFilter,
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
+import { buildAlongLineLabelLayer, CANAL_LABEL_TEXT_FIELD } from './alongLineLabel';
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
@@ -88,8 +89,21 @@ export function syncWaterwayLayers(
         },
       });
     }
+    const labelId = `${waterwayFile.id}-label`;
+    const waterwayName =
+      waterwaysDefs.find((def) => def.id === waterwayFile.layer)?.nombre ?? waterwayFile.layer;
+    if (!map.getLayer(labelId)) {
+      map.addLayer(
+        buildAlongLineLabelLayer({
+          id: labelId,
+          source: waterwayFile.id,
+          textField: waterwayName,
+        })
+      );
+    }
 
     setLayerVisibility(map, lineLayerId, isVisible);
+    setLayerVisibility(map, labelId, isVisible);
   }
 }
 
@@ -665,7 +679,12 @@ export interface SyncCanalesLayersParams {
  * line features, fills "win" on pixel-overlap in MapLibre z-order.
  */
 function raiseCanalesStack(map: maplibregl.Map) {
-  const ids = [`${SOURCE_IDS.CANALES_RELEVADOS}-line`, `${SOURCE_IDS.CANALES_PROPUESTOS}-line`];
+  const ids = [
+    `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+    `${SOURCE_IDS.CANALES_RELEVADOS}-label`,
+    `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+    `${SOURCE_IDS.CANALES_PROPUESTOS}-label`,
+  ];
   for (const id of ids) {
     if (map.getLayer(id)) {
       try {
@@ -723,14 +742,40 @@ export function syncCanalesLayers(map: maplibregl.Map, params: SyncCanalesLayers
       paint: buildCanalesPropuestasPaint(),
     });
   }
+  const relevadosLabelId = `${relevadosSrcId}-label`;
+  const propuestosLabelId = `${propuestosSrcId}-label`;
+  if (!map.getLayer(relevadosLabelId)) {
+    map.addLayer(
+      buildAlongLineLabelLayer({
+        id: relevadosLabelId,
+        source: relevadosSrcId,
+        textField: CANAL_LABEL_TEXT_FIELD,
+      })
+    );
+  }
+  if (!map.getLayer(propuestosLabelId)) {
+    map.addLayer(
+      buildAlongLineLabelLayer({
+        id: propuestosLabelId,
+        source: propuestosSrcId,
+        textField: CANAL_LABEL_TEXT_FIELD,
+      })
+    );
+  }
 
   // ── Filters (hot path — called on every render) ──
-  map.setFilter(relevadosLayerId, buildCanalesRelevadosFilter(visibleRelevadoIds));
-  map.setFilter(propuestosLayerId, buildCanalesPropuestasFilter(visiblePropuestaIds, activeEtapas));
+  const relevadosFilter = buildCanalesRelevadosFilter(visibleRelevadoIds);
+  const propuestosFilter = buildCanalesPropuestasFilter(visiblePropuestaIds, activeEtapas);
+  map.setFilter(relevadosLayerId, relevadosFilter);
+  map.setFilter(propuestosLayerId, propuestosFilter);
+  map.setFilter(relevadosLabelId, relevadosFilter);
+  map.setFilter(propuestosLabelId, propuestosFilter);
 
   // ── Visibility (master toggles) ──
   setLayerVisibility(map, relevadosLayerId, relevadosVisible);
   setLayerVisibility(map, propuestosLayerId, propuestasVisible);
+  setLayerVisibility(map, relevadosLabelId, relevadosVisible);
+  setLayerVisibility(map, propuestosLabelId, propuestasVisible);
 
   // ── Z-order ──
   raiseCanalesStack(map);

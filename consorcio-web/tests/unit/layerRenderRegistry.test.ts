@@ -100,13 +100,16 @@ describe('layerRenderRegistry — coverage', () => {
     }
   });
 
-  it('waterways explodes into 5 per-file line layers', () => {
+  it('waterways explodes into 5 line layers plus along-line labels', () => {
     const waterways = LAYER_RENDER_REGISTRY.waterways.mlLayers;
-    expect(waterways).toHaveLength(5);
-    for (const ml of waterways) {
+    expect(waterways).toHaveLength(10);
+    const lines = waterways.filter((ml) => ml.id.endsWith('-line'));
+    const labels = waterways.filter((ml) => ml.id.endsWith('-label'));
+    expect(lines).toHaveLength(5);
+    expect(labels).toHaveLength(5);
+    for (const ml of lines) {
       expect(ml.opacityProp).toBe(OPACITY_PROP.line);
       expect(ml.defaultOpacity).toBe(0.9);
-      expect(ml.id.endsWith('-line')).toBe(true);
     }
   });
 
@@ -166,12 +169,15 @@ describe('applyLayerOpacity', () => {
     expect(setPaintProperty).toHaveBeenCalledTimes(2);
   });
 
-  it('applies to ALL 5 waterway ml layers when waterways is overridden', () => {
+  it('applies to ALL waterway line and label ml layers when waterways is overridden', () => {
     const { map, setPaintProperty } = makeMap();
     applyLayerOpacity(map, { waterways: 0.5 });
-    expect(setPaintProperty).toHaveBeenCalledTimes(5);
-    for (const call of setPaintProperty.mock.calls) {
-      expect(call[1]).toBe('line-opacity');
+    expect(setPaintProperty).toHaveBeenCalledTimes(10);
+    const lineCalls = setPaintProperty.mock.calls.filter((call) => call[1] === 'line-opacity');
+    const textCalls = setPaintProperty.mock.calls.filter((call) => call[1] === 'text-opacity');
+    expect(lineCalls).toHaveLength(5);
+    expect(textCalls).toHaveLength(5);
+    for (const call of lineCalls) {
       expect(call[2]).toBeCloseTo(0.45);
     }
   });
@@ -215,8 +221,8 @@ describe('applyLayerOrder', () => {
   it('hoists each UI id ml-layer group in list order', () => {
     const { map, moveLayer } = makeMap();
     applyLayerOrder(map, ['waterways', 'roads']);
-    // waterways = 5 line layers, roads = line + hit + label → 8 moveLayer calls
-    expect(moveLayer).toHaveBeenCalledTimes(8);
+    // waterways = 5 lines + 5 labels, roads = line + hit + label → 13
+    expect(moveLayer).toHaveBeenCalledTimes(13);
     // roads (last in list) is hoisted last → label ends on top of the group
     expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
   });

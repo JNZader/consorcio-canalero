@@ -176,11 +176,18 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
  * never drift. Each waterway line layer paints `line-opacity: 0.9`
  * (`mapLayerEffectHelpers.ts::syncWaterwayLayers`).
  */
-const WATERWAY_ML_LAYERS: readonly MlLayerRender[] = buildWaterwayLayerConfigs([]).map((cfg) => ({
-  id: `${cfg.id}-line`,
-  opacityProp: OPACITY_PROP.line,
-  defaultOpacity: 0.9,
-}));
+const WATERWAY_ML_LAYERS: readonly MlLayerRender[] = buildWaterwayLayerConfigs([]).flatMap((cfg) => [
+  {
+    id: `${cfg.id}-line`,
+    opacityProp: OPACITY_PROP.line,
+    defaultOpacity: 0.9,
+  },
+  {
+    id: `${cfg.id}-label`,
+    opacityProp: OPACITY_PROP.text,
+    defaultOpacity: 0.95,
+  },
+]);
 
 /**
  * UI id → ml-layer render group.
@@ -343,6 +350,11 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
         opacityProp: OPACITY_PROP.line,
         defaultOpacity: 0.95,
       },
+      {
+        id: `${SOURCE_IDS.CANALES_RELEVADOS}-label`,
+        opacityProp: OPACITY_PROP.text,
+        defaultOpacity: 0.95,
+      },
     ],
   },
   canales_propuestos: {
@@ -350,6 +362,11 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
       {
         id: `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
         opacityProp: OPACITY_PROP.line,
+        defaultOpacity: 0.95,
+      },
+      {
+        id: `${SOURCE_IDS.CANALES_PROPUESTOS}-label`,
+        opacityProp: OPACITY_PROP.text,
         defaultOpacity: 0.95,
       },
     ],
