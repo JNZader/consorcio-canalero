@@ -16,19 +16,26 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-at-least-32-characters-long
 
 PUBLIC = "/api/v2/geo/canales/publico"
 STAFF = "/api/v2/geo/canales/publicacion"
+APRHI = "/api/v2/geo/canales/aprhi-referencia"
 
 
 class _FakeCatalog:
     def list_staff(self, _db):
         from app.domains.geo.canales_publicacion.schemas import CanalPublicacionList
 
-        return CanalPublicacionList(items=[])
+        return CanalPublicacionList(
+            items=[],
+            geojson={"type": "FeatureCollection", "features": []},
+        )
 
     def public_collections(self, _db):
         return {
             "relevados": {"type": "FeatureCollection", "features": []},
             "propuestas": {"type": "FeatureCollection", "features": []},
         }
+
+    def aprhi_referencia(self, _db):
+        return {"type": "FeatureCollection", "features": []}
 
 
 @pytest.fixture
@@ -88,4 +95,27 @@ class TestStaffCatalogAuth:
         _as_role(app, role)
         response = client.get(STAFF)
         assert response.status_code == 200
-        assert "items" in response.json()
+        body = response.json()
+        assert "items" in body
+        assert body["geojson"]["type"] == "FeatureCollection"
+
+
+class TestAprhiReferenciaAuth:
+    def test_unauthenticated_aprhi_overlay_is_401(self, app_client):
+        _app, client = app_client
+        assert client.get(APRHI).status_code == 401
+
+    def test_citizen_aprhi_overlay_is_403(self, app_client):
+        app, client = app_client
+        _as_role(app, "ciudadano")
+        response = client.get(APRHI)
+        assert response.status_code == 403
+        assert "FeatureCollection" not in response.text
+
+    @pytest.mark.parametrize("role", ["operador", "admin"])
+    def test_operator_can_read_aprhi_overlay(self, app_client, role: str):
+        app, client = app_client
+        _as_role(app, role)
+        response = client.get(APRHI)
+        assert response.status_code == 200
+        assert response.json()["type"] == "FeatureCollection"

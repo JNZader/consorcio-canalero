@@ -26,3 +26,4 @@ class CanalPublicacionPatch(BaseModel):
 
 class CanalPublicacionList(BaseModel):
     items: list[CanalPublicacionRow]
+    geojson: dict
