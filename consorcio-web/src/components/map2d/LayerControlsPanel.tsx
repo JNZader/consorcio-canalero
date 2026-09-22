@@ -994,7 +994,7 @@ export function LayerControlsPanel({
                   hiddenIds={
                     layerItems.some((item) => item.id === 'road_flow')
                       ? undefined
-                      : ['road_flow', 'sentido_camino', 'puntos_interes']
+                      : ['road_flow', 'sentido_camino', 'puntos_interes', 'red_vial_oficial']
                   }
                 />
               </CollapsibleSection>

@@ -109,6 +109,9 @@ export const SOURCE_IDS = {
   // Staff-only unpublished pins. GeoJSON source, not Martin. Source id ==
   // the visibility-toggle id (same contract as ESCUELAS / ROAD_FLOW).
   PUNTOS_INTERES: 'puntos_interes',
+  // Staff-only IDECOR official-road overlay. Static GeoJSON clip, NOT merged
+  // into `red_vial` / `caminos.geojson`. Source id == visibility-toggle id.
+  RED_VIAL_OFICIAL: 'red_vial_oficial',
 } as const;
 
 /**

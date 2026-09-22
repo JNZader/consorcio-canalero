@@ -128,6 +128,7 @@ describe('migrateMapLayerState — v3 → v4', () => {
       escuelas: false,
       sentido_camino: true,
       puntos_interes: true,
+      red_vial_oficial: true,
     });
     expect(migrated.map3d?.visibleVectors).toEqual({
       roads: true,
@@ -253,6 +254,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       catastro: true,
       sentido_camino: true,
       puntos_interes: true,
+      red_vial_oficial: true,
     });
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
@@ -306,6 +308,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
     expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(true);
     expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
     expect(migrated.map3d?.visibleVectors?.catastro).toBeUndefined();
   });
 
@@ -357,6 +360,26 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     const migrated = migrateMapLayerState(missing, 8);
     expect(migrated.map2d?.lineWidthScale).toBe(1);
     expect(migrated.map3d?.lineWidthScale).toBe(1);
+  });
+
+  it('v9 → v10 seeds red_vial_oficial on without flipping an explicit false', () => {
+    const alreadyOff = {
+      map2d: {
+        visibleVectors: { catastro: true, red_vial_oficial: false },
+      },
+    };
+    const migrated = migrateMapLayerState(alreadyOff, 9);
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(false);
+  });
+
+  it('v9 → v10 seeds red_vial_oficial on when the key is missing', () => {
+    const missing = {
+      map2d: {
+        visibleVectors: { catastro: true },
+      },
+    };
+    const migrated = migrateMapLayerState(missing, 9);
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
   });
 });
 
