@@ -166,7 +166,7 @@ describe('map2dDerived', () => {
     expect(items.some((item) => item.id === 'red_vial_oficial')).toBe(false);
   });
 
-  it('offers Catálogo IDECOR (oficial) to staff next to Red Vial', () => {
+  it('offers Catálogo IDECOR (no en Red Vial) to staff next to Red Vial', () => {
     const items = buildVectorLayerItems({
       basins: null,
       approvedZonesCollection: null,
@@ -177,7 +177,7 @@ describe('map2dDerived', () => {
     const overlay = items.find((item) => item.id === 'red_vial_oficial');
     expect(overlay).toEqual({
       id: 'red_vial_oficial',
-      label: 'Catálogo IDECOR (oficial)',
+      label: 'Catálogo IDECOR (no en Red Vial)',
       category: LAYER_CATEGORY.TERRITORIO,
     });
   });
