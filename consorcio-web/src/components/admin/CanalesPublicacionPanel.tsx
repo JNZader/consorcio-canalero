@@ -13,13 +13,16 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import type { FeatureCollection, LineString } from 'geojson';
 import { useEffect, useState } from 'react';
 
 import {
-  fetchAprhiReferencia,
+  CANAL_ORIGEN,
   listCanalPublicacion,
   patchCanalPublicacion,
+  patchCanalPublicacionAprhi,
+  type CanalLineCollection,
+  type CanalOrigen,
+  type CanalPublicacionPatch,
   type CanalPublicacionRow,
 } from '../../lib/api/canalesPublicacion';
 import { LoadingState } from '../ui/LoadingState';
@@ -34,14 +37,20 @@ function formatKm(meters: number | null): string {
   return `${(meters / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 })} km`;
 }
 
+function rowOrigen(row: CanalPublicacionRow): CanalOrigen {
+  return row.origen === CANAL_ORIGEN.APRHI ? CANAL_ORIGEN.APRHI : CANAL_ORIGEN.KMZ;
+}
+
 /**
- * Staff map: which curated canals the public map shows, and under which name.
- * APRHI is a read-only overlay; it is not the publication catalog.
+ * Staff map: KMZ catalog plus opt-in APRHI existentes.
+ * APRHI is the base inventory to improve, not the source of truth.
+ * Public stays KMZ until a staff switch turns a canal on.
  */
 export default function CanalesPublicacionPanel() {
   const [items, setItems] = useState<CanalPublicacionRow[]>([]);
-  const [geojson, setGeojson] = useState<FeatureCollection<LineString>>(EMPTY_LINE_COLLECTION);
-  const [aprhi, setAprhi] = useState<FeatureCollection<LineString> | null>(null);
+  const [geojson, setGeojson] = useState<CanalLineCollection>(EMPTY_LINE_COLLECTION);
+  const [aprhiItems, setAprhiItems] = useState<CanalPublicacionRow[]>([]);
+  const [aprhi, setAprhi] = useState<CanalLineCollection>(EMPTY_LINE_COLLECTION);
   const [showAprhi, setShowAprhi] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -50,21 +59,13 @@ export default function CanalesPublicacionPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      listCanalPublicacion(),
-      fetchAprhiReferencia().catch(() => {
-        notifications.show({
-          color: 'yellow',
-          message: 'No se pudo cargar la red APRHI de referencia',
-        });
-        return EMPTY_LINE_COLLECTION;
-      }),
-    ])
-      .then(([catalog, aprhiCollection]) => {
+    listCanalPublicacion()
+      .then((catalog) => {
         if (cancelled) return;
         setItems(catalog.items);
         setGeojson(catalog.geojson ?? EMPTY_LINE_COLLECTION);
-        setAprhi(aprhiCollection);
+        setAprhiItems(catalog.aprhi_items ?? []);
+        setAprhi(catalog.geojson_aprhi ?? EMPTY_LINE_COLLECTION);
       })
       .catch(() => {
         notifications.show({ color: 'red', message: 'No se pudo cargar el catálogo de canales' });
@@ -77,17 +78,30 @@ export default function CanalesPublicacionPanel() {
     };
   }, []);
 
-  const save = async (id: string, payload: { publicado?: boolean; nombre_publico?: string }) => {
-    setSavingId(id);
+  const save = async (row: CanalPublicacionRow, payload: CanalPublicacionPatch) => {
+    setSavingId(row.id);
+    const isAprhi = rowOrigen(row) === CANAL_ORIGEN.APRHI;
     try {
-      const row = await patchCanalPublicacion(id, payload);
-      setItems((current) => current.map((item) => (item.id === id ? row : item)));
-      setGeojson((current) =>
-        patchConsorcioFeature(current, id, {
-          publicado: row.publicado,
-          nombre_publico: row.nombre_publico,
-        })
-      );
+      const patched = isAprhi
+        ? await patchCanalPublicacionAprhi(row.id, payload)
+        : await patchCanalPublicacion(row.id, payload);
+      if (isAprhi) {
+        setAprhiItems((current) => current.map((item) => (item.id === row.id ? patched : item)));
+        setAprhi((current) =>
+          patchConsorcioFeature(current, row.id, {
+            publicado: patched.publicado,
+            nombre_publico: patched.nombre_publico,
+          })
+        );
+      } else {
+        setItems((current) => current.map((item) => (item.id === row.id ? patched : item)));
+        setGeojson((current) =>
+          patchConsorcioFeature(current, row.id, {
+            publicado: patched.publicado,
+            nombre_publico: patched.nombre_publico,
+          })
+        );
+      }
     } catch {
       notifications.show({ color: 'red', message: 'No se pudo guardar' });
     } finally {
@@ -99,17 +113,18 @@ export default function CanalesPublicacionPanel() {
     return <LoadingState />;
   }
 
-  const selected = items.find((item) => item.id === selectedId) ?? null;
-  const publicados = items.filter((item) => item.publicado).length;
-  const ocultos = items.length - publicados;
+  const catalog = [...items, ...aprhiItems];
+  const selected = catalog.find((item) => item.id === selectedId) ?? null;
+  const publicados = catalog.filter((item) => item.publicado).length;
+  const ocultos = catalog.length - publicados;
   const needle = query.trim().toLowerCase();
   const filtered = needle
-    ? items.filter(
+    ? catalog.filter(
         (item) =>
           item.nombre_publico.toLowerCase().includes(needle) ||
           item.nombre_interno.toLowerCase().includes(needle)
       )
-    : items;
+    : catalog;
 
   return (
     <Stack gap="md">
@@ -117,7 +132,9 @@ export default function CanalesPublicacionPanel() {
         <Title order={2}>Publicación de canales</Title>
         <Text c="dimmed" size="sm">
           Verde = lo ve el ciudadano. Gris = oculto. Amarillo = seleccionado. Naranja punteado =
-          red APRHI de referencia: ya estaba en el inventario, no se importa ni se publica.
+          APRHI aún no publicado — inventario de base para mejorar, no la fuente de verdad. Verde
+          punteado = APRHI ya visible al ciudadano. El mapa público sigue en KMZ hasta que prendas
+          un switch.
         </Text>
       </div>
 
@@ -125,8 +142,8 @@ export default function CanalesPublicacionPanel() {
         <Switch
           checked={showAprhi}
           onChange={(event) => setShowAprhi(event.currentTarget.checked)}
-          label="Mostrar red APRHI (solo referencia)"
-          aria-label="Mostrar red APRHI (solo referencia)"
+          label="Mostrar APRHI"
+          aria-label="Mostrar APRHI"
         />
         <Badge color="green" variant="light">
           {publicados} publicados
@@ -135,7 +152,7 @@ export default function CanalesPublicacionPanel() {
           {ocultos} ocultos
         </Badge>
         <Badge color="orange" variant="light">
-          APRHI {aprhi?.features.length ?? 0} tramos
+          APRHI {aprhiItems.length} canales
         </Badge>
       </Group>
 
@@ -180,7 +197,13 @@ export default function CanalesPublicacionPanel() {
                   <Text span c="orange" fw={700}>
                     ┄
                   </Text>{' '}
-                  APRHI referencia
+                  APRHI oculto
+                </Text>
+                <Text size="xs">
+                  <Text span c="green" fw={700}>
+                    ┄
+                  </Text>{' '}
+                  APRHI publicado
                 </Text>
               </Stack>
             </Paper>
@@ -194,11 +217,21 @@ export default function CanalesPublicacionPanel() {
                 <Stack gap="sm">
                   <div>
                     <Text size="xs" c="dimmed">
-                      Canal del consorcio
+                      {rowOrigen(selected) === CANAL_ORIGEN.APRHI
+                        ? 'Canal APRHI'
+                        : 'Canal del consorcio'}
                     </Text>
                     <Text fw={600}>{selected.nombre_interno}</Text>
                     <Group gap="xs" mt={4}>
-                      <Badge variant="light">{selected.estado}</Badge>
+                      <Badge
+                        variant="light"
+                        color={rowOrigen(selected) === CANAL_ORIGEN.APRHI ? 'orange' : 'blue'}
+                      >
+                        {rowOrigen(selected) === CANAL_ORIGEN.APRHI ? 'APRHI' : 'KMZ'}
+                      </Badge>
+                      {rowOrigen(selected) === CANAL_ORIGEN.KMZ ? (
+                        <Badge variant="light">{selected.estado}</Badge>
+                      ) : null}
                       <Text size="sm" c="dimmed">
                         {formatKm(selected.longitud_m)}
                       </Text>
@@ -208,7 +241,7 @@ export default function CanalesPublicacionPanel() {
                     checked={selected.publicado}
                     disabled={savingId === selected.id}
                     onChange={(event) =>
-                      void save(selected.id, { publicado: event.currentTarget.checked })
+                      void save(selected, { publicado: event.currentTarget.checked })
                     }
                     label={selected.publicado ? 'Visible en el mapa público' : 'Oculto al ciudadano'}
                     aria-label={`Publicar ${selected.nombre_interno}`}
@@ -222,7 +255,7 @@ export default function CanalesPublicacionPanel() {
                     onBlur={(event) => {
                       const next = event.currentTarget.value.trim();
                       if (next && next !== selected.nombre_publico) {
-                        void save(selected.id, { nombre_publico: next });
+                        void save(selected, { nombre_publico: next });
                       }
                     }}
                     aria-label={`Nombre público de ${selected.nombre_interno}`}
@@ -230,8 +263,8 @@ export default function CanalesPublicacionPanel() {
                 </Stack>
               ) : (
                 <Text size="sm" c="dimmed">
-                  Hacé clic en un canal verde o gris del mapa. El naranja punteado es APRHI: no se
-                  prende ni se apaga acá.
+                  Hacé clic en un canal del mapa. El punteado es APRHI: se publica con el mismo
+                  switch que el KMZ.
                 </Text>
               )}
             </Paper>
@@ -261,9 +294,18 @@ export default function CanalesPublicacionPanel() {
                       }}
                     >
                       <Group justify="space-between" wrap="nowrap" gap="xs">
-                        <Text size="sm" lineClamp={1}>
-                          {row.nombre_publico}
-                        </Text>
+                        <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color={rowOrigen(row) === CANAL_ORIGEN.APRHI ? 'orange' : 'blue'}
+                          >
+                            {rowOrigen(row) === CANAL_ORIGEN.APRHI ? 'APRHI' : 'KMZ'}
+                          </Badge>
+                          <Text size="sm" lineClamp={1}>
+                            {row.nombre_publico}
+                          </Text>
+                        </Group>
                         <Badge size="xs" color={row.publicado ? 'green' : 'gray'} variant="light">
                           {row.publicado ? 'on' : 'off'}
                         </Badge>

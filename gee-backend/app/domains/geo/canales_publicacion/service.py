@@ -1,8 +1,10 @@
-"""Publication catalog over ``canal_consorcio``."""
+"""Publication catalog over ``canal_consorcio`` and opt-in APRHI existentes."""
 
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -14,6 +16,9 @@ from app.domains.geo.canales_publicacion.schemas import (
     CanalPublicacionPatch,
     CanalPublicacionRow,
 )
+
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_APRHI_SIN_NOMBRE = "(sin nombre APRHI)"
 
 _SEED_SQL = text(
     """
@@ -88,10 +93,170 @@ _APRHI_SQL = text(
     """
 )
 
+# Keep in sync with 0027_add_canal_publicacion_aprhi.py
+_APRHI_NOMBRE = "COALESCE(NULLIF(trim(cn.nombre), ''), '(sin nombre APRHI)')"
+_HULL = "(SELECT ST_ConvexHull(ST_Collect(c.geom)) FROM canal_consorcio c)"
+_SLUG = """
+    'aprhi-' || COALESCE(
+      NULLIF(
+        trim(both '-' from regexp_replace(
+          lower(translate(
+            nombre_origen,
+            'ÁÀÂÄÃÅáàâäãåÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÖÕóòôöõÚÙÛÜúùûüÑñÇç',
+            'AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuNnCc'
+          )),
+          '[^a-z0-9]+', '-', 'g'
+        )),
+        ''
+      ),
+      'unnamed'
+    )
+"""
+
+_SEED_APRHI_SQL = text(
+    f"""
+    WITH names AS (
+        SELECT DISTINCT {_APRHI_NOMBRE} AS nombre_origen
+        FROM canal_network cn
+        WHERE cn.tipo = 'canales_existentes'
+          AND ST_Intersects(cn.geom, {_HULL})
+    ),
+    slugged AS (
+        SELECT nombre_origen, {_SLUG} AS base_slug
+        FROM names
+    ),
+    ranked AS (
+        SELECT
+            nombre_origen,
+            base_slug,
+            ROW_NUMBER() OVER (PARTITION BY base_slug ORDER BY nombre_origen) AS rn
+        FROM slugged
+    )
+    INSERT INTO canal_publicacion_aprhi (
+        canal_id, nombre_origen, publicado, nombre_publico
+    )
+    SELECT
+        CASE WHEN rn = 1 THEN base_slug
+             ELSE base_slug || '-' || (rn - 1)::text
+        END,
+        nombre_origen,
+        FALSE,
+        nombre_origen
+    FROM ranked
+    ON CONFLICT (nombre_origen) DO NOTHING
+    """
+)
+
+_APRHI_DISSOLVE = f"""
+    SELECT
+        p.canal_id AS id,
+        p.nombre_origen,
+        p.nombre_publico,
+        p.publicado,
+        ST_Length(ST_LineMerge(ST_Union(cn.geom))::geography) AS longitud_m,
+        ST_AsGeoJSON(ST_LineMerge(ST_Union(cn.geom))) AS geom_json
+    FROM canal_publicacion_aprhi p
+    JOIN canal_network cn
+      ON cn.tipo = 'canales_existentes'
+     AND {_APRHI_NOMBRE} = p.nombre_origen
+     AND ST_Intersects(cn.geom, {_HULL})
+"""
+
+_LIST_APRHI_SQL = text(
+    f"""
+    {_APRHI_DISSOLVE}
+    GROUP BY p.canal_id, p.nombre_origen, p.nombre_publico, p.publicado
+    ORDER BY p.nombre_publico
+    """
+)
+
+_PUBLIC_APRHI_SQL = text(
+    f"""
+    {_APRHI_DISSOLVE}
+    WHERE p.publicado = TRUE
+    GROUP BY p.canal_id, p.nombre_origen, p.nombre_publico, p.publicado
+    ORDER BY p.nombre_publico
+    """
+)
+
+_PATCH_APRHI_SQL = text(
+    """
+    UPDATE canal_publicacion_aprhi
+    SET publicado = COALESCE(:publicado, publicado),
+        nombre_publico = COALESCE(:nombre_publico, nombre_publico),
+        updated_at = now()
+    WHERE canal_id = :canal_id
+    RETURNING canal_id
+    """
+)
+
+
+def aprhi_canal_id(nombre_origen: str) -> str:
+    """Slug a grouped APRHI name: ``Canal Viejo`` → ``aprhi-canal-viejo``.
+
+    Mirrors the SQL in 0027: NFKD strip, lower, non-alnum → ``-``, ``aprhi-``
+    prefix. Empty result becomes ``aprhi-unnamed``. No ``?`` in the id.
+    """
+    decomposed = unicodedata.normalize("NFKD", nombre_origen)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    collapsed = _NON_ALNUM_RE.sub("-", stripped.lower()).strip("-")
+    return f"aprhi-{collapsed or 'unnamed'}"
+
+
+def aprhi_group_key(nombre: str | None) -> str:
+    """Exact catalog group key: trimmed name, or ``(sin nombre APRHI)``."""
+    cleaned = (nombre or "").strip()
+    return cleaned if cleaned else _APRHI_SIN_NOMBRE
+
+
+def append_published_aprhi(
+    relevados: list[dict[str, Any]],
+    aprhi_features: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Append published APRHI canals into public ``relevados``.
+
+    Unpublished APRHI stays off the citizen map. KMZ features are copied,
+    never rewritten. Public paint picks these up via ``source_style=sin_obra``.
+    """
+    merged = list(relevados)
+    for feature in aprhi_features:
+        props = feature.get("properties") or {}
+        if not props.get("publicado"):
+            continue
+        canal_id = feature.get("id") or props.get("id")
+        merged.append(
+            {
+                "type": "Feature",
+                "id": canal_id,
+                "geometry": feature.get("geometry"),
+                "properties": {
+                    "id": canal_id,
+                    "nombre": props.get("nombre_publico") or props.get("nombre"),
+                    "estado": "relevado",
+                    "source_style": "sin_obra",
+                    "longitud_m": props.get("longitud_m"),
+                },
+            }
+        )
+    return merged
+
+
+def _parse_geom(geom_json: str | None) -> dict[str, Any] | None:
+    if not geom_json:
+        return None
+    return json.loads(geom_json)
+
+
+def _length_m(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
 
 class CanalPublicacionService:
     def list_staff(self, db: Session) -> CanalPublicacionList:
         db.execute(_SEED_SQL)
+        db.execute(_SEED_APRHI_SQL)
         rows = db.execute(_LIST_SQL).mappings().all()
         features: list[dict[str, Any]] = []
         items: list[CanalPublicacionRow] = []
@@ -104,26 +269,69 @@ class CanalPublicacionService:
                     nombre_publico=row["nombre_publico"],
                     publicado=bool(row["publicado"]),
                     longitud_m=row["longitud_m"],
+                    origen="kmz",
                 )
             )
+            geom = _parse_geom(row["geom_json"])
+            if geom is None:
+                continue
             features.append(
                 {
                     "type": "Feature",
                     "id": row["id"],
-                    "geometry": json.loads(row["geom_json"]),
+                    "geometry": geom,
                     "properties": {
                         "id": row["id"],
                         "estado": row["estado"],
                         "nombre_interno": row["nombre_interno"],
                         "nombre_publico": row["nombre_publico"],
                         "publicado": bool(row["publicado"]),
+                        "origen": "kmz",
                     },
                 }
             )
+        aprhi_items, aprhi_features = self._list_aprhi(db)
         return CanalPublicacionList(
             items=items,
             geojson={"type": "FeatureCollection", "features": features},
+            aprhi_items=aprhi_items,
+            geojson_aprhi={"type": "FeatureCollection", "features": aprhi_features},
         )
+
+    def _list_aprhi(self, db: Session) -> tuple[list[CanalPublicacionRow], list[dict[str, Any]]]:
+        rows = db.execute(_LIST_APRHI_SQL).mappings().all()
+        items: list[CanalPublicacionRow] = []
+        features: list[dict[str, Any]] = []
+        for row in rows:
+            items.append(
+                CanalPublicacionRow(
+                    id=row["id"],
+                    estado="relevado",
+                    nombre_interno=row["nombre_origen"],
+                    nombre_publico=row["nombre_publico"],
+                    publicado=bool(row["publicado"]),
+                    longitud_m=_length_m(row["longitud_m"]),
+                    origen="aprhi",
+                )
+            )
+            geom = _parse_geom(row["geom_json"])
+            if geom is None:
+                continue
+            features.append(
+                {
+                    "type": "Feature",
+                    "id": row["id"],
+                    "geometry": geom,
+                    "properties": {
+                        "id": row["id"],
+                        "nombre_publico": row["nombre_publico"],
+                        "publicado": bool(row["publicado"]),
+                        "origen": "aprhi",
+                        "nombre_interno": row["nombre_origen"],
+                    },
+                }
+            )
+        return items, features
 
     def aprhi_referencia(self, db: Session) -> dict[str, Any]:
         rows = db.execute(_APRHI_SQL).mappings().all()
@@ -161,6 +369,29 @@ class CanalPublicacionService:
                 return item
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canal no encontrado")
 
+    def patch_aprhi(
+        self, db: Session, canal_id: str, payload: CanalPublicacionPatch
+    ) -> CanalPublicacionRow:
+        result = db.execute(
+            _PATCH_APRHI_SQL,
+            {
+                "canal_id": canal_id,
+                "publicado": payload.publicado,
+                "nombre_publico": payload.nombre_publico,
+            },
+        )
+        if result.first() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Canal no encontrado",
+            )
+        db.flush()
+        listing = self.list_staff(db)
+        for item in listing.aprhi_items:
+            if item.id == canal_id:
+                return item
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canal no encontrado")
+
     def public_collections(self, db: Session) -> dict[str, Any]:
         has_pub = db.execute(_HAS_PUBLICACION_SQL).scalar()
         rows = db.execute(_PUBLIC_SQL if has_pub else _PUBLIC_FALLBACK_SQL).mappings().all()
@@ -183,7 +414,32 @@ class CanalPublicacionService:
                 propuestas.append(feature)
             else:
                 relevados.append(feature)
+        relevados = append_published_aprhi(relevados, self._public_aprhi_features(db))
         return {
             "relevados": {"type": "FeatureCollection", "features": relevados},
             "propuestas": {"type": "FeatureCollection", "features": propuestas},
         }
+
+    def _public_aprhi_features(self, db: Session) -> list[dict[str, Any]]:
+        rows = db.execute(_PUBLIC_APRHI_SQL).mappings().all()
+        features: list[dict[str, Any]] = []
+        for row in rows:
+            geom = _parse_geom(row["geom_json"])
+            if geom is None:
+                continue
+            features.append(
+                {
+                    "type": "Feature",
+                    "id": row["id"],
+                    "geometry": geom,
+                    "properties": {
+                        "id": row["id"],
+                        "nombre_publico": row["nombre_publico"],
+                        "publicado": True,
+                        "origen": "aprhi",
+                        "nombre_interno": row["nombre_origen"],
+                        "longitud_m": _length_m(row["longitud_m"]),
+                    },
+                }
+            )
+        return features

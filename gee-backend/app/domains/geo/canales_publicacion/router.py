@@ -56,6 +56,19 @@ def get_aprhi_referencia(
     return servicio.aprhi_referencia(db)
 
 
+@router.patch("/publicacion/aprhi/{canal_id}", response_model=CanalPublicacionRow)
+def patch_publicacion_aprhi(
+    canal_id: str,
+    payload: CanalPublicacionPatch,
+    db: Session = Depends(get_db),
+    servicio: CanalPublicacionService = Depends(_service),
+    _usuario=Depends(_require_operator()),
+) -> CanalPublicacionRow:
+    row = servicio.patch_aprhi(db, canal_id, payload)
+    db.commit()
+    return row
+
+
 @router.patch("/publicacion/{canal_id}", response_model=CanalPublicacionRow)
 def patch_publicacion(
     canal_id: str,

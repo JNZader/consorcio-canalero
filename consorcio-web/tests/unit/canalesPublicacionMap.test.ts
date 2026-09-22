@@ -40,4 +40,26 @@ describe('patchConsorcioFeature', () => {
     expect(next.features[0].properties?.nombre_publico).toBe('Canal 10 de Mayo');
     expect(next.features[0].geometry).toEqual(before.features[0].geometry);
   });
+
+  it('toggles an APRHI canal by slug id', () => {
+    const before: FeatureCollection<LineString> = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          id: 'aprhi-canal-viejo',
+          geometry: { type: 'LineString', coordinates: [[-62.5, -32.5], [-62.4, -32.4]] },
+          properties: {
+            id: 'aprhi-canal-viejo',
+            publicado: false,
+            nombre_publico: 'Canal Viejo',
+            origen: 'aprhi',
+          },
+        },
+      ],
+    };
+    const next = patchConsorcioFeature(before, 'aprhi-canal-viejo', { publicado: true });
+    expect(next.features[0].properties?.publicado).toBe(true);
+    expect(next.features[0].id).toBe('aprhi-canal-viejo');
+  });
 });

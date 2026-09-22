@@ -16,7 +16,20 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-at-least-32-characters-long
 
 PUBLIC = "/api/v2/geo/canales/publico"
 STAFF = "/api/v2/geo/canales/publicacion"
+STAFF_PATCH = "/api/v2/geo/canales/publicacion/canal-1"
 APRHI = "/api/v2/geo/canales/aprhi-referencia"
+APRHI_PATCH = "/api/v2/geo/canales/publicacion/aprhi/aprhi-canal-viejo"
+
+_KMZ_RELEVADO = {
+    "type": "Feature",
+    "id": "canal-10-de-mayo",
+    "geometry": None,
+    "properties": {
+        "id": "canal-10-de-mayo",
+        "nombre": "Canal 10 de Mayo",
+        "estado": "relevado",
+    },
+}
 
 
 class _FakeCatalog:
@@ -26,16 +39,44 @@ class _FakeCatalog:
         return CanalPublicacionList(
             items=[],
             geojson={"type": "FeatureCollection", "features": []},
+            aprhi_items=[],
+            geojson_aprhi={"type": "FeatureCollection", "features": []},
         )
 
     def public_collections(self, _db):
         return {
-            "relevados": {"type": "FeatureCollection", "features": []},
+            "relevados": {"type": "FeatureCollection", "features": [_KMZ_RELEVADO]},
             "propuestas": {"type": "FeatureCollection", "features": []},
         }
 
     def aprhi_referencia(self, _db):
         return {"type": "FeatureCollection", "features": []}
+
+    def patch(self, _db, canal_id, payload):
+        from app.domains.geo.canales_publicacion.schemas import CanalPublicacionRow
+
+        publicado = True if payload.publicado is None else payload.publicado
+        return CanalPublicacionRow(
+            id=canal_id,
+            estado="relevado",
+            nombre_interno="Canal 10 de Mayo",
+            nombre_publico=payload.nombre_publico or "Canal 10 de Mayo",
+            publicado=publicado,
+            origen="kmz",
+        )
+
+    def patch_aprhi(self, _db, canal_id, payload):
+        from app.domains.geo.canales_publicacion.schemas import CanalPublicacionRow
+
+        publicado = True if payload.publicado is None else payload.publicado
+        return CanalPublicacionRow(
+            id=canal_id,
+            estado="relevado",
+            nombre_interno="Canal Viejo",
+            nombre_publico=payload.nombre_publico or "Canal Viejo",
+            publicado=publicado,
+            origen="aprhi",
+        )
 
 
 @pytest.fixture
@@ -74,6 +115,9 @@ class TestPublicCatalog:
         body = response.json()
         assert body["relevados"]["type"] == "FeatureCollection"
         assert body["propuestas"]["type"] == "FeatureCollection"
+        ids = [feature.get("id") for feature in body["relevados"]["features"]]
+        assert ids == ["canal-10-de-mayo"]
+        assert all(not str(feature_id).startswith("aprhi-") for feature_id in ids)
 
 
 class TestStaffCatalogAuth:
@@ -98,6 +142,52 @@ class TestStaffCatalogAuth:
         body = response.json()
         assert "items" in body
         assert body["geojson"]["type"] == "FeatureCollection"
+        assert body["aprhi_items"] == []
+        assert body["geojson_aprhi"]["type"] == "FeatureCollection"
+
+
+class TestStaffPatchAuth:
+    def test_unauthenticated_kmz_patch_is_401(self, app_client):
+        _app, client = app_client
+        assert client.patch(STAFF_PATCH, json={"publicado": False}).status_code == 401
+
+    def test_citizen_kmz_patch_is_403(self, app_client):
+        app, client = app_client
+        _as_role(app, "ciudadano")
+        response = client.patch(STAFF_PATCH, json={"publicado": False})
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize("role", ["operador", "admin"])
+    def test_operator_can_patch_kmz(self, app_client, role: str):
+        app, client = app_client
+        _as_role(app, role)
+        response = client.patch(STAFF_PATCH, json={"publicado": False})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == "canal-1"
+        assert body["publicado"] is False
+        assert body["origen"] == "kmz"
+
+    def test_unauthenticated_aprhi_patch_is_401(self, app_client):
+        _app, client = app_client
+        assert client.patch(APRHI_PATCH, json={"publicado": True}).status_code == 401
+
+    def test_citizen_aprhi_patch_is_403(self, app_client):
+        app, client = app_client
+        _as_role(app, "ciudadano")
+        response = client.patch(APRHI_PATCH, json={"publicado": True})
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize("role", ["operador", "admin"])
+    def test_operator_can_patch_aprhi(self, app_client, role: str):
+        app, client = app_client
+        _as_role(app, role)
+        response = client.patch(APRHI_PATCH, json={"publicado": True})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == "aprhi-canal-viejo"
+        assert body["publicado"] is True
+        assert body["origen"] == "aprhi"
 
 
 class TestAprhiReferenciaAuth:
@@ -119,3 +209,66 @@ class TestAprhiReferenciaAuth:
         response = client.get(APRHI)
         assert response.status_code == 200
         assert response.json()["type"] == "FeatureCollection"
+
+
+class TestAprhiPublicMerge:
+    def test_aprhi_canal_id_slugs_grouped_name(self):
+        from app.domains.geo.canales_publicacion.service import (
+            aprhi_canal_id,
+            aprhi_group_key,
+        )
+
+        assert aprhi_group_key("  Canal Viejo ") == "Canal Viejo"
+        assert aprhi_group_key("   ") == "(sin nombre APRHI)"
+        assert aprhi_canal_id("Canal Viejo") == "aprhi-canal-viejo"
+        assert aprhi_canal_id("(sin nombre APRHI)") == "aprhi-sin-nombre-aprhi"
+
+    def test_unpublished_aprhi_does_not_enter_relevados(self):
+        from app.domains.geo.canales_publicacion.service import append_published_aprhi
+
+        relevados = [_KMZ_RELEVADO]
+        aprhi = [
+            {
+                "type": "Feature",
+                "id": "aprhi-canal-viejo",
+                "geometry": None,
+                "properties": {
+                    "id": "aprhi-canal-viejo",
+                    "nombre_publico": "Canal Viejo",
+                    "publicado": False,
+                },
+            }
+        ]
+        merged = append_published_aprhi(relevados, aprhi)
+        ids = [feature["id"] for feature in merged]
+        assert ids == ["canal-10-de-mayo"]
+        assert relevados == [_KMZ_RELEVADO]
+
+    def test_published_aprhi_appends_as_relevado_sin_obra(self):
+        from app.domains.geo.canales_publicacion.service import append_published_aprhi
+
+        merged = append_published_aprhi(
+            [_KMZ_RELEVADO],
+            [
+                {
+                    "type": "Feature",
+                    "id": "aprhi-canal-viejo",
+                    "geometry": {"type": "LineString", "coordinates": []},
+                    "properties": {
+                        "id": "aprhi-canal-viejo",
+                        "nombre_publico": "Canal Viejo",
+                        "publicado": True,
+                        "longitud_m": 1200,
+                    },
+                }
+            ],
+        )
+        assert [feature["id"] for feature in merged] == [
+            "canal-10-de-mayo",
+            "aprhi-canal-viejo",
+        ]
+        props = merged[1]["properties"]
+        assert props["estado"] == "relevado"
+        assert props["source_style"] == "sin_obra"
+        assert props["nombre"] == "Canal Viejo"
+        assert props["id"] == "aprhi-canal-viejo"
