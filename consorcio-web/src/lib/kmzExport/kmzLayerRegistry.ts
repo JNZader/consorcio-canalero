@@ -18,6 +18,7 @@
  *   - `approved_zones`   — draft/editorial zones with PII-shaped metadata
  *   - `basins`           — heavy MVT tiles, not meant for client export
  *   - `puntos_interes`   — staff-only unpublished pins; not a public layer
+ *   - `red_vial_oficial` — staff-only IDECOR catalog overlay; not a public layer
  *
  * Key alignment with the store
  * ----------------------------
@@ -84,6 +85,7 @@ export const KMZ_EXCLUDED_LAYER_KEYS = [
   'approved_zones',
   'basins',
   'puntos_interes',
+  'red_vial_oficial',
 ] as const;
 
 /**

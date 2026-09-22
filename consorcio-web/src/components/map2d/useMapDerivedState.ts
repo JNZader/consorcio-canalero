@@ -64,6 +64,7 @@ export function useMapDerivedState(params: {
    */
   showRoadFlow?: boolean;
   showPuntosInteres?: boolean;
+  showRedVialOficial?: boolean;
 }) {
   const {
     capas,
@@ -180,6 +181,7 @@ export function useMapDerivedState(params: {
         showEscuelas,
         showRoadFlow: params.showRoadFlow ?? false,
         showPuntosInteres: params.showPuntosInteres ?? false,
+        showRedVialOficial: params.showRedVialOficial ?? false,
       }),
     [
       approvedZonesCollection,
@@ -191,6 +193,7 @@ export function useMapDerivedState(params: {
       showEscuelas,
       params.showRoadFlow,
       params.showPuntosInteres,
+      params.showRedVialOficial,
     ]
   );
 

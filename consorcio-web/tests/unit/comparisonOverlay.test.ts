@@ -45,11 +45,14 @@ const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
  *     operator-only data. The comparator does not fetch that payload.
  *   - `puntos_interes` — staff-only unpublished pins. Same role gate, no
  *     comparison fetch, not painted in the slider.
+ *   - `red_vial_oficial` — staff-only IDECOR catalog overlay. Same role gate,
+ *     no comparison fetch, not painted in the slider.
  */
 const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set([
   'road_flow',
   'sentido_camino',
   'puntos_interes',
+  'red_vial_oficial',
 ]);
 
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(

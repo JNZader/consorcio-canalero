@@ -8,11 +8,9 @@ import type { CanalesData, Etapa } from '../../types/canales';
 import { ALL_ETAPAS } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
+import { type HazardBasinMembership, buildHazardBasinFilter } from './hazardBasinFilter';
 import { applyLayerOpacity, applyLayerOrder } from './layerRenderRegistry';
 import { applyMapLabelSize } from './mapLabelSize';
-import { applyMapLineWidth } from './mapLineWidth';
-import { buildHazardBasinFilter, type HazardBasinMembership } from './hazardBasinFilter';
-import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
 import {
   syncAgroAceptadaLayer,
   syncAgroPresentadaLayer,
@@ -25,6 +23,7 @@ import {
   syncEscuelasLayer,
   syncPorcentajeForestacionLayer,
   syncPuntosInteresLayer,
+  syncRedVialOficialLayers,
   syncRoadFlowLayers,
   syncRoadLayers,
   syncSoilLayers,
@@ -33,6 +32,7 @@ import {
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
 import { syncCatastroLayers } from './mapLayerEffectHelpers';
+import { applyMapLineWidth } from './mapLineWidth';
 import {
   getVisibleRasterLayersForDem,
   moveDemAboveContextualVectors,
@@ -41,6 +41,7 @@ import {
   syncImageOverlays,
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
+import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
 
 interface LayerLike {
   id: string;
@@ -115,6 +116,11 @@ interface UseMapLayerEffectsParams {
   roadFlowKinds?: RoadFlowKindVisibility;
   /** Staff map pins. Empty collection while the layer is off or the user is not staff. */
   puntosInteresCollection?: FeatureCollection<Point> | null;
+  /**
+   * ROLE gate for the IDECOR official-road overlay. `true` only for staff;
+   * citizens never mount the source (no GeoJSON fetch). Defaults to `false`.
+   */
+  showRedVialOficial?: boolean;
 }
 
 export function useMapLayerEffects({
@@ -147,6 +153,7 @@ export function useMapLayerEffects({
   roadFlowTotalFlujoNatural = 0,
   roadFlowKinds = ROAD_FLOW_ALL_KINDS_VISIBLE,
   puntosInteresCollection = null,
+  showRedVialOficial = false,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -181,6 +188,16 @@ export function useMapLayerEffects({
     if (!map || !mapReady) return;
     syncRoadLayers(map, roadsCollection, !!vectorVisibility.roads);
   }, [mapReady, mapRef, roadsCollection, vectorVisibility.roads]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncRedVialOficialLayers(
+      map,
+      showRedVialOficial,
+      showRedVialOficial && !!vectorVisibility.red_vial_oficial
+    );
+  }, [mapReady, mapRef, showRedVialOficial, vectorVisibility.red_vial_oficial]);
 
   useEffect(() => {
     const map = mapRef.current;

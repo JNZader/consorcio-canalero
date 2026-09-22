@@ -103,6 +103,10 @@ describe('mapLayerSyncStore — startup defaults', () => {
       // register layers explicitly, and unknown ids do NOT start visible.
       expect(initial['some_random_unregistered_layer']).toBeUndefined();
     });
+
+    it('red_vial_oficial starts ON (staff IDECOR overlay; citizens never see the toggle)', () => {
+      expect(initial.red_vial_oficial).toBe(true);
+    });
   });
 
   describe('map3d initial visibleVectors (mirrors map2d defaults)', () => {
@@ -122,6 +126,10 @@ describe('mapLayerSyncStore — startup defaults', () => {
     it('starts Canales relevados visible (propuestos hidden) on map3d', () => {
       expect(initial.canales_relevados).toBe(true);
       expect(initial.canales_propuestos).toBe(false);
+    });
+
+    it('keeps red_vial_oficial OFF on map3d (2D-only overlay)', () => {
+      expect(initial.red_vial_oficial).toBe(false);
     });
   });
 

@@ -253,6 +253,29 @@ describe('applyLayerOrder', () => {
 // flujo-caminos S4 — task 4.1
 // ---------------------------------------------------------------------------
 
+describe('layerRenderRegistry — red_vial_oficial', () => {
+  it('registers the overlay EXACTLY ONCE in each of the three places', () => {
+    const inRenderable = RENDERABLE_UI_LAYER_IDS.filter((id) => id === 'red_vial_oficial');
+    const inOrder = DEFAULT_LAYER_ORDER.filter((id) => id === 'red_vial_oficial');
+    const inRegistry = Object.keys(LAYER_RENDER_REGISTRY).filter((id) => id === 'red_vial_oficial');
+
+    expect(inRenderable).toHaveLength(1);
+    expect(inOrder).toHaveLength(1);
+    expect(inRegistry).toHaveLength(1);
+  });
+
+  it('owns the two estado line layers and sits above roads', () => {
+    const ids = LAYER_RENDER_REGISTRY.red_vial_oficial.mlLayers.map((ml) => ml.id);
+    expect(ids).toEqual([
+      `${SOURCE_IDS.RED_VIAL_OFICIAL}-en_padron`,
+      `${SOURCE_IDS.RED_VIAL_OFICIAL}-falta`,
+    ]);
+    expect(DEFAULT_LAYER_ORDER.indexOf('roads')).toBeLessThan(
+      DEFAULT_LAYER_ORDER.indexOf('red_vial_oficial')
+    );
+  });
+});
+
 describe('layerRenderRegistry — puntos_interes', () => {
   it('registers the circle layer id', () => {
     expect(RENDERABLE_UI_LAYER_IDS).toContain('puntos_interes');

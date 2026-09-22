@@ -72,8 +72,10 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     const resolved = resolveEffectiveBottomToTop(partial);
     // Full set, no strays, no dupes.
     expect([...resolved].sort()).toEqual([...RENDERABLE_UI_LAYER_IDS].sort());
-    // Honors the user's leading order for the ids they DID list.
-    expect(resolved.slice(0, 2)).toEqual(['roads', 'waterways']);
+    // Honors the user's leading order for the ids they DID list. Missing
+    // renderable ids (e.g. `red_vial_oficial`) slot in at their DEFAULT
+    // neighbourhood — here, immediately above `roads`.
+    expect(resolved.slice(0, 3)).toEqual(['roads', 'red_vial_oficial', 'waterways']);
   });
 
   it('FF-B2: a missing id lands at its DEFAULT_LAYER_ORDER slot, NOT appended at the end', () => {
