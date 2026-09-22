@@ -1,6 +1,6 @@
 /**
- * Staff-only IDECOR official-road overlay — paint/filter contract + citizen
- * never-mounts the GeoJSON source.
+ * Staff-only IDECOR overlay — only features not in Red Vial 380.
+ * Citizen never mounts the GeoJSON source.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -14,7 +14,6 @@ import {
   RED_VIAL_OFICIAL_LAYER_IDS,
   RED_VIAL_OFICIAL_PAINT,
   RED_VIAL_OFICIAL_SOURCE_ID,
-  buildRedVialOficialEnPadronPaint,
   buildRedVialOficialEstadoFilter,
   buildRedVialOficialFaltaPaint,
 } from '../../src/components/map2d/redVialOficialLayers';
@@ -56,16 +55,11 @@ describe('redVialOficialLayers · constants', () => {
 });
 
 describe('redVialOficialLayers · paint/filter uses estado', () => {
-  it('filters each layer on the estado property', () => {
+  it('filters the overlay on falta_en_padron', () => {
     expect(buildRedVialOficialEstadoFilter(RED_VIAL_OFICIAL_ESTADO.FALTA_EN_PADRON)).toEqual([
       '==',
       ['get', 'estado'],
       'falta_en_padron',
-    ]);
-    expect(buildRedVialOficialEstadoFilter(RED_VIAL_OFICIAL_ESTADO.EN_PADRON)).toEqual([
-      '==',
-      ['get', 'estado'],
-      'en_padron',
     ]);
   });
 
@@ -77,24 +71,11 @@ describe('redVialOficialLayers · paint/filter uses estado', () => {
     expect(paint['line-dasharray']).toBeUndefined();
     expect(RED_VIAL_OFICIAL_PAINT.falta_en_padron.color).toBe('#ea580c');
   });
-
-  it('paints en_padron green dashed ~2px at ~0.45 opacity', () => {
-    const paint = buildRedVialOficialEnPadronPaint();
-    expect(paint['line-color']).toBe('#22c55e');
-    expect(paint['line-width']).toBe(2);
-    expect(paint['line-opacity']).toBe(0.45);
-    expect(paint['line-dasharray']).toEqual([2, 2]);
-  });
 });
 
 describe('layerRenderRegistry · red_vial_oficial', () => {
-  it('registers both estado line layers with the paint opacities', () => {
+  it('registers only the falta line layer', () => {
     expect(LAYER_RENDER_REGISTRY.red_vial_oficial.mlLayers).toEqual([
-      {
-        id: RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON,
-        opacityProp: 'line-opacity',
-        defaultOpacity: 0.45,
-      },
       {
         id: RED_VIAL_OFICIAL_LAYER_IDS.FALTA,
         opacityProp: 'line-opacity',
@@ -112,7 +93,7 @@ describe('syncRedVialOficialLayers · citizen never mounts', () => {
     expect(map.addLayer).not.toHaveBeenCalled();
   });
 
-  it('mounts the URL source and estado-filtered layers for staff', () => {
+  it('mounts only the falta layer for staff, not en_padron', () => {
     const map = createMapMock();
     syncRedVialOficialLayers(map as never, true, true);
 
@@ -122,19 +103,16 @@ describe('syncRedVialOficialLayers · citizen never mounts', () => {
     });
 
     const layers = map.addLayer.mock.calls.map(([layer]) => layer);
-    const falta = layers.find((layer) => layer.id === RED_VIAL_OFICIAL_LAYER_IDS.FALTA);
-    const enPadron = layers.find((layer) => layer.id === RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON);
-    expect(falta?.filter).toEqual(['==', ['get', 'estado'], 'falta_en_padron']);
-    expect(falta?.paint?.['line-color']).toBe('#ea580c');
-    expect(enPadron?.filter).toEqual(['==', ['get', 'estado'], 'en_padron']);
-    expect(enPadron?.paint?.['line-color']).toBe('#22c55e');
+    expect(layers).toHaveLength(1);
+    expect(layers[0].id).toBe(RED_VIAL_OFICIAL_LAYER_IDS.FALTA);
+    expect(layers[0].filter).toEqual(['==', ['get', 'estado'], 'falta_en_padron']);
+    expect(layers[0].paint?.['line-color']).toBe('#ea580c');
   });
 
   it('tears down source and layers when staff unmounts', () => {
     const map = createMapMock();
     syncRedVialOficialLayers(map as never, true, true);
     syncRedVialOficialLayers(map as never, false, false);
-    expect(map.removeLayer).toHaveBeenCalledWith(RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON);
     expect(map.removeLayer).toHaveBeenCalledWith(RED_VIAL_OFICIAL_LAYER_IDS.FALTA);
     expect(map.removeSource).toHaveBeenCalledWith(RED_VIAL_OFICIAL_SOURCE_ID);
   });

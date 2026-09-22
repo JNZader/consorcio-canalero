@@ -208,7 +208,7 @@ export function buildVectorLayerItems(params: {
     },
     {
       id: 'red_vial_oficial',
-      label: 'Catálogo IDECOR (oficial)',
+      label: 'Catálogo IDECOR (no en Red Vial)',
       category: LAYER_CATEGORY.TERRITORIO,
       show: showRedVialOficial,
     },

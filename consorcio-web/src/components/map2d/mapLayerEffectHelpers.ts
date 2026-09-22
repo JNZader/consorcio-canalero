@@ -50,7 +50,6 @@ import {
   RED_VIAL_OFICIAL_GEOJSON_URL,
   RED_VIAL_OFICIAL_LAYER_IDS,
   RED_VIAL_OFICIAL_SOURCE_ID,
-  buildRedVialOficialEnPadronPaint,
   buildRedVialOficialEstadoFilter,
   buildRedVialOficialFaltaPaint,
 } from './redVialOficialLayers';
@@ -944,10 +943,11 @@ export function syncRedVialOficialLayers(
   isVisible: boolean
 ): void {
   const sourceId = RED_VIAL_OFICIAL_SOURCE_ID;
-  const layerIds = [RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON, RED_VIAL_OFICIAL_LAYER_IDS.FALTA];
+  const layerIds = [RED_VIAL_OFICIAL_LAYER_IDS.FALTA];
+  const staleIds = [RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON];
 
   if (!shouldMount) {
-    for (const layerId of layerIds) {
+    for (const layerId of [...layerIds, ...staleIds]) {
       if (map.getLayer(layerId)) map.removeLayer(layerId);
     }
     if (map.getSource(sourceId)) map.removeSource(sourceId);
@@ -961,14 +961,8 @@ export function syncRedVialOficialLayers(
     });
   }
 
-  if (!map.getLayer(RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON)) {
-    map.addLayer({
-      id: RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON,
-      type: 'line',
-      source: sourceId,
-      filter: buildRedVialOficialEstadoFilter(RED_VIAL_OFICIAL_ESTADO.EN_PADRON),
-      paint: buildRedVialOficialEnPadronPaint(),
-    });
+  if (map.getLayer(RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON)) {
+    map.removeLayer(RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON);
   }
 
   if (!map.getLayer(RED_VIAL_OFICIAL_LAYER_IDS.FALTA)) {

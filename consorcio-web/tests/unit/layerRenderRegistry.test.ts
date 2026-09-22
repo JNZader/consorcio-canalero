@@ -264,12 +264,9 @@ describe('layerRenderRegistry — red_vial_oficial', () => {
     expect(inRegistry).toHaveLength(1);
   });
 
-  it('owns the two estado line layers and sits above roads', () => {
+  it('owns only the falta line layer and sits above roads', () => {
     const ids = LAYER_RENDER_REGISTRY.red_vial_oficial.mlLayers.map((ml) => ml.id);
-    expect(ids).toEqual([
-      `${SOURCE_IDS.RED_VIAL_OFICIAL}-en_padron`,
-      `${SOURCE_IDS.RED_VIAL_OFICIAL}-falta`,
-    ]);
+    expect(ids).toEqual([`${SOURCE_IDS.RED_VIAL_OFICIAL}-falta`]);
     expect(DEFAULT_LAYER_ORDER.indexOf('roads')).toBeLessThan(
       DEFAULT_LAYER_ORDER.indexOf('red_vial_oficial')
     );

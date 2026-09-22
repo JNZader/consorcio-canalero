@@ -147,8 +147,8 @@ export type RenderableUiLayerId = (typeof RENDERABLE_UI_LAYER_IDS)[number];
  */
 export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   'roads',
-  // Staff overlay sits ON TOP of the operational 380 so the gap (orange) and
-  // the already-in-padrón (dashed green) read against our roads, not under them.
+  // Staff overlay sits ON TOP of the operational 380 so the IDECOR gap
+  // (orange, only features not in Red Vial) reads against our roads.
   'red_vial_oficial',
   'caminos_huecos',
   'waterways',
@@ -250,11 +250,6 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
   },
   red_vial_oficial: {
     mlLayers: [
-      {
-        id: RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON,
-        opacityProp: OPACITY_PROP.line,
-        defaultOpacity: RED_VIAL_OFICIAL_PAINT.en_padron.opacity,
-      },
       {
         id: RED_VIAL_OFICIAL_LAYER_IDS.FALTA,
         opacityProp: OPACITY_PROP.line,
