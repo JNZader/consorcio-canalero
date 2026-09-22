@@ -37,6 +37,15 @@ import {
   buildPuntosInteresLabelLayer,
 } from './puntosInteresLayers';
 import {
+  CAMINOS_HUECOS_FUENTE,
+  CAMINOS_HUECOS_GEOJSON_URL,
+  CAMINOS_HUECOS_LAYER_IDS,
+  CAMINOS_HUECOS_SOURCE_ID,
+  buildCaminosHuecosFuenteFilter,
+  buildCaminosHuecosIgnPaint,
+  buildCaminosHuecosOsmPaint,
+} from './caminosHuecosLayers';
+import {
   RED_VIAL_OFICIAL_ESTADO,
   RED_VIAL_OFICIAL_GEOJSON_URL,
   RED_VIAL_OFICIAL_LAYER_IDS,
@@ -969,6 +978,59 @@ export function syncRedVialOficialLayers(
       source: sourceId,
       filter: buildRedVialOficialEstadoFilter(RED_VIAL_OFICIAL_ESTADO.FALTA_EN_PADRON),
       paint: buildRedVialOficialFaltaPaint(),
+    });
+  }
+
+  for (const layerId of layerIds) {
+    setLayerVisibility(map, layerId, isVisible);
+  }
+}
+
+/**
+ * Staff-only OSM unclassified + IGN terciaria not in our 380.
+ *
+ * Same ROLE gate as `syncRedVialOficialLayers`: citizens never addSource.
+ */
+export function syncCaminosHuecosLayers(
+  map: maplibregl.Map,
+  shouldMount: boolean,
+  isVisible: boolean
+): void {
+  const sourceId = CAMINOS_HUECOS_SOURCE_ID;
+  const layerIds = [CAMINOS_HUECOS_LAYER_IDS.OSM, CAMINOS_HUECOS_LAYER_IDS.IGN];
+
+  if (!shouldMount) {
+    for (const layerId of layerIds) {
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+    }
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    return;
+  }
+
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: CAMINOS_HUECOS_GEOJSON_URL,
+    });
+  }
+
+  if (!map.getLayer(CAMINOS_HUECOS_LAYER_IDS.OSM)) {
+    map.addLayer({
+      id: CAMINOS_HUECOS_LAYER_IDS.OSM,
+      type: 'line',
+      source: sourceId,
+      filter: buildCaminosHuecosFuenteFilter(CAMINOS_HUECOS_FUENTE.OSM),
+      paint: buildCaminosHuecosOsmPaint(),
+    });
+  }
+
+  if (!map.getLayer(CAMINOS_HUECOS_LAYER_IDS.IGN)) {
+    map.addLayer({
+      id: CAMINOS_HUECOS_LAYER_IDS.IGN,
+      type: 'line',
+      source: sourceId,
+      filter: buildCaminosHuecosFuenteFilter(CAMINOS_HUECOS_FUENTE.IGN),
+      paint: buildCaminosHuecosIgnPaint(),
     });
   }
 

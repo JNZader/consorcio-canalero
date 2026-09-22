@@ -276,6 +276,29 @@ describe('layerRenderRegistry — red_vial_oficial', () => {
   });
 });
 
+describe('layerRenderRegistry — caminos_huecos', () => {
+  it('registers the overlay EXACTLY ONCE in each of the three places', () => {
+    const inRenderable = RENDERABLE_UI_LAYER_IDS.filter((id) => id === 'caminos_huecos');
+    const inOrder = DEFAULT_LAYER_ORDER.filter((id) => id === 'caminos_huecos');
+    const inRegistry = Object.keys(LAYER_RENDER_REGISTRY).filter((id) => id === 'caminos_huecos');
+
+    expect(inRenderable).toHaveLength(1);
+    expect(inOrder).toHaveLength(1);
+    expect(inRegistry).toHaveLength(1);
+  });
+
+  it('owns the two fuente line layers and sits above the IDECOR overlay', () => {
+    const ids = LAYER_RENDER_REGISTRY.caminos_huecos.mlLayers.map((ml) => ml.id);
+    expect(ids).toEqual([
+      `${SOURCE_IDS.CAMINOS_HUECOS}-osm`,
+      `${SOURCE_IDS.CAMINOS_HUECOS}-ign`,
+    ]);
+    expect(DEFAULT_LAYER_ORDER.indexOf('red_vial_oficial')).toBeLessThan(
+      DEFAULT_LAYER_ORDER.indexOf('caminos_huecos')
+    );
+  });
+});
+
 describe('layerRenderRegistry — puntos_interes', () => {
   it('registers the circle layer id', () => {
     expect(RENDERABLE_UI_LAYER_IDS).toContain('puntos_interes');

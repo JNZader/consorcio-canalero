@@ -8,6 +8,7 @@ describe('map2dConfig', () => {
     expect(SOURCE_IDS.WATERWAYS).toBe('map2d-waterways');
     expect(SOURCE_IDS.IGN).toBe('map2d-ign-overlay');
     expect(SOURCE_IDS.RED_VIAL_OFICIAL).toBe('red_vial_oficial');
+    expect(SOURCE_IDS.CAMINOS_HUECOS).toBe('caminos_huecos');
   });
 
   it('exports the supported 2D GEE layer names', () => {

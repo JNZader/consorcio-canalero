@@ -48,6 +48,7 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   waterways: 'Hidrografía',
   roads: 'Red vial',
   red_vial_oficial: 'Catálogo IDECOR (oficial)',
+  caminos_huecos: 'Caminos no catalogados (OSM/IGN)',
   soil: 'Suelos',
   catastro: 'Catastro',
   puntos_conflicto: 'Puntos de conflicto',

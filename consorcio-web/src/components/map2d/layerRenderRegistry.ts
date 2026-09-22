@@ -37,6 +37,7 @@ import {
   PUNTOS_INTERES_LABEL_LAYER_ID,
   PUNTOS_INTERES_LAYER_ID,
 } from './puntosInteresLayers';
+import { CAMINOS_HUECOS_LAYER_IDS, CAMINOS_HUECOS_PAINT } from './caminosHuecosLayers';
 import { RED_VIAL_OFICIAL_LAYER_IDS, RED_VIAL_OFICIAL_PAINT } from './redVialOficialLayers';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
@@ -96,6 +97,7 @@ export const RENDERABLE_UI_LAYER_IDS = [
   'waterways',
   'roads',
   'red_vial_oficial',
+  'caminos_huecos',
   'soil',
   'catastro',
   'puntos_conflicto',
@@ -148,6 +150,7 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   // Staff overlay sits ON TOP of the operational 380 so the gap (orange) and
   // the already-in-padrón (dashed green) read against our roads, not under them.
   'red_vial_oficial',
+  'caminos_huecos',
   'waterways',
   'soil',
   'catastro',
@@ -256,6 +259,20 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
         id: RED_VIAL_OFICIAL_LAYER_IDS.FALTA,
         opacityProp: OPACITY_PROP.line,
         defaultOpacity: RED_VIAL_OFICIAL_PAINT.falta_en_padron.opacity,
+      },
+    ],
+  },
+  caminos_huecos: {
+    mlLayers: [
+      {
+        id: CAMINOS_HUECOS_LAYER_IDS.OSM,
+        opacityProp: OPACITY_PROP.line,
+        defaultOpacity: CAMINOS_HUECOS_PAINT.osm.opacity,
+      },
+      {
+        id: CAMINOS_HUECOS_LAYER_IDS.IGN,
+        opacityProp: OPACITY_PROP.line,
+        defaultOpacity: CAMINOS_HUECOS_PAINT.ign.opacity,
       },
     ],
   },

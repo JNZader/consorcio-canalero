@@ -65,6 +65,7 @@ const EXPECTED_EXCLUDED = [
   'basins',
   'puntos_interes',
   'red_vial_oficial',
+  'caminos_huecos',
 ] as const;
 
 const LINE_KEYS = new Set<string>([
@@ -146,9 +147,9 @@ describe('KMZ_LAYER_REGISTRY · allowlist', () => {
 // ---------------------------------------------------------------------------
 
 describe('KMZ_EXCLUDED_LAYER_KEYS · denylist invariant', () => {
-  it('is a readonly tuple of exactly the 5 excluded keys', () => {
+  it('is a readonly tuple of exactly the 6 excluded keys', () => {
     expect(KMZ_EXCLUDED_LAYER_KEYS).toEqual(EXPECTED_EXCLUDED);
-    expect(KMZ_EXCLUDED_LAYER_KEYS).toHaveLength(5);
+    expect(KMZ_EXCLUDED_LAYER_KEYS).toHaveLength(6);
   });
 
   it('registry contains NONE of the excluded keys', () => {

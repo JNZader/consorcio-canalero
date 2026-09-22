@@ -18,6 +18,8 @@ export const MAP_LINE_WIDTH_LAYERS: ReadonlyArray<{ id: string; base: number }> 
   { id: `${SOURCE_IDS.ROADS}-line`, base: 2 },
   { id: `${SOURCE_IDS.RED_VIAL_OFICIAL}-en_padron`, base: 2 },
   { id: `${SOURCE_IDS.RED_VIAL_OFICIAL}-falta`, base: 3 },
+  { id: `${SOURCE_IDS.CAMINOS_HUECOS}-osm`, base: 3 },
+  { id: `${SOURCE_IDS.CAMINOS_HUECOS}-ign`, base: 3 },
   { id: `${SOURCE_IDS.CANALES_RELEVADOS}-line`, base: 3 },
   { id: `${SOURCE_IDS.CANALES_PROPUESTOS}-line`, base: 2.5 },
   { id: `${SOURCE_IDS.SOIL}-line`, base: 1.2 },
