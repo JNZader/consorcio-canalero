@@ -159,6 +159,10 @@ export function buildVectorLayerItems(params: {
    * Defaults to `false`: citizens never see the toggle and never mount the layer.
    */
   showRedVialOficial?: boolean;
+  /**
+   * Staff-only OSM/IGN gap overlay. Same ROLE gate. Defaults to `false`.
+   */
+  showCaminosHuecos?: boolean;
 }) {
   const {
     basins,
@@ -171,6 +175,7 @@ export function buildVectorLayerItems(params: {
     showRoadFlow = false,
     showPuntosInteres = false,
     showRedVialOficial = false,
+    showCaminosHuecos = false,
   } = params;
 
   return [
@@ -206,6 +211,12 @@ export function buildVectorLayerItems(params: {
       label: 'Catálogo IDECOR (oficial)',
       category: LAYER_CATEGORY.TERRITORIO,
       show: showRedVialOficial,
+    },
+    {
+      id: 'caminos_huecos',
+      label: 'Caminos no catalogados (OSM/IGN)',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: showCaminosHuecos,
     },
     // Labels match the 3D toggles panel so the user sees the same wording
     // across views (terrainLayerConfig.ts:35-42).

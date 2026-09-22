@@ -112,6 +112,8 @@ export const SOURCE_IDS = {
   // Staff-only IDECOR official-road overlay. Static GeoJSON clip, NOT merged
   // into `red_vial` / `caminos.geojson`. Source id == visibility-toggle id.
   RED_VIAL_OFICIAL: 'red_vial_oficial',
+  // Staff-only OSM unclassified + IGN terciaria not in our 380. Static GeoJSON.
+  CAMINOS_HUECOS: 'caminos_huecos',
 } as const;
 
 /**

@@ -23,6 +23,7 @@ import {
   syncEscuelasLayer,
   syncPorcentajeForestacionLayer,
   syncPuntosInteresLayer,
+  syncCaminosHuecosLayers,
   syncRedVialOficialLayers,
   syncRoadFlowLayers,
   syncRoadLayers,
@@ -121,6 +122,11 @@ interface UseMapLayerEffectsParams {
    * citizens never mount the source (no GeoJSON fetch). Defaults to `false`.
    */
   showRedVialOficial?: boolean;
+  /**
+   * ROLE gate for OSM/IGN roads not in our 380. Citizens never mount.
+   * Defaults to `false`.
+   */
+  showCaminosHuecos?: boolean;
 }
 
 export function useMapLayerEffects({
@@ -154,6 +160,7 @@ export function useMapLayerEffects({
   roadFlowKinds = ROAD_FLOW_ALL_KINDS_VISIBLE,
   puntosInteresCollection = null,
   showRedVialOficial = false,
+  showCaminosHuecos = false,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -198,6 +205,16 @@ export function useMapLayerEffects({
       showRedVialOficial && !!vectorVisibility.red_vial_oficial
     );
   }, [mapReady, mapRef, showRedVialOficial, vectorVisibility.red_vial_oficial]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncCaminosHuecosLayers(
+      map,
+      showCaminosHuecos,
+      showCaminosHuecos && !!vectorVisibility.caminos_huecos
+    );
+  }, [mapReady, mapRef, showCaminosHuecos, vectorVisibility.caminos_huecos]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -410,6 +410,7 @@ export default function MapaMapLibre() {
     // POI hook's showPuntosInteres is not in scope here.
     showPuntosInteres: roadFlow.showRoadFlow,
     showRedVialOficial: isStaff,
+    showCaminosHuecos: isStaff,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -635,6 +636,7 @@ export default function MapaMapLibre() {
     puntosInteresCollection: puntosInteres.collection,
     catastroMembership: basinMembership.membership,
     showRedVialOficial: isStaff,
+    showCaminosHuecos: isStaff,
   });
 
   useMapInteractionEffects({

@@ -181,4 +181,30 @@ describe('map2dDerived', () => {
       category: LAYER_CATEGORY.TERRITORIO,
     });
   });
+
+  it('never offers Caminos no catalogados to a citizen session', () => {
+    const items = buildVectorLayerItems({
+      basins: null,
+      approvedZonesCollection: null,
+      roadsCollection: polygonCollection([pointFeature('r1')]),
+      intersectionsLength: 0,
+    });
+    expect(items.some((item) => item.id === 'caminos_huecos')).toBe(false);
+  });
+
+  it('offers Caminos no catalogados (OSM/IGN) to staff', () => {
+    const items = buildVectorLayerItems({
+      basins: null,
+      approvedZonesCollection: null,
+      roadsCollection: polygonCollection([pointFeature('r1')]),
+      intersectionsLength: 0,
+      showCaminosHuecos: true,
+    });
+    const overlay = items.find((item) => item.id === 'caminos_huecos');
+    expect(overlay).toEqual({
+      id: 'caminos_huecos',
+      label: 'Caminos no catalogados (OSM/IGN)',
+      category: LAYER_CATEGORY.TERRITORIO,
+    });
+  });
 });

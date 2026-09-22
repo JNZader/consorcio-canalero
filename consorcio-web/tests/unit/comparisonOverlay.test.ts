@@ -47,12 +47,14 @@ const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
  *     comparison fetch, not painted in the slider.
  *   - `red_vial_oficial` — staff-only IDECOR catalog overlay. Same role gate,
  *     no comparison fetch, not painted in the slider.
+ *   - `caminos_huecos` — staff-only OSM/IGN gap overlay. Same role gate.
  */
 const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set([
   'road_flow',
   'sentido_camino',
   'puntos_interes',
   'red_vial_oficial',
+  'caminos_huecos',
 ]);
 
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(

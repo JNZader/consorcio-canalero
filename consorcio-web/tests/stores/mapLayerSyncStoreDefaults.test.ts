@@ -107,6 +107,10 @@ describe('mapLayerSyncStore — startup defaults', () => {
     it('red_vial_oficial starts ON (staff IDECOR overlay; citizens never see the toggle)', () => {
       expect(initial.red_vial_oficial).toBe(true);
     });
+
+    it('caminos_huecos starts ON (staff OSM/IGN gap overlay; citizens never see the toggle)', () => {
+      expect(initial.caminos_huecos).toBe(true);
+    });
   });
 
   describe('map3d initial visibleVectors (mirrors map2d defaults)', () => {
@@ -130,6 +134,10 @@ describe('mapLayerSyncStore — startup defaults', () => {
 
     it('keeps red_vial_oficial OFF on map3d (2D-only overlay)', () => {
       expect(initial.red_vial_oficial).toBe(false);
+    });
+
+    it('keeps caminos_huecos OFF on map3d (2D-only overlay)', () => {
+      expect(initial.caminos_huecos).toBe(false);
     });
   });
 

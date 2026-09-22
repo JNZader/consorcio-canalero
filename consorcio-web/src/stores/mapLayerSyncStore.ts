@@ -164,6 +164,8 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // Staff IDECOR official-road overlay. Default ON for staff (the point of
   // the layer is to see the AU9 / RN1V09 gap). Citizens never see the toggle.
   red_vial_oficial: true,
+  // Staff OSM/IGN gap overlay. Default ON for staff; citizens never see it.
+  caminos_huecos: true,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
@@ -188,6 +190,7 @@ export const MAP3D_DEFAULT_VISIBLE_VECTORS: Record<string, boolean> = {
   sentido_camino: false,
   puntos_interes: false,
   red_vial_oficial: false,
+  caminos_huecos: false,
 };
 const defaultMap3dVisibleVectors = MAP3D_DEFAULT_VISIBLE_VECTORS;
 
@@ -311,6 +314,8 @@ interface PilarAzulActions {
  *   v9 → v10: seed `red_vial_oficial = true` on map2d without flipping an
  *     explicit false. New staff overlay; a missing key would otherwise stay
  *     off forever for returning staff.
+ *   v10 → v11: seed `caminos_huecos = true` on map2d without flipping an
+ *     explicit false.
  */
 export function migrateMapLayerState(
   persistedState: unknown,
@@ -461,6 +466,20 @@ export function migrateMapLayerState(
           visibleVectors: {
             ...next.map2d.visibleVectors,
             red_vial_oficial: next.map2d.visibleVectors?.red_vial_oficial ?? true,
+          },
+        },
+      };
+    }
+  }
+  if (fromVersion < 11) {
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: {
+            ...next.map2d.visibleVectors,
+            caminos_huecos: next.map2d.visibleVectors?.caminos_huecos ?? true,
           },
         },
       };
@@ -683,7 +702,8 @@ export const useMapLayerSyncStore = create<
       //   v7 → v8: seed `labelSizeScale = 1` (Capas slider for road/POI text).
       //   v8 → v9: seed `lineWidthScale = 1` (Capas slider for canal/road width).
       //   v9 → v10: seed `red_vial_oficial = true` on map2d (staff IDECOR overlay).
-      version: 10,
+      //   v10 → v11: seed `caminos_huecos = true` on map2d (OSM/IGN gap overlay).
+      version: 11,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {

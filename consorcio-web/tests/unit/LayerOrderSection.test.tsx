@@ -75,7 +75,7 @@ describe('resolveEffectiveBottomToTop (full-set contract)', () => {
     // Honors the user's leading order for the ids they DID list. Missing
     // renderable ids (e.g. `red_vial_oficial`) slot in at their DEFAULT
     // neighbourhood — here, immediately above `roads`.
-    expect(resolved.slice(0, 3)).toEqual(['roads', 'red_vial_oficial', 'waterways']);
+    expect(resolved.slice(0, 4)).toEqual(['roads', 'red_vial_oficial', 'caminos_huecos', 'waterways']);
   });
 
   it('FF-B2: a missing id lands at its DEFAULT_LAYER_ORDER slot, NOT appended at the end', () => {

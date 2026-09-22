@@ -19,6 +19,7 @@
  *   - `basins`           — heavy MVT tiles, not meant for client export
  *   - `puntos_interes`   — staff-only unpublished pins; not a public layer
  *   - `red_vial_oficial` — staff-only IDECOR catalog overlay; not a public layer
+ *   - `caminos_huecos`   — staff-only OSM/IGN gap overlay; not a public layer
  *
  * Key alignment with the store
  * ----------------------------
@@ -86,6 +87,7 @@ export const KMZ_EXCLUDED_LAYER_KEYS = [
   'basins',
   'puntos_interes',
   'red_vial_oficial',
+  'caminos_huecos',
 ] as const;
 
 /**
