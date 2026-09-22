@@ -154,6 +154,11 @@ export function buildVectorLayerItems(params: {
    * (`useAuth().isStaff`). Defaults to `false`.
    */
   showPuntosInteres?: boolean;
+  /**
+   * Staff-only IDECOR official-road overlay. Same ROLE gate as `showRoadFlow`.
+   * Defaults to `false`: citizens never see the toggle and never mount the layer.
+   */
+  showRedVialOficial?: boolean;
 }) {
   const {
     basins,
@@ -165,6 +170,7 @@ export function buildVectorLayerItems(params: {
     showEscuelas = false,
     showRoadFlow = false,
     showPuntosInteres = false,
+    showRedVialOficial = false,
   } = params;
 
   return [
@@ -194,6 +200,12 @@ export function buildVectorLayerItems(params: {
       label: 'Red Vial',
       category: LAYER_CATEGORY.TERRITORIO,
       show: !!roadsCollection && roadsCollection.features.length > 0,
+    },
+    {
+      id: 'red_vial_oficial',
+      label: 'Catálogo IDECOR (oficial)',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: showRedVialOficial,
     },
     // Labels match the 3D toggles panel so the user sees the same wording
     // across views (terrainLayerConfig.ts:35-42).

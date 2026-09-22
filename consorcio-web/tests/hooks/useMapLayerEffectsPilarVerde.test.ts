@@ -40,6 +40,7 @@ vi.mock('../../src/components/map2d/mapLayerEffectHelpers', () => ({
   syncCanalesLayers: vi.fn(),
   syncEscuelasLayer: vi.fn(() => Promise.resolve()),
   syncPuntosInteresLayer: vi.fn(),
+  syncRedVialOficialLayers: vi.fn(),
   syncYpfEstacionBombeoLayer: vi.fn(),
 }));
 

@@ -5,24 +5,16 @@ import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
+import { CANAL_LABEL_TEXT_FIELD, buildAlongLineLabelLayer } from './alongLineLabel';
 import {
   buildCanalesPropuestasFilter,
   buildCanalesPropuestasPaint,
   buildCanalesRelevadosFilter,
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
-import { buildAlongLineLabelLayer, CANAL_LABEL_TEXT_FIELD } from './alongLineLabel';
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
-import {
-  PUNTOS_INTERES_HIT_LAYER_ID,
-  PUNTOS_INTERES_LABEL_LAYER_ID,
-  PUNTOS_INTERES_LAYER_ID,
-  buildPuntosInteresCirclePaint,
-  buildPuntosInteresHitPaint,
-  buildPuntosInteresLabelLayer,
-} from './puntosInteresLayers';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   PILAR_VERDE_Z_ORDER,
@@ -36,7 +28,23 @@ import {
   buildBpaHistoricoLinePaint,
   buildPorcentajeForestacionFillPaint,
 } from './pilarVerdeLayers';
-import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
+import {
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
+  PUNTOS_INTERES_LAYER_ID,
+  buildPuntosInteresCirclePaint,
+  buildPuntosInteresHitPaint,
+  buildPuntosInteresLabelLayer,
+} from './puntosInteresLayers';
+import {
+  RED_VIAL_OFICIAL_ESTADO,
+  RED_VIAL_OFICIAL_GEOJSON_URL,
+  RED_VIAL_OFICIAL_LAYER_IDS,
+  RED_VIAL_OFICIAL_SOURCE_ID,
+  buildRedVialOficialEnPadronPaint,
+  buildRedVialOficialEstadoFilter,
+  buildRedVialOficialFaltaPaint,
+} from './redVialOficialLayers';
 import { ensureFlowArrowImage, pickArrowCollection } from './roadFlowArrows';
 import {
   ROAD_FLOW_ALL_KINDS_VISIBLE,
@@ -49,6 +57,7 @@ import {
   buildRoadFlowFlujoPaint,
   buildRoadFlowTipoFilter,
 } from './roadFlowLayers';
+import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
 import {
   YPF_ESTACION_BOMBEO_GEOJSON,
   YPF_ESTACION_BOMBEO_LAYER_ID,
@@ -321,11 +330,7 @@ export function syncRoadFlowLayers(
   }
 
   ensureFlowArrowImage(map);
-  ensureGeoJsonSource(
-    map,
-    SOURCE_IDS.ROAD_FLOW_ARROWS,
-    pickArrowCollection(flechas, crossings)
-  );
+  ensureGeoJsonSource(map, SOURCE_IDS.ROAD_FLOW_ARROWS, pickArrowCollection(flechas, crossings));
 
   if (!map.getLayer(ROAD_FLOW_LAYER_IDS.CONDUCCION_ARROW)) {
     map.addLayer({
@@ -914,6 +919,62 @@ export function syncPuntosInteresLayer(
   setLayerVisibility(map, PUNTOS_INTERES_HIT_LAYER_ID, isVisible);
   setLayerVisibility(map, PUNTOS_INTERES_LAYER_ID, isVisible);
   setLayerVisibility(map, PUNTOS_INTERES_LABEL_LAYER_ID, isVisible);
+}
+
+/**
+ * Staff-only IDECOR official-road overlay.
+ *
+ * `shouldMount` is the ROLE gate (`useAuth().isStaff`). Citizens never add
+ * the source (MapLibre would otherwise fetch the GeoJSON). Staff keep the
+ * source mounted across toggle cycles; OFF is visibility-none, not teardown.
+ * Logout / role loss tears the source down.
+ */
+export function syncRedVialOficialLayers(
+  map: maplibregl.Map,
+  shouldMount: boolean,
+  isVisible: boolean
+): void {
+  const sourceId = RED_VIAL_OFICIAL_SOURCE_ID;
+  const layerIds = [RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON, RED_VIAL_OFICIAL_LAYER_IDS.FALTA];
+
+  if (!shouldMount) {
+    for (const layerId of layerIds) {
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+    }
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    return;
+  }
+
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: RED_VIAL_OFICIAL_GEOJSON_URL,
+    });
+  }
+
+  if (!map.getLayer(RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON)) {
+    map.addLayer({
+      id: RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON,
+      type: 'line',
+      source: sourceId,
+      filter: buildRedVialOficialEstadoFilter(RED_VIAL_OFICIAL_ESTADO.EN_PADRON),
+      paint: buildRedVialOficialEnPadronPaint(),
+    });
+  }
+
+  if (!map.getLayer(RED_VIAL_OFICIAL_LAYER_IDS.FALTA)) {
+    map.addLayer({
+      id: RED_VIAL_OFICIAL_LAYER_IDS.FALTA,
+      type: 'line',
+      source: sourceId,
+      filter: buildRedVialOficialEstadoFilter(RED_VIAL_OFICIAL_ESTADO.FALTA_EN_PADRON),
+      paint: buildRedVialOficialFaltaPaint(),
+    });
+  }
+
+  for (const layerId of layerIds) {
+    setLayerVisibility(map, layerId, isVisible);
+  }
 }
 
 /* -------------------------------------------------------------------------- */

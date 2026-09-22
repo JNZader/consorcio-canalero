@@ -37,6 +37,7 @@ import {
   PUNTOS_INTERES_LABEL_LAYER_ID,
   PUNTOS_INTERES_LAYER_ID,
 } from './puntosInteresLayers';
+import { RED_VIAL_OFICIAL_LAYER_IDS, RED_VIAL_OFICIAL_PAINT } from './redVialOficialLayers';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
   ROAD_FLOW_CONDUCCION_ARROW_OPACITY,
@@ -94,6 +95,7 @@ export const RENDERABLE_UI_LAYER_IDS = [
   'approved_zones',
   'waterways',
   'roads',
+  'red_vial_oficial',
   'soil',
   'catastro',
   'puntos_conflicto',
@@ -143,6 +145,9 @@ export type RenderableUiLayerId = (typeof RENDERABLE_UI_LAYER_IDS)[number];
  */
 export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
   'roads',
+  // Staff overlay sits ON TOP of the operational 380 so the gap (orange) and
+  // the already-in-padrón (dashed green) read against our roads, not under them.
+  'red_vial_oficial',
   'waterways',
   'soil',
   'catastro',
@@ -176,18 +181,20 @@ export const DEFAULT_LAYER_ORDER: readonly RenderableUiLayerId[] = [
  * never drift. Each waterway line layer paints `line-opacity: 0.9`
  * (`mapLayerEffectHelpers.ts::syncWaterwayLayers`).
  */
-const WATERWAY_ML_LAYERS: readonly MlLayerRender[] = buildWaterwayLayerConfigs([]).flatMap((cfg) => [
-  {
-    id: `${cfg.id}-line`,
-    opacityProp: OPACITY_PROP.line,
-    defaultOpacity: 0.9,
-  },
-  {
-    id: `${cfg.id}-label`,
-    opacityProp: OPACITY_PROP.text,
-    defaultOpacity: 0.95,
-  },
-]);
+const WATERWAY_ML_LAYERS: readonly MlLayerRender[] = buildWaterwayLayerConfigs([]).flatMap(
+  (cfg) => [
+    {
+      id: `${cfg.id}-line`,
+      opacityProp: OPACITY_PROP.line,
+      defaultOpacity: 0.9,
+    },
+    {
+      id: `${cfg.id}-label`,
+      opacityProp: OPACITY_PROP.text,
+      defaultOpacity: 0.95,
+    },
+  ]
+);
 
 /**
  * UI id → ml-layer render group.
@@ -236,6 +243,20 @@ export const LAYER_RENDER_REGISTRY: Readonly<Record<RenderableUiLayerId, LayerRe
       { id: `${SOURCE_IDS.ROADS}-line`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0.9 },
       { id: `${SOURCE_IDS.ROADS}-hit`, opacityProp: OPACITY_PROP.line, defaultOpacity: 0 },
       { id: `${SOURCE_IDS.ROADS}-label`, opacityProp: OPACITY_PROP.text, defaultOpacity: 0.95 },
+    ],
+  },
+  red_vial_oficial: {
+    mlLayers: [
+      {
+        id: RED_VIAL_OFICIAL_LAYER_IDS.EN_PADRON,
+        opacityProp: OPACITY_PROP.line,
+        defaultOpacity: RED_VIAL_OFICIAL_PAINT.en_padron.opacity,
+      },
+      {
+        id: RED_VIAL_OFICIAL_LAYER_IDS.FALTA,
+        opacityProp: OPACITY_PROP.line,
+        defaultOpacity: RED_VIAL_OFICIAL_PAINT.falta_en_padron.opacity,
+      },
     ],
   },
   soil: {

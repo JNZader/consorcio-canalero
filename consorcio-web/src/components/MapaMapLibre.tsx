@@ -409,6 +409,7 @@ export default function MapaMapLibre() {
     // toggle": useMapDerivedState runs before usePuntosInteresWiring, so the
     // POI hook's showPuntosInteres is not in scope here.
     showPuntosInteres: roadFlow.showRoadFlow,
+    showRedVialOficial: isStaff,
   });
 
   // Auto-activate comparison when comparison state changes
@@ -633,6 +634,7 @@ export default function MapaMapLibre() {
     roadFlowKinds: roadFlow.kinds,
     puntosInteresCollection: puntosInteres.collection,
     catastroMembership: basinMembership.membership,
+    showRedVialOficial: isStaff,
   });
 
   useMapInteractionEffects({

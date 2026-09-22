@@ -155,4 +155,30 @@ describe('map2dDerived', () => {
       buildVectorLayerItems({ ...base, basins: null }).some((item) => item.id === 'basins')
     ).toBe(false);
   });
+
+  it('never offers Catálogo IDECOR to a citizen session', () => {
+    const items = buildVectorLayerItems({
+      basins: null,
+      approvedZonesCollection: null,
+      roadsCollection: polygonCollection([pointFeature('r1')]),
+      intersectionsLength: 0,
+    });
+    expect(items.some((item) => item.id === 'red_vial_oficial')).toBe(false);
+  });
+
+  it('offers Catálogo IDECOR (oficial) to staff next to Red Vial', () => {
+    const items = buildVectorLayerItems({
+      basins: null,
+      approvedZonesCollection: null,
+      roadsCollection: polygonCollection([pointFeature('r1')]),
+      intersectionsLength: 0,
+      showRedVialOficial: true,
+    });
+    const overlay = items.find((item) => item.id === 'red_vial_oficial');
+    expect(overlay).toEqual({
+      id: 'red_vial_oficial',
+      label: 'Catálogo IDECOR (oficial)',
+      category: LAYER_CATEGORY.TERRITORIO,
+    });
+  });
 });

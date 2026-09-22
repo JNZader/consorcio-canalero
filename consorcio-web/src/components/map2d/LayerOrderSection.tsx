@@ -47,6 +47,7 @@ const LAYER_ORDER_LABELS: Record<RenderableUiLayerId, string> = {
   approved_zones: 'Zonas aprobadas',
   waterways: 'Hidrografía',
   roads: 'Red vial',
+  red_vial_oficial: 'Catálogo IDECOR (oficial)',
   soil: 'Suelos',
   catastro: 'Catastro',
   puntos_conflicto: 'Puntos de conflicto',
