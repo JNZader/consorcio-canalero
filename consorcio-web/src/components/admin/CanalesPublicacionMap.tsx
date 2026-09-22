@@ -11,12 +11,16 @@ import type { CanalLineCollection, CanalLineGeometry } from '../../lib/api/canal
 import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 
 const CONS_SRC = 'pub-consorcio';
-const APRHI_SRC = 'pub-aprhi';
+const EXISTENTES_SRC = 'pub-existentes';
+const SR_SRC = 'pub-aprhi-sr';
 const ZONA_SRC = 'pub-zona';
 const CONS_LINE = 'pub-cons-line';
 const CONS_LABEL = 'pub-cons-label';
-const APRHI_LINE = 'pub-aprhi-line';
-const APRHI_LABEL = 'pub-aprhi-label';
+const EXISTENTES_LINE = 'pub-existentes-line';
+const EXISTENTES_LABEL = 'pub-existentes-label';
+const SR_LINE = 'pub-aprhi-sr-line';
+const SR_LABEL = 'pub-aprhi-sr-label';
+const APRHI_SR_URL = '/capas/aprhi_sr_pa.geojson';
 
 export const EMPTY_LINE_COLLECTION: CanalLineCollection = {
   type: 'FeatureCollection',
@@ -43,7 +47,7 @@ function consorcioPaint(selectedId: string | null): {
   };
 }
 
-function aprhiPaint(selectedId: string | null): {
+function existentesPaint(selectedId: string | null): {
   'line-color': DataDrivenPropertyValueSpecification<string>;
   'line-width': DataDrivenPropertyValueSpecification<number>;
   'line-opacity': number;
@@ -54,12 +58,10 @@ function aprhiPaint(selectedId: string | null): {
       'case',
       ['==', ['get', 'id'], selected],
       '#facc15',
-      ['boolean', ['get', 'publicado'], false],
-      '#22c55e',
-      '#ea580c',
+      '#7c3aed',
     ],
     'line-width': ['case', ['==', ['get', 'id'], selected], 6, 3],
-    'line-opacity': 0.9,
+    'line-opacity': 0.85,
   };
 }
 
@@ -124,18 +126,20 @@ function featureById(
 
 export function CanalesPublicacionMap({
   consorcio,
-  aprhi,
+  existentes,
   showRelevados,
   showPropuestas,
   showAprhi,
+  showExistentes,
   selectedId,
   onSelect,
 }: {
   consorcio: CanalLineCollection;
-  aprhi: CanalLineCollection | null;
+  existentes: CanalLineCollection | null;
   showRelevados: boolean;
   showPropuestas: boolean;
   showAprhi: boolean;
+  showExistentes: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -143,16 +147,18 @@ export function CanalesPublicacionMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const onSelectRef = useRef(onSelect);
   const consorcioRef = useRef(consorcio);
-  const aprhiRef = useRef(aprhi);
+  const existentesRef = useRef(existentes);
   const showAprhiRef = useRef(showAprhi);
+  const showExistentesRef = useRef(showExistentes);
   const showRelevadosRef = useRef(showRelevados);
   const showPropuestasRef = useRef(showPropuestas);
   const selectedIdRef = useRef(selectedId);
   const fittedIdRef = useRef<string | null>(null);
   onSelectRef.current = onSelect;
   consorcioRef.current = consorcio;
-  aprhiRef.current = aprhi;
+  existentesRef.current = existentes;
   showAprhiRef.current = showAprhi;
+  showExistentesRef.current = showExistentes;
   showRelevadosRef.current = showRelevados;
   showPropuestasRef.current = showPropuestas;
   selectedIdRef.current = selectedId;
@@ -204,34 +210,78 @@ export function CanalesPublicacionMap({
         })
         .catch(() => undefined);
 
-      map.addSource(APRHI_SRC, { type: 'geojson', data: EMPTY_LINE_COLLECTION });
-      const initialAprhi = aprhiPaint(selectedIdRef.current);
+      map.addSource(SR_SRC, { type: 'geojson', data: APRHI_SR_URL });
       map.addLayer({
-        id: APRHI_LINE,
+        id: SR_LINE,
         type: 'line',
-        source: APRHI_SRC,
+        source: SR_SRC,
+        layout: { visibility: showAprhiRef.current ? 'visible' : 'none' },
         paint: {
-          'line-color': initialAprhi['line-color'],
-          'line-width': initialAprhi['line-width'],
-          'line-opacity': initialAprhi['line-opacity'],
+          'line-color': [
+            'case',
+            ['==', ['get', 'Estado_Registro'], 'Eliminado'],
+            '#78716c',
+            '#c2410c',
+          ],
+          'line-width': 3,
+          'line-opacity': 0.9,
           'line-dasharray': [3, 2],
         },
       });
       map.addLayer({
-        id: APRHI_LABEL,
+        id: SR_LABEL,
         type: 'symbol',
-        source: APRHI_SRC,
+        source: SR_SRC,
+        minzoom: 11,
+        layout: {
+          visibility: showAprhiRef.current ? 'visible' : 'none',
+          'symbol-placement': 'line',
+          'symbol-spacing': 240,
+          'text-field': [
+            'concat',
+            ['coalesce', ['get', 'Identificador'], ''],
+            ' · ',
+            ['coalesce', ['get', 'Nombre_Obra'], ''],
+          ],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 12,
+          'text-keep-upright': true,
+        },
+        paint: {
+          'text-color': '#ffedd5',
+          'text-halo-color': 'rgba(0,0,0,0.75)',
+          'text-halo-width': 1.2,
+        },
+      });
+
+      map.addSource(EXISTENTES_SRC, { type: 'geojson', data: EMPTY_LINE_COLLECTION });
+      const initialExistentes = existentesPaint(selectedIdRef.current);
+      map.addLayer({
+        id: EXISTENTES_LINE,
+        type: 'line',
+        source: EXISTENTES_SRC,
+        paint: {
+          'line-color': initialExistentes['line-color'],
+          'line-width': initialExistentes['line-width'],
+          'line-opacity': initialExistentes['line-opacity'],
+          'line-dasharray': [2, 2],
+        },
+      });
+      map.addLayer({
+        id: EXISTENTES_LABEL,
+        type: 'symbol',
+        source: EXISTENTES_SRC,
         minzoom: 12,
         layout: {
           'symbol-placement': 'line',
           'symbol-spacing': 280,
-          'text-field': ['concat', 'APRHI · ', ['get', 'nombre_publico']],
+          'text-field': ['concat', 'Existentes · ', ['get', 'nombre_publico']],
           'text-font': ['Noto Sans Regular'],
           'text-size': 11,
           'text-keep-upright': true,
         },
         paint: {
-          'text-color': '#fed7aa',
+          'text-color': '#ddd6fe',
           'text-halo-color': 'rgba(0,0,0,0.75)',
           'text-halo-width': 1.2,
         },
@@ -269,8 +319,10 @@ export function CanalesPublicacionMap({
       applyConsorcioFilter(map, showRelevadosRef.current, showPropuestasRef.current);
       applyLineSource(
         map,
-        APRHI_SRC,
-        showAprhiRef.current && aprhiRef.current ? aprhiRef.current : EMPTY_LINE_COLLECTION
+        EXISTENTES_SRC,
+        showExistentesRef.current && existentesRef.current
+          ? existentesRef.current
+          : EMPTY_LINE_COLLECTION
       );
 
       map.on('click', CONS_LINE, (event) => {
@@ -278,9 +330,20 @@ export function CanalesPublicacionMap({
         const id = feature?.properties?.id;
         if (typeof id === 'string') onSelectRef.current(id);
       });
-      map.on('click', APRHI_LINE, (event) => {
+      map.on('click', EXISTENTES_LINE, (event) => {
         const id = event.features?.[0]?.properties?.id;
         if (typeof id === 'string') onSelectRef.current(id);
+      });
+      map.on('click', SR_LINE, (event) => {
+        const props = event.features?.[0]?.properties ?? {};
+        const ident = String(props.Identificador ?? '');
+        const nombre = String(props.Nombre_Obra ?? '');
+        const estado = String(props.Estado_Registro ?? '');
+        const tipo = String(props.Tipo_Obra_Lineal ?? '');
+        new maplibregl.Popup({ closeButton: true, offset: 8 })
+          .setLngLat(event.lngLat)
+          .setText(`${ident} · ${nombre} (${estado || 's/estado'} · ${tipo})`)
+          .addTo(map);
       });
       map.on('mouseenter', CONS_LINE, () => {
         map.getCanvas().style.cursor = 'pointer';
@@ -288,10 +351,16 @@ export function CanalesPublicacionMap({
       map.on('mouseleave', CONS_LINE, () => {
         map.getCanvas().style.cursor = '';
       });
-      map.on('mouseenter', APRHI_LINE, () => {
+      map.on('mouseenter', EXISTENTES_LINE, () => {
         map.getCanvas().style.cursor = 'pointer';
       });
-      map.on('mouseleave', APRHI_LINE, () => {
+      map.on('mouseleave', EXISTENTES_LINE, () => {
+        map.getCanvas().style.cursor = '';
+      });
+      map.on('mouseenter', SR_LINE, () => {
+        map.getCanvas().style.cursor = 'help';
+      });
+      map.on('mouseleave', SR_LINE, () => {
         map.getCanvas().style.cursor = '';
       });
     });
@@ -311,8 +380,20 @@ export function CanalesPublicacionMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    applyLineSource(map, APRHI_SRC, showAprhi && aprhi ? aprhi : EMPTY_LINE_COLLECTION);
-  }, [aprhi, showAprhi]);
+    applyLineSource(
+      map,
+      EXISTENTES_SRC,
+      showExistentes && existentes ? existentes : EMPTY_LINE_COLLECTION
+    );
+  }, [existentes, showExistentes]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const vis = showAprhi ? 'visible' : 'none';
+    if (map.getLayer(SR_LINE)) map.setLayoutProperty(SR_LINE, 'visibility', vis);
+    if (map.getLayer(SR_LABEL)) map.setLayoutProperty(SR_LABEL, 'visibility', vis);
+  }, [showAprhi]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -323,13 +404,15 @@ export function CanalesPublicacionMap({
       map.setPaintProperty(CONS_LINE, 'line-width', paint['line-width']);
       map.setPaintProperty(CONS_LINE, 'line-opacity', paint['line-opacity']);
     }
-    if (map.getLayer(APRHI_LINE)) {
-      const paint = aprhiPaint(selectedId);
-      map.setPaintProperty(APRHI_LINE, 'line-color', paint['line-color']);
-      map.setPaintProperty(APRHI_LINE, 'line-width', paint['line-width']);
+    if (map.getLayer(EXISTENTES_LINE)) {
+      const paint = existentesPaint(selectedId);
+      map.setPaintProperty(EXISTENTES_LINE, 'line-color', paint['line-color']);
+      map.setPaintProperty(EXISTENTES_LINE, 'line-width', paint['line-width']);
     }
     if (!selectedId || fittedIdRef.current === selectedId) return;
-    const feature = featureById(consorcio, selectedId) ?? (aprhi ? featureById(aprhi, selectedId) : undefined);
+    const feature =
+      featureById(consorcio, selectedId) ??
+      (existentes ? featureById(existentes, selectedId) : undefined);
     const geometry = feature?.geometry;
     if (geometry?.type !== 'LineString' && geometry?.type !== 'MultiLineString') return;
     const bounds = new maplibregl.LngLatBounds();
@@ -338,7 +421,7 @@ export function CanalesPublicacionMap({
       map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 400 });
       fittedIdRef.current = selectedId;
     }
-  }, [selectedId, consorcio, aprhi]);
+  }, [selectedId, consorcio, existentes]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 480 }} />;
 }

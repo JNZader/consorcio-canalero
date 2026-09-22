@@ -105,12 +105,12 @@ describe('<CanalesPublicacionPanel />', () => {
     });
   });
 
-  it('lists APRHI as an opt-in inventory, not a read-only overlay', async () => {
+  it('treats SR PA as the APRHI layer and keeps the old existentes overlay off', async () => {
     renderWithMantine(<CanalesPublicacionPanel />);
-    expect(await screen.findByText(/inventario de base para mejorar/i)).toBeInTheDocument();
-    expect(await screen.findByText(/APRHI 1 canales/i)).toBeInTheDocument();
+    expect(await screen.findByText(/obras lineales rurales APRHI/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Ver APRHI')).toBeChecked();
-    expect(screen.getAllByText('APRHI').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Ver existentes')).not.toBeChecked();
+    expect(screen.getByText(/Existentes 1/)).toBeInTheDocument();
   });
 
   it('selects a canal from the map and toggles public visibility', async () => {
@@ -125,9 +125,10 @@ describe('<CanalesPublicacionPanel />', () => {
     });
   });
 
-  it('selects an APRHI canal from the map and shows the publish switch', async () => {
+  it('selects an old existentes canal from the map and shows the publish switch', async () => {
     const user = userEvent.setup();
     renderWithMantine(<CanalesPublicacionPanel />);
+    await user.click(await screen.findByLabelText('Ver existentes'));
     await user.click(await screen.findByRole('button', { name: 'mapa-aprhi' }));
     const toggle = await screen.findByLabelText('Publicar Canal Viejo');
     expect(toggle).not.toBeChecked();
