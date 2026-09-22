@@ -2,9 +2,9 @@
  * caminosHuecosLayers
  *
  * Staff-only overlay of `/capas/caminos_huecos.geojson`: OSM unclassified +
- * IGN terciaria that do NOT match our 380-road padrón. Not merged into
- * `red_vial` / `caminos.geojson`. Distinct from the IDECOR official overlay
- * (`red_vial_oficial`, AU9 / RN1V09).
+ * IGN terciaria remainder AFTER subtracting Red Vial ∪ IDECOR faltantes
+ * (20 m OSM / 150 m IGN). One kilometre belongs to one layer. Not merged
+ * into `red_vial`. Distinct from `red_vial_oficial` (AU9 / RN1V09).
  *
  * Two line layers, one source, split on `fuente`:
  *   - osm  — violet solid (vecinal / huella OSM)

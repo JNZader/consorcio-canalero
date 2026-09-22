@@ -107,3 +107,23 @@ describe('syncCaminosHuecosLayers · citizen never mounts', () => {
     ]);
   });
 });
+
+describe('caminos_huecos.geojson · remainder only', () => {
+  it('is schema 1.1 remainder after Red Vial ∪ IDECOR', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const data = JSON.parse(
+      readFileSync(resolve(__dirname, '../../public/capas/caminos_huecos.geojson'), 'utf8')
+    ) as {
+      metadata: { schema_version: string; priority: string };
+      features: Array<{ properties: { fuente: string; longitud_km: number } }>;
+    };
+    expect(data.metadata.schema_version).toBe('1.1');
+    expect(data.metadata.priority).toMatch(/Red Vial/);
+    expect(data.features.length).toBeGreaterThan(0);
+    for (const feature of data.features) {
+      expect(['osm', 'ign']).toContain(feature.properties.fuente);
+      expect(feature.properties.longitud_km).toBeGreaterThan(0.05);
+    }
+  });
+});
