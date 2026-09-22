@@ -6,7 +6,10 @@
 > los checkouts locales — y la memoria persistente de sesión (engram, proyecto
 > `consorcio-canalero`).
 >
-> Última actualización: **2026-09-01** · Mantiene: @javier
+> Última actualización: **2026-09-22** · Mantiene: @javier
+>
+> Estrategia de producto (canalero white-label · caminero · ficha nacional):
+> `docs/strategy/exploracion-productos-2026-09.md`. No es cola de código.
 
 ---
 
