@@ -42,9 +42,8 @@ function rowOrigen(row: CanalPublicacionRow): CanalOrigen {
 }
 
 /**
- * Staff map: KMZ catalog plus opt-in APRHI existentes.
- * APRHI is the base inventory to improve, not the source of truth.
- * Public stays KMZ until a staff switch turns a canal on.
+ * Staff map: KMZ catalog, official APRHI SR PA overlay, and the old
+ * existentes layer kept off by default so nothing is lost.
  */
 export default function CanalesPublicacionPanel() {
   const [items, setItems] = useState<CanalPublicacionRow[]>([]);
@@ -54,6 +53,7 @@ export default function CanalesPublicacionPanel() {
   const [showRelevados, setShowRelevados] = useState(true);
   const [showPropuestas, setShowPropuestas] = useState(true);
   const [showAprhi, setShowAprhi] = useState(true);
+  const [showExistentes, setShowExistentes] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -121,7 +121,7 @@ export default function CanalesPublicacionPanel() {
   const ocultos = catalog.length - publicados;
   const needle = query.trim().toLowerCase();
   const visibleCatalog = catalog.filter((item) => {
-    if (rowOrigen(item) === CANAL_ORIGEN.APRHI) return showAprhi;
+    if (rowOrigen(item) === CANAL_ORIGEN.APRHI) return showExistentes;
     if (item.estado === 'propuesto') return showPropuestas;
     return showRelevados;
   });
@@ -138,10 +138,9 @@ export default function CanalesPublicacionPanel() {
       <div>
         <Title order={2}>Publicación de canales</Title>
         <Text c="dimmed" size="sm">
-          Verde = lo ve el ciudadano. Gris = oculto. Amarillo = seleccionado. Naranja punteado =
-          APRHI aún no publicado — inventario de base para mejorar, no la fuente de verdad. Verde
-          punteado = APRHI ya visible al ciudadano. El mapa público sigue en KMZ hasta que prendas
-          un switch.
+          Verde/gris = KMZ del consorcio (lo que se publica). Naranja punteado = obras lineales
+          rurales APRHI (SR PA). Violeta = capa vieja de existentes, no es el padrón APRHI. Clic
+          en APRHI muestra el código CA; no publica. El ciudadano sigue viendo el KMZ.
         </Text>
       </div>
 
@@ -164,8 +163,14 @@ export default function CanalesPublicacionPanel() {
         <Switch
           checked={showAprhi}
           onChange={(event) => setShowAprhi(event.currentTarget.checked)}
-          label="APRHI"
+          label="APRHI (SR PA)"
           aria-label="Ver APRHI"
+        />
+        <Switch
+          checked={showExistentes}
+          onChange={(event) => setShowExistentes(event.currentTarget.checked)}
+          label="Existentes (capa vieja)"
+          aria-label="Ver existentes"
         />
         <Text size="xs" c="dimmed">
           Solo oculta en esta pantalla. No publica ni despublica.
@@ -177,7 +182,10 @@ export default function CanalesPublicacionPanel() {
           {ocultos} ocultos
         </Badge>
         <Badge color="orange" variant="light">
-          APRHI {aprhiItems.length} canales
+          APRHI SR PA
+        </Badge>
+        <Badge color="violet" variant="light">
+          Existentes {aprhiItems.length}
         </Badge>
       </Group>
 
@@ -187,10 +195,11 @@ export default function CanalesPublicacionPanel() {
             <Box style={{ height: 560 }}>
               <CanalesPublicacionMap
                 consorcio={geojson}
-                aprhi={aprhi}
+                existentes={aprhi}
                 showRelevados={showRelevados}
                 showPropuestas={showPropuestas}
                 showAprhi={showAprhi}
+                showExistentes={showExistentes}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
               />
@@ -224,13 +233,19 @@ export default function CanalesPublicacionPanel() {
                   <Text span c="orange" fw={700}>
                     ┄
                   </Text>{' '}
-                  APRHI oculto
+                  APRHI SR PA (vigente)
                 </Text>
                 <Text size="xs">
-                  <Text span c="green" fw={700}>
+                  <Text span c="gray" fw={700}>
                     ┄
                   </Text>{' '}
-                  APRHI publicado
+                  APRHI eliminada
+                </Text>
+                <Text size="xs">
+                  <Text span c="violet" fw={700}>
+                    ┄
+                  </Text>{' '}
+                  existentes (capa vieja)
                 </Text>
               </Stack>
             </Paper>
@@ -245,16 +260,16 @@ export default function CanalesPublicacionPanel() {
                   <div>
                     <Text size="xs" c="dimmed">
                       {rowOrigen(selected) === CANAL_ORIGEN.APRHI
-                        ? 'Canal APRHI'
+                        ? 'Existentes (capa vieja)'
                         : 'Canal del consorcio'}
                     </Text>
                     <Text fw={600}>{selected.nombre_interno}</Text>
                     <Group gap="xs" mt={4}>
                       <Badge
                         variant="light"
-                        color={rowOrigen(selected) === CANAL_ORIGEN.APRHI ? 'orange' : 'blue'}
+                        color={rowOrigen(selected) === CANAL_ORIGEN.APRHI ? 'violet' : 'blue'}
                       >
-                        {rowOrigen(selected) === CANAL_ORIGEN.APRHI ? 'APRHI' : 'KMZ'}
+                        {rowOrigen(selected) === CANAL_ORIGEN.APRHI ? 'Existentes' : 'KMZ'}
                       </Badge>
                       {rowOrigen(selected) === CANAL_ORIGEN.KMZ ? (
                         <Badge variant="light">{selected.estado}</Badge>
@@ -290,8 +305,8 @@ export default function CanalesPublicacionPanel() {
                 </Stack>
               ) : (
                 <Text size="sm" c="dimmed">
-                  Hacé clic en un canal del mapa. El punteado es APRHI: se publica con el mismo
-                  switch que el KMZ.
+                  Hacé clic en un canal KMZ o en existentes para publicar. APRHI SR PA es ficha
+                  (código CA), no entra al mapa público desde acá.
                 </Text>
               )}
             </Paper>
@@ -325,9 +340,9 @@ export default function CanalesPublicacionPanel() {
                           <Badge
                             size="xs"
                             variant="light"
-                            color={rowOrigen(row) === CANAL_ORIGEN.APRHI ? 'orange' : 'blue'}
+                            color={rowOrigen(row) === CANAL_ORIGEN.APRHI ? 'violet' : 'blue'}
                           >
-                            {rowOrigen(row) === CANAL_ORIGEN.APRHI ? 'APRHI' : 'KMZ'}
+                            {rowOrigen(row) === CANAL_ORIGEN.APRHI ? 'Existentes' : 'KMZ'}
                           </Badge>
                           <Text size="sm" lineClamp={1}>
                             {row.nombre_publico}
