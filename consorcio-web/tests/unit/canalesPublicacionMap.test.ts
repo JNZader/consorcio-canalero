@@ -5,7 +5,10 @@ vi.mock('maplibre-gl', () => ({
   default: { Map: vi.fn(), Popup: vi.fn(), LngLatBounds: vi.fn() },
 }));
 
-import { patchConsorcioFeature } from '../../src/components/admin/CanalesPublicacionMap';
+import {
+  consorcioVisibilityFilter,
+  patchConsorcioFeature,
+} from '../../src/components/admin/CanalesPublicacionMap';
 
 function collection(publicado: boolean): FeatureCollection<LineString> {
   return {
@@ -26,6 +29,21 @@ function collection(publicado: boolean): FeatureCollection<LineString> {
     ],
   };
 }
+
+describe('consorcioVisibilityFilter', () => {
+  it('shows every KMZ canal when both groups are on', () => {
+    expect(consorcioVisibilityFilter(true, true)).toEqual(['has', 'id']);
+  });
+
+  it('filters to relevado or propuesto without touching publicado', () => {
+    expect(consorcioVisibilityFilter(true, false)).toEqual(['==', ['get', 'estado'], 'relevado']);
+    expect(consorcioVisibilityFilter(false, true)).toEqual(['==', ['get', 'estado'], 'propuesto']);
+  });
+
+  it('hides all KMZ traces when both groups are off', () => {
+    expect(consorcioVisibilityFilter(false, false)).toEqual(['==', ['get', 'id'], '__hidden__']);
+  });
+});
 
 describe('patchConsorcioFeature', () => {
   it('toggles publicado only on the selected canal', () => {

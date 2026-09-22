@@ -51,6 +51,8 @@ export default function CanalesPublicacionPanel() {
   const [geojson, setGeojson] = useState<CanalLineCollection>(EMPTY_LINE_COLLECTION);
   const [aprhiItems, setAprhiItems] = useState<CanalPublicacionRow[]>([]);
   const [aprhi, setAprhi] = useState<CanalLineCollection>(EMPTY_LINE_COLLECTION);
+  const [showRelevados, setShowRelevados] = useState(true);
+  const [showPropuestas, setShowPropuestas] = useState(true);
   const [showAprhi, setShowAprhi] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -118,13 +120,18 @@ export default function CanalesPublicacionPanel() {
   const publicados = catalog.filter((item) => item.publicado).length;
   const ocultos = catalog.length - publicados;
   const needle = query.trim().toLowerCase();
+  const visibleCatalog = catalog.filter((item) => {
+    if (rowOrigen(item) === CANAL_ORIGEN.APRHI) return showAprhi;
+    if (item.estado === 'propuesto') return showPropuestas;
+    return showRelevados;
+  });
   const filtered = needle
-    ? catalog.filter(
+    ? visibleCatalog.filter(
         (item) =>
           item.nombre_publico.toLowerCase().includes(needle) ||
           item.nombre_interno.toLowerCase().includes(needle)
       )
-    : catalog;
+    : visibleCatalog;
 
   return (
     <Stack gap="md">
@@ -139,12 +146,30 @@ export default function CanalesPublicacionPanel() {
       </div>
 
       <Group gap="md" wrap="wrap">
+        <Text size="sm" fw={600}>
+          Ver en el mapa
+        </Text>
+        <Switch
+          checked={showRelevados}
+          onChange={(event) => setShowRelevados(event.currentTarget.checked)}
+          label="Relevadas"
+          aria-label="Ver relevadas"
+        />
+        <Switch
+          checked={showPropuestas}
+          onChange={(event) => setShowPropuestas(event.currentTarget.checked)}
+          label="Propuestas"
+          aria-label="Ver propuestas"
+        />
         <Switch
           checked={showAprhi}
           onChange={(event) => setShowAprhi(event.currentTarget.checked)}
-          label="Mostrar APRHI"
-          aria-label="Mostrar APRHI"
+          label="APRHI"
+          aria-label="Ver APRHI"
         />
+        <Text size="xs" c="dimmed">
+          Solo oculta en esta pantalla. No publica ni despublica.
+        </Text>
         <Badge color="green" variant="light">
           {publicados} publicados
         </Badge>
@@ -163,6 +188,8 @@ export default function CanalesPublicacionPanel() {
               <CanalesPublicacionMap
                 consorcio={geojson}
                 aprhi={aprhi}
+                showRelevados={showRelevados}
+                showPropuestas={showPropuestas}
                 showAprhi={showAprhi}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
