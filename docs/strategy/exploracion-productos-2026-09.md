@@ -8,9 +8,9 @@ La plataforma de Consorcio Canalero 10 de Mayo no es un solo producto. Es una **
 | **B. Caminero GIS operativo** | Provincia de Córdoba | Consorcios camineros y regionales (Ley 11.059) | App de operaciones de red rural, no el visor de IDECOR |
 | **C. Ficha hídrica de predio** | **Nación** (no dpto. Unión) | Inmobiliarias rurales, tasadores, productores, bancos | PDF + checkout de caracterización hidrológica del establecimiento |
 
-Este documento cierra la exploración de canales, caminos, APRHI y RuralIndex (sesión 2026-09-21/22) y el relevamiento de competencia del 2026-09-22. No es un PRD ni un plan de implementación.
+Este documento cierra la exploración de canales, caminos, APRHI y RuralIndex (sesión 2026-09-21/22) y el relevamiento de competencia (2026-09-22, corregido el mismo día). No es un PRD ni un plan de implementación.
 
-**Decisión de producto (ratificada en sesión):** no clonar el wizard de RuralIndex adentro de la app de 10 de Mayo; no meter Mercado Pago en el producto del consorcio; no vender catastro IDECOR como certificado. El símil RuralIndex es el producto C, a escala nacional.
+**Decisión de producto (ratificada en sesión):** no clonar el wizard de RuralIndex adentro de la app de 10 de Mayo; no meter Mercado Pago en el producto del consorcio; no vender catastro IDECOR como certificado. El producto C es una ficha de predio a escala nacional. RuralIndex **no** es el único PDF de campo: Informes de Campo ya cubre AR+UY+BR. Lo raro de RuralIndex es el **índice hidrológico multi-año**, no el checkout.
 
 ---
 
@@ -18,8 +18,8 @@ Este documento cierra la exploración de canales, caminos, APRHI y RuralIndex (s
 
 1. Leer **Qué hay hoy** (inventarios medidos).
 2. Leer **Tres productos** (TAM, gap, no-hacer).
-3. Leer **Competencia** antes de hablar con un canalero o un caminero: CONSO/Adminia son **propiedad horizontal**, no este mercado.
-4. El siguiente paso de producto **no** es codear C. Es tenancy para A, o una conversación con una regional caminera para B. C espera capas nacionales + método publicado.
+3. Leer **Competencia**: CONSO/Adminia son PH. C no está vacío — Informes de Campo ya cubre el país; RuralIndex cubre el índice hídrico en Salado.
+4. El siguiente paso de producto **no** es codear C. Es tenancy para A, o una conversación con una regional caminera para B. C espera método publicado + diferencial hidrológico, no otro PDF de tasación.
 
 ---
 
@@ -61,16 +61,16 @@ Fuentes oficiales consultadas (no se mezclan en `red_vial`):
 
 PRs: #288 overlay IDECOR → #290 OSM/IGN → #291 solo faltantes → #292 clip sin solape.
 
-### 1.3 Ficha territorial — el único análogo de RuralIndex, apagado
+### 1.3 Ficha territorial — el cómputo más cercano a un PDF de predio, apagado
 
 `POST /api/v2/geo/analisis-zona`, router público propio, rate-limit aislado. Flag `ficha_enabled: bool = False` (`gee-backend/app/config.py`). Con el flag off responde **503** `funcionalidad_no_disponible`. El cómputo **ya no es placeholder**: cinco tipos reales (`parcela`, `parcelas`, `poligono`, `canal_buffer`, `canal_cuenca`) — suelos (`suelos_catastro`), CHIRPS, rasters `flood_risk` / `drainage_need`. Caps ~20.000 ha, envelope, 1.000 vértices; `parcelas` 2–30 con `ST_Union` server-side. A7 en `main` (#108 / #110 / #111, 2026-08-02).
 
-**Lo que no hay (gap vs RuralIndex):**
+**Lo que no hay (gap vs el mercado de fichas, no vs un solo vendor):**
 
 - PDF de predio (los PDF actuales son trámites / finanzas / reuniones / zonificación, branding ReportLab).
-- Checkout / Mercado Pago.
-- Índice hidrológico **publicado** (método, clases 2001–2025, leyenda vendible).
-- Cobertura fuera del contorno de 10 de Mayo (~88.484 ha).
+- Checkout / Mercado Pago — y **no debe** vivir en el deploy de 10 de Mayo.
+- Índice hidrológico **publicado** (método, clases, leyenda vendible). RuralIndex tiene uno cerrado 2001–2025; nosotros tenemos HAND/TWI/SAR/`flood_risk`/`drainage_need` y no lo empaquetamos.
+- Cobertura fuera del contorno de 10 de Mayo (~88.484 ha). Informes de Campo ya vende el PDF en todo el país; nosotros no.
 
 ### 1.4 Lo que no existe (y se buscó)
 
@@ -129,7 +129,7 @@ Eso es GIS **provincial para priorizar inversión**. No es el sistema del consor
 
 ### C. Ficha hídrica de predio — nación, no Unión
 
-**Problema.** Tasador, inmobiliaria rural o productor necesita un PDF que caracterice **este** establecimiento: suelos, respuesta hídrica multi-año, uso agrícola observado, imágenes de referencia. RuralIndex lo vende en 21 partidos de la Pampa Deprimida bonaerense. Córdoba / Unión **está fuera de cobertura** (el propio wizard lo dice). El resto del país no tiene un SaaS equivalente.
+**Problema.** Tasador, inmobiliaria rural o productor necesita un PDF que caracterice **este** establecimiento: suelos, respuesta hídrica multi-año, uso agrícola observado, imágenes de referencia. Eso **ya se vende**. RuralIndex lo hace barato y profundo en 21 partidos de la Pampa Deprimida. Informes de Campo lo hace más caro y más ancho (AR+UY+BR). AcreValue / Land id / AQUAOSO son la categoría madura en EE.UU. Córdoba / Unión está fuera de RuralIndex (el propio wizard lo dice); **no** está fuera del mercado.
 
 **Referente.** [ruralindex.com.ar](https://ruralindex.com.ar/) (consultado 2026-09-22):
 
@@ -148,11 +148,11 @@ Eso es GIS **provincial para priorizar inversión**. No es el sistema del consor
 1. Capas nacionales o provinciales enchufables: suelos INTA (cobertura 1:50k **no** es homogénea en todo el país), series satelitales, un modelo hídrico **con método publicado** (o no llamarlo «índice»).
 2. Catastro: **es provincial**. Córdoba = IDECOR; BA = ARBA; Santa Fe = API; etc. El wizard no puede prometer nomenclatura en todo el país. Polígono / KML es el input universal; parcela es un *plus* donde hay WFS.
 3. PDF de predio + checkout **en un deploy aparte** (o tenant `ficha` sin padrón de consorcio).
-4. Cobertura como moat: RuralIndex está trabado en Salado. El que cubra Núcleo / Oeste agrícola / Córdoba / Litoral primero, gana el canal de inmobiliarias rurales (CAIR, CAT, estudios de tasación).
+4. Posicionamiento: no «ser el RuralIndex nacional». Informes de Campo **ya es** el PDF nacional de compraventa. El hueco defendible es **hidrología observada vs mapa oficial** (SAR/HAND/TWI vs carta de inundación), con método publicado, más aptitud vs uso real.
 
-**Tradeoff.** Mercado grande (inmobiliario rural nacional; InCAIR midiendo actividad 2026). Competencia AgTech (Auravant, SIMA, GeoAgro) **no** vende este PDF: venden campaña agrícola. El riesgo es científico (índice sin método = humo) y de datos (suelos + catastro heterogéneos). No es un ETL del dpto. Unión.
+**Tradeoff.** Mercado grande (inmobiliario rural nacional; InCAIR midiendo actividad 2026). AgTech (Auravant, SIMA, GeoAgro) **no** vende este PDF: venden campaña agrícola. Los rivales de C son Informes de Campo (cobertura + ficha de venta), RuralIndex (índice hídrico cerrado, barato, Salado) y el template estadounidense (AcreValue). El riesgo es científico (índice sin método = humo) y de datos (suelos + catastro heterogéneos). No es un ETL del dpto. Unión.
 
-**No hacer.** Encender `ficha_enabled` en prod de 10 de Mayo y cobrar el PDF ahí. Vender nomenclatura IDECOR como «certificado». Copiar el nombre o las clases de RuralIndex. Prometer 24 provincias el día 1 — arrancar por Córdoba + Santa Fe + núcleo bonaerense, que es donde está la plata de tasación.
+**No hacer.** Encender `ficha_enabled` en prod de 10 de Mayo y cobrar el PDF ahí. Vender nomenclatura IDECOR como «certificado». Copiar el nombre o las clases de RuralIndex. Competir con Informes de Campo en «17 páginas + logo de inmobiliaria + timelapse» sin un diferencial hidrológico. Prometer 24 provincias el día 1 con el mismo espesor de Salado.
 
 ---
 
@@ -188,30 +188,97 @@ Conclusión A: el segundo cliente no te elige contra un SaaS. Te elige contra el
 
 Córdoba es el modelo que otras provincias miran (ACCPC en Palermo). Un producto B que anda es exportable; uno que pelea con IDECOR no.
 
-### 3.4 Ficha de predio — RuralIndex es el único símil; AgTech no
+### 3.4 Ficha de predio — la categoría existe; el índice hídrico es el hueco
 
-| Actor | Qué vende | Vs producto C |
+Corrección 2026-09-22: la primera pasada dijo «RuralIndex es el único símil». Eso es falso para la **forma** (KML → pagar → PDF de campo). Es aproximadamente cierto para un **índice hidrológico multi-año de anegamiento de llanura**. Tres capas:
+
+**Capa 1 — mismo producto, LatAm (rivales directos de C)**
+
+| Actor | Qué vende | Precio / cobertura (consultado 2026-09-22) | Vs C |
+|---|---|---|---|
+| **RuralIndex** | PDF: Respuesta Hídrica® 2001–2025 + uso 2019–2025 + suelos INTA 1:50k + mosaico. Wizard polígono/KML, preview, MP, link 30 días | **$35.000** ≤2.000 ha / **$50.000** arriba. 21 partidos BA (Pampa Deprimida). Método cerrado | Profundo en hidrología de anegamiento. Techo = cobertura. Barato |
+| **Informes de Campo** ([informesdecampo.com](https://informesdecampo.com/)) | PDF ~17 pág. + video timelapse 8 años. Suelo (capacidad de uso I–VIII, índice de productividad), uso satelital (agrícola firme / ocasional / ganadero), agua, clima, infraestructura. White-label inmobiliaria, fotos, mejoras. Packs para tasadores. Red de profesionales | **$124.000** / informe (packs a $62.000 × 25). **AR + UY + BR** (dicen PY/BO después). Entrega en **horas**, no segundos. Claim «+1.000 informes» no auditado | El PDF nacional de compraventa. En Salado venden loma/bajo + historial de inundación. Más caro, más ancho, menos «índice» |
+| **AgroGIS** | Tasación rural (comparables + scoring de unidades cartográficas + renta esperada). Satélite + suelos + campo | Servicio profesional, AR y limítrofes | No es self-serve. Canal, no SaaS |
+
+**Capa 2 — misma categoría, internacional (templates, no clones)**
+
+| Actor | Qué vende | Idea útil |
 |---|---|---|
-| **RuralIndex** | PDF hídrico + suelos + uso, 21 partidos BA, $35k/$50k, MP | Único comparable. Cobertura = su techo. Método cerrado = su debilidad |
-| **Auravant** | Agricultura de precisión (NDVI, ambientación, prescripciones, ISO 27001). Freemium | Campaña agrícola, no caracterización de establecimiento para tasación |
-| **SIMA** | Monitoreo de lote, GIS propio (oct 2025), NASA Harvest, 8 países, >4 M ha | Idem. Alianza SIMA–Auravant 2025 refuerza crop-ops, no PDF hídrico |
-| **GeoAgro 360** (TEK) | Mapas de lote, 15+ informes satelitales, prescripciones | B2B de empresas agropecuarias |
-| **Climate FieldView** | Mapas de rinde desde maquinaria | Hardware-bound, no ficha de compra-venta |
-| **Kilimo** | Riego / balance hídrico de cultivo | Vecino temático (agua), otro comprador |
-| **INTA cartas de suelo, Mapa de Cultivos SAGyP (Expoagro 2026), IDECOR valor de tierra rural** | Datos públicos | Insumos, no producto. C los consume |
-| **CAIR / CAT / estudios de tasación** | Valuación humana + informe | Canal de venta de C, no competencia de software |
-| **CONSO et al.** | — | Irrelevante |
+| **AcreValue** (Granular / Corteva) | «Zillow de campos» EE.UU.: ~40 M parcelas, suelos SSURGO, flood **FEMA**, crop history CDL 5 años, valuación, comps, PDF por secciones | Catastro nacional + índice de productividad (CSR2/PI/CPI/NCCPI) + inundación **oficial** en el mismo PDF. No es respuesta hídrica satelital |
+| **Land id** (ex MapRight) | Mapping + soil report USDA, NCCPI, WAPI por cultivo, 40+ capas (flood, tendidos, agua), mapas imprimibles / share | Informe de suelos como documento de deal. White-label para agentes |
+| **FBN AcreVision** | Suelos NRCS, historia de cultivo, valuación Corn Belt | Valuación, no hidrología |
+| **Acres.com** | Elevation, flood, wetlands, soils, NDVI, historical imagery, timber | Distinguir **flood zone** de **drenaje** (un sitio puede estar fuera de FEMA y ser inbuildable por napa) |
+| **AQUAOSO** | California: derechos de agua, pozos, distritos, profundidad de napa, especies, PDF multi-parcela **date-stamped** para lenders | El análogo más limpio en el **eje agua**. Tercero de confianza para el banco, no para el productor |
+| **HydraLakes** | India (dice global): dibujar polígono → informe IA 21 secciones, PDF. Flood **Sentinel-1 desde 2015** vs zona oficial «porque a menudo no coinciden» | Producto consumer; calidad no verificada. La idea de **SAR observado vs mapa oficial** es exactamente lo que ya computamos |
 
-Conclusión C: el blanco no es «ser Auravant». Es ser el RuralIndex que **sí cubre el país**, con método reproducible, sin atarse al catastro de una sola provincia.
+**Capa 3 — AgTech de campaña (no es C)**
+
+Auravant, SIMA (+ GIS oct 2025, NASA Harvest), GeoAgro 360, Climate FieldView, Kilimo. Venden lote / prescripción / rinde / riego de cultivo. Insumo posible (NDVI, ambientación), no el PDF de compraventa.
+
+Datos públicos que C consume, no rivales: INTA cartas de suelo, Mapa de Cultivos SAGyP, IDECOR valor de tierra rural, CONAE SAOCOM humedad, Web Soil Survey (USDA). CAIR / CAT / estudios de tasación = **canal de venta**.
+
+Conclusión C: el blanco no es «ser Auravant» ni «ser el único PDF de campo de Argentina» (Informes de Campo ya lo es). Es **hidrología observada (SAR/HAND/TWI) versus carta oficial**, aptitud versus uso real, método publicado, cobertura donde RuralIndex no llega y donde Informes de Campo es genérico.
 
 ---
 
-## 4. Mapa de no-confundir
+## 4. Ideas extraídas (copiar el mecanismo, no la marca)
+
+Nada de esto está implementado. Es backlog de producto, no de este PR. Cada fila dice de quién sale y a qué producto aplica.
+
+### 4.1 Producto C — ficha de predio
+
+| # | Idea | De quién | Por qué importa | Ya tenemos / falta |
+|---|---|---|---|---|
+| C1 | **Aptitud vs uso observado.** Capacidad de uso I–VIII (potencial) cruzada con agrícola firme / ocasional / ganadero (satélite) | Informes de Campo | El error clásico de tasación: pagar precio agrícola por bajo que se siembra un año de cada cinco | Suelos + series GEE. Falta la clasificación «ocasional» y el cruce en el PDF |
+| C2 | **Loma / plano / bajo** como composición de ambientes, no como color de mapa | Informes de Campo (Salado); RuralIndex (respuesta hídrica) | En anegables el valor es el % de loma | DEM GLO-30, HAND/TWI. Falta leyenda vendible |
+| C3 | **Índice hídrico observado vs mapa oficial.** Sentinel-1 2015+ contra zona de inundación publicada | HydraLakes (claim); Acres.com (flood ≠ drainage) | El desacuerdo **es** el producto. FEMA/cartas mienten en llanura | S1 + `flood_risk` + `drainage_need`. Falta serie 10–25 años empaquetada y la carta oficial de cada provincia |
+| C4 | **Método publicado** (ficha metodológica / paper), no «motor propio» | Anti-RuralIndex y anti-Informes de Campo | Los dos locales venden caja negra. El tasador serio pide trazabilidad | Tenemos HAND/TWI/SAR documentados internamente. Falta la ficha pública |
+| C5 | **Preview gratis, pago al final.** Polígono/KML → superficie y mapa; el PDF se cobra | RuralIndex, Informes de Campo, HydraLakes | Baja fricción. RuralIndex es segundos; Informes de Campo es horas (17 pág.) | Contrato `analisis-zona`. Falta wizard + cola Celery de PDF |
+| C6 | **Input universal = polígono/KML.** Parcela catastral es plus, no requisito | RuralIndex, Informes de Campo, HydraLakes | Catastro es provincial. AcreValue solo escala porque EE.UU. tiene parcela nacional | `poligono` ya existe. Parcela Córdoba = IDECOR, después |
+| C7 | **White-label para inmobiliaria** (logo, header) y **packs** 3/10/25 para tasadores | Informes de Campo, Land id (agentes) | El volumen no es el productor de una vez; es el estudio que hace 10 campos/mes | ReportLab branding de trámites. Falta tenant comercial |
+| C8 | **Mejoras declaradas por el usuario** (molinos, aguadas, alambrado, casa) + fotos | Informes de Campo | El satélite no ve la manga. El PDF de venta las necesita; el índice hídrico no | Nada. Opcional, no el diferencial |
+| C9 | **Timelapse satelital** (ellos: 8 años) como anexo, no como tesis | Informes de Campo | Se comparte por WhatsApp. Barato de producir con S2 | GEE archive. Falta render video |
+| C10 | **Propósito del pedido:** comprar / vender / tasar / arrendar / soy inmobiliaria | Informes de Campo | Cambia el resumen ejecutivo, no el cómputo | Nada |
+| C11 | **PDF por secciones configurables** + link para compartir, no solo descarga 30 días | AcreValue | El lender quiere suelos+flood; el broker quiere valuación+foto | ReportLab. Falta compositor |
+| C12 | **Informe date-stamped de tercero** para banco / due diligence | AQUAOSO | Confianza: «no lo armó el vendedor» | Dominio y ToS aparte del consorcio |
+| C13 | **Índice de productividad** tipo NCCPI/CSR2 a partir de INTA, no inventar uno | AcreValue, Land id | El número comparable entre campos. En UY ya existe CONEAT (Informes de Campo lo usa) | Cartas INTA heterogéneas. No clonar RuralIndex® |
+| C14 | **WAPI por cultivo** (rinde esperado no irrigado) | Land id | «¿Qué se puede sembrar?» es la pregunta del comprador | Mapa de Cultivos SAGyP + suelos. No es el núcleo de C |
+| C15 | **Receptividad ganadera (EV/ha)** en zonas de cría | Informes de Campo (Salado) | En Unión / anegables el comprador es ganadero | Falta modelo; no inventar |
+| C16 | **Agua de gestión, no solo anegamiento:** perforaciones, derechos, profundidad de napa donde haya capa | AQUAOSO; APRHI perforaciones en Córdoba | En riego (Mendoza, Valle) AQUAOSO gana; en pampa húmeda gana el anegamiento | FeatureServer APRHI tiene perforaciones. Otro módulo |
+| C17 | **Valuación / comps no el día 1.** IDECOR valor de tierra y CAIR son overlay, no certificado | AcreValue, AgroGIS | AcreValue vive de comps porque hay deed records. Acá no | Prohibido vender el mapa de valores como tasación |
+| C18 | **Ayuda a armar el KML** (WhatsApp / dibujo) | Informes de Campo, RuralIndex | El 30 % del funnel se cae en el polígono | Draw ya está en el mapa |
+| C19 | **Entrega horas, no segundos, si el PDF es denso.** Segundos = preview; horas = 17 páginas + video | Informes de Campo vs RuralIndex | Celery ya existe. No pelear latencia de un índice si el valor está en el informe | Geo-queue |
+| C20 | **No meter chat-IA sobre el PDF el día 1.** HydraLakes lo vende; nosotros tenemos RAG en otro producto | HydraLakes | Contamina ToS y alucinación sobre números de tasación | RAG es de 10 de Mayo, no de C |
+
+### 4.2 Productos A y B — ops de consorcio
+
+| # | Idea | De quién | Aplica |
+|---|---|---|---|
+| AB1 | Consumir el índice provincial, no reinventarlo (IPCR/RICR, SR PA) | IDECOR, APRHI | B lee IPCR; A lee SR PA |
+| AB2 | App de campo para **cargar obra** (Vial) y **validar tramo** (Tramos: ancho, material, drenaje) | IDECOR | B. El hueco es el padrón *a cargo*, no el tablero |
+| AB3 | White-label / branding por consorcio | Informes de Campo, Land id | A y B. Onboarding = logo + `zona` + KMZ |
+| AB4 | Pack regional: 19 tenants hijos + un dashboard padre | ACCPC / regionales | B |
+| AB5 | WhatsApp como canal de entrega de reportes operativos, no como CRM | Informes de Campo, FieldData | A/B, con cuidado (ya hay PLAN_WHATSAPP_BOT.md) |
+| AB6 | Cuenca integrada camino+suelo+agua como **tenant futuro**, no como v1 | Chucul 2026 | No ahora |
+
+### 4.3 Qué no copiar
+
+- Caja negra con nombre registrado (RuralIndex®, «motor propio»).
+- Valuación automática presentada como tasación (AcreValue en EE.UU. tiene comps; acá no).
+- 21 secciones de IA sin cita (HydraLakes).
+- Mercado Pago adentro del compose de 10 de Mayo.
+- Pelear el tablero de IDECOR o el SIG de APRHI.
+
+---
+
+## 5. Mapa de no-confundir
 
 ```
-PH / expensas          ≠  consorcio canalero  ≠  consorcio caminero  ≠  ficha de campo
-CONSO, Adminia            Ley 9.750 CBA           Ley 11.059 CBA          RuralIndex / C
-edificios                 desagüe rural           caminos de tierra       predio nacional
+PH / expensas   ≠  canalero          ≠  caminero           ≠  ficha de predio
+CONSO, Adminia     Ley 9.750 CBA        Ley 11.059 CBA        RuralIndex (Salado)
+edificios          desagüe rural        caminos de tierra     Informes de Campo (AR+UY+BR)
+                                                              AcreValue / AQUAOSO (US)
+                                                              C = hidrología observada
 ```
 
 Los actores de campo a menudo son las **mismas personas** (Gutiérrez / Revista Vial 2022: el productor está en la CD del caminero y del canalero). Eso no fusiona los productos. Fusiona el **canal de venta**: un presidente de regional caminera es lead para A y para B. El producto C se vende a la inmobiliaria de esa misma zona, por otro contrato.
@@ -220,7 +287,7 @@ El Estado cordobés empuja **consorcios de gestión integrada de cuenca** (Chucu
 
 ---
 
-## 5. Implicaciones de arquitectura (sin implementar)
+## 6. Implicaciones de arquitectura (sin implementar)
 
 | Producto | Unidad de tenant | Dato que no se comparte | Dato que sí se comparte |
 |---|---|---|---|
@@ -234,25 +301,26 @@ El Estado cordobés empuja **consorcios de gestión integrada de cuenca** (Chucu
 
 ---
 
-## 6. Qué no está decidido (preguntas de producto, no de código)
+## 7. Qué no está decidido (preguntas de producto, no de código)
 
 Estas preguntas **bloquean** implementación. No asumir.
 
 1. **A — segundo cliente:** ¿se vende al consorcio, a la regional, o a APRHI como plataforma provincial? Ticket y tenancy cambian.
 2. **B — piloto:** ¿una regional (19) o un consorcio chico (285)? La regional tiene lab y camioneta; el consorcio tiene el camino.
-3. **C — método:** ¿se publica el índice (paper / ficha metodológica) o se vende caja negra como RuralIndex? Publicar es más lento y más defendible.
-4. **C — día 1 de cobertura:** ¿solo polígono, o polígono + parcela Córdoba (IDECOR) + parcela BA (ARBA) después?
+3. **C — método:** ¿se publica el índice (paper / ficha metodológica) o se vende caja negra como RuralIndex e Informes de Campo? Publicar es más lento y más defendible. La recomendación de este doc: **publicar**.
+4. **C — día 1:** ¿preview de hidrología observada (C3) + aptitud vs uso (C1) en Córdoba+Santa Fe+núcleo, o un PDF «completo» tipo Informes de Campo que ya existe?
+5. **C — canal:** ¿inmobiliarias (packs C7) o lenders (C12)? El PDF cambia.
 
 ---
 
-## 7. Próximo paso
+## 8. Próximo paso
 
 Orden de menor alucinación a mayor:
 
 1. **Seguir 10 de Mayo como referencia** (clasificar padrón KMZ ↔ SR PA, no es este documento).
 2. **A:** diseñar tenancy sobre el código actual; no buscar el canalero 2 hasta tener un onboarding de `zona` + KMZ que no sea un trabajo de tres semanas a mano.
 3. **B:** una conversación con ACCPC / una regional, con el mapa de 10 de Mayo como demo de *ops*, y el tablero IDECOR como *dato que ya existe*. Pregunta: ¿Vial/Tramos les alcanza o laburan en Excel igual?
-4. **C:** no prender `ficha_enabled` en el box del consorcio para «probar el mercado». Especificar cobertura nacional, método, PDF y checkout en un cambio aparte.
+4. **C:** no prender `ficha_enabled` en el box del consorcio para «probar el mercado». No salir a pelear el PDF de $124k. Especificar método publicado + SAR/HAND vs carta oficial + aptitud vs uso, en un deploy aparte.
 
 ---
 
@@ -276,7 +344,14 @@ Orden de menor alucinación a mayor:
 - Ley 11.059 / estatutos: Rentas Córdoba Res. 71/2026 y 102/2026; texto BCCBA.
 - IDECOR mapa vial (285 / 19 / 69.360 km): <https://www.idecor.gob.ar/vialidad-actualiza-el-mapa-online-de-la-red-vial-provincial/>
 - IDECOR IPCR + apps Vial/Tramos: <https://www.idecor.gob.ar/datos-que-conectan-innovacion-geoespacial-para-la-gestion-de-los-caminos-rurales-en-cordoba/>
-- RuralIndex: <https://ruralindex.com.ar/> (FAQ de cobertura y precios en esa página)
+- RuralIndex: <https://ruralindex.com.ar/> (FAQ de cobertura y precios; 2026-09-22)
+- Informes de Campo: <https://informesdecampo.com/> (home, `/cuenca-del-salado-campos/`, `/aptitud-del-suelo-de-un-campo/`; precios y cobertura 2026-09-22)
+- AgroGIS tasación: <https://www.agrogis.com.ar/tasacion-de-campos>
+- AcreValue: <https://www.acrevalue.com/> + FAQ/help (suelos SSURGO, FEMA, CDL, PDF)
+- Land id (MapRight): <https://id.land/product/soil-reports>
+- AQUAOSO: <https://aquaoso.com/solutions/water-security-platform/>
+- HydraLakes: <https://www.hydralakes.com/> + App Store copy (Sentinel-1 vs FEMA)
+- FBN AcreVision, Acres.com: sitios públicos 2026-09-22
 - ACCPC / modelo cordobés: Revista Vial; Valor Agregado Agro 2025-02-12; ZonaCampo 2026-04-03; TN 2026-09-09 (Chucul)
 - FDA 98 %: Fabri en Perfil/Canal E 2025-08-26; Diario de las Varillas 2025-10-06
 - PH software: <https://conso.com.ar/blog/herramientas/comparativa-software-administracion-consorcios-argentina>
@@ -287,4 +362,6 @@ Orden de menor alucinación a mayor:
 - Conteo de canaleros = bullets del HTML de APRHI, no un padrón descargable. Tres están «en proceso de conformación».
 - Conteo de camineros oscila 285–289 y 19–20 regionales según la nota. Ninguna es un censo ejecutado por nosotros.
 - «No hay SaaS de canalero/caminero» = no apareció en búsqueda web 2026-09-22. Puede existir un desarrollo a medida no publicado.
+- «+1.000 informes» de Informes de Campo y «100k+ downloads» de HydraLakes son claims de marketing, no medidos.
 - El comentario de `config.py` que dice que la ficha es placeholder está **stale**; el servicio ya computa. El flag sigue off.
+- Primera versión de este doc (commit `9ba67216`) afirmó que RuralIndex era el único símil. Falso para la forma de producto; corregido en esta revisión.
