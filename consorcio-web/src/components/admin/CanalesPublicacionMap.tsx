@@ -1,5 +1,8 @@
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson';
-import maplibregl, { type DataDrivenPropertyValueSpecification } from 'maplibre-gl';
+import maplibregl, {
+  type DataDrivenPropertyValueSpecification,
+  type FilterSpecification,
+} from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -11,7 +14,9 @@ const CONS_SRC = 'pub-consorcio';
 const APRHI_SRC = 'pub-aprhi';
 const ZONA_SRC = 'pub-zona';
 const CONS_LINE = 'pub-cons-line';
+const CONS_LABEL = 'pub-cons-label';
 const APRHI_LINE = 'pub-aprhi-line';
+const APRHI_LABEL = 'pub-aprhi-label';
 
 export const EMPTY_LINE_COLLECTION: CanalLineCollection = {
   type: 'FeatureCollection',
@@ -58,6 +63,37 @@ function aprhiPaint(selectedId: string | null): {
   };
 }
 
+/** MapLibre filter for KMZ traces. Does not change `publicado`. */
+export function consorcioVisibilityFilter(
+  showRelevados: boolean,
+  showPropuestas: boolean
+): FilterSpecification {
+  if (showRelevados && showPropuestas) {
+    return ['has', 'id'];
+  }
+  if (showRelevados) {
+    return ['==', ['get', 'estado'], 'relevado'];
+  }
+  if (showPropuestas) {
+    return ['==', ['get', 'estado'], 'propuesto'];
+  }
+  return ['==', ['get', 'id'], '__hidden__'];
+}
+
+function applyConsorcioFilter(
+  map: maplibregl.Map,
+  showRelevados: boolean,
+  showPropuestas: boolean
+): void {
+  const filter = consorcioVisibilityFilter(showRelevados, showPropuestas);
+  if (map.getLayer(CONS_LINE)) {
+    map.setFilter(CONS_LINE, filter);
+  }
+  if (map.getLayer(CONS_LABEL)) {
+    map.setFilter(CONS_LABEL, filter);
+  }
+}
+
 function applyLineSource(map: maplibregl.Map, sourceId: string, data: CanalLineCollection): void {
   const source = map.getSource(sourceId);
   if (source) {
@@ -89,12 +125,16 @@ function featureById(
 export function CanalesPublicacionMap({
   consorcio,
   aprhi,
+  showRelevados,
+  showPropuestas,
   showAprhi,
   selectedId,
   onSelect,
 }: {
   consorcio: CanalLineCollection;
   aprhi: CanalLineCollection | null;
+  showRelevados: boolean;
+  showPropuestas: boolean;
   showAprhi: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -105,12 +145,16 @@ export function CanalesPublicacionMap({
   const consorcioRef = useRef(consorcio);
   const aprhiRef = useRef(aprhi);
   const showAprhiRef = useRef(showAprhi);
+  const showRelevadosRef = useRef(showRelevados);
+  const showPropuestasRef = useRef(showPropuestas);
   const selectedIdRef = useRef(selectedId);
   const fittedIdRef = useRef<string | null>(null);
   onSelectRef.current = onSelect;
   consorcioRef.current = consorcio;
   aprhiRef.current = aprhi;
   showAprhiRef.current = showAprhi;
+  showRelevadosRef.current = showRelevados;
+  showPropuestasRef.current = showPropuestas;
   selectedIdRef.current = selectedId;
 
   useEffect(() => {
@@ -174,7 +218,7 @@ export function CanalesPublicacionMap({
         },
       });
       map.addLayer({
-        id: 'pub-aprhi-label',
+        id: APRHI_LABEL,
         type: 'symbol',
         source: APRHI_SRC,
         minzoom: 12,
@@ -202,7 +246,7 @@ export function CanalesPublicacionMap({
         paint,
       });
       map.addLayer({
-        id: 'pub-cons-label',
+        id: CONS_LABEL,
         type: 'symbol',
         source: CONS_SRC,
         minzoom: 11,
@@ -222,6 +266,7 @@ export function CanalesPublicacionMap({
       });
 
       applyLineSource(map, CONS_SRC, consorcioRef.current);
+      applyConsorcioFilter(map, showRelevadosRef.current, showPropuestasRef.current);
       applyLineSource(
         map,
         APRHI_SRC,
@@ -260,7 +305,8 @@ export function CanalesPublicacionMap({
     const map = mapRef.current;
     if (!map) return;
     applyLineSource(map, CONS_SRC, consorcio);
-  }, [consorcio]);
+    applyConsorcioFilter(map, showRelevados, showPropuestas);
+  }, [consorcio, showRelevados, showPropuestas]);
 
   useEffect(() => {
     const map = mapRef.current;

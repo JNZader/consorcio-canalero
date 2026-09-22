@@ -61,6 +61,15 @@ describe('<CanalesPublicacionPanel />', () => {
           longitud_m: 20740,
           origen: 'kmz',
         },
+        {
+          id: 'canal-prop',
+          estado: 'propuesto',
+          nombre_interno: 'Canal propuesto',
+          nombre_publico: 'Canal propuesto',
+          publicado: true,
+          longitud_m: 1000,
+          origen: 'kmz',
+        },
       ],
       geojson: { type: 'FeatureCollection', features: [] },
       aprhi_items: [
@@ -100,7 +109,7 @@ describe('<CanalesPublicacionPanel />', () => {
     renderWithMantine(<CanalesPublicacionPanel />);
     expect(await screen.findByText(/inventario de base para mejorar/i)).toBeInTheDocument();
     expect(await screen.findByText(/APRHI 1 canales/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Mostrar APRHI')).toBeChecked();
+    expect(screen.getByLabelText('Ver APRHI')).toBeChecked();
     expect(screen.getAllByText('APRHI').length).toBeGreaterThan(0);
   });
 
@@ -129,5 +138,17 @@ describe('<CanalesPublicacionPanel />', () => {
       });
     });
     expect(patchCanalPublicacion).not.toHaveBeenCalled();
+  });
+
+  it('hides relevadas from the list without calling patch', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<CanalesPublicacionPanel />);
+    expect(await screen.findByText('Canal 10 de Mayo')).toBeInTheDocument();
+    expect(screen.getByText('Canal propuesto')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Ver relevadas'));
+    expect(patchCanalPublicacion).not.toHaveBeenCalled();
+    expect(patchCanalPublicacionAprhi).not.toHaveBeenCalled();
+    expect(screen.queryByText('Canal 10 de Mayo')).not.toBeInTheDocument();
+    expect(screen.getByText('Canal propuesto')).toBeInTheDocument();
   });
 });
