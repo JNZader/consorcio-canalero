@@ -46,6 +46,16 @@ def list_publicacion(
     return servicio.list_staff(db)
 
 
+@router.get("/aprhi-referencia")
+def get_aprhi_referencia(
+    db: Session = Depends(get_db),
+    servicio: CanalPublicacionService = Depends(_service),
+    _usuario=Depends(_require_operator()),
+) -> dict[str, Any]:
+    """Staff overlay: APRHI ``canales_existentes`` inside the consorcio hull. Not public."""
+    return servicio.aprhi_referencia(db)
+
+
 @router.patch("/publicacion/{canal_id}", response_model=CanalPublicacionRow)
 def patch_publicacion(
     canal_id: str,

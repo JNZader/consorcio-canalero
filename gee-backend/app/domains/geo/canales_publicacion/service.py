@@ -28,7 +28,8 @@ _LIST_SQL = text(
     SELECT c.id, c.estado, c.nombre AS nombre_interno,
            COALESCE(p.nombre_publico, c.nombre) AS nombre_publico,
            COALESCE(p.publicado, TRUE) AS publicado,
-           c.longitud_m
+           c.longitud_m,
+           ST_AsGeoJSON(c.geom) AS geom_json
     FROM canal_consorcio c
     LEFT JOIN canal_publicacion p ON p.canal_id = c.id
     ORDER BY c.estado, c.nombre
@@ -74,13 +75,28 @@ _PUBLIC_FALLBACK_SQL = text(
 
 _HAS_PUBLICACION_SQL = text("SELECT EXISTS (SELECT 1 FROM canal_publicacion)")
 
+_APRHI_SQL = text(
+    """
+    SELECT cn.id, COALESCE(cn.nombre, '') AS nombre,
+           ST_AsGeoJSON(cn.geom) AS geom_json
+    FROM canal_network cn
+    WHERE cn.tipo = 'canales_existentes'
+      AND ST_Intersects(
+            cn.geom,
+            (SELECT ST_ConvexHull(ST_Collect(c.geom)) FROM canal_consorcio c)
+          )
+    """
+)
+
 
 class CanalPublicacionService:
     def list_staff(self, db: Session) -> CanalPublicacionList:
         db.execute(_SEED_SQL)
         rows = db.execute(_LIST_SQL).mappings().all()
-        return CanalPublicacionList(
-            items=[
+        features: list[dict[str, Any]] = []
+        items: list[CanalPublicacionRow] = []
+        for row in rows:
+            items.append(
                 CanalPublicacionRow(
                     id=row["id"],
                     estado=row["estado"],
@@ -89,9 +105,38 @@ class CanalPublicacionService:
                     publicado=bool(row["publicado"]),
                     longitud_m=row["longitud_m"],
                 )
-                for row in rows
-            ]
+            )
+            features.append(
+                {
+                    "type": "Feature",
+                    "id": row["id"],
+                    "geometry": json.loads(row["geom_json"]),
+                    "properties": {
+                        "id": row["id"],
+                        "estado": row["estado"],
+                        "nombre_interno": row["nombre_interno"],
+                        "nombre_publico": row["nombre_publico"],
+                        "publicado": bool(row["publicado"]),
+                    },
+                }
+            )
+        return CanalPublicacionList(
+            items=items,
+            geojson={"type": "FeatureCollection", "features": features},
         )
+
+    def aprhi_referencia(self, db: Session) -> dict[str, Any]:
+        rows = db.execute(_APRHI_SQL).mappings().all()
+        features = [
+            {
+                "type": "Feature",
+                "id": row["id"],
+                "geometry": json.loads(row["geom_json"]),
+                "properties": {"id": row["id"], "nombre": row["nombre"]},
+            }
+            for row in rows
+        ]
+        return {"type": "FeatureCollection", "features": features}
 
     def patch(
         self, db: Session, canal_id: str, payload: CanalPublicacionPatch
