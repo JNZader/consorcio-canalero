@@ -17,13 +17,25 @@ function collection(publicado: boolean): FeatureCollection<LineString> {
       {
         type: 'Feature',
         id: 'canal-1',
-        geometry: { type: 'LineString', coordinates: [[-62.5, -32.5], [-62.4, -32.4]] },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [-62.5, -32.5],
+            [-62.4, -32.4],
+          ],
+        },
         properties: { id: 'canal-1', publicado, nombre_publico: 'Viejo' },
       },
       {
         type: 'Feature',
         id: 'canal-2',
-        geometry: { type: 'LineString', coordinates: [[-62.3, -32.3], [-62.2, -32.2]] },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [-62.3, -32.3],
+            [-62.2, -32.2],
+          ],
+        },
         properties: { id: 'canal-2', publicado: true, nombre_publico: 'Otro' },
       },
     ],
@@ -66,7 +78,13 @@ describe('patchConsorcioFeature', () => {
         {
           type: 'Feature',
           id: 'aprhi-canal-viejo',
-          geometry: { type: 'LineString', coordinates: [[-62.5, -32.5], [-62.4, -32.4]] },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-62.5, -32.5],
+              [-62.4, -32.4],
+            ],
+          },
           properties: {
             id: 'aprhi-canal-viejo',
             publicado: false,
