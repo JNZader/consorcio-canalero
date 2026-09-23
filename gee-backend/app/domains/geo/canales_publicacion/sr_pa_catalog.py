@@ -22,6 +22,9 @@ def sr_pa_canal_id(properties: dict[str, Any] | None) -> str:
 
 
 def sr_pa_geojson_path() -> Path:
+    packaged = Path(__file__).resolve().parent / "data" / "aprhi_sr_pa.geojson"
+    if packaged.is_file():
+        return packaged
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / "consorcio-web" / "public" / "capas" / "aprhi_sr_pa.geojson"
