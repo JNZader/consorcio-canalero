@@ -25,15 +25,51 @@ vi.mock('../../src/lib/api/canalesPublicacion', () => ({
 
 vi.mock('../../src/components/admin/CanalesPublicacionMap', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/components/admin/CanalesPublicacionMap')>();
+  const { CANAL_HIT_LAYER } = await import('../../src/lib/canalesPublicacionOverlap');
+  type CanalHit = import('../../src/lib/canalesPublicacionOverlap').CanalHit;
   return {
     ...actual,
-    CanalesPublicacionMap: ({ onSelect }: { onSelect: (id: string) => void }) => (
+    CanalesPublicacionMap: ({
+      onSelect,
+      onOverlapHits,
+    }: {
+      onSelect: (id: string) => void;
+      onOverlapHits: (hits: CanalHit[]) => void;
+    }) => (
       <>
-        <button type="button" onClick={() => onSelect('canal-1')}>
+        <button
+          type="button"
+          onClick={() => {
+            onOverlapHits([]);
+            onSelect('canal-1');
+          }}
+        >
           mapa-canal
         </button>
-        <button type="button" onClick={() => onSelect('aprhi-canal-viejo')}>
+        <button
+          type="button"
+          onClick={() => {
+            onOverlapHits([]);
+            onSelect('aprhi-canal-viejo');
+          }}
+        >
           mapa-aprhi
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onOverlapHits([
+              { id: 'canal-1', layer: CANAL_HIT_LAYER.KMZ, label: 'Canal 10 de Mayo' },
+              {
+                id: 'srpa:CA00140',
+                layer: CANAL_HIT_LAYER.SR_PA,
+                label: 'CA00140 · Tramo Nuevo - Canal San Marcos',
+              },
+            ]);
+            onSelect('canal-1');
+          }}
+        >
+          mapa-solape
         </button>
       </>
     ),
@@ -225,5 +261,22 @@ describe('<CanalesPublicacionPanel />', () => {
     });
     expect(patchCanalPublicacion).not.toHaveBeenCalled();
     expect(patchCanalPublicacionAprhi).not.toHaveBeenCalled();
+  });
+
+  it('shows a picker for overlapping traces and selects the APRHI ficha from it', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<CanalesPublicacionPanel />);
+    await user.click(await screen.findByRole('button', { name: 'mapa-solape' }));
+    expect(screen.getByText('Hay 2 trazos en este punto')).toBeInTheDocument();
+    expect(
+      screen.getByText('Elegí cuál. El mapa resalta el de arriba hasta que elijas.')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /CA00140 · Tramo Nuevo - Canal San Marcos/ }));
+    expect(
+      screen.getByText('APRHI SR PA · opt-in al mapa público, no se publica sola')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Publicar Tramo Nuevo - Canal San Marcos')).toBeInTheDocument();
+    expect(screen.getAllByText('CA00140').length).toBeGreaterThan(0);
+    expect(screen.getByText('Hay 2 trazos en este punto')).toBeInTheDocument();
   });
 });

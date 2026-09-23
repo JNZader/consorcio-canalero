@@ -33,12 +33,72 @@ import {
   parseSrPaRows,
   tagSrPaListIds,
 } from '../../lib/aprhiSrPa';
+import {
+  CANAL_HIT_LAYER,
+  type CanalHit,
+  type CanalHitLayer,
+} from '../../lib/canalesPublicacionOverlap';
 import { LoadingState } from '../ui/LoadingState';
 import {
   CanalesPublicacionMap,
   EMPTY_LINE_COLLECTION,
   patchConsorcioFeature,
 } from './CanalesPublicacionMap';
+
+function hitBadgeColor(layer: CanalHitLayer): string {
+  if (layer === CANAL_HIT_LAYER.KMZ) return 'green';
+  if (layer === CANAL_HIT_LAYER.SR_PA) return 'orange';
+  return 'violet';
+}
+
+function hitBadgeLabel(layer: CanalHitLayer): string {
+  if (layer === CANAL_HIT_LAYER.KMZ) return 'KMZ';
+  if (layer === CANAL_HIT_LAYER.SR_PA) return 'APRHI';
+  return 'Existentes';
+}
+
+interface OverlapHitsPickerProps {
+  hits: CanalHit[];
+  selectedId: string | null;
+  onPick: (id: string) => void;
+}
+
+function OverlapHitsPicker({ hits, selectedId, onPick }: OverlapHitsPickerProps) {
+  if (hits.length <= 1) return null;
+  return (
+    <Paper withBorder p="md">
+      <Stack gap="sm">
+        <div>
+          <Text fw={600}>Hay {hits.length} trazos en este punto</Text>
+          <Text size="sm" c="dimmed">
+            Elegí cuál. El mapa resalta el de arriba hasta que elijas.
+          </Text>
+        </div>
+        {hits.map((hit) => (
+          <UnstyledButton
+            key={hit.id}
+            onClick={() => onPick(hit.id)}
+            p="xs"
+            style={{
+              borderRadius: 6,
+              background:
+                hit.id === selectedId ? 'var(--mantine-color-yellow-light)' : 'transparent',
+            }}
+          >
+            <Group gap="xs" wrap="nowrap">
+              <Badge size="xs" variant="light" color={hitBadgeColor(hit.layer)}>
+                {hitBadgeLabel(hit.layer)}
+              </Badge>
+              <Text size="sm" lineClamp={1}>
+                {hit.label}
+              </Text>
+            </Group>
+          </UnstyledButton>
+        ))}
+      </Stack>
+    </Paper>
+  );
+}
 
 function formatKm(meters: number | null): string {
   if (meters == null || Number.isNaN(meters)) return 'sin largo';
@@ -65,9 +125,15 @@ export default function CanalesPublicacionPanel() {
   const [showAprhi, setShowAprhi] = useState(true);
   const [showExistentes, setShowExistentes] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [overlapHits, setOverlapHits] = useState<CanalHit[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const selectFromSidebar = (id: string) => {
+    setOverlapHits([]);
+    setSelectedId(id);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -111,19 +177,21 @@ export default function CanalesPublicacionPanel() {
         : await patchCanalPublicacion(row.id, payload);
       if (isAprhi) {
         setAprhiItems((current) => current.map((item) => (item.id === row.id ? patched : item)));
-        setAprhi((current) =>
-          patchConsorcioFeature(current, row.id, {
-            publicado: patched.publicado,
-            nombre_publico: patched.nombre_publico,
-          }) as CanalLineCollection
+        setAprhi(
+          (current) =>
+            patchConsorcioFeature(current, row.id, {
+              publicado: patched.publicado,
+              nombre_publico: patched.nombre_publico,
+            }) as CanalLineCollection
         );
       } else {
         setItems((current) => current.map((item) => (item.id === row.id ? patched : item)));
-        setGeojson((current) =>
-          patchConsorcioFeature(current, row.id, {
-            publicado: patched.publicado,
-            nombre_publico: patched.nombre_publico,
-          }) as CanalLineCollection
+        setGeojson(
+          (current) =>
+            patchConsorcioFeature(current, row.id, {
+              publicado: patched.publicado,
+              nombre_publico: patched.nombre_publico,
+            }) as CanalLineCollection
         );
       }
     } catch {
@@ -193,7 +261,8 @@ export default function CanalesPublicacionPanel() {
         <Text c="dimmed" size="sm">
           Verde/gris = KMZ del consorcio (lo que se publica). Naranja punteado = obras lineales
           rurales APRHI (SR PA). Violeta = capa vieja de existentes, no es el padrón APRHI. Clic en
-          APRHI lista la obra (código CA) al costado; no publica. El ciudadano sigue viendo el KMZ.
+          un cruce lista todos los trazos al costado. Clic en APRHI lista la obra (código CA); no
+          publica. El ciudadano sigue viendo el KMZ.
         </Text>
       </div>
 
@@ -256,6 +325,7 @@ export default function CanalesPublicacionPanel() {
                 showExistentes={showExistentes}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                onOverlapHits={setOverlapHits}
               />
             </Box>
             <Paper
@@ -301,6 +371,9 @@ export default function CanalesPublicacionPanel() {
                   </Text>{' '}
                   existentes (capa vieja)
                 </Text>
+                <Text size="xs" c="dimmed">
+                  Cuando coinciden: APRHI a la izquierda, KMZ al centro, existentes a la derecha.
+                </Text>
               </Stack>
             </Paper>
           </Paper>
@@ -308,6 +381,7 @@ export default function CanalesPublicacionPanel() {
 
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Stack gap="sm">
+            <OverlapHitsPicker hits={overlapHits} selectedId={selectedId} onPick={setSelectedId} />
             <Paper withBorder p="md">
               {selectedSrPa ? (
                 <Stack gap="sm">
@@ -415,7 +489,7 @@ export default function CanalesPublicacionPanel() {
                   {filteredSrPa.map((row) => (
                     <UnstyledButton
                       key={row.id}
-                      onClick={() => setSelectedId(row.id)}
+                      onClick={() => selectFromSidebar(row.id)}
                       p="xs"
                       style={{
                         borderRadius: 6,
@@ -449,7 +523,7 @@ export default function CanalesPublicacionPanel() {
                   {filteredCatalog.map((row) => (
                     <UnstyledButton
                       key={row.id}
-                      onClick={() => setSelectedId(row.id)}
+                      onClick={() => selectFromSidebar(row.id)}
                       p="xs"
                       style={{
                         borderRadius: 6,

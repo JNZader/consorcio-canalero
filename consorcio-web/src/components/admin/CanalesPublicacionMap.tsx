@@ -8,23 +8,55 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import type { CanalLineCollection, CanalLineGeometry } from '../../lib/api/canalesPublicacion';
-import { isSrPaListId, srPaFeatureById, srPaFeatureId } from '../../lib/aprhiSrPa';
+import { isSrPaListId, srPaFeatureById } from '../../lib/aprhiSrPa';
+import {
+  ADMIN_CANAL_LINE_LAYER_ID,
+  CANAL_HIT_LAYER,
+  type CanalHit,
+  clickBbox,
+  collectCanalHits,
+  kmzGroupVisible,
+  overlayLabelsVisible,
+  overlayLineOffsetPx,
+  overlayLineOpacity,
+  pickDefaultHit,
+} from '../../lib/canalesPublicacionOverlap';
 import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 
 const CONS_SRC = 'pub-consorcio';
 const EXISTENTES_SRC = 'pub-existentes';
 const SR_SRC = 'pub-aprhi-sr';
 const ZONA_SRC = 'pub-zona';
-const CONS_LINE = 'pub-cons-line';
+const CONS_CASING = 'pub-cons-casing';
+const CONS_LINE = ADMIN_CANAL_LINE_LAYER_ID.KMZ;
 const CONS_LABEL = 'pub-cons-label';
-const EXISTENTES_LINE = 'pub-existentes-line';
+const EXISTENTES_LINE = ADMIN_CANAL_LINE_LAYER_ID.EXISTENTES;
 const EXISTENTES_LABEL = 'pub-existentes-label';
-const SR_LINE = 'pub-aprhi-sr-line';
+const SR_LINE = ADMIN_CANAL_LINE_LAYER_ID.SR_PA;
 const SR_LABEL = 'pub-aprhi-sr-label';
 
-function srPaPaint(selectedId: string | null): {
+function overlayOpacityExpr(
+  selectedId: string | null,
+  kmzVisible: boolean,
+  idProp: string
+): DataDrivenPropertyValueSpecification<number> {
+  const selected = selectedId ?? '';
+  return [
+    'case',
+    ['==', ['get', idProp], selected],
+    overlayLineOpacity(kmzVisible, true),
+    overlayLineOpacity(kmzVisible, false),
+  ];
+}
+
+function srPaPaint(
+  selectedId: string | null,
+  kmzVisible: boolean
+): {
   'line-color': DataDrivenPropertyValueSpecification<string>;
   'line-width': DataDrivenPropertyValueSpecification<number>;
+  'line-opacity': DataDrivenPropertyValueSpecification<number>;
+  'line-offset': number;
 } {
   const selected = selectedId ?? '';
   return {
@@ -37,6 +69,8 @@ function srPaPaint(selectedId: string | null): {
       '#c2410c',
     ],
     'line-width': ['case', ['==', ['get', 'list_id'], selected], 6, 3],
+    'line-opacity': overlayOpacityExpr(selectedId, kmzVisible, 'list_id'),
+    'line-offset': overlayLineOffsetPx(CANAL_HIT_LAYER.SR_PA, kmzVisible),
   };
 }
 
@@ -65,16 +99,34 @@ function consorcioPaint(selectedId: string | null): {
   };
 }
 
-function existentesPaint(selectedId: string | null): {
-  'line-color': DataDrivenPropertyValueSpecification<string>;
+function consorcioCasingPaint(selectedId: string | null): {
+  'line-color': string;
   'line-width': DataDrivenPropertyValueSpecification<number>;
   'line-opacity': number;
 } {
   const selected = selectedId ?? '';
   return {
+    'line-color': '#0f172a',
+    'line-width': ['case', ['==', ['get', 'id'], selected], 10, 7],
+    'line-opacity': 0.85,
+  };
+}
+
+function existentesPaint(
+  selectedId: string | null,
+  kmzVisible: boolean
+): {
+  'line-color': DataDrivenPropertyValueSpecification<string>;
+  'line-width': DataDrivenPropertyValueSpecification<number>;
+  'line-opacity': DataDrivenPropertyValueSpecification<number>;
+  'line-offset': number;
+} {
+  const selected = selectedId ?? '';
+  return {
     'line-color': ['case', ['==', ['get', 'id'], selected], '#facc15', '#7c3aed'],
     'line-width': ['case', ['==', ['get', 'id'], selected], 6, 3],
-    'line-opacity': 0.85,
+    'line-opacity': overlayOpacityExpr(selectedId, kmzVisible, 'id'),
+    'line-offset': overlayLineOffsetPx(CANAL_HIT_LAYER.EXISTENTES, kmzVisible),
   };
 }
 
@@ -101,6 +153,9 @@ function applyConsorcioFilter(
   showPropuestas: boolean
 ): void {
   const filter = consorcioVisibilityFilter(showRelevados, showPropuestas);
+  if (map.getLayer(CONS_CASING)) {
+    map.setFilter(CONS_CASING, filter);
+  }
   if (map.getLayer(CONS_LINE)) {
     map.setFilter(CONS_LINE, filter);
   }
@@ -113,6 +168,64 @@ function applyLineSource(map: maplibregl.Map, sourceId: string, data: FeatureCol
   const source = map.getSource(sourceId);
   if (source) {
     (source as maplibregl.GeoJSONSource).setData(data);
+  }
+}
+
+function applyOverlayPaint(
+  map: maplibregl.Map,
+  selectedId: string | null,
+  kmzVisible: boolean
+): void {
+  if (map.getLayer(EXISTENTES_LINE)) {
+    const paint = existentesPaint(selectedId, kmzVisible);
+    map.setPaintProperty(EXISTENTES_LINE, 'line-color', paint['line-color']);
+    map.setPaintProperty(EXISTENTES_LINE, 'line-width', paint['line-width']);
+    map.setPaintProperty(EXISTENTES_LINE, 'line-opacity', paint['line-opacity']);
+    map.setPaintProperty(EXISTENTES_LINE, 'line-offset', paint['line-offset']);
+  }
+  if (map.getLayer(SR_LINE)) {
+    const paint = srPaPaint(selectedId, kmzVisible);
+    map.setPaintProperty(SR_LINE, 'line-color', paint['line-color']);
+    map.setPaintProperty(SR_LINE, 'line-width', paint['line-width']);
+    map.setPaintProperty(SR_LINE, 'line-opacity', paint['line-opacity']);
+    map.setPaintProperty(SR_LINE, 'line-offset', paint['line-offset']);
+  }
+}
+
+function applyOverlayLabelVisibility(
+  map: maplibregl.Map,
+  showAprhi: boolean,
+  showExistentes: boolean,
+  kmzVisible: boolean
+): void {
+  if (map.getLayer(SR_LABEL)) {
+    map.setLayoutProperty(
+      SR_LABEL,
+      'visibility',
+      overlayLabelsVisible(showAprhi, kmzVisible) ? 'visible' : 'none'
+    );
+  }
+  if (map.getLayer(EXISTENTES_LABEL)) {
+    map.setLayoutProperty(
+      EXISTENTES_LABEL,
+      'visibility',
+      overlayLabelsVisible(showExistentes, kmzVisible) ? 'visible' : 'none'
+    );
+  }
+}
+
+function applyConsorcioPaint(map: maplibregl.Map, selectedId: string | null): void {
+  if (map.getLayer(CONS_CASING)) {
+    const casing = consorcioCasingPaint(selectedId);
+    map.setPaintProperty(CONS_CASING, 'line-color', casing['line-color']);
+    map.setPaintProperty(CONS_CASING, 'line-width', casing['line-width']);
+    map.setPaintProperty(CONS_CASING, 'line-opacity', casing['line-opacity']);
+  }
+  if (map.getLayer(CONS_LINE)) {
+    const paint = consorcioPaint(selectedId);
+    map.setPaintProperty(CONS_LINE, 'line-color', paint['line-color']);
+    map.setPaintProperty(CONS_LINE, 'line-width', paint['line-width']);
+    map.setPaintProperty(CONS_LINE, 'line-opacity', paint['line-opacity']);
   }
 }
 
@@ -137,6 +250,23 @@ function featureById(
   return collection.features.find((item) => item.id === id || item.properties?.id === id);
 }
 
+function queryCanalHits(map: maplibregl.Map, point: { x: number; y: number }): CanalHit[] {
+  // ±8px bbox around the click point. 2D nadir lines are thin too;
+  // MapLibre still returns features in z-order within the bbox
+  // (top-most first).
+  const bbox = clickBbox(point);
+  const layers = Object.values(ADMIN_CANAL_LINE_LAYER_ID).filter((layerId) =>
+    Boolean(map.getLayer(layerId))
+  );
+  if (layers.length === 0) return [];
+  return collectCanalHits(
+    map.queryRenderedFeatures(bbox, { layers }).map((feature) => ({
+      layerId: feature.layer.id,
+      properties: (feature.properties ?? null) as Record<string, unknown> | null,
+    }))
+  );
+}
+
 export function CanalesPublicacionMap({
   consorcio,
   existentes,
@@ -147,6 +277,7 @@ export function CanalesPublicacionMap({
   showExistentes,
   selectedId,
   onSelect,
+  onOverlapHits,
 }: {
   consorcio: CanalLineCollection;
   existentes: CanalLineCollection | null;
@@ -157,10 +288,12 @@ export function CanalesPublicacionMap({
   showExistentes: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onOverlapHits: (hits: CanalHit[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onOverlapHitsRef = useRef(onOverlapHits);
   const consorcioRef = useRef(consorcio);
   const existentesRef = useRef(existentes);
   const srPaRef = useRef(srPa);
@@ -171,6 +304,7 @@ export function CanalesPublicacionMap({
   const selectedIdRef = useRef(selectedId);
   const fittedIdRef = useRef<string | null>(null);
   onSelectRef.current = onSelect;
+  onOverlapHitsRef.current = onOverlapHits;
   consorcioRef.current = consorcio;
   existentesRef.current = existentes;
   srPaRef.current = srPa;
@@ -227,8 +361,10 @@ export function CanalesPublicacionMap({
         })
         .catch(() => undefined);
 
+      const kmzVisible = kmzGroupVisible(showRelevadosRef.current, showPropuestasRef.current);
+
       map.addSource(SR_SRC, { type: 'geojson', data: EMPTY_LINE_COLLECTION });
-      const initialSrPa = srPaPaint(selectedIdRef.current);
+      const initialSrPa = srPaPaint(selectedIdRef.current, kmzVisible);
       map.addLayer({
         id: SR_LINE,
         type: 'line',
@@ -237,7 +373,8 @@ export function CanalesPublicacionMap({
         paint: {
           'line-color': initialSrPa['line-color'],
           'line-width': initialSrPa['line-width'],
-          'line-opacity': 0.9,
+          'line-opacity': initialSrPa['line-opacity'],
+          'line-offset': initialSrPa['line-offset'],
           'line-dasharray': [3, 2],
         },
       });
@@ -247,7 +384,7 @@ export function CanalesPublicacionMap({
         source: SR_SRC,
         minzoom: 11,
         layout: {
-          visibility: showAprhiRef.current ? 'visible' : 'none',
+          visibility: overlayLabelsVisible(showAprhiRef.current, kmzVisible) ? 'visible' : 'none',
           'symbol-placement': 'line',
           'symbol-spacing': 240,
           'text-field': [
@@ -268,7 +405,7 @@ export function CanalesPublicacionMap({
       });
 
       map.addSource(EXISTENTES_SRC, { type: 'geojson', data: EMPTY_LINE_COLLECTION });
-      const initialExistentes = existentesPaint(selectedIdRef.current);
+      const initialExistentes = existentesPaint(selectedIdRef.current, kmzVisible);
       map.addLayer({
         id: EXISTENTES_LINE,
         type: 'line',
@@ -277,6 +414,7 @@ export function CanalesPublicacionMap({
           'line-color': initialExistentes['line-color'],
           'line-width': initialExistentes['line-width'],
           'line-opacity': initialExistentes['line-opacity'],
+          'line-offset': initialExistentes['line-offset'],
           'line-dasharray': [2, 2],
         },
       });
@@ -286,6 +424,9 @@ export function CanalesPublicacionMap({
         source: EXISTENTES_SRC,
         minzoom: 12,
         layout: {
+          visibility: overlayLabelsVisible(showExistentesRef.current, kmzVisible)
+            ? 'visible'
+            : 'none',
           'symbol-placement': 'line',
           'symbol-spacing': 280,
           'text-field': ['concat', 'Existentes · ', ['get', 'nombre_publico']],
@@ -301,6 +442,18 @@ export function CanalesPublicacionMap({
       });
 
       map.addSource(CONS_SRC, { type: 'geojson', data: EMPTY_LINE_COLLECTION });
+      const casing = consorcioCasingPaint(selectedIdRef.current);
+      map.addLayer({
+        id: CONS_CASING,
+        type: 'line',
+        source: CONS_SRC,
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': casing['line-color'],
+          'line-width': casing['line-width'],
+          'line-opacity': casing['line-opacity'],
+        },
+      });
       const paint = consorcioPaint(selectedIdRef.current);
       map.addLayer({
         id: CONS_LINE,
@@ -343,19 +496,20 @@ export function CanalesPublicacionMap({
         showAprhiRef.current && srPaRef.current ? srPaRef.current : EMPTY_LINE_COLLECTION
       );
 
-      map.on('click', CONS_LINE, (event) => {
-        const feature = event.features?.[0];
-        const id = feature?.properties?.id;
-        if (typeof id === 'string') onSelectRef.current(id);
-      });
-      map.on('click', EXISTENTES_LINE, (event) => {
-        const id = event.features?.[0]?.properties?.id;
-        if (typeof id === 'string') onSelectRef.current(id);
-      });
-      map.on('click', SR_LINE, (event) => {
-        const props = (event.features?.[0]?.properties ?? {}) as Record<string, unknown>;
-        const listId = typeof props.list_id === 'string' ? props.list_id : srPaFeatureId(props);
-        if (listId) onSelectRef.current(listId);
+      map.on('click', (event) => {
+        const hits = queryCanalHits(map, event.point);
+        if (hits.length === 0) {
+          onOverlapHitsRef.current([]);
+          return;
+        }
+        if (hits.length === 1) {
+          onSelectRef.current(hits[0].id);
+          onOverlapHitsRef.current([]);
+          return;
+        }
+        onOverlapHitsRef.current(hits);
+        const picked = pickDefaultHit(hits);
+        if (picked) onSelectRef.current(picked.id);
       });
       map.on('mouseenter', CONS_LINE, () => {
         map.getCanvas().style.cursor = 'pointer';
@@ -402,31 +556,29 @@ export function CanalesPublicacionMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const vis = showAprhi ? 'visible' : 'none';
-    if (map.getLayer(SR_LINE)) map.setLayoutProperty(SR_LINE, 'visibility', vis);
-    if (map.getLayer(SR_LABEL)) map.setLayoutProperty(SR_LABEL, 'visibility', vis);
+    if (map.getLayer(SR_LINE)) {
+      map.setLayoutProperty(SR_LINE, 'visibility', showAprhi ? 'visible' : 'none');
+    }
     applyLineSource(map, SR_SRC, showAprhi && srPa ? srPa : EMPTY_LINE_COLLECTION);
   }, [showAprhi, srPa]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (map.getLayer(CONS_LINE)) {
-      const paint = consorcioPaint(selectedId);
-      map.setPaintProperty(CONS_LINE, 'line-color', paint['line-color']);
-      map.setPaintProperty(CONS_LINE, 'line-width', paint['line-width']);
-      map.setPaintProperty(CONS_LINE, 'line-opacity', paint['line-opacity']);
-    }
-    if (map.getLayer(EXISTENTES_LINE)) {
-      const paint = existentesPaint(selectedId);
-      map.setPaintProperty(EXISTENTES_LINE, 'line-color', paint['line-color']);
-      map.setPaintProperty(EXISTENTES_LINE, 'line-width', paint['line-width']);
-    }
-    if (map.getLayer(SR_LINE)) {
-      const paint = srPaPaint(selectedId);
-      map.setPaintProperty(SR_LINE, 'line-color', paint['line-color']);
-      map.setPaintProperty(SR_LINE, 'line-width', paint['line-width']);
-    }
+    const kmzVisible = kmzGroupVisible(showRelevados, showPropuestas);
+    applyOverlayPaint(map, selectedId, kmzVisible);
+    applyOverlayLabelVisibility(map, showAprhi, showExistentes, kmzVisible);
+  }, [selectedId, showRelevados, showPropuestas, showAprhi, showExistentes]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    applyConsorcioPaint(map, selectedId);
+    applyOverlayPaint(
+      map,
+      selectedId,
+      kmzGroupVisible(showRelevadosRef.current, showPropuestasRef.current)
+    );
     if (!selectedId || fittedIdRef.current === selectedId) return;
     const feature =
       featureById(consorcio, selectedId) ??
