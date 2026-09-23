@@ -25,6 +25,7 @@ import {
   listCanalPublicacion,
   patchCanalPublicacion,
   patchCanalPublicacionAprhi,
+  patchCanalPublicacionSrPa,
 } from '../../lib/api/canalesPublicacion';
 import {
   APRHI_SR_PA_URL,
@@ -70,31 +71,32 @@ export default function CanalesPublicacionPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    const catalogPromise = listCanalPublicacion()
-      .then((catalog) => {
+    const applySrPa = (collection: FeatureCollection) => {
+      const tagged = tagSrPaListIds(collection);
+      setSrPa(tagged);
+      setSrPaRows(parseSrPaRows(tagged));
+    };
+    void listCanalPublicacion()
+      .then(async (catalog) => {
         if (cancelled) return;
         setItems(catalog.items);
         setGeojson(catalog.geojson ?? EMPTY_LINE_COLLECTION);
         setAprhiItems(catalog.aprhi_items ?? []);
         setAprhi(catalog.geojson_aprhi ?? EMPTY_LINE_COLLECTION);
+        if (catalog.geojson_sr_pa?.features?.length) {
+          applySrPa(catalog.geojson_sr_pa);
+          return;
+        }
+        const response = await fetch(APRHI_SR_PA_URL);
+        const collection = response.ok ? ((await response.json()) as FeatureCollection) : null;
+        if (!cancelled && collection) applySrPa(collection);
       })
       .catch(() => {
         notifications.show({ color: 'red', message: 'No se pudo cargar el catálogo de canales' });
-      });
-    const srPaPromise = fetch(APRHI_SR_PA_URL)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((collection: FeatureCollection | null) => {
-        if (cancelled || !collection) return;
-        const tagged = tagSrPaListIds(collection);
-        setSrPa(tagged);
-        setSrPaRows(parseSrPaRows(tagged));
       })
-      .catch(() => {
-        notifications.show({ color: 'red', message: 'No se pudo cargar APRHI SR PA' });
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-    void Promise.all([catalogPromise, srPaPromise]).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
     return () => {
       cancelled = true;
     };
@@ -113,7 +115,7 @@ export default function CanalesPublicacionPanel() {
           patchConsorcioFeature(current, row.id, {
             publicado: patched.publicado,
             nombre_publico: patched.nombre_publico,
-          })
+          }) as CanalLineCollection
         );
       } else {
         setItems((current) => current.map((item) => (item.id === row.id ? patched : item)));
@@ -121,9 +123,28 @@ export default function CanalesPublicacionPanel() {
           patchConsorcioFeature(current, row.id, {
             publicado: patched.publicado,
             nombre_publico: patched.nombre_publico,
-          })
+          }) as CanalLineCollection
         );
       }
+    } catch {
+      notifications.show({ color: 'red', message: 'No se pudo guardar' });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const saveSrPa = async (row: SrPaListRow, publicado: boolean) => {
+    setSavingId(row.id);
+    try {
+      const patched = await patchCanalPublicacionSrPa(row.id, { publicado });
+      setSrPaRows((current) =>
+        current.map((item) =>
+          item.id === row.id ? { ...item, publicado: patched.publicado } : item
+        )
+      );
+      setSrPa((current) =>
+        current ? patchConsorcioFeature(current, row.id, { publicado: patched.publicado }) : current
+      );
     } catch {
       notifications.show({ color: 'red', message: 'No se pudo guardar' });
     } finally {
@@ -138,8 +159,10 @@ export default function CanalesPublicacionPanel() {
   const catalog = [...items, ...aprhiItems];
   const selected = catalog.find((item) => item.id === selectedId) ?? null;
   const selectedSrPa = srPaRows.find((item) => item.id === selectedId) ?? null;
-  const publicados = catalog.filter((item) => item.publicado).length;
-  const ocultos = catalog.length - publicados;
+  const publicados =
+    catalog.filter((item) => item.publicado).length +
+    srPaRows.filter((item) => item.publicado).length;
+  const ocultos = catalog.length + srPaRows.length - publicados;
   const needle = query.trim().toLowerCase();
   const visibleCatalog = catalog.filter((item) => {
     if (rowOrigen(item) === CANAL_ORIGEN.APRHI) return showExistentes;
@@ -290,7 +313,7 @@ export default function CanalesPublicacionPanel() {
                 <Stack gap="sm">
                   <div>
                     <Text size="xs" c="dimmed">
-                      APRHI SR PA · ficha, no se publica
+                      APRHI SR PA · opt-in al mapa público, no se publica sola
                     </Text>
                     <Text fw={600}>{selectedSrPa.nombre}</Text>
                     <Group gap="xs" mt={4}>
@@ -308,6 +331,17 @@ export default function CanalesPublicacionPanel() {
                       </Text>
                     </Group>
                   </div>
+                  <Switch
+                    checked={selectedSrPa.publicado}
+                    disabled={savingId === selectedSrPa.id}
+                    onChange={(event) => {
+                      void saveSrPa(selectedSrPa, event.currentTarget.checked);
+                    }}
+                    label={
+                      selectedSrPa.publicado ? 'Visible en el mapa público' : 'Oculto al ciudadano'
+                    }
+                    aria-label={`Publicar ${selectedSrPa.nombre}`}
+                  />
                 </Stack>
               ) : selected ? (
                 <Stack gap="sm">
@@ -361,8 +395,8 @@ export default function CanalesPublicacionPanel() {
                 </Stack>
               ) : (
                 <Text size="sm" c="dimmed">
-                  Hacé clic en un canal KMZ o en existentes para publicar. APRHI SR PA se lista al
-                  costado (código CA); no entra al mapa público.
+                  Elegí qué publicar de KMZ, existentes o APRHI SR PA. Nada de APRHI entra al mapa
+                  público hasta que lo prendas acá.
                 </Text>
               )}
             </Paper>
@@ -402,10 +436,12 @@ export default function CanalesPublicacionPanel() {
                         </Group>
                         <Badge
                           size="xs"
-                          color={row.estado === 'Eliminado' ? 'gray' : 'orange'}
+                          color={
+                            row.publicado ? 'green' : row.estado === 'Eliminado' ? 'gray' : 'orange'
+                          }
                           variant="light"
                         >
-                          {row.estado}
+                          {row.publicado ? 'on' : 'off'}
                         </Badge>
                       </Group>
                     </UnstyledButton>

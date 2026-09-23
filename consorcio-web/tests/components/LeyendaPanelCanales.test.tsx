@@ -49,10 +49,10 @@ describe('<LeyendaPanel /> — Canales Relevados block', () => {
     expect(screen.getByText('Canales Relevados')).toBeInTheDocument();
     const block = screen.getByTestId('canales-relevados-legend');
     expect(block).toBeInTheDocument();
-    // 3 chips: sin obra / readec / asociada.
     expect(screen.getByText('Sin obra')).toBeInTheDocument();
     expect(screen.getByText('Readecuación')).toBeInTheDocument();
     expect(screen.getByText('Asociada')).toBeInTheDocument();
+    expect(screen.getByText('APRHI (publicado)')).toBeInTheDocument();
   });
 
   it('chip colors match CANALES_COLORS.relevado*', () => {
@@ -68,6 +68,10 @@ describe('<LeyendaPanel /> — Canales Relevados block', () => {
     expect(screen.getByTestId('canal-relevado-chip-asociada')).toHaveAttribute(
       'data-color',
       CANALES_COLORS.relevadoAsociada,
+    );
+    expect(screen.getByTestId('canal-relevado-chip-aprhi-sr-pa')).toHaveAttribute(
+      'data-color',
+      CANALES_COLORS.aprhiSrPa,
     );
   });
 });

@@ -41,6 +41,8 @@ class _FakeCatalog:
             geojson={"type": "FeatureCollection", "features": []},
             aprhi_items=[],
             geojson_aprhi={"type": "FeatureCollection", "features": []},
+            sr_pa_items=[],
+            geojson_sr_pa={"type": "FeatureCollection", "features": []},
         )
 
     def public_collections(self, _db):
@@ -76,6 +78,20 @@ class _FakeCatalog:
             nombre_publico=payload.nombre_publico or "Canal Viejo",
             publicado=publicado,
             origen="aprhi",
+        )
+
+    def patch_sr_pa(self, _db, canal_id, payload):
+        from app.domains.geo.canales_publicacion.schemas import CanalPublicacionRow
+
+        publicado = True if payload.publicado is None else payload.publicado
+        return CanalPublicacionRow(
+            id=canal_id,
+            estado="relevado",
+            nombre_interno="Tramo Nuevo - Canal San Marcos",
+            nombre_publico=payload.nombre_publico or "Tramo Nuevo - Canal San Marcos",
+            publicado=publicado,
+            origen="sr_pa",
+            codigo="CA00140",
         )
 
 
@@ -272,3 +288,70 @@ class TestAprhiPublicMerge:
         assert props["source_style"] == "sin_obra"
         assert props["nombre"] == "Canal Viejo"
         assert props["id"] == "aprhi-canal-viejo"
+
+
+class TestSrPaPublicMerge:
+    def test_unpublished_sr_pa_does_not_enter_relevados(self):
+        from app.domains.geo.canales_publicacion.sr_pa_catalog import append_published_sr_pa
+
+        merged = append_published_sr_pa(
+            [_KMZ_RELEVADO],
+            [
+                {
+                    "type": "Feature",
+                    "id": "srpa:CA00140",
+                    "geometry": None,
+                    "properties": {"id": "srpa:CA00140", "publicado": False},
+                }
+            ],
+        )
+        assert [feature["id"] for feature in merged] == ["canal-10-de-mayo"]
+
+    def test_published_sr_pa_appends_with_official_style(self):
+        from app.domains.geo.canales_publicacion.sr_pa_catalog import append_published_sr_pa
+
+        merged = append_published_sr_pa(
+            [_KMZ_RELEVADO],
+            [
+                {
+                    "type": "Feature",
+                    "id": "srpa:CA00140",
+                    "geometry": {"type": "LineString", "coordinates": []},
+                    "properties": {
+                        "id": "srpa:CA00140",
+                        "publicado": True,
+                        "Nombre_Obra": "Tramo Nuevo - Canal San Marcos",
+                        "Identificador": "CA00140",
+                    },
+                }
+            ],
+        )
+        assert [feature["id"] for feature in merged] == ["canal-10-de-mayo", "srpa:CA00140"]
+        props = merged[1]["properties"]
+        assert props["source_style"] == "aprhi_sr_pa"
+        assert props["origen"] == "sr_pa"
+        assert props["nombre"] == "Tramo Nuevo - Canal San Marcos"
+
+
+class TestStaffSrPaPatchAuth:
+    SR_PA_PATCH = "/api/v2/geo/canales/publicacion/sr-pa/srpa:CA00140"
+
+    def test_unauthenticated_sr_pa_patch_is_401(self, app_client):
+        _app, client = app_client
+        assert client.patch(self.SR_PA_PATCH, json={"publicado": True}).status_code == 401
+
+    def test_citizen_sr_pa_patch_is_403(self, app_client):
+        app, client = app_client
+        _as_role(app, "ciudadano")
+        assert client.patch(self.SR_PA_PATCH, json={"publicado": True}).status_code == 403
+
+    @pytest.mark.parametrize("role", ["operador", "admin"])
+    def test_operator_can_patch_sr_pa(self, app_client, role: str):
+        app, client = app_client
+        _as_role(app, role)
+        response = client.patch(self.SR_PA_PATCH, json={"publicado": True})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == "srpa:CA00140"
+        assert body["publicado"] is True
+        assert body["origen"] == "sr_pa"

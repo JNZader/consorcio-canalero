@@ -445,11 +445,11 @@ export function CanalesPublicacionMap({
   return <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 480 }} />;
 }
 
-export function patchConsorcioFeature<G extends CanalLineGeometry>(
-  collection: FeatureCollection<G>,
+export function patchConsorcioFeature(
+  collection: FeatureCollection,
   id: string,
   patch: { publicado?: boolean; nombre_publico?: string }
-): FeatureCollection<G> {
+): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: collection.features.map((feature) => {
@@ -462,7 +462,7 @@ export function patchConsorcioFeature<G extends CanalLineGeometry>(
           ...(patch.publicado != null ? { publicado: patch.publicado } : {}),
           ...(patch.nombre_publico != null ? { nombre_publico: patch.nombre_publico } : {}),
         },
-      } as Feature<G>;
+      };
     }),
   };
 }

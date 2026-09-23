@@ -12,13 +12,15 @@ const listCanalPublicacion = vi.fn();
 const fetchAprhiReferencia = vi.fn();
 const patchCanalPublicacion = vi.fn();
 const patchCanalPublicacionAprhi = vi.fn();
+const patchCanalPublicacionSrPa = vi.fn();
 
 vi.mock('../../src/lib/api/canalesPublicacion', () => ({
-  CANAL_ORIGEN: { KMZ: 'kmz', APRHI: 'aprhi' },
+  CANAL_ORIGEN: { KMZ: 'kmz', APRHI: 'aprhi', SR_PA: 'sr_pa' },
   listCanalPublicacion: (...args: unknown[]) => listCanalPublicacion(...args),
   fetchAprhiReferencia: (...args: unknown[]) => fetchAprhiReferencia(...args),
   patchCanalPublicacion: (...args: unknown[]) => patchCanalPublicacion(...args),
   patchCanalPublicacionAprhi: (...args: unknown[]) => patchCanalPublicacionAprhi(...args),
+  patchCanalPublicacionSrPa: (...args: unknown[]) => patchCanalPublicacionSrPa(...args),
 }));
 
 vi.mock('../../src/components/admin/CanalesPublicacionMap', async (importOriginal) => {
@@ -81,6 +83,7 @@ describe('<CanalesPublicacionPanel />', () => {
     fetchAprhiReferencia.mockReset();
     patchCanalPublicacion.mockReset();
     patchCanalPublicacionAprhi.mockReset();
+    patchCanalPublicacionSrPa.mockReset();
     listCanalPublicacion.mockResolvedValue({
       items: [
         {
@@ -115,6 +118,8 @@ describe('<CanalesPublicacionPanel />', () => {
         },
       ],
       geojson_aprhi: { type: 'FeatureCollection', features: [] },
+      sr_pa_items: [],
+      geojson_sr_pa: { type: 'FeatureCollection', features: [] },
     });
     patchCanalPublicacion.mockResolvedValue({
       id: 'canal-1',
@@ -133,6 +138,14 @@ describe('<CanalesPublicacionPanel />', () => {
       publicado: true,
       longitud_m: 3500,
       origen: 'aprhi',
+    });
+    patchCanalPublicacionSrPa.mockResolvedValue({
+      id: 'srpa:CA00140',
+      estado: 'relevado',
+      nombre_interno: 'Tramo Nuevo - Canal San Marcos',
+      nombre_publico: 'Tramo Nuevo - Canal San Marcos',
+      publicado: true,
+      origen: 'sr_pa',
     });
   });
 
@@ -200,12 +213,16 @@ describe('<CanalesPublicacionPanel />', () => {
     expect(screen.getByText('CA00140')).toBeInTheDocument();
   });
 
-  it('opens an SR PA ficha from the list without a publish switch', async () => {
+  it('publishes a selected SR PA work without touching KMZ or existentes', async () => {
     const user = userEvent.setup();
     renderWithMantine(<CanalesPublicacionPanel />);
     await user.click(await screen.findByText(/Tramo Nuevo - Canal San Marcos/));
-    expect(screen.getByText(/ficha, no se publica/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Publicar/)).not.toBeInTheDocument();
+    const toggle = await screen.findByLabelText('Publicar Tramo Nuevo - Canal San Marcos');
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    await waitFor(() => {
+      expect(patchCanalPublicacionSrPa).toHaveBeenCalledWith('srpa:CA00140', { publicado: true });
+    });
     expect(patchCanalPublicacion).not.toHaveBeenCalled();
     expect(patchCanalPublicacionAprhi).not.toHaveBeenCalled();
   });

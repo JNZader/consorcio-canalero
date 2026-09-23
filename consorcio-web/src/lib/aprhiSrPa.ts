@@ -11,6 +11,7 @@ export interface SrPaListRow {
   readonly nombre: string;
   readonly estado: string;
   readonly tipo: string;
+  readonly publicado: boolean;
 }
 
 function readText(value: unknown): string {
@@ -52,6 +53,7 @@ export function parseSrPaRows(collection: FeatureCollection): SrPaListRow[] {
       nombre,
       estado: readText(properties.Estado_Registro) || 's/estado',
       tipo: readText(properties.Tipo_Obra_Lineal) || 's/tipo',
+      publicado: properties.publicado === true,
     });
   }
   return rows.sort((left, right) => {
@@ -71,13 +73,18 @@ export function parseSrPaRows(collection: FeatureCollection): SrPaListRow[] {
 export function tagSrPaListIds(collection: FeatureCollection): FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: collection.features.map((feature) => ({
-      ...feature,
-      properties: {
-        ...(feature.properties ?? {}),
-        list_id: srPaFeatureId((feature.properties ?? {}) as Record<string, unknown>),
-      },
-    })),
+    features: collection.features.map((feature) => {
+      const listId = srPaFeatureId((feature.properties ?? {}) as Record<string, unknown>);
+      return {
+        ...feature,
+        id: listId,
+        properties: {
+          ...(feature.properties ?? {}),
+          id: listId,
+          list_id: listId,
+        },
+      };
+    }),
   };
 }
 
