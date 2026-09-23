@@ -2,7 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('maplibre-gl', () => ({
   default: { Map: vi.fn(), Popup: vi.fn(), LngLatBounds: vi.fn() },
@@ -44,8 +44,39 @@ function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
+const srPaCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 'CA00140',
+      geometry: { type: 'LineString', coordinates: [[-62.5, -32.5], [-62.4, -32.4]] },
+      properties: {
+        Identificador: 'CA00140',
+        Nombre_Obra: 'Tramo Nuevo - Canal San Marcos',
+        Estado_Registro: 'Vigente',
+        Tipo_Obra_Lineal: 'Canal (CA)',
+        OBJECTID: 140,
+      },
+    },
+  ],
+};
+
 describe('<CanalesPublicacionPanel />', () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes('aprhi_sr_pa')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(srPaCollection),
+          } as Response);
+        }
+        return Promise.resolve({ ok: false, json: () => Promise.resolve(null) } as Response);
+      })
+    );
     listCanalPublicacion.mockReset();
     fetchAprhiReferencia.mockReset();
     patchCanalPublicacion.mockReset();
@@ -105,6 +136,10 @@ describe('<CanalesPublicacionPanel />', () => {
     });
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('treats SR PA as the APRHI layer and keeps the old existentes overlay off', async () => {
     renderWithMantine(<CanalesPublicacionPanel />);
     expect(await screen.findByText(/obras lineales rurales APRHI/i)).toBeInTheDocument();
@@ -151,5 +186,27 @@ describe('<CanalesPublicacionPanel />', () => {
     expect(patchCanalPublicacionAprhi).not.toHaveBeenCalled();
     expect(screen.queryByText('Canal 10 de Mayo')).not.toBeInTheDocument();
     expect(screen.getByText('Canal propuesto')).toBeInTheDocument();
+  });
+
+  it('lists APRHI SR PA in the sidebar when only that layer is on', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<CanalesPublicacionPanel />);
+    expect(await screen.findByText(/Tramo Nuevo - Canal San Marcos/)).toBeInTheDocument();
+    expect(screen.getByText('APRHI SR PA 1')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Ver relevadas'));
+    await user.click(screen.getByLabelText('Ver propuestas'));
+    expect(screen.queryByText('Canal 10 de Mayo')).not.toBeInTheDocument();
+    expect(screen.getByText(/Tramo Nuevo - Canal San Marcos/)).toBeInTheDocument();
+    expect(screen.getByText('CA00140')).toBeInTheDocument();
+  });
+
+  it('opens an SR PA ficha from the list without a publish switch', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<CanalesPublicacionPanel />);
+    await user.click(await screen.findByText(/Tramo Nuevo - Canal San Marcos/));
+    expect(screen.getByText(/ficha, no se publica/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Publicar/)).not.toBeInTheDocument();
+    expect(patchCanalPublicacion).not.toHaveBeenCalled();
+    expect(patchCanalPublicacionAprhi).not.toHaveBeenCalled();
   });
 });
