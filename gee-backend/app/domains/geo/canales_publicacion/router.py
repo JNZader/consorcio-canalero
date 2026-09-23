@@ -56,7 +56,7 @@ def get_aprhi_referencia(
     return servicio.aprhi_referencia(db)
 
 
-@router.patch("/publicacion/sr-pa/{canal_id}", response_model=CanalPublicacionRow)
+@router.patch("/publicacion/sr-pa/{canal_id:path}", response_model=CanalPublicacionRow)
 def patch_publicacion_sr_pa(
     canal_id: str,
     payload: CanalPublicacionPatch,
