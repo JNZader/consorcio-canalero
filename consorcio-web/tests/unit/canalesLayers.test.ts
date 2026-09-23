@@ -68,6 +68,8 @@ describe('canalesLayers · relevados paint', () => {
     expect(color).toContain(CANALES_COLORS.relevadoReadec);
     expect(color).toContain('asociada');
     expect(color).toContain(CANALES_COLORS.relevadoAsociada);
+    expect(color).toContain('aprhi_sr_pa');
+    expect(color).toContain(CANALES_COLORS.aprhiSrPa);
   });
 
   it('relevados paint has NO `line-dasharray` (solid line)', () => {

@@ -17,7 +17,7 @@ class CanalPublicacionRow(BaseModel):
     publicado: bool
     longitud_m: Optional[float] = None
     codigo: Optional[str] = None
-    origen: Literal["kmz", "aprhi"] = "kmz"
+    origen: Literal["kmz", "aprhi", "sr_pa"] = "kmz"
 
 
 class CanalPublicacionPatch(BaseModel):
@@ -34,3 +34,5 @@ class CanalPublicacionList(BaseModel):
     geojson: dict
     aprhi_items: list[CanalPublicacionRow] = Field(default_factory=list)
     geojson_aprhi: dict = Field(default_factory=_empty_feature_collection)
+    sr_pa_items: list[CanalPublicacionRow] = Field(default_factory=list)
+    geojson_sr_pa: dict = Field(default_factory=_empty_feature_collection)

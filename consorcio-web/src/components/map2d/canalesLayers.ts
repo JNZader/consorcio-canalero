@@ -67,6 +67,8 @@ export const CANALES_COLORS = {
   outlineRelevado: '#1E3A8A',
   /** Shared propuesto outline — slate-700. */
   outlinePropuesto: '#334155',
+  /** Official APRHI SR PA opted into the public map. */
+  aprhiSrPa: '#c2410c',
 } as const;
 
 /**
@@ -88,6 +90,7 @@ export const CANAL_STYLE_COLORS: Record<string, string> = {
   sin_obra: CANALES_COLORS.relevadoSinObra,
   readec: CANALES_COLORS.relevadoReadec,
   asociada: CANALES_COLORS.relevadoAsociada,
+  aprhi_sr_pa: CANALES_COLORS.aprhiSrPa,
 };
 
 // ---------------------------------------------------------------------------
@@ -116,6 +119,8 @@ export function buildCanalesRelevadosPaint(): LinePaint {
       CANALES_COLORS.relevadoReadec,
       'asociada',
       CANALES_COLORS.relevadoAsociada,
+      'aprhi_sr_pa',
+      CANALES_COLORS.aprhiSrPa,
       CANALES_COLORS.relevadoSinObra,
     ] as ExpressionSpecification,
     'line-width': 3,

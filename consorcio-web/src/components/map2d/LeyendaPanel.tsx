@@ -5,14 +5,14 @@ import styles from '../../styles/components/map.module.css';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';
-import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
-import { YPF_ESTACION_BOMBEO_COLOR, YPF_ESTACION_BOMBEO_LABEL } from './ypfEstacionBombeoLayer';
 import {
-  colorForHazardRiskClass,
   HAZARD_BASIN_OUTLINE_COLOR,
   type HazardLegendView,
+  colorForHazardRiskClass,
 } from './hazardLegend';
+import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import type { PrecipitationRange } from './precipRanges';
+import { YPF_ESTACION_BOMBEO_COLOR, YPF_ESTACION_BOMBEO_LABEL } from './ypfEstacionBombeoLayer';
 
 interface LegendItem {
   color: string;
@@ -624,6 +624,11 @@ export const LeyendaPanel = memo(function LeyendaPanel({
                 color={CANALES_COLORS.relevadoAsociada}
                 label="Asociada"
                 testId="canal-relevado-chip-asociada"
+              />
+              <CanalSolidLineChip
+                color={CANALES_COLORS.aprhiSrPa}
+                label="APRHI (publicado)"
+                testId="canal-relevado-chip-aprhi-sr-pa"
               />
             </Stack>
           )}
