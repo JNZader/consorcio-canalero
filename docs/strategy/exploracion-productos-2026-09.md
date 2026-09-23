@@ -1,25 +1,26 @@
 # Exploración de productos — septiembre 2026
 
-La plataforma de Consorcio Canalero 10 de Mayo no es un solo producto. Es una **referencia operativa** (GIS + padrón + trámites + mapa público) sobre la que caben **tres negocios distintos**. No se mezclan: comprador, geografía, stack de datos y modelo de cobro son incompatibles.
+La plataforma de Consorcio Canalero 10 de Mayo no es un solo producto. Es una **referencia operativa** (GIS + padrón + trámites + mapa público). Al lado vive **MBAgro**, otro repo, otro comprador. En total son **cuatro negocios**. No se mezclan: comprador, geografía, stack y cobro son incompatibles.
 
 | Producto | Geografía | Comprador | Qué vende |
 |---|---|---|---|
 | **A. Canalero white-label** | Provincia de Córdoba | Consorcios canaleros (Ley 9.750) | La app que ya corre para 10 de Mayo, multi-tenant |
 | **B. Caminero GIS operativo** | Provincia de Córdoba | Consorcios camineros y regionales (Ley 11.059) | App de operaciones de red rural, no el visor de IDECOR |
 | **C. Ficha hídrica de predio** | **Nación** (no dpto. Unión) | Inmobiliarias rurales, tasadores, productores, bancos | PDF + checkout de caracterización hidrológica del establecimiento |
+| **D. MBAgro — crop-ops** | Nación (tenant = empresa agrícola) | Productor / agrónomo que **opera** el campo | Plan vs Real del margen bruto por zona. Ya es un producto aparte |
 
-Este documento cierra la exploración de canales, caminos, APRHI y RuralIndex (sesión 2026-09-21/22) y el relevamiento de competencia (2026-09-22, corregido el mismo día). No es un PRD ni un plan de implementación.
+Este documento cierra la exploración de canales, caminos, APRHI y RuralIndex (sesión 2026-09-21/22), el relevamiento de competencia (corregido el mismo día) y el cruce con MBAgro (2026-09-22). No es un PRD ni un plan de implementación.
 
-**Decisión de producto (ratificada en sesión):** no clonar el wizard de RuralIndex adentro de la app de 10 de Mayo; no meter Mercado Pago en el producto del consorcio; no vender catastro IDECOR como certificado. El producto C es una ficha de predio a escala nacional. RuralIndex **no** es el único PDF de campo: Informes de Campo ya cubre AR+UY+BR. Lo raro de RuralIndex es el **índice hidrológico multi-año**, no el checkout.
+**Decisión de producto (ratificada en sesión):** no clonar el wizard de RuralIndex adentro de la app de 10 de Mayo; no meter Mercado Pago en el producto del consorcio; no vender catastro IDECOR como certificado. El producto C es una ficha de predio a escala nacional. RuralIndex **no** es el único PDF de campo: Informes de Campo ya cubre AR+UY+BR. Lo raro de RuralIndex es el **índice hidrológico multi-año**, no el checkout. **MBAgro no se fusiona con C ni con el compose de 10 de Mayo.** Es Auravant-like (campaña), no RuralIndex-like (compraventa).
 
 ---
 
 ## Camino rápido
 
 1. Leer **Qué hay hoy** (inventarios medidos).
-2. Leer **Tres productos** (TAM, gap, no-hacer).
-3. Leer **Competencia**: CONSO/Adminia son PH. C no está vacío — Informes de Campo ya cubre el país; RuralIndex cubre el índice hídrico en Salado.
-4. El siguiente paso de producto **no** es codear C. Es tenancy para A, o una conversación con una regional caminera para B. C espera método publicado + diferencial hidrológico, no otro PDF de tasación.
+2. Leer **Cuatro productos** (TAM, gap, no-hacer). MBAgro = D, no un módulo de C.
+3. Leer **Competencia**: CONSO/Adminia son PH. C no está vacío — Informes de Campo ya cubre el país; RuralIndex cubre el índice hídrico en Salado. D pelea con Auravant, no con Informes de Campo.
+4. El siguiente paso **no** es codear C ni fusionar repos. Es tenancy para A, una regional para B, o seguir Ola 1–2 de D. C espera método publicado + diferencial hidrológico.
 
 ---
 
@@ -79,7 +80,7 @@ PRs: #288 overlay IDECOR → #290 OSM/IGN → #291 solo faltantes → #292 clip 
 
 ---
 
-## 2. Tres productos
+## 2. Cuatro productos
 
 ### A. Canalero white-label (Córdoba)
 
@@ -152,7 +153,44 @@ Eso es GIS **provincial para priorizar inversión**. No es el sistema del consor
 
 **Tradeoff.** Mercado grande (inmobiliario rural nacional; InCAIR midiendo actividad 2026). AgTech (Auravant, SIMA, GeoAgro) **no** vende este PDF: venden campaña agrícola. Los rivales de C son Informes de Campo (cobertura + ficha de venta), RuralIndex (índice hídrico cerrado, barato, Salado) y el template estadounidense (AcreValue). El riesgo es científico (índice sin método = humo) y de datos (suelos + catastro heterogéneos). No es un ETL del dpto. Unión.
 
-**No hacer.** Encender `ficha_enabled` en prod de 10 de Mayo y cobrar el PDF ahí. Vender nomenclatura IDECOR como «certificado». Copiar el nombre o las clases de RuralIndex. Competir con Informes de Campo en «17 páginas + logo de inmobiliaria + timelapse» sin un diferencial hidrológico. Prometer 24 provincias el día 1 con el mismo espesor de Salado.
+**No hacer.** Encender `ficha_enabled` en prod de 10 de Mayo y cobrar el PDF ahí. Vender nomenclatura IDECOR como «certificado». Copiar el nombre o las clases de RuralIndex. Competir con Informes de Campo en «17 páginas + logo de inmobiliaria + timelapse» sin un diferencial hidrológico. Prometer 24 provincias el día 1 con el mismo espesor de Salado. Meter `cosechas_reales` de MBAgro en el PDF de C.
+
+### D. MBAgro — gestión de campaña (ya es un producto aparte)
+
+**Problema.** El productor planifica la campaña y no sabe si el margen real por ambiente cerró como el presupuesto. Excel + WhatsApp + (si hay plata) Auravant.
+
+**Repo.** [`JNZader/mbagro`](https://github.com/JNZader/mbagro). Stack: Java/Spring (apigen) + Hibernate multi-tenant **sin RLS** (salvo tablas Python) + worker Python + Vite/Mantine/MapLibre. **No** es el FastAPI+GEE de Consorcio. Un módulo compartido no se pega al compose.
+
+**Shipped (código en `main`, 2026-09-22 — el README raíz está stale):**
+
+| Capa | Qué hay |
+|---|---|
+| Ola 1a | Campañas, lotes/zonas PostGIS + promote (Model C), catálogos, precios, presupuestos, reales |
+| Ola 1c | Maquinaria, inventario, finanzas (CC, cheques, canje, posting anti-CRUD) |
+| Ola 1b | Captura parcial: worker voz/QR/matching, bandeja FE, `borrador_destino_propuesto` |
+| Ola 2 | Dashboards margen / finanzas / salud (Excel/PDF de **margen**, no de predio) |
+| Ola 3a | Spike ELT → DuckDB por org (watermark; tablas plan/real) |
+| Ola 3b (inicio) | NASA POWER Daily Point + GIX Precios Cámara BCR, PRs **#142–#146**. POWER pide `T2M,PS,WS10M` — **no trae lluvia** |
+
+Flyway llega a **`0060`**. Tablas `predicciones_rinde`, `documentos`, `gps_*` existen **vacías de producto**.
+
+**Documentado, casi sin código (flagships DiploDatos):**
+
+| Ola | Qué sería | Estado honesto |
+|---|---|---|
+| 3c | NDVI Sentinel-2 STAC + object storage COG + máscara SCL | Bloqueante; rasters no entran a Postgres |
+| 4 | Zonificación ML intra-lote (píxel → KMeans/GMM → `zona_propuesta`) | Mini-spec pendiente; 1 campaña = ruido (5vr) |
+| 5 | Predicción de rinde (baseline media hasta ≥4–5 campañas; LightGBM después) | Schema sí, modelo no |
+| 6 | RAG documental → agente text-to-SQL | `pdf_suelo` es un **tipo de documento**, no capa INTA |
+| 7 | Inferencia bayesiana + «forecast» de precios | **Diferida a notebook académico.** No es feature |
+
+**Hidrología: cero.** No hay HAND, TWI, SAR de anegamiento ni `suelos_catastro`.
+
+**Tradeoff.** D ya es el producto B2B de campaña. Competidor de referencia: **Auravant** (margen por lote y ambiente) — `docs/referencias-apps-similares.md`. SIMA/FieldView son telemetría; está diferida. El riesgo es vender las olas 4–6 como SaaS con 0–1 campaña (el mismo 5vr de junio lo vetó).
+
+**No hacer.** Fusionar D con C («el rinde del campo»). El comprador de C no tiene `cosechas_reales` en el OLTP de MBAgro. Fusionar D con A (el consorcio no opera la campaña del productor). Compartir deploy Java↔FastAPI. Usar NASA POWER como si fuera CHIRPS.
+
+**Flecha útil (al revés):** hidrología de Consorcio **encima de las zonas de MBAgro** («este ambiente se anega; el margen de la loma no es el del bajo») — **después** de Ola 3c, no ahora. Eso enriquece **D**, no C.
 
 ---
 
@@ -211,9 +249,9 @@ Corrección 2026-09-22: la primera pasada dijo «RuralIndex es el único símil�
 | **AQUAOSO** | California: derechos de agua, pozos, distritos, profundidad de napa, especies, PDF multi-parcela **date-stamped** para lenders | El análogo más limpio en el **eje agua**. Tercero de confianza para el banco, no para el productor |
 | **HydraLakes** | India (dice global): dibujar polígono → informe IA 21 secciones, PDF. Flood **Sentinel-1 desde 2015** vs zona oficial «porque a menudo no coinciden» | Producto consumer; calidad no verificada. La idea de **SAR observado vs mapa oficial** es exactamente lo que ya computamos |
 
-**Capa 3 — AgTech de campaña (no es C)**
+**Capa 3 — AgTech de campaña (no es C; sí es el mercado de D)**
 
-Auravant, SIMA (+ GIS oct 2025, NASA Harvest), GeoAgro 360, Climate FieldView, Kilimo. Venden lote / prescripción / rinde / riego de cultivo. Insumo posible (NDVI, ambientación), no el PDF de compraventa.
+Auravant, SIMA (+ GIS oct 2025, NASA Harvest), GeoAgro 360, Climate FieldView, Kilimo. Venden lote / prescripción / rinde / riego de cultivo. Insumo posible para C (NDVI, ambientación), no el PDF de compraventa. **MBAgro (D) juega acá**, no en Capa 1. Auravant es el gold standard del núcleo ya shipped (margen por lote **y** ambiente). SIMA/FieldView implican ISOXML y dosis variable — diferido en MBAgro. No pitchar D como «el RuralIndex nacional».
 
 Datos públicos que C consume, no rivales: INTA cartas de suelo, Mapa de Cultivos SAGyP, IDECOR valor de tierra rural, CONAE SAOCOM humedad, Web Soil Survey (USDA). CAIR / CAT / estudios de tasación = **canal de venta**.
 
@@ -268,20 +306,33 @@ Nada de esto está implementado. Es backlog de producto, no de este PR. Cada fil
 - 21 secciones de IA sin cita (HydraLakes).
 - Mercado Pago adentro del compose de 10 de Mayo.
 - Pelear el tablero de IDECOR o el SIG de APRHI.
+- Meter Plan vs Real / rinde de MBAgro en el PDF de C.
+- Tratar las tablas vacías `predicciones_rinde` / `gps_*` de MBAgro como si hubiera ML.
+
+### 4.4 MBAgro (D) — copiar hacia adentro, no extraer hacia C
+
+| # | Idea | Dirección | Por qué |
+|---|---|---|---|
+| D1 | **D se ofrece por separado.** Ya es el producto. No esperar a Ola 4/5 para tener un JTBD | — | Ola 1–2 es usable. Flagships de datos = curriculum hasta N campañas |
+| D2 | Hidrología Consorcio **sobre zonas MBAgro** (loma vs bajo en el margen) | C → D, post-3c | Enriquecer el ERP. No es un PDF de tasación |
+| D3 | Kernel futuro: polígono → zonal stats como **lib Python**, no un compose | D ↔ C | Stacks incompatibles (Java+DuckDB vs FastAPI+GEE) |
+| D4 | Captura voz/QR se queda en D. B puede copiar la *idea* de parte de trabajo móvil, no el worker | D → B (idea) | Zero-Entry de labores ≠ denuncia de camino |
+| D5 | NASA POWER no sustituye CHIRPS. Si D quiere lluvia, agregar `PRECTOTCORR` (u otra) de forma explícita | — | Hoy `T2M,PS,WS10M` |
+| D6 | GIX / precios de grano alimentan margen de D, no la ficha de C | — | Comprador de campo no cotiza la posición futura |
+| D7 | `pdf_suelo` de RAG ≠ capa de suelos. No venderlo como certificado | — | Mismo anti-patrón que catastro IDECOR |
+| D8 | Export PDF de margen (Ola 2) no es ficha de predio | — | Job distinto, mismo botón «PDF» |
 
 ---
 
 ## 5. Mapa de no-confundir
 
 ```
-PH / expensas   ≠  canalero          ≠  caminero           ≠  ficha de predio
-CONSO, Adminia     Ley 9.750 CBA        Ley 11.059 CBA        RuralIndex (Salado)
-edificios          desagüe rural        caminos de tierra     Informes de Campo (AR+UY+BR)
-                                                              AcreValue / AQUAOSO (US)
-                                                              C = hidrología observada
+PH / expensas  ≠  canalero       ≠  caminero        ≠  ficha de predio     ≠  crop-ops
+CONSO, Adminia    Ley 9.750 CBA     Ley 11.059 CBA     RuralIndex / IdC      Auravant / SIMA
+edificios         desagüe rural     caminos tierra     C = hidrología obs.   D = MBAgro margen
 ```
 
-Los actores de campo a menudo son las **mismas personas** (Gutiérrez / Revista Vial 2022: el productor está en la CD del caminero y del canalero). Eso no fusiona los productos. Fusiona el **canal de venta**: un presidente de regional caminera es lead para A y para B. El producto C se vende a la inmobiliaria de esa misma zona, por otro contrato.
+Los actores de campo a menudo son las **mismas personas** (Gutiérrez / Revista Vial 2022: el productor está en la CD del caminero y del canalero). Eso no fusiona los productos. Fusiona el **canal de venta**: un presidente de regional es lead para A y B; la inmobiliaria de esa zona compra C; el mismo productor, **cuando opera**, es el tenant de D. Cuatro contratos.
 
 El Estado cordobés empuja **consorcios de gestión integrada de cuenca** (Chucul 2026, Consejo Provincial de Gestión Integrada). A mediano plazo un tenant «cuenca» que una camino + canal + suelo es coherente. Hoy sería scope creep: primero A anda en un segundo canalero, o B anda en una regional.
 
@@ -294,10 +345,13 @@ El Estado cordobés empuja **consorcios de gestión integrada de cuenca** (Chucu
 | A | Un consorcio canalero | Padrón de consorcistas, finanzas, KMZ, denuncias | SR PA provincial, IDECOR, DEM, CHIRPS |
 | B | Un consorcio caminero (con vista regional) | Tramos a cargo, obras, maquinaria | WFS IDECOR, IPCR, IGN, OSM |
 | C | Ninguno (cuenta de usuario / pedido) | Polígono del campo, PDF, pago | Suelos INTA, satélite, modelo hídrico |
+| D | Una empresa agrícola (`organization_id`) | Presupuestos, reales, libros, captura | Clima grueso / precios de grano (cuando el ELT esté vivo); hidrología Consorcio solo como overlay futuro |
 
 - **C fuera del compose de 10 de Mayo.** Mismo código de análisis, otro deploy, otro dominio, otro ToS.
+- **D fuera de ambos.** Repo `mbagro`, Java/Spring + DuckDB-por-tenant. No compartir proceso con FastAPI+GEE.
 - **A y B pueden compartir monorepo** (ya lo hacen caminos + canales). Tenant isolation es el trabajo, no un rewrite.
 - Rasters GEE y Martin son el costo variable de C a escala nacional. Caps de hectáreas y cola Celery son el producto, no un detalle.
+- Si algún día hay kernel común C↔D: **librería** de polígono → zonal stats, no un tercer stack.
 
 ---
 
@@ -310,6 +364,7 @@ Estas preguntas **bloquean** implementación. No asumir.
 3. **C — método:** ¿se publica el índice (paper / ficha metodológica) o se vende caja negra como RuralIndex e Informes de Campo? Publicar es más lento y más defendible. La recomendación de este doc: **publicar**.
 4. **C — día 1:** ¿preview de hidrología observada (C3) + aptitud vs uso (C1) en Córdoba+Santa Fe+núcleo, o un PDF «completo» tipo Informes de Campo que ya existe?
 5. **C — canal:** ¿inmobiliarias (packs C7) o lenders (C12)? El PDF cambia.
+6. **D — ¿se productiza como SaaS (ADR-042) o se queda portfolio/diplo?** No bloquea A/B/C. No usar esa respuesta para mezclar repos.
 
 ---
 
@@ -321,6 +376,7 @@ Orden de menor alucinación a mayor:
 2. **A:** diseñar tenancy sobre el código actual; no buscar el canalero 2 hasta tener un onboarding de `zona` + KMZ que no sea un trabajo de tres semanas a mano.
 3. **B:** una conversación con ACCPC / una regional, con el mapa de 10 de Mayo como demo de *ops*, y el tablero IDECOR como *dato que ya existe*. Pregunta: ¿Vial/Tramos les alcanza o laburan en Excel igual?
 4. **C:** no prender `ficha_enabled` en el box del consorcio para «probar el mercado». No salir a pelear el PDF de $124k. Especificar método publicado + SAR/HAND vs carta oficial + aptitud vs uso, en un deploy aparte.
+5. **D:** seguir Ola 1–2 como producto usable. No pitchar NDVI/rinde hasta gate de campañas. Overlay hidrológico sobre zonas = backlog de **D**, no de C.
 
 ---
 
@@ -335,6 +391,7 @@ Orden de menor alucinación a mayor:
 - IDECOR faltantes 78 / ~90 km: post-#291.
 - `ficha_enabled = False` con cómputo real: `gee-backend/app/config.py`, `ficha_service.analizar_zona`.
 - PRs #287–#294 en `main`.
+- MBAgro (`JNZader/mbagro`, tip `origin/main` 2026-09-22): olas 1a/1c/1b parcial/2 + ELT spike; NASA POWER + GIX en `ml-platform/src/mba_elt/nasa_power_daily.py` y `gix_precios_camara.py` (PRs #142–#146). POWER `parameters=T2M,PS,WS10M`. Flyway `0001..0060`. Checkout local puede estar en `sdd/mbagro-ola-3a-elt-spike` **atrás** de 3b.
 
 ### Públicas (consultadas 2026-09-22)
 
@@ -356,6 +413,7 @@ Orden de menor alucinación a mayor:
 - FDA 98 %: Fabri en Perfil/Canal E 2025-08-26; Diario de las Varillas 2025-10-06
 - PH software: <https://conso.com.ar/blog/herramientas/comparativa-software-administracion-consorcios-argentina>
 - AgTech: auravant.com, sima.ag (SIMA GIS oct 2025), geoagro.com/es/360-2/, climate.com FieldView
+- MBAgro docs vigentes: `docs/olas-construccion.md`, `docs/00-arquitectura-y-roadmap.md` (visión; stack superado por ADRs), `docs/diferidos.md`, `docs/referencias-apps-similares.md`
 
 ### Límites de evidencia
 
@@ -364,4 +422,6 @@ Orden de menor alucinación a mayor:
 - «No hay SaaS de canalero/caminero» = no apareció en búsqueda web 2026-09-22. Puede existir un desarrollo a medida no publicado.
 - «+1.000 informes» de Informes de Campo y «100k+ downloads» de HydraLakes son claims de marketing, no medidos.
 - El comentario de `config.py` que dice que la ficha es placeholder está **stale**; el servicio ya computa. El flag sigue off.
-- Primera versión de este doc (commit `9ba67216`) afirmó que RuralIndex era el único símil. Falso para la forma de producto; corregido en esta revisión.
+- Primera versión de este doc (commit `9ba67216`) afirmó que RuralIndex era el único símil. Falso para la forma de producto; corregido en `55076b39`.
+- README raíz y `docs/README.md` de MBAgro están **stale** (dicen 11 migraciones / 1b sin migración). Manda el SQL `0060` + `origin/main`.
+- NASA POWER de MBAgro no es equivalencia hidrológica con CHIRPS. Parámetros verificados en el fetch de `main`, no en el brochure de la ola.

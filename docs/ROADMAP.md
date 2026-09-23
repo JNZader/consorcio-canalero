@@ -8,8 +8,8 @@
 >
 > Última actualización: **2026-09-22** · Mantiene: @javier
 >
-> Estrategia de producto (canalero white-label · caminero · ficha nacional):
-> `docs/strategy/exploracion-productos-2026-09.md`. No es cola de código.
+> Estrategia de producto (canalero · caminero · ficha nacional · MBAgro crop-ops):
+> `docs/strategy/exploracion-productos-2026-09.md`. No es cola de código. No fusionar MBAgro.
 
 ---
 
