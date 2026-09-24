@@ -293,6 +293,14 @@ services:
         condition: service_healthy
     networks:
       - consorcio-network
+    # Override the backend image HEALTHCHECK (HTTP /live:8000). Beat has no
+    # Uvicorn — that probe always fails while the scheduler is fine.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.beat_healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ============================================
   # GEO WORKER - GDAL-based terrain analysis
