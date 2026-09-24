@@ -1021,10 +1021,12 @@ def test_backend_and_geo_compose_healthchecks_are_dependency_free_exec_form() ->
         "docker-compose.deploy.yml",
     )
     geo_probe = """test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).close()"]"""
+    beat_probe = 'test: ["CMD", "python", "-m", "app.beat_healthcheck"]'
     for path in compose_paths:
         compose = _read(path)
         backend = _compose_service_block(compose, "backend")
         geo = _compose_service_block(compose, "geo-worker")
+        beat = _compose_service_block(compose, "celery-beat")
 
         assert 'test: ["CMD", "python", "-m", "app.healthcheck"]' in backend
         assert "CMD-SHELL" not in backend
@@ -1034,6 +1036,12 @@ def test_backend_and_geo_compose_healthchecks_are_dependency_free_exec_form() ->
         assert "CMD-SHELL" not in geo
         assert "curl" not in geo.lower()
         assert "wget" not in geo.lower()
+        # Beat must NOT inherit the HTTP /live probe from the backend image.
+        assert beat_probe in beat
+        assert 'python", "-m", "app.healthcheck"' not in beat
+        assert "CMD-SHELL" not in beat
+        assert "curl" not in beat.lower()
+        assert "wget" not in beat.lower()
 
 
 def test_production_compose_requires_verified_manifest_digests() -> None:
