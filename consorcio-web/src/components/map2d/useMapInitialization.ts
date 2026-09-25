@@ -37,8 +37,11 @@ export function installMapNativeDragGuards(container: HTMLElement): () => void {
   };
 
   container.addEventListener('dragstart', preventNativeDrag, { capture: true });
+  // Prefer setProperty for -webkit-* so jsdom/happy-dom and Safari agree on
+  // the computed inline style (camelCase webkitUserSelect is not mirrored in
+  // happy-dom ≥20.14).
   container.style.userSelect = 'none';
-  container.style.webkitUserSelect = 'none';
+  container.style.setProperty('-webkit-user-select', 'none');
   container.style.setProperty('-webkit-user-drag', 'none');
 
   return () => {
@@ -46,7 +49,7 @@ export function installMapNativeDragGuards(container: HTMLElement): () => void {
       capture: true,
     });
     container.style.userSelect = '';
-    container.style.webkitUserSelect = '';
+    container.style.removeProperty('-webkit-user-select');
     container.style.removeProperty('-webkit-user-drag');
   };
 }
