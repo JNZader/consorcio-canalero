@@ -1,10 +1,11 @@
 # Pre-commit hooks configuration
 # Install: pip install pre-commit && pre-commit install
+# Keep ruff/mypy revs aligned with gee-backend/{requirements,requirements-dev}.lock
 
 repos:
   # General hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -19,7 +20,7 @@ repos:
 
   # Python - Ruff (fast linter + formatter)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.0
+    rev: v0.16.9
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -29,7 +30,7 @@ repos:
 
   # Python - Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: v2.3.1
     hooks:
       - id: mypy
         files: ^gee-backend/app/
@@ -38,7 +39,7 @@ repos:
           - pydantic>=2.0
           - fastapi>=0.100
 
-  # JavaScript/TypeScript - Biome
+  # JavaScript/TypeScript - Biome (stay on 1.x until Wave C)
   - repo: https://github.com/biomejs/pre-commit
     rev: v0.1.0
     hooks:
@@ -48,20 +49,20 @@ repos:
 
   # Docker
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
+    rev: v2.15.1
     hooks:
       - id: hadolint-docker
         args: [--ignore, DL3008, --ignore, DL3013]
 
   # Secrets detection
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.2
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 
   # Commit message format
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v3.14.1
+    rev: v4.19.0
     hooks:
       - id: commitizen
         stages: [commit-msg]
