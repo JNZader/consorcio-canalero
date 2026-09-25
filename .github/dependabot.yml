@@ -6,12 +6,6 @@
 
 version: 2
 
-registries:
-  npm-registry:
-    type: npm-registry
-    url: https://registry.npmjs.org
-    replaces-base: true
-
 updates:
   # ============================================
   # GitHub Actions - Workflow dependencies
@@ -143,8 +137,6 @@ updates:
   # ============================================
   - package-ecosystem: "npm"
     directory: "/consorcio-web"
-    registries:
-      - npm-registry
     schedule:
       interval: "weekly"
       day: "wednesday"
