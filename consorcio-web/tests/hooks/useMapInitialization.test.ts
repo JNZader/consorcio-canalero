@@ -10,6 +10,8 @@ import { logger } from '../../src/lib/logger';
 describe('useMapInitialization', () => {
   it('prevents native browser dragstart on the map container so pan is not hijacked', () => {
     const container = document.createElement('div');
+    const setProperty = vi.spyOn(container.style, 'setProperty');
+    const removeProperty = vi.spyOn(container.style, 'removeProperty');
     const removeGuards = installMapNativeDragGuards(container);
 
     const event = new DragEvent('dragstart', {
@@ -21,8 +23,9 @@ describe('useMapInitialization', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(container.style.userSelect).toBe('none');
-    expect(container.style.webkitUserSelect).toBe('none');
-    expect(container.style.getPropertyValue('-webkit-user-drag')).toBe('none');
+    // happy-dom drops -webkit-* from CSSOM; assert the calls instead.
+    expect(setProperty).toHaveBeenCalledWith('-webkit-user-select', 'none');
+    expect(setProperty).toHaveBeenCalledWith('-webkit-user-drag', 'none');
 
     removeGuards();
 
@@ -35,8 +38,8 @@ describe('useMapInitialization', () => {
 
     expect(nextEvent.defaultPrevented).toBe(false);
     expect(container.style.userSelect).toBe('');
-    expect(container.style.webkitUserSelect).toBe('');
-    expect(container.style.getPropertyValue('-webkit-user-drag')).toBe('');
+    expect(removeProperty).toHaveBeenCalledWith('-webkit-user-select');
+    expect(removeProperty).toHaveBeenCalledWith('-webkit-user-drag');
   });
 
   it('installs and removes native drag guards with the MapLibre lifecycle', () => {

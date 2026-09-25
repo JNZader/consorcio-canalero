@@ -19,7 +19,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # FastAPI
-fastapi>=0.115.0,!=0.137.0,!=0.137.1
+# Cap <0.142: Wave A stays on the 0.140/0.141 line; majors need a dedicated PR.
+fastapi>=0.115.0,!=0.137.0,!=0.137.1,<0.142.0
 uvicorn[standard]>=0.34.0
 python-dotenv>=1.0.0
 pydantic[email]>=2.11.0
@@ -30,7 +31,9 @@ earthengine-api>=1.4.0
 google-auth>=2.37.0
 
 # Database
-sqlalchemy>=2.0.0
+# Cap <2.1: SQLAlchemy 2.1 switches default postgresql:// driver to psycopg3;
+# this codebase and tests still speak psycopg2. Promote in a dedicated wave.
+sqlalchemy>=2.0.0,<2.1.0
 alembic>=1.14.0
 psycopg2-binary>=2.9.0
 asyncpg>=0.30.0

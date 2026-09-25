@@ -5,7 +5,7 @@ Guía rápida para levantar el entorno local actual.
 ## Requisitos
 
 - Docker / Docker Compose
-- Node.js 20+
+- Node.js 22+
 - Python 3.11+
 - PostgreSQL + PostGIS si se corre sin Docker
 - Redis si se corre sin Docker
