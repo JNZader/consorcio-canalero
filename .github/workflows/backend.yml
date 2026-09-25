@@ -36,7 +36,7 @@ jobs:
       backend_image: ${{ steps.detect.outputs.backend_image }}
       mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Historia completa: sin esto el merge-base contra la rama base no
           # existe en el clon y el diff de abajo falla o miente.
@@ -87,7 +87,7 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -111,7 +111,7 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -130,7 +130,7 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -166,7 +166,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.mutation_matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -224,7 +224,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -255,7 +255,7 @@ jobs:
     env:
       CANDIDATE_IMAGE: "local/consorcio-backend:${{ github.sha }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build backend candidate image
         uses: docker/build-push-action@v5
@@ -352,7 +352,7 @@ jobs:
     env:
       CANDIDATE_IMAGE: "local/consorcio-geo-worker:${{ github.sha }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build geo-worker candidate image
         uses: docker/build-push-action@v5
