@@ -6,7 +6,7 @@
 > los checkouts locales — y la memoria persistente de sesión (engram, proyecto
 > `consorcio-canalero`).
 >
-> Última actualización: **2026-09-23** · Mantiene: @javier
+> Última actualización: **2026-09-24** · Mantiene: @javier
 >
 > Estrategia de producto (canalero · caminero · ficha nacional · MBAgro crop-ops):
 > `docs/strategy/exploracion-productos-2026-09.md`. Incluye GeoCuenca INTA (visor GEE Salado). No fusionar MBAgro. No pelear el visor gratis de Salado.
@@ -26,7 +26,10 @@
 | **RAG U3** — sidecar de embeddings | #220 | Container BGE-M3 CPU-only con lock `--require-hashes`; guard de identidad por tupla `(modelo, revision_hf)` canonicalizada. |
 | **Lluvia v2 — antecedente-referencia** (normal + percentil estacional por ventana d7/d30/d90) | #231-#235 | Cadena de 5 slices, TODA en main 2026-08-25/26. Verify final: matriz 16/16 SATISFIED, 0 CRITICAL. ARCHIVADO (`openspec/changes/archive/2026-08-26-*`). Regla nueva D0: complete-or-nothing en ambos lados del rank. 5 tickets de backlog heredados (ver Follow-ups del tasks.md archivado). |
 | **Lluvia — eventos extremos** (detector + catálogo persistido + picker catalog-backed + puente de imágenes) | #237-#242 | Cadena de 6 slices en main 2026-08-26. HISTORIC_FLOODS hardcodeado MUERTO: el picker sirve el catálogo (calibración REAL con datos del box: 36 extrema/144 alta; sep-2025 detectado, feb-2017 confirmado ±3d, mar-2015 curado honesto). Falta SOLO el paso de ceremonia en el box (alembic upgrade + una corrida de `detector_cli` → 183 eventos reales) y el archive. 7 tickets de backlog en el tasks.md (destacan BL-GHA-CACHE-CEILING y BL-RATE-LIMIT-SUITE-CASCADE). |
-| **Multi-hazard viewer** (lifecycle + visible integration + legend + session restore + `/mapa` URL + E2E) | #250-#255 | Ocho slices en main 2026-08-26→31. B3 `#250` · B3b `#251` · B3c `#252` · C6 `#253` · C5 `#254` (B3B-NEW-003: `?basin=` sobrevive el load del catálogo) · E2E `#255`. Código cerrado. Falta archive SDD. El canary de prod corre el journey citizen; operator queda credential-gated. |
+| **Multi-hazard viewer** (lifecycle + visible integration + legend + session restore + `/mapa` URL + E2E) | #250-#255 | Ocho slices en main 2026-08-26→31. B3 `#250` · B3b `#251` · B3c `#252` · C6 `#253` · C5 `#254` (B3B-NEW-003: `?basin=` sobrevive el load del catálogo) · E2E `#255`. Código cerrado. Archive local en `openspec/changes/archive/2026-08-31-multi-hazard-viewer/`. El canary de prod corre el journey citizen; operator queda credential-gated. |
+| **Celery Beat healthcheck** | #300 | Beat deja de heredar el HTTP healthcheck del backend; módulo `app.beat_healthcheck`. Deployado en box. |
+| **Image-policy Debian 13.7 + sunset** | #301 | Hotfixes perl/gzip/sqlite/pcre2; sunset prorrogado a **2026-10-31**; baseline honesto 56 filas. Imágenes production en box. |
+| **Frontend alpine libexpat** | #302 | Digest `nginx:1.30.4-alpine` + `apk upgrade` → `libexpat 2.8.5-r0`; desbloquea Final Frontend Image Gate (CVE-2026-93990). |
 
 ## ✅ RAG — cadena COMPLETA (2026-08-25)
 
@@ -44,7 +47,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 5. ~~**Lluvia v2** — `lluvia-antecedente-referencia`~~ ✅ CERRADO 2026-08-26 (#231-#235, archivado). Queda la higiene mm/hr de IMERG (backlog).
 6. ~~**Lluvia — eventos extremos**~~ ✅ CÓDIGO CERRADO 2026-08-26 (#237-#242, verify final + archive en curso). Al box en la ceremonia: `alembic upgrade head` + `docker compose exec backend python -m app.domains.geo.rainfall.detector_cli`.
 7. ~~**Pared de "Discrepancias" en la ficha**~~ ✅ CERRADO 2026-08-31 — la UI comprime `expected_interval` consecutivos a un rango+conteo (`expected_interval=<first> → <last> (N)`).
-8. **Código restante (no box)** — (a) ~~archive SDD multi-hazard~~ ✅ Engram #15466 + folder untracked a `archive/2026-08-31-multi-hazard-viewer/` (2026-08-31); (b) ~~issue #164 pre-push harness~~ ✅ CERRADO 2026-08-31 (#257); (c) ~~CVE-2026-66046 `libexpat1`~~ congelado 2026-08-31 (#258); (d) ~~sunset image-policy 2026-09-18~~ prorrogado a **2026-10-31** el 2026-09-24 con remediación real (hotfixes Debian 13.7 perl/gzip/sqlite + pcre2 trixie-security; baseline honesto 56 filas); (e) ~~reaper de `geo_jobs`~~ heartbeat + idle 45 min (DEM/cruces; GEE sigue 300); (f) ~~`auto-corridor` 4.3 UX operativa~~ ABANDONED. Feature landed WIP `8c862d11` and was deleted the same day in admin cleanup `7c1297c3`/`0610cde6`. OpenSpec 11/12 is stale. Not restored. (g) ~~stabilize leftover 4.4 admin sugerencias `POST /interna` + `DELETE /{id}` 404~~ ✅ CERRADO 2026-08-31 — dead client/UI dropped; no backend routes added. ~~3.5 tramites label catalog (`pendiente` vs backend `ingresado`)~~ ✅ CERRADO 2026-08-31 — catálogo FE alineado a `EstadoTramite` (`ingresado`/`en_tramite`/`aprobado`/`rechazado`/`archivado`); el panel no filtra con `filterCanonicalTramites`. El resto de OpenSpec 16/30 es tracker rot (v1 paths gone, cosmic-ray 0.30 / Stryker 75 already in CI). `ficha-territorial` A7 **ya está en main** (#108/#110/#111, 2026-08-02) — los checkboxes OpenSpec están stale. `lluvia-intensidad-subdiaria` es solo explore, no hay proposal.
+8. **Código restante (no box)** — (a) ~~archive SDD multi-hazard~~ ✅; (b) ~~issue #164 pre-push harness~~ ✅ (#257); (c) ~~CVE-2026-66046 `libexpat1`~~ congelado (#258) + frontend alpine fix (#302); (d) ~~sunset image-policy~~ ✅ remediado + prorrogado (#301); (e) ~~reaper `geo_jobs`~~ ✅; (f) ~~`auto-corridor`~~ ABANDONED — OpenSpec local movido 2026-09-24 a `archive/2026-09-24-auto-corridor-basin-analysis/`; (g) ~~admin sugerencias / tramites labels~~ ✅. Higiene OpenSpec 2026-09-24 (untracked): también `ficha-territorial`, `stabilize-critical-contracts-ci-gates`, `lluvia-intensidad-subdiaria` → `archive/2026-09-24-*`. Activos en `openspec/changes/`: solo `flujo-caminos` + `consorcio-conocimiento-semantico` (archive **post-ceremonia**).
 
 ## 🗄️ Backlog (anotado, sin apuro)
 
@@ -53,7 +56,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 - **Decisión estructural**: ¿commitear `openspec/changes/`? Hoy untracked — permitió el drift que U2 pagó. La reconciliación manual con `diff -r` es el paliativo vigente.
 - Follow-up router: bajar `mixto→legal` (hoy 2/13) vía tuning de banda/piso — re-medición en U9 con más gold.
 - Follow-ups RAG fuera del gate: re-chunk de las 10 unidades gigantes (fix principled de D-8), más gold de retrieval, juicio abierto del decreto 3780-C/65 (matchea por PDF de OTRO documento).
-- Limpieza: worktrees viejos (`~/programacion/worktrees/consorcio-*` ya mergeados), container de ablación `consorcio-rag-o3` (127.0.0.1:55433), imágenes rmeh.
+- ~~Limpieza worktrees + containers de ablación~~ ✅ 2026-09-24: 52 worktrees mergeados removidos; `consorcio-rag-o3` / `consorcio-rag-eval-pg` borrados (estaban Exited). Queda eventual leftover `consorcio-expat-20260831` (cache trivy root-owned) si `sudo rm` no corre. Imágenes rmeh: sin apuro.
 
 ## 🔑 Dónde vive cada cosa
 
