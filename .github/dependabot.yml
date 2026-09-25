@@ -1,5 +1,8 @@
 # Dependabot configuration for automated dependency updates
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# Majors for MapLibre / Mantine / Vite / Vitest / Biome / SQLAlchemy are
+# deferred to explicit Wave C PRs — Dependabot stays on minor/patch only.
 
 version: 2
 
@@ -56,10 +59,18 @@ updates:
     reviewers:
       - "maintainers"
     ignore:
-      # Ignore major updates for critical packages (review manually)
+      # Majors reviewed manually (Wave C for SQLAlchemy / psycopg)
       - dependency-name: "fastapi"
         update-types: ["version-update:semver-major"]
       - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "alembic"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "psycopg2*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "psycopg*"
         update-types: ["version-update:semver-major"]
       - dependency-name: "earthengine-api"
         update-types: ["version-update:semver-major"]
@@ -102,9 +113,9 @@ updates:
       # Database and storage
       database:
         patterns:
-          - "supabase*"
           - "sqlalchemy*"
           - "alembic*"
+          - "psycopg*"
         update-types:
           - "minor"
           - "patch"
@@ -123,7 +134,6 @@ updates:
           - "pytest*"
           - "ruff*"
           - "mypy*"
-          - "black*"
         update-types:
           - "minor"
           - "patch"
@@ -152,22 +162,28 @@ updates:
       - "maintainers"
     versioning-strategy: increase
     ignore:
-      # Ignore major updates for core frameworks
+      # Core frameworks + Wave C majors (explicit upgrade PRs)
       - dependency-name: "react"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "astro"
+      - dependency-name: "maplibre-gl"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@mantine/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@biomejs/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@stryker-mutator/*"
         update-types: ["version-update:semver-major"]
     groups:
-      # Astro ecosystem
-      astro-ecosystem:
-        patterns:
-          - "astro"
-          - "@astrojs/*"
-        update-types:
-          - "minor"
-          - "patch"
       # React ecosystem
       react-ecosystem:
         patterns:
@@ -184,29 +200,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      # Supabase
-      supabase:
-        patterns:
-          - "@supabase/*"
-        update-types:
-          - "minor"
-          - "patch"
-      # Mapping/Leaflet
+      # Mapping (MapLibre / PMTiles / Turf)
       mapping:
         patterns:
-          - "leaflet*"
-          - "react-leaflet*"
-          - "@types/leaflet*"
-        update-types:
-          - "minor"
-          - "patch"
-      # Styling
-      styling:
-        patterns:
-          - "tailwindcss*"
-          - "@tailwindcss/*"
-          - "@emotion/*"
-          - "@vanilla-extract/*"
+          - "maplibre-gl"
+          - "pmtiles"
+          - "@turf/*"
         update-types:
           - "minor"
           - "patch"
@@ -223,6 +222,9 @@ updates:
           - "@biomejs/*"
           - "typescript*"
           - "vite*"
+          - "vitest*"
+          - "@vitest/*"
+          - "@vitejs/*"
         update-types:
           - "minor"
           - "patch"
@@ -232,7 +234,6 @@ updates:
           - "@types/*"
         exclude-patterns:
           - "@types/react*"
-          - "@types/leaflet*"
         update-types:
           - "minor"
           - "patch"
