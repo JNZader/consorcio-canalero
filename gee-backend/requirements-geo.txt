@@ -32,7 +32,7 @@ whitebox>=2.3.0
 rasterstats>=0.20.0
 
 # ML water segmentation (CPU inference)
-scipy>=1.11.0
+scipy>=1.18.1
 # OpenCV — 5-10× faster than scipy for small-kernel median filters used in
 # `tile_service_support.smooth_elevation_tile`. Optional: the module falls
 # back to scipy if cv2 is missing, so the headless tile worker stays usable.

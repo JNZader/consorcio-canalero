@@ -78,7 +78,7 @@ pre-commit>=3.6.0
 # without these the tests either fail to import (scipy: 3 collection errors,
 # real CI failure on 2026-07-26) or skip forever (rio-tiler: 6 phantom tests).
 # GDAL bindings are NOT needed: rio-tiler ships its own rasterio wheel.
-scipy>=1.11.0
+scipy>=1.18.1
 rio-tiler>=7.0.0
 
 # Transitive pin: pip-audit gate. Dev-side only.
