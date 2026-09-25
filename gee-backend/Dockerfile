@@ -166,6 +166,115 @@ RUN set -eu; \
     done; \
     rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (Debian 13.7 perl): the 13.7 point release (2026-09-12)
+# ships perl 5.40.1-6+deb13u1, which closes most of the perl-base CVEs frozen
+# in security/frozen-image-debt.json (CVE-2026-13221, -42496, -42497, -48962,
+# -57432, -57433, -8376). The pinned slim-trixie base still carries 5.40.1-6.
+# Same pattern as openssl/util-linux: --only-upgrade + installed-version
+# assertion, base digest untouched. CVE-2026-9538 is [trixie] postponed and may
+# remain; Trivy is authoritative. REMOVE this block when the base digest is
+# bumped to one carrying perl-base >= 5.40.1-6+deb13u1.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    perl-base; \
+    fixed_version="5.40.1-6+deb13u1"; \
+    for package in \
+        perl-base; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
+# Security hotfix (Debian 13.7 gzip, CVE-2026-41992): the 13.7 point release
+# ships gzip 1.13-1+deb13u1; the pinned base still carries 1.13-1. REMOVE this
+# block when the base digest is bumped to one carrying gzip >= 1.13-1+deb13u1.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    gzip; \
+    fixed_version="1.13-1+deb13u1"; \
+    for package in \
+        gzip; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
+# Security hotfix (Debian 13.7 sqlite, CVE-2026-11822 / CVE-2026-11824): the
+# 13.7 point release ships libsqlite3-0 3.46.1-7+deb13u2; the pinned base still
+# carries 3.46.1-7+deb13u1. REMOVE this block when the base digest is bumped to
+# one carrying libsqlite3-0 >= 3.46.1-7+deb13u2.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libsqlite3-0; \
+    fixed_version="3.46.1-7+deb13u2"; \
+    for package in \
+        libsqlite3-0; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
+# Security hotfix (pcre2 CVE-2026-86145 / CVE-2026-89157 / CVE-2026-89161,
+# HIGH): trixie-security ships libpcre2-8-0 10.46-1~deb13u2; the pinned base
+# still carries 10.46-1~deb13u1. Trivy reports these with a FixedVersion, and
+# the image policy refuses to freeze any finding that has one, so this upgrade
+# is mandatory for the gate. REMOVE this block when the base digest is bumped
+# to one carrying libpcre2-8-0 >= 10.46-1~deb13u2.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libpcre2-8-0; \
+    fixed_version="10.46-1~deb13u2"; \
+    for package in \
+        libpcre2-8-0; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
 # COPY merges directories, so remove the base image's packaging artifacts
 # before importing the prepared build tree. Otherwise stale setuptools
 # dist-info can shadow the secure runtime version.
