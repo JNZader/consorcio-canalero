@@ -85,7 +85,7 @@ RUN npm prune --production --legacy-peer-deps
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46 AS runtime
+FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
@@ -96,7 +96,9 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 # apk upgrades keep the pin and pull only patched packages. REMOVE this RUN
 # when the digest is bumped to an image that already carries them.
 #   CVE-2026-14456 — libcrypto3/libssl3 3.5.8-r0 (caught 2026-08-26)
-#   CVE-2026-66046 / 76956 / 76957 — libexpat 2.8.4-r0
+#   CVE-2026-66046 / 76956 / 76957 — libexpat 2.8.4-r0 (base still ships this)
+#   CVE-2026-93990 — libexpat 2.8.5-r0 (Final Frontend Image Gate on main after
+#   #301, 2026-09-25; Trivy HIGH until apk pulls 2.8.5)
 #   CVE-2026-53612..76642 / 78408..78410 — libuuid 2.42.3-r* (Final Frontend
 #   Image Gate on #276, 2026-09-18)
 RUN apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid
