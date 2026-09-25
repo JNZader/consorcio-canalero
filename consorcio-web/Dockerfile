@@ -6,7 +6,7 @@
 # ----------------------------------------------
 # Stage 1: Dependencies - Install npm packages
 # ----------------------------------------------
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN npm ci --prefer-offline --no-audit --legacy-peer-deps
 # ----------------------------------------------
 # Stage 2: Development - For local development
 # ----------------------------------------------
-FROM node:22-alpine AS development
+FROM node:25-alpine AS development
 
 WORKDIR /app
 
@@ -51,7 +51,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 # ----------------------------------------------
 # Stage 3: Builder - Build the application
 # ----------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app
 
