@@ -58,7 +58,7 @@ PyJWT[crypto]>=2.11.0,<3.0.0
 
 # Utils
 httpx>=0.28.0
-python-multipart>=0.0.19
+python-multipart>=0.0.32
 openpyxl>=3.1.5
 xlrd>=2.0.1
 # Pillow comes in transitively today (pyvista), but we use it directly
