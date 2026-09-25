@@ -320,7 +320,7 @@ def _assert_scanned_manifest_is_published(
 ) -> None:
     build = "uses: docker/build-push-action@v5"
     scan = f"uses: {TRIVY_ACTION}"
-    login = "uses: docker/login-action@v3"
+    login = "uses: docker/login-action@v4"
     push_candidate = 'docker push "$CANDIDATE_IMAGE"'
     inspect_remote = (
         "docker buildx imagetools inspect \"$CANDIDATE_IMAGE\" --format '{{json .Manifest}}'"
