@@ -5,27 +5,38 @@ This directory contains the active, temporary, fail-closed image policy tracked 
 
 Stage 2B2 generated the baseline from the preserved final images built at
 `96cf15d0f36577c2500d2708dc5c1b899035177f` and their raw, unsuppressed Trivy 0.70.0 reports.
-The backend exception is the exact normalized 18-row multiset (14 HIGH, 4 CRITICAL) after the
-2026-08-31 honest rescan that added CVE-2026-66046 (`libexpat1@2.8.3-1~deb13u1`, no
-`FixedVersion`). The former 44-row PR17 set is invalid for this package closure. The Geo worker
+The backend exception is the exact normalized 56-row multiset (55 HIGH, 1 CRITICAL; 20 distinct
+CVEs; no `FixedVersion` on any row) after the 2026-09-24 honest rescan that followed the Debian
+13.7 hotfixes. The former 44-row PR17 set is invalid for this package closure. The Geo worker
 has an empty exception set, so any HIGH or CRITICAL Geo finding fails.
 
 The policy has no *automated* renewal mechanism — every extension is a one-line edit of a
-hard-coded constant in a reviewed commit (it has happened three times; see below). Its ceilings are:
+hard-coded constant in a reviewed commit (it has happened four times; see below). Its ceilings are:
 
-- CRITICAL: 2026-09-18T00:00:00Z
-- HIGH: 2026-09-18T00:00:00Z
-- absolute sunset: 2026-09-18T00:00:00Z
+- CRITICAL: 2026-10-31T00:00:00Z
+- HIGH: 2026-10-31T00:00:00Z
+- absolute sunset: 2026-10-31T00:00:00Z
 
 Both severity ceilings were first moved to the then-existing absolute sunset (CRITICAL on
-2026-07-30, HIGH on 2026-08-04), and on 2026-08-22 all three — the absolute sunset included, for
-the first time — moved to 2026-09-18, because every frozen finding is unfixable upstream. The 2026-08-31 backend
-rescan (Trivy 0.70.0, DB v2 of that day, production image at
-`0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb`) still has no `FixedVersion` on any
-row; CVE-2026-66046 is `no-dsa` / unfixed even in sid. The Debian 13.7 point
-release that would remediate some perl/acl HIGH/CRITICAL has not shipped, and
-would not remediate 66046. See the consolidated evidence block
-in `scripts/validate_image_security_policy.py`. The sunset binds the policy *JSON*: the
+2026-07-30, HIGH on 2026-08-04), on 2026-08-22 all three — the absolute sunset included, for
+the first time — moved to 2026-09-18, and on 2026-09-24 all three moved to 2026-10-31. That
+last extension is paired with real remediation: Debian 13.7 (2026-09-12) made `perl-base
+5.40.1-6+deb13u1`, `gzip 1.13-1+deb13u1` and `libsqlite3-0 3.46.1-7+deb13u2` available to the
+pinned base's apt, and trixie-security shipped `libpcre2-8-0 10.46-1~deb13u2`. The production
+stage of `gee-backend/Dockerfile` now applies those four `--only-upgrade` hotfixes (same pattern
+as openssl/util-linux; base digest untouched). The pcre2 one is mandatory: Trivy reports
+CVE-2026-86145/-89157/-89161 *with* a `FixedVersion`, and this policy refuses to freeze anything
+that has a fix. The baseline was regenerated from an honest Trivy 0.70.0 rescan of the resulting
+image, so the rows that disappear (7 perl, 1 gzip, 2 sqlite) are the ones Trivy stops reporting —
+nothing was removed by hand. The same rescan, with the vulnerability DB of 2026-09-24, also
+revealed debt the August baseline did not know about and that has no apt candidate and no fix in
+trixie (Debian tracker: `vulnerable` in trixie, fixed only in forky/sid): four util-linux CVEs
+(CVE-2026-76642/-78408/-78409/-78410, 9 rows each), CVE-2026-16742 (`libsystemd0`/`libudev1`),
+seven more `libxml2` HIGH rows and three more `libexpat1` HIGH rows. Still present from before:
+CVE-2026-66046 (`libexpat1`), CVE-2026-6653 (`libxml2`, pulled in by `libosmesa6`),
+CVE-2025-69720 (`ncurses`, 4 rows), CVE-2026-54369 (`libacl1`) and CVE-2026-9538 (`perl-base`,
+postponed). Net: 18 → 56 rows. See the consolidated evidence block in
+`scripts/validate_image_security_policy.py`. The sunset binds the policy *JSON*: the
 validator checks it before the per-severity deadlines, and the ceiling check rejects any JSON
 deadline past it. The sunset constant itself is pinned by
 `test_deadline_ceilings_are_the_documented_dates`, so extending it takes a code-and-test change

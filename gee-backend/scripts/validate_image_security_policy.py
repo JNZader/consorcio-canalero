@@ -124,10 +124,57 @@ PLATFORM = "linux/amd64"
 # hotfix 3.5.7-1~deb13u2 en el Dockerfile. sqlite 11822/11824 siguen.
 # 17 -> 18 filas (13 HIGH + 4 CRITICAL -> 14 HIGH + 4 CRITICAL). El sunset
 # 2026-09-18 no se mueve: 66046 no lo remedia un point release 13.7.
+#
+# Prorroga del SUNSET ABSOLUTO 2026-09-18 -> 2026-10-31 (la segunda del
+# sunset mismo; techos por severidad al mismo valor). El 2026-09-24 el sunset
+# ya habia vencido (2026-09-18) y ``_enforce_time`` rechazaba ambas imagenes
+# por reloj, no por deuda nueva. La palanca externa que este bloque venia
+# vigilando SI salio: Debian 13.7 (2026-09-12). La imagen python:3.11.15-
+# slim-trixie pineada sigue en 13.6, pero su apt ya ofrece los candidatos de
+# 13.7 (Installed -> Candidate, verificado en la base pineada):
+#   perl-base    5.40.1-6           -> 5.40.1-6+deb13u1
+#   gzip         1.13-1             -> 1.13-1+deb13u1
+#   libsqlite3-0 3.46.1-7+deb13u1   -> 3.46.1-7+deb13u2
+#   libpcre2-8-0 10.46-1~deb13u1     -> 10.46-1~deb13u2 (trixie-security)
+# Remediacion: cuatro hotfixes --only-upgrade en el stage de produccion del
+# Dockerfile (mismo patron que openssl/util-linux, digest de la base intacto).
+# El de pcre2 es OBLIGATORIO para el gate: la DB de hoy reporta
+# CVE-2026-86145/-89157/-89161 CON FixedVersion y esta politica se niega a
+# congelar cualquier hallazgo que tenga fix.
+# Las filas que salen del baseline son las que Trivy 0.70.0 deja de reportar
+# sobre la imagen resultante (ratchet honesto, sin editar a mano):
+#   perl-base  CVE-2026-13221, -42496, -42497, -48962, -57432, -57433, -8376
+#   gzip       CVE-2026-41992
+#   sqlite     CVE-2026-11822, CVE-2026-11824
+# La DB v2 del 2026-09-24 tambien REVELA deuda nueva que el baseline de agosto
+# no conocia; ninguna trae FixedVersion ni Candidate en apt (Installed ==
+# Candidate verificado en la imagen), y el tracker de Debian las tiene
+# `vulnerable` en trixie, fixed solo en forky/sid:
+#   CVE-2026-76642/-78408/-78409/-78410  util-linux 2.41.5-0+deb13u1 (9 filas
+#                                        c/u = 36) [trixie] no-dsa; fix sid 2.42.3-1
+#   CVE-2026-16742  libsystemd0/libudev1 257.13-1~deb13u1 (2 filas) [trixie]
+#                                        no-dsa; fix sid 261.2-1
+#   CVE-2026-74860/-86138/-86139/-86140/-86142/-86143/-86144  libxml2 (7 filas)
+#                                        trixie vulnerable; fix sid 2.15.x
+#   CVE-2026-76956/-76957/-93990  libexpat1 2.8.3-1~deb13u1 (3 filas) [trixie]
+#                                        no-dsa; fix sid 2.8.4
+# Persiste la deuda ya conocida, sin Candidate al 2026-09-24:
+#   CVE-2026-66046  libexpat1  [trixie] no-dsa, unfixed en sid
+#   CVE-2026-6653   libxml2    [trixie] no-dsa (entra por libosmesa6)
+#   CVE-2025-69720  ncurses    [trixie] no-dsa (4 filas)
+#   CVE-2026-54369  acl        [trixie] no-dsa
+#   CVE-2026-9538   perl-base  [trixie] postponed (persiste en 5.40.1-6+deb13u1)
+# Resultado: 18 -> 56 filas (55 HIGH + 1 CRITICAL), 20 CVE distintos, 0 con
+# fix. El multiset exacto vive en frozen-image-debt.json y lo pinea
+# ``test_repository_policy_is_active_with_exact_stage2b2_observations``.
+# util-linux (36) + libxml2 (8) + ncurses (4) + libexpat1 (4) = 52 de 56.
+# Palanca externa: un digest nuevo de python:3.11-slim-trixie no ayuda (misma
+# trixie); solo Debian 13.8 o un DSA puntual bajan filas. Revisar antes del
+# 2026-10-31.
 DEADLINE_CEILINGS = {
-    "CRITICAL": "2026-09-18T00:00:00Z",
-    "HIGH": "2026-09-18T00:00:00Z",
-    "absolute_sunset": "2026-09-18T00:00:00Z",
+    "CRITICAL": "2026-10-31T00:00:00Z",
+    "HIGH": "2026-10-31T00:00:00Z",
+    "absolute_sunset": "2026-10-31T00:00:00Z",
 }
 ROLE_BINDINGS = {
     "backend": {

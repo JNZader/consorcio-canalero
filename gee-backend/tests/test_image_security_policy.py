@@ -276,12 +276,26 @@ def _assert_rejected(result: subprocess.CompletedProcess[str], fragment: str) ->
     assert fragment.lower() in result.stderr.lower()
 
 
-def _util_linux_hotfix_body() -> str:
+def _hotfix_body(start_marker: str) -> str:
+    """Return the RUN body of the hotfix block that starts at ``start_marker``.
+
+    Each hotfix is delimited by its own ``# Security hotfix (...)`` comment and
+    ends at the next hotfix marker or at the ``# COPY merges directories``
+    comment that follows the last one, so adding a block never leaks into the
+    body extracted for its predecessor.
+    """
     dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
-    hotfix = dockerfile.split("# Security hotfix (CVE-2026-53615):", 1)[1].split(
-        "# COPY merges directories", 1
-    )[0]
-    return hotfix.split("RUN ", 1)[1].strip()
+    after_start = dockerfile.split(start_marker, 1)[1]
+    end = len(after_start)
+    for terminator in ("\n# Security hotfix (", "\n# COPY merges directories"):
+        index = after_start.find(terminator)
+        if index != -1:
+            end = min(end, index)
+    return after_start[:end].split("RUN ", 1)[1].strip()
+
+
+def _util_linux_hotfix_body() -> str:
+    return _hotfix_body("# Security hotfix (CVE-2026-53615):")
 
 
 OPENSSL_HOTFIX_PACKAGES = (
@@ -289,14 +303,19 @@ OPENSSL_HOTFIX_PACKAGES = (
     "openssl",
     "openssl-provider-legacy",
 )
+# Single-package hotfixes added 2026-09-24: (marker, package, fixed version).
+# The first three come from the Debian 13.7 point release; pcre2 comes from
+# trixie-security and is mandatory because Trivy reports a FixedVersion.
+DEBIAN_13_7_HOTFIXES = (
+    ("# Security hotfix (Debian 13.7 perl)", "perl-base", "5.40.1-6+deb13u1"),
+    ("# Security hotfix (Debian 13.7 gzip", "gzip", "1.13-1+deb13u1"),
+    ("# Security hotfix (Debian 13.7 sqlite", "libsqlite3-0", "3.46.1-7+deb13u2"),
+    ("# Security hotfix (pcre2 CVE-2026-86145", "libpcre2-8-0", "10.46-1~deb13u2"),
+)
 
 
 def _openssl_hotfix_body() -> str:
-    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
-    hotfix = dockerfile.split("# Security hotfix (CVE-2026-14456", 1)[1].split(
-        "# Security hotfix (CVE-2026-53615)", 1
-    )[0]
-    return hotfix.split("RUN ", 1)[1].strip()
+    return _hotfix_body("# Security hotfix (CVE-2026-14456")
 
 
 def _write_fake_executable(path: Path, body: str) -> None:
@@ -426,34 +445,96 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # hotfix de paquete (a diferencia de util-linux/openssl). El ratchet
     # exige la fila nueva. sqlite 11822/11824 y la ausencia de 14456 se
     # mantienen. 13 HIGH + 4 CRITICAL -> 14 HIGH + 4 CRITICAL; affected 14->15.
-    assert len(backend_findings) == 18
-    assert sum(finding["count"] for finding in backend_findings) == 18
+    # 18 -> 56 el 2026-09-24 (Trivy 0.70.0, DB v2 del dia, imagen etiquetada
+    # con c75343dd). Debian 13.7 habilito perl-base 5.40.1-6+deb13u1, gzip
+    # 1.13-1+deb13u1 y libsqlite3-0 3.46.1-7+deb13u2, y trixie-security
+    # libpcre2-8-0 10.46-1~deb13u2: los cuatro son hotfix --only-upgrade en el
+    # stage de produccion (ver Dockerfile). Salen 7 filas perl, 1 gzip y 2
+    # sqlite; CVE-2026-9538 (perl, postponed) persiste sobre la version nueva.
+    # La DB del dia REVELA deuda sin fix en trixie que agosto no conocia:
+    # util-linux 4 CVE x 9 paquetes (36), libxml2 +7, libexpat1 +3, systemd 2.
+    # 14 HIGH + 4 CRITICAL -> 55 HIGH + 1 CRITICAL; affected 55, fix_deferred 1.
+    assert len(backend_findings) == 56
+    assert sum(finding["count"] for finding in backend_findings) == 56
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 14
-    assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 4
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 15
-    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 3
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 55
+    assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 55
+    assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
     assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-53615"] == []
     assert [finding for finding in backend_findings if finding["cve"] == "CVE-2026-14456"] == []
-    sqlite_findings = [
-        finding for finding in backend_findings if finding["pkg_id"].startswith("libsqlite3-0@")
-    ]
-    assert len(sqlite_findings) == 2
-    assert {
-        (
-            finding["cve"],
-            finding["pkg_id"].partition("@")[0],
-            finding["severity"],
-            finding["status"],
-        )
-        for finding in sqlite_findings
-    } == {
-        ("CVE-2026-11822", "libsqlite3-0", "HIGH", "affected"),
-        ("CVE-2026-11824", "libsqlite3-0", "HIGH", "affected"),
+    # Remediated by the Debian 13.7 / trixie-security hotfixes: gone.
+    remediated_cves = {
+        "CVE-2026-13221",
+        "CVE-2026-42496",
+        "CVE-2026-42497",
+        "CVE-2026-48962",
+        "CVE-2026-57432",
+        "CVE-2026-57433",
+        "CVE-2026-8376",
+        "CVE-2026-41992",
+        "CVE-2026-11822",
+        "CVE-2026-11824",
+        "CVE-2026-86145",
+        "CVE-2026-89157",
+        "CVE-2026-89161",
     }
+    assert [finding for finding in backend_findings if finding["cve"] in remediated_cves] == []
+    assert [finding for finding in backend_findings if finding["pkg_id"].startswith("gzip@")] == []
+    assert [
+        finding for finding in backend_findings if finding["pkg_id"].startswith("libsqlite3-0@")
+    ] == []
+    assert [
+        finding for finding in backend_findings if finding["pkg_id"].startswith("libpcre2-8-0@")
+    ] == []
+    installed_by_package = {
+        finding["pkg_id"].partition("@")[0]: finding["installed"] for finding in backend_findings
+    }
+    assert installed_by_package["perl-base"] == "5.40.1-6+deb13u1"
+    assert installed_by_package["util-linux"] == "2.41.5-0+deb13u1"
+    rows_by_cve = {
+        cve: sorted(
+            finding["pkg_id"].partition("@")[0]
+            for finding in backend_findings
+            if finding["cve"] == cve
+        )
+        for cve in {finding["cve"] for finding in backend_findings}
+    }
+    ncurses = ["libncursesw6", "libtinfo6", "ncurses-base", "ncurses-bin"]
+    util_linux = sorted(UTIL_LINUX_PACKAGES)
+    assert rows_by_cve == {
+        "CVE-2025-69720": ncurses,
+        "CVE-2026-16742": ["libsystemd0", "libudev1"],
+        "CVE-2026-54369": ["libacl1"],
+        "CVE-2026-66046": ["libexpat1"],
+        "CVE-2026-6653": ["libxml2"],
+        "CVE-2026-74860": ["libxml2"],
+        "CVE-2026-76642": util_linux,
+        "CVE-2026-76956": ["libexpat1"],
+        "CVE-2026-76957": ["libexpat1"],
+        "CVE-2026-78408": util_linux,
+        "CVE-2026-78409": util_linux,
+        "CVE-2026-78410": util_linux,
+        "CVE-2026-86138": ["libxml2"],
+        "CVE-2026-86139": ["libxml2"],
+        "CVE-2026-86140": ["libxml2"],
+        "CVE-2026-86142": ["libxml2"],
+        "CVE-2026-86143": ["libxml2"],
+        "CVE-2026-86144": ["libxml2"],
+        "CVE-2026-93990": ["libexpat1"],
+        "CVE-2026-9538": ["perl-base"],
+    }
+    critical = [finding for finding in backend_findings if finding["severity"] == "CRITICAL"]
+    assert [(finding["cve"], finding["pkg_id"]) for finding in critical] == [
+        ("CVE-2026-6653", "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3")
+    ]
+    deferred = [finding for finding in backend_findings if finding["status"] == "fix_deferred"]
+    assert [(finding["cve"], finding["pkg_id"]) for finding in deferred] == [
+        ("CVE-2026-9538", "perl-base@5.40.1-6+deb13u1")
+    ]
     expat_findings = [finding for finding in backend_findings if finding["cve"] == "CVE-2026-66046"]
     assert len(expat_findings) == 1
     assert (
@@ -464,12 +545,15 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     ) == ("libexpat1@2.8.3-1~deb13u1", "HIGH", "affected", "")
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
-        "sha256:e3d839cd6b359587a2a9c4d60432200c302ab894bae0172dba353992f6fed3c6"
+        "sha256:0ba6983d0bceb084726d88971a7bd78ab31a848f313fac59fa58edf8aa94977a"
     )
     assert geo_provenance["report_sha256"] == (
         "sha256:21eedc171a92b12f338aa9f714fc15fd701a0f2f35aed3997fa1bf711d09db51"
     )
-    assert backend_provenance["source_revision"] == ("0d7f2a6f3a154d9d8a6c9a09deb17f618c791bcb")
+    assert backend_provenance["source_revision"] == ("c75343dd8d7d35fb309571f32b75f7d59b8cc3ca")
+    assert backend_provenance["image_ref"] == (
+        "local/consorcio-backend:c75343dd8d7d35fb309571f32b75f7d59b8cc3ca"
+    )
     # geo-worker baseline is NOT refreshed by this change (distinct revision):
     assert geo_provenance["source_revision"] == ("96cf15d0f36577c2500d2708dc5c1b899035177f")
     assert backend_provenance["platform"] == "linux/amd64"
@@ -530,6 +614,54 @@ def test_backend_dockerfile_enforces_fixed_openssl_source_version() -> None:
     for package in OPENSSL_HOTFIX_PACKAGES:
         assert package in install_lines
         assert package in gate_lines
+
+
+@pytest.mark.parametrize(
+    ("marker", "package", "fixed_version"),
+    DEBIAN_13_7_HOTFIXES,
+    ids=[package for _, package, _ in DEBIAN_13_7_HOTFIXES],
+)
+def test_backend_dockerfile_enforces_fixed_debian_13_7_source_versions(
+    marker: str,
+    package: str,
+    fixed_version: str,
+) -> None:
+    hotfix = _hotfix_body(marker)
+
+    assert hotfix.count(f'fixed_version="{fixed_version}"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("--only-upgrade") < hotfix.index("dpkg-query --show")
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split(f'fixed_version="{fixed_version}"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    assert package in install_lines
+    assert package in gate_lines
+
+
+def test_backend_dockerfile_hotfix_blocks_are_ordered_before_site_packages_copy() -> None:
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
+    production = dockerfile.split(" AS production", 1)[1]
+    markers = [
+        "# Security hotfix (CVE-2026-14456",
+        "# Security hotfix (CVE-2026-53615)",
+        *(marker for marker, _, _ in DEBIAN_13_7_HOTFIXES),
+        "# COPY merges directories",
+    ]
+    positions = [production.index(marker) for marker in markers]
+
+    assert positions == sorted(positions)
+    assert production.count("# Security hotfix (") == len(markers) - 1
 
 
 def test_util_linux_hotfix_accepts_fixed_versions_and_queries_all_packages(
@@ -1052,9 +1184,9 @@ def test_deadline_ceilings_are_the_documented_dates() -> None:
     spec.loader.exec_module(module)
 
     assert module.DEADLINE_CEILINGS == {
-        "CRITICAL": "2026-09-18T00:00:00Z",
-        "HIGH": "2026-09-18T00:00:00Z",
-        "absolute_sunset": "2026-09-18T00:00:00Z",
+        "CRITICAL": "2026-10-31T00:00:00Z",
+        "HIGH": "2026-10-31T00:00:00Z",
+        "absolute_sunset": "2026-10-31T00:00:00Z",
     }
 
 
@@ -1062,7 +1194,7 @@ def test_deadline_ceilings_are_the_documented_dates() -> None:
     ("mutate_policy", "now", "message"),
     [
         (
-            lambda policy: policy["deadlines"].__setitem__("HIGH", "2026-09-19T00:00:00Z"),
+            lambda policy: policy["deadlines"].__setitem__("HIGH", "2026-11-01T00:00:00Z"),
             "2026-07-23T00:00:00Z",
             "ceiling",
         ),
