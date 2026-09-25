@@ -1,0 +1,58 @@
+diff --git a/node_modules/@mantine/core/esm/components/Transition/Transition.mjs b/node_modules/@mantine/core/esm/components/Transition/Transition.mjs
+--- a/node_modules/@mantine/core/esm/components/Transition/Transition.mjs
++++ b/node_modules/@mantine/core/esm/components/Transition/Transition.mjs
+@@ -9,15 +9,15 @@ function Transition({ keepMounted, keepMountedMode = "activity", transition = "f
+ 	const env = useMantineEnv();
+ 	const { transitionDuration, transitionStatus, transitionTimingFunction } = useTransition({
+ 		mounted,
+-		exitDuration,
+-		duration,
++		exitDuration: env === "test" ? 0 : exitDuration,
++		duration: env === "test" ? 0 : duration,
+ 		timingFunction,
+ 		onExit,
+ 		onEntered,
+ 		onEnter,
+ 		onExited,
+-		enterDelay,
+-		exitDelay
++		enterDelay: env === "test" ? undefined : enterDelay,
++		exitDelay: env === "test" ? undefined : exitDelay
+ 	});
+ 	if (env === "test") return mounted ? /* @__PURE__ */ jsx(Fragment$1, { children: children({}) }) : keepMounted ? children({ display: "none" }) : null;
+ 	if (transitionDuration === 0) {
+diff --git a/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs b/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs
+--- a/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs
++++ b/node_modules/@mantine/core/cjs/components/Transition/Transition.cjs
+@@ -9,15 +9,15 @@ function Transition({ keepMounted, keepMountedMode = "activity", transition = "f
+ 	const env = require_Mantine_context.useMantineEnv();
+ 	const { transitionDuration, transitionStatus, transitionTimingFunction } = require_use_transition.useTransition({
+ 		mounted,
+-		exitDuration,
+-		duration,
++		exitDuration: env === "test" ? 0 : exitDuration,
++		duration: env === "test" ? 0 : duration,
+ 		timingFunction,
+ 		onExit,
+ 		onEntered,
+ 		onEnter,
+ 		onExited,
+-		enterDelay,
+-		exitDelay
++		enterDelay: env === "test" ? undefined : enterDelay,
++		exitDelay: env === "test" ? undefined : exitDelay
+ 	});
+ 	if (env === "test") return mounted ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: children({}) }) : keepMounted ? children({ display: "none" }) : null;
+ 	if (transitionDuration === 0) {
+diff --git a/node_modules/@mantine/core/esm/core/utils/get-env/get-env.mjs b/node_modules/@mantine/core/esm/core/utils/get-env/get-env.mjs
+--- a/node_modules/@mantine/core/esm/core/utils/get-env/get-env.mjs
++++ b/node_modules/@mantine/core/esm/core/utils/get-env/get-env.mjs
+@@ -1,7 +1,7 @@
+ "use client";
+ //#region packages/@mantine/core/src/core/utils/get-env/get-env.ts
+ function getEnv() {
+-	if (typeof process !== "undefined" && process.env && "development") return "development";
++	if (typeof process !== "undefined" && process.env && process.env.NODE_ENV) return process.env.NODE_ENV;
+ 	return "development";
+ }
+ //#endregion

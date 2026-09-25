@@ -5,7 +5,7 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach, beforeAll, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, vi } from 'vitest';
 
 // Cleanup after each test
 afterEach(() => {
@@ -26,6 +26,22 @@ beforeAll(() => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     })),
+  });
+});
+
+// Mantine 9 Textarea autosize listens to FontFaceSet "loadingdone".
+// happy-dom does not provide document.fonts. Prefer disabling autosize via
+// NODE_ENV=test (patched getEnv); this mock is defense-in-depth for any path
+// that still mounts Autosize.
+beforeEach(() => {
+  Object.defineProperty(document, 'fonts', {
+    configurable: true,
+    writable: true,
+    value: {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    },
   });
 });
 

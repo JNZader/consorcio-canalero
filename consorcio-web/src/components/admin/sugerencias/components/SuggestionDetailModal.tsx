@@ -198,7 +198,7 @@ export function SuggestionDetailModal({
 
             <Collapse
               id={SUGGESTION_HISTORY_REGION_ID}
-              in={showHistorial}
+              expanded={showHistorial}
               role="region"
               aria-label="Historial de gestión de la sugerencia"
             >
