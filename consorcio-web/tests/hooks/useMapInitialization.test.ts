@@ -261,7 +261,7 @@ describe('useMapInitialization', () => {
 
     expect(mapConstructor).toHaveBeenCalledWith(
       expect.objectContaining({
-        preserveDrawingBuffer: true,
+        canvasContextAttributes: { preserveDrawingBuffer: true },
       })
     );
   });

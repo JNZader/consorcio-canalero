@@ -617,12 +617,13 @@ export default function TerrainViewer3D({
       // touch ``prefetchZoomDelta`` (which isn't exposed in this
       // MapLibre version's types anyway).
       maxTileCacheSize: 50,
-      // antialias intentionally left unset. MapLibre defaults to
-      // ``antialias: false`` (no MSAA at all), which keeps the viewer
-      // usable on older GPUs — multisampling is expensive and the 3D
-      // terrain is the heaviest paint on this page. Pitched terrain at
-      // 200× exaggeration will alias on retina screens; if a "Calidad
-      // alta" toggle is ever needed, flip this on only when the user
+      // antialias intentionally left unset under canvasContextAttributes.
+      // MapLibre 5 defaults to ``antialias: false`` (no MSAA at all), which
+      // keeps the viewer usable on older GPUs — multisampling is expensive
+      // and the 3D terrain is the heaviest paint on this page. Pitched
+      // terrain at 200× exaggeration will alias on retina screens; if a
+      // "Calidad alta" toggle is ever needed, set
+      // ``canvasContextAttributes: { antialias: true }`` only when the user
       // opts in.
       // fadeDuration also stays at default — overriding it to 0 silences
       // vector layer transitions and causes LOD flicker between zoom

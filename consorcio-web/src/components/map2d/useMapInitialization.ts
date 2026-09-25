@@ -171,7 +171,9 @@ export function useMapInitialization({
       // memory/compositing overhead on one canvas; the alternative is a broken
       // export or a map that reloads under the user. Do not "optimize" this away
       // without moving export to an offscreen render.
-      preserveDrawingBuffer: true,
+      // MapLibre 5: WebGL options live under `canvasContextAttributes` (top-level
+      // `preserveDrawingBuffer` was removed in 5.0.0).
+      canvasContextAttributes: { preserveDrawingBuffer: true },
       // Desktop wheel must NOT hijack the page scroll: cooperative gestures
       // require Ctrl+wheel to zoom and show a hint otherwise (see change
       // `rediseno-ux-mapa`). On TOUCH the same handler forces two-finger pan,
