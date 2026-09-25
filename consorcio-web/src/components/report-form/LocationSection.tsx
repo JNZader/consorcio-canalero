@@ -281,7 +281,7 @@ export function LocationSection({
         )}
       </Group>
 
-      <Collapse in={mostrarInputManual}>
+      <Collapse expanded={mostrarInputManual}>
         <Box
           id={MANUAL_COORDINATES_PANEL_ID}
           role="region"
