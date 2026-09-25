@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
+const rootDir = import.meta.dirname;
+
 export default defineConfig({
   plugins: [react()],
 
@@ -60,11 +62,11 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src'),
-      '@components': resolve(__dirname, './src/components'),
-      '@lib': resolve(__dirname, './src/lib'),
-      '@types': resolve(__dirname, './src/types'),
-      '@constants': resolve(__dirname, './src/constants'),
+      '@': resolve(rootDir, './src'),
+      '@components': resolve(rootDir, './src/components'),
+      '@lib': resolve(rootDir, './src/lib'),
+      '@types': resolve(rootDir, './src/types'),
+      '@constants': resolve(rootDir, './src/constants'),
     },
   },
 });
