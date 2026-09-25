@@ -18,7 +18,7 @@
 # ningun codigo de runtime importa (verificado: el unico consumidor es
 # scripts/train_water_unet.py). opencv SI se queda: tile_service_support usa
 # cv2.medianBlur en runtime.
-rasterio>=1.4.0
+rasterio>=1.5.1
 # richdem removed — incompatible with Python 3.12 (pybind11 too old)
 
 # COG conversion + tile serving
