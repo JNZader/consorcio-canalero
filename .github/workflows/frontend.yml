@@ -86,8 +86,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -102,8 +102,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -122,8 +122,8 @@ jobs:
     timeout-minutes: 10
     needs: [changes, lint]
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -138,8 +138,8 @@ jobs:
     timeout-minutes: 10
     needs: [changes, test]
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -186,6 +186,7 @@ jobs:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
@@ -315,8 +316,8 @@ jobs:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -390,8 +391,8 @@ jobs:
     timeout-minutes: 20
     needs: [changes, typecheck, smoke]
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -422,8 +423,8 @@ jobs:
     needs: [changes, lint, test, typecheck, smoke]
     timeout-minutes: 10
     steps:
+      - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
