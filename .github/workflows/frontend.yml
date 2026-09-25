@@ -53,7 +53,7 @@ jobs:
     outputs:
       frontend: ${{ steps.detect.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Historia completa: sin esto el merge-base contra la rama base no
           # existe en el clon y el diff de abajo falla o miente.
@@ -86,8 +86,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -102,8 +102,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -122,8 +122,8 @@ jobs:
     timeout-minutes: 10
     needs: [changes, lint]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -138,8 +138,8 @@ jobs:
     timeout-minutes: 10
     needs: [changes, test]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -186,7 +186,8 @@ jobs:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -267,7 +268,7 @@ jobs:
     env:
       MUTATION_RESULT: ${{ needs.mutation.result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Require all mutation shards
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_RESULT" = "success"
@@ -315,8 +316,8 @@ jobs:
       STRYKER_SHARD: ${{ matrix.shard }}
       MUTATE: ${{ matrix.mutate }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -344,7 +345,7 @@ jobs:
     env:
       MUTATION_FULL_RESULT: ${{ needs.mutation-full.result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Require all full mutation shards
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_FULL_RESULT" = "success"
@@ -390,8 +391,8 @@ jobs:
     timeout-minutes: 20
     needs: [changes, typecheck, smoke]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -422,8 +423,8 @@ jobs:
     needs: [changes, lint, test, typecheck, smoke]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -442,7 +443,7 @@ jobs:
     env:
       CANDIDATE_IMAGE: "local/consorcio-frontend:${{ github.sha }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build frontend candidate image
         uses: docker/build-push-action@v5
