@@ -52,7 +52,7 @@ structlog>=24.1.0
 # DEBUGGING & PROFILING
 # ===========================================
 ipython>=8.20.0  # Enhanced Python shell
-ipdb>=0.13.0  # IPython debugger
+ipdb>=0.13.13  # IPython debugger
 py-spy>=0.3.0  # Sampling profiler
 memory-profiler>=0.61.0  # Memory usage profiler
 
