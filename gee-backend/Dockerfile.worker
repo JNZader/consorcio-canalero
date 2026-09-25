@@ -2,7 +2,7 @@
 # Celery Worker + Beat - GDAL + geo deps
 # ==============================================
 
-FROM ghcr.io/osgeo/gdal:ubuntu-small-3.10.3
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.3
 
 WORKDIR /app
 
