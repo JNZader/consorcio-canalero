@@ -32,9 +32,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # (see overrides.txt). requirements-geo.txt stays unlocked on purpose
 # (GDAL/numpy from the OSGeo base).
 COPY requirements.lock requirements-geo.txt ./
-RUN pip install --no-cache-dir --break-system-packages \
+# Bare --ignore-installed: OSGeo base ships debian Python packages without
+# pip RECORD metadata (e.g. packaging). Overwrite them instead of uninstalling.
+# Naming numpy on that flag is the GDAL-3.10 worker workaround and is forbidden
+# on this GDAL-3.13 / numpy-2 ABI image (see contract test).
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
         --no-deps --require-hashes -r requirements.lock \
-    && pip install --no-cache-dir --break-system-packages \
+    && pip install --no-cache-dir --break-system-packages --ignore-installed \
         -r requirements-geo.txt \
         "setuptools==80.10.2" \
         "uvicorn[standard]>=0.30.0" \
