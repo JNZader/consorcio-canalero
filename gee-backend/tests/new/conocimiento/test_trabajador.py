@@ -541,9 +541,7 @@ class TestElDeadlineAcotaLaTransaccion:
         # test cannot pass on some other database fault that also raised.
         # psycopg3 exposes ``sqlstate``; fall back to legacy ``pgcode``.
         orig = capturado.value.orig
-        assert (
-            getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-        ) == "57014"
+        assert (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) == "57014"
 
         procesamiento.rollback()
         # The abort released the lock and the row never left `pendiente` — which

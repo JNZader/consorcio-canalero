@@ -42,7 +42,13 @@ google-auth>=2.37.0
 # Wave C5: SQLAlchemy 2.1 + psycopg3. Bare postgresql:// now defaults to
 # psycopg (v3); we normalize sync URLs to postgresql+psycopg:// explicitly.
 # Cap <2.2 so Dependabot stays on the 2.1 line until a dedicated 2.2 wave.
-sqlalchemy>=2.1.0,<2.2.0
+# [asyncio] pulls greenlet into the hashed lock — required because CI/Docker
+# install with --no-deps (fastapi-users override); without it, import of
+# sqlalchemy.ext.asyncio fails on a clean lock install.
+sqlalchemy[asyncio]>=2.1.0,<2.2.0
+# Explicit: hashed --no-deps installs do not pull extras at install time.
+# greenlet must be a first-class lock entry (also via sqlalchemy[asyncio]).
+greenlet>=3.0.0
 alembic>=1.14.0
 psycopg[binary]>=3.2.0
 asyncpg>=0.30.0
