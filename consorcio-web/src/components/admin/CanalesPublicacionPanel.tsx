@@ -311,7 +311,7 @@ export default function CanalesPublicacionPanel() {
         </Badge>
       </Group>
 
-      <Grid gutter="md">
+      <Grid gap="md">
         <Grid.Col span={{ base: 12, md: 8 }}>
           <Paper withBorder style={{ position: 'relative', minHeight: 560, overflow: 'hidden' }}>
             <Box style={{ height: 560 }}>
