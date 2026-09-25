@@ -26,15 +26,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install ALL Python dependencies (full backend stack + geo extras)
-# The app code has deep import chains (tasks → auth → fastapi_users)
-# so the lean requirements-geo.txt approach causes missing module errors.
-COPY requirements.txt requirements-geo.txt ./
+# Install ALL Python dependencies (full backend stack + geo extras).
+# The hashed lock is a full closure; --no-deps honours Wave C5's sqlalchemy
+# 2.1 override past fastapi-users-db-sqlalchemy's <2.1 metadata pin
+# (see overrides.txt). requirements-geo.txt stays unlocked on purpose
+# (GDAL/numpy from the OSGeo base).
+COPY requirements.lock requirements-geo.txt ./
 RUN pip install --no-cache-dir --break-system-packages \
-    -r requirements.txt -r requirements-geo.txt \
-    "setuptools==80.10.2" \
-    "uvicorn[standard]>=0.30.0" \
-    "wheel==0.46.3"
+        --no-deps --require-hashes -r requirements.lock \
+    && pip install --no-cache-dir --break-system-packages \
+        -r requirements-geo.txt \
+        "setuptools==80.10.2" \
+        "uvicorn[standard]>=0.30.0" \
+        "wheel==0.46.3"
 
 
 # Pre-download WhiteboxTools while the temporary Python headers are available,
