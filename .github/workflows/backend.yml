@@ -99,10 +99,14 @@ jobs:
       # Trivy's filesystem scan does NOT parse .lock files, so pinning the
       # closure would otherwise blind the manifest-level vulnerability gate.
       # pip-audit reads the pins directly and fails closed.
+      #
+      # --disable-pip: Wave C5 locks pin sqlalchemy 2.1 while
+      # fastapi-users-db-sqlalchemy still declares sqlalchemy<2.1. Installs
+      # use --no-deps; pip-audit must NOT re-resolve or it ResolutionImpossible.
       - name: Audit pinned dependencies
         run: |
-          pip-audit -r requirements.lock
-          pip-audit -r requirements-dev.lock
+          pip-audit --disable-pip -r requirements.lock
+          pip-audit --disable-pip -r requirements-dev.lock
 
   typecheck:
     name: Type check (mypy)
