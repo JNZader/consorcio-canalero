@@ -67,7 +67,7 @@ export const logger = {
    */
   debug(message: string, ...args: unknown[]) {
     if (shouldLog('debug')) {
-      // biome-ignore lint/suspicious/noConsoleLog: logger utility
+      // biome-ignore lint/suspicious/noConsole: logger utility
       console.log(formatMessage('debug', message), ...args);
     }
   },
@@ -77,7 +77,7 @@ export const logger = {
    */
   info(message: string, ...args: unknown[]) {
     if (shouldLog('info')) {
-      // biome-ignore lint/suspicious/noConsoleLog: logger utility
+      // biome-ignore lint/suspicious/noConsole: logger utility
       console.log(formatMessage('info', message), ...args);
     }
   },

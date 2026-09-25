@@ -39,12 +39,12 @@ repos:
           - pydantic>=2.0
           - fastapi>=0.100
 
-  # JavaScript/TypeScript - Biome (stay on 1.x until Wave C)
+  # JavaScript/TypeScript - Biome 2 (aligned with consorcio-web/@biomejs/biome)
   - repo: https://github.com/biomejs/pre-commit
-    rev: v0.1.0
+    rev: v2.5.14
     hooks:
       - id: biome-check
-        additional_dependencies: ["@biomejs/biome@1.9.4"]
+        additional_dependencies: ["@biomejs/biome@2.5.14"]
         files: ^consorcio-web/src/
 
   # Docker

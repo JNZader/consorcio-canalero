@@ -1,17 +1,18 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
-        "recommended": true,
+        "preset": "recommended",
         "useKeyWithClickEvents": "warn",
         "useButtonType": "warn",
-        "useSemanticElements": "off"
+        "useSemanticElements": "off",
+        "useAriaPropsSupportedByRole": "warn",
+        "useAriaPropsForRole": "warn",
+        "noAriaHiddenOnFocusable": "warn"
       },
       "complexity": {
         "noExcessiveCognitiveComplexity": {
@@ -38,8 +39,12 @@
       },
       "suspicious": {
         "noExplicitAny": "warn",
-        "noConsoleLog": "warn",
-        "noArrayIndexKey": "off"
+        "noArrayIndexKey": "off",
+        "useIterableCallbackReturn": "warn",
+        "noConsole": {
+          "level": "warn",
+          "options": { "allow": ["info", "warn", "error", "debug", "assert"] }
+        }
       }
     }
   },
@@ -65,23 +70,21 @@
     }
   },
   "files": {
-    "include": [
-      "src/**/*.ts",
-      "src/**/*.tsx",
-      "src/**/*.js",
-      "src/**/*.jsx",
-      "*.json",
-      "*.ts",
-      "*.js"
-    ],
-    "ignore": [
-      "node_modules",
-      "dist",
-      "*.min.js",
-      "public/",
-      ".vercel",
-      "coverage",
-      "src/routeTree.gen.tsx"
+    "includes": [
+      "**/src/**/*.ts",
+      "**/src/**/*.tsx",
+      "**/src/**/*.js",
+      "**/src/**/*.jsx",
+      "**/*.json",
+      "**/*.ts",
+      "**/*.js",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/*.min.js",
+      "!**/public/",
+      "!**/.vercel",
+      "!**/coverage",
+      "!**/src/routeTree.gen.tsx"
     ]
   },
   "vcs": {
