@@ -237,10 +237,10 @@ export function useMapExportHandlers({
       // regardless of the user's current viewport. Then wait for `idle` so
       // tiles + vector layers finish repainting before reading the canvas.
       //
-      // MapLibre's `preserveDrawingBuffer` (enabled in P1) keeps the backbuffer
-      // readable, but the frame may still be stale if no render happened
-      // recently — `fitBounds({animate:false, duration:0})` + awaiting `idle`
-      // guarantees a fresh, fully-rendered frame.
+      // MapLibre's `canvasContextAttributes.preserveDrawingBuffer` (enabled in
+      // P1 / Wave C2) keeps the backbuffer readable, but the frame may still be
+      // stale if no render happened recently — `fitBounds({animate:false,
+      // duration:0})` + awaiting `idle` guarantees a fresh, fully-rendered frame.
       let mapImageDataUrl = '';
       if (map) {
         try {
