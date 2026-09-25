@@ -29,9 +29,11 @@ COPY requirements.txt requirements.lock ./
 # Whitebox imports pkg_resources; setuptools 80.10.2 also carries fixed vendored
 # jaraco.context and wheel metadata. Keep top-level wheel on the safe release too.
 # --require-hashes makes the build fail closed if the lock is ever tampered
-# with; setuptools/wheel are installed separately because they are build-time
-# pins, not part of the application closure.
-RUN pip install --no-cache-dir --require-hashes -r requirements.lock \
+# with; --no-deps is required because the lock is a full closure that Wave C5
+# resolved with overrides.txt (fastapi-users-db-sqlalchemy still declares
+# sqlalchemy<2.1). setuptools/wheel are installed separately because they are
+# build-time pins, not part of the application closure.
+RUN pip install --no-cache-dir --no-deps --require-hashes -r requirements.lock \
     && pip install --no-cache-dir \
     "setuptools==80.10.2" \
     "wheel==0.46.3"

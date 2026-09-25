@@ -48,12 +48,18 @@ def test_database_urls_are_derived_for_the_correct_sqlalchemy_driver() -> None:
     from app.config import database_async_url, database_sync_url
 
     canonical = "postgresql://app:secret@postgres:5432/consorcio"
+    sync_expected = "postgresql+psycopg://app:secret@postgres:5432/consorcio"
     async_input = "postgresql+asyncpg://app:secret@postgres:5432/consorcio"
 
-    assert database_sync_url(canonical) == canonical
-    assert database_sync_url(async_input) == canonical
+    assert database_sync_url(canonical) == sync_expected
+    assert database_sync_url(async_input) == sync_expected
+    assert database_sync_url(sync_expected) == sync_expected
+    assert database_sync_url(
+        "postgresql+psycopg2://app:secret@postgres:5432/consorcio"
+    ) == sync_expected
     assert database_async_url(canonical) == async_input
     assert database_async_url(async_input) == async_input
+    assert database_async_url(sync_expected) == async_input
 
 
 def test_production_example_uses_canonical_sync_database_url() -> None:

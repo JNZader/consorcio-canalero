@@ -6,12 +6,20 @@
 #   requirements-dev.lock   runtime + dev    (CI: lint/typecheck/test/mutation)
 #
 # Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.11 = the
-# backend image's interpreter):
+# backend image's interpreter). Pass --overrides so fastapi-users-db-sqlalchemy's
+# stale sqlalchemy<2.1 pin does not block Wave C5 (see overrides.txt):
 #
 #   uv pip compile requirements.txt --python-version 3.11 --generate-hashes \
-#       --output-file requirements.lock
+#       --overrides overrides.txt --output-file requirements.lock
 #   uv pip compile requirements.txt requirements-dev.txt --python-version 3.11 \
-#       --generate-hashes --output-file requirements-dev.lock
+#       --generate-hashes --overrides overrides.txt \
+#       --output-file requirements-dev.lock
+#
+# Install from the lock with --no-deps --require-hashes (full closure; --no-deps
+# is required so fastapi-users-db-sqlalchemy's stale sqlalchemy<2.1 metadata
+# does not fight the Wave C5 pin — see overrides.txt):
+#
+#   pip install --no-deps --require-hashes -r requirements-dev.lock
 #
 # requirements-geo.txt is NOT locked on purpose: the geo-worker image ships its
 # own GDAL/numpy from the OSGeo base and pinning them here fights the system
@@ -31,11 +39,12 @@ earthengine-api>=1.4.0
 google-auth>=2.37.0
 
 # Database
-# Cap <2.1: SQLAlchemy 2.1 switches default postgresql:// driver to psycopg3;
-# this codebase and tests still speak psycopg2. Promote in a dedicated wave.
-sqlalchemy>=2.0.0,<2.1.0
+# Wave C5: SQLAlchemy 2.1 + psycopg3. Bare postgresql:// now defaults to
+# psycopg (v3); we normalize sync URLs to postgresql+psycopg:// explicitly.
+# Cap <2.2 so Dependabot stays on the 2.1 line until a dedicated 2.2 wave.
+sqlalchemy>=2.1.0,<2.2.0
 alembic>=1.14.0
-psycopg2-binary>=2.9.0
+psycopg[binary]>=3.2.0
 asyncpg>=0.30.0
 geoalchemy2>=0.17.0
 

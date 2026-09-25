@@ -55,8 +55,9 @@ celery>=5.4.0
 redis>=5.0.0
 
 # Database (for storing results)
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
+# Wave C5: align with backend — SQLAlchemy 2.1 + psycopg3.
+sqlalchemy>=2.1.0,<2.2.0
+psycopg[binary]>=3.2.0
 asyncpg>=0.29.0
 geoalchemy2>=0.17.0
 

@@ -37,12 +37,13 @@ def _try_testcontainers() -> tuple[str | None, object | None]:
             username="test",
             password="test",
             dbname="test_consorcio",
-            driver="psycopg2",
+            driver="psycopg",
         )
         container.start()
-        # Normalize URL: strip driver suffix so session.py's async conversion
-        # (postgresql:// → postgresql+asyncpg://) works correctly.
-        url = container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+        # Normalize URL: strip driver suffix so session.py / async helpers that
+        # rewrite bare postgresql:// → postgresql+asyncpg:// keep working.
+        # database_sync_url() re-adds postgresql+psycopg:// for create_engine.
+        url = container.get_connection_url().replace("postgresql+psycopg://", "postgresql://")
         return url, container
     except Exception:
         # Docker not running, permission error, image pull failure, etc.

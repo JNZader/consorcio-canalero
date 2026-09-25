@@ -414,11 +414,13 @@ def test_poligono_area_sobre_cap_es_422_naming_area_ha(ficha_db, monkeypatch):
 
 
 class _FakeOrig(Exception):
-    """Stand-in for the psycopg2 error under ``OperationalError.orig``."""
+    """Stand-in for the DBAPI / psycopg error under ``OperationalError.orig``."""
 
-    def __init__(self, pgcode: str | None) -> None:
+    def __init__(self, sqlstate: str | None) -> None:
         super().__init__("simulated db fault")
-        self.pgcode = pgcode
+        self.sqlstate = sqlstate
+        # Legacy psycopg2 attribute — production falls back to this if needed.
+        self.pgcode = sqlstate
 
 
 def _inyectar_falla_db(monkeypatch: Any, db: Session, marcador: str, pgcode: str | None) -> None:
