@@ -108,14 +108,12 @@ export default defineConfig({
     // hooks the way ``useMemo`` + ``useCallback`` would, except the
     // compiler is conservative and only inserts memos where it can
     // PROVE safety. React 19 is the minimum supported runtime
-    // (already pinned in package.json). The plugin runs as a Babel
-    // pass that ``@vitejs/plugin-react`` already hosts, so this is
-    // a config-only change.
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-      },
-    }),
+    // (already pinned in package.json).
+    //
+    // plugin-react 6: prefer the Rust/Oxc path (`compiler: true`) via
+    // optional peer ``oxc-transform-react``. Babel + babel-plugin-react-
+    // compiler is the fallback documented by plugin-react, not used here.
+    react({ compiler: true }),
     VitePWA({
       registerType: 'autoUpdate',
       // PERF — keep this list MINIMAL. ``includeAssets`` bypasses
@@ -412,7 +410,12 @@ export default defineConfig({
   },
 
   build: {
-    rollupOptions: {
+    // Vite 8 / Rolldown: ``rollupOptions`` is a deprecated alias —
+    // use ``rolldownOptions``. Object-form ``manualChunks`` was removed;
+    // named vendor splits move to ``output.codeSplitting.groups``.
+    // Group ``name``s MUST stay identical to the old chunk ids: the PWA
+    // workbox ``globIgnores`` / runtimeCaching patterns match them by name.
+    rolldownOptions: {
       onwarn(warning, warn) {
         // Suppress unused import warnings from @tabler/icons-react
         if (
@@ -424,38 +427,64 @@ export default defineConfig({
         warn(warning);
       },
       output: {
-        manualChunks: {
-          'vendor-mantine': [
-            '@mantine/core',
-            '@mantine/hooks',
-            '@mantine/form',
-            '@mantine/notifications',
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor-mantine',
+              test: /node_modules\/@mantine\/(core|hooks|form|notifications)(\/|$)/,
+            },
+            // @mantine/dates loaded eager via DatesProvider in main.tsx —
+            // keep it in its own small chunk (~30 KB) so the heavier
+            // charts/dropzone chunks stay lazy. Without this split,
+            // DatesProvider would pull the entire 200+ KB extras bundle
+            // into the initial entry.
+            {
+              name: 'vendor-mantine-dates',
+              test: /node_modules\/@mantine\/dates(\/|$)/,
+            },
+            // PERF-005 — charts and dropzone were a single ``vendor-mantine-extras``
+            // chunk. They have DISJOINT consumers: dropzone is the photo picker in
+            // ``/participacion``, charts only shows up in admin dashboards. Bundled
+            // together, opening the report form downloaded ~113 KB of charting code
+            // that page never renders. One chunk per library keeps each route paying
+            // only for what it uses.
+            {
+              name: 'vendor-mantine-charts',
+              test: /node_modules\/@mantine\/charts(\/|$)/,
+            },
+            {
+              name: 'vendor-mantine-dropzone',
+              test: /node_modules\/@mantine\/dropzone(\/|$)/,
+            },
+            {
+              name: 'vendor-charts',
+              test: /node_modules\/recharts(\/|$)/,
+            },
+            {
+              name: 'vendor-maplibre',
+              test: /node_modules\/maplibre-gl(\/|$)/,
+            },
+            {
+              name: 'vendor-map-draw',
+              test: /node_modules\/@mapbox\/mapbox-gl-draw(\/|$)/,
+            },
+            {
+              name: 'vendor-pmtiles',
+              test: /node_modules\/pmtiles(\/|$)/,
+            },
+            {
+              name: 'vendor-router',
+              test: /node_modules\/@tanstack\/react-router(\/|$)/,
+            },
           ],
-          // @mantine/dates loaded eager via DatesProvider in main.tsx —
-          // keep it in its own small chunk (~30 KB) so the heavier
-          // charts/dropzone chunks stay lazy. Without this split,
-          // DatesProvider would pull the entire 200+ KB extras bundle
-          // into the initial entry.
-          'vendor-mantine-dates': ['@mantine/dates'],
-          // PERF-005 — charts and dropzone were a single ``vendor-mantine-extras``
-          // chunk. They have DISJOINT consumers: dropzone is the photo picker in
-          // ``/participacion``, charts only shows up in admin dashboards. Bundled
-          // together, opening the report form downloaded ~113 KB of charting code
-          // that page never renders. One chunk per library keeps each route paying
-          // only for what it uses.
-          'vendor-mantine-charts': ['@mantine/charts'],
-          'vendor-mantine-dropzone': ['@mantine/dropzone'],
-          'vendor-charts': ['recharts'],
-          'vendor-maplibre': ['maplibre-gl'],
-          'vendor-map-draw': ['@mapbox/mapbox-gl-draw'],
-          'vendor-pmtiles': ['pmtiles'],
-          'vendor-router': ['@tanstack/react-router'],
         },
       },
     },
-    minify: 'esbuild',
+    // Vite 8 defaults to Oxc minify. Previously forced ``esbuild`` under
+    // Vite 7; prefer the Rolldown/Oxc default unless CI build surfaces a
+    // minify regression (then temporarily set ``minify: 'esbuild'``).
     // Match tsconfig.json (target + lib both ES2022). Without aligning,
-    // esbuild does NOT polyfill ES2022 built-ins like Array.prototype.at,
+    // the minifier does NOT polyfill ES2022 built-ins like Array.prototype.at,
     // so any usage typed-OK at compile time can blow up at runtime in
     // older browsers. ES2022 ≅ Chrome 94+, Safari 16.4+, Firefox 93+,
     // which matches our actual user base.
