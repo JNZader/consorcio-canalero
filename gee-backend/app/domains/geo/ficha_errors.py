@@ -280,7 +280,8 @@ def analisis_timeout(retry_after: int = 2) -> FichaError:
     The ficha sets a transaction-local ``statement_timeout`` per request
     (``ficha_service._aplicar_statement_timeout``); a caller-drawn polygon too
     expensive to intersect trips it, PostgreSQL cancels the query
-    (psycopg2 ``QueryCanceled`` → SQLAlchemy ``OperationalError``, pgcode 57014).
+    (DBAPI / psycopg query canceled → SQLAlchemy ``OperationalError``,
+    SQLSTATE 57014 via ``.sqlstate`` / legacy ``.pgcode``).
     That ceiling is DELIBERATE — the protective bound on a public, unauthenticated
     endpoint — so it is a caller-facing "try a smaller area / retry", not an
     infrastructure fault. Logged at WARNING (see ``_ESTADOS_DELIBERADOS``) so an
@@ -298,7 +299,7 @@ def analisis_timeout(retry_after: int = 2) -> FichaError:
 def base_de_datos_no_disponible(retry_after: int = 2) -> FichaError:
     """503 for a DB fault that is NOT the deliberate statement_timeout.
 
-    A dropped connection or a deadlock (any ``DBAPIError`` whose pgcode is not
+    A dropped connection or a deadlock (any ``DBAPIError`` whose SQLSTATE is not
     57014) is real infrastructure trouble an operator has to see, so unlike
     ``analisis_timeout`` this stays ERROR. It still answers with the flat FichaError
     contract instead of escaping to ``generic_exception_handler`` as a bare 500.

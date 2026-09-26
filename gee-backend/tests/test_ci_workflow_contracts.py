@@ -956,9 +956,13 @@ def test_backend_runtime_manifest_owns_geopandas_and_skips_bad_fastapi_patches()
 
     for path in ("gee-backend/Dockerfile.geo", "gee-backend/Dockerfile.worker"):
         dockerfile = _read(path)
-        assert "COPY requirements.txt requirements-geo.txt ./" in dockerfile
-        assert "-r requirements.txt" in dockerfile
+        # Wave C5: hashed lock + --no-deps (sqlalchemy 2.1 override); geo extras
+        # stay unlocked against the OSGeo base.
+        assert "COPY requirements.lock requirements-geo.txt ./" in dockerfile
+        assert "--no-deps --require-hashes -r requirements.lock" in dockerfile
         assert "-r requirements-geo.txt" in dockerfile
+        assert "-r requirements.txt" not in dockerfile
+        assert "COPY requirements.txt requirements-geo.txt ./" not in dockerfile
 
     trainer_dockerfile = _read("gee-backend/Dockerfile.trainer")
     assert "COPY requirements-geo.txt ./" in trainer_dockerfile

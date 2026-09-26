@@ -17,10 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install ALL dependencies (backend + geo)
-COPY requirements.txt requirements-geo.txt ./
+# Install ALL dependencies (backend lock + geo). The hashed lock is a full
+# closure; --no-deps honours Wave C5's sqlalchemy 2.1 override past
+# fastapi-users-db-sqlalchemy's <2.1 metadata pin (see overrides.txt).
+COPY requirements.lock requirements-geo.txt ./
 # Force pip to ignore system numpy (installed by debian, cannot be upgraded)
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy -r requirements.txt -r requirements-geo.txt
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
+        --no-deps --require-hashes -r requirements.lock \
+    && pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
+        -r requirements-geo.txt
 
 # Copy application code
 COPY app/ ./app/

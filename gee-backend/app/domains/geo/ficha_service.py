@@ -337,10 +337,26 @@ def _aplicar_statement_timeout(db: Session) -> None:
     )
 
 
-# psycopg2 sets ``pgcode`` to this SQLSTATE when ``statement_timeout`` cancels a
-# query; SQLAlchemy surfaces it as ``OperationalError`` with the psycopg2 error
-# under ``.orig``.
+# psycopg3 sets ``sqlstate`` (psycopg2 used ``pgcode``) to this SQLSTATE when
+# ``statement_timeout`` cancels a query; SQLAlchemy surfaces it as
+# ``OperationalError`` with the DBAPI error under ``.orig``.
 _SQLSTATE_QUERY_CANCELED = "57014"
+
+
+def _sqlstate_of(exc: BaseException) -> str | None:
+    """Read PostgreSQL SQLSTATE from a SQLAlchemy-wrapped DBAPI error.
+
+    psycopg3 exposes ``.sqlstate`` (and ``diag.sqlstate``); psycopg2 used
+    ``.pgcode``. Prefer ``sqlstate``, fall back to ``pgcode`` so both drivers
+    map statement timeouts correctly.
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return None
+    state = getattr(orig, "sqlstate", None)
+    if state:
+        return state
+    return getattr(orig, "pgcode", None)
 
 
 @contextmanager
@@ -349,7 +365,7 @@ def _traducir_fallas_db() -> Iterator[None]:
 
     Every resolver/overlay query runs on the sync request session under a LOCAL
     ``statement_timeout`` (``_aplicar_statement_timeout``). A caller-drawn polygon
-    too expensive to intersect trips that bound → psycopg2 ``QueryCanceled`` →
+    too expensive to intersect trips that bound → DBAPI query canceled →
     SQLAlchemy ``OperationalError`` (SQLSTATE 57014). That is the design's
     DELIBERATE protective ceiling, not a fault, so it maps to 503
     ``analisis_timeout`` (WARNING). Any OTHER ``DBAPIError`` (connection drop,
@@ -365,8 +381,7 @@ def _traducir_fallas_db() -> Iterator[None]:
     except ficha_errors.FichaError:
         raise
     except (OperationalError, DBAPIError) as exc:
-        pgcode = getattr(getattr(exc, "orig", None), "pgcode", None)
-        if pgcode == _SQLSTATE_QUERY_CANCELED:
+        if _sqlstate_of(exc) == _SQLSTATE_QUERY_CANCELED:
             raise ficha_errors.analisis_timeout() from exc
         raise ficha_errors.base_de_datos_no_disponible() from exc
 

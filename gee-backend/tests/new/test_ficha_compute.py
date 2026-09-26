@@ -695,11 +695,13 @@ def test_cap_parcela_excedido_rechaza_antes_de_compute(ficha_db, monkeypatch, tm
 
 
 class _FakeOrig(Exception):
-    """Stand-in for the psycopg2 error under ``OperationalError.orig``."""
+    """Stand-in for the DBAPI / psycopg error under ``OperationalError.orig``."""
 
-    def __init__(self, pgcode: str | None) -> None:
+    def __init__(self, sqlstate: str | None) -> None:
         super().__init__("simulated db fault")
-        self.pgcode = pgcode
+        self.sqlstate = sqlstate
+        # Legacy psycopg2 attribute — production falls back to this if needed.
+        self.pgcode = sqlstate
 
 
 def test_parcela_db_timeout_es_503_analisis_timeout(ficha_db, monkeypatch, tmp_path):

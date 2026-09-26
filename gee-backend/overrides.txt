@@ -1,0 +1,17 @@
+# Resolver overrides for `uv pip compile --overrides overrides.txt`.
+#
+# fastapi-users-db-sqlalchemy 7.0.0 declares sqlalchemy[asyncio]<2.1.0.
+# That pin blocks SQLAlchemy 2.1 even though our User model does NOT use
+# MappedAsDataclass (the only SA 2.1 break tracked upstream —
+# fastapi-users#1441). fastapi-users is in maintenance mode and will not
+# lift the cap soon; Wave C5 overrides it so we can run SA 2.1 + psycopg3.
+#
+# Keep the [asyncio] extra on the override pin: a bare `sqlalchemy==X`
+# replaces the direct `sqlalchemy[asyncio]` requirement and drops
+# greenlet from the lock. CI/Docker install with --no-deps, so missing
+# greenlet becomes ImportError on sqlalchemy.ext.asyncio.
+#
+# Exact pin so `uv pip install --overrides overrides.txt --require-hashes`
+# also works. Keep in sync with the sqlalchemy== line in the lockfiles.
+# Revisit / drop when fastapi-users-db-sqlalchemy allows sqlalchemy>=2.1.
+sqlalchemy[asyncio]==2.1.1

@@ -539,7 +539,9 @@ class TestElDeadlineAcotaLaTransaccion:
             db.execute(text("SELECT pg_sleep(3)"))
         # 57014 = query_canceled. Asserted by CODE rather than by message so the
         # test cannot pass on some other database fault that also raised.
-        assert getattr(capturado.value.orig, "pgcode", None) == "57014"
+        # psycopg3 exposes ``sqlstate``; fall back to legacy ``pgcode``.
+        orig = capturado.value.orig
+        assert (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) == "57014"
 
         procesamiento.rollback()
         # The abort released the lock and the row never left `pendiente` — which

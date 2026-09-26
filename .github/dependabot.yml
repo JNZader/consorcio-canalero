@@ -1,8 +1,9 @@
 # Dependabot configuration for automated dependency updates
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
 #
-# Majors for MapLibre / Mantine / Vite / Vitest / Biome / SQLAlchemy are
-# deferred to explicit Wave C PRs — Dependabot stays on minor/patch only.
+# Majors for MapLibre / Mantine / Vite / Vitest / Biome are closed (Wave C1–C4).
+# SQLAlchemy 2.1 + psycopg3 landed in Wave C5 — Dependabot major ignore for
+# SQLAlchemy now guards 3.0+ only. Frontend/backend majors still deferred.
 
 version: 2
 
@@ -53,7 +54,7 @@ updates:
     reviewers:
       - "maintainers"
     ignore:
-      # Majors reviewed manually (Wave C for SQLAlchemy / psycopg)
+      # Majors reviewed manually (SQLAlchemy 3.x / psycopg majors)
       - dependency-name: "fastapi"
         update-types: ["version-update:semver-major"]
       - dependency-name: "pydantic"
@@ -61,8 +62,6 @@ updates:
       - dependency-name: "sqlalchemy"
         update-types: ["version-update:semver-major"]
       - dependency-name: "alembic"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "psycopg2*"
         update-types: ["version-update:semver-major"]
       - dependency-name: "psycopg*"
         update-types: ["version-update:semver-major"]

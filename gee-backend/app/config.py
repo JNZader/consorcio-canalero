@@ -21,15 +21,22 @@ MIN_JWT_SECRET_LENGTH = 64  # bytes — matches `openssl rand -hex 32` recommend
 def database_sync_url(value: str) -> str:
     """Return a URL that is safe for SQLAlchemy's synchronous engine.
 
-    DATABASE_URL is canonical and documented with the synchronous PostgreSQL
-    driver. The former asyncpg spelling remains accepted for compatibility,
-    but it is normalized before any create_engine call.
+    DATABASE_URL is canonical and documented as bare ``postgresql://``.
+    SQLAlchemy 2.1 defaults that scheme to psycopg3; we normalize explicitly
+    to ``postgresql+psycopg://`` so the sync driver is unambiguous. Legacy
+    ``postgresql+asyncpg`` / ``postgresql+psycopg2`` spellings are accepted
+    and rewritten the same way before any ``create_engine`` call.
     """
     driver, separator, remainder = value.partition("://")
     if not separator:
         raise ValueError("DATABASE_URL must be an absolute SQLAlchemy URL")
-    if driver in {"postgres", "postgresql+asyncpg"}:
-        driver = "postgresql"
+    if driver in {
+        "postgres",
+        "postgresql",
+        "postgresql+asyncpg",
+        "postgresql+psycopg2",
+    }:
+        driver = "postgresql+psycopg"
     return f"{driver}://{remainder}"
 
 
@@ -61,9 +68,11 @@ class Settings(BaseSettings):
     # statement cache (``statement_cache_size=0``) — PgBouncer
     # transaction mode is incompatible with prepared statements because
     # the prepared name lives on a server connection that the next
-    # transaction may not reuse. The sync engine doesn't need a change
-    # because psycopg2 does NOT use server-side prepares by default.
-    # Leave ``False`` for direct-to-postgres deploys.
+    # transaction may not reuse. psycopg3 CAN use prepared statements;
+    # with PgBouncer transaction mode the sync path may eventually need
+    # ``prepare_threshold=None`` (or equivalent). Wave C5 left the sync
+    # engine as-is — revisit if ``use_pgbouncer=True`` surfaces prepare
+    # errors. Leave ``False`` for direct-to-postgres deploys.
     use_pgbouncer: bool = False
     # Phase 5 / F5-E: SMTP-body PII hardening. By default, verify and
     # reset emails carry an 8-char alphanumeric code that the SPA exchanges
