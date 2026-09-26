@@ -60,7 +60,7 @@ memory-profiler>=0.61.0  # Memory usage profiler
 # DOCUMENTATION
 # ===========================================
 mkdocs>=1.5.0
-mkdocs-material>=9.5.0
+mkdocs-material>=9.7.7
 mkdocstrings[python]>=0.24.0
 
 # ===========================================
