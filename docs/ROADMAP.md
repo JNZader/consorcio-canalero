@@ -6,7 +6,7 @@
 > los checkouts locales — y la memoria persistente de sesión (engram, proyecto
 > `consorcio-canalero`).
 >
-> Última actualización: **2026-09-24** · Mantiene: @javier
+> Última actualización: **2026-09-25** · Mantiene: @javier
 >
 > Estrategia de producto (canalero · caminero · ficha nacional · MBAgro crop-ops):
 > `docs/strategy/exploracion-productos-2026-09.md`. Incluye GeoCuenca INTA (visor GEE Salado). No fusionar MBAgro. No pelear el visor gratis de Salado.
@@ -30,6 +30,11 @@
 | **Celery Beat healthcheck** | #300 | Beat deja de heredar el HTTP healthcheck del backend; módulo `app.beat_healthcheck`. Deployado en box. |
 | **Image-policy Debian 13.7 + sunset** | #301 | Hotfixes perl/gzip/sqlite/pcre2; sunset prorrogado a **2026-10-31**; baseline honesto 56 filas. Imágenes production en box. |
 | **Frontend alpine libexpat** | #302 | Digest `nginx:1.30.4-alpine` + `apk upgrade` → `libexpat 2.8.5-r0`; desbloquea Final Frontend Image Gate (CVE-2026-93990). |
+| **Wave C1 — Mantine 9** | #324 | `@mantine/*` 8 → 9.6.2; props `Collapse`/`Grid`; patch `@mantine+core+9.6.2`. |
+| **Wave C2 — MapLibre 5** | #326 | `maplibre-gl` 4 → 5.24.0; `canvasContextAttributes` para export PNG/PDF. |
+| **Wave C3 — Vite 8** | #327 | `vite` 7 → 8, `@vitejs/plugin-react` 6; `rolldownOptions` code-splitting. |
+| **Wave C4 — toolchain FE** | #328 | Vitest 5, Stryker 10, Biome 2; pre-commit Biome alineado. |
+| **Wave C5 — SQLAlchemy 2.1 + psycopg3** | #329 | SQLAlchemy 2.1.1, `psycopg[binary]` 3.x; URLs `postgresql+psycopg://`; `.sqlstate` en timeouts ficha. |
 
 ## ✅ RAG — cadena COMPLETA (2026-08-25)
 
@@ -53,6 +58,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 
 - ~~**Reaper de `geo_jobs`**~~ ✅ 2026-08-31: `reconcile_stale_geo_jobs` ya existía (15 min / 300 min). Idle 45 min + heartbeat en DEM `run_step` y cómputo de cruces; GEE sin heartbeat queda en 300 min. RUNNING huérfano → `error=worker_lost`.
 - **Sunset image-policy: revisar antes del 2026-10-31.** Prorrogado el 2026-09-24 (2026-09-18 → 2026-10-31) junto con remediación real: Debian 13.7 habilitó `perl-base 5.40.1-6+deb13u1`, `gzip 1.13-1+deb13u1`, `libsqlite3-0 3.46.1-7+deb13u2` y trixie-security `libpcre2-8-0 10.46-1~deb13u2`; los cuatro van como hotfix `--only-upgrade` en el Dockerfile (salen 7 perl + 1 gzip + 2 sqlite del baseline). La DB del día reveló deuda nueva sin fix en trixie (util-linux ×36, libxml2 +7, libexpat1 +3, systemd ×2): baseline backend **56 filas (55 HIGH + 1 CRITICAL)**, 0 con `FixedVersion`. Palanca: Debian 13.8 o DSA puntual; un digest nuevo de `python:3.11-slim-trixie` no ayuda.
+- **Frontend nginx digest hold:** no subir tag `nginx` a 1.31.x hasta remedio Alpine/apk para **CVE-2026-6732** (`libxml2`). Mantener pin `nginx:1.30.4-alpine@sha256:dc5069…` + `apk upgrade` quirúrgico (patrón #302). Dependabot #308/#330 cerrados; ignore en `.github/dependabot.yml`. Revisar cuando Trivy deje de marcar HIGH en la imagen candidata.
 - **Decisión estructural**: ¿commitear `openspec/changes/`? Hoy untracked — permitió el drift que U2 pagó. La reconciliación manual con `diff -r` es el paliativo vigente.
 - Follow-up router: bajar `mixto→legal` (hoy 2/13) vía tuning de banda/piso — re-medición en U9 con más gold.
 - Follow-ups RAG fuera del gate: re-chunk de las 10 unidades gigantes (fix principled de D-8), más gold de retrieval, juicio abierto del decreto 3780-C/65 (matchea por PDF de OTRO documento).

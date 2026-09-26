@@ -4,6 +4,8 @@
 # Majors for MapLibre / Mantine / Vite / Vitest / Biome are closed (Wave C1–C4).
 # SQLAlchemy 2.1 + psycopg3 landed in Wave C5 — Dependabot major ignore for
 # SQLAlchemy now guards 3.0+ only. Frontend/backend majors still deferred.
+# Docker: nginx held on 1.30.4-alpine (CVE-2026-6732 libxml2; #308/#330);
+# node/python/gdal majors ignored (Wave B contracts; #331/#332 closed).
 
 version: 2
 
@@ -246,6 +248,12 @@ updates:
       - "dependencies"
       - "docker"
       - "automated"
+    ignore:
+      # Python 3.11 + GDAL contracts (Wave B); #332 closed majors 3.14 / 3.13.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "osgeo/gdal"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-images:
         patterns:
@@ -268,6 +276,14 @@ updates:
       - "dependencies"
       - "docker"
       - "automated"
+    ignore:
+      # Hold all nginx bumps: 1.31.x is a minor line but Final Frontend Image Gate
+      # fails on libxml2 CVE-2026-6732 (#308, #330). Re-enable after Alpine apk fix
+      # (digest bump + surgical apk upgrade, same pattern as libexpat #302).
+      - dependency-name: "nginx"
+      # Node 22 contract (Wave B1); #331 closed Node 26 major.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-images:
         patterns:

@@ -36,7 +36,14 @@ seven more `libxml2` HIGH rows and three more `libexpat1` HIGH rows. Still prese
 CVE-2026-66046 (`libexpat1`), CVE-2026-6653 (`libxml2`, pulled in by `libosmesa6`),
 CVE-2025-69720 (`ncurses`, 4 rows), CVE-2026-54369 (`libacl1`) and CVE-2026-9538 (`perl-base`,
 postponed). Net: 18 → 56 rows. See the consolidated evidence block in
-`scripts/validate_image_security_policy.py`. The sunset binds the policy *JSON*: the
+`scripts/validate_image_security_policy.py`.
+
+Frontend Alpine `nginx`/`libxml2` debt is separate from this Debian baseline: hold
+`nginx:1.30.4-alpine` until Alpine apk remediates **CVE-2026-6732** (Dependabot
+#308/#330; see `consorcio-web/Dockerfile` runtime stage and `docs/ROADMAP.md`
+backlog). Do not confuse trixie `libxml2` rows here with that frontend gate.
+
+The sunset binds the policy *JSON*: the
 validator checks it before the per-severity deadlines, and the ceiling check rejects any JSON
 deadline past it. The sunset constant itself is pinned by
 `test_deadline_ceilings_are_the_documented_dates`, so extending it takes a code-and-test change

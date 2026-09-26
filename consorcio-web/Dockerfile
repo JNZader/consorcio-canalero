@@ -101,6 +101,10 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 #   #301, 2026-09-25; Trivy HIGH until apk pulls 2.8.5)
 #   CVE-2026-53612..76642 / 78408..78410 — libuuid 2.42.3-r* (Final Frontend
 #   Image Gate on #276, 2026-09-18)
+# Hold nginx >=1.31 tags: CVE-2026-6732 (libxml2) fails Final Frontend Image
+# Gate (Dependabot #308, #330). Unblock via new digest + apk upgrade when
+# Alpine ships fixed libxml2 (same pattern as libexpat #302). See ROADMAP
+# backlog + .github/dependabot.yml docker ignore for nginx.
 RUN apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.
