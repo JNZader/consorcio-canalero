@@ -90,7 +90,7 @@ celery>=5.4.0
 redis>=5.0.0
 
 # Reports & PDF
-reportlab>=4.2.0
+reportlab>=5.0.1
 
 # Structured Logging
 structlog>=24.1.0
