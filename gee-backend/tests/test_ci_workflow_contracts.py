@@ -830,6 +830,26 @@ def test_deploy_quality_gate_only_references_current_contract_tests() -> None:
     assert "mypy app/auth app/domains/padron app/domains/denuncias" in quality
 
 
+def test_deploy_alembic_bootstrap_uses_psycopg3() -> None:
+    """Wave C5 dropped psycopg2; the quality-gate DB bootstrap must use psycopg.
+
+    Regression: main push after #342 failed Backend quality gate with
+    ``ModuleNotFoundError: No module named 'psycopg2'`` because the Alembic
+    step still imported the v2 package while ``requirements-dev.lock`` only
+    installs ``psycopg`` (v3).
+    """
+    quality = _job_block(_read(".github/workflows/deploy.yml"), "quality-backend")
+    assert "Alembic migration chain — real upgrade head" in quality
+    # Exact module name: ``import psycopg`` must not match as a prefix of
+    # ``import psycopg2``.
+    assert re.search(r"(?m)^\s*import psycopg\s*$", quality)
+    assert "psycopg.connect(" in quality
+    assert "import psycopg2" not in quality
+    assert "psycopg2.connect(" not in quality
+    assert "alembic upgrade head" in quality
+    assert "migrations_check" in quality
+
+
 def test_workflow_shell_and_package_script_references_exist() -> None:
     frontend = _read(".github/workflows/frontend.yml")
     backend = _read(".github/workflows/backend.yml")
