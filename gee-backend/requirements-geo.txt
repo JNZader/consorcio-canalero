@@ -44,7 +44,7 @@ rioxarray>=0.15.0
 xee>=0.0.16
 
 # Vector/geometry
-shapely>=2.0.0
+shapely>=2.1.2
 # numpy provided by GDAL base image (system package, cannot be pip-upgraded)
 
 # Graph analysis (canal network topology)
