@@ -274,7 +274,7 @@ def _assert_non_publishing_image_gate(
     *,
     workspace_rooted: bool = False,
 ) -> None:
-    build = "uses: docker/build-push-action@v5"
+    build = "uses: docker/build-push-action@v7"
     scan = f"uses: {TRIVY_ACTION}"
 
     assert f'CANDIDATE_IMAGE: "{candidate}"' in job
@@ -318,7 +318,7 @@ def _assert_non_publishing_image_gate(
 def _assert_scanned_manifest_is_published(
     job: str, candidate: str, repository: str, role: str
 ) -> None:
-    build = "uses: docker/build-push-action@v5"
+    build = "uses: docker/build-push-action@v7"
     scan = f"uses: {TRIVY_ACTION}"
     login = "uses: docker/login-action@v4"
     push_candidate = 'docker push "$CANDIDATE_IMAGE"'

@@ -262,7 +262,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build backend candidate image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ${{ github.workspace }}/gee-backend
           file: ${{ github.workspace }}/gee-backend/Dockerfile
@@ -359,7 +359,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build geo-worker candidate image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ${{ github.workspace }}/gee-backend
           file: ${{ github.workspace }}/gee-backend/Dockerfile.geo
