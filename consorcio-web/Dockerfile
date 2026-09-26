@@ -85,7 +85,7 @@ RUN npm prune --production --legacy-peer-deps
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c AS runtime
+FROM nginx:1.31.0-alpine@sha256:2f07d83bf561b506400dc183b1b2003803e39efbd22451f848adaba14d28c7c7 AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
