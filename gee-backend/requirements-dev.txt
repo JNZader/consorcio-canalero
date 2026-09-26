@@ -87,5 +87,5 @@ rio-tiler>=7.0.0
 gitpython>=3.1.60
 # rio-tiler pulls httpx2, which pulled httpcore2 2.9.1 (PYSEC-2026-3844) and
 # httpx2 2.9.1 (PYSEC-2026-3845–3849). Pin the patched floor.
-httpx2>=2.12.0
+httpx2>=2.13.0
 httpcore2>=2.10.0
