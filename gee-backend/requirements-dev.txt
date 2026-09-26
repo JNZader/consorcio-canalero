@@ -30,7 +30,7 @@ isort>=5.13.0  # Import sorting (backup to ruff)
 # TYPE CHECKING
 # ===========================================
 mypy>=1.8.0
-types-redis>=4.6.0
+types-redis>=4.6.0.20241004
 types-openpyxl>=3.1.0  # Required by mypy strict on app/domains/padron/service.py
 types-xlrd>=2.0.0  # Required by mypy strict on app/domains/padron/service.py
 
