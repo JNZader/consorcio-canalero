@@ -464,7 +464,7 @@ jobs:
           echo "policy_needed=true" >> "$GITHUB_OUTPUT"
         id: gate
       - name: Download image security evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         if: ${{ always() && steps.gate.outputs.policy_needed == 'true' }}
         with:
           pattern: image-security-*

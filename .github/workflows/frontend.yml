@@ -273,7 +273,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_RESULT" = "success"
       - name: Download shard mutation reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mutation-pr-*
           path: consorcio-web/reports/mutation
@@ -350,7 +350,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_FULL_RESULT" = "success"
       - name: Download full shard mutation reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mutation-full-*
           path: consorcio-web/reports/mutation
