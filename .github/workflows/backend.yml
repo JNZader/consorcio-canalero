@@ -260,7 +260,7 @@ jobs:
       CANDIDATE_IMAGE: "local/consorcio-backend:${{ github.sha }}"
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build backend candidate image
         uses: docker/build-push-action@v5
         with:
@@ -357,7 +357,7 @@ jobs:
       CANDIDATE_IMAGE: "local/consorcio-geo-worker:${{ github.sha }}"
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build geo-worker candidate image
         uses: docker/build-push-action@v5
         with:
