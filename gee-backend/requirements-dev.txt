@@ -46,7 +46,7 @@ pip-audit>=2.7.0  # Manifest vulnerability scanner (CI lint job, fail-closed)
 # ===========================================
 # STRUCTURED LOGGING
 # ===========================================
-structlog>=24.1.0
+structlog>=26.1.0
 
 # ===========================================
 # DEBUGGING & PROFILING
