@@ -250,7 +250,7 @@ jobs:
       - run: npm run mutation:run -- --mutate "$MUTATE"
       - name: Upload shard mutation reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-pr-${{ matrix.shard }}-${{ github.run_id }}
           path: |
@@ -273,7 +273,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_RESULT" = "success"
       - name: Download shard mutation reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mutation-pr-*
           path: consorcio-web/reports/mutation
@@ -327,7 +327,7 @@ jobs:
         run: npm run mutation:run -- --force --mutate "$MUTATE"
       - name: Upload full shard mutation reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-full-${{ matrix.shard }}-${{ github.run_id }}
           path: |
@@ -350,7 +350,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: test "$MUTATION_FULL_RESULT" = "success"
       - name: Download full shard mutation reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mutation-full-*
           path: consorcio-web/reports/mutation
@@ -404,7 +404,7 @@ jobs:
         run: CI=1 npm run test:a11y
       - name: Upload accessibility report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-a11y-${{ github.run_id }}
           path: |

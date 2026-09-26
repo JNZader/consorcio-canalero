@@ -190,7 +190,7 @@ def _assert_frozen_image_policy(
     assert repo_root_arg in job
     assert job.index(scan) < job.index(convert) < job.index(validate)
 
-    artifact = job.index("uses: actions/upload-artifact@v4")
+    artifact = job.index("uses: actions/upload-artifact@v7")
     artifact_tail = job[artifact:]
     assert "if: always()" in artifact_tail
     assert "if-no-files-found: error" in artifact_tail
@@ -249,7 +249,7 @@ def _assert_image_policy_aggregate(
         assert f"{env_name}_RESULT: {needs_expression}" in aggregate
         result_check = 'test "$' + f'{env_name}_RESULT" = "success"'
         assert result_check in aggregate
-    assert "uses: actions/download-artifact@v4" in aggregate
+    assert "uses: actions/download-artifact@v8" in aggregate
     assert "pattern: image-security-*" in aggregate
     assert "merge-multiple: true" in aggregate
     if workspace_rooted:
@@ -634,7 +634,7 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
     assert "npx playwright install --with-deps chromium firefox webkit" in accessibility
     assert "@latest" not in accessibility
     assert "CI=1 npm run test:a11y" in accessibility
-    assert "uses: actions/upload-artifact@v4" in accessibility
+    assert "uses: actions/upload-artifact@v7" in accessibility
     assert "if: always()" in accessibility
     assert "consorcio-web/a11y-report/" in accessibility
     assert "consorcio-web/test-results/" in accessibility
