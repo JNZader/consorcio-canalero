@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload harness evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rainfall-multi-parcel-e2e-evidence
           path: .artifacts/rainfall-multi-parcel/
