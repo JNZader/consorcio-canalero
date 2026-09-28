@@ -37,12 +37,12 @@ jobs:
             paths: gee-backend/app
     steps:
       - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           config: |
             paths:
               - ${{ matrix.paths }}
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}
