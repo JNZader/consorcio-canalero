@@ -22,7 +22,7 @@ faker>=22.0.0  # Fake data generation
 # ===========================================
 # LINTING & FORMATTING
 # ===========================================
-ruff>=0.2.0  # Fast Python linter and formatter
+ruff>=0.16.9  # Fast Python linter and formatter
 black>=24.0.0  # Code formatter (backup to ruff)
 isort>=5.13.0  # Import sorting (backup to ruff)
 
