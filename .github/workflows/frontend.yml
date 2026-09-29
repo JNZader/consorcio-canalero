@@ -196,7 +196,7 @@ jobs:
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - name: Restore shard mutation baseline
         id: baseline-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: consorcio-web/reports/mutation/stryker-incremental-${{ matrix.shard }}.json
           key: stryker-incremental-v2-${{ matrix.shard }}-${{ github.sha }}
@@ -364,22 +364,22 @@ jobs:
             reports/mutation/mutation-auth1.json reports/mutation/mutation-auth2.json \
             reports/mutation/mutation-a.json reports/mutation/mutation-b.json
       - name: Save mutation baseline for shard auth1
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: consorcio-web/reports/mutation/stryker-incremental-auth1.json
           key: stryker-incremental-v2-auth1-${{ github.sha }}
       - name: Save mutation baseline for shard auth2
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: consorcio-web/reports/mutation/stryker-incremental-auth2.json
           key: stryker-incremental-v2-auth2-${{ github.sha }}
       - name: Save mutation baseline for shard a
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: consorcio-web/reports/mutation/stryker-incremental-a.json
           key: stryker-incremental-v2-a-${{ github.sha }}
       - name: Save mutation baseline for shard b
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: consorcio-web/reports/mutation/stryker-incremental-b.json
           key: stryker-incremental-v2-b-${{ github.sha }}
