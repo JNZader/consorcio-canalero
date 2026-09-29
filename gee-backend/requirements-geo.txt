@@ -68,7 +68,7 @@ structlog>=24.1.0
 earthengine-api>=1.4.0
 
 # HTTP client (for downloading DEM files from GEE URLs)
-requests>=2.31.0
+requests>=2.34.2
 
 # Config
 python-dotenv>=1.0.0
