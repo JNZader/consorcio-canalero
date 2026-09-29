@@ -109,7 +109,7 @@ def _mutation_source(target: str) -> str:
 
 
 def _assert_fail_closed_trivy(job: str) -> None:
-    upload = "uses: github/codeql-action/upload-sarif@v3"
+    upload = "uses: github/codeql-action/upload-sarif@v4"
 
     assert f"uses: {TRIVY_ACTION}" in job
     assert f"version: {TRIVY_VERSION}" in job
@@ -197,7 +197,7 @@ def _assert_frozen_image_policy(
     assert report in artifact_tail
     assert sarif in artifact_tail
 
-    upload_sarif = job.index("uses: github/codeql-action/upload-sarif@v3")
+    upload_sarif = job.index("uses: github/codeql-action/upload-sarif@v4")
     upload_tail = job[upload_sarif:]
     assert "if: always()" in upload_tail
     assert f"sarif_file: {sarif}" in upload_tail
@@ -1724,9 +1724,9 @@ def test_frontend_mutation_shards_use_isolated_reports_artifacts_and_caches() ->
         assert "stryker-incremental-${{ matrix.shard }}.json" in producer
         assert "if-no-files-found: error" in producer
 
-    assert "uses: actions/cache/restore@v4" in mutation
-    assert "uses: actions/cache@v4" not in mutation
-    assert "uses: actions/cache/save@v4" not in mutation
+    assert "uses: actions/cache/restore@v6" in mutation
+    assert "uses: actions/cache@v6" not in mutation
+    assert "uses: actions/cache/save@v6" not in mutation
     assert "stryker-incremental-v2-${{ matrix.shard }}-" in mutation
     assert "stryker-incremental-${{ github.sha }}" not in mutation
     assert "mutation-pr-${{ matrix.shard }}-${{ github.run_id }}" in mutation
@@ -1739,9 +1739,9 @@ def test_frontend_mutation_shards_use_isolated_reports_artifacts_and_caches() ->
     assert "if: ${{ always()" in publish
     assert 'test "$MUTATION_FULL_RESULT" = "success"' in publish
     assert publish.index('test "$MUTATION_FULL_RESULT" = "success"') < publish.index(
-        "uses: actions/cache/save@v4"
+        "uses: actions/cache/save@v6"
     )
-    assert publish.count("uses: actions/cache/save@v4") == 4
+    assert publish.count("uses: actions/cache/save@v6") == 4
     for shard in ("a", "b", "auth1", "auth2"):
         assert f"stryker-incremental-{shard}.json" in publish
         assert f"stryker-incremental-v2-{shard}-${{{{ github.sha }}}}" in publish
