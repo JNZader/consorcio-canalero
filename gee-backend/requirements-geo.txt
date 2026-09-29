@@ -26,7 +26,7 @@ rio-tiler>=7.0.0
 rio-cogeo>=5.0.0
 
 # WhiteboxTools (hydrology)
-whitebox>=2.3.0
+whitebox>=2.3.6
 
 # Zonal statistics
 rasterstats>=0.20.0
