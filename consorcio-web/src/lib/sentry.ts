@@ -34,11 +34,21 @@ export function initSentry(): void {
     environment: ENVIRONMENT,
     release: RELEASE,
     tracesSampleRate: Number.isFinite(TRACES_SAMPLE_RATE) ? TRACES_SAMPLE_RATE : 0,
-    // PII off — the backend already strips reset tokens / producer names
-    // from public surfaces (Phase 0). Letting Sentry attach cookies and
-    // IP addresses would walk that back. Operators who need the IP can
-    // turn this on in their own fork.
-    sendDefaultPii: false,
+    // Sentry 11 dropped sendDefaultPii. Unset dataCollection collects
+    // everything (IP, cookies, bodies). Keep the v10-restrictive baseline.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: {
+        request: { deny: ['forwarded', '-ip', 'remote-', 'via', '-user'] },
+        response: { deny: ['forwarded', '-ip', 'remote-', 'via', '-user'] },
+      },
+      httpBodies: [],
+      urlQueryParams: { deny: ['forwarded', '-ip', 'remote-', 'via', '-user'] },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      graphQL: { document: false, variables: false },
+    },
     // Filter known noise: ResizeObserver loop spam, dev HMR errors.
     ignoreErrors: [
       /ResizeObserver loop limit exceeded/,
