@@ -3,7 +3,7 @@
 # terrain analysis (DEM pipeline) + tile service
 # ==============================================
 
-FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@sha256:64250faf833c06d4b21afce4c27190039ba7ab58d70f0eebc87cf77d929c0b40
 
 WORKDIR /app
 

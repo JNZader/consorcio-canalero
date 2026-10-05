@@ -45,8 +45,8 @@ BACKEND_BASE = (
     "sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
 )
 GEO_BASE = (
-    "ghcr.io/osgeo/gdal:ubuntu-small-3.13.1@"
-    "sha256:66e200e63c7c2fd2534830caaf5a2dcbd0511680ab12a70f85886cc8330fa469"
+    "ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@"
+    "sha256:64250faf833c06d4b21afce4c27190039ba7ab58d70f0eebc87cf77d929c0b40"
 )
 
 
