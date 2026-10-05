@@ -430,6 +430,9 @@ def test_frontend_runtime_is_pinned_standalone_and_non_root() -> None:
     assert "EXPOSE 8080" in runtime
     assert "wget -q -T 5 --spider http://127.0.0.1:8080/health" in runtime
     assert "apk add" not in runtime
+    assert (
+        "apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2" in runtime
+    )
     assert "apk --no-network del curl" in runtime
     assert "CMD curl" not in runtime
     assert "location /api/" not in runtime
