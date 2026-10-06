@@ -190,6 +190,7 @@ describe('<CanalCard /> — longitud formatting', () => {
     expect(formatLongitud(2456, 2500)).toBe('2.456 m · (2.500 m declarada)');
     expect(formatLongitud(1355, 1355)).toBe('1.355 m');
     expect(formatLongitud(1355, null)).toBe('1.355 m');
+    expect(formatLongitud(1355, undefined)).toBe('1.355 m');
   });
 });
 

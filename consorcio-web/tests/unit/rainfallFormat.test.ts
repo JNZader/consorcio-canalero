@@ -22,6 +22,8 @@ import {
   formatMetricValue,
   hoistProvenance,
   metricEvidenceLine,
+  percentileGloss,
+  shortSource,
   metricLabel,
   metricStateLabel,
   scopeChoiceLabel,
@@ -827,5 +829,68 @@ describe('metricEvidenceLine — the same three-branch gate, applied PER METRIC'
         metric({ value: null, coverage: 0, state: 'unavailable', reason: 'sin fuente elegible' })
       )
     ).toBeNull();
+  });
+});
+
+describe('shortSource', () => {
+  it('returns null when the metric or provenance is missing', () => {
+    expect(shortSource(undefined)).toBeNull();
+    expect(shortSource(metric({ provenance: undefined }))).toBeNull();
+  });
+
+  it('returns null when source_id has no family token', () => {
+    expect(
+      shortSource(
+        metric({
+          provenance: {
+            ...metric().provenance!,
+            source_id: '',
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      shortSource(
+        metric({
+          provenance: {
+            ...metric().provenance!,
+            source_id: '-',
+          },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('uppercases the family and names the source class', () => {
+    expect(shortSource(metric())).toBe('CHIRPS (satelital)');
+    const base = metric().provenance!;
+    expect(
+      shortSource(
+        metric({ provenance: { ...base, source_id: 'foo-x', source_class: 'observed_station' } }),
+      ),
+    ).toBe('FOO (estación)');
+    expect(
+      shortSource(
+        metric({ provenance: { ...base, source_id: 'bar-x', source_class: 'estimated_radar' } }),
+      ),
+    ).toBe('BAR (radar)');
+  });
+});
+
+describe('percentileGloss', () => {
+  it('returns null when the metric is missing or has no value', () => {
+    expect(percentileGloss(undefined)).toBeNull();
+    expect(percentileGloss(metric({ value: null }))).toBeNull();
+  });
+
+  it('returns null for suppressed and unavailable states', () => {
+    expect(percentileGloss(metric({ state: 'suppressed' }))).toBeNull();
+    expect(percentileGloss(metric({ state: 'unavailable' }))).toBeNull();
+  });
+
+  it('states the rounded percentile in plain language', () => {
+    expect(percentileGloss(metric({ value: 72.4, state: 'available' }))).toBe(
+      'De cada 100 años, 72 fueron más secos que este.',
+    );
   });
 });

@@ -1,5 +1,9 @@
 /**
  * Unit tests for src/lib/formatters.ts
+ *
+ * Assertions pin es-AR + the exact Intl options the production helpers use.
+ * Loose toBeDefined / length checks left mutants (empty locale, swapped
+ * month format, emptied includeTime block) alive.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,75 +18,156 @@ import {
   formatDateTime,
 } from '../../src/lib/formatters';
 
+const SAMPLE = new Date(2024, 0, 15, 10, 30, 0);
+
+function localeDate(date: Date, options: Intl.DateTimeFormatOptions): string {
+  return date.toLocaleDateString('es-AR', options);
+}
+
+function spyLocaleDateString() {
+  return vi.spyOn(Date.prototype, 'toLocaleDateString');
+}
+
+function spyLocaleString() {
+  return vi.spyOn(Date.prototype, 'toLocaleString');
+}
+
+function spyNumberLocaleString() {
+  return vi.spyOn(Number.prototype, 'toLocaleString');
+}
+
 describe('formatters', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('formatDate', () => {
-    it('should format a valid date string', () => {
-      const result = formatDate('2024-01-15T10:30:00Z');
-      expect(result).toContain('2024');
-      expect(result).toContain('15');
+    it('formats a Date with medium month (default)', () => {
+      expect(formatDate(SAMPLE)).toBe(
+        localeDate(SAMPLE, { year: 'numeric', month: 'short', day: 'numeric' }),
+      );
     });
 
-    it('should format a Date object', () => {
-      const result = formatDate(new Date('2024-06-20'));
-      expect(result).toContain('2024');
+    it('formats a date string the same as the equivalent Date', () => {
+      const iso = SAMPLE.toISOString();
+      expect(formatDate(iso)).toBe(formatDate(new Date(iso)));
     });
 
-    it('should return fallback for invalid date string', () => {
-      const result = formatDate('invalid-date');
-      expect(result).toBe('-');
+    it('returns fallback for invalid date string', () => {
+      expect(formatDate('invalid-date')).toBe('-');
     });
 
-    it('should return fallback for null', () => {
+    it('returns fallback for null and undefined', () => {
       expect(formatDate(null)).toBe('-');
-    });
-
-    it('should return fallback for undefined', () => {
       expect(formatDate(undefined)).toBe('-');
     });
 
-    it('should use custom fallback when provided', () => {
-      const result = formatDate(null, { fallback: 'N/A' });
-      expect(result).toBe('N/A');
+    it('uses a custom fallback', () => {
+      expect(formatDate(null, { fallback: 'N/A' })).toBe('N/A');
     });
 
-    it('should include time when includeTime is true', () => {
-      const result = formatDate('2024-01-15T10:30:00Z', { includeTime: true });
-      // Result should be longer with time included
-      expect(result.length).toBeGreaterThan(10);
+    it('distinguishes short, medium, and long month formats', () => {
+      const short = formatDate(SAMPLE, { format: 'short' });
+      const medium = formatDate(SAMPLE, { format: 'medium' });
+      const long = formatDate(SAMPLE, { format: 'long' });
+      expect(short).toBe(
+        localeDate(SAMPLE, { year: 'numeric', month: '2-digit', day: 'numeric' }),
+      );
+      expect(medium).toBe(
+        localeDate(SAMPLE, { year: 'numeric', month: 'short', day: 'numeric' }),
+      );
+      expect(long).toBe(
+        localeDate(SAMPLE, { year: 'numeric', month: 'long', day: 'numeric' }),
+      );
+      expect(short).not.toBe(medium);
+      expect(medium).not.toBe(long);
+      expect(long).toMatch(/enero/i);
     });
 
-    it('should use short format', () => {
-      const result = formatDate('2024-01-15', { format: 'short' });
-      expect(result).toBeDefined();
+    it('passes es-AR and the medium month options to Intl', () => {
+      const spy = spyLocaleDateString();
+      formatDate(SAMPLE);
+      expect(spy).toHaveBeenCalledWith(
+        'es-AR',
+        expect.objectContaining({
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        }),
+      );
+      expect(spy.mock.calls[0]?.[1]).not.toHaveProperty('hour');
     });
 
-    it('should use long format', () => {
-      const result = formatDate('2024-01-15', { format: 'long' });
-      expect(result).toBeDefined();
+    it('passes 2-digit month for short and long month for long', () => {
+      const spy = spyLocaleDateString();
+      formatDate(SAMPLE, { format: 'short' });
+      formatDate(SAMPLE, { format: 'long' });
+      expect(spy).toHaveBeenNthCalledWith(
+        1,
+        'es-AR',
+        expect.objectContaining({ month: '2-digit' }),
+      );
+      expect(spy).toHaveBeenNthCalledWith(
+        2,
+        'es-AR',
+        expect.objectContaining({ month: 'long' }),
+      );
+    });
+
+    it('adds hour and minute when includeTime is true', () => {
+      const withTime = formatDate(SAMPLE, { includeTime: true });
+      const withoutTime = formatDate(SAMPLE);
+      expect(withTime).toBe(
+        localeDate(SAMPLE, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      );
+      expect(withTime).not.toBe(withoutTime);
+      const spy = spyLocaleDateString();
+      formatDate(SAMPLE, { includeTime: true });
+      expect(spy).toHaveBeenCalledWith(
+        'es-AR',
+        expect.objectContaining({ hour: '2-digit', minute: '2-digit' }),
+      );
+    });
+
+    it('returns fallback when getTime throws', () => {
+      const exploding = {
+        getTime(): number {
+          throw new Error('boom');
+        },
+      } as unknown as Date;
+      expect(formatDate(exploding)).toBe('-');
+      expect(formatDate(exploding, { fallback: 'N/A' })).toBe('N/A');
     });
   });
 
   describe('formatDateForInput', () => {
-    it('should format date to YYYY-MM-DD', () => {
-      const result = formatDateForInput(new Date('2024-01-15'));
-      expect(result).toBe('2024-01-15');
+    it('formats a Date to YYYY-MM-DD', () => {
+      expect(formatDateForInput(new Date('2024-01-15T00:00:00.000Z'))).toBe('2024-01-15');
     });
 
-    it('should handle date string input', () => {
-      const result = formatDateForInput('2024-06-20T10:30:00Z');
-      expect(result).toBe('2024-06-20');
+    it('formats a date string to YYYY-MM-DD', () => {
+      expect(formatDateForInput('2024-06-20T10:30:00Z')).toBe('2024-06-20');
     });
 
-    it('should return empty string for null', () => {
+    it('returns empty string for null, undefined, and invalid dates', () => {
       expect(formatDateForInput(null)).toBe('');
-    });
-
-    it('should return empty string for undefined', () => {
       expect(formatDateForInput(undefined)).toBe('');
+      expect(formatDateForInput('invalid')).toBe('');
     });
 
-    it('should return empty string for invalid date', () => {
-      expect(formatDateForInput('invalid')).toBe('');
+    it('returns empty string when getTime throws', () => {
+      const exploding = {
+        getTime(): number {
+          throw new Error('boom');
+        },
+      } as unknown as Date;
+      expect(formatDateForInput(exploding)).toBe('');
     });
   });
 
@@ -96,209 +181,200 @@ describe('formatters', () => {
       vi.useRealTimers();
     });
 
-    it('should return "Ahora mismo" for very recent times', () => {
-      const result = formatRelativeTime('2024-01-15T12:00:00Z');
-      expect(result).toBe('Ahora mismo');
+    it('returns "Ahora mismo" under one minute', () => {
+      expect(formatRelativeTime('2024-01-15T12:00:00Z')).toBe('Ahora mismo');
+      expect(formatRelativeTime('2024-01-15T11:59:01Z')).toBe('Ahora mismo');
     });
 
-    it('should format time in minutes', () => {
-      const result = formatRelativeTime('2024-01-15T11:55:00Z');
-      expect(result).toMatch(/Hace \d+ minutos?/);
+    it('formats one minute vs many minutes', () => {
+      expect(formatRelativeTime('2024-01-15T11:59:00Z')).toBe('Hace 1 minuto');
+      expect(formatRelativeTime('2024-01-15T11:55:00Z')).toBe('Hace 5 minutos');
     });
 
-    it('should format time in hours', () => {
-      const result = formatRelativeTime('2024-01-15T09:00:00Z');
-      expect(result).toMatch(/Hace \d+ horas?/);
+    it('formats one hour vs many hours', () => {
+      expect(formatRelativeTime('2024-01-15T11:00:00Z')).toBe('Hace 1 hora');
+      expect(formatRelativeTime('2024-01-15T09:00:00Z')).toBe('Hace 3 horas');
     });
 
-    it('should format time in days', () => {
-      const result = formatRelativeTime('2024-01-12T12:00:00Z');
-      expect(result).toMatch(/Hace \d+ dias?/);
+    it('formats one day vs many days', () => {
+      expect(formatRelativeTime('2024-01-14T12:00:00Z')).toBe('Hace 1 dia');
+      expect(formatRelativeTime('2024-01-12T12:00:00Z')).toBe('Hace 3 dias');
     });
 
-    it('should format as date for older times (more than 7 days)', () => {
-      const result = formatRelativeTime('2024-01-01T12:00:00Z');
-      expect(result).toContain('2024');
+    it('falls back to medium date after six days', () => {
+      const older = new Date('2024-01-01T12:00:00Z');
+      expect(formatRelativeTime(older)).toBe(formatDate(older, { format: 'medium' }));
     });
 
-    it('should return fallback for null', () => {
+    it('uses formatDate at exactly seven days, not the day phrase', () => {
+      const exactlySeven = new Date('2024-01-08T12:00:00Z');
+      expect(formatRelativeTime(exactlySeven)).toBe(
+        formatDate(exactlySeven, { format: 'medium' }),
+      );
+      expect(formatRelativeTime(exactlySeven)).not.toMatch(/Hace 7 dias/);
+    });
+
+    it('returns "-" for null, undefined, and invalid dates', () => {
       expect(formatRelativeTime(null)).toBe('-');
+      expect(formatRelativeTime(undefined)).toBe('-');
+      expect(formatRelativeTime('invalid')).toBe('-');
     });
 
-    it('should return fallback for invalid date', () => {
-      expect(formatRelativeTime('invalid')).toBe('-');
+    it('returns "-" when getTime throws', () => {
+      const exploding = {
+        getTime(): number {
+          throw new Error('boom');
+        },
+      } as unknown as Date;
+      expect(formatRelativeTime(exploding)).toBe('-');
     });
   });
 
   describe('formatNumber', () => {
-    it('should format integer with thousand separators', () => {
-      const result = formatNumber(1234567);
-      // Format depends on locale, but should be defined
-      expect(result).toBeDefined();
-      expect(result.length).toBeGreaterThan(0);
+    it('asks Intl for es-AR with matching fraction digits', () => {
+      const spy = spyNumberLocaleString();
+      formatNumber(1234.5, 2);
+      expect(spy).toHaveBeenCalledWith('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
     });
 
-    it('should format with specified decimals', () => {
-      const result = formatNumber(1234.5678, 2);
-      expect(result).toBeDefined();
+    it('formats integers with es-AR grouping', () => {
+      expect(formatNumber(1234567)).toBe(
+        (1234567).toLocaleString('es-AR', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }),
+      );
     });
 
-    it('should format zero', () => {
-      const result = formatNumber(0);
-      expect(result).toBe('0');
+    it('keeps the requested number of decimals', () => {
+      expect(formatNumber(1234.5678, 2)).toBe(
+        (1234.5678).toLocaleString('es-AR', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      expect(formatNumber(1234.5678, 0)).not.toBe(formatNumber(1234.5678, 2));
     });
 
-    it('should return fallback for null', () => {
+    it('formats zero as 0', () => {
+      expect(formatNumber(0)).toBe('0');
+    });
+
+    it('returns "-" for null and undefined', () => {
       expect(formatNumber(null)).toBe('-');
-    });
-
-    it('should return fallback for undefined', () => {
       expect(formatNumber(undefined)).toBe('-');
     });
   });
 
   describe('formatHectares', () => {
-    it('should format hectares with "ha" suffix', () => {
-      const result = formatHectares(1234);
-      expect(result).toContain('ha');
+    it('appends a space and ha to the formatted number', () => {
+      expect(formatHectares(1234)).toBe(`${formatNumber(1234)} ha`);
     });
 
-    it('should format zero hectares', () => {
-      const result = formatHectares(0);
-      expect(result).toBe('0 ha');
+    it('formats zero hectares', () => {
+      expect(formatHectares(0)).toBe('0 ha');
     });
 
-    it('should return fallback for null', () => {
+    it('returns "-" for null and undefined', () => {
       expect(formatHectares(null)).toBe('-');
-    });
-
-    it('should return fallback for undefined', () => {
       expect(formatHectares(undefined)).toBe('-');
     });
   });
 
   describe('formatPercentage', () => {
-    it('should format percentage with % suffix', () => {
-      const result = formatPercentage(50);
-      expect(result).toContain('50');
-      expect(result).toContain('%');
+    it('uses one decimal by default and a percent suffix', () => {
+      expect(formatPercentage(50)).toBe(`${formatNumber(50, 1)}%`);
     });
 
-    it('should format with specified decimals', () => {
-      const result = formatPercentage(33.333, 2);
-      expect(result).toContain('33,33'); // es-AR uses comma as decimal separator
-      expect(result).toContain('%');
+    it('honours an explicit decimal count', () => {
+      expect(formatPercentage(33.333, 2)).toBe(`${formatNumber(33.333, 2)}%`);
+      expect(formatPercentage(33.333, 2)).toContain('33,33');
     });
 
-    it('should format zero percent', () => {
-      const result = formatPercentage(0);
-      expect(result).toContain('0');
-      expect(result).toContain('%');
+    it('formats zero and 100', () => {
+      expect(formatPercentage(0)).toBe(`${formatNumber(0, 1)}%`);
+      expect(formatPercentage(100)).toBe(`${formatNumber(100, 1)}%`);
     });
 
-    it('should format 100%', () => {
-      const result = formatPercentage(100);
-      expect(result).toContain('100');
-      expect(result).toContain('%');
-    });
-
-    it('should return fallback for null', () => {
+    it('returns "-" for null and undefined', () => {
       expect(formatPercentage(null)).toBe('-');
-    });
-
-    it('should return fallback for undefined', () => {
       expect(formatPercentage(undefined)).toBe('-');
     });
   });
 
   describe('formatDateCustom', () => {
-    it('should format date with custom options', () => {
-      const result = formatDateCustom('2024-01-15T10:30:00Z', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-      expect(result).toContain('2024');
-      expect(result).toContain('15');
+    const longOpts: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    };
+
+    it('forwards options to es-AR', () => {
+      expect(formatDateCustom(SAMPLE, longOpts)).toBe(localeDate(SAMPLE, longOpts));
+      expect(formatDateCustom(SAMPLE, longOpts)).toMatch(/enero/i);
     });
 
-    it('should handle Date object', () => {
-      const result = formatDateCustom(new Date('2024-06-20'), {
+    it('formats a Date object', () => {
+      const opts: Intl.DateTimeFormatOptions = {
         year: '2-digit',
         month: '2-digit',
         day: '2-digit',
-      });
-      expect(result).toBeDefined();
+      };
+      expect(formatDateCustom(SAMPLE, opts)).toBe(localeDate(SAMPLE, opts));
     });
 
-    it('should return fallback for null', () => {
-      const result = formatDateCustom(null, { year: 'numeric' });
-      expect(result).toBe('-');
+    it('returns fallback for null, undefined, and invalid dates', () => {
+      expect(formatDateCustom(null, { year: 'numeric' })).toBe('-');
+      expect(formatDateCustom(undefined, { year: 'numeric' })).toBe('-');
+      expect(formatDateCustom('invalid', { year: 'numeric' })).toBe('-');
     });
 
-    it('should return fallback for undefined', () => {
-      const result = formatDateCustom(undefined, { year: 'numeric' });
-      expect(result).toBe('-');
+    it('uses a custom fallback', () => {
+      expect(formatDateCustom(null, { year: 'numeric' }, 'N/A')).toBe('N/A');
     });
 
-    it('should return custom fallback when provided', () => {
-      const result = formatDateCustom(null, { year: 'numeric' }, 'N/A');
-      expect(result).toBe('N/A');
-    });
-
-    it('should return fallback for invalid date', () => {
-      const result = formatDateCustom('invalid', { year: 'numeric' });
-      expect(result).toBe('-');
-    });
-
-    it('should format with time options', () => {
-      const result = formatDateCustom('2024-01-15T10:30:00Z', {
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      expect(result).toBeDefined();
+    it('returns fallback when getTime throws', () => {
+      const exploding = {
+        getTime(): number {
+          throw new Error('boom');
+        },
+      } as unknown as Date;
+      expect(formatDateCustom(exploding, longOpts)).toBe('-');
     });
   });
 
   describe('formatDateTime', () => {
-    it('should format date and time', () => {
-      const result = formatDateTime('2024-01-15T10:30:00Z');
-      expect(result).toContain('2024');
-      expect(result.length).toBeGreaterThan(10);
+    it('formats with es-AR toLocaleString', () => {
+      const spy = spyLocaleString();
+      expect(formatDateTime(SAMPLE)).toBe(SAMPLE.toLocaleString('es-AR'));
+      expect(spy).toHaveBeenCalledWith('es-AR');
     });
 
-    it('should handle Date object', () => {
-      const result = formatDateTime(new Date('2024-06-20T14:30:00Z'));
-      expect(result).toBeDefined();
+    it('formats a date string the same as the equivalent Date', () => {
+      const iso = SAMPLE.toISOString();
+      expect(formatDateTime(iso)).toBe(formatDateTime(new Date(iso)));
     });
 
-    it('should return fallback for null', () => {
+    it('returns fallback for null, undefined, and invalid dates', () => {
       expect(formatDateTime(null)).toBe('-');
-    });
-
-    it('should return fallback for undefined', () => {
       expect(formatDateTime(undefined)).toBe('-');
+      expect(formatDateTime('invalid-date')).toBe('-');
     });
 
-    it('should use custom fallback when provided', () => {
-      const result = formatDateTime(null, 'Sin fecha');
-      expect(result).toBe('Sin fecha');
+    it('uses a custom fallback', () => {
+      expect(formatDateTime(null, 'Sin fecha')).toBe('Sin fecha');
     });
 
-    it('should return fallback for invalid date', () => {
-      const result = formatDateTime('invalid-date');
-      expect(result).toBe('-');
-    });
-
-    it('should format different times correctly', () => {
-      const result1 = formatDateTime('2024-01-15T08:00:00Z');
-      const result2 = formatDateTime('2024-01-15T20:00:00Z');
-      // Both should be defined but different
-      expect(result1).toBeDefined();
-      expect(result2).toBeDefined();
+    it('returns fallback when getTime throws', () => {
+      const exploding = {
+        getTime(): number {
+          throw new Error('boom');
+        },
+      } as unknown as Date;
+      expect(formatDateTime(exploding)).toBe('-');
     });
   });
 });
