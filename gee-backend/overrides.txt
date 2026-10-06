@@ -14,4 +14,4 @@
 # Exact pin so `uv pip install --overrides overrides.txt --require-hashes`
 # also works. Keep in sync with the sqlalchemy== line in the lockfiles.
 # Revisit / drop when fastapi-users-db-sqlalchemy allows sqlalchemy>=2.1.
-sqlalchemy[asyncio]==2.1.1
+sqlalchemy[asyncio]==2.1.3
