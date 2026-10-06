@@ -24,7 +24,7 @@ faker>=22.0.0  # Fake data generation
 # ===========================================
 ruff>=0.2.0  # Fast Python linter and formatter
 black>=24.0.0  # Code formatter (backup to ruff)
-isort>=5.13.0  # Import sorting (backup to ruff)
+isort>=9.0.2  # Import sorting (backup to ruff)
 
 # ===========================================
 # TYPE CHECKING
