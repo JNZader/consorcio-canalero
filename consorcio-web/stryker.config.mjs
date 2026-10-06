@@ -81,8 +81,12 @@ export default {
       ? `reports/mutation/mutation-${shard}.json`
       : 'reports/mutation/mutation.json',
   },
+  // Vitest 5 + Stryker 10: perTest testFilter picks the wrong tests (~13%
+  // on formatters). related+sandbox finds ~7 tests. Shard-scoped include +
+  // mutantRun without that filter restores a real score (see vitest.stryker.config.ts).
   vitest: {
-    configFile: 'vitest.config.ts',
+    configFile: 'vitest.stryker.config.ts',
+    related: false,
   },
   mutate: mutationTargets,
   thresholds: {

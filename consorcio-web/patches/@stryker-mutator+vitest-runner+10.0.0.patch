@@ -1,0 +1,28 @@
+diff --git a/node_modules/@stryker-mutator/vitest-runner/dist/src/vitest-test-runner.js b/node_modules/@stryker-mutator/vitest-runner/dist/src/vitest-test-runner.js
+--- a/node_modules/@stryker-mutator/vitest-runner/dist/src/vitest-test-runner.js
++++ b/node_modules/@stryker-mutator/vitest-runner/dist/src/vitest-test-runner.js
+@@ -128,9 +128,7 @@ export class VitestTestRunner {
+         this.ctx.provide('hitLimit', options.hitLimit);
+         this.ctx.provide('mutantActivation', options.mutantActivation);
+         this.ctx.provide('activeMutant', options.activeMutant.id);
+-        const dryRunResult = await this.run({
+-            testIds: options.testFilter,
+-            relatedFiles: [options.sandboxFileName],
+-        });
++        const dryRunResult = await this.run({});
+         const hitCount = this.readHitCount();
+         const timeOut = determineHitLimitReached(hitCount, options.hitLimit);
+diff --git a/node_modules/@stryker-mutator/vitest-runner/src/vitest-test-runner.ts b/node_modules/@stryker-mutator/vitest-runner/src/vitest-test-runner.ts
+--- a/node_modules/@stryker-mutator/vitest-runner/src/vitest-test-runner.ts
++++ b/node_modules/@stryker-mutator/vitest-runner/src/vitest-test-runner.ts
+@@ -209,9 +209,7 @@ export class VitestTestRunner implements TestRunner {
+     this.ctx!.provide('hitLimit', options.hitLimit);
+     this.ctx!.provide('mutantActivation', options.mutantActivation);
+     this.ctx!.provide('activeMutant', options.activeMutant.id);
+-    const dryRunResult = await this.run({
+-      testIds: options.testFilter,
+-      relatedFiles: [options.sandboxFileName],
+-    });
++    const dryRunResult = await this.run({});
+     const hitCount = this.readHitCount();
+     const timeOut = determineHitLimitReached(hitCount, options.hitLimit);
