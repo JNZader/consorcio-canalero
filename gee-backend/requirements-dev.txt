@@ -8,7 +8,7 @@
 # TESTING
 # ===========================================
 pytest>=8.0.0
-pytest-cov>=4.1.0
+pytest-cov>=7.1.0
 pytest-asyncio>=0.23.0
 pytest-mock>=3.12.0
 pytest-xdist>=3.5.0  # Parallel test execution
@@ -88,4 +88,4 @@ gitpython>=3.1.60
 # rio-tiler pulls httpx2, which pulled httpcore2 2.9.1 (PYSEC-2026-3844) and
 # httpx2 2.9.1 (PYSEC-2026-3845–3849). Pin the patched floor.
 httpx2>=2.12.0
-httpcore2>=2.10.0
+httpcore2>=2.13.1
