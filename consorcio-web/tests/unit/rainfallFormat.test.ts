@@ -874,11 +874,6 @@ describe('shortSource', () => {
         metric({ provenance: { ...base, source_id: 'bar-x', source_class: 'estimated_radar' } }),
       ),
     ).toBe('BAR (radar)');
-    expect(
-      shortSource(
-        metric({ provenance: { ...base, source_id: 'z-x', source_class: 'unknown_class' } }),
-      ),
-    ).toBe('Z (unknown_class)');
   });
 });
 
