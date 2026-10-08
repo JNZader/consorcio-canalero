@@ -38,12 +38,13 @@ export function ElevationProfileChart({ geometry }: { geometry: Geometry | null 
   if (!isLineString(geometry)) {
     return null;
   }
+  const line = geometry;
 
   async function load() {
     setStatus('loading');
     setError(null);
     try {
-      const data = await fetchElevationProfile(geometry);
+      const data = await fetchElevationProfile(line);
       setProfile(data);
       setStatus('ready');
     } catch (cause) {
