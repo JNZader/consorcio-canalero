@@ -457,7 +457,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert len(backend_findings) == 57
     assert sum(finding["count"] for finding in backend_findings) == 57
     assert {finding["count"] for finding in backend_findings} == {1}
-    assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
+    assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
     assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 56
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
     assert sum(finding["status"] == "affected" for finding in backend_findings) == 56

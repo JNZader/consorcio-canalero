@@ -34,6 +34,7 @@ COPY requirements.txt requirements.lock ./
 # sqlalchemy<2.1). setuptools/wheel are installed separately because they are
 # build-time pins, not part of the application closure.
 RUN pip install --no-cache-dir --no-deps --require-hashes -r requirements.lock \
+    && pip uninstall -y setuptools wheel || true \
     && pip install --no-cache-dir \
     "setuptools==80.10.2" \
     "wheel==0.46.3"
@@ -287,11 +288,34 @@ RUN rm -rf \
     /usr/local/lib/python3.14/site-packages/setuptools \
     /usr/local/lib/python3.14/site-packages/setuptools-*.dist-info \
     /usr/local/lib/python3.14/site-packages/wheel \
-    /usr/local/lib/python3.14/site-packages/wheel-*.dist-info
+    /usr/local/lib/python3.14/site-packages/wheel-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/urllib3 \
+    /usr/local/lib/python3.14/site-packages/urllib3-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/msgpack \
+    /usr/local/lib/python3.14/site-packages/msgpack-*.dist-info
 
 # Copy installed Python packages from build stage
 COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
+
+# The 3.14 slim base leaves ensurepip wheels and un-overwritten dist-info
+# (setuptools 70.3.0, urllib3 2.7.0, msgpack 1.1.2). Trivy python-pkg reports
+# those with FixedVersion and the image policy refuses the report. Strip the
+# vulnerable versions after COPY so only the lock/pin remains.
+RUN python3 <<'PY'
+import pathlib
+import shutil
+
+prefixes = ("setuptools-70.", "urllib3-2.7.", "msgpack-1.1.")
+for path in pathlib.Path("/usr").rglob("*.dist-info"):
+    if not path.name.startswith(prefixes):
+        continue
+    shutil.rmtree(path, ignore_errors=True)
+    package = path.parent / path.name.split("-", 1)[0]
+    if package.exists():
+        shutil.rmtree(package, ignore_errors=True)
+shutil.rmtree("/usr/local/lib/python3.14/ensurepip", ignore_errors=True)
+PY
 
 # Create non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
