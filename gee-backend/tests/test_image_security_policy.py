@@ -454,13 +454,13 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # La DB del dia REVELA deuda sin fix en trixie que agosto no conocia:
     # util-linux 4 CVE x 9 paquetes (36), libxml2 +7, libexpat1 +3, systemd 2.
     # 14 HIGH + 4 CRITICAL -> 55 HIGH + 1 CRITICAL; affected 55, fix_deferred 1.
-    assert len(backend_findings) == 56
-    assert sum(finding["count"] for finding in backend_findings) == 56
+    assert len(backend_findings) == 57
+    assert sum(finding["count"] for finding in backend_findings) == 57
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.6)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 55
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 56
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 55
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 56
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -510,6 +510,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
         "CVE-2026-66046": ["libexpat1"],
+        "CVE-2026-77214": ["libexpat1"],
         "CVE-2026-6653": ["libxml2"],
         "CVE-2026-74860": ["libxml2"],
         "CVE-2026-76642": util_linux,
