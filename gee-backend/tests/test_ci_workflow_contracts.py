@@ -46,7 +46,7 @@ STRYKER_SHARDS = {
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c"
 )
-PYTHON_RUNTIME_IMAGE = "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
+PYTHON_RUNTIME_IMAGE = "python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d"
 SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
 WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
@@ -467,7 +467,7 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
     assert "ENV VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow" in production
 
     cleanup = production.index("RUN rm -rf")
-    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.11/site-packages")
+    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.14/site-packages")
     for stale_artifact in (
         "setuptools",
         "setuptools-*.dist-info",
@@ -478,7 +478,7 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
         "distutils-precedence.pth",
     ):
         assert (
-            f"/usr/local/lib/python3.11/site-packages/{stale_artifact}"
+            f"/usr/local/lib/python3.14/site-packages/{stale_artifact}"
             in production[cleanup:packages_copy]
         )
     assert cleanup < packages_copy

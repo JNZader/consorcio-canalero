@@ -281,16 +281,16 @@ RUN set -eu; \
 # before importing the prepared build tree. Otherwise stale setuptools
 # dist-info can shadow the secure runtime version.
 RUN rm -rf \
-    /usr/local/lib/python3.11/site-packages/_distutils_hack \
-    /usr/local/lib/python3.11/site-packages/distutils-precedence.pth \
-    /usr/local/lib/python3.11/site-packages/pkg_resources \
-    /usr/local/lib/python3.11/site-packages/setuptools \
-    /usr/local/lib/python3.11/site-packages/setuptools-*.dist-info \
-    /usr/local/lib/python3.11/site-packages/wheel \
-    /usr/local/lib/python3.11/site-packages/wheel-*.dist-info
+    /usr/local/lib/python3.14/site-packages/_distutils_hack \
+    /usr/local/lib/python3.14/site-packages/distutils-precedence.pth \
+    /usr/local/lib/python3.14/site-packages/pkg_resources \
+    /usr/local/lib/python3.14/site-packages/setuptools \
+    /usr/local/lib/python3.14/site-packages/setuptools-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/wheel \
+    /usr/local/lib/python3.14/site-packages/wheel-*.dist-info
 
 # Copy installed Python packages from build stage
-COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 
 # Create non-root user
