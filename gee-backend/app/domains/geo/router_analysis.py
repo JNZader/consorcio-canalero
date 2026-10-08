@@ -18,6 +18,29 @@ from app.domains.geo.router_common import _require_operator
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
 
+
+class ElevationProfileRequest(BaseModel):
+    """A WGS84 LineString to sample on the real filled DEM."""
+
+    geometry: dict = Field(..., description="GeoJSON LineString in EPSG:4326")
+    area_id: str | None = Field(
+        default=None,
+        description="DEM area; newest filled DEM across areas when omitted",
+    )
+
+
+@router.post("/elevation-profile")
+def elevation_profile(
+    body: ElevationProfileRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_operator()),
+):
+    """Distance vs elevation on Copernicus GLO-30. Not a project grade."""
+    from app.domains.geo.elevation_profile_service import perfil_de_geojson
+
+    return perfil_de_geojson(db, geometry=body.geometry, area_id=body.area_id)
+
+
 # ── Zonal Statistics ──────────────────────────────────────────────
 
 
