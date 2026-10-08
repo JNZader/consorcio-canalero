@@ -41,6 +41,7 @@ import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
+import { ElevationProfileChart } from './ElevationProfileChart';
 import { EscuelaCard } from './EscuelaCard';
 import { MapPanelShell } from './MapPanelShell';
 import { PuntoInteresCard } from './PuntoInteresCard';
@@ -267,6 +268,7 @@ function FeatureSection({
     return (
       <div data-testid="info-panel-feature-section">
         <CanalCard properties={properties as unknown as CanalFeatureProperties} />
+        <ElevationProfileChart geometry={feature.geometry} />
       </div>
     );
   }
@@ -300,6 +302,7 @@ function FeatureSection({
 
   return (
     <Stack gap={4} data-testid="info-panel-feature-section">
+      <ElevationProfileChart geometry={feature.geometry} />
       {displayable.map(({ key, label, value, formatted }) => {
         // Pre-formatted array → render as a vertical bullet list under the
         // label (used for `member_basin_names` in the approved-zones panel).
