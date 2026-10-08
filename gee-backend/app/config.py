@@ -106,18 +106,18 @@ class Settings(BaseSettings):
 
     # ── Conocimiento generation provider (U6) ─────────────────────────────
     # THE MODEL PIN LIVES HERE AND NOT IN CODE (amendment A2, decision 0.4).
-    # `claude-fable-5-1` through the claude-cli pool, routed by mcp-llm-bridge.
-    # Changing the model must be a config edit; `proveedores.py` writes no
-    # model name anywhere, so an env change is the whole change.
+    # `opencode-go/glm-5.3-flash` through the opencode-cli pool, routed by
+    # mcp-llm-bridge. Changing the model must be a config edit; `proveedores.py`
+    # writes no model name anywhere, so an env change is the whole change.
     #
     # Enabling the surface additionally requires the TERMS RECORD next to the pin
     # (`app/domains/conocimiento/proveedor_terminos.yaml`) to verifiably cover
     # this exact `(conocimiento_modelo, conocimiento_pool)` pair. That record was
-    # filled 2026-09-02 (task 6.7, Fable 5.1 / Claude Max after GLM-5.3-Flash);
-    # the FLAG still stays off.
+    # filled 2026-10-07 (task 6.7, GLM Go after Fable 5.1 / Claude Max was
+    # dropped); the FLAG still stays off.
     conocimiento_proveedor_url: str = "http://127.0.0.1:3456"
-    conocimiento_modelo: str = "claude-fable-5-1"
-    conocimiento_pool: str = "claude-cli"
+    conocimiento_modelo: str = "opencode-go/glm-5.3-flash"
+    conocimiento_pool: str = "opencode-cli"
     # Empty = the adapter refuses to be constructed at all. Fail-closed at wiring
     # time rather than on the first question.
     conocimiento_proveedor_api_key: str = ""
