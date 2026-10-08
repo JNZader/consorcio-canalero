@@ -1,8 +1,8 @@
 # Provider terms verification — the pre-enablement gate (task 6.7)
 
-The generation surface is pinned to **`claude-fable-5-1` through the
-claude-cli pool, routed by mcp-llm-bridge** (amendment A2; re-pinned 2026-09-02
-after the owner chose Fable 5.1 over GLM-5.3-Flash for the eval generate).
+The generation surface is pinned to **`opencode-go/glm-5.3-flash` through the
+opencode-cli pool, routed by mcp-llm-bridge** (amendment A2; re-pinned 2026-10-07
+after the owner dropped Fable 5.1 / Claude Max and kept GLM Go for eval/serving).
 The ratified privacy amendment permits public law text plus the CD member's
 question to leave the box. It does **not** permit either of them to become
 training data.
@@ -29,9 +29,9 @@ pin and checked in, so a later silent terms change is a diff rather than a
 discovery.
 
 A machine cannot do the verification part. It can only refuse to pretend it was
-done. The record was filled 2026-09-02 (`verificado: true`) against the live
-`claude-fable-5-1` / `claude-cli` pin; verified terms are necessary and not
-sufficient to turn the surface on.
+done. The record was filled 2026-10-07 (`verificado: true`) against the live
+`opencode-go/glm-5.3-flash` / `opencode-cli` pin; verified terms are necessary
+and not sufficient to turn the surface on.
 
 > **Where the gate is called from.** Task 7.2 has landed:
 > `enforce_conocimiento_qa_enabled` calls `verificar_terminos` as the first ANDed
@@ -102,7 +102,7 @@ Fill `proveedor_terminos.yaml` and flip `verificado: true` **in the same commit*
 
 ```yaml
 modelo_id: <verbatim from /v1/models>
-pool: claude-cli
+pool: opencode-cli
 verificado: true
 verificado_el: "YYYY-MM-DD"
 verificado_por: <name>
@@ -145,9 +145,9 @@ change in the terms until proven otherwise:
 - the model pin changes (`conocimiento_modelo`);
 - the pool changes (`conocimiento_pool`) — different operator, different terms;
 - `sha256_terminos` no longer matches the live document;
-- a ZDR footnote that this pin depends on expires. Fable 5.1 on `claude-cli`
-  is Claude Max consumer, not API ZDR: training is off only while the
-  improve-models setting is off, retention is 30 days (Covered Model minimum).
-  GLM-5.3-Flash's published 0-day Go row is a different `(modelo, pool)` pair
-  and does not cover this pin. DeepSeek V4 Flash was dropped when its monthly
-  ZDR footnote stayed "valid through August 31, 2026".
+- a ZDR footnote that this pin depends on expires. GLM-5.3-Flash on Go publishes
+  Not used / 0 days with **no** asterisk (confirmed on the live privacy table
+  2026-10-07). Muse Spark trains — ineligible. DeepSeek rows still carry `0 days*`
+  and stay off this pin. OpenCode Zen free-tier (`opencode/*-free`) is a different
+  operator from Go; do not treat the `zen/go` HTTP path as Zen. Fable 5.1 / Max
+  was dropped 2026-10-07 — do not mix that gold with the GLM pack.
