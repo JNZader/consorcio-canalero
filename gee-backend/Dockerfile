@@ -34,6 +34,7 @@ COPY requirements.txt requirements.lock ./
 # sqlalchemy<2.1). setuptools/wheel are installed separately because they are
 # build-time pins, not part of the application closure.
 RUN pip install --no-cache-dir --no-deps --require-hashes -r requirements.lock \
+    && pip uninstall -y setuptools wheel || true \
     && pip install --no-cache-dir \
     "setuptools==80.10.2" \
     "wheel==0.46.3"
@@ -287,7 +288,11 @@ RUN rm -rf \
     /usr/local/lib/python3.14/site-packages/setuptools \
     /usr/local/lib/python3.14/site-packages/setuptools-*.dist-info \
     /usr/local/lib/python3.14/site-packages/wheel \
-    /usr/local/lib/python3.14/site-packages/wheel-*.dist-info
+    /usr/local/lib/python3.14/site-packages/wheel-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/urllib3 \
+    /usr/local/lib/python3.14/site-packages/urllib3-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/msgpack \
+    /usr/local/lib/python3.14/site-packages/msgpack-*.dist-info
 
 # Copy installed Python packages from build stage
 COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
