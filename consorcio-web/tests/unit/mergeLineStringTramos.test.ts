@@ -63,4 +63,26 @@ describe('mergeLineStringTramos', () => {
       [2, 0],
     ]);
   });
+
+  it('does not jump a catalog-order gap (T269-03 25 km false positive)', () => {
+    const merged = mergeLineStringTramos([
+      line([
+        [0, 0],
+        [1, 0],
+      ]),
+      line([
+        [10, 10],
+        [11, 10],
+      ]),
+      line([
+        [1, 0],
+        [2, 0],
+      ]),
+    ]);
+    expect(merged?.coordinates).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ]);
+  });
 });

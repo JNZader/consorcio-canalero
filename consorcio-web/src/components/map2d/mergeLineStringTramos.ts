@@ -5,54 +5,66 @@ function isLineString(geometry: Feature['geometry']): geometry is LineString {
 }
 
 function sameVertex(a: Position, b: Position): boolean {
-  return a[0] === b[0] && a[1] === b[1];
+  return Math.abs(a[0] - b[0]) < 1e-8 && Math.abs(a[1] - b[1]) < 1e-8;
 }
 
-function vertexDistance2(a: Position, b: Position): number {
-  const dx = a[0] - b[0];
-  const dy = a[1] - b[1];
-  return dx * dx + dy * dy;
-}
-
-function orientedCoordinates(previousEnd: Position, coords: Position[]): Position[] {
-  const start = coords[0];
-  const end = coords[coords.length - 1];
-  if (!start || !end) {
-    return coords;
+function attachPiece(chain: Position[], piece: Position[]): Position[] | null {
+  const head = chain[0];
+  const tail = chain[chain.length - 1];
+  const start = piece[0];
+  const end = piece[piece.length - 1];
+  if (!head || !tail || !start || !end) {
+    return null;
   }
-  const oriented =
-    vertexDistance2(previousEnd, end) < vertexDistance2(previousEnd, start)
-      ? [...coords].reverse()
-      : coords;
-  const first = oriented[0];
-  if (first && sameVertex(previousEnd, first)) {
-    return oriented.slice(1);
+  if (sameVertex(tail, start)) {
+    return [...chain, ...piece.slice(1)];
   }
-  return oriented;
+  if (sameVertex(tail, end)) {
+    return [...chain, ...[...piece].reverse().slice(1)];
+  }
+  if (sameVertex(head, end)) {
+    return [...piece.slice(0, -1), ...chain];
+  }
+  if (sameVertex(head, start)) {
+    return [...[...piece].reverse().slice(0, -1), ...chain];
+  }
+  return null;
 }
 
-/** Concatenate selected LineStrings in click order into one profile geometry. */
+/**
+ * Walk shared vertices into one LineString. Catalog order is ignored so a
+ * split road (T269-03) does not jump across the map and blow the 25 km cap.
+ * Pieces that do not touch the chain are left out.
+ */
 export function mergeLineStringTramos(features: readonly Feature[]): LineString | null {
-  const lines = features.filter((feature) => isLineString(feature.geometry));
-  const first = lines[0];
-  if (!first || !isLineString(first.geometry)) {
+  const remaining = features
+    .filter((feature) => isLineString(feature.geometry))
+    .map((feature) => [...(feature.geometry as LineString).coordinates]);
+  const first = remaining.shift();
+  if (!first) {
     return null;
   }
-  const coordinates: Position[] = [...first.geometry.coordinates];
-  for (const line of lines.slice(1)) {
-    if (!isLineString(line.geometry)) {
-      continue;
+  let chain = first;
+  let attached = true;
+  while (attached && remaining.length > 0) {
+    attached = false;
+    for (let index = 0; index < remaining.length; index += 1) {
+      const piece = remaining[index];
+      if (!piece) {
+        continue;
+      }
+      const next = attachPiece(chain, piece);
+      if (!next) {
+        continue;
+      }
+      chain = next;
+      remaining.splice(index, 1);
+      attached = true;
+      break;
     }
-    const next = line.geometry.coordinates;
-    const previousEnd = coordinates[coordinates.length - 1];
-    if (!previousEnd) {
-      coordinates.push(...next);
-      continue;
-    }
-    coordinates.push(...orientedCoordinates(previousEnd, next));
   }
-  if (coordinates.length < 2) {
+  if (chain.length < 2) {
     return null;
   }
-  return { type: 'LineString', coordinates };
+  return { type: 'LineString', coordinates: chain };
 }

@@ -6,7 +6,7 @@
  */
 
 import { Alert, Button, Stack, Text } from '@mantine/core';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Geometry, LineString } from 'geojson';
 import {
   Line,
@@ -40,6 +40,7 @@ export function ElevationProfileChart({
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   if (!isLineString(geometry)) {
     return null;
@@ -47,6 +48,10 @@ export function ElevationProfileChart({
   const line = geometry;
 
   async function load() {
+    if (inFlight.current) {
+      return;
+    }
+    inFlight.current = true;
     setStatus('loading');
     setError(null);
     try {
@@ -56,6 +61,8 @@ export function ElevationProfileChart({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo muestrear el DEM');
       setStatus('error');
+    } finally {
+      inFlight.current = false;
     }
   }
 
