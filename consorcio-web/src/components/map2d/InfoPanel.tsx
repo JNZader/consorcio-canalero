@@ -31,7 +31,7 @@
  */
 
 import { Badge, CloseButton, Divider, Group, Stack, Text, Title } from '@mantine/core';
-import type { Feature, LineString } from 'geojson';
+import type { Feature } from 'geojson';
 import { memo, useMemo } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
@@ -114,7 +114,7 @@ interface InfoPanelProps {
   readonly resetKey?: unknown;
   /** Google Earth analog: chart hover chainage on the selected LineString. */
   readonly onElevationProfileHover?: (
-    hover: { geometry: LineString; distanceM: number } | null,
+    hover: { lon: number; lat: number } | null,
   ) => void;
 }
 
@@ -401,16 +401,7 @@ export const InfoPanel = memo(function InfoPanel({
         {profileGeometry ? (
           <ElevationProfileChart
             geometry={profileGeometry}
-            onHoverDistanceM={(distanceM) => {
-              if (!onElevationProfileHover) {
-                return;
-              }
-              if (distanceM == null) {
-                onElevationProfileHover(null);
-                return;
-              }
-              onElevationProfileHover({ geometry: profileGeometry, distanceM });
-            }}
+            onHoverLngLat={onElevationProfileHover}
           />
         ) : null}
         {resolved.map((feat, idx) => (

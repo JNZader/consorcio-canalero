@@ -71,6 +71,19 @@ def perfil_de_geojson(
     if float(linea_metric.length) > MAX_LENGTH_M:
         raise ValidationError(message=f"la traza supera {int(MAX_LENGTH_M)} m")
     try:
-        return perfil_desde_linea_metrica(linea_metric, dem_path)
+        payload = perfil_desde_linea_metrica(linea_metric, dem_path)
     except ValueError as exc:
         raise ValidationError(message=str(exc)) from exc
+    vertices = payload.pop("_vertices_xy", None)
+    if not isinstance(vertices, list) or not vertices:
+        return payload
+    from shapely.geometry import Point
+
+    serie = gpd.GeoSeries(
+        [Point(xy) for xy in vertices],
+        crs=_raster_crs(dem_path),
+    ).to_crs(4326)
+    for index, punto in enumerate(payload["puntos"]):
+        punto["lon"] = float(serie.iloc[index].x)
+        punto["lat"] = float(serie.iloc[index].y)
+    return payload
