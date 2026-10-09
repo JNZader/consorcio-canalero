@@ -234,7 +234,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
 
 describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
   function canalesControl() {
-    return screen.getByRole('button', { name: /canales/i, expanded: true });
+    return screen.getByRole('button', { name: /canales/i, expanded: false });
   }
 
   it('counts the number of visible canal children (not the master flags)', () => {

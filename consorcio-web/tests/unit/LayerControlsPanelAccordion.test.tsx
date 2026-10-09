@@ -51,9 +51,7 @@ describe('<LayerControlsPanel /> — family accordion (2.2)', () => {
     expect(screen.getByRole('button', { name: /base/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /hidrografía/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /pilar verde/i, expanded: true }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /pilar verde/i, expanded: false })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /análisis/i })).toBeInTheDocument();
     // No canales items supplied → no Canales family.
     expect(
@@ -63,14 +61,36 @@ describe('<LayerControlsPanel /> — family accordion (2.2)', () => {
 
   it('places each layer checkbox under its own family panel', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} />);
-
-    // Use the checkbox role: the "Hidrografía" family control label collides
-    // with the "Hidrografía" (waterways) layer label under getByLabelText.
-    expect(screen.getByRole('checkbox', { name: 'Red Vial' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Catastro rural IDECOR' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Hidrografía' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'BPA histórico (por años)' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Puntos conflicto' })).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('layer-family-territorio')).getByRole('checkbox', {
+        name: 'Red Vial',
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('layer-family-territorio')).getByRole('checkbox', {
+        name: 'Catastro rural IDECOR',
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('layer-family-hidrografia')).getByRole('checkbox', {
+        name: 'Hidrografía',
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('layer-family-pilar_verde')).getByRole('checkbox', {
+        name: 'BPA histórico (por años)',
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('layer-family-analisis')).getByRole('checkbox', {
+        name: 'Puntos conflicto',
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -102,9 +122,10 @@ describe('<LayerControlsPanel /> — search box (2.3)', () => {
     expect(screen.queryByRole('checkbox', { name: 'Red Vial' })).not.toBeInTheDocument();
 
     fireEvent.change(search, { target: { value: '' } });
-    expect(screen.getByRole('checkbox', { name: 'Red Vial' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Hidrografía' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /hidrografía/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /base/i })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Red Vial' })).not.toBeInTheDocument();
   });
 });
 
