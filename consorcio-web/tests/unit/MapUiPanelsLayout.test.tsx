@@ -4,10 +4,8 @@
  * Phase 8 Fix 3/4 — legend panels and InfoPanel must not visually collide.
  *
  * The contract:
- *   - LeyendaPanel must render in FLOATING mode (bottom-left), decoupled
- *     from the top-right MapActionsPanel.
- *   - When an InfoPanel + LeyendaPanel are both visible, both render without
- *     crashing — and neither consumes the same floating slot as the other.
+ *   - Layer legends live under En el mapa (UX R2b), not a floating Leyenda panel.
+ *   - InfoPanel still renders without colliding with that list.
  *
  * We don't assert pixel positions (that's a CSS concern tested manually in
  * browser). We assert the DOM contract that keeps the positions decoupled.
@@ -81,13 +79,13 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
 }
 
 describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
-  it('renders the LeyendaPanel as a floating (standalone) panel — not nested in the action bar', () => {
+  it('renders En el mapa instead of a floating Leyenda heading', () => {
     renderWithMantine(<MapUiPanels {...buildProps()} />);
-    // The "Leyenda" heading is our witness that LeyendaPanel rendered.
-    expect(screen.getByText('Leyenda')).toBeInTheDocument();
+    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
   });
 
-  it('renders InfoPanel and LeyendaPanel simultaneously without crashing', () => {
+  it('renders InfoPanel and En el mapa simultaneously without crashing', () => {
     const feat: Feature = {
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [0, 0] },
@@ -96,13 +94,15 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
     renderWithMantine(
       <MapUiPanels {...buildProps({ selectedFeatures: [feat] })} />,
     );
-    expect(screen.getByText('Leyenda')).toBeInTheDocument();
+    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
   });
 
-  it('skips the LeyendaPanel when showLegend is false', () => {
-    renderWithMantine(<MapUiPanels {...buildProps({ showLegend: false })} />);
-    expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
+  it('skips inline layer legends when showLegend is false', () => {
+    renderWithMantine(
+      <MapUiPanels {...buildProps({ showLegend: false, vectorVisibility: { roads: true } })} />,
+    );
+    expect(screen.queryByTestId('layer-inline-legend-roads')).not.toBeInTheDocument();
   });
 });
 
