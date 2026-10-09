@@ -48,6 +48,10 @@ interface SharedMapLayerActions {
   markViewInitialized: (view: MapViewKey) => void;
   /** Turn catalog vectors to a thematic preset. Per-canal keys are kept. */
   applyPreset: (view: MapViewKey, presetId: MapPresetId) => void;
+  /** Turn every catalog vector off. Per-canal keys are kept. */
+  hideAllCatalogLayers: (view: MapViewKey) => void;
+  /** Restore catalog vectors to first-load defaults. */
+  restoreCatalogDefaults: (view: MapViewKey) => void;
 }
 
 /**
@@ -530,6 +534,36 @@ export const useMapLayerSyncStore = create<
             },
             initializedViews: { ...state.initializedViews, [view]: true },
             presetByView: { ...state.presetByView, [view]: presetId },
+          };
+        }),
+      hideAllCatalogLayers: (view) =>
+        set((state) => {
+          const nextVectors = { ...state[view].visibleVectors };
+          for (const id of MAP2D_CATALOG_VECTOR_IDS) {
+            nextVectors[id] = false;
+          }
+          return {
+            [view]: {
+              ...state[view],
+              visibleVectors: nextVectors,
+            },
+            initializedViews: { ...state.initializedViews, [view]: true },
+            presetByView: { ...state.presetByView, [view]: 'custom' },
+          };
+        }),
+      restoreCatalogDefaults: (view) =>
+        set((state) => {
+          const nextVectors = { ...state[view].visibleVectors };
+          for (const id of MAP2D_CATALOG_VECTOR_IDS) {
+            nextVectors[id] = defaultVisibleVectors[id] ?? false;
+          }
+          return {
+            [view]: {
+              ...state[view],
+              visibleVectors: nextVectors,
+            },
+            initializedViews: { ...state.initializedViews, [view]: true },
+            presetByView: { ...state.presetByView, [view]: null },
           };
         }),
       setActiveRasterType: (view, tipo) =>

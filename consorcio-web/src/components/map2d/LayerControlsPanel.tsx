@@ -39,7 +39,9 @@ import {
   IconRoute,
   IconSearch,
 } from '../ui/icons';
+import { ActiveLayersSection } from './ActiveLayersSection';
 import { MapPresetChips } from './MapPresetChips';
+import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { LayerOrderSection } from './LayerOrderSection';
 import { getActiveAttributions } from './layerAttributions';
 import { buildHealthBannerText, type LayerHealth } from './layerHealth';
@@ -512,6 +514,26 @@ export function LayerControlsPanel({
   const canalesHealth = layerHealth?.byCategory[LAYER_CATEGORY.CANALES] ?? null;
   const canalesProvenance = layerProvenance?.[LAYER_CATEGORY.CANALES] ?? null;
 
+  const hideAllCatalogLayers = useMapLayerSyncStore((state) => state.hideAllCatalogLayers);
+  const restoreCatalogDefaults = useMapLayerSyncStore((state) => state.restoreCatalogDefaults);
+  const ignActiveId = '__ign';
+  const demActiveId = '__dem';
+  const activeLayerRows = [
+    ...layerItems
+      .filter((item) => vectorVisibility[item.id])
+      .map((item) => ({ id: item.id, label: item.label })),
+    ...(showIGNOverlay ? [{ id: ignActiveId, label: 'IGN Altimetría' }] : []),
+    ...(showDemOverlay
+      ? [
+          {
+            id: demActiveId,
+            label:
+              demOptions.find((option) => option.value === activeDemLayerId)?.label ?? 'Capa DEM',
+          },
+        ]
+      : []),
+  ];
+
   const firstDemLayerId = demOptions[0]?.value ?? null;
 
   useEffect(() => {
@@ -909,6 +931,31 @@ export function LayerControlsPanel({
       {viewModePanel}
 
       <MapPresetChips />
+
+      <ActiveLayersSection
+        rows={activeLayerRows}
+        onRemove={(id) => {
+          if (id === ignActiveId) {
+            onShowIGNOverlayChange(false);
+            return;
+          }
+          if (id === demActiveId) {
+            onShowDemOverlayChange(false);
+            return;
+          }
+          onLayerVisibilityChange(id, false);
+        }}
+        onClearAll={() => {
+          hideAllCatalogLayers('map2d');
+          onShowIGNOverlayChange(false);
+          onShowDemOverlayChange(false);
+        }}
+        onRestore={() => {
+          restoreCatalogDefaults('map2d');
+          onShowIGNOverlayChange(false);
+          onShowDemOverlayChange(false);
+        }}
+      />
 
       <Paper
         shadow="md"
