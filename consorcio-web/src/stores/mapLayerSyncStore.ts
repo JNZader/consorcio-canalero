@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { type EtapaGate, passesEtapaFilter } from '../components/shared/canalesGrouping';
+import { getMapPreset, type MapPresetId } from '../components/map2d/mapPresets';
 import { ALL_ETAPAS, type Etapa, type IndexFile } from '../types/canales';
 
 export interface SharedMapLayerState {
@@ -29,7 +30,9 @@ export interface SharedMapLayerState {
   lineWidthScale: number;
 }
 
-type MapViewKey = 'map2d' | 'map3d';
+export type MapViewKey = 'map2d' | 'map3d';
+
+export type ActiveMapPresetId = MapPresetId | 'custom' | null;
 
 interface SharedMapLayerActions {
   setActiveRasterType: (view: MapViewKey, tipo: string | null) => void;
@@ -43,6 +46,8 @@ interface SharedMapLayerActions {
   setLineWidthScale: (view: MapViewKey, value: number) => void;
   hydrateViewState: (view: MapViewKey, payload: Partial<SharedMapLayerState>) => void;
   markViewInitialized: (view: MapViewKey) => void;
+  /** Turn catalog vectors to a thematic preset. Per-canal keys are kept. */
+  applyPreset: (view: MapViewKey, presetId: MapPresetId) => void;
 }
 
 /**
@@ -170,6 +175,9 @@ const defaultVisibleVectors: Record<string, boolean> = {
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
 
+/** Catalog (non per-canal) vector ids. Presets flip these and leave `canal_*` alone. */
+export const MAP2D_CATALOG_VECTOR_IDS = Object.keys(defaultVisibleVectors);
+
 // Map3D defaults intentionally mirror Map2D now — the historical OFF-by-
 // default was a workaround for the render budget, but ``maxTileCacheSize``,
 // ``prefetchZoomDelta: 0`` and the lazy-load of pilar verde / catastro /
@@ -227,6 +235,8 @@ interface MapLayerSyncStoreState {
   map2d: SharedMapLayerState;
   map3d: SharedMapLayerState;
   initializedViews: Record<MapViewKey, boolean>;
+  /** Not persisted. Null until the user picks a chip. */
+  presetByView: Record<MapViewKey, ActiveMapPresetId>;
   /**
    * Cached per-canal → prioridad lookup built at `registerPilarAzul` time.
    * Keys are the stable slugs from `index.json` (NOT the `canal_propuesto_*`
@@ -496,6 +506,7 @@ export const useMapLayerSyncStore = create<
       map2d: DEFAULT_MAP2D_LAYER_STATE,
       map3d: DEFAULT_MAP3D_LAYER_STATE,
       initializedViews: { map2d: false, map3d: false },
+      presetByView: { map2d: null, map3d: null },
       canalesPropuestasPrioridad: {},
       propuestasEtapasVisibility: { ...PROPUESTAS_ETAPAS_DEFAULTS },
       // Smoothing arranca ON: a 200× de exageración los picos de árboles y
@@ -504,6 +515,23 @@ export const useMapLayerSyncStore = create<
       // DSM crudo, lo apaga desde el panel.
       terrainSmoothingEnabled: true,
       terrainSmoothingThreshold: 'med' as const,
+      applyPreset: (view, presetId) =>
+        set((state) => {
+          const preset = getMapPreset(presetId);
+          const on = new Set(preset.visibleOn);
+          const nextVectors = { ...state[view].visibleVectors };
+          for (const id of MAP2D_CATALOG_VECTOR_IDS) {
+            nextVectors[id] = on.has(id);
+          }
+          return {
+            [view]: {
+              ...state[view],
+              visibleVectors: nextVectors,
+            },
+            initializedViews: { ...state.initializedViews, [view]: true },
+            presetByView: { ...state.presetByView, [view]: presetId },
+          };
+        }),
       setActiveRasterType: (view, tipo) =>
         set((state) => ({
           [view]: {
@@ -522,6 +550,10 @@ export const useMapLayerSyncStore = create<
             },
           },
           initializedViews: { ...state.initializedViews, [view]: true },
+          presetByView: {
+            ...state.presetByView,
+            [view]: state.presetByView[view] ? 'custom' : state.presetByView[view],
+          },
         })),
       setLayerOpacity: (view, layerId, value) =>
         set((state) => ({
