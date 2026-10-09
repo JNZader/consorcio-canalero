@@ -106,6 +106,7 @@ import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
 import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
 import { useReportHighlight } from './map2d/useReportHighlight';
+import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
 import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
@@ -652,6 +653,7 @@ export default function MapaMapLibre() {
     mapReady,
     measurementMode: puntosInteres.interactionMode,
     setSelectedFeatures,
+    selectedFeatures,
     onParcelaResolved: fichaInteraction.resolveParcela,
     // Mode transitions ALWAYS discard the selection, including with the sticky
     // touch mode on (where a null resolve means "you missed", not "clear").
@@ -850,6 +852,11 @@ export default function MapaMapLibre() {
     mapRef,
     mapReady,
     hover: elevationProfileHover,
+  });
+  useSelectedLineHighlight({
+    mapRef,
+    mapReady,
+    features: selectedFeatures,
   });
 
   const comparisonVisibleRelevadoIds = (canalesIndex?.relevados ?? [])
