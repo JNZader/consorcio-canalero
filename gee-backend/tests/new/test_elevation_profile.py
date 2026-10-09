@@ -33,6 +33,18 @@ def test_densificar_keeps_half_cell_step_on_a_metric_line() -> None:
     assert max(gaps) <= PASO_DENSIFICADO_M + 1e-6
 
 
+def test_paso_muestreo_keeps_15m_until_the_point_budget() -> None:
+    from app.domains.geo.elevation_profile import MAX_POINTS, paso_muestreo
+
+    assert paso_muestreo(10_000) == PASO_DENSIFICADO_M
+    paso = paso_muestreo(40_000)
+    assert paso > PASO_DENSIFICADO_M
+    linea = LineString([(0.0, 0.0), (40_000.0, 0.0)])
+    vertices = densificar(linea, paso)
+    assert len(vertices) <= MAX_POINTS
+    assert vertices[-1] == (40_000.0, 0.0)
+
+
 def test_distancias_sobre_l_shape_is_true_chainage_not_index_uniform() -> None:
     from app.domains.geo.elevation_profile import distancias_sobre
 

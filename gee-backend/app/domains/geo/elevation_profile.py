@@ -23,8 +23,17 @@ from app.domains.geo.relevamiento.clasificador import (
 
 DISCLAIMER = "Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal."
 
-MAX_LENGTH_M = 25_000.0
+# Abuse cap, not GLO-30 physics. Compute is bounded by MAX_POINTS via paso_muestreo.
+MAX_LENGTH_M = 200_000.0
 MAX_POINTS = 2_000
+
+
+def paso_muestreo(largo_m: float) -> float:
+    """Keep ≤ MAX_POINTS vertices: 15 m until the trace no longer fits."""
+    if largo_m <= 0:
+        return PASO_DENSIFICADO_M
+    intervalos = max(1, MAX_POINTS - 1)
+    return max(PASO_DENSIFICADO_M, largo_m / intervalos)
 
 
 def distancias_sobre(linea: BaseGeometry, vertices: Sequence[tuple[float, float]]) -> list[float]:
@@ -48,6 +57,7 @@ def ensamblar_perfil(
     dem_nombre: str,
     longitudes: Sequence[float] | None = None,
     latitudes: Sequence[float] | None = None,
+    cell_m: float = PASO_DENSIFICADO_M,
 ) -> dict[str, Any]:
     """Wire payload. Extrema ignore nodata holes."""
     if len(distancias_m) != len(cotas):
@@ -74,7 +84,7 @@ def ensamblar_perfil(
         "min_elevation_m": min(validas) if validas else None,
         "max_elevation_m": max(validas) if validas else None,
         "source": dem_nombre,
-        "cell_m": PASO_DENSIFICADO_M,
+        "cell_m": float(cell_m),
         "disclaimer": DISCLAIMER,
     }
 
@@ -112,7 +122,8 @@ def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, 
     largo = float(linea.length)
     if largo > MAX_LENGTH_M:
         raise ValueError(f"la traza supera {int(MAX_LENGTH_M)} m")
-    vertices = densificar(linea, PASO_DENSIFICADO_M)
+    paso = paso_muestreo(largo)
+    vertices = densificar(linea, paso)
     if len(vertices) > MAX_POINTS:
         raise ValueError(f"el perfil superaría {MAX_POINTS} muestras")
     distancias = distancias_sobre(linea, vertices)
@@ -121,6 +132,7 @@ def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, 
         distancias_m=distancias,
         cotas=cotas,
         dem_nombre=NOMBRE_DEM_FILLED,
+        cell_m=paso,
     )
     payload["_vertices_xy"] = vertices
     return payload
