@@ -104,8 +104,9 @@ export function ElevationProfileChart({
                   data={chartRows}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   onMouseMove={(event) => {
-                    const distanceM = event.activePayload?.[0]?.payload?.distance_m;
-                    onHoverDistanceM?.(typeof distanceM === 'number' ? distanceM : null);
+                    const label = event.activeLabel;
+                    const distanceM = typeof label === 'number' ? label : Number(label);
+                    onHoverDistanceM?.(Number.isFinite(distanceM) ? distanceM : null);
                   }}
                   onMouseLeave={() => onHoverDistanceM?.(null)}
                 >

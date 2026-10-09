@@ -18,12 +18,12 @@ vi.mock('recharts', async () => {
       onMouseLeave,
     }: {
       children?: ReactNode;
-      onMouseMove?: (event: { activePayload?: Array<{ payload?: { distance_m?: number } }> }) => void;
+      onMouseMove?: (event: { activeLabel?: number | string }) => void;
       onMouseLeave?: () => void;
     }) => (
       <div
         data-testid="elevation-line-chart"
-        onMouseMove={() => onMouseMove?.({ activePayload: [{ payload: { distance_m: 15 } }] })}
+        onMouseMove={() => onMouseMove?.({ activeLabel: 15 })}
         onMouseLeave={() => onMouseLeave?.()}
       >
         {children}
