@@ -66,7 +66,7 @@ export function useMapHoverTooltip({
       map.getCanvas().style.cursor = 'pointer';
       popup
         .setLngLat(event.lngLat)
-        .setText(featureDisplayName(feature as GeoJSON.Feature))
+        .setText(featureDisplayName(feature as unknown as Feature))
         .addTo(map);
     };
 
