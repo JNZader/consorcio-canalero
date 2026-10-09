@@ -11,9 +11,9 @@
         "local/consorcio-backend",
         "ghcr.io/jnzader/consorcio-canalero/backend"
       ],
-      "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
+      "base_image": "python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d",
       "baseline_generated_from": {
-        "base_image": "python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93",
+        "base_image": "python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d",
         "config_digest": "sha256:60b8023771e01089d60c5fa7b91e79fce55f7d09808d858a05001027427a3663",
         "image_id": "sha256:1a6e478d2222b5345bd7503bb6a1124ecee7d32ea8333d85c2352c8ab320108a",
         "image_ref": "local/consorcio-backend:c75343dd8d7d35fb309571f32b75f7d59b8cc3ca",
@@ -43,10 +43,10 @@
           "fixed": "",
           "installed": "6.5+20250216-2",
           "pkg_id": "libncursesw6@6.5+20250216-2",
-          "purl": "pkg:deb/debian/libncursesw6@6.5%2B20250216-2?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libncursesw6@6.5%2B20250216-2?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -56,10 +56,10 @@
           "fixed": "",
           "installed": "6.5+20250216-2",
           "pkg_id": "libtinfo6@6.5+20250216-2",
-          "purl": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -69,10 +69,10 @@
           "fixed": "",
           "installed": "6.5+20250216-2",
           "pkg_id": "ncurses-base@6.5+20250216-2",
-          "purl": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&distro=debian-13.6",
+          "purl": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -82,10 +82,10 @@
           "fixed": "",
           "installed": "6.5+20250216-2",
           "pkg_id": "ncurses-bin@6.5+20250216-2",
-          "purl": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -95,10 +95,10 @@
           "fixed": "",
           "installed": "257.13-1~deb13u1",
           "pkg_id": "libsystemd0@257.13-1~deb13u1",
-          "purl": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -108,10 +108,10 @@
           "fixed": "",
           "installed": "257.13-1~deb13u1",
           "pkg_id": "libudev1@257.13-1~deb13u1",
-          "purl": "pkg:deb/debian/libudev1@257.13-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libudev1@257.13-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -121,10 +121,10 @@
           "fixed": "",
           "installed": "2.3.2-2+b1",
           "pkg_id": "libacl1@2.3.2-2+b1",
-          "purl": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -134,10 +134,10 @@
           "fixed": "",
           "installed": "2.8.3-1~deb13u1",
           "pkg_id": "libexpat1@2.8.3-1~deb13u1",
-          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -147,10 +147,10 @@
           "fixed": "",
           "installed": "2.8.3-1~deb13u1",
           "pkg_id": "libexpat1@2.8.3-1~deb13u1",
-          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -160,10 +160,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "CRITICAL",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -173,10 +173,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -186,10 +186,10 @@
           "fixed": "",
           "installed": "1:2.41.5-0+deb13u1",
           "pkg_id": "bsdutils@1:2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -199,10 +199,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libblkid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -212,10 +212,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "liblastlog2-2@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -225,10 +225,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libmount1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -238,10 +238,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libsmartcols1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -251,10 +251,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libuuid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -264,10 +264,10 @@
           "fixed": "",
           "installed": "1:4.16.0-2+really2.41.5-0+deb13u1",
           "pkg_id": "login@1:4.16.0-2+really2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -277,10 +277,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "mount@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -290,10 +290,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "util-linux@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -303,10 +303,10 @@
           "fixed": "",
           "installed": "2.8.3-1~deb13u1",
           "pkg_id": "libexpat1@2.8.3-1~deb13u1",
-          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -316,10 +316,10 @@
           "fixed": "",
           "installed": "2.8.3-1~deb13u1",
           "pkg_id": "libexpat1@2.8.3-1~deb13u1",
-          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -329,10 +329,10 @@
           "fixed": "",
           "installed": "1:2.41.5-0+deb13u1",
           "pkg_id": "bsdutils@1:2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -342,10 +342,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libblkid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -355,10 +355,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "liblastlog2-2@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -368,10 +368,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libmount1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -381,10 +381,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libsmartcols1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -394,10 +394,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libuuid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -407,10 +407,10 @@
           "fixed": "",
           "installed": "1:4.16.0-2+really2.41.5-0+deb13u1",
           "pkg_id": "login@1:4.16.0-2+really2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -420,10 +420,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "mount@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -433,10 +433,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "util-linux@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -446,10 +446,10 @@
           "fixed": "",
           "installed": "1:2.41.5-0+deb13u1",
           "pkg_id": "bsdutils@1:2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -459,10 +459,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libblkid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -472,10 +472,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "liblastlog2-2@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -485,10 +485,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libmount1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -498,10 +498,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libsmartcols1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -511,10 +511,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libuuid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -524,10 +524,10 @@
           "fixed": "",
           "installed": "1:4.16.0-2+really2.41.5-0+deb13u1",
           "pkg_id": "login@1:4.16.0-2+really2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -537,10 +537,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "mount@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -550,10 +550,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "util-linux@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -563,10 +563,10 @@
           "fixed": "",
           "installed": "1:2.41.5-0+deb13u1",
           "pkg_id": "bsdutils@1:2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -576,10 +576,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libblkid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -589,10 +589,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "liblastlog2-2@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -602,10 +602,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libmount1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -615,10 +615,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libsmartcols1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -628,10 +628,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "libuuid1@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -641,10 +641,10 @@
           "fixed": "",
           "installed": "1:4.16.0-2+really2.41.5-0+deb13u1",
           "pkg_id": "login@1:4.16.0-2+really2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6&epoch=1",
+          "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&epoch=1",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -654,10 +654,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "mount@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -667,10 +667,10 @@
           "fixed": "",
           "installed": "2.41.5-0+deb13u1",
           "pkg_id": "util-linux@2.41.5-0+deb13u1",
-          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -680,10 +680,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -693,10 +693,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -706,10 +706,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -719,10 +719,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -732,10 +732,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -745,10 +745,10 @@
           "fixed": "",
           "installed": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
           "pkg_id": "libxml2@2.12.7+dfsg+really2.9.14-2.1+deb13u3",
-          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -758,10 +758,10 @@
           "fixed": "",
           "installed": "2.8.3-1~deb13u1",
           "pkg_id": "libexpat1@2.8.3-1~deb13u1",
-          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "affected",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         },
         {
@@ -771,10 +771,10 @@
           "fixed": "",
           "installed": "5.40.1-6+deb13u1",
           "pkg_id": "perl-base@5.40.1-6+deb13u1",
-          "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.6",
+          "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.7",
           "severity": "HIGH",
           "status": "fix_deferred",
-          "target": "<image> (debian 13.6)",
+          "target": "<image> (debian 13.7)",
           "type": "debian"
         }
       ]

@@ -3,7 +3,7 @@
 # ==============================================
 
 # --- Build stage (with compiler toolchain) ---
-FROM python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93 AS build
+FROM python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS build
 
 WORKDIR /app
 
@@ -34,6 +34,7 @@ COPY requirements.txt requirements.lock ./
 # sqlalchemy<2.1). setuptools/wheel are installed separately because they are
 # build-time pins, not part of the application closure.
 RUN pip install --no-cache-dir --no-deps --require-hashes -r requirements.lock \
+    && pip uninstall -y setuptools wheel || true \
     && pip install --no-cache-dir \
     "setuptools==80.10.2" \
     "wheel==0.46.3"
@@ -62,7 +63,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # --- Production stage (clean, no gcc) ---
-FROM python:3.11.15-slim-trixie@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93 AS production
+FROM python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS production
 
 WORKDIR /app
 
@@ -281,17 +282,32 @@ RUN set -eu; \
 # before importing the prepared build tree. Otherwise stale setuptools
 # dist-info can shadow the secure runtime version.
 RUN rm -rf \
-    /usr/local/lib/python3.11/site-packages/_distutils_hack \
-    /usr/local/lib/python3.11/site-packages/distutils-precedence.pth \
-    /usr/local/lib/python3.11/site-packages/pkg_resources \
-    /usr/local/lib/python3.11/site-packages/setuptools \
-    /usr/local/lib/python3.11/site-packages/setuptools-*.dist-info \
-    /usr/local/lib/python3.11/site-packages/wheel \
-    /usr/local/lib/python3.11/site-packages/wheel-*.dist-info
+    /usr/local/lib/python3.14/site-packages/_distutils_hack \
+    /usr/local/lib/python3.14/site-packages/distutils-precedence.pth \
+    /usr/local/lib/python3.14/site-packages/pkg_resources \
+    /usr/local/lib/python3.14/site-packages/setuptools \
+    /usr/local/lib/python3.14/site-packages/setuptools-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/wheel \
+    /usr/local/lib/python3.14/site-packages/wheel-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/urllib3 \
+    /usr/local/lib/python3.14/site-packages/urllib3-*.dist-info \
+    /usr/local/lib/python3.14/site-packages/msgpack \
+    /usr/local/lib/python3.14/site-packages/msgpack-*.dist-info
 
 # Copy installed Python packages from build stage
-COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
+
+# python:3.14 slim vendors msgpack 1.1.2, urllib3 2.7.0 and setuptools 70.3.0
+# inside pip/_vendor (and ensurepip's pip wheel). Trivy python-pkg reports
+# those with FixedVersion. Production does not need pip; drop it after COPY.
+RUN rm -rf \
+    /usr/local/lib/python3.14/ensurepip \
+    /usr/local/lib/python3.14/site-packages/pip \
+    /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
+    /usr/local/bin/pip \
+    /usr/local/bin/pip3 \
+    /usr/local/bin/pip3.14
 
 # Create non-root user
 RUN addgroup --system app && adduser --system --ingroup app app

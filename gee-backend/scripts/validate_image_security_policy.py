@@ -180,8 +180,8 @@ ROLE_BINDINGS = {
     "backend": {
         "dockerfile": "gee-backend/Dockerfile",
         "base_image": (
-            "python:3.11.15-slim-trixie@"
-            "sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
+            "python:3.14.7-slim-trixie@"
+            "sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d"
         ),
         "allowed_repositories": [
             "local/consorcio-backend",
