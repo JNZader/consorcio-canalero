@@ -2,6 +2,7 @@ import type { Feature } from 'geojson';
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { useMapInteractionEffects } from '../../src/components/map2d/useMapInteractionEffects';
 
 function createMapMock() {
@@ -61,9 +62,24 @@ describe('useMapInteractionEffects', () => {
   it('accumulates tramos on Ctrl-click and toggles the same tramo off', () => {
     const { map, handlers } = createMapMock();
     const setSelectedFeatures = vi.fn();
+    const canalLayer = `${SOURCE_IDS.CANALES_RELEVADOS}-line`;
+    const waterway = {
+      type: 'Feature',
+      id: 'rio',
+      layer: { id: `${SOURCE_IDS.WATERWAYS}-rio-tercero-line` },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.7, -32.6],
+          [-62.71, -32.61],
+        ],
+      },
+      properties: { id: 'rio' },
+    } as Feature;
     const first: Feature = {
       type: 'Feature',
       id: 't1',
+      layer: { id: canalLayer },
       geometry: {
         type: 'LineString',
         coordinates: [
@@ -76,6 +92,7 @@ describe('useMapInteractionEffects', () => {
     const second: Feature = {
       type: 'Feature',
       id: 't2',
+      layer: { id: canalLayer },
       geometry: {
         type: 'LineString',
         coordinates: [
@@ -85,7 +102,7 @@ describe('useMapInteractionEffects', () => {
       },
       properties: { id: 't2' },
     };
-    map.queryRenderedFeatures.mockReturnValue([second]);
+    map.queryRenderedFeatures.mockReturnValue([waterway, second]);
 
     renderHook(() =>
       useMapInteractionEffects({
@@ -103,6 +120,41 @@ describe('useMapInteractionEffects', () => {
       originalEvent: { ctrlKey: true, metaKey: false },
     });
     expect(setSelectedFeatures.mock.calls.at(-1)?.[0].map((f: Feature) => f.id)).toEqual(['t1', 't2']);
+  });
+
+  it('plain-click picks the canal, not the overlapping waterway', () => {
+    const { map, handlers } = createMapMock();
+    const setSelectedFeatures = vi.fn();
+    const waterway = {
+      type: 'Feature',
+      id: 'rio',
+      layer: { id: `${SOURCE_IDS.WATERWAYS}-rio-tercero-line` },
+      geometry: { type: 'LineString', coordinates: [[-62.7, -32.6], [-62.71, -32.61]] },
+      properties: { id: 'rio' },
+    } as Feature;
+    const canal = {
+      type: 'Feature',
+      id: 'c1',
+      layer: { id: `${SOURCE_IDS.CANALES_RELEVADOS}-line` },
+      geometry: { type: 'LineString', coordinates: [[-62.7, -32.6], [-62.71, -32.61]] },
+      properties: { id: 'c1' },
+    } as Feature;
+    map.queryRenderedFeatures.mockReturnValue([waterway, canal]);
+
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as any,
+        mapReady: true,
+        measurementMode: 'idle',
+        setSelectedFeatures,
+      }),
+    );
+
+    handlers.get('click')?.[0]?.({
+      point: { x: 10, y: 10 },
+      lngLat: { lat: -32.6, lng: -62.6 },
+    });
+    expect(setSelectedFeatures.mock.calls.at(-1)?.[0].map((f: Feature) => f.id)).toEqual(['c1']);
   });
 
   it('does not query/select underlying features while measurement mode is active', () => {

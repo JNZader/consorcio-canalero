@@ -2,7 +2,7 @@ import type { Feature } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
-import { mergeAdditiveFeatures } from './mergeAdditiveFeatures';
+import { mergeAdditiveFeatures, pickPrimaryTramo } from './mergeAdditiveFeatures';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
@@ -329,8 +329,17 @@ export function useMapInteractionEffects({
       const original = event.originalEvent as MouseEvent | undefined;
       const additive = !!original && (original.ctrlKey || original.metaKey);
       const incoming = featuresForInfoPanel as unknown as Feature[];
-      if (additive) {
-        setSelectedFeatures(mergeAdditiveFeatures([...selectedFeatures], incoming));
+      const tramo = pickPrimaryTramo(incoming);
+      if (tramo) {
+        // One canal/road per click. Ctrl/⌘ adds or toggles that tramo only —
+        // never the bbox soup (waterway + canal + road).
+        setSelectedFeatures(
+          additive
+            ? mergeAdditiveFeatures([...selectedFeatures], [tramo])
+            : [tramo],
+        );
+      } else if (additive) {
+        setSelectedFeatures([...selectedFeatures]);
       } else {
         setSelectedFeatures(incoming);
       }

@@ -1,6 +1,25 @@
 import type { Feature } from 'geojson';
 
+import { SOURCE_IDS } from './map2dConfig';
+
 type FeatureWithLayer = Feature & { readonly layer?: { readonly id?: string } };
+
+/** Canal first, then roads. Waterways are never a "tramo" selection. */
+export const TRAMO_LAYER_PRIORITY = [
+  `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+  `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+  `${SOURCE_IDS.ROADS}-hit`,
+] as const;
+
+export function pickPrimaryTramo(features: readonly Feature[]): Feature | null {
+  for (const layerId of TRAMO_LAYER_PRIORITY) {
+    const hit = features.find((feature) => (feature as FeatureWithLayer).layer?.id === layerId);
+    if (hit) {
+      return hit;
+    }
+  }
+  return null;
+}
 
 export function selectionKey(feature: Feature): string {
   const withLayer = feature as FeatureWithLayer;
