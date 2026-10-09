@@ -159,4 +159,32 @@ describe('expandTramoGroup', () => {
     expect(group).toHaveLength(2);
     expect(group.every((feature) => feature.properties?.ruta === 'T269-03')).toBe(true);
   });
+
+  it('expands using GEE `rtn` when `ruta` is absent', () => {
+    const layer = `${SOURCE_IDS.ROADS}-hit`;
+    const a: Feature<LineString> = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [1, 0],
+        ],
+      },
+      properties: { id: '20745', rtn: 'T269-03' },
+    };
+    const b: Feature<LineString> = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [1, 0],
+          [2, 0],
+        ],
+      },
+      properties: { id: '28445', rtn: 'T269-03' },
+    };
+    const hit = { ...a, layer: { id: layer } };
+    expect(expandTramoGroup(hit, [a, b])).toHaveLength(2);
+  });
 });
