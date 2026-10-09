@@ -39,42 +39,38 @@ const baseProps = {
 };
 
 describe('<LayerControlsPanel /> — family accordion', () => {
-  it('renders the panel landmark and family checkboxes visible by default (expanded)', () => {
+  it('renders the panel landmark with families collapsed by default', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
     expect(
       screen.getByRole('region', { name: /controles de capas del mapa/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/seleccionar capa base/i)).toBeInTheDocument();
-    // Family controls render as accordion buttons.
-    expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /territorio/i, expanded: false })).toBeInTheDocument();
     expect(screen.getByTestId('map-preset-chips')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /pilar verde/i, expanded: true }),
-    ).toBeInTheDocument();
-    // Checkboxes are visible because every family opens by default.
+    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    fireEvent.click(screen.getByRole('button', { name: /pilar verde/i, expanded: false }));
     expect(screen.getByLabelText('Catastro')).toBeInTheDocument();
     expect(screen.getByLabelText('BPA 2025')).toBeInTheDocument();
   });
 
-  it('collapses a family when its control is clicked (aria-expanded flips)', () => {
+  it('expands a family when its control is clicked (aria-expanded flips)', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
     const control = screen.getByRole('button', { name: /territorio/i });
-    expect(control).toHaveAttribute('aria-expanded', 'true');
+    expect(control).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(control);
-    expect(control).toHaveAttribute('aria-expanded', 'false');
+    expect(control).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('re-expands a family after a second click', () => {
+  it('collapses a family after a second click', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} />);
 
     const control = screen.getByRole('button', { name: /territorio/i });
     fireEvent.click(control);
     fireEvent.click(control);
 
-    expect(control).toHaveAttribute('aria-expanded', 'true');
+    expect(control).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('exposes an accessible label for the DEM layer selector', () => {
@@ -88,7 +84,8 @@ describe('<LayerControlsPanel /> — family accordion', () => {
       />,
     );
 
-    expect(screen.getAllByLabelText(/tipo de capa dem/i)[0]).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /análisis raster/i }));
+    expect(screen.getByLabelText(/tipo de capa raster/i)).toBeInTheDocument();
   });
 
   it('selects the first DEM layer before enabling the overlay when none is active', () => {
@@ -108,7 +105,7 @@ describe('<LayerControlsPanel /> — family accordion', () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('Capa DEM'));
+    fireEvent.click(screen.getByLabelText('Todas las capas de Análisis raster'));
 
     expect(onActiveDemLayerIdChange).toHaveBeenCalledWith('dem-1');
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);
