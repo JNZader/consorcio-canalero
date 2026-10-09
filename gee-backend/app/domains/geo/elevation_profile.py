@@ -10,6 +10,7 @@ Never open a burned or hydro-filled raster. ``resolver_dem_filled`` is the gate.
 
 from __future__ import annotations
 
+from math import hypot
 from typing import Any, Optional, Sequence
 
 from shapely.geometry.base import BaseGeometry
@@ -27,14 +28,17 @@ MAX_POINTS = 2_000
 
 
 def distancias_sobre(linea: BaseGeometry, vertices: Sequence[tuple[float, float]]) -> list[float]:
-    """Chainage of ``vertices`` along ``linea``, metres in the line's CRS."""
+    """True chainage along ``vertices`` in the line CRS (metres), not index-uniform."""
     if not vertices:
         return []
-    largo = float(linea.length)
-    if largo <= 0 or len(vertices) == 1:
+    if len(vertices) == 1 or float(linea.length) <= 0:
         return [0.0] * len(vertices)
-    ultimo = len(vertices) - 1
-    return [i * largo / ultimo for i in range(len(vertices))]
+    distancias = [0.0]
+    for index in range(1, len(vertices)):
+        x0, y0 = vertices[index - 1]
+        x1, y1 = vertices[index]
+        distancias.append(distancias[-1] + hypot(x1 - x0, y1 - y0))
+    return distancias
 
 
 def ensamblar_perfil(
@@ -42,14 +46,26 @@ def ensamblar_perfil(
     distancias_m: Sequence[float],
     cotas: Sequence[Optional[float]],
     dem_nombre: str,
+    longitudes: Sequence[float] | None = None,
+    latitudes: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     """Wire payload. Extrema ignore nodata holes."""
     if len(distancias_m) != len(cotas):
         raise ValueError("distancias y cotas desalineadas")
-    puntos = [
-        {"distance_m": float(d), "elevation_m": None if z is None else float(z)}
-        for d, z in zip(distancias_m, cotas)
-    ]
+    if longitudes is not None and len(longitudes) != len(distancias_m):
+        raise ValueError("longitudes desalineadas")
+    if latitudes is not None and len(latitudes) != len(distancias_m):
+        raise ValueError("latitudes desalineadas")
+    puntos = []
+    for index, (d, z) in enumerate(zip(distancias_m, cotas)):
+        punto: dict[str, Any] = {
+            "distance_m": float(d),
+            "elevation_m": None if z is None else float(z),
+        }
+        if longitudes is not None and latitudes is not None:
+            punto["lon"] = float(longitudes[index])
+            punto["lat"] = float(latitudes[index])
+        puntos.append(punto)
     validas = [p["elevation_m"] for p in puntos if p["elevation_m"] is not None]
     length_m = float(distancias_m[-1]) if distancias_m else 0.0
     return {
@@ -101,8 +117,10 @@ def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, 
         raise ValueError(f"el perfil superaría {MAX_POINTS} muestras")
     distancias = distancias_sobre(linea, vertices)
     cotas = muestrear_alineado(dem_path, vertices)
-    return ensamblar_perfil(
+    payload = ensamblar_perfil(
         distancias_m=distancias,
         cotas=cotas,
         dem_nombre=NOMBRE_DEM_FILLED,
     )
+    payload["_vertices_xy"] = vertices
+    return payload

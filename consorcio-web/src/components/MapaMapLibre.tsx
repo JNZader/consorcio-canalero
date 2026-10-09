@@ -10,7 +10,7 @@
  */
 
 import { Box, Stack } from '@mantine/core';
-import type { Feature, FeatureCollection, LineString } from 'geojson';
+import type { Feature, FeatureCollection } from 'geojson';
 
 import maplibregl from 'maplibre-gl';
 import { ALL_ETAPAS, type Etapa } from '../types/canales';
@@ -179,8 +179,8 @@ export default function MapaMapLibre() {
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
   const [elevationProfileHover, setElevationProfileHover] = useState<{
-    geometry: LineString;
-    distanceM: number;
+    lon: number;
+    lat: number;
   } | null>(null);
   useEffect(() => {
     setElevationProfileHover(null);

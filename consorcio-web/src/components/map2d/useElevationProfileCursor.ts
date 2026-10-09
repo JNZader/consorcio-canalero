@@ -1,37 +1,13 @@
-import type { FeatureCollection, LineString } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
 
+import { cursorCollection, type ElevationProfileHover } from './elevationCursor';
 import { ensureGeoJsonSource } from './map2dUtils';
-import { pointAlongLineString } from './pointAlongLine';
 
 export const ELEVATION_CURSOR_SOURCE = 'elevation-profile-cursor';
 export const ELEVATION_CURSOR_LAYER = 'elevation-profile-cursor-point';
-
-export type ElevationProfileHover = {
-  readonly geometry: LineString;
-  readonly distanceM: number;
-} | null;
-
-function cursorCollection(hover: ElevationProfileHover): FeatureCollection {
-  if (!hover) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-  const coordinates = pointAlongLineString(hover.geometry.coordinates, hover.distanceM);
-  if (!coordinates) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-  return {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates },
-        properties: {},
-      },
-    ],
-  };
-}
+export type { ElevationProfileHover };
+export { cursorCollection };
 
 export function useElevationProfileCursor({
   mapRef,

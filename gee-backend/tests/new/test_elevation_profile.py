@@ -28,9 +28,18 @@ def test_densificar_keeps_half_cell_step_on_a_metric_line() -> None:
     assert vertices[0] == (0.0, 0.0)
     assert vertices[-1] == (100.0, 0.0)
     assert distancias[0] == 0.0
-    assert distancias[-1] == 100.0
+    assert distancias[-1] == pytest.approx(100.0, abs=1e-6)
     gaps = [distancias[i] - distancias[i - 1] for i in range(1, len(distancias))]
     assert max(gaps) <= PASO_DENSIFICADO_M + 1e-6
+
+
+def test_distancias_sobre_l_shape_is_true_chainage_not_index_uniform() -> None:
+    from app.domains.geo.elevation_profile import distancias_sobre
+
+    linea = LineString([(0.0, 0.0), (30.0, 0.0), (30.0, 40.0)])
+    vertices = [(0.0, 0.0), (30.0, 0.0), (30.0, 40.0)]
+    distancias = distancias_sobre(linea, vertices)
+    assert distancias == pytest.approx([0.0, 30.0, 70.0])
 
 
 def test_ensamblar_profile_keeps_nodata_holes_and_ignores_them_in_extrema() -> None:
@@ -42,11 +51,26 @@ def test_ensamblar_profile_keeps_nodata_holes_and_ignores_them_in_extrema() -> N
         dem_nombre=NOMBRE_DEM_FILLED,
     )
     assert payload["puntos"][1]["elevation_m"] is None
+    assert "lon" not in payload["puntos"][0]
     assert payload["min_elevation_m"] == 110.0
     assert payload["max_elevation_m"] == 120.0
     assert payload["length_m"] == 30.0
     assert payload["source"] == NOMBRE_DEM_FILLED
     assert "30" in payload["disclaimer"]
+
+
+def test_ensamblar_profile_attaches_lon_lat_for_the_map_cursor() -> None:
+    from app.domains.geo.elevation_profile import ensamblar_perfil
+
+    payload = ensamblar_perfil(
+        distancias_m=[0.0, 15.0],
+        cotas=[120.0, 118.0],
+        dem_nombre=NOMBRE_DEM_FILLED,
+        longitudes=[-62.7, -62.71],
+        latitudes=[-32.6, -32.61],
+    )
+    assert payload["puntos"][0]["lon"] == pytest.approx(-62.7)
+    assert payload["puntos"][1]["lat"] == pytest.approx(-32.61)
 
 
 def test_ensamblar_profile_without_valid_samples_has_no_extrema() -> None:
