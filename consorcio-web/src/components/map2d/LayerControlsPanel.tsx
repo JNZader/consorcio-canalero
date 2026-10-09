@@ -698,6 +698,7 @@ export function LayerControlsPanel({
                 masterOn={relevadosMaster}
                 vectorVisibility={vectorVisibility}
                 onLayerVisibilityChange={onLayerVisibilityChange}
+                variant="explorer"
               />
               <CanalesLayerSection
                 side="propuestos"
@@ -706,6 +707,7 @@ export function LayerControlsPanel({
                 masterOn={propuestosMaster}
                 vectorVisibility={vectorVisibility}
                 onLayerVisibilityChange={onLayerVisibilityChange}
+                variant="explorer"
               />
               {/*
                 Etapas filter (Alta → Largo plazo) for propuestos lives in

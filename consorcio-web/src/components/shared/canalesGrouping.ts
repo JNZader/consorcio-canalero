@@ -19,12 +19,13 @@ import type { CanalMetadata, Etapa } from '../../types/canales';
  * with a master checkbox that toggles every child at once.
  */
 export type CanalToggleEntry =
-  | { kind: 'leaf'; id: string; label: string }
+  | { kind: 'leaf'; id: string; label: string; etapa?: Etapa | null }
   | {
       kind: 'group';
       folder: string;
       label: string;
-      children: { id: string; label: string }[];
+      etapa?: Etapa | null;
+      children: { id: string; label: string; etapa?: Etapa | null }[];
     };
 
 /**
@@ -51,7 +52,7 @@ export function groupCanalesByFolder(
   for (const r of rows) {
     const folder = r.tramo_folder ?? null;
     if (folder == null) {
-      out.push({ kind: 'leaf', id: keyOf(r.id), label: r.nombre });
+      out.push({ kind: 'leaf', id: keyOf(r.id), label: r.nombre, etapa: r.prioridad ?? null });
       continue;
     }
     if (emitted.has(folder)) continue;
@@ -62,6 +63,7 @@ export function groupCanalesByFolder(
         kind: 'leaf',
         id: keyOf(tramos[0]!.id),
         label: tramos[0]!.nombre,
+        etapa: tramos[0]!.prioridad ?? null,
       });
       continue;
     }
@@ -70,7 +72,11 @@ export function groupCanalesByFolder(
       kind: 'group',
       folder,
       label: baseLabel,
-      children: tramos.map((t) => ({ id: keyOf(t.id), label: t.nombre })),
+      children: tramos.map((t) => ({
+        id: keyOf(t.id),
+        label: t.nombre,
+        etapa: t.prioridad ?? null,
+      })),
     });
   }
   return out;
@@ -85,6 +91,30 @@ export function collectChildIds(entries: readonly CanalToggleEntry[] | undefined
     else for (const c of e.children) ids.push(c.id);
   }
   return ids;
+}
+
+export interface CanalExplorerRow {
+  id: string;
+  label: string;
+  etapa?: Etapa | null;
+}
+
+/** Flatten groups into explorer rows (one row per drawable canal). */
+export function flattenCanalEntries(
+  entries: readonly CanalToggleEntry[] | undefined
+): CanalExplorerRow[] {
+  if (!entries) return [];
+  const rows: CanalExplorerRow[] = [];
+  for (const entry of entries) {
+    if (entry.kind === 'leaf') {
+      rows.push({ id: entry.id, label: entry.label, etapa: entry.etapa });
+    } else {
+      for (const child of entry.children) {
+        rows.push({ id: child.id, label: child.label, etapa: child.etapa });
+      }
+    }
+  }
+  return rows;
 }
 
 /**

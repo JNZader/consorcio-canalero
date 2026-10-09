@@ -101,6 +101,7 @@ export { default as IconSortDescending } from '@tabler/icons-react/dist/esm/icon
 // Rainfall / cloud icons
 export { default as IconCloudRain } from '@tabler/icons-react/dist/esm/icons/IconCloudRain.mjs';
 export { default as IconEye } from '@tabler/icons-react/dist/esm/icons/IconEye.mjs';
+export { default as IconEyeOff } from '@tabler/icons-react/dist/esm/icons/IconEyeOff.mjs';
 export { default as IconChevronDown } from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
 export { default as IconChevronUp } from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
 export { default as IconCalculator } from '@tabler/icons-react/dist/esm/icons/IconCalculator.mjs';

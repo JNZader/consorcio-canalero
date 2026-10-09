@@ -21,10 +21,17 @@
  * hermanos siguen la variable: incoherente y, en tactil, sin objetivo de 44px.
  * Hoy la ponen `LayerControlsPanel` (2D) y `TerrainLayerTogglesPanel` (3D).
  */
-import { Checkbox, Stack, Tooltip } from '@mantine/core';
+import { ActionIcon, Checkbox, ScrollArea, Select, Stack, Text, TextInput, Tooltip } from '@mantine/core';
+import { useState } from 'react';
 
+import { ALL_ETAPAS } from '../../types/canales';
+import { IconEye, IconEyeOff } from '../ui/icons';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import { type CanalToggleEntry, computeBulkState } from './canalesGrouping';
+import {
+  type CanalToggleEntry,
+  computeBulkState,
+  flattenCanalEntries,
+} from './canalesGrouping';
 
 interface CanalesLayerSectionProps {
   side: 'relevados' | 'propuestos';
@@ -33,6 +40,8 @@ interface CanalesLayerSectionProps {
   masterOn: boolean;
   vectorVisibility: Record<string, boolean>;
   onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
+  /** UX PDF R5: filterable list instead of 60 checkboxes. 3D keeps checkboxes. */
+  variant?: 'checkboxes' | 'explorer';
 }
 
 function CanalLeafRow({
@@ -165,10 +174,14 @@ export function CanalesLayerSection({
   masterOn,
   vectorVisibility,
   onLayerVisibilityChange,
+  variant = 'checkboxes',
 }: CanalesLayerSectionProps) {
   const bulk = computeBulkState(entries, vectorVisibility);
   const masterLabel = bulk.allOn ? `Apagar todos los ${side}` : `Encender todos los ${side}`;
   if (!entries || entries.length === 0) return null;
+  const activateMaster = () => {
+    if (!masterOn) onLayerVisibilityChange(masterFlag, true);
+  };
   return (
     <Stack gap={4}>
       <Tooltip
@@ -190,13 +203,124 @@ export function CanalesLayerSection({
           }}
         />
       </Tooltip>
-      <Stack gap={2} pl="md">
-        {entries.map((entry) =>
-          renderCanalEntry(entry, vectorVisibility, onLayerVisibilityChange, () => {
-            if (!masterOn) onLayerVisibilityChange(masterFlag, true);
-          })
-        )}
-      </Stack>
+      {variant === 'explorer' ? (
+        <CanalExplorer
+          side={side}
+          entries={entries}
+          vectorVisibility={vectorVisibility}
+          onLayerVisibilityChange={onLayerVisibilityChange}
+          onChildActivated={activateMaster}
+        />
+      ) : (
+        <Stack gap={2} pl="md">
+          {entries.map((entry) =>
+            renderCanalEntry(entry, vectorVisibility, onLayerVisibilityChange, activateMaster)
+          )}
+        </Stack>
+      )}
     </Stack>
+  );
+}
+
+function CanalExplorer({
+  side,
+  entries,
+  vectorVisibility,
+  onLayerVisibilityChange,
+  onChildActivated,
+}: {
+  side: 'relevados' | 'propuestos';
+  entries: readonly CanalToggleEntry[];
+  vectorVisibility: Record<string, boolean>;
+  onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
+  onChildActivated: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [etapa, setEtapa] = useState<string | null>(null);
+  const folded = query.trim().toLowerCase();
+  const rows = flattenCanalEntries(entries).filter((row) => {
+    if (folded && !row.label.toLowerCase().includes(folded)) return false;
+    if (etapa && row.etapa !== etapa) return false;
+    return true;
+  });
+  const showEtapa = side === 'propuestos';
+  return (
+    <Stack gap={6} data-testid={`canal-explorer-${side}`}>
+      <TextInput
+        size="xs"
+        aria-label={`Filtrar canales ${side}`}
+        placeholder="Filtrar…"
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+      />
+      {showEtapa && (
+        <Select
+          size="xs"
+          aria-label="Filtrar por etapa"
+          placeholder="Todas las etapas"
+          clearable
+          value={etapa}
+          onChange={setEtapa}
+          data={[...ALL_ETAPAS]}
+        />
+      )}
+      <ScrollArea h={180} type="hover">
+        <Stack gap={2}>
+          {rows.map((row) => {
+            const visible = vectorVisibility[row.id] !== false;
+            return (
+              <GroupRow
+                key={row.id}
+                id={row.id}
+                label={row.label}
+                visible={visible}
+                onToggle={() => {
+                  const next = !visible;
+                  onLayerVisibilityChange(row.id, next);
+                  if (next) onChildActivated();
+                }}
+              />
+            );
+          })}
+          {rows.length === 0 && (
+            <Text size="xs" c="dimmed">
+              Sin canales.
+            </Text>
+          )}
+        </Stack>
+      </ScrollArea>
+    </Stack>
+  );
+}
+
+function GroupRow({
+  id,
+  label,
+  visible,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      data-testid={`canal-toggle-${id}`}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}
+    >
+      <Text size="xs" lineClamp={1} style={{ flex: 1 }}>
+        {label}
+      </Text>
+      <ActionIcon
+        size="sm"
+        variant="subtle"
+        color={visible ? 'gray' : 'red'}
+        aria-label={visible ? `Ocultar ${label}` : `Mostrar ${label}`}
+        onClick={onToggle}
+      >
+        {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
+      </ActionIcon>
+    </div>
   );
 }
