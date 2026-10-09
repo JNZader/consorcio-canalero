@@ -21,12 +21,27 @@ export function pickPrimaryTramo(features: readonly Feature[]): Feature | null {
   return null;
 }
 
+function geometryFingerprint(feature: Feature): string {
+  const geometry = feature.geometry;
+  if (geometry?.type === 'LineString' && geometry.coordinates.length >= 2) {
+    const start = geometry.coordinates[0];
+    const end = geometry.coordinates[geometry.coordinates.length - 1];
+    if (start && end) {
+      return `${start[0]},${start[1]}->${end[0]},${end[1]}:${geometry.coordinates.length}`;
+    }
+  }
+  return '';
+}
+
 export function selectionKey(feature: Feature): string {
   const withLayer = feature as FeatureWithLayer;
   const layer = withLayer.layer?.id ?? '';
   const props = (feature.properties ?? {}) as Record<string, unknown>;
-  const id = feature.id ?? props.id ?? props.osm_id ?? '';
-  return `${layer}::${String(id)}`;
+  const namedId = feature.id ?? props.id ?? props.osm_id;
+  if (namedId !== undefined && namedId !== null && String(namedId).length > 0) {
+    return `${layer}::${String(namedId)}`;
+  }
+  return `${layer}::${geometryFingerprint(feature)}`;
 }
 
 /** Ctrl/⌘-click: append unseen features, toggle off ones already selected. */

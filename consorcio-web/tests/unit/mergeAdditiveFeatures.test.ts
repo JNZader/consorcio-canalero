@@ -44,6 +44,35 @@ describe('mergeAdditiveFeatures', () => {
     const a = line('t1', 'canales-relevados');
     expect(mergeAdditiveFeatures([a], [])).toEqual([a]);
   });
+
+  it('keeps two T269-03 road pieces that share ruta but have no id', () => {
+    const layer = `${SOURCE_IDS.ROADS}-hit`;
+    const a: Feature<LineString> & { layer: { id: string } } = {
+      type: 'Feature',
+      layer: { id: layer },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.5, -32.58],
+          [-62.504, -32.58],
+        ],
+      },
+      properties: { ruta: 'T269-03', nombre: 'Camino Provincial T269-03' },
+    };
+    const b: Feature<LineString> & { layer: { id: string } } = {
+      type: 'Feature',
+      layer: { id: layer },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.504, -32.58],
+          [-62.496, -32.55],
+        ],
+      },
+      properties: { ruta: 'T269-03', nombre: 'Camino Provincial T269-03' },
+    };
+    expect(mergeAdditiveFeatures([a], [b])).toHaveLength(2);
+  });
 });
 
 describe('pickPrimaryTramo', () => {
