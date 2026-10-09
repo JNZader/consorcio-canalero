@@ -18,7 +18,6 @@ import {
   LayerControlsPanel,
   type LayerFineControl,
 } from './LayerControlsPanel';
-import { LeyendaPanel } from './LeyendaPanel';
 import { MapActionsPanel } from './MapActionsPanel';
 import { RoadFlowDisclaimerChip } from './RoadFlowDisclaimer';
 import { RoadFlowPanel } from './RoadFlowPanel';
@@ -571,27 +570,24 @@ export const MapUiPanels = memo(function MapUiPanels({
             layerFineControl={layerFineControl}
             layerHealth={layerHealth}
             layerProvenance={layerProvenance}
+            legendPanelProps={
+              showLegend
+                ? {
+                    consorcios,
+                    customItems: activeLegendItems,
+                    pilarVerdeBpaHistoricoVisible: !!vectorVisibility.pilar_verde_bpa_historico,
+                    pilarVerdeAgroAceptadaVisible: !!vectorVisibility.pilar_verde_agro_aceptada,
+                    pilarVerdeAgroPresentadaVisible: !!vectorVisibility.pilar_verde_agro_presentada,
+                    pilarVerdeAgroZonasVisible: !!vectorVisibility.pilar_verde_agro_zonas,
+                    pilarVerdePorcentajeForestacionVisible:
+                      !!vectorVisibility.pilar_verde_porcentaje_forestacion,
+                    pilarAzulCanalesRelevadosVisible: !!vectorVisibility.canales_relevados,
+                    pilarAzulCanalesPropuestosVisible: !!vectorVisibility.canales_propuestos,
+                    pilarAzulEscuelasVisible: !!vectorVisibility.escuelas,
+                  }
+                : undefined
+            }
           />
-          {showLegend && (
-            <LeyendaPanel
-              consorcios={consorcios}
-              customItems={activeLegendItems}
-              embedded
-              width={260}
-              data-testid="map-2d-leyenda-panel"
-              style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}
-              pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-              pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-              pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-              pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-              pilarVerdePorcentajeForestacionVisible={
-                !!vectorVisibility.pilar_verde_porcentaje_forestacion
-              }
-              pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
-              pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
-              pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
-            />
-          )}
         </Box>
       )}
 

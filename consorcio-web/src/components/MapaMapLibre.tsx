@@ -59,7 +59,7 @@ import { RasterLegend } from './RasterLegend';
 import DrawControl, { type DrawControlHandle } from './map/DrawControl';
 import { HazardMapControls } from './map2d/HazardMapControls';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
-import { LeyendaPanel } from './map2d/LeyendaPanel';
+
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
@@ -1365,30 +1365,31 @@ export default function MapaMapLibre() {
               pilarVerdeLayersError={pilarVerdeLayersError}
               layerHealth={layerHealth}
               layerProvenance={layerProvenance}
+              legendPanelProps={
+                showLegend
+                  ? {
+                      consorcios: vectorVisibility.roads && !!roadsCollection ? consorcios : [],
+                      customItems: activeLegendItems,
+                      pilarVerdeBpaHistoricoVisible: !!vectorVisibility.pilar_verde_bpa_historico,
+                      pilarVerdeAgroAceptadaVisible: !!vectorVisibility.pilar_verde_agro_aceptada,
+                      pilarVerdeAgroPresentadaVisible:
+                        !!vectorVisibility.pilar_verde_agro_presentada,
+                      pilarVerdeAgroZonasVisible: !!vectorVisibility.pilar_verde_agro_zonas,
+                      pilarVerdePorcentajeForestacionVisible:
+                        !!vectorVisibility.pilar_verde_porcentaje_forestacion,
+                      pilarAzulCanalesRelevadosVisible: !!vectorVisibility.canales_relevados,
+                      pilarAzulCanalesPropuestosVisible: !!vectorVisibility.canales_propuestos,
+                      pilarAzulEscuelasVisible: !!vectorVisibility.escuelas,
+                      hazardPrecipitationRange: hazard.precipitationRange,
+                      hazardLegend,
+                      propuestasEtapasVisibility,
+                      onSetEtapaVisible: setEtapaVisible,
+                    }
+                  : undefined
+              }
             />
             {showLegend && (
               <>
-                <LeyendaPanel
-                  consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
-                  customItems={activeLegendItems}
-                  embedded
-                  insideScrollContainer
-                  data-testid="map-2d-external-leyenda-panel"
-                  pilarVerdeBpaHistoricoVisible={!!vectorVisibility.pilar_verde_bpa_historico}
-                  pilarVerdeAgroAceptadaVisible={!!vectorVisibility.pilar_verde_agro_aceptada}
-                  pilarVerdeAgroPresentadaVisible={!!vectorVisibility.pilar_verde_agro_presentada}
-                  pilarVerdeAgroZonasVisible={!!vectorVisibility.pilar_verde_agro_zonas}
-                  pilarVerdePorcentajeForestacionVisible={
-                    !!vectorVisibility.pilar_verde_porcentaje_forestacion
-                  }
-                  pilarAzulCanalesRelevadosVisible={!!vectorVisibility.canales_relevados}
-                  pilarAzulCanalesPropuestosVisible={!!vectorVisibility.canales_propuestos}
-                  pilarAzulEscuelasVisible={!!vectorVisibility.escuelas}
-                  hazardPrecipitationRange={hazard.precipitationRange}
-                  hazardLegend={hazardLegend}
-                  propuestasEtapasVisibility={propuestasEtapasVisibility}
-                  onSetEtapaVisible={setEtapaVisible}
-                />
                 {visibleRasterLayers.length > 0 && (
                   <RasterLegend
                     layers={visibleRasterLayers}

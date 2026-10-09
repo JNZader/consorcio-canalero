@@ -1,10 +1,12 @@
 import { ActionIcon, Button, Group, Stack, Text } from '@mantine/core';
+import type { ReactNode } from 'react';
 
 import { IconX } from '../ui/icons';
 
 export interface ActiveLayerRow {
   id: string;
   label: string;
+  legend?: ReactNode;
 }
 
 interface ActiveLayersSectionProps {
@@ -53,21 +55,24 @@ export function ActiveLayersSection({
       ) : (
         <Stack gap={2}>
           {rows.map((row) => (
-            <Group key={row.id} justify="space-between" wrap="nowrap" gap={6}>
-              <Text size="xs" lineClamp={1} style={{ flex: 1 }}>
-                {row.label}
-              </Text>
-              <ActionIcon
-                size="sm"
-                variant="subtle"
-                color="gray"
-                aria-label={`Quitar ${row.label}`}
-                data-testid={`map-active-remove-${row.id}`}
-                onClick={() => onRemove(row.id)}
-              >
-                <IconX size={12} />
-              </ActionIcon>
-            </Group>
+            <Stack key={row.id} gap={2}>
+              <Group justify="space-between" wrap="nowrap" gap={6}>
+                <Text size="xs" lineClamp={1} style={{ flex: 1 }}>
+                  {row.label}
+                </Text>
+                <ActionIcon
+                  size="sm"
+                  variant="subtle"
+                  color="gray"
+                  aria-label={`Quitar ${row.label}`}
+                  data-testid={`map-active-remove-${row.id}`}
+                  onClick={() => onRemove(row.id)}
+                >
+                  <IconX size={12} />
+                </ActionIcon>
+              </Group>
+              {row.legend ? <Stack gap={2} pl="xs">{row.legend}</Stack> : null}
+            </Stack>
           ))}
         </Stack>
       )}

@@ -18,6 +18,7 @@ interface LegendItem {
   color: string;
   label: string;
   type: string;
+  layerId?: string;
 }
 
 function LegendItemIndicator({ item }: { item: LegendItem }) {
@@ -220,7 +221,7 @@ const PROPUESTOS_LEGEND_ROWS: ReadonlyArray<{ etapa: Etapa; color: string }> = A
   }
 );
 
-interface LeyendaPanelProps {
+export interface LeyendaPanelProps {
   readonly consorcios?: ConsorcioInfo[];
   readonly customItems?: LegendItem[];
   readonly floating?: boolean;
@@ -316,6 +317,8 @@ interface LeyendaPanelProps {
   readonly hazardPrecipitationRange?: PrecipitationRange | null;
   /** Hazard URL risk-class chips, hidden-class indicator, and selected-basin label. */
   readonly hazardLegend?: HazardLegendView | null;
+  /** When set, render only that layer's blocks (no "Leyenda" chrome). */
+  readonly onlyForLayerId?: string;
 }
 
 export const LeyendaPanel = memo(function LeyendaPanel({
@@ -339,11 +342,14 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   hazardLegend = null,
   propuestasEtapasVisibility,
   onSetEtapaVisible,
+  onlyForLayerId,
 }: LeyendaPanelProps) {
   const [showConsorcios, setShowConsorcios] = useState(false);
+  const match = (layerId: string) => !onlyForLayerId || onlyForLayerId === layerId;
 
-  const legendItems =
-    customItems.length > 0
+  const legendItems = onlyForLayerId
+    ? customItems.filter((item) => item.layerId === onlyForLayerId)
+    : customItems.length > 0
       ? customItems
       : [{ color: '#FF0000', label: 'Zona Consorcio', type: 'border' }];
 
@@ -374,24 +380,16 @@ export const LeyendaPanel = memo(function LeyendaPanel({
         ...(width !== undefined ? { width } : {}),
       };
 
-  return (
-    <Paper
-      shadow="md"
-      p="sm"
-      radius="md"
-      className={useLegendPanelClass ? styles.legendPanel : undefined}
-      data-testid={dataTestId}
-      style={{ ...baseStyle, ...(styleOverride ?? {}) }}
-    >
-      <CollapsibleSection title="Leyenda" testId="leyenda" titleSize="sm" titleWeight={600}>
-        <Stack gap={4}>
+  const body = (
+        <Stack gap={4} data-testid={onlyForLayerId ? `layer-inline-legend-${onlyForLayerId}` : undefined}>
+
           {legendItems.map((item) => (
             <Group key={item.label} gap="xs">
               <LegendItemIndicator item={item} />
               <Text size="xs">{item.label}</Text>
             </Group>
           ))}
-          {consorcios.length > 0 && (
+          {consorcios.length > 0 && match('roads') && (
             <>
               <Divider my={4} />
               <Group
@@ -432,7 +430,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               )}
             </>
           )}
-          {hazardPrecipitationRange && (
+          {hazardPrecipitationRange && match('__hazard') && (
             <>
               <Divider my={4} />
               <Stack gap={2} data-testid="hazard-precipitation-legend">
@@ -458,7 +456,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               </Stack>
             </>
           )}
-          {hazardLegend && (
+          {hazardLegend && match('__hazard') && (
             <>
               <Divider my={4} />
               <Text size="xs" c="dimmed" fw={500}>
@@ -508,7 +506,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               )}
             </>
           )}
-          {pilarVerdeBpaHistoricoVisible && (
+          {pilarVerdeBpaHistoricoVisible && match('pilar_verde_bpa_historico') && (
             <>
               <Divider my={4} />
               <Text size="xs" c="dimmed" fw={500}>
@@ -544,21 +542,21 @@ export const LeyendaPanel = memo(function LeyendaPanel({
             3. agro_zonas          (cyan — zonas agroforestales)
             4. porcentaje_forestacion (violet — mandatory 2-5%)
         */}
-          {pilarVerdeAgroAceptadaVisible && (
+          {pilarVerdeAgroAceptadaVisible && match('pilar_verde_agro_aceptada') && (
             <SimpleColorLegendChip
               color={PILAR_VERDE_COLORS.agroAceptadaFill}
               label="Cumplen ley forestal"
               testId="pilar-verde-agro-aceptada-legend"
             />
           )}
-          {pilarVerdeAgroPresentadaVisible && (
+          {pilarVerdeAgroPresentadaVisible && match('pilar_verde_agro_presentada') && (
             <SimpleColorLegendChip
               color={PILAR_VERDE_COLORS.agroPresentadaFill}
               label="No cumplen ley forestal"
               testId="pilar-verde-agro-presentada-legend"
             />
           )}
-          {pilarVerdeAgroZonasVisible && (
+          {pilarVerdeAgroZonasVisible && match('pilar_verde_agro_zonas') && (
             <Stack gap={2} data-testid="pilar-verde-agro-zonas-legend">
               <Text fw={500} size="xs">
                 Zonas agroforestales
@@ -580,7 +578,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               />
             </Stack>
           )}
-          {pilarVerdePorcentajeForestacionVisible && (
+          {pilarVerdePorcentajeForestacionVisible && match('pilar_verde_porcentaje_forestacion') && (
             <Stack gap={2} data-testid="pilar-verde-porcentaje-forestacion-legend">
               <Text fw={500} size="xs">
                 Forestación obligatoria
@@ -605,7 +603,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           {(pilarAzulCanalesRelevadosVisible ||
             pilarAzulCanalesPropuestosVisible ||
             pilarAzulEscuelasVisible) && <Divider my={4} />}
-          {pilarAzulCanalesRelevadosVisible && (
+          {pilarAzulCanalesRelevadosVisible && match('canales_relevados') && (
             <Stack gap={2} data-testid="canales-relevados-legend">
               <Text fw={500} size="xs">
                 Canales Relevados
@@ -632,7 +630,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               />
             </Stack>
           )}
-          {pilarAzulCanalesPropuestosVisible && (
+          {pilarAzulCanalesPropuestosVisible && match('canales_propuestos') && (
             <Stack gap={2} data-testid="canales-propuestos-legend">
               <Text fw={500} size="xs">
                 Canales Propuestos
@@ -658,7 +656,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               )}
             </Stack>
           )}
-          {pilarAzulEscuelasVisible && (
+          {pilarAzulEscuelasVisible && match('escuelas') && (
             <Group gap="xs" wrap="nowrap" data-testid="escuelas-legend">
               {/*
               12×12 blue circle swatch — mirrors the MapLibre `circle` paint
@@ -691,6 +689,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           imported from `ypfEstacionBombeoLayer.ts` so the legend and the
           map paint stay in lock-step.
         */}
+          {!onlyForLayerId && (
           <Group gap="xs" wrap="nowrap" data-testid="ypf-estacion-bombeo-legend">
             <div
               data-testid="ypf-estacion-bombeo-legend-swatch"
@@ -707,7 +706,25 @@ export const LeyendaPanel = memo(function LeyendaPanel({
             />
             <Text size="xs">{YPF_ESTACION_BOMBEO_LABEL}</Text>
           </Group>
+          )}
         </Stack>
+  );
+
+  if (onlyForLayerId) {
+    return body;
+  }
+
+  return (
+    <Paper
+      shadow="md"
+      p="sm"
+      radius="md"
+      className={useLegendPanelClass ? styles.legendPanel : undefined}
+      data-testid={dataTestId}
+      style={{ ...baseStyle, ...(styleOverride ?? {}) }}
+    >
+      <CollapsibleSection title="Leyenda" testId="leyenda" titleSize="sm" titleWeight={600}>
+        {body}
       </CollapsibleSection>
     </Paper>
   );

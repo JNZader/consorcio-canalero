@@ -100,83 +100,55 @@ describe('<MapUiPanels /> — side-by-side top-left layout (2D)', () => {
     expect(style).toMatch(/flex-direction:\s*row/i);
   });
 
-  it('renders LayerControlsPanel FIRST (visually leftmost) and LeyendaPanel SECOND inside the top-left container', () => {
+  it('keeps LayerControlsPanel as the only child of the top-left stack (legends live in En el mapa)', () => {
     const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
 
     const wrapper = container.querySelector<HTMLElement>(
       '[data-testid="map-2d-top-left-panels"]',
     );
     expect(wrapper).not.toBeNull();
-
-    // Layer controls witness: "Capa base" heading.
-    // Legend witness: "Leyenda" heading.
-    const legendText = wrapper!.querySelector('*:nodeName')?.textContent;
-    // Use getByText within the wrapper — order-sensitive.
-    const allText = wrapper!.textContent ?? '';
-    const capasIdx = allText.indexOf('Capa base');
-    const legendIdx = allText.indexOf('Leyenda');
-    expect(capasIdx).toBeGreaterThanOrEqual(0);
-    expect(legendIdx).toBeGreaterThanOrEqual(0);
-    expect(capasIdx).toBeLessThan(legendIdx);
-    // Silence unused — keep a structural witness that DOM was read.
-    void legendText;
+    expect(wrapper!.querySelector('[data-testid="layer-controls-panel-scroll"]')).not.toBeNull();
+    expect(wrapper!.querySelector('[data-testid="map-2d-leyenda-panel"]')).toBeNull();
+    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
   });
 
-  it('renders LeyendaPanel in embedded mode (no .legendPanel absolute-positioning class)', () => {
+  it('bounds LayerControlsPanel with viewport-relative maxHeight + overflow-y: auto', () => {
     const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
 
-    const wrapper = container.querySelector<HTMLElement>(
-      '[data-testid="map-2d-top-left-panels"]',
-    );
-    expect(wrapper).not.toBeNull();
-
-    // The first child (Leyenda) must NOT carry any class containing
-    // `legendPanel` — that class applies `position:absolute; bottom; left`
-    // which would fight the outer flex container.
-    const papers = wrapper!.querySelectorAll<HTMLElement>('[class*="Paper"]');
-    const hasLegendPanelClass = Array.from(papers).some((el) =>
-      (el.className ?? '').includes('legendPanel'),
-    );
-    expect(hasLegendPanelClass).toBe(false);
-  });
-
-  it('bounds each panel with an inline viewport-relative maxHeight + overflow-y: auto', () => {
-    const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
-
-    const wrapper = container.querySelector<HTMLElement>(
-      '[data-testid="map-2d-top-left-panels"]',
-    );
-    expect(wrapper).not.toBeNull();
-
-    // LayerControlsPanel inner wrapper already carries data-testid.
-    const layerWrapper = wrapper!.querySelector<HTMLElement>(
+    const layerWrapper = container.querySelector<HTMLElement>(
       '[data-testid="layer-controls-panel-scroll"]',
     );
     expect(layerWrapper).not.toBeNull();
     expect(layerWrapper!.style.maxHeight).toMatch(/vh/);
     expect(layerWrapper!.style.overflowY).toBe('auto');
+  });
 
-    // LeyendaPanel embedded Paper must also carry bounded max-height +
-    // internal scroll (inline style, not via the removed CSS class).
-    const legendPanel = wrapper!.querySelector<HTMLElement>(
-      '[data-testid="map-2d-leyenda-panel"]',
+  it('inlines the layer legend under an active row when showLegend is true', () => {
+    renderWithMantine(
+      <MapUiPanels
+        {...buildProps({
+          vectorVisibility: { roads: true },
+          consorcios: [
+            {
+              nombre: 'C.C. 269',
+              codigo: 'CC269',
+              color: '#f00',
+              tramos: 1,
+              longitud_km: 10,
+            },
+          ],
+        })}
+      />,
     );
-    expect(legendPanel).not.toBeNull();
-    const legendStyle = legendPanel!.getAttribute('style') ?? '';
-    expect(legendStyle).toMatch(/max-height/i);
-    expect(legendStyle).toMatch(/overflow-y:\s*auto/i);
-  });
-
-  it('still renders the Leyenda when showLegend is true (smoke)', () => {
-    renderWithMantine(<MapUiPanels {...buildProps()} />);
-    expect(screen.getByText('Leyenda')).toBeInTheDocument();
-    expect(screen.getByText(/capa base/i)).toBeInTheDocument();
-  });
-
-  it('omits the Leyenda when showLegend is false', () => {
-    renderWithMantine(<MapUiPanels {...buildProps({ showLegend: false })} />);
+    expect(screen.getByTestId('layer-inline-legend-roads')).toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
-    // LayerControlsPanel still renders.
+  });
+
+  it('omits inline legends when showLegend is false', () => {
+    renderWithMantine(
+      <MapUiPanels {...buildProps({ showLegend: false, vectorVisibility: { roads: true } })} />,
+    );
+    expect(screen.queryByTestId('layer-inline-legend-roads')).not.toBeInTheDocument();
     expect(screen.getByText(/capa base/i)).toBeInTheDocument();
   });
 });
