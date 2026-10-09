@@ -34,12 +34,16 @@ function orientedCoordinates(previousEnd: Position, coords: Position[]): Positio
 /** Concatenate selected LineStrings in click order into one profile geometry. */
 export function mergeLineStringTramos(features: readonly Feature[]): LineString | null {
   const lines = features.filter((feature) => isLineString(feature.geometry));
-  if (lines.length === 0) {
+  const first = lines[0];
+  if (!first || !isLineString(first.geometry)) {
     return null;
   }
-  const coordinates: Position[] = [...(lines[0]?.geometry as LineString).coordinates];
+  const coordinates: Position[] = [...first.geometry.coordinates];
   for (const line of lines.slice(1)) {
-    const next = (line.geometry as LineString).coordinates;
+    if (!isLineString(line.geometry)) {
+      continue;
+    }
+    const next = line.geometry.coordinates;
     const previousEnd = coordinates[coordinates.length - 1];
     if (!previousEnd) {
       coordinates.push(...next);
