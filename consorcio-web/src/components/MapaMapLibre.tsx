@@ -101,6 +101,7 @@ import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapDragSignal } from './map2d/useMapDragSignal';
 import { useMapEscapeExit } from './map2d/useMapEscapeExit';
 import { useMapInitialization } from './map2d/useMapInitialization';
+import { useMapHoverTooltip } from './map2d/useMapHoverTooltip';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
@@ -672,6 +673,11 @@ export default function MapaMapLibre() {
     onClearParcelas: fichaInteraction.clearParcelas,
     onCanalResolved: fichaInteraction.resolveCanal,
     onPoiPlace: puntosInteres.onPoiPlace,
+  });
+  useMapHoverTooltip({
+    mapRef,
+    mapReady,
+    mode: puntosInteres.interactionMode,
   });
 
   // Ficha territorial fetch — owned by the container, threaded to MapUiPanels as
