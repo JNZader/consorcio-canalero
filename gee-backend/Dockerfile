@@ -298,14 +298,16 @@ RUN rm -rf \
 COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 
-# The 3.14 slim FROM layer ships setuptools 70.3.0 / urllib3 2.7.0 / msgpack
-# 1.1.2. Overlay rm does not hide them from Trivy comprehensive; still strip
-# them from the merged rootfs and reinstall the lock/pin versions.
-RUN rm -rf /usr/local/lib/python3.14/ensurepip \
-    && find /usr/local -type d \( -name 'setuptools-70*' -o -name 'urllib3-2.7*' -o -name 'msgpack-1.1*' \) -prune -exec rm -rf {} + \
-    && pip install --no-cache-dir --force-reinstall \
-        "urllib3==2.8.0" \
-        "msgpack==1.2.2"
+# python:3.14 slim vendors msgpack 1.1.2, urllib3 2.7.0 and setuptools 70.3.0
+# inside pip/_vendor (and ensurepip's pip wheel). Trivy python-pkg reports
+# those with FixedVersion. Production does not need pip; drop it after COPY.
+RUN rm -rf \
+    /usr/local/lib/python3.14/ensurepip \
+    /usr/local/lib/python3.14/site-packages/pip \
+    /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
+    /usr/local/bin/pip \
+    /usr/local/bin/pip3 \
+    /usr/local/bin/pip3.14
 
 # Create non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
