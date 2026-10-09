@@ -6,6 +6,8 @@ import statistics as _statistics
 from datetime import datetime as _datetime
 from typing import Any, Dict, List
 
+from app.domains.geo.caminos_km import deduped_network_km_by_ccn
+
 
 def build_consorcios_camineros(features: list[dict[str, Any]], safe_float) -> List[Dict[str, Any]]:
     consorcios_map: Dict[str, Dict[str, Any]] = {}
@@ -63,15 +65,16 @@ def build_colored_roads(
             "longitud_km": 0.0,
         }
 
+    km_by_ccn = deduped_network_km_by_ccn(features)
+    _ = safe_float  # kept for call-site compatibility; km no longer uses lzn
     for feature in features:
         props = feature.get("properties", {})
         ccn = props.get("ccn", "Sin consorcio")
         feature["properties"]["color"] = color_map.get(ccn, "#888888")
         stats_map[ccn]["tramos"] += 1
-        stats_map[ccn]["longitud_km"] += safe_float(props.get("lzn", 0))
 
     for ccn in stats_map:
-        stats_map[ccn]["longitud_km"] = round(stats_map[ccn]["longitud_km"], 2)
+        stats_map[ccn]["longitud_km"] = round(km_by_ccn.get(ccn, 0.0), 2)
 
     consorcios_lista = list(stats_map.values())
     consorcios_lista.sort(key=lambda x: x["nombre"])
