@@ -27,34 +27,27 @@ function formatNumber(n: number, opts: { decimals?: number } = {}): string {
   });
 }
 
-// Desglose de km por consorcio caminero (estatico — viene de la APRHI, no del geojson local)
-const KM_POR_CONSORCIO = [
-  { nombre: 'San Marcos Sud', codigo: 'CC269', km: 219 },
-  { nombre: 'Bell Ville', codigo: 'CC135', km: 136 },
-  { nombre: 'Col. Gral. Bustos', codigo: 'CC391', km: 123 },
-  { nombre: 'Noetinger', codigo: 'CC132', km: 72 },
-  { nombre: 'Cintra', codigo: 'CC065', km: 63 },
-  { nombre: 'Leones', codigo: 'CC027', km: 63 },
-  { nombre: 'Chilibroste', codigo: 'CC028', km: 41 },
-  { nombre: 'Morrison', codigo: 'CC055', km: 20 },
-  { nombre: 'Saira', codigo: 'CC077', km: 11 },
-];
-
-const KilometrosTooltip = (
-  <Stack gap={4}>
-    <Text size="xs" fw={600} mb={4}>
-      Km por Consorcio Caminero:
-    </Text>
-    {KM_POR_CONSORCIO.map((c) => (
-      <Group key={c.codigo} justify="space-between" gap="xl">
-        <Text size="xs">{c.nombre}</Text>
-        <Text size="xs" fw={600}>
-          {c.km} km
-        </Text>
-      </Group>
-    ))}
-  </Stack>
-);
+function CaminosTooltipContent({
+  rows,
+}: { rows: { nombre: string; codigo: string; km: number }[] }) {
+  return (
+    <Stack gap={4}>
+      <Text size="xs" fw={600} mb={4}>
+        Km por Consorcio Caminero:
+      </Text>
+      {rows.map((c) => (
+        <Group key={c.codigo} justify="space-between" gap="xl" wrap="nowrap">
+          <Text size="xs" lineClamp={1} style={{ maxWidth: 180 }}>
+            {c.nombre}
+          </Text>
+          <Text size="xs" fw={600}>
+            {formatNumber(c.km)} km
+          </Text>
+        </Group>
+      ))}
+    </Stack>
+  );
+}
 
 function CanalesTooltipContent({
   rows,
@@ -132,7 +125,7 @@ const FAQ_ITEMS: Array<{ q: string; a: string }> = [
   },
   {
     q: '¿De dónde salen los datos del mapa (cuencas, suelos, caminos)?',
-    a: 'Capas oficiales de la Provincia de Córdoba + APRHI (caminos) + datos catastrales del consorcio + imágenes satelitales de Google Earth Engine. Las cifras del banner (hectáreas, km) se calculan en tiempo real de los archivos geográficos.',
+    a: 'Capas oficiales de la Provincia de Córdoba + APRHI (caminos) + datos catastrales del consorcio + imágenes satelitales de Google Earth Engine. Los km de caminos del banner son la red única (geometría), no la suma del atributo lzn.',
   },
   {
     q: '¿Cómo se garantiza que el reporte llega al operador?',
@@ -164,9 +157,8 @@ const ABOUT_BULLETS: string[] = [
  * HomeContent - Contenido interno de la pagina de inicio.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  *
- * Stats (area, caminos km, canales km) are derived at runtime from the
- * shipped geojson assets via `useLandingStats`. Numbers update automatically
- * when the ETL regenerates the data files — no hardcoded values to drift.
+ * Stats (area, caminos km, canales km) come from `useLandingStats`.
+ * Caminos km follow the live GEE projection (unique geometry), not a static table.
  */
 export function HomeContent() {
   const stats = useLandingStats();
@@ -185,7 +177,7 @@ export function HomeContent() {
       value: stats.caminosKm == null ? '—' : formatNumber(stats.caminosKm),
       label: 'Kilometros',
       sublabel: 'Red de caminos rurales',
-      tooltip: KilometrosTooltip,
+      tooltip: <CaminosTooltipContent rows={stats.caminosByConsorcio} />,
     },
     {
       value: stats.canalesKm == null ? '—' : formatNumber(stats.canalesKm),

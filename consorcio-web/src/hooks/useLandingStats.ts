@@ -1,56 +1,18 @@
 /**
  * useLandingStats — runtime-computed stats for the landing page.
  *
- * Replaces the previously-hardcoded `STATS` array in `HomePage`. Data sources:
- *   - Area: `CONSORCIO_AREA_HA` constant (derived from `zona.geojson` 642-vertex
- *     polygon, 88_484 ha by geodesic area).
- *   - Caminos: `/capas/caminos.geojson` — sum of haversine length per LineString.
+ * Data sources:
+ *   - Area: `CONSORCIO_AREA_HA` (zona polygon, geodesic).
+ *   - Caminos: public GEE caminos projection (`metadata.total_km` + per-consorcio
+ *     rows). Same unique-geometry kilometres as the map legend — not Σ `lzn`
+ *     and not a haversine of `/capas/caminos.geojson`.
  *   - Canales: `useCanales().relevados.features` — sum of `longitud_m`.
- *
- * Static assets are cached forever (`staleTime: Infinity`) — they only change
- * when the ETL re-runs the geojson generation.
  */
-import { useQuery } from '@tanstack/react-query';
-import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson';
 import { useMemo } from 'react';
 
 import { CONSORCIO_AREA_HA } from '../constants';
+import { useCaminosColoreados } from './useCaminosColoreados';
 import { useCanales } from './useCanales';
-
-const EARTH_R = 6378137.0;
-
-function haversineMeters(a: number[], b: number[]): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const lat1 = toRad(a[1]!);
-  const lat2 = toRad(b[1]!);
-  const dLat = lat2 - lat1;
-  const dLon = toRad(b[0]! - a[0]!);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * EARTH_R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-function lineStringLength(coords: number[][]): number {
-  let total = 0;
-  for (let i = 0; i < coords.length - 1; i += 1) {
-    total += haversineMeters(coords[i]!, coords[i + 1]!);
-  }
-  return total;
-}
-
-function featureLength(feat: Feature<LineString | MultiLineString>): number {
-  const g = feat.geometry;
-  if (g.type === 'LineString') return lineStringLength(g.coordinates);
-  if (g.type === 'MultiLineString') {
-    return g.coordinates.reduce((acc, ls) => acc + lineStringLength(ls), 0);
-  }
-  return 0;
-}
-
-async function fetchCaminosCollection(): Promise<FeatureCollection<LineString | MultiLineString>> {
-  const res = await fetch('/capas/caminos.geojson');
-  if (!res.ok) throw new Error(`Failed to fetch caminos.geojson (${res.status})`);
-  return (await res.json()) as FeatureCollection<LineString | MultiLineString>;
-}
 
 export interface CanalGroupSummary {
   /** Display name (without "(tramo X de N)" suffix). */
@@ -62,29 +24,33 @@ export interface CanalGroupSummary {
   source_style: string | null;
 }
 
+export interface CaminosConsorcioSummary {
+  nombre: string;
+  codigo: string;
+  km: number;
+}
+
 export interface LandingStats {
   areaHa: number;
   caminosKm: number | null;
   canalesKm: number | null;
   /** Ordered (descending km) summary per canal/group for tooltip display. */
   canalesByGroup: CanalGroupSummary[];
+  /** Ordered (descending km) GEE caminos rows for the landing tooltip. */
+  caminosByConsorcio: CaminosConsorcioSummary[];
   isLoading: boolean;
 }
 
 export function useLandingStats(): LandingStats {
-  const caminos = useQuery({
-    queryKey: ['landing', 'caminos'] as const,
-    queryFn: fetchCaminosCollection,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-
+  const caminos = useCaminosColoreados();
   const { relevados, isLoading: canalesLoading } = useCanales();
 
-  const caminosKm = useMemo(() => {
-    if (!caminos.data) return null;
-    const m = caminos.data.features.reduce((acc, f) => acc + featureLength(f), 0);
-    return m / 1000;
-  }, [caminos.data]);
+  const caminosKm = caminos.metadata?.total_km ?? null;
+  const caminosByConsorcio = useMemo(() => {
+    return [...caminos.consorcios]
+      .map((c) => ({ nombre: c.nombre, codigo: c.codigo, km: c.longitud_km }))
+      .sort((a, b) => b.km - a.km);
+  }, [caminos.consorcios]);
 
   const { canalesKm, canalesByGroup } = useMemo(() => {
     if (!relevados) return { canalesKm: null, canalesByGroup: [] as CanalGroupSummary[] };
@@ -119,6 +85,7 @@ export function useLandingStats(): LandingStats {
     caminosKm,
     canalesKm,
     canalesByGroup,
-    isLoading: caminos.isLoading || canalesLoading,
+    caminosByConsorcio,
+    isLoading: caminos.loading || canalesLoading,
   };
 }

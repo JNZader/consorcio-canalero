@@ -92,26 +92,39 @@ describe('HomePage', () => {
         expect(screen.getByText('Canales existentes relevados')).toBeInTheDocument();
       });
 
-      it('should render computed km values when geojson data resolves', async () => {
+      it('should render GEE caminos km and tooltip, not the static lzn table', async () => {
         const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-          if (String(input).includes('caminos.geojson')) {
-            // 1° de longitud sobre el ecuador ≈ 111,32 km (haversine)
+          if (String(input).includes('/api/v2/public/map/gee/caminos')) {
             return new Response(
               JSON.stringify({
-                type: 'FeatureCollection',
-                features: [
-                  {
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: [
-                        [0, 0],
-                        [1, 0],
-                      ],
-                    },
+                status: 'available',
+                projection: 'caminos',
+                data: {
+                  type: 'FeatureCollection',
+                  features: [],
+                  metadata: {
+                    total_tramos: 2,
+                    total_consorcios: 2,
+                    total_km: 739.39,
                   },
-                ],
+                  consorcios: [
+                    {
+                      nombre: 'C.C. 269 - SAN MARCOS SUD',
+                      codigo: 'CC269',
+                      color: '#000',
+                      tramos: 99,
+                      longitud_km: 205.2,
+                    },
+                    {
+                      nombre: 'C.C. 135 - BELL VILLE',
+                      codigo: 'CC135',
+                      color: '#111',
+                      tramos: 47,
+                      longitud_km: 134.31,
+                    },
+                  ],
+                },
+                reason: null,
               }),
               { status: 200, headers: { 'Content-Type': 'application/json' } }
             );
@@ -155,13 +168,19 @@ describe('HomePage', () => {
             },
           ],
         };
+        const user = userEvent.setup();
         try {
           renderWithMantine(<HomeContent />);
-          // caminos: 111,32 km → es-AR 0 decimales → '111'
-          await waitFor(() => expect(screen.getByText('111')).toBeInTheDocument());
+          // caminos: metadata.total_km 739.39 → es-AR 0 decimales → '739'
+          await waitFor(() => expect(screen.getByText('739')).toBeInTheDocument());
           // canales: 4000 m + 2600 m = 6,6 km → '7'
           expect(screen.getByText('7')).toBeInTheDocument();
           expect(screen.queryByText('—')).not.toBeInTheDocument();
+
+          await user.hover(screen.getByText('Red de caminos rurales'));
+          expect(await screen.findByText('C.C. 269 - SAN MARCOS SUD')).toBeInTheDocument();
+          expect(screen.getByText('205 km')).toBeInTheDocument();
+          expect(screen.queryByText('219 km')).not.toBeInTheDocument();
         } finally {
           fetchSpy.mockRestore();
           canalesResultMock.relevados = null;
