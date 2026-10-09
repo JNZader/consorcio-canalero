@@ -9,7 +9,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -60,8 +60,11 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={makeFineControl({ opacityByLayer: { soil: 0.5 } })}
       />
     );
+    const familyBtn = screen.getByRole('button', { name: /territorio/i, expanded: false });
+    fireEvent.click(familyBtn);
+    expect(familyBtn).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('layer-opacity-soil')).toBeInTheDocument();
-    const slider = screen.getByRole('slider', { name: /opacidad de suelos/i });
+    const slider = screen.getByRole('slider', { name: /opacidad de suelos/i, hidden: true });
     expect(slider).toHaveAttribute('aria-valuenow', '50');
   });
 
@@ -73,7 +76,8 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={makeFineControl()}
       />
     );
-    expect(screen.getByRole('slider', { name: /opacidad de suelos/i })).toHaveAttribute(
+    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    expect(screen.getByRole('slider', { name: /opacidad de suelos/i, hidden: true })).toHaveAttribute(
       'aria-valuenow',
       '100'
     );
@@ -88,7 +92,8 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={fineControl}
       />
     );
-    const slider = screen.getByRole('slider', { name: /opacidad de suelos/i });
+    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    const slider = screen.getByRole('slider', { name: /opacidad de suelos/i, hidden: true });
     // Keyboard is the reliable way to fire Mantine Slider onChange in jsdom
     // (@dnd-kit-style pointer drag is impractical). 50 → ArrowLeft → 49.
     fireEvent.keyDown(slider, { key: 'ArrowLeft' });
@@ -104,6 +109,7 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={fineControl}
       />
     );
+    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
     fireEvent.click(screen.getByTestId('layer-opacity-reset-soil'));
     expect(fineControl.onLayerOpacityChange).toHaveBeenCalledWith('soil', 1);
   });

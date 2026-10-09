@@ -107,16 +107,19 @@ describe('map2d extracted panels', () => {
 
     expect(screen.getByText('view-mode-slot')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /^base/i, expanded: false }));
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
 
+    await user.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
     await user.click(screen.getByLabelText(/red vial/i));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('roads', true);
 
     await user.click(screen.getByLabelText(/ign altimetría/i));
     expect(onShowIGNOverlayChange).toHaveBeenCalledWith(true);
 
-    await user.click(screen.getByRole('checkbox', { name: /^capa dem$/i }));
+    await user.click(screen.getByRole('button', { name: /análisis raster/i, expanded: false }));
+    await user.click(screen.getByRole('checkbox', { name: /todas las capas de análisis raster/i }));
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
 
     await user.click(screen.getByRole('button', { name: /exportar/i }));
@@ -240,11 +243,12 @@ describe('map2d extracted panels', () => {
       />
     );
 
-    expect(screen.getByText(/capa base/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^base/i, expanded: false })).toBeInTheDocument();
     expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /^base/i, expanded: false }));
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
 

@@ -81,12 +81,14 @@ describe('<LayerControlsPanel /> — raster search (T3c fix 2)', () => {
     search('riesgo');
 
     expect(screen.queryByTestId('layer-controls-raster')).toBeNull();
-    expect(screen.getByTestId('layer-controls-no-results')).toBeInTheDocument();
   });
 
-  it('does not render the raster section outside of a search', () => {
+  it('keeps the raster family collapsed outside of a search', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps()} />);
-    expect(screen.queryByTestId('layer-controls-raster')).toBeNull();
+    expect(screen.getByTestId('layer-controls-raster')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('radio', { name: 'Riesgo de Inundacion' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the gated hazard toggle and includes its mounted rasters in the base count', () => {
@@ -103,6 +105,7 @@ describe('<LayerControlsPanel /> — raster search (T3c fix 2)', () => {
       />
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /^base/i }));
     const hazardToggle = screen.getByLabelText('Visor de riesgos');
     expect(hazardToggle).toBeChecked();
     fireEvent.click(hazardToggle);
