@@ -91,19 +91,33 @@ export function pickPrimaryTramo(
 
 const ROAD_HIT_LAYER = `${SOURCE_IDS.ROADS}-hit`;
 
-/** All LineStrings in the roads catalog that share this hit's `ruta`. */
+/** Live GEE caminos use `rtn`; the static geojson used `ruta`. */
+export function roadRouteCode(properties: Record<string, unknown> | null | undefined): string | null {
+  if (!properties) {
+    return null;
+  }
+  for (const key of ['ruta', 'rtn'] as const) {
+    const value = properties[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+/** All LineStrings in the roads catalog that share this hit's route code. */
 export function expandTramoGroup(
   hit: Feature,
   roadsCatalog: readonly Feature[] = [],
 ): Feature[] {
   const layerId = (hit as FeatureWithLayer).layer?.id;
-  const ruta = (hit.properties as Record<string, unknown> | null)?.ruta;
-  if (layerId !== ROAD_HIT_LAYER || typeof ruta !== 'string' || ruta.trim().length === 0) {
+  const ruta = roadRouteCode(hit.properties as Record<string, unknown> | null);
+  if (layerId !== ROAD_HIT_LAYER || ruta === null) {
     return [hit];
   }
   const group = roadsCatalog.filter((feature) => {
     const props = (feature.properties ?? {}) as Record<string, unknown>;
-    return props.ruta === ruta && feature.geometry?.type === 'LineString';
+    return roadRouteCode(props) === ruta && feature.geometry?.type === 'LineString';
   });
   if (group.length === 0) {
     return [hit];
