@@ -11,14 +11,107 @@ export const TRAMO_LAYER_PRIORITY = [
   `${SOURCE_IDS.ROADS}-hit`,
 ] as const;
 
-export function pickPrimaryTramo(features: readonly Feature[]): Feature | null {
+function isTramoLayer(layerId: string | undefined): boolean {
+  return layerId !== undefined && (TRAMO_LAYER_PRIORITY as readonly string[]).includes(layerId);
+}
+
+function lineCoordinates(feature: Feature): number[][] {
+  const geometry = feature.geometry;
+  if (geometry?.type !== 'LineString') {
+    return [];
+  }
+  return geometry.coordinates;
+}
+
+function pointToSegmentDist2(
+  point: readonly [number, number],
+  start: number[],
+  end: number[],
+): number {
+  const vx = end[0] - start[0];
+  const vy = end[1] - start[1];
+  const wx = point[0] - start[0];
+  const wy = point[1] - start[1];
+  const c1 = vx * wx + vy * wy;
+  if (c1 <= 0) {
+    return wx * wx + wy * wy;
+  }
+  const c2 = vx * vx + vy * vy;
+  if (c2 <= c1) {
+    const dx = point[0] - end[0];
+    const dy = point[1] - end[1];
+    return dx * dx + dy * dy;
+  }
+  const t = c1 / c2;
+  const dx = point[0] - (start[0] + t * vx);
+  const dy = point[1] - (start[1] + t * vy);
+  return dx * dx + dy * dy;
+}
+
+function pointToLineDist2(point: readonly [number, number], feature: Feature): number {
+  const coords = lineCoordinates(feature);
+  if (coords.length < 2) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let min = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < coords.length - 1; index += 1) {
+    const start = coords[index];
+    const end = coords[index + 1];
+    if (!start || !end) {
+      continue;
+    }
+    min = Math.min(min, pointToSegmentDist2(point, start, end));
+  }
+  return min;
+}
+
+export function pickPrimaryTramo(
+  features: readonly Feature[],
+  at?: readonly [number, number],
+): Feature | null {
+  const candidates = features.filter((feature) =>
+    isTramoLayer((feature as FeatureWithLayer).layer?.id),
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+  if (at) {
+    return candidates.reduce((best, feature) =>
+      pointToLineDist2(at, feature) < pointToLineDist2(at, best) ? feature : best,
+    );
+  }
   for (const layerId of TRAMO_LAYER_PRIORITY) {
-    const hit = features.find((feature) => (feature as FeatureWithLayer).layer?.id === layerId);
+    const hit = candidates.find((feature) => (feature as FeatureWithLayer).layer?.id === layerId);
     if (hit) {
       return hit;
     }
   }
   return null;
+}
+
+const ROAD_HIT_LAYER = `${SOURCE_IDS.ROADS}-hit`;
+
+/** All LineStrings in the roads catalog that share this hit's `ruta`. */
+export function expandTramoGroup(
+  hit: Feature,
+  roadsCatalog: readonly Feature[] = [],
+): Feature[] {
+  const layerId = (hit as FeatureWithLayer).layer?.id;
+  const ruta = (hit.properties as Record<string, unknown> | null)?.ruta;
+  if (layerId !== ROAD_HIT_LAYER || typeof ruta !== 'string' || ruta.trim().length === 0) {
+    return [hit];
+  }
+  const group = roadsCatalog.filter((feature) => {
+    const props = (feature.properties ?? {}) as Record<string, unknown>;
+    return props.ruta === ruta && feature.geometry?.type === 'LineString';
+  });
+  if (group.length === 0) {
+    return [hit];
+  }
+  return group.map((feature) => ({
+    ...feature,
+    layer: { id: ROAD_HIT_LAYER },
+  }));
 }
 
 function geometryFingerprint(feature: Feature): string {

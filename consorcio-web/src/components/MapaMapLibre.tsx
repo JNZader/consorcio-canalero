@@ -654,6 +654,7 @@ export default function MapaMapLibre() {
     measurementMode: puntosInteres.interactionMode,
     setSelectedFeatures,
     selectedFeatures,
+    roadsFeatures: caminos?.features ?? [],
     onParcelaResolved: fichaInteraction.resolveParcela,
     // Mode transitions ALWAYS discard the selection, including with the sticky
     // touch mode on (where a null resolve means "you missed", not "clear").

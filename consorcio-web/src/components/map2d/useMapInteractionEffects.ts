@@ -2,7 +2,11 @@ import type { Feature } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
-import { mergeAdditiveFeatures, pickPrimaryTramo } from './mergeAdditiveFeatures';
+import {
+  expandTramoGroup,
+  mergeAdditiveFeatures,
+  pickPrimaryTramo,
+} from './mergeAdditiveFeatures';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
@@ -47,6 +51,8 @@ interface UseMapInteractionEffectsParams {
   setSelectedFeatures: (value: Feature[]) => void;
   /** Current InfoPanel stack. Used so Ctrl/⌘-click can accumulate tramos. */
   selectedFeatures?: readonly Feature[];
+  /** Public roads catalog — expands a `ruta` like T269-03 to every piece. */
+  roadsFeatures?: readonly Feature[];
   /**
    * Ficha territorial (A4). In the default `'idle'` mode a click that resolves
    * a `parcelas_catastro` feature ADDITIONALLY reports the parcel here so the
@@ -251,6 +257,7 @@ export function useMapInteractionEffects({
   onCanalResolved,
   onPoiPlace,
   selectedFeatures = [],
+  roadsFeatures = [],
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -329,14 +336,16 @@ export function useMapInteractionEffects({
       const original = event.originalEvent as MouseEvent | undefined;
       const additive = !!original && (original.ctrlKey || original.metaKey);
       const incoming = featuresForInfoPanel as unknown as Feature[];
-      const tramo = pickPrimaryTramo(incoming);
+      const at: [number, number] = [event.lngLat.lng, event.lngLat.lat];
+      const tramo = pickPrimaryTramo(incoming, at);
       if (tramo) {
-        // One canal/road per click. Ctrl/⌘ adds or toggles that tramo only —
-        // never the bbox soup (waterway + canal + road).
+        // Nearest canal/road to the click, not z-order (waterway/canal used to
+        // steal T269-03). A road `ruta` expands to every catalog piece.
+        const group = expandTramoGroup(tramo, roadsFeatures);
         setSelectedFeatures(
           additive
-            ? mergeAdditiveFeatures([...selectedFeatures], [tramo])
-            : [tramo],
+            ? mergeAdditiveFeatures([...selectedFeatures], group)
+            : group,
         );
       } else if (additive) {
         setSelectedFeatures([...selectedFeatures]);
@@ -370,6 +379,7 @@ export function useMapInteractionEffects({
     measurementMode,
     setSelectedFeatures,
     selectedFeatures,
+    roadsFeatures,
     onParcelaResolved,
     onClearParcelas,
     onCanalResolved,
