@@ -32,10 +32,10 @@ function formatM(value: number): string {
 
 export function ElevationProfileChart({
   geometry,
-  onHoverDistanceM,
+  onHoverLngLat,
 }: {
   geometry: Geometry | null | undefined;
-  onHoverDistanceM?: (distanceM: number | null) => void;
+  onHoverLngLat?: (point: { lon: number; lat: number } | null) => void;
 }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
@@ -63,6 +63,8 @@ export function ElevationProfileChart({
     profile?.puntos.map((p) => ({
       distance_m: p.distance_m,
       elevation_m: p.elevation_m,
+      lon: p.lon,
+      lat: p.lat,
     })) ?? [];
 
   return (
@@ -104,11 +106,20 @@ export function ElevationProfileChart({
                   data={chartRows}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   onMouseMove={(event) => {
-                    const label = event.activeLabel;
-                    const distanceM = typeof label === 'number' ? label : Number(label);
-                    onHoverDistanceM?.(Number.isFinite(distanceM) ? distanceM : null);
+                    const rawIndex = event.activeIndex;
+                    const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
+                    const row = Number.isInteger(index) ? chartRows[index] : undefined;
+                    if (
+                      row &&
+                      typeof row.lon === 'number' &&
+                      typeof row.lat === 'number'
+                    ) {
+                      onHoverLngLat?.({ lon: row.lon, lat: row.lat });
+                      return;
+                    }
+                    onHoverLngLat?.(null);
                   }}
-                  onMouseLeave={() => onHoverDistanceM?.(null)}
+                  onMouseLeave={() => onHoverLngLat?.(null)}
                 >
                   <XAxis dataKey="distance_m" tickFormatter={(v) => `${Math.round(Number(v))}`} />
                   <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `${Number(v).toFixed(0)}`} width={40} />
@@ -119,7 +130,7 @@ export function ElevationProfileChart({
                     labelFormatter={(label) => `${Math.round(Number(label))} m`}
                   />
                   <Line
-                    type="monotone"
+                    type="linear"
                     dataKey="elevation_m"
                     stroke="var(--mantine-color-blue-6)"
                     dot={false}

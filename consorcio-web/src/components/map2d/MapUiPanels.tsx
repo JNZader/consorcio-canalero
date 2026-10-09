@@ -1,6 +1,6 @@
 import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import type { Feature, LineString } from 'geojson';
+import type { Feature } from 'geojson';
 import { memo, useCallback, useState } from 'react';
 import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
@@ -125,7 +125,7 @@ export interface MapUiPanelsProps {
   readonly selectedFeatures: readonly Feature[];
   readonly onCloseInfoPanel: () => void;
   readonly onElevationProfileHover?: (
-    hover: { geometry: LineString; distanceM: number } | null,
+    hover: { lon: number; lat: number } | null,
   ) => void;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)

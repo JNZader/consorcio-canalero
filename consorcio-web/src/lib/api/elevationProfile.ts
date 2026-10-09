@@ -13,6 +13,8 @@ import { apiFetch } from './core';
 export type ElevationProfilePoint = {
   distance_m: number;
   elevation_m: number | null;
+  lon?: number;
+  lat?: number;
 };
 
 export type ElevationProfileResponse = {
