@@ -30,7 +30,13 @@ function formatM(value: number): string {
   return `${value.toFixed(1)} m`;
 }
 
-export function ElevationProfileChart({ geometry }: { geometry: Geometry | null | undefined }) {
+export function ElevationProfileChart({
+  geometry,
+  onHoverDistanceM,
+}: {
+  geometry: Geometry | null | undefined;
+  onHoverDistanceM?: (distanceM: number | null) => void;
+}) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +100,15 @@ export function ElevationProfileChart({ geometry }: { geometry: Geometry | null 
           {chartRows.some((row) => row.elevation_m != null) ? (
             <div data-testid="elevation-profile-chart" style={{ width: '100%', height: 160 }}>
               <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={chartRows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <LineChart
+                  data={chartRows}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  onMouseMove={(event) => {
+                    const distanceM = event.activePayload?.[0]?.payload?.distance_m;
+                    onHoverDistanceM?.(typeof distanceM === 'number' ? distanceM : null);
+                  }}
+                  onMouseLeave={() => onHoverDistanceM?.(null)}
+                >
                   <XAxis dataKey="distance_m" tickFormatter={(v) => `${Math.round(Number(v))}`} />
                   <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `${Number(v).toFixed(0)}`} width={40} />
                   <Tooltip

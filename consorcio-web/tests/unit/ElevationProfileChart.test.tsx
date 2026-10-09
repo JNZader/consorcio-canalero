@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LineString } from 'geojson';
 import type { ReactNode } from 'react';
@@ -11,6 +11,23 @@ vi.mock('recharts', async () => {
     ...actual,
     ResponsiveContainer: ({ children }: { children: ReactNode }) => (
       <div style={{ width: 320, height: 160 }}>{children}</div>
+    ),
+    LineChart: ({
+      children,
+      onMouseMove,
+      onMouseLeave,
+    }: {
+      children?: ReactNode;
+      onMouseMove?: (event: { activePayload?: Array<{ payload?: { distance_m?: number } }> }) => void;
+      onMouseLeave?: () => void;
+    }) => (
+      <div
+        data-testid="elevation-line-chart"
+        onMouseMove={() => onMouseMove?.({ activePayload: [{ payload: { distance_m: 15 } }] })}
+        onMouseLeave={() => onMouseLeave?.()}
+      >
+        {children}
+      </div>
     ),
   };
 });
@@ -60,6 +77,31 @@ describe('<ElevationProfileChart />', () => {
     expect(await screen.findByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
     expect(screen.getByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
     expect(screen.getByTestId('elevation-profile-chart')).toBeInTheDocument();
+  });
+
+  it('reports chart hover distance for the map cursor', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    const onHoverDistanceM = vi.fn();
+    const user = userEvent.setup();
+    renderWithMantine(
+      <ElevationProfileChart geometry={line} onHoverDistanceM={onHoverDistanceM} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    fireEvent.mouseMove(await screen.findByTestId('elevation-line-chart'));
+    expect(onHoverDistanceM).toHaveBeenCalledWith(15);
+    fireEvent.mouseLeave(screen.getByTestId('elevation-line-chart'));
+    expect(onHoverDistanceM).toHaveBeenCalledWith(null);
   });
 
   it('renders nothing for a Point', () => {
