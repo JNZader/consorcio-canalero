@@ -313,6 +313,11 @@ def _assert_non_publishing_image_gate(
             policy_role,
             workspace_rooted=workspace_rooted,
         )
+        if policy_role == "backend":
+            # python:3.14 slim leaves setuptools/urllib3/msgpack in the FROM
+            # layer. Trivy comprehensive still reports those after later RUN rm.
+            # precise = merged rootfs (what the image actually ships).
+            assert "TRIVY_DETECTION_PRIORITY: precise" in job
 
 
 def _assert_scanned_manifest_is_published(

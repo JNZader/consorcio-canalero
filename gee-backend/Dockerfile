@@ -298,24 +298,14 @@ RUN rm -rf \
 COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 
-# The 3.14 slim base leaves ensurepip wheels and un-overwritten dist-info
-# (setuptools 70.3.0, urllib3 2.7.0, msgpack 1.1.2). Trivy python-pkg reports
-# those with FixedVersion and the image policy refuses the report. Strip the
-# vulnerable versions after COPY so only the lock/pin remains.
-RUN python3 <<'PY'
-import pathlib
-import shutil
-
-prefixes = ("setuptools-70.", "urllib3-2.7.", "msgpack-1.1.")
-for path in pathlib.Path("/usr").rglob("*.dist-info"):
-    if not path.name.startswith(prefixes):
-        continue
-    shutil.rmtree(path, ignore_errors=True)
-    package = path.parent / path.name.split("-", 1)[0]
-    if package.exists():
-        shutil.rmtree(package, ignore_errors=True)
-shutil.rmtree("/usr/local/lib/python3.14/ensurepip", ignore_errors=True)
-PY
+# The 3.14 slim FROM layer ships setuptools 70.3.0 / urllib3 2.7.0 / msgpack
+# 1.1.2. Overlay rm does not hide them from Trivy comprehensive; still strip
+# them from the merged rootfs and reinstall the lock/pin versions.
+RUN rm -rf /usr/local/lib/python3.14/ensurepip \
+    && find /usr/local -type d \( -name 'setuptools-70*' -o -name 'urllib3-2.7*' -o -name 'msgpack-1.1*' \) -prune -exec rm -rf {} + \
+    && pip install --no-cache-dir --force-reinstall \
+        "urllib3==2.8.0" \
+        "msgpack==1.2.2"
 
 # Create non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
