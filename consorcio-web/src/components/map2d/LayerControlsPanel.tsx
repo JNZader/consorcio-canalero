@@ -10,8 +10,8 @@ import {
   Group,
   Loader,
   Paper,
+  Radio,
   SegmentedControl,
-  Select,
   Slider,
   Stack,
   Text,
@@ -38,6 +38,7 @@ import {
   IconRefresh,
   IconRoute,
   IconSearch,
+  IconSettings,
 } from '../ui/icons';
 import { ActiveLayersSection } from './ActiveLayersSection';
 import { LeyendaPanel, type LeyendaPanelProps } from './LeyendaPanel';
@@ -256,8 +257,12 @@ const BASE_SEARCH_LABELS = [
   'osm',
   'satélite',
   'ign altimetría',
-  'capa dem',
+  'visor de riesgos',
 ].map(normalizeSearchText);
+
+const AJUSTES_SEARCH_LABELS = ['ajustes', 'etiquetas', 'grosor', 'líneas'].map(
+  normalizeSearchText
+);
 
 /**
  * Filter canal entries by label for the search box (FF2). A `leaf` matches on
@@ -573,8 +578,8 @@ export function LayerControlsPanel({
     ? layerItems.filter((item) => normalizeSearchText(item.label).includes(normalizedQuery))
     : layerItems;
 
-  // FF-T3c: the raster/DEM options (riesgo hídrico, drenaje, terreno…) live in
-  // the Base > "Capa DEM" Select, so they were invisible to a search that only
+  // FF-T3c: raster/DEM options (riesgo hídrico, drenaje, terreno…) live in
+  // Análisis raster. Search still has to find them — they were invisible when
   // scanned `layerItems` — typing "riesgo" answered "Sin resultados" about a
   // layer the map can absolutely paint. They now get their own results section.
   const rasterSearchMatches =
@@ -638,66 +643,6 @@ export function LayerControlsPanel({
                   <Divider my={4} />
                 </>
               )}
-              <Text size="xs" fw={600} c="dimmed">
-                Tamaño de etiquetas
-              </Text>
-              <Group gap={6} wrap="nowrap" data-testid="map-label-size">
-                <Slider
-                  style={{ flex: 1 }}
-                  min={75}
-                  max={250}
-                  step={5}
-                  value={Math.round(layerFineControl.labelSizeScale * 100)}
-                  onChange={(value) => layerFineControl.onLabelSizeScaleChange(value / 100)}
-                  label={(value) => `${value}%`}
-                  thumbLabel="Tamaño de etiquetas del mapa"
-                />
-                <Text size="9px" c="dimmed" w={36} ta="right">
-                  {Math.round(layerFineControl.labelSizeScale * 100)}%
-                </Text>
-                <Tooltip label="Restablecer tamaño" withArrow>
-                  <ActionIcon
-                    variant="subtle"
-                    size="sm"
-                    color="gray"
-                    aria-label="Restablecer tamaño de etiquetas"
-                    data-testid="map-label-size-reset"
-                    onClick={() => layerFineControl.onLabelSizeScaleChange(1)}
-                  >
-                    <IconRefresh size={12} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-              <Text size="xs" fw={600} c="dimmed">
-                Grosor de líneas
-              </Text>
-              <Group gap={6} wrap="nowrap" data-testid="map-line-width">
-                <Slider
-                  style={{ flex: 1 }}
-                  min={75}
-                  max={250}
-                  step={5}
-                  value={Math.round(layerFineControl.lineWidthScale * 100)}
-                  onChange={(value) => layerFineControl.onLineWidthScaleChange(value / 100)}
-                  label={(value) => `${value}%`}
-                  thumbLabel="Grosor de líneas del mapa"
-                />
-                <Text size="9px" c="dimmed" w={36} ta="right">
-                  {Math.round(layerFineControl.lineWidthScale * 100)}%
-                </Text>
-                <Tooltip label="Restablecer grosor" withArrow>
-                  <ActionIcon
-                    variant="subtle"
-                    size="sm"
-                    color="gray"
-                    aria-label="Restablecer grosor de líneas"
-                    data-testid="map-line-width-reset"
-                    onClick={() => layerFineControl.onLineWidthScaleChange(1)}
-                  >
-                    <IconRefresh size={12} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
               <Checkbox
                 label="IGN Altimetría"
                 checked={showIGNOverlay}
@@ -711,25 +656,6 @@ export function LayerControlsPanel({
                     hazardLayerControl.onActiveChange(event.currentTarget.checked)
                   }
                 />
-              )}
-              {demEnabled && (
-                <>
-                  <Checkbox
-                    label="Capa DEM"
-                    checked={showDemOverlay}
-                    onChange={(event) => handleDemOverlayChange(event.currentTarget.checked)}
-                  />
-                  {showDemOverlay && (
-                    <Select
-                      size="xs"
-                      aria-label="Tipo de capa DEM"
-                      placeholder="Tipo de capa"
-                      value={activeDemLayerId}
-                      onChange={onActiveDemLayerIdChange}
-                      data={demOptions}
-                    />
-                  )}
-                </>
               )}
             </Stack>
           </Accordion.Panel>
@@ -822,8 +748,12 @@ export function LayerControlsPanel({
     const familyProvenance = layerProvenance?.[family.value] ?? null;
 
     accordionItems.push(
-      <Accordion.Item key={family.value} value={family.value}>
-        <Accordion.Control icon={<Icon size={16} />}>
+      <Accordion.Item
+        key={family.value}
+        value={family.value}
+        data-testid={`layer-family-${family.value}`}
+      >
+        <Accordion.Control icon={<Icon size={16} />} data-testid={`layer-family-${family.value}-control`}>
           <Group gap={6} wrap="nowrap" style={{ flex: 1 }}>
             <FamilyControlLabel label={family.label} count={familyActiveCount} />
             {showPilarVerdeSpinner && <Loader size={12} data-testid="pilar-verde-layers-loading" />}
@@ -831,6 +761,20 @@ export function LayerControlsPanel({
         </Accordion.Control>
         <Accordion.Panel>
           <Stack gap={4}>
+            {familyVisible.length > 0 && (
+              <Checkbox
+                aria-label={`Todas las capas de ${family.label}`}
+                label="Todas"
+                checked={familyActiveCount > 0 && familyActiveCount === familyVisible.length}
+                indeterminate={familyActiveCount > 0 && familyActiveCount < familyVisible.length}
+                onChange={(event) => {
+                  const next = event.currentTarget.checked;
+                  for (const item of familyVisible) {
+                    onLayerVisibilityChange(item.id, next);
+                  }
+                }}
+              />
+            )}
             {familyHealthRow && (
               <LayerHealthErrorRow
                 testId={familyHealthRow.testId}
@@ -886,32 +830,130 @@ export function LayerControlsPanel({
     );
   }
 
-  if (rasterSearchMatches.length > 0) {
+  const rasterQueryHit =
+    !isSearching ||
+    rasterSearchMatches.length > 0 ||
+    normalizeSearchText('análisis raster').includes(normalizedQuery) ||
+    normalizedQuery.includes('dem');
+  if (demEnabled && rasterQueryHit) {
+    const rasterOptions = isSearching && rasterSearchMatches.length > 0 ? rasterSearchMatches : demOptions;
     accordionItems.push(
-      <Accordion.Item key="raster-search" value="raster-search" data-testid="layer-controls-raster">
+      <Accordion.Item key="raster" value="raster" data-testid="layer-controls-raster">
         <Accordion.Control icon={<IconChartBar size={16} />}>
-          <FamilyControlLabel label="Capas raster" count={showDemOverlay ? 1 : 0} />
+          <Group gap={6} wrap="nowrap">
+            <Checkbox
+              aria-label="Todas las capas de Análisis raster"
+              checked={showDemOverlay}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                event.stopPropagation();
+                handleDemOverlayChange(event.currentTarget.checked);
+              }}
+            />
+            <FamilyControlLabel label="Análisis raster" count={showDemOverlay ? 1 : 0} />
+          </Group>
+        </Accordion.Control>
+        <Accordion.Panel>
+          <Radio.Group
+            aria-label="Tipo de capa raster"
+            value={showDemOverlay ? (activeDemLayerId ?? '') : ''}
+            onChange={(value) => {
+              if (!value) {
+                onShowDemOverlayChange(false);
+                return;
+              }
+              handleRasterSearchSelect(value);
+            }}
+          >
+            <Stack gap={4}>
+              {rasterOptions.map((option) => (
+                <Radio
+                  key={option.value}
+                  value={option.value}
+                  label={option.label}
+                  data-testid={`raster-search-option-${option.value}`}
+                />
+              ))}
+              <Text size="9px" c="dimmed">
+                Una capa raster por vez.
+              </Text>
+            </Stack>
+          </Radio.Group>
+        </Accordion.Panel>
+      </Accordion.Item>
+    );
+  }
+
+  const showAjustes =
+    !isSearching || AJUSTES_SEARCH_LABELS.some((label) => label.includes(normalizedQuery));
+  if (showAjustes) {
+    accordionItems.push(
+      <Accordion.Item key="ajustes" value="ajustes" data-testid="layer-controls-ajustes">
+        <Accordion.Control icon={<IconSettings size={16} />}>
+          <FamilyControlLabel label="Ajustes" count={0} />
         </Accordion.Control>
         <Accordion.Panel>
           <Stack gap={4}>
-            {rasterSearchMatches.map((option) => (
-              <Checkbox
-                key={option.value}
-                label={option.label}
-                data-testid={`raster-search-option-${option.value}`}
-                checked={showDemOverlay && activeDemLayerId === option.value}
-                onChange={(event) => {
-                  if (event.currentTarget.checked) {
-                    handleRasterSearchSelect(option.value);
-                  } else {
-                    onShowDemOverlayChange(false);
-                  }
-                }}
-              />
-            ))}
-            <Text size="9px" c="dimmed">
-              Se muestra una capa raster por vez (Base › Capa DEM).
+            <Text size="xs" fw={600} c="dimmed">
+              Tamaño de etiquetas
             </Text>
+            <Group gap={6} wrap="nowrap" data-testid="map-label-size">
+              <Slider
+                style={{ flex: 1 }}
+                min={75}
+                max={250}
+                step={5}
+                value={Math.round(layerFineControl.labelSizeScale * 100)}
+                onChange={(value) => layerFineControl.onLabelSizeScaleChange(value / 100)}
+                label={(value) => `${value}%`}
+                thumbLabel="Tamaño de etiquetas del mapa"
+              />
+              <Text size="9px" c="dimmed" w={36} ta="right">
+                {Math.round(layerFineControl.labelSizeScale * 100)}%
+              </Text>
+              <Tooltip label="Restablecer tamaño" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  aria-label="Restablecer tamaño de etiquetas"
+                  data-testid="map-label-size-reset"
+                  onClick={() => layerFineControl.onLabelSizeScaleChange(1)}
+                >
+                  <IconRefresh size={12} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <Text size="xs" fw={600} c="dimmed">
+              Grosor de líneas
+            </Text>
+            <Group gap={6} wrap="nowrap" data-testid="map-line-width">
+              <Slider
+                style={{ flex: 1 }}
+                min={75}
+                max={250}
+                step={5}
+                value={Math.round(layerFineControl.lineWidthScale * 100)}
+                onChange={(value) => layerFineControl.onLineWidthScaleChange(value / 100)}
+                label={(value) => `${value}%`}
+                thumbLabel="Grosor de líneas del mapa"
+              />
+              <Text size="9px" c="dimmed" w={36} ta="right">
+                {Math.round(layerFineControl.lineWidthScale * 100)}%
+              </Text>
+              <Tooltip label="Restablecer grosor" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  aria-label="Restablecer grosor de líneas"
+                  data-testid="map-line-width-reset"
+                  onClick={() => layerFineControl.onLineWidthScaleChange(1)}
+                >
+                  <IconRefresh size={12} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
           </Stack>
         </Accordion.Panel>
       </Accordion.Item>
@@ -1019,9 +1061,14 @@ export function LayerControlsPanel({
           />
           {accordionItems.length > 0 ? (
             <Accordion
+              key={isSearching ? 'search' : 'idle'}
               multiple
               chevronPosition="right"
-              defaultValue={[...LAYER_FAMILIES.map((family) => family.value), 'raster-search']}
+              defaultValue={
+                isSearching
+                  ? [...LAYER_FAMILIES.map((family) => family.value), 'raster', 'ajustes']
+                  : []
+              }
               styles={{ content: { padding: '8px' } }}
             >
               {accordionItems}
