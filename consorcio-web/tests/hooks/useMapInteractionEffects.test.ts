@@ -58,6 +58,53 @@ describe('useMapInteractionEffects', () => {
     expect(setSelectedFeatures).toHaveBeenCalledWith([selectedFeature]);
   });
 
+  it('accumulates tramos on Ctrl-click and toggles the same tramo off', () => {
+    const { map, handlers } = createMapMock();
+    const setSelectedFeatures = vi.fn();
+    const first: Feature = {
+      type: 'Feature',
+      id: 't1',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.7, -32.6],
+          [-62.71, -32.61],
+        ],
+      },
+      properties: { id: 't1' },
+    };
+    const second: Feature = {
+      type: 'Feature',
+      id: 't2',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.72, -32.62],
+          [-62.73, -32.63],
+        ],
+      },
+      properties: { id: 't2' },
+    };
+    map.queryRenderedFeatures.mockReturnValue([second]);
+
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as any,
+        mapReady: true,
+        measurementMode: 'idle',
+        setSelectedFeatures,
+        selectedFeatures: [first],
+      }),
+    );
+
+    handlers.get('click')?.[0]?.({
+      point: { x: 10, y: 10 },
+      lngLat: { lat: -32.6, lng: -62.6 },
+      originalEvent: { ctrlKey: true, metaKey: false },
+    });
+    expect(setSelectedFeatures.mock.calls.at(-1)?.[0].map((f: Feature) => f.id)).toEqual(['t1', 't2']);
+  });
+
   it('does not query/select underlying features while measurement mode is active', () => {
     const { map, handlers } = createMapMock();
     const setSelectedFeatures = vi.fn();

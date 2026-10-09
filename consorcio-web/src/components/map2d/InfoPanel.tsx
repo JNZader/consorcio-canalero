@@ -31,7 +31,7 @@
  */
 
 import { Badge, CloseButton, Divider, Group, Stack, Text, Title } from '@mantine/core';
-import type { Feature } from 'geojson';
+import type { Feature, LineString } from 'geojson';
 import { memo, useMemo } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
@@ -111,6 +111,10 @@ interface InfoPanelProps {
   readonly onDeletePuntoInteres?: (id: string) => void;
   /** Opaque selection marker — a change reopens the mobile sheet at `peek`. */
   readonly resetKey?: unknown;
+  /** Google Earth analog: chart hover chainage on the selected LineString. */
+  readonly onElevationProfileHover?: (
+    hover: { geometry: LineString; distanceM: number } | null,
+  ) => void;
 }
 
 /**
@@ -226,10 +230,14 @@ function FeatureSection({
   feature,
   bpaEnriched,
   onDeletePuntoInteres,
+  onElevationProfileHover,
 }: {
   readonly feature: Feature;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
   readonly onDeletePuntoInteres?: (id: string) => void;
+  readonly onElevationProfileHover?: (
+    hover: { geometry: LineString; distanceM: number } | null,
+  ) => void;
 }) {
   const withLayer = feature as FeatureWithLayer;
   const properties: Record<string, unknown> =
@@ -268,7 +276,19 @@ function FeatureSection({
     return (
       <div data-testid="info-panel-feature-section">
         <CanalCard properties={properties as unknown as CanalFeatureProperties} />
-        <ElevationProfileChart geometry={feature.geometry} />
+        <ElevationProfileChart
+          geometry={feature.geometry}
+          onHoverDistanceM={(distanceM) => {
+            if (!onElevationProfileHover) {
+              return;
+            }
+            if (distanceM == null || feature.geometry?.type !== 'LineString') {
+              onElevationProfileHover(null);
+              return;
+            }
+            onElevationProfileHover({ geometry: feature.geometry, distanceM });
+          }}
+        />
       </div>
     );
   }
@@ -302,7 +322,19 @@ function FeatureSection({
 
   return (
     <Stack gap={4} data-testid="info-panel-feature-section">
-      <ElevationProfileChart geometry={feature.geometry} />
+      <ElevationProfileChart
+        geometry={feature.geometry}
+        onHoverDistanceM={(distanceM) => {
+          if (!onElevationProfileHover) {
+            return;
+          }
+          if (distanceM == null || feature.geometry?.type !== 'LineString') {
+            onElevationProfileHover(null);
+            return;
+          }
+          onElevationProfileHover({ geometry: feature.geometry, distanceM });
+        }}
+      />
       {displayable.map(({ key, label, value, formatted }) => {
         // Pre-formatted array → render as a vertical bullet list under the
         // label (used for `member_basin_names` in the approved-zones panel).
@@ -351,6 +383,7 @@ export const InfoPanel = memo(function InfoPanel({
   onToggleMinimize,
   resetKey,
   onDeletePuntoInteres,
+  onElevationProfileHover,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -400,6 +433,7 @@ export const InfoPanel = memo(function InfoPanel({
               feature={feat}
               bpaEnriched={bpaEnriched}
               onDeletePuntoInteres={onDeletePuntoInteres}
+              onElevationProfileHover={onElevationProfileHover}
             />
           </div>
         ))}

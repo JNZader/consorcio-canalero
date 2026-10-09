@@ -10,7 +10,7 @@
  */
 
 import { Box, Stack } from '@mantine/core';
-import type { Feature, FeatureCollection } from 'geojson';
+import type { Feature, FeatureCollection, LineString } from 'geojson';
 
 import maplibregl from 'maplibre-gl';
 import { ALL_ETAPAS, type Etapa } from '../types/canales';
@@ -104,7 +104,9 @@ import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
 import { useRasterTileHealth } from './map2d/useRasterTileHealth';
+import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
 import { useReportHighlight } from './map2d/useReportHighlight';
+import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
 import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
@@ -176,6 +178,13 @@ export default function MapaMapLibre() {
   // Phase 8 — array instead of single feature so InfoPanel can stack all
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
+  const [elevationProfileHover, setElevationProfileHover] = useState<{
+    geometry: LineString;
+    distanceM: number;
+  } | null>(null);
+  useEffect(() => {
+    setElevationProfileHover(null);
+  }, [selectedFeatures]);
   // Ficha territorial free-draw handle (A5). `useFichaInteraction` (below) owns
   // all ficha interaction state; this ref lets the container kick off polygon
   // drawing imperatively once `DrawControl` mounts.
@@ -644,6 +653,7 @@ export default function MapaMapLibre() {
     mapReady,
     measurementMode: puntosInteres.interactionMode,
     setSelectedFeatures,
+    selectedFeatures,
     onParcelaResolved: fichaInteraction.resolveParcela,
     // Mode transitions ALWAYS discard the selection, including with the sticky
     // touch mode on (where a null resolve means "you missed", not "clear").
@@ -838,6 +848,16 @@ export default function MapaMapLibre() {
   // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
   // marker is auto-popped and the user can close it.
   useReportHighlight({ mapRef, mapReady });
+  useElevationProfileCursor({
+    mapRef,
+    mapReady,
+    hover: elevationProfileHover,
+  });
+  useSelectedLineHighlight({
+    mapRef,
+    mapReady,
+    features: selectedFeatures,
+  });
 
   const comparisonVisibleRelevadoIds = (canalesIndex?.relevados ?? [])
     .map((canal) => canal.id)
@@ -1198,7 +1218,11 @@ export default function MapaMapLibre() {
                 })
               }
               selectedFeatures={selectedFeatures}
-              onCloseInfoPanel={() => setSelectedFeatures([])}
+              onCloseInfoPanel={() => {
+                setSelectedFeatures([]);
+                setElevationProfileHover(null);
+              }}
+              onElevationProfileHover={setElevationProfileHover}
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}

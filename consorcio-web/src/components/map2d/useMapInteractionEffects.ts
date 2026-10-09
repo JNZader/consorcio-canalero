@@ -2,6 +2,7 @@ import type { Feature } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
 import { SOURCE_IDS } from './map2dConfig';
+import { mergeAdditiveFeatures } from './mergeAdditiveFeatures';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
@@ -44,6 +45,8 @@ interface UseMapInteractionEffectsParams {
    * them so InfoPanel can render one section per layer.
    */
   setSelectedFeatures: (value: Feature[]) => void;
+  /** Current InfoPanel stack. Used so Ctrl/⌘-click can accumulate tramos. */
+  selectedFeatures?: readonly Feature[];
   /**
    * Ficha territorial (A4). In the default `'idle'` mode a click that resolves
    * a `parcelas_catastro` feature ADDITIONALLY reports the parcel here so the
@@ -247,6 +250,7 @@ export function useMapInteractionEffects({
   onClearParcelas,
   onCanalResolved,
   onPoiPlace,
+  selectedFeatures = [],
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -319,7 +323,17 @@ export function useMapInteractionEffects({
       // Phase 8 — surface ALL overlapping features. MapLibre preserves the
       // on-screen z-order (top-most first) which matches the user-intuitive
       // "most specific first" ordering we want in the panel.
-      setSelectedFeatures(featuresForInfoPanel as unknown as Feature[]);
+      //
+      // Ctrl/⌘ accumulates (and toggles) the stack so several tramos can stay
+      // selected. A plain click still replaces. An additive miss keeps the stack.
+      const original = event.originalEvent as MouseEvent | undefined;
+      const additive = !!original && (original.ctrlKey || original.metaKey);
+      const incoming = featuresForInfoPanel as unknown as Feature[];
+      if (additive) {
+        setSelectedFeatures(mergeAdditiveFeatures([...selectedFeatures], incoming));
+      } else {
+        setSelectedFeatures(incoming);
+      }
 
       // A4 — a catastro click ADDITIONALLY fires the ficha (design §6.2). A
       // click that hit no parcel clears the current ficha so it does not linger
@@ -334,8 +348,6 @@ export function useMapInteractionEffects({
       // a discoverable shortcut for THIS gesture — the owner's rule is "se
       // esconde el botón, NO la capacidad". The modifier is read straight off the
       // DOM event and never consults the auth store; keep it that way.
-      const original = event.originalEvent as MouseEvent | undefined;
-      const additive = !!original && (original.ctrlKey || original.metaKey);
       onParcelaResolved?.(parcela, additive);
     };
 
@@ -348,6 +360,7 @@ export function useMapInteractionEffects({
     mapRef,
     measurementMode,
     setSelectedFeatures,
+    selectedFeatures,
     onParcelaResolved,
     onClearParcelas,
     onCanalResolved,

@@ -1,6 +1,6 @@
 import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import type { Feature } from 'geojson';
+import type { Feature, LineString } from 'geojson';
 import { memo, useCallback, useState } from 'react';
 import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
@@ -124,6 +124,9 @@ export interface MapUiPanelsProps {
    */
   readonly selectedFeatures: readonly Feature[];
   readonly onCloseInfoPanel: () => void;
+  readonly onElevationProfileHover?: (
+    hover: { geometry: LineString; distanceM: number } | null,
+  ) => void;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
    * and threads its state down here; `InfoPanel` stays pure. When
@@ -320,6 +323,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onRangeToggle,
   selectedFeatures,
   onCloseInfoPanel,
+  onElevationProfileHover,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -621,6 +625,7 @@ export const MapUiPanels = memo(function MapUiPanels({
           minimized={infoMinimized}
           onToggleMinimize={toggleInfoMinimized}
           resetKey={selectedFeatures}
+          onElevationProfileHover={onElevationProfileHover}
         />
       )}
 
