@@ -51,10 +51,14 @@ describe('<LayerControlsPanel /> — family accordion (2.2)', () => {
     expect(screen.getByRole('button', { name: /base/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /hidrografía/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /pilar verde/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /pilar verde/i, expanded: true }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /análisis/i })).toBeInTheDocument();
     // No canales items supplied → no Canales family.
-    expect(screen.queryByRole('button', { name: /canales/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /canales/i, expanded: true }),
+    ).not.toBeInTheDocument();
   });
 
   it('places each layer checkbox under its own family panel', () => {

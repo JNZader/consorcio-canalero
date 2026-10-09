@@ -39,6 +39,7 @@ import {
   IconRoute,
   IconSearch,
 } from '../ui/icons';
+import { MapPresetChips } from './MapPresetChips';
 import { LayerOrderSection } from './LayerOrderSection';
 import { getActiveAttributions } from './layerAttributions';
 import { buildHealthBannerText, type LayerHealth } from './layerHealth';
@@ -906,6 +907,8 @@ export function LayerControlsPanel({
       }}
     >
       {viewModePanel}
+
+      <MapPresetChips />
 
       <Paper
         shadow="md"

@@ -48,7 +48,10 @@ describe('<LayerControlsPanel /> — family accordion', () => {
     expect(screen.getByLabelText(/seleccionar capa base/i)).toBeInTheDocument();
     // Family controls render as accordion buttons.
     expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /pilar verde/i })).toBeInTheDocument();
+    expect(screen.getByTestId('map-preset-chips')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /pilar verde/i, expanded: true }),
+    ).toBeInTheDocument();
     // Checkboxes are visible because every family opens by default.
     expect(screen.getByLabelText('Catastro')).toBeInTheDocument();
     expect(screen.getByLabelText('BPA 2025')).toBeInTheDocument();
