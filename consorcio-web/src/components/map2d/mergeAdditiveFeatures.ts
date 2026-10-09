@@ -145,11 +145,14 @@ export function expandTramoGroup(
   if (group.length === 0) {
     return [hit];
   }
-  const stamped = group.map((feature) => ({
+  const stamped: FeatureWithLayer[] = group.map((feature) => ({
     ...feature,
     layer: { id: ROAD_HIT_LAYER },
   }));
-  const hitKey = selectionKey({ ...hit, layer: { id: ROAD_HIT_LAYER } });
+  const hitKey = selectionKey({
+    ...hit,
+    layer: { id: ROAD_HIT_LAYER },
+  } as FeatureWithLayer);
   const hitIndex = stamped.findIndex((feature) => selectionKey(feature) === hitKey);
   if (hitIndex > 0) {
     const seed = stamped[hitIndex];
