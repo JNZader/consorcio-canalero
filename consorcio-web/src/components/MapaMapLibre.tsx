@@ -64,6 +64,7 @@ import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
+import { useMapPermalink } from './map2d/useMapPermalink';
 import { PuntoInteresPlaceModal } from './map2d/PuntoInteresPlaceModal';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
 import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
@@ -420,6 +421,16 @@ export default function MapaMapLibre() {
     showPuntosInteres: roadFlow.showRoadFlow,
     showRedVialOficial: isStaff,
     showCaminosHuecos: isStaff,
+  });
+
+  useMapPermalink({
+    mapRef,
+    mapReady,
+    showDemOverlay,
+    activeDemLayerId,
+    setShowDemOverlay,
+    setActiveDemLayerId,
+    demLayers,
   });
 
   // Auto-activate comparison when comparison state changes
