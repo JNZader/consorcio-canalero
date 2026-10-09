@@ -85,4 +85,36 @@ describe('mergeLineStringTramos', () => {
       [2, 0],
     ]);
   });
+
+  it('does not traverse a duplicated piece with the same endpoints twice', () => {
+    const piece = line([
+      [0, 0],
+      [0.01, 0],
+    ]);
+    const merged = mergeLineStringTramos([piece, piece]);
+    expect(merged?.coordinates).toEqual([
+      [0, 0],
+      [0.01, 0],
+    ]);
+  });
+
+  it('follows the stem through a T, not both branches', () => {
+    const stemA = line([
+      [0, 0],
+      [0.02, 0],
+    ]);
+    const stemB = line([
+      [0.02, 0],
+      [0.04, 0],
+    ]);
+    const branch = line([
+      [0.02, 0],
+      [0.02, 0.005],
+    ]);
+    const merged = mergeLineStringTramos([stemA, stemB, branch]);
+    const lons = merged?.coordinates.map((c) => c[0]);
+    expect(lons?.[0]).toBe(0);
+    expect(lons?.[lons.length - 1]).toBe(0.04);
+    expect(merged?.coordinates.every((c) => c[1] === 0)).toBe(true);
+  });
 });

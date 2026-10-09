@@ -91,6 +91,29 @@ export function pickPrimaryTramo(
 
 const ROAD_HIT_LAYER = `${SOURCE_IDS.ROADS}-hit`;
 
+function geometryFingerprint(feature: Feature): string {
+  const geometry = feature.geometry;
+  if (geometry?.type === 'LineString' && geometry.coordinates.length >= 2) {
+    const start = geometry.coordinates[0];
+    const end = geometry.coordinates[geometry.coordinates.length - 1];
+    if (start && end) {
+      return `${start[0]},${start[1]}->${end[0]},${end[1]}:${geometry.coordinates.length}`;
+    }
+  }
+  return '';
+}
+
+export function selectionKey(feature: Feature): string {
+  const withLayer = feature as FeatureWithLayer;
+  const layer = withLayer.layer?.id ?? '';
+  const props = (feature.properties ?? {}) as Record<string, unknown>;
+  const namedId = feature.id ?? props.id ?? props.osm_id;
+  if (namedId !== undefined && namedId !== null && String(namedId).length > 0) {
+    return `${layer}::${String(namedId)}`;
+  }
+  return `${layer}::${geometryFingerprint(feature)}`;
+}
+
 /** Live GEE caminos use `rtn`; the static geojson used `ruta`. */
 export function roadRouteCode(properties: Record<string, unknown> | null | undefined): string | null {
   if (!properties) {
@@ -122,33 +145,20 @@ export function expandTramoGroup(
   if (group.length === 0) {
     return [hit];
   }
-  return group.map((feature) => ({
+  const stamped: FeatureWithLayer[] = group.map((feature) => ({
     ...feature,
     layer: { id: ROAD_HIT_LAYER },
   }));
-}
-
-function geometryFingerprint(feature: Feature): string {
-  const geometry = feature.geometry;
-  if (geometry?.type === 'LineString' && geometry.coordinates.length >= 2) {
-    const start = geometry.coordinates[0];
-    const end = geometry.coordinates[geometry.coordinates.length - 1];
-    if (start && end) {
-      return `${start[0]},${start[1]}->${end[0]},${end[1]}:${geometry.coordinates.length}`;
-    }
+  const hitKey = selectionKey({
+    ...hit,
+    layer: { id: ROAD_HIT_LAYER },
+  } as FeatureWithLayer);
+  const hitIndex = stamped.findIndex((feature) => selectionKey(feature) === hitKey);
+  if (hitIndex > 0) {
+    const seed = stamped[hitIndex];
+    return [seed, ...stamped.filter((_, index) => index !== hitIndex)];
   }
-  return '';
-}
-
-export function selectionKey(feature: Feature): string {
-  const withLayer = feature as FeatureWithLayer;
-  const layer = withLayer.layer?.id ?? '';
-  const props = (feature.properties ?? {}) as Record<string, unknown>;
-  const namedId = feature.id ?? props.id ?? props.osm_id;
-  if (namedId !== undefined && namedId !== null && String(namedId).length > 0) {
-    return `${layer}::${String(namedId)}`;
-  }
-  return `${layer}::${geometryFingerprint(feature)}`;
+  return stamped;
 }
 
 /** Ctrl/⌘-click: append unseen features, toggle off ones already selected. */
