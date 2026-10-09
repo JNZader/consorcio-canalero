@@ -2,8 +2,15 @@ import type { FeatureCollection } from 'geojson';
 import { getSoilColor } from '../../hooks/useSoilMap';
 import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 
+export type ActiveLegendItem = {
+  color: string;
+  label: string;
+  type: string;
+  layerId?: string;
+};
+
 function pushApprovedZoneLegendItems(
-  items: Array<{ color: string; label: string; type: string }>,
+  items: ActiveLegendItem[],
   approvedZones: FeatureCollection
 ) {
   for (const feature of approvedZones.features) {
@@ -11,14 +18,12 @@ function pushApprovedZoneLegendItems(
       color: (feature.properties?.__color as string | undefined) || '#1971c2',
       label: String(feature.properties?.nombre || 'Cuenca'),
       type: 'fill',
+      layerId: 'approved_zones',
     });
   }
 }
 
-function pushSoilLegendItems(
-  items: Array<{ color: string; label: string; type: string }>,
-  soilMap: FeatureCollection
-) {
+function pushSoilLegendItems(items: ActiveLegendItem[], soilMap: FeatureCollection) {
   const capOrder = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
   const presentCaps = new Set<string>();
   for (const feature of soilMap.features) {
@@ -34,18 +39,19 @@ function pushSoilLegendItems(
         color: getSoilColor(cap),
         label: `Clase ${cap}`,
         type: 'fill',
+        layerId: 'soil',
       });
     }
   }
 }
 
-function pushWaterwayLegendItems(items: Array<{ color: string; label: string; type: string }>) {
+function pushWaterwayLegendItems(items: ActiveLegendItem[]) {
   const waterwayEntries = WATERWAY_DEFS.map((waterway) => ({
     color: waterway.style.color,
     label: waterway.nombre,
   }));
   for (const entry of waterwayEntries) {
-    items.push({ ...entry, type: 'line' });
+    items.push({ ...entry, type: 'line', layerId: 'waterways' });
   }
 }
 
@@ -60,10 +66,10 @@ export function buildActiveLegendItems(params: {
   const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap } =
     params;
 
-  const items: Array<{ color: string; label: string; type: string }> = [];
+  const items: ActiveLegendItem[] = [];
 
   if (zonaCollection && zonaCollection.features.length > 0) {
-    items.push({ color: '#FF0000', label: 'Zona Consorcio', type: 'border' });
+    items.push({ color: '#FF0000', label: 'Zona Consorcio', type: 'border', layerId: 'zona' });
   }
 
   if (vectorVisibility.approved_zones && hasApprovedZones && approvedZones) {
@@ -75,6 +81,7 @@ export function buildActiveLegendItems(params: {
       color: '#00897B',
       label: 'Subcuencas operativas',
       type: 'border',
+      layerId: 'basins',
     });
   }
 

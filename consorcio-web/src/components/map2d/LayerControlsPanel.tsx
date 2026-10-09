@@ -40,6 +40,7 @@ import {
   IconSearch,
 } from '../ui/icons';
 import { ActiveLayersSection } from './ActiveLayersSection';
+import { LeyendaPanel, type LeyendaPanelProps } from './LeyendaPanel';
 import { MapPresetChips } from './MapPresetChips';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { LayerOrderSection } from './LayerOrderSection';
@@ -194,6 +195,11 @@ interface LayerControlsPanelProps {
    * families with a REAL `generated_at` appear — see `layerProvenance.ts`.
    */
   readonly layerProvenance?: Partial<Record<LayerCategory, string>>;
+  /** When set, each active row gets that layer's legend (UX PDF R2b). */
+  readonly legendPanelProps?: Omit<
+    LeyendaPanelProps,
+    'onlyForLayerId' | 'floating' | 'embedded' | 'insideScrollContainer'
+  >;
   /**
    * AUD-005 (T5) — set when an ANCESTOR already owns a scroll area (the
    * `MapWorkspace` sidebar body on desktop, the layers Drawer on mobile).
@@ -440,6 +446,7 @@ export function LayerControlsPanel({
   layerHealth,
   layerProvenance,
   insideScrollContainer = false,
+  legendPanelProps,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
@@ -518,10 +525,15 @@ export function LayerControlsPanel({
   const restoreCatalogDefaults = useMapLayerSyncStore((state) => state.restoreCatalogDefaults);
   const ignActiveId = '__ign';
   const demActiveId = '__dem';
+  const legendFor = (layerId: string) =>
+    legendPanelProps ? (
+      <LeyendaPanel {...legendPanelProps} onlyForLayerId={layerId} embedded />
+    ) : undefined;
+
   const activeLayerRows = [
     ...layerItems
       .filter((item) => vectorVisibility[item.id])
-      .map((item) => ({ id: item.id, label: item.label })),
+      .map((item) => ({ id: item.id, label: item.label, legend: legendFor(item.id) })),
     ...(showIGNOverlay ? [{ id: ignActiveId, label: 'IGN Altimetría' }] : []),
     ...(showDemOverlay
       ? [
@@ -529,8 +541,12 @@ export function LayerControlsPanel({
             id: demActiveId,
             label:
               demOptions.find((option) => option.value === activeDemLayerId)?.label ?? 'Capa DEM',
+            legend: legendFor(demActiveId),
           },
         ]
+      : []),
+    ...(hazardLayerControl?.active
+      ? [{ id: '__hazard', label: 'Visor de riesgos', legend: legendFor('__hazard') }]
       : []),
   ];
 
@@ -943,12 +959,17 @@ export function LayerControlsPanel({
             onShowDemOverlayChange(false);
             return;
           }
+          if (id === '__hazard') {
+            hazardLayerControl?.onActiveChange(false);
+            return;
+          }
           onLayerVisibilityChange(id, false);
         }}
         onClearAll={() => {
           hideAllCatalogLayers('map2d');
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
+          hazardLayerControl?.onActiveChange(false);
         }}
         onRestore={() => {
           restoreCatalogDefaults('map2d');

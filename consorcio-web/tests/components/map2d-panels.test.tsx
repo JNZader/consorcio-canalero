@@ -241,7 +241,8 @@ describe('map2d extracted panels', () => {
     );
 
     expect(screen.getByText(/capa base/i)).toBeInTheDocument();
-    expect(screen.getByText('Leyenda')).toBeInTheDocument();
+    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
