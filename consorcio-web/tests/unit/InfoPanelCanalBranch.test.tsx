@@ -119,6 +119,7 @@ describe('<InfoPanel /> — Canal detection branch', () => {
     expect(cards).toHaveLength(2);
     expect(screen.getByRole('heading', { name: 'Canal A' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Canal B' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('elevation-profile')).toHaveLength(1);
   });
 
   it('mixes canal + generic sections when stacked', () => {
