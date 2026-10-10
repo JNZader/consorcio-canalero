@@ -209,7 +209,7 @@ export function buildVectorLayerItems(params: {
     {
       id: 'roads',
       // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
-      label: 'Red Vial',
+      label: 'Red Vial (acercate para ver nombres)',
       category: LAYER_CATEGORY.TERRITORIO,
       show: !!roadsCollection && roadsCollection.features.length > 0,
     },
@@ -235,7 +235,7 @@ export function buildVectorLayerItems(params: {
     },
     {
       id: 'catastro',
-      label: 'Catastro rural IDECOR',
+      label: 'Catastro rural IDECOR (acercate para ver)',
       category: LAYER_CATEGORY.TERRITORIO,
       show: true,
     },
@@ -250,19 +250,19 @@ export function buildVectorLayerItems(params: {
       // (`LayerOrderSection.tsx:56`) — one name for one layer.
       id: 'road_flow',
       label: 'Cruces de camino',
-      category: LAYER_CATEGORY.ANALISIS,
+      category: LAYER_CATEGORY.TERRITORIO,
       show: showRoadFlow,
     },
     {
       id: 'sentido_camino',
       label: 'Sentido en camino',
-      category: LAYER_CATEGORY.ANALISIS,
+      category: LAYER_CATEGORY.TERRITORIO,
       show: showRoadFlow,
     },
     {
       id: 'puntos_interes',
       label: 'Puntos de interés',
-      category: LAYER_CATEGORY.ANALISIS,
+      category: LAYER_CATEGORY.TERRITORIO,
       show: showPuntosInteres,
     },
     // ── Pilar Verde (Phase 2/7) — Spanish (Rioplatense) labels per spec ──

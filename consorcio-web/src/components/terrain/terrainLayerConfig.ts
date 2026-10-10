@@ -37,10 +37,10 @@ export const SUPPORTED_3D_RASTER_TYPES: Terrain3DRasterLayerConfig[] = [
 export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'approved_zones', label: 'Cuencas', status: 'supported' },
   { id: 'basins', label: 'Subcuencas', status: 'supported' },
-  { id: 'roads', label: 'Red Vial', status: 'supported' },
+  { id: 'roads', label: 'Red Vial (acercate para ver nombres)', status: 'supported' },
   { id: 'waterways', label: 'Hidrografía', status: 'supported' },
   { id: 'soil', label: 'Suelos IDECOR 1:50.000', status: 'supported' },
-  { id: 'catastro', label: 'Catastro rural IDECOR', status: 'supported' },
+  { id: 'catastro', label: 'Catastro rural IDECOR (acercate para ver)', status: 'supported' },
   // Mirror of the 2D map's "Puntos conflicto" toggle — only meaningful
   // when the user is authenticated AND the backend reports intersections.
   // The panel hides this row when ``intersectionsLength === 0`` (see the
@@ -112,9 +112,9 @@ const UNSUPPORTED_3D_LAYER_CATEGORIES: Record<string, LayerCategory> = {
   red_vial_oficial: LAYER_CATEGORY.TERRITORIO,
   caminos_huecos: LAYER_CATEGORY.TERRITORIO,
   escuelas: LAYER_CATEGORY.TERRITORIO,
-  road_flow: LAYER_CATEGORY.ANALISIS,
-  sentido_camino: LAYER_CATEGORY.ANALISIS,
-  puntos_interes: LAYER_CATEGORY.ANALISIS,
+  road_flow: LAYER_CATEGORY.TERRITORIO,
+  sentido_camino: LAYER_CATEGORY.TERRITORIO,
+  puntos_interes: LAYER_CATEGORY.TERRITORIO,
 };
 
 export function buildTerrainLayerControlItems(params: {
