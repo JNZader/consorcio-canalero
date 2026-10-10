@@ -26,6 +26,7 @@ CLOUD_REF = 80.0
 SENSOR_WEIGHT: dict[str, float] = {
     "sentinel2": 1.0,
     "sentinel1": 0.9,
+    "landsat9": 0.58,
     "landsat8": 0.55,
     "landsat7": 0.35,
     "landsat5": 0.35,

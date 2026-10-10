@@ -348,7 +348,7 @@ class RainfallEventImageryCandidate(UUIDMixin, Base):
         UniqueConstraint("event_key", "rank", name="uq_rainfall_imagery_candidate_rank"),
         CheckConstraint("rank >= 1 AND rank <= 12", name="ck_rainfall_imagery_candidate_rank"),
         CheckConstraint(
-            "sensor IN ('sentinel2', 'sentinel1', 'landsat8', 'landsat7', 'landsat5')",
+            "sensor IN ('sentinel2', 'sentinel1', 'landsat9', 'landsat8', 'landsat7', 'landsat5')",
             name="ck_rainfall_imagery_candidate_sensor",
         ),
         Index("ix_rainfall_imagery_candidate_event", "event_key"),

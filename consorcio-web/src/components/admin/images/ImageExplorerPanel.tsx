@@ -29,6 +29,7 @@ export default function ImageExplorerPanel() {
             data={[
               { value: 'sentinel2', label: 'Sentinel-2 (óptico)' },
               { value: 'sentinel1', label: 'Sentinel-1 (SAR)' },
+              { value: 'landsat9', label: 'Landsat 9' },
               { value: 'landsat8', label: 'Landsat 8' },
               { value: 'landsat7', label: 'Landsat 7' },
               { value: 'landsat5', label: 'Landsat 5' },

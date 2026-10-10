@@ -18,7 +18,7 @@ from app.core.exceptions import AppException, NotFoundError
 from tests.new.geo.rainfall.curated_payloads import curated_payload
 
 TARGET = date(2015, 3, 15)
-LANDSAT_SENSORS_IDS = ("landsat8", "landsat7", "landsat5")
+LANDSAT_SENSORS_IDS = ("landsat9", "landsat8", "landsat7", "landsat5")
 
 
 class _Spy:
