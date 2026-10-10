@@ -25,6 +25,26 @@ export function decorateFeature(
 /**
  * Upsert a GeoJSON source: setData if source exists, else addSource + addLayer.
  */
+export function isMapStyleNotReadyError(error: unknown): boolean {
+  return error instanceof Error && /Style is not done loading/i.test(error.message);
+}
+
+/** Run a layer sync only while MapLibre's style is usable. After WebGL context
+ *  loss, `addSource` throws; swallowing that keeps ErrorBoundary from unmounting the map. */
+export function runWhenMapStyleReady(
+  map: maplibregl.Map | null,
+  mapReady: boolean,
+  fn: (map: maplibregl.Map) => void
+): void {
+  if (!map || !mapReady) return;
+  try {
+    fn(map);
+  } catch (error) {
+    if (isMapStyleNotReadyError(error)) return;
+    throw error;
+  }
+}
+
 export function ensureGeoJsonSource(
   map: maplibregl.Map,
   sourceId: string,
