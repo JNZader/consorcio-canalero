@@ -128,6 +128,7 @@ export default function ImageExplorerPanel() {
               onLoadHistoricFlood={controller.loadHistoricFlood}
               onTryShortlist={controller.loadShortlistScene}
               shortlists={controller.shortlists}
+              pairs={controller.pairs}
               loading={controller.loading}
             />
           </div>

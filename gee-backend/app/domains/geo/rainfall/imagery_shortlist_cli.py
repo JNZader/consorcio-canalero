@@ -21,9 +21,12 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.rainfall.imagery_shortlist import (
     POST_DAYS,
-    PRE_DAYS,
+    PRE_LOOKBACK_DAYS,
     SCORER_REVISION,
+    SLOT_POST,
+    SLOT_PRE,
     SceneHit,
+    pick_anchor_scene,
     rank_scenes,
     replace_candidates,
 )
@@ -51,6 +54,17 @@ def _event_id(event: Any) -> str:
     return str(event.id)
 
 
+def _start_date(event: Any) -> date:
+    raw = getattr(event, "start_date", None)
+    if isinstance(event, dict):
+        raw = event.get("start_date") or event.get("date")
+    elif raw is None:
+        raw = getattr(event, "date", None)
+    if isinstance(raw, date):
+        return raw
+    return date.fromisoformat(str(raw))
+
+
 def shortlist_event(
     db: Session,
     event: Any,
@@ -58,13 +72,20 @@ def shortlist_event(
     list_scenes: ListScenes,
 ) -> list:
     peak = _peak_date(event)
-    start = peak - timedelta(days=PRE_DAYS)
-    end = peak + timedelta(days=POST_DAYS)
+    start = _start_date(event)
+    window_start = start - timedelta(days=PRE_LOOKBACK_DAYS)
+    window_end = peak + timedelta(days=POST_DAYS)
     hits: list[SceneHit] = []
     for sensor in SENSORS:
-        hits.extend(list_scenes(sensor, start, end))
+        hits.extend(list_scenes(sensor, window_start, window_end))
     ranked = rank_scenes(peak, hits)
-    replace_candidates(db, _event_id(event), ranked)
+    pre = pick_anchor_scene(
+        hits, toward=start, peak=peak, before=True, window_days=PRE_LOOKBACK_DAYS, slot=SLOT_PRE
+    )
+    post = pick_anchor_scene(
+        hits, toward=peak, peak=peak, before=False, window_days=POST_DAYS, slot=SLOT_POST
+    )
+    replace_candidates(db, _event_id(event), ranked, pre=pre, post=post)
     return ranked
 
 

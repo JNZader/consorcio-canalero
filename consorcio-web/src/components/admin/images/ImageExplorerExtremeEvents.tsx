@@ -51,11 +51,17 @@ export interface ImageryShortlistRow {
   visualization: string;
 }
 
+export interface ImageryPair {
+  pre: ImageryShortlistRow | null;
+  post: ImageryShortlistRow | null;
+}
+
 interface ImageExplorerExtremeEventsProps {
   events: HistoricFloodEvent[];
   onLoadHistoricFlood: (floodId: string) => void;
   onTryShortlist?: (row: ImageryShortlistRow) => void;
   shortlists?: Record<string, ImageryShortlistRow[]>;
+  pairs?: Record<string, ImageryPair>;
   loading?: boolean;
 }
 
@@ -131,6 +137,7 @@ export function ImageExplorerExtremeEvents({
   onLoadHistoricFlood,
   onTryShortlist,
   shortlists = {},
+  pairs = {},
   loading = false,
 }: ImageExplorerExtremeEventsProps) {
   const [onlyWithImagery, setOnlyWithImagery] = useState(false);
@@ -165,6 +172,9 @@ export function ImageExplorerExtremeEvents({
         {visibleEvents.map((flood) => {
           const canSearch = isImageryEligible(flood);
           const mmLine = chirpsZoneMmLine(flood.fired_windows);
+          const pair = pairs[flood.id];
+          const pre = pair?.pre ?? null;
+          const post = pair?.post ?? null;
           return (
             <Card key={`${flood.id}-${flood.date}`} padding="sm" radius="md" withBorder>
               <Group justify="space-between" mb="xs" wrap="nowrap">
@@ -188,6 +198,30 @@ export function ImageExplorerExtremeEvents({
                 <Text size="xs" mt={4}>
                   {flood.imagery_note}
                 </Text>
+              ) : null}
+              {pre ? (
+                <Button
+                  mt="sm"
+                  size="xs"
+                  fullWidth
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => onTryShortlist?.(pre)}
+                >
+                  Antes · {SENSOR_SHORT[pre.sensor] ?? pre.sensor} {pre.scene_date}
+                </Button>
+              ) : null}
+              {post ? (
+                <Button
+                  mt="xs"
+                  size="xs"
+                  fullWidth
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => onTryShortlist?.(post)}
+                >
+                  Después · {SENSOR_SHORT[post.sensor] ?? post.sensor} {post.scene_date}
+                </Button>
               ) : null}
               <EventShortlistPicker
                 rows={shortlists[flood.id] ?? []}
