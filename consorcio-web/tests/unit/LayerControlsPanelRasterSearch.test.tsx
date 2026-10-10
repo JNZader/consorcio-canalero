@@ -19,6 +19,12 @@ function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
+function expandNamed(name: RegExp) {
+  const btn = screen.getByRole('button', { name });
+  if (btn.getAttribute('aria-expanded') === 'false') fireEvent.click(btn);
+  return btn;
+}
+
 const demOptions = [
   { value: 'layer-flood', label: 'Riesgo de Inundacion' },
   { value: 'layer-drain', label: 'Necesidad de Drenaje' },
@@ -124,7 +130,7 @@ describe('<LayerControlsPanel /> — raster search (T3c fix 2)', () => {
         })}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /análisis raster/i, expanded: false }));
+    expandNamed(/análisis raster/i);
     expect(screen.getByTestId('raster-compare-select')).toBeInTheDocument();
   });
 });

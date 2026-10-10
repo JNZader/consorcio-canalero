@@ -18,6 +18,12 @@ function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
+async function expandNamed(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  const btn = screen.getByRole('button', { name });
+  if (btn.getAttribute('aria-expanded') === 'false') await user.click(btn);
+  return btn;
+}
+
 describe('map2d extracted panels', () => {
   it('renders legend, info and view-mode panels with their main interactions', async () => {
     const user = userEvent.setup();
@@ -107,18 +113,18 @@ describe('map2d extracted panels', () => {
 
     expect(screen.getByText('view-mode-slot')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^base/i, expanded: false }));
+    await expandNamed(user, /^base/i);
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
 
-    await user.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    await expandNamed(user, /territorio/i);
     await user.click(screen.getByLabelText(/red vial/i));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('roads', true);
 
     await user.click(screen.getByLabelText(/ign altimetría/i));
     expect(onShowIGNOverlayChange).toHaveBeenCalledWith(true);
 
-    await user.click(screen.getByRole('button', { name: /análisis raster/i, expanded: false }));
+    await expandNamed(user, /análisis raster/i);
     await user.click(screen.getByRole('checkbox', { name: /todas las capas de análisis raster/i }));
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
 
@@ -248,7 +254,7 @@ describe('map2d extracted panels', () => {
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^base/i, expanded: false }));
+    await expandNamed(user, /^base/i);
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
 

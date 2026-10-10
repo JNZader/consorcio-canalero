@@ -31,6 +31,13 @@ function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
+function expandCanales() {
+  const item = screen.getByTestId('layer-controls-canales');
+  const btn = within(item).getAllByRole('button')[0];
+  if (btn.getAttribute('aria-expanded') === 'false') fireEvent.click(btn);
+  return btn;
+}
+
 const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
@@ -68,7 +75,7 @@ describe('<LayerControlsPanel /> — Canales section', () => {
     );
 
     expect(screen.getByTestId('layer-controls-canales')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     expect(screen.getByLabelText('Encender todos los relevados')).toBeInTheDocument();
     expect(screen.getByLabelText('Encender todos los propuestos')).toBeInTheDocument();
     expect(screen.getByTestId('canal-explorer-relevados')).toBeInTheDocument();
@@ -89,7 +96,7 @@ describe('<LayerControlsPanel /> — Canales section', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     expect(screen.getByLabelText('Apagar todos los relevados')).toBeInTheDocument();
   });
 
@@ -105,7 +112,7 @@ describe('<LayerControlsPanel /> — Canales section', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     fireEvent.click(screen.getByLabelText('Encender todos los propuestos'));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canales_propuestos', true);
   });
@@ -141,7 +148,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     for (const item of [...canalesRelevadosItems, ...canalesPropuestosItems]) {
       if (item.kind !== 'leaf') continue;
       expect(screen.getByTestId(`canal-toggle-${item.id}`)).toBeInTheDocument();
@@ -164,7 +171,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     for (const item of canalesRelevadosItems) {
       if (item.kind !== 'leaf') continue;
       expect(screen.getByLabelText(`Mostrar ${item.label}`)).not.toBeDisabled();
@@ -187,7 +194,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     fireEvent.click(screen.getByLabelText('Mostrar Canal Sur'));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_sur', true);
   });
@@ -208,7 +215,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     fireEvent.click(screen.getByLabelText('Mostrar Canal Norte'));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_norte', true);
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canales_relevados', true);
@@ -230,7 +237,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     fireEvent.click(screen.getByLabelText('Encender todos los relevados'));
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canales_relevados', true);
     expect(onLayerVisibilityChange).toHaveBeenCalledWith('canal_relevado_norte', true);
@@ -240,7 +247,7 @@ describe('<LayerControlsPanel /> — per-canal rows', () => {
 
 describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
   function canalesControl() {
-    return screen.getByRole('button', { name: /canales/i, expanded: false });
+    return expandCanales();
   }
 
   it('counts the number of visible canal children (not the master flags)', () => {
@@ -316,7 +323,7 @@ describe('<LayerControlsPanel /> — canal groups (FF5)', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /canales/i, expanded: false }));
+    expandCanales();
     expect(screen.getByTestId('canal-toggle-canal_relevado_a')).toBeInTheDocument();
     expect(screen.getByTestId('canal-toggle-canal_relevado_b')).toBeInTheDocument();
     expect(screen.queryByTestId('canal-group-monte_lena')).not.toBeInTheDocument();

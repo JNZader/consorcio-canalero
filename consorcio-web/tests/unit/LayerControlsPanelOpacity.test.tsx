@@ -22,6 +22,12 @@ function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
+function expandNamed(name: RegExp) {
+  const btn = screen.getByRole('button', { name });
+  if (btn.getAttribute('aria-expanded') === 'false') fireEvent.click(btn);
+  return btn;
+}
+
 const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
@@ -60,8 +66,7 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={makeFineControl({ opacityByLayer: { soil: 0.5 } })}
       />
     );
-    const familyBtn = screen.getByRole('button', { name: /territorio/i, expanded: false });
-    fireEvent.click(familyBtn);
+    const familyBtn = expandNamed(/territorio/i);
     expect(familyBtn).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('layer-opacity-soil')).toBeInTheDocument();
     const slider = screen.getByRole('slider', { name: /opacidad de suelos/i, hidden: true });
@@ -76,7 +81,7 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={makeFineControl()}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    expandNamed(/territorio/i);
     expect(screen.getByRole('slider', { name: /opacidad de suelos/i, hidden: true })).toHaveAttribute(
       'aria-valuenow',
       '100'
@@ -92,7 +97,7 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={fineControl}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    expandNamed(/territorio/i);
     const slider = screen.getByRole('slider', { name: /opacidad de suelos/i, hidden: true });
     // Keyboard is the reliable way to fire Mantine Slider onChange in jsdom
     // (@dnd-kit-style pointer drag is impractical). 50 → ArrowLeft → 49.
@@ -109,7 +114,7 @@ describe('<LayerControlsPanel /> — per-layer opacity slider (3.3)', () => {
         layerFineControl={fineControl}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /territorio/i, expanded: false }));
+    expandNamed(/territorio/i);
     fireEvent.click(screen.getByTestId('layer-opacity-reset-soil'));
     expect(fineControl.onLayerOpacityChange).toHaveBeenCalledWith('soil', 1);
   });
