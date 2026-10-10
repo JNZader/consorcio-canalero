@@ -17,11 +17,18 @@ export const MONTH_NAMES = [
 
 export const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'] as const;
 
-export type ImageSensor = 'sentinel2' | 'sentinel1' | 'landsat8' | 'landsat7' | 'landsat5';
+export type ImageSensor =
+  | 'sentinel2'
+  | 'sentinel1'
+  | 'landsat9'
+  | 'landsat8'
+  | 'landsat7'
+  | 'landsat5';
 
 const IMAGE_SENSORS: ReadonlySet<string> = new Set([
   'sentinel2',
   'sentinel1',
+  'landsat9',
   'landsat8',
   'landsat7',
   'landsat5',
@@ -35,6 +42,7 @@ export function sensorLabel(sensor: ImageSensor): SatelliteSensorLabel {
   const labels: Record<ImageSensor, SatelliteSensorLabel> = {
     sentinel2: 'Sentinel-2',
     sentinel1: 'Sentinel-1',
+    landsat9: 'Landsat 9',
     landsat8: 'Landsat 8',
     landsat7: 'Landsat 7',
     landsat5: 'Landsat 5',

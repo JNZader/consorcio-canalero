@@ -351,7 +351,7 @@ class RainfallEventImageryCandidate(UUIDMixin, Base):
             "slot IN ('ranked', 'pre', 'post')", name="ck_rainfall_imagery_candidate_slot"
         ),
         CheckConstraint(
-            "sensor IN ('sentinel2', 'sentinel1', 'landsat8', 'landsat7', 'landsat5')",
+            "sensor IN ('sentinel2', 'sentinel1', 'landsat9', 'landsat8', 'landsat7', 'landsat5')",
             name="ck_rainfall_imagery_candidate_sensor",
         ),
         Index("ix_rainfall_imagery_candidate_event", "event_key"),

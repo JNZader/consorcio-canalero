@@ -104,6 +104,7 @@ export const mapImageApi = {
     const sensorEndpointByLabel: Record<string, string> = {
       'Sentinel-1': 'sentinel1',
       'Sentinel-2': 'sentinel2',
+      'Landsat 9': 'landsat9',
       'Landsat 8': 'landsat8',
       'Landsat 7': 'landsat7',
       'Landsat 5': 'landsat5',

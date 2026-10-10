@@ -85,7 +85,7 @@ def test_mask_landsat_haze_threshold_is_configurable() -> None:
 
 @pytest.mark.parametrize(
     ("sensor", "expected_blue"),
-    [("landsat8", "B2"), ("landsat7", "B1"), ("landsat5", "B1")],
+    [("landsat9", "B2"), ("landsat8", "B2"), ("landsat7", "B1"), ("landsat5", "B1")],
 )
 def test_landsat_blue_band_matches_sensor_config(sensor: str, expected_blue: str) -> None:
     """The haze mask is fed ``cfg['rgb'][2]``; L8 and L5/L7 differ."""

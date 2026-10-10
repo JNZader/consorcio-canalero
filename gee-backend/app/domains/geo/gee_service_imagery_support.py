@@ -65,6 +65,17 @@ LANDSAT_SENSORS: Dict[str, Dict[str, Any]] = {
         "max": 0.35,
         "notes": None,
     },
+    "landsat9": {
+        "label": "Landsat 9",
+        "collection": "LANDSAT/LC09/C02/T1_TOA",
+        "rgb": ["B4", "B3", "B2"],
+        "false_color": ["B5", "B4", "B3"],
+        "agriculture": ["B6", "B5", "B2"],
+        "ndwi": ["B3", "B5"],
+        "mndwi": ["B3", "B6"],
+        "max": 0.35,
+        "notes": None,
+    },
     "landsat7": {
         "label": "Landsat 7",
         "collection": "LANDSAT/LE07/C02/T1_TOA",

@@ -20,6 +20,7 @@ const STORAGE_KEY = 'consorcio_selected_image';
 export type SatelliteSensorLabel =
   | 'Sentinel-1'
   | 'Sentinel-2'
+  | 'Landsat 9'
   | 'Landsat 8'
   | 'Landsat 7'
   | 'Landsat 5';

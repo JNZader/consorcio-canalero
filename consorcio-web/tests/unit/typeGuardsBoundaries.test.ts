@@ -327,7 +327,7 @@ describe('isValidSelectedImage — campos requeridos', () => {
     expect(isValidSelectedImage(imagenValida({ tile_url: '' }))).toBe(false);
   });
 
-  it.each(['Sentinel-1', 'Sentinel-2', 'Landsat 8', 'Landsat 7', 'Landsat 5'])(
+  it.each(['Sentinel-1', 'Sentinel-2', 'Landsat 9', 'Landsat 8', 'Landsat 7', 'Landsat 5'])(
     'acepta el sensor %s',
     (sensor) => {
       expect(isValidSelectedImage(imagenValida({ sensor }))).toBe(true);
