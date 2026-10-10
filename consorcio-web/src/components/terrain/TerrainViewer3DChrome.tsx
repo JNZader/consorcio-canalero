@@ -28,7 +28,7 @@ import { TerrainExaggerationControls } from './TerrainExaggerationControls';
 import { TerrainOrientationControls } from './TerrainOrientationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { exaggerationCanvasLabel } from './terrainExaggeration';
-import { heavy3dWarning } from './terrainHeavyLayers';
+import { heavy3dLoadLines, heavy3dWarning } from './terrainHeavyLayers';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 import {
   UNSUPPORTED_3D_VECTOR_LAYERS,
@@ -79,6 +79,10 @@ interface TerrainViewer3DChromeProps {
   onRangeToggle: (layerType: string, rangeIndex: number, visible: boolean) => void;
   vectorLayerVisibility: Record<string, boolean>;
   onVectorLayerToggle: (layerId: string, visible: boolean) => void;
+  catastroLoading?: boolean;
+  catastroError?: string | null;
+  soilLoading?: boolean;
+  soilError?: string | null;
   hasApprovedZones: boolean;
   intersectionsLength?: number;
   ready: boolean;
@@ -167,6 +171,10 @@ export function TerrainViewer3DChrome({
   onRangeToggle,
   vectorLayerVisibility,
   onVectorLayerToggle,
+  catastroLoading = false,
+  catastroError = null,
+  soilLoading = false,
+  soilError = null,
   hasApprovedZones,
   intersectionsLength = 0,
   ready,
@@ -189,6 +197,14 @@ export function TerrainViewer3DChrome({
   bpaHistory,
 }: TerrainViewer3DChromeProps) {
   const heavyWarning = heavy3dWarning(vectorLayerVisibility);
+  const loadLines = heavy3dLoadLines({
+    catastroOn: !!vectorLayerVisibility.catastro,
+    catastroLoading,
+    catastroError,
+    soilOn: !!vectorLayerVisibility.soil,
+    soilLoading,
+    soilError,
+  });
   return (
     <>
       <Group justify="space-between" align="flex-end">
@@ -237,6 +253,16 @@ export function TerrainViewer3DChrome({
           {heavyWarning}
         </Alert>
       ) : null}
+      {loadLines.loading.map((line) => (
+        <Alert key={line} color="blue" py={6} data-testid="terrain-layer-loading">
+          {line}
+        </Alert>
+      ))}
+      {loadLines.errors.map((line) => (
+        <Alert key={line} color="red" py={6} data-testid="terrain-layer-error">
+          {line}
+        </Alert>
+      ))}
 
       {/* Same responsive shell the 2D map got in the redesign: controls in a
           collapsible sidebar (desktop) / full-screen Drawer (mobile) instead
