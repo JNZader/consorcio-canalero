@@ -503,6 +503,30 @@ async def get_historic_floods_impl(
     )
 
 
+async def get_historic_flood_candidates_impl(
+    *,
+    flood_id: str,
+    db: Session = Depends(get_db),
+):
+    """Persisted GEE shortlist for one catalog event. No Earth Engine."""
+    from app.domains.geo.rainfall.imagery_shortlist import load_candidates, payload_from_rows
+
+    generation = await _run_blocking(read_events, db, **CATALOG_SCOPE)
+    flood = catalog_view.resolve_event(generation, flood_id)
+    if not flood:
+        raise NotFoundError(
+            message=f"Inundacion '{flood_id}' no encontrada",
+            code="FLOOD_NOT_FOUND",
+            resource_type="historic_flood",
+            resource_id=flood_id,
+        )
+    rows = await _run_blocking(load_candidates, db, flood_id)
+    return JSONResponse(
+        content=payload_from_rows(flood_id, rows),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 async def get_historic_flood_tiles_impl(
     *,
     flood_id: str,

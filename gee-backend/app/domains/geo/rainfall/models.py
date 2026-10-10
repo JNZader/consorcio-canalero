@@ -337,6 +337,39 @@ Index(
 )
 
 
+class RainfallEventImageryCandidate(UUIDMixin, Base):
+    """Replaceable shortlist of GEE scenes for one served extreme event.
+
+    Not append-only: a CLI re-run deletes the event's previous generation.
+    """
+
+    __tablename__ = "rainfall_event_imagery_candidate"
+    __table_args__ = (
+        UniqueConstraint("event_key", "rank", name="uq_rainfall_imagery_candidate_rank"),
+        CheckConstraint("rank >= 1 AND rank <= 3", name="ck_rainfall_imagery_candidate_rank"),
+        CheckConstraint(
+            "sensor IN ('sentinel2', 'sentinel1', 'landsat8', 'landsat7', 'landsat5')",
+            name="ck_rainfall_imagery_candidate_sensor",
+        ),
+        Index("ix_rainfall_imagery_candidate_event", "event_key"),
+    )
+
+    event_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    scorer_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    sensor: Mapped[str] = mapped_column(String(16), nullable=False)
+    scene_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    scene_date: Mapped[date] = mapped_column(Date, nullable=False)
+    days_from_peak: Mapped[int] = mapped_column(Integer, nullable=False)
+    cloud_pct: Mapped[float | None] = mapped_column(Float)
+    cloud_basis: Mapped[str] = mapped_column(String(32), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    visualization: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 _IMMUTABLE_TYPES = (
     RainfallSourceEligibility,
     RainfallIntervalValue,
