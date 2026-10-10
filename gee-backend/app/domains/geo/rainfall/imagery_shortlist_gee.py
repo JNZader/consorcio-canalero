@@ -36,9 +36,7 @@ def list_gee_scenes(sensor: str, start: date, end: date) -> list[SceneHit]:
     end_exclusive = end + timedelta(days=1)
     cloud_key: str | None
     if sensor == "sentinel2":
-        _name, collection = explorer._sentinel2_collection(
-            start, end_exclusive, 80, use_toa=False
-        )
+        _name, collection = explorer._sentinel2_collection(start, end_exclusive, 80, use_toa=False)
         cloud_key = "CLOUDY_PIXEL_PERCENTAGE"
     elif sensor == "sentinel1":
         collection = explorer._sentinel1_collection(start, end_exclusive)
@@ -52,9 +50,7 @@ def list_gee_scenes(sensor: str, start: date, end: date) -> list[SceneHit]:
     collection = collection.limit(40)
     indexes = collection.aggregate_array("system:index").getInfo() or []
     starts = collection.aggregate_array("system:time_start").getInfo() or []
-    clouds = (
-        collection.aggregate_array(cloud_key).getInfo() if cloud_key else [None] * len(indexes)
-    )
+    clouds = collection.aggregate_array(cloud_key).getInfo() if cloud_key else [None] * len(indexes)
     hits: list[SceneHit] = []
     for scene_id, start_ms, cloud in zip(indexes, starts, clouds, strict=False):
         scene_date = _ms_to_date(start_ms)

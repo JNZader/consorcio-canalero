@@ -79,9 +79,7 @@ def test_unknown_optical_cloud_does_not_outrank_known_clear() -> None:
 
 
 def test_top_n_caps_at_three() -> None:
-    hits = [
-        SceneHit("sentinel2", f"S{i}", PEAK, float(i)) for i in range(8)
-    ]
+    hits = [SceneHit("sentinel2", f"S{i}", PEAK, float(i)) for i in range(8)]
     ranked = rank_scenes(PEAK, hits)
     assert [row.rank for row in ranked] == [1, 2, 3]
     assert len(ranked) == 3
