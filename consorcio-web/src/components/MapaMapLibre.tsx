@@ -69,7 +69,6 @@ import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapPlacesControl } from './map2d/MapPlacesControl';
-import { MapTimeBar } from './map2d/MapTimeBar';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
 import { useMapPermalink } from './map2d/useMapPermalink';
@@ -1176,12 +1175,6 @@ export default function MapaMapLibre() {
                 sliderPosition={sliderPosition}
                 mapReady={mapReady}
                 onSliderPointerDown={handleSliderPointerDown}
-              />
-              <MapTimeBar
-                imageDate={singleImageInfo?.date ?? null}
-                imageSensor={singleImageInfo?.sensor ?? null}
-                compareLeftDate={comparisonInfo?.leftDate ?? null}
-                compareRightDate={comparisonInfo?.rightDate ?? null}
               />
             </div>
 

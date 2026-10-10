@@ -892,6 +892,36 @@ export default function TerrainViewer3D({
     });
   }, []);
 
+  const easeCamera = useCallback((partial: { bearing?: number; pitch?: number }) => {
+    mapRef.current?.easeTo({ ...partial, duration: 500 });
+  }, []);
+  const handleNorth = useCallback(() => easeCamera({ bearing: 0 }), [easeCamera]);
+  const handleNadir = useCallback(() => easeCamera({ pitch: 0 }), [easeCamera]);
+  const handleResetView = useCallback(
+    () => easeCamera({ bearing: 0, pitch: 0 }),
+    [easeCamera],
+  );
+
+  useEffect(() => {
+    if (!ready) return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 'n') handleNorth();
+      if (key === 'u') handleNadir();
+      if (key === 'r') handleResetView();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleNadir, handleNorth, handleResetView, ready]);
+
   if (!demLayerId) {
     return (
       <Alert icon={<IconAlertTriangle size={16} />} title="Sin capa DEM" color="yellow">
@@ -913,6 +943,9 @@ export default function TerrainViewer3D({
         onExaggerationChange={handleExaggerationChange}
         minExaggeration={MIN_EXAGGERATION}
         maxExaggeration={MAX_EXAGGERATION}
+        onNorth={handleNorth}
+        onNadir={handleNadir}
+        onResetView={handleResetView}
         height={height}
         mapContainerRef={mapContainer}
         rasterLayers={rasterLayers}

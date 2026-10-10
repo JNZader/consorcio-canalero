@@ -24,6 +24,7 @@ import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
 import { MapWorkspace } from '../map2d/MapWorkspace';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import { TerrainExaggerationControls } from './TerrainExaggerationControls';
+import { TerrainOrientationControls } from './TerrainOrientationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { exaggerationCanvasLabel } from './terrainExaggeration';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
@@ -48,6 +49,9 @@ interface TerrainViewer3DChromeProps {
   onExaggerationChange: (value: number) => void;
   minExaggeration: number;
   maxExaggeration: number;
+  onNorth: () => void;
+  onNadir: () => void;
+  onResetView: () => void;
   height: number | string;
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
   rasterLayers: GeoLayerInfo[];
@@ -137,6 +141,9 @@ export function TerrainViewer3DChrome({
   onExaggerationChange,
   minExaggeration,
   maxExaggeration,
+  onNorth,
+  onNadir,
+  onResetView,
   height,
   mapContainerRef,
   rasterLayers,
@@ -211,6 +218,7 @@ export function TerrainViewer3DChrome({
             min={minExaggeration}
             max={maxExaggeration}
           />
+          <TerrainOrientationControls onNorth={onNorth} onNadir={onNadir} onReset={onResetView} />
         </Group>
       </Group>
 
