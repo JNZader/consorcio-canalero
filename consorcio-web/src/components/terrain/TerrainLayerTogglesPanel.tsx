@@ -36,7 +36,11 @@ import { getActiveAttributions } from '../map2d/layerAttributions';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import { PRIORITY_3D_VECTOR_LAYERS, UNSUPPORTED_3D_VECTOR_LAYERS } from './terrainLayerConfig';
+import {
+  PILAR_VERDE_ITEMS,
+  PRIORITY_3D_VECTOR_LAYERS,
+  UNSUPPORTED_3D_VECTOR_LAYERS,
+} from './terrainLayerConfig';
 
 /**
  * Labels for the 5 Pilar Verde checkboxes. Kept inline here because they are
@@ -44,14 +48,6 @@ import { PRIORITY_3D_VECTOR_LAYERS, UNSUPPORTED_3D_VECTOR_LAYERS } from './terra
  * obligatoria") that doesn't belong in the store; the store only knows the
  * layer ids. Order mirrors `PILAR_VERDE_LAYER_IDS` from `mapLayerSyncStore`.
  */
-export const PILAR_VERDE_ITEMS = [
-  { id: 'pilar_verde_bpa_historico', label: 'BPA histórico (por años)' },
-  { id: 'pilar_verde_agro_aceptada', label: 'Agroforestal: Cumplen' },
-  { id: 'pilar_verde_agro_presentada', label: 'Agroforestal: Presentaron' },
-  { id: 'pilar_verde_agro_zonas', label: 'Zonas Agroforestales' },
-  { id: 'pilar_verde_porcentaje_forestacion', label: '% Forestación obligatoria' },
-] as const;
-
 /**
  * When `true`, the panel renders WITHOUT the absolute-positioning styles
  * (top/right/width/maxHeight) so the parent can place it inline (e.g. in a
@@ -87,6 +83,8 @@ interface TerrainLayerTogglesPanelProps {
    * grid below the map. Defaults to `false` (legacy floating overlay).
    */
   readonly embedded?: boolean;
+  /** When false, only raster overlay controls remain (UX PDF T1c). */
+  readonly showVectorSections?: boolean;
 }
 
 export function TerrainLayerTogglesPanel({
@@ -104,6 +102,7 @@ export function TerrainLayerTogglesPanel({
   canalesRelevadosItems,
   canalesPropuestosItems,
   embedded = false,
+  showVectorSections = true,
 }: TerrainLayerTogglesPanelProps) {
   const rasterOptions = rasterLayers.map((layer) => ({
     value: layer.id,
@@ -230,6 +229,8 @@ export function TerrainLayerTogglesPanel({
             />
           </Box>
 
+          {showVectorSections ? (
+            <>
           {/*
             Base vector layers — wrapped in its own CollapsibleSection so the
             three category blocks (this one, Pilar Verde, Canales) share the
@@ -382,6 +383,8 @@ export function TerrainLayerTogglesPanel({
               ))}
             </Stack>
           )}
+            </>
+          ) : null}
         </Stack>
       </CollapsibleSection>
     </Paper>

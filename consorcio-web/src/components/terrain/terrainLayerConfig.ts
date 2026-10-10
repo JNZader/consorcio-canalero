@@ -100,6 +100,43 @@ const TERRAIN_3D_LAYER_CATEGORIES: Record<string, LayerCategory> = {
  *     in 2D — `buildFamilyActiveCounts` counts the CANALES family from its
  *     visible children (`canalChildIds`), never from the master flags.
  */
+export const PILAR_VERDE_ITEMS = [
+  { id: 'pilar_verde_bpa_historico', label: 'BPA histórico (por años)' },
+  { id: 'pilar_verde_agro_aceptada', label: 'Agroforestal: Cumplen' },
+  { id: 'pilar_verde_agro_presentada', label: 'Agroforestal: Presentaron' },
+  { id: 'pilar_verde_agro_zonas', label: 'Zonas Agroforestales' },
+  { id: 'pilar_verde_porcentaje_forestacion', label: '% Forestación obligatoria' },
+] as const;
+
+const UNSUPPORTED_3D_LAYER_CATEGORIES: Record<string, LayerCategory> = {
+  red_vial_oficial: LAYER_CATEGORY.TERRITORIO,
+  caminos_huecos: LAYER_CATEGORY.TERRITORIO,
+  escuelas: LAYER_CATEGORY.TERRITORIO,
+  road_flow: LAYER_CATEGORY.ANALISIS,
+  sentido_camino: LAYER_CATEGORY.ANALISIS,
+  puntos_interes: LAYER_CATEGORY.ANALISIS,
+};
+
+export function buildTerrainLayerControlItems(params: {
+  intersectionsLength?: number;
+}): Array<{ id: string; label: string; category: LayerCategory }> {
+  const { intersectionsLength = 0 } = params;
+  const items: Array<{ id: string; label: string; category: LayerCategory }> = [];
+  for (const layer of PRIORITY_3D_VECTOR_LAYERS) {
+    if (layer.id === 'puntos_conflicto' && intersectionsLength === 0) continue;
+    const category = TERRAIN_3D_LAYER_CATEGORIES[layer.id];
+    if (category) items.push({ id: layer.id, label: layer.label, category });
+  }
+  for (const layer of UNSUPPORTED_3D_VECTOR_LAYERS) {
+    const category = UNSUPPORTED_3D_LAYER_CATEGORIES[layer.id];
+    if (category) items.push({ id: layer.id, label: layer.label, category });
+  }
+  for (const item of PILAR_VERDE_ITEMS) {
+    items.push({ id: item.id, label: item.label, category: LAYER_CATEGORY.PILAR_VERDE });
+  }
+  return items;
+}
+
 export function buildTerrain3DLayerItems(params: {
   intersectionsLength?: number;
   showPilarVerde?: boolean;
