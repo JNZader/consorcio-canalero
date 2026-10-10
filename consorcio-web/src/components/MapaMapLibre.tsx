@@ -53,6 +53,7 @@ import { useSoilMap } from '../hooks/useSoilMap';
 import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
 import { FICHA_MAX_BUFFER_M, FICHA_PARCELAS_MAX } from '../lib/api/ficha';
 import { showWarning } from '../lib/notifications';
+import { useMapCameraStore } from '../stores/mapCameraStore';
 import { useConfigStore } from '../stores/configStore';
 import {
   PILAR_VERDE_LAYER_IDS,
@@ -167,9 +168,10 @@ export default function MapaMapLibre() {
     lat: MAP_CENTER[0],
     lng: MAP_CENTER[1],
   };
-  const centerLat = mapCenter.lat;
-  const centerLng = mapCenter.lng;
-  const zoom = config?.map.zoom ?? DEFAULT_ZOOM;
+  const handedCamera = useMapCameraStore.getState().camera;
+  const centerLat = handedCamera?.lat ?? mapCenter.lat;
+  const centerLng = handedCamera?.lng ?? mapCenter.lng;
+  const zoom = handedCamera?.zoom ?? config?.map.zoom ?? DEFAULT_ZOOM;
 
   // ── Map refs ──────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -547,6 +549,28 @@ export default function MapaMapLibre() {
     setMapReady,
     onMapError,
   });
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (handedCamera?.bearing) {
+      map.setBearing(handedCamera.bearing);
+    }
+    const publish = () => {
+      const c = map.getCenter();
+      useMapCameraStore.getState().setCamera({
+        lng: c.lng,
+        lat: c.lat,
+        zoom: map.getZoom(),
+        bearing: map.getBearing(),
+        pitch: map.getPitch(),
+      });
+    };
+    map.on('moveend', publish);
+    return () => {
+      map.off('moveend', publish);
+    };
+  }, [mapReady]);
 
   /* ---------------------------------------------------------------------- */
   /*  Measurement tools (SDD map-measurement-tools)                          */

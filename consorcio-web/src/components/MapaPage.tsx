@@ -25,7 +25,7 @@ import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
 import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
 
-// Lazy-load TerrainViewer3D to avoid bundling deck.gl/geo-layers when not used
+// Lazy-load TerrainViewer3D (MapLibre terrain, not deck.gl).
 const TerrainViewer3D = lazy(() => import('./terrain/TerrainViewer3D'));
 
 type MapViewMode = '2d' | '3d';
@@ -170,7 +170,7 @@ export function MapaContent() {
                       <Tooltip
                         label={
                           demRawLayer
-                            ? 'Vista 3D del terreno (deck.gl)'
+                            ? 'Vista 3D del terreno (MapLibre)'
                             : 'Sin capa DEM disponible — ejecuta el pipeline primero'
                         }
                         position="bottom"
