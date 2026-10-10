@@ -626,6 +626,7 @@ export default function TerrainViewer3D({
       // terrain mesh balloons because almost every distant tile takes
       // up only a few pixels each. -25% overdraw across pan/zoom.
       maxPitch: 75,
+      hash: 'v',
       // Bound the tile cache so panning around doesn't keep hundreds of
       // raster-dem + texture tiles in GPU memory. Default is unbounded;
       // 50 fits the typical viewport pyramid + a small history without
@@ -649,6 +650,8 @@ export default function TerrainViewer3D({
     });
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    map.addControl(new maplibregl.FullscreenControl(), 'top-left');
 
     map.on('load', () => {
       applyTerrainDepthCues(map);
@@ -912,6 +915,10 @@ export default function TerrainViewer3D({
   const handleNorth = useCallback(() => easeCamera({ bearing: 0 }), [easeCamera]);
   const handleNadir = useCallback(() => easeCamera({ pitch: 0 }), [easeCamera]);
   const handleOblique = useCallback(() => easeCamera({ pitch: 60 }), [easeCamera]);
+  const handleLookWest = useCallback(
+    () => easeCamera({ bearing: 90, pitch: 60 }),
+    [easeCamera],
+  );
   const handleResetView = useCallback(
     () => easeCamera({ bearing: 0, pitch: 0 }),
     [easeCamera],
@@ -961,6 +968,7 @@ export default function TerrainViewer3D({
         onNorth={handleNorth}
         onNadir={handleNadir}
         onOblique={handleOblique}
+        onLookWest={handleLookWest}
         onResetView={handleResetView}
         height={height}
         mapContainerRef={mapContainer}

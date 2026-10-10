@@ -1,7 +1,8 @@
 import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
 import styles from '../../styles/components/map.module.css';
-import { IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
+import { showSuccess, showWarning } from '../../lib/notifications';
+import { IconCopy, IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
 import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';
 
 interface MapActionsPanelProps {
@@ -96,6 +97,19 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               Exportar KMZ
             </Menu.Item>
           )}
+          <Menu.Item
+            leftSection={<IconCopy size={14} />}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(window.location.href);
+                showSuccess('Enlace copiado', 'La vista actual está en el portapapeles');
+              } catch {
+                showWarning('No se pudo copiar', 'Copiá la URL de la barra de direcciones');
+              }
+            }}
+          >
+            Copiar enlace a esta vista
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>
     </Box>

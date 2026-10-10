@@ -4,6 +4,7 @@ interface TerrainOrientationControlsProps {
   readonly onNorth: () => void;
   readonly onNadir: () => void;
   readonly onOblique: () => void;
+  readonly onLookWest: () => void;
   readonly onReset: () => void;
 }
 
@@ -11,6 +12,7 @@ export function TerrainOrientationControls({
   onNorth,
   onNadir,
   onOblique,
+  onLookWest,
   onReset,
 }: TerrainOrientationControlsProps) {
   return (
@@ -31,6 +33,11 @@ export function TerrainOrientationControls({
       <Tooltip label="Vista oblicua (pitch 60°)" withArrow>
         <Button size="compact-xs" variant="default" onClick={onOblique}>
           Oblicua
+        </Button>
+      </Tooltip>
+      <Tooltip label="Mirar desde el oeste" withArrow>
+        <Button size="compact-xs" variant="default" onClick={onLookWest}>
+          Desde el oeste
         </Button>
       </Tooltip>
       <Tooltip label="Norte + cenital (R)" withArrow>
