@@ -10,7 +10,7 @@
  * navegador con `pointer: coarse`.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { clickFixtureParcela, probeFichaAvailability } from './helpers/catastroFixture';
 import { gotoMapWorkspace } from './helpers/mapWorkspace';
@@ -27,6 +27,15 @@ const THUMB = 28;
 const LANDSCAPE = { width: 844, height: 390 };
 /** Teléfono parado y angosto: el piso de ancho que soporta el diseño. */
 const PORTRAIT = { width: 360, height: 800 };
+
+/** R3: Base accordion starts collapsed; OSM/Satélite live inside it. */
+async function revealCapaBaseControl(page: Page) {
+  const control = page.getByLabel('Seleccionar capa base');
+  if (await control.isVisible().catch(() => false)) return;
+  const baseFamily = page.getByTestId('layer-controls-capas');
+  await expect(baseFamily).toBeVisible({ timeout: 10000 });
+  await baseFamily.getByRole('button').first().click();
+}
 
 /**
  * El invariante de los pasos 2.1 / 2.2: el canvas y los controles flotantes
@@ -141,6 +150,7 @@ test.describe('Mapa en teléfono acostado (844×390)', () => {
       await expect(page.getByTestId('map-top-bar')).toHaveCount(0);
 
       await page.getByTestId('map-workspace-burger').click();
+      await revealCapaBaseControl(page);
       await expect(page.getByLabel('Seleccionar capa base')).toBeVisible({ timeout: 10000 });
     }
   );
@@ -222,6 +232,7 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       await expect(page.getByTestId('map-top-bar')).toHaveCount(0);
 
       await page.getByTestId('map-workspace-burger').click();
+      await revealCapaBaseControl(page);
       await expect(page.getByLabel('Seleccionar capa base')).toBeVisible({ timeout: 10000 });
     }
   );
@@ -244,22 +255,28 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       );
       requireCondition(visible, 'El panel de capas no está disponible (sin datos de capas)');
 
-      // Se mide la ETIQUETA, no el input: el input es la casilla de 28px, y lo
-      // que el dedo toca (y lo que el paso 2.3 lleva a 44) es el label.
-      const checkbox = controls.getByRole('checkbox').first();
+      // Families start collapsed (R3). Expand Territorio so a real layer row
+      // exists; measure the Checkbox root (the finger target), not `label[for]`
+      // on a Mantine auto-id that may not exist.
+      const territorio = controls.getByTestId('layer-family-territorio-control');
+      await expect(territorio).toBeVisible({ timeout: 10000 });
+      await territorio.click();
+
+      const checkbox = controls.getByRole('checkbox', { name: /Catastro rural IDECOR/i });
       const hasCheckbox = await checkbox.waitFor({ state: 'visible', timeout: 10000 }).then(
         () => true,
         () => false
       );
       requireCondition(hasCheckbox, 'Sin filas de capas en este entorno');
 
-      const inputId = await checkbox.getAttribute('id');
-      const label = inputId
-        ? controls.locator(`label[for="${inputId}"]`)
-        : controls.locator('label').first();
-      const labelBox = await label.boundingBox();
-      expect(labelBox, 'la etiqueta de la casilla tiene caja').not.toBeNull();
-      if (labelBox) expect(labelBox.height).toBeGreaterThanOrEqual(TOUCH);
+      const rowBox = await checkbox.evaluate((el) => {
+        const root = el.closest('[class*="Checkbox-root"]') ?? el.parentElement;
+        if (!root) return null;
+        const rect = root.getBoundingClientRect();
+        return { height: rect.height, width: rect.width };
+      });
+      expect(rowBox, 'la fila de la casilla tiene caja').not.toBeNull();
+      if (rowBox) expect(rowBox.height).toBeGreaterThanOrEqual(TOUCH);
 
       // El thumb del slider MEDIDO de verdad. Es el único de los cuatro
       // controles cuyo tamaño Mantine escribe inline (`size` está en sus
