@@ -33,6 +33,7 @@ import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSync
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
+import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
 import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
@@ -641,6 +642,7 @@ export default function TerrainViewer3D({
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
 
     map.on('load', () => {
+      applyTerrainDepthCues(map);
       setReady(true);
     });
     map.on('moveend', () => {
@@ -717,6 +719,7 @@ export default function TerrainViewer3D({
       // re-apply it after replacing the source.
       const terrainConfig = map.getTerrain();
       map.setTerrain(null);
+      removeTerrainHillshade(map);
       map.removeSource('terrain-rgb');
       map.addSource('terrain-rgb', {
         type: 'raster-dem',
@@ -728,6 +731,7 @@ export default function TerrainViewer3D({
       if (terrainConfig) {
         map.setTerrain(terrainConfig);
       }
+      applyTerrainDepthCues(map);
     } finally {
       terrainRebuildInProgressRef.current = false;
     }
