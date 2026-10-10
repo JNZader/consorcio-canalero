@@ -228,10 +228,18 @@ export default function TerrainViewer3D({
     sharedMap3dVectors.pilar_verde_agro_zonas ||
     sharedMap3dVectors.pilar_verde_porcentaje_forestacion
   );
-  const { catastroMap } = useCatastroMap({
+  const {
+    catastroMap,
+    loading: catastroLoading,
+    error: catastroError,
+  } = useCatastroMap({
     enabled: !!sharedMap3dVectors.catastro,
   });
-  const { soilMap } = useSoilMap({ enabled: !!sharedMap3dVectors.soil });
+  const {
+    soilMap,
+    loading: soilLoading,
+    error: soilError,
+  } = useSoilMap({ enabled: !!sharedMap3dVectors.soil });
   // Conflictos points (canal/road intersections). The hook returns null when
   // the user isn't authenticated, so the panel toggle hides itself for
   // anonymous visitors. Counting features here drives the panel's "show"
@@ -981,6 +989,10 @@ export default function TerrainViewer3D({
         onRangeToggle={handleRangeToggle}
         vectorLayerVisibility={vectorLayerVisibility}
         onVectorLayerToggle={handleVectorLayerToggle}
+        catastroLoading={catastroLoading}
+        catastroError={catastroError}
+        soilLoading={soilLoading}
+        soilError={soilError}
         hasApprovedZones={!!approvedZonesCollection}
         intersectionsLength={intersectionsLength}
         ready={ready}
