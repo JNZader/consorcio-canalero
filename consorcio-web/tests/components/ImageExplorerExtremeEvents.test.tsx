@@ -9,7 +9,10 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ImageExplorerExtremeEvents } from '../../src/components/admin/images/ImageExplorerExtremeEvents';
+import {
+  chirpsZoneMmLine,
+  ImageExplorerExtremeEvents,
+} from '../../src/components/admin/images/ImageExplorerExtremeEvents';
 
 function wrapper({ children }: { children: ReactNode }) {
   return <MantineProvider env="test">{children}</MantineProvider>;
@@ -35,6 +38,22 @@ const noImagery = {
   imagery_candidate: false,
   imagery_note: 'Sin imagen satelital util (anterior a 2015).',
 };
+
+describe('chirpsZoneMmLine', () => {
+  it('renders d1 and d7 as a CHIRPS zone range', () => {
+    expect(
+      chirpsZoneMmLine({
+        d1: { peak_total_mm: 94.03 },
+        d7: { peak_total_mm: 121.26 },
+      })
+    ).toBe('CHIRPS zona: 94 mm (1 d) – 121 mm (7 d)');
+  });
+
+  it('omits the line when fired_windows has no millimetres', () => {
+    expect(chirpsZoneMmLine(null)).toBeNull();
+    expect(chirpsZoneMmLine({ d3: { peak_total_mm: 150 } })).toBeNull();
+  });
+});
 
 describe('ImageExplorerExtremeEvents', () => {
   it('renders the operator title and CHIRPS search help', () => {
@@ -118,6 +137,25 @@ describe('ImageExplorerExtremeEvents', () => {
 
     const names = screen.getAllByText(/^(older|newer)$/).map((node) => node.textContent);
     expect(names).toEqual(['newer', 'older']);
+  });
+
+  it('shows the CHIRPS d1–d7 millimetre range on the card', () => {
+    render(
+      <ImageExplorerExtremeEvents
+        events={[
+          {
+            ...candidate,
+            fired_windows: {
+              d1: { peak_total_mm: 94.03 },
+              d7: { peak_total_mm: 121.26 },
+            },
+          },
+        ]}
+        onLoadHistoricFlood={() => {}}
+      />,
+      { wrapper }
+    );
+    expect(screen.getByText('CHIRPS zona: 94 mm (1 d) – 121 mm (7 d)')).toBeInTheDocument();
   });
 
   it('offers Probar este for each ranked shortlist scene, not the composite search',

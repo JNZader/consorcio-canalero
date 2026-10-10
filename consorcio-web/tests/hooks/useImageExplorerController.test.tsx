@@ -69,6 +69,7 @@ interface ApiCalls {
   floodList: Call[];
   flood: Call[];
   candidates: Call[];
+  shortlists: Call[];
   dates: Call[];
   scenes: Call[];
   dayImage: Call[];
@@ -80,6 +81,7 @@ let calls: ApiCalls;
 function classify(url: string): keyof ApiCalls | null {
   if (!url.startsWith(`${API_BASE}/`)) return null;
   const rest = url.slice(API_BASE.length);
+  if (rest.startsWith('/imagery-shortlists')) return 'shortlists';
   if (rest.includes('/candidates')) return 'candidates';
   if (rest.startsWith('/historic-floods/')) return 'flood';
   if (rest.startsWith('/historic-floods')) return 'floodList';
@@ -143,6 +145,8 @@ function stubApi(
         return floodResult('2016-04-20');
       case 'candidates':
         return { event_id: 'f1', candidates: [] };
+      case 'shortlists':
+        return { shortlists: {} };
       case 'dates':
         return { dates: ['2026-03-10', '2026-03-12'] };
       case 'scenes':
@@ -172,6 +176,7 @@ beforeEach(() => {
     floodList: [],
     flood: [],
     candidates: [],
+    shortlists: [],
     dates: [],
     scenes: [],
     dayImage: [],
@@ -761,11 +766,13 @@ describe('useImageExplorerController — imagery shortlist', () => {
       visualization: 'vv_flood',
     };
     stubApi({
-      candidates: () => ({ event_id: 'f1', candidates: [row] }),
+      shortlists: () => ({ shortlists: { f1: [row] } }),
     });
     const { result } = await mountController();
     await waitFor(() => expect(result.current.shortlists.f1).toEqual([row]));
-    expect(calls.candidates[0]?.url).toContain('/historic-floods/f1/candidates');
+    expect(calls.shortlists).toHaveLength(1);
+    expect(calls.candidates).toHaveLength(0);
+    expect(calls.shortlists[0]?.url).toContain('/imagery-shortlists');
   });
 
   it('Probar este fetches the ranked scene, not the flood composite', async () => {

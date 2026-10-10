@@ -237,3 +237,25 @@ def test_candidates_route_returns_persisted_shortlist(operator_client, db) -> No
     body = response.json()
     assert body["candidates"][0]["scene_id"] == "S2"
     assert body["candidates"][0]["rank"] == 1
+
+
+def test_all_shortlists_route_is_one_payload_not_n_plus_one(operator_client, db) -> None:
+    _curated_anchor(db, "mar_2015")
+    _curated_anchor(db, "feb_2017")
+    replace_candidates(
+        db,
+        "mar_2015",
+        rank_scenes(date(2015, 3, 15), [SceneHit("sentinel2", "S2", date(2015, 3, 15), 4.0)]),
+    )
+    replace_candidates(
+        db,
+        "feb_2017",
+        rank_scenes(date(2017, 2, 20), [SceneHit("sentinel1", "S1", date(2017, 2, 20), None)]),
+    )
+    db.flush()
+
+    response = operator_client.get("/api/v2/geo/gee/images/imagery-shortlists")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body["shortlists"]) == {"mar_2015", "feb_2017"}
+    assert body["shortlists"]["feb_2017"][0]["sensor"] == "sentinel1"
