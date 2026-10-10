@@ -524,11 +524,11 @@ describe('cruces de camino · la entrada es operator-only', () => {
     expect(ids).not.toContain('road_flow');
   });
 
-  it('con sesión de staff aparece una sola vez, en Análisis', () => {
+  it('con sesión de staff aparece una sola vez, en Territorio', () => {
     const items = buildVectorLayerItems({ ...base, showRoadFlow: true });
     const entries = items.filter((item) => item.id === 'road_flow');
     expect(entries).toHaveLength(1);
     expect(entries[0].label).toBe('Cruces de camino');
-    expect(entries[0].category).toBe('analisis');
+    expect(entries[0].category).toBe('territorio');
   });
 });
