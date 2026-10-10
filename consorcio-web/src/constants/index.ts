@@ -343,6 +343,19 @@ export const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [
  */
 export const MAP_MIN_ZOOM = 9;
 
+/**
+ * Quick-fly places (UX PDF R9). Bell Ville matches the public-report e2e
+ * fixture / coordinates placeholder, not a geocoder.
+ */
+export const MAP_QUICK_PLACES = [
+  {
+    id: 'bell-ville',
+    label: 'Bell Ville',
+    center: [-62.68, -32.628] as [number, number],
+    zoom: 14,
+  },
+] as const;
+
 // ===========================================
 // ANALYSIS DEFAULTS
 // ===========================================

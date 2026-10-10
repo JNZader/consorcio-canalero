@@ -1102,6 +1102,11 @@
   top: 144px;
 }
 
+/* Home + places, under FullscreenControl, above Exportar. */
+.mapPlacesDock {
+  top: 116px;
+}
+
 .measurementDock {
   top: 180px;
 }
@@ -1218,6 +1223,10 @@
      `alto` (85%) is the exception and stays a plain cover: there is no map left
      to operate, and lifting the toolbar to 85% + 12px would push it into the
      page header. Fully expanded IS the "reading" stage. */
+  .mapPlacesDock {
+    top: 168px;
+  }
+
   .mapActionsDock {
     top: 206px;
   }

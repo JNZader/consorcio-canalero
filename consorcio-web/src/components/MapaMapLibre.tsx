@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // would have to keep a GeoJSON twin alive for the export path.
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
-import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
+import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_QUICK_PLACES } from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
@@ -67,6 +67,7 @@ import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
+import { MapPlacesControl } from './map2d/MapPlacesControl';
 import { MapTimeBar } from './map2d/MapTimeBar';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
@@ -1159,6 +1160,23 @@ export default function MapaMapLibre() {
                 compareRightDate={comparisonInfo?.rightDate ?? null}
               />
             </div>
+
+            <MapPlacesControl
+              onRecenter={() => {
+                mapRef.current?.fitBounds(
+                  [
+                    [MAP_BOUNDS.west, MAP_BOUNDS.south],
+                    [MAP_BOUNDS.east, MAP_BOUNDS.north],
+                  ],
+                  { padding: 48, duration: 800 },
+                );
+              }}
+              onFlyToPlace={(placeId) => {
+                const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
+                if (!place) return;
+                mapRef.current?.flyTo({ center: place.center, zoom: place.zoom, duration: 800 });
+              }}
+            />
 
             {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
             <MeasurementToolbar
