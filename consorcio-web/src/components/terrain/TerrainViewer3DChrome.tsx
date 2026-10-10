@@ -5,7 +5,6 @@ import {
   Loader,
   Paper,
   SegmentedControl,
-  Slider,
   Stack,
   Text,
   Title,
