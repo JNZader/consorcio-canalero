@@ -155,6 +155,7 @@ describe('useMapInitialization', () => {
       })
     );
     expect(mockMap.addControl).toHaveBeenCalledTimes(3);
+    expect(navigationControl).toHaveBeenCalledWith({ visualizePitch: true });
     expect(mockMap.on).toHaveBeenCalledWith('load', expect.any(Function));
     expect(mockMap.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(mapRef.current).toBe(mockMap);

@@ -639,7 +639,7 @@ export default function TerrainViewer3D({
       // levels.
     });
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-left');
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
 
     map.on('load', () => {
       applyTerrainDepthCues(map);
@@ -901,6 +901,7 @@ export default function TerrainViewer3D({
   }, []);
   const handleNorth = useCallback(() => easeCamera({ bearing: 0 }), [easeCamera]);
   const handleNadir = useCallback(() => easeCamera({ pitch: 0 }), [easeCamera]);
+  const handleOblique = useCallback(() => easeCamera({ pitch: 60 }), [easeCamera]);
   const handleResetView = useCallback(
     () => easeCamera({ bearing: 0, pitch: 0 }),
     [easeCamera],
@@ -949,6 +950,7 @@ export default function TerrainViewer3D({
         maxExaggeration={MAX_EXAGGERATION}
         onNorth={handleNorth}
         onNadir={handleNadir}
+        onOblique={handleOblique}
         onResetView={handleResetView}
         height={height}
         mapContainerRef={mapContainer}

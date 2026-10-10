@@ -3,12 +3,14 @@ import { Button, Group, Text, Tooltip } from '@mantine/core';
 interface TerrainOrientationControlsProps {
   readonly onNorth: () => void;
   readonly onNadir: () => void;
+  readonly onOblique: () => void;
   readonly onReset: () => void;
 }
 
 export function TerrainOrientationControls({
   onNorth,
   onNadir,
+  onOblique,
   onReset,
 }: TerrainOrientationControlsProps) {
   return (
@@ -24,6 +26,11 @@ export function TerrainOrientationControls({
       <Tooltip label="Vista cenital (U)" withArrow>
         <Button size="compact-xs" variant="default" onClick={onNadir}>
           Cenital
+        </Button>
+      </Tooltip>
+      <Tooltip label="Vista oblicua (pitch 60°)" withArrow>
+        <Button size="compact-xs" variant="default" onClick={onOblique}>
+          Oblicua
         </Button>
       </Tooltip>
       <Tooltip label="Norte + cenital (R)" withArrow>

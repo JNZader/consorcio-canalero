@@ -15,15 +15,23 @@ describe('TerrainOrientationControls', () => {
     const user = userEvent.setup();
     const onNorth = vi.fn();
     const onNadir = vi.fn();
+    const onOblique = vi.fn();
     const onReset = vi.fn();
     wrap(
-      <TerrainOrientationControls onNorth={onNorth} onNadir={onNadir} onReset={onReset} />,
+      <TerrainOrientationControls
+        onNorth={onNorth}
+        onNadir={onNadir}
+        onOblique={onOblique}
+        onReset={onReset}
+      />,
     );
     await user.click(screen.getByRole('button', { name: 'Norte' }));
     await user.click(screen.getByRole('button', { name: 'Cenital' }));
+    await user.click(screen.getByRole('button', { name: 'Oblicua' }));
     await user.click(screen.getByRole('button', { name: 'Reset' }));
     expect(onNorth).toHaveBeenCalledOnce();
     expect(onNadir).toHaveBeenCalledOnce();
+    expect(onOblique).toHaveBeenCalledOnce();
     expect(onReset).toHaveBeenCalledOnce();
   });
 });
