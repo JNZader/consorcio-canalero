@@ -51,6 +51,7 @@ interface TerrainViewer3DChromeProps {
   maxExaggeration: number;
   onNorth: () => void;
   onNadir: () => void;
+  onOblique: () => void;
   onResetView: () => void;
   height: number | string;
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -143,6 +144,7 @@ export function TerrainViewer3DChrome({
   maxExaggeration,
   onNorth,
   onNadir,
+  onOblique,
   onResetView,
   height,
   mapContainerRef,
@@ -218,7 +220,12 @@ export function TerrainViewer3DChrome({
             min={minExaggeration}
             max={maxExaggeration}
           />
-          <TerrainOrientationControls onNorth={onNorth} onNadir={onNadir} onReset={onResetView} />
+          <TerrainOrientationControls
+            onNorth={onNorth}
+            onNadir={onNadir}
+            onOblique={onOblique}
+            onReset={onResetView}
+          />
         </Group>
       </Group>
 
