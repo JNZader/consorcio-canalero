@@ -13,7 +13,7 @@ import type { FeatureCollection } from 'geojson';
 import { describe, expect, it } from 'vitest';
 
 import { buildVectorLayerItems } from '../../src/components/map2d/map2dDerived';
-import { PILAR_VERDE_ITEMS } from '../../src/components/terrain/TerrainLayerTogglesPanel';
+import { PILAR_VERDE_ITEMS } from '../../src/components/terrain/terrainLayerConfig';
 import { PRIORITY_3D_VECTOR_LAYERS } from '../../src/components/terrain/terrainLayerConfig';
 
 function nonEmpty(): FeatureCollection {

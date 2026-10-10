@@ -21,11 +21,16 @@ import {
 } from '../shared/canalesGrouping';
 
 import { InfoPanel } from '../map2d/InfoPanel';
+import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
 import { MapWorkspace } from '../map2d/MapWorkspace';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
-import { buildTerrain3DLayerItems } from './terrainLayerConfig';
+import {
+  UNSUPPORTED_3D_VECTOR_LAYERS,
+  buildTerrain3DLayerItems,
+  buildTerrainLayerControlItems,
+} from './terrainLayerConfig';
 
 interface SelectedImageOption {
   value: string;
@@ -342,9 +347,27 @@ export function TerrainViewer3DChrome({
                 onVectorLayerToggle={onVectorLayerToggle}
                 hasApprovedZones={hasApprovedZones}
                 intersectionsLength={intersectionsLength}
+                embedded
+                showVectorSections={false}
+              />
+              <LayerControlsPanel
+                variant="3d"
+                unsupportedLayerIds={UNSUPPORTED_3D_VECTOR_LAYERS.map((layer) => layer.id)}
+                layerItems={buildTerrainLayerControlItems({ intersectionsLength })}
+                vectorVisibility={vectorLayerVisibility}
+                onLayerVisibilityChange={onVectorLayerToggle}
+                showIGNOverlay={false}
+                onShowIGNOverlayChange={() => undefined}
+                demEnabled={false}
+                showDemOverlay={false}
+                onShowDemOverlayChange={() => undefined}
+                activeDemLayerId={null}
+                onActiveDemLayerIdChange={() => undefined}
+                demOptions={[]}
                 canalesRelevadosItems={canalesRelevadosItems}
                 canalesPropuestosItems={canalesPropuestosItems}
-                embedded
+                etapaGate={etapaGate}
+                insideScrollContainer
               />
             </Box>
             <Box data-testid="terrain-3d-bottom-bar-legends">

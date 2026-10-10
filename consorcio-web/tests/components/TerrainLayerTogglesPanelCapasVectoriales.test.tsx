@@ -53,6 +53,13 @@ const baseProps = {
 };
 
 describe('<TerrainLayerTogglesPanel /> — "Capas vectoriales 3D" CollapsibleSection', () => {
+  it('hides vector sections when showVectorSections is false', () => {
+    renderWithMantine(
+      <TerrainLayerTogglesPanel {...baseProps} showVectorSections={false} />,
+    );
+    expect(screen.queryByTestId('terrain-3d-capas-vectoriales')).not.toBeInTheDocument();
+  });
+
   it('renders the section with the deterministic testId root', () => {
     renderWithMantine(<TerrainLayerTogglesPanel {...baseProps} />);
 

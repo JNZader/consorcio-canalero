@@ -220,6 +220,9 @@ interface LayerControlsPanelProps {
    * ancestor, so there the panel's own bound is what keeps it on screen.
    */
   readonly insideScrollContainer?: boolean;
+  /** UX PDF T1: 3D omits Base/raster/ajustes; gray unsupported ids. */
+  readonly variant?: '2d' | '3d';
+  readonly unsupportedLayerIds?: readonly string[];
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -457,6 +460,8 @@ export function LayerControlsPanel({
   layerHealth,
   layerProvenance,
   insideScrollContainer = false,
+  variant = '2d',
+  unsupportedLayerIds = [],
   legendPanelProps,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
@@ -465,6 +470,8 @@ export function LayerControlsPanel({
   // names ("Riesgo de Inundacion"), so BOTH sides go through the same fold.
   const normalizedQuery = normalizeSearchText(query.trim());
   const isSearching = normalizedQuery.length > 0;
+  const is3d = variant === '3d';
+  const unsupportedSet = new Set(unsupportedLayerIds);
 
   const showCanalesSection =
     (canalesRelevadosItems?.length ?? 0) > 0 || (canalesPropuestosItems?.length ?? 0) > 0;
@@ -606,6 +613,7 @@ export function LayerControlsPanel({
 
     // ── Base: structural controls (capa base / IGN / DEM), NOT in layerItems.
     if (family.value === LAYER_CATEGORY.BASE) {
+      if (is3d) continue;
       // FF2: Base stays searchable by its control labels (Capa base / IGN /
       // Capa DEM / OSM / Satélite).
       if (isSearching && !BASE_SEARCH_LABELS.some((label) => label.includes(normalizedQuery))) {
@@ -778,6 +786,7 @@ export function LayerControlsPanel({
                 onChange={(event) => {
                   const next = event.currentTarget.checked;
                   for (const item of familyVisible) {
+                    if (unsupportedSet.has(item.id)) continue;
                     onLayerVisibilityChange(item.id, next);
                   }
                 }}
@@ -793,15 +802,26 @@ export function LayerControlsPanel({
             {familyVisible.map((item) => {
               const isOn = !!vectorVisibility[item.id];
               const showOpacity = isOn && RENDERABLE_UI_LAYER_ID_SET.has(item.id);
+              const unsupported = unsupportedSet.has(item.id);
+              const checkbox = (
+                <Checkbox
+                  label={item.label}
+                  checked={unsupported ? false : isOn}
+                  disabled={unsupported}
+                  onChange={(event) =>
+                    onLayerVisibilityChange(item.id, event.currentTarget.checked)
+                  }
+                />
+              );
               return (
                 <Box key={item.id}>
-                  <Checkbox
-                    label={item.label}
-                    checked={isOn}
-                    onChange={(event) =>
-                      onLayerVisibilityChange(item.id, event.currentTarget.checked)
-                    }
-                  />
+                  {unsupported ? (
+                    <Tooltip label="no disponible en 3D" withArrow>
+                      <Box>{checkbox}</Box>
+                    </Tooltip>
+                  ) : (
+                    checkbox
+                  )}
                   {/*
                     FF-B3: the slider is gated on `isOn`, but a persisted
                     non-1 opacity is INTENTIONALLY preserved while the layer is
@@ -843,7 +863,7 @@ export function LayerControlsPanel({
     rasterSearchMatches.length > 0 ||
     normalizeSearchText('análisis raster').includes(normalizedQuery) ||
     normalizedQuery.includes('dem');
-  if (demEnabled && rasterQueryHit) {
+  if (!is3d && demEnabled && rasterQueryHit) {
     const rasterOptions = isSearching && rasterSearchMatches.length > 0 ? rasterSearchMatches : demOptions;
     accordionItems.push(
       <Accordion.Item key="raster" value="raster" data-testid="layer-controls-raster">
@@ -906,7 +926,7 @@ export function LayerControlsPanel({
 
   const showAjustes =
     !isSearching || AJUSTES_SEARCH_LABELS.some((label) => label.includes(normalizedQuery));
-  if (showAjustes) {
+  if (!is3d && showAjustes) {
     accordionItems.push(
       <Accordion.Item key="ajustes" value="ajustes" data-testid="layer-controls-ajustes">
         <Accordion.Control icon={<IconSettings size={16} />}>
