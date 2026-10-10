@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Checkbox,
   Group,
@@ -27,6 +28,7 @@ import { TerrainExaggerationControls } from './TerrainExaggerationControls';
 import { TerrainOrientationControls } from './TerrainOrientationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { exaggerationCanvasLabel } from './terrainExaggeration';
+import { heavy3dWarning } from './terrainHeavyLayers';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 import {
   UNSUPPORTED_3D_VECTOR_LAYERS,
@@ -186,6 +188,7 @@ export function TerrainViewer3DChrome({
   bpaEnriched,
   bpaHistory,
 }: TerrainViewer3DChromeProps) {
+  const heavyWarning = heavy3dWarning(vectorLayerVisibility);
   return (
     <>
       <Group justify="space-between" align="flex-end">
@@ -228,6 +231,12 @@ export function TerrainViewer3DChrome({
           />
         </Group>
       </Group>
+
+      {heavyWarning ? (
+        <Alert color="yellow" py={6} data-testid="terrain-heavy-layers-warning">
+          {heavyWarning}
+        </Alert>
+      ) : null}
 
       {/* Same responsive shell the 2D map got in the redesign: controls in a
           collapsible sidebar (desktop) / full-screen Drawer (mobile) instead
