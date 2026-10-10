@@ -153,6 +153,32 @@ def load_candidates(db: Session, event_key: str) -> list[RainfallEventImageryCan
     )
 
 
+def load_all_shortlists(db: Session) -> dict[str, list[RainfallEventImageryCandidate]]:
+    rows = db.scalars(
+        select(RainfallEventImageryCandidate).order_by(
+            RainfallEventImageryCandidate.event_key,
+            RainfallEventImageryCandidate.rank,
+        )
+    ).all()
+    grouped: dict[str, list[RainfallEventImageryCandidate]] = {}
+    for row in rows:
+        grouped.setdefault(row.event_key, []).append(row)
+    return grouped
+
+
+def all_shortlists_payload(
+    grouped: dict[str, list[RainfallEventImageryCandidate]],
+) -> dict:
+    return {
+        "scorer_revision": SCORER_REVISION,
+        "cloud_basis": CLOUD_BASIS,
+        "shortlists": {
+            event_id: payload_from_rows(event_id, rows)["candidates"]
+            for event_id, rows in grouped.items()
+        },
+    }
+
+
 def shortlist_payload(event_id: str, ranked: Sequence[RankedScene]) -> dict:
     return {
         "event_id": event_id,

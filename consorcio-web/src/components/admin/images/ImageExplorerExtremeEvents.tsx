@@ -11,6 +11,22 @@ export interface HistoricFloodEvent {
   severity?: string;
   imagery_candidate?: boolean;
   imagery_note?: string;
+  fired_windows?: Record<string, { peak_total_mm?: number | null }> | null;
+}
+
+export function chirpsZoneMmLine(firedWindows: unknown): string | null {
+  if (!firedWindows || typeof firedWindows !== 'object') return null;
+  const windows = firedWindows as Record<string, { peak_total_mm?: unknown }>;
+  const mm = (key: string): number | null => {
+    const value = windows[key]?.peak_total_mm;
+    return typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : null;
+  };
+  const d1 = mm('d1');
+  const d7 = mm('d7');
+  if (d1 == null && d7 == null) return null;
+  if (d1 != null && d7 != null) return `CHIRPS zona: ${d1} mm (1 d) – ${d7} mm (7 d)`;
+  if (d1 != null) return `CHIRPS zona: ${d1} mm (1 d)`;
+  return `CHIRPS zona: ${d7} mm (7 d)`;
 }
 
 export interface ImageryShortlistRow {
@@ -88,6 +104,7 @@ export function ImageExplorerExtremeEvents({
       <SimpleGrid cols={1} style={{ maxHeight: 480, overflow: 'auto' }}>
         {visibleEvents.map((flood) => {
           const canSearch = isImageryEligible(flood);
+          const mmLine = chirpsZoneMmLine(flood.fired_windows);
           return (
             <Card key={`${flood.id}-${flood.date}`} padding="sm" radius="md" withBorder>
               <Group justify="space-between" mb="xs" wrap="nowrap">
@@ -102,6 +119,11 @@ export function ImageExplorerExtremeEvents({
               <Text size="xs" c="dimmed" mt="xs">
                 {flood.date}
               </Text>
+              {mmLine ? (
+                <Text size="xs" mt={4}>
+                  {mmLine}
+                </Text>
+              ) : null}
               {flood.imagery_note ? (
                 <Text size="xs" mt={4}>
                   {flood.imagery_note}

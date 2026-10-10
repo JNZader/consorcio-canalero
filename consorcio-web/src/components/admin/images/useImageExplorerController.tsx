@@ -61,10 +61,15 @@ function isShortlistRow(value: unknown): value is ImageryShortlistRow {
   );
 }
 
-function parseShortlist(payload: unknown): ImageryShortlistRow[] {
-  if (!payload || typeof payload !== 'object') return [];
-  const rows = (payload as { candidates?: unknown }).candidates;
-  return Array.isArray(rows) ? rows.filter(isShortlistRow) : [];
+function parseShortlistMap(payload: unknown): Record<string, ImageryShortlistRow[]> {
+  if (!payload || typeof payload !== 'object') return {};
+  const raw = (payload as { shortlists?: unknown }).shortlists;
+  if (!raw || typeof raw !== 'object') return {};
+  const mapped: Record<string, ImageryShortlistRow[]> = {};
+  for (const [eventId, rows] of Object.entries(raw as Record<string, unknown>)) {
+    mapped[eventId] = Array.isArray(rows) ? rows.filter(isShortlistRow) : [];
+  }
+  return mapped;
 }
 
 function normalizeUniqueDates(values: unknown): string[] {
@@ -342,23 +347,18 @@ export function useImageExplorerController() {
             ? (data as { floods: unknown[] }).floods.filter(isHistoricFlood)
             : [];
         setHistoricFloods(floods);
-        const eligible = floods.filter((flood) => flood.imagery_candidate !== false);
-        return Promise.all(
-          eligible.map(async (flood) => {
-            try {
-              const payload = await apiFetch<unknown>(
-                `${API_BASE}/historic-floods/${flood.id}/candidates`,
-                { signal: controller.signal }
-              );
-              return [flood.id, parseShortlist(payload)] as const;
-            } catch {
-              return [flood.id, [] as ImageryShortlistRow[]] as const;
-            }
+        return apiFetch<unknown>(`${API_BASE}/imagery-shortlists`, {
+          signal: controller.signal,
+        })
+          .then((payload) => {
+            if (controller.signal.aborted) return;
+            setShortlists(parseShortlistMap(payload));
           })
-        ).then((entries) => {
-          if (controller.signal.aborted) return;
-          setShortlists(Object.fromEntries(entries));
-        });
+          .catch((err) => {
+            if (controller.signal.aborted) return;
+            logger.error('Error fetching imagery shortlists:', err);
+            setShortlists({});
+          });
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
