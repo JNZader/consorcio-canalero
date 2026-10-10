@@ -43,6 +43,7 @@ import {
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
 import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
+import { runWhenMapStyleReady } from './map2dUtils';
 
 interface LayerLike {
   id: string;
@@ -163,70 +164,69 @@ export function useMapLayerEffects({
   showCaminosHuecos = false,
 }: UseMapLayerEffectsParams) {
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncBaseTileVisibility(map, baseLayer);
+    });
   }, [baseLayer, mapReady, mapRef]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncWaterwayLayers(map, waterwaysDefs, !!vectorVisibility.waterways);
+    });
   }, [mapReady, mapRef, vectorVisibility.waterways, waterwaysDefs]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncSoilLayers(map, soilCollection, !!vectorVisibility.soil);
+    });
   }, [mapReady, mapRef, soilCollection, vectorVisibility.soil]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncCatastroLayers(
       map,
       !!vectorVisibility.catastro,
       buildHazardBasinFilter(catastroMembership)
     );
+    });
   }, [catastroMembership, mapReady, mapRef, vectorVisibility.catastro]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncRoadLayers(map, roadsCollection, !!vectorVisibility.roads);
+    });
   }, [mapReady, mapRef, roadsCollection, vectorVisibility.roads]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncRedVialOficialLayers(
       map,
       showRedVialOficial,
       showRedVialOficial && !!vectorVisibility.red_vial_oficial
     );
+    });
   }, [mapReady, mapRef, showRedVialOficial, vectorVisibility.red_vial_oficial]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncCaminosHuecosLayers(
       map,
       showCaminosHuecos,
       showCaminosHuecos && !!vectorVisibility.caminos_huecos
     );
+    });
   }, [mapReady, mapRef, showCaminosHuecos, vectorVisibility.caminos_huecos]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     // Subcuencas públicas a pedido del consorcio (2026-07-30): el toggle es la
     // única condición — el endpoint backend (`/geo/basins`) siempre fue público.
     syncBasinLayers(map, basins, !!vectorVisibility.basins);
+    });
   }, [basins, mapReady, mapRef, vectorVisibility.basins]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     // ONE payload, two surfaces: `roadFlowCrossings` is the very object the
     // ranked panel renders, so the map and the list cannot disagree (RFA-R2).
     syncRoadFlowLayers(
@@ -238,6 +238,7 @@ export function useMapLayerEffects({
       roadFlowFlechas,
       !!vectorVisibility.sentido_camino
     );
+    });
   }, [
     mapReady,
     mapRef,
@@ -250,21 +251,21 @@ export function useMapLayerEffects({
   ]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncZonaLayer(map, zonaCollection);
+    });
   }, [mapReady, mapRef, zonaCollection]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncApprovedZoneLayers(map, approvedZonesCollection, !!vectorVisibility.approved_zones);
+    });
   }, [approvedZonesCollection, mapReady, mapRef, vectorVisibility.approved_zones]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncDemRasterLayer(map, { showDemOverlay, activeDemLayerId, demTileUrl });
+    });
   }, [activeDemLayerId, demTileUrl, mapReady, mapRef, showDemOverlay]);
 
   useEffect(() => {
@@ -278,22 +279,22 @@ export function useMapLayerEffects({
   }, [activeDemLayerId, allGeoLayers, setVisibleRasterLayers, showDemOverlay]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncIgnLayer(map, showIGNOverlay);
+    });
   }, [mapReady, mapRef, showIGNOverlay]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncImageOverlays(map, { baseLayer, viewMode, selectedImage, comparison });
+    });
   }, [baseLayer, comparison, mapReady, mapRef, selectedImage, viewMode]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncMartinSuggestionLayers(map, {
       showConflictPoints: !!vectorVisibility.puntos_conflicto,
+    });
     });
   }, [mapReady, mapRef, vectorVisibility.puntos_conflicto]);
 
@@ -302,58 +303,58 @@ export function useMapLayerEffects({
   // cause all five to rerun. The helpers are idempotent, so re-running on
   // visibility changes is safe.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     const data = pilarVerde?.bpaHistorico ?? null;
     syncBpaHistoricoLayer(
       map,
       data as FeatureCollection | null,
       !!vectorVisibility.pilar_verde_bpa_historico
     );
+    });
   }, [mapReady, mapRef, pilarVerde?.bpaHistorico, vectorVisibility.pilar_verde_bpa_historico]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     const data = pilarVerde?.agroAceptada ?? null;
     syncAgroAceptadaLayer(
       map,
       data as FeatureCollection | null,
       !!vectorVisibility.pilar_verde_agro_aceptada
     );
+    });
   }, [mapReady, mapRef, pilarVerde?.agroAceptada, vectorVisibility.pilar_verde_agro_aceptada]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     const data = pilarVerde?.agroPresentada ?? null;
     syncAgroPresentadaLayer(
       map,
       data as FeatureCollection | null,
       !!vectorVisibility.pilar_verde_agro_presentada
     );
+    });
   }, [mapReady, mapRef, pilarVerde?.agroPresentada, vectorVisibility.pilar_verde_agro_presentada]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     const data = pilarVerde?.agroZonas ?? null;
     syncAgroZonasLayer(
       map,
       data as FeatureCollection | null,
       !!vectorVisibility.pilar_verde_agro_zonas
     );
+    });
   }, [mapReady, mapRef, pilarVerde?.agroZonas, vectorVisibility.pilar_verde_agro_zonas]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     const data = pilarVerde?.porcentajeForestacion ?? null;
     syncPorcentajeForestacionLayer(
       map,
       data as FeatureCollection | null,
       !!vectorVisibility.pilar_verde_porcentaje_forestacion
     );
+    });
   }, [
     mapReady,
     mapRef,
@@ -409,8 +410,7 @@ export function useMapLayerEffects({
     // Reference the signature so the effect re-runs on per-canal toggles
     // (the id lists below are read non-reactively via `getState()`).
     void canalesVisibilitySignature;
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     if (!canales) return;
 
     // Compute per-canal visible id lists from the store state.
@@ -446,6 +446,7 @@ export function useMapLayerEffects({
       visiblePropuestaIds,
       activeEtapas: activeEtapas.length > 0 ? activeEtapas : ALL_ETAPAS,
     });
+    });
   }, [
     mapReady,
     mapRef,
@@ -465,23 +466,23 @@ export function useMapLayerEffects({
   // no Promise) — previous symbol+icon approach had two successive silent-
   // fail paths and was abandoned. See `escuelasLayers.ts` header for history.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     const collection = (escuelas?.collection ?? null) as FeatureCollection<
       GeoJSON.Point,
       import('../../types/escuelas').EscuelaFeatureProperties
     > | null;
     syncEscuelasLayer(map, collection, !!vectorVisibility.escuelas);
+    });
   }, [mapReady, mapRef, escuelas?.collection, vectorVisibility.escuelas]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncPuntosInteresLayer(
       map,
       puntosInteresCollection,
       !!vectorVisibility.puntos_interes && puntosInteresCollection !== null
     );
+    });
   }, [mapReady, mapRef, puntosInteresCollection, vectorVisibility.puntos_interes]);
 
   // ── YPF estación de bombeo (Monte Leña) ────────────────────────────────
@@ -490,9 +491,9 @@ export function useMapLayerEffects({
   // Dep array is minimal on purpose: the data is a module-level constant,
   // so only the map identity + readiness matter.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     syncYpfEstacionBombeoLayer(map);
+    });
   }, [mapReady, mapRef]);
 
   // ── Per-layer opacity & order (map-redesign Fase 3) ─────────────────────
@@ -546,24 +547,24 @@ export function useMapLayerEffects({
   // override map has no entries → nothing applied → default untouched. Re-runs
   // on `layerMountSignal` so overrides land on layers that mount later.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
     applyLayerOpacity(map, opacityByLayer);
+    });
   }, [mapReady, mapRef, opacityByLayer, layerMountSignal]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
     applyMapLabelSize(map, labelSizeScale);
+    });
   }, [mapReady, mapRef, labelSizeScale, layerMountSignal]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
     applyMapLineWidth(map, lineWidthScale);
+    });
   }, [mapReady, mapRef, lineWidthScale, layerMountSignal]);
 
   // Order: when `orderByLayer` is non-empty, hoist each UI id's ml-layer group
@@ -572,10 +573,10 @@ export function useMapLayerEffects({
   // Runs after the sync effects above have mounted/ordered the base stack, and
   // re-asserts the custom order after any raise*Stack re-hoist via the signal.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
     applyLayerOrder(map, orderByLayer);
+    });
   }, [mapReady, mapRef, orderByLayer, layerMountSignal]);
 
   // ── DEM z-order hoist ───────────────────────────────────────────────────
@@ -617,8 +618,7 @@ export function useMapLayerEffects({
       ].join('|');
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     if (!showDemOverlay || !activeDemLayerId) return;
     // `demReorderSignal` is referenced so sibling layer mounts/reorders
     // (encoded in the signature) re-trigger the hoist while the DEM is on.
@@ -628,5 +628,6 @@ export function useMapLayerEffects({
     void demReorderSignal;
     void demTileUrl;
     moveDemAboveContextualVectors(map);
+    });
   }, [mapReady, mapRef, showDemOverlay, activeDemLayerId, demTileUrl, demReorderSignal]);
 }

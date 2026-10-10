@@ -193,6 +193,15 @@ export function useMapInitialization({
     map.on('load', () => {
       setMapReady(true);
     });
+    const onContextLost = (event: { preventDefault?: () => void }) => {
+      event.preventDefault?.();
+      setMapReady(false);
+    };
+    const onContextRestored = () => {
+      setMapReady(true);
+    };
+    map.on('webglcontextlost', onContextLost);
+    map.on('webglcontextrestored', onContextRestored);
 
     map.on('error', (event) => {
       // Same heuristic as before, now shared with the tile-health counter —
@@ -207,6 +216,10 @@ export function useMapInitialization({
     mapRef.current = map;
 
     return () => {
+      if (typeof map.off === 'function') {
+        map.off('webglcontextlost', onContextLost);
+        map.off('webglcontextrestored', onContextRestored);
+      }
       removeNativeDragGuards();
       map.remove();
       mapRef.current = null;
