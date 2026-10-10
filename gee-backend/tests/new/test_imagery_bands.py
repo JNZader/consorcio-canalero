@@ -32,6 +32,9 @@ def test_composite_bands_is_none_for_index_visualizations(sensor: str, visualiza
 @pytest.mark.parametrize(
     ("sensor", "visualization", "expected"),
     [
+        ("landsat9", "rgb", ["B4", "B3", "B2"]),
+        ("landsat9", "falso_color", ["B5", "B4", "B3"]),
+        ("landsat9", "agricultura", ["B6", "B5", "B2"]),
         ("landsat8", "rgb", ["B4", "B3", "B2"]),
         ("landsat8", "falso_color", ["B5", "B4", "B3"]),
         ("landsat8", "agricultura", ["B6", "B5", "B2"]),
@@ -89,6 +92,10 @@ def test_needed_bands_for_indices_is_exactly_two(sensor: str, visualization: str
     ("sensor", "visualization", "expected"),
     [
         # ndwi and inundacion both derive from the NDWI pair (green, nir).
+        ("landsat9", "ndwi", ["B3", "B5"]),
+        ("landsat9", "inundacion", ["B3", "B5"]),
+        ("landsat9", "mndwi", ["B3", "B6"]),
+        ("landsat9", "ndvi", ["B5", "B4"]),
         ("landsat8", "ndwi", ["B3", "B5"]),
         ("landsat8", "inundacion", ["B3", "B5"]),
         ("landsat8", "mndwi", ["B3", "B6"]),

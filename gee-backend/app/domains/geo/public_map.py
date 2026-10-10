@@ -47,6 +47,7 @@ _OPTICAL_VISUALIZATIONS = frozenset(
 _SENSOR_RULES: dict[str, tuple[str, date, frozenset[str]]] = {
     "Sentinel-1": ("sentinel1", date(2014, 10, 3), frozenset({"vv", "vv_flood"})),
     "Sentinel-2": ("sentinel2", date(2015, 6, 23), _OPTICAL_VISUALIZATIONS),
+    "Landsat 9": ("landsat9", date(2021, 9, 27), _OPTICAL_VISUALIZATIONS),
     "Landsat 8": ("landsat8", date(2013, 4, 11), _OPTICAL_VISUALIZATIONS),
     "Landsat 7": ("landsat7", date(1999, 4, 15), _OPTICAL_VISUALIZATIONS),
     "Landsat 5": ("landsat5", date(1984, 3, 1), _OPTICAL_VISUALIZATIONS),
@@ -75,7 +76,7 @@ class PublicCurrentMapImage(BaseModel):
 
     tile_url: str
     target_date: str
-    sensor: Literal["Sentinel-1", "Sentinel-2", "Landsat 8", "Landsat 7", "Landsat 5"]
+    sensor: Literal["Sentinel-1", "Sentinel-2", "Landsat 9", "Landsat 8", "Landsat 7", "Landsat 5"]
     visualization: str
     visualization_description: str
     images_count: int

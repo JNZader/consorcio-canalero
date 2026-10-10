@@ -68,6 +68,7 @@ interface ImageExplorerExtremeEventsProps {
 const SENSOR_SHORT: Record<string, string> = {
   sentinel1: 'S1',
   sentinel2: 'S2',
+  landsat9: 'L9',
   landsat8: 'L8',
   landsat7: 'L7',
   landsat5: 'L5',

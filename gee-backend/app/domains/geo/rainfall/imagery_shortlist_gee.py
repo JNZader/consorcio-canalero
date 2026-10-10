@@ -41,7 +41,7 @@ def list_gee_scenes(sensor: str, start: date, end: date) -> list[SceneHit]:
     elif sensor == "sentinel1":
         collection = explorer._sentinel1_collection(start, end_exclusive)
         cloud_key = None
-    elif sensor in {"landsat8", "landsat7", "landsat5"}:
+    elif sensor in {"landsat9", "landsat8", "landsat7", "landsat5"}:
         collection = explorer._landsat_collection(sensor, start, end_exclusive, 80)
         cloud_key = "CLOUD_COVER"
     else:

@@ -31,7 +31,7 @@ from app.domains.geo.rainfall.imagery_shortlist import (
     replace_candidates,
 )
 
-SENSORS = ("sentinel2", "sentinel1", "landsat8", "landsat7", "landsat5")
+SENSORS = ("sentinel2", "sentinel1", "landsat9", "landsat8", "landsat7", "landsat5")
 
 ListScenes = Callable[[str, date, date], list[SceneHit]]
 
