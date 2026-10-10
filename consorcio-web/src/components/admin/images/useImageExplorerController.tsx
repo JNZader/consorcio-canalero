@@ -14,7 +14,11 @@ import {
   isImageSensor,
   isOpticalSensor,
 } from './imageExplorerUtils';
-import type { HistoricFloodEvent, ImageryShortlistRow } from './ImageExplorerExtremeEvents';
+import type {
+  HistoricFloodEvent,
+  ImageryPair,
+  ImageryShortlistRow,
+} from './ImageExplorerExtremeEvents';
 import { useImageExplorerMap } from './useImageExplorerMap';
 
 interface Visualization {
@@ -72,6 +76,22 @@ function parseShortlistMap(payload: unknown): Record<string, ImageryShortlistRow
   return mapped;
 }
 
+function parsePairs(payload: unknown): Record<string, ImageryPair> {
+  if (!payload || typeof payload !== 'object') return {};
+  const raw = (payload as { pairs?: unknown }).pairs;
+  if (!raw || typeof raw !== 'object') return {};
+  const mapped: Record<string, ImageryPair> = {};
+  for (const [eventId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const bucket = value as { pre?: unknown; post?: unknown };
+    mapped[eventId] = {
+      pre: isShortlistRow(bucket.pre) ? bucket.pre : null,
+      post: isShortlistRow(bucket.post) ? bucket.post : null,
+    };
+  }
+  return mapped;
+}
+
 function normalizeUniqueDates(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   return [...new Set(values.filter((value): value is string => typeof value === 'string'))].sort();
@@ -114,6 +134,7 @@ export function useImageExplorerController() {
   const [visualizations, setVisualizations] = useState<Visualization[]>([]);
   const [historicFloods, setHistoricFloods] = useState<HistoricFloodEvent[]>([]);
   const [shortlists, setShortlists] = useState<Record<string, ImageryShortlistRow[]>>({});
+  const [pairs, setPairs] = useState<Record<string, ImageryPair>>({});
 
   const { selectedImage, setSelectedImage, clearSelectedImage } = useSelectedImage();
   const {
@@ -353,11 +374,13 @@ export function useImageExplorerController() {
           .then((payload) => {
             if (controller.signal.aborted) return;
             setShortlists(parseShortlistMap(payload));
+            setPairs(parsePairs(payload));
           })
           .catch((err) => {
             if (controller.signal.aborted) return;
             logger.error('Error fetching imagery shortlists:', err);
             setShortlists({});
+            setPairs({});
           });
       })
       .catch((err) => {
@@ -365,6 +388,7 @@ export function useImageExplorerController() {
         logger.error('Error fetching historic floods:', err);
         setHistoricFloods([]);
         setShortlists({});
+        setPairs({});
       });
     return () => controller.abort();
   }, []);
@@ -458,6 +482,7 @@ export function useImageExplorerController() {
     selectedSceneId,
     historicFloods,
     shortlists,
+    pairs,
     selectedImage,
     comparison,
     comparisonReady,

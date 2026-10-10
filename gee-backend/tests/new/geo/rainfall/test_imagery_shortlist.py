@@ -15,8 +15,11 @@ from fastapi.testclient import TestClient
 from app.domains.geo.rainfall.imagery_shortlist import (
     CLOUD_BASIS,
     SCORER_REVISION,
+    SLOT_POST,
+    SLOT_PRE,
     SceneHit,
     load_candidates,
+    pick_anchor_scene,
     rank_scenes,
     replace_candidates,
     shortlist_payload,
@@ -83,6 +86,37 @@ def test_top_n_caps_at_twelve() -> None:
     ranked = rank_scenes(PEAK, hits)
     assert [row.rank for row in ranked] == list(range(1, 13))
     assert len(ranked) == 12
+
+
+def test_pre_anchor_is_before_event_start_not_two_days_before_peak() -> None:
+    start = date(2015, 3, 12)
+    peak = date(2015, 3, 14)
+    hits = [
+        SceneHit("sentinel2", "INSIDE_RAIN", date(2015, 3, 13), 5.0),
+        SceneHit("sentinel2", "TRUE_PRE", date(2015, 2, 20), 8.0),
+        SceneHit("sentinel2", "TOO_OLD", date(2014, 12, 1), 5.0),
+    ]
+    pre = pick_anchor_scene(
+        hits, toward=start, peak=peak, before=True, window_days=30, slot=SLOT_PRE
+    )
+    assert pre is not None
+    assert pre.scene_id == "TRUE_PRE"
+    assert pre.slot == SLOT_PRE
+
+
+def test_post_anchor_prefers_clear_scene_on_or_after_peak() -> None:
+    peak = PEAK
+    hits = [
+        SceneHit("sentinel2", "CLOUDY_PEAK", peak, 80.0),
+        SceneHit("sentinel1", "SAR_PEAK", peak, None),
+        SceneHit("sentinel2", "AFTER", date(2015, 3, 16), 10.0),
+    ]
+    post = pick_anchor_scene(
+        hits, toward=peak, peak=peak, before=False, window_days=10, slot=SLOT_POST
+    )
+    assert post is not None
+    assert post.scene_id == "SAR_PEAK"
+    assert post.slot == SLOT_POST
 
 
 def test_replace_candidates_is_a_new_generation(db) -> None:
@@ -157,6 +191,36 @@ def test_cli_shortlists_pre2015_with_landsat(db) -> None:
     written = shortlist_event(db, event, list_scenes=fake_lister)
     db.flush()
     assert [row.scene_id for row in written] == ["L5"]
+
+
+def test_cli_persists_pre_and_post_slots(db) -> None:
+    from app.domains.geo.rainfall.imagery_shortlist_cli import shortlist_event
+    from app.domains.geo.rainfall.models import RainfallEventImageryCandidate
+
+    event = SimpleNamespace(
+        id="ext_20150314",
+        date="2015-03-14",
+        start_date="2015-03-12",
+        peak_date="2015-03-14",
+    )
+
+    def fake_lister(sensor: str, start: date, end: date) -> list[SceneHit]:
+        if sensor != "sentinel2":
+            return []
+        return [
+            SceneHit("sentinel2", "PRE", date(2015, 2, 20), 8.0),
+            SceneHit("sentinel2", "PEAK", PEAK, 6.0),
+        ]
+
+    shortlist_event(db, event, list_scenes=fake_lister)
+    db.flush()
+    slots = {
+        row.slot: row.scene_id
+        for row in db.query(RainfallEventImageryCandidate).filter_by(event_key="ext_20150314")
+    }
+    assert slots[SLOT_PRE] == "PRE"
+    assert slots[SLOT_POST] == "PEAK"
+    assert slots["ranked"] == "PEAK"
 
 
 CANDIDATES_URL = "/api/v2/geo/gee/images/historic-floods/{flood_id}/candidates"
@@ -265,3 +329,4 @@ def test_all_shortlists_route_is_one_payload_not_n_plus_one(operator_client, db)
     body = response.json()
     assert set(body["shortlists"]) == {"mar_2015", "feb_2017"}
     assert body["shortlists"]["feb_2017"][0]["sensor"] == "sentinel1"
+    assert body["pairs"] == {}

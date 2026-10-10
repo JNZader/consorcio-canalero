@@ -534,12 +534,14 @@ async def get_all_imagery_shortlists_impl(
     """One payload for every persisted shortlist. Avoids N+1 on the explorer."""
     from app.domains.geo.rainfall.imagery_shortlist import (
         all_shortlists_payload,
+        load_all_pairs,
         load_all_shortlists,
     )
 
     grouped = await _run_blocking(load_all_shortlists, db)
+    pairs = await _run_blocking(load_all_pairs, db)
     return JSONResponse(
-        content=all_shortlists_payload(grouped),
+        content=all_shortlists_payload(grouped, pairs),
         headers={"Cache-Control": "private, max-age=300"},
     )
 

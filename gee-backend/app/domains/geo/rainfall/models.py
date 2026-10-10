@@ -345,8 +345,11 @@ class RainfallEventImageryCandidate(UUIDMixin, Base):
 
     __tablename__ = "rainfall_event_imagery_candidate"
     __table_args__ = (
-        UniqueConstraint("event_key", "rank", name="uq_rainfall_imagery_candidate_rank"),
+        UniqueConstraint("event_key", "slot", "rank", name="uq_rainfall_imagery_candidate_rank"),
         CheckConstraint("rank >= 1 AND rank <= 12", name="ck_rainfall_imagery_candidate_rank"),
+        CheckConstraint(
+            "slot IN ('ranked', 'pre', 'post')", name="ck_rainfall_imagery_candidate_slot"
+        ),
         CheckConstraint(
             "sensor IN ('sentinel2', 'sentinel1', 'landsat8', 'landsat7', 'landsat5')",
             name="ck_rainfall_imagery_candidate_sensor",
@@ -365,6 +368,7 @@ class RainfallEventImageryCandidate(UUIDMixin, Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     visualization: Mapped[str] = mapped_column(String(32), nullable=False)
+    slot: Mapped[str] = mapped_column(String(16), nullable=False, default="ranked")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

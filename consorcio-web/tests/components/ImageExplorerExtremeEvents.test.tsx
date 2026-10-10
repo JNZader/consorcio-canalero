@@ -188,4 +188,30 @@ describe('ImageExplorerExtremeEvents', () => {
       expect(onLoad).not.toHaveBeenCalled();
     }
   );
+
+  it('loads the persisted pre scene from Antes', async () => {
+    const onTry = vi.fn();
+    const user = userEvent.setup();
+    const pre = {
+      rank: 1,
+      sensor: 'landsat8',
+      scene_id: 'PRE',
+      scene_date: '2015-02-20',
+      days_from_peak: -22,
+      cloud_pct: 8,
+      score: 40,
+      visualization: 'rgb',
+    };
+    render(
+      <ImageExplorerExtremeEvents
+        events={[candidate]}
+        onLoadHistoricFlood={() => {}}
+        onTryShortlist={onTry}
+        pairs={{ [candidate.id]: { pre, post: null } }}
+      />,
+      { wrapper }
+    );
+    await user.click(screen.getByRole('button', { name: /Antes · L8 2015-02-20/ }));
+    expect(onTry).toHaveBeenCalledWith(pre);
+  });
 });
