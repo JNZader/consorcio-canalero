@@ -181,6 +181,7 @@ export function buildTileUrl(
     hideRanges?: number[];
     rescaleMin?: number;
     rescaleMax?: number;
+    encoding?: string;
   }
 ): string {
   const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
@@ -199,6 +200,9 @@ export function buildTileUrl(
   }
   if (options?.rescaleMax !== undefined) {
     params.set('rescale_max', String(options.rescaleMax));
+  }
+  if (options?.encoding) {
+    params.set('encoding', options.encoding);
   }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;

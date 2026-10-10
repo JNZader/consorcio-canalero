@@ -77,6 +77,9 @@ export interface MapUiPanelsProps {
   readonly onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
   readonly showIGNOverlay: boolean;
   readonly onShowIGNOverlayChange: (visible: boolean) => void;
+  readonly showHillshade?: boolean;
+  readonly onShowHillshadeChange?: (visible: boolean) => void;
+  readonly hillshadeAvailable?: boolean;
   readonly demEnabled: boolean;
   readonly showDemOverlay: boolean;
   readonly onShowDemOverlayChange: (visible: boolean) => void;
@@ -297,6 +300,9 @@ export const MapUiPanels = memo(function MapUiPanels({
   onLayerVisibilityChange,
   showIGNOverlay,
   onShowIGNOverlayChange,
+  showHillshade = false,
+  onShowHillshadeChange,
+  hillshadeAvailable = false,
   demEnabled,
   showDemOverlay,
   onShowDemOverlayChange,
@@ -562,6 +568,9 @@ export const MapUiPanels = memo(function MapUiPanels({
             onLayerVisibilityChange={onLayerVisibilityChange}
             showIGNOverlay={showIGNOverlay}
             onShowIGNOverlayChange={onShowIGNOverlayChange}
+            showHillshade={showHillshade}
+            onShowHillshadeChange={onShowHillshadeChange}
+            hillshadeAvailable={hillshadeAvailable}
             demEnabled={demEnabled}
             showDemOverlay={showDemOverlay}
             onShowDemOverlayChange={onShowDemOverlayChange}

@@ -135,6 +135,9 @@ interface LayerControlsPanelProps {
   readonly onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
   readonly showIGNOverlay: boolean;
   readonly onShowIGNOverlayChange: (visible: boolean) => void;
+  readonly showHillshade?: boolean;
+  readonly onShowHillshadeChange?: (visible: boolean) => void;
+  readonly hillshadeAvailable?: boolean;
   readonly demEnabled: boolean;
   readonly showDemOverlay: boolean;
   readonly onShowDemOverlayChange: (visible: boolean) => void;
@@ -442,6 +445,9 @@ export function LayerControlsPanel({
   onLayerVisibilityChange,
   showIGNOverlay,
   onShowIGNOverlayChange,
+  showHillshade = false,
+  onShowHillshadeChange,
+  hillshadeAvailable = false,
   demEnabled,
   showDemOverlay,
   onShowDemOverlayChange,
@@ -553,6 +559,7 @@ export function LayerControlsPanel({
       .filter((item) => vectorVisibility[item.id])
       .map((item) => ({ id: item.id, label: item.label, legend: legendFor(item.id) })),
     ...(showIGNOverlay ? [{ id: ignActiveId, label: 'IGN Altimetría' }] : []),
+    ...(showHillshade ? [{ id: '__hillshade', label: 'Relieve sombreado' }] : []),
     ...(showDemOverlay
       ? [
           {
@@ -662,6 +669,13 @@ export function LayerControlsPanel({
                 checked={showIGNOverlay}
                 onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
               />
+              {hillshadeAvailable && onShowHillshadeChange ? (
+                <Checkbox
+                  label="Relieve sombreado"
+                  checked={showHillshade}
+                  onChange={(event) => onShowHillshadeChange(event.currentTarget.checked)}
+                />
+              ) : null}
               {hazardLayerControl?.visible && (
                 <Checkbox
                   label="Visor de riesgos"

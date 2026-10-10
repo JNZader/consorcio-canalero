@@ -372,6 +372,7 @@ export function buildFamilyActiveCounts(params: {
   vectorVisibility: Record<string, boolean>;
   canalChildIds?: readonly string[];
   showIGNOverlay?: boolean;
+  showHillshade?: boolean;
   showDemOverlay?: boolean;
 }): Record<LayerCategory, number> {
   const {
@@ -379,11 +380,13 @@ export function buildFamilyActiveCounts(params: {
     vectorVisibility,
     canalChildIds = [],
     showIGNOverlay = false,
+    showHillshade = false,
     showDemOverlay = false,
   } = params;
 
   const counts: Record<LayerCategory, number> = {
-    [LAYER_CATEGORY.BASE]: (showIGNOverlay ? 1 : 0) + (showDemOverlay ? 1 : 0),
+    [LAYER_CATEGORY.BASE]:
+      (showIGNOverlay ? 1 : 0) + (showHillshade ? 1 : 0) + (showDemOverlay ? 1 : 0),
     [LAYER_CATEGORY.HIDROGRAFIA]: 0,
     [LAYER_CATEGORY.TERRITORIO]: 0,
     [LAYER_CATEGORY.PILAR_VERDE]: 0,

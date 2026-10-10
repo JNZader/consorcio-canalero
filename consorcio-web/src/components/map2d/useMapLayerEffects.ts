@@ -38,6 +38,7 @@ import {
   getVisibleRasterLayersForDem,
   moveDemAboveContextualVectors,
   syncDemRasterLayer,
+  syncHillshadeLayer,
   syncIgnLayer,
   syncImageOverlays,
   syncMartinSuggestionLayers,
@@ -68,6 +69,8 @@ interface UseMapLayerEffectsParams {
   allGeoLayers: LayerLike[];
   setVisibleRasterLayers: Dispatch<SetStateAction<Array<{ tipo: string }>>>;
   showIGNOverlay: boolean;
+  showHillshade?: boolean;
+  hillshadeTileUrl?: string | null;
   viewMode: 'base' | 'single' | 'comparison';
   selectedImage: { tile_url: string } | null;
   comparison: {
@@ -147,6 +150,8 @@ export function useMapLayerEffects({
   allGeoLayers,
   setVisibleRasterLayers,
   showIGNOverlay,
+  showHillshade = false,
+  hillshadeTileUrl = null,
   viewMode,
   selectedImage,
   comparison,
@@ -283,6 +288,12 @@ export function useMapLayerEffects({
     syncIgnLayer(map, showIGNOverlay);
     });
   }, [mapReady, mapRef, showIGNOverlay]);
+
+  useEffect(() => {
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
+    syncHillshadeLayer(map, showHillshade, hillshadeTileUrl);
+    });
+  }, [hillshadeTileUrl, mapReady, mapRef, showHillshade]);
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
