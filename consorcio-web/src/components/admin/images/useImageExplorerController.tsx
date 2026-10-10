@@ -13,19 +13,12 @@ import {
   createSelectedImageFromResult,
   isOpticalSensor,
 } from './imageExplorerUtils';
+import type { HistoricFloodEvent } from './ImageExplorerExtremeEvents';
 import { useImageExplorerMap } from './useImageExplorerMap';
 
 interface Visualization {
   id: string;
   description: string;
-}
-
-interface HistoricFlood {
-  id: string;
-  name: string;
-  date: string;
-  description: string;
-  severity: string;
 }
 
 interface AvailableDatesResponse {
@@ -45,7 +38,7 @@ function isVisualization(value: unknown): value is Visualization {
   );
 }
 
-function isHistoricFlood(value: unknown): value is HistoricFlood {
+function isHistoricFlood(value: unknown): value is HistoricFloodEvent {
   return (
     !!value &&
     typeof value === 'object' &&
@@ -95,7 +88,7 @@ export function useImageExplorerController() {
   const [scenes, setScenes] = useState<ImageSceneLike[]>([]);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [visualizations, setVisualizations] = useState<Visualization[]>([]);
-  const [historicFloods, setHistoricFloods] = useState<HistoricFlood[]>([]);
+  const [historicFloods, setHistoricFloods] = useState<HistoricFloodEvent[]>([]);
 
   const { selectedImage, setSelectedImage, clearSelectedImage } = useSelectedImage();
   const {

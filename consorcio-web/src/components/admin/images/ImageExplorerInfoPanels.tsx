@@ -17,14 +17,6 @@ import {
   isOpticalSensor,
 } from './imageExplorerUtils';
 
-interface HistoricFlood {
-  id: string;
-  name: string;
-  date: string;
-  description: string;
-  severity: string;
-}
-
 interface ImageExplorerInfoPanelsProps {
   result: ImageResultLike | null;
   isCurrentImageSelected: boolean;
@@ -32,8 +24,6 @@ interface ImageExplorerInfoPanelsProps {
   onSelectImage: () => void;
   onSetLeftImage: () => void;
   onSetRightImage: () => void;
-  historicFloods: HistoricFlood[];
-  onLoadHistoricFlood: (floodId: string) => void;
   selectedImage: SelectedImage | null;
   onClearSelectedImage: () => void;
   comparisonReady: boolean;
@@ -53,8 +43,6 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
     onSelectImage,
     onSetLeftImage,
     onSetRightImage,
-    historicFloods,
-    onLoadHistoricFlood,
     selectedImage,
     onClearSelectedImage,
     comparisonReady,
@@ -188,51 +176,6 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
               y usar L7 sólo como escena individual de referencia.
             </Text>
           )}
-        </Paper>
-      )}
-
-      {historicFloods.length > 0 && (
-        <Paper p="md" withBorder radius="md">
-          <Title order={5} mb="sm">
-            <Group gap="xs">
-              <IconPhoto size={20} />
-              Escenas Historicas
-            </Group>
-          </Title>
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-            {historicFloods.map((flood) => (
-              <Card
-                key={`${flood.id}-${flood.date}`}
-                padding="sm"
-                radius="md"
-                withBorder
-                style={{ cursor: 'pointer' }}
-                onClick={() => onLoadHistoricFlood(flood.id)}
-              >
-                <Group justify="space-between" mb="xs">
-                  <Text fw={500}>{flood.name}</Text>
-                  <Badge
-                    color={
-                      flood.severity === 'alta'
-                        ? 'red'
-                        : flood.severity === 'media'
-                          ? 'orange'
-                          : 'yellow'
-                    }
-                    size="sm"
-                  >
-                    {flood.severity}
-                  </Badge>
-                </Group>
-                <Text size="sm" c="dimmed">
-                  {flood.description}
-                </Text>
-                <Text size="xs" c="dimmed" mt="xs">
-                  {flood.date}
-                </Text>
-              </Card>
-            ))}
-          </SimpleGrid>
         </Paper>
       )}
 

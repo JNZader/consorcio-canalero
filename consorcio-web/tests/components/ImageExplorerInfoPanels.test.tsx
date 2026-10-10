@@ -56,7 +56,7 @@ vi.mock('../../src/lib/api', async (importOriginal) => {
   return { ...actual, apiFetch: (...args: unknown[]) => apiFetch(...args) };
 });
 
-import { ImageExplorerInfoPanels } from '../../src/components/admin/images/ImageExplorerInfoPanels';
+import { ImageExplorerExtremeEvents } from '../../src/components/admin/images/ImageExplorerExtremeEvents';
 import { useImageExplorerController } from '../../src/components/admin/images/useImageExplorerController';
 import { isValidSelectedImage } from '../../src/lib/typeGuards';
 
@@ -161,28 +161,10 @@ function wrapper({ children }: { children: ReactNode }) {
   return <MantineProvider env="test">{children}</MantineProvider>;
 }
 
-/** Every prop the panel needs, with the historic-floods list left to the caller. */
+/** Flood cards now live in ImageExplorerExtremeEvents (left column). */
 function renderPanels(historicFloods: FloodCard[]) {
   return render(
-    <ImageExplorerInfoPanels
-      result={null}
-      isCurrentImageSelected={false}
-      comparison={null}
-      onSelectImage={() => {}}
-      onSetLeftImage={() => {}}
-      onSetRightImage={() => {}}
-      historicFloods={historicFloods}
-      onLoadHistoricFlood={() => {}}
-      selectedImage={null}
-      onClearSelectedImage={() => {}}
-      comparisonReady={false}
-      onClearComparison={() => {}}
-      sensor="sentinel2"
-      scenes={[]}
-      selectedSceneId={null}
-      onSelectScene={() => {}}
-      compositionMode="scene"
-    />,
+    <ImageExplorerExtremeEvents events={historicFloods} onLoadHistoricFlood={() => {}} />,
     { wrapper }
   );
 }
