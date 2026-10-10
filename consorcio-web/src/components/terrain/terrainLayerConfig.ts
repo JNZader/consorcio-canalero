@@ -48,6 +48,16 @@ export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'puntos_conflicto', label: 'Puntos conflicto', status: 'supported' },
 ];
 
+/** 2D catalog rows the 3D mesh cannot draw (UX PDF T1). Shown grayed. */
+export const UNSUPPORTED_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
+  { id: 'red_vial_oficial', label: 'Catálogo IDECOR (no en Red Vial)', status: 'not_supported_yet' },
+  { id: 'caminos_huecos', label: 'Caminos no catalogados (OSM/IGN)', status: 'not_supported_yet' },
+  { id: 'road_flow', label: 'Cruces de camino', status: 'not_supported_yet' },
+  { id: 'sentido_camino', label: 'Sentido en camino', status: 'not_supported_yet' },
+  { id: 'puntos_interes', label: 'Puntos de interés', status: 'not_supported_yet' },
+  { id: 'escuelas', label: 'Escuelas rurales', status: 'not_supported_yet' },
+];
+
 const supportedRasterTypeSet = new Set(
   SUPPORTED_3D_RASTER_TYPES.filter((layer) => layer.status === 'supported').map(
     (layer) => layer.tipo

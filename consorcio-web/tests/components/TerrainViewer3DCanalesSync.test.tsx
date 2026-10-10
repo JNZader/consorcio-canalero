@@ -303,11 +303,11 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
     storeModule.useMapLayerSyncStore.setState((prev) => ({
       ...prev,
       propuestasEtapasVisibility: { ...storeModule.PROPUESTAS_ETAPAS_DEFAULTS },
-      initializedViews: { ...prev.initializedViews, map3d: true },
-      map3d: {
-        ...prev.map3d,
+      initializedViews: { ...prev.initializedViews, map2d: true, map3d: true },
+      map2d: {
+        ...prev.map2d,
         visibleVectors: {
-          ...prev.map3d.visibleVectors,
+          ...prev.map2d.visibleVectors,
           canales_relevados: true,
           canales_propuestos: true,
         },
@@ -469,15 +469,14 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
     });
 
     const storeModule = await import('../../src/stores/mapLayerSyncStore');
-    // Flip relevados master OFF. `initializedViews.map3d` stays `true`
-    // (set in beforeEach) so the viewer won't reseed from map2d.
+    // Flip relevados master OFF on the shared 2D slice the 3D viewer reads.
     storeModule.useMapLayerSyncStore.setState((prev) => ({
       ...prev,
-      initializedViews: { ...prev.initializedViews, map3d: true },
-      map3d: {
-        ...prev.map3d,
+      initializedViews: { ...prev.initializedViews, map2d: true, map3d: true },
+      map2d: {
+        ...prev.map2d,
         visibleVectors: {
-          ...prev.map3d.visibleVectors,
+          ...prev.map2d.visibleVectors,
           canales_relevados: false,
         },
       },

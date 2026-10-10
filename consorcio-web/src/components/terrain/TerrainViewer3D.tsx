@@ -189,7 +189,7 @@ export default function TerrainViewer3D({
         cuencas: _cuencas,
         zona: _zona,
         ...shared
-      } = useMapLayerSyncStore.getState().map3d.visibleVectors;
+      } = useMapLayerSyncStore.getState().map2d.visibleVectors;
       return { ...TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY, ...shared, cuencas: false };
     }
   );
@@ -218,7 +218,7 @@ export default function TerrainViewer3D({
   // (or the catastro/soil layer) on, ``enabled`` flips to true and the
   // query runs. Default 2D callers keep eager behaviour by omitting the
   // option (see hook signatures).
-  const sharedMap3dVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
+  const sharedMap3dVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
   const pilarVerdeNeeded = !!(
     sharedMap3dVectors.pilar_verde_bpa_historico ||
     sharedMap3dVectors.pilar_verde_agro_aceptada ||
@@ -265,7 +265,7 @@ export default function TerrainViewer3D({
   );
   const selectedImage = useSelectedImageListener();
   const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
-  const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
+  const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
   const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
   // Pilar Azul etapas filter — the 5 etapas record + single-etapa setter are
@@ -420,7 +420,7 @@ export default function TerrainViewer3D({
 
   const handleVectorLayerToggle = (layerId: string, visible: boolean) => {
     setVectorLayerVisibility((prev) => ({ ...prev, [layerId]: visible }));
-    setSharedVectorVisibility('map3d', layerId, visible);
+    setSharedVectorVisibility('map2d', layerId, visible);
   };
 
   useEffect(() => {
