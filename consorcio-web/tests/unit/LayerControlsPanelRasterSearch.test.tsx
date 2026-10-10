@@ -112,4 +112,19 @@ describe('<LayerControlsPanel /> — raster search (T3c fix 2)', () => {
 
     expect(onActiveChange).toHaveBeenCalledWith(false);
   });
+
+  it('offers Comparar con… when a raster is on (UX R7)', () => {
+    const onRasterCompare = vi.fn();
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps({
+          showDemOverlay: true,
+          activeDemLayerId: 'layer-flood',
+          onRasterCompare,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /análisis raster/i, expanded: false }));
+    expect(screen.getByTestId('raster-compare-select')).toBeInTheDocument();
+  });
 });

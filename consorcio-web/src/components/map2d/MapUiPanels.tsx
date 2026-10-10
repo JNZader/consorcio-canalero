@@ -83,6 +83,8 @@ export interface MapUiPanelsProps {
   readonly activeDemLayerId: string | null;
   readonly onActiveDemLayerIdChange: (value: string | null) => void;
   readonly demOptions: DemOption[];
+  readonly rasterCompareId?: string | null;
+  readonly onRasterCompare?: (layerId: string | null) => void;
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
   readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
   /** Etapas filter for the Canales badge (B4c/T3) — see `LayerControlsPanel`. */
@@ -301,6 +303,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   activeDemLayerId,
   onActiveDemLayerIdChange,
   demOptions,
+  rasterCompareId = null,
+  onRasterCompare,
   canalesRelevadosItems,
   canalesPropuestosItems,
   etapaGate = null,
@@ -564,6 +568,8 @@ export const MapUiPanels = memo(function MapUiPanels({
             activeDemLayerId={activeDemLayerId}
             onActiveDemLayerIdChange={onActiveDemLayerIdChange}
             demOptions={demOptions}
+            rasterCompareId={rasterCompareId}
+            onRasterCompare={onRasterCompare}
             canalesRelevadosItems={canalesRelevadosItems}
             canalesPropuestosItems={canalesPropuestosItems}
             etapaGate={etapaGate}

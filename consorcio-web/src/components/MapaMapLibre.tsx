@@ -38,7 +38,12 @@ import { useEscuelas } from '../hooks/useEscuelas';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
 import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useGEELayers } from '../hooks/useGEELayers';
-import { combineHazardGeoLayers, useGeoLayers, usePrecipNormalLayers } from '../hooks/useGeoLayers';
+import {
+  buildTileUrl,
+  combineHazardGeoLayers,
+  useGeoLayers,
+  usePrecipNormalLayers,
+} from '../hooks/useGeoLayers';
 import { useHazardBasinMembership } from '../hooks/useHazardBasinMembership';
 import { type HazardRiskClass, resolveBasinCatalogStatus } from '../hooks/useHazardUrlState';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
@@ -199,6 +204,12 @@ export default function MapaMapLibre() {
   const [showIGNOverlay, setShowIGNOverlay] = useState(false);
   const [showDemOverlay, setShowDemOverlay] = useState(false);
   const [activeDemLayerId, setActiveDemLayerId] = useState<string | null>(null);
+  const [rasterCompareId, setRasterCompareId] = useState<string | null>(null);
+  const rasterCompareActive =
+    !!rasterCompareId &&
+    !!activeDemLayerId &&
+    rasterCompareId !== activeDemLayerId &&
+    showDemOverlay;
   const [exportPngModalOpen, setExportPngModalOpen] = useState(false);
   // Latched export INTENT: flipped on the first time the user opens the Export
   // dropdown and never reset, so the heavy catastro GeoJSON (KMZ-only) is
@@ -636,9 +647,9 @@ export default function MapaMapLibre() {
     basins,
     zonaCollection,
     approvedZonesCollection,
-    activeDemLayerId,
-    showDemOverlay,
-    demTileUrl,
+    activeDemLayerId: rasterCompareActive ? rasterCompareId : activeDemLayerId,
+    showDemOverlay: showDemOverlay || rasterCompareActive,
+    demTileUrl: rasterCompareActive && rasterCompareId ? buildTileUrl(rasterCompareId) : demTileUrl,
     allGeoLayers,
     setVisibleRasterLayers,
     showIGNOverlay,
@@ -890,8 +901,14 @@ export default function MapaMapLibre() {
     .filter(([, visible]) => visible)
     .map(([etapa]) => etapa);
 
+  useEffect(() => {
+    if (rasterCompareActive) setViewMode('comparison');
+  }, [rasterCompareActive]);
+
   const comparisonSyncInputs: ComparisonOverlaySyncInputs = {
-    leftTileUrl: comparison?.left?.tile_url ?? '',
+    leftTileUrl: rasterCompareActive
+      ? buildTileUrl(activeDemLayerId as string)
+      : (comparison?.left?.tile_url ?? ''),
     vectorVisibility,
     waterwaysDefs: WATERWAY_DEFS,
     soilCollection,
@@ -916,8 +933,7 @@ export default function MapaMapLibre() {
   const comparisonActive =
     mapReady &&
     viewMode === 'comparison' &&
-    !!comparison?.left?.tile_url &&
-    !!comparison?.right?.tile_url;
+    (rasterCompareActive || (!!comparison?.left?.tile_url && !!comparison?.right?.tile_url));
 
   // The overlay map has a narrow lifecycle: it is created once for an active
   // comparison and removed when the comparison closes. Vector/data/fine-control
@@ -1072,7 +1088,7 @@ export default function MapaMapLibre() {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           hasSingleImage={hasSingleImage}
-          hasComparison={hasComparison}
+          hasComparison={hasComparison || rasterCompareActive}
           singleImageInfo={singleImageInfo}
           comparisonInfo={comparisonInfo}
         />
@@ -1117,7 +1133,7 @@ export default function MapaMapLibre() {
               style={{ width: '100%', height: '100%', position: 'relative' }}
             >
               <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-              {viewMode === 'comparison' && comparison?.left && comparison.right && (
+              {comparisonActive && (
                 <div
                   ref={comparisonContainerRef}
                   style={{
@@ -1188,7 +1204,7 @@ export default function MapaMapLibre() {
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               hasSingleImage={hasSingleImage}
-              hasComparison={hasComparison}
+              hasComparison={hasComparison || rasterCompareActive}
               singleImageInfo={singleImageInfo}
               comparisonInfo={comparisonInfo}
               layerItems={vectorLayerItems}
@@ -1202,6 +1218,8 @@ export default function MapaMapLibre() {
               activeDemLayerId={activeDemLayerId}
               onActiveDemLayerIdChange={setActiveDemLayerId}
               demOptions={demLayerOptions}
+              rasterCompareId={rasterCompareId}
+              onRasterCompare={setRasterCompareId}
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
               etapaGate={etapaGate}
@@ -1368,6 +1386,8 @@ export default function MapaMapLibre() {
               activeDemLayerId={activeDemLayerId}
               onActiveDemLayerIdChange={setActiveDemLayerId}
               demOptions={demLayerOptions}
+              rasterCompareId={rasterCompareId}
+              onRasterCompare={setRasterCompareId}
               canalesRelevadosItems={canalesRelevadosItems}
               canalesPropuestosItems={canalesPropuestosItems}
               etapaGate={etapaGate}

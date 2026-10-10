@@ -12,6 +12,7 @@ import {
   Paper,
   Radio,
   SegmentedControl,
+  Select,
   Slider,
   Stack,
   Text,
@@ -140,6 +141,9 @@ interface LayerControlsPanelProps {
   readonly activeDemLayerId: string | null;
   readonly onActiveDemLayerIdChange: (value: string | null) => void;
   readonly demOptions: SelectItem[];
+  /** UX PDF R7: swipe-compare current raster with another. */
+  readonly rasterCompareId?: string | null;
+  readonly onRasterCompare?: (layerId: string | null) => void;
   /**
    * Pilar Azul — per-canal relevado items. When provided (along with the
    * propuestos array), the "Canales" accordion item renders. Leaving both
@@ -441,6 +445,8 @@ export function LayerControlsPanel({
   activeDemLayerId,
   onActiveDemLayerIdChange,
   demOptions,
+  rasterCompareId = null,
+  onRasterCompare,
   canalesRelevadosItems,
   canalesPropuestosItems,
   etapaGate = null,
@@ -879,6 +885,18 @@ export function LayerControlsPanel({
               <Text size="9px" c="dimmed">
                 Una capa raster por vez.
               </Text>
+              {showDemOverlay && onRasterCompare && demOptions.length > 1 && (
+                <Select
+                  size="xs"
+                  clearable
+                  aria-label="Comparar con"
+                  placeholder="Comparar con…"
+                  data-testid="raster-compare-select"
+                  value={rasterCompareId}
+                  data={demOptions.filter((option) => option.value !== activeDemLayerId)}
+                  onChange={onRasterCompare}
+                />
+              )}
             </Stack>
           </Radio.Group>
         </Accordion.Panel>
