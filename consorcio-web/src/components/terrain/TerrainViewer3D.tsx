@@ -28,6 +28,7 @@ import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
+import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
@@ -126,6 +127,13 @@ export default function TerrainViewer3D({
   zoom = getDefaultZoom(),
   height = 500,
 }: TerrainViewer3DProps) {
+  const handedCamera = useMapCameraStore.getState().camera;
+  const startCenter: [number, number] = handedCamera
+    ? [handedCamera.lng, handedCamera.lat]
+    : center;
+  const startZoom = handedCamera?.zoom ?? zoom;
+  const startPitch = handedCamera?.pitch ?? 60;
+  const startBearing = handedCamera?.bearing ?? -20;
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const activeRasterLayerIdRef = useRef<string | null>(null);
@@ -597,12 +605,12 @@ export default function TerrainViewer3D({
           exaggeration: DEFAULT_EXAGGERATION,
         },
       },
-      center: center,
-      zoom: zoom,
+      center: startCenter,
+      zoom: startZoom,
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
-      pitch: 60,
-      bearing: -20,
+      pitch: startPitch,
+      bearing: startBearing,
       // 75° still gives a clear pitched view but drastically reduces
       // overdraw in the horizon band: at 85° the fragment count of the
       // terrain mesh balloons because almost every distant tile takes
@@ -634,6 +642,16 @@ export default function TerrainViewer3D({
 
     map.on('load', () => {
       setReady(true);
+    });
+    map.on('moveend', () => {
+      const c = map.getCenter();
+      useMapCameraStore.getState().setCamera({
+        lng: c.lng,
+        lat: c.lat,
+        zoom: map.getZoom(),
+        bearing: map.getBearing(),
+        pitch: map.getPitch(),
+      });
     });
 
     map.on('error', (event) => {
