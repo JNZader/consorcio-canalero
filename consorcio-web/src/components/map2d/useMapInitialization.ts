@@ -180,6 +180,9 @@ export function useMapInitialization({
       // which makes the map unresponsive to the one-finger drag every user
       // tries first — so it is enabled for FINE pointers only.
       cooperativeGestures: !isCoarsePointerDevice(),
+      // UX PDF R9: arrows and +/- when the canvas is focused (MapLibre default,
+      // set explicitly so a later "optimization" cannot disable it).
+      keyboard: true,
       locale: { ...MAP_LOCALE_ES },
     });
 

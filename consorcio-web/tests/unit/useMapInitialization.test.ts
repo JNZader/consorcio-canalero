@@ -112,6 +112,7 @@ describe('useMapInitialization — cooperative gestures', () => {
 
     expect(capturedOptions).toHaveLength(1);
     expect(capturedOptions[0]?.cooperativeGestures).toBe(true);
+    expect(capturedOptions[0]?.keyboard).toBe(true);
   });
 
   it('DISABLES cooperativeGestures on a coarse pointer so one-finger pan works', () => {
