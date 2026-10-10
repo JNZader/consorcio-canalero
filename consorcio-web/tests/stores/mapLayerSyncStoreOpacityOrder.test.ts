@@ -124,17 +124,22 @@ describe('migrateMapLayerState — v3 → v4', () => {
     expect(migrated.map2d?.visibleVectors).toEqual({
       roads: true,
       soil: false,
-      catastro: true,
+      catastro: false,
       escuelas: false,
-      sentido_camino: true,
-      puntos_interes: true,
-      red_vial_oficial: true,
-      caminos_huecos: true,
+      sentido_camino: false,
+      puntos_interes: false,
+      red_vial_oficial: false,
+      caminos_huecos: false,
     });
     expect(migrated.map3d?.visibleVectors).toEqual({
       roads: true,
       waterways: true,
       canales_relevados: true,
+      catastro: false,
+      sentido_camino: false,
+      puntos_interes: false,
+      red_vial_oficial: false,
+      caminos_huecos: false,
     });
     // Other persisted fields untouched.
     expect(migrated.map2d?.activeRasterType).toBe('dem');
@@ -213,9 +218,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
 
     const migrated = migrateMapLayerState(v4State, 4);
 
-    expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
-    // map3d is deliberately NOT migrated: the 3D viewer has no ficha
-    // territorial, so it keeps the historical OFF default.
+    expect(migrated.map2d?.visibleVectors?.catastro).toBe(false);
     expect(migrated.map3d?.visibleVectors?.catastro).toBe(false);
   });
 
@@ -252,11 +255,11 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       waterways: false,
       soil: true,
       escuelas: true,
-      catastro: true,
-      sentido_camino: true,
-      puntos_interes: true,
-      red_vial_oficial: true,
-      caminos_huecos: true,
+      catastro: false,
+      sentido_camino: false,
+      puntos_interes: false,
+      red_vial_oficial: false,
+      caminos_huecos: false,
     });
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
@@ -283,7 +286,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
 
     // Already migrated → a later deliberate OFF is respected.
     expect(migrated.map2d?.visibleVectors?.catastro).toBe(false);
-    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(false);
   });
 
   it('v5 → v6 seeds sentido_camino on without flipping a later OFF', () => {
@@ -307,12 +310,12 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     expect(migrated.terrainSmoothingEnabled).toBe(true);
     expect(migrated.map3d?.visibleVectors?.roads).toBe(true);
     expect(migrated.map2d?.opacityByLayer).toEqual({});
-    expect(migrated.map2d?.visibleVectors?.catastro).toBe(true);
-    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(true);
-    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(true);
-    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
-    expect(migrated.map2d?.visibleVectors?.caminos_huecos).toBe(true);
-    expect(migrated.map3d?.visibleVectors?.catastro).toBeUndefined();
+    expect(migrated.map2d?.visibleVectors?.catastro).toBe(false);
+    expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(false);
+    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(false);
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(false);
+    expect(migrated.map2d?.visibleVectors?.caminos_huecos).toBe(false);
+    expect(migrated.map3d?.visibleVectors?.catastro).toBe(false);
   });
 
   it('v6 → v7 seeds puntos_interes on without flipping an explicit false', () => {
@@ -332,7 +335,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       },
     };
     const migrated = migrateMapLayerState(missing, 6);
-    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(false);
   });
 
   it('v7 → v8 seeds labelSizeScale 1 without flipping a stored scale', () => {
@@ -382,7 +385,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       },
     };
     const migrated = migrateMapLayerState(missing, 9);
-    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(false);
   });
 
   it('v10 → v11 seeds caminos_huecos on without flipping an explicit false', () => {
@@ -402,7 +405,31 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       },
     };
     const migrated = migrateMapLayerState(missing, 10);
-    expect(migrated.map2d?.visibleVectors?.caminos_huecos).toBe(true);
+    expect(migrated.map2d?.visibleVectors?.caminos_huecos).toBe(false);
+  });
+
+  it('v11 → v12 turns staff extras and catastro off', () => {
+    const v11 = {
+      map2d: {
+        visibleVectors: {
+          roads: true,
+          catastro: true,
+          sentido_camino: true,
+          puntos_interes: true,
+          red_vial_oficial: true,
+          caminos_huecos: true,
+        },
+      },
+    };
+    const migrated = migrateMapLayerState(v11, 11);
+    expect(migrated.map2d?.visibleVectors).toMatchObject({
+      roads: true,
+      catastro: false,
+      sentido_camino: false,
+      puntos_interes: false,
+      red_vial_oficial: false,
+      caminos_huecos: false,
+    });
   });
 });
 
