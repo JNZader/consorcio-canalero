@@ -186,7 +186,7 @@ export function useMapInitialization({
       locale: { ...MAP_LOCALE_ES },
     });
 
-    map.addControl(new maplibre.NavigationControl(), 'top-right');
+    map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right');
     map.addControl(new maplibre.FullscreenControl(), 'top-right');
     map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
