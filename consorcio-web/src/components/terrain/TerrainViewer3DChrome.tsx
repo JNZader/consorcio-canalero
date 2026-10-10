@@ -24,7 +24,9 @@ import { InfoPanel } from '../map2d/InfoPanel';
 import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
 import { MapWorkspace } from '../map2d/MapWorkspace';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
+import { TerrainExaggerationControls } from './TerrainExaggerationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
+import { exaggerationCanvasLabel } from './terrainExaggeration';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 import {
   UNSUPPORTED_3D_VECTOR_LAYERS,
@@ -204,25 +206,12 @@ export function TerrainViewer3DChrome({
                 : "Activá 'Suavizar terreno' para elegir la intensidad"
             }
           />
-          <Text size="xs" c="dimmed">
-            Exageracion vertical:
-          </Text>
-          <Box w={160}>
-            <Slider
-              value={exaggeration}
-              onChange={onExaggerationChange}
-              min={minExaggeration}
-              max={maxExaggeration}
-              step={1}
-              size="xs"
-              label={(val) => `${val}x`}
-              marks={[
-                { value: 1, label: '1x' },
-                { value: 100, label: '100x' },
-                { value: 200, label: '200x' },
-              ]}
-            />
-          </Box>
+          <TerrainExaggerationControls
+            value={exaggeration}
+            onChange={onExaggerationChange}
+            min={minExaggeration}
+            max={maxExaggeration}
+          />
         </Group>
       </Group>
 
@@ -310,8 +299,8 @@ export function TerrainViewer3DChrome({
               <Text size="xs" c="white" fw={600} mb={4}>
                 Terreno 3D
               </Text>
-              <Text size="xs" c="gray.4">
-                Exageracion: {exaggeration}x
+              <Text size="xs" c="white" data-testid="terrain-exaggeration-label">
+                {exaggerationCanvasLabel(exaggeration)}
               </Text>
               {terrainSmoothingEnabled && (
                 <Text size="xs" c="gray.4">
