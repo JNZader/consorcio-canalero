@@ -358,6 +358,50 @@ export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
   setLayerVisibility(map, `${SOURCE_IDS.IGN}-layer`, showIGNOverlay);
 }
 
+const HILLSHADE_LAYER_ID = `${SOURCE_IDS.HILLSHADE}-shade`;
+
+/** UX PDF T4 — 2D shaded relief from the same terrain-rgb DEM as 3D. Default off. */
+export function syncHillshadeLayer(
+  map: maplibregl.Map,
+  showHillshade: boolean,
+  tileUrl: string | null,
+): void {
+  if (!showHillshade && !map.getSource(SOURCE_IDS.HILLSHADE)) return;
+  if (!showHillshade) {
+    setLayerVisibility(map, HILLSHADE_LAYER_ID, false);
+    return;
+  }
+  if (!tileUrl) return;
+
+  if (!map.getSource(SOURCE_IDS.HILLSHADE)) {
+    map.addSource(SOURCE_IDS.HILLSHADE, {
+      type: 'raster-dem',
+      tiles: [tileUrl],
+      tileSize: 256,
+      maxzoom: 14,
+      encoding: 'mapbox',
+    });
+  }
+  if (!map.getLayer(HILLSHADE_LAYER_ID)) {
+    const layer = {
+      id: HILLSHADE_LAYER_ID,
+      type: 'hillshade' as const,
+      source: SOURCE_IDS.HILLSHADE,
+      paint: {
+        'hillshade-exaggeration': 0.35,
+        'hillshade-illumination-direction': 315,
+        'hillshade-illumination-anchor': 'viewport' as const,
+      },
+    };
+    if (map.getLayer('vector-layers-start')) {
+      map.addLayer(layer, 'vector-layers-start');
+    } else {
+      map.addLayer(layer);
+    }
+  }
+  setLayerVisibility(map, HILLSHADE_LAYER_ID, true);
+}
+
 /**
  * Re-download the IGN altimetry image — the REAL retry behind the health entry.
  *

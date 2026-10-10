@@ -205,6 +205,7 @@ export default function MapaMapLibre() {
   const [viewMode, setViewMode] = useState<ViewMode>('base');
   const showLegend = true;
   const [showIGNOverlay, setShowIGNOverlay] = useState(false);
+  const [showHillshade, setShowHillshade] = useState(false);
   const [showDemOverlay, setShowDemOverlay] = useState(false);
   const [activeDemLayerId, setActiveDemLayerId] = useState<string | null>(null);
   const [rasterCompareId, setRasterCompareId] = useState<string | null>(null);
@@ -308,6 +309,10 @@ export default function MapaMapLibre() {
     reload: reloadGeoLayers,
     enabled: geoLayersEnabled,
   } = useGeoLayers();
+  const demRawLayer = allGeoLayers.find((layer) => layer.tipo === 'dem_raw');
+  const hillshadeTileUrl = demRawLayer
+    ? buildTileUrl(demRawLayer.id, { encoding: 'terrain-rgb' })
+    : null;
   const { layers: precipNormalLayers } = usePrecipNormalLayers();
   const hazardGeoLayers = combineHazardGeoLayers(allGeoLayers, precipNormalLayers);
   const { approvedZones, hasApprovedZones } = useApprovedZones();
@@ -678,6 +683,8 @@ export default function MapaMapLibre() {
     allGeoLayers,
     setVisibleRasterLayers,
     showIGNOverlay,
+    showHillshade,
+    hillshadeTileUrl,
     viewMode,
     selectedImage,
     comparison,
@@ -1095,6 +1102,7 @@ export default function MapaMapLibre() {
         vectorVisibility,
         canalChildIds,
         showIGNOverlay,
+        showHillshade,
         showDemOverlay,
       })
     ) + hazard.visibleRasterLayers.length;
@@ -1254,6 +1262,9 @@ export default function MapaMapLibre() {
               onLayerVisibilityChange={toggleLayer}
               showIGNOverlay={showIGNOverlay}
               onShowIGNOverlayChange={setShowIGNOverlay}
+              showHillshade={showHillshade}
+              onShowHillshadeChange={setShowHillshade}
+              hillshadeAvailable={!!hillshadeTileUrl}
               demEnabled={demLayers.length > 0}
               showDemOverlay={showDemOverlay}
               onShowDemOverlayChange={setShowDemOverlay}
@@ -1422,6 +1433,9 @@ export default function MapaMapLibre() {
               onLayerVisibilityChange={toggleLayer}
               showIGNOverlay={showIGNOverlay}
               onShowIGNOverlayChange={setShowIGNOverlay}
+              showHillshade={showHillshade}
+              onShowHillshadeChange={setShowHillshade}
+              hillshadeAvailable={!!hillshadeTileUrl}
               demEnabled={demLayers.length > 0}
               showDemOverlay={showDemOverlay}
               onShowDemOverlayChange={setShowDemOverlay}
