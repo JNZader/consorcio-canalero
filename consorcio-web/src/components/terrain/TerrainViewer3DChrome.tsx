@@ -54,6 +54,7 @@ interface TerrainViewer3DChromeProps {
   onNorth: () => void;
   onNadir: () => void;
   onOblique: () => void;
+  onLookWest: () => void;
   onResetView: () => void;
   height: number | string;
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -147,6 +148,7 @@ export function TerrainViewer3DChrome({
   onNorth,
   onNadir,
   onOblique,
+  onLookWest,
   onResetView,
   height,
   mapContainerRef,
@@ -227,6 +229,7 @@ export function TerrainViewer3DChrome({
             onNorth={onNorth}
             onNadir={onNadir}
             onOblique={onOblique}
+            onLookWest={onLookWest}
             onReset={onResetView}
           />
         </Group>

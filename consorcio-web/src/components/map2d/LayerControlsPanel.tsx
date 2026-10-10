@@ -1121,7 +1121,12 @@ export function LayerControlsPanel({
               defaultValue={
                 isSearching
                   ? [...LAYER_FAMILIES.map((family) => family.value), 'raster', 'ajustes']
-                  : []
+                  : [
+                      ...LAYER_FAMILIES.filter(
+                        (family) => familyActiveCounts[family.value] > 0,
+                      ).map((family) => family.value),
+                      ...(showDemOverlay ? (['raster'] as const) : []),
+                    ]
               }
               styles={{ content: { padding: '8px' } }}
             >

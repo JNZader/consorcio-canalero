@@ -55,7 +55,6 @@ describe('LayerControlsPanel variant 3d', () => {
         unsupportedLayerIds={['escuelas']}
       />,
     );
-    await user.click(screen.getByTestId('layer-family-territorio-control'));
     const checkbox = screen.getByRole('checkbox', { name: 'Escuelas rurales' });
     expect(checkbox).toBeDisabled();
     await user.hover(checkbox);

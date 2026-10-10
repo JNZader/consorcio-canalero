@@ -105,11 +105,15 @@ vi.mock('maplibre-gl', () => {
     default: {
       Map: MapStub,
       NavigationControl: class {},
+      ScaleControl: class {},
+      FullscreenControl: class {},
       addProtocol: () => {},
       removeProtocol: () => {},
     },
     Map: MapStub,
     NavigationControl: class {},
+      ScaleControl: class {},
+      FullscreenControl: class {},
     addProtocol: () => {},
     removeProtocol: () => {},
   };
