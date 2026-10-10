@@ -26,7 +26,7 @@
  * for both the swatch colors AND the toggle controls.
  */
 
-import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text } from '@mantine/core';
+import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text, Tooltip } from '@mantine/core';
 import { useMemo } from 'react';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
@@ -36,7 +36,7 @@ import { getActiveAttributions } from '../map2d/layerAttributions';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import { PRIORITY_3D_VECTOR_LAYERS } from './terrainLayerConfig';
+import { PRIORITY_3D_VECTOR_LAYERS, UNSUPPORTED_3D_VECTOR_LAYERS } from './terrainLayerConfig';
 
 /**
  * Labels for the 5 Pilar Verde checkboxes. Kept inline here because they are
@@ -184,7 +184,7 @@ export function TerrainLayerTogglesPanel({
             <Text size="xs" c="dimmed">
               {hasApprovedZones
                 ? 'Las cuencas tienen prioridad visual. Podés combinarlas con subcuencas y overlays raster sobre el relieve.'
-                : 'La vista 2D y la vista 3D se mantienen por separado. Esta vista muestra overlays drapeados sobre el DEM.'}
+                : 'Las capas vectoriales siguen al mapa 2D. Los overlays raster se drapean sobre el DEM.'}
             </Text>
           </Box>
 
@@ -303,6 +303,13 @@ export function TerrainLayerTogglesPanel({
                   />
                 );
               })}
+              {UNSUPPORTED_3D_VECTOR_LAYERS.map((layer) => (
+                <Tooltip key={layer.id} label="no disponible en 3D" withArrow>
+                  <Box>
+                    <Checkbox size="xs" checked={false} disabled label={layer.label} />
+                  </Box>
+                </Tooltip>
+              ))}
             </Stack>
           </CollapsibleSection>
 

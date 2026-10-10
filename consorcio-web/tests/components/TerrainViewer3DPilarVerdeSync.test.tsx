@@ -11,7 +11,7 @@
  *   1. When a Pilar Verde FeatureCollection resolves AND the map is mounted,
  *      the corresponding `sync*Layer` helper is called with the tuple
  *      `(mapInstance, featureCollection, visibilityBool)`.
- *   2. Flipping the visibility flag in `mapLayerSyncStore.map3d.visibleVectors`
+ *   2. Flipping the visibility flag in `mapLayerSyncStore.map2d.visibleVectors`
  *      re-invokes the helper with the new flag.
  *   3. The map instance passed to the helper is the SAME instance created by
  *      MapLibre inside `TerrainViewer3D` (proven via ref equality over the
@@ -251,7 +251,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
     const storeModule = await import('../../src/stores/mapLayerSyncStore');
     storeModule.useMapLayerSyncStore
       .getState()
-      .setVectorVisibility('map3d', 'pilar_verde_bpa_historico', true);
+      .setVectorVisibility('map2d', 'pilar_verde_bpa_historico', true);
 
     const { default: TerrainViewer3D } = await import(
       '../../src/components/terrain/TerrainViewer3D'
@@ -282,7 +282,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
     // Start visible ON.
     storeModule.useMapLayerSyncStore
       .getState()
-      .setVectorVisibility('map3d', 'pilar_verde_bpa_historico', true);
+      .setVectorVisibility('map2d', 'pilar_verde_bpa_historico', true);
 
     const { default: TerrainViewer3D } = await import(
       '../../src/components/terrain/TerrainViewer3D'
@@ -299,7 +299,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
     await act(async () => {
       storeModule.useMapLayerSyncStore
         .getState()
-        .setVectorVisibility('map3d', 'pilar_verde_bpa_historico', false);
+        .setVectorVisibility('map2d', 'pilar_verde_bpa_historico', false);
     });
 
     const lastCall =
@@ -321,10 +321,10 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
     const storeModule = await import('../../src/stores/mapLayerSyncStore');
     storeModule.useMapLayerSyncStore
       .getState()
-      .setVectorVisibility('map3d', 'pilar_verde_agro_aceptada', true);
+      .setVectorVisibility('map2d', 'pilar_verde_agro_aceptada', true);
     storeModule.useMapLayerSyncStore
       .getState()
-      .setVectorVisibility('map3d', 'pilar_verde_agro_presentada', true);
+      .setVectorVisibility('map2d', 'pilar_verde_agro_presentada', true);
 
     const { default: TerrainViewer3D } = await import(
       '../../src/components/terrain/TerrainViewer3D'
@@ -361,10 +361,10 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
     const storeModule = await import('../../src/stores/mapLayerSyncStore');
     storeModule.useMapLayerSyncStore
       .getState()
-      .setVectorVisibility('map3d', 'pilar_verde_agro_zonas', true);
+      .setVectorVisibility('map2d', 'pilar_verde_agro_zonas', true);
     storeModule.useMapLayerSyncStore
       .getState()
-      .setVectorVisibility('map3d', 'pilar_verde_porcentaje_forestacion', true);
+      .setVectorVisibility('map2d', 'pilar_verde_porcentaje_forestacion', true);
 
     const { default: TerrainViewer3D } = await import(
       '../../src/components/terrain/TerrainViewer3D'
@@ -407,7 +407,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
       'pilar_verde_agro_zonas',
       'pilar_verde_porcentaje_forestacion',
     ]) {
-      storeModule.useMapLayerSyncStore.getState().setVectorVisibility('map3d', key, true);
+      storeModule.useMapLayerSyncStore.getState().setVectorVisibility('map2d', key, true);
     }
 
     const { default: TerrainViewer3D } = await import(

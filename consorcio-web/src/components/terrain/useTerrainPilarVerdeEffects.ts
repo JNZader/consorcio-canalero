@@ -53,7 +53,7 @@ export interface UseTerrainPilarVerdeEffectsParams {
   readonly pilarVerde: PilarVerdeData | null | undefined;
   /**
    * Visibility record from the viewer's local `vectorLayerVisibility` state
-   * — already mirrored from the `map3d.visibleVectors` store slice by the
+   * — already mirrored from the `map2d.visibleVectors` store slice by the
    * viewer's own store subscription effect.
    */
   readonly vectorLayerVisibility: Record<string, boolean>;

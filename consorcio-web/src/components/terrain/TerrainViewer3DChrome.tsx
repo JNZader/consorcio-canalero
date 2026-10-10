@@ -97,7 +97,7 @@ interface TerrainViewer3DChromeProps {
    * Phase 4 (Batch E) — visibility flags forwarded to
    * `<TerrainLegendsPanel>` so each of the 7 conditional Pilar Verde +
    * Canales legend blocks can gate its own render. Derived by
-   * `TerrainViewer3D` from `mapLayerSyncStore.map3d.visibleVectors`.
+   * `TerrainViewer3D` from `mapLayerSyncStore.map2d.visibleVectors`.
    *
    * Optional for backwards compatibility — pre-Batch-E callers that don't
    * care about Pilar Verde / Canales legends can skip them and the panel

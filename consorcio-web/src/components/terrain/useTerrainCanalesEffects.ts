@@ -24,10 +24,10 @@
  *
  * Per-canal id computation:
  *   - `visibleRelevadoIds`: every relevado id whose per-canal slug returns
- *     `true` from `isCanalVisible('map3d', ...)`. This encapsulates the
+ *     `true` from `isCanalVisible('map2d', ...)`. This encapsulates the
  *     master-gate + per-canal-flag check in one selector (matches the 2D
  *     blueprint's semantics for the relevados layer).
- *   - `visiblePropuestaIds`: `state.getVisiblePropuestaIds('map3d')` —
+ *   - `visiblePropuestaIds`: `state.getVisiblePropuestaIds('map2d')` —
  *     combines master gate + per-canal + etapa filter in one call.
  *
  * `activeEtapas` fallback:
@@ -73,7 +73,7 @@ export interface UseTerrainCanalesEffectsParams {
  *   - `canales.relevados` / `canales.propuestas` / `canales.index` resolve
  *   - master toggles flip (`canales_relevados` / `canales_propuestos`)
  *   - any etapa toggle flips (`propuestasEtapasVisibility`)
- *   - any per-canal flag flips (`map3d.visibleVectors` — broad dep)
+ *   - any per-canal flag flips (`map2d.visibleVectors` — shared with 2D)
  */
 export function useTerrainCanalesEffects({
   mapRef,
@@ -82,17 +82,17 @@ export function useTerrainCanalesEffects({
 }: UseTerrainCanalesEffectsParams): void {
   // Master toggles (selective subscription — only re-render on flips).
   const relevadosVisible = useMapLayerSyncStore(
-    (s) => s.map3d.visibleVectors.canales_relevados ?? false
+    (s) => s.map2d.visibleVectors.canales_relevados ?? false
   );
   const propuestasVisible = useMapLayerSyncStore(
-    (s) => s.map3d.visibleVectors.canales_propuestos ?? false
+    (s) => s.map2d.visibleVectors.canales_propuestos ?? false
   );
   // Etapas filter slice — shared between 2D + 3D.
   const propuestasEtapasVisibility = useMapLayerSyncStore((s) => s.propuestasEtapasVisibility);
   // Broad slice — triggers re-sync when any per-canal flag changes. We read
   // per-canal flags via `getState()` inside the effect body (avoids
   // subscribing to 43 individual selectors).
-  const visibleVectors = useMapLayerSyncStore((s) => s.map3d.visibleVectors);
+  const visibleVectors = useMapLayerSyncStore((s) => s.map2d.visibleVectors);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -123,7 +123,7 @@ export function useTerrainCanalesEffects({
 
     // `getVisiblePropuestaIds` bakes in master gate + per-canal + etapa
     // filter; mirrors the 2D blueprint exactly.
-    const visiblePropuestaIds = state.getVisiblePropuestaIds('map3d');
+    const visiblePropuestaIds = state.getVisiblePropuestaIds('map2d');
 
     // Active etapas = keys with `true`. Fall back to ALL_ETAPAS when the
     // user has flipped every etapa OFF — preserves the 2D behavior of
