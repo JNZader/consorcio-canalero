@@ -58,6 +58,7 @@ export const SOURCE_IDS = {
   APPROVED_ZONES: 'map2d-approved-zones',
   ZONA: 'map2d-zona',
   IGN: 'map2d-ign-overlay',
+  HILLSHADE: 'map2d-hillshade',
   SATELLITE_IMAGE: 'map2d-selected-image',
   COMPARISON_LEFT: 'map2d-comparison-left',
   COMPARISON_RIGHT: 'map2d-comparison-right',

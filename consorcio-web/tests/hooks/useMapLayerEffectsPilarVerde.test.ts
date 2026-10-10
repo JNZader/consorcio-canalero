@@ -49,6 +49,7 @@ vi.mock('../../src/components/map2d/mapRasterOverlayHelpers', () => ({
   getVisibleRasterLayersForDem: vi.fn(() => []),
   syncDemRasterLayer: vi.fn(),
   syncIgnLayer: vi.fn(),
+  syncHillshadeLayer: vi.fn(),
   syncImageOverlays: vi.fn(),
   syncMartinSuggestionLayers: vi.fn(),
 }));
