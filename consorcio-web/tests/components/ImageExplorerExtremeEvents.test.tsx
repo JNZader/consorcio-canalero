@@ -119,4 +119,36 @@ describe('ImageExplorerExtremeEvents', () => {
     const names = screen.getAllByText(/^(older|newer)$/).map((node) => node.textContent);
     expect(names).toEqual(['newer', 'older']);
   });
+
+  it('offers Probar este for each ranked shortlist scene, not the composite search',
+    async () => {
+      const onLoad = vi.fn();
+      const onTry = vi.fn();
+      const user = userEvent.setup();
+      const row = {
+        rank: 1,
+        sensor: 'sentinel1',
+        scene_id: 'S1_VV',
+        scene_date: '2015-03-15',
+        days_from_peak: 0,
+        cloud_pct: null,
+        score: 90,
+        visualization: 'vv_flood',
+      };
+      render(
+        <ImageExplorerExtremeEvents
+          events={[candidate]}
+          onLoadHistoricFlood={onLoad}
+          onTryShortlist={onTry}
+          shortlists={{ [candidate.id]: [row] }}
+        />,
+        { wrapper }
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Probar este · S1 · 2015-03-15' }));
+      expect(onTry).toHaveBeenCalledTimes(1);
+      expect(onTry).toHaveBeenCalledWith(row);
+      expect(onLoad).not.toHaveBeenCalled();
+    }
+  );
 });

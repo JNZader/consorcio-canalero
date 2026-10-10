@@ -11,9 +11,10 @@ import {
   type ImageSensor,
   buildVisualizationOptions,
   createSelectedImageFromResult,
+  isImageSensor,
   isOpticalSensor,
 } from './imageExplorerUtils';
-import type { HistoricFloodEvent } from './ImageExplorerExtremeEvents';
+import type { HistoricFloodEvent, ImageryShortlistRow } from './ImageExplorerExtremeEvents';
 import { useImageExplorerMap } from './useImageExplorerMap';
 
 interface Visualization {
@@ -46,6 +47,24 @@ function isHistoricFlood(value: unknown): value is HistoricFloodEvent {
     typeof (value as { name?: unknown }).name === 'string' &&
     typeof (value as { date?: unknown }).date === 'string'
   );
+}
+
+function isShortlistRow(value: unknown): value is ImageryShortlistRow {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.rank === 'number' &&
+    typeof row.sensor === 'string' &&
+    typeof row.scene_id === 'string' &&
+    typeof row.scene_date === 'string' &&
+    typeof row.visualization === 'string'
+  );
+}
+
+function parseShortlist(payload: unknown): ImageryShortlistRow[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const rows = (payload as { candidates?: unknown }).candidates;
+  return Array.isArray(rows) ? rows.filter(isShortlistRow) : [];
 }
 
 function normalizeUniqueDates(values: unknown): string[] {
@@ -89,6 +108,7 @@ export function useImageExplorerController() {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [visualizations, setVisualizations] = useState<Visualization[]>([]);
   const [historicFloods, setHistoricFloods] = useState<HistoricFloodEvent[]>([]);
+  const [shortlists, setShortlists] = useState<Record<string, ImageryShortlistRow[]>>({});
 
   const { selectedImage, setSelectedImage, clearSelectedImage } = useSelectedImage();
   const {
@@ -187,6 +207,53 @@ export function useImageExplorerController() {
     [updateTileLayer, visualization]
   );
 
+  const loadShortlistScene = useCallback(
+    async (row: ImageryShortlistRow) => {
+      if (!isImageSensor(row.sensor)) return;
+      const nextSensor = row.sensor;
+      const nextVis =
+        row.visualization || (nextSensor === 'sentinel1' ? 'vv_flood' : 'rgb');
+      setSensor(nextSensor);
+      setVisualization(nextVis);
+      setCompositionMode('scene');
+      imageRequestRef.current?.abort();
+      const controller = new AbortController();
+      imageRequestRef.current = controller;
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          target_date: row.scene_date,
+          days_buffer: '1',
+          visualization: nextVis,
+          mode: 'scene',
+        });
+        if (isOpticalSensor(nextSensor)) params.append('max_cloud', maxCloud);
+        const data = await apiFetch<ImageResultLike>(`${API_BASE}/${nextSensor}?${params}`, {
+          signal: controller.signal,
+          timeout: GEE_TIMEOUT,
+        });
+        if (controller.signal.aborted) return;
+        setResult(data);
+        setSelectedSceneId(null);
+        updateTileLayer(data.tile_url);
+        const [year, month] = row.scene_date.split('-').map(Number);
+        if (year && month) {
+          setCalendarYear(year);
+          setCalendarMonth(month - 1);
+        }
+        suppressDayFetchRef.current = row.scene_date;
+        setSelectedDay(row.scene_date);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : 'Error desconocido');
+      } finally {
+        if (imageRequestRef.current === controller) setLoading(false);
+      }
+    },
+    [maxCloud, updateTileLayer]
+  );
+
   const handleSelectImage = useCallback(() => {
     const imageData = createSelectedImageFromResult(result);
     if (imageData) setSelectedImage(imageData);
@@ -275,11 +342,29 @@ export function useImageExplorerController() {
             ? (data as { floods: unknown[] }).floods.filter(isHistoricFlood)
             : [];
         setHistoricFloods(floods);
+        const eligible = floods.filter((flood) => flood.imagery_candidate !== false);
+        return Promise.all(
+          eligible.map(async (flood) => {
+            try {
+              const payload = await apiFetch<unknown>(
+                `${API_BASE}/historic-floods/${flood.id}/candidates`,
+                { signal: controller.signal }
+              );
+              return [flood.id, parseShortlist(payload)] as const;
+            } catch {
+              return [flood.id, [] as ImageryShortlistRow[]] as const;
+            }
+          })
+        ).then((entries) => {
+          if (controller.signal.aborted) return;
+          setShortlists(Object.fromEntries(entries));
+        });
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
         logger.error('Error fetching historic floods:', err);
         setHistoricFloods([]);
+        setShortlists({});
       });
     return () => controller.abort();
   }, []);
@@ -372,6 +457,7 @@ export function useImageExplorerController() {
     scenes,
     selectedSceneId,
     historicFloods,
+    shortlists,
     selectedImage,
     comparison,
     comparisonReady,
@@ -394,5 +480,6 @@ export function useImageExplorerController() {
     handleSetLeftImage,
     handleSetRightImage,
     loadHistoricFlood,
+    loadShortlistScene,
   };
 }
