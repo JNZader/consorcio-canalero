@@ -78,7 +78,7 @@ describe('ImageExplorerExtremeEvents', () => {
     expect(onLoad).toHaveBeenCalledWith('ext_20150312');
   });
 
-  it('hides non-candidates until the operator asks to show them, then keeps search disabled', async () => {
+  it('shows every event by default and can hide those without Sentinel', async () => {
     const onLoad = vi.fn();
     const user = userEvent.setup();
     render(
@@ -87,17 +87,15 @@ describe('ImageExplorerExtremeEvents', () => {
     );
 
     expect(screen.getByText(candidate.name)).toBeInTheDocument();
-    expect(screen.queryByText(noImagery.name)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('checkbox', { name: 'Mostrar sin imagen satelital' }));
-
     expect(screen.getByText(noImagery.name)).toBeInTheDocument();
-    expect(screen.getByText(noImagery.imagery_note)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Buscar imagen' })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: 'Sin imagen satelital útil' })).toBeDisabled();
 
-    await user.click(screen.getByRole('button', { name: 'Sin imagen satelital útil' }));
-    expect(onLoad).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('checkbox', { name: 'Solo con imagen Sentinel' }));
+
+    expect(screen.getByText(candidate.name)).toBeInTheDocument();
+    expect(screen.queryByText(noImagery.name)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Buscar imagen' }));
+    expect(onLoad).toHaveBeenCalledWith(candidate.id);
   });
 
   it('treats a missing imagery_candidate as searchable (legacy three-literal cards)', async () => {
@@ -183,7 +181,8 @@ describe('ImageExplorerExtremeEvents', () => {
         { wrapper }
       );
 
-      await user.click(screen.getByRole('button', { name: 'Probar este · S1 · 2015-03-15' }));
+      expect(screen.getByLabelText('Escenas ranqueadas')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Probar este' }));
       expect(onTry).toHaveBeenCalledTimes(1);
       expect(onTry).toHaveBeenCalledWith(row);
       expect(onLoad).not.toHaveBeenCalled();

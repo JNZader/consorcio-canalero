@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 
 from app.domains.geo.rainfall.models import RainfallEventImageryCandidate
 
-SCORER_REVISION = "imgcand-1"
+SCORER_REVISION = "imgcand-2"
 CLOUD_BASIS = "scene_metadata"
-TOP_N = 3
+TOP_N = 12
 POST_DAYS = 10
 PRE_DAYS = 2
 CLOUD_REF = 80.0
