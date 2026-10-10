@@ -1,4 +1,15 @@
-import { Badge, Button, Card, Checkbox, Group, Paper, SimpleGrid, Text, Title } from '@mantine/core';
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Group,
+  NativeSelect,
+  Paper,
+  SimpleGrid,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useMemo, useState } from 'react';
 
 import { IconPhoto } from '../../ui/icons';
@@ -66,6 +77,55 @@ function severityColor(severity: string): string {
   return 'yellow';
 }
 
+function sceneKey(row: ImageryShortlistRow): string {
+  return `${row.rank}:${row.scene_id}`;
+}
+
+function sceneLabel(row: ImageryShortlistRow): string {
+  const sensor = SENSOR_SHORT[row.sensor] ?? row.sensor;
+  const cloud =
+    row.cloud_pct == null ? 'SAR' : `${Math.round(row.cloud_pct)}% nubes`;
+  return `${row.rank}. ${sensor} ${row.scene_date} · ${cloud}`;
+}
+
+function EventShortlistPicker({
+  rows,
+  loading,
+  onTry,
+}: {
+  rows: ImageryShortlistRow[];
+  loading: boolean;
+  onTry?: (row: ImageryShortlistRow) => void;
+}) {
+  const [selected, setSelected] = useState(rows[0] ? sceneKey(rows[0]) : '');
+  const current = rows.find((row) => sceneKey(row) === selected) ?? rows[0];
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <NativeSelect
+        mt="sm"
+        size="xs"
+        label="Escenas ranqueadas"
+        value={selected}
+        onChange={(event) => setSelected(event.currentTarget.value)}
+        data={rows.map((row) => ({ value: sceneKey(row), label: sceneLabel(row) }))}
+      />
+      <Button
+        mt="xs"
+        size="xs"
+        fullWidth
+        variant="light"
+        disabled={loading || !current}
+        onClick={() => {
+          if (current) onTry?.(current);
+        }}
+      >
+        Probar este
+      </Button>
+    </>
+  );
+}
+
 export function ImageExplorerExtremeEvents({
   events,
   onLoadHistoricFlood,
@@ -73,12 +133,12 @@ export function ImageExplorerExtremeEvents({
   shortlists = {},
   loading = false,
 }: ImageExplorerExtremeEventsProps) {
-  const [showWithoutImagery, setShowWithoutImagery] = useState(false);
+  const [onlyWithImagery, setOnlyWithImagery] = useState(false);
 
   const visibleEvents = useMemo(() => {
-    const filtered = showWithoutImagery ? events : events.filter(isImageryEligible);
+    const filtered = onlyWithImagery ? events.filter(isImageryEligible) : events;
     return [...filtered].sort((a, b) => b.date.localeCompare(a.date));
-  }, [events, showWithoutImagery]);
+  }, [events, onlyWithImagery]);
 
   if (events.length === 0) return null;
 
@@ -95,9 +155,9 @@ export function ImageExplorerExtremeEvents({
         ranqueada; Buscar imagen arma el compuesto. Después publicá con Usar esta imagen.
       </Text>
       <Checkbox
-        label="Mostrar sin imagen satelital"
-        checked={showWithoutImagery}
-        onChange={(event) => setShowWithoutImagery(event.currentTarget.checked)}
+        label="Solo con imagen Sentinel"
+        checked={onlyWithImagery}
+        onChange={(event) => setOnlyWithImagery(event.currentTarget.checked)}
         mb="sm"
         size="sm"
       />
@@ -129,22 +189,11 @@ export function ImageExplorerExtremeEvents({
                   {flood.imagery_note}
                 </Text>
               ) : null}
-              {(shortlists[flood.id] ?? []).map((row) => {
-                const label = `Probar este · ${SENSOR_SHORT[row.sensor] ?? row.sensor} · ${row.scene_date}`;
-                return (
-                  <Button
-                    key={`${row.scene_id}-${row.rank}`}
-                    mt="sm"
-                    size="xs"
-                    fullWidth
-                    variant="light"
-                    disabled={loading}
-                    onClick={() => onTryShortlist?.(row)}
-                  >
-                    {label}
-                  </Button>
-                );
-              })}
+              <EventShortlistPicker
+                rows={shortlists[flood.id] ?? []}
+                loading={loading}
+                onTry={onTryShortlist}
+              />
               <Button
                 mt="sm"
                 size="xs"

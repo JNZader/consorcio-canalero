@@ -19,16 +19,16 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domains.geo.rainfall.catalog_view import IMAGERY_CUTOFF
 from app.domains.geo.rainfall.imagery_shortlist import (
     POST_DAYS,
     PRE_DAYS,
+    SCORER_REVISION,
     SceneHit,
     rank_scenes,
     replace_candidates,
 )
 
-SENSORS = ("sentinel2", "sentinel1", "landsat8")
+SENSORS = ("sentinel2", "sentinel1", "landsat8", "landsat7", "landsat5")
 
 ListScenes = Callable[[str, date, date], list[SceneHit]]
 
@@ -51,29 +51,12 @@ def _event_id(event: Any) -> str:
     return str(event.id)
 
 
-def _is_candidate(event: Any) -> bool:
-    if isinstance(event, dict):
-        flag = event.get("imagery_candidate")
-        when = event.get("date")
-    else:
-        flag = getattr(event, "imagery_candidate", None)
-        when = getattr(event, "date", None)
-    if flag is False:
-        return False
-    if when is None:
-        return True
-    day = when if isinstance(when, date) else date.fromisoformat(str(when))
-    return day >= IMAGERY_CUTOFF
-
-
 def shortlist_event(
     db: Session,
     event: Any,
     *,
     list_scenes: ListScenes,
 ) -> list:
-    if not _is_candidate(event):
-        return []
     peak = _peak_date(event)
     start = peak - timedelta(days=PRE_DAYS)
     end = peak + timedelta(days=POST_DAYS)
@@ -116,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
 
         count = run_events(db, events, list_scenes=list_gee_scenes)
         db.commit()
-        print(f"events_shortlisted={count} scorer=imgcand-1")
+        print(f"events_shortlisted={count} scorer={SCORER_REVISION}")
         return EXIT_OK
     except Exception as exc:
         db.rollback()

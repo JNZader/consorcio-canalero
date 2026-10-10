@@ -78,11 +78,11 @@ def test_unknown_optical_cloud_does_not_outrank_known_clear() -> None:
     assert ranked[0].scene_id == "CLEAR"
 
 
-def test_top_n_caps_at_three() -> None:
-    hits = [SceneHit("sentinel2", f"S{i}", PEAK, float(i)) for i in range(8)]
+def test_top_n_caps_at_twelve() -> None:
+    hits = [SceneHit("sentinel2", f"S{i}", PEAK, float(i)) for i in range(20)]
     ranked = rank_scenes(PEAK, hits)
-    assert [row.rank for row in ranked] == [1, 2, 3]
-    assert len(ranked) == 3
+    assert [row.rank for row in ranked] == list(range(1, 13))
+    assert len(ranked) == 12
 
 
 def test_replace_candidates_is_a_new_generation(db) -> None:
@@ -139,7 +139,7 @@ def test_cli_run_for_one_event_uses_the_injected_lister(db) -> None:
     assert [row.scene_id for row in written] == ["S2", "S1"]
 
 
-def test_cli_skips_pre2015_non_candidates(db) -> None:
+def test_cli_shortlists_pre2015_with_landsat(db) -> None:
     from app.domains.geo.rainfall.imagery_shortlist_cli import shortlist_event
 
     event = SimpleNamespace(
@@ -148,9 +148,15 @@ def test_cli_skips_pre2015_non_candidates(db) -> None:
         peak_date="1994-01-01",
         imagery_candidate=False,
     )
-    written = shortlist_event(db, event, list_scenes=lambda *_a, **_k: [_ for _ in ()])
-    assert written == []
-    assert load_candidates(db, "ext_19940101") == []
+
+    def fake_lister(sensor: str, start: date, end: date) -> list[SceneHit]:
+        if sensor == "landsat5":
+            return [SceneHit("landsat5", "L5", date(1994, 1, 1), 10.0)]
+        return []
+
+    written = shortlist_event(db, event, list_scenes=fake_lister)
+    db.flush()
+    assert [row.scene_id for row in written] == ["L5"]
 
 
 CANDIDATES_URL = "/api/v2/geo/gee/images/historic-floods/{flood_id}/candidates"

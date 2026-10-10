@@ -346,7 +346,7 @@ class RainfallEventImageryCandidate(UUIDMixin, Base):
     __tablename__ = "rainfall_event_imagery_candidate"
     __table_args__ = (
         UniqueConstraint("event_key", "rank", name="uq_rainfall_imagery_candidate_rank"),
-        CheckConstraint("rank >= 1 AND rank <= 3", name="ck_rainfall_imagery_candidate_rank"),
+        CheckConstraint("rank >= 1 AND rank <= 12", name="ck_rainfall_imagery_candidate_rank"),
         CheckConstraint(
             "sensor IN ('sentinel2', 'sentinel1', 'landsat8', 'landsat7', 'landsat5')",
             name="ck_rainfall_imagery_candidate_sensor",
