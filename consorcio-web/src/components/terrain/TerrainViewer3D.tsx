@@ -45,6 +45,7 @@ import {
   buildWaterwaysCollection,
 } from './terrainViewer3DUtils';
 import { useTerrainCanalesEffects } from './useTerrainCanalesEffects';
+import { useTerrainHoverTooltip } from './useTerrainHoverTooltip';
 import { useTerrainInteractionEffects } from './useTerrainInteractionEffects';
 import { useTerrainPilarVerdeEffects } from './useTerrainPilarVerdeEffects';
 
@@ -879,6 +880,7 @@ export default function TerrainViewer3D({
     ready,
     setSelectedFeatures,
   });
+  useTerrainHoverTooltip({ mapRef, ready });
 
   const handleCloseInfoPanel = useCallback(() => {
     setSelectedFeatures([]);
