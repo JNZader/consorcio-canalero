@@ -58,9 +58,9 @@ describe('map2dDerived', () => {
     ).toEqual([
       { id: 'basins', label: 'Subcuencas', category: 'hidrografia' },
       { id: 'waterways', label: 'Hidrografía', category: 'hidrografia' },
-      { id: 'roads', label: 'Red Vial', category: 'territorio' },
+      { id: 'roads', label: 'Red Vial (acercate para ver nombres)', category: 'territorio' },
       { id: 'soil', label: 'Suelos IDECOR 1:50.000', category: 'territorio' },
-      { id: 'catastro', label: 'Catastro rural IDECOR', category: 'territorio' },
+      { id: 'catastro', label: 'Catastro rural IDECOR (acercate para ver)', category: 'territorio' },
       { id: 'puntos_conflicto', label: 'Puntos conflicto', category: 'analisis' },
     ]);
 
