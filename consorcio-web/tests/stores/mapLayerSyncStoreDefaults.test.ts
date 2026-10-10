@@ -4,14 +4,8 @@
  * Locks in the startup-default layer visibility contract for the 2D map.
  *
  * Contract (see feat(ui): startup defaults + map-fluidity T1):
- *   - Hidrografía (`waterways`), Red Vial (`roads`) and Catastro rural
- *     (`catastro`) start visible.
- *   - Every other registered vector layer (approved zones, Pilar Verde, IGN
- *     histórico, DEM overlays, hydraulic risk, soil, etc.) starts hidden.
- *
- * `catastro` was flipped OFF → ON in the map-fluidity pass: its fill is the only
- * clickable surface that opens the ficha territorial, so while it was hidden a
- * citizen could click a parcel and get no response whatsoever.
+ *   - Hidrografía (`waterways`), Red Vial (`roads`) and Canales relevados start visible.
+ *   - Every other registered vector layer starts hidden.
  *
  * The base layer default lives in `MapaMapLibre.tsx` (component-local state),
  * not in this store — but the 4 canonical layers are: Satélite, Imagen,
@@ -42,10 +36,7 @@ import { DEFAULT_BASE_LAYER } from '../../src/components/map2d/map2dConfig';
 const INITIAL_ON_VECTORS = [
   'roads',
   'waterways',
-  // map-fluidity T1: Catastro rural flipped OFF → ON. The parcel fill is the
-  // only clickable surface that opens the ficha territorial, so with the layer
-  // hidden a citizen clicking a parcel got no response at all.
-  'catastro',
+  'canales_relevados',
 ] as const;
 
 /**
@@ -59,8 +50,12 @@ const INITIAL_OFF_VECTORS = [
   'basins',
   'ign_historico',
   'soil',
-  // `catastro` MOVED to INITIAL_ON_VECTORS (map-fluidity T1) — see above.
+  'catastro',
   'hydraulic_risk',
+  'sentido_camino',
+  'puntos_interes',
+  'red_vial_oficial',
+  'caminos_huecos',
   'puntos_conflicto',
   // Pilar Azul — Escuelas rurales (v1 master toggle, opt-in per design §7).
   'escuelas',
@@ -72,8 +67,8 @@ const INITIAL_OFF_VECTORS = [
  * has no ficha — mirroring it there would only load a heavy vector-tile fill for
  * no user benefit. See MAP3D_DEFAULT_VISIBLE_VECTORS.
  */
-const MAP3D_ON_VECTORS = INITIAL_ON_VECTORS.filter((id) => id !== 'catastro');
-const MAP3D_OFF_VECTORS = [...INITIAL_OFF_VECTORS, 'catastro'] as const;
+const MAP3D_ON_VECTORS = INITIAL_ON_VECTORS;
+const MAP3D_OFF_VECTORS = INITIAL_OFF_VECTORS;
 
 describe('mapLayerSyncStore — startup defaults', () => {
   beforeEach(() => {
@@ -104,12 +99,12 @@ describe('mapLayerSyncStore — startup defaults', () => {
       expect(initial['some_random_unregistered_layer']).toBeUndefined();
     });
 
-    it('red_vial_oficial starts ON (staff IDECOR overlay; citizens never see the toggle)', () => {
-      expect(initial.red_vial_oficial).toBe(true);
+    it('red_vial_oficial starts OFF', () => {
+      expect(initial.red_vial_oficial).toBe(false);
     });
 
-    it('caminos_huecos starts ON (staff OSM/IGN gap overlay; citizens never see the toggle)', () => {
-      expect(initial.caminos_huecos).toBe(true);
+    it('caminos_huecos starts OFF', () => {
+      expect(initial.caminos_huecos).toBe(false);
     });
   });
 

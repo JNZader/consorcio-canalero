@@ -46,7 +46,7 @@ describe('mapLayerSyncStore applyPreset', () => {
     useMapLayerSyncStore.getState().restoreCatalogDefaults('map2d');
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(true);
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.waterways).toBe(true);
-    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.catastro).toBe(true);
+    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.catastro).toBe(false);
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.canales_relevados).toBe(true);
     expect(useMapLayerSyncStore.getState().presetByView.map2d).toBeNull();
   });
