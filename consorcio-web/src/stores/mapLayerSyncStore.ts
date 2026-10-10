@@ -147,11 +147,9 @@ const defaultVisibleVectors: Record<string, boolean> = {
   waterways_arroyo_las_mojarras: true,
   ign_historico: false,
   soil: false,
-  // Catastro rural starts ON: it is the ONLY affordance that makes the ficha
-  // territorial discoverable — with the layer off a citizen clicks a parcel and
-  // nothing happens at all. Flipped from `false` in the map-fluidity pass; the
-  // v4 → v5 persist migration below carries existing visitors forward.
-  catastro: true,
+  // Startup: only Hidrografía, Red Vial, Canales relevados. Catastro stays
+  // opt-in (ficha still works when the user turns it on).
+  catastro: false,
   hydraulic_risk: false,
   puntos_conflicto: false,
   // ── Pilar Azul — Escuelas rurales (design §7) ──
@@ -159,22 +157,11 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // No sub-toggles — the one layer carries all 7 features.
   escuelas: false,
   // ── flujo-caminos (design Migration/Rollout) ──
-  // Ranked road crossings mount HIDDEN. The rollout order ships the frontend
-  // last, so between the migration and the first crossing run the layer would
-  // otherwise be an empty toggle an operator has to be told to ignore. Default
-  // OFF means a half-rolled-out state shows nothing wrong at all.
   road_flow: false,
-  // Along-road ditch-flow chevrons. Staff-only, default ON: this is the
-  // picture the operator asked for (sentido every 250 m), not a ranking.
-  sentido_camino: true,
-  // Staff notepad pins. Default ON like sentido_camino: operators asked for
-  // the layer, not an empty toggle they have to discover.
-  puntos_interes: true,
-  // Staff IDECOR official-road overlay. Default ON for staff (the point of
-  // the layer is to see the AU9 / RN1V09 gap). Citizens never see the toggle.
-  red_vial_oficial: true,
-  // Staff OSM/IGN gap overlay. Default ON for staff; citizens never see it.
-  caminos_huecos: true,
+  sentido_camino: false,
+  puntos_interes: false,
+  red_vial_oficial: false,
+  caminos_huecos: false,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
 };
@@ -330,6 +317,9 @@ interface PilarAzulActions {
  *     off forever for returning staff.
  *   v10 → v11: seed `caminos_huecos = true` on map2d without flipping an
  *     explicit false.
+ *   v11 → v12: startup layers = Hidrografía + Red Vial + Canales relevados.
+ *     Force off catastro / sentido_camino / puntos_interes / red_vial_oficial /
+ *     caminos_huecos (previous migrations had seeded those ON).
  */
 export function migrateMapLayerState(
   persistedState: unknown,
@@ -495,6 +485,33 @@ export function migrateMapLayerState(
             ...next.map2d.visibleVectors,
             caminos_huecos: next.map2d.visibleVectors?.caminos_huecos ?? true,
           },
+        },
+      };
+    }
+  }
+  if (fromVersion < 12) {
+    const extrasOff = {
+      catastro: false,
+      sentido_camino: false,
+      puntos_interes: false,
+      red_vial_oficial: false,
+      caminos_huecos: false,
+    } as const;
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: { ...next.map2d.visibleVectors, ...extrasOff },
+        },
+      };
+    }
+    if (next.map3d) {
+      next = {
+        ...next,
+        map3d: {
+          ...next.map3d,
+          visibleVectors: { ...next.map3d.visibleVectors, ...extrasOff },
         },
       };
     }
@@ -769,7 +786,7 @@ export const useMapLayerSyncStore = create<
       //   v8 → v9: seed `lineWidthScale = 1` (Capas slider for canal/road width).
       //   v9 → v10: seed `red_vial_oficial = true` on map2d (staff IDECOR overlay).
       //   v10 → v11: seed `caminos_huecos = true` on map2d (OSM/IGN gap overlay).
-      version: 11,
+      version: 12,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {
