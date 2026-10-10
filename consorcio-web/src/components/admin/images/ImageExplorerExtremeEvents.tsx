@@ -13,11 +13,32 @@ export interface HistoricFloodEvent {
   imagery_note?: string;
 }
 
+export interface ImageryShortlistRow {
+  rank: number;
+  sensor: string;
+  scene_id: string;
+  scene_date: string;
+  days_from_peak: number;
+  cloud_pct: number | null;
+  score: number;
+  visualization: string;
+}
+
 interface ImageExplorerExtremeEventsProps {
   events: HistoricFloodEvent[];
   onLoadHistoricFlood: (floodId: string) => void;
+  onTryShortlist?: (row: ImageryShortlistRow) => void;
+  shortlists?: Record<string, ImageryShortlistRow[]>;
   loading?: boolean;
 }
+
+const SENSOR_SHORT: Record<string, string> = {
+  sentinel1: 'S1',
+  sentinel2: 'S2',
+  landsat8: 'L8',
+  landsat7: 'L7',
+  landsat5: 'L5',
+};
 
 function isImageryEligible(event: HistoricFloodEvent): boolean {
   return event.imagery_candidate !== false;
@@ -32,6 +53,8 @@ function severityColor(severity: string): string {
 export function ImageExplorerExtremeEvents({
   events,
   onLoadHistoricFlood,
+  onTryShortlist,
+  shortlists = {},
   loading = false,
 }: ImageExplorerExtremeEventsProps) {
   const [showWithoutImagery, setShowWithoutImagery] = useState(false);
@@ -52,8 +75,8 @@ export function ImageExplorerExtremeEvents({
         </Group>
       </Title>
       <Text size="xs" c="dimmed" mb="sm">
-        CHIRPS ordena de forma relativa, no en milímetros. Elegí un evento, buscá la imagen y
-        publicá con Usar esta imagen.
+        CHIRPS ordena de forma relativa, no en milímetros. Probar este usa la escena ya
+        ranqueada; Buscar imagen arma el compuesto. Después publicá con Usar esta imagen.
       </Text>
       <Checkbox
         label="Mostrar sin imagen satelital"
@@ -84,6 +107,22 @@ export function ImageExplorerExtremeEvents({
                   {flood.imagery_note}
                 </Text>
               ) : null}
+              {(shortlists[flood.id] ?? []).map((row) => {
+                const label = `Probar este · ${SENSOR_SHORT[row.sensor] ?? row.sensor} · ${row.scene_date}`;
+                return (
+                  <Button
+                    key={`${row.scene_id}-${row.rank}`}
+                    mt="sm"
+                    size="xs"
+                    fullWidth
+                    variant="light"
+                    disabled={loading}
+                    onClick={() => onTryShortlist?.(row)}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
               <Button
                 mt="sm"
                 size="xs"

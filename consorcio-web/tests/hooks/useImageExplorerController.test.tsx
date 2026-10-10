@@ -68,6 +68,7 @@ interface ApiCalls {
   visualizations: Call[];
   floodList: Call[];
   flood: Call[];
+  candidates: Call[];
   dates: Call[];
   scenes: Call[];
   dayImage: Call[];
@@ -79,6 +80,7 @@ let calls: ApiCalls;
 function classify(url: string): keyof ApiCalls | null {
   if (!url.startsWith(`${API_BASE}/`)) return null;
   const rest = url.slice(API_BASE.length);
+  if (rest.includes('/candidates')) return 'candidates';
   if (rest.startsWith('/historic-floods/')) return 'flood';
   if (rest.startsWith('/historic-floods')) return 'floodList';
   if (rest.startsWith('/visualizations')) return 'visualizations';
@@ -139,6 +141,8 @@ function stubApi(
         };
       case 'flood':
         return floodResult('2016-04-20');
+      case 'candidates':
+        return { event_id: 'f1', candidates: [] };
       case 'dates':
         return { dates: ['2026-03-10', '2026-03-12'] };
       case 'scenes':
@@ -163,7 +167,15 @@ const lastUrl = (kind: keyof ApiCalls) => calls[kind].at(-1)?.url ?? '';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  calls = { visualizations: [], floodList: [], flood: [], dates: [], scenes: [], dayImage: [] };
+  calls = {
+    visualizations: [],
+    floodList: [],
+    flood: [],
+    candidates: [],
+    dates: [],
+    scenes: [],
+    dayImage: [],
+  };
   stubApi();
 });
 
@@ -733,5 +745,49 @@ describe('useImageExplorerController — image selection and comparison', () => 
       result.current.clearComparison();
     });
     expect(result.current.comparison).toBeNull();
+  });
+});
+
+describe('useImageExplorerController — imagery shortlist', () => {
+  it('loads ranked candidates per historic flood on mount', async () => {
+    const row = {
+      rank: 1,
+      sensor: 'sentinel1',
+      scene_id: 'S1_VV',
+      scene_date: '2016-04-20',
+      days_from_peak: 0,
+      cloud_pct: null,
+      score: 90,
+      visualization: 'vv_flood',
+    };
+    stubApi({
+      candidates: () => ({ event_id: 'f1', candidates: [row] }),
+    });
+    const { result } = await mountController();
+    await waitFor(() => expect(result.current.shortlists.f1).toEqual([row]));
+    expect(calls.candidates[0]?.url).toContain('/historic-floods/f1/candidates');
+  });
+
+  it('Probar este fetches the ranked scene, not the flood composite', async () => {
+    const { result } = await mountController();
+    await act(async () => {
+      await result.current.loadShortlistScene({
+        rank: 1,
+        sensor: 'sentinel1',
+        scene_id: 'S1_VV',
+        scene_date: '2016-04-21',
+        days_from_peak: 1,
+        cloud_pct: null,
+        score: 90,
+        visualization: 'vv_flood',
+      });
+    });
+    await waitFor(() => expect(result.current.result).not.toBeNull());
+    expect(lastUrl('dayImage')).toContain('/sentinel1?');
+    expect(lastUrl('dayImage')).toContain('target_date=2016-04-21');
+    expect(lastUrl('dayImage')).toContain('visualization=vv_flood');
+    expect(lastUrl('dayImage')).not.toContain('historic-floods');
+    expect(result.current.sensor).toBe('sentinel1');
+    expect(result.current.selectedDay).toBe('2016-04-21');
   });
 });

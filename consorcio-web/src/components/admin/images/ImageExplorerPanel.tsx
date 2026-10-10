@@ -126,6 +126,8 @@ export default function ImageExplorerPanel() {
             <ImageExplorerExtremeEvents
               events={controller.historicFloods}
               onLoadHistoricFlood={controller.loadHistoricFlood}
+              onTryShortlist={controller.loadShortlistScene}
+              shortlists={controller.shortlists}
               loading={controller.loading}
             />
           </div>

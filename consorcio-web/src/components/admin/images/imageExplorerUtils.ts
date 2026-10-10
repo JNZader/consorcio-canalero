@@ -19,6 +19,18 @@ export const DAY_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'] as const;
 
 export type ImageSensor = 'sentinel2' | 'sentinel1' | 'landsat8' | 'landsat7' | 'landsat5';
 
+const IMAGE_SENSORS: ReadonlySet<string> = new Set([
+  'sentinel2',
+  'sentinel1',
+  'landsat8',
+  'landsat7',
+  'landsat5',
+]);
+
+export function isImageSensor(value: string): value is ImageSensor {
+  return IMAGE_SENSORS.has(value);
+}
+
 export function sensorLabel(sensor: ImageSensor): SatelliteSensorLabel {
   const labels: Record<ImageSensor, SatelliteSensorLabel> = {
     sentinel2: 'Sentinel-2',
