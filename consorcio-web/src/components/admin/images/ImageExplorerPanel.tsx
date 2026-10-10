@@ -3,6 +3,7 @@ import '@mantine/dates/styles.css';
 
 import { IconCalendar } from '../../ui/icons';
 import { ImageExplorerCalendar } from './ImageExplorerCalendar';
+import { ImageExplorerExtremeEvents } from './ImageExplorerExtremeEvents';
 import { ImageExplorerInfoPanels } from './ImageExplorerInfoPanels';
 import { ImageExplorerMap } from './ImageExplorerMap';
 import { type ImageSensor, isOpticalSensor } from './imageExplorerUtils';
@@ -121,6 +122,13 @@ export default function ImageExplorerPanel() {
             onNextMonth={controller.handleNextMonth}
             onMonthYearChange={controller.handleMonthYearChange}
           />
+          <div style={{ marginTop: 16 }}>
+            <ImageExplorerExtremeEvents
+              events={controller.historicFloods}
+              onLoadHistoricFlood={controller.loadHistoricFlood}
+              loading={controller.loading}
+            />
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -139,8 +147,6 @@ export default function ImageExplorerPanel() {
             onSelectImage={controller.handleSelectImage}
             onSetLeftImage={controller.handleSetLeftImage}
             onSetRightImage={controller.handleSetRightImage}
-            historicFloods={controller.historicFloods}
-            onLoadHistoricFlood={controller.loadHistoricFlood}
             selectedImage={controller.selectedImage}
             onClearSelectedImage={controller.clearSelectedImage}
             comparisonReady={!!controller.comparisonReady}
