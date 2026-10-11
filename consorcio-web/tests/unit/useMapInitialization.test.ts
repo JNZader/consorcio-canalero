@@ -196,3 +196,40 @@ describe('useMapInitialization — onMapError does not rebuild the map', () => {
     expect(capturedOptions).toHaveLength(1);
   });
 });
+
+describe('useMapInitialization — live camera does not rebuild the map', () => {
+  it('constructs the map exactly ONCE when center/zoom change after mount', () => {
+    const { maplibre, capturedOptions } = createFakeMaplibre();
+    const container = document.createElement('div');
+    const containerRef: RefObject<HTMLDivElement | null> = { current: container };
+    const mapRef: RefObject<maplibregl.Map | null> = { current: null };
+    const setMapReady = () => {};
+
+    const { rerender } = renderHook(
+      ({
+        centerLat,
+        zoom,
+      }: {
+        centerLat: number;
+        zoom: number;
+      }) =>
+        useMapInitialization({
+          maplibre,
+          containerRef,
+          centerLat,
+          centerLng: -62.3,
+          zoom,
+          mapRef,
+          setMapReady,
+        }),
+      { initialProps: { centerLat: -32.5, zoom: 10 } },
+    );
+
+    rerender({ centerLat: -32.50001, zoom: 10.02 });
+    rerender({ centerLat: -32.51, zoom: 11 });
+
+    expect(capturedOptions).toHaveLength(1);
+    expect(capturedOptions[0]?.center).toEqual([-62.3, -32.5]);
+    expect(capturedOptions[0]?.zoom).toBe(10);
+  });
+});
