@@ -69,6 +69,33 @@ def test_the_generic_tier_answers_429_once_its_budget_is_spent(monkeypatch) -> N
 
 
 @pytest.mark.rate_limited
+def test_options_preflight_does_not_spend_the_generic_budget(monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    limiter = get_rate_limiter()
+
+    async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse({"ok": True})
+
+    app = Starlette(routes=[Route(PROBE_PATH, endpoint, methods=["GET", "OPTIONS"])])
+    app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=limiter)
+
+    async def run() -> list[int]:
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.9", 12345))
+        async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+            options_codes = [
+                (await client.options(PROBE_PATH)).status_code
+                for _ in range(limiter.max_requests + 5)
+            ]
+            get_codes = [(await client.get(PROBE_PATH)).status_code for _ in range(3)]
+            return options_codes + get_codes
+
+    codes = asyncio.run(run())
+    assert all(code == 200 for code in codes)
+
+
+@pytest.mark.rate_limited
 def test_the_disabled_switch_is_what_the_suite_fixture_uses(monkeypatch) -> None:
     """With ``rate_limit_disabled`` on, the same overrun is never refused.
 
