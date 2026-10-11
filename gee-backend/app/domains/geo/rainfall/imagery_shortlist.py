@@ -64,7 +64,7 @@ class RankedScene:
 
     @property
     def visualization(self) -> str:
-        return _VISUALIZATION.get(self.sensor, "rgb")
+        return _VISUALIZATION.get(self.sensor, "falso_color")
 
 
 def _in_window(days_from_peak: int) -> bool:

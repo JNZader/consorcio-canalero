@@ -148,7 +148,7 @@ def test_shortlist_payload_is_jsonable() -> None:
     assert body["cloud_basis"] == "scene_metadata"
     assert body["candidates"][0]["sensor"] == "sentinel2"
     assert body["candidates"][0]["scene_date"] == "2015-03-14"
-    assert body["candidates"][0]["visualization"] == "rgb"
+    assert body["candidates"][0]["visualization"] == "falso_color"
 
 
 def test_cli_run_for_one_event_uses_the_injected_lister(db) -> None:

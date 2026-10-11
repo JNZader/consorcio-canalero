@@ -21,7 +21,7 @@ export default function ImageExplorerPanel() {
             onChange={(v) => {
               const nextSensor = v as ImageSensor;
               controller.setSensor(nextSensor);
-              controller.setVisualization(isOpticalSensor(nextSensor) ? 'rgb' : 'vv');
+              controller.setVisualization(isOpticalSensor(nextSensor) ? 'falso_color' : 'vv');
               controller.setCompositionMode('scene');
               controller.setSelectedDay(null);
               controller.setResult(null);

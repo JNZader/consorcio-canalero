@@ -3,22 +3,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useImageComparison } from '../../../hooks/useImageComparison';
 import { useSelectedImage } from '../../../hooks/useSelectedImage';
-import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
+import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import {
-  type ImageResultLike,
-  type ImageSceneLike,
-  type ImageSensor,
-  buildVisualizationOptions,
-  createSelectedImageFromResult,
-  isImageSensor,
-  isOpticalSensor,
-} from './imageExplorerUtils';
 import type {
   HistoricFloodEvent,
   ImageryPair,
   ImageryShortlistRow,
 } from './ImageExplorerExtremeEvents';
+import {
+  buildVisualizationOptions,
+  createSelectedImageFromResult,
+  explorerSceneVisualization,
+  type ImageResultLike,
+  type ImageSceneLike,
+  type ImageSensor,
+  isImageSensor,
+  isOpticalSensor,
+} from './imageExplorerUtils';
 import { useImageExplorerMap } from './useImageExplorerMap';
 
 interface Visualization {
@@ -126,7 +127,7 @@ export function useImageExplorerController() {
   // El default global de `config.analysis.default_max_cloud` (20) es para
   // análisis automatizados — acá lo ignoramos a propósito.
   const [maxCloud, setMaxCloud] = useState<string>('80');
-  const [visualization, setVisualization] = useState<string>('rgb');
+  const [visualization, setVisualization] = useState<string>('falso_color');
   const [sensor, setSensor] = useState<ImageSensor>('sentinel2');
   const [compositionMode, setCompositionMode] = useState<'scene' | 'composite'>('scene');
   const [scenes, setScenes] = useState<ImageSceneLike[]>([]);
@@ -237,8 +238,7 @@ export function useImageExplorerController() {
     async (row: ImageryShortlistRow) => {
       if (!isImageSensor(row.sensor)) return;
       const nextSensor = row.sensor;
-      const nextVis =
-        row.visualization || (nextSensor === 'sentinel1' ? 'vv_flood' : 'rgb');
+      const nextVis = explorerSceneVisualization(nextSensor, row.visualization);
       setSensor(nextSensor);
       setVisualization(nextVis);
       setCompositionMode('scene');
