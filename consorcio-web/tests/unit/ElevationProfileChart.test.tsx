@@ -16,14 +16,17 @@ vi.mock('recharts', async () => {
       children,
       onMouseMove,
       onMouseLeave,
+      onClick,
     }: {
       children?: ReactNode;
       onMouseMove?: (event: { activeIndex?: number }) => void;
       onMouseLeave?: () => void;
+      onClick?: (event: { activeIndex?: number }) => void;
     }) => (
       <div
         data-testid="elevation-line-chart"
         onMouseMove={() => onMouseMove?.({ activeIndex: 1 })}
+        onClick={() => onClick?.({ activeIndex: 1 })}
         onMouseLeave={() => onMouseLeave?.()}
       >
         {children}
@@ -102,6 +105,29 @@ describe('<ElevationProfileChart />', () => {
     expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.71, lat: -32.61 });
     fireEvent.mouseLeave(screen.getByTestId('elevation-line-chart'));
     expect(onHoverLngLat).toHaveBeenCalledWith(null);
+  });
+
+  it('reports a pick at the hovered sample', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120, lon: -62.7, lat: -32.6 },
+        { distance_m: 15, elevation_m: 118, lon: -62.71, lat: -32.61 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    const onPickLngLat = vi.fn();
+    const user = userEvent.setup();
+    renderWithMantine(
+      <ElevationProfileChart geometry={line} onPickLngLat={onPickLngLat} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    fireEvent.click(await screen.findByTestId('elevation-line-chart'));
+    expect(onPickLngLat).toHaveBeenCalledWith({ lon: -62.71, lat: -32.61 });
   });
 
   it('renders MDE-Ar disclaimer and a second series when sampled', async () => {

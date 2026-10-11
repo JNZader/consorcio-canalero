@@ -30,12 +30,26 @@ function formatM(value: number): string {
   return `${value.toFixed(1)} m`;
 }
 
+function lngLatAtIndex(
+  rows: readonly { lon?: number; lat?: number }[],
+  rawIndex: unknown,
+): { lon: number; lat: number } | null {
+  const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
+  const row = Number.isInteger(index) ? rows[index] : undefined;
+  if (row && typeof row.lon === 'number' && typeof row.lat === 'number') {
+    return { lon: row.lon, lat: row.lat };
+  }
+  return null;
+}
+
 export function ElevationProfileChart({
   geometry,
   onHoverLngLat,
+  onPickLngLat,
 }: {
   geometry: Geometry | null | undefined;
   onHoverLngLat?: (point: { lon: number; lat: number } | null) => void;
+  onPickLngLat?: (point: { lon: number; lat: number }) => void;
 }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
@@ -120,18 +134,13 @@ export function ElevationProfileChart({
                   data={chartRows}
                   margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   onMouseMove={(event) => {
-                    const rawIndex = event.activeIndex;
-                    const index = typeof rawIndex === 'number' ? rawIndex : Number(rawIndex);
-                    const row = Number.isInteger(index) ? chartRows[index] : undefined;
-                    if (
-                      row &&
-                      typeof row.lon === 'number' &&
-                      typeof row.lat === 'number'
-                    ) {
-                      onHoverLngLat?.({ lon: row.lon, lat: row.lat });
-                      return;
+                    onHoverLngLat?.(lngLatAtIndex(chartRows, event.activeIndex));
+                  }}
+                  onClick={(event) => {
+                    const point = lngLatAtIndex(chartRows, event.activeIndex);
+                    if (point) {
+                      onPickLngLat?.(point);
                     }
-                    onHoverLngLat?.(null);
                   }}
                   onMouseLeave={() => onHoverLngLat?.(null)}
                 >
