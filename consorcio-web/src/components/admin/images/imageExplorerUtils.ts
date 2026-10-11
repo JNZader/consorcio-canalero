@@ -54,6 +54,13 @@ export function isOpticalSensor(sensor: ImageSensor): boolean {
   return sensor !== 'sentinel1';
 }
 
+/** QGIS-style NIR-R-G. Stored shortlist `rgb` is the old default — ignore it. */
+export function explorerSceneVisualization(sensor: string, visualization?: string | null): string {
+  if (sensor === 'sentinel1') return visualization || 'vv_flood';
+  if (!visualization || visualization === 'rgb') return 'falso_color';
+  return visualization;
+}
+
 export interface ImageResultLike {
   tile_url: string;
   target_date: string;
