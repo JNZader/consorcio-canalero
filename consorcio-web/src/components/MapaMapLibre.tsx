@@ -192,8 +192,12 @@ export default function MapaMapLibre() {
     lon: number;
     lat: number;
   } | null>(null);
+  const [elevationProfileRange, setElevationProfileRange] = useState<ReadonlyArray<
+    readonly [number, number]
+  > | null>(null);
   useEffect(() => {
     setElevationProfileHover(null);
+    setElevationProfileRange(null);
   }, [selectedFeatures]);
   // Ficha territorial free-draw handle (A5). `useFichaInteraction` (below) owns
   // all ficha interaction state; this ref lets the container kick off polygon
@@ -913,6 +917,7 @@ export default function MapaMapLibre() {
     mapRef,
     mapReady,
     hover: elevationProfileHover,
+    rangeCoordinates: elevationProfileRange,
   });
   useSelectedLineHighlight({
     mapRef,
@@ -1310,8 +1315,10 @@ export default function MapaMapLibre() {
               onCloseInfoPanel={() => {
                 setSelectedFeatures([]);
                 setElevationProfileHover(null);
+                setElevationProfileRange(null);
               }}
               onElevationProfileHover={setElevationProfileHover}
+              onElevationProfileRange={setElevationProfileRange}
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}
