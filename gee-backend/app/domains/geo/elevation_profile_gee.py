@@ -9,8 +9,13 @@ from __future__ import annotations
 from typing import Any, Callable, Optional, Sequence
 
 MAX_GEE_SAMPLES = 400
-AW3D30_DISCLAIMER = "AW3D30 v4.1 (JAXA, DSM óptico). Algunas teselas se rellenan con GLO-30."
-NASADEM_DISCLAIMER = "NASADEM (SRTM 2000, EGM96). No es cota de proyecto."
+AW3D30_DISCLAIMER = (
+    "AW3D30 v4.1 (JAXA, DSM óptico). GEE ≤400 muestras, el resto interpolado. "
+    "Algunas teselas se rellenan con GLO-30."
+)
+NASADEM_DISCLAIMER = (
+    "NASADEM (SRTM 2000, EGM96). GEE ≤400 muestras, el resto interpolado. No es cota de proyecto."
+)
 
 
 def indices_submuestreo(n: int, cap: int = MAX_GEE_SAMPLES) -> list[int]:
@@ -21,6 +26,35 @@ def indices_submuestreo(n: int, cap: int = MAX_GEE_SAMPLES) -> list[int]:
         return list(range(n))
     step = (n - 1) / (cap - 1)
     return sorted({round(i * step) for i in range(cap)})
+
+
+def interpolar_serie(
+    distancias: Sequence[float], valores: Sequence[Optional[float]]
+) -> list[Optional[float]]:
+    """Linear in chainage between known samples. No extrapolation."""
+    if len(distancias) != len(valores):
+        raise ValueError("distancias y valores desalineados")
+    known = [
+        (index, distancias[index], valores[index])
+        for index in range(len(valores))
+        if valores[index] is not None
+    ]
+    filled: list[Optional[float]] = [None] * len(valores)
+    if not known:
+        return filled
+    for index, _distance, value in known:
+        filled[index] = value
+    for left, right in zip(known, known[1:]):
+        i0, d0, v0 = left
+        i1, d1, v1 = right
+        span = d1 - d0
+        for index in range(i0 + 1, i1):
+            if span == 0:
+                filled[index] = v0
+                continue
+            t = (distancias[index] - d0) / span
+            filled[index] = v0 + t * (v1 - v0)
+    return filled
 
 
 def aplicar_gee_dems(
@@ -52,13 +86,17 @@ def aplicar_gee_dems(
         return payload
     if len(aw_vals) != len(pick) or len(nasa_vals) != len(pick):
         return payload
-    aw_by_i = dict(zip(pick, aw_vals))
-    nasa_by_i = dict(zip(pick, nasa_vals))
-    for index, punto in enumerate(puntos):
-        if index in aw_by_i:
-            punto["elevation_aw3d30"] = aw_by_i[index]
-        if index in nasa_by_i:
-            punto["elevation_nasadem"] = nasa_by_i[index]
+    distancias = [float(punto["distance_m"]) for punto in puntos]
+    aw_sparse: list[Optional[float]] = [None] * len(puntos)
+    nasa_sparse: list[Optional[float]] = [None] * len(puntos)
+    for index, aw_val, nasa_val in zip(pick, aw_vals, nasa_vals):
+        aw_sparse[index] = aw_val
+        nasa_sparse[index] = nasa_val
+    aw_filled = interpolar_serie(distancias, aw_sparse)
+    nasa_filled = interpolar_serie(distancias, nasa_sparse)
+    for punto, aw_val, nasa_val in zip(puntos, aw_filled, nasa_filled):
+        punto["elevation_aw3d30"] = aw_val
+        punto["elevation_nasadem"] = nasa_val
     payload["aw3d30_disclaimer"] = AW3D30_DISCLAIMER
     payload["nasadem_disclaimer"] = NASADEM_DISCLAIMER
     return payload

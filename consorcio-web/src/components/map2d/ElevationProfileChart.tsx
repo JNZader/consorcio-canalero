@@ -291,7 +291,7 @@ export function ElevationProfileChart({
                       name="AW3D30"
                       stroke="var(--mantine-color-teal-6)"
                       dot={false}
-                      connectNulls={false}
+                      connectNulls
                       isAnimationActive={false}
                     />
                   ) : null}
@@ -302,7 +302,7 @@ export function ElevationProfileChart({
                       name="NASADEM"
                       stroke="var(--mantine-color-violet-6)"
                       dot={false}
-                      connectNulls={false}
+                      connectNulls
                       isAnimationActive={false}
                     />
                   ) : null}
