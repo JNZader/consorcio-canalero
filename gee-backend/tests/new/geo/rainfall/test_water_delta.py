@@ -44,6 +44,19 @@ def test_optical_delta_is_post_minus_pre() -> None:
     assert "MNDWI" in payload["disclaimer"]
 
 
+def test_optical_delta_attaches_mask_tile_urls() -> None:
+    pre = _row("sentinel2", "pre")
+    post = _row("landsat8", "post")
+    payload = pair_delta_payload(
+        pre,
+        post,
+        water_ha=lambda _row: 10.0,
+        water_tile=lambda row: f"https://tiles/{row.scene_id}",
+    )
+    assert payload["pre"]["tile_url"] == "https://tiles/sentinel2-scene"
+    assert payload["post"]["tile_url"] == "https://tiles/landsat8-scene"
+
+
 def test_missing_scene_ha_is_not_comparable() -> None:
     payload = pair_delta_payload(
         _row("sentinel2", "pre"),

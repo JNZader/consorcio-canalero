@@ -131,6 +131,7 @@ export default function ImageExplorerPanel() {
               shortlists={controller.shortlists}
               pairs={controller.pairs}
               loading={controller.loading}
+              onShowWaterMask={controller.updateWaterMask}
             />
           </div>
         </div>

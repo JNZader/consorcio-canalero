@@ -69,8 +69,9 @@ def pair_delta_payload(
     post: SceneRow | None,
     *,
     water_ha: Callable[[SceneRow], float | None],
+    water_tile: Callable[[SceneRow], str | None] | None = None,
 ) -> dict[str, Any]:
-    """Pure Δ. ``water_ha`` is the GEE (or test) seam."""
+    """Pure Δ. ``water_ha`` / ``water_tile`` are the GEE (or test) seams."""
     base = {"disclaimer": DISCLAIMER, "method": "mndwi>=0.1", "zona": "zona_cc_ampliada"}
     if pre is None or post is None:
         return {**base, "comparable": False, "reason": "missing_pair"}
@@ -96,6 +97,9 @@ def pair_delta_payload(
             "pre": pre_pub,
             "post": post_pub,
         }
+    if water_tile is not None:
+        pre_pub["tile_url"] = water_tile(pre)
+        post_pub["tile_url"] = water_tile(post)
     return {
         **base,
         "comparable": True,
@@ -115,10 +119,13 @@ def _scene(row: SceneRow) -> dict[str, Any]:
     }
 
 
-def water_ha_from_gee(row: SceneRow) -> float | None:
+MASK_PALETTE = ["00BCD4"]
+
+
+def water_measure_from_gee(row: SceneRow) -> tuple[float | None, str | None]:
     spec = optical_spec(row.sensor)
     if spec is None:
-        return None
+        return None, None
     import ee
     from app.domains.geo.rainfall.adapters.gee_client import GeeZonalClient
 
@@ -128,7 +135,7 @@ def water_ha_from_gee(row: SceneRow) -> float | None:
         ee.Filter.eq("system:index", row.scene_id)
     )
     if int(collection.size().getInfo() or 0) == 0:
-        return None
+        return None, None
     image = collection.first()
     green = image.select(spec["green"]).divide(spec["reflectance"])
     swir = image.select(spec["swir"]).divide(spec["reflectance"])
@@ -146,15 +153,34 @@ def water_ha_from_gee(row: SceneRow) -> float | None:
         .getInfo()
     )
     if not raw:
-        return None
+        return None, None
     metres = next((value for value in raw.values() if isinstance(value, (int, float))), None)
     if metres is None:
-        return None
-    return round(float(metres) / 10_000.0, 2)
+        return None, None
+    ha = round(float(metres) / 10_000.0, 2)
+    map_id = water.selfMask().rename("water").getMapId({"palette": MASK_PALETTE})
+    tile_url = map_id["tile_fetcher"].url_format
+    return ha, tile_url
+
+
+def water_ha_from_gee(row: SceneRow) -> float | None:
+    return water_measure_from_gee(row)[0]
 
 
 def delta_for_event(
     pre: SceneRow | None,
     post: SceneRow | None,
 ) -> dict[str, Any]:
-    return pair_delta_payload(pre, post, water_ha=water_ha_from_gee)
+    cache: dict[str, tuple[float | None, str | None]] = {}
+
+    def measure(row: SceneRow) -> tuple[float | None, str | None]:
+        if row.scene_id not in cache:
+            cache[row.scene_id] = water_measure_from_gee(row)
+        return cache[row.scene_id]
+
+    return pair_delta_payload(
+        pre,
+        post,
+        water_ha=lambda row: measure(row)[0],
+        water_tile=lambda row: measure(row)[1],
+    )

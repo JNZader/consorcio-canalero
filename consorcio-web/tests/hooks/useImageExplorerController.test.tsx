@@ -2,12 +2,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiFetchMock, updateTileLayerMock, fitZonaMock, loggerMock } = vi.hoisted(() => ({
-  apiFetchMock: vi.fn(),
-  updateTileLayerMock: vi.fn(),
-  fitZonaMock: vi.fn(),
-  loggerMock: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
-}));
+const { apiFetchMock, updateTileLayerMock, updateWaterMaskMock, fitZonaMock, loggerMock } =
+  vi.hoisted(() => ({
+    apiFetchMock: vi.fn(),
+    updateTileLayerMock: vi.fn(),
+    updateWaterMaskMock: vi.fn(),
+    fitZonaMock: vi.fn(),
+    loggerMock: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  }));
 
 vi.mock('../../src/lib/api', () => ({
   API_URL: 'http://localhost:8000',
@@ -23,7 +25,12 @@ vi.mock('../../src/components/admin/images/useImageExplorerMap', async () => {
   return {
     useImageExplorerMap: () => {
       const mapRef = useRef<HTMLDivElement>(null);
-      return { mapRef, updateTileLayer: updateTileLayerMock, fitZona: fitZonaMock };
+      return {
+        mapRef,
+        updateTileLayer: updateTileLayerMock,
+        updateWaterMask: updateWaterMaskMock,
+        fitZona: fitZonaMock,
+      };
     },
   };
 });
