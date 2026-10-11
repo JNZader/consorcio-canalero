@@ -82,6 +82,11 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/", "/health", "/live", "/ready"] or "/tiles/" in request.url.path:
             return await call_next(request)
 
+        # CORS preflight is not API usage. Counting OPTIONS against the generic
+        # 100/60 budget made /mapa + login fail: login 200, then /users/me 429.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip rate limiting when disabled via settings (local dev / E2E).
         # ``settings.rate_limit_disabled`` is read once at boot from the
         # env var; the production fail-fast check in app/config.py refuses
