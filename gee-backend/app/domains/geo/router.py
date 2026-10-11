@@ -43,6 +43,7 @@ from app.domains.geo.router_gee_support import (
     get_gee_layer_impl,
     get_all_imagery_shortlists_impl,
     get_historic_flood_candidates_impl,
+    get_historic_flood_water_delta_impl,
     get_historic_flood_tiles_impl,
     get_historic_floods_impl,
     get_image_scenes_impl,
@@ -191,6 +192,8 @@ get_all_imagery_shortlists = _gee_simple(get_all_imagery_shortlists_impl)
 gee_router.get("/images/imagery-shortlists")(get_all_imagery_shortlists)
 get_historic_flood_candidates = _gee_simple(get_historic_flood_candidates_impl)
 gee_router.get("/images/historic-floods/{flood_id}/candidates")(get_historic_flood_candidates)
+get_historic_flood_water_delta = _gee_simple(get_historic_flood_water_delta_impl)
+gee_router.get("/images/historic-floods/{flood_id}/water-delta")(get_historic_flood_water_delta)
 get_historic_flood_tiles = _gee_async(get_historic_flood_tiles_impl)
 
 gee_router.get("/layers/tiles/sentinel2")(get_sentinel2_tiles)
