@@ -804,4 +804,23 @@ describe('useImageExplorerController — imagery shortlist', () => {
     expect(result.current.sensor).toBe('sentinel1');
     expect(result.current.selectedDay).toBe('2016-04-21');
   });
+
+  it('Probar este on optical uses falso_color even when the row still says rgb', async () => {
+    const { result } = await mountController();
+    await act(async () => {
+      await result.current.loadShortlistScene({
+        rank: 1,
+        sensor: 'sentinel2',
+        scene_id: 'S2_A',
+        scene_date: '2023-03-15',
+        days_from_peak: -2,
+        cloud_pct: 4,
+        score: 80,
+        visualization: 'rgb',
+      });
+    });
+    await waitFor(() => expect(result.current.result).not.toBeNull());
+    expect(lastUrl('dayImage')).toContain('visualization=falso_color');
+    expect(result.current.visualization).toBe('falso_color');
+  });
 });
