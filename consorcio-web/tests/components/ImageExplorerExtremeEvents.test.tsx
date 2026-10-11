@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   chirpsZoneMmLine,
+  defaultOpticalPair,
   formatWaterDelta,
   ImageExplorerExtremeEvents,
 } from '../../src/components/admin/images/ImageExplorerExtremeEvents';
@@ -233,5 +234,77 @@ describe('formatWaterDelta', () => {
     expect(formatWaterDelta({ comparable: false, reason: 'not_optical' })).toContain(
       'par óptico',
     );
+  });
+});
+
+function ranked(
+  scene_id: string,
+  sensor: string,
+  scene_date: string,
+  rank = 1,
+) {
+  return {
+    rank,
+    sensor,
+    scene_id,
+    scene_date,
+    days_from_peak: 0,
+    cloud_pct: sensor === 'sentinel1' ? null : 4,
+    score: 50,
+    visualization: sensor === 'sentinel1' ? 'vv' : 'rgb',
+  };
+}
+
+describe('defaultOpticalPair', () => {
+  it('uses earliest and latest optical ranked scenes',
+    () => {
+      expect(
+        defaultOpticalPair([
+          ranked('late', 'sentinel2', '2023-03-27', 1),
+          ranked('sar', 'sentinel1', '2023-03-20', 2),
+          ranked('early', 'landsat8', '2023-03-10', 3),
+        ]),
+      ).toEqual({ pre: 'early', post: 'late' });
+    },
+  );
+
+  it('returns null when fewer than two optical scenes exist', () => {
+    expect(defaultOpticalPair([ranked('only', 'sentinel2', '2023-03-15')])).toBeNull();
+    expect(defaultOpticalPair([ranked('sar', 'sentinel1', '2023-03-15')])).toBeNull();
+  });
+});
+
+describe('Medir Δ agua uses ranked optical scenes', () => {
+  it('hides Medir when the stored pair is SAR and the shortlist has no optical pair', () => {
+    const sar = ranked('S1', 'sentinel1', '2025-09-04');
+    render(
+      <ImageExplorerExtremeEvents
+        events={[candidate]}
+        onLoadHistoricFlood={() => {}}
+        shortlists={{ [candidate.id]: [sar] }}
+        pairs={{ [candidate.id]: { pre: sar, post: sar } }}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByRole('button', { name: 'Medir Δ agua' })).not.toBeInTheDocument();
+  });
+
+  it('shows optical Antes/Después selects when two ranked optical scenes exist', () => {
+    render(
+      <ImageExplorerExtremeEvents
+        events={[candidate]}
+        onLoadHistoricFlood={() => {}}
+        shortlists={{
+          [candidate.id]: [
+            ranked('S2-A', 'sentinel2', '2023-03-15', 1),
+            ranked('S2-B', 'sentinel2', '2023-03-27', 2),
+          ],
+        }}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByLabelText('Antes (óptico)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Después (óptico)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Medir Δ agua' })).toBeEnabled();
   });
 });

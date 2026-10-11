@@ -12,7 +12,7 @@ import {
 } from '@mantine/core';
 import { useMemo, useState } from 'react';
 
-import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
+import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { IconPhoto } from '../../ui/icons';
 
 export interface HistoricFloodEvent {
@@ -76,6 +76,24 @@ export function formatWaterDelta(payload: WaterDeltaPayload): string {
   return 'Δ agua: no comparable';
 }
 
+export function opticalShortlist(rows: ImageryShortlistRow[]): ImageryShortlistRow[] {
+  return rows.filter((row) => row.sensor !== 'sentinel1');
+}
+
+export function defaultOpticalPair(
+  rows: ImageryShortlistRow[]
+): { pre: string; post: string } | null {
+  const unique = new Map<string, ImageryShortlistRow>();
+  for (const row of opticalShortlist(rows)) {
+    unique.set(row.scene_id, row);
+  }
+  const sorted = [...unique.values()].sort(
+    (a, b) => a.scene_date.localeCompare(b.scene_date) || a.scene_id.localeCompare(b.scene_id)
+  );
+  if (sorted.length < 2) return null;
+  return { pre: sorted[0].scene_id, post: sorted[sorted.length - 1].scene_id };
+}
+
 interface ImageExplorerExtremeEventsProps {
   events: HistoricFloodEvent[];
   onLoadHistoricFlood: (floodId: string) => void;
@@ -110,9 +128,72 @@ function sceneKey(row: ImageryShortlistRow): string {
 
 function sceneLabel(row: ImageryShortlistRow): string {
   const sensor = SENSOR_SHORT[row.sensor] ?? row.sensor;
-  const cloud =
-    row.cloud_pct == null ? 'SAR' : `${Math.round(row.cloud_pct)}% nubes`;
+  const cloud = row.cloud_pct == null ? 'SAR' : `${Math.round(row.cloud_pct)}% nubes`;
   return `${row.rank}. ${sensor} ${row.scene_date} · ${cloud}`;
+}
+
+function OpticalDeltaControls({
+  floodId,
+  optical,
+  pick,
+  loading,
+  measuringId,
+  onChange,
+  onStart,
+  onMeasured,
+}: {
+  floodId: string;
+  optical: ImageryShortlistRow[];
+  pick: { pre: string; post: string };
+  loading: boolean;
+  measuringId: string | null;
+  onChange: (next: { pre: string; post: string }) => void;
+  onStart: () => void;
+  onMeasured: (payload: WaterDeltaPayload | 'error') => void;
+}) {
+  const options = optical.map((row) => ({ value: row.scene_id, label: sceneLabel(row) }));
+  return (
+    <>
+      <NativeSelect
+        mt="sm"
+        size="xs"
+        label="Antes (óptico)"
+        value={pick.pre}
+        onChange={(event) => onChange({ pre: event.currentTarget.value, post: pick.post })}
+        data={options}
+      />
+      <NativeSelect
+        mt="xs"
+        size="xs"
+        label="Después (óptico)"
+        value={pick.post}
+        onChange={(event) => onChange({ pre: pick.pre, post: event.currentTarget.value })}
+        data={options}
+      />
+      <Button
+        mt="xs"
+        size="xs"
+        fullWidth
+        variant="light"
+        disabled={loading || measuringId === floodId || pick.pre === pick.post}
+        onClick={() => {
+          onStart();
+          const query = new URLSearchParams({
+            pre_scene_id: pick.pre,
+            post_scene_id: pick.post,
+          });
+          void apiFetch<WaterDeltaPayload>(
+            `/geo/gee/images/historic-floods/${floodId}/water-delta?${query.toString()}`,
+            { timeout: GEE_TIMEOUT }
+          )
+            .then((payload) => onMeasured(payload))
+            .catch(() => onMeasured('error'));
+        }}
+      >
+        {measuringId === floodId ? 'Midiendo agua…' : 'Medir Δ agua'}
+      </Button>
+    </>
+  );
 }
 
 function EventShortlistPicker({
@@ -164,6 +245,7 @@ export function ImageExplorerExtremeEvents({
   const [onlyWithImagery, setOnlyWithImagery] = useState(false);
   const [waterDeltas, setWaterDeltas] = useState<Record<string, WaterDeltaPayload | 'error'>>({});
   const [measuringId, setMeasuringId] = useState<string | null>(null);
+  const [deltaPick, setDeltaPick] = useState<Record<string, { pre: string; post: string }>>({});
 
   const visibleEvents = useMemo(() => {
     const filtered = onlyWithImagery ? events.filter(isImageryEligible) : events;
@@ -181,8 +263,8 @@ export function ImageExplorerExtremeEvents({
         </Group>
       </Title>
       <Text size="xs" c="dimmed" mb="sm">
-        CHIRPS ordena de forma relativa, no en milímetros. Probar este usa la escena ya
-        ranqueada; Buscar imagen arma el compuesto. Después publicá con Usar esta imagen.
+        CHIRPS ordena de forma relativa, no en milímetros. Probar este usa la escena ya ranqueada;
+        Buscar imagen arma el compuesto. Después publicá con Usar esta imagen.
       </Text>
       <Checkbox
         label="Solo con imagen Sentinel"
@@ -198,6 +280,10 @@ export function ImageExplorerExtremeEvents({
           const pair = pairs[flood.id];
           const pre = pair?.pre ?? null;
           const post = pair?.post ?? null;
+          const ranked = shortlists[flood.id] ?? [];
+          const optical = opticalShortlist(ranked);
+          const autoPair = defaultOpticalPair(optical);
+          const pick = deltaPick[flood.id] ?? autoPair;
           return (
             <Card key={`${flood.id}-${flood.date}`} padding="sm" radius="md" withBorder>
               <Group justify="space-between" mb="xs" wrap="nowrap">
@@ -246,32 +332,27 @@ export function ImageExplorerExtremeEvents({
                   Después · {SENSOR_SHORT[post.sensor] ?? post.sensor} {post.scene_date}
                 </Button>
               ) : null}
-              {pre && post ? (
-                <Button
-                  mt="xs"
-                  size="xs"
-                  fullWidth
-                  variant="light"
-                  disabled={loading || measuringId === flood.id}
-                  onClick={() => {
-                    setMeasuringId(flood.id);
-                    void apiFetch<WaterDeltaPayload>(
-                      `/geo/gee/images/historic-floods/${flood.id}/water-delta`,
-                      { timeout: GEE_TIMEOUT },
-                    )
-                      .then((payload) => {
-                        setWaterDeltas((current) => ({ ...current, [flood.id]: payload }));
-                      })
-                      .catch(() => {
-                        setWaterDeltas((current) => ({ ...current, [flood.id]: 'error' }));
-                      })
-                      .finally(() => {
-                        setMeasuringId((current) => (current === flood.id ? null : current));
-                      });
+              <EventShortlistPicker
+                rows={shortlists[flood.id] ?? []}
+                loading={loading}
+                onTry={onTryShortlist}
+              />
+              {autoPair && pick ? (
+                <OpticalDeltaControls
+                  floodId={flood.id}
+                  optical={optical}
+                  pick={pick}
+                  loading={loading}
+                  measuringId={measuringId}
+                  onChange={(next) => {
+                    setDeltaPick((current) => ({ ...current, [flood.id]: next }));
                   }}
-                >
-                  {measuringId === flood.id ? 'Midiendo agua…' : 'Medir Δ agua'}
-                </Button>
+                  onStart={() => setMeasuringId(flood.id)}
+                  onMeasured={(payload) => {
+                    setWaterDeltas((current) => ({ ...current, [flood.id]: payload }));
+                    setMeasuringId((current) => (current === flood.id ? null : current));
+                  }}
+                />
               ) : null}
               {waterDeltas[flood.id] && waterDeltas[flood.id] !== 'error' ? (
                 <Text size="xs" mt={4} data-testid="water-delta-line">
@@ -283,11 +364,6 @@ export function ImageExplorerExtremeEvents({
                   Δ agua: error al medir
                 </Text>
               ) : null}
-              <EventShortlistPicker
-                rows={shortlists[flood.id] ?? []}
-                loading={loading}
-                onTry={onTryShortlist}
-              />
               <Button
                 mt="sm"
                 size="xs"

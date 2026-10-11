@@ -216,6 +216,17 @@ def load_candidates(db: Session, event_key: str) -> list[RainfallEventImageryCan
     )
 
 
+def load_event_imagery(db: Session, event_key: str) -> list[RainfallEventImageryCandidate]:
+    """Every stored scene for the event, including ranked/pre/post."""
+    return list(
+        db.scalars(
+            select(RainfallEventImageryCandidate).where(
+                RainfallEventImageryCandidate.event_key == event_key
+            )
+        ).all()
+    )
+
+
 def load_all_shortlists(db: Session) -> dict[str, list[RainfallEventImageryCandidate]]:
     rows = db.scalars(
         select(RainfallEventImageryCandidate)
