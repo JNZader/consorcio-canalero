@@ -44,6 +44,7 @@ import { CanalCard } from './CanalCard';
 import { ElevationProfileChart } from './ElevationProfileChart';
 import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
 import { nearestLineStringIndex } from './tramoAtPoint';
+import type { ProfileRangeStats } from './profileRange';
 import { EscuelaCard } from './EscuelaCard';
 import { MapPanelShell } from './MapPanelShell';
 import { PuntoInteresCard } from './PuntoInteresCard';
@@ -118,7 +119,7 @@ interface InfoPanelProps {
     hover: { lon: number; lat: number } | null,
   ) => void;
   readonly onElevationProfileRange?: (
-    coordinates: ReadonlyArray<readonly [number, number]> | null,
+    range: ProfileRangeStats | null,
   ) => void;
 }
 

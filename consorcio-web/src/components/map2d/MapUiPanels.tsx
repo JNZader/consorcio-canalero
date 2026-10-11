@@ -13,6 +13,7 @@ import type { EtapaGate } from '../shared/canalesGrouping';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import { FichaTerritorialPanel, type FichaPanelTab } from './FichaTerritorialPanel';
 import { InfoPanel } from './InfoPanel';
+import type { ProfileRangeStats } from './profileRange';
 import {
   type CanalToggleEntry,
   LayerControlsPanel,
@@ -132,7 +133,7 @@ export interface MapUiPanelsProps {
     hover: { lon: number; lat: number } | null,
   ) => void;
   readonly onElevationProfileRange?: (
-    coordinates: ReadonlyArray<readonly [number, number]> | null,
+    range: ProfileRangeStats | null,
   ) => void;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)

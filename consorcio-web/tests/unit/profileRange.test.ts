@@ -23,6 +23,18 @@ describe('profileSliceStats', () => {
     expect(stats?.max_elevation_m).toBe(121);
     expect(stats?.delta_m).toBe(3);
     expect(stats?.coordinates).toHaveLength(3);
+    expect(stats?.min_point).toEqual({
+      lon: -62.71,
+      lat: -32.6,
+      elevation_m: 118,
+      distance_m: 10,
+    });
+    expect(stats?.max_point).toEqual({
+      lon: -62.73,
+      lat: -32.6,
+      elevation_m: 121,
+      distance_m: 30,
+    });
   });
 
   it('returns null for a single sample', () => {
