@@ -43,6 +43,7 @@ import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
 import { ElevationProfileChart } from './ElevationProfileChart';
 import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
+import { nearestLineStringIndex } from './tramoAtPoint';
 import { EscuelaCard } from './EscuelaCard';
 import { MapPanelShell } from './MapPanelShell';
 import { PuntoInteresCard } from './PuntoInteresCard';
@@ -398,11 +399,22 @@ export const InfoPanel = memo(function InfoPanel({
     [resolved],
   );
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   useEffect(() => {
     setFocusedIdx(null);
+    setHoverIdx(null);
   }, [resolved.length, resetKey]);
   const detailIdx = resolved.length === 1 ? 0 : focusedIdx;
+  const hoverTramo =
+    hoverIdx != null && resolved[hoverIdx] ? featureDisplayName(resolved[hoverIdx]) : null;
+
+  function locateTramo(point: { lon: number; lat: number } | null): number | null {
+    if (!point || resolved.length < 2) {
+      return null;
+    }
+    return nearestLineStringIndex(resolved, point.lon, point.lat);
+  }
 
   if (resolved.length === 0) return null;
 
@@ -450,7 +462,7 @@ export const InfoPanel = memo(function InfoPanel({
             {resolved.map((feat, idx) => (
               <Badge
                 key={idx}
-                variant={focusedIdx === idx ? 'filled' : 'light'}
+                variant={focusedIdx === idx ? 'filled' : hoverIdx === idx ? 'outline' : 'light'}
                 style={{ cursor: 'pointer' }}
                 onClick={() => {
                   setFocusedIdx((current) => (current === idx ? null : idx));
@@ -464,10 +476,26 @@ export const InfoPanel = memo(function InfoPanel({
       )}
       <Stack gap="sm">
         {profileGeometry ? (
-          <ElevationProfileChart
-            geometry={profileGeometry}
-            onHoverLngLat={onElevationProfileHover}
-          />
+          <>
+            <ElevationProfileChart
+              geometry={profileGeometry}
+              onHoverLngLat={(point) => {
+                onElevationProfileHover?.(point);
+                setHoverIdx(locateTramo(point));
+              }}
+              onPickLngLat={(point) => {
+                const index = locateTramo(point);
+                if (index != null) {
+                  setFocusedIdx(index);
+                }
+              }}
+            />
+            {hoverTramo ? (
+              <Text size="xs" data-testid="elevation-profile-tramo">
+                Tramo: {hoverTramo}
+              </Text>
+            ) : null}
+          </>
         ) : null}
         {detailIdx != null && resolved[detailIdx] ? (
           <div id={`info-feature-${detailIdx}`}>
