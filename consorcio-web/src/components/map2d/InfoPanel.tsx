@@ -117,6 +117,9 @@ interface InfoPanelProps {
   readonly onElevationProfileHover?: (
     hover: { lon: number; lat: number } | null,
   ) => void;
+  readonly onElevationProfileRange?: (
+    coordinates: ReadonlyArray<readonly [number, number]> | null,
+  ) => void;
 }
 
 /**
@@ -385,6 +388,7 @@ export const InfoPanel = memo(function InfoPanel({
   resetKey,
   onDeletePuntoInteres,
   onElevationProfileHover,
+  onElevationProfileRange,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -489,6 +493,7 @@ export const InfoPanel = memo(function InfoPanel({
                   setFocusedIdx(index);
                 }
               }}
+              onRangeCoordinates={onElevationProfileRange}
             />
             {hoverTramo ? (
               <Text size="xs" data-testid="elevation-profile-tramo">

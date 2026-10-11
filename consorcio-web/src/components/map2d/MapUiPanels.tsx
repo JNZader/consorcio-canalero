@@ -131,6 +131,9 @@ export interface MapUiPanelsProps {
   readonly onElevationProfileHover?: (
     hover: { lon: number; lat: number } | null,
   ) => void;
+  readonly onElevationProfileRange?: (
+    coordinates: ReadonlyArray<readonly [number, number]> | null,
+  ) => void;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
    * and threads its state down here; `InfoPanel` stays pure. When
@@ -333,6 +336,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   selectedFeatures,
   onCloseInfoPanel,
   onElevationProfileHover,
+  onElevationProfileRange,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -637,6 +641,7 @@ export const MapUiPanels = memo(function MapUiPanels({
           onToggleMinimize={toggleInfoMinimized}
           resetKey={selectedFeatures}
           onElevationProfileHover={onElevationProfileHover}
+          onElevationProfileRange={onElevationProfileRange}
         />
       )}
 
