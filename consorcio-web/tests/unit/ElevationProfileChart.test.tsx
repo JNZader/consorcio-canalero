@@ -186,6 +186,33 @@ describe('<ElevationProfileChart />', () => {
     expect(screen.getByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
   });
 
+  it('renders AW3D30 and NASADEM disclaimers when sampled', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        {
+          distance_m: 0,
+          elevation_m: 120,
+          elevation_aw3d30: 121,
+          elevation_nasadem: 118,
+        },
+      ],
+      length_m: 0,
+      min_elevation_m: 120,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer:
+        'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+      aw3d30_disclaimer: 'AW3D30 v4.1 (JAXA, DSM óptico). Algunas teselas se rellenan con GLO-30.',
+      nasadem_disclaimer: 'NASADEM (SRTM 2000, EGM96). No es cota de proyecto.',
+    });
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(await screen.findByTestId('elevation-profile-aw3d30')).toHaveTextContent('JAXA');
+    expect(screen.getByTestId('elevation-profile-nasadem')).toHaveTextContent('NASADEM');
+  });
+
   it('renders nothing for a Point', () => {
     renderWithMantine(
       <ElevationProfileChart geometry={{ type: 'Point', coordinates: [-62.7, -32.6] }} />,

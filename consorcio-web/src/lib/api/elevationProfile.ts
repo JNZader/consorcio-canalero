@@ -14,6 +14,8 @@ export type ElevationProfilePoint = {
   distance_m: number;
   elevation_m: number | null;
   elevation_mde_ar?: number | null;
+  elevation_aw3d30?: number | null;
+  elevation_nasadem?: number | null;
   lon?: number;
   lat?: number;
 };
@@ -27,6 +29,8 @@ export type ElevationProfileResponse = {
   cell_m: number;
   disclaimer: string;
   mde_ar_disclaimer?: string;
+  aw3d30_disclaimer?: string;
+  nasadem_disclaimer?: string;
 };
 
 export function fetchElevationProfile(

@@ -188,3 +188,49 @@ def test_aplicar_mde_ar_samples_wgs84_sibling_and_keeps_holes(tmp_path) -> None:
     assert out["puntos"][2]["elevation_mde_ar"] is None
     assert out["puntos"][0]["elevation_m"] == 120.0
     assert "SRVN16" in out["mde_ar_disclaimer"]
+
+
+def test_indices_submuestreo_keeps_ends_and_caps() -> None:
+    from app.domains.geo.elevation_profile_gee import indices_submuestreo
+
+    assert indices_submuestreo(3) == [0, 1, 2]
+    picked = indices_submuestreo(1000, cap=5)
+    assert picked[0] == 0
+    assert picked[-1] == 999
+    assert len(picked) == 5
+
+
+def test_aplicar_gee_dems_writes_strided_samples() -> None:
+    from app.domains.geo.elevation_profile_gee import aplicar_gee_dems
+
+    payload = {
+        "puntos": [
+            {"distance_m": 0.0, "elevation_m": 120.0, "lon": -62.7, "lat": -32.6},
+            {"distance_m": 15.0, "elevation_m": 118.0, "lon": -62.71, "lat": -32.61},
+            {"distance_m": 30.0, "elevation_m": 117.0, "lon": -62.72, "lat": -32.62},
+        ]
+    }
+
+    def fake_sampler(lonlats):
+        assert len(lonlats) == 3
+        return [111.0, 112.0, 113.0], [101.0, None, 103.0]
+
+    out = aplicar_gee_dems(payload, sampler=fake_sampler)
+    assert out["puntos"][0]["elevation_aw3d30"] == 111.0
+    assert out["puntos"][1]["elevation_nasadem"] is None
+    assert out["puntos"][2]["elevation_nasadem"] == 103.0
+    assert "JAXA" in out["aw3d30_disclaimer"]
+    assert "NASADEM" in out["nasadem_disclaimer"]
+
+
+def test_aplicar_gee_dems_is_noop_when_sampler_raises() -> None:
+    from app.domains.geo.elevation_profile_gee import aplicar_gee_dems
+
+    payload = {"puntos": [{"distance_m": 0.0, "elevation_m": 120.0, "lon": -62.7, "lat": -32.6}]}
+
+    def boom(_lonlats):
+        raise RuntimeError("gee down")
+
+    out = aplicar_gee_dems(payload, sampler=boom)
+    assert "elevation_aw3d30" not in out["puntos"][0]
+    assert "aw3d30_disclaimer" not in out
