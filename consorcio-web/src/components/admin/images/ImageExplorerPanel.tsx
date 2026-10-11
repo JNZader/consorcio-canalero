@@ -5,7 +5,7 @@ import { IconCalendar } from '../../ui/icons';
 import { ImageExplorerCalendar } from './ImageExplorerCalendar';
 import { ImageExplorerExtremeEvents } from './ImageExplorerExtremeEvents';
 import { ImageExplorerInfoPanels } from './ImageExplorerInfoPanels';
-import { ImageExplorerMap } from './ImageExplorerMap';
+import { EXPLORER_WORKSPACE_MIN_HEIGHT, ImageExplorerMap } from './ImageExplorerMap';
 import { type ImageSensor, isOpticalSensor } from './imageExplorerUtils';
 import { useImageExplorerController } from './useImageExplorerController';
 
@@ -109,6 +109,8 @@ export default function ImageExplorerPanel() {
           display: 'grid',
           gridTemplateColumns: controller.isMobile ? '1fr' : 'minmax(280px, 340px) 1fr',
           gap: 16,
+          alignItems: 'stretch',
+          minHeight: controller.isMobile ? undefined : EXPLORER_WORKSPACE_MIN_HEIGHT,
         }}
       >
         <div>
@@ -135,7 +137,7 @@ export default function ImageExplorerPanel() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
           <ImageExplorerMap
             mapRef={controller.mapRef}
             loading={controller.loading}

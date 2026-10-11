@@ -3,7 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
-import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
+import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { useConfigStore } from '../../../stores/configStore';
 
@@ -78,7 +78,16 @@ export function useImageExplorerMap() {
     // cropped the zona vertically on short map heights.
     map.fitBounds(ZONA_FIT_BOUNDS, { padding: 24, animate: false });
     mapInstanceRef.current = map;
+    const container = mapRef.current;
+    const resizeObserver =
+      container && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            map.resize();
+          })
+        : null;
+    resizeObserver?.observe(container);
     return () => {
+      resizeObserver?.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };

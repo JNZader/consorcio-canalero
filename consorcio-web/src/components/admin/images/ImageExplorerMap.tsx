@@ -2,6 +2,9 @@ import { Alert, Button, Card, Loader, Paper, Stack, Text } from '@mantine/core';
 
 import { IconAlertTriangle, IconSatellite } from '../../ui/icons';
 
+/** Header + sensor bar + page padding. The map card fills what remains. */
+export const EXPLORER_WORKSPACE_MIN_HEIGHT = 'calc(100dvh - 220px)';
+
 interface ImageExplorerMapProps {
   mapRef: React.RefObject<HTMLDivElement | null>;
   loading: boolean;
@@ -32,12 +35,12 @@ export function ImageExplorerMap({
       >
         <div
           ref={mapRef}
+          data-testid="explorer-map-canvas"
           style={{
+            position: 'absolute',
+            inset: 0,
             width: '100%',
-            // The map is THE tool of this page: grow with the viewport
-            // (fixed 450px left a tiny strip on tall monitors and cropped
-            // the zona), bounded so short laptops still fit the page.
-            height: 'clamp(450px, calc(100dvh - 420px), 950px)',
+            height: '100%',
             borderRadius: 'var(--mantine-radius-md)',
           }}
         />
