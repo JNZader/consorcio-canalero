@@ -32,7 +32,7 @@
 
 import { Badge, CloseButton, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import type { Feature } from 'geojson';
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
 import styles from '../../styles/components/map.module.css';
@@ -42,7 +42,7 @@ import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../type
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
 import { ElevationProfileChart } from './ElevationProfileChart';
-import { mergeLineStringTramos } from './mergeLineStringTramos';
+import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
 import { EscuelaCard } from './EscuelaCard';
 import { MapPanelShell } from './MapPanelShell';
 import { PuntoInteresCard } from './PuntoInteresCard';
@@ -136,6 +136,24 @@ export function featureDisplayName(feature: Feature, fallback = 'Elemento'): str
     null;
   const title = raw === null || raw === undefined ? '' : String(raw).trim();
   return title.length > 0 ? title : fallback;
+}
+
+export function groupSelectionSummary(features: readonly Feature[]): string {
+  const count = features.length;
+  const allLines = features.every((feature) => feature.geometry?.type === 'LineString');
+  const noun = allLines ? (count === 1 ? 'tramo' : 'tramos') : count === 1 ? 'elemento' : 'elementos';
+  const parts: string[] = [`${count} ${noun}`];
+  const firstProps = (features[0]?.properties ?? {}) as Record<string, unknown>;
+  const rutaRaw = firstProps.ruta ?? firstProps.rtn;
+  const ruta = typeof rutaRaw === 'string' ? rutaRaw.trim() : '';
+  if (ruta.length > 0) {
+    parts.unshift(ruta);
+  }
+  const metres = dedupedLineStringLengthM(features);
+  if (metres > 0) {
+    parts.push(`${(metres / 1000).toFixed(2)} km sin superposición`);
+  }
+  return parts.join(' · ');
 }
 
 export function infoPillLabel(features: readonly Feature[]): string {
@@ -375,7 +393,16 @@ export const InfoPanel = memo(function InfoPanel({
     return [];
   }, [features, feature]);
   const profileGeometry = useMemo(() => mergeLineStringTramos(resolved), [resolved]);
-  const [focusedIdx, setFocusedIdx] = useState(0);
+  const groupSummary = useMemo(
+    () => (resolved.length > 1 ? groupSelectionSummary(resolved) : null),
+    [resolved],
+  );
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    setFocusedIdx(null);
+  }, [resolved.length, resetKey]);
+  const detailIdx = resolved.length === 1 ? 0 : focusedIdx;
 
   if (resolved.length === 0) return null;
 
@@ -410,26 +437,30 @@ export const InfoPanel = memo(function InfoPanel({
       </Group>
       <Divider mb="xs" />
       {resolved.length > 1 && (
-        <Group gap={4} wrap="wrap" mb="xs" data-testid="info-feature-chips">
-          <Text size="xs" c="dimmed">
-            {resolved.length} elementos aquí:
-          </Text>
-          {resolved.map((feat, idx) => (
-            <Badge
-              key={idx}
-              variant={focusedIdx === idx ? 'filled' : 'light'}
-              style={{ cursor: 'pointer' }}
-              onClick={() => {
-                setFocusedIdx(idx);
-                document.getElementById(`info-feature-${idx}`)?.scrollIntoView({
-                  block: 'nearest',
-                });
-              }}
-            >
-              {featureDisplayName(feat)}
-            </Badge>
-          ))}
-        </Group>
+        <Stack gap={6} mb="xs">
+          {groupSummary ? (
+            <Text size="sm" data-testid="info-panel-group-summary">
+              {groupSummary}
+            </Text>
+          ) : null}
+          <Group gap={4} wrap="wrap" data-testid="info-feature-chips">
+            <Text size="xs" c="dimmed">
+              {resolved.length} elementos aquí:
+            </Text>
+            {resolved.map((feat, idx) => (
+              <Badge
+                key={idx}
+                variant={focusedIdx === idx ? 'filled' : 'light'}
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setFocusedIdx((current) => (current === idx ? null : idx));
+                }}
+              >
+                {featureDisplayName(feat)}
+              </Badge>
+            ))}
+          </Group>
+        </Stack>
       )}
       <Stack gap="sm">
         {profileGeometry ? (
@@ -438,16 +469,15 @@ export const InfoPanel = memo(function InfoPanel({
             onHoverLngLat={onElevationProfileHover}
           />
         ) : null}
-        {resolved.map((feat, idx) => (
-          <div key={idx} id={`info-feature-${idx}`}>
-            {idx > 0 && <Divider mb="sm" />}
+        {detailIdx != null && resolved[detailIdx] ? (
+          <div id={`info-feature-${detailIdx}`}>
             <FeatureSection
-              feature={feat}
+              feature={resolved[detailIdx]}
               bpaEnriched={bpaEnriched}
               onDeletePuntoInteres={onDeletePuntoInteres}
             />
           </div>
-        ))}
+        ) : null}
       </Stack>
     </MapPanelShell>
   );
