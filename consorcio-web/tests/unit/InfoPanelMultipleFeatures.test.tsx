@@ -14,6 +14,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -54,7 +55,7 @@ describe('<InfoPanel /> multiple features (Phase 8)', () => {
     expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
 
-  it('renders N sections when N features overlap at click point', () => {
+  it('shows a group summary and no detail until a chip is selected', () => {
     const feature1 = buildFeatureWithLayer(`${SOURCE_IDS.CATASTRO}-fill`, {
       nomenclatura: 'catastro-1',
     });
@@ -68,22 +69,30 @@ describe('<InfoPanel /> multiple features (Phase 8)', () => {
     renderWithMantine(
       <InfoPanel features={[feature1, feature2, feature3]} onClose={() => {}} />,
     );
-    expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(3);
+    expect(screen.getByTestId('info-panel-group-summary')).toHaveTextContent('3');
+    expect(screen.queryByTestId('info-panel-feature-section')).not.toBeInTheDocument();
   });
 
-  it('preserves MapLibre z-order (first feature renders first)', () => {
+  it('reveals only the selected chip detail', async () => {
     const topFeature = buildFeatureWithLayer(`${SOURCE_IDS.CATASTRO}-fill`, {
+      nombre: 'TOP-FEATURE',
       nomenclatura: 'TOP-FEATURE',
     });
     const bottomFeature = buildFeatureWithLayer(`${SOURCE_IDS.SOIL}-fill`, {
+      nombre: 'BOTTOM-FEATURE',
       capability: 'BOTTOM-FEATURE',
     });
+    const user = userEvent.setup();
     renderWithMantine(
       <InfoPanel features={[topFeature, bottomFeature]} onClose={() => {}} />,
     );
-    const sections = screen.getAllByTestId('info-panel-feature-section');
-    expect(sections[0]?.textContent).toContain('TOP-FEATURE');
-    expect(sections[1]?.textContent).toContain('BOTTOM-FEATURE');
+    expect(screen.queryByTestId('info-panel-feature-section')).not.toBeInTheDocument();
+    await user.click(screen.getByText('TOP-FEATURE'));
+    expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
+    expect(screen.getByTestId('info-panel-feature-section').textContent).toContain(
+      'TOP-FEATURE',
+    );
+    expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
 
   it('still accepts the legacy singular `feature` prop for backwards compatibility', () => {

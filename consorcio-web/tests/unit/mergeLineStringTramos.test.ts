@@ -1,7 +1,10 @@
 import type { Feature, LineString } from 'geojson';
 import { describe, expect, it } from 'vitest';
 
-import { mergeLineStringTramos } from '../../src/components/map2d/mergeLineStringTramos';
+import {
+  dedupedLineStringLengthM,
+  mergeLineStringTramos,
+} from '../../src/components/map2d/mergeLineStringTramos';
 
 function line(coordinates: LineString['coordinates']): Feature {
   return {
@@ -116,5 +119,36 @@ describe('mergeLineStringTramos', () => {
     expect(lons?.[0]).toBe(0);
     expect(lons?.[lons.length - 1]).toBe(0.04);
     expect(merged?.coordinates.every((c) => c[1] === 0)).toBe(true);
+  });
+});
+
+describe('dedupedLineStringLengthM', () => {
+  it('counts a duplicated piece once', () => {
+    const piece = line([
+      [0, 0],
+      [0.01, 0],
+    ]);
+    const once = dedupedLineStringLengthM([piece]);
+    const twice = dedupedLineStringLengthM([piece, piece]);
+    expect(twice).toBeCloseTo(once, 5);
+    expect(once).toBeGreaterThan(1000);
+  });
+
+  it('keeps a T-branch in the unique total', () => {
+    const stemA = line([
+      [0, 0],
+      [0.02, 0],
+    ]);
+    const stemB = line([
+      [0.02, 0],
+      [0.04, 0],
+    ]);
+    const branch = line([
+      [0.02, 0],
+      [0.02, 0.005],
+    ]);
+    const unique = dedupedLineStringLengthM([stemA, stemB, branch]);
+    const stemOnly = dedupedLineStringLengthM([stemA, stemB]);
+    expect(unique).toBeGreaterThan(stemOnly);
   });
 });

@@ -18,6 +18,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -102,7 +103,7 @@ describe('<InfoPanel /> — Canal detection branch', () => {
     expect(screen.queryByTestId('canal-card')).not.toBeInTheDocument();
   });
 
-  it('renders one <CanalCard> per feature when multiple canals are stacked', () => {
+  it('keeps canal details behind the chip list when several are stacked', async () => {
     const features: Feature[] = [
       buildCanalFeature({ id: 'a', nombre: 'Canal A', estado: 'relevado' }),
       buildCanalFeature({
@@ -112,29 +113,32 @@ describe('<InfoPanel /> — Canal detection branch', () => {
         prioridad: 'Media',
       }),
     ];
+    const user = userEvent.setup();
     renderWithMantine(
       <InfoPanel features={features} onClose={() => {}} />,
     );
-    const cards = screen.getAllByTestId('canal-card');
-    expect(cards).toHaveLength(2);
-    expect(screen.getByRole('heading', { name: 'Canal A' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Canal B' })).toBeInTheDocument();
+    expect(screen.queryByTestId('canal-card')).not.toBeInTheDocument();
     expect(screen.getByTestId('info-feature-chips')).toBeInTheDocument();
-    expect(screen.getByText('2 elementos aquí:')).toBeInTheDocument();
+    expect(screen.getByTestId('info-panel-group-summary')).toBeInTheDocument();
     expect(screen.getAllByTestId('elevation-profile')).toHaveLength(1);
+    await user.click(screen.getByText('Canal A'));
+    expect(screen.getAllByTestId('canal-card')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Canal A' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Canal B' })).not.toBeInTheDocument();
   });
 
-  it('mixes canal + generic sections when stacked', () => {
+  it('shows the canal card after picking it from a mixed stack', async () => {
     const features: Feature[] = [
       buildCanalFeature({ nombre: 'Canal Primero', estado: 'relevado' }),
       buildGenericFeature(),
     ];
+    const user = userEvent.setup();
     renderWithMantine(
       <InfoPanel features={features} onClose={() => {}} />,
     );
-    // Exactly ONE canal card (not two).
+    expect(screen.queryByTestId('canal-card')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Canal Primero'));
     expect(screen.getAllByTestId('canal-card')).toHaveLength(1);
-    // Generic section renders alongside.
-    expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(2);
+    expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
 });

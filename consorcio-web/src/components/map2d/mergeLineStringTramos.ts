@@ -223,3 +223,23 @@ export function mergeLineStringTramos(features: readonly Feature[]): LineString 
   }
   return { type: 'LineString', coordinates };
 }
+
+/** Unique-edge metres: overlapping copies count once; T-branches stay in. */
+export function dedupedLineStringLengthM(features: readonly Feature[]): number {
+  const pieces = features
+    .filter((feature) => isLineString(feature.geometry))
+    .map((feature) => [...(feature.geometry as LineString).coordinates]);
+  if (pieces.length === 0) {
+    return 0;
+  }
+  if (pieces.length === 1) {
+    const only = pieces[0];
+    return only && only.length >= 2 ? pieceLengthM(only) : 0;
+  }
+  const { edges } = buildEdges(pieces);
+  if (edges.length === 0) {
+    const only = pieces[0];
+    return only && only.length >= 2 ? pieceLengthM(only) : 0;
+  }
+  return edges.reduce((sum, edge) => sum + edge.length, 0);
+}
