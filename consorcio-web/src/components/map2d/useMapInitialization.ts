@@ -104,6 +104,13 @@ export function useMapInitialization({
     onMapErrorRef.current = onMapError;
   }, [onMapError]);
 
+  // Snapshot the opening camera ONCE. `MapaMapLibre` also publishes live
+  // center/zoom into `mapCameraStore` on `moveend`. If those values stay in
+  // this effect's deps, any later render (query, hash `#v`, layer toggle)
+  // tears the map down (`map.remove()` → WebGL context lost) and rebuilds it.
+  // Pan/zoom belong on the MapLibre instance, not in React init.
+  const originRef = useRef({ centerLat, centerLng, zoom });
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -157,8 +164,8 @@ export function useMapInitialization({
           },
         ],
       },
-      center: [centerLng, centerLat],
-      zoom,
+      center: [originRef.current.centerLng, originRef.current.centerLat],
+      zoom: originRef.current.zoom,
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
       // KEPT UNCONDITIONALLY ON PURPOSE (T3c, fix 5b). PNG/PDF export reads the
@@ -226,5 +233,5 @@ export function useMapInitialization({
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [centerLat, centerLng, containerRef, mapRef, maplibre, setMapReady, zoom]);
+  }, [containerRef, mapRef, maplibre, setMapReady]);
 }
