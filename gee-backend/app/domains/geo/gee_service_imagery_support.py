@@ -400,7 +400,7 @@ def build_landsat_payload(
 
     if use_median and sensor == "landsat7":
         # USGS-style gap fill: pick the closest date as the primary scene and
-        # fill its SLC-off stripes with REAL observations from up to 3
+        # fill its SLC-off stripes with REAL observations from up to 5
         # neighboring dates via local mean-ratio matching (adjacent paths have
         # gaps in different positions). No focal blur: leftover holes stay
         # holes instead of smeared stripes. Cost guard: only the bands this
@@ -416,7 +416,7 @@ def build_landsat_payload(
             dates_list, key=lambda d: abs((date.fromisoformat(d) - target_date).days)
         )
         filled = day_mosaic(ordered_dates[0])
-        for fill_date in ordered_dates[1:4]:
+        for fill_date in ordered_dates[1:6]:
             filled = _llhm_gap_fill(ee_module, filled, day_mosaic(fill_date), needed, kernel_px=12)
         composite = filled.clip(explorer.zona)
         composition_mode = "composite"
