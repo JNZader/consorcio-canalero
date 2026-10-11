@@ -190,6 +190,22 @@ def test_aplicar_mde_ar_samples_wgs84_sibling_and_keeps_holes(tmp_path) -> None:
     assert "SRVN16" in out["mde_ar_disclaimer"]
 
 
+def test_interpolar_serie_fills_between_known_samples() -> None:
+    from app.domains.geo.elevation_profile_gee import interpolar_serie
+
+    filled = interpolar_serie([0.0, 10.0, 20.0], [100.0, None, 120.0])
+    assert filled[0] == 100.0
+    assert filled[1] == pytest.approx(110.0)
+    assert filled[2] == 120.0
+
+
+def test_interpolar_serie_does_not_extrapolate() -> None:
+    from app.domains.geo.elevation_profile_gee import interpolar_serie
+
+    filled = interpolar_serie([0.0, 10.0, 20.0], [None, 100.0, None])
+    assert filled == [None, 100.0, None]
+
+
 def test_indices_submuestreo_keeps_ends_and_caps() -> None:
     from app.domains.geo.elevation_profile_gee import indices_submuestreo
 
@@ -217,7 +233,7 @@ def test_aplicar_gee_dems_writes_strided_samples() -> None:
 
     out = aplicar_gee_dems(payload, sampler=fake_sampler)
     assert out["puntos"][0]["elevation_aw3d30"] == 111.0
-    assert out["puntos"][1]["elevation_nasadem"] is None
+    assert out["puntos"][1]["elevation_nasadem"] == pytest.approx(102.0)
     assert out["puntos"][2]["elevation_nasadem"] == 103.0
     assert "JAXA" in out["aw3d30_disclaimer"]
     assert "NASADEM" in out["nasadem_disclaimer"]
