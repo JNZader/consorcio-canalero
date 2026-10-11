@@ -400,15 +400,11 @@ def build_landsat_payload(
 
     if use_median and sensor == "landsat7":
         # USGS-style gap fill: pick the closest date as the primary scene and
-        # fill its SLC-off stripes/cloud holes with REAL observations from up
-        # to 3 neighboring dates via local linear histogram matching (adjacent
-        # paths have their gaps in different positions, so they complement).
-        # A final focal pass closes only the residual specks where every date
-        # is missing data. Texture is preserved — verified against a desktop
-        # gap-filled reference the user provided.
-        # Cost control (GEE tile 429s made the map crawl): fill ONLY the bands
-        # this visualization reads, 2 fill dates, 12px regression window —
-        # ~8× lighter than the first cut (6 bands × 3 fills × 20px).
+        # fill its SLC-off stripes with REAL observations from up to 3
+        # neighboring dates via local mean-ratio matching (adjacent paths have
+        # gaps in different positions). No focal blur: leftover holes stay
+        # holes instead of smeared stripes. Cost guard: only the bands this
+        # visualization reads, 12px window (20px + unused bands 429'd GEE).
         needed = landsat_needed_bands(cfg, visualization)
 
         def day_mosaic(day_str: str):
@@ -420,16 +416,14 @@ def build_landsat_payload(
             dates_list, key=lambda d: abs((date.fromisoformat(d) - target_date).days)
         )
         filled = day_mosaic(ordered_dates[0])
-        for fill_date in ordered_dates[1:3]:
+        for fill_date in ordered_dates[1:4]:
             filled = _llhm_gap_fill(ee_module, filled, day_mosaic(fill_date), needed, kernel_px=12)
-        for radius in (1.5, 3.0, 6.0):
-            filled = filled.unmask(filled.focal_mean(radius, "circle", "pixels", 2))
         composite = filled.clip(explorer.zona)
         composition_mode = "composite"
         notes = (
             "Landsat 7 con relleno de franjas SLC-off por regresion local "
             "(datos reales de fechas vecinas ajustados al tono de la escena "
-            f"base {ordered_dates[0]}); huecos residuales interpolados."
+            f"base {ordered_dates[0]}). Huecos sin vecino quedan vacios."
         )
     elif use_median:
         composite = collection.map(mask).map(haze).median().clip(explorer.zona)

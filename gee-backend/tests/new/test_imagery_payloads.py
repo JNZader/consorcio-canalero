@@ -225,7 +225,9 @@ def test_landsat7_gap_fill_composite_does_not_stretch_either() -> None:
 
     assert payload["composition_mode"] == "composite"
     assert not fake.called("reduceRegion")
+    assert not fake.called("focal_mean")
     assert "SLC-off" in payload["notes"]
+    assert "interpolados" not in payload["notes"]
 
 
 def test_index_visualizations_never_stretch() -> None:
@@ -270,8 +272,8 @@ def test_landsat7_gap_fill_only_touches_the_bands_the_render_reads() -> None:
     selected = [call.args[0] for call in fake.calls_to("select") if call.args]
     assert needed in selected
     assert all(not isinstance(arg, list) or arg == needed for arg in selected)
-    # Base scene + at most 2 fill dates (never the whole window).
-    assert len(explorer.landsat_calls) <= 1 + 3
+    # Window listing + base scene + at most 3 fill dates (never the whole window).
+    assert len(explorer.landsat_calls) <= 1 + 4
 
 
 def test_landsat_payload_reports_no_images_without_touching_the_map() -> None:

@@ -22,7 +22,7 @@ export default function ImageExplorerPanel() {
               const nextSensor = v as ImageSensor;
               controller.setSensor(nextSensor);
               controller.setVisualization(isOpticalSensor(nextSensor) ? 'falso_color' : 'vv');
-              controller.setCompositionMode('scene');
+              controller.setCompositionMode(nextSensor === 'landsat7' ? 'composite' : 'scene');
               controller.setSelectedDay(null);
               controller.setResult(null);
             }}
@@ -62,8 +62,8 @@ export default function ImageExplorerPanel() {
                   }
                 }}
                 data={[
-                  { value: 'scene', label: 'Escena individual' },
-                  { value: 'composite', label: 'Compuesto experimental' },
+                  { value: 'scene', label: 'Escena individual (franjas)' },
+                  { value: 'composite', label: 'Relleno SLC-off' },
                 ]}
                 w={210}
                 size="sm"

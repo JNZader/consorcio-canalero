@@ -823,4 +823,25 @@ describe('useImageExplorerController — imagery shortlist', () => {
     expect(lastUrl('dayImage')).toContain('visualization=falso_color');
     expect(result.current.visualization).toBe('falso_color');
   });
+
+  it('Probar este on Landsat 7 uses SLC-off composite, not a striped scene', async () => {
+    const { result } = await mountController();
+    await act(async () => {
+      await result.current.loadShortlistScene({
+        rank: 1,
+        sensor: 'landsat7',
+        scene_id: 'LE07',
+        scene_date: '2015-03-22',
+        days_from_peak: 0,
+        cloud_pct: 8,
+        score: 70,
+        visualization: 'falso_color',
+      });
+    });
+    await waitFor(() => expect(result.current.result).not.toBeNull());
+    expect(lastUrl('dayImage')).toContain('/landsat7?');
+    expect(lastUrl('dayImage')).toContain('mode=composite');
+    expect(lastUrl('dayImage')).toContain('days_buffer=20');
+    expect(result.current.compositionMode).toBe('composite');
+  });
 });
