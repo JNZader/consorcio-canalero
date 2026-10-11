@@ -12,6 +12,7 @@ import {
   Line,
   LineChart,
   ReferenceArea,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -22,7 +23,7 @@ import {
   fetchElevationProfile,
   type ElevationProfileResponse,
 } from '../../lib/api/elevationProfile';
-import { profileSliceStats, sliceProfile } from './profileRange';
+import { profileSliceStats, sliceProfile, type ProfileRangeStats } from './profileRange';
 
 function isLineString(geometry: Geometry | null | undefined): geometry is LineString {
   return geometry?.type === 'LineString' && geometry.coordinates.length >= 2;
@@ -67,7 +68,7 @@ export function ElevationProfileChart({
   geometry: Geometry | null | undefined;
   onHoverLngLat?: (point: { lon: number; lat: number } | null) => void;
   onPickLngLat?: (point: { lon: number; lat: number }) => void;
-  onRangeCoordinates?: (coordinates: ReadonlyArray<readonly [number, number]> | null) => void;
+  onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
 }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
@@ -198,7 +199,7 @@ export function ElevationProfileChart({
                       const next = { a: dragStart.current, b: distance };
                       setRange(next);
                       const stats = profileSliceStats(sliceProfile(chartRows, next.a, next.b));
-                      onRangeCoordinates?.(stats?.coordinates ?? null);
+                      onRangeCoordinates?.(stats);
                     } else {
                       const point = lngLatAtIndex(chartRows, event.activeIndex);
                       if (point) {
@@ -229,6 +230,24 @@ export function ElevationProfileChart({
                       fill="#f97316"
                       fillOpacity={0.18}
                       ifOverflow="visible"
+                    />
+                  ) : null}
+                  {selection?.min_point ? (
+                    <ReferenceDot
+                      x={selection.min_point.distance_m}
+                      y={selection.min_point.elevation_m}
+                      r={5}
+                      fill="#2563eb"
+                      stroke="#ffffff"
+                    />
+                  ) : null}
+                  {selection?.max_point ? (
+                    <ReferenceDot
+                      x={selection.max_point.distance_m}
+                      y={selection.max_point.elevation_m}
+                      r={5}
+                      fill="#dc2626"
+                      stroke="#ffffff"
                     />
                   ) : null}
                   <Line

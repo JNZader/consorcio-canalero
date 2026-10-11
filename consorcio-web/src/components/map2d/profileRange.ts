@@ -5,12 +5,21 @@ export type ProfileSample = {
   readonly lat?: number;
 };
 
+export type ProfileExtremaPoint = {
+  readonly lon: number;
+  readonly lat: number;
+  readonly elevation_m: number;
+  readonly distance_m: number;
+};
+
 export type ProfileRangeStats = {
   readonly length_m: number;
   readonly min_elevation_m: number | null;
   readonly max_elevation_m: number | null;
   readonly delta_m: number | null;
   readonly coordinates: ReadonlyArray<readonly [number, number]>;
+  readonly min_point: ProfileExtremaPoint | null;
+  readonly max_point: ProfileExtremaPoint | null;
 };
 
 export function sliceProfile(
@@ -45,9 +54,26 @@ export function profileSliceStats(samples: readonly ProfileSample[]): ProfileRan
     }
   }
   const coordinates: Array<readonly [number, number]> = [];
+  let minPoint: ProfileExtremaPoint | null = null;
+  let maxPoint: ProfileExtremaPoint | null = null;
   for (const sample of samples) {
     if (typeof sample.lon === 'number' && typeof sample.lat === 'number') {
       coordinates.push([sample.lon, sample.lat]);
+    }
+    if (sample.elevation_m == null || typeof sample.lon !== 'number' || typeof sample.lat !== 'number') {
+      continue;
+    }
+    const point: ProfileExtremaPoint = {
+      lon: sample.lon,
+      lat: sample.lat,
+      elevation_m: sample.elevation_m,
+      distance_m: sample.distance_m,
+    };
+    if (!minPoint || sample.elevation_m < minPoint.elevation_m) {
+      minPoint = point;
+    }
+    if (!maxPoint || sample.elevation_m > maxPoint.elevation_m) {
+      maxPoint = point;
     }
   }
   return {
@@ -56,5 +82,7 @@ export function profileSliceStats(samples: readonly ProfileSample[]): ProfileRan
     max_elevation_m: zs.length > 0 ? Math.max(...zs) : null,
     delta_m: firstZ != null && lastZ != null ? lastZ - firstZ : null,
     coordinates,
+    min_point: minPoint,
+    max_point: maxPoint,
   };
 }

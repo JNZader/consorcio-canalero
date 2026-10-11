@@ -114,6 +114,7 @@ import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
 import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
+import type { ProfileRangeStats } from './map2d/profileRange';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
 import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
@@ -192,9 +193,7 @@ export default function MapaMapLibre() {
     lon: number;
     lat: number;
   } | null>(null);
-  const [elevationProfileRange, setElevationProfileRange] = useState<ReadonlyArray<
-    readonly [number, number]
-  > | null>(null);
+  const [elevationProfileRange, setElevationProfileRange] = useState<ProfileRangeStats | null>(null);
   useEffect(() => {
     setElevationProfileHover(null);
     setElevationProfileRange(null);
@@ -917,7 +916,7 @@ export default function MapaMapLibre() {
     mapRef,
     mapReady,
     hover: elevationProfileHover,
-    rangeCoordinates: elevationProfileRange,
+    range: elevationProfileRange,
   });
   useSelectedLineHighlight({
     mapRef,
