@@ -349,8 +349,9 @@ describe('Medir Δ agua uses ranked optical scenes', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Medir Δ agua' }));
     expect(await screen.findByRole('button', { name: 'Ver máscara Después' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Ver máscara Después' }));
     expect(onShow).toHaveBeenCalledWith('https://tiles/post');
+    await user.click(screen.getByRole('button', { name: 'Ver máscara Antes' }));
+    expect(onShow).toHaveBeenCalledWith('https://tiles/pre');
     await user.click(screen.getByRole('button', { name: 'Quitar máscara' }));
     expect(onShow).toHaveBeenCalledWith(null);
   });
