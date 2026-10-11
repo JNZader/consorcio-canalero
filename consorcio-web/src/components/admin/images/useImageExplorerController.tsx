@@ -238,9 +238,10 @@ export function useImageExplorerController() {
       if (!isImageSensor(row.sensor)) return;
       const nextSensor = row.sensor;
       const nextVis = row.visualization || (nextSensor === 'sentinel1' ? 'vv_flood' : 'rgb');
+      const isL7 = nextSensor === 'landsat7';
       setSensor(nextSensor);
       setVisualization(nextVis);
-      setCompositionMode('scene');
+      setCompositionMode(isL7 ? 'composite' : 'scene');
       imageRequestRef.current?.abort();
       const controller = new AbortController();
       imageRequestRef.current = controller;
@@ -249,9 +250,9 @@ export function useImageExplorerController() {
       try {
         const params = new URLSearchParams({
           target_date: row.scene_date,
-          days_buffer: '1',
+          days_buffer: isL7 ? '20' : '1',
           visualization: nextVis,
-          mode: 'scene',
+          mode: isL7 ? 'composite' : 'scene',
         });
         if (isOpticalSensor(nextSensor)) params.append('max_cloud', maxCloud);
         const data = await apiFetch<ImageResultLike>(`${API_BASE}/${nextSensor}?${params}`, {
