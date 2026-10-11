@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   chirpsZoneMmLine,
+  formatWaterDelta,
   ImageExplorerExtremeEvents,
 } from '../../src/components/admin/images/ImageExplorerExtremeEvents';
 
@@ -213,5 +214,24 @@ describe('ImageExplorerExtremeEvents', () => {
     );
     await user.click(screen.getByRole('button', { name: /Antes · L8 2015-02-20/ }));
     expect(onTry).toHaveBeenCalledWith(pre);
+  });
+});
+
+describe('formatWaterDelta', () => {
+  it('shows post minus pre hectares', () => {
+    expect(
+      formatWaterDelta({
+        comparable: true,
+        delta_ha: 220.5,
+        pre: { water_ha: 100, scene_date: '2015-02-20', sensor: 'landsat8' },
+        post: { water_ha: 320.5, scene_date: '2015-03-25', sensor: 'sentinel2' },
+      }),
+    ).toContain('+220.5 ha');
+  });
+
+  it('explains a SAR pair', () => {
+    expect(formatWaterDelta({ comparable: false, reason: 'not_optical' })).toContain(
+      'par óptico',
+    );
   });
 });

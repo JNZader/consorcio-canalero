@@ -527,6 +527,37 @@ async def get_historic_flood_candidates_impl(
     )
 
 
+async def get_historic_flood_water_delta_impl(
+    *,
+    flood_id: str,
+    db: Session = Depends(get_db),
+):
+    """MNDWI water hectares on zona_cc_ampliada for the stored pre/post pair."""
+    from app.domains.geo.rainfall.imagery_shortlist import SLOT_POST, SLOT_PRE, load_all_pairs
+    from app.domains.geo.rainfall.water_delta import delta_for_event
+
+    generation = await _run_blocking(read_events, db, **CATALOG_SCOPE)
+    flood = catalog_view.resolve_event(generation, flood_id)
+    if not flood:
+        raise NotFoundError(
+            message=f"Inundacion '{flood_id}' no encontrada",
+            code="FLOOD_NOT_FOUND",
+            resource_type="historic_flood",
+            resource_id=flood_id,
+        )
+    pairs = await _run_blocking(load_all_pairs, db)
+    bucket = pairs.get(flood_id) or {}
+    payload = await _run_blocking(
+        delta_for_event,
+        bucket.get(SLOT_PRE),
+        bucket.get(SLOT_POST),
+    )
+    return JSONResponse(
+        content=payload,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 async def get_all_imagery_shortlists_impl(
     *,
     db: Session = Depends(get_db),

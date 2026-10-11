@@ -12,6 +12,7 @@ import {
 } from '@mantine/core';
 import { useMemo, useState } from 'react';
 
+import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
 import { IconPhoto } from '../../ui/icons';
 
 export interface HistoricFloodEvent {
@@ -54,6 +55,25 @@ export interface ImageryShortlistRow {
 export interface ImageryPair {
   pre: ImageryShortlistRow | null;
   post: ImageryShortlistRow | null;
+}
+
+export type WaterDeltaPayload = {
+  comparable: boolean;
+  reason?: string | null;
+  delta_ha?: number;
+  pre?: { water_ha?: number | null; scene_date: string; sensor: string };
+  post?: { water_ha?: number | null; scene_date: string; sensor: string };
+};
+
+export function formatWaterDelta(payload: WaterDeltaPayload): string {
+  if (payload.comparable && payload.delta_ha != null) {
+    const sign = payload.delta_ha > 0 ? '+' : '';
+    return `Δ agua: ${sign}${payload.delta_ha} ha (${payload.pre?.water_ha ?? '—'} → ${payload.post?.water_ha ?? '—'})`;
+  }
+  if (payload.reason === 'not_optical') return 'Δ agua: hace falta par óptico (no SAR)';
+  if (payload.reason === 'missing_pair') return 'Δ agua: falta Antes o Después';
+  if (payload.reason === 'scene_unavailable') return 'Δ agua: no se pudo medir la escena';
+  return 'Δ agua: no comparable';
 }
 
 interface ImageExplorerExtremeEventsProps {
@@ -142,6 +162,8 @@ export function ImageExplorerExtremeEvents({
   loading = false,
 }: ImageExplorerExtremeEventsProps) {
   const [onlyWithImagery, setOnlyWithImagery] = useState(false);
+  const [waterDeltas, setWaterDeltas] = useState<Record<string, WaterDeltaPayload | 'error'>>({});
+  const [measuringId, setMeasuringId] = useState<string | null>(null);
 
   const visibleEvents = useMemo(() => {
     const filtered = onlyWithImagery ? events.filter(isImageryEligible) : events;
@@ -223,6 +245,43 @@ export function ImageExplorerExtremeEvents({
                 >
                   Después · {SENSOR_SHORT[post.sensor] ?? post.sensor} {post.scene_date}
                 </Button>
+              ) : null}
+              {pre && post ? (
+                <Button
+                  mt="xs"
+                  size="xs"
+                  fullWidth
+                  variant="light"
+                  disabled={loading || measuringId === flood.id}
+                  onClick={() => {
+                    setMeasuringId(flood.id);
+                    void apiFetch<WaterDeltaPayload>(
+                      `/geo/gee/images/historic-floods/${flood.id}/water-delta`,
+                      { timeout: GEE_TIMEOUT },
+                    )
+                      .then((payload) => {
+                        setWaterDeltas((current) => ({ ...current, [flood.id]: payload }));
+                      })
+                      .catch(() => {
+                        setWaterDeltas((current) => ({ ...current, [flood.id]: 'error' }));
+                      })
+                      .finally(() => {
+                        setMeasuringId((current) => (current === flood.id ? null : current));
+                      });
+                  }}
+                >
+                  {measuringId === flood.id ? 'Midiendo agua…' : 'Medir Δ agua'}
+                </Button>
+              ) : null}
+              {waterDeltas[flood.id] && waterDeltas[flood.id] !== 'error' ? (
+                <Text size="xs" mt={4} data-testid="water-delta-line">
+                  {formatWaterDelta(waterDeltas[flood.id] as WaterDeltaPayload)}
+                </Text>
+              ) : null}
+              {waterDeltas[flood.id] === 'error' ? (
+                <Text size="xs" mt={4} c="red">
+                  Δ agua: error al medir
+                </Text>
               ) : null}
               <EventShortlistPicker
                 rows={shortlists[flood.id] ?? []}
