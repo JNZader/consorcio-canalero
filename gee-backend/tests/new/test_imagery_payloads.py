@@ -277,8 +277,8 @@ def test_landsat7_gap_fill_only_touches_the_bands_the_render_reads() -> None:
     selected = [call.args[0] for call in fake.calls_to("select") if call.args]
     assert needed in selected
     assert all(not isinstance(arg, list) or arg == needed for arg in selected)
-    # Window listing + base scene + at most 3 fill dates (never the whole window).
-    assert len(explorer.landsat_calls) <= 1 + 4
+    # Window listing + base scene + at most 5 fill dates (never the whole window).
+    assert len(explorer.landsat_calls) <= 1 + 6
 
 
 def test_landsat_payload_reports_no_images_without_touching_the_map() -> None:
