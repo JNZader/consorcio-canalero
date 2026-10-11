@@ -104,6 +104,29 @@ describe('<ElevationProfileChart />', () => {
     expect(onHoverLngLat).toHaveBeenCalledWith(null);
   });
 
+  it('renders MDE-Ar disclaimer and a second series when sampled', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120, elevation_mde_ar: 122 },
+        { distance_m: 15, elevation_m: 118, elevation_mde_ar: 119 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer:
+        'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+      mde_ar_disclaimer:
+        'MDE-Ar (IGN, SRVN16). No comparar el delta con GLO-30 como cota verdadera.',
+    });
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(await screen.findByTestId('elevation-profile-mde-ar')).toHaveTextContent('SRVN16');
+    expect(screen.getByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
+  });
+
   it('renders nothing for a Point', () => {
     renderWithMantine(
       <ElevationProfileChart geometry={{ type: 'Point', coordinates: [-62.7, -32.6] }} />,

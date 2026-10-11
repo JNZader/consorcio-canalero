@@ -126,3 +126,65 @@ def test_elevation_profile_route_requires_operator() -> None:
     with TestClient(app) as cliente:
         resp = cliente.post("/api/v2/geo/elevation-profile", json=body)
     assert resp.status_code == 401
+
+
+def test_aplicar_mde_ar_skips_when_sibling_missing(tmp_path) -> None:
+    from app.domains.geo.elevation_profile import aplicar_mde_ar
+
+    payload = {"puntos": [{"distance_m": 0.0, "elevation_m": 120.0, "lon": -62.7, "lat": -32.6}]}
+    out = aplicar_mde_ar(payload, str(tmp_path / "dem_filled.tif"))
+    assert "elevation_mde_ar" not in out["puntos"][0]
+    assert "mde_ar_disclaimer" not in out
+
+
+def test_aplicar_mde_ar_samples_wgs84_sibling_and_keeps_holes(tmp_path) -> None:
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    from app.domains.geo.elevation_profile import aplicar_mde_ar
+
+    transform = from_origin(-62.71, -32.59, 0.01, 0.01)
+    data = np.array([[130.0, -9999.0], [128.0, 129.0]], dtype=np.float32)
+    with rasterio.open(
+        tmp_path / "mde_ar.tif",
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
+        nodata=-999999,
+    ) as dst:
+        dst.write(data, 1)
+
+    payload = {
+        "puntos": [
+            {
+                "distance_m": 0.0,
+                "elevation_m": 120.0,
+                "lon": -62.705,
+                "lat": -32.595,
+            },
+            {
+                "distance_m": 15.0,
+                "elevation_m": 118.0,
+                "lon": -62.695,
+                "lat": -32.595,
+            },
+            {
+                "distance_m": 30.0,
+                "elevation_m": 117.0,
+                "lon": 0.0,
+                "lat": 0.0,
+            },
+        ]
+    }
+    out = aplicar_mde_ar(payload, str(tmp_path / "dem_filled.tif"))
+    assert out["puntos"][0]["elevation_mde_ar"] == pytest.approx(130.0)
+    assert out["puntos"][1]["elevation_mde_ar"] is None
+    assert out["puntos"][2]["elevation_mde_ar"] is None
+    assert out["puntos"][0]["elevation_m"] == 120.0
+    assert "SRVN16" in out["mde_ar_disclaimer"]
