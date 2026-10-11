@@ -28,6 +28,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -160,33 +161,34 @@ describe('<InfoPanel /> — Escuela detection branch (layer.id === "escuelas-sym
 // ---------------------------------------------------------------------------
 
 describe('<InfoPanel /> — branch precedence (canal before escuela)', () => {
-  it('renders <CanalCard> when stacked above <EscuelaCard> (canal feature first)', () => {
-    // Simulates the overlap scenario: click on a canal line that crosses a
-    // school icon. MapLibre returns canal first (canales_propuestos-line @9
-    // is before escuelas-symbol @10 in buildClickableLayers — see Batch E
-    // task 4.5/4.6). InfoPanel renders BOTH as separate sections, preserving
-    // z-order.
+  it('renders <CanalCard> when stacked above <EscuelaCard> (canal feature first)', async () => {
+    // Overlap: canal line crosses a school icon. Chips list both; detail is
+    // one card at a time. Canal is first in MapLibre z-order.
     const canalFeature = buildCanalFeature({ estado: 'propuesto', prioridad: 'Alta' });
     const escuelaFeature = buildEscuelaFeature();
+    const user = userEvent.setup();
     renderWithMantine(
       <InfoPanel features={[canalFeature, escuelaFeature]} onClose={() => {}} />,
     );
-    const sections = screen.getAllByTestId('info-panel-feature-section');
-    expect(sections).toHaveLength(2);
-    // First section: CanalCard (canal feature wins array position 0).
-    expect(sections[0]).toContainElement(screen.getByTestId('canal-card'));
-    // Second section: EscuelaCard (second feature).
-    expect(sections[1]).toContainElement(screen.getByTestId('escuela-card'));
+    expect(screen.queryByTestId('info-panel-feature-section')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Readecuación tramo inicial colector norte'));
+    expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
+    expect(screen.getByTestId('canal-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('escuela-card')).not.toBeInTheDocument();
   });
 
-  it('routes each stacked feature to its own branch independently', () => {
+  it('routes each stacked feature to its own branch independently', async () => {
     const features = [
       buildCanalFeature({ estado: 'relevado' }),
       buildEscuelaFeature(),
     ];
+    const user = userEvent.setup();
     renderWithMantine(<InfoPanel features={features} onClose={() => {}} />);
-    // Exactly 1 canal card + 1 escuela card (not two of either).
+    await user.click(screen.getByText('Readecuación tramo inicial colector norte'));
     expect(screen.getAllByTestId('canal-card')).toHaveLength(1);
+    expect(screen.queryByTestId('escuela-card')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Esc. Joaquín Víctor González'));
     expect(screen.getAllByTestId('escuela-card')).toHaveLength(1);
+    expect(screen.queryByTestId('canal-card')).not.toBeInTheDocument();
   });
 });
