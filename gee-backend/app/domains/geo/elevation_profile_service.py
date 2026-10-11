@@ -13,6 +13,7 @@ from app.domains.geo.elevation_profile import (
     aplicar_mde_ar,
     perfil_desde_linea_metrica,
 )
+from app.domains.geo.elevation_profile_gee import aplicar_gee_dems
 from app.domains.geo.intelligence.cruces_camino_support import (
     DEM_JOB_TIPOS,
     dem_resultados_por_area,
@@ -90,4 +91,4 @@ def perfil_de_geojson(
     for index, punto in enumerate(payload["puntos"]):
         punto["lon"] = float(serie.iloc[index].x)
         punto["lat"] = float(serie.iloc[index].y)
-    return aplicar_mde_ar(payload, dem_path)
+    return aplicar_gee_dems(aplicar_mde_ar(payload, dem_path))

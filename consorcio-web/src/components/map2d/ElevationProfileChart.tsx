@@ -114,10 +114,14 @@ export function ElevationProfileChart({
       distance_m: p.distance_m,
       elevation_m: p.elevation_m,
       elevation_mde_ar: p.elevation_mde_ar,
+      elevation_aw3d30: p.elevation_aw3d30,
+      elevation_nasadem: p.elevation_nasadem,
       lon: p.lon,
       lat: p.lat,
     })) ?? [];
   const hasMdeAr = chartRows.some((row) => row.elevation_mde_ar != null);
+  const hasAw3d30 = chartRows.some((row) => row.elevation_aw3d30 != null);
+  const hasNasadem = chartRows.some((row) => row.elevation_nasadem != null);
   const selection =
     range != null ? profileSliceStats(sliceProfile(chartRows, range.a, range.b)) : null;
 
@@ -146,6 +150,16 @@ export function ElevationProfileChart({
           {profile.mde_ar_disclaimer ? (
             <Text size="xs" c="dimmed" data-testid="elevation-profile-mde-ar">
               {profile.mde_ar_disclaimer}
+            </Text>
+          ) : null}
+          {profile.aw3d30_disclaimer ? (
+            <Text size="xs" c="dimmed" data-testid="elevation-profile-aw3d30">
+              {profile.aw3d30_disclaimer}
+            </Text>
+          ) : null}
+          {profile.nasadem_disclaimer ? (
+            <Text size="xs" c="dimmed" data-testid="elevation-profile-nasadem">
+              {profile.nasadem_disclaimer}
             </Text>
           ) : null}
           {profile.min_elevation_m != null && profile.max_elevation_m != null ? (
@@ -265,6 +279,28 @@ export function ElevationProfileChart({
                       dataKey="elevation_mde_ar"
                       name="MDE-Ar"
                       stroke="var(--mantine-color-orange-6)"
+                      dot={false}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />
+                  ) : null}
+                  {hasAw3d30 ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_aw3d30"
+                      name="AW3D30"
+                      stroke="var(--mantine-color-teal-6)"
+                      dot={false}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />
+                  ) : null}
+                  {hasNasadem ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_nasadem"
+                      name="NASADEM"
+                      stroke="var(--mantine-color-violet-6)"
                       dot={false}
                       connectNulls={false}
                       isAnimationActive={false}
