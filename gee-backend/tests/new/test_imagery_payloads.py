@@ -208,8 +208,9 @@ def test_composite_mode_does_not_stretch_the_bands() -> None:
     assert "gamma" not in vis_params
 
 
-def test_landsat7_gap_fill_composite_does_not_stretch_either() -> None:
-    fake = _landsat_fake(stats=percentile_stats(LANDSAT_SENSORS["landsat7"]["rgb"], 0.05, 0.3))
+def test_landsat7_gap_fill_composite_uses_qgis_percentile_stretch() -> None:
+    bands = LANDSAT_SENSORS["landsat7"]["false_color"]
+    fake = _landsat_fake(stats=percentile_stats(bands, 0.05, 0.3))
     explorer = FakeExplorer(fake, dates=["2015-03-10", "2015-03-14", "2015-03-20", "2015-03-25"])
 
     payload = build_landsat_payload(
@@ -219,15 +220,19 @@ def test_landsat7_gap_fill_composite_does_not_stretch_either() -> None:
         target_date=TARGET,
         days_buffer=10,
         max_cloud=80,
-        visualization="rgb",
+        visualization="falso_color",
         use_median=True,
     )
 
     assert payload["composition_mode"] == "composite"
-    assert not fake.called("reduceRegion")
+    assert fake.called("reduceRegion")
     assert not fake.called("focal_mean")
+    vis_params = fake.one_call_to("getMapId").args[0]
+    assert vis_params["min"] == [0.05, 1.05, 2.05]
+    assert vis_params["max"] == [0.3, 1.3, 2.3]
+    assert vis_params["gamma"] == 1.1
+    assert vis_params["bands"] == bands
     assert "SLC-off" in payload["notes"]
-    assert "interpolados" not in payload["notes"]
 
 
 def test_index_visualizations_never_stretch() -> None:
