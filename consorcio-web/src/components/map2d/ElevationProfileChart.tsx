@@ -70,9 +70,11 @@ export function ElevationProfileChart({
     profile?.puntos.map((p) => ({
       distance_m: p.distance_m,
       elevation_m: p.elevation_m,
+      elevation_mde_ar: p.elevation_mde_ar,
       lon: p.lon,
       lat: p.lat,
     })) ?? [];
+  const hasMdeAr = chartRows.some((row) => row.elevation_mde_ar != null);
 
   return (
     <Stack gap={6} data-testid="elevation-profile">
@@ -96,6 +98,11 @@ export function ElevationProfileChart({
           <Text size="xs" c="dimmed" data-testid="elevation-profile-disclaimer">
             {profile.disclaimer}
           </Text>
+          {profile.mde_ar_disclaimer ? (
+            <Text size="xs" c="dimmed" data-testid="elevation-profile-mde-ar">
+              {profile.mde_ar_disclaimer}
+            </Text>
+          ) : null}
           {profile.min_elevation_m != null && profile.max_elevation_m != null ? (
             <Text size="xs" data-testid="elevation-profile-extrema">
               {formatM(profile.min_elevation_m)} – {formatM(profile.max_elevation_m)} ·{' '}
@@ -139,11 +146,23 @@ export function ElevationProfileChart({
                   <Line
                     type="linear"
                     dataKey="elevation_m"
+                    name="GLO-30"
                     stroke="var(--mantine-color-blue-6)"
                     dot={false}
                     connectNulls={false}
                     isAnimationActive={false}
                   />
+                  {hasMdeAr ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_mde_ar"
+                      name="MDE-Ar"
+                      stroke="var(--mantine-color-orange-6)"
+                      dot={false}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />
+                  ) : null}
                 </LineChart>
               </ResponsiveContainer>
             </div>

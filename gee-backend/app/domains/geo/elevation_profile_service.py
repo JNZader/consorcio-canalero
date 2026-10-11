@@ -8,7 +8,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.domains.geo.elevation_profile import MAX_LENGTH_M, perfil_desde_linea_metrica
+from app.domains.geo.elevation_profile import (
+    MAX_LENGTH_M,
+    aplicar_mde_ar,
+    perfil_desde_linea_metrica,
+)
 from app.domains.geo.intelligence.cruces_camino_support import (
     DEM_JOB_TIPOS,
     dem_resultados_por_area,
@@ -86,4 +90,4 @@ def perfil_de_geojson(
     for index, punto in enumerate(payload["puntos"]):
         punto["lon"] = float(serie.iloc[index].x)
         punto["lat"] = float(serie.iloc[index].y)
-    return payload
+    return aplicar_mde_ar(payload, dem_path)

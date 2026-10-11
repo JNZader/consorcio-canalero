@@ -11,6 +11,7 @@ Never open a burned or hydro-filled raster. ``resolver_dem_filled`` is the gate.
 from __future__ import annotations
 
 from math import hypot
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from shapely.geometry.base import BaseGeometry
@@ -22,6 +23,9 @@ from app.domains.geo.relevamiento.clasificador import (
 )
 
 DISCLAIMER = "Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal."
+MDE_AR_NOMBRE = "mde_ar.tif"
+MDE_AR_DISCLAIMER = "MDE-Ar (IGN, SRVN16). No comparar el delta con GLO-30 como cota verdadera."
+MDE_AR_NODATA = frozenset({-999999.0, -9999.0})
 
 # Abuse cap, not GLO-30 physics. Compute is bounded by MAX_POINTS via paso_muestreo.
 MAX_LENGTH_M = 200_000.0
@@ -90,7 +94,9 @@ def ensamblar_perfil(
 
 
 def muestrear_alineado(
-    dem_path: str, puntos: Sequence[tuple[float, float]]
+    dem_path: str,
+    puntos: Sequence[tuple[float, float]],
+    extra_nodata: frozenset[float] | None = None,
 ) -> list[Optional[float]]:
     """One value per vertex. Nodata / NaN / out-of-footprint stay ``None``."""
     import rasterio
@@ -98,6 +104,7 @@ def muestrear_alineado(
     if not puntos:
         return []
 
+    extra = extra_nodata or frozenset()
     with rasterio.open(dem_path) as src:
         nodata = src.nodata
         crudos = [v[0] for v in src.sample(puntos)]
@@ -111,8 +118,33 @@ def muestrear_alineado(
         if nodata is not None and numero == float(nodata):
             alineados.append(None)
             continue
+        if numero in extra:
+            alineados.append(None)
+            continue
         alineados.append(numero)
     return alineados
+
+
+def aplicar_mde_ar(payload: dict[str, Any], dem_filled_path: str) -> dict[str, Any]:
+    """Sample sibling ``mde_ar.tif`` in EPSG:4326. Missing file is a no-op."""
+    mde_path = Path(dem_filled_path).with_name(MDE_AR_NOMBRE)
+    if not mde_path.is_file():
+        return payload
+    puntos = payload.get("puntos")
+    if not isinstance(puntos, list) or not puntos:
+        return payload
+    lonlats: list[tuple[float, float]] = []
+    for punto in puntos:
+        lon = punto.get("lon")
+        lat = punto.get("lat")
+        if not isinstance(lon, (int, float)) or not isinstance(lat, (int, float)):
+            return payload
+        lonlats.append((float(lon), float(lat)))
+    cotas = muestrear_alineado(str(mde_path), lonlats, extra_nodata=MDE_AR_NODATA)
+    for punto, cota in zip(puntos, cotas):
+        punto["elevation_mde_ar"] = cota
+    payload["mde_ar_disclaimer"] = MDE_AR_DISCLAIMER
+    return payload
 
 
 def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, Any]:
