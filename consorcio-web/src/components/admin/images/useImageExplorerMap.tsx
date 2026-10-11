@@ -78,7 +78,16 @@ export function useImageExplorerMap() {
     // cropped the zona vertically on short map heights.
     map.fitBounds(ZONA_FIT_BOUNDS, { padding: 24, animate: false });
     mapInstanceRef.current = map;
+    const container = mapRef.current;
+    const resizeObserver =
+      container && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            map.resize();
+          })
+        : null;
+    resizeObserver?.observe(container);
     return () => {
+      resizeObserver?.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };

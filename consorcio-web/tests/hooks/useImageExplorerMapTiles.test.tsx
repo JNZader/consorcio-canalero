@@ -32,6 +32,7 @@ const mapaSimulado = {
   remove: vi.fn(),
   fitBounds: vi.fn(),
   addControl: vi.fn(),
+  resize: vi.fn(),
 };
 
 vi.mock('maplibre-gl', () => ({
