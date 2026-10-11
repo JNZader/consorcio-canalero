@@ -394,6 +394,10 @@ export function ImageExplorerExtremeEvents({
                   onMeasured={(payload) => {
                     setWaterDeltas((current) => ({ ...current, [flood.id]: payload }));
                     setMeasuringId((current) => (current === flood.id ? null : current));
+                    if (payload !== 'error' && payload.comparable) {
+                      const maskUrl = payload.post?.tile_url ?? payload.pre?.tile_url;
+                      if (maskUrl) onShowWaterMask?.(maskUrl);
+                    }
                   }}
                 />
               ) : null}
