@@ -197,5 +197,28 @@ export function useImageExplorerMap() {
     });
   }, []);
 
-  return { mapRef, updateTileLayer, fitZona };
+  const updateWaterMask = useCallback((tileUrl: string | null) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (map.getLayer('gee-water-mask')) map.removeLayer('gee-water-mask');
+    if (map.getSource('gee-water')) map.removeSource('gee-water');
+    if (!tileUrl) return;
+    map.addSource('gee-water', {
+      type: 'raster',
+      tiles: [tileUrl],
+      tileSize: 256,
+      attribution: 'Imagery &copy; Google Earth Engine',
+    });
+    map.addLayer(
+      {
+        id: 'gee-water-mask',
+        type: 'raster',
+        source: 'gee-water',
+        paint: { 'raster-opacity': 0.65 },
+      },
+      zonaLayerIdRef.current ?? undefined
+    );
+  }, []);
+
+  return { mapRef, updateTileLayer, updateWaterMask, fitZona };
 }

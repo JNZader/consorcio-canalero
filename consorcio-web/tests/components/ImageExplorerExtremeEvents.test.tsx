@@ -9,6 +9,12 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }));
+vi.mock('../../src/lib/api', () => ({
+  apiFetch: apiFetchMock,
+  GEE_TIMEOUT: 1000,
+}));
+
 import {
   chirpsZoneMmLine,
   defaultOpticalPair,
@@ -306,5 +312,46 @@ describe('Medir Δ agua uses ranked optical scenes', () => {
     expect(screen.getByLabelText('Antes (óptico)')).toBeInTheDocument();
     expect(screen.getByLabelText('Después (óptico)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Medir Δ agua' })).toBeEnabled();
+  });
+
+  it('overlays the measured mask without requiring a second GEE search', async () => {
+    const onShow = vi.fn();
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({
+      comparable: true,
+      delta_ha: 12,
+      pre: {
+        water_ha: 1,
+        scene_date: '2023-03-15',
+        sensor: 'sentinel2',
+        tile_url: 'https://tiles/pre',
+      },
+      post: {
+        water_ha: 13,
+        scene_date: '2023-03-27',
+        sensor: 'sentinel2',
+        tile_url: 'https://tiles/post',
+      },
+    });
+    render(
+      <ImageExplorerExtremeEvents
+        events={[candidate]}
+        onLoadHistoricFlood={() => {}}
+        onShowWaterMask={onShow}
+        shortlists={{
+          [candidate.id]: [
+            ranked('S2-A', 'sentinel2', '2023-03-15', 1),
+            ranked('S2-B', 'sentinel2', '2023-03-27', 2),
+          ],
+        }}
+      />,
+      { wrapper },
+    );
+    await user.click(screen.getByRole('button', { name: 'Medir Δ agua' }));
+    expect(await screen.findByRole('button', { name: 'Ver máscara Después' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ver máscara Después' }));
+    expect(onShow).toHaveBeenCalledWith('https://tiles/post');
+    await user.click(screen.getByRole('button', { name: 'Quitar máscara' }));
+    expect(onShow).toHaveBeenCalledWith(null);
   });
 });

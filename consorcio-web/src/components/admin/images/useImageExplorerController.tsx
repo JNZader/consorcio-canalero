@@ -3,22 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useImageComparison } from '../../../hooks/useImageComparison';
 import { useSelectedImage } from '../../../hooks/useSelectedImage';
-import { GEE_TIMEOUT, apiFetch } from '../../../lib/api';
+import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import {
-  type ImageResultLike,
-  type ImageSceneLike,
-  type ImageSensor,
-  buildVisualizationOptions,
-  createSelectedImageFromResult,
-  isImageSensor,
-  isOpticalSensor,
-} from './imageExplorerUtils';
 import type {
   HistoricFloodEvent,
   ImageryPair,
   ImageryShortlistRow,
 } from './ImageExplorerExtremeEvents';
+import {
+  buildVisualizationOptions,
+  createSelectedImageFromResult,
+  type ImageResultLike,
+  type ImageSceneLike,
+  type ImageSensor,
+  isImageSensor,
+  isOpticalSensor,
+} from './imageExplorerUtils';
 import { useImageExplorerMap } from './useImageExplorerMap';
 
 interface Visualization {
@@ -144,7 +144,7 @@ export function useImageExplorerController() {
     clearComparison,
     isReady: comparisonReady,
   } = useImageComparison();
-  const { mapRef, updateTileLayer, fitZona } = useImageExplorerMap();
+  const { mapRef, updateTileLayer, updateWaterMask, fitZona } = useImageExplorerMap();
 
   // GEE requests take seconds: without these guards a stale response can
   // overwrite a newer one, and the generic day-fetch effect would clobber the
@@ -237,8 +237,7 @@ export function useImageExplorerController() {
     async (row: ImageryShortlistRow) => {
       if (!isImageSensor(row.sensor)) return;
       const nextSensor = row.sensor;
-      const nextVis =
-        row.visualization || (nextSensor === 'sentinel1' ? 'vv_flood' : 'rgb');
+      const nextVis = row.visualization || (nextSensor === 'sentinel1' ? 'vv_flood' : 'rgb');
       setSensor(nextSensor);
       setVisualization(nextVis);
       setCompositionMode('scene');
@@ -506,5 +505,6 @@ export function useImageExplorerController() {
     handleSetRightImage,
     loadHistoricFlood,
     loadShortlistScene,
+    updateWaterMask,
   };
 }

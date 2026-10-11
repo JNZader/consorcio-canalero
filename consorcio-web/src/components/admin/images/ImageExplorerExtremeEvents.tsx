@@ -61,8 +61,8 @@ export type WaterDeltaPayload = {
   comparable: boolean;
   reason?: string | null;
   delta_ha?: number;
-  pre?: { water_ha?: number | null; scene_date: string; sensor: string };
-  post?: { water_ha?: number | null; scene_date: string; sensor: string };
+  pre?: { water_ha?: number | null; scene_date: string; sensor: string; tile_url?: string | null };
+  post?: { water_ha?: number | null; scene_date: string; sensor: string; tile_url?: string | null };
 };
 
 export function formatWaterDelta(payload: WaterDeltaPayload): string {
@@ -101,6 +101,7 @@ interface ImageExplorerExtremeEventsProps {
   shortlists?: Record<string, ImageryShortlistRow[]>;
   pairs?: Record<string, ImageryPair>;
   loading?: boolean;
+  onShowWaterMask?: (tileUrl: string | null) => void;
 }
 
 const SENSOR_SHORT: Record<string, string> = {
@@ -130,6 +131,47 @@ function sceneLabel(row: ImageryShortlistRow): string {
   const sensor = SENSOR_SHORT[row.sensor] ?? row.sensor;
   const cloud = row.cloud_pct == null ? 'SAR' : `${Math.round(row.cloud_pct)}% nubes`;
   return `${row.rank}. ${sensor} ${row.scene_date} · ${cloud}`;
+}
+
+function WaterMaskButtons({
+  delta,
+  onShowWaterMask,
+}: {
+  delta: WaterDeltaPayload;
+  onShowWaterMask?: (tileUrl: string | null) => void;
+}) {
+  const preUrl = delta.pre?.tile_url;
+  const postUrl = delta.post?.tile_url;
+  if (!preUrl && !postUrl) return null;
+  return (
+    <>
+      {preUrl ? (
+        <Button
+          mt="xs"
+          size="xs"
+          fullWidth
+          variant="outline"
+          onClick={() => onShowWaterMask?.(preUrl)}
+        >
+          Ver máscara Antes
+        </Button>
+      ) : null}
+      {postUrl ? (
+        <Button
+          mt={4}
+          size="xs"
+          fullWidth
+          variant="outline"
+          onClick={() => onShowWaterMask?.(postUrl)}
+        >
+          Ver máscara Después
+        </Button>
+      ) : null}
+      <Button mt={4} size="xs" fullWidth variant="subtle" onClick={() => onShowWaterMask?.(null)}>
+        Quitar máscara
+      </Button>
+    </>
+  );
 }
 
 function OpticalDeltaControls({
@@ -241,6 +283,7 @@ export function ImageExplorerExtremeEvents({
   shortlists = {},
   pairs = {},
   loading = false,
+  onShowWaterMask,
 }: ImageExplorerExtremeEventsProps) {
   const [onlyWithImagery, setOnlyWithImagery] = useState(false);
   const [waterDeltas, setWaterDeltas] = useState<Record<string, WaterDeltaPayload | 'error'>>({});
@@ -358,6 +401,12 @@ export function ImageExplorerExtremeEvents({
                 <Text size="xs" mt={4} data-testid="water-delta-line">
                   {formatWaterDelta(waterDeltas[flood.id] as WaterDeltaPayload)}
                 </Text>
+              ) : null}
+              {waterDeltas[flood.id] && waterDeltas[flood.id] !== 'error' ? (
+                <WaterMaskButtons
+                  delta={waterDeltas[flood.id] as WaterDeltaPayload}
+                  onShowWaterMask={onShowWaterMask}
+                />
               ) : null}
               {waterDeltas[flood.id] === 'error' ? (
                 <Text size="xs" mt={4} c="red">
