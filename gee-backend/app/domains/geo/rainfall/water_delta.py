@@ -1,12 +1,13 @@
-"""Water hectares on zona_cc_ampliada for a stored pre/post pair.
+"""Water hectares on zona_cc_ampliada for two operator-picked optical scenes.
 
 Optical MNDWI ≥ 0.1 only. SAR pairs are not comparable. Not a classifier.
+Stored pre/post slots are not the pair — those often prefer Sentinel-1.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, Sequence
 
 from app.domains.geo.gee_service_imagery_support import LANDSAT_SENSORS
 
@@ -49,6 +50,18 @@ def optical_spec(sensor: str) -> dict[str, Any] | None:
         "scale": 30,
         "reflectance": 1.0,
     }
+
+
+def resolve_pair_rows(
+    rows: Sequence[SceneRow],
+    pre_scene_id: str | None,
+    post_scene_id: str | None,
+) -> tuple[SceneRow | None, SceneRow | None]:
+    """Look up the two scene ids the operator picked. First row wins on duplicates."""
+    by_id: dict[str, SceneRow] = {}
+    for row in rows:
+        by_id.setdefault(row.scene_id, row)
+    return by_id.get(pre_scene_id or ""), by_id.get(post_scene_id or "")
 
 
 def pair_delta_payload(

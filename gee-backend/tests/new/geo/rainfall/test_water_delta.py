@@ -1,7 +1,7 @@
 from datetime import date
 from types import SimpleNamespace
 
-from app.domains.geo.rainfall.water_delta import pair_delta_payload
+from app.domains.geo.rainfall.water_delta import pair_delta_payload, resolve_pair_rows
 
 
 def _row(sensor: str, slot: str) -> SimpleNamespace:
@@ -52,3 +52,27 @@ def test_missing_scene_ha_is_not_comparable() -> None:
     )
     assert payload["comparable"] is False
     assert payload["reason"] == "scene_unavailable"
+
+
+def test_resolve_pair_rows_picks_ranked_ids_not_slot_defaults() -> None:
+    ranked_pre = _row("sentinel2", "ranked")
+    ranked_pre.scene_id = "S2-A"
+    ranked_post = _row("landsat8", "ranked")
+    ranked_post.scene_id = "L8-B"
+    stored_sar = _row("sentinel1", "pre")
+    stored_sar.scene_id = "S1-PRE"
+    pre, post = resolve_pair_rows(
+        [stored_sar, ranked_pre, ranked_post],
+        "S2-A",
+        "L8-B",
+    )
+    assert pre is ranked_pre
+    assert post is ranked_post
+
+
+def test_resolve_pair_rows_unknown_id_is_none() -> None:
+    row = _row("sentinel2", "ranked")
+    row.scene_id = "S2-A"
+    pre, post = resolve_pair_rows([row], "S2-A", "missing")
+    assert pre is row
+    assert post is None
