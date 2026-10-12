@@ -58,6 +58,6 @@ describe('LayerControlsPanel variant 3d', () => {
     const checkbox = screen.getByRole('checkbox', { name: 'Escuelas rurales' });
     expect(checkbox).toBeDisabled();
     await user.hover(checkbox);
-    expect(await screen.findByRole('tooltip', { name: 'no disponible en 3D' })).toBeInTheDocument();
+    expect(await screen.findByRole('tooltip', { name: 'No disponible en 3D' })).toBeInTheDocument();
   });
 });
