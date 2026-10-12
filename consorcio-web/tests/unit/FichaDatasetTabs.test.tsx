@@ -163,7 +163,7 @@ describe("ficha dataset tabs · the Lluvia tab has no overlay", () => {
 
 		await user.click(screen.getByRole("radio", { name: "Lluvia" }));
 
-		expect(screen.getByTestId("ficha-precipitacion")).toBeInTheDocument();
+		expect(await screen.findByTestId("ficha-precipitacion")).toBeInTheDocument();
 		// …and gone on Lluvia: there is no rainfall overlay to paint.
 		expect(screen.queryByTestId("ficha-overlay-toggle")).toBeNull();
 	});

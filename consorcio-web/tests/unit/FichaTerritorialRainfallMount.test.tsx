@@ -127,7 +127,7 @@ function precedes(first: HTMLElement, second: HTMLElement): boolean {
 afterEach(() => setAuth(null));
 
 describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () => {
-  it('mounts the technical detail on the parcel ficha Lluvia tab, keeping the public chart', () => {
+  it('mounts the technical detail on the parcel ficha Lluvia tab, keeping the public chart', async () => {
     // Non-staff here (no session seeded), so the fold is OPEN and the public
     // chart is readable with no control operated — the case the spec clause is
     // actually about.
@@ -136,10 +136,10 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
     expect(screen.getByTestId('rainfall-detail-sentinel')).toHaveTextContent('13-06-01-0203');
     // The public compact normal is untouched and still rendered (spec: the
     // compact public 1991–2020 normal MUST remain available), now inside the
-    // fold's body.
+    // fold's body. PrecipChart is lazy (PERF-02).
     const body = screen.getByTestId('ficha-precip-fold-body');
-    expect(screen.getByTestId('ficha-precipitacion')).toBeInTheDocument();
-    expect(body).toContainElement(screen.getByTestId('ficha-precipitacion'));
+    const chart = await screen.findByTestId('ficha-precipitacion');
+    expect(body).toContainElement(chart);
   });
 
   it('renders the v2 detail ABOVE the public fold', () => {
@@ -175,15 +175,15 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
     expect(screen.queryByTestId('ficha-precip-fold')).toBeNull();
   });
 
-  it('mounts nothing for a parcel ficha without nomenclatura', () => {
+  it('mounts nothing for a parcel ficha without nomenclatura', async () => {
     renderWithMantine(<FichaTerritorialPanel {...baseProps} parcelaProps={null} />);
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
     // …and the public chart is still there, open, because it is now this
     // reader's only rainfall content.
-    expect(screen.getByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
   });
 
-  it('mounts nothing for non-parcel tipos (no resolvable regional scope)', () => {
+  it('mounts nothing for non-parcel tipos (no resolvable regional scope)', async () => {
     renderWithMantine(
       <FichaTerritorialPanel
         {...baseProps}
@@ -193,7 +193,7 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
       />
     );
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
-    expect(screen.getByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
   });
 });
 
@@ -297,7 +297,7 @@ describe('FichaTerritorialPanel — the PrecipChart fold default (D7)', () => {
     );
   });
 
-  it('staff on a NON-parcela ficha: no v2 detail renders, so the fold stays OPEN', () => {
+  it('staff on a NON-parcela ficha: no v2 detail renders, so the fold stays OPEN', async () => {
     // The defect `defaultOpen={!staff}` would have shipped: this reader gets no
     // v2 detail at all, so collapsing the public normal hides the only rainfall
     // content they have — behind a word about authorization.
@@ -313,15 +313,15 @@ describe('FichaTerritorialPanel — the PrecipChart fold default (D7)', () => {
 
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
     expect(screen.getByTestId('ficha-precip-fold-header')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
   });
 
-  it('non-staff on a parcel: no v2 detail is authorized, so the fold stays OPEN', () => {
+  it('non-staff on a parcel: no v2 detail is authorized, so the fold stays OPEN', async () => {
     setAuth('ciudadano');
     renderWithMantine(<FichaTerritorialPanel {...baseProps} />);
 
     expect(screen.getByTestId('ficha-precip-fold-header')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
   });
 
   it('recomputes the default when the predicate flips after mount', () => {
