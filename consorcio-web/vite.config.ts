@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+import { filterHtmlModulePreloadDeps } from './vite.modulePreload';
 
 // ---------------------------------------------------------------------------
 // FOUT / CLS: build-time <link rel="preload"> for the above-the-fold webfonts.
@@ -410,6 +411,10 @@ export default defineConfig({
   },
 
   build: {
+    modulePreload: {
+      resolveDependencies: (_filename, deps, { hostType }) =>
+        hostType === 'html' ? filterHtmlModulePreloadDeps(deps) : deps,
+    },
     // Vite 8 / Rolldown: ``rollupOptions`` is a deprecated alias —
     // use ``rolldownOptions``. Object-form ``manualChunks`` was removed;
     // named vendor splits move to ``output.codeSplitting.groups``.
