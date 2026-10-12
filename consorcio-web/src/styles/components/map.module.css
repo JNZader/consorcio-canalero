@@ -329,6 +329,17 @@
    A `max-height: 100%` here would silently resolve to `none` — percentages
    resolve against the parent's `height`, and these roots only have `auto`
    height under a `max-height` — leaving the card without a scrollbar. */
+/* UX-16: close + minimize stay outside the scroller and receive clicks. */
+.panelCardHeader {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  margin-bottom: 4px;
+}
+
 .panelCardBody {
   min-height: 0;
   overflow-y: auto;

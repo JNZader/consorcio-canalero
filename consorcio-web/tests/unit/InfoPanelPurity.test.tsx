@@ -31,7 +31,7 @@ describe('InfoPanel purity', () => {
       </MantineProvider>
     );
 
-    expect(screen.getByText('Informacion')).toBeInTheDocument();
+    expect(screen.getByText('Información')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

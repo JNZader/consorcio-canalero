@@ -95,7 +95,7 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
       <MapUiPanels {...buildProps({ selectedFeatures: [feat] })} />,
     );
     expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
   });
 
   it('skips inline layer legends when showLegend is false', () => {

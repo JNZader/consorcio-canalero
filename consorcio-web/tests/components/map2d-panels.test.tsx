@@ -70,7 +70,7 @@ describe('map2d extracted panels', () => {
     await user.click(screen.getByText(/Red Vial \(1 consorcios\)/i));
     expect(screen.getByText(/C1 \(12 km\)/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /cerrar panel de informacion/i }));
+    await user.click(screen.getByRole('button', { name: /cerrar panel de información/i }));
     expect(onCloseInfo).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('radio', { name: /comparar/i }));
@@ -252,13 +252,13 @@ describe('map2d extracted panels', () => {
     expect(screen.getByRole('button', { name: /^base/i, expanded: false })).toBeInTheDocument();
     expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
 
     await expandNamed(user, /^base/i);
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
 
-    await user.click(screen.getByRole('button', { name: /cerrar panel de informacion/i }));
+    await user.click(screen.getByRole('button', { name: /cerrar panel de información/i }));
     expect(onCloseInfoPanel).toHaveBeenCalledTimes(1);
   });
 });
