@@ -132,7 +132,6 @@ describe("map control touch targets", () => {
 		const dock = container.querySelector(
 			".maplibregl-ctrl-group",
 		) as HTMLElement;
-		expect(dock.className).toContain("mapCtrlDock");
 		expect(dock.className).toContain("mapActionsDock");
 		expect(dock.style.top).toBe("");
 	});
@@ -267,13 +266,13 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
 
 	it("the right-hand column ends above the floor", () => {
 		const coarse = coarseBlock();
-		// nav 3×44 from top:10 → 142 · +10 → fullscreen 152–196 · +10 → actions.
+		// nav 3×44 from top:10 → 142 · +10 → fullscreen 152–196 · +10 → stack.
 		const navBottom = 10 + 3 * TOUCH;
 		const fullscreenBottom = navBottom + 10 + TOUCH;
-		const actionsTop = pxOf(coarse, "mapActionsDock", "top");
+		const stackTop = pxOf(coarse, "mapRightStack", "top");
 
-		expect(actionsTop).toBeGreaterThanOrEqual(fullscreenBottom + 10);
-		expect(actionsTop + TOUCH).toBeLessThanOrEqual(CANVAS_FLOOR);
+		expect(stackTop).toBeGreaterThanOrEqual(fullscreenBottom + 10);
+		expect(stackTop + 2 * TOUCH + 10 + TOUCH).toBeLessThanOrEqual(CANVAS_FLOOR);
 	});
 
 	it("the measurement toolbar leaves the column for a horizontal bottom row", () => {
