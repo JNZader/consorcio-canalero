@@ -357,4 +357,9 @@ describe('useCaminosColoreados', () => {
       expect(() => unmount()).not.toThrow();
     });
   });
+
+  it('does not fetch when enabled is false', () => {
+    renderHook(() => useCaminosColoreados({ enabled: false }), { wrapper });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });

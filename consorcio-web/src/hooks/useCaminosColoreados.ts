@@ -37,9 +37,10 @@ interface PublicCaminosProjectionResponse {
 
 const PUBLIC_CAMINOS_URL = `${API_URL}/api/v2/public/map/gee/caminos`;
 
-export function useCaminosColoreados() {
+export function useCaminosColoreados(options: { enabled?: boolean } = {}) {
   const query = useQuery({
     queryKey: queryKeys.caminosColoreados(),
+    enabled: options.enabled ?? true,
     queryFn: async () => {
       const response = await fetch(PUBLIC_CAMINOS_URL);
       if (!response.ok) {
