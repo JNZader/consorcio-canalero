@@ -32,7 +32,7 @@ describe('enrichLayer — variantes', () => {
   it('relevado (sin prefijo) es el default, sin sufijo', () => {
     const r = enrichLayer(capa('flow_acc_zona_principal', 'flow_acc'));
     expect(r.variante).toBe('relevado');
-    expect(r.label).toBe('Acumulacion de Flujo');
+    expect(r.label).toBe('Acumulación de Flujo');
   });
 
   it('natural lleva prefijo natural_ y sufijo (natural)', () => {
@@ -44,7 +44,7 @@ describe('enrichLayer — variantes', () => {
   it('escenario lleva prefijo escenario_ y sufijo (escenario)', () => {
     const r = enrichLayer(capa('escenario_twi_zona_principal', 'twi'));
     expect(r.variante).toBe('escenario');
-    expect(r.label).toBe('Indice Humedad (TWI) (escenario)');
+    expect(r.label).toBe('Índice Humedad (TWI) (escenario)');
   });
 
   it('las tres variantes del mismo tipo tienen labels distintos', () => {
