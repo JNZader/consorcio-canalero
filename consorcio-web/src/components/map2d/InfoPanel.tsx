@@ -32,7 +32,7 @@
 
 import { Badge, Collapse, Divider, Group, Stack, Text, Title, UnstyledButton } from '@mantine/core';
 import type { Feature } from 'geojson';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
 import styles from '../../styles/components/map.module.css';
@@ -41,7 +41,10 @@ import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
-import { ElevationProfileChart } from './ElevationProfileChart';
+const ElevationProfileChart = lazy(async () => {
+  const mod = await import('./ElevationProfileChart');
+  return { default: mod.ElevationProfileChart };
+});
 import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
 import { nearestLineStringIndex } from './tramoAtPoint';
 import type { ProfileRangeStats } from './profileRange';
@@ -524,6 +527,7 @@ export const InfoPanel = memo(function InfoPanel({
       <Stack gap="sm">
         {profileGeometry ? (
           <>
+            <Suspense fallback={null}>
             <ElevationProfileChart
               geometry={profileGeometry}
               onHoverLngLat={(point) => {
@@ -538,6 +542,7 @@ export const InfoPanel = memo(function InfoPanel({
               }}
               onRangeCoordinates={onElevationProfileRange}
             />
+            </Suspense>
             {hoverTramo ? (
               <Text size="xs" data-testid="elevation-profile-tramo">
                 Tramo: {hoverTramo}

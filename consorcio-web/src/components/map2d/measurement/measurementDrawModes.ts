@@ -25,7 +25,7 @@
  * `MapboxDrawOptions['styles']` is typed `object[]`.
  */
 
-import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import type MapboxDraw from '@mapbox/mapbox-gl-draw';
 
 // `MapboxDrawOptions['styles']` is typed as `object[]`, so we expose a
 // permissive alias rather than inventing our own narrow type.
@@ -122,6 +122,7 @@ export const MEASUREMENT_DRAW_OPTIONS: MapboxDraw.MapboxDrawOptions = {
  * factory is intentionally stateless. Never share the returned instance
  * across components; add it to exactly one map, then remove it.
  */
-export function createMeasurementDraw(): MapboxDraw {
+export async function createMeasurementDraw(): Promise<MapboxDraw> {
+  const { default: MapboxDraw } = await import('@mapbox/mapbox-gl-draw');
   return new MapboxDraw(MEASUREMENT_DRAW_OPTIONS);
 }

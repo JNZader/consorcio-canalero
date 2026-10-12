@@ -232,13 +232,15 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
   // and acquire the global `mapboxDrawSlot` so `LineDrawControl` knows to
   // unmount itself first. On `clear()` / `cancel()` we tear it down and
   // release the slot, letting `LineDrawControl` re-mount.
-  const mountDraw = useCallback((): MapboxDraw | null => {
+  const mountDraw = useCallback(async (): Promise<MapboxDraw | null> => {
     if (!map) return null;
     if (drawRef.current) return drawRef.current;
 
     useMapboxDrawSlot.getState().acquire('measurement');
 
-    const draw = createMeasurementDraw();
+    const draw = await createMeasurementDraw();
+    if (drawRef.current) return drawRef.current;
+    if (!map) return null;
     drawRef.current = draw;
 
     // Defensive: clean any leftover gl-draw-* layers/sources from a prior
@@ -386,17 +388,19 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
   }, [unmountDraw]);
 
   const startDistance = () => {
-    const draw = mountDraw();
-    if (draw) draw.changeMode('draw_line_string');
     setMeasurementCursor(true);
     setMeasurementState((prev) => ({ ...prev, mode: 'measuring-distance' }));
+    void mountDraw().then((draw) => {
+      draw?.changeMode('draw_line_string');
+    });
   };
 
   const startArea = () => {
-    const draw = mountDraw();
-    if (draw) draw.changeMode('draw_polygon');
     setMeasurementCursor(true);
     setMeasurementState((prev) => ({ ...prev, mode: 'measuring-area' }));
+    void mountDraw().then((draw) => {
+      draw?.changeMode('draw_polygon');
+    });
   };
 
   const clear = () => {

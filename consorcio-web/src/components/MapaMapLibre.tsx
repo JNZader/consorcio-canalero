@@ -17,7 +17,7 @@ import { ALL_ETAPAS, type Etapa } from '../types/canales';
 import { collectCanalChildIds, groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Protocol } from 'pmtiles';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Register PMTiles protocol once at module level.
 // NOTE: migrating the vector layers to PMTiles is a SEPARATE ticket — several
@@ -68,7 +68,8 @@ import {
 } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
 import { RasterLegend } from './RasterLegend';
-import DrawControl, { type DrawControlHandle } from './map/DrawControl';
+import type { DrawControlHandle } from './map/DrawControl';
+const DrawControl = lazy(() => import('./map/DrawControl'));
 import { HazardMapControls } from './map2d/HazardMapControls';
 import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 
@@ -1267,12 +1268,14 @@ export default function MapaMapLibre() {
                 never coexists with the measurement MapboxDraw (shared-slot bug). A
                 completed polygon fires a `tipo=poligono` ficha via the container. */}
             {measurementMap && isFichaDrawSession && (
-              <DrawControl
-                ref={drawControlRef}
-                map={measurementMap}
-                onPolygonCreated={fichaInteraction.completePolygon}
-                onPolygonDeleted={fichaInteraction.deletePolygon}
-              />
+              <Suspense fallback={null}>
+                <DrawControl
+                  ref={drawControlRef}
+                  map={measurementMap}
+                  onPolygonCreated={fichaInteraction.completePolygon}
+                  onPolygonDeleted={fichaInteraction.deletePolygon}
+                />
+              </Suspense>
             )}
 
             <MapUiPanels
