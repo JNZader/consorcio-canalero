@@ -250,13 +250,21 @@ describe('mapLayerEffectHelpers', () => {
   it('renders the soil fill and line with the audited visibility-boost paint', () => {
     const map = createMapMock();
 
-    syncSoilLayers(map as never, emptyCollection(), true);
+    syncSoilLayers(map as never, true);
 
+    expect(map.addSource).toHaveBeenCalledWith(
+      SOURCE_IDS.SOIL,
+      expect.objectContaining({
+        type: 'vector',
+        url: expect.stringMatching(/^pmtiles:\/\/.+\/data\/suelos_cu\.pmtiles$/),
+      })
+    );
     const fillCall = map.addLayer.mock.calls.find(
       ([layer]) => layer?.id === `${SOURCE_IDS.SOIL}-fill`
     );
     expect(fillCall).toBeDefined();
     const [fillLayer] = fillCall ?? [];
+    expect(fillLayer?.['source-layer']).toBe('suelos_cu');
     expect(fillLayer?.paint).toMatchObject({
       'fill-opacity': 0.3,
     });
