@@ -334,6 +334,7 @@ export function buildDemLayerOptions(
 ) {
   return demLayers.map((layer) => ({
     value: layer.id,
+    tipo: layer.tipo,
     // `layer.label` ya trae el sufijo de variante ("(natural)", "(escenario)")
     // que puso enrichLayer. Armar la etiqueta desde el tipo mostraba las tres
     // variantes IGUAL —tres "Acumulacion de Flujo" indistinguibles—, porque el

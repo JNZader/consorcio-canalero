@@ -77,6 +77,7 @@ import { MapUiPanels } from './map2d/MapUiPanels';
 import { MapPlacesControl } from './map2d/MapPlacesControl';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
+import { useRasterTileLoading } from './map2d/useRasterTileLoading';
 import { useMapPermalink } from './map2d/useMapPermalink';
 import { PuntoInteresPlaceModal } from './map2d/PuntoInteresPlaceModal';
 import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
@@ -320,6 +321,10 @@ export default function MapaMapLibre() {
     reload: reloadGeoLayers,
     enabled: geoLayersEnabled,
   } = useGeoLayers();
+  const rasterLoading = useRasterTileLoading(
+    mapReady ? mapRef.current : null,
+    showDemOverlay,
+  );
   const demRawLayer = allGeoLayers.find((layer) => layer.tipo === 'dem_raw');
   const hillshadeTileUrl = demRawLayer
     ? buildTileUrl(demRawLayer.id, { encoding: 'terrain-rgb' })
@@ -453,6 +458,11 @@ export default function MapaMapLibre() {
     showRedVialOficial: isStaff,
     showCaminosHuecos: isStaff,
   });
+
+  const satelliteLayer =
+    viewMode === 'single' && singleImageInfo
+      ? { label: `Imagen ${singleImageInfo.sensor} · ${singleImageInfo.date}` }
+      : null;
 
   useMapPermalink({
     mapRef,
@@ -1177,6 +1187,7 @@ export default function MapaMapLibre() {
 
       <MapWorkspace
         activeLayerCount={activeLayerCount}
+        liveMessage={waterwaysError ?? geoLayersError ?? undefined}
         canvas={
           <Box
             className={styles.mapCanvasWrapper}
@@ -1277,6 +1288,13 @@ export default function MapaMapLibre() {
               activeDemLayerId={activeDemLayerId}
               onActiveDemLayerIdChange={setActiveDemLayerId}
               demOptions={demLayerOptions}
+              satelliteLayer={satelliteLayer}
+              onHideSatellite={() => setViewMode('base')}
+              rasterLoading={rasterLoading}
+              demLoadError={geoLayersError}
+              onRetryDem={() => {
+                void reloadGeoLayers();
+              }}
               rasterCompareId={rasterCompareId}
               onRasterCompare={setRasterCompareId}
               canalesRelevadosItems={canalesRelevadosItems}
@@ -1474,6 +1492,13 @@ export default function MapaMapLibre() {
               activeDemLayerId={activeDemLayerId}
               onActiveDemLayerIdChange={setActiveDemLayerId}
               demOptions={demLayerOptions}
+              satelliteLayer={satelliteLayer}
+              onHideSatellite={() => setViewMode('base')}
+              rasterLoading={rasterLoading}
+              demLoadError={geoLayersError}
+              onRetryDem={() => {
+                void reloadGeoLayers();
+              }}
               rasterCompareId={rasterCompareId}
               onRasterCompare={setRasterCompareId}
               canalesRelevadosItems={canalesRelevadosItems}

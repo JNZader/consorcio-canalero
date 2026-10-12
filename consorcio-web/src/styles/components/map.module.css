@@ -61,6 +61,20 @@
    in BOTH modes so its fiber never remounts across the 48em breakpoint. */
 .workspaceRoot {
   width: 100%;
+  max-height: calc(100dvh - var(--map-chrome-h, 7.5rem));
+  overflow: hidden;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Desktop: [ sidebar | canvas ]. The sidebar comes AFTER the canvas in the

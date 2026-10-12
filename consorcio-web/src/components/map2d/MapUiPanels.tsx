@@ -57,6 +57,7 @@ interface LayerItem {
 interface DemOption {
   value: string;
   label: string;
+  tipo?: string;
 }
 
 interface LegendItem {
@@ -88,6 +89,11 @@ export interface MapUiPanelsProps {
   readonly activeDemLayerId: string | null;
   readonly onActiveDemLayerIdChange: (value: string | null) => void;
   readonly demOptions: DemOption[];
+  readonly satelliteLayer?: { label: string } | null;
+  readonly onHideSatellite?: () => void;
+  readonly rasterLoading?: boolean;
+  readonly demLoadError?: string | null;
+  readonly onRetryDem?: () => void;
   readonly rasterCompareId?: string | null;
   readonly onRasterCompare?: (layerId: string | null) => void;
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
@@ -316,6 +322,11 @@ export const MapUiPanels = memo(function MapUiPanels({
   activeDemLayerId,
   onActiveDemLayerIdChange,
   demOptions,
+  satelliteLayer = null,
+  onHideSatellite,
+  rasterLoading = false,
+  demLoadError = null,
+  onRetryDem,
   rasterCompareId = null,
   onRasterCompare,
   canalesRelevadosItems,
@@ -586,6 +597,11 @@ export const MapUiPanels = memo(function MapUiPanels({
             activeDemLayerId={activeDemLayerId}
             onActiveDemLayerIdChange={onActiveDemLayerIdChange}
             demOptions={demOptions}
+            satelliteLayer={satelliteLayer}
+            onHideSatellite={onHideSatellite}
+            rasterLoading={rasterLoading}
+            demLoadError={demLoadError}
+            onRetryDem={onRetryDem}
             rasterCompareId={rasterCompareId}
             onRasterCompare={onRasterCompare}
             canalesRelevadosItems={canalesRelevadosItems}

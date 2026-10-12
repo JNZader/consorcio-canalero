@@ -105,7 +105,7 @@ describe('<MapWorkspace />', () => {
     renderWithMantine(<MapWorkspace canvas={canvas} controls={controls} />);
 
     const queries = vi.mocked(window.matchMedia).mock.calls.map(([query]) => query);
-    expect(queries).toContain('(min-width: 48em) and (min-height: 30.0625em)');
+    expect(queries).toContain('(min-width: 48em) and (min-height: 40em)');
     // 30.0625em = 481px: tablets y laptops siguen del lado escritorio; el
     // telefono acostado (390-430px de alto) cae al burger + Drawer.
     expect(queries.some((q) => q === '(min-width: 48em)')).toBe(false);

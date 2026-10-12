@@ -80,7 +80,9 @@ describe('useMapDerivedState', () => {
     expect(result.current.zonaCollection?.features).toHaveLength(1);
     expect(result.current.hasSingleImage).toBe(true);
     expect(result.current.hasComparison).toBe(true);
-    expect(result.current.demLayerOptions).toEqual([{ value: 'dem-1', label: 'Pendiente' }]);
+    expect(result.current.demLayerOptions).toEqual([
+      { value: 'dem-1', label: 'Pendiente', tipo: 'slope' },
+    ]);
   });
 
   it('exposes flood_risk/drainage_need composites as raster dropdown options with a resolvable legend', () => {
@@ -112,9 +114,9 @@ describe('useMapDerivedState', () => {
     const options = result.current.demLayerOptions;
     // Composites are no longer excluded — they surface as selectable options.
     expect(options).toEqual([
-      { value: 'dem-1', label: 'Elevacion (DEM)' },
-      { value: 'flood-1', label: 'Riesgo de Inundacion' },
-      { value: 'drain-1', label: 'Necesidad de Drenaje' },
+      { value: 'dem-1', label: 'Elevación (DEM)', tipo: 'dem_raw' },
+      { value: 'flood-1', label: 'Riesgo de Inundación', tipo: 'flood_risk' },
+      { value: 'drain-1', label: 'Necesidad de Drenaje', tipo: 'drainage_need' },
     ]);
     // Their legend config resolves so RasterLegend renders once selected.
     expect(LAYER_LEGEND_CONFIG.flood_risk).toBeDefined();

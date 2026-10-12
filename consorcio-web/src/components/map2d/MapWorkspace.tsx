@@ -29,9 +29,8 @@ export const MOBILE_DRAWER_SIZE = '75%';
  * sidebar fijo de 300-360px sobre un canvas de ~306px de alto, y el reflow
  * apaisado terminaba flotando la top bar ENCIMA de la cabecera del sidebar (con
  * el panel colapsado, el boton de expandir quedaba tapado del todo y el panel
- * era irrecuperable). 30.0625em = 481px deja del lado escritorio a las tablets y
- * a cualquier laptop (768px de alto y para arriba), y manda al telefono acostado
- * al burger + Drawer, que es la forma correcta ahi.
+ * era irrecuperable). 40em = 640px (UX-15) manda notebooks bajas al drawer
+ * para no aplastar el mapa; el telefono acostado sigue en burger + Drawer.
  *
  * ── OJO: el contrato es UNIDIRECCIONAL ─────────────────────────────────────
  * `map.module.css` hardcodea el COMPLEMENTO EXACTO de este `min-width` en el
@@ -44,7 +43,7 @@ export const MOBILE_DRAWER_SIZE = '75%';
  * DESDE esta constante y lo compara contra el CSS justamente para que ese
  * cambio rompa el test en vez de quedar verde.
  */
-export const MAP_DESKTOP_MEDIA_QUERY = '(min-width: 48em) and (min-height: 30.0625em)';
+export const MAP_DESKTOP_MEDIA_QUERY = '(min-width: 48em) and (min-height: 40em)';
 
 /**
  * `true` when the 2D map shell is in desktop mode.
@@ -72,6 +71,8 @@ interface MapWorkspaceProps {
   controls: ReactNode;
   /** "N capas activas" indicator. Optional — omitted hides the badge. */
   activeLayerCount?: number;
+  /** UX-06: polite status for layer load failures. */
+  liveMessage?: string;
 }
 
 /**
@@ -94,7 +95,7 @@ interface MapWorkspaceProps {
  *
  * React Compiler is active → no manual `useMemo`/`useCallback`.
  */
-export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspaceProps) {
+export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }: MapWorkspaceProps) {
   // ONE source of truth for the breakpoint — see `useMapWorkspaceDesktop` above
   // (the query, its height condition and the `getInitialValueInEffect` rationale
   // all live there). `MapaMapLibre` consumes the SAME hook to decide whether to
@@ -141,6 +142,9 @@ export function MapWorkspace({ canvas, controls, activeLayerCount }: MapWorkspac
       <Box className={styles.workspaceCanvas} data-testid="map-workspace-canvas">
         {canvas}
       </Box>
+      <div className={styles.visuallyHidden} role="status" aria-live="polite" data-testid="map-live-region">
+        {liveMessage ?? ''}
+      </div>
 
       {isDesktop ? (
         <Box

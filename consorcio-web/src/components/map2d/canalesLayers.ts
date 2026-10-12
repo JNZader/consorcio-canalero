@@ -50,17 +50,17 @@ export const CANALES_COLORS = {
   relevadoReadec: '#3B82F6',
   /** blue-400 — canales asociados (red receptora / interconexión). */
   relevadoAsociada: '#60A5FA',
-  // Propuestos — warm family keyed by `prioridad` (Etapa).
-  /** red-600 — Etapa 1 (Alta). */
-  propuestoAlta: '#DC2626',
-  /** orange-600 — Etapa 2 (Media-Alta). */
-  propuestoMediaAlta: '#EA580C',
-  /** yellow-600 — Etapa 3 (Media). */
-  propuestoMedia: '#CA8A04',
-  /** slate-500 — Etapa 4 (Opcional). */
-  propuestoOpcional: '#64748B',
-  /** slate-400 — Etapa 5 (Largo plazo). */
-  propuestoLargoPlazo: '#94A3B8',
+  // Propuestos — ColorBrewer YlOrRd (CART-01, safer for deutan).
+  /** YlOrRd 9 — Etapa 1 (Alta). */
+  propuestoAlta: '#B10026',
+  /** YlOrRd 7 — Etapa 2 (Media-Alta). */
+  propuestoMediaAlta: '#E31A1C',
+  /** YlOrRd 5 — Etapa 3 (Media). */
+  propuestoMedia: '#FC4E2A',
+  /** YlOrRd 3 — Etapa 4 (Opcional). */
+  propuestoOpcional: '#FD8D3C',
+  /** YlOrRd 2 — Etapa 5 (Largo plazo). */
+  propuestoLargoPlazo: '#FEB24C',
   // Outlines — darker than their fills so the 2 line families read as a
   // cohesive block even when overlapping.
   /** Shared relevado outline — blue-900. */
@@ -155,7 +155,21 @@ export function buildCanalesPropuestasPaint(): LinePaint {
       CANALES_COLORS.propuestoLargoPlazo,
       CANALES_COLORS.propuestoOpcional,
     ] as ExpressionSpecification,
-    'line-dasharray': [4, 2],
+    'line-dasharray': [
+      'match',
+      ['get', 'prioridad'],
+      'Alta',
+      ['literal', [1, 0]],
+      'Media-Alta',
+      ['literal', [4, 2]],
+      'Media',
+      ['literal', [2, 2]],
+      'Opcional',
+      ['literal', [1, 2]],
+      'Largo plazo',
+      ['literal', [1, 3]],
+      ['literal', [4, 2]],
+    ] as ExpressionSpecification,
     'line-width': 2.5,
     'line-opacity': 0.95,
   };

@@ -21,7 +21,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import type { ComponentType, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { isValidElement, useEffect, useState } from 'react';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import styles from '../../styles/components/map.module.css';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
@@ -42,7 +42,9 @@ import {
   IconSearch,
   IconSettings,
 } from '../ui/icons';
+import { RasterLegend } from '../RasterLegend';
 import { ActiveLayersSection } from './ActiveLayersSection';
+import { mergeRasterSearchOptions } from './knownRasterCatalog';
 import { LayerOrderSection } from './LayerOrderSection';
 import { LeyendaPanel, type LeyendaPanelProps } from './LeyendaPanel';
 import { getActiveAttributions } from './layerAttributions';
@@ -119,6 +121,7 @@ export type { CanalToggleEntry };
 interface SelectItem {
   value: string;
   label: string;
+  tipo?: string;
 }
 
 interface LayerControlsPanelProps {
@@ -224,6 +227,14 @@ interface LayerControlsPanelProps {
    * ancestor, so there the panel's own bound is what keeps it on screen.
    */
   readonly insideScrollContainer?: boolean;
+  /** UX-02: published satellite overlay listed in En el mapa. */
+  readonly satelliteLayer?: { label: string } | null;
+  readonly onHideSatellite?: () => void;
+  /** UX-11 */
+  readonly rasterLoading?: boolean;
+  /** UX-12 */
+  readonly demLoadError?: string | null;
+  readonly onRetryDem?: () => void;
   /** UX PDF T1: 3D omits Base/raster/ajustes; gray unsupported ids. */
   readonly variant?: '2d' | '3d';
   readonly unsupportedLayerIds?: readonly string[];
@@ -232,10 +243,8 @@ interface LayerControlsPanelProps {
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
 
 /**
- * Family metadata for the layer accordion (change `rediseno-ux-mapa`). Order
- * is LOCKED: Base → Hidrografía → Territorio → Pilar Verde → Canales →
- * Análisis. Icons come from the app's Tabler wrapper (`ui/icons`) — no new
- * dependency added.
+ * Family metadata for the layer accordion. Order is Base → Hidrografía →
+ * Canales → Territorio → Pilar Verde → Análisis (UX-13: raster sits after water).
  */
 const LAYER_FAMILIES: ReadonlyArray<{
   value: LayerCategory;
@@ -248,9 +257,9 @@ const LAYER_FAMILIES: ReadonlyArray<{
     label: 'Hidrografía',
     Icon: IconDroplet,
   },
+  { value: LAYER_CATEGORY.CANALES, label: 'Canales', Icon: IconRoute },
   { value: LAYER_CATEGORY.TERRITORIO, label: 'Territorio', Icon: IconMapPin },
   { value: LAYER_CATEGORY.PILAR_VERDE, label: 'Pilar Verde', Icon: IconPlant },
-  { value: LAYER_CATEGORY.CANALES, label: 'Canales', Icon: IconRoute },
   { value: LAYER_CATEGORY.ANALISIS, label: 'Análisis', Icon: IconChartBar },
 ];
 
@@ -465,6 +474,11 @@ export function LayerControlsPanel({
   layerHealth,
   layerProvenance,
   insideScrollContainer = false,
+  satelliteLayer = null,
+  onHideSatellite,
+  rasterLoading = false,
+  demLoadError = null,
+  onRetryDem,
   variant = '2d',
   unsupportedLayerIds = [],
   legendPanelProps,
@@ -563,14 +577,22 @@ export function LayerControlsPanel({
       ? [
           {
             id: demActiveId,
-            label:
-              demOptions.find((option) => option.value === activeDemLayerId)?.label ?? 'Capa DEM',
-            legend: legendFor(demActiveId),
+            label: `${demOptions.find((option) => option.value === activeDemLayerId)?.label ?? 'Capa DEM'}${rasterLoading ? ' · cargando' : ''}`,
+            legend: (() => {
+              const tipo = demOptions.find((option) => option.value === activeDemLayerId)?.tipo;
+              if (tipo) {
+                return <RasterLegend layers={[{ tipo }]} floating={false} />;
+              }
+              return legendFor(demActiveId);
+            })(),
           },
         ]
       : []),
     ...(hazardLayerControl?.active
       ? [{ id: '__hazard', label: 'Visor de riesgos', legend: legendFor('__hazard') }]
+      : []),
+    ...(satelliteLayer
+      ? [{ id: '__satellite', label: satelliteLayer.label }]
       : []),
   ];
 
@@ -601,10 +623,11 @@ export function LayerControlsPanel({
   // Análisis raster. Search still has to find them — they were invisible when
   // scanned `layerItems` — typing "riesgo" answered "Sin resultados" about a
   // layer the map can absolutely paint. They now get their own results section.
-  const rasterSearchMatches =
-    isSearching && demEnabled
-      ? demOptions.filter((option) => normalizeSearchText(option.label).includes(normalizedQuery))
-      : [];
+  const rasterSearchMatches = isSearching
+    ? mergeRasterSearchOptions(demOptions, query).filter((option) =>
+        normalizeSearchText(option.label).includes(normalizedQuery),
+      )
+    : [];
 
   /** Activate one raster option from the search results: select it AND turn the DEM overlay on. */
   const handleRasterSearchSelect = (value: string) => {
@@ -879,9 +902,13 @@ export function LayerControlsPanel({
     rasterSearchMatches.length > 0 ||
     normalizeSearchText('análisis raster').includes(normalizedQuery) ||
     normalizedQuery.includes('dem');
-  if (!is3d && demEnabled && rasterQueryHit) {
+  if (!is3d && rasterQueryHit && (demEnabled || demLoadError || rasterSearchMatches.length > 0)) {
     const rasterOptions =
-      isSearching && rasterSearchMatches.length > 0 ? rasterSearchMatches : demOptions;
+      isSearching && rasterSearchMatches.length > 0
+        ? rasterSearchMatches
+        : demOptions.length > 0
+          ? demOptions.map((option) => ({ ...option, available: true }))
+          : mergeRasterSearchOptions(demOptions, query);
     accordionItems.push(
       <Accordion.Item key="raster" value="raster" data-testid="layer-controls-raster">
         <Accordion.Control icon={<IconChartBar size={16} />}>
@@ -890,11 +917,24 @@ export function LayerControlsPanel({
         <Accordion.Panel>
           <Switch
             size="sm"
-            label="Mostrar raster"
+            label={rasterLoading ? 'Mostrar raster (cargando…)' : 'Mostrar raster'}
             checked={showDemOverlay}
             onChange={(event) => handleDemOverlayChange(event.currentTarget.checked)}
             mb={8}
+            disabled={!demEnabled}
           />
+          {demLoadError ? (
+            <Group gap={6} mb={8}>
+              <Text size="xs" c="red">
+                {demLoadError}
+              </Text>
+              {onRetryDem ? (
+                <Button size="compact-xs" variant="light" onClick={() => onRetryDem()}>
+                  Reintentar
+                </Button>
+              ) : null}
+            </Group>
+          ) : null}
           <Radio.Group
             aria-label="Tipo de capa raster"
             value={showDemOverlay ? (activeDemLayerId ?? '') : ''}
@@ -907,14 +947,18 @@ export function LayerControlsPanel({
             }}
           >
             <Stack gap={4}>
-              {rasterOptions.map((option) => (
-                <Radio
-                  key={option.value}
-                  value={option.value}
-                  label={option.label}
-                  data-testid={`raster-search-option-${option.value}`}
-                />
-              ))}
+              {rasterOptions.map((option) => {
+                const available = 'available' in option ? option.available !== false : true;
+                return (
+                  <Radio
+                    key={option.value}
+                    value={option.value}
+                    disabled={!available}
+                    label={available ? option.label : `${option.label} (no disponible)`}
+                    data-testid={`raster-search-option-${option.value}`}
+                  />
+                );
+              })}
               <Text size="xs" c="dimmed">
                 Una capa raster por vez.
               </Text>
@@ -935,6 +979,20 @@ export function LayerControlsPanel({
         </Accordion.Panel>
       </Accordion.Item>
     );
+    const rasterIdx = accordionItems.findIndex(
+      (node) => isValidElement(node) && node.key === 'raster',
+    );
+    const hidroIdx = accordionItems.findIndex(
+      (node) => isValidElement(node) && node.key === LAYER_CATEGORY.HIDROGRAFIA,
+    );
+    if (rasterIdx >= 0 && hidroIdx >= 0 && rasterIdx !== hidroIdx + 1) {
+      const [rasterNode] = accordionItems.splice(rasterIdx, 1);
+      const insertAt =
+        accordionItems.findIndex(
+          (node) => isValidElement(node) && node.key === LAYER_CATEGORY.HIDROGRAFIA,
+        ) + 1;
+      accordionItems.splice(insertAt, 0, rasterNode);
+    }
   }
 
   const showAjustes =
@@ -1065,6 +1123,10 @@ export function LayerControlsPanel({
             hazardLayerControl?.onActiveChange(false);
             return;
           }
+          if (id === '__satellite') {
+            onHideSatellite?.();
+            return;
+          }
           onLayerVisibilityChange(id, false);
         }}
         onClearAll={() => {
@@ -1072,6 +1134,7 @@ export function LayerControlsPanel({
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
           hazardLayerControl?.onActiveChange(false);
+          onHideSatellite?.();
         }}
         onRestore={() => {
           restoreCatalogDefaults('map2d');
