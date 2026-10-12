@@ -13,7 +13,7 @@
  * `draw.create` events via the mock `map.on` registry.
  */
 
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Feature, LineString, Polygon } from 'geojson';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -163,7 +163,7 @@ describe('useMeasurement', () => {
     expect(drawInstances).toHaveLength(0);
   });
 
-  it('does NOT create a draw instance on mount — only on startDistance/startArea (lazy)', () => {
+  it('does NOT create a draw instance on mount — only on startDistance/startArea (lazy)', async () => {
     const { map } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
@@ -175,41 +175,39 @@ describe('useMeasurement', () => {
     expect(map.addControl).not.toHaveBeenCalled();
 
     act(() => result.current.startDistance());
-
-    expect(drawInstances).toHaveLength(1);
+    await waitFor(() => expect(drawInstances).toHaveLength(1));
     expect(map.addControl).toHaveBeenCalledTimes(1);
   });
 
-  it('startDistance() switches draw into draw_line_string and mode into measuring-distance', () => {
+  it('startDistance() switches draw into draw_line_string and mode into measuring-distance', async () => {
     const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startDistance());
-
-    expect(drawChangeMode).toHaveBeenCalledWith('draw_line_string');
+    await waitFor(() => expect(drawChangeMode).toHaveBeenCalledWith('draw_line_string'));
     expect(result.current.state.mode).toBe('measuring-distance');
     expect(canvas.style.cursor).toBe('crosshair');
   });
 
-  it('startArea() switches draw into draw_polygon and mode into measuring-area', () => {
+  it('startArea() switches draw into draw_polygon and mode into measuring-area', async () => {
     const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startArea());
-
-    expect(drawChangeMode).toHaveBeenCalledWith('draw_polygon');
+    await waitFor(() => expect(drawChangeMode).toHaveBeenCalledWith('draw_polygon'));
     expect(result.current.state.mode).toBe('measuring-area');
     expect(canvas.style.cursor).toBe('crosshair');
   });
 
-  it('records a distance entry and returns to idle (no auto-restart of next shape)', () => {
+  it('records a distance entry and returns to idle (no auto-restart of next shape)', async () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startDistance());
+    await waitFor(() => expect(handlers.get('draw.create')?.[0]).toBeTruthy());
 
     const createHandler = handlers.get('draw.create')?.[0];
     expect(createHandler).toBeTruthy();
@@ -238,12 +236,13 @@ describe('useMeasurement', () => {
     expect(isMeasurementIdentifyBlocked()).toBe(true);
   });
 
-  it('records an area entry and returns to idle (no auto-restart of next shape)', () => {
+  it('records an area entry and returns to idle (no auto-restart of next shape)', async () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startArea());
+    await waitFor(() => expect(handlers.get('draw.create')?.[0]).toBeTruthy());
 
     const createHandler = handlers.get('draw.create')?.[0];
     expect(createHandler).toBeTruthy();
@@ -261,24 +260,26 @@ describe('useMeasurement', () => {
     expect(drawChangeMode).not.toHaveBeenCalled();
   });
 
-  it('assigns stable ids from the draw feature id (no randomness in the pipeline)', () => {
+  it('assigns stable ids from the draw feature id (no randomness in the pipeline)', async () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startDistance());
+    await waitFor(() => expect(handlers.get('draw.create')?.[0]).toBeTruthy());
     const createHandler = handlers.get('draw.create')?.[0];
     act(() => createHandler?.({ features: [buildLineFeature()] }));
 
     expect(result.current.state.measurements[0].id).toBe('line-1');
   });
 
-  it('clear() empties the measurements list and ensures the slot is released', () => {
+  it('clear() empties the measurements list and ensures the slot is released', async () => {
     const { map, handlers, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startDistance());
+    await waitFor(() => expect(handlers.get('draw.create')?.[0]).toBeTruthy());
     const createHandler = handlers.get('draw.create')?.[0];
     act(() => createHandler?.({ features: [buildLineFeature()] }));
     expect(result.current.state.measurements).toHaveLength(1);
@@ -299,15 +300,15 @@ describe('useMeasurement', () => {
     expect(canvas.style.cursor).toBe('');
   });
 
-  it('clear() while still drawing tears the draw down explicitly', () => {
+  it('clear() while still drawing tears the draw down explicitly', async () => {
     const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     // Start a measurement but DO NOT complete it — draw is mounted, no entry yet.
     act(() => result.current.startDistance());
+    await waitFor(() => expect(map.addControl).toHaveBeenCalledTimes(1));
     expect(result.current.state.measurements).toEqual([]);
-    expect(map.addControl).toHaveBeenCalledTimes(1);
 
     map.removeControl.mockClear();
     act(() => result.current.clear());
@@ -318,12 +319,13 @@ describe('useMeasurement', () => {
     expect(canvas.style.cursor).toBe('');
   });
 
-  it('cancel() tears the draw down WITHOUT appending a measurement', () => {
+  it('cancel() tears the draw down WITHOUT appending a measurement', async () => {
     const { map, canvas } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result } = renderHook(() => useMeasurement(map as any));
 
     act(() => result.current.startDistance());
+    await waitFor(() => expect(map.addControl).toHaveBeenCalledTimes(1));
     expect(result.current.state.mode).toBe('measuring-distance');
 
     map.removeControl.mockClear();
@@ -336,14 +338,14 @@ describe('useMeasurement', () => {
     expect(canvas.style.cursor).toBe('');
   });
 
-  it('removes the draw control on unmount and cleans up event listeners', () => {
+  it('removes the draw control on unmount and cleans up event listeners', async () => {
     const { map, handlers } = createMapMock();
     // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
     const { result, unmount } = renderHook(() => useMeasurement(map as any));
 
     // Lazy mount: trigger startDistance so the draw + listeners actually exist
     act(() => result.current.startDistance());
-    expect(handlers.get('draw.create')?.length ?? 0).toBeGreaterThan(0);
+    await waitFor(() => expect(handlers.get('draw.create')?.length ?? 0).toBeGreaterThan(0));
 
     unmount();
 
