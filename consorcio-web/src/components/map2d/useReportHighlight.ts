@@ -25,6 +25,8 @@ interface ReportHighlight {
 }
 
 const DEFAULT_HIGHLIGHT_ZOOM = 15;
+/** A11Y-08: honour prefers-reduced-motion (MapLibre essential:true ignores it). */
+export const REPORT_FLY_ESSENTIAL = false;
 
 function parseFiniteFloat(value: string | null): number | null {
   if (value === null) return null;
@@ -75,7 +77,7 @@ export function useReportHighlight({ mapRef, mapReady }: UseReportHighlightParam
     map.flyTo({
       center: [highlight.lng, highlight.lat],
       zoom: highlight.zoom,
-      essential: true,
+      essential: REPORT_FLY_ESSENTIAL,
     });
 
     // Custom DOM element — Mantine's Image / popup body is overkill here.

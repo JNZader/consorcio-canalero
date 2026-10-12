@@ -27,6 +27,7 @@ import { TerrainExaggerationControls } from './TerrainExaggerationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 import { TerrainOrientationControls } from './TerrainOrientationControls';
+import mapStyles from '../../styles/components/map.module.css';
 import { exaggerationCanvasLabel } from './terrainExaggeration';
 import { heavy3dLoadLines, heavy3dWarning } from './terrainHeavyLayers';
 import {
@@ -207,8 +208,8 @@ export function TerrainViewer3DChrome({
     soilError,
   });
   return (
-    <>
-      <Group justify="space-between" align="flex-end">
+    <Box className={mapStyles.terrainChromeRoot}>
+      <Group className={mapStyles.terrainChromeHeader} justify="space-between" align="flex-end">
         <Title order={5}>Vista 3D del Terreno</Title>
         <Group gap="xs" align="center">
           <Checkbox
@@ -433,6 +434,6 @@ export function TerrainViewer3DChrome({
           </Stack>
         }
       />
-    </>
+    </Box>
   );
 }

@@ -56,9 +56,10 @@ export function serializeMapPermalink(
     else params.set(key, value);
   };
 
-  setOrDelete('lat', next.lat !== undefined ? next.lat.toFixed(5) : undefined);
-  setOrDelete('lng', next.lng !== undefined ? next.lng.toFixed(5) : undefined);
-  setOrDelete('zoom', next.zoom !== undefined ? next.zoom.toFixed(2) : undefined);
+  // UX-03: camera lives in `#v=`. Drop leftover query camera keys.
+  params.delete('lat');
+  params.delete('lng');
+  params.delete('zoom');
   setOrDelete('preset', next.preset);
 
   if (next.layers === undefined) {

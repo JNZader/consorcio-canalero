@@ -1,7 +1,7 @@
-import { ActionIcon, Button, Group, Stack, Text } from '@mantine/core';
+import { ActionIcon, Button, Group, Slider, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
 
-import { IconX } from '../ui/icons';
+import { IconEye, IconEyeOff, IconX } from '../ui/icons';
 
 export interface ActiveLayerRow {
   id: string;
@@ -14,17 +14,18 @@ interface ActiveLayersSectionProps {
   readonly onRemove: (id: string) => void;
   readonly onClearAll: () => void;
   readonly onRestore: () => void;
+  /** UX-08: opacity multiplier 0..1. Absent = 1. */
+  readonly opacityByLayer?: Record<string, number>;
+  readonly onLayerOpacityChange?: (layerId: string, multiplier: number) => void;
 }
 
-/**
- * Short list of layers currently on the map (UX PDF R2a).
- * Catalog search / accordion stay below as "Agregar capas".
- */
 export function ActiveLayersSection({
   rows,
   onRemove,
   onClearAll,
   onRestore,
+  opacityByLayer = {},
+  onLayerOpacityChange,
 }: ActiveLayersSectionProps) {
   return (
     <Stack gap={4} data-testid="map-active-layers">
@@ -54,30 +55,57 @@ export function ActiveLayersSection({
         </Text>
       ) : (
         <Stack gap={2}>
-          {rows.map((row) => (
-            <Stack key={row.id} gap={2}>
-              <Group justify="space-between" wrap="nowrap" gap={6}>
-                <Text size="xs" lineClamp={1} style={{ flex: 1 }}>
-                  {row.label}
-                </Text>
-                <ActionIcon
-                  size="md"
-                  variant="subtle"
-                  color="gray"
-                  aria-label={`Quitar ${row.label}`}
-                  data-testid={`map-active-remove-${row.id}`}
-                  onClick={() => onRemove(row.id)}
-                >
-                  <IconX size={12} />
-                </ActionIcon>
-              </Group>
-              {row.legend ? (
-                <Stack gap={2} pl="xs">
-                  {row.legend}
-                </Stack>
-              ) : null}
-            </Stack>
-          ))}
+          {rows.map((row) => {
+            const opacity = opacityByLayer[row.id] ?? 1;
+            return (
+              <Stack key={row.id} gap={2}>
+                <Group justify="space-between" wrap="nowrap" gap={6}>
+                  <Text size="xs" lineClamp={1} style={{ flex: 1 }}>
+                    {row.label}
+                  </Text>
+                  {onLayerOpacityChange ? (
+                    <ActionIcon
+                      size="md"
+                      variant="subtle"
+                      color="gray"
+                      aria-label={opacity === 0 ? `Mostrar ${row.label}` : `Atenuar ${row.label}`}
+                      data-testid={`map-active-eye-${row.id}`}
+                      onClick={() => onLayerOpacityChange(row.id, opacity === 0 ? 1 : 0)}
+                    >
+                      {opacity === 0 ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+                    </ActionIcon>
+                  ) : null}
+                  <ActionIcon
+                    size="md"
+                    variant="subtle"
+                    color="gray"
+                    aria-label={`Quitar ${row.label}`}
+                    data-testid={`map-active-remove-${row.id}`}
+                    onClick={() => onRemove(row.id)}
+                  >
+                    <IconX size={12} />
+                  </ActionIcon>
+                </Group>
+                {onLayerOpacityChange ? (
+                  <Slider
+                    size="xs"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={opacity}
+                    aria-label={`Opacidad ${row.label}`}
+                    data-testid={`map-active-opacity-${row.id}`}
+                    onChange={(value) => onLayerOpacityChange(row.id, value)}
+                  />
+                ) : null}
+                {row.legend ? (
+                  <Stack gap={2} pl="xs">
+                    {row.legend}
+                  </Stack>
+                ) : null}
+              </Stack>
+            );
+          })}
         </Stack>
       )}
     </Stack>

@@ -5,6 +5,7 @@ import {
   MAP2D_CATALOG_VECTOR_IDS,
   useMapLayerSyncStore,
 } from '../../stores/mapLayerSyncStore';
+import { shouldApplyQueryCamera } from './mapCameraShare';
 import { parseMapPermalink, serializeMapPermalink } from './mapPermalink';
 import type { MapPresetId } from './mapPresets';
 
@@ -87,12 +88,13 @@ export function useMapPermalink({
     const map = mapRef.current;
     if (!map) return;
     cameraAppliedRef.current = true;
+    if (!shouldApplyQueryCamera(window.location.search, window.location.hash)) return;
     const parsed = parseMapPermalink(window.location.search);
     if (parsed.lat === undefined || parsed.lng === undefined) return;
     map.flyTo({
       center: [parsed.lng, parsed.lat],
       zoom: parsed.zoom ?? map.getZoom(),
-      essential: true,
+      essential: false,
     });
   }, [mapReady, mapRef]);
 
@@ -109,13 +111,9 @@ export function useMapPermalink({
       const rasterTipo = showDemOverlay
         ? demLayers.find((item) => item.id === activeDemLayerId)?.tipo
         : undefined;
-      const center = map.getCenter();
       const next = serializeMapPermalink(
         window.location.search,
         {
-          lat: center.lat,
-          lng: center.lng,
-          zoom: map.getZoom(),
           preset: preset && preset !== 'custom' ? preset : undefined,
           layers: preset && preset !== 'custom' ? undefined : layers,
           rasterTipo,

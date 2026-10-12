@@ -75,6 +75,8 @@ import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
 import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
+import { MapCursorReadout } from './map2d/MapCursorReadout';
+import { requestMapGeolocate } from './map2d/mapGeolocate';
 import { MapPlacesControl } from './map2d/MapPlacesControl';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
@@ -1316,6 +1318,7 @@ export default function MapaMapLibre() {
               onExportKmz={handleExportKmz}
               onExportMenuOpen={handleExportIntent}
               placesControl={
+                <>
                 <MapPlacesControl
                   onRecenter={() => {
                     setQuickPlace(null);
@@ -1341,7 +1344,12 @@ export default function MapaMapLibre() {
                       duration: 800,
                     });
                   }}
+                  onGeolocate={() => {
+                    requestMapGeolocate(mapRef.current);
+                  }}
                 />
+                <MapCursorReadout map={mapRef.current} mapReady={mapReady} />
+                </>
               }
               showLegend={showLegend}
               consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}

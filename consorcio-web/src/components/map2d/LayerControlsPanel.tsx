@@ -1146,6 +1146,8 @@ export function LayerControlsPanel({
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
         }}
+        opacityByLayer={layerFineControl.opacityByLayer}
+        onLayerOpacityChange={layerFineControl.onLayerOpacityChange}
       />
 
       <Paper

@@ -257,9 +257,9 @@ export function useMapLayerEffects({
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
-    syncZonaLayer(map, zonaCollection);
+    syncZonaLayer(map, zonaCollection, vectorVisibility.zona !== false);
     });
-  }, [mapReady, mapRef, zonaCollection]);
+  }, [mapReady, mapRef, zonaCollection, vectorVisibility.zona]);
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
@@ -503,9 +503,9 @@ export function useMapLayerEffects({
   // so only the map identity + readiness matter.
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
-    syncYpfEstacionBombeoLayer(map);
+    syncYpfEstacionBombeoLayer(map, vectorVisibility.ypf_estacion_bombeo !== false);
     });
-  }, [mapReady, mapRef]);
+  }, [mapReady, mapRef, vectorVisibility.ypf_estacion_bombeo]);
 
   // ── Per-layer opacity & order (map-redesign Fase 3) ─────────────────────
   // Read the map2d overrides. Both default to `{}` / `[]` (untouched), in

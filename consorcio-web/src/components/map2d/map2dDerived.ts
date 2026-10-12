@@ -68,7 +68,7 @@ export function buildActiveLegendItems(params: {
 
   const items: ActiveLegendItem[] = [];
 
-  if (zonaCollection && zonaCollection.features.length > 0) {
+  if (zonaCollection && zonaCollection.features.length > 0 && vectorVisibility.zona !== false) {
     items.push({ color: '#FF0000', label: 'Zona Consorcio', type: 'border', layerId: 'zona' });
   }
 
@@ -186,6 +186,18 @@ export function buildVectorLayerItems(params: {
   } = params;
 
   return [
+    {
+      id: 'zona',
+      label: 'Zona Consorcio',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: true,
+    },
+    {
+      id: 'ypf_estacion_bombeo',
+      label: 'YPF estación de bombeo',
+      category: LAYER_CATEGORY.TERRITORIO,
+      show: true,
+    },
     {
       id: 'basins',
       label: 'Subcuencas',

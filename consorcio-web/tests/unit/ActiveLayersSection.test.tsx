@@ -46,4 +46,24 @@ describe('ActiveLayersSection', () => {
     expect(onClearAll).toHaveBeenCalledOnce();
     expect(onRestore).toHaveBeenCalledOnce();
   });
+
+  it('exposes opacity and eye (UX-08)', async () => {
+    const user = userEvent.setup();
+    const onLayerOpacityChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <ActiveLayersSection
+          rows={[{ id: 'roads', label: 'Red Vial' }]}
+          onRemove={() => {}}
+          onClearAll={() => {}}
+          onRestore={() => {}}
+          opacityByLayer={{ roads: 1 }}
+          onLayerOpacityChange={onLayerOpacityChange}
+        />
+      </MantineProvider>,
+    );
+    await user.click(screen.getByTestId('map-active-eye-roads'));
+    expect(onLayerOpacityChange).toHaveBeenCalledWith('roads', 0);
+    expect(screen.getByTestId('map-active-opacity-roads')).toBeInTheDocument();
+  });
 });

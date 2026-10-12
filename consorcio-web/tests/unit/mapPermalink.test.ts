@@ -43,7 +43,9 @@ describe('serializeMapPermalink', () => {
     expect(params.get('preset')).toBe('caminos');
     expect(params.get('l')).toBe('roads');
     expect(params.get('r')).toBe('hand');
-    expect(params.get('lat')).toBe('-32.12346');
+    expect(params.get('lat')).toBeNull();
+    expect(params.get('lng')).toBeNull();
+    expect(params.get('zoom')).toBeNull();
   });
 
   it('encodes all-off layers as l=none', () => {

@@ -35,4 +35,15 @@ describe('MapPlacesControl', () => {
     expect(screen.getByText('San Marcos Sud')).toBeInTheDocument();
     expect(screen.getByText('Monte Leña')).toBeInTheDocument();
   });
+
+  it('offers Ubicarme when geolocate is wired', async () => {
+    const user = userEvent.setup();
+    const onGeolocate = vi.fn();
+    wrap(
+      <MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} onGeolocate={onGeolocate} />,
+    );
+    expect(screen.queryByTestId('map-geolocate')).toBeInTheDocument();
+    await user.click(screen.getByTestId('map-geolocate'));
+    expect(onGeolocate).toHaveBeenCalledOnce();
+  });
 });

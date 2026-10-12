@@ -130,6 +130,8 @@ describe('migrateMapLayerState — v3 → v4', () => {
       puntos_interes: false,
       red_vial_oficial: false,
       caminos_huecos: false,
+      zona: true,
+      ypf_estacion_bombeo: true,
     });
     expect(migrated.map3d?.visibleVectors).toEqual({
       roads: true,
@@ -140,6 +142,8 @@ describe('migrateMapLayerState — v3 → v4', () => {
       puntos_interes: false,
       red_vial_oficial: false,
       caminos_huecos: false,
+      zona: true,
+      ypf_estacion_bombeo: true,
     });
     // Other persisted fields untouched.
     expect(migrated.map2d?.activeRasterType).toBe('dem');
@@ -260,6 +264,8 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       puntos_interes: false,
       red_vial_oficial: false,
       caminos_huecos: false,
+      zona: true,
+      ypf_estacion_bombeo: true,
     });
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
@@ -429,6 +435,20 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       puntos_interes: false,
       red_vial_oficial: false,
       caminos_huecos: false,
+    });
+  });
+
+  it('v12 → v13 seeds zona and YPF on (UX-09)', () => {
+    const v12 = {
+      map2d: {
+        visibleVectors: { roads: true, zona: false },
+      },
+    };
+    const migrated = migrateMapLayerState(v12, 12);
+    expect(migrated.map2d?.visibleVectors).toMatchObject({
+      roads: true,
+      zona: true,
+      ypf_estacion_bombeo: true,
     });
   });
 });
