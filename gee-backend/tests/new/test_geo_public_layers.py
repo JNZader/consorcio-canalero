@@ -3,9 +3,10 @@
 The endpoint is the ONLY gate deciding which DEM-pipeline layers an
 anonymous visitor can discover. Production publishes ``dem_raw``,
 ``terrain_class`` (clasificación del terreno, pedido del consorcio
-2026-07-30) and the ``flood_risk`` / ``drainage_need`` composites
-(overlays de riesgo/drenaje del mapa de la ficha, 2026-08-01); every
-other terrain product stays behind login.
+2026-07-30), the ``flood_risk`` / ``drainage_need`` composites
+(overlays de riesgo/drenaje del mapa de la ficha, 2026-08-01),
+``precip_normal``, and ``hand`` (UX-12, 2026-10-12); every other
+terrain product stays behind login.
 
 These tests pin that policy with the review flag explicitly OFF, so a
 developer with ``PUBLIC_MAP_LAYER_EVAL`` exported in their shell still
@@ -120,6 +121,7 @@ def test_public_layers_expose_published_production_set(
         "flood_risk",
         "drainage_need",
         "precip_normal",
+        "hand",
     }
 
 
@@ -130,7 +132,6 @@ def test_public_layers_hide_non_published_types(client: TestClient, seeded_layer
     # flood_risk/drainage_need YA NO son privados (publicados 2026-08-01); el
     # resto de los productos intermedios del pipeline sigue detras de login.
     privados = {
-        "hand",
         "twi",
         "flow_acc",
         "flow_dir",
@@ -140,13 +141,10 @@ def test_public_layers_hide_non_published_types(client: TestClient, seeded_layer
     assert not (tipos & privados), f"tipos privados expuestos: {tipos & privados}"
 
 
-def test_public_layers_tipo_filter_rejects_private_type(
-    client: TestClient, seeded_layers: None
-) -> None:
+def test_public_layers_tipo_filter_narrows_to_hand(client: TestClient, seeded_layers: None) -> None:
     resp = client.get(ENDPOINT, params={"tipo": "hand"})
     assert resp.status_code == 200, resp.text
-    assert resp.json()["items"] == []
-    assert resp.json()["total"] == 0
+    assert _tipos(resp) == {"hand"}
 
 
 def test_public_layers_tipo_filter_narrows_to_terrain_class(

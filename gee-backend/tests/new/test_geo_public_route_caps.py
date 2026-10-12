@@ -427,7 +427,7 @@ def test_tile_proxy_validates_before_hiding_unpublished_layers(cliente, db) -> N
     hidden_ids = [
         missing_id,
         _seed_tile_layer(db, "precip_normal", "manual"),
-        _seed_tile_layer(db, "hand", "dem_pipeline"),
+        _seed_tile_layer(db, "twi", "dem_pipeline"),
         _seed_tile_layer(db, "dem_raw", "gee"),
         _seed_tile_layer(db, "precip_normal", "dem_pipeline"),
     ]
