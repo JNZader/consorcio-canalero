@@ -33,8 +33,13 @@ export function ActiveLayersSection({
           En el mapa ({rows.length})
         </Text>
         <Group gap={4} wrap="nowrap">
-          <Button size="compact-xs" variant="subtle" data-testid="map-active-restore" onClick={onRestore}>
-            Restablecer
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            data-testid="map-active-restore"
+            onClick={onRestore}
+          >
+            Volver a lo predeterminado
           </Button>
           <Button
             size="compact-xs"
@@ -71,7 +76,11 @@ export function ActiveLayersSection({
                   <IconX size={12} />
                 </ActionIcon>
               </Group>
-              {row.legend ? <Stack gap={2} pl="xs">{row.legend}</Stack> : null}
+              {row.legend ? (
+                <Stack gap={2} pl="xs">
+                  {row.legend}
+                </Stack>
+              ) : null}
             </Stack>
           ))}
         </Stack>

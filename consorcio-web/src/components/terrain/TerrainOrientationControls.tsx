@@ -20,6 +20,9 @@ export function TerrainOrientationControls({
       <Text size="xs" c="dimmed">
         Cámara:
       </Text>
+      <Text size="xs" c="dimmed">
+        Atajos con el mapa enfocado: <kbd>N</kbd> norte · <kbd>U</kbd> cenital · <kbd>R</kbd> reset
+      </Text>
       <Tooltip label="Norte arriba (N)" withArrow>
         <Button size="compact-xs" variant="default" onClick={onNorth}>
           Norte

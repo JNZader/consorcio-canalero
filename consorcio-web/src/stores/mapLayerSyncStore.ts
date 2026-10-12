@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-
-import { type EtapaGate, passesEtapaFilter } from '../components/shared/canalesGrouping';
 import { getMapPreset, type MapPresetId } from '../components/map2d/mapPresets';
+import { type EtapaGate, passesEtapaFilter } from '../components/shared/canalesGrouping';
 import { ALL_ETAPAS, type Etapa, type IndexFile } from '../types/canales';
 
 export interface SharedMapLayerState {
@@ -52,6 +51,8 @@ interface SharedMapLayerActions {
   hideAllCatalogLayers: (view: MapViewKey) => void;
   /** Restore catalog vectors to first-load defaults. */
   restoreCatalogDefaults: (view: MapViewKey) => void;
+  /** Undo the last applyPreset for this view (UX-26). */
+  undoCatalogPreset: (view: MapViewKey) => void;
 }
 
 /**
@@ -228,6 +229,8 @@ interface MapLayerSyncStoreState {
   initializedViews: Record<MapViewKey, boolean>;
   /** Not persisted. Null until the user picks a chip. */
   presetByView: Record<MapViewKey, ActiveMapPresetId>;
+  /** Catalog snapshot taken just before applyPreset. Not persisted. */
+  catalogUndoByView: Record<MapViewKey, Record<string, boolean> | null>;
   /**
    * Cached per-canal → prioridad lookup built at `registerPilarAzul` time.
    * Keys are the stable slugs from `index.json` (NOT the `canal_propuesto_*`
@@ -528,6 +531,7 @@ export const useMapLayerSyncStore = create<
       map3d: DEFAULT_MAP3D_LAYER_STATE,
       initializedViews: { map2d: false, map3d: false },
       presetByView: { map2d: null, map3d: null },
+      catalogUndoByView: { map2d: null, map3d: null },
       canalesPropuestasPrioridad: {},
       propuestasEtapasVisibility: { ...PROPUESTAS_ETAPAS_DEFAULTS },
       // Smoothing arranca ON: a 200× de exageración los picos de árboles y
@@ -541,7 +545,9 @@ export const useMapLayerSyncStore = create<
           const preset = getMapPreset(presetId);
           const on = new Set(preset.visibleOn);
           const nextVectors = { ...state[view].visibleVectors };
+          const undo: Record<string, boolean> = {};
           for (const id of MAP2D_CATALOG_VECTOR_IDS) {
+            undo[id] = nextVectors[id] ?? false;
             nextVectors[id] = on.has(id);
           }
           return {
@@ -551,6 +557,7 @@ export const useMapLayerSyncStore = create<
             },
             initializedViews: { ...state.initializedViews, [view]: true },
             presetByView: { ...state.presetByView, [view]: presetId },
+            catalogUndoByView: { ...state.catalogUndoByView, [view]: undo },
           };
         }),
       hideAllCatalogLayers: (view) =>
@@ -581,6 +588,21 @@ export const useMapLayerSyncStore = create<
             },
             initializedViews: { ...state.initializedViews, [view]: true },
             presetByView: { ...state.presetByView, [view]: null },
+            catalogUndoByView: { ...state.catalogUndoByView, [view]: null },
+          };
+        }),
+      undoCatalogPreset: (view) =>
+        set((state) => {
+          const undo = state.catalogUndoByView[view];
+          if (!undo) return state;
+          const nextVectors = { ...state[view].visibleVectors, ...undo };
+          return {
+            [view]: {
+              ...state[view],
+              visibleVectors: nextVectors,
+            },
+            presetByView: { ...state.presetByView, [view]: 'custom' },
+            catalogUndoByView: { ...state.catalogUndoByView, [view]: null },
           };
         }),
       setActiveRasterType: (view, tipo) =>
@@ -827,10 +849,10 @@ export const useMapLayerSyncStore = create<
   )
 );
 
+export type { Etapa };
 // Re-export Etapa + ALL_ETAPAS here too so consumers can import them from the
 // store if they don't want a second import from `types/canales`.
 export { ALL_ETAPAS };
-export type { Etapa };
 
 /**
  * The etapas filter as ONE value, for `passesEtapaFilter` / `collectCanalChildIds`.

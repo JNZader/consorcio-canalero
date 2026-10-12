@@ -501,19 +501,22 @@ export const InfoPanel = memo(function InfoPanel({
               <Text size="xs" c="dimmed">
                 {resolved.length} elementos aquí:
               </Text>
-              {identifyChips.map((chip) => (
-                <Badge
-                  key={chip.key}
-                  variant={chip.indices.includes(focusedIdx ?? -1) ? 'filled' : 'light'}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    const first = chip.indices[0];
-                    setFocusedIdx((current) => (current === first ? null : first));
-                  }}
-                >
-                  {chip.label}
-                </Badge>
-              ))}
+              {identifyChips.map((chip) => {
+                const first = chip.indices[0];
+                const pressed = chip.indices.includes(focusedIdx ?? -1);
+                return (
+                  <UnstyledButton
+                    key={chip.key}
+                    type="button"
+                    aria-pressed={pressed}
+                    onClick={() => {
+                      setFocusedIdx((current) => (current === first ? null : first));
+                    }}
+                  >
+                    <Badge variant={pressed ? 'filled' : 'light'}>{chip.label}</Badge>
+                  </UnstyledButton>
+                );
+              })}
             </Group>
           )}
         </Stack>

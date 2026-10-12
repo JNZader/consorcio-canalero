@@ -14,26 +14,25 @@ import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import { InfoPanel } from '../map2d/InfoPanel';
+import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
+import { MapWorkspace } from '../map2d/MapWorkspace';
+import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import {
   type CanalToggleEntry,
   collectCanalChildIds,
   type EtapaGate,
 } from '../shared/canalesGrouping';
-
-import { InfoPanel } from '../map2d/InfoPanel';
-import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
-import { MapWorkspace } from '../map2d/MapWorkspace';
-import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import { TerrainExaggerationControls } from './TerrainExaggerationControls';
-import { TerrainOrientationControls } from './TerrainOrientationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
+import { TerrainLegendsPanel } from './TerrainLegendsPanel';
+import { TerrainOrientationControls } from './TerrainOrientationControls';
 import { exaggerationCanvasLabel } from './terrainExaggeration';
 import { heavy3dLoadLines, heavy3dWarning } from './terrainHeavyLayers';
-import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 import {
-  UNSUPPORTED_3D_VECTOR_LAYERS,
   buildTerrain3DLayerItems,
   buildTerrainLayerControlItems,
+  UNSUPPORTED_3D_VECTOR_LAYERS,
 } from './terrainLayerConfig';
 
 interface SelectedImageOption {

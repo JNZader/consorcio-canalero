@@ -9,7 +9,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -88,7 +88,7 @@ describe('<LayerControlsPanel /> — family accordion', () => {
     expect(screen.getByLabelText(/tipo de capa raster/i)).toBeInTheDocument();
   });
 
-  it('selects the first DEM layer before enabling the overlay when none is active', () => {
+  it('selects the first DEM layer before enabling the overlay when none is active', async () => {
     const onShowDemOverlayChange = vi.fn();
     const onActiveDemLayerIdChange = vi.fn();
 
@@ -105,7 +105,9 @@ describe('<LayerControlsPanel /> — family accordion', () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('Todas las capas de Análisis raster'));
+    fireEvent.click(screen.getByRole('button', { name: /Análisis raster/i }));
+    const rasterLabel = await waitFor(() => screen.getByText('Mostrar raster'));
+    fireEvent.click(rasterLabel);
 
     expect(onActiveDemLayerIdChange).toHaveBeenCalledWith('dem-1');
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);

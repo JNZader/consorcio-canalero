@@ -20,8 +20,8 @@ import { useCanales } from '../../hooks/useCanales';
 import { useCatastroMap } from '../../hooks/useCatastroMap';
 import { useConflictos } from '../../hooks/useConflictos';
 import { useGEELayers } from '../../hooks/useGEELayers';
-import { type GeoLayerInfo, buildTileUrl, useGeoLayers } from '../../hooks/useGeoLayers';
-import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
+import { buildTileUrl, type GeoLayerInfo, useGeoLayers } from '../../hooks/useGeoLayers';
+import { getMartinTileUrl, MARTIN_SOURCES } from '../../hooks/useMartinLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
 import { getSelectedImageSync, useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useSoilMap } from '../../hooks/useSoilMap';
@@ -30,23 +30,21 @@ import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
+import { terrainCameraShortcutFromEvent } from './terrainCameraShortcuts';
 import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
-import {
-  resolveTerrainStartPitch,
-  TERRAIN_DEFAULT_EXAGGERATION,
-} from './terrainExaggeration';
+import { resolveTerrainStartPitch, TERRAIN_DEFAULT_EXAGGERATION } from './terrainExaggeration';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
-import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
-  TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
-  type TerrainVectorLayerVisibility,
   buildCuencasCollection,
   buildSoilCollection,
   buildWaterwaysCollection,
+  TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
+  type TerrainVectorLayerVisibility,
 } from './terrainViewer3DUtils';
 import { useTerrainCanalesEffects } from './useTerrainCanalesEffects';
 import { useTerrainHoverTooltip } from './useTerrainHoverTooltip';
@@ -644,9 +642,9 @@ export default function TerrainViewer3D({
       // levels.
     });
 
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
-    map.addControl(new maplibregl.FullscreenControl(), 'top-left');
+    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
     map.on('load', () => {
       applyTerrainDepthCues(map);
@@ -892,33 +890,21 @@ export default function TerrainViewer3D({
   const handleNorth = useCallback(() => easeCamera({ bearing: 0 }), [easeCamera]);
   const handleNadir = useCallback(() => easeCamera({ pitch: 0 }), [easeCamera]);
   const handleOblique = useCallback(() => easeCamera({ pitch: 60 }), [easeCamera]);
-  const handleLookWest = useCallback(
-    () => easeCamera({ bearing: 90, pitch: 60 }),
-    [easeCamera],
-  );
-  const handleResetView = useCallback(
-    () => easeCamera({ bearing: 0, pitch: 0 }),
-    [easeCamera],
-  );
+  const handleLookWest = useCallback(() => easeCamera({ bearing: 90, pitch: 60 }), [easeCamera]);
+  const handleResetView = useCallback(() => easeCamera({ bearing: 0, pitch: 0 }), [easeCamera]);
 
   useEffect(() => {
     if (!ready) return;
+    const node = mapContainer.current;
+    if (!node) return;
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement
-      ) {
-        return;
-      }
-      const key = event.key.toLowerCase();
-      if (key === 'n') handleNorth();
-      if (key === 'u') handleNadir();
-      if (key === 'r') handleResetView();
+      const shortcut = terrainCameraShortcutFromEvent(event);
+      if (shortcut === 'n') handleNorth();
+      if (shortcut === 'u') handleNadir();
+      if (shortcut === 'r') handleResetView();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    node.addEventListener('keydown', onKey);
+    return () => node.removeEventListener('keydown', onKey);
   }, [handleNadir, handleNorth, handleResetView, ready]);
 
   if (!demLayerId) {
