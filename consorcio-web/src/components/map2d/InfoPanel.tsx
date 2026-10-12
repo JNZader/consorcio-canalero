@@ -478,7 +478,7 @@ export const InfoPanel = memo(function InfoPanel({
                   {tramosOpen ? 'Ocultar tramos' : `Ver tramos 1–${resolved.length}`}
                 </Text>
               </UnstyledButton>
-              <Collapse opened={tramosOpen}>
+              <Collapse expanded={tramosOpen}>
                 <Stack gap={2}>
                   {tramoRows.map((row) => (
                     <UnstyledButton
