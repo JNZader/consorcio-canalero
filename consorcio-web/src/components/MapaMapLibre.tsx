@@ -26,7 +26,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // would have to keep a GeoJSON twin alive for the export path.
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
-import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_QUICK_PLACES } from '../constants';
+import {
+  MAP_BOUNDS,
+  MAP_CENTER,
+  MAP_DEFAULT_ZOOM,
+  MAP_HOME_FIT_PADDING,
+  MAP_QUICK_PLACES,
+} from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
@@ -114,6 +120,7 @@ import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
 import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
+import { type QuickPlacePin, useQuickPlaceMarker } from './map2d/useQuickPlaceMarker';
 import type { ProfileRangeStats } from './map2d/profileRange';
 import { useReportHighlight } from './map2d/useReportHighlight';
 import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
@@ -194,6 +201,7 @@ export default function MapaMapLibre() {
     lat: number;
   } | null>(null);
   const [elevationProfileRange, setElevationProfileRange] = useState<ProfileRangeStats | null>(null);
+  const [quickPlace, setQuickPlace] = useState<QuickPlacePin | null>(null);
   useEffect(() => {
     setElevationProfileHover(null);
     setElevationProfileRange(null);
@@ -922,6 +930,7 @@ export default function MapaMapLibre() {
   // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
   // marker is auto-popped and the user can close it.
   useReportHighlight({ mapRef, mapReady });
+  useQuickPlaceMarker({ mapRef, mapReady, place: quickPlace });
   useElevationProfileCursor({
     mapRef,
     mapReady,
@@ -1282,17 +1291,23 @@ export default function MapaMapLibre() {
               placesControl={
                 <MapPlacesControl
                   onRecenter={() => {
+                    setQuickPlace(null);
                     mapRef.current?.fitBounds(
                       [
                         [MAP_BOUNDS.west, MAP_BOUNDS.south],
                         [MAP_BOUNDS.east, MAP_BOUNDS.north],
                       ],
-                      { padding: 48, duration: 800 },
+                      { padding: MAP_HOME_FIT_PADDING, duration: 800 },
                     );
                   }}
                   onFlyToPlace={(placeId) => {
                     const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
                     if (!place) return;
+                    setQuickPlace({
+                      label: place.label,
+                      lng: place.center[0],
+                      lat: place.center[1],
+                    });
                     mapRef.current?.flyTo({
                       center: place.center,
                       zoom: place.zoom,

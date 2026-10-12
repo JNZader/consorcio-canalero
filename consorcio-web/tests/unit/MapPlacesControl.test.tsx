@@ -27,4 +27,12 @@ describe('MapPlacesControl', () => {
     await user.click(screen.getByText('Bell Ville'));
     expect(onFlyToPlace).toHaveBeenCalledWith('bell-ville');
   });
+
+  it('lists San Marcos Sud and Monte Leña', async () => {
+    const user = userEvent.setup();
+    wrap(<MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} />);
+    await user.click(screen.getByTestId('map-quick-places'));
+    expect(screen.getByText('San Marcos Sud')).toBeInTheDocument();
+    expect(screen.getByText('Monte Leña')).toBeInTheDocument();
+  });
 });

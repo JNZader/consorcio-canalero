@@ -8,6 +8,7 @@ import {
   pickPrimaryTramo,
 } from './mergeAdditiveFeatures';
 import { isMeasurementIdentifyBlocked } from './measurement/measurementIdentifyGuard';
+import { identifyHitBbox, identifyHitRadiusPx, pointerIsCoarse } from './identifyHit';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
@@ -304,13 +305,9 @@ export function useMapInteractionEffects({
         return;
       }
 
-      // ±6 px: the painted road is 2 px; a point query misses it. Same
-      // pattern as the 3D viewer (`useTerrainInteractionEffects`).
+      // Fine ±6 px; coarse ±10 px (UX-24). Same idea as 3D (`useTerrainInteractionEffects`).
       const { x, y } = event.point;
-      const bbox: [[number, number], [number, number]] = [
-        [x - 6, y - 6],
-        [x + 6, y + 6],
-      ];
+      const bbox = identifyHitBbox(x, y, identifyHitRadiusPx(pointerIsCoarse()));
       const features = map.queryRenderedFeatures(bbox, {
         layers: clickableLayers.filter((id) => map.getLayer(id)),
       });

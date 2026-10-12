@@ -95,6 +95,30 @@ describe('<InfoPanel /> multiple features (Phase 8)', () => {
     expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
 
+  it('hides duplicate road chips and lists numbered tramos instead', async () => {
+    const user = userEvent.setup();
+    const features = Array.from({ length: 4 }, () =>
+      buildFeatureWithLayer(`${SOURCE_IDS.ROADS}-line`, {
+        rtn: 'CRN9',
+      }),
+    ).map((feature, index) => ({
+      ...feature,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: [
+          [-62.5, -32.5],
+          [-62.4 - index * 0.01, -32.5],
+        ],
+      },
+    }));
+    renderWithMantine(<InfoPanel features={features} onClose={() => {}} />);
+    expect(screen.queryByTestId('info-feature-chips')).not.toBeInTheDocument();
+    expect(screen.getByTestId('info-feature-tramos')).toBeInTheDocument();
+    await user.click(screen.getByTestId('info-feature-tramos-toggle'));
+    expect(screen.getByText(/Tramo 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Tramo 4/)).toBeInTheDocument();
+  });
+
   it('still accepts the legacy singular `feature` prop for backwards compatibility', () => {
     const feature = buildFeatureWithLayer(`${SOURCE_IDS.CATASTRO}-fill`, {
       nomenclatura: 'legacy',
