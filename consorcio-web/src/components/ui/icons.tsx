@@ -27,6 +27,7 @@ export { default as IconCircleCheck } from '@tabler/icons-react/dist/esm/icons/I
 export { default as IconClock } from '@tabler/icons-react/dist/esm/icons/IconClock.mjs';
 export { default as IconCoin } from '@tabler/icons-react/dist/esm/icons/IconCoin.mjs';
 export { default as IconCreditCard } from '@tabler/icons-react/dist/esm/icons/IconCreditCard.mjs';
+export { default as IconCurrentLocation } from '@tabler/icons-react/dist/esm/icons/IconCurrentLocation.mjs';
 export { default as IconDownload } from '@tabler/icons-react/dist/esm/icons/IconDownload.mjs';
 export { default as IconDroplet } from '@tabler/icons-react/dist/esm/icons/IconDroplet.mjs';
 export { default as IconEdit } from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';

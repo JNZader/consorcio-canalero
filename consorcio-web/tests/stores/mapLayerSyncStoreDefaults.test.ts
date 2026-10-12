@@ -4,7 +4,8 @@
  * Locks in the startup-default layer visibility contract for the 2D map.
  *
  * Contract (see feat(ui): startup defaults + map-fluidity T1):
- *   - Hidrografía (`waterways`), Red Vial (`roads`) and Canales relevados start visible.
+ *   - Hidrografía (`waterways`), Red Vial (`roads`), Canales relevados,
+ *     Zona Consorcio and YPF start visible (UX-09).
  *   - Every other registered vector layer starts hidden.
  *
  * The base layer default lives in `MapaMapLibre.tsx` (component-local state),
@@ -37,6 +38,8 @@ const INITIAL_ON_VECTORS = [
   'roads',
   'waterways',
   'canales_relevados',
+  'zona',
+  'ypf_estacion_bombeo',
 ] as const;
 
 /**
@@ -45,7 +48,6 @@ const INITIAL_ON_VECTORS = [
  */
 const INITIAL_OFF_VECTORS = [
   'approved_zones',
-  'zona',
   'cuencas',
   'basins',
   'ign_historico',

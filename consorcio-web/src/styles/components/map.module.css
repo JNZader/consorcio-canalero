@@ -1692,3 +1692,27 @@
 text.precipBarLabels {
   fill: var(--mantine-color-text);
 }
+
+.terrainChromeRoot {
+  position: relative;
+}
+
+.mapCursorDock {
+  padding: 2px 6px;
+}
+
+/* MOB-04: 3D chrome overlays the canvas on phones so it does not steal height. */
+@media (pointer: coarse) and (max-width: 47.9375em) {
+  .terrainChromeHeader {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 24;
+    pointer-events: none;
+  }
+
+  .terrainChromeHeader > * {
+    pointer-events: auto;
+  }
+}

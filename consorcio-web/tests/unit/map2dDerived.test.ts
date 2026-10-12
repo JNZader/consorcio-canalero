@@ -56,6 +56,8 @@ describe('map2dDerived', () => {
       // 1:50.000 / Catastro rural IDECOR) — the source is the naming source of
       // truth. Each item now also carries a `category` (change rediseno-ux-mapa).
     ).toEqual([
+      { id: 'zona', label: 'Zona Consorcio', category: 'territorio' },
+      { id: 'ypf_estacion_bombeo', label: 'YPF estación de bombeo', category: 'territorio' },
       { id: 'basins', label: 'Subcuencas', category: 'hidrografia' },
       { id: 'waterways', label: 'Hidrografía', category: 'hidrografia' },
       { id: 'roads', label: 'Red Vial (acercate para ver nombres)', category: 'territorio' },

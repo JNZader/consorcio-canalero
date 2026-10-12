@@ -136,7 +136,8 @@ function perCanalKey(estado: 'relevado' | 'propuesto', slug: string): string {
 
 const defaultVisibleVectors: Record<string, boolean> = {
   approved_zones: false,
-  zona: false,
+  zona: true,
+  ypf_estacion_bombeo: true,
   cuencas: false,
   basins: false,
   roads: true,
@@ -519,6 +520,29 @@ export function migrateMapLayerState(
       };
     }
   }
+  if (fromVersion < 13) {
+    // UX-09: Zona and YPF were always painted. Seed ON so honoring the
+    // toggle does not hide them for returning visitors (persisted zona:false).
+    const seed = { zona: true, ypf_estacion_bombeo: true };
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: { ...next.map2d.visibleVectors, ...seed },
+        },
+      };
+    }
+    if (next.map3d) {
+      next = {
+        ...next,
+        map3d: {
+          ...next.map3d,
+          visibleVectors: { ...next.map3d.visibleVectors, ...seed },
+        },
+      };
+    }
+  }
   return next;
 }
 
@@ -808,7 +832,7 @@ export const useMapLayerSyncStore = create<
       //   v8 → v9: seed `lineWidthScale = 1` (Capas slider for canal/road width).
       //   v9 → v10: seed `red_vial_oficial = true` on map2d (staff IDECOR overlay).
       //   v10 → v11: seed `caminos_huecos = true` on map2d (OSM/IGN gap overlay).
-      version: 12,
+      version: 13,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {

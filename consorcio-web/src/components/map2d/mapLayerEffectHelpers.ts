@@ -410,7 +410,11 @@ export function syncBasinLayers(
   setLayerVisibility(map, `${SOURCE_IDS.BASINS}-line`, isVisible && !!basins);
 }
 
-export function syncZonaLayer(map: maplibregl.Map, zonaCollection: FeatureCollection | null) {
+export function syncZonaLayer(
+  map: maplibregl.Map,
+  zonaCollection: FeatureCollection | null,
+  isVisible = true,
+) {
   ensureGeoJsonSource(map, SOURCE_IDS.ZONA, zonaCollection ?? asFeatureCollection([]));
 
   if (!map.getLayer(`${SOURCE_IDS.ZONA}-line`)) {
@@ -422,7 +426,7 @@ export function syncZonaLayer(map: maplibregl.Map, zonaCollection: FeatureCollec
     });
   }
 
-  setLayerVisibility(map, `${SOURCE_IDS.ZONA}-line`, !!zonaCollection);
+  setLayerVisibility(map, `${SOURCE_IDS.ZONA}-line`, isVisible && !!zonaCollection);
 }
 
 export function syncApprovedZoneLayers(
@@ -1079,7 +1083,7 @@ export function syncCaminosHuecosLayers(
 /*      re-running the effect is safe.                                        */
 /* -------------------------------------------------------------------------- */
 
-export function syncYpfEstacionBombeoLayer(map: maplibregl.Map): void {
+export function syncYpfEstacionBombeoLayer(map: maplibregl.Map, isVisible = true): void {
   // ── Source (idempotent) ──
   ensureGeoJsonSource(
     map,
@@ -1097,5 +1101,5 @@ export function syncYpfEstacionBombeoLayer(map: maplibregl.Map): void {
     });
   }
 
-  // No visibility toggle — the layer is always-on by design.
+  setLayerVisibility(map, YPF_ESTACION_BOMBEO_LAYER_ID, isVisible);
 }
