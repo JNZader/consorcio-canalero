@@ -15,15 +15,16 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   Text,
   TextInput,
   Tooltip,
 } from '@mantine/core';
 import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-
-import { CanalesLayerSection } from '../shared/CanalesLayerSection';
+import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import styles from '../../styles/components/map.module.css';
+import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import {
   type CanalToggleEntry,
   collectCanalChildIds,
@@ -42,19 +43,19 @@ import {
   IconSettings,
 } from '../ui/icons';
 import { ActiveLayersSection } from './ActiveLayersSection';
-import { LeyendaPanel, type LeyendaPanelProps } from './LeyendaPanel';
-import { MapPresetChips } from './MapPresetChips';
-import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { LayerOrderSection } from './LayerOrderSection';
+import { LeyendaPanel, type LeyendaPanelProps } from './LeyendaPanel';
 import { getActiveAttributions } from './layerAttributions';
 import { buildHealthBannerText, type LayerHealth } from './layerHealth';
 import { RENDERABLE_UI_LAYER_IDS } from './layerRenderRegistry';
+import { MapPresetChips } from './MapPresetChips';
 import {
   buildFamilyActiveCounts,
   LAYER_CATEGORY,
   type LayerCategory,
   normalizeSearchText,
 } from './map2dDerived';
+import { pickPresetRasterId } from './mapPresets';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
 
@@ -270,9 +271,7 @@ const BASE_SEARCH_LABELS = [
   'visor de riesgos',
 ].map(normalizeSearchText);
 
-const AJUSTES_SEARCH_LABELS = ['ajustes', 'etiquetas', 'grosor', 'líneas'].map(
-  normalizeSearchText
-);
+const AJUSTES_SEARCH_LABELS = ['ajustes', 'etiquetas', 'grosor', 'líneas'].map(normalizeSearchText);
 
 /**
  * Filter canal entries by label for the search box (FF2). A `leaf` matches on
@@ -326,7 +325,7 @@ function LayerOpacityControl({
         label={(value) => `${value}%`}
         thumbLabel={`Opacidad de ${label}`}
       />
-      <Text size="9px" c="dimmed" w={28} ta="right">
+      <Text size="xs" c="dimmed" w={28} ta="right">
         {percent}%
       </Text>
       <Tooltip label="Restablecer opacidad" withArrow>
@@ -783,7 +782,10 @@ export function LayerControlsPanel({
         value={family.value}
         data-testid={`layer-family-${family.value}`}
       >
-        <Accordion.Control icon={<Icon size={16} />} data-testid={`layer-family-${family.value}-control`}>
+        <Accordion.Control
+          icon={<Icon size={16} />}
+          data-testid={`layer-family-${family.value}-control`}
+        >
           <Group gap={6} wrap="nowrap" style={{ flex: 1 }}>
             <FamilyControlLabel label={family.label} count={familyActiveCount} />
             {showPilarVerdeSpinner && <Loader size={12} data-testid="pilar-verde-layers-loading" />}
@@ -878,24 +880,21 @@ export function LayerControlsPanel({
     normalizeSearchText('análisis raster').includes(normalizedQuery) ||
     normalizedQuery.includes('dem');
   if (!is3d && demEnabled && rasterQueryHit) {
-    const rasterOptions = isSearching && rasterSearchMatches.length > 0 ? rasterSearchMatches : demOptions;
+    const rasterOptions =
+      isSearching && rasterSearchMatches.length > 0 ? rasterSearchMatches : demOptions;
     accordionItems.push(
       <Accordion.Item key="raster" value="raster" data-testid="layer-controls-raster">
         <Accordion.Control icon={<IconChartBar size={16} />}>
-          <Group gap={6} wrap="nowrap">
-            <Checkbox
-              aria-label="Todas las capas de Análisis raster"
-              checked={showDemOverlay}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) => {
-                event.stopPropagation();
-                handleDemOverlayChange(event.currentTarget.checked);
-              }}
-            />
-            <FamilyControlLabel label="Análisis raster" count={showDemOverlay ? 1 : 0} />
-          </Group>
+          <FamilyControlLabel label="Análisis raster" count={showDemOverlay ? 1 : 0} />
         </Accordion.Control>
         <Accordion.Panel>
+          <Switch
+            size="sm"
+            label="Mostrar raster"
+            checked={showDemOverlay}
+            onChange={(event) => handleDemOverlayChange(event.currentTarget.checked)}
+            mb={8}
+          />
           <Radio.Group
             aria-label="Tipo de capa raster"
             value={showDemOverlay ? (activeDemLayerId ?? '') : ''}
@@ -916,7 +915,7 @@ export function LayerControlsPanel({
                   data-testid={`raster-search-option-${option.value}`}
                 />
               ))}
-              <Text size="9px" c="dimmed">
+              <Text size="xs" c="dimmed">
                 Una capa raster por vez.
               </Text>
               {showDemOverlay && onRasterCompare && demOptions.length > 1 && (
@@ -962,7 +961,7 @@ export function LayerControlsPanel({
                 label={(value) => `${value}%`}
                 thumbLabel="Tamaño de etiquetas del mapa"
               />
-              <Text size="9px" c="dimmed" w={36} ta="right">
+              <Text size="xs" c="dimmed" w={36} ta="right">
                 {Math.round(layerFineControl.labelSizeScale * 100)}%
               </Text>
               <Tooltip label="Restablecer tamaño" withArrow>
@@ -992,7 +991,7 @@ export function LayerControlsPanel({
                 label={(value) => `${value}%`}
                 thumbLabel="Grosor de líneas del mapa"
               />
-              <Text size="9px" c="dimmed" w={36} ta="right">
+              <Text size="xs" c="dimmed" w={36} ta="right">
                 {Math.round(layerFineControl.lineWidthScale * 100)}%
               </Text>
               <Tooltip label="Restablecer grosor" withArrow>
@@ -1042,7 +1041,14 @@ export function LayerControlsPanel({
     >
       {viewModePanel}
 
-      <MapPresetChips />
+      <MapPresetChips
+        onApplyRaster={(presetId) => {
+          const rasterId = pickPresetRasterId(presetId, demOptions);
+          if (!rasterId) return;
+          onActiveDemLayerIdChange(rasterId);
+          onShowDemOverlayChange(true);
+        }}
+      />
 
       <ActiveLayersSection
         rows={activeLayerRows}
@@ -1123,7 +1129,7 @@ export function LayerControlsPanel({
                   ? [...LAYER_FAMILIES.map((family) => family.value), 'raster', 'ajustes']
                   : [
                       ...LAYER_FAMILIES.filter(
-                        (family) => familyActiveCounts[family.value] > 0,
+                        (family) => familyActiveCounts[family.value] > 0
                       ).map((family) => family.value),
                       ...(showDemOverlay ? (['raster'] as const) : []),
                     ]
@@ -1171,7 +1177,13 @@ export function LayerControlsPanel({
                   hiddenIds={
                     layerItems.some((item) => item.id === 'road_flow')
                       ? undefined
-                      : ['road_flow', 'sentido_camino', 'puntos_interes', 'red_vial_oficial', 'caminos_huecos']
+                      : [
+                          'road_flow',
+                          'sentido_camino',
+                          'puntos_interes',
+                          'red_vial_oficial',
+                          'caminos_huecos',
+                        ]
                   }
                 />
               </CollapsibleSection>

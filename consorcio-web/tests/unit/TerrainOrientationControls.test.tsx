@@ -38,4 +38,20 @@ describe('TerrainOrientationControls', () => {
     expect(onLookWest).toHaveBeenCalledOnce();
     expect(onReset).toHaveBeenCalledOnce();
   });
+
+  it('documents n/u/r shortcuts for the focused map', () => {
+    wrap(
+      <TerrainOrientationControls
+        onNorth={() => {}}
+        onNadir={() => {}}
+        onOblique={() => {}}
+        onLookWest={() => {}}
+        onReset={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Atajos con el mapa enfocado/)).toBeInTheDocument();
+    expect(screen.getByText('N')).toBeInTheDocument();
+    expect(screen.getByText('U')).toBeInTheDocument();
+    expect(screen.getByText('R')).toBeInTheDocument();
+  });
 });

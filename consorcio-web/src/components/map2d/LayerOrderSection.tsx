@@ -18,10 +18,10 @@
  */
 
 import {
+  closestCenter,
   DndContext,
   type DragEndEvent,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -201,11 +201,7 @@ function SortableLayerRow({ id, label, active }: SortableLayerRowProps) {
         {label}
       </Text>
       {!active && (
-        <Text
-          size="9px"
-          c="dimmed"
-          title="Capa oculta — se muestra para mantener el orden completo"
-        >
+        <Text size="xs" c="dimmed" title="Capa oculta — se muestra para mantener el orden completo">
           oculta
         </Text>
       )}
@@ -297,7 +293,7 @@ export function LayerOrderSection({
           {resetButton}
         </Tooltip>
       </Group>
-      <Text size="9px" c="dimmed" mb={6}>
+      <Text size="xs" c="dimmed" mb={6}>
         Arrastrá para reordenar. Arriba = se dibuja encima.
       </Text>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

@@ -51,6 +51,15 @@ describe('mapLayerSyncStore applyPreset', () => {
     expect(useMapLayerSyncStore.getState().presetByView.map2d).toBeNull();
   });
 
+  it('undoes applyPreset back to the previous catalog snapshot', () => {
+    useMapLayerSyncStore.getState().applyPreset('map2d', 'agua');
+    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(false);
+    useMapLayerSyncStore.getState().undoCatalogPreset('map2d');
+    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(true);
+    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.catastro).toBe(true);
+    expect(useMapLayerSyncStore.getState().catalogUndoByView.map2d).toBeNull();
+  });
+
   it('marks Personalizado after a manual toggle', () => {
     useMapLayerSyncStore.getState().applyPreset('map2d', 'caminos');
     useMapLayerSyncStore.getState().setVectorVisibility('map2d', 'catastro', true);

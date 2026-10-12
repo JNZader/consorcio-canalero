@@ -1,4 +1,14 @@
-import { Box, Checkbox, ColorSwatch, Divider, Group, Paper, Stack, Text } from '@mantine/core';
+import {
+  Box,
+  Checkbox,
+  ColorSwatch,
+  Divider,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  UnstyledButton,
+} from '@mantine/core';
 import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import styles from '../../styles/components/map.module.css';
@@ -392,20 +402,23 @@ export const LeyendaPanel = memo(function LeyendaPanel({
           {consorcios.length > 0 && match('roads') && (
             <>
               <Divider my={4} />
-              <Group
-                gap="xs"
-                style={{ cursor: 'pointer' }}
+              <UnstyledButton
+                type="button"
                 onClick={() => setShowConsorcios(!showConsorcios)}
+                aria-expanded={showConsorcios}
+                aria-controls="leyenda-consorcios"
               >
-                <Text fw={600} size="xs" c="dimmed">
-                  Red Vial ({consorcios.length} consorcios)
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {showConsorcios ? '▼' : '►'}
-                </Text>
-              </Group>
+                <Group gap="xs">
+                  <Text fw={600} size="xs" c="dimmed">
+                    Red Vial ({consorcios.length} consorcios)
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {showConsorcios ? '▼' : '►'}
+                  </Text>
+                </Group>
+              </UnstyledButton>
               {showConsorcios && (
-                <Stack gap={2} pl="xs">
+                <Stack gap={2} pl="xs" id="leyenda-consorcios">
                   {consorcios.map((consorcio) => (
                     <Group key={consorcio.codigo} gap="xs" wrap="nowrap">
                       <Box

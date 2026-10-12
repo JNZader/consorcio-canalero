@@ -132,7 +132,7 @@ function SurveyAction({
   if (!onSurvey) return null;
   return (
     <Button
-      size="compact-xs"
+      size="xs"
       variant="light"
       data-testid={`road-flow-relevar-${tramoRef}`}
       aria-label={`Relevar el tramo ${tramoRef}`}

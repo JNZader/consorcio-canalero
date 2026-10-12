@@ -23,7 +23,9 @@ describe('TerrainExaggerationControls', () => {
         max={200}
       />,
     );
-    await user.click(screen.getByRole('button', { name: '×20' }));
+    const twenty = screen.getByRole('button', { name: '×20' });
+    expect(twenty).toHaveAttribute('aria-pressed', 'false');
+    await user.click(twenty);
     expect(onChange).toHaveBeenCalledWith(20);
   });
 
@@ -47,5 +49,13 @@ describe('TerrainExaggerationControls', () => {
 describe('exaggerationCanvasLabel', () => {
   it('names the live multiplier on the canvas', () => {
     expect(exaggerationCanvasLabel(200)).toBe('Relieve exagerado ×200');
+  });
+
+  it('marks the active preset as pressed (A11Y-06)', () => {
+    wrap(
+      <TerrainExaggerationControls value={20} onChange={() => {}} min={1} max={200} />,
+    );
+    expect(screen.getByRole('button', { name: '×20' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '×1' })).toHaveAttribute('aria-pressed', 'false');
   });
 });

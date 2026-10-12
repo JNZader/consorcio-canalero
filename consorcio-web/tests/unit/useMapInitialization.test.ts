@@ -19,8 +19,8 @@ import type { RefObject } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  MAP_LOCALE_ES,
   isCoarsePointerDevice,
+  MAP_LOCALE_ES,
   useMapInitialization,
 } from '../../src/components/map2d/useMapInitialization';
 
@@ -133,12 +133,9 @@ describe('useMapInitialization — cooperative gestures', () => {
 
     // Keys are the canonical MapLibre locale ids — a typo here silently leaves
     // the English default in place, so pin them explicitly.
-    expect(capturedOptions[0]?.locale).toEqual({
-      'CooperativeGesturesHandler.WindowsHelpText': 'Usá Ctrl + desplazamiento para hacer zoom',
-      'CooperativeGesturesHandler.MacHelpText': 'Usá ⌘ + desplazamiento para hacer zoom',
-      'CooperativeGesturesHandler.MobileHelpText': 'Usá dos dedos para mover el mapa',
-    });
     expect(capturedOptions[0]?.locale).toEqual({ ...MAP_LOCALE_ES });
+    expect(capturedOptions[0]?.locale?.['NavigationControl.ZoomIn']).toBe('Acercar');
+    expect(capturedOptions[0]?.locale?.['FullscreenControl.Enter']).toBe('Pantalla completa');
   });
 
   it('falls back to fine-pointer behaviour when matchMedia is unavailable', () => {
@@ -206,13 +203,7 @@ describe('useMapInitialization — live camera does not rebuild the map', () => 
     const setMapReady = () => {};
 
     const { rerender } = renderHook(
-      ({
-        centerLat,
-        zoom,
-      }: {
-        centerLat: number;
-        zoom: number;
-      }) =>
+      ({ centerLat, zoom }: { centerLat: number; zoom: number }) =>
         useMapInitialization({
           maplibre,
           containerRef,
@@ -222,7 +213,7 @@ describe('useMapInitialization — live camera does not rebuild the map', () => 
           mapRef,
           setMapReady,
         }),
-      { initialProps: { centerLat: -32.5, zoom: 10 } },
+      { initialProps: { centerLat: -32.5, zoom: 10 } }
     );
 
     rerender({ centerLat: -32.50001, zoom: 10.02 });

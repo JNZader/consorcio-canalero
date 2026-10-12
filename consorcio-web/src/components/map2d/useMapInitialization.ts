@@ -3,7 +3,10 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { logger } from '../../lib/logger';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
+import { MAP_LOCALE_ES } from './mapLibreLocale';
 import { MAP_GLYPHS_URL } from './roadLabelLayer';
+
+export { MAP_LOCALE_ES } from './mapLibreLocale';
 
 interface UseMapInitializationParams {
   maplibre: typeof maplibregl;
@@ -75,17 +78,6 @@ export function isCoarsePointerDevice(): boolean {
     return false;
   }
 }
-
-/**
- * Spanish copy for MapLibre's cooperative-gestures hint overlay. Keys are the
- * canonical MapLibre locale ids (see `CooperativeGesturesHandler.*HelpText` in
- * the installed `maplibre-gl` typings) — the library ships English-only text.
- */
-export const MAP_LOCALE_ES = {
-  'CooperativeGesturesHandler.WindowsHelpText': 'Usá Ctrl + desplazamiento para hacer zoom',
-  'CooperativeGesturesHandler.MacHelpText': 'Usá ⌘ + desplazamiento para hacer zoom',
-  'CooperativeGesturesHandler.MobileHelpText': 'Usá dos dedos para mover el mapa',
-} as const;
 
 export function useMapInitialization({
   maplibre,

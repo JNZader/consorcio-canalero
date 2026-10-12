@@ -14,7 +14,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { Suspense, lazy, useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
@@ -171,7 +171,7 @@ export function MapaContent() {
                         label={
                           demRawLayer
                             ? 'Vista 3D del terreno (MapLibre)'
-                            : 'Sin capa DEM disponible — ejecuta el pipeline primero'
+                            : 'Sin capa DEM — ejecutá el pipeline de terreno primero'
                         }
                         position="bottom"
                         withArrow
