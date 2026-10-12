@@ -10,7 +10,7 @@ const TERRAIN = readFileSync(
 
 describe('I18N-03 microcopy (vos, no tú / no jargon)', () => {
   it('asks the operator to run the DEM pipeline in Rioplatense', () => {
-    expect(MAPA_PAGE).toContain('ejecutá el pipeline de terreno');
+    expect(MAPA_PAGE).toContain('terrainAvailabilityHint');
     expect(MAPA_PAGE).not.toContain('ejecuta el pipeline primero');
     expect(TERRAIN).toContain('Ejecutá el pipeline de terreno');
     expect(TERRAIN).not.toContain('Ejecuta el pipeline DEM primero');

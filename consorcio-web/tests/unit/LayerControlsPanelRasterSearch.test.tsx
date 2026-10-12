@@ -81,12 +81,17 @@ describe('<LayerControlsPanel /> — raster search (T3c fix 2)', () => {
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);
   });
 
-  it('shows no raster section when the DEM overlay is unavailable', () => {
-    renderWithMantine(<LayerControlsPanel {...baseProps({ demEnabled: false })} />);
+  it('keeps the known raster catalog when the DEM overlay failed to load (UX-12)', () => {
+    renderWithMantine(
+      <LayerControlsPanel {...baseProps({ demEnabled: false, demOptions: [] })} />,
+    );
 
     search('riesgo');
 
-    expect(screen.queryByTestId('layer-controls-raster')).toBeNull();
+    expect(screen.getByTestId('layer-controls-raster')).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', { name: /Riesgo de Inundación \(no disponible\)/ }),
+    ).toBeDisabled();
   });
 
   it('keeps the raster family collapsed outside of a search', () => {

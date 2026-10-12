@@ -68,7 +68,7 @@ describe('map2dDerived', () => {
       buildDemLayerOptions([{ id: 'dem-1', tipo: 'slope', nombre: 'Pendiente cruda' }], {
         slope: 'Pendiente',
       })
-    ).toEqual([{ value: 'dem-1', label: 'Pendiente' }]);
+    ).toEqual([{ value: 'dem-1', label: 'Pendiente', tipo: 'slope' }]);
   });
 
   it('usa el label de la capa (con sufijo de variante), no el tipo', () => {
@@ -105,7 +105,7 @@ describe('map2dDerived', () => {
   it('cae al label por tipo cuando la capa no trae label propio', () => {
     expect(
       buildDemLayerOptions([{ id: 'x', tipo: 'twi', nombre: 'twi_z' }], { twi: 'TWI' })
-    ).toEqual([{ value: 'x', label: 'TWI' }]);
+    ).toEqual([{ value: 'x', label: 'TWI', tipo: 'twi' }]);
   });
 
   it('assigns every layer item a valid family category', () => {

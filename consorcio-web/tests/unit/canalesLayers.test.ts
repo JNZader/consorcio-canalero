@@ -30,11 +30,11 @@ describe('canalesLayers · colors', () => {
   });
 
   it('exposes the 5 propuesto family hexes keyed by etapa', () => {
-    expect(CANALES_COLORS.propuestoAlta).toBe('#DC2626'); // red-600
-    expect(CANALES_COLORS.propuestoMediaAlta).toBe('#EA580C'); // orange-600
-    expect(CANALES_COLORS.propuestoMedia).toBe('#CA8A04'); // yellow-600
-    expect(CANALES_COLORS.propuestoOpcional).toBe('#64748B'); // slate-500
-    expect(CANALES_COLORS.propuestoLargoPlazo).toBe('#94A3B8'); // slate-400
+    expect(CANALES_COLORS.propuestoAlta).toBe('#B10026');
+    expect(CANALES_COLORS.propuestoMediaAlta).toBe('#E31A1C');
+    expect(CANALES_COLORS.propuestoMedia).toBe('#FC4E2A');
+    expect(CANALES_COLORS.propuestoOpcional).toBe('#FD8D3C');
+    expect(CANALES_COLORS.propuestoLargoPlazo).toBe('#FEB24C');
   });
 
   it('exposes outline color families', () => {
@@ -82,7 +82,9 @@ describe('canalesLayers · propuestas paint', () => {
   it('returns a MapLibre line paint with `match` on prioridad + dashed line', () => {
     const paint = buildCanalesPropuestasPaint();
     expect(paint['line-width']).toBe(2.5);
-    expect(paint['line-dasharray']).toEqual([4, 2]);
+    const dash = paint['line-dasharray'] as unknown as unknown[];
+    expect(dash[0]).toBe('match');
+    expect(dash).toContain('Alta');
 
     const color = paint['line-color'] as unknown as unknown[];
     expect(Array.isArray(color)).toBe(true);

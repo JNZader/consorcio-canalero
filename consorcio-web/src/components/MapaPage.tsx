@@ -23,6 +23,10 @@ import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
+import {
+  resolveTerrainAvailability,
+  terrainAvailabilityHint,
+} from './map2d/terrainAvailability';
 import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
 
 // Lazy-load TerrainViewer3D (MapLibre terrain, not deck.gl).
@@ -46,8 +50,19 @@ export function MapaContent() {
   const selectedImage = useSelectedImageListener();
 
   // DEM layers — find the dem_raw layer for 3D terrain
-  const { layers: demLayers } = useGeoLayers();
+  const {
+    layers: demLayers,
+    loading: demLoading,
+    error: demError,
+    reload: reloadDem,
+  } = useGeoLayers();
   const demRawLayer = demLayers.find((l) => l.tipo === 'dem_raw');
+  const terrainStatus = resolveTerrainAvailability({
+    loading: demLoading,
+    error: demError,
+    hasDemRaw: !!demRawLayer,
+  });
+  const terrainHint = terrainAvailabilityHint(terrainStatus);
 
   // 2D/3D view toggle
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('2d');
@@ -145,46 +160,49 @@ export function MapaContent() {
               )}
             </Group>
 
-            <Group gap="sm">
-              {/* 2D / 3D toggle */}
-              <SegmentedControl
-                size="sm"
-                value={mapViewMode}
-                onChange={(value) => setMapViewMode(value as MapViewMode)}
-                data={[
-                  {
-                    value: '2d',
-                    label: (
-                      <Tooltip label="Mapa 2D (MapLibre)" position="bottom" withArrow>
-                        <Group gap={4}>
-                          <IconMap size={16} />
-                          <Text size="xs">2D</Text>
-                        </Group>
-                      </Tooltip>
-                    ),
-                  },
-                  {
-                    value: '3d',
-                    disabled: !demRawLayer,
-                    label: (
-                      <Tooltip
-                        label={
-                          demRawLayer
-                            ? 'Vista 3D del terreno (MapLibre)'
-                            : 'Sin capa DEM — ejecutá el pipeline de terreno primero'
-                        }
-                        position="bottom"
-                        withArrow
-                      >
-                        <Group gap={4}>
-                          <Icon3dCubeSphere size={16} />
-                          <Text size="xs">3D</Text>
-                        </Group>
-                      </Tooltip>
-                    ),
-                  },
-                ]}
-              />
+            <Group gap="sm" align="center">
+              <Tooltip label="Mapa 2D (MapLibre)" position="bottom" withArrow>
+                <Box>
+                  <SegmentedControl
+                    size="sm"
+                    value={mapViewMode}
+                    onChange={(value) => setMapViewMode(value as MapViewMode)}
+                    data={[
+                      {
+                        value: '2d',
+                        label: (
+                          <Group gap={4}>
+                            <IconMap size={16} />
+                            <Text size="xs">2D</Text>
+                          </Group>
+                        ),
+                      },
+                      {
+                        value: '3d',
+                        disabled: terrainStatus !== 'ready',
+                        label: (
+                          <Group gap={4}>
+                            <Icon3dCubeSphere size={16} />
+                            <Text size="xs">3D</Text>
+                          </Group>
+                        ),
+                      },
+                    ]}
+                  />
+                </Box>
+              </Tooltip>
+              {terrainStatus !== 'ready' && (
+                <Group gap={6} wrap="nowrap">
+                  <Text size="xs" c="dimmed" data-testid="map-3d-status">
+                    {terrainHint}
+                  </Text>
+                  {terrainStatus === 'error' && (
+                    <Button size="compact-xs" variant="light" onClick={() => void reloadDem()}>
+                      Reintentar
+                    </Button>
+                  )}
+                </Group>
+              )}
 
               <Button
                 component="a"

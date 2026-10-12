@@ -71,18 +71,18 @@ export function enrichLayer(layer: GeoLayerInfo): GeoLayerInfo {
 
 /** Human-readable labels for layer types */
 export const GEO_LAYER_LABELS: Record<string, string> = {
-  dem_raw: 'Elevacion (DEM)',
+  dem_raw: 'Elevación (DEM)',
   slope: 'Pendiente',
-  aspect: 'Orientacion',
-  twi: 'Indice Humedad (TWI)',
+  aspect: 'Orientación',
+  twi: 'Índice Humedad (TWI)',
   hand: 'Altura sobre Drenaje (HAND)',
-  flow_acc: 'Acumulacion de Flujo',
-  flow_dir: 'Direccion de Flujo',
-  terrain_class: 'Clasificacion Terreno',
-  flood_risk: 'Riesgo de Inundacion',
+  flow_acc: 'Acumulación de Flujo',
+  flow_dir: 'Dirección de Flujo',
+  terrain_class: 'Clasificación Terreno',
+  flood_risk: 'Riesgo de Inundación',
   drainage_need: 'Necesidad de Drenaje',
   profile_curvature: 'Curvatura de Perfil',
-  tpi: 'Posicion Topografica (TPI)',
+  tpi: 'Posición Topográfica (TPI)',
 };
 
 /** Layer types that support raster tile visualization */
