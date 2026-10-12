@@ -116,6 +116,21 @@ describe('updateTileLayer', () => {
     expect(mapaSimulado.removeSource).toHaveBeenCalledWith('gee-image');
   });
 
+  it('ADM-02: quita la máscara de agua al cambiar de escena', () => {
+    const api = montar();
+    mapaSimulado.getLayer.mockImplementation((id: string) =>
+      id === 'gee-water-mask' ? ({ id } as never) : undefined
+    );
+    mapaSimulado.getSource.mockImplementation((id: string) =>
+      id === 'gee-water' ? ({ id } as never) : undefined
+    );
+
+    api.updateTileLayer(A);
+
+    expect(mapaSimulado.removeLayer).toHaveBeenCalledWith('gee-water-mask');
+    expect(mapaSimulado.removeSource).toHaveBeenCalledWith('gee-water');
+  });
+
   describe('cuando el mapa todavía está cargando tiles', () => {
     beforeEach(() => {
       mapaSimulado.isStyleLoaded.mockReturnValue(false);

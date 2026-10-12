@@ -65,6 +65,7 @@ export default function ImageExplorerPanel() {
                   { value: 'scene', label: 'Escena individual (franjas)' },
                   { value: 'composite', label: 'Relleno SLC-off' },
                 ]}
+                description="Opcional. El relleno pide hasta 5 fechas vecinas a GEE."
                 w={210}
                 size="sm"
               />

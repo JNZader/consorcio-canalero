@@ -152,6 +152,8 @@ export function useImageExplorerMap() {
     const apply = () => {
       const url = pendingTileUrlRef.current;
       if (!url) return;
+      if (map.getLayer('gee-water-mask')) map.removeLayer('gee-water-mask');
+      if (map.getSource('gee-water')) map.removeSource('gee-water');
       if (map.getLayer('gee-image-layer')) map.removeLayer('gee-image-layer');
       if (map.getSource('gee-image')) map.removeSource('gee-image');
       map.addSource('gee-image', {
