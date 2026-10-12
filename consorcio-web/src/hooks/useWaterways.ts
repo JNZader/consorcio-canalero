@@ -64,9 +64,10 @@ export const WATERWAY_DEFS = [
   },
 ] as const;
 
-export function useWaterways() {
+export function useWaterways(options: { enabled?: boolean } = {}) {
   const query = useQuery({
     queryKey: queryKeys.waterways(),
+    enabled: options.enabled ?? true,
     queryFn: async () => {
       const results = await Promise.all(
         WATERWAY_DEFS.map(async (def) => {

@@ -92,4 +92,9 @@ describe('useWaterways — canales_existentes removal (Batch 5)', () => {
     );
     expect(urls.some((u) => u.includes('canales_existentes'))).toBe(false);
   });
+
+  it('does not fetch when enabled is false', () => {
+    renderHook(() => useWaterways({ enabled: false }), { wrapper });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

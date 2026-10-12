@@ -37,6 +37,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
+import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
@@ -301,13 +302,16 @@ export default function MapaMapLibre() {
   );
 
   // ── Data hooks ────────────────────────────────────────────────────────────
+  // Roads + waterways are ON at startup but not LCP. Wait for idle so the
+  // GeoJSON fetches (and JSON.parse) stay off the first TBT window.
+  const mapVectorIdle = useDeferredIdleMount();
   const { layers: capas } = useGEELayers({ layerNames: [...GEE_LAYER_NAMES] });
   const {
     caminos,
     consorcios,
     error: caminosError,
     reload: reloadCaminos,
-  } = useCaminosColoreados();
+  } = useCaminosColoreados({ enabled: mapVectorIdle });
   const { conflictos } = useConflictos();
   // 2D paint uses `suelos_cu.pmtiles` (syncSoilLayers). The GeoJSON is only
   // for KMZ export — same latch as catastro (`exportIntent`).
@@ -315,7 +319,9 @@ export default function MapaMapLibre() {
     enabled: exportIntent,
   });
   const { basins, error: basinsError, loading: basinsLoading, reload: reloadBasins } = useBasins();
-  const { waterways, error: waterwaysError, reload: reloadWaterways } = useWaterways();
+  const { waterways, error: waterwaysError, reload: reloadWaterways } = useWaterways({
+    enabled: mapVectorIdle,
+  });
   const {
     layers: allGeoLayers,
     error: geoLayersError,
