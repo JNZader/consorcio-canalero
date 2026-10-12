@@ -23,7 +23,8 @@ import type {
 
 
 /** SDF glyph template. Font folder names must match `text-font` exactly. */
-export const MAP_GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
+/** PERF-03: production glyph host, not MapLibre demotiles. */
+export const MAP_GLYPHS_URL = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 
 /** CART-08: below MAP_DEFAULT_ZOOM (11) so names show on first load. */
 export const ROAD_LABEL_MIN_ZOOM = 10;

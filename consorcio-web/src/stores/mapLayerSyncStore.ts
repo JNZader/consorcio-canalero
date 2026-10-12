@@ -152,7 +152,6 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // Startup: only Hidrografía, Red Vial, Canales relevados. Catastro stays
   // opt-in (ficha still works when the user turns it on).
   catastro: false,
-  hydraulic_risk: false,
   puntos_conflicto: false,
   // ── Pilar Azul — Escuelas rurales (design §7) ──
   // Single master toggle, default OFF. Opt-in per spec REQ-ESC-9.
@@ -841,7 +840,6 @@ export const useMapLayerSyncStore = create<
             ...state.map2d.visibleVectors,
             // Heavy / MVT layers — always start OFF, never persist as true
             basins: false,
-            hydraulic_risk: false,
             puntos_conflicto: false,
           },
           // Per-layer opacity/order overrides (Fase 3) — persisted verbatim.
@@ -855,7 +853,6 @@ export const useMapLayerSyncStore = create<
           visibleVectors: {
             ...state.map3d.visibleVectors,
             basins: false,
-            hydraulic_risk: false,
             puntos_conflicto: false,
           },
           opacityByLayer: state.map3d.opacityByLayer,

@@ -15,6 +15,7 @@ import {
   type ImageSceneLike,
   type ImageSensor,
   isOpticalSensor,
+  l7GapfillHelp,
 } from './imageExplorerUtils';
 
 interface ImageExplorerInfoPanelsProps {
@@ -171,8 +172,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
           </SimpleGrid>
           {sensor === 'landsat7' && (
             <Text size="xs" c="orange.7" mt="sm">
-              Landsat 7 desde 2003 trae franjas SLC-off. El relleno usa hasta 3 fechas vecinas (sin
-              interpolar huecos). Si queda feo, cambiate a escena individual o a Landsat 8.
+              {l7GapfillHelp(result)}
             </Text>
           )}
         </Paper>

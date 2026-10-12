@@ -4,6 +4,8 @@ import {
   buildVisualizationOptions,
   createSelectedImageFromResult,
   explorerSceneVisualization,
+  l7GapfillHelp,
+  l7GapfillNeighborCount,
 } from '../../src/components/admin/images/imageExplorerUtils';
 
 describe('imageExplorerUtils', () => {
@@ -41,5 +43,13 @@ describe('imageExplorerUtils', () => {
     expect(result?.target_date).toBe('2026-03-01');
     expect(result?.selected_at).toBe('2026-04-09T18:00:00.000Z');
     vi.useRealTimers();
+  });
+
+  it('ADM-01: L7 fill copy follows payload image count, capped at 5 neighbors', () => {
+    expect(l7GapfillNeighborCount(null)).toBe(5);
+    expect(l7GapfillNeighborCount({ images_count: 4 } as never)).toBe(3);
+    expect(l7GapfillNeighborCount({ images_count: 12 } as never)).toBe(5);
+    expect(l7GapfillHelp({ images_count: 6 } as never)).toMatch(/hasta 5 fechas vecinas/);
+    expect(l7GapfillHelp(null)).not.toMatch(/hasta 3 fechas/);
   });
 });

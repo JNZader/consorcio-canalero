@@ -1,9 +1,17 @@
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useTerrainHoverTooltip } from '../../src/components/terrain/useTerrainHoverTooltip';
 
 describe('useTerrainHoverTooltip', () => {
+  beforeEach(() => {
+    window.matchMedia = vi.fn().mockImplementation(() => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+  });
+
   it('registers mousemove when the map is ready and Popup exists', () => {
     const on = vi.fn();
     const off = vi.fn();

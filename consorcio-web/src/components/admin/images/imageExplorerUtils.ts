@@ -87,6 +87,21 @@ export interface ImageResultLike {
   };
 }
 
+/** Backend fills L7 SLC-off from `ordered_dates[1:6]` — at most 5 neighbors. */
+export const L7_GAPFILL_MAX_NEIGHBORS = 5;
+
+export function l7GapfillNeighborCount(result: ImageResultLike | null | undefined): number {
+  if (result?.images_count != null && Number.isFinite(result.images_count)) {
+    return Math.min(L7_GAPFILL_MAX_NEIGHBORS, Math.max(0, result.images_count - 1));
+  }
+  return L7_GAPFILL_MAX_NEIGHBORS;
+}
+
+export function l7GapfillHelp(result: ImageResultLike | null | undefined): string {
+  const n = l7GapfillNeighborCount(result);
+  return `Landsat 7 desde 2003 trae franjas SLC-off. El relleno usa hasta ${n} fechas vecinas (sin interpolar huecos). Si queda feo, cambiate a escena individual o a Landsat 8.`;
+}
+
 export type ImageSceneLike = ImageResultLike & {
   id: string;
   label: string;

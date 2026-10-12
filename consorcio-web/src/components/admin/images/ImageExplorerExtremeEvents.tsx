@@ -6,11 +6,12 @@ import {
   Group,
   NativeSelect,
   Paper,
+  SegmentedControl,
   SimpleGrid,
   Text,
   Title,
 } from '@mantine/core';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { IconPhoto } from '../../ui/icons';
@@ -140,36 +141,38 @@ function WaterMaskButtons({
   delta: WaterDeltaPayload;
   onShowWaterMask?: (tileUrl: string | null) => void;
 }) {
-  const preUrl = delta.pre?.tile_url;
-  const postUrl = delta.post?.tile_url;
+  const preUrl = delta.pre?.tile_url ?? null;
+  const postUrl = delta.post?.tile_url ?? null;
+  const [slot, setSlot] = useState<'off' | 'pre' | 'post'>(postUrl ? 'post' : preUrl ? 'pre' : 'off');
+  useEffect(() => {
+    setSlot(postUrl ? 'post' : preUrl ? 'pre' : 'off');
+  }, [preUrl, postUrl]);
   if (!preUrl && !postUrl) return null;
+  const options = [
+    { value: 'off', label: 'Sin máscara' },
+    ...(preUrl ? [{ value: 'pre', label: 'Antes' }] : []),
+    ...(postUrl ? [{ value: 'post', label: 'Después' }] : []),
+  ];
   return (
     <>
-      {preUrl ? (
-        <Button
-          mt="xs"
-          size="xs"
-          fullWidth
-          variant="outline"
-          onClick={() => onShowWaterMask?.(preUrl)}
-        >
-          Ver máscara Antes
-        </Button>
-      ) : null}
-      {postUrl ? (
-        <Button
-          mt={4}
-          size="xs"
-          fullWidth
-          variant="outline"
-          onClick={() => onShowWaterMask?.(postUrl)}
-        >
-          Ver máscara Después
-        </Button>
-      ) : null}
-      <Button mt={4} size="xs" fullWidth variant="subtle" onClick={() => onShowWaterMask?.(null)}>
-        Quitar máscara
-      </Button>
+      <SegmentedControl
+        mt="xs"
+        fullWidth
+        size="xs"
+        aria-label="Máscara de agua"
+        value={slot}
+        data={options}
+        onChange={(value) => {
+          const next = value === 'pre' || value === 'post' ? value : 'off';
+          setSlot(next);
+          if (next === 'pre') onShowWaterMask?.(preUrl);
+          else if (next === 'post') onShowWaterMask?.(postUrl);
+          else onShowWaterMask?.(null);
+        }}
+      />
+      <Text size="xs" c="dimmed" mt={6}>
+        Azul = agua (MNDWI ≥ 0.1). Se apaga al cambiar de escena.
+      </Text>
     </>
   );
 }

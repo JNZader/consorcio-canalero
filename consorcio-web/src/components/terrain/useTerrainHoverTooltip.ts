@@ -1,6 +1,8 @@
 import type { Feature } from 'geojson';
 import maplibregl from 'maplibre-gl';
-import { type RefObject, useEffect } from 'react';
+import { type RefObject, useEffect, useState } from 'react';
+
+import { prefersFineHover, subscribePrefersFineHover } from '../map2d/prefersFineHover';
 
 import { featureDisplayName } from '../map2d/InfoPanel';
 import { buildClickableLayers3D, filterExistingLayers } from './terrainViewer3DUtils';
@@ -17,10 +19,11 @@ export function useTerrainHoverTooltip({
   readonly mapRef: RefObject<maplibregl.Map | null>;
   readonly ready: boolean;
 }): void {
+  const [fineHover, setFineHover] = useState(prefersFineHover);
+  useEffect(() => subscribePrefersFineHover(setFineHover), []);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-    if (typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches) return;
+    if (!map || !ready || !fineHover) return;
     if (typeof maplibregl.Popup !== 'function') return;
 
     const popup = new maplibregl.Popup({
@@ -62,5 +65,5 @@ export function useTerrainHoverTooltip({
       map.off('mouseout', onLeave);
       popup.remove();
     };
-  }, [mapRef, ready]);
+  }, [fineHover, mapRef, ready]);
 }

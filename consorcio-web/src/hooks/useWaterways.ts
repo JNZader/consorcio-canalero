@@ -99,6 +99,8 @@ export function useWaterways() {
       return loaded;
     },
     staleTime: Number.POSITIVE_INFINITY,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   return {

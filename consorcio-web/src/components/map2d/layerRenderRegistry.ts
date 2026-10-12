@@ -87,8 +87,8 @@ export interface LayerRenderEntry {
  *
  * Deliberately EXCLUDED (not user-controllable via opacity/order sliders):
  *   - `zona` (always-on GEE outline), `ign_historico` (raster overlay handled
- *     by the raster-opacity pipeline), `cuencas` / `hydraulic_risk` (not
- *     rendered as vector layers in map2d), and the `waterways_*` sub-filters
+ *     by the raster-opacity pipeline), `cuencas` (not rendered as a vector
+ *     layer in map2d), and the `waterways_*` sub-filters
  *     (internal — the parent `waterways` id owns all 5 ml layers).
  */
 export const RENDERABLE_UI_LAYER_IDS = [
