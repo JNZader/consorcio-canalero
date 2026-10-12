@@ -70,7 +70,9 @@ PUBLIC_TILE_CAPABLE_TYPES = {
 # `terrain_class` was published at the consortium's request (2026-07-30).
 # `flood_risk` and `drainage_need` are raster overlays for the parcel map
 # (2026-08-01), and `precip_normal` exposes CHIRPS 1991-2020 normals for the
-# multi-hazard viewer (2026-08-17). Other DEM pipeline types remain private.
+# multi-hazard viewer (2026-08-17). `hand` (height above nearest drainage)
+# is tile-capable already; publishing it is UX-12 (2026-10-12).
+# Other DEM pipeline types remain private.
 # Basins are served by the separate public `/geo/basins` endpoint.
 PUBLIC_PRODUCTION_LAYER_TYPES = {
     "dem_raw",
@@ -78,6 +80,7 @@ PUBLIC_PRODUCTION_LAYER_TYPES = {
     "flood_risk",
     "drainage_need",
     "precip_normal",
+    "hand",
 }
 
 
