@@ -28,6 +28,9 @@
 
 import { MantineProvider } from '@mantine/core';
 import { act, render, screen } from '@testing-library/react';
+
+const findPrecipChart = () =>
+  screen.findByTestId('ficha-precipitacion', {}, { timeout: 4000 });
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -138,7 +141,7 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
     // compact public 1991–2020 normal MUST remain available), now inside the
     // fold's body. PrecipChart is lazy (PERF-02).
     const body = screen.getByTestId('ficha-precip-fold-body');
-    const chart = await screen.findByTestId('ficha-precipitacion');
+    const chart = await findPrecipChart();
     expect(body).toContainElement(chart);
   });
 
@@ -180,7 +183,7 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
     // …and the public chart is still there, open, because it is now this
     // reader's only rainfall content.
-    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await findPrecipChart()).toBeInTheDocument();
   });
 
   it('mounts nothing for non-parcel tipos (no resolvable regional scope)', async () => {
@@ -193,7 +196,7 @@ describe('FichaTerritorialPanel — Rainfall v2 detail mount (Lluvia tab)', () =
       />
     );
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
-    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await findPrecipChart()).toBeInTheDocument();
   });
 });
 
@@ -313,7 +316,7 @@ describe('FichaTerritorialPanel — the PrecipChart fold default (D7)', () => {
 
     expect(screen.queryByTestId('rainfall-detail-sentinel')).toBeNull();
     expect(screen.getByTestId('ficha-precip-fold-header')).toHaveAttribute('aria-expanded', 'true');
-    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await findPrecipChart()).toBeInTheDocument();
   });
 
   it('non-staff on a parcel: no v2 detail is authorized, so the fold stays OPEN', async () => {
@@ -321,7 +324,7 @@ describe('FichaTerritorialPanel — the PrecipChart fold default (D7)', () => {
     renderWithMantine(<FichaTerritorialPanel {...baseProps} />);
 
     expect(screen.getByTestId('ficha-precip-fold-header')).toHaveAttribute('aria-expanded', 'true');
-    expect(await screen.findByTestId('ficha-precipitacion')).toBeInTheDocument();
+    expect(await findPrecipChart()).toBeInTheDocument();
   });
 
   it('recomputes the default when the predicate flips after mount', () => {

@@ -1,6 +1,8 @@
 import type { Feature } from 'geojson';
 import maplibregl from 'maplibre-gl';
-import { type RefObject, useEffect } from 'react';
+import { type RefObject, useEffect, useState } from 'react';
+
+import { prefersFineHover, subscribePrefersFineHover } from './prefersFineHover';
 
 import { featureDisplayName } from './InfoPanel';
 import { SOURCE_IDS } from './map2dConfig';
@@ -38,15 +40,11 @@ export function useMapHoverTooltip({
   readonly mapReady: boolean;
   readonly mode?: MapInteractionMode;
 }): void {
+  const [fineHover, setFineHover] = useState(prefersFineHover);
+  useEffect(() => subscribePrefersFineHover(setFineHover), []);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || mode !== 'idle') return;
-    if (
-      window.matchMedia('(hover: none)').matches ||
-      window.matchMedia('(pointer: coarse)').matches
-    ) {
-      return;
-    }
+    if (!map || !mapReady || mode !== 'idle' || !fineHover) return;
 
     const popup = new maplibregl.Popup({
       closeButton: false,
@@ -88,5 +86,5 @@ export function useMapHoverTooltip({
       popup.remove();
       map.getCanvas().style.cursor = '';
     };
-  }, [mapReady, mapRef, mode]);
+  }, [fineHover, mapReady, mapRef, mode]);
 }

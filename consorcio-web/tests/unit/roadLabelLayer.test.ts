@@ -35,6 +35,8 @@ describe('buildRoadLabelLayer', () => {
   it('points glyphs at a PBF template MapLibre 4.x can fetch', () => {
     expect(MAP_GLYPHS_URL).toContain('{fontstack}');
     expect(MAP_GLYPHS_URL).toContain('{range}.pbf');
+    expect(MAP_GLYPHS_URL).toContain('tiles.openfreemap.org');
+    expect(MAP_GLYPHS_URL).not.toContain('demotiles.maplibre.org');
   });
 });
 

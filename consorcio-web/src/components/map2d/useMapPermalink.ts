@@ -36,8 +36,8 @@ function applyPermalinkLayers(layers: string[] | undefined, preset: MapPresetId 
 }
 
 /**
- * Shareable `/mapa` query: camera, preset, catalog layers, raster tipo.
- * Preserves unrelated params (report lat/lng/zoom included).
+ * Shareable `/mapa` query: preset, catalog layers, raster tipo.
+ * Camera lives in `#v=` (UX-03). Report pin keys stay in query.
  */
 export function useMapPermalink({
   mapRef,

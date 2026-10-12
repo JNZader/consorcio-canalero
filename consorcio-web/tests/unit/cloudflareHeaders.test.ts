@@ -21,6 +21,7 @@ describe('Cloudflare Pages security headers', () => {
       .find((line) => line.trim().startsWith('Content-Security-Policy:'));
 
     expect(cspLine).toContain('connect-src');
-    expect(cspLine).toContain('https://demotiles.maplibre.org');
+    expect(cspLine).toContain('https://tiles.openfreemap.org');
+    expect(cspLine).not.toContain('https://demotiles.maplibre.org');
   });
 });

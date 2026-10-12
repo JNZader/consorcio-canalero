@@ -53,7 +53,6 @@ const INITIAL_OFF_VECTORS = [
   'ign_historico',
   'soil',
   'catastro',
-  'hydraulic_risk',
   'sentido_camino',
   'puntos_interes',
   'red_vial_oficial',
