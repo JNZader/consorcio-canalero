@@ -165,7 +165,7 @@ describe('Header', () => {
       </MantineProvider>
     );
 
-    const primaryNav = screen.getByRole('navigation', { name: /Navegacion principal/i });
+    const primaryNav = screen.getByRole('navigation', { name: /Navegación principal/i });
     expect(primaryNav).toBeInTheDocument();
   });
 
@@ -198,7 +198,7 @@ describe('Header', () => {
       </MantineProvider>
     );
 
-    const primaryNav = screen.getByRole('navigation', { name: /Navegacion principal/i });
+    const primaryNav = screen.getByRole('navigation', { name: /Navegación principal/i });
     const navLinks = primaryNav.querySelectorAll('a');
     expect(navLinks.length).toBeGreaterThan(0);
   });
@@ -210,7 +210,7 @@ describe('Header', () => {
       </MantineProvider>
     );
 
-    const burgerButtons = container.querySelectorAll('[aria-label*="menu"]');
+    const burgerButtons = container.querySelectorAll('[aria-label*="menú"], [aria-label*="menu"]');
     expect(burgerButtons.length).toBeGreaterThan(0);
   });
 

@@ -105,7 +105,7 @@ export const HeaderContent = memo(function HeaderContent() {
           <UnstyledButton
             component={Link}
             to="/"
-            aria-label="Consorcio Canalero 10 de Mayo - Ir a pagina de inicio"
+            aria-label="Consorcio Canalero 10 de Mayo"
           >
             <Group gap="xs">
               <Text
@@ -123,7 +123,7 @@ export const HeaderContent = memo(function HeaderContent() {
           </UnstyledButton>
 
           {/* Desktop Navigation */}
-          <nav aria-label="Navegacion principal" id="primary-nav">
+          <nav aria-label="Navegación principal" id="primary-nav">
             <Group gap="sm" visibleFrom="sm">
               {PUBLIC_LINKS.map((link) => (
                 <Button key={link.to} component={Link} to={link.to} variant="subtle" color="gray">
@@ -146,7 +146,7 @@ export const HeaderContent = memo(function HeaderContent() {
             <Burger
               opened={opened}
               onClick={toggle}
-              aria-label={opened ? 'Cerrar menu de navegacion' : 'Abrir menu de navegacion'}
+              aria-label={opened ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}
               aria-expanded={opened}
               aria-controls="mobile-nav-drawer"
             />
@@ -160,7 +160,7 @@ export const HeaderContent = memo(function HeaderContent() {
         onClose={close}
         size="100%"
         padding="md"
-        title="Menu"
+        title="Menú"
         hiddenFrom="sm"
         zIndex={1000}
         id="mobile-nav-drawer"
@@ -168,7 +168,7 @@ export const HeaderContent = memo(function HeaderContent() {
         returnFocus
       >
         <Box ref={drawerRef}>
-          <nav aria-label="Navegacion movil">
+          <nav aria-label="Navegación móvil">
             <Stack gap="sm">
               {PUBLIC_LINKS.map((link) => (
                 <Button

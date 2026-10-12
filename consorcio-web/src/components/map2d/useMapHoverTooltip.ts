@@ -41,7 +41,12 @@ export function useMapHoverTooltip({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || mode !== 'idle') return;
-    if (window.matchMedia('(hover: none)').matches) return;
+    if (
+      window.matchMedia('(hover: none)').matches ||
+      window.matchMedia('(pointer: coarse)').matches
+    ) {
+      return;
+    }
 
     const popup = new maplibregl.Popup({
       closeButton: false,

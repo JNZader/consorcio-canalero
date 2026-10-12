@@ -122,7 +122,7 @@ test.describe('Navegacion por teclado', () => {
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await gotoAndWait(page, '/');
-    const primaryNav = page.locator('nav[aria-label="Navegacion principal"]');
+    const primaryNav = page.locator('nav[aria-label="Navegación principal"]');
     await expect(primaryNav).toBeVisible();
     expect(await primaryNav.locator('a, button').count()).toBeGreaterThan(0);
   });

@@ -860,8 +860,14 @@ export function LayerControlsPanel({
               return (
                 <Box key={item.id}>
                   {unsupported ? (
-                    <Tooltip label="no disponible en 3D" withArrow>
-                      <Box>{checkbox}</Box>
+                    <Tooltip
+                      label="No disponible en 3D"
+                      withArrow
+                      events={{ hover: true, focus: true, touch: true }}
+                    >
+                      <Box tabIndex={0} role="group" aria-label={`${item.label}: no disponible en 3D`}>
+                        {checkbox}
+                      </Box>
                     </Tooltip>
                   ) : (
                     checkbox

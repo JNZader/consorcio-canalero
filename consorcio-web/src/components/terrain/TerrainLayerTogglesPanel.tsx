@@ -305,8 +305,18 @@ export function TerrainLayerTogglesPanel({
                 );
               })}
               {UNSUPPORTED_3D_VECTOR_LAYERS.map((layer) => (
-                <Tooltip key={layer.id} label="no disponible en 3D" withArrow>
-                  <Box>
+                <Tooltip
+                  key={layer.id}
+                  label="No disponible en 3D"
+                  withArrow
+                  events={{ hover: true, focus: true, touch: true }}
+                >
+                  <Box
+                    tabIndex={0}
+                    role="group"
+                    aria-label={`${layer.label}: no disponible en 3D`}
+                    data-testid={`terrain-unsupported-${layer.id}`}
+                  >
                     <Checkbox size="xs" checked={false} disabled label={layer.label} />
                   </Box>
                 </Tooltip>

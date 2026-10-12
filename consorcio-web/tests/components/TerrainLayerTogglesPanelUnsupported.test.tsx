@@ -38,7 +38,12 @@ describe('TerrainLayerTogglesPanel 3D-unsupported rows', () => {
       const checkbox = screen.getByRole('checkbox', { name: layer.label });
       expect(checkbox).toBeDisabled();
     }
-    await user.hover(screen.getByRole('checkbox', { name: UNSUPPORTED_3D_VECTOR_LAYERS[0].label }));
-    expect(await screen.findByRole('tooltip', { name: 'no disponible en 3D' })).toBeInTheDocument();
+    const first = UNSUPPORTED_3D_VECTOR_LAYERS[0];
+    await user.hover(screen.getByRole('checkbox', { name: first.label }));
+    expect(screen.getByTestId(`terrain-unsupported-${first.id}`)).toHaveAttribute(
+      'aria-label',
+      `${first.label}: no disponible en 3D`,
+    );
+    expect(await screen.findByRole('tooltip', { name: 'No disponible en 3D' })).toBeInTheDocument();
   });
 });
