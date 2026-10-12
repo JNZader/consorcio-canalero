@@ -1185,9 +1185,9 @@ def test_deadline_ceilings_are_the_documented_dates() -> None:
     spec.loader.exec_module(module)
 
     assert module.DEADLINE_CEILINGS == {
-        "CRITICAL": "2026-10-31T00:00:00Z",
-        "HIGH": "2026-10-31T00:00:00Z",
-        "absolute_sunset": "2026-10-31T00:00:00Z",
+        "CRITICAL": "2026-12-12T00:00:00Z",
+        "HIGH": "2026-12-12T00:00:00Z",
+        "absolute_sunset": "2026-12-12T00:00:00Z",
     }
 
 

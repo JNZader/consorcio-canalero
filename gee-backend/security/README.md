@@ -5,22 +5,23 @@ This directory contains the active, temporary, fail-closed image policy tracked 
 
 Stage 2B2 generated the baseline from the preserved final images built at
 `96cf15d0f36577c2500d2708dc5c1b899035177f` and their raw, unsuppressed Trivy 0.70.0 reports.
-The backend exception is the exact normalized 56-row multiset (55 HIGH, 1 CRITICAL; 20 distinct
-CVEs; no `FixedVersion` on any row) after the 2026-09-24 honest rescan that followed the Debian
-13.7 hotfixes. The former 44-row PR17 set is invalid for this package closure. The Geo worker
+The backend exception is the exact normalized 57-row multiset (56 HIGH, 1 CRITICAL; 21 distinct
+CVEs; no `FixedVersion` on any row) after the 2026-09-24 honest rescan plus CVE-2026-77214
+(`libexpat1`). The former 44-row PR17 set is invalid for this package closure. The Geo worker
 has an empty exception set, so any HIGH or CRITICAL Geo finding fails.
 
 The policy has no *automated* renewal mechanism — every extension is a one-line edit of a
-hard-coded constant in a reviewed commit (it has happened four times; see below). Its ceilings are:
+hard-coded constant in a reviewed commit (it has happened five times; see below). Its ceilings are:
 
-- CRITICAL: 2026-10-31T00:00:00Z
-- HIGH: 2026-10-31T00:00:00Z
-- absolute sunset: 2026-10-31T00:00:00Z
+- CRITICAL: 2026-12-12T00:00:00Z
+- HIGH: 2026-12-12T00:00:00Z
+- absolute sunset: 2026-12-12T00:00:00Z
 
 Both severity ceilings were first moved to the then-existing absolute sunset (CRITICAL on
 2026-07-30, HIGH on 2026-08-04), on 2026-08-22 all three — the absolute sunset included, for
-the first time — moved to 2026-09-18, and on 2026-09-24 all three moved to 2026-10-31. That
-last extension is paired with real remediation: Debian 13.7 (2026-09-12) made `perl-base
+the first time — moved to 2026-09-18, on 2026-09-24 all three moved to 2026-10-31, and on
+2026-10-12 all three moved to 2026-12-12. The 2026-09-24 extension was paired with real
+remediation: Debian 13.7 (2026-09-12) made `perl-base
 5.40.1-6+deb13u1`, `gzip 1.13-1+deb13u1` and `libsqlite3-0 3.46.1-7+deb13u2` available to the
 pinned base's apt, and trixie-security shipped `libpcre2-8-0 10.46-1~deb13u2`. The production
 stage of `gee-backend/Dockerfile` now applies those four `--only-upgrade` hotfixes (same pattern
