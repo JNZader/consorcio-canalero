@@ -10,7 +10,7 @@
 import maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Alert, Stack } from '@mantine/core';
+import { Alert, Button, Stack } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
@@ -30,6 +30,7 @@ import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
+import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
@@ -151,6 +152,7 @@ export default function TerrainViewer3D({
   const [overlayOpacity, setOverlayOpacity] = useState(1);
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [terrainBootId, setTerrainBootId] = useState(0);
   const [activeRasterLayerId, setActiveRasterLayerId] = useState<string | null>(
     // Lazy initialiser: pick Sentinel synchronously when the user already has
     // a selected image in localStorage. Without this we would start with the
@@ -620,6 +622,7 @@ export default function TerrainViewer3D({
       // up only a few pixels each. -25% overdraw across pan/zoom.
       maxPitch: 75,
       hash: 'v',
+      locale: { ...MAP_LOCALE_ES },
       // Bound the tile cache so panning around doesn't keep hundreds of
       // raster-dem + texture tiles in GPU memory. Default is unbounded;
       // 50 fits the typical viewport pyramid + a small history without
@@ -692,7 +695,7 @@ export default function TerrainViewer3D({
       mapRef.current = null;
       setReady(false);
     };
-  }, [buildTerrainRgbUrl, center, demLayerId, zoom]);
+  }, [buildTerrainRgbUrl, center, demLayerId, zoom, terrainBootId]);
 
   // Smoothing toggle / threshold change — rebuild the ``terrain-rgb``
   // source so MapLibre fetches the new tiles immediately. ``setTiles()``
@@ -910,7 +913,7 @@ export default function TerrainViewer3D({
   if (!demLayerId) {
     return (
       <Alert icon={<IconAlertTriangle size={16} />} title="Sin capa DEM" color="yellow">
-        No hay capa DEM disponible para visualizar en 3D. Ejecuta el pipeline DEM primero.
+        No hay capa DEM para el 3D. Ejecutá el pipeline de terreno primero.
       </Alert>
     );
   }
@@ -918,8 +921,24 @@ export default function TerrainViewer3D({
   return (
     <Stack gap="sm">
       {errorMessage && (
-        <Alert icon={<IconAlertTriangle size={16} />} title="Error cargando terreno 3D" color="red">
+        <Alert
+          icon={<IconAlertTriangle size={16} />}
+          title="Error cargando el terreno 3D"
+          color="red"
+        >
           {errorMessage}
+          <Button
+            mt="xs"
+            size="xs"
+            variant="light"
+            data-testid="terrain-retry"
+            onClick={() => {
+              setErrorMessage(null);
+              setTerrainBootId((value) => value + 1);
+            }}
+          >
+            Reintentar
+          </Button>
         </Alert>
       )}
 

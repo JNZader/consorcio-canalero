@@ -55,6 +55,7 @@ import {
   type LayerCategory,
   normalizeSearchText,
 } from './map2dDerived';
+import { pickPresetRasterId } from './mapPresets';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
 
@@ -324,7 +325,7 @@ function LayerOpacityControl({
         label={(value) => `${value}%`}
         thumbLabel={`Opacidad de ${label}`}
       />
-      <Text size="9px" c="dimmed" w={28} ta="right">
+      <Text size="xs" c="dimmed" w={28} ta="right">
         {percent}%
       </Text>
       <Tooltip label="Restablecer opacidad" withArrow>
@@ -914,7 +915,7 @@ export function LayerControlsPanel({
                   data-testid={`raster-search-option-${option.value}`}
                 />
               ))}
-              <Text size="9px" c="dimmed">
+              <Text size="xs" c="dimmed">
                 Una capa raster por vez.
               </Text>
               {showDemOverlay && onRasterCompare && demOptions.length > 1 && (
@@ -960,7 +961,7 @@ export function LayerControlsPanel({
                 label={(value) => `${value}%`}
                 thumbLabel="Tamaño de etiquetas del mapa"
               />
-              <Text size="9px" c="dimmed" w={36} ta="right">
+              <Text size="xs" c="dimmed" w={36} ta="right">
                 {Math.round(layerFineControl.labelSizeScale * 100)}%
               </Text>
               <Tooltip label="Restablecer tamaño" withArrow>
@@ -990,7 +991,7 @@ export function LayerControlsPanel({
                 label={(value) => `${value}%`}
                 thumbLabel="Grosor de líneas del mapa"
               />
-              <Text size="9px" c="dimmed" w={36} ta="right">
+              <Text size="xs" c="dimmed" w={36} ta="right">
                 {Math.round(layerFineControl.lineWidthScale * 100)}%
               </Text>
               <Tooltip label="Restablecer grosor" withArrow>
@@ -1040,7 +1041,14 @@ export function LayerControlsPanel({
     >
       {viewModePanel}
 
-      <MapPresetChips />
+      <MapPresetChips
+        onApplyRaster={(presetId) => {
+          const rasterId = pickPresetRasterId(presetId, demOptions);
+          if (!rasterId) return;
+          onActiveDemLayerIdChange(rasterId);
+          onShowDemOverlayChange(true);
+        }}
+      />
 
       <ActiveLayersSection
         rows={activeLayerRows}

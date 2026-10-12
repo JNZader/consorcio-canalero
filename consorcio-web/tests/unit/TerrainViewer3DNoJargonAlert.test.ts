@@ -78,6 +78,9 @@ describe('TerrainViewer3D does not leak GEE jargon to public visitors', () => {
     // Scope check: this contract removes ONE banner, not the component's ability
     // to report real failures the visitor can act on.
     expect(VIEWER).toContain('Sin capa DEM');
-    expect(VIEWER).toContain('Error cargando terreno 3D');
+    expect(VIEWER).toContain('Error cargando el terreno 3D');
+    expect(VIEWER).toContain('terrain-retry');
+    expect(VIEWER).toContain('Reintentar');
+    expect(VIEWER).toContain('MAP_LOCALE_ES');
   });
 });

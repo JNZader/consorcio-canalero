@@ -9,6 +9,10 @@ vi.mock('zustand/middleware', async () => {
   return { ...actual, persist: (fn: unknown) => fn };
 });
 
+vi.mock('../../src/lib/notifications', () => ({
+  showInfo: vi.fn(),
+}));
+
 const baseProps = {
   baseLayer: 'osm' as const,
   onBaseLayerChange: () => {},
@@ -61,5 +65,27 @@ describe('LayerControlsPanel raster switch (A11Y-03)', () => {
     fireEvent.click(rasterLabel);
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);
     expect(onActiveDemLayerIdChange).toHaveBeenCalledWith('dem-1');
+  });
+
+  it('turns on a water raster when applying Dónde hay agua (UX-04)', async () => {
+    const onShowDemOverlayChange = vi.fn();
+    const onActiveDemLayerIdChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <LayerControlsPanel
+          {...baseProps}
+          showDemOverlay={false}
+          onShowDemOverlayChange={onShowDemOverlayChange}
+          onActiveDemLayerIdChange={onActiveDemLayerIdChange}
+          demOptions={[
+            { value: 'slope-1', label: 'Pendiente' },
+            { value: 'flood-1', label: 'Riesgo de inundación' },
+          ]}
+        />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByTestId('map-preset-agua'));
+    expect(onActiveDemLayerIdChange).toHaveBeenCalledWith('flood-1');
+    expect(onShowDemOverlayChange).toHaveBeenCalledWith(true);
   });
 });

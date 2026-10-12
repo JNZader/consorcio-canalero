@@ -2,12 +2,16 @@ import { Button, Group, Stack, Text } from '@mantine/core';
 
 import { showInfo } from '../../lib/notifications';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
-import { MAP_PRESETS } from './mapPresets';
+import { MAP_PRESETS, type MapPresetId } from './mapPresets';
+
+interface MapPresetChipsProps {
+  readonly onApplyRaster?: (presetId: MapPresetId) => void;
+}
 
 /**
  * Thematic view chips (UX PDF R1 / UX-26). Named as tasks, not family names.
  */
-export function MapPresetChips() {
+export function MapPresetChips({ onApplyRaster }: MapPresetChipsProps) {
   const applyPreset = useMapLayerSyncStore((state) => state.applyPreset);
   const undoCatalogPreset = useMapLayerSyncStore((state) => state.undoCatalogPreset);
   const activePresetId = useMapLayerSyncStore((state) => state.presetByView.map2d);
@@ -19,24 +23,29 @@ export function MapPresetChips() {
         Vistas rápidas
       </Text>
       <Group gap={6} wrap="wrap">
-        {MAP_PRESETS.map((preset) => (
-          <Button
-            key={preset.id}
-            size="compact-xs"
-            variant={activePresetId === preset.id ? 'filled' : 'light'}
-            data-testid={`map-preset-${preset.id}`}
-            title={preset.description}
-            onClick={() => {
-              applyPreset('map2d', preset.id);
-              showInfo('Vista aplicada', 'Se reemplazó la selección de capas.');
-            }}
-          >
-            {preset.label}
-          </Button>
-        ))}
+        {MAP_PRESETS.map((preset) => {
+          const pressed = activePresetId === preset.id;
+          return (
+            <Button
+              key={preset.id}
+              size="xs"
+              variant={pressed ? 'filled' : 'light'}
+              data-testid={`map-preset-${preset.id}`}
+              title={preset.description}
+              aria-pressed={pressed}
+              onClick={() => {
+                applyPreset('map2d', preset.id);
+                onApplyRaster?.(preset.id);
+                showInfo('Vista aplicada', 'Se reemplazó la selección de capas.');
+              }}
+            >
+              {preset.label}
+            </Button>
+          );
+        })}
         {canUndo && (
           <Button
-            size="compact-xs"
+            size="xs"
             variant="subtle"
             data-testid="map-preset-undo"
             onClick={() => undoCatalogPreset('map2d')}

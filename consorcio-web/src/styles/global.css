@@ -255,10 +255,11 @@ body {
 
 /* Espaciado para evitar clics accidentales en movil */
 @media (pointer: coarse) {
-  button:not(.mantine-ActionIcon-root),
+  button,
   [role="button"],
   a.mantine-Button-root {
     min-height: 44px;
+    min-width: 44px;
     padding-top: 10px;
     padding-bottom: 10px;
   }

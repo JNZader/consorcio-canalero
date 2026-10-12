@@ -52,7 +52,10 @@ describe('MapPresetChips', () => {
       </MantineProvider>
     );
     expect(screen.getByText('Vistas rápidas')).toBeInTheDocument();
-    await user.click(screen.getByTestId('map-preset-agua'));
+    const agua = screen.getByTestId('map-preset-agua');
+    expect(agua).toHaveAttribute('aria-pressed', 'false');
+    await user.click(agua);
+    expect(screen.getByTestId('map-preset-agua')).toHaveAttribute('aria-pressed', 'true');
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(false);
     await user.click(screen.getByTestId('map-preset-undo'));
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(true);

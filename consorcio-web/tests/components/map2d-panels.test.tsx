@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
@@ -125,7 +125,8 @@ describe('map2d extracted panels', () => {
     expect(onShowIGNOverlayChange).toHaveBeenCalledWith(true);
 
     await expandNamed(user, /análisis raster/i);
-    await user.click(screen.getByRole('checkbox', { name: /todas las capas de análisis raster/i }));
+    const rasterSwitch = await waitFor(() => screen.getByText('Mostrar raster'));
+    await user.click(rasterSwitch);
     expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
 
     await user.click(screen.getByRole('button', { name: /exportar/i }));

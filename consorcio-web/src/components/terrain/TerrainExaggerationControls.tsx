@@ -24,8 +24,9 @@ export function TerrainExaggerationControls({
         {TERRAIN_EXAGGERATION_PRESETS.map((preset) => (
           <Tooltip key={preset.value} label={preset.tooltip} withArrow>
             <Button
-              size="compact-xs"
+              size="xs"
               variant={value === preset.value ? 'filled' : 'default'}
+              aria-pressed={value === preset.value}
               onClick={() => onChange(preset.value)}
             >
               {preset.label}

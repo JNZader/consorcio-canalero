@@ -73,3 +73,15 @@ export function getMapPreset(id: MapPresetId): MapPreset {
   }
   return preset;
 }
+
+const AGUA_RASTER_HINT = /inund|ndwi|mndwi|flood|hand|agua/i;
+
+/** UX-04: the water vista should also turn on a water-ish raster when one exists. */
+export function pickPresetRasterId(
+  presetId: MapPresetId,
+  options: readonly { value: string; label: string }[]
+): string | null {
+  if (presetId !== 'agua' || options.length === 0) return null;
+  const ranked = options.find((option) => AGUA_RASTER_HINT.test(`${option.value} ${option.label}`));
+  return ranked?.value ?? options[0]?.value ?? null;
+}
