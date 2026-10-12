@@ -1466,6 +1466,14 @@
   .mapSkeletonWrapper {
     min-height: 260px;
   }
+
+  /* UX-19 stack at top:206 overflows a 390px landscape viewport (canary
+     dock[4] ended at 429px). Park it as a row next to Medir. */
+  .mapRightStack {
+    top: auto;
+    bottom: 56px;
+    flex-direction: row;
+  }
 }
 
 .legendItemBorder {

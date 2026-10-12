@@ -52,4 +52,15 @@ describe('mapRightStack (UX-19)', () => {
     expect(top).toBeGreaterThanOrEqual(206);
     expect(top + 2 * 44 + 10 + 44).toBeLessThanOrEqual(380);
   });
+
+  it('lays the stack as a bottom row on landscape phones (390px viewport)', () => {
+    const start = MAP_CSS.indexOf(
+      '@media (pointer: coarse) and (orientation: landscape) and (max-height: 30em)',
+    );
+    expect(start).toBeGreaterThan(-1);
+    const block = MAP_CSS.slice(start, start + 1800);
+    expect(block).toMatch(/\.mapRightStack\s*\{[^}]*top:\s*auto/);
+    expect(block).toMatch(/\.mapRightStack\s*\{[^}]*bottom:\s*56px/);
+    expect(block).toMatch(/\.mapRightStack\s*\{[^}]*flex-direction:\s*row/);
+  });
 });
