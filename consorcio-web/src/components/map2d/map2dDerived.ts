@@ -221,7 +221,7 @@ export function buildVectorLayerItems(params: {
     {
       id: 'roads',
       // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
-      label: 'Red Vial (acercate para ver nombres)',
+      label: 'Red Vial',
       category: LAYER_CATEGORY.TERRITORIO,
       show: !!roadsCollection && roadsCollection.features.length > 0,
     },
@@ -247,7 +247,7 @@ export function buildVectorLayerItems(params: {
     },
     {
       id: 'catastro',
-      label: 'Catastro rural IDECOR (acercate para ver)',
+      label: 'Catastro rural IDECOR',
       category: LAYER_CATEGORY.TERRITORIO,
       show: true,
     },
