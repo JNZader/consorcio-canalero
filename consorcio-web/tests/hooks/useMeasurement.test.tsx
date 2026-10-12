@@ -22,15 +22,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const drawChangeMode = vi.fn();
 const drawDeleteAll = vi.fn();
+const drawGetAll = vi.fn(() => ({ type: 'FeatureCollection', features: [] as Feature[] }));
 const drawInstances: Array<{
   changeMode: typeof drawChangeMode;
   deleteAll: typeof drawDeleteAll;
+  getAll: typeof drawGetAll;
 }> = [];
 
 vi.mock('@mapbox/mapbox-gl-draw', () => {
   class MapboxDrawMock {
     changeMode = drawChangeMode;
     deleteAll = drawDeleteAll;
+    getAll = drawGetAll;
     constructor() {
       drawInstances.push(this);
     }
@@ -145,6 +148,8 @@ describe('useMeasurement', () => {
   beforeEach(() => {
     drawChangeMode.mockClear();
     drawDeleteAll.mockClear();
+    drawGetAll.mockReset();
+    drawGetAll.mockReturnValue({ type: 'FeatureCollection', features: [] });
     drawInstances.length = 0;
     resetMeasurementIdentifyGuard();
   });
@@ -352,5 +357,22 @@ describe('useMeasurement', () => {
     expect(map.removeControl).toHaveBeenCalledTimes(1);
     // draw.create listener should be detached
     expect(handlers.get('draw.create')?.length ?? 0).toBe(0);
+  });
+
+  it('updates liveLabel on draw.render while measuring distance', async () => {
+    const { map, handlers } = createMapMock();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
+    const { result } = renderHook(() => useMeasurement(map as any));
+
+    act(() => result.current.startDistance());
+    await waitFor(() => expect(handlers.get('draw.render')?.[0]).toBeTruthy());
+    expect(result.current.liveLabel).toBeNull();
+
+    drawGetAll.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [buildLineFeature()],
+    });
+    act(() => handlers.get('draw.render')?.[0]?.({}));
+    expect(result.current.liveLabel).toBe('123 m');
   });
 });

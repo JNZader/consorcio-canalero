@@ -60,6 +60,7 @@ import {
   MEASUREMENT_IDENTIFY_GUARD_MS,
 } from './measurementIdentifyGuard';
 import { createMeasurementDraw } from './measurementDrawModes';
+import { liveMeasurementLabel } from './measurementPreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -122,6 +123,8 @@ type MeasurementStateUpdater = MeasurementState | ((prev: MeasurementState) => M
 
 export interface UseMeasurementReturn {
   state: MeasurementState;
+  /** Live distance/area while the vertex rubber-band is in progress. */
+  liveLabel: string | null;
   startDistance: () => void;
   startArea: () => void;
   clear: () => void;
@@ -197,6 +200,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     mode: 'idle',
     measurements: [],
   });
+  const [liveLabel, setLiveLabel] = useState<string | null>(null);
   const modeRef = useRef<MeasurementMode>('idle');
   const drawRef = useRef<MapboxDraw | null>(null);
 
@@ -219,6 +223,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
   // Refs holding the listeners so `mountDraw` can register them once and
   // `unmountDraw` can off them by reference.
   const handleCreateRef = useRef<((event: unknown) => void) | null>(null);
+  const handleRenderRef = useRef<(() => void) | null>(null);
   const handleContextLostRef = useRef<(() => void) | null>(null);
 
   // ── Lazy mount/unmount of the MapboxDraw control ─────────────────────
@@ -250,8 +255,10 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     map.addControl(draw as unknown as maplibregl.IControl);
 
     const handleCreate = handleCreateRef.current;
+    const handleRender = handleRenderRef.current;
     const handleContextLost = handleContextLostRef.current;
     if (handleCreate) map.on('draw.create', handleCreate);
+    if (handleRender) map.on('draw.render', handleRender);
     if (handleContextLost) map.on('webglcontextlost', handleContextLost);
 
     return draw;
@@ -262,8 +269,10 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     const draw = drawRef.current;
 
     const handleCreate = handleCreateRef.current;
+    const handleRender = handleRenderRef.current;
     const handleContextLost = handleContextLostRef.current;
     if (handleCreate) map.off('draw.create', handleCreate);
+    if (handleRender) map.off('draw.render', handleRender);
     if (handleContextLost) map.off('webglcontextlost', handleContextLost);
 
     if (draw) {
@@ -280,6 +289,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     }
 
     drawRef.current = null;
+    setLiveLabel(null);
     setMeasurementCursor(false);
     useMapboxDrawSlot.getState().release('measurement');
   }, [map, setMeasurementCursor]);
@@ -344,6 +354,16 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
         mode: 'idle',
         measurements: [...prev.measurements, ...entries],
       }));
+    };
+
+    handleRenderRef.current = () => {
+      const draw = drawRef.current;
+      if (!draw) {
+        setLiveLabel(null);
+        return;
+      }
+      const features = draw.getAll()?.features ?? [];
+      setLiveLabel(liveMeasurementLabel(modeRef.current, features));
     };
 
     handleContextLostRef.current = () => {
@@ -417,5 +437,5 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     setMeasurementState((prev) => ({ ...prev, mode: 'idle' }));
   };
 
-  return { state, startDistance, startArea, clear, cancel };
+  return { state, liveLabel, startDistance, startArea, clear, cancel };
 }
