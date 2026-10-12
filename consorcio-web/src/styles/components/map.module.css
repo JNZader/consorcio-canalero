@@ -152,7 +152,7 @@
 
 .workspaceBurger {
   position: absolute;
-  top: 52px;
+  top: var(--mantine-spacing-sm);
   left: var(--mantine-spacing-sm);
   z-index: 1100;
   background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
@@ -560,8 +560,18 @@
 
   /* `order` mueve la caja sin tocar el DOM: mover el Paper en el JSX remontaria
      el canvas de MapLibre. El 2D/3D se queda arriba (MOB-05); el titulo cae ultimo. */
+  .mapPageContainer {
+    position: relative;
+  }
+
+  /* MOB-05: 2D/3D overlays the canvas so it stays visible without stealing
+     the 96px height budget the e2e canary measures. */
   .mapPageContainer > .mapViewToggleBar {
-    order: 0;
+    position: absolute;
+    top: 8px;
+    left: 52px;
+    z-index: 25;
+    margin-bottom: 0 !important;
   }
 
   .mapPageContainer > .mapPageCanvas {
@@ -1461,10 +1471,15 @@
   .mapPageContainer {
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   .mapPageContainer > .mapViewToggleBar {
-    order: 0;
+    position: absolute;
+    top: 8px;
+    left: 52px;
+    z-index: 25;
+    margin-bottom: 0 !important;
   }
 
   .mapPageContainer > .mapPageCanvas {
