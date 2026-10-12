@@ -43,6 +43,21 @@ function buildFeatureCollection(measurements: readonly MeasurementEntry[]): Feat
   return { type: 'FeatureCollection', features };
 }
 
+interface StylePaintHost {
+  isStyleLoaded: () => boolean | void;
+  loaded?: () => boolean;
+  once: (event: string, handler: () => void) => void;
+}
+
+/** UX-23: `load` already fired; with tiles in flight `isStyleLoaded()` is false. */
+export function scheduleMeasurementShapePaint(map: StylePaintHost, paint: () => void): void {
+  if (map.isStyleLoaded() || map.loaded?.()) {
+    paint();
+    return;
+  }
+  map.once('idle', paint);
+}
+
 function ensureSourceAndLayers(map: maplibregl.Map): void {
   if (!map.getSource(SOURCE_ID)) {
     map.addSource(SOURCE_ID, { type: 'geojson', data: EMPTY_COLLECTION });
@@ -102,11 +117,7 @@ export function MeasurementShapes({ map, measurements }: MeasurementShapesProps)
       if (src) src.setData(buildFeatureCollection(measurements));
     };
 
-    if (map.isStyleLoaded()) {
-      updateData();
-    } else {
-      map.once('load', updateData);
-    }
+    scheduleMeasurementShapePaint(map, updateData);
 
     // Source + layers are re-installed on style reload (e.g. base layer
     // swap from OSM ↔ Satélite throws a `style.load` event after wiping

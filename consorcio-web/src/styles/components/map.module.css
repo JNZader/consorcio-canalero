@@ -1114,6 +1114,21 @@
   top: 256px;
 }
 
+.measurementHint {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 0;
+  z-index: 16;
+  max-width: 220px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: light-dark(rgba(255, 255, 255, 0.95), rgba(36, 36, 36, 0.95));
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+}
+
 @media (pointer: coarse) {
   /* ── HALF OF THIS RULE IS INERT, AND WHICH HALF DEPENDS ON THE DOCK ─────────
      Same (0,1,0)-vs-(0,1,1) story as the base rule at the top of this section: a
@@ -1228,6 +1243,14 @@
      page header. Fully expanded IS the "reading" stage. */
   .mapRightStack {
     top: 206px;
+  }
+
+  .measurementHint {
+    position: static;
+    right: auto;
+    max-width: none;
+    white-space: normal;
+    box-shadow: none;
   }
 
   .measurementDock {

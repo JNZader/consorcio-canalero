@@ -67,6 +67,10 @@ vi.mock('@turf/center-of-mass', () => ({
 }));
 
 // Import the hook AFTER all mocks.
+import {
+  isMeasurementIdentifyBlocked,
+  resetMeasurementIdentifyGuard,
+} from '@/components/map2d/measurement/measurementIdentifyGuard';
 import { useMeasurement } from '@/components/map2d/measurement/useMeasurement';
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -142,6 +146,7 @@ describe('useMeasurement', () => {
     drawChangeMode.mockClear();
     drawDeleteAll.mockClear();
     drawInstances.length = 0;
+    resetMeasurementIdentifyGuard();
   });
 
   it('starts in the idle state with no measurements', () => {
@@ -230,6 +235,7 @@ describe('useMeasurement', () => {
     // And we do NOT reentrantly call changeMode from inside draw.create —
     // that reentrancy was the source of the "too much recursion" prod crash.
     expect(drawChangeMode).not.toHaveBeenCalled();
+    expect(isMeasurementIdentifyBlocked()).toBe(true);
   });
 
   it('records an area entry and returns to idle (no auto-restart of next shape)', () => {

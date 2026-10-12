@@ -36,6 +36,20 @@ function renderWithMantine(ui: ReactNode) {
 }
 
 describe("<MeasurementToolbar />", () => {
+	it("shows a finish hint while measuring", () => {
+		renderWithMantine(
+			<MeasurementToolbar
+				mode="measuring-distance"
+				hasMeasurements={false}
+				onStartDistance={() => {}}
+				onStartArea={() => {}}
+				onClear={() => {}}
+				onCancel={() => {}}
+			/>,
+		);
+		expect(screen.getByTestId("measurement-hint")).toHaveTextContent(/doble clic termina/i);
+	});
+
 	it("renders only the Medir trigger when idle and nothing has been measured", () => {
 		renderWithMantine(
 			<MeasurementToolbar

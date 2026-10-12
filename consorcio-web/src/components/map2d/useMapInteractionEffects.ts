@@ -7,6 +7,7 @@ import {
   mergeAdditiveFeatures,
   pickPrimaryTramo,
 } from './mergeAdditiveFeatures';
+import { isMeasurementIdentifyBlocked } from './measurement/measurementIdentifyGuard';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
@@ -268,6 +269,10 @@ export function useMapInteractionEffects({
     const clickableLayers = buildClickableLayers(measurementMode);
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
+      const detail = event.originalEvent?.detail;
+      if (isMeasurementIdentifyBlocked() || (typeof detail === 'number' && detail > 1)) {
+        return;
+      }
       if (measurementMode === 'placing-poi') {
         onPoiPlace?.({ lng: event.lngLat.lng, lat: event.lngLat.lat });
         return;
