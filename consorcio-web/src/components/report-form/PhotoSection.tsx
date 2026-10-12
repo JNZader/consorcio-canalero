@@ -1,5 +1,6 @@
 import { ActionIcon, Box, Group, Image, Text } from '@mantine/core';
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
+import '@mantine/dropzone/styles.css';
 
 const PHOTO_LABEL_ID = 'foto-label';
 const PHOTO_INSTRUCTIONS_ID = 'foto-instrucciones';

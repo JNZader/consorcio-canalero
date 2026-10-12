@@ -23,8 +23,8 @@ import '@mantine/core/styles.css';
 // Estilos de notificaciones (usado en AppProvider y MantineProvider)
 import '@mantine/notifications/styles.css';
 
-// Estilos de dropzone (usado en formularios de archivos)
-import '@mantine/dropzone/styles.css';
+// Dropzone CSS lives next to PhotoSection — importing it here made the
+// entry bundle static-import vendor-mantine-dropzone on every route.
 
 // Estilos del paquete de fechas (DatePicker, DatePickerInput,
 // DateTimePicker). Sin esto los chevrones del header del calendario se

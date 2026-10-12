@@ -31,6 +31,6 @@
       "@constants/*": ["src/constants/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"],
+  "include": ["src", "vite.config.ts", "vite.modulePreload.ts", "vitest.config.ts"],
   "exclude": ["dist", "node_modules"]
 }
