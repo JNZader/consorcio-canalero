@@ -141,9 +141,7 @@ def test_public_layers_hide_non_published_types(client: TestClient, seeded_layer
     assert not (tipos & privados), f"tipos privados expuestos: {tipos & privados}"
 
 
-def test_public_layers_tipo_filter_narrows_to_hand(
-    client: TestClient, seeded_layers: None
-) -> None:
+def test_public_layers_tipo_filter_narrows_to_hand(client: TestClient, seeded_layers: None) -> None:
     resp = client.get(ENDPOINT, params={"tipo": "hand"})
     assert resp.status_code == 200, resp.text
     assert _tipos(resp) == {"hand"}
