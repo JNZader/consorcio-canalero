@@ -24,25 +24,15 @@ function pushApprovedZoneLegendItems(
   }
 }
 
-function pushSoilLegendItems(items: ActiveLegendItem[], soilMap: FeatureCollection) {
+function pushSoilLegendItems(items: ActiveLegendItem[]) {
   const capOrder = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
-  const presentCaps = new Set<string>();
-  for (const feature of soilMap.features) {
-    const cap = (feature.properties as { cap?: string | null } | null)?.cap;
-    if (!cap) continue;
-    const normalized = cap.trim().toUpperCase();
-    const match = normalized.match(/^(VIII|VII|VI|IV|III|II|I)/);
-    if (match) presentCaps.add(match[1]);
-  }
   for (const cap of capOrder) {
-    if (presentCaps.has(cap)) {
-      items.push({
-        color: getSoilColor(cap),
-        label: `Clase ${cap}`,
-        type: 'fill',
-        layerId: 'soil',
-      });
-    }
+    items.push({
+      color: getSoilColor(cap),
+      label: `Clase ${cap}`,
+      type: 'fill',
+      layerId: 'soil',
+    });
   }
 }
 
@@ -62,10 +52,8 @@ export function buildActiveLegendItems(params: {
   hasApprovedZones: boolean;
   approvedZones: FeatureCollection | null | undefined;
   basins: FeatureCollection | null | undefined;
-  soilMap: FeatureCollection | null | undefined;
 }) {
-  const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap } =
-    params;
+  const { zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins } = params;
 
   const items: ActiveLegendItem[] = [];
 
@@ -86,8 +74,8 @@ export function buildActiveLegendItems(params: {
     });
   }
 
-  if (vectorVisibility.soil && soilMap && soilMap.features.length > 0) {
-    pushSoilLegendItems(items, soilMap);
+  if (vectorVisibility.soil) {
+    pushSoilLegendItems(items);
   }
 
   if (vectorVisibility.waterways) {
