@@ -255,17 +255,24 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       );
       requireCondition(visible, 'El panel de capas no está disponible (sin datos de capas)');
 
-      // Territorio may already be open (zona / roads / YPF default ON). Clicking
-      // the control would COLLAPSE it and the layer rows vanish.
+      // Default-on families (Hidrografía + Canales + Territorio) all start
+      // expanded. Canales lists every tramo, so Territorio rows sit below the
+      // Drawer fold. Playwright `visible` is the scrollport, not the a11y tree
+      // — prod canary 38290159991 failed with "Sin filas de capas" while
+      // Zona Consorcio / Catastro were mounted off-screen.
       const territorio = controls.getByTestId('layer-family-territorio-control');
+      await territorio.scrollIntoViewIfNeeded();
       await expect(territorio).toBeVisible({ timeout: 10000 });
       if ((await territorio.getAttribute('aria-expanded')) === 'false') {
         await territorio.click();
       }
 
-      const checkbox = controls.getByRole('checkbox', {
-        name: /Catastro rural IDECOR|Zona Consorcio|Red Vial/i,
-      });
+      const checkbox = controls
+        .getByRole('checkbox', {
+          name: /Catastro rural IDECOR|Zona Consorcio|Red vial/i,
+        })
+        .first();
+      await checkbox.scrollIntoViewIfNeeded();
       const hasCheckbox = await checkbox.waitFor({ state: 'visible', timeout: 10000 }).then(
         () => true,
         () => false
@@ -285,20 +292,10 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       // controles cuyo tamaño Mantine escribe inline (`size` está en sus
       // `defaultProps`), así que la regla lleva `!important` — y si ese
       // `!important` se cae, esto lo caza y el test de CSS no.
-      const renderable = controls
-        .getByRole('checkbox', { name: /Suelos|Catastro|Hidrografía|Red vial|Subcuencas/i })
-        .first();
-      const hasRenderable = await renderable.waitFor({ state: 'visible', timeout: 10000 }).then(
-        () => true,
-        () => false
-      );
-      requireCondition(
-        hasRenderable,
-        'Sin capa vectorial renderizable (el slider solo existe con una)'
-      );
-      await renderable.check();
-
-      const thumb = controls.getByRole('slider').first();
+      // Prefer the En el mapa opacity thumb (already on for default layers);
+      // scroll it into the Drawer fold after the Territorio row check.
+      const thumb = controls.getByRole('slider', { name: /Opacidad/i }).first();
+      await thumb.scrollIntoViewIfNeeded();
       await expect(thumb).toBeVisible({ timeout: 10000 });
       const thumbBox = await thumb.boundingBox();
       expect(thumbBox, 'el thumb del slider tiene caja').not.toBeNull();
