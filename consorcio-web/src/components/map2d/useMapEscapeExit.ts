@@ -13,8 +13,7 @@
  *   - `ficha-dibujo`                          → `onExitDraw()`
  *   - `ficha-canal`                           → `onExitCanal()`
  *   - `placing-poi`                           → `onExitPoiPlace()`
- *   - `idle`                                  → no-op (Escape stays available to
- *     modals, menus and the browser)
+ *   - `idle`                                  → `onClosePanels()` (UX-16)
  *
  * Lifecycle: the `window` listener exists ONLY while a non-idle mode is active
  * (the effect early-returns on `idle`, so nothing is bound), and it is
@@ -39,6 +38,8 @@ export interface UseMapEscapeExitParams {
   readonly onExitCanal: () => void;
   /** Leave staff pin-placement mode. */
   readonly onExitPoiPlace?: () => void;
+  /** UX-16: close floating info/ficha when idle. */
+  readonly onClosePanels?: () => void;
 }
 
 /** True when the event came from a field where Escape has its own meaning. */
@@ -54,14 +55,19 @@ export function useMapEscapeExit({
   onExitDraw,
   onExitCanal,
   onExitPoiPlace,
+  onClosePanels,
 }: UseMapEscapeExitParams): void {
   useEffect(() => {
-    if (mode === 'idle') return;
+    if (mode === 'idle' && !onClosePanels) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isFromTextEntry(event.target)) return;
 
+      if (mode === 'idle') {
+        onClosePanels?.();
+        return;
+      }
       if (mode === 'measuring-distance' || mode === 'measuring-area') {
         onCancelMeasurement();
       } else if (mode === 'ficha-dibujo') {
@@ -77,5 +83,5 @@ export function useMapEscapeExit({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [mode, onCancelMeasurement, onExitDraw, onExitCanal, onExitPoiPlace]);
+  }, [mode, onCancelMeasurement, onExitDraw, onExitCanal, onExitPoiPlace, onClosePanels]);
 }

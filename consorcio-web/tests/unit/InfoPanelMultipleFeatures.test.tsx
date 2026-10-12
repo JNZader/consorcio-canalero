@@ -42,7 +42,7 @@ function buildFeatureWithLayer(layerId: string, props: Record<string, unknown>):
 describe('<InfoPanel /> multiple features (Phase 8)', () => {
   it('renders nothing when features is an empty array', () => {
     renderWithMantine(<InfoPanel features={[]} onClose={() => {}} />);
-    expect(screen.queryByRole('heading', { name: /informacion/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /información/i })).not.toBeInTheDocument();
   });
 
   it('renders a single feature as one section (same as legacy)', () => {
@@ -50,7 +50,7 @@ describe('<InfoPanel /> multiple features (Phase 8)', () => {
       nomenclatura: '12-04-0001-123456',
     });
     renderWithMantine(<InfoPanel features={[feature]} onClose={() => {}} />);
-    expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
     // One feature → one section
     expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
@@ -100,7 +100,7 @@ describe('<InfoPanel /> multiple features (Phase 8)', () => {
       nomenclatura: 'legacy',
     });
     renderWithMantine(<InfoPanel feature={feature} onClose={() => {}} />);
-    expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
     expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
 });

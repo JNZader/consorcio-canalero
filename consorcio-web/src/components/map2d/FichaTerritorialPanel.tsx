@@ -28,7 +28,6 @@ import {
   Alert,
   Badge,
   Button,
-  CloseButton,
   Divider,
   Group,
   Loader,
@@ -770,13 +769,6 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
     <Fragment key="panel-context">
       <Group justify="space-between" mb="xs">
         <Title order={5}>Ficha territorial</Title>
-        {!sheet && (
-          <CloseButton
-            onClick={onClose}
-            className={styles.panelCloseButton}
-            aria-label="Cerrar ficha territorial"
-          />
-        )}
       </Group>
       <Divider mb="xs" />
       {isCanalTipo &&

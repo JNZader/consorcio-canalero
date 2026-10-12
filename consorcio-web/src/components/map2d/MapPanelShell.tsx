@@ -38,12 +38,10 @@
  * drives it too: dragging the map auto-minimizes both panels, and restoring is
  * always an explicit tap on the pill.
  *
- * Close affordance: in sheet mode the shell owns it. The panels render their own
- * `Title + CloseButton` row inside `children`, i.e. inside the SCROLLABLE body —
- * on a tall ficha that button scrolls out of reach. In sheet mode the panels
- * therefore omit their inline close button and pass `onClose` + `closeLabel`
- * here, so the control sits in the pinned header strip next to the handle.
- * Exactly one close affordance is rendered in either shape.
+ * Close affordance: the shell owns it in BOTH shapes (UX-16). The panels omit
+ * their inline CloseButton and pass `onClose` + `closeLabel`. Desktop: pinned
+ * header above the scroller so the X cannot hide under minimize or scroll away.
+ * Sheet: pinned header next to the handle. Exactly one close affordance.
  */
 
 import { ActionIcon, CloseButton, Paper, Text, UnstyledButton } from '@mantine/core';
@@ -77,8 +75,7 @@ interface MapPanelShellProps {
   /** Accessible name for the expand/collapse handle, e.g. "ficha territorial". */
   readonly sheetLabel: string;
   /**
-   * Dismiss handler. Only consumed in sheet mode — floating panels keep their
-   * own close button inside the (unscrolled) card header.
+   * Dismiss handler. Owned by the shell in floating and sheet modes (UX-16).
    */
   readonly onClose?: () => void;
   /** Accessible name for the sheet close button, e.g. "Cerrar ficha territorial". */
@@ -208,10 +205,18 @@ export function MapPanelShell({
   if (!sheet) {
     return (
       <Paper shadow="md" p="md" radius="md" className={floatingClassName} data-testid={testId}>
-        <div className={styles.panelCardBody}>
-          {minimizeButton && <div className={styles.panelCardMinimize}>{minimizeButton}</div>}
-          {children}
+        <div className={styles.panelCardHeader}>
+          {minimizeButton}
+          {onClose && closeLabel && (
+            <CloseButton
+              onClick={onClose}
+              className={styles.panelCloseButton}
+              aria-label={closeLabel}
+              data-testid={`${testId}-close`}
+            />
+          )}
         </div>
+        <div className={styles.panelCardBody}>{children}</div>
       </Paper>
     );
   }

@@ -329,8 +329,8 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
     });
 
     // The shared 2D `<InfoPanel>` renders one `[data-testid="info-panel-feature-section"]`
-    // per feature, under the title "Informacion".
-    expect(screen.getByText('Informacion')).toBeTruthy();
+    // per feature, under the title "Información".
+    expect(screen.getByText('Información')).toBeTruthy();
     expect(
       screen.getAllByTestId('info-panel-feature-section').length,
     ).toBeGreaterThan(0);
@@ -341,7 +341,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
     // module-hashed class that encodes those rules. The class name starts
     // with `_infoPanel_` in CSS Modules hash output; that prefix is the
     // stable marker CSS Modules always emits.
-    const panel = screen.getByText('Informacion').closest('[class*="infoPanel"]');
+    const panel = screen.getByText('Información').closest('[class*="infoPanel"]');
     expect(panel).not.toBeNull();
   });
 
@@ -489,14 +489,14 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       });
     });
 
-    expect(screen.getByText('Informacion')).toBeTruthy();
+    expect(screen.getByText('Información')).toBeTruthy();
 
     const closeBtn = screen.getByRole('button', {
-      name: /Cerrar panel de informacion/i,
+      name: /Cerrar panel de información/i,
     });
     await userEvent.click(closeBtn);
 
-    expect(screen.queryByText('Informacion')).toBeNull();
+    expect(screen.queryByText('Información')).toBeNull();
   });
 
   // -------------------------------------------------------------------------

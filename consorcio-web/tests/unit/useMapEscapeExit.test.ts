@@ -17,11 +17,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MapInteractionMode } from '../../src/components/map2d/measurement/useMeasurement';
 import { useMapEscapeExit } from '../../src/components/map2d/useMapEscapeExit';
 
-function setup(mode: MapInteractionMode) {
+function setup(mode: MapInteractionMode, extra: { onClosePanels?: () => void } = {}) {
   const handlers = {
     onCancelMeasurement: vi.fn(),
     onExitDraw: vi.fn(),
     onExitCanal: vi.fn(),
+    onClosePanels: extra.onClosePanels ?? vi.fn(),
   };
   const view = renderHook(() => useMapEscapeExit({ mode, ...handlers }));
   return { ...handlers, ...view };
@@ -75,7 +76,7 @@ describe('useMapEscapeExit', () => {
     expect(onExitDraw).not.toHaveBeenCalled();
   });
 
-  it('does nothing in idle so Escape stays available to modals and menus', () => {
+  it('does not cancel modes in idle', () => {
     const { onCancelMeasurement, onExitDraw, onExitCanal } = setup('idle');
 
     pressEscape();
@@ -83,6 +84,15 @@ describe('useMapEscapeExit', () => {
     expect(onCancelMeasurement).not.toHaveBeenCalled();
     expect(onExitDraw).not.toHaveBeenCalled();
     expect(onExitCanal).not.toHaveBeenCalled();
+  });
+
+  it('closes floating panels when Escape is pressed in idle', () => {
+    const onClosePanels = vi.fn();
+    setup('idle', { onClosePanels });
+
+    pressEscape();
+
+    expect(onClosePanels).toHaveBeenCalledTimes(1);
   });
 
   it('ignores keys other than Escape', () => {
