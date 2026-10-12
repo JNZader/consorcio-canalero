@@ -77,6 +77,7 @@ describe('map skeleton geometry (T3c fix 5a)', () => {
     expect(body).toContain('min-height: 260px');
     // El titulo baja debajo del mapa; nada se oculta.
     expect(body).toContain('order: 2');
+    expect(body).toContain('position: absolute');
     expect(body).not.toContain('display: none');
   });
 
