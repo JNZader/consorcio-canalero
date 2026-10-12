@@ -565,11 +565,11 @@
   }
 
   /* MOB-05: 2D/3D overlays the canvas so it stays visible without stealing
-     the 96px height budget the e2e canary measures. */
+     the 96px height budget the e2e canary measures. left 72px clears the 44px burger. */
   .mapPageContainer > .mapViewToggleBar {
     position: absolute;
     top: 8px;
-    left: 52px;
+    left: 72px;
     z-index: 25;
     margin-bottom: 0 !important;
   }
@@ -1477,7 +1477,7 @@
   .mapPageContainer > .mapViewToggleBar {
     position: absolute;
     top: 8px;
-    left: 52px;
+    left: 72px;
     z-index: 25;
     margin-bottom: 0 !important;
   }
@@ -1698,6 +1698,11 @@ text.precipBarLabels {
 }
 
 .mapCursorDock {
+  position: absolute;
+  left: 90px;
+  bottom: 10px;
+  z-index: 16;
+  pointer-events: none;
   padding: 2px 6px;
 }
 

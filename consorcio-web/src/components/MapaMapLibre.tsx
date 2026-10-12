@@ -1317,8 +1317,8 @@ export default function MapaMapLibre() {
               onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
               onExportKmz={handleExportKmz}
               onExportMenuOpen={handleExportIntent}
+              cursorReadout={<MapCursorReadout map={mapRef.current} mapReady={mapReady} />}
               placesControl={
-                <>
                 <MapPlacesControl
                   onRecenter={() => {
                     setQuickPlace(null);
@@ -1348,8 +1348,6 @@ export default function MapaMapLibre() {
                     requestMapGeolocate(mapRef.current);
                   }}
                 />
-                <MapCursorReadout map={mapRef.current} mapReady={mapReady} />
-                </>
               }
               showLegend={showLegend}
               consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
