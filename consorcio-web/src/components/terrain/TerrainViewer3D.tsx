@@ -876,15 +876,18 @@ export default function TerrainViewer3D({
   }, []);
 
   // Update exaggeration
+  const exaggerationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleExaggerationChange = useCallback((value: number) => {
     setExaggeration(value);
-    const map = mapRef.current;
-    if (!map) return;
-
-    map.setTerrain({
-      source: 'terrain-rgb',
-      exaggeration: value,
-    });
+    if (exaggerationTimer.current) clearTimeout(exaggerationTimer.current);
+    exaggerationTimer.current = setTimeout(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      map.setTerrain({
+        source: 'terrain-rgb',
+        exaggeration: value,
+      });
+    }, 120);
   }, []);
 
   const easeCamera = useCallback((partial: { bearing?: number; pitch?: number }) => {

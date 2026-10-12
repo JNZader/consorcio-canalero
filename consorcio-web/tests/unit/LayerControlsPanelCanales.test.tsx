@@ -250,7 +250,7 @@ describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
     return expandCanales();
   }
 
-  it('counts the number of visible canal children (not the master flags)', () => {
+  it('counts canal masters in the family badge (UX-14)', () => {
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
@@ -265,7 +265,7 @@ describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
       />,
     );
 
-    expect(within(canalesControl()).getByText('2')).toBeInTheDocument();
+    expect(within(canalesControl()).getByText('1')).toBeInTheDocument();
   });
 
   it('drops the count when a child is toggled off', () => {
@@ -286,7 +286,7 @@ describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
     expect(within(canalesControl()).getByText('1')).toBeInTheDocument();
   });
 
-  it('shows NO badge when the master flag is on but no child is visible (staleness guard)', () => {
+  it('still shows the master in the badge when children are off (UX-14)', () => {
     renderWithMantine(
       <LayerControlsPanel
         {...baseProps}
@@ -298,7 +298,7 @@ describe('<LayerControlsPanel /> — Canales active-count badge (FF1)', () => {
       />,
     );
 
-    expect(within(canalesControl()).queryByText('1')).not.toBeInTheDocument();
+    expect(within(canalesControl()).getByText('1')).toBeInTheDocument();
   });
 });
 

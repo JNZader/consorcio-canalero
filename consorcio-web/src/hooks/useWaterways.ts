@@ -36,31 +36,31 @@ export const WATERWAY_DEFS = [
     id: 'rio_tercero',
     file: 'rio_tercero.geojson',
     nombre: 'Río Tercero',
-    style: { color: '#1565C0', weight: 4, opacity: 0.9 } satisfies WaterwayStyle,
+    style: { color: '#0D47A1', weight: 3, opacity: 0.95, dashArray: undefined } satisfies WaterwayStyle,
   },
   {
     id: 'canal_desviador',
     file: 'canal_desviador.geojson',
     nombre: 'Canal Desviador a Río Tercero',
-    style: { color: '#00897B', weight: 3, opacity: 0.9 } satisfies WaterwayStyle,
+    style: { color: '#00695C', weight: 2, opacity: 0.95, dashArray: '4,2' } satisfies WaterwayStyle,
   },
   {
     id: 'canal_litin_tortugas',
     file: 'canal_litin_tortugas.geojson',
     nombre: 'Canal Litín Tortugas',
-    style: { color: '#00ACC1', weight: 3, opacity: 0.9 } satisfies WaterwayStyle,
+    style: { color: '#00838F', weight: 2, opacity: 0.95, dashArray: '4,2' } satisfies WaterwayStyle,
   },
   {
     id: 'arroyo_algodon',
     file: 'arroyo_algodon.geojson',
     nombre: 'Arroyo Algodón',
-    style: { color: '#42A5F5', weight: 2, opacity: 0.85 } satisfies WaterwayStyle,
+    style: { color: '#1565C0', weight: 1.5, opacity: 0.9, dashArray: '2,2' } satisfies WaterwayStyle,
   },
   {
     id: 'arroyo_las_mojarras',
     file: 'arroyo_las_mojarras.geojson',
     nombre: 'A. Las Saladas / de las Mojarras',
-    style: { color: '#64B5F6', weight: 2, opacity: 0.85 } satisfies WaterwayStyle,
+    style: { color: '#5C6BC0', weight: 1.5, opacity: 0.9, dashArray: '2,2' } satisfies WaterwayStyle,
   },
 ] as const;
 

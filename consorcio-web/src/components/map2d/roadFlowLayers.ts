@@ -149,8 +149,9 @@ export function buildRoadFlowConduccionArrowLayout() {
       14,
       0.4,
     ] as ExpressionSpecification,
-    'icon-allow-overlap': true,
-    'icon-ignore-placement': true,
+    'icon-allow-overlap': false,
+    'icon-ignore-placement': false,
+    'icon-optional': true,
     'icon-anchor': 'center' as const,
   };
 }

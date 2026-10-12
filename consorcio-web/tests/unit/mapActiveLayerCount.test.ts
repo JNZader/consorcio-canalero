@@ -66,7 +66,7 @@ describe('buildFamilyActiveCounts (T3c fix 3)', () => {
     expect(counts[LAYER_CATEGORY.TERRITORIO]).toBe(2); // roads + catastro
     expect(counts[LAYER_CATEGORY.PILAR_VERDE]).toBe(0);
     expect(counts[LAYER_CATEGORY.ANALISIS]).toBe(0);
-    expect(counts[LAYER_CATEGORY.CANALES]).toBe(2); // 2 visible children, not the masters
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(1); // relevados master only (UX-14)
     expect(counts[LAYER_CATEGORY.BASE]).toBe(0);
   });
 
@@ -75,8 +75,8 @@ describe('buildFamilyActiveCounts (T3c fix 3)', () => {
       buildFamilyActiveCounts({ layerItems, vectorVisibility, canalChildIds })
     );
 
-    // 1 hidrografía + 2 territorio + 2 canales = 5, NOT the 9 truthy raw keys.
-    expect(total).toBe(5);
+    // 1 hidrografía + 2 territorio + 1 canal master = 4, NOT the 9 truthy raw keys.
+    expect(total).toBe(4);
     expect(Object.values(vectorVisibility).filter(Boolean).length).toBe(9);
   });
 
@@ -90,19 +90,17 @@ describe('buildFamilyActiveCounts (T3c fix 3)', () => {
     });
 
     expect(counts[LAYER_CATEGORY.BASE]).toBe(2);
-    expect(sumFamilyActiveCounts(counts)).toBe(7);
+    expect(sumFamilyActiveCounts(counts)).toBe(6);
   });
 
-  it('never double-counts the canal MASTER toggles', () => {
-    // Masters on, every child off → the family badge is 0, not 2.
+  it('counts canal masters, not children (UX-14)', () => {
     const counts = buildFamilyActiveCounts({
       layerItems,
       vectorVisibility: { canales_relevados: true, canales_propuestos: true },
       canalChildIds,
     });
 
-    expect(counts[LAYER_CATEGORY.CANALES]).toBe(0);
-    expect(sumFamilyActiveCounts(counts)).toBe(0);
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(2);
   });
 
   it('is zero for an empty visibility record', () => {
@@ -161,8 +159,8 @@ describe('buildTerrain3DLayerItems — 3D badge inputs (R2-002)', () => {
       })
     );
 
-    // waterways + pilar_verde_agro_zonas + 2 visible canal children = 4.
-    expect(total).toBe(4);
+    // waterways + pilar_verde_agro_zonas + relevados master = 3.
+    expect(total).toBe(3);
     // The old formula would have said 7.
     expect(Object.values(vectorVisibility).filter(Boolean).length).toBe(7);
   });
@@ -228,8 +226,7 @@ describe('collectCanalChildIds — master gate (B2-2.6)', () => {
   });
 
   it('makes the family badge match what the map renders', () => {
-    // Todos los hijos en `true`, propuestos master OFF: el mapa dibuja los 2
-    // relevados, y el badge debe decir 2 — no 3.
+    // UX-14: badge follows masters, not children.
     const visibility: Record<string, boolean> = {
       canales_relevados: true,
       canales_propuestos: false,
@@ -244,7 +241,7 @@ describe('collectCanalChildIds — master gate (B2-2.6)', () => {
       canalChildIds: collectCanalChildIds(relevados, propuestos, visibility, null),
     });
 
-    expect(counts[LAYER_CATEGORY.CANALES]).toBe(2);
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(1);
   });
 });
 
@@ -326,7 +323,7 @@ describe('collectCanalChildIds — etapas filter (B4c/T3)', () => {
       canalChildIds: collectCanalChildIds(relevados, propuestos, visibility, gate({ Alta: false })),
     });
 
-    expect(counts[LAYER_CATEGORY.CANALES]).toBe(3);
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(2);
   });
 
   it('makes the 3D workspace badge match too (same derivation)', () => {
@@ -353,8 +350,8 @@ describe('collectCanalChildIds — etapas filter (B4c/T3)', () => {
       })
     );
 
-    expect(before).toBe(4);
-    expect(after).toBe(3);
+    expect(before).toBe(2);
+    expect(after).toBe(2);
   });
 
   it('counts everything when there is no gate (null) — the pre-T3 behaviour', () => {
@@ -364,6 +361,6 @@ describe('collectCanalChildIds — etapas filter (B4c/T3)', () => {
       canalChildIds: collectCanalChildIds(relevados, propuestos, visibility, null),
     });
 
-    expect(counts[LAYER_CATEGORY.CANALES]).toBe(4);
+    expect(counts[LAYER_CATEGORY.CANALES]).toBe(2);
   });
 });
