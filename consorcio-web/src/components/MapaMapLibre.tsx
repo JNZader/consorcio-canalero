@@ -74,6 +74,7 @@ import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 
 import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
 import { MapUiPanels } from './map2d/MapUiPanels';
+import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
 import { MapPlacesControl } from './map2d/MapPlacesControl';
 import { MapViewportOverlay } from './map2d/MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
@@ -385,6 +386,13 @@ export default function MapaMapLibre() {
     () => groupCanalesByFolder(canalesIndex?.relevados ?? [], 'relevado'),
     [canalesIndex]
   );
+  const flyToCanal = (toggleId: string) => {
+    fitMapToCanal(
+      mapRef.current,
+      canalCollections(canalesRelevados, canalesPropuestas),
+      toggleId,
+    );
+  };
   const canalesPropuestosItems = useMemo(
     () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
     [canalesIndex]
@@ -1295,6 +1303,7 @@ export default function MapaMapLibre() {
               onRetryDem={() => {
                 void reloadGeoLayers();
               }}
+              onFocusCanal={flyToCanal}
               rasterCompareId={rasterCompareId}
               onRasterCompare={setRasterCompareId}
               canalesRelevadosItems={canalesRelevadosItems}
@@ -1499,6 +1508,7 @@ export default function MapaMapLibre() {
               onRetryDem={() => {
                 void reloadGeoLayers();
               }}
+              onFocusCanal={flyToCanal}
               rasterCompareId={rasterCompareId}
               onRasterCompare={setRasterCompareId}
               canalesRelevadosItems={canalesRelevadosItems}

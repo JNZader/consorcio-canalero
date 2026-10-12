@@ -329,3 +329,21 @@ describe('<LayerControlsPanel /> — canal groups (FF5)', () => {
     expect(screen.queryByTestId('canal-group-monte_lena')).not.toBeInTheDocument();
   });
 });
+
+describe('<LayerControlsPanel /> — UX-05 canal focus', () => {
+  it('flies the map when the explorer row label is clicked', () => {
+    const onFocusCanal = vi.fn();
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{ canales_relevados: true }}
+        onLayerVisibilityChange={() => {}}
+        canalesRelevadosItems={canalesRelevadosItems}
+        onFocusCanal={onFocusCanal}
+      />,
+    );
+    expandCanales();
+    fireEvent.click(screen.getByText('Canal Norte'));
+    expect(onFocusCanal).toHaveBeenCalledWith('canal_relevado_norte');
+  });
+});
