@@ -245,7 +245,7 @@ describe('<InfoPanel /> BPA branch', () => {
 
     expect(screen.queryByTestId('bpa-card')).not.toBeInTheDocument();
     // Generic branch renders "Informacion" heading + property badges
-    expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
     expect(screen.getByText('nombre')).toBeInTheDocument();
     expect(screen.getByText('Canal Este')).toBeInTheDocument();
   });
@@ -282,13 +282,13 @@ describe('<InfoPanel /> BPA branch', () => {
     );
 
     expect(screen.queryByTestId('bpa-card')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /informacion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
   });
 
   it('returns null when feature is null (unchanged pre-existing behavior)', () => {
     renderWithMantine(<InfoPanel feature={null} onClose={() => {}} />);
     // Neither the BPA card nor the generic "Informacion" heading is rendered.
     expect(screen.queryByTestId('bpa-card')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /informacion/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /información/i })).not.toBeInTheDocument();
   });
 });

@@ -30,7 +30,7 @@
  * flow explicit and avoids a hidden cross-cutting coupling in a small UI atom.
  */
 
-import { Badge, CloseButton, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import { Badge, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { memo, useEffect, useMemo, useState } from 'react';
 
@@ -432,7 +432,7 @@ export const InfoPanel = memo(function InfoPanel({
       testId="map-2d-info-panel"
       sheetLabel="panel de información"
       onClose={onClose}
-      closeLabel="Cerrar panel de informacion"
+      closeLabel="Cerrar panel de información"
       minimized={minimized}
       onToggleMinimize={onToggleMinimize}
       pillLabel={infoPillLabel(resolved)}
@@ -443,14 +443,7 @@ export const InfoPanel = memo(function InfoPanel({
           it stays reachable on a long feature list; rendering it here too would
           duplicate the affordance. */}
       <Group justify="space-between" mb="xs">
-        <Title order={5}>Informacion</Title>
-        {!sheet && (
-          <CloseButton
-            onClick={onClose}
-            className={styles.panelCloseButton}
-            aria-label="Cerrar panel de informacion"
-          />
-        )}
+        <Title order={5}>Información</Title>
       </Group>
       <Divider mb="xs" />
       {resolved.length > 1 && (

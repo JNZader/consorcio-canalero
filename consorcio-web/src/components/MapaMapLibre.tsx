@@ -898,6 +898,15 @@ export default function MapaMapLibre() {
   // started measuring had no way back to idle (map-fluidity T1).
   const handleExitDraw = useCallback(() => fichaInteraction.stopDraw(), [fichaInteraction]);
   const handleExitCanal = useCallback(() => fichaInteraction.stopCanal(), [fichaInteraction]);
+  const handleCloseInfoPanel = useCallback(() => {
+    setSelectedFeatures([]);
+    setElevationProfileHover(null);
+    setElevationProfileRange(null);
+  }, []);
+  const handleClosePanels = useCallback(() => {
+    handleCloseInfoPanel();
+    fichaInteraction.clearFicha();
+  }, [fichaInteraction, handleCloseInfoPanel]);
   useMapEscapeExit({
     // Escape must still leave the draw SESSION after the polygon is finished,
     // when `interactionMode` has already gone back to idle (T4).
@@ -906,6 +915,7 @@ export default function MapaMapLibre() {
     onExitDraw: handleExitDraw,
     onExitCanal: handleExitCanal,
     onExitPoiPlace: puntosInteres.cancelPlace,
+    onClosePanels: handleClosePanels,
   });
 
   // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
@@ -1316,11 +1326,7 @@ export default function MapaMapLibre() {
                 })
               }
               selectedFeatures={selectedFeatures}
-              onCloseInfoPanel={() => {
-                setSelectedFeatures([]);
-                setElevationProfileHover(null);
-                setElevationProfileRange(null);
-              }}
+              onCloseInfoPanel={handleCloseInfoPanel}
               onElevationProfileHover={setElevationProfileHover}
               onElevationProfileRange={setElevationProfileRange}
               fichaActive={fichaInteraction.request !== null}

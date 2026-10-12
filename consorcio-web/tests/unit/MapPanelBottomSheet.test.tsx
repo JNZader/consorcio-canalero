@@ -292,11 +292,11 @@ describe("map panels — mobile bottom sheet", () => {
 			expect(panel.className).not.toContain("panelSheet");
 			expect(panel).not.toHaveAttribute("data-sheet");
 			expect(screen.queryByTestId("map-2d-info-panel-sheet-handle")).toBeNull();
-			// The floating card keeps its own inline close button in the (never
-			// scrolled) card header — the shell renders none.
+			// UX-16: the shell owns the floating close in a pinned header.
 			expect(screen.queryByTestId("map-2d-info-panel-sheet-close")).toBeNull();
+			expect(screen.getByTestId("map-2d-info-panel-close")).toBeInTheDocument();
 			expect(
-				screen.getAllByRole("button", { name: "Cerrar panel de informacion" }),
+				screen.getAllByRole("button", { name: "Cerrar panel de información" }),
 			).toHaveLength(1);
 		});
 
