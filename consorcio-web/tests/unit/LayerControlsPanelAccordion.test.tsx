@@ -100,9 +100,11 @@ describe('<LayerControlsPanel /> — search box (2.3)', () => {
 
     fireEvent.change(screen.getByLabelText('Buscar capa'), { target: { value: 'catastro' } });
 
-    // Only the matching layer remains.
-    expect(screen.getByRole('checkbox', { name: 'Catastro rural IDECOR' })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: 'Red vial rural' })).not.toBeInTheDocument();
+    // Only the matching layer remains (Mantine 9 may keep it a11y-hidden).
+    expect(
+      screen.getByRole('checkbox', { name: 'Catastro rural IDECOR', hidden: true }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Red vial rural', hidden: true })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: 'Hidrografía' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('checkbox', { name: 'BPA histórico (por años)' }),
@@ -125,7 +127,9 @@ describe('<LayerControlsPanel /> — search box (2.3)', () => {
     expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /hidrografía/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /base/i })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: 'Red vial rural' })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: 'Red vial rural', hidden: true }),
+    ).toBeInTheDocument();
   });
 });
 

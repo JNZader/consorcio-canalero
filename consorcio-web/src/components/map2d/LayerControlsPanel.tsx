@@ -57,6 +57,11 @@ import {
   type LayerCategory,
   normalizeSearchText,
 } from './map2dDerived';
+import {
+  displayedAccordionValue,
+  idleAccordionValue,
+  rememberAccordionChange,
+} from './accordionOpenState';
 import { pickPresetRasterId } from './mapPresets';
 import { MAP_DEFAULT_ZOOM } from '../../constants';
 import { LAYER_ZOOM_IN_HINT, layerBelowMinZoom } from './layerMinZoom';
@@ -492,6 +497,7 @@ export function LayerControlsPanel({
   mapZoom = MAP_DEFAULT_ZOOM,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
+  const [accordionStored, setAccordionStored] = useState<string[] | null>(null);
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
   // ("% Forestacion obligatoria" carries a tilde) and unaccented data-driven
   // names ("Riesgo de Inundacion"), so BOTH sides go through the same fold.
@@ -1207,19 +1213,27 @@ export function LayerControlsPanel({
           />
           {accordionItems.length > 0 ? (
             <Accordion
-              key={isSearching ? 'search' : 'idle'}
               multiple
               chevronPosition="right"
-              defaultValue={
-                isSearching
-                  ? [...LAYER_FAMILIES.map((family) => family.value), 'raster', 'ajustes']
-                  : [
-                      ...LAYER_FAMILIES.filter(
-                        (family) => familyActiveCounts[family.value] > 0
-                      ).map((family) => family.value),
-                      ...(showDemOverlay ? (['raster'] as const) : []),
-                    ]
-              }
+              keepMounted
+              keepMountedMode="display-none"
+              value={displayedAccordionValue(
+                isSearching,
+                accordionStored,
+                idleAccordionValue(
+                  LAYER_FAMILIES.filter((family) => familyActiveCounts[family.value] > 0).map(
+                    (family) => family.value
+                  ),
+                  Boolean(showDemOverlay)
+                ),
+                accordionItems.flatMap((node) =>
+                  isValidElement(node) && node.key != null ? [String(node.key)] : []
+                )
+              )}
+              onChange={(next) => {
+                const list = Array.isArray(next) ? next : next ? [next] : [];
+                setAccordionStored(rememberAccordionChange(isSearching, list, accordionStored));
+              }}
               styles={{ content: { padding: '8px' } }}
             >
               {accordionItems}

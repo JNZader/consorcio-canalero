@@ -13,6 +13,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Alert, Button, Stack } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
+import { TILE_LAYERS } from '../../constants/mapStyles';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
 import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
@@ -553,11 +554,9 @@ export default function TerrainViewer3D({
           },
           satellite: {
             type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            ],
+            tiles: [TILE_LAYERS.satellite.url],
             tileSize: 256,
-            attribution: '&copy; Esri',
+            attribution: TILE_LAYERS.satellite.attribution,
           },
           // Martin MVT — same source the 2D viewer consumes via
           // ``syncMartinSuggestionLayers``. Always declared, controlled by

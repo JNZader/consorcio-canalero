@@ -1,6 +1,7 @@
 import type maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
+import { TILE_LAYERS } from '../../constants/mapStyles';
 import { logger } from '../../lib/logger';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
 import { MAP_LOCALE_ES } from './mapLibreLocale';
@@ -116,19 +117,16 @@ export function useMapInitialization({
         sources: {
           'osm-base': {
             type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tiles: [TILE_LAYERS.osm.url],
             tileSize: 256,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            attribution: TILE_LAYERS.osm.attribution,
             maxzoom: 19,
           },
           'satellite-base': {
             type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            ],
+            tiles: [TILE_LAYERS.satellite.url],
             tileSize: 256,
-            attribution: '&copy; Esri',
+            attribution: TILE_LAYERS.satellite.attribution,
           },
         },
         layers: [
