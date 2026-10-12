@@ -214,6 +214,11 @@ body {
   --mantine-color-gray-6: #4b5563; /* accessible gray for text + subtle nav */
   --mantine-color-orange-filled: #c2410c; /* white text ratio > 4.5:1 */
   --mantine-color-orange-filled-hover: #9a3412;
+  /* UX-27: LightningCSS rewrites `light-dark()` to these two vars. Without
+     them the compiled `background` is invalid and map panels go transparent. */
+  color-scheme: light;
+  --lightningcss-light: initial;
+  --lightningcss-dark: ;
 }
 
 [data-mantine-color-scheme="dark"] {
@@ -636,4 +641,7 @@ h1, h2, h3, h4, h5, h6 {
   --mantine-color-gray-6: #a3a3a3;
   --mantine-color-dimmed: #a3a3a3;
   --mantine-color-institucional-7: #7bc2ac;
+  color-scheme: dark;
+  --lightningcss-light: ;
+  --lightningcss-dark: initial;
 }
