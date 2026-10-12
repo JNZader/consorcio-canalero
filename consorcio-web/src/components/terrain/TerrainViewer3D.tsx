@@ -34,6 +34,10 @@ import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
 import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
+import {
+  resolveTerrainStartPitch,
+  TERRAIN_DEFAULT_EXAGGERATION,
+} from './terrainExaggeration';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
 import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
@@ -69,7 +73,6 @@ function getDefaultZoom(): number {
 
 const MIN_EXAGGERATION = 1;
 const MAX_EXAGGERATION = 200;
-const DEFAULT_EXAGGERATION = 200;
 /** Backend smoothing methods, keyed by store-side threshold. Must stay in
  * sync with ``tile_service_support._SMOOTHING_PARAMS``. */
 const TERRAIN_SMOOTHING_METHOD_BY_THRESHOLD = {
@@ -134,14 +137,14 @@ export default function TerrainViewer3D({
     ? [handedCamera.lng, handedCamera.lat]
     : center;
   const startZoom = handedCamera?.zoom ?? zoom;
-  const startPitch = handedCamera?.pitch ?? 60;
+  const startPitch = resolveTerrainStartPitch(handedCamera?.pitch);
   const startBearing = handedCamera?.bearing ?? -20;
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const activeRasterLayerIdRef = useRef<string | null>(null);
   const activeRasterTileUrlRef = useRef<string | null>(null);
   const overlayOpacityRef = useRef(1);
-  const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
+  const [exaggeration, setExaggeration] = useState(TERRAIN_DEFAULT_EXAGGERATION);
   // Default to fully opaque: the previous 0.7 let the world-imagery base
   // bleed through the active raster, which read as "stacked images" to the
   // user. With a fully opaque overlay we can also skip fetching the base
@@ -572,17 +575,9 @@ export default function TerrainViewer3D({
             id: 'satellite-base',
             type: 'raster',
             source: 'satellite',
-            // Initial visibility is decided by an effect below — if a raster
-            // overlay is already covering the terrain at full opacity we
-            // never need to fetch the world-imagery mosaic, so we start the
-            // layer hidden to avoid an unwanted burst of tile requests on
-            // first render.
-            layout: {
-              visibility:
-                activeRasterTileUrlRef.current && overlayOpacityRef.current >= 1
-                  ? 'none'
-                  : 'visible',
-            },
+            // Audit v5 3D-06: keep Esri under the overlay. Opaque DEM/Sentinel
+            // footprints do not cover the globe; hiding the base shows white voids.
+            layout: { visibility: 'visible' },
             paint: { 'raster-opacity': 1 },
           },
           {
@@ -612,7 +607,7 @@ export default function TerrainViewer3D({
         ],
         terrain: {
           source: 'terrain-rgb',
-          exaggeration: DEFAULT_EXAGGERATION,
+          exaggeration: TERRAIN_DEFAULT_EXAGGERATION,
         },
       },
       center: startCenter,
@@ -748,24 +743,6 @@ export default function TerrainViewer3D({
       terrainRebuildInProgressRef.current = false;
     }
   }, [buildTerrainRgbUrl, terrainSmoothingEnabled, terrainSmoothingThreshold, ready]);
-
-  // Hide the world-imagery base layer when the active raster overlay is
-  // fully opaque: there's nothing to peek through, so the ESRI tiles would
-  // just be wasted bandwidth (the user even confirmed they don't want that
-  // layer fetched at all unless it's needed). When the user pulls opacity
-  // below 1, or there's no overlay yet, we put the base back so the 3D
-  // mesh doesn't render as a blank surface.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready) return;
-    if (!map.getLayer('satellite-base')) return;
-    const overlayCoversEverything = !!activeRasterTileUrl && overlayOpacity >= 1;
-    map.setLayoutProperty(
-      'satellite-base',
-      'visibility',
-      overlayCoversEverything ? 'none' : 'visible'
-    );
-  }, [activeRasterTileUrl, overlayOpacity, ready]);
 
   // Puntos de conflicto — same layer/source the 2D viewer consumes via
   // Martin. Visibility tracks ``vectorLayerVisibility.puntos_conflicto``.

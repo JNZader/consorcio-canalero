@@ -4,7 +4,18 @@ export interface TerrainExaggerationPreset {
   readonly tooltip: string;
 }
 
-/** UX PDF T2 — ETH/Esri ranges; ×200 stays the pampa default. */
+/** Audit v5 3D-02 — pampa first impression; ×200 remains a preset, not the default. */
+export const TERRAIN_DEFAULT_EXAGGERATION = 20;
+
+const TERRAIN_DEFAULT_PITCH = 60;
+const TERRAIN_INHERITED_PITCH_MIN = 5;
+
+/** Audit v5 3D-01 — 2D publishes pitch 0; treat nadir as "no 3D camera". */
+export function resolveTerrainStartPitch(pitch: number | undefined): number {
+  return pitch !== undefined && pitch > TERRAIN_INHERITED_PITCH_MIN ? pitch : TERRAIN_DEFAULT_PITCH;
+}
+
+/** UX PDF T2 — ETH/Esri ranges. */
 export const TERRAIN_EXAGGERATION_PRESETS: readonly TerrainExaggerationPreset[] = [
   { value: 1, label: '×1', tooltip: 'Altura real. Sin distorsión.' },
   { value: 20, label: '×20', tooltip: 'Relieve visible en terreno suave.' },
