@@ -35,13 +35,13 @@ describe('map2dDerived', () => {
         pointFeature('a1', { nombre: 'Cuenca A', __color: '#abcdef' }),
       ]),
       basins: polygonCollection([pointFeature('b1')]),
-      soilMap: polygonCollection([pointFeature('s1', { cap: 'III' })]),
     });
 
     expect(items.some((item) => item.label === 'Zona Consorcio')).toBe(true);
     expect(items.some((item) => item.label === 'Cuenca A')).toBe(true);
     expect(items.some((item) => item.label === 'Subcuencas operativas')).toBe(true);
-    expect(items.some((item) => item.label === 'Clase III')).toBe(true);
+    expect(items.some((item) => item.label === 'Clase I')).toBe(true);
+    expect(items.some((item) => item.label === 'Clase VIII')).toBe(true);
   });
 
   it('builds visible vector layer items and DEM select options', () => {

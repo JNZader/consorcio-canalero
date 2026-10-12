@@ -132,7 +132,7 @@ export function syncComparisonVectorLayers(
   }
 
   syncRoadLayers(map, inputs.roadsCollection, !!visible.roads);
-  syncSoilLayers(map, inputs.soilCollection, !!visible.soil);
+  syncSoilLayers(map, !!visible.soil);
   syncCatastroLayers(map, !!visible.catastro);
   syncBasinLayers(map, inputs.basins, !!visible.basins);
   syncApprovedZoneLayers(map, inputs.approvedZonesCollection, !!visible.approved_zones);
