@@ -309,14 +309,11 @@ export default function MapaMapLibre() {
     reload: reloadCaminos,
   } = useCaminosColoreados();
   const { conflictos } = useConflictos();
-  // Lazy fetch (~2.2MB geojson): the soil layer starts OFF
-  // (mapLayerSyncStore soil: false), so defer the download until the user
-  // actually toggles it on — same pattern as TerrainViewer3D.tsx.
-  // Correctness: soilCollection is only consumed by syncSoilLayers (hidden
-  // while OFF) and the KMZ export, which skips soil unless
-  // visibleLayers.soil === true (kmzBuilder.ts::shouldIncludeLayer).
-  const soilEnabled = !!vectorVisibility.soil;
-  const { soilMap, error: soilError, reload: reloadSoil } = useSoilMap({ enabled: soilEnabled });
+  // 2D paint uses `suelos_cu.pmtiles` (syncSoilLayers). The GeoJSON is only
+  // for KMZ export — same latch as catastro (`exportIntent`).
+  const { soilMap, error: soilError, reload: reloadSoil } = useSoilMap({
+    enabled: exportIntent,
+  });
   const { basins, error: basinsError, loading: basinsLoading, reload: reloadBasins } = useBasins();
   const { waterways, error: waterwaysError, reload: reloadWaterways } = useWaterways();
   const {
@@ -563,7 +560,7 @@ export default function MapaMapLibre() {
     // never pull a multi-MB asset the gate exists to defer.
     gates: {
       geoLayers: geoLayersEnabled,
-      soil: soilEnabled,
+      soil: exportIntent,
       catastro: exportIntent,
       pilarVerde: pilarVerdeLayersNeeded,
       ignOverlay: showIGNOverlay,
@@ -618,6 +615,7 @@ export default function MapaMapLibre() {
   const measurementMap = mapReady ? mapRef.current : null;
   const {
     state: measurementState,
+    liveLabel: measurementLiveLabel,
     startDistance: startMeasureDistance,
     startArea: startMeasureArea,
     clear: clearMeasurements,
@@ -1235,6 +1233,7 @@ export default function MapaMapLibre() {
             <MeasurementToolbar
               mode={puntosInteres.interactionMode}
               hasMeasurements={measurementState.measurements.length > 0}
+              liveLabel={measurementLiveLabel}
               onStartDistance={handleStartMeasureDistance}
               onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}

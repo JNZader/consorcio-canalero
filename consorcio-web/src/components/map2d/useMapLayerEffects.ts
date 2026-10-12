@@ -182,9 +182,9 @@ export function useMapLayerEffects({
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
-    syncSoilLayers(map, soilCollection, !!vectorVisibility.soil);
+    syncSoilLayers(map, !!vectorVisibility.soil);
     });
-  }, [mapReady, mapRef, soilCollection, vectorVisibility.soil]);
+  }, [mapReady, mapRef, vectorVisibility.soil]);
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
@@ -532,7 +532,6 @@ export function useMapLayerEffects({
       .map(([key, value]) => `${key}:${value ? 1 : 0}`)
       .sort()
       .join(','),
-    soilCollection ? 1 : 0,
     roadsCollection ? 1 : 0,
     basins ? 1 : 0,
     zonaCollection ? 1 : 0,

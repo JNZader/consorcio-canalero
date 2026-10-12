@@ -50,6 +50,21 @@ describe("<MeasurementToolbar />", () => {
 		expect(screen.getByTestId("measurement-hint")).toHaveTextContent(/doble clic termina/i);
 	});
 
+	it("shows the live distance while measuring", () => {
+		renderWithMantine(
+			<MeasurementToolbar
+				mode="measuring-distance"
+				hasMeasurements={false}
+				liveLabel="1.2 km"
+				onStartDistance={() => {}}
+				onStartArea={() => {}}
+				onClear={() => {}}
+				onCancel={() => {}}
+			/>,
+		);
+		expect(screen.getByTestId("measurement-live")).toHaveTextContent("1.2 km");
+	});
+
 	it("renders only the Medir trigger when idle and nothing has been measured", () => {
 		renderWithMantine(
 			<MeasurementToolbar

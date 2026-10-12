@@ -2,6 +2,7 @@ import type { FeatureCollection, LineString, Point } from 'geojson';
 import type maplibregl from 'maplibre-gl';
 
 import { getMartinTileUrl } from '../../hooks/useMartinLayers';
+import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
@@ -142,21 +143,46 @@ export function syncWaterwayLayers(
   }
 }
 
-export function syncSoilLayers(
-  map: maplibregl.Map,
-  soilCollection: FeatureCollection | null,
-  isVisible: boolean
-) {
-  ensureGeoJsonSource(map, SOURCE_IDS.SOIL, soilCollection ?? asFeatureCollection([]));
+/** tippecanoe `--layer=suelos_cu` in `package.json` `gen:pmtiles`. */
+export const SOIL_PMTILES_LAYER = 'suelos_cu';
+export const SOIL_PMTILES_PATH = '/data/suelos_cu.pmtiles';
+
+export function soilPmtilesUrl(origin = window.location.origin): string {
+  return `pmtiles://${origin}${SOIL_PMTILES_PATH}`;
+}
+
+/** Match `getSoilColor`: longest roman prefix of `cap` (VIII before I). */
+export function soilFillColorExpression(): unknown[] {
+  const expr: unknown[] = ['case'];
+  for (const cap of ['VIII', 'VII', 'VI', 'IV', 'V', 'III', 'II', 'I'] as const) {
+    expr.push([
+      '==',
+      ['slice', ['upcase', ['to-string', ['coalesce', ['get', 'cap'], '']]], 0, cap.length],
+      cap,
+    ]);
+    expr.push(SOIL_CAPABILITY_COLORS[cap]);
+  }
+  expr.push('#8d6e63');
+  return expr;
+}
+
+export function syncSoilLayers(map: maplibregl.Map, isVisible: boolean) {
+  if (!map.getSource(SOURCE_IDS.SOIL)) {
+    map.addSource(SOURCE_IDS.SOIL, {
+      type: 'vector',
+      url: soilPmtilesUrl(),
+    });
+  }
 
   if (!map.getLayer(`${SOURCE_IDS.SOIL}-fill`)) {
     map.addLayer({
       id: `${SOURCE_IDS.SOIL}-fill`,
       type: 'fill',
       source: SOURCE_IDS.SOIL,
+      'source-layer': SOIL_PMTILES_LAYER,
       minzoom: SOIL_LAYER_MIN_ZOOM,
       paint: {
-        'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
+        'fill-color': soilFillColorExpression() as never,
         'fill-opacity': 0.3,
       },
     });
@@ -167,6 +193,7 @@ export function syncSoilLayers(
       id: `${SOURCE_IDS.SOIL}-line`,
       type: 'line',
       source: SOURCE_IDS.SOIL,
+      'source-layer': SOIL_PMTILES_LAYER,
       minzoom: SOIL_LAYER_MIN_ZOOM,
       paint: {
         'line-color': '#6d4c41',

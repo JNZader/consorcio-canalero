@@ -100,7 +100,7 @@ export interface RasterTilesHealthSlot {
 export interface LayerHealthGates {
   /** `useGeoLayers` is gated on auth init — closed while auth is resolving. */
   readonly geoLayers?: boolean;
-  /** `useSoilMap` only fetches while the soil layer is visible. */
+  /** `useSoilMap` only fetches once export intent latched (2D paint is pmtiles). */
   readonly soil?: boolean;
   /** `useCatastroMap` only fetches once export intent latched. */
   readonly catastro?: boolean;

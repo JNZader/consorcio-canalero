@@ -140,9 +140,8 @@ export function useMapDerivedState(params: {
         hasApprovedZones,
         approvedZones,
         basins,
-        soilMap,
       }),
-    [zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins, soilMap]
+    [zonaCollection, vectorVisibility, hasApprovedZones, approvedZones, basins]
   );
 
   const hasSingleImage = !!selectedImage;
