@@ -59,7 +59,7 @@
       costs ~620 ms of DNS + TLS handshake from a mobile link. Warming it here
       takes that handshake off the critical path.
 
-      The map tile hosts (tile.openstemap / arcgisonline, below) used to be
+      The map tile hosts (CARTO Voyager / Esri, below) used to be
       preconnected instead. That was the wrong call: ``/`` never touches them,
       and the first tile request only happens ~2 s after a user navigates to
       ``/mapa``. A preconnect that nobody redeems inside ~10 s is dropped by
@@ -78,7 +78,7 @@
     -->
     <link rel="preconnect" href="https://cc10demayo-api.javierzader.com" crossorigin />
     <link rel="dns-prefetch" href="https://earthengine.googleapis.com" />
-    <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
+    <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
     <link rel="dns-prefetch" href="https://server.arcgisonline.com" />
 
     <!--

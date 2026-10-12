@@ -130,21 +130,21 @@ describe('measurementDrawModes', () => {
   });
 
   describe('createMeasurementDraw()', () => {
-    it('returns a new MapboxDraw instance built with MEASUREMENT_DRAW_OPTIONS', () => {
+    it('returns a new MapboxDraw instance built with MEASUREMENT_DRAW_OPTIONS', async () => {
       mapboxDrawConstructorSpy.mockClear();
 
-      const instance = createMeasurementDraw();
+      const instance = await createMeasurementDraw();
 
       expect(instance).toBeDefined();
       expect(mapboxDrawConstructorSpy).toHaveBeenCalledTimes(1);
       expect(mapboxDrawConstructorSpy).toHaveBeenCalledWith(MEASUREMENT_DRAW_OPTIONS);
     });
 
-    it('produces a FRESH instance on every call (dedicated draw, never shared)', () => {
+    it('produces a FRESH instance on every call (dedicated draw, never shared)', async () => {
       mapboxDrawConstructorSpy.mockClear();
 
-      const a = createMeasurementDraw();
-      const b = createMeasurementDraw();
+      const a = await createMeasurementDraw();
+      const b = await createMeasurementDraw();
 
       expect(a).not.toBe(b);
       expect(mapboxDrawConstructorSpy).toHaveBeenCalledTimes(2);
