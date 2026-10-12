@@ -70,6 +70,8 @@ import type { MeasurementMode } from './useMeasurement';
 export interface MeasurementToolbarProps {
   readonly mode: MeasurementMode;
   readonly hasMeasurements: boolean;
+  /** Live km/m or ha while the user is still placing vertices. */
+  readonly liveLabel?: string | null;
   readonly onStartDistance: () => void;
   readonly onStartArea: () => void;
   readonly onClear: () => void;
@@ -134,6 +136,7 @@ export interface MeasurementToolbarProps {
 export const MeasurementToolbar = memo(function MeasurementToolbar({
   mode,
   hasMeasurements,
+  liveLabel,
   onStartDistance,
   onStartArea,
   onClear,
@@ -193,6 +196,9 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
     >
       {isMeasuring && (
         <div className={styles.measurementHint} data-testid="measurement-hint">
+          {liveLabel ? (
+            <span data-testid="measurement-live">{liveLabel} · </span>
+          ) : null}
           Clic para puntos · doble clic termina · Esc cancela
         </div>
       )}

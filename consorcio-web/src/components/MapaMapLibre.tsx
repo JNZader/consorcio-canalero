@@ -615,6 +615,7 @@ export default function MapaMapLibre() {
   const measurementMap = mapReady ? mapRef.current : null;
   const {
     state: measurementState,
+    liveLabel: measurementLiveLabel,
     startDistance: startMeasureDistance,
     startArea: startMeasureArea,
     clear: clearMeasurements,
@@ -1232,6 +1233,7 @@ export default function MapaMapLibre() {
             <MeasurementToolbar
               mode={puntosInteres.interactionMode}
               hasMeasurements={measurementState.measurements.length > 0}
+              liveLabel={measurementLiveLabel}
               onStartDistance={handleStartMeasureDistance}
               onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}
