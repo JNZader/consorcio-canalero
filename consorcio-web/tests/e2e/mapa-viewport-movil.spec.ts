@@ -255,14 +255,17 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
       );
       requireCondition(visible, 'El panel de capas no está disponible (sin datos de capas)');
 
-      // Families start collapsed (R3). Expand Territorio so a real layer row
-      // exists; measure the Checkbox root (the finger target), not `label[for]`
-      // on a Mantine auto-id that may not exist.
+      // Territorio may already be open (zona / roads / YPF default ON). Clicking
+      // the control would COLLAPSE it and the layer rows vanish.
       const territorio = controls.getByTestId('layer-family-territorio-control');
       await expect(territorio).toBeVisible({ timeout: 10000 });
-      await territorio.click();
+      if ((await territorio.getAttribute('aria-expanded')) === 'false') {
+        await territorio.click();
+      }
 
-      const checkbox = controls.getByRole('checkbox', { name: /Catastro rural IDECOR/i });
+      const checkbox = controls.getByRole('checkbox', {
+        name: /Catastro rural IDECOR|Zona Consorcio|Red Vial/i,
+      });
       const hasCheckbox = await checkbox.waitFor({ state: 'visible', timeout: 10000 }).then(
         () => true,
         () => false
