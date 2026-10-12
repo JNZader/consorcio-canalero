@@ -1,7 +1,7 @@
 /**
  * useReportHighlight — drop a temporary marker when the map is opened
- * via `?lat=...&lng=...&zoom=...` (e.g. the "Ver en mapa" button in the
- * admin reports table).
+ * via `?report=1&lat=...&lng=...` (admin/profile "Ver en mapa").
+ * Camera-only `?lat=&lng=` is a permalink — no denuncia pin.
  *
  * Without this hook the URL params landed on `/mapa` but the map didn't
  * react: it stayed on the default center and there was no visible
@@ -33,15 +33,12 @@ function parseFiniteFloat(value: string | null): number | null {
 }
 
 /**
- * Read `?lat`, `?lng`, `?zoom` from the current URL exactly once on
- * mount. We don't subscribe to URL changes because the admin flow is
- * always a hard navigation (`<a href=...>` from the reports table) so a
- * one-shot read is enough — and it sidesteps the need to validate a
- * search-params schema with TanStack Router.
+ * Read `?report=1&lat=&lng=` once. Camera permalinks omit `report`.
  */
-function readHighlightFromUrl(): ReportHighlight | null {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
+export function readReportHighlightFromSearch(search: string): ReportHighlight | null {
+  const raw = search.startsWith('?') ? search.slice(1) : search;
+  const params = new URLSearchParams(raw);
+  if (params.get('report') !== '1') return null;
   const lat = parseFiniteFloat(params.get('lat'));
   const lng = parseFiniteFloat(params.get('lng'));
   if (lat === null || lng === null) return null;
@@ -51,6 +48,11 @@ function readHighlightFromUrl(): ReportHighlight | null {
   const zoomParsed = parseFiniteFloat(params.get('zoom'));
   const zoom = zoomParsed !== null && zoomParsed > 0 ? zoomParsed : DEFAULT_HIGHLIGHT_ZOOM;
   return { lat, lng, zoom };
+}
+
+function readHighlightFromUrl(): ReportHighlight | null {
+  if (typeof window === 'undefined') return null;
+  return readReportHighlightFromSearch(window.location.search);
 }
 
 interface UseReportHighlightParams {

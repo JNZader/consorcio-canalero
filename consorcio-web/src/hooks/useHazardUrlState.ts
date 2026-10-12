@@ -1,6 +1,7 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect } from 'react';
 
+import { mergeHazardCanonical } from '../lib/mapaSearch';
 import { useAuthLoading } from '../stores/authStore';
 import { useMultiHazardGate } from './useMultiHazardGate';
 
@@ -150,12 +151,15 @@ export function toHazardSearch(state: HazardUrlState, gateOpen: boolean): Record
   };
 }
 
-function sameSearch(left: HazardSearchInput, right: Record<string, string>): boolean {
+function sameSearch(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
   const leftEntries = Object.entries(left)
     .filter(([, value]) => value !== undefined)
     .map(([key, value]) => [key, Array.isArray(value) ? value.join(',') : String(value)] as const)
     .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
-  const rightEntries = Object.entries(right).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+  const rightEntries = Object.entries(right)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => [key, Array.isArray(value) ? value.join(',') : String(value)] as const)
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
   return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
 }
 
@@ -170,7 +174,7 @@ export function useHazardUrlState({ basinIds, basinCatalogStatus }: UseHazardUrl
   const navigate = useNavigate();
   const search = useSearch({ from: '/mapa' });
   const state = parseHazardUrlState(search, { gateOpen, basinIds, basinCatalogStatus });
-  const canonicalSearch = toHazardSearch(state, gateOpen);
+  const canonicalSearch = mergeHazardCanonical(search, toHazardSearch(state, gateOpen));
 
   useEffect(() => {
     if (authPending) return;
@@ -184,7 +188,10 @@ export function useHazardUrlState({ basinIds, basinCatalogStatus }: UseHazardUrl
       { ...search, ...patch },
       { gateOpen, basinIds, basinCatalogStatus }
     );
-    void navigate({ to: '/mapa', search: toHazardSearch(nextState, gateOpen) });
+    void navigate({
+      to: '/mapa',
+      search: mergeHazardCanonical(search, toHazardSearch(nextState, gateOpen)),
+    });
   };
 
   return {

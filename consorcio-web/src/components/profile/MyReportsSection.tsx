@@ -236,6 +236,7 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
               size="xs"
               mt={4}
               href={`/mapa?${new URLSearchParams({
+                report: '1',
                 lat: String(report.latitud),
                 lng: String(report.longitud),
                 zoom: '15',
