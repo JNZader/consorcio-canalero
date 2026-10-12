@@ -191,6 +191,11 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
     <Box
       className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapCtrlDock} ${styles.measurementDock}`}
     >
+      {isMeasuring && (
+        <div className={styles.measurementHint} data-testid="measurement-hint">
+          Clic para puntos · doble clic termina · Esc cancela
+        </div>
+      )}
       <Group gap={0} wrap="nowrap" className={styles.measurementGroup}>
         {isToggleOff ? (
           // Toggle-OFF: no menu, the trigger itself ends the mode.

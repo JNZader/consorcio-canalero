@@ -55,6 +55,10 @@ import midpoint from '@turf/midpoint';
 
 import { useMapboxDrawSlot } from '../../../stores/mapboxDrawSlot';
 import { removeMapboxDrawArtifacts } from '../../map/mapboxDrawShared';
+import {
+  armMeasurementIdentifyGuard,
+  MEASUREMENT_IDENTIFY_GUARD_MS,
+} from './measurementIdentifyGuard';
 import { createMeasurementDraw } from './measurementDrawModes';
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -333,6 +337,7 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
       // The unmount of the MapboxDraw control is handled by the
       // `state.mode === 'idle'` reactive effect below — doing it here would
       // re-enter the very event loop we are currently inside.
+      armMeasurementIdentifyGuard();
       setMeasurementState((prev) => ({
         mode: 'idle',
         measurements: [...prev.measurements, ...entries],
@@ -358,6 +363,19 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
       unmountDraw();
     }
   }, [state.mode, unmountDraw]);
+
+  useEffect(() => {
+    if (!map?.doubleClickZoom) return;
+    const measuring = state.mode === 'measuring-distance' || state.mode === 'measuring-area';
+    if (measuring) {
+      map.doubleClickZoom.disable();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      map.doubleClickZoom.enable();
+    }, MEASUREMENT_IDENTIFY_GUARD_MS);
+    return () => window.clearTimeout(timer);
+  }, [map, state.mode]);
 
   // Tear down on full unmount: release the slot so LineDrawControl can
   // re-mount.

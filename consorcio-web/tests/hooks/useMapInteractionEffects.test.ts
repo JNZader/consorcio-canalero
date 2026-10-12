@@ -3,6 +3,10 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
+import {
+  armMeasurementIdentifyGuard,
+  resetMeasurementIdentifyGuard,
+} from '../../src/components/map2d/measurement/measurementIdentifyGuard';
 import { useMapInteractionEffects } from '../../src/components/map2d/useMapInteractionEffects';
 
 function createMapMock() {
@@ -179,5 +183,30 @@ describe('useMapInteractionEffects', () => {
 
     expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
     expect(setSelectedFeatures).toHaveBeenCalledWith([]);
+  });
+
+  it('ignores identify clicks for 300 ms after a measurement finishes', () => {
+    resetMeasurementIdentifyGuard();
+    armMeasurementIdentifyGuard(Date.now());
+    const { map, handlers } = createMapMock();
+    const setSelectedFeatures = vi.fn();
+
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as any,
+        mapReady: true,
+        measurementMode: 'idle',
+        setSelectedFeatures,
+      }),
+    );
+
+    handlers.get('click')?.[0]?.({
+      point: { x: 10, y: 10 },
+      lngLat: { lat: -32.6, lng: -62.6 },
+    });
+
+    expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
+    expect(setSelectedFeatures).not.toHaveBeenCalled();
+    resetMeasurementIdentifyGuard();
   });
 });
