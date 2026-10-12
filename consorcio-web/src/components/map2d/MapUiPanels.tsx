@@ -94,6 +94,7 @@ export interface MapUiPanelsProps {
   readonly rasterLoading?: boolean;
   readonly demLoadError?: string | null;
   readonly onRetryDem?: () => void;
+  readonly onFocusCanal?: (id: string) => void;
   readonly rasterCompareId?: string | null;
   readonly onRasterCompare?: (layerId: string | null) => void;
   readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
@@ -327,6 +328,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   rasterLoading = false,
   demLoadError = null,
   onRetryDem,
+  onFocusCanal,
   rasterCompareId = null,
   onRasterCompare,
   canalesRelevadosItems,
@@ -602,6 +604,7 @@ export const MapUiPanels = memo(function MapUiPanels({
             rasterLoading={rasterLoading}
             demLoadError={demLoadError}
             onRetryDem={onRetryDem}
+            onFocusCanal={onFocusCanal}
             rasterCompareId={rasterCompareId}
             onRasterCompare={onRasterCompare}
             canalesRelevadosItems={canalesRelevadosItems}

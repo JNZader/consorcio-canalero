@@ -238,6 +238,8 @@ interface LayerControlsPanelProps {
   /** UX PDF T1: 3D omits Base/raster/ajustes; gray unsupported ids. */
   readonly variant?: '2d' | '3d';
   readonly unsupportedLayerIds?: readonly string[];
+  /** UX-05: fly the 2D map to a canal explorer row. */
+  readonly onFocusCanal?: (id: string) => void;
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -482,6 +484,7 @@ export function LayerControlsPanel({
   variant = '2d',
   unsupportedLayerIds = [],
   legendPanelProps,
+  onFocusCanal,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
@@ -749,6 +752,7 @@ export function LayerControlsPanel({
                 vectorVisibility={vectorVisibility}
                 onLayerVisibilityChange={onLayerVisibilityChange}
                 variant="explorer"
+                onFocusCanal={onFocusCanal}
               />
               <CanalesLayerSection
                 side="propuestos"
@@ -758,6 +762,7 @@ export function LayerControlsPanel({
                 vectorVisibility={vectorVisibility}
                 onLayerVisibilityChange={onLayerVisibilityChange}
                 variant="explorer"
+                onFocusCanal={onFocusCanal}
               />
               {/*
                 Etapas filter (Alta → Largo plazo) for propuestos lives in

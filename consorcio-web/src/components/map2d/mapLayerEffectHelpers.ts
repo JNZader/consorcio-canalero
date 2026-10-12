@@ -15,6 +15,7 @@ import {
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
+import { casingLayerId, ensureLineCasing } from './lineCasing';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   PILAR_VERDE_Z_ORDER,
@@ -111,6 +112,12 @@ export function syncWaterwayLayers(
         },
       });
     }
+    ensureLineCasing(map, {
+      lineLayerId,
+      source: waterwayFile.id,
+      width: waterwayFile.weight,
+      dashArray: waterwayFile.dashArray,
+    });
     const labelId = `${waterwayFile.id}-label`;
     const waterwayName =
       waterwaysDefs.find((def) => def.id === waterwayFile.layer)?.nombre ?? waterwayFile.layer;
@@ -125,6 +132,7 @@ export function syncWaterwayLayers(
     }
 
     setLayerVisibility(map, lineLayerId, isVisible);
+    setLayerVisibility(map, casingLayerId(lineLayerId), isVisible);
     setLayerVisibility(map, labelId, isVisible);
   }
 }
@@ -698,8 +706,10 @@ export interface SyncCanalesLayersParams {
  */
 function raiseCanalesStack(map: maplibregl.Map) {
   const ids = [
+    casingLayerId(`${SOURCE_IDS.CANALES_RELEVADOS}-line`),
     `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
     `${SOURCE_IDS.CANALES_RELEVADOS}-label`,
+    casingLayerId(`${SOURCE_IDS.CANALES_PROPUESTOS}-line`),
     `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
     `${SOURCE_IDS.CANALES_PROPUESTOS}-label`,
   ];
@@ -780,6 +790,19 @@ export function syncCanalesLayers(map: maplibregl.Map, params: SyncCanalesLayers
       })
     );
   }
+  ensureLineCasing(map, {
+    lineLayerId: relevadosLayerId,
+    source: relevadosSrcId,
+    width: 3,
+    darkHalo: true,
+  });
+  ensureLineCasing(map, {
+    lineLayerId: propuestosLayerId,
+    source: propuestosSrcId,
+    width: 2.5,
+    dashArray: '4,2',
+    darkHalo: true,
+  });
 
   // ── Filters (hot path — called on every render) ──
   const relevadosFilter = buildCanalesRelevadosFilter(visibleRelevadoIds);
@@ -788,12 +811,18 @@ export function syncCanalesLayers(map: maplibregl.Map, params: SyncCanalesLayers
   map.setFilter(propuestosLayerId, propuestosFilter);
   map.setFilter(relevadosLabelId, relevadosFilter);
   map.setFilter(propuestosLabelId, propuestosFilter);
+  const relevadosCasingId = casingLayerId(relevadosLayerId);
+  const propuestosCasingId = casingLayerId(propuestosLayerId);
+  if (map.getLayer(relevadosCasingId)) map.setFilter(relevadosCasingId, relevadosFilter);
+  if (map.getLayer(propuestosCasingId)) map.setFilter(propuestosCasingId, propuestosFilter);
 
   // ── Visibility (master toggles) ──
   setLayerVisibility(map, relevadosLayerId, relevadosVisible);
   setLayerVisibility(map, propuestosLayerId, propuestasVisible);
   setLayerVisibility(map, relevadosLabelId, relevadosVisible);
   setLayerVisibility(map, propuestosLabelId, propuestasVisible);
+  setLayerVisibility(map, relevadosCasingId, relevadosVisible);
+  setLayerVisibility(map, propuestosCasingId, propuestasVisible);
 
   // ── Z-order ──
   raiseCanalesStack(map);

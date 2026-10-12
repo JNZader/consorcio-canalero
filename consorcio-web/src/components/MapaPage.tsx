@@ -14,7 +14,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
@@ -23,6 +23,7 @@ import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
+import { MapViewPanes, notifyMapPaneShown, shouldArmThreeD } from './map2d/MapViewPanes';
 import {
   resolveTerrainAvailability,
   terrainAvailabilityHint,
@@ -64,8 +65,13 @@ export function MapaContent() {
   });
   const terrainHint = terrainAvailabilityHint(terrainStatus);
 
-  // 2D/3D view toggle
+  // 2D/3D view toggle — UX-17 keeps 2D mounted after first 3D open.
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('2d');
+  const [threeDArmed, setThreeDArmed] = useState(false);
+  useEffect(() => {
+    setThreeDArmed((prev) => shouldArmThreeD(prev, mapViewMode));
+    if (mapViewMode === '2d') notifyMapPaneShown();
+  }, [mapViewMode]);
 
   // Construir estadisticas dinamicas desde la API (solo denuncias)
   const dynamicStats =
@@ -218,41 +224,40 @@ export function MapaContent() {
 
         {/* Mapa 2D o Terreno 3D */}
         <Paper shadow="sm" radius="md" className={mapStyles.mapPageCanvas} style={{ overflow: 'hidden' }} mb="sm">
-          {mapViewMode === '2d' ? (
-            <MapaContenido />
-          ) : (
-            <Suspense
-              fallback={
-                <Box
-                  p="xl"
-                  style={{
-                    minHeight: 500,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Stack align="center" gap="md">
-                    <Skeleton circle height={48} width={48} />
-                    <Text size="sm" c="dimmed">
-                      Cargando visualizador 3D...
-                    </Text>
-                  </Stack>
-                </Box>
-              }
-            >
-              {/*
-                `.canvasHeightBudget` publishes the SAME `--map-canvas-height`
-                as `.mapCanvasWrapper`, media query included, so switching
-                2D ↔ 3D does not change the page height on desktop OR mobile
-                (an inline `clamp(...)` literal here could only match one
-                breakpoint). See map.module.css.
-              */}
-              <Box className={mapStyles.canvasHeightBudget}>
+          {/*
+            `.canvasHeightBudget` publishes the SAME `--map-canvas-height`
+            as `.mapCanvasWrapper`. UX-17 hides rather than unmounts 2D.
+          */}
+          <MapViewPanes
+            className={mapStyles.canvasHeightBudget}
+            mode={mapViewMode}
+            threeDArmed={threeDArmed}
+            twoD={<MapaContenido />}
+            threeD={
+              <Suspense
+                fallback={
+                  <Box
+                    p="xl"
+                    style={{
+                      minHeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Stack align="center" gap="md">
+                      <Skeleton circle height={48} width={48} />
+                      <Text size="sm" c="dimmed">
+                        Cargando visualizador 3D...
+                      </Text>
+                    </Stack>
+                  </Box>
+                }
+              >
                 <TerrainViewer3D demLayerId={demRawLayer?.id} height="var(--map-canvas-height)" />
-              </Box>
-            </Suspense>
-          )}
+              </Suspense>
+            }
+          />
         </Paper>
 
         {/* Estadisticas rapidas - Solo visible para miembros de la comision */}
