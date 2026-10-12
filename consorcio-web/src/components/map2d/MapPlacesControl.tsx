@@ -1,4 +1,4 @@
-import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
+import { Box, Menu, UnstyledButton } from '@mantine/core';
 
 import { MAP_QUICK_PLACES } from '../../constants';
 import styles from '../../styles/components/map.module.css';
@@ -13,53 +13,49 @@ interface MapPlacesControlProps {
 
 /**
  * Home + quick places (UX PDF R9). Styled like MapLibre ctrl-group.
+ * Buttons are BARE (no Tooltip wrappers): Mantine Tooltip inserts a div
+ * that breaks `button + button` dividers and the 29px group, so hover
+ * looked like overlapping/broken chrome.
  */
 export function MapPlacesControl({ onRecenter, onFlyToPlace, onGeolocate }: MapPlacesControlProps) {
   return (
     <Box
       className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapPlacesDock}`}
     >
-      <Tooltip label="Volver al consorcio" position="left" withArrow>
-        <UnstyledButton
-          type="button"
-          aria-label="Volver al consorcio"
-          className={styles.mapCtrlButton}
-          data-testid="map-recenter-consorcio"
-          onClick={onRecenter}
-          style={{ color: '#333' }}
-        >
-          <IconHome size={MAP_CTRL_GLYPH_SIZE} />
-        </UnstyledButton>
-      </Tooltip>
-      {onGeolocate ? (
-        <Tooltip label="Ubicarme" position="left" withArrow>
-          <UnstyledButton
-            type="button"
-            aria-label="Ubicarme"
-            className={styles.mapCtrlButton}
-            data-testid="map-geolocate"
-            onClick={onGeolocate}
-            style={{ color: '#333' }}
-          >
-            <IconCurrentLocation size={MAP_CTRL_GLYPH_SIZE} />
-          </UnstyledButton>
-        </Tooltip>
-      ) : null}
+      <UnstyledButton
+        type="button"
+        aria-label="Volver al consorcio"
+        title="Volver al consorcio"
+        className={styles.mapCtrlButton}
+        data-testid="map-recenter-consorcio"
+        onClick={onRecenter}
+        style={{ color: '#333' }}
+      >
+        <IconHome size={MAP_CTRL_GLYPH_SIZE} />
+      </UnstyledButton>
       <Menu shadow="md" position="left-start" width={180}>
         <Menu.Target>
-          <Tooltip label="Lugares rápidos" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Lugares rápidos"
-              className={styles.mapCtrlButton}
-              data-testid="map-quick-places"
-              style={{ color: '#333' }}
-            >
-              <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
-            </UnstyledButton>
-          </Tooltip>
+          <UnstyledButton
+            type="button"
+            aria-label="Lugares rápidos"
+            title="Lugares rápidos"
+            className={styles.mapCtrlButton}
+            data-testid="map-quick-places"
+            style={{ color: '#333' }}
+          >
+            <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
+          </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
+          {onGeolocate ? (
+            <Menu.Item
+              leftSection={<IconCurrentLocation size={14} />}
+              onClick={onGeolocate}
+              data-testid="map-geolocate"
+            >
+              Ubicarme
+            </Menu.Item>
+          ) : null}
           {MAP_QUICK_PLACES.map((place) => (
             <Menu.Item
               key={place.id}
