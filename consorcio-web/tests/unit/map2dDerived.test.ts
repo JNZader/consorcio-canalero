@@ -60,7 +60,7 @@ describe('map2dDerived', () => {
       { id: 'ypf_estacion_bombeo', label: 'YPF estación de bombeo', category: 'territorio' },
       { id: 'basins', label: 'Subcuencas', category: 'hidrografia' },
       { id: 'waterways', label: 'Hidrografía', category: 'hidrografia' },
-      { id: 'roads', label: 'Red Vial', category: 'territorio' },
+      { id: 'roads', label: 'Red vial rural', category: 'territorio' },
       { id: 'soil', label: 'Suelos IDECOR 1:50.000', category: 'territorio' },
       { id: 'catastro', label: 'Catastro rural IDECOR', category: 'territorio' },
       { id: 'puntos_conflicto', label: 'Puntos conflicto', category: 'analisis' },

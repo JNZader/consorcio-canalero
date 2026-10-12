@@ -32,6 +32,8 @@ import type {
   RelevamientoTramoCreate,
   TramoRelevamientoDetalle,
 } from '../../lib/api/relevamiento';
+import { MAP_DEFAULT_ZOOM } from '../../constants';
+import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { type ViewMode, ViewModePanel } from './ViewModePanel';
 import type { LayerHealth } from './layerHealth';
 import type { LayerCategory } from './map2dDerived';
@@ -418,6 +420,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onSubmitTramoSurvey,
   onCloseTramoSurvey,
 }: MapUiPanelsProps) {
+  const mapZoom = useMapCameraStore((state) => state.camera?.zoom) ?? MAP_DEFAULT_ZOOM;
   // A catastro click can open BOTH panels at once (ficha for the parcel +
   // InfoPanel for whatever canal / escuela / BPA / suelo feature sat under the
   // same click). Their solo max-heights overlap, so the InfoPanel would end up
@@ -589,6 +592,7 @@ export const MapUiPanels = memo(function MapUiPanels({
               ) : null
             }
             layerItems={layerItems}
+            mapZoom={mapZoom}
             vectorVisibility={vectorVisibility}
             onLayerVisibilityChange={onLayerVisibilityChange}
             showIGNOverlay={showIGNOverlay}

@@ -410,7 +410,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               >
                 <Group gap="xs">
                   <Text fw={600} size="xs" c="dimmed">
-                    Red Vial ({consorcios.length} consorcios)
+                    Red vial rural del consorcio ({consorcios.length} consorcios)
                   </Text>
                   <Text size="xs" c="dimmed">
                     {showConsorcios ? '▼' : '►'}

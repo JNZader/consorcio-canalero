@@ -123,7 +123,7 @@ export const DEFAULT_LEGEND_ITEMS: LegendItem[] = [
   { color: MAP_LAYER_COLORS.ml, label: 'Cuenca ML', type: 'fill' },
   { color: MAP_LAYER_COLORS.noroeste, label: 'Cuenca Noroeste', type: 'fill' },
   { color: MAP_LAYER_COLORS.norte, label: 'Cuenca Norte', type: 'fill' },
-  { color: MAP_LAYER_COLORS.caminos, label: 'Red Vial', type: 'line' },
+  { color: MAP_LAYER_COLORS.caminos, label: 'Red vial rural del consorcio', type: 'line' },
 ];
 
 /**

@@ -38,7 +38,7 @@ import {
   Text,
   VisuallyHidden,
 } from '@mantine/core';
-import { type ReactNode, useEffect, useState } from 'react';
+import { lazy, type ReactNode, Suspense, useEffect, useState } from 'react';
 
 import { useRainfallAnalysis, useRainfallScopes } from '../../../hooks/useRainfallAnalysis';
 import {
@@ -50,11 +50,12 @@ import {
 } from '../../../lib/api/rainfall';
 import { useCanAccess } from '../../../stores/authStore';
 import { CollapsibleSection } from '../../ui/CollapsibleSection';
-import {
-  CAMPAIGN_PRESET,
-  type CampaignPreset,
-  RainfallAccumulationChart,
-} from './RainfallAccumulationChart';
+import { CAMPAIGN_PRESET, type CampaignPreset } from './rainfallCampaign';
+
+const RainfallAccumulationChart = lazy(async () => {
+  const mod = await import('./RainfallAccumulationChart');
+  return { default: mod.RainfallAccumulationChart };
+});
 import { RainfallAnswerCard } from './RainfallAnswerCard';
 import { RainfallMetricGroup, RainfallMetricList, snapshotMetrics } from './RainfallMetricList';
 import {
@@ -602,11 +603,13 @@ export function RainfallDetailPanel({
               rather than inside the metric list because it owns its own
               request (`/series`) and its own disclosures; the card's
               `AnnualText` above stays its textual equivalent. */}
-          <RainfallAccumulationChart
-            snapshot={snapshot}
-            preset={preset}
-            onPresetChange={setPreset}
-          />
+          <Suspense fallback={<Loader size="sm" />}>
+            <RainfallAccumulationChart
+              snapshot={snapshot}
+              preset={preset}
+              onPresetChange={setPreset}
+            />
+          </Suspense>
           <Group gap="xs" wrap="nowrap">
             <Button
               size="xs"

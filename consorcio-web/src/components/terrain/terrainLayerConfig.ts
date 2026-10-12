@@ -37,7 +37,7 @@ export const SUPPORTED_3D_RASTER_TYPES: Terrain3DRasterLayerConfig[] = [
 export const PRIORITY_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'approved_zones', label: 'Cuencas', status: 'supported' },
   { id: 'basins', label: 'Subcuencas', status: 'supported' },
-  { id: 'roads', label: 'Red Vial', status: 'supported' },
+  { id: 'roads', label: 'Red vial rural', status: 'supported' },
   { id: 'waterways', label: 'Hidrografía', status: 'supported' },
   { id: 'soil', label: 'Suelos IDECOR 1:50.000', status: 'supported' },
   { id: 'catastro', label: 'Catastro rural IDECOR', status: 'supported' },

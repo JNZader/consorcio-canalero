@@ -23,7 +23,7 @@ function renderWithMantine(ui: ReactNode) {
 
 const layerItems = [
   { id: 'waterways', label: 'Hidrografía', category: 'hidrografia' as const },
-  { id: 'roads', label: 'Red Vial', category: 'territorio' as const },
+  { id: 'roads', label: 'Red vial rural', category: 'territorio' as const },
   { id: 'catastro', label: 'Catastro rural IDECOR', category: 'territorio' as const },
   { id: 'pilar_verde_bpa_historico', label: 'BPA histórico (por años)', category: 'pilar_verde' as const },
   { id: 'puntos_conflicto', label: 'Puntos conflicto', category: 'analisis' as const },
@@ -63,7 +63,7 @@ describe('<LayerControlsPanel /> — family accordion (2.2)', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} />);
     expect(
       within(screen.getByTestId('layer-family-territorio')).getByRole('checkbox', {
-        name: 'Red Vial',
+        name: 'Red vial rural',
         hidden: true,
       }),
     ).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe('<LayerControlsPanel /> — search box (2.3)', () => {
 
     // Only the matching layer remains.
     expect(screen.getByRole('checkbox', { name: 'Catastro rural IDECOR' })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: 'Red Vial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Red vial rural' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: 'Hidrografía' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('checkbox', { name: 'BPA histórico (por años)' }),
@@ -119,13 +119,13 @@ describe('<LayerControlsPanel /> — search box (2.3)', () => {
 
     const search = screen.getByLabelText('Buscar capa');
     fireEvent.change(search, { target: { value: 'catastro' } });
-    expect(screen.queryByRole('checkbox', { name: 'Red Vial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Red vial rural' })).not.toBeInTheDocument();
 
     fireEvent.change(search, { target: { value: '' } });
     expect(screen.getByRole('button', { name: /territorio/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /hidrografía/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /base/i })).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: 'Red Vial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Red vial rural' })).not.toBeInTheDocument();
   });
 });
 
@@ -202,5 +202,19 @@ describe('<LayerControlsPanel /> — active-count badge (2.4)', () => {
 
     const hidrografia = screen.getByRole('button', { name: /hidrografía/i });
     expect(within(hidrografia).queryByText('1')).not.toBeInTheDocument();
+  });
+});
+
+describe('<LayerControlsPanel /> — CART-06 zoom hint', () => {
+  it('tells the user to zoom in when catastro is below minzoom', () => {
+    renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} mapZoom={11} />);
+    fireEvent.click(screen.getByTestId('layer-family-territorio-control'));
+    expect(screen.getByText('Acercate para ver esta capa')).toBeInTheDocument();
+  });
+
+  it('hides the hint once zoom reaches the layer minzoom', () => {
+    renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} mapZoom={12} />);
+    fireEvent.click(screen.getByTestId('layer-family-territorio-control'));
+    expect(screen.queryByText('Acercate para ver esta capa')).not.toBeInTheDocument();
   });
 });

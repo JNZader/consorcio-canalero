@@ -58,6 +58,8 @@ import {
   normalizeSearchText,
 } from './map2dDerived';
 import { pickPresetRasterId } from './mapPresets';
+import { MAP_DEFAULT_ZOOM } from '../../constants';
+import { LAYER_ZOOM_IN_HINT, layerBelowMinZoom } from './layerMinZoom';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
 
@@ -240,6 +242,8 @@ interface LayerControlsPanelProps {
   readonly unsupportedLayerIds?: readonly string[];
   /** UX-05: fly the 2D map to a canal explorer row. */
   readonly onFocusCanal?: (id: string) => void;
+  /** CART-06: current map zoom; defaults to opening camera. */
+  readonly mapZoom?: number;
 }
 
 type LayerFamilyIcon = ComponentType<{ size?: number }>;
@@ -485,6 +489,7 @@ export function LayerControlsPanel({
   unsupportedLayerIds = [],
   legendPanelProps,
   onFocusCanal,
+  mapZoom = MAP_DEFAULT_ZOOM,
 }: LayerControlsPanelProps) {
   const [query, setQuery] = useState('');
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
@@ -885,6 +890,11 @@ export function LayerControlsPanel({
                       multiplier={layerFineControl.opacityByLayer[item.id] ?? 1}
                       onChange={layerFineControl.onLayerOpacityChange}
                     />
+                  )}
+                  {layerBelowMinZoom(item.id, mapZoom) && (
+                    <Text size="xs" c="dimmed">
+                      {LAYER_ZOOM_IN_HINT}
+                    </Text>
                   )}
                 </Box>
               );

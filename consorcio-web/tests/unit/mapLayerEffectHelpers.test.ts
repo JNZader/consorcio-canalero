@@ -54,6 +54,7 @@ function createMapMock(options?: {
     }),
     setFilter: vi.fn(),
     setLayoutProperty: vi.fn(),
+    setLayerZoomRange: vi.fn(),
     // A real MapLibre `Map` always exposes these; the mock was simply
     // incomplete. `syncCatastroLayers` now registers hover handlers to give the
     // clickable parcel fill a pointer cursor, which needs both.
@@ -194,6 +195,8 @@ describe('mapLayerEffectHelpers', () => {
       'fill-color': '#8d6e63',
       'fill-opacity': CATASTRO_FILL_OPACITY,
     });
+    expect(fillLayer?.minzoom).toBe(12);
+    expect(map.setLayerZoomRange).toHaveBeenCalledWith(`${SOURCE_IDS.CATASTRO}-fill`, 12, 24);
     expect(CATASTRO_FILL_OPACITY).toBeGreaterThan(0.08);
   });
 
