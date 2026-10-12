@@ -13,7 +13,7 @@ function wrap(ui: ReactNode) {
 
 const baseProps = {
   layerItems: [
-    { id: 'roads', label: 'Red Vial', category: LAYER_CATEGORY.TERRITORIO },
+    { id: 'roads', label: 'Red vial rural', category: LAYER_CATEGORY.TERRITORIO },
     {
       id: 'escuelas',
       label: 'Escuelas rurales',

@@ -4,14 +4,15 @@
  */
 import type { ExpressionSpecification, SymbolLayerSpecification } from 'maplibre-gl';
 
-export const ALONG_LINE_LABEL_MIN_ZOOM = 11;
+/** CART-08: below MAP_DEFAULT_ZOOM (11) so canal/waterway names show on first load. */
+export const ALONG_LINE_LABEL_MIN_ZOOM = 10;
 
 export const ALONG_LINE_LABEL_TEXT_SIZE: ExpressionSpecification = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  11,
-  14,
+  10,
+  13,
   14,
   18,
 ];

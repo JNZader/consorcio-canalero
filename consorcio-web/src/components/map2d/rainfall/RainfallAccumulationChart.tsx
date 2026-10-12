@@ -71,17 +71,13 @@ import {
   type RainfallSeriesPoint,
 } from '../../../lib/api/rainfall';
 import { evidenceFooter, formatAccumulated, isoDay, lastEvidenceDay } from './rainfallFormat';
+import {
+  CAMPAIGN_PRESET,
+  CAMPAIGN_START_MONTH_DAY,
+  type CampaignPreset,
+} from './rainfallCampaign';
 
-/** Display window over one calendar-year series. Never a request parameter. */
-export const CAMPAIGN_PRESET = {
-  CALENDAR: 'calendario',
-  CAMPAIGN: 'campana',
-} as const;
-
-export type CampaignPreset = (typeof CAMPAIGN_PRESET)[keyof typeof CAMPAIGN_PRESET];
-
-/** spec "Campaign Display Preset": the preset is defined as *since September 1*. */
-const CAMPAIGN_START_MONTH_DAY = '09-01';
+export { CAMPAIGN_PRESET, type CampaignPreset } from './rainfallCampaign';
 
 /**
  * How the normal is NAMED inside a sentence, with the SERVED period.

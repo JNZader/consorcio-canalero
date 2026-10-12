@@ -37,7 +37,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { Fragment, type ReactNode, memo, useEffect, useState } from 'react';
+import { Fragment, lazy, Suspense, type ReactNode, memo, useEffect, useState } from 'react';
 
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
@@ -52,7 +52,10 @@ import { MapPanelShell } from './MapPanelShell';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
-import { PrecipChart } from './PrecipChart';
+const PrecipChart = lazy(async () => {
+  const mod = await import('./PrecipChart');
+  return { default: mod.PrecipChart };
+});
 import { RainfallDetailPanel } from './rainfall/RainfallDetailPanel';
 import { RiesgoBins } from './RiesgoBins';
 import { SuelosBreakdown } from './SuelosBreakdown';
@@ -593,7 +596,9 @@ function PanelBody({
         testId="ficha-precip-fold"
         titleSize="xs"
       >
-        <PrecipChart dataset={data.precipitacion_mensual} />
+        <Suspense fallback={<Loader size="sm" />}>
+          <PrecipChart dataset={data.precipitacion_mensual} />
+        </Suspense>
       </CollapsibleSection>
     </Fragment>
   );

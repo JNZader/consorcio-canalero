@@ -14,6 +14,11 @@ import {
 } from './canalesLayers';
 import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
+import {
+  applyLayerMinZoom,
+  CATASTRO_LAYER_MIN_ZOOM,
+  SOIL_LAYER_MIN_ZOOM,
+} from './layerMinZoom';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
 import { casingLayerId, ensureLineCasing } from './lineCasing';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
@@ -149,6 +154,7 @@ export function syncSoilLayers(
       id: `${SOURCE_IDS.SOIL}-fill`,
       type: 'fill',
       source: SOURCE_IDS.SOIL,
+      minzoom: SOIL_LAYER_MIN_ZOOM,
       paint: {
         'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
         'fill-opacity': 0.3,
@@ -161,6 +167,7 @@ export function syncSoilLayers(
       id: `${SOURCE_IDS.SOIL}-line`,
       type: 'line',
       source: SOURCE_IDS.SOIL,
+      minzoom: SOIL_LAYER_MIN_ZOOM,
       paint: {
         'line-color': '#6d4c41',
         'line-width': 1.2,
@@ -169,6 +176,8 @@ export function syncSoilLayers(
     });
   }
 
+  applyLayerMinZoom(map, `${SOURCE_IDS.SOIL}-fill`, SOIL_LAYER_MIN_ZOOM);
+  applyLayerMinZoom(map, `${SOURCE_IDS.SOIL}-line`, SOIL_LAYER_MIN_ZOOM);
   setLayerVisibility(map, `${SOURCE_IDS.SOIL}-fill`, isVisible);
   setLayerVisibility(map, `${SOURCE_IDS.SOIL}-line`, isVisible);
 }
@@ -204,6 +213,7 @@ export function syncCatastroLayers(
       // as decoration and nobody discovered they were clickable. 0.12 keeps the
       // fill subtle (the white outline still carries the shape) while making the
       // clickable surface actually perceivable.
+      minzoom: CATASTRO_LAYER_MIN_ZOOM,
       paint: { 'fill-color': '#8d6e63', 'fill-opacity': CATASTRO_FILL_OPACITY },
     });
     // Pointer affordance: the fill IS the ficha-territorial hit target, so the
@@ -230,6 +240,7 @@ export function syncCatastroLayers(
       type: 'line',
       source: SOURCE_IDS.CATASTRO,
       'source-layer': 'parcelas_catastro',
+      minzoom: CATASTRO_LAYER_MIN_ZOOM,
       paint: {
         'line-color': '#FFFFFF',
         'line-width': 1.5,
@@ -238,6 +249,8 @@ export function syncCatastroLayers(
     });
   }
 
+  applyLayerMinZoom(map, `${SOURCE_IDS.CATASTRO}-fill`, CATASTRO_LAYER_MIN_ZOOM);
+  applyLayerMinZoom(map, `${SOURCE_IDS.CATASTRO}-line`, CATASTRO_LAYER_MIN_ZOOM);
   setLayerVisibility(map, `${SOURCE_IDS.CATASTRO}-fill`, isVisible);
   setLayerVisibility(map, `${SOURCE_IDS.CATASTRO}-line`, isVisible);
   map.setFilter(`${SOURCE_IDS.CATASTRO}-fill`, filter);

@@ -25,15 +25,16 @@ import type {
 /** SDF glyph template. Font folder names must match `text-font` exactly. */
 export const MAP_GLYPHS_URL = 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf';
 
-export const ROAD_LABEL_MIN_ZOOM = 11;
+/** CART-08: below MAP_DEFAULT_ZOOM (11) so names show on first load. */
+export const ROAD_LABEL_MIN_ZOOM = 10;
 
 /** Base size before the Capas slider multiplies it (`applyMapLabelSize`). */
 export const ROAD_LABEL_TEXT_SIZE: ExpressionSpecification = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  11,
-  14,
+  10,
+  13,
   14,
   18,
 ];

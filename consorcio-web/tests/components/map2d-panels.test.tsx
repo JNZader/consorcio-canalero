@@ -67,7 +67,7 @@ describe('map2d extracted panels', () => {
     expect(screen.getByText('Canal Este')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /base/i })).toBeChecked();
 
-    await user.click(screen.getByText(/Red Vial \(1 consorcios\)/i));
+    await user.click(screen.getByText(/Red vial rural del consorcio \(1 consorcios\)/i));
     expect(screen.getByText(/C1 \(12 km\)/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /cerrar panel de información/i }));
