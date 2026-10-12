@@ -107,6 +107,7 @@ export function ReportsTableContent({
                           color="blue"
                           component="a"
                           href={`/mapa?${new URLSearchParams({
+                            report: '1',
                             lat: String(report.latitud),
                             lng: String(report.longitud),
                             zoom: '15',

@@ -104,7 +104,7 @@ describe('ReportsPanel', () => {
     expect(screen.getByText('Ruta 9 km 500')).toBeInTheDocument();
     expect(screen.getByLabelText(/ver ubicacion de denuncia en el mapa/i)).toHaveAttribute(
       'href',
-      '/mapa?lat=-32.62&lng=-62.7&zoom=15'
+      '/mapa?report=1&lat=-32.62&lng=-62.7&zoom=15'
     );
     expect(announceMock).toHaveBeenCalledWith('Cargando reportes...');
     expect(announceMock).toHaveBeenCalledWith('1 reportes cargados');

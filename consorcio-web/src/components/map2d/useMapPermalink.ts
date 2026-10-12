@@ -49,6 +49,7 @@ export function useMapPermalink({
 }: UseMapPermalinkParams): void {
   const appliedRef = useRef(false);
   const rasterAppliedRef = useRef(false);
+  const cameraAppliedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined' || appliedRef.current) return;
@@ -80,6 +81,20 @@ export function useMapPermalink({
     setActiveDemLayerId(layer.id);
     setShowDemOverlay(true);
   }, [demLayers, setActiveDemLayerId, setShowDemOverlay]);
+
+  useEffect(() => {
+    if (!mapReady || cameraAppliedRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
+    cameraAppliedRef.current = true;
+    const parsed = parseMapPermalink(window.location.search);
+    if (parsed.lat === undefined || parsed.lng === undefined) return;
+    map.flyTo({
+      center: [parsed.lng, parsed.lat],
+      zoom: parsed.zoom ?? map.getZoom(),
+      essential: true,
+    });
+  }, [mapReady, mapRef]);
 
   useEffect(() => {
     if (!mapReady || typeof window === 'undefined') return;

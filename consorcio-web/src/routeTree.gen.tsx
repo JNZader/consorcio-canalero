@@ -21,6 +21,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import { Center, Loader, Text, Stack } from '@mantine/core';
 
 import { RootLayout } from './components/RootLayout';
+import { parseMapaRouteSearch } from './lib/mapaSearch';
 import { useAuthStore } from './stores/authStore';
 import { withBasePath } from './lib/basePath';
 import { authAdapter } from './lib/auth/index';
@@ -249,19 +250,7 @@ const verifyEmailRoute = createRoute({
 const mapaRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/mapa',
-  validateSearch: (search: Record<string, unknown>) => {
-    const riskClasses = Array.isArray(search.riskClasses)
-      ? search.riskClasses.flatMap((value) => (typeof value === 'string' ? value.split(',') : []))
-      : typeof search.riskClasses === 'string'
-        ? search.riskClasses.split(',')
-        : [];
-    return {
-      ...(search.hazard === '1' || search.hazard === true ? { hazard: '1' } : {}),
-      ...(typeof search.basin === 'string' && search.basin.trim() ? { basin: search.basin.trim() } : {}),
-      ...(riskClasses.length > 0 ? { riskClasses } : {}),
-      ...(typeof search.precipMonth === 'string' ? { precipMonth: search.precipMonth } : {}),
-    };
-  },
+  validateSearch: (search: Record<string, unknown>) => parseMapaRouteSearch(search),
   component: () => (
     <RootLayout
       title="Mapa Interactivo"
