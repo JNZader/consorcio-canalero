@@ -124,6 +124,8 @@ export interface MapUiPanelsProps {
   readonly onExportMenuOpen?: () => void;
   /** Home + lugares. Stacked with Exportar (UX-19). */
   readonly placesControl?: ReactNode;
+  /** UX-18: cursor coords, not inside the right control column. */
+  readonly cursorReadout?: ReactNode;
   readonly showLegend: boolean;
   readonly consorcios: ConsorcioInfo[];
   readonly activeLegendItems: LegendItem[];
@@ -343,6 +345,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportKmz,
   onExportMenuOpen,
   placesControl,
+  cursorReadout,
   showLegend,
   consorcios,
   activeLegendItems,
@@ -634,6 +637,7 @@ export const MapUiPanels = memo(function MapUiPanels({
         </Box>
       )}
 
+      {cursorReadout ? <div className={styles.mapCursorDock}>{cursorReadout}</div> : null}
       <div className={styles.mapRightStack} data-testid="map-right-stack">
         {placesControl}
         <MapActionsPanel

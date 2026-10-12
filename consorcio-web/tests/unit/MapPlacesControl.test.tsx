@@ -36,14 +36,21 @@ describe('MapPlacesControl', () => {
     expect(screen.getByText('Monte Leña')).toBeInTheDocument();
   });
 
-  it('offers Ubicarme when geolocate is wired', async () => {
+  it('offers Ubicarme inside lugares, not as a third stacked button', async () => {
     const user = userEvent.setup();
     const onGeolocate = vi.fn();
     wrap(
       <MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} onGeolocate={onGeolocate} />,
     );
-    expect(screen.queryByTestId('map-geolocate')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-geolocate')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('map-quick-places'));
     await user.click(screen.getByTestId('map-geolocate'));
     expect(onGeolocate).toHaveBeenCalledOnce();
+  });
+
+  it('does not wrap ctrl-group buttons in extra tooltip nodes', () => {
+    const { container } = wrap(<MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} />);
+    const group = container.querySelector('.maplibregl-ctrl-group');
+    expect(group?.querySelectorAll(':scope > button')).toHaveLength(2);
   });
 });
