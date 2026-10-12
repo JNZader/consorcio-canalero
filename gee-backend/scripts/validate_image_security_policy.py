@@ -168,13 +168,25 @@ PLATFORM = "linux/amd64"
 # fix. El multiset exacto vive en frozen-image-debt.json y lo pinea
 # ``test_repository_policy_is_active_with_exact_stage2b2_observations``.
 # util-linux (36) + libxml2 (8) + ncurses (4) + libexpat1 (4) = 52 de 56.
-# Palanca externa: un digest nuevo de python:3.11-slim-trixie no ayuda (misma
-# trixie); solo Debian 13.8 o un DSA puntual bajan filas. Revisar antes del
-# 2026-10-31.
+# Palanca externa: un digest nuevo de python:3.14-slim-trixie no ayuda (misma
+# trixie); solo Debian 13.8 o un DSA puntual bajan filas.
+#
+# Prorroga 2026-10-31 -> 2026-12-12 (quinta del sunset absoluto). Tracker
+# Debian 2026-10-12: las filas congeladas SIGUEN sin FixedVersion en trixie
+# (no-dsa). Sid/forky ya las tiene; trixie no. Congelar un fix seria rechazo
+# de politica. Evidencia:
+#   CVE-2026-6653  libxml2  trixie 2.12.7+dfsg+really2.9.14-2.1+deb13u3
+#                  vulnerable; forky/sid 2.15.4+dfsg-1 fixed; [trixie] no-dsa
+#   CVE-2026-77214 expat    trixie 2.8.3-1~deb13u1 vulnerable;
+#                  forky/sid 2.9.0-1 fixed
+#   CVE-2026-76642 util-linux trixie 2.41.5-0+deb13u1 vulnerable;
+#                  forky/sid 2.42.4-1 fixed; [trixie] no-dsa
+# Sin docker/Trivy: no hay Candidate en apt para bajar filas. El ratchet de
+# 57 filas no se toca. Revisar antes del 2026-12-12.
 DEADLINE_CEILINGS = {
-    "CRITICAL": "2026-10-31T00:00:00Z",
-    "HIGH": "2026-10-31T00:00:00Z",
-    "absolute_sunset": "2026-10-31T00:00:00Z",
+    "CRITICAL": "2026-12-12T00:00:00Z",
+    "HIGH": "2026-12-12T00:00:00Z",
+    "absolute_sunset": "2026-12-12T00:00:00Z",
 }
 ROLE_BINDINGS = {
     "backend": {
