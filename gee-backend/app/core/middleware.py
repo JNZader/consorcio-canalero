@@ -65,6 +65,13 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         "/api/v2/auth/exchange-code",
     }
 
+    # Public /mapa bootstrap GETs. Counting them against 100/60 made the
+    # first paint 429 (API-01). Mutations and /users/me still spend budget.
+    PUBLIC_MAP_GET_PREFIXES: tuple[str, ...] = (
+        "/api/v2/geo/gee/layers",
+        "/api/v2/geo/basins",
+    )
+
     def __init__(
         self,
         app,
@@ -85,6 +92,9 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         # CORS preflight is not API usage. Counting OPTIONS against the generic
         # 100/60 budget made /mapa + login fail: login 200, then /users/me 429.
         if request.method == "OPTIONS":
+            return await call_next(request)
+
+        if request.method == "GET" and request.url.path.startswith(self.PUBLIC_MAP_GET_PREFIXES):
             return await call_next(request)
 
         # Skip rate limiting when disabled via settings (local dev / E2E).

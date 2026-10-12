@@ -96,6 +96,39 @@ def test_options_preflight_does_not_spend_the_generic_budget(monkeypatch) -> Non
 
 
 @pytest.mark.rate_limited
+def test_public_map_gets_do_not_spend_the_generic_budget(monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    limiter = get_rate_limiter()
+
+    async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse({"ok": True})
+
+    layer_path = "/api/v2/geo/gee/layers/zona"
+    app = Starlette(
+        routes=[
+            Route(layer_path, endpoint, methods=["GET"]),
+            Route(PROBE_PATH, endpoint, methods=["GET"]),
+        ]
+    )
+    app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=limiter)
+
+    async def run() -> tuple[list[int], int]:
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.11", 12345))
+        async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+            layer_codes = [
+                (await client.get(layer_path)).status_code for _ in range(limiter.max_requests + 5)
+            ]
+            probe = (await client.get(PROBE_PATH)).status_code
+            return layer_codes, probe
+
+    layer_codes, probe = asyncio.run(run())
+    assert all(code == 200 for code in layer_codes)
+    assert probe == 200
+
+
+@pytest.mark.rate_limited
 def test_the_disabled_switch_is_what_the_suite_fixture_uses(monkeypatch) -> None:
     """With ``rate_limit_disabled`` on, the same overrun is never refused.
 
