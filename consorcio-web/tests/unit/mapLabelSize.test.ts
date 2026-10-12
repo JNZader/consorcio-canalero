@@ -5,7 +5,10 @@ import {
   clampLabelSizeScale,
   scaleTextSizeExpression,
 } from '../../src/components/map2d/mapLabelSize';
-import { ROAD_LABEL_TEXT_SIZE } from '../../src/components/map2d/roadLabelLayer';
+import {
+  ROAD_LABEL_MIN_ZOOM,
+  ROAD_LABEL_TEXT_SIZE,
+} from '../../src/components/map2d/roadLabelLayer';
 
 describe('clampLabelSizeScale', () => {
   it('keeps 1 and clamps the slider range', () => {
@@ -22,8 +25,8 @@ describe('scaleTextSizeExpression', () => {
       'interpolate',
       ['linear'],
       ['zoom'],
-      11,
-      21,
+      ROAD_LABEL_MIN_ZOOM,
+      19.5,
       14,
       27,
     ]);
@@ -31,7 +34,7 @@ describe('scaleTextSizeExpression', () => {
 
   it('leaves zoom stops untouched', () => {
     const scaled = scaleTextSizeExpression(ROAD_LABEL_TEXT_SIZE, 2);
-    expect(scaled[3]).toBe(11);
+    expect(scaled[3]).toBe(ROAD_LABEL_MIN_ZOOM);
     expect(scaled[5]).toBe(14);
   });
 });
