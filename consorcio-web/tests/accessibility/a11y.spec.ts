@@ -95,7 +95,7 @@ test.describe('Navegacion por teclado', () => {
 
     await page.setViewportSize({ width: 375, height: 667 });
     await gotoAndWait(page, '/');
-    const burger = page.getByRole('button', { name: /abrir menu/i });
+    const burger = page.getByRole('button', { name: /abrir menú/i });
     await burger.click();
 
     const drawer = page.locator('.mantine-Drawer-content');
