@@ -308,7 +308,7 @@ export const CUENCAS_STATS = [
 /**
  * Default map center coordinates (centro de la zona del consorcio).
  */
-export const MAP_CENTER: [number, number] = [-32.548, -62.542];
+export const MAP_CENTER: [number, number] = [-32.545, -62.54];
 
 /**
  * Default map zoom level.
@@ -318,12 +318,16 @@ export const MAP_DEFAULT_ZOOM = 11;
 /**
  * Map bounds for the consorcio area.
  */
+/** zona_cc_ampliada envelope (UX-21). Not the old 15 km-SW padded box. */
 export const MAP_BOUNDS = {
-  north: -32.3,
-  south: -33.0,
-  east: -62.3,
-  west: -63.1,
+  north: -32.39,
+  south: -32.7,
+  east: -62.29,
+  west: -62.79,
 } as const;
+
+/** Home fitBounds padding — extra right for the control column. */
+export const MAP_HOME_FIT_PADDING = { top: 48, bottom: 48, left: 48, right: 72 } as const;
 
 /**
  * MapLibre `maxBounds` value for the consorcio area, expressed as
@@ -351,7 +355,19 @@ export const MAP_QUICK_PLACES = [
   {
     id: 'bell-ville',
     label: 'Bell Ville',
-    center: [-62.68, -32.628] as [number, number],
+    center: [-62.688, -32.63] as [number, number],
+    zoom: 14,
+  },
+  {
+    id: 'san-marcos-sud',
+    label: 'San Marcos Sud',
+    center: [-62.482, -32.628] as [number, number],
+    zoom: 14,
+  },
+  {
+    id: 'monte-lena',
+    label: 'Monte Leña',
+    center: [-62.593, -32.627] as [number, number],
     zoom: 14,
   },
 ] as const;

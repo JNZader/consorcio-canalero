@@ -30,7 +30,7 @@
  * flow explicit and avoids a hidden cross-cutting coupling in a small UI atom.
  */
 
-import { Badge, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import { Badge, Collapse, Divider, Group, Stack, Text, Title, UnstyledButton } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { memo, useEffect, useMemo, useState } from 'react';
 
@@ -46,6 +46,11 @@ import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStri
 import { nearestLineStringIndex } from './tramoAtPoint';
 import type { ProfileRangeStats } from './profileRange';
 import { EscuelaCard } from './EscuelaCard';
+import {
+  groupIdentifyChips,
+  identifyTramoRows,
+  shouldHideDuplicateChips,
+} from './identifyChips';
 import { MapPanelShell } from './MapPanelShell';
 import { PuntoInteresCard } from './PuntoInteresCard';
 import { normalizeBpaFlat } from './bpaPracticas';
@@ -405,10 +410,18 @@ export const InfoPanel = memo(function InfoPanel({
   );
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [tramosOpen, setTramosOpen] = useState(false);
+  const identifyChips = useMemo(() => groupIdentifyChips(resolved), [resolved]);
+  const hideDuplicateChips = shouldHideDuplicateChips(identifyChips, resolved.length);
+  const tramoRows = useMemo(
+    () => (hideDuplicateChips ? identifyTramoRows(resolved) : []),
+    [hideDuplicateChips, resolved],
+  );
 
   useEffect(() => {
     setFocusedIdx(null);
     setHoverIdx(null);
+    setTramosOpen(false);
   }, [resolved.length, resetKey]);
   const detailIdx = resolved.length === 1 ? 0 : focusedIdx;
   const hoverTramo =
@@ -453,23 +466,56 @@ export const InfoPanel = memo(function InfoPanel({
               {groupSummary}
             </Text>
           ) : null}
-          <Group gap={4} wrap="wrap" data-testid="info-feature-chips">
-            <Text size="xs" c="dimmed">
-              {resolved.length} elementos aquí:
-            </Text>
-            {resolved.map((feat, idx) => (
-              <Badge
-                key={idx}
-                variant={focusedIdx === idx ? 'filled' : hoverIdx === idx ? 'outline' : 'light'}
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setFocusedIdx((current) => (current === idx ? null : idx));
-                }}
+          {hideDuplicateChips ? (
+            <Stack gap={4} data-testid="info-feature-tramos">
+              <UnstyledButton
+                type="button"
+                onClick={() => setTramosOpen((open) => !open)}
+                aria-expanded={tramosOpen}
+                data-testid="info-feature-tramos-toggle"
               >
-                {featureDisplayName(feat)}
-              </Badge>
-            ))}
-          </Group>
+                <Text size="xs" c="dimmed">
+                  {tramosOpen ? 'Ocultar tramos' : `Ver tramos 1–${resolved.length}`}
+                </Text>
+              </UnstyledButton>
+              <Collapse expanded={tramosOpen}>
+                <Stack gap={2}>
+                  {tramoRows.map((row) => (
+                    <UnstyledButton
+                      key={row.index}
+                      type="button"
+                      onClick={() => {
+                        setFocusedIdx((current) => (current === row.index ? null : row.index));
+                      }}
+                    >
+                      <Text size="xs" fw={focusedIdx === row.index ? 700 : 400}>
+                        {row.label}
+                      </Text>
+                    </UnstyledButton>
+                  ))}
+                </Stack>
+              </Collapse>
+            </Stack>
+          ) : (
+            <Group gap={4} wrap="wrap" data-testid="info-feature-chips">
+              <Text size="xs" c="dimmed">
+                {resolved.length} elementos aquí:
+              </Text>
+              {identifyChips.map((chip) => (
+                <Badge
+                  key={chip.key}
+                  variant={chip.indices.includes(focusedIdx ?? -1) ? 'filled' : 'light'}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    const first = chip.indices[0];
+                    setFocusedIdx((current) => (current === first ? null : first));
+                  }}
+                >
+                  {chip.label}
+                </Badge>
+              ))}
+            </Group>
+          )}
         </Stack>
       )}
       <Stack gap="sm">
