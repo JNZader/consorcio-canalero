@@ -40,7 +40,7 @@ function addRasterOverlay(
       id: `${sourceId}-layer`,
       type: 'raster',
       source: sourceId,
-      paint: { 'raster-opacity': 0.85 },
+      paint: { 'raster-opacity': 0.7 },
     },
     beforeLayerId
   );

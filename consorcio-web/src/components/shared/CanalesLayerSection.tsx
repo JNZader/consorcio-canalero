@@ -21,10 +21,11 @@
  * hermanos siguen la variable: incoherente y, en tactil, sin objetivo de 44px.
  * Hoy la ponen `LayerControlsPanel` (2D) y `TerrainLayerTogglesPanel` (3D).
  */
-import { ActionIcon, Checkbox, ScrollArea, Select, Stack, Text, TextInput, Tooltip } from '@mantine/core';
+import { ActionIcon, Checkbox, Select, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
 import { useState } from 'react';
 
 import { ALL_ETAPAS } from '../../types/canales';
+import { normalizeSearchText } from '../map2d/map2dDerived';
 import { IconEye, IconEyeOff } from '../ui/icons';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import {
@@ -42,6 +43,8 @@ interface CanalesLayerSectionProps {
   onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
   /** UX PDF R5: filterable list instead of 60 checkboxes. 3D keeps checkboxes. */
   variant?: 'checkboxes' | 'explorer';
+  /** UX-05: fly the map to this canal id. */
+  onFocusCanal?: (id: string) => void;
 }
 
 function CanalLeafRow({
@@ -175,6 +178,7 @@ export function CanalesLayerSection({
   vectorVisibility,
   onLayerVisibilityChange,
   variant = 'checkboxes',
+  onFocusCanal,
 }: CanalesLayerSectionProps) {
   const bulk = computeBulkState(entries, vectorVisibility);
   const masterLabel = bulk.allOn ? `Apagar todos los ${side}` : `Encender todos los ${side}`;
@@ -210,6 +214,7 @@ export function CanalesLayerSection({
           vectorVisibility={vectorVisibility}
           onLayerVisibilityChange={onLayerVisibilityChange}
           onChildActivated={activateMaster}
+          onFocusCanal={onFocusCanal}
         />
       ) : (
         <Stack gap={2} pl="md">
@@ -228,18 +233,20 @@ function CanalExplorer({
   vectorVisibility,
   onLayerVisibilityChange,
   onChildActivated,
+  onFocusCanal,
 }: {
   side: 'relevados' | 'propuestos';
   entries: readonly CanalToggleEntry[];
   vectorVisibility: Record<string, boolean>;
   onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
   onChildActivated: () => void;
+  onFocusCanal?: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [etapa, setEtapa] = useState<string | null>(null);
-  const folded = query.trim().toLowerCase();
+  const folded = normalizeSearchText(query);
   const rows = flattenCanalEntries(entries).filter((row) => {
-    if (folded && !row.label.toLowerCase().includes(folded)) return false;
+    if (folded && !normalizeSearchText(row.label).includes(folded)) return false;
     if (etapa && row.etapa !== etapa) return false;
     return true;
   });
@@ -264,31 +271,30 @@ function CanalExplorer({
           data={[...ALL_ETAPAS]}
         />
       )}
-      <ScrollArea h={180} type="hover">
-        <Stack gap={2}>
-          {rows.map((row) => {
-            const visible = vectorVisibility[row.id] !== false;
-            return (
-              <GroupRow
-                key={row.id}
-                id={row.id}
-                label={row.label}
-                visible={visible}
-                onToggle={() => {
-                  const next = !visible;
-                  onLayerVisibilityChange(row.id, next);
-                  if (next) onChildActivated();
-                }}
-              />
-            );
-          })}
-          {rows.length === 0 && (
-            <Text size="xs" c="dimmed">
-              Sin canales.
-            </Text>
-          )}
-        </Stack>
-      </ScrollArea>
+      <Stack gap={2} maw="100%">
+        {rows.map((row) => {
+          const visible = vectorVisibility[row.id] !== false;
+          return (
+            <GroupRow
+              key={row.id}
+              id={row.id}
+              label={row.label}
+              visible={visible}
+              onFocus={() => onFocusCanal?.(row.id)}
+              onToggle={() => {
+                const next = !visible;
+                onLayerVisibilityChange(row.id, next);
+                if (next) onChildActivated();
+              }}
+            />
+          );
+        })}
+        {rows.length === 0 && (
+          <Text size="xs" c="dimmed">
+            Sin canales.
+          </Text>
+        )}
+      </Stack>
     </Stack>
   );
 }
@@ -298,20 +304,24 @@ function GroupRow({
   label,
   visible,
   onToggle,
+  onFocus,
 }: {
   id: string;
   label: string;
   visible: boolean;
   onToggle: () => void;
+  onFocus?: () => void;
 }) {
   return (
     <div
       data-testid={`canal-toggle-${id}`}
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}
     >
-      <Text size="xs" lineClamp={1} style={{ flex: 1 }}>
-        {label}
-      </Text>
+      <UnstyledButton type="button" onClick={onFocus} style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <Text size="xs" lineClamp={1}>
+          {label}
+        </Text>
+      </UnstyledButton>
       <ActionIcon
         size="sm"
         variant="subtle"

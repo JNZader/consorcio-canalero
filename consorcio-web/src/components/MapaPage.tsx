@@ -160,64 +160,64 @@ export function MapaContent() {
               )}
             </Group>
 
-            <Group gap="sm" align="center">
-              <Tooltip label="Mapa 2D (MapLibre)" position="bottom" withArrow>
-                <Box>
-                  <SegmentedControl
-                    size="sm"
-                    value={mapViewMode}
-                    onChange={(value) => setMapViewMode(value as MapViewMode)}
-                    data={[
-                      {
-                        value: '2d',
-                        label: (
-                          <Group gap={4}>
-                            <IconMap size={16} />
-                            <Text size="xs">2D</Text>
-                          </Group>
-                        ),
-                      },
-                      {
-                        value: '3d',
-                        disabled: terrainStatus !== 'ready',
-                        label: (
-                          <Group gap={4}>
-                            <Icon3dCubeSphere size={16} />
-                            <Text size="xs">3D</Text>
-                          </Group>
-                        ),
-                      },
-                    ]}
-                  />
-                </Box>
-              </Tooltip>
-              {terrainStatus !== 'ready' && (
-                <Group gap={6} wrap="nowrap">
-                  <Text size="xs" c="dimmed" data-testid="map-3d-status">
-                    {terrainHint}
-                  </Text>
-                  {terrainStatus === 'error' && (
-                    <Button size="compact-xs" variant="light" onClick={() => void reloadDem()}>
-                      Reintentar
-                    </Button>
-                  )}
-                </Group>
-              )}
-
-              <Button
-                component="a"
-                href={withBasePath('/participacion')}
-                color="orange"
-                leftSection={<IconAlertTriangle size={18} />}
-              >
-                Reportar Incidente
-              </Button>
-            </Group>
+            <Button
+              component="a"
+              href={withBasePath('/participacion')}
+              color="orange"
+              leftSection={<IconAlertTriangle size={18} />}
+            >
+              Reportar Incidente
+            </Button>
           </Group>
         </Paper>
 
+        <Group gap="sm" align="center" className={mapStyles.mapViewToggleBar} mb="sm">
+          <Tooltip label="Mapa 2D (MapLibre)" position="bottom" withArrow>
+            <Box>
+              <SegmentedControl
+                size="sm"
+                value={mapViewMode}
+                onChange={(value) => setMapViewMode(value as MapViewMode)}
+                data={[
+                  {
+                    value: '2d',
+                    label: (
+                      <Group gap={4}>
+                        <IconMap size={16} />
+                        <Text size="xs">2D</Text>
+                      </Group>
+                    ),
+                  },
+                  {
+                    value: '3d',
+                    disabled: terrainStatus !== 'ready',
+                    label: (
+                      <Group gap={4}>
+                        <Icon3dCubeSphere size={16} />
+                        <Text size="xs">3D</Text>
+                      </Group>
+                    ),
+                  },
+                ]}
+              />
+            </Box>
+          </Tooltip>
+          {terrainStatus !== 'ready' && (
+            <Group gap={6} wrap="nowrap">
+              <Text size="xs" c="dimmed" data-testid="map-3d-status">
+                {terrainHint}
+              </Text>
+              {terrainStatus === 'error' && (
+                <Button size="compact-xs" variant="light" onClick={() => void reloadDem()}>
+                  Reintentar
+                </Button>
+              )}
+            </Group>
+          )}
+        </Group>
+
         {/* Mapa 2D o Terreno 3D */}
-        <Paper shadow="sm" radius="md" style={{ overflow: 'hidden' }} mb="sm">
+        <Paper shadow="sm" radius="md" className={mapStyles.mapPageCanvas} style={{ overflow: 'hidden' }} mb="sm">
           {mapViewMode === '2d' ? (
             <MapaContenido />
           ) : (

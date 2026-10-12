@@ -176,5 +176,7 @@ export function buildWaterwayLayerConfigs(waterwayDefs: readonly WaterwayDef[]) 
     layer: spec.layer,
     color:
       waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.color ?? spec.fallbackColor,
+    weight: waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.weight ?? 3,
+    dashArray: waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.dashArray ?? undefined,
   }));
 }

@@ -152,7 +152,7 @@
 
 .workspaceBurger {
   position: absolute;
-  top: var(--mantine-spacing-sm);
+  top: 52px;
   left: var(--mantine-spacing-sm);
   z-index: 1100;
   background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
@@ -559,9 +559,15 @@
   }
 
   /* `order` mueve la caja sin tocar el DOM: mover el Paper en el JSX remontaria
-     el canvas de MapLibre. El resto de los hijos queda en `order: 0`, asi que el
-     titulo (con el banner satelital y el boton Reportar adentro) cae ultimo y el
-     mapa sube al tope. */
+     el canvas de MapLibre. El 2D/3D se queda arriba (MOB-05); el titulo cae ultimo. */
+  .mapPageContainer > .mapViewToggleBar {
+    order: 0;
+  }
+
+  .mapPageContainer > .mapPageCanvas {
+    order: 1;
+  }
+
   .mapPageContainer > .mapPageHeader {
     order: 2;
   }
@@ -1457,9 +1463,14 @@
     flex-direction: column;
   }
 
-  /* `order` mueve la caja sin tocar el DOM: mover el Paper en el JSX remontaria
-     el canvas de MapLibre. El resto de los hijos queda en `order: 0`, asi que el
-     titulo cae ultimo y el mapa sube al tope. */
+  .mapPageContainer > .mapViewToggleBar {
+    order: 0;
+  }
+
+  .mapPageContainer > .mapPageCanvas {
+    order: 1;
+  }
+
   .mapPageContainer > .mapPageHeader {
     order: 2;
   }

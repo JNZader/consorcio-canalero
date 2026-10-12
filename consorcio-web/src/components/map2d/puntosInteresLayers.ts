@@ -85,6 +85,7 @@ export function buildPuntosInteresLabelLayer(
     id,
     type: 'symbol',
     source,
+    minzoom: 12,
     layout: {
       'text-field': ['get', 'titulo'],
       'text-font': ['Noto Sans Regular'],
@@ -92,8 +93,9 @@ export function buildPuntosInteresLabelLayer(
       'text-anchor': 'bottom',
       'text-offset': [0, -1.15],
       'text-optional': true,
-      'text-allow-overlap': true,
-      'text-ignore-placement': true,
+      'text-allow-overlap': false,
+      'text-ignore-placement': false,
+      'symbol-sort-key': ['get', 'prioridad'],
     },
     paint: {
       'text-color': '#ffffff',

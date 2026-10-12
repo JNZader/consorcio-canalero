@@ -101,8 +101,13 @@ export function syncWaterwayLayers(
         source: waterwayFile.id,
         paint: {
           'line-color': waterwayFile.color,
-          'line-width': 3,
+          'line-width': waterwayFile.weight,
           'line-opacity': 0.9,
+          ...(waterwayFile.dashArray
+            ? {
+                'line-dasharray': waterwayFile.dashArray.split(',').map((part: string) => Number(part)),
+              }
+            : {}),
         },
       });
     }

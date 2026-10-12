@@ -379,7 +379,7 @@ export function buildFamilyActiveCounts(params: {
   const {
     layerItems,
     vectorVisibility,
-    canalChildIds = [],
+    canalChildIds: _canalChildIds = [],
     showIGNOverlay = false,
     showHillshade = false,
     showDemOverlay = false,
@@ -391,10 +391,9 @@ export function buildFamilyActiveCounts(params: {
     [LAYER_CATEGORY.HIDROGRAFIA]: 0,
     [LAYER_CATEGORY.TERRITORIO]: 0,
     [LAYER_CATEGORY.PILAR_VERDE]: 0,
-    [LAYER_CATEGORY.CANALES]: canalChildIds.reduce(
-      (count, id) => (vectorVisibility[id] ? count + 1 : count),
-      0
-    ),
+    [LAYER_CATEGORY.CANALES]:
+      (vectorVisibility.canales_relevados ? 1 : 0) +
+      (vectorVisibility.canales_propuestos ? 1 : 0),
     [LAYER_CATEGORY.ANALISIS]: 0,
   };
 
