@@ -65,5 +65,6 @@ describe('ActiveLayersSection', () => {
     await user.click(screen.getByTestId('map-active-eye-roads'));
     expect(onLayerOpacityChange).toHaveBeenCalledWith('roads', 0);
     expect(screen.getByTestId('map-active-opacity-roads')).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Opacidad Red Vial' })).toBeInTheDocument();
   });
 });

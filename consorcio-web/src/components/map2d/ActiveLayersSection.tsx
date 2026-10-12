@@ -93,7 +93,7 @@ export function ActiveLayersSection({
                     max={1}
                     step={0.05}
                     value={opacity}
-                    aria-label={`Opacidad ${row.label}`}
+                    thumbLabel={`Opacidad ${row.label}`}
                     data-testid={`map-active-opacity-${row.id}`}
                     onChange={(value) => onLayerOpacityChange(row.id, value)}
                   />
