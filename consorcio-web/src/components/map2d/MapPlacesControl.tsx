@@ -16,7 +16,7 @@ interface MapPlacesControlProps {
 export function MapPlacesControl({ onRecenter, onFlyToPlace }: MapPlacesControlProps) {
   return (
     <Box
-      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapCtrlDock} ${styles.mapPlacesDock}`}
+      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapPlacesDock}`}
     >
       <Tooltip label="Volver al consorcio" position="left" withArrow>
         <UnstyledButton

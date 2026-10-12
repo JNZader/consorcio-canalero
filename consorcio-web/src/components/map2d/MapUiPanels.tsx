@@ -1,12 +1,13 @@
 import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import type { Feature } from 'geojson';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useState, type ReactNode } from 'react';
 import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import type { FichaApiError } from '../../lib/api/ficha';
+import styles from '../../styles/components/map.module.css';
 import { RasterLegend } from '../RasterLegend';
 import { ExportPngModal } from './ExportPngModal';
 import type { EtapaGate } from '../shared/canalesGrouping';
@@ -114,6 +115,8 @@ export interface MapUiPanelsProps {
    * GeoJSON fetch on export intent instead of on every mount.
    */
   readonly onExportMenuOpen?: () => void;
+  /** Home + lugares. Stacked with Exportar (UX-19). */
+  readonly placesControl?: ReactNode;
   readonly showLegend: boolean;
   readonly consorcios: ConsorcioInfo[];
   readonly activeLegendItems: LegendItem[];
@@ -326,6 +329,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportApprovedZonesPdf,
   onExportKmz,
   onExportMenuOpen,
+  placesControl,
   showLegend,
   consorcios,
   activeLegendItems,
@@ -611,13 +615,16 @@ export const MapUiPanels = memo(function MapUiPanels({
         </Box>
       )}
 
-      <MapActionsPanel
-        hasApprovedZones={hasApprovedZones}
-        onOpenExportPng={onOpenExportPng}
-        onExportApprovedZonesPdf={onExportApprovedZonesPdf}
-        onExportKmz={onExportKmz}
-        onExportMenuOpen={onExportMenuOpen}
-      />
+      <div className={styles.mapRightStack} data-testid="map-right-stack">
+        {placesControl}
+        <MapActionsPanel
+          hasApprovedZones={hasApprovedZones}
+          onOpenExportPng={onOpenExportPng}
+          onExportApprovedZonesPdf={onExportApprovedZonesPdf}
+          onExportKmz={onExportKmz}
+          onExportMenuOpen={onExportMenuOpen}
+        />
+      </div>
 
       {showEmbeddedRasterLegend && visibleRasterLayers.length > 0 && (
         <RasterLegend

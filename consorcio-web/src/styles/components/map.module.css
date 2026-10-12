@@ -1097,18 +1097,21 @@
   margin: 0;
 }
 
-/* Fine-pointer column budget (unchanged): nav 3×29 + fullscreen 29 + gutters. */
-.mapActionsDock {
-  top: 144px;
-}
-
-/* Home + places, under FullscreenControl, above Exportar. */
-.mapPlacesDock {
-  top: 116px;
+/* UX-19: Home + Lugares + Exportar share one flex column under nav/fullscreen.
+   Fine pointer: 10 + 3×29 + 10 + 29 + 10 = 146. */
+.mapRightStack {
+  position: absolute;
+  right: 10px;
+  top: 146px;
+  z-index: 16;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
 }
 
 .measurementDock {
-  top: 180px;
+  top: 256px;
 }
 
 @media (pointer: coarse) {
@@ -1184,7 +1187,7 @@
      Right column budget (vertical, top-anchored) — every box is 44×44:
        MapLibre nav   3 × 44 = 132   → top 10, ends 142
        +10 gutter → fullscreen 44    → top 152, ends 196
-       +10 gutter → Exportar   44    → top 206, ends 250   ✔ 250 < 380
+       +10 gutter → flex stack       → top 206 (Home+Lugares then Exportar)
 
      ONE VISUAL FAMILY IN THAT COLUMN. The Exportar button used to keep its
      visible "Exportar" caption on coarse pointers, so it grew to ~64px wide and
@@ -1223,11 +1226,7 @@
      `alto` (85%) is the exception and stays a plain cover: there is no map left
      to operate, and lifting the toolbar to 85% + 12px would push it into the
      page header. Fully expanded IS the "reading" stage. */
-  .mapPlacesDock {
-    top: 168px;
-  }
-
-  .mapActionsDock {
+  .mapRightStack {
     top: 206px;
   }
 

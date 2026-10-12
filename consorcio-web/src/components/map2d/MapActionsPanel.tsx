@@ -37,13 +37,10 @@ interface MapActionsPanelProps {
  * right-side toolbar reads as one coherent column without us having to
  * keep our hand-rolled style in sync with upstream MapLibre changes.
  *
- * Position: `top: 144, right: 10` puts it directly under the
- * FullscreenControl (which lands around 110–135px) and above the
- * MeasurementToolbar at `top: 180`. Both the dock offset and the button size
- * live in `map.module.css` (`.mapCtrlDock` / `.mapActionsDock` /
+ * Position: sits in `.mapRightStack` under the native MapLibre column
+ * (UX-19). Button size lives in `map.module.css` (`.mapActionsDock` /
  * `.mapCtrlButton`) because a coarse pointer grows every control to the 44px
- * WCAG target, which shifts the whole column — a media query cannot reach an
- * inline style (map-fluidity T2, fix 2).
+ * WCAG target.
  *
  * On a coarse pointer the button stays a 44×44 SQUARE and drops its visible
  * caption, so the right column is one uniform family of icon buttons; captions
@@ -59,7 +56,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
 }: MapActionsPanelProps) {
   return (
     <Box
-      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapCtrlDock} ${styles.mapActionsDock}`}
+      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapActionsDock}`}
     >
       <Menu shadow="md" width={200} onOpen={onExportMenuOpen}>
         <Menu.Target>

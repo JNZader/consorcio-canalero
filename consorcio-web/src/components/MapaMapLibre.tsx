@@ -1190,23 +1190,6 @@ export default function MapaMapLibre() {
               />
             </div>
 
-            <MapPlacesControl
-              onRecenter={() => {
-                mapRef.current?.fitBounds(
-                  [
-                    [MAP_BOUNDS.west, MAP_BOUNDS.south],
-                    [MAP_BOUNDS.east, MAP_BOUNDS.north],
-                  ],
-                  { padding: 48, duration: 800 },
-                );
-              }}
-              onFlyToPlace={(placeId) => {
-                const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
-                if (!place) return;
-                mapRef.current?.flyTo({ center: place.center, zoom: place.zoom, duration: 800 });
-              }}
-            />
-
             {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
             <MeasurementToolbar
               mode={puntosInteres.interactionMode}
@@ -1286,6 +1269,28 @@ export default function MapaMapLibre() {
               onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
               onExportKmz={handleExportKmz}
               onExportMenuOpen={handleExportIntent}
+              placesControl={
+                <MapPlacesControl
+                  onRecenter={() => {
+                    mapRef.current?.fitBounds(
+                      [
+                        [MAP_BOUNDS.west, MAP_BOUNDS.south],
+                        [MAP_BOUNDS.east, MAP_BOUNDS.north],
+                      ],
+                      { padding: 48, duration: 800 },
+                    );
+                  }}
+                  onFlyToPlace={(placeId) => {
+                    const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
+                    if (!place) return;
+                    mapRef.current?.flyTo({
+                      center: place.center,
+                      zoom: place.zoom,
+                      duration: 800,
+                    });
+                  }}
+                />
+              }
               showLegend={showLegend}
               consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
               activeLegendItems={activeLegendItems}
