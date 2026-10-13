@@ -125,8 +125,9 @@ def calculate_hci(
             pesos=payload.pesos,
         )
         return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as exc:
+        logger.warning("hci.zone_not_found", error_type=type(exc).__name__)
+        raise HTTPException(status_code=404, detail="Zona operativa no encontrada") from exc
 
 
 @router.get("/hci", response_model=dict)

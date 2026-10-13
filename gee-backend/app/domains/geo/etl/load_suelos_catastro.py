@@ -446,6 +446,7 @@ def refresh_materialized_view(db: Session) -> int:
     """
     engine = db.get_bind().engine
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text("SET statement_timeout = '300s'"))
         try:
             conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {MATERIALIZED_VIEW}"))
         except Exception as exc:  # noqa: BLE001 — the fallback IS the handling

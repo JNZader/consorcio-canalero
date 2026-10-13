@@ -6,7 +6,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.core.logging import get_logger
+from app.db.session import get_db, relax_statement_timeout
+from app.shared.upload_limits import assert_xlsx_is_not_a_zip_bomb, read_upload_bounded
 from app.domains.padron.schemas import (
     ConsorcistaCreate,
     ConsorcistaListResponse,
@@ -18,6 +20,7 @@ from app.domains.padron.schemas import (
 from app.domains.padron.service import PadronService
 from app.shared.pagination import PaginatedResponse
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/padron", tags=["padron"])
 
 
@@ -151,7 +154,7 @@ def update_consorcista(
 
 
 @router.post("/import", response_model=CsvImportResponse)
-async def import_consorcistas(
+def import_consorcistas(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     service: PadronService = Depends(get_service),
@@ -167,14 +170,18 @@ async def import_consorcistas(
             detail="Formato no soportado. Use archivos CSV, XLS o XLSX",
         )
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Archivo vacio")
+    content = read_upload_bounded(file)
+    assert_xlsx_is_not_a_zip_bomb(content, file.filename)
+    relax_statement_timeout(db, "120s")
 
     try:
         result = service.import_csv(db, content, file.filename)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("padron.import_rejected", error_type=type(exc).__name__)
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo importar el padrón. Revise el formato del archivo.",
+        ) from exc
 
     return CsvImportResponse(
         filename=file.filename,

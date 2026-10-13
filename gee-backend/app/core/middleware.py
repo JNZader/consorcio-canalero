@@ -1,5 +1,7 @@
 """Application middleware — rate limiting, security, CSRF, logging."""
 
+import hashlib
+import re
 import time
 from typing import Optional
 
@@ -8,12 +10,68 @@ from fastapi.responses import JSONResponse
 import jwt
 from jwt import PyJWTError
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from app.config import settings
 from app.core.logging import get_logger
 from app.core.rate_limit import DistributedRateLimiter, get_auth_rate_limiter
 
 logger = get_logger(__name__)
+
+# Tile traffic is high-volume and stays outside the generic budget, but only
+# the real tile URLs. A substring match on ``/tiles/`` also exempted
+# ``/api/v2/geo/layers/tiles/sentinel2`` and any future path that merely
+# contains the fragment (BE-02).
+_TILE_RATE_LIMIT_EXEMPT = (
+    re.compile(r"^/tiles/[^/]+/\d+/\d+/\d+\.png$"),
+    re.compile(r"^/api/v2/geo/layers/[^/]+/tiles/\d+/\d+/\d+\.png$"),
+)
+
+
+def _is_tile_request(path: str) -> bool:
+    return any(pattern.fullmatch(path) for pattern in _TILE_RATE_LIMIT_EXEMPT)
+
+
+def _etag_for_body(body: bytes) -> str:
+    return f'"{hashlib.sha256(body).hexdigest()}"'
+
+
+def _if_none_match_hits(header: Optional[str], etag: str) -> bool:
+    if not header:
+        return False
+    for token in header.split(","):
+        candidate = token.strip()
+        if candidate.startswith("W/"):
+            candidate = candidate[2:].strip()
+        if candidate == "*" or candidate == etag:
+            return True
+    return False
+
+
+def _apply_public_map_cache(request: Request, response: Response) -> Response:
+    """Cache-Control plus a strong ETag so a repeat GET can answer 304 (BE-01)."""
+    if "cache-control" not in {key.lower() for key in response.headers.keys()}:
+        response.headers["Cache-Control"] = (
+            DistributedRateLimitMiddleware.PUBLIC_MAP_GET_CACHE_CONTROL
+        )
+    existing = response.headers.get("etag")
+    if existing:
+        etag = existing
+    else:
+        body = getattr(response, "body", None)
+        if not isinstance(body, (bytes, bytearray)) or not body:
+            return response
+        etag = _etag_for_body(bytes(body))
+        response.headers["ETag"] = etag
+    if _if_none_match_hits(request.headers.get("if-none-match"), etag):
+        not_modified = Response(status_code=304)
+        not_modified.headers["ETag"] = etag
+        not_modified.headers["Cache-Control"] = response.headers.get(
+            "cache-control",
+            DistributedRateLimitMiddleware.PUBLIC_MAP_GET_CACHE_CONTROL,
+        )
+        return not_modified
+    return response
 
 
 def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
@@ -104,7 +162,9 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health checks and tile requests (tiles are high-volume)
-        if request.url.path in ["/", "/health", "/live", "/ready"] or "/tiles/" in request.url.path:
+        if request.url.path in ["/", "/health", "/live", "/ready"] or _is_tile_request(
+            request.url.path
+        ):
             return await call_next(request)
 
         # CORS preflight is not API usage. Counting OPTIONS against the generic
@@ -114,9 +174,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
         if self._is_public_map_get(request.method, request.url.path):
             response = await call_next(request)
-            if "cache-control" not in {k.lower() for k in response.headers.keys()}:
-                response.headers["Cache-Control"] = self.PUBLIC_MAP_GET_CACHE_CONTROL
-            return response
+            return _apply_public_map_cache(request, response)
 
         # Skip rate limiting when disabled via settings (local dev / E2E).
         # ``settings.rate_limit_disabled`` is read once at boot from the
@@ -194,7 +252,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         is_docs_ui = settings.enable_docs and request.url.path in self.DOCS_PATHS
@@ -222,7 +279,33 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     """CSRF protection: JSON Content-Type + Origin validation."""
 
     CSRF_EXEMPT_PATHS: list[str] = ["/api/v2/auth/", "/docs", "/openapi.json"]
+    # Cookie session mutations. The SPA and the API are cross-site, so the
+    # refresh cookie stays SameSite=None; Origin is the CSRF check (BE-03).
+    # Login has no cookie yet and stays on the prefix exemption above.
+    AUTH_ORIGIN_REQUIRED_PATHS: frozenset[str] = frozenset(
+        {
+            "/api/v2/auth/jwt/refresh",
+            "/api/v2/auth/jwt/logout",
+            "/api/v2/auth/jwt/logout-all",
+        }
+    )
     UPLOAD_PATHS: set[str] = {"/api/v2/public/upload-photo", "/api/v2/capas"}
+
+    def _reject_origin(self, request: Request) -> JSONResponse:
+        logger.warning(
+            "CSRF: Invalid origin",
+            origin=request.headers.get("origin"),
+            path=request.url.path,
+        )
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "code": "CSRF_INVALID_ORIGIN",
+                    "message": "Origin not allowed",
+                }
+            },
+        )
 
     async def dispatch(self, request: Request, call_next):
         if request.method not in ["POST", "PUT", "DELETE", "PATCH"]:
@@ -231,21 +314,20 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/", "/health", "/live", "/ready"]:
             return await call_next(request)
 
+        if request.url.path in self.AUTH_ORIGIN_REQUIRED_PATHS:
+            origin = request.headers.get("origin")
+            if not origin or origin not in settings.cors_origins_list:
+                return self._reject_origin(request)
+            # Refresh and logout may post an empty body. Origin is the check;
+            # do not also require application/json.
+            return await call_next(request)
+
         if any(request.url.path.startswith(path) for path in self.CSRF_EXEMPT_PATHS):
             return await call_next(request)
 
         origin = request.headers.get("origin")
         if origin and origin not in settings.cors_origins_list:
-            logger.warning("CSRF: Invalid origin", origin=origin, path=request.url.path)
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "error": {
-                        "code": "CSRF_INVALID_ORIGIN",
-                        "message": "Origin not allowed",
-                    }
-                },
-            )
+            return self._reject_origin(request)
 
         content_type = request.headers.get("content-type", "")
         is_multipart = "multipart/form-data" in content_type

@@ -253,12 +253,12 @@ class AnalisisGeo(UUIDMixin, TimestampMixin, Base):
     )
     fecha_analisis: Mapped[date] = mapped_column(Date, nullable=False)
     fecha_inicio: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="Analysis period start date",
     )
     fecha_fin: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="Analysis period end date",
     )
