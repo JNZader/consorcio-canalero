@@ -11,7 +11,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useState } from 'react';
-import { SUPPORT_PHONE } from '../constants';
+import { isConfiguredSupportPhone, SUPPORT_PHONE } from '../constants';
 import { FormularioContenido } from './FormularioReporte';
 import { FormularioSugerenciaContent } from './FormularioSugerencia';
 import { IconClipboardList, IconInfoCircle, IconLightbulb } from './ui/icons';
@@ -43,31 +43,33 @@ function ReportarContent() {
       <FormularioContenido />
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-        <Alert color="blue" title="Informacion importante" icon={<IconInfoCircle size={20} />}>
+        <Alert color="blue" title="Información importante" icon={<IconInfoCircle size={20} />}>
           <List size="sm" spacing="xs">
-            <List.Item>Los reportes son revisados en un plazo de 24-48 horas habiles.</List.Item>
+            <List.Item>Los reportes son revisados en un plazo de 24-48 horas hábiles.</List.Item>
             <List.Item>
-              Incluir una foto ayuda a priorizar y resolver el problema mas rapido.
+              Incluir una foto ayuda a priorizar y resolver el problema más rápido.
             </List.Item>
-            <List.Item>Recibiras una notificacion cuando tu reporte sea atendido.</List.Item>
+            <List.Item>Recibirás una notificación cuando tu reporte sea atendido.</List.Item>
           </List>
         </Alert>
 
         <Alert color="red" title="Emergencias" icon={<Text>!</Text>}>
           <Text size="sm" mb="md">
-            Si la situacion es urgente (inundacion activa, peligro inminente), comunicate
+            Si la situación es urgente (inundación activa, peligro inminente), comunicate
             directamente:
           </Text>
           <Stack gap="xs">
-            <Button
-              component="a"
-              href={`tel:${SUPPORT_PHONE}`}
-              color="red"
-              variant="light"
-              fullWidth
-            >
-              Llamar al Consorcio
-            </Button>
+            {isConfiguredSupportPhone(SUPPORT_PHONE) && (
+              <Button
+                component="a"
+                href={`tel:${SUPPORT_PHONE}`}
+                color="red"
+                variant="light"
+                fullWidth
+              >
+                Llamar al Consorcio
+              </Button>
+            )}
             <Button component="a" href="tel:103" color="orange" variant="light" fullWidth>
               Defensa Civil (103)
             </Button>
@@ -95,7 +97,7 @@ function ProponerContent() {
             <List.Item>Iniciá sesión con tu email para enviar sugerencias.</List.Item>
             <List.Item>Podés enviar hasta 5 sugerencias cada 24 horas.</List.Item>
             <List.Item>
-              Las sugerencias son revisadas por la comision en sus reuniones periodicas.
+              Las sugerencias son revisadas por la comisión en sus reuniones periódicas.
             </List.Item>
           </List>
         </Alert>
@@ -104,8 +106,8 @@ function ProponerContent() {
           <List size="sm" spacing="xs">
             <List.Item>Mejoras en infraestructura (canales, caminos, alcantarillas)</List.Item>
             <List.Item>Propuestas para servicios del consorcio</List.Item>
-            <List.Item>Ideas sobre gestion ambiental</List.Item>
-            <List.Item>Temas administrativos y de organizacion</List.Item>
+            <List.Item>Ideas sobre gestión ambiental</List.Item>
+            <List.Item>Temas administrativos y de organización</List.Item>
           </List>
         </Alert>
       </SimpleGrid>
@@ -148,8 +150,8 @@ export function ParticipacionContent() {
         <Stack align="center" mb="xl">
           <Title order={1}>Participación</Title>
           <Text c="gray.6" ta="center" maw={560}>
-            Reporta un problema en los canales y caminos, o proponé una mejora para tu zona. Todo lo
-            que envies llega al equipo del consorcio y a la comision.
+            Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo lo
+            que envíes llega al equipo del consorcio y a la comisión.
           </Text>
         </Stack>
 

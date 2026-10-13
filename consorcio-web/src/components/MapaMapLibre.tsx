@@ -26,6 +26,7 @@ import '../lib/pmtilesProtocol';
 // both by the map and by the KMZ export (`exportSources`), so a tile source
 // would have to keep a GeoJSON twin alive for the export path.
 void bootMapLibreWorker();
+
 import {
   MAP_BOUNDS,
   MAP_CENTER,
@@ -33,14 +34,14 @@ import {
   MAP_HOME_FIT_PADDING,
   MAP_QUICK_PLACES,
 } from '../constants';
-import { useAuth } from '../hooks/useAuth';
 import { useApprovedZones } from '../hooks/useApprovedZones';
+import { useAuth } from '../hooks/useAuth';
 import { useBasins } from '../hooks/useBasins';
 import { useCaminosColoreados } from '../hooks/useCaminosColoreados';
-import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useCanales } from '../hooks/useCanales';
 import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
+import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useEscuelas } from '../hooks/useEscuelas';
 import { useFichaOverlay } from '../hooks/useFichaOverlay';
 import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
@@ -57,62 +58,60 @@ import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
-import { WATERWAY_DEFS, useWaterways } from '../hooks/useWaterways';
+import { useWaterways, WATERWAY_DEFS } from '../hooks/useWaterways';
 import { FICHA_MAX_BUFFER_M, FICHA_PARCELAS_MAX } from '../lib/api/ficha';
 import { showWarning } from '../lib/notifications';
-import { useMapCameraStore } from '../stores/mapCameraStore';
 import { useConfigStore } from '../stores/configStore';
+import { useMapCameraStore } from '../stores/mapCameraStore';
 import {
   PILAR_VERDE_LAYER_IDS,
   selectEtapaGate,
   useMapLayerSyncStore,
 } from '../stores/mapLayerSyncStore';
 import styles from '../styles/components/map.module.css';
-import { RasterLegend } from './RasterLegend';
 import type { DrawControlHandle } from './map/DrawControl';
-const DrawControl = lazy(() => import('./map/DrawControl'));
-import { HazardMapControls } from './map2d/HazardMapControls';
-import { LayerControlsPanel } from './map2d/LayerControlsPanel';
+import { RasterLegend } from './RasterLegend';
 
-import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
-import { MapUiPanels } from './map2d/MapUiPanels';
-import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
-import { MapCursorReadout } from './map2d/MapCursorReadout';
-import { requestMapGeolocate } from './map2d/mapGeolocate';
-import { MapPlacesControl } from './map2d/MapPlacesControl';
-import { MapViewportOverlay } from './map2d/MapViewportOverlay';
-import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
-import { useRasterTileLoading } from './map2d/useRasterTileLoading';
-import { useMapPermalink } from './map2d/useMapPermalink';
-import { PuntoInteresPlaceModal } from './map2d/PuntoInteresPlaceModal';
-import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
+const DrawControl = lazy(() => import('./map/DrawControl'));
+
 import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
+import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
 import {
   type ComparisonOverlayController,
   type ComparisonOverlaySyncInputs,
   createComparisonOverlayController,
 } from './map2d/comparisonOverlay';
 import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
+import { HazardMapControls } from './map2d/HazardMapControls';
 import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
 import { buildHazardLegendView } from './map2d/hazardLegend';
+import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { buildLayerProvenance } from './map2d/layerProvenance';
+import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
+import { MapCursorReadout } from './map2d/MapCursorReadout';
+import { MapPlacesControl } from './map2d/MapPlacesControl';
+import { MapUiPanels } from './map2d/MapUiPanels';
+import { MapViewportOverlay } from './map2d/MapViewportOverlay';
+import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
 import {
   buildFamilyActiveCounts,
   shouldLatchBpaJoin,
   sumFamilyActiveCounts,
 } from './map2d/map2dDerived';
-import {
-  MAP2D_HILLSHADE_Z_FACTOR,
-  reloadIgnSource,
-} from './map2d/mapRasterOverlayHelpers';
+import type { ClassifiedMapError } from './map2d/mapErrorClassify';
+import { requestMapGeolocate } from './map2d/mapGeolocate';
+import { MAP2D_HILLSHADE_Z_FACTOR, reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
 import { useMeasurement } from './map2d/measurement/useMeasurement';
+import { PuntoInteresPlaceModal } from './map2d/PuntoInteresPlaceModal';
 import { syncParcelaHighlightLayers } from './map2d/parcelaHighlightLayers';
+import type { ProfileRangeStats } from './map2d/profileRange';
 import { useAnalysisToolsGate } from './map2d/useAnalysisToolsGate';
 import { useComparisonSlider } from './map2d/useComparisonSlider';
+import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
 import { useFichaDrawWiring } from './map2d/useFichaDrawWiring';
 import { useFichaInteraction } from './map2d/useFichaInteraction';
 import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
@@ -122,19 +121,19 @@ import { useMapExportHandlers } from './map2d/useMapActionHandlers';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
 import { useMapDragSignal } from './map2d/useMapDragSignal';
 import { useMapEscapeExit } from './map2d/useMapEscapeExit';
-import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapHoverTooltip } from './map2d/useMapHoverTooltip';
+import { useMapInitialization } from './map2d/useMapInitialization';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
+import { useMapPermalink } from './map2d/useMapPermalink';
 import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
-import type { ClassifiedMapError } from './map2d/mapErrorClassify';
-import { useRasterTileHealth } from './map2d/useRasterTileHealth';
-import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
 import { type QuickPlacePin, useQuickPlaceMarker } from './map2d/useQuickPlaceMarker';
-import type { ProfileRangeStats } from './map2d/profileRange';
+import { useRasterTileHealth } from './map2d/useRasterTileHealth';
+import { useRasterTileLoading } from './map2d/useRasterTileLoading';
 import { useReportHighlight } from './map2d/useReportHighlight';
-import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
 import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
+import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
+import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
 import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
 
 /* -------------------------------------------------------------------------- */
@@ -211,7 +210,9 @@ export default function MapaMapLibre() {
     lon: number;
     lat: number;
   } | null>(null);
-  const [elevationProfileRange, setElevationProfileRange] = useState<ProfileRangeStats | null>(null);
+  const [elevationProfileRange, setElevationProfileRange] = useState<ProfileRangeStats | null>(
+    null
+  );
   const [quickPlace, setQuickPlace] = useState<QuickPlacePin | null>(null);
   useEffect(() => {
     setElevationProfileHover(null);
@@ -320,11 +321,19 @@ export default function MapaMapLibre() {
   const { conflictos } = useConflictos();
   // 2D paint uses `suelos_cu.pmtiles` (syncSoilLayers). The GeoJSON is only
   // for KMZ export — same latch as catastro (`exportIntent`).
-  const { soilMap, error: soilError, reload: reloadSoil } = useSoilMap({
+  const {
+    soilMap,
+    error: soilError,
+    reload: reloadSoil,
+  } = useSoilMap({
     enabled: exportIntent,
   });
   const { basins, error: basinsError, loading: basinsLoading, reload: reloadBasins } = useBasins();
-  const { waterways, error: waterwaysError, reload: reloadWaterways } = useWaterways({
+  const {
+    waterways,
+    error: waterwaysError,
+    reload: reloadWaterways,
+  } = useWaterways({
     enabled: mapVectorIdle,
   });
   const {
@@ -333,10 +342,7 @@ export default function MapaMapLibre() {
     reload: reloadGeoLayers,
     enabled: geoLayersEnabled,
   } = useGeoLayers();
-  const rasterLoading = useRasterTileLoading(
-    mapReady ? mapRef.current : null,
-    showDemOverlay,
-  );
+  const rasterLoading = useRasterTileLoading(mapReady ? mapRef.current : null, showDemOverlay);
   const demRawLayer = allGeoLayers.find((layer) => layer.tipo === 'dem_raw');
   const hillshadeTileUrl = demRawLayer
     ? buildTileUrl(demRawLayer.id, {
@@ -401,11 +407,7 @@ export default function MapaMapLibre() {
     [canalesIndex]
   );
   const flyToCanal = (toggleId: string) => {
-    fitMapToCanal(
-      mapRef.current,
-      canalCollections(canalesRelevados, canalesPropuestas),
-      toggleId,
-    );
+    fitMapToCanal(mapRef.current, canalCollections(canalesRelevados, canalesPropuestas), toggleId);
   };
   const canalesPropuestosItems = useMemo(
     () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
@@ -1127,14 +1129,14 @@ export default function MapaMapLibre() {
     setExportPngModalOpen,
     approvedZones,
     activeLegendItems,
-    consorcios: vectorVisibility.roads && !!roadsCollection ? consorcios : [],
+    consorcios: vectorVisibility.roads && roadsCollection ? consorcios : [],
     visibleRasterLayers,
     hiddenClasses,
     hiddenRanges,
     exportSources,
     zonaCollection,
     canalesRelevados:
-      vectorVisibility.canales_relevados && !!canalesRelevados ? canalesRelevados : null,
+      vectorVisibility.canales_relevados && canalesRelevados ? canalesRelevados : null,
   });
 
   /* ---------------------------------------------------------------------- */
@@ -1246,7 +1248,11 @@ export default function MapaMapLibre() {
                     <Alert color="red" title="Error al cargar el mapa" variant="light">
                       <Text size="sm">{mapLoadError}</Text>
                     </Alert>
-                    <Box component="section" role="region" aria-label="descripcion textual del mapa">
+                    <Box
+                      component="section"
+                      role="region"
+                      aria-label="descripción textual del mapa"
+                    >
                       <Text size="sm">
                         El mapa interactivo permite explorar cuencas, canales e infraestructura del
                         Consorcio.
@@ -1375,7 +1381,7 @@ export default function MapaMapLibre() {
                         [MAP_BOUNDS.west, MAP_BOUNDS.south],
                         [MAP_BOUNDS.east, MAP_BOUNDS.north],
                       ],
-                      { padding: MAP_HOME_FIT_PADDING, duration: 800 },
+                      { padding: MAP_HOME_FIT_PADDING, duration: 800 }
                     );
                   }}
                   onFlyToPlace={(placeId) => {
@@ -1398,7 +1404,7 @@ export default function MapaMapLibre() {
                 />
               }
               showLegend={showLegend}
-              consorcios={vectorVisibility.roads && !!roadsCollection ? consorcios : []}
+              consorcios={vectorVisibility.roads && roadsCollection ? consorcios : []}
               activeLegendItems={activeLegendItems}
               visibleRasterLayers={visibleRasterLayers}
               hiddenClasses={hiddenClasses}
@@ -1582,7 +1588,7 @@ export default function MapaMapLibre() {
               legendPanelProps={
                 showLegend
                   ? {
-                      consorcios: vectorVisibility.roads && !!roadsCollection ? consorcios : [],
+                      consorcios: vectorVisibility.roads && roadsCollection ? consorcios : [],
                       customItems: activeLegendItems,
                       pilarVerdeBpaHistoricoVisible: !!vectorVisibility.pilar_verde_bpa_historico,
                       pilarVerdeAgroAceptadaVisible: !!vectorVisibility.pilar_verde_agro_aceptada,

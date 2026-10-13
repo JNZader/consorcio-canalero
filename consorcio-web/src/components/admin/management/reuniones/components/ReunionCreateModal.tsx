@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Group, Modal, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { ActionIcon, Button, Group, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconTrash } from '../../../../ui/icons';
 
@@ -33,12 +33,12 @@ export function ReunionCreateModal({
   onSubmit: (values: ReunionCreateFormValues) => void | Promise<void>;
 }>) {
   return (
-    <Modal opened={opened} onClose={onClose} title="Nueva Reunion" size="lg">
+    <Modal opened={opened} onClose={onClose} title="Nueva Reunión" size="lg">
       <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
-            label="Titulo"
-            placeholder="Ej: Reunion de comision de marzo"
+            label="Título"
+            placeholder="Ej: Reunión de comisión de marzo"
             required
             {...form.getInputProps('titulo')}
             errorProps={{
@@ -64,7 +64,7 @@ export function ReunionCreateModal({
             {...form.getInputProps('lugar')}
           />
           <Textarea
-            label="Descripcion"
+            label="Descripción"
             placeholder="Temas generales a tratar"
             autosize
             minRows={2}
@@ -79,11 +79,11 @@ export function ReunionCreateModal({
               <TextInput
                 value={newChecklistPoint}
                 onChange={(event) => setNewChecklistPoint(event.currentTarget.value)}
-                placeholder="Escribe un punto y pulsa Anadir"
+                placeholder="Escribí un punto y pulsá Añadir"
                 style={{ flex: 1 }}
               />
               <Button type="button" variant="light" onClick={onAddChecklistPoint}>
-                Anadir punto
+                Añadir punto
               </Button>
             </Group>
 
@@ -127,7 +127,7 @@ export function ReunionCreateModal({
             ) : null}
           </Stack>
           <Button type="submit" mt="xs">
-            Crear Reunion
+            Crear Reunión
           </Button>
         </Stack>
       </form>

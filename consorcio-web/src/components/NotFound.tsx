@@ -16,11 +16,11 @@ export default function NotFound() {
         </Title>
 
         <Title order={2} ta="center" c="dimmed" fw={400}>
-          Pagina no encontrada
+          Página no encontrada
         </Title>
 
         <Text c="dimmed" ta="center" maw={400}>
-          La pagina que buscas no existe o fue movida. Verifica la URL o vuelve al inicio.
+          La página que buscás no existe o fue movida. Verificá la URL o volvé al inicio.
         </Text>
 
         <Button component={Link} to="/" leftSection={<IconArrowLeft size={18} />} size="md" mt="md">

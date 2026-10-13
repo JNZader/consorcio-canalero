@@ -3,17 +3,11 @@ import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCanales } from '../../../hooks/useCanales';
-import { type Sugerencia, type SugerenciasStats, apiFetch, sugerenciasApi } from '../../../lib/api';
+import { apiFetch, type Sugerencia, type SugerenciasStats, sugerenciasApi } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
-import {
-  IconBuilding,
-  IconCalendar,
-  IconCheck,
-  IconClock,
-  IconUsers,
-} from '../../ui/icons';
+import { IconBuilding, IconCalendar, IconCheck, IconClock, IconUsers } from '../../ui/icons';
 import { ProximaReunionSection } from './components/ProximaReunionSection';
 import { StatsCard } from './components/StatsCard';
 import { SugerenciasFilters } from './components/SugerenciasFilters';
@@ -110,7 +104,7 @@ export default function SugerenciasPanel() {
       const data = await sugerenciasApi.getProximaReunion();
       setProximaReunion(data);
     } catch (error) {
-      logger.error('Error loading proxima reunion:', error);
+      logger.error('Error loading próxima reunion:', error);
     } finally {
       setLoadingProxima(false);
     }

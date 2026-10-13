@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { publicApi } from '../../lib/api';
+import { clearReportDraft, saveReportDraft } from '../../lib/formDrafts';
 import { logger } from '../../lib/logger';
 import type { Ubicacion } from './reportFormTypes';
 import { showNotification, uploadPhotoIfExists } from './reportFormUtils';
@@ -48,22 +49,28 @@ export function useReportFormSubmission({
   return useCallback(
     async (values: ReportFormValues) => {
       if (!contactoVerificado || !userEmail) {
+        saveReportDraft({
+          tipo: values.tipo,
+          descripcion: values.descripcion,
+          lat: ubicacion?.lat,
+          lng: ubicacion?.lng,
+        });
         showNotification(
           'Identidad no verificada',
-          'Debes verificar tu identidad antes de enviar la denuncia',
+          'Guardamos el borrador (la foto hay que volver a adjuntarla). Verificá tu identidad con Google o creá una cuenta para enviar.',
           'orange'
         );
-        announce('Debes verificar tu identidad antes de enviar la denuncia', 'assertive');
+        announce('Debés verificar tu identidad antes de enviar la denuncia', 'assertive');
         return;
       }
 
       if (!ubicacion) {
         showNotification(
-          'Ubicacion requerida',
-          'Debes seleccionar una ubicacion en el mapa',
+          'Ubicación requerida',
+          'Debés seleccionar una ubicación en el mapa',
           'orange'
         );
-        announce('Debes seleccionar una ubicacion para la denuncia', 'assertive');
+        announce('Debés seleccionar una ubicación para la denuncia', 'assertive');
         return;
       }
 
@@ -72,11 +79,11 @@ export function useReportFormSubmission({
       // hace la UX mucho más rápida y permite mostrar mensajes claros.
       if (remainingToday !== null && remainingToday <= 0) {
         showNotification(
-          'Limite alcanzado',
-          'Llegaste al limite de 5 reportes cada 24 horas. Volve mas tarde.',
+          'Límite alcanzado',
+          'Llegaste al límite de 5 reportes cada 24 horas. Volvé más tarde.',
           'orange'
         );
-        announce('Llegaste al limite de reportes por 24 horas', 'assertive');
+        announce('Llegaste al límite de reportes por 24 horas', 'assertive');
         return;
       }
 
@@ -103,6 +110,7 @@ export function useReportFormSubmission({
           'green'
         );
         announce('Denuncia enviada exitosamente. Gracias por colaborar.');
+        clearReportDraft();
         onSubmitSuccess();
 
         form.reset();
@@ -113,7 +121,7 @@ export function useReportFormSubmission({
         const message =
           error instanceof Error
             ? error.message
-            : 'No se pudo enviar la denuncia. Intenta nuevamente.';
+            : 'No se pudo enviar la denuncia. Intentá nuevamente.';
         // 429 → backend dice que llegaste al límite. Sincronizamos UI.
         if (
           message.includes('429') ||
@@ -123,7 +131,7 @@ export function useReportFormSubmission({
           onLimitReached();
         }
         showNotification('Error', message, 'red');
-        announce('Error al enviar la denuncia. Intenta nuevamente.', 'assertive');
+        announce('Error al enviar la denuncia. Intentá nuevamente.', 'assertive');
       } finally {
         setEnviando(false);
       }

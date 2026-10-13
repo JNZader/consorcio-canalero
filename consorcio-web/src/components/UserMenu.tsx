@@ -69,7 +69,7 @@ function DesktopLoginButton() {
   return (
     <Box style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
       <Button component="a" href={withBasePath('/login')} style={{ minWidth: 120 }}>
-        Iniciar Sesion
+        Iniciar Sesión
       </Button>
     </Box>
   );
@@ -112,7 +112,7 @@ function DesktopUserMenu({
     <Box style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
       <Menu shadow="md" width={200} position="bottom-end">
         <Menu.Target>
-          <UnstyledButton aria-label="Menu de usuario">
+          <UnstyledButton aria-label="Menú de usuario">
             <Group gap="xs">
               <Avatar color="institucional" radius="xl" size="sm">
                 {getInitials(profile, user)}
@@ -140,7 +140,7 @@ function DesktopUserMenu({
           <Menu.Divider />
 
           <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
-            Cerrar Sesion
+            Cerrar Sesión
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
@@ -197,7 +197,7 @@ function MobileUserMenu({
   if (!user) {
     return (
       <Button component="a" href={withBasePath('/login')} fullWidth onClick={onMobileClose}>
-        Iniciar Sesion
+        Iniciar Sesión
       </Button>
     );
   }
@@ -248,7 +248,7 @@ function MobileUserMenu({
           leftSection={<IconLogout size={16} />}
           onClick={handleLogoutClick}
         >
-          Cerrar Sesion
+          Cerrar Sesión
         </Button>
       </Stack>
     </>
@@ -283,7 +283,7 @@ export default function UserMenu({ variant, onMobileClose }: UserMenuProps) {
     } catch (error) {
       notifications.show({
         title: 'No se pudo cerrar la sesión',
-        message: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente.',
         color: 'red',
       });
     }

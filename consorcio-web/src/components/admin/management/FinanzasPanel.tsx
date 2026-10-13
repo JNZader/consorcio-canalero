@@ -1,6 +1,6 @@
 import { Button, Container, Group, Tabs, Text, Title } from '@mantine/core';
-import { LoadingState } from '../../ui/LoadingState';
 import { IconArrowUpRight, IconCoin, IconPlus, IconReceipt } from '../../ui/icons';
+import { LoadingState } from '../../ui/LoadingState';
 import { EditGastoModal } from './finanzas/components/EditGastoModal';
 import { EditIngresoModal } from './finanzas/components/EditIngresoModal';
 import { FinanzasSummaryTab } from './finanzas/components/FinanzasSummaryTab';
@@ -18,7 +18,7 @@ export default function FinanzasPanel() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Administracion Financiera</Title>
+          <Title order={2}>Administración Financiera</Title>
           <Text c="dimmed">Seguimiento de gastos y ejecucion presupuestaria</Text>
         </div>
         <Button

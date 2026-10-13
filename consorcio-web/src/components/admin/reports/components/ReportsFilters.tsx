@@ -20,13 +20,13 @@ export function ReportsFilters({
 }>) {
   return (
     <Paper shadow="sm" p="md" radius="md" mb="md">
-      <Group role="search" aria-label="Filtros de busqueda de denuncias">
+      <Group role="search" aria-label="Filtros de búsqueda de denuncias">
         <TextInput
           placeholder="Buscar..."
           value={searchInputValue}
           onChange={(e) => onSearchInputChange(e.target.value)}
           style={{ flex: 1 }}
-          aria-label="Buscar denuncias por descripcion o ubicacion"
+          aria-label="Buscar denuncias por descripción o ubicación"
         />
         <Select
           placeholder="Estado"
@@ -38,13 +38,13 @@ export function ReportsFilters({
           aria-label="Filtrar por estado de la denuncia"
         />
         <Select
-          placeholder="Categoria"
+          placeholder="Categoría"
           data={[{ value: '', label: 'Todas' }, ...CATEGORY_OPTIONS]}
           value={filterCategory}
           onChange={setFilterCategory}
           clearable
           w={150}
-          aria-label="Filtrar por categoria de la denuncia"
+          aria-label="Filtrar por categoría de la denuncia"
         />
         <Button variant="light" onClick={onRefresh} aria-label="Actualizar lista de denuncias">
           Actualizar

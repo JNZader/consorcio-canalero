@@ -1,6 +1,6 @@
 /**
  * admin-pages.test.tsx
- * Unit: contenedor unificado de Participacion Ciudadana (ParticipacionPanel).
+ * Unit: contenedor unificado de Participación Ciudadana (ParticipacionPanel).
  *
  * Los wrappers `Admin*Page` (Reports/Sugerencias/Dashboard) se borraron al
  * unificar: eran codigo muerto — `routeTree.gen.tsx` monta los paneles
@@ -136,7 +136,7 @@ describe('ParticipacionPanel', () => {
   it('renders the unified header and both tabs', async () => {
     renderPanel();
 
-    expect(screen.getByText('Participacion Ciudadana')).toBeInTheDocument();
+    expect(screen.getByText('Participación Ciudadana')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /reportes/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /sugerencias/i })).toBeInTheDocument();
     expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();

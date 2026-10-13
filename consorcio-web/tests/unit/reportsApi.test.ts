@@ -89,7 +89,9 @@ describe('reportsApi', () => {
       json: async () => ({ photo_url: 'https://cdn/photo.jpg', filename: 'photo.jpg' }),
     });
 
-    const result = await publicApi.uploadPhoto(new File(['img'], 'photo.jpg', { type: 'image/jpeg' }));
+    const result = await publicApi.uploadPhoto(
+      new File(['img'], 'photo.jpg', { type: 'image/jpeg' })
+    );
 
     expect(result.photo_url).toContain('photo.jpg');
   });
@@ -101,7 +103,7 @@ describe('reportsApi', () => {
 
     await expect(
       publicApi.uploadPhoto(new File(['img'], 'photo.jpg', { type: 'image/jpeg' }))
-    ).rejects.toThrow(/tiempo limite/i);
+    ).rejects.toThrow(/tiempo límite/i);
   });
 
   it('maps upload non-ok responses to API message', async () => {

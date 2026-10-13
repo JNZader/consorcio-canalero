@@ -1,4 +1,4 @@
-import { Box, Button, SimpleGrid, Skeleton, Text, Textarea } from '@mantine/core';
+import { Box, Button, Text, Textarea } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { MAP_CENTER } from '../../constants';
 import { AccessibleRadioGroup } from '../ui/accessibility';
@@ -15,27 +15,7 @@ export interface TipoDenunciaOption {
   icon?: ReactNode;
 }
 
-function BlockedFieldSkeleton({
-  label,
-  children,
-}: Readonly<{
-  label: string;
-  children: ReactNode;
-}>) {
-  return (
-    <Box
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-      aria-label={`${label} bloqueado hasta verificar identidad`}
-    >
-      {children}
-    </Box>
-  );
-}
-
 interface TipoProblemaFieldProps {
-  contactoVerificado: boolean;
   value: string;
   error?: string;
   onChange: (value: string) => void;
@@ -43,81 +23,48 @@ interface TipoProblemaFieldProps {
 }
 
 export function TipoProblemaField({
-  contactoVerificado,
   value,
   error,
   onChange,
   tiposDenuncia,
 }: Readonly<TipoProblemaFieldProps>) {
-  if (contactoVerificado) {
-    return (
-      <AccessibleRadioGroup
-        name="tipo-denuncia"
-        label="Tipo de problema"
-        options={tiposDenuncia}
-        value={value}
-        onChange={onChange}
-        error={error}
-        required
-      />
-    );
-  }
-
   return (
-    <BlockedFieldSkeleton label="Tipo de problema">
-      <Text fw={500} size="sm" mb="xs">
-        Tipo de problema *
-      </Text>
-      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
-        {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} height={70} radius="md" aria-hidden="true" />
-        ))}
-      </SimpleGrid>
-    </BlockedFieldSkeleton>
+    <AccessibleRadioGroup
+      name="tipo-denuncia"
+      label="Tipo de problema"
+      options={tiposDenuncia}
+      value={value}
+      onChange={onChange}
+      error={error}
+      required
+    />
   );
 }
 
 interface DescripcionFieldProps {
-  contactoVerificado: boolean;
   error?: string;
   getInputProps: (field: string) => object;
 }
 
-export function DescripcionField({
-  contactoVerificado,
-  error,
-  getInputProps,
-}: Readonly<DescripcionFieldProps>) {
-  if (contactoVerificado) {
-    return (
-      <Textarea
-        label="Descripcion"
-        placeholder="Describe el problema con el mayor detalle posible..."
-        minRows={4}
-        {...getInputProps('descripcion')}
-        required
-        error={error}
-        errorProps={{
-          id: DESCRIPCION_ERROR_ID,
-          role: 'alert',
-          'aria-live': 'assertive',
-        }}
-      />
-    );
-  }
-
+export function DescripcionField({ error, getInputProps }: Readonly<DescripcionFieldProps>) {
   return (
-    <BlockedFieldSkeleton label="Descripcion">
-      <Text size="sm" fw={500} mb="xs">
-        Descripcion *
-      </Text>
-      <Skeleton height={100} radius="sm" aria-hidden="true" />
-    </BlockedFieldSkeleton>
+    <Textarea
+      label="Descripción"
+      placeholder="Describí el problema con el mayor detalle posible..."
+      minRows={4}
+      {...getInputProps('descripcion')}
+      required
+      error={error}
+      errorProps={{
+        id: DESCRIPCION_ERROR_ID,
+        role: 'alert',
+        'aria-live': 'assertive',
+      }}
+    />
   );
 }
 
 interface UbicacionFieldProps {
-  contactoVerificado: boolean;
   ubicacion: Ubicacion | null;
   mostrarInputManual: boolean;
   obteniendoUbicacion: boolean;
@@ -131,7 +78,6 @@ interface UbicacionFieldProps {
 }
 
 export function UbicacionField({
-  contactoVerificado,
   ubicacion,
   mostrarInputManual,
   obteniendoUbicacion,
@@ -146,78 +92,49 @@ export function UbicacionField({
   return (
     <Box>
       <Text fw={500} size="sm" mb="xs" id="ubicacion-label">
-        Ubicacion del incidente *
+        Ubicación del incidente *
       </Text>
-      {contactoVerificado ? (
-        <LocationSection
-          ubicacion={ubicacion}
-          mostrarInputManual={mostrarInputManual}
-          obteniendoUbicacion={obteniendoUbicacion}
-          onObtenerGPS={onObtenerGPS}
-          onToggleInputManual={onToggleInputManual}
-          onLocationSelect={onLocationSelect}
-          onCoordinatesChange={onCoordinatesChange}
-          onClearLocation={onClearLocation}
-          defaultCenter={defaultCenter}
-          defaultZoom={defaultZoom}
-        />
-      ) : (
-        <BlockedFieldSkeleton label="Ubicacion del incidente">
-          <Skeleton height={36} width={180} radius="sm" mb="sm" aria-hidden="true" />
-          <Box style={{ minHeight: 360 }}>
-            <Skeleton height="100%" radius="md" aria-hidden="true" />
-          </Box>
-        </BlockedFieldSkeleton>
-      )}
+      <LocationSection
+        ubicacion={ubicacion}
+        mostrarInputManual={mostrarInputManual}
+        obteniendoUbicacion={obteniendoUbicacion}
+        onObtenerGPS={onObtenerGPS}
+        onToggleInputManual={onToggleInputManual}
+        onLocationSelect={onLocationSelect}
+        onCoordinatesChange={onCoordinatesChange}
+        onClearLocation={onClearLocation}
+        defaultCenter={defaultCenter}
+        defaultZoom={defaultZoom}
+      />
     </Box>
   );
 }
 
 interface FotoFieldProps {
-  contactoVerificado: boolean;
   fotoPreview: string | null;
   onDrop: (files: File[]) => void;
   onRemove: () => void;
 }
 
-export function FotoField({
-  contactoVerificado,
-  fotoPreview,
-  onDrop,
-  onRemove,
-}: Readonly<FotoFieldProps>) {
+export function FotoField({ fotoPreview, onDrop, onRemove }: Readonly<FotoFieldProps>) {
   return (
     <Box>
       <Text fw={500} size="sm" mb="xs" id="foto-label">
         Foto (opcional)
       </Text>
-      {contactoVerificado ? (
-        <PhotoSection fotoPreview={fotoPreview} onDrop={onDrop} onRemove={onRemove} />
-      ) : (
-        <BlockedFieldSkeleton label="Foto">
-          <Skeleton height={120} radius="md" aria-hidden="true" />
-        </BlockedFieldSkeleton>
-      )}
+      <PhotoSection fotoPreview={fotoPreview} onDrop={onDrop} onRemove={onRemove} />
     </Box>
   );
 }
 
 interface SubmitButtonProps {
-  contactoVerificado: boolean;
   disabled: boolean;
 }
 
-export function SubmitButton({ contactoVerificado, disabled }: Readonly<SubmitButtonProps>) {
-  if (contactoVerificado) {
-    return (
-      <Button type="submit" size="lg" fullWidth disabled={disabled}>
-        Enviar Reporte
-      </Button>
-    );
-  }
+export function SubmitButton({ disabled }: Readonly<SubmitButtonProps>) {
   return (
-    <BlockedFieldSkeleton label="Enviar reporte">
-      <Skeleton height={50} radius="md" aria-hidden="true" />
-    </BlockedFieldSkeleton>
+    <Button type="submit" size="lg" fullWidth disabled={disabled}>
+      Enviar Reporte
+    </Button>
   );
 }

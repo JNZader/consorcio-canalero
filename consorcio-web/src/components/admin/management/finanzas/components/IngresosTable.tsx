@@ -14,8 +14,8 @@ export function IngresosTable({
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Fecha</Table.Th>
-              <Table.Th>Descripcion</Table.Th>
-              <Table.Th>Categoria</Table.Th>
+              <Table.Th>Descripción</Table.Th>
+              <Table.Th>Categoría</Table.Th>
               <Table.Th>Monto</Table.Th>
               <Table.Th>Consorcista</Table.Th>
               <Table.Th>Acciones</Table.Th>

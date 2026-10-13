@@ -90,7 +90,7 @@ describe('TramitesPanel', () => {
   it('renders backend-shaped tramite list fields', async () => {
     renderPanel();
 
-    expect(await screen.findByText('Gestion de Tramites')).toBeInTheDocument();
+    expect(await screen.findByText('Gestión de Trámites')).toBeInTheDocument();
     expect(screen.getByText(tramite.titulo)).toBeInTheDocument();
     expect(screen.getByText('Ingresado')).toBeInTheDocument();
     expect(screen.getByText(/obra · consorcio canalero/i)).toBeInTheDocument();
@@ -104,16 +104,16 @@ describe('TramitesPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole('button', { name: /nuevo tramite/i }));
-    const modal = await screen.findByRole('dialog', { name: /registrar nuevo tramite/i });
+    await user.click(await screen.findByRole('button', { name: /nuevo trámite/i }));
+    const modal = await screen.findByRole('dialog', { name: /registrar nuevo trámite/i });
 
     await chooseOption(within(modal).getByLabelText(/^tipo/i), 'obra');
     await user.type(
-      within(modal).getByLabelText(/titulo del tramite/i),
+      within(modal).getByLabelText(/título del trámite/i),
       contracts.tramites.create.titulo
     );
     await user.type(
-      within(modal).getByLabelText(/descripcion/i),
+      within(modal).getByLabelText(/descripci[oó]n/i),
       contracts.tramites.create.descripcion
     );
     await user.type(
@@ -123,7 +123,7 @@ describe('TramitesPanel', () => {
     fireEvent.change(within(modal).getByLabelText(/fecha de ingreso/i), {
       target: { value: contracts.tramites.create.fecha_ingreso },
     });
-    await user.click(within(modal).getByRole('button', { name: /crear tramite/i }));
+    await user.click(within(modal).getByRole('button', { name: /crear trámite/i }));
 
     await waitFor(() => {
       const postCall = mockApiFetch.mock.calls.find(
@@ -138,16 +138,16 @@ describe('TramitesPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(await screen.findByRole('button', { name: /nuevo tramite/i }));
-    const modal = await screen.findByRole('dialog', { name: /registrar nuevo tramite/i });
-    await user.click(within(modal).getByRole('button', { name: /crear tramite/i }));
+    await user.click(await screen.findByRole('button', { name: /nuevo trámite/i }));
+    const modal = await screen.findByRole('dialog', { name: /registrar nuevo trámite/i });
+    await user.click(within(modal).getByRole('button', { name: /crear trámite/i }));
 
     await waitFor(() => {
-      expect(within(modal).getByLabelText(/titulo del tramite/i)).toHaveAttribute(
+      expect(within(modal).getByLabelText(/título del trámite/i)).toHaveAttribute(
         'aria-invalid',
         'true'
       );
-      expect(within(modal).getByLabelText(/descripcion/i)).toHaveAttribute('aria-invalid', 'true');
+      expect(within(modal).getByLabelText(/descripci[oó]n/i)).toHaveAttribute('aria-invalid', 'true');
       expect(within(modal).getByLabelText(/solicitante/i)).toHaveAttribute('aria-invalid', 'true');
     });
     expect(mockApiFetch).not.toHaveBeenCalledWith(
@@ -163,7 +163,7 @@ describe('TramitesPanel', () => {
     const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
     await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
 
-    const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del trámite/i });
     const existingComment = contracts.tramites.seguimiento_create.comentario;
     expect(within(modal).getByText(existingComment)).toBeInTheDocument();
     expect(mockApiFetch).toHaveBeenCalledWith(`/tramites/${tramite.id}`);
@@ -196,7 +196,7 @@ describe('TramitesPanel', () => {
     renderPanel();
     const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
     await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
-    const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del trámite/i });
     const downloadButton = within(modal).getByRole('button', { name: /descargar pdf/i });
     const appendSpy = vi.spyOn(document.body, 'appendChild');
 
@@ -257,13 +257,13 @@ describe('TramitesPanel', () => {
     renderPanel();
     const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
     await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
-    const modal = await screen.findByRole('dialog', { name: /seguimiento del tramite/i });
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del trámite/i });
     await user.click(within(modal).getByRole('button', { name: /descargar pdf/i }));
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'No se pudo descargar el tramite',
+          title: 'No se pudo descargar el trámite',
           message: expect.stringContaining('503'),
           color: 'red',
         })

@@ -10,8 +10,8 @@ import {
   Stack,
   Table,
   Text,
-  TextInput,
   Textarea,
+  TextInput,
   Timeline,
   Title,
 } from '@mantine/core';
@@ -22,8 +22,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
-import { LoadingState } from '../../ui/LoadingState';
 import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
+import { LoadingState } from '../../ui/LoadingState';
 
 interface TramiteListItem {
   id: string;
@@ -88,7 +88,7 @@ export default function TramitesPanel() {
       const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
       setTramites(response.items ?? []);
     } catch (err) {
-      logger.error('Error fetching tramites:', err);
+      logger.error('Error fetching trámites:', err);
     } finally {
       setLoading(false);
     }
@@ -101,7 +101,7 @@ export default function TramitesPanel() {
       setNewSeguimiento('');
       openHistory();
     } catch (err) {
-      logger.error('Error fetching tramite detail:', err);
+      logger.error('Error fetching trámite detail:', err);
     }
   };
 
@@ -121,9 +121,9 @@ export default function TramitesPanel() {
     validate: {
       tipo: (value) => (value ? null : 'Tipo requerido'),
       titulo: (value) =>
-        value.trim().length < 5 ? 'El titulo debe tener al menos 5 caracteres' : null,
+        value.trim().length < 5 ? 'El título debe tener al menos 5 caracteres' : null,
       descripcion: (value) =>
-        value.trim().length < 10 ? 'La descripcion debe tener al menos 10 caracteres' : null,
+        value.trim().length < 10 ? 'La descripción debe tener al menos 10 caracteres' : null,
       solicitante: (value) =>
         value.trim().length < 2 ? 'El solicitante debe tener al menos 2 caracteres' : null,
     },
@@ -146,7 +146,7 @@ export default function TramitesPanel() {
       form.reset();
       await fetchTramites();
     } catch (err) {
-      logger.error('Error creating tramite:', err);
+      logger.error('Error creating trámite:', err);
     }
   };
 
@@ -167,7 +167,7 @@ export default function TramitesPanel() {
       );
       setNewSeguimiento('');
     } catch (err) {
-      logger.error('Error adding tramite follow-up:', err);
+      logger.error('Error adding trámite follow-up:', err);
     } finally {
       setAddingSeguimiento(false);
     }
@@ -192,7 +192,7 @@ export default function TramitesPanel() {
         },
       });
       if (!response.ok) {
-        throw new Error(`Error al descargar el tramite (${response.status})`);
+        throw new Error(`Error al descargar el trámite (${response.status})`);
       }
 
       const contentType = response.headers.get('content-type') ?? '';
@@ -212,14 +212,14 @@ export default function TramitesPanel() {
 
       notifications.show({
         title: 'PDF descargado',
-        message: `Se descargo el expediente de ${selectedTramite.titulo}`,
+        message: `Se descargó el expediente de ${selectedTramite.titulo}`,
         color: 'green',
       });
     } catch (error) {
-      logger.error('Error downloading tramite PDF:', error);
+      logger.error('Error downloading trámite PDF:', error);
       notifications.show({
-        title: 'No se pudo descargar el tramite',
-        message: error instanceof Error ? error.message : 'Intenta nuevamente en unos minutos.',
+        title: 'No se pudo descargar el trámite',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
         color: 'red',
       });
     } finally {
@@ -233,20 +233,20 @@ export default function TramitesPanel() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Gestion de Tramites</Title>
-          <Text c="dimmed">Seguimiento de tramites del Consorcio Canalero</Text>
+          <Title order={2}>Gestión de Trámites</Title>
+          <Text c="dimmed">Seguimiento de trámites del Consorcio Canalero</Text>
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open}>
-          Nuevo Tramite
+          Nuevo Trámite
         </Button>
       </Group>
 
       <Paper withBorder radius="md">
         <Table.ScrollContainer minWidth={680} type="native">
-          <Table verticalSpacing="sm" aria-label="Tabla de tramites">
+          <Table verticalSpacing="sm" aria-label="Tabla de trámites">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Tramite</Table.Th>
+                <Table.Th>Trámite</Table.Th>
                 <Table.Th>Estado</Table.Th>
                 <Table.Th>Prioridad</Table.Th>
                 <Table.Th>Fecha de ingreso</Table.Th>
@@ -292,7 +292,7 @@ export default function TramitesPanel() {
         </Table.ScrollContainer>
       </Paper>
 
-      <Modal opened={opened} onClose={close} title="Registrar Nuevo Tramite">
+      <Modal opened={opened} onClose={close} title="Registrar Nuevo Trámite">
         <form onSubmit={form.onSubmit(handleCreate)} noValidate>
           <Stack gap="sm">
             <NativeSelect
@@ -301,8 +301,8 @@ export default function TramitesPanel() {
               required
               {...form.getInputProps('tipo')}
             />
-            <TextInput label="Titulo del Tramite" required {...form.getInputProps('titulo')} />
-            <Textarea label="Descripcion" required {...form.getInputProps('descripcion')} />
+            <TextInput label="Título del Trámite" required {...form.getInputProps('titulo')} />
+            <Textarea label="Descripción" required {...form.getInputProps('descripcion')} />
             <TextInput label="Solicitante" required {...form.getInputProps('solicitante')} />
             <NativeSelect
               label="Prioridad"
@@ -316,7 +316,7 @@ export default function TramitesPanel() {
               {...form.getInputProps('fecha_ingreso')}
             />
             <Button type="submit" fullWidth mt="md">
-              Crear Tramite
+              Crear Trámite
             </Button>
           </Stack>
         </form>
@@ -325,7 +325,7 @@ export default function TramitesPanel() {
       <Modal
         opened={historyOpened}
         onClose={handleCloseHistory}
-        title="Seguimiento del Tramite"
+        title="Seguimiento del Trámite"
         size="lg"
       >
         {selectedTramite && (
@@ -366,7 +366,7 @@ export default function TramitesPanel() {
               </Timeline>
             ) : (
               <Text c="dimmed" size="sm">
-                Este tramite todavia no tiene entradas de seguimiento.
+                Este trámite todavía no tiene entradas de seguimiento.
               </Text>
             )}
 

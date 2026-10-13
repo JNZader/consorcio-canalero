@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';
 import { logger } from '../../lib/logger';
-import { type MapLibreModule, loadMapLibre } from '../../lib/maplibreLoader';
+import { loadMapLibre, type MapLibreModule } from '../../lib/maplibreLoader';
 import formStyles from '../../styles/components/form.module.css';
 import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
@@ -250,7 +250,7 @@ export function LocationSection({
           leftSection={<span aria-hidden="true">&#128205;</span>}
           aria-busy={obteniendoUbicacion}
         >
-          Usar mi ubicacion GPS
+          Usar mi ubicación GPS
         </Button>
         <Button
           type="button"
@@ -321,7 +321,7 @@ export function LocationSection({
           >
             <Text size="sm" c={mapStatus === 'error' ? 'red' : 'gray.6'}>
               {mapStatus === 'error'
-                ? 'No se pudo cargar el mapa. Ingresa las coordenadas manualmente o recarga la página.'
+                ? 'No se pudo cargar el mapa. Ingresá las coordenadas manualmente o recargá la página.'
                 : 'Cargando mapa…'}
             </Text>
           </Box>

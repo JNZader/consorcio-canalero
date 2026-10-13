@@ -57,10 +57,10 @@ describe('ErrorBoundary', () => {
 
     expect(screen.getByText('Algo salio mal')).toBeInTheDocument();
     expect(
-      screen.getByText(/Ha ocurrido un error inesperado\. Por favor, intenta recargar la pagina\./i)
+      screen.getByText(/Ha ocurrido un error inesperado\. Por favor, intentá recargar la página\./i)
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Intentar de nuevo/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Recargar pagina/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Recargar página/i })).toBeInTheDocument();
     expect(loggerMock.error).toHaveBeenCalledWith(
       'ErrorBoundary caught an error:',
       expect.objectContaining({ message: 'Test error message' }),
@@ -118,7 +118,7 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Recargar pagina/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Recargar página/i }));
 
     expect(reloadSpy).toHaveBeenCalledTimes(1);
     reloadSpy.mockRestore();

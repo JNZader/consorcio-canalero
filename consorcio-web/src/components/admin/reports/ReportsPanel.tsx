@@ -2,7 +2,7 @@ import { Badge, Container, Group, Paper } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type Report, apiFetch, reportsApi } from '../../../lib/api';
+import { apiFetch, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
 import { ReportDetailModal } from './components/ReportDetailModal';
@@ -134,7 +134,7 @@ export default function ReportsPanel() {
 
       notifications.show({
         title: 'Reporte actualizado',
-        message: 'El historial de gestion ha sido registrado',
+        message: 'El historial de gestión ha sido registrado',
         color: 'green',
       });
       announceRef.current('Reporte actualizado correctamente');

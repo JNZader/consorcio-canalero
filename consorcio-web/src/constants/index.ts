@@ -54,7 +54,7 @@ export const CUENCA_IDS = CUENCAS.map((c) => c.id) as CuencaId[];
  */
 export const STATUS_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente', color: 'yellow' },
-  { value: 'en_revision', label: 'En Revision', color: 'blue' },
+  { value: 'en_revision', label: 'En Revisión', color: 'blue' },
   { value: 'resuelto', label: 'Resuelto', color: 'green' },
   { value: 'descartado', label: 'Descartado', color: 'red' },
 ] as const;
@@ -64,7 +64,7 @@ export const STATUS_OPTIONS = [
  */
 export const STATUS_CONFIG = {
   pendiente: { color: 'yellow', label: 'Pendiente' },
-  en_revision: { color: 'blue', label: 'En revision' },
+  en_revision: { color: 'blue', label: 'En revisión' },
   resuelto: { color: 'green', label: 'Resuelto' },
   descartado: { color: 'red', label: 'Descartado' },
 } as const;
@@ -119,7 +119,7 @@ export function getAllowedNextEstados(
 export const TIPOS_DENUNCIA = [
   { value: 'alcantarilla_tapada', label: 'Alcantarilla tapada' },
   { value: 'desborde', label: 'Desborde de canal' },
-  { value: 'camino_danado', label: 'Camino danado' },
+  { value: 'camino_danado', label: 'Camino dañado' },
   { value: 'otro', label: 'Otro' },
 ] as const;
 
@@ -136,7 +136,7 @@ export type TipoDenuncia = (typeof TIPOS_DENUNCIA)[number]['value'];
  * Categories for reports in admin panel.
  */
 export const CATEGORY_OPTIONS = [
-  { value: 'inundacion', label: 'Inundacion' },
+  { value: 'inundacion', label: 'Inundación' },
   { value: 'canal_obstruido', label: 'Canal Obstruido' },
   { value: 'compuerta', label: 'Compuerta' },
   { value: 'otro', label: 'Otro' },
@@ -158,8 +158,8 @@ export const LAYER_TYPES = [
   { value: 'cuenca', label: 'Cuenca' },
   { value: 'camino', label: 'Camino' },
   { value: 'canal', label: 'Canal' },
-  { value: 'inundacion', label: 'Inundacion' },
-  { value: 'limite', label: 'Limite' },
+  { value: 'inundacion', label: 'Inundación' },
+  { value: 'limite', label: 'Límite' },
   { value: 'otro', label: 'Otro' },
 ] as const;
 
@@ -413,8 +413,19 @@ export const PAGINATION_DEFAULTS = {
  * Support phone number for emergencies.
  * Supports VITE_ and PUBLIC_ prefixes for backwards compatibility.
  */
-export const SUPPORT_PHONE =
-  import.meta.env.VITE_SUPPORT_PHONE || import.meta.env.PUBLIC_SUPPORT_PHONE || '+543534000000';
+const PLACEHOLDER_SUPPORT_PHONE = '+543534000000';
+
+export const SUPPORT_PHONE = (
+  import.meta.env.VITE_SUPPORT_PHONE ||
+  import.meta.env.PUBLIC_SUPPORT_PHONE ||
+  ''
+).trim();
+
+/** True only when a real number is configured. The published placeholder is not a phone. */
+export function isConfiguredSupportPhone(phone: string = SUPPORT_PHONE): boolean {
+  const compact = phone.replace(/[\s-]/g, '');
+  return compact.length > 0 && compact !== PLACEHOLDER_SUPPORT_PHONE;
+}
 
 /**
  * Support phone display text.

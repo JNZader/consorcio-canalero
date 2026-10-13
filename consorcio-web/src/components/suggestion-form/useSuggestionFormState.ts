@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { sugerenciasApi } from '../../lib/api';
+import { clearSuggestionDraft, saveSuggestionDraft } from '../../lib/formDrafts';
 import { logger } from '../../lib/logger';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import { buildSugerenciaPayload, showSuggestionNotification } from './suggestionFormUtils';
@@ -46,8 +47,8 @@ export function useSuggestionFormState({
 
       if (limit.remaining <= 0) {
         showSuggestionNotification(
-          'Limite alcanzado',
-          'Llegaste al limite de 5 sugerencias cada 24 horas. Volve mas tarde.',
+          'Límite alcanzado',
+          'Llegaste al límite de 5 sugerencias cada 24 horas. Volvé más tarde.',
           'orange'
         );
       }
@@ -70,9 +71,15 @@ export function useSuggestionFormState({
   const handleSubmit = useCallback(
     async (values: SuggestionValues) => {
       if (!contactoVerificado) {
+        saveSuggestionDraft({
+          titulo: values.titulo,
+          descripcion: values.descripcion,
+          categoria: values.categoria,
+          geometry,
+        });
         showSuggestionNotification(
           'Contacto no verificado',
-          'Debes verificar tu identidad antes de enviar',
+          'Guardamos el borrador. Verificá tu identidad con Google o creá una cuenta para enviar.',
           'orange'
         );
         return;
@@ -80,8 +87,8 @@ export function useSuggestionFormState({
 
       if (remainingToday !== null && remainingToday <= 0) {
         showSuggestionNotification(
-          'Limite alcanzado',
-          'Llegaste al limite de 5 sugerencias cada 24 horas',
+          'Límite alcanzado',
+          'Llegaste al límite de 5 sugerencias cada 24 horas',
           'orange'
         );
         return;
@@ -102,6 +109,7 @@ export function useSuggestionFormState({
         // contra el endpoint real en el `useEffect` de abajo.
         setRemainingToday((prev) => (prev === null ? null : Math.max(0, prev - 1)));
         setEnviado(true);
+        clearSuggestionDraft();
         form.reset();
         setGeometry(null);
       } catch (error) {
