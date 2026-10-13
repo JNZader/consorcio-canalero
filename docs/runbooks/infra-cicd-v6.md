@@ -4,10 +4,10 @@ Pasos que no pueden quedar solo en el repo: hay que hacerlos en el VPS, en
 GitHub o en Cloudflare. El código de este cambio no los ejecuta.
 
 Fuente de verdad del stack en Hetzner: **`docker-compose.prod.yml`** (imágenes
-GHCR por digest, Postgres y Redis externos). `docker-compose.deploy.yml` es el
-stack legado con Postgres y Redis embebidos y build en el server. Los dos
-comparten `cap_drop`, `no-new-privileges` y logs JSON. No borramos el legado:
-el server puede seguir en esa topología hasta el corte de abajo.
+GHCR por digest, Postgres y Redis externos). `docker-compose.deploy.yml` está
+**deprecado** (INF-07): ningún workflow lo usa. Sigue en el repo, marcado
+`DEPRECATED`, solo para que una copia vieja en el VPS no pierda `cap_drop` si
+alguien la sincroniza antes del corte de abajo. No instalarlo en un server nuevo.
 
 ## RTO / RPO (INF-05)
 
@@ -32,8 +32,8 @@ Un solo VPS Hetzner (CX33). No hay segundo sitio.
 
 Hoy el runbook histórico describe un `docker-compose.yml` del server que se
 parece a `docker-compose.deploy.yml` (build local, Postgres y Redis en el
-mismo compose). **El archivo que hay que instalar de aquí en adelante es
-`docker-compose.prod.yml`.**
+mismo compose). **El único archivo que se instala es `docker-compose.prod.yml`.**
+`docker-compose.deploy.yml` está deprecado y no es un camino de deploy.
 
 Corte, en una ventana con backup fresco:
 
@@ -43,9 +43,9 @@ Corte, en una ventana con backup fresco:
 4. Postgres y Redis pasan a ser los servicios externos (`shared-postgres`, `shared-redis`) que ya documenta `DEPLOY.md`. Si el server todavía usa el Postgres embebido, hacer antes el upgrade de la sección DB-05 y dejar ese contenedor en la red `backend` con el nombre que espera `POSTGRES_HOST`.
 5. `docker compose up -d`. No hace falta `--build`.
 
-Hasta ese corte, el server puede seguir con el archivo legado. Si se actualiza
-el legado desde el repo, usar `docker-compose.deploy.yml`: ya trae los mismos
-controles de seguridad, los backups y la imagen de Postgres nueva.
+Hasta ese corte el server puede tener una copia vieja. No la actualices desde
+`docker-compose.deploy.yml`: hacé el corte. El archivo del repo queda deprecado
+para no borrar de un golpe la referencia que el VPS todavía puede tener en disco.
 
 ## Contenedores (INF-08)
 
@@ -82,7 +82,19 @@ rollback; no hace falta devolverle capabilities de más.
 | Backup | `alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8` |
 | Postgres embebido | `pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8` |
 
-Martin corre 1.16.1. La 1.0 no cambia el formato respecto de 0.20; el config de este repo (`connection_string`, `auto_publish: false`, `tables`) es el esquema que documenta 1.16. No subir a 2.x: esa línea deja de leer `DATABASE_URL` suelto y exige PostGIS 3.5 con otros defaults. Recrear el contenedor alcanza: Martin no tiene volumen de datos.
+Martin estable es **1.16.1** (el tag de la imagen no lleva `v`; `latest` apunta
+al mismo digest `sha256:59902019bf90…`). 2.0.0-beta no es estable: deja de leer
+`DATABASE_URL` y exige PostGIS 3.5. La 1.0 no cambia el formato respecto de
+0.20; el config de este repo (`connection_string`, `auto_publish: false`,
+`tables`) es el esquema que documenta 1.16. Los YAML de `martin/` y
+`martin-config.deploy.yaml` validan contra `schemas/config.json` del tag
+`martin-v1.16.1`. `/catalog` sigue publicando las fuentes bajo la clave
+`tiles`. El contenedor trae `wget` y `/health`, que es lo que usa el
+healthcheck. Martin no tiene volumen de datos.
+
+En el VPS, después de tener el compose nuevo: `docker compose pull martin` y
+`docker compose up -d martin`. Si `/health` no pasa, el rollback es volver el
+pin anterior `v0.14.2@sha256:2326005041…` en una ventana con backup.
 
 El Dockerfile de pgvector de desarrollo (`docker/postgres/Dockerfile`) sigue en
 `pgrouting/pgrouting:16-3.4-3.6.1` porque el paquete
@@ -198,7 +210,10 @@ Con rate limit en la API (100/min por IP): `deploy/Caddyfile.with-ratelimit`.
    ```
 
    Tiene que aparecer `strict-transport-security` con `preload`. No tienen que
-   aparecer `server:` ni `via:` ni `x-xss-protection`.
+   aparecer `server:` ni `via:` ni `x-xss-protection`. El bloque `header` del
+   Caddyfile incluye `defer`: sin eso, `reverse_proxy` vuelve a escribir `Via`
+   después de que `-Via` ya corrió (BE-05). Recargar el Caddyfile en el VPS
+   es el paso que falta; el repo no puede hacerlo.
 
 6. Rate limit, solo cuando haga falta y en otra ventana: `xcaddy build --with github.com/mholt/caddy-ratelimit`, instalar ese binario, validar `deploy/Caddyfile.with-ratelimit` y recién ahí recargar. Un Caddy stock rechaza la directiva `rate_limit` y se cae el proxy.
 
@@ -390,6 +405,72 @@ En Uptime Kuma: Add Monitor → HTTP(s) → pegar cada URL del JSON → interval
 `/mapa` tiene que esperar HTTP 200. Si hoy responde 404, el monitor queda
 rojo hasta el arreglo del fallback SPA. No cambiar el código esperado para
 callarlo.
+
+## Credencial de Earth Engine (GEE-01)
+
+El proceso lee primero `GEE_KEY_FILE_PATH`. Si ese archivo existe, gana sobre
+`GEE_SERVICE_ACCOUNT_KEY`. La identidad que guarda es mtime y tamaño del
+archivo, o el sha256 del JSON de entorno: nunca la clave. Si el archivo
+cambia, la siguiente llamada hace `ee.Reset()` y vuelve a inicializar, sin
+reiniciar el proceso y sin rebuild de la imagen.
+
+`docker-compose.prod.yml` monta `${GEE_CREDENTIALS_DIR:-./secrets/gee}` en
+`/app/credentials` (solo lectura) en backend, celery-worker y geo-worker.
+`secrets/` no se commitea. El directorio vacío es válido: si no hay archivo,
+sigue valiendo el JSON de entorno.
+
+Primera vez en el VPS (el repo no puede crear el directorio ni recrear los
+contenedores):
+
+```bash
+cd /home/javier/stacks/consorcio
+install -d -m 0755 secrets/gee
+install -m 0644 /ruta/de/la/clave.json secrets/gee/gee-service-account.json
+# 0644 para que el uid `app` de la imagen pueda leer el bind mount.
+# El directorio del stack no tiene que ser público.
+grep -q '^GEE_KEY_FILE_PATH=' .env || echo 'GEE_KEY_FILE_PATH=/app/credentials/gee-service-account.json' >> .env
+docker compose up -d backend celery-worker geo-worker
+```
+
+Rotación, con el mount ya presente:
+
+1. En GCP, crear la clave nueva de la service account. No borrar la vieja todavía.
+2. `install -m 0644 clave-nueva.json secrets/gee/gee-service-account.json` (reemplazo atómico: escribir un temporal en el mismo directorio y `mv`).
+3. La próxima llamada GEE del backend, del worker o del geo-worker relee el archivo. No hace falta `restart` ni una imagen nueva.
+4. Confirmar en los logs que no aparece `No se pudo inicializar GEE`. Recién ahí revocar la clave vieja en GCP.
+5. Si el server todavía usa solo `GEE_SERVICE_ACCOUNT_KEY` (sin archivo), el settings se carga al arrancar: rotar ese valor sí exige `docker compose up -d --force-recreate` de los tres servicios. Preferir el archivo.
+
+## Métricas HTTP y GEE (OBS-02, GEE-02)
+
+`GET /metrics` expone texto Prometheus 0.0.4, sin autenticación y fuera del
+rate limit. Series:
+
+- `http_responses_429_total{method,path}` — respuestas 429.
+- `http_request_duration_seconds` — histograma por método y ruta (los UUID y los segmentos numéricos se colapsan a `{id}` y `{n}`).
+- `http_requests_total{method,path,status}`.
+- `gee_call_duration_seconds{operation}` — `getInfo` (cada lectura GEE) e `initialize`.
+
+p95 de las llamadas GEE:
+
+```promql
+histogram_quantile(0.95, sum by (le, operation) (rate(gee_call_duration_seconds_bucket[5m])))
+```
+
+429 por ruta:
+
+```promql
+sum by (path) (rate(http_responses_429_total[5m]))
+```
+
+Los dos Caddyfile responden 404 a `/metrics` y a `/metrics/*` en los tres
+hosts públicos (`@metrics`, antes del `reverse_proxy`). El proceso sigue sirviendo el
+endpoint en la red de Docker: `http://consorcio-backend:8000/metrics`. El
+puerto publicado del backend es `127.0.0.1:8000`, no la internet.
+
+El scrape no está instalado en el VPS. Hay que agregarlo a mano contra esa
+URL interna (Prometheus en la misma red, no contra el nombre público de la
+API). Recargar el Caddyfile en el VPS sigue siendo el paso manual de la
+sección Caddy: sin esa recarga el borde viejo todavía reenvía `/metrics`.
 
 ## Pisos de cobertura (CI-04)
 

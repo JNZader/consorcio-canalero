@@ -175,7 +175,9 @@ jobs:
       fail-fast: false
       # Measured PR #249 evidence shows authStore dominates elapsed time. Its
       # 238/239 boundary has no spanning mutants, so two contiguous ranges keep
-      # every mutant in exactly one shard. The full baseline matrix is identical.
+      # every mutant in exactly one shard. auth2 ends on the last line of
+      # authStore.ts; the workflow contract derives that bound from the file.
+      # The full baseline matrix is identical.
       matrix:
         include:
           - shard: auth1

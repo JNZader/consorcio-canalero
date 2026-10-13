@@ -223,6 +223,9 @@ services:
       # files vanish on every `docker compose up -d --pull` (image rebuild),
       # which is exactly what happened in past deploys.
       - denuncia-uploads:/app/uploads
+      # GEE-01: JSON de la service account. Vacío cae al env var. Rotar es
+      # reemplazar el archivo; el proceso relee mtime sin rebuild.
+      - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
     networks:
       - proxy
       - backend
@@ -273,6 +276,7 @@ services:
     env_file: .env
     volumes:
       - geo-data:/data/geo
+      - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
     networks:
       - backend
       - consorcio-internal
@@ -394,6 +398,7 @@ services:
     env_file: .env
     volumes:
       - geo-data:/data/geo
+      - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
       # Zona outline for clipping visual raster tiles to the consorcio —
       # same mount dev uses (single source of truth: the geojson the
       # frontend serves). Without it the tile service logs a warning and

@@ -81,6 +81,16 @@ def _resolve_database_url() -> tuple[str, object | None]:
 # ---------------------------------------------------------------------------
 _db_url, _container = _resolve_database_url()
 
+# TEST-02: pytest-xdist workers share TEST_DATABASE_URL unless each one gets
+# its own database. A testcontainer started in this process is already private.
+_worker_database: str | None = None
+if _container is None:
+    from tests.new.xdist_db import isolate_worker_database
+
+    _db_url, _worker_database = isolate_worker_database(
+        _db_url, os.environ.get("PYTEST_XDIST_WORKER")
+    )
+
 
 def _probe_pgvector(url: str) -> bool:
     """Attempt ``CREATE EXTENSION vector`` against ``url``. Never raises.
@@ -130,6 +140,8 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001 — pytest hoo
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 — pytest hook signature
     """Stop the testcontainer even when no test requested ``test_engine``.
 
+    Also drops the per-worker database when this process created one.
+
     The fixture's teardown only runs if something used it, so a DB-free run
     (the imagery tests need no database at all) used to leave one orphan
     container per pytest invocation. Under mutation testing, which re-invokes
@@ -141,7 +153,21 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 — pytest hook s
             _container.stop()
         except Exception:  # pragma: no cover — teardown must never fail a run
             pass
+    if _worker_database is not None:
+        from tests.new.xdist_db import drop_worker_database
 
+        try:
+            drop_worker_database(os.environ.get("TEST_DATABASE_URL", _db_url), _worker_database)
+        except Exception:  # pragma: no cover — teardown must never fail a run
+            pass
+
+
+# Workers share the host filesystem. A per-worker uploads dir keeps photo
+# tests from racing on the same path when pytest-xdist is on (TEST-02).
+_uploads_root = "/tmp/consorcio-test-uploads"
+_xdist_worker = os.environ.get("PYTEST_XDIST_WORKER")
+if _xdist_worker:
+    _uploads_root = f"{_uploads_root}-{_xdist_worker}"
 
 os.environ.update(
     {
@@ -155,7 +181,7 @@ os.environ.update(
         # Phase 4 / F4-D: writable photo path for the TestClient-based
         # auth-gate tests. The production default ``/app/uploads`` is
         # not writable from a local dev shell.
-        "UPLOADS_ROOT": "/tmp/consorcio-test-uploads",
+        "UPLOADS_ROOT": _uploads_root,
     }
 )
 
@@ -331,3 +357,13 @@ def _disable_global_rate_limiter(request, monkeypatch):
 
     monkeypatch.setattr(settings, "rate_limit_disabled", True)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_martin_catalog_cache():
+    """BE-11: the Martin catalog cache must not leak between tests."""
+    from app.domains.geo.martin_catalog import clear_martin_catalog_cache
+
+    clear_martin_catalog_cache()
+    yield
+    clear_martin_catalog_cache()

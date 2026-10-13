@@ -26,6 +26,7 @@ from app.api.v2.public_schemas import (
 )
 from app.config import settings
 from app.db.session import get_db
+from app.domains.geo.martin_catalog import fetch_martin_catalog
 from app.domains.capas.models import Capa
 from app.domains.capas.repository import CapasRepository
 from app.domains.denuncias.models import Denuncia
@@ -103,13 +104,8 @@ async def get_martin_catalog():
     so the internal Docker hostname is never exposed to callers.
     Returns HTTP 503 if Martin is unreachable.
     """
-    catalog_url = f"{settings.martin_internal_url}/catalog"
-
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(catalog_url)
-            response.raise_for_status()
-            martin_data = response.json()
+        martin_data = await fetch_martin_catalog(settings.martin_internal_url)
     except (httpx.ConnectError, httpx.TimeoutException, httpx.ConnectTimeout):
         raise HTTPException(
             status_code=503,
