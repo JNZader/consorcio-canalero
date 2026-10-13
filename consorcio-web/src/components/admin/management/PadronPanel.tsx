@@ -20,8 +20,8 @@ import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { isValidCUIT } from '../../../lib/validators';
 import { useUserRole } from '../../../stores/authStore';
-import { LoadingState } from '../../ui/LoadingState';
 import { IconPlus, IconSearch, IconUser } from '../../ui/icons';
+import { LoadingState } from '../../ui/LoadingState';
 
 const PADRON_NOMBRE_ERROR_ID = 'padron-nombre-error';
 const PADRON_APELLIDO_ERROR_ID = 'padron-apellido-error';
@@ -90,7 +90,7 @@ export default function PadronPanel() {
       telefono: '',
     },
     validate: {
-      cuit: (value) => (!isValidCUIT(value) ? 'CUIT invalido' : null),
+      cuit: (value) => (!isValidCUIT(value) ? 'CUIT inválido' : null),
       nombre: (value) => (value.length < 2 ? 'Nombre requerido' : null),
       apellido: (value) => (value.length < 2 ? 'Apellido requerido' : null),
     },
@@ -104,7 +104,7 @@ export default function PadronPanel() {
       });
       notifications.show({
         title: 'Consorcista registrado',
-        message: `${values.apellido}, ${values.nombre} fue agregado al padron`,
+        message: `${values.apellido}, ${values.nombre} fue agregado al padrón`,
         color: 'green',
       });
       close();
@@ -122,7 +122,7 @@ export default function PadronPanel() {
     if (!importFile) {
       notifications.show({
         title: 'Archivo requerido',
-        message: 'Selecciona un archivo CSV, XLS o XLSX para importar',
+        message: 'Seleccioná un archivo CSV, XLS o XLSX para importar',
         color: 'yellow',
       });
       return;
@@ -143,13 +143,13 @@ export default function PadronPanel() {
       await fetchConsorcistas();
 
       notifications.show({
-        title: 'Importacion completada',
+        title: 'Importación completada',
         message: `Procesadas ${result.processed} filas; registros creados: ${result.created}; filas omitidas: ${result.skipped}`,
         color: result.errors.length > 0 ? 'yellow' : 'green',
       });
     } catch (err) {
       handleError(err, {
-        title: 'Error al importar padron',
+        title: 'Error al importar padrón',
         context: 'PadronPanel.handleImportPadron',
       });
     } finally {
@@ -188,7 +188,7 @@ export default function PadronPanel() {
 
       <Paper withBorder p="sm" radius="md" mb="md">
         <Text size="sm" c="dimmed">
-          La gestion de pagos y cuotas no esta disponible en esta version.
+          La gestión de pagos y cuotas no está disponible en esta versión.
         </Text>
       </Paper>
 
@@ -279,7 +279,7 @@ export default function PadronPanel() {
         <Modal
           opened={importOpened}
           onClose={closeImport}
-          title="Importar padron desde archivo"
+          title="Importar padrón desde archivo"
           size="lg"
         >
           <Stack gap="md">
@@ -289,7 +289,7 @@ export default function PadronPanel() {
             </Text>
             <FileInput
               label="Archivo"
-              placeholder="Selecciona un archivo"
+              placeholder="Seleccioná un archivo"
               value={importFile}
               onChange={setImportFile}
               accept=".csv,.xls,.xlsx"

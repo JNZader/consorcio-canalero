@@ -74,7 +74,7 @@ describe('validators', () => {
       });
 
       it('should return error for invalid email format', () => {
-        expect(validateEmail('notanemail')).toBe('Email invalido');
+        expect(validateEmail('notanemail')).toBe('Email inválido');
       });
     });
   });
@@ -130,7 +130,7 @@ describe('validators', () => {
       });
 
       it('should return error for invalid phone', () => {
-        expect(validatePhone('abc')).toBe('Telefono invalido');
+        expect(validatePhone('abc')).toBe('Teléfono inválido');
       });
     });
   });
@@ -185,7 +185,7 @@ describe('validators', () => {
       });
 
       it('should return error for invalid CUIT', () => {
-        expect(validateCUIT('123')).toBe('CUIT invalido');
+        expect(validateCUIT('123')).toBe('CUIT inválido');
       });
     });
   });
@@ -243,7 +243,6 @@ describe('validators', () => {
         expect(validators.nombre('John')).toBeNull();
         expect(validators.nombre('a'.repeat(101))).not.toBeNull(); // Too long
       });
-
     });
   });
 
@@ -287,7 +286,9 @@ describe('validators', () => {
       it('should validate HTTPS tile URLs with placeholders', () => {
         expect(isValidTileUrl('https://tile.openstreetmap.org/{z}/{x}/{y}.png')).toBe(true);
         expect(
-          isValidTileUrl('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
+          isValidTileUrl(
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          )
         ).toBe(true);
       });
 

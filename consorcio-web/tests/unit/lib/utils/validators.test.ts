@@ -108,7 +108,7 @@ describe('validateEmail', () => {
   it('should return error for invalid email format', () => {
     const result = validateEmail('invalid.email');
     expect(result).not.toBeNull();
-    expect(result).toContain('invalido');
+    expect(result).toContain('inválido');
   });
 
   // Mutation testing: catch return value mutations (null vs string)
@@ -182,7 +182,7 @@ describe('validatePhone', () => {
   it('should return error for invalid phone', () => {
     const result = validatePhone('invalid');
     expect(result).not.toBeNull();
-    expect(result).toContain('invalido');
+    expect(result).toContain('inválido');
   });
 });
 

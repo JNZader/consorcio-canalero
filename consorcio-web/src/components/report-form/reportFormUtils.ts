@@ -30,8 +30,8 @@ export function handleGeoSuccess(
   const { latitude, longitude } = position.coords;
   setUbicacion({ lat: latitude, lng: longitude });
   setObteniendoUbicacion(false);
-  showNotification('Ubicacion obtenida', 'Se detecto tu ubicacion correctamente', 'green');
-  announce(`Ubicacion obtenida: latitud ${latitude.toFixed(4)}, longitud ${longitude.toFixed(4)}`);
+  showNotification('Ubicación obtenida', 'Se detectó tu ubicación correctamente', 'green');
+  announce(`Ubicación obtenida: latitud ${latitude.toFixed(4)}, longitud ${longitude.toFixed(4)}`);
 }
 
 export function handleGeoError(
@@ -40,12 +40,12 @@ export function handleGeoError(
 ) {
   setObteniendoUbicacion(false);
   showNotification(
-    'Error de ubicacion',
-    'No se pudo obtener tu ubicacion. Selecciona en el mapa.',
+    'Error de ubicación',
+    'No se pudo obtener tu ubicación. Seleccioná en el mapa.',
     'red'
   );
   announce(
-    'No se pudo obtener tu ubicacion. Usa el mapa o ingresa coordenadas manualmente.',
+    'No se pudo obtener tu ubicación. Usá el mapa o ingresá coordenadas manualmente.',
     'assertive'
   );
 }

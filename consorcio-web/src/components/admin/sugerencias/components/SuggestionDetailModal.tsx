@@ -14,7 +14,13 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { DatePicker } from '@mantine/dates';
+import { DatePicker, DatesProvider } from '@mantine/dates';
+import '@mantine/dates/styles.css';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
+
+dayjs.locale('es');
+
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { IconHistory } from '../../../ui/icons';
@@ -85,14 +91,14 @@ export function SuggestionDetailModal({
         <Stack gap="md">
           <div>
             <Text size="sm" fw={500}>
-              Titulo
+              Título
             </Text>
             <Text>{selectedSugerencia.titulo}</Text>
           </div>
 
           <div>
             <Text size="sm" fw={500}>
-              Descripcion
+              Descripción
             </Text>
             <Paper
               p="sm"
@@ -108,11 +114,11 @@ export function SuggestionDetailModal({
           <Group>
             <div>
               <Text size="sm" fw={500}>
-                Categoria
+                Categoría
               </Text>
               <Badge variant="outline">
                 {CATEGORIA_OPTIONS.find((c) => c.value === selectedSugerencia.categoria)?.label ||
-                  'Sin categoria'}
+                  'Sin categoría'}
               </Badge>
             </div>
             <div>
@@ -270,18 +276,20 @@ export function SuggestionDetailModal({
               */}
               <Stack gap="md">
                 <Group justify="center">
-                  <DatePicker
-                    value={agendarFecha}
-                    onChange={(value) =>
-                      setAgendarFecha(value ? new Date(value as unknown as string) : null)
-                    }
-                    minDate={new Date()}
-                    size="sm"
-                    styles={{
-                      calendarHeader: { marginBottom: 8 },
-                      day: { borderRadius: 'var(--mantine-radius-sm)' },
-                    }}
-                  />
+                  <DatesProvider settings={{ locale: 'es', firstDayOfWeek: 1 }}>
+                    <DatePicker
+                      value={agendarFecha}
+                      onChange={(value) =>
+                        setAgendarFecha(value ? new Date(value as unknown as string) : null)
+                      }
+                      minDate={new Date()}
+                      size="sm"
+                      styles={{
+                        calendarHeader: { marginBottom: 8 },
+                        day: { borderRadius: 'var(--mantine-radius-sm)' },
+                      }}
+                    />
+                  </DatesProvider>
                 </Group>
                 <Group grow gap="xs">
                   {agendarFecha && (

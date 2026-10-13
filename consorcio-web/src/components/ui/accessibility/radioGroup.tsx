@@ -82,7 +82,7 @@ export function AccessibleRadioGroup({
 
   return (
     <Box>
-      <Text id={labelId} fw={500} size="sm" mb="xs">
+      <Text id={labelId} component="label" fw={500} size="sm" mb="xs">
         {label} {required && <span style={{ color: 'var(--mantine-color-red-6)' }}>*</span>}
       </Text>
 

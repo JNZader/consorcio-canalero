@@ -220,7 +220,7 @@ function ProfileContent() {
               />
 
               <TextInput
-                label="Telefono"
+                label="Teléfono"
                 placeholder="+54 9 11 1234-5678"
                 leftSection={<IconPhone size={16} />}
                 {...profileForm.getInputProps('telefono')}

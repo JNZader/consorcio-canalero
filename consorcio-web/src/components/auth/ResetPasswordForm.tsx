@@ -13,8 +13,8 @@ import {
 import { useForm } from '@mantine/form';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  type EmailCodeExchangeHandle,
   completeEmailCodeExchange,
+  type EmailCodeExchangeHandle,
   exchangeEmailCode,
   resetPasswordWithToken,
 } from '../../lib/auth';
@@ -104,7 +104,11 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
       // Shared strength rules (same as register flow) — see lib/validators.ts
       password: validatePassword,
       confirmPassword: (value, values) =>
-        !value ? 'Confirmá la contraseña' : value !== values.password ? 'Las contraseñas no coinciden' : null,
+        !value
+          ? 'Confirmá la contraseña'
+          : value !== values.password
+            ? 'Las contraseñas no coinciden'
+            : null,
     },
   });
 
@@ -178,9 +182,9 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
     return (
       <Center mih="80vh">
         <Paper shadow="md" p="xl" radius="md" w={400}>
-          <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace invalido">
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace inválido">
             <Text size="sm">
-              Este enlace de recuperacion es invalido o expiró. Solicita uno nuevo desde la pagina
+              Este enlace de recuperación es inválido o expiró. Solicitá uno nuevo desde la página
               de login.
             </Text>
           </Alert>
@@ -209,8 +213,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
           <Stack gap="md">
             <Alert color="green" icon={<IconCheck size={16} />} title="Contraseña actualizada">
               <Text size="sm">
-                Tu contraseña fue restablecida. Ya podés iniciar sesión con tu nueva
-                contraseña.
+                Tu contraseña fue restablecida. Ya podés iniciar sesión con tu nueva contraseña.
               </Text>
             </Alert>
             <Button fullWidth component="a" href={withBasePath('/login')}>

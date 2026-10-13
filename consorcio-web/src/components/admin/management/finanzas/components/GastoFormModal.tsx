@@ -38,7 +38,7 @@ export function GastoFormModal({
       <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
-            label="Descripcion del Gasto"
+            label="Descripción del Gasto"
             required
             {...form.getInputProps('descripcion')}
             errorProps={{ id: GASTO_DESCRIPTION_ERROR_ID, role: 'alert', 'aria-live': 'assertive' }}
@@ -52,7 +52,7 @@ export function GastoFormModal({
               errorProps={{ id: GASTO_AMOUNT_ERROR_ID, role: 'alert', 'aria-live': 'assertive' }}
             />
             <NativeSelect
-              label="Categoria"
+              label="Categoría"
               data={categoryData}
               required
               {...form.getInputProps('categoria')}

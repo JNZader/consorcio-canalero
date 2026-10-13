@@ -191,7 +191,7 @@ describe('formatters', () => {
     it('should format days correctly (singular)', () => {
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const result = formatRelativeTime(oneDayAgo);
-      expect(result).toContain('1 dia');
+      expect(result).toContain('1 día');
       expect(result).toContain('Hace');
     });
 
@@ -199,7 +199,7 @@ describe('formatters', () => {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
       const result = formatRelativeTime(threeDaysAgo);
       expect(result).toContain('Hace');
-      expect(result).toContain('dias');
+      expect(result).toContain('días');
     });
 
     it('should format date for dates older than 7 days', () => {

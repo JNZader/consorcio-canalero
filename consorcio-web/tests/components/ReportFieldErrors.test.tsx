@@ -13,13 +13,12 @@ describe('report field errors', () => {
   it('connects the description error to the textarea with alert semantics', () => {
     renderWithMantine(
       <DescripcionField
-        contactoVerificado
         error="La descripcion debe tener al menos 10 caracteres"
         getInputProps={() => ({ value: '', onChange: () => {} })}
       />
     );
 
-    const description = screen.getByRole('textbox', { name: /descripcion/i });
+    const description = screen.getByRole('textbox', { name: /descripci[oó]n/i });
     const error = screen.getByRole('alert');
 
     expect(description).toHaveAttribute('aria-invalid', 'true');

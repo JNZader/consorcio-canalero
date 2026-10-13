@@ -1,7 +1,7 @@
-import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+import { defineConfig, type Plugin } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 import { filterHtmlModulePreloadDeps } from './vite.modulePreload';
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ export default defineConfig({
         name: 'Consorcio Canalero 10 de Mayo',
         short_name: 'CC10M',
         description:
-          'Sistema de gestion y monitoreo del Consorcio Canalero 10 de Mayo - Infraestructura hidrica para el desarrollo agricola',
+          'Sistema de gestión y monitoreo del Consorcio Canalero 10 de Mayo - Infraestructura hídrica para el desarrollo agrícola',
         start_url: '/',
         scope: '/',
         display: 'standalone',
@@ -241,19 +241,14 @@ export default defineConfig({
           // Precaching it would ship the worker source to every client and
           // a stale copy would not be the file Pages executes.
           '_worker.js',
-          // ``vendor-maplibre`` was intentionally precached (~780 kb) so the
-          // 3D viewer doesn't pay a cold network fetch the first time the
-          // user opens it — the entire app is map-centric, the trade-off
-          // pays back immediately. The remaining heavy vendor chunks stay
-          // in runtime CacheFirst because they're only used on niche pages.
-          //
-          // TODO(perf): ``vendor-maplibre`` (~780 KB) + ``MapaMapLibre``
-          // (~320 KB) are now BY FAR the largest slice of what the SW pulls
-          // at install time, and a visitor who never opens ``/mapa`` pays
-          // all of it. Dropping them would be the single biggest remaining
-          // win — but it also kills ``/mapa`` offline, and that is a PRODUCT
-          // decision nobody has taken yet. Do not remove them here without
-          // an explicit call on whether offline map support still matters.
+          // Map stacks stay out of the install precache (auditoría v6,
+          // PERF-07). The first visit to /mapa fetches them and the runtime
+          // CacheFirst below keeps them for later offline use. Precaching
+          // them made every install pay ~1 MB before the visitor opened a map.
+          '**/vendor-maplibre-*.js',
+          '**/MapaMapLibre-*.js',
+          '**/MapaPage-*.js',
+          '**/TerrainViewer3D-*.js',
           '**/vendor-map-draw-*.js',
           '**/vendor-pmtiles-*.js',
           '**/vendor-charts-*.js',
@@ -321,13 +316,19 @@ export default defineConfig({
                 maxEntries: 500,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
               },
+              // MapLibre image tiles are opaque (status 0). Workbox only
+              // stores 200 by default, so without 0 the Esri basemap never
+              // lands in Cache Storage.
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
             },
           },
 
           // Heavy lazy vendor chunks — do not precache on install; cache after first use.
           {
             urlPattern:
-              /\/assets\/vendor-(maplibre|map-draw|pmtiles|charts|mantine-(extras|dates))-.*\.js$/i,
+              /\/assets\/(vendor-(maplibre|map-draw|pmtiles|charts|mantine-(extras|dates))|MapaMapLibre|MapaPage|TerrainViewer3D)-.*\.js$/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'lazy-vendor-chunks',
@@ -432,11 +433,9 @@ export default defineConfig({
               name: 'vendor-mantine',
               test: /node_modules\/@mantine\/(core|hooks|form|notifications)(\/|$)/,
             },
-            // @mantine/dates loaded eager via DatesProvider in main.tsx —
-            // keep it in its own small chunk (~30 KB) so the heavier
-            // charts/dropzone chunks stay lazy. Without this split,
-            // DatesProvider would pull the entire 200+ KB extras bundle
-            // into the initial entry.
+            // @mantine/dates is only imported by SuggestionDetailModal.
+            // Keep the chunk separate so the admin modal does not pull
+            // charts or dropzone, and so the shell does not preload it.
             {
               name: 'vendor-mantine-dates',
               test: /node_modules\/@mantine\/dates(\/|$)/,

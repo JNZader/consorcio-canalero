@@ -36,6 +36,22 @@ describe('ContactVerificationSection', () => {
     it('should render privacy notice', () => {
       render(<ContactVerificationSection {...defaultProps} />, { wrapper: Wrapper });
       expect(screen.getByText(/solo usamos tu email para identificarte/i)).toBeInTheDocument();
+      expect(screen.getByText(/sobre tu reporte/i)).toBeInTheDocument();
+    });
+
+    it('should let sugerencias name the suggestion in the privacy note', () => {
+      render(
+        <ContactVerificationSection
+          {...defaultProps}
+          privacyNote="Solo usamos tu email para identificarte y notificarte sobre tu sugerencia."
+        />,
+        { wrapper: Wrapper }
+      );
+      expect(screen.getByText(/sobre tu sugerencia/i)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /crear una cuenta con email/i })).toHaveAttribute(
+        'href',
+        expect.stringContaining('modo=registro')
+      );
     });
 
     it('should call onLoginWithGoogle when Google button clicked', () => {

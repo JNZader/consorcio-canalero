@@ -36,21 +36,21 @@ import {
 // Navigation sections
 const NAV_SECTIONS = [
   {
-    label: 'Analisis Tecnico',
+    label: 'Análisis Técnico',
     items: [
       { label: 'Dashboard', to: '/admin', icon: IconChartBar },
-      { label: 'Explorador de Imagenes', to: '/admin/images', icon: IconPhoto },
+      { label: 'Explorador de Imágenes', to: '/admin/images', icon: IconPhoto },
       { label: 'DEM Pipeline', to: '/admin/dem-pipeline', icon: IconMountain },
       { label: 'Publicación de canales', to: '/admin/canales', icon: IconMap },
     ],
   },
   {
-    label: 'Gestion',
+    label: 'Gestión',
     items: [
       { label: 'Participación', to: '/admin/participacion', icon: IconUsers },
-      { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },
+      { label: 'Trámites', to: '/admin/tramites', icon: IconSettings },
       { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
-      { label: 'Padron', to: '/admin/padron', icon: IconUser },
+      { label: 'Padrón', to: '/admin/padron', icon: IconUser },
       { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
       // U8: the mailbox of legal consultations. Listed here because a route with
       // no entry point is a page nobody reaches — the hidden page was never the
@@ -64,7 +64,7 @@ const NAV_SECTIONS = [
 export const ADMIN_ACCOUNT_MENU_ITEMS = {
   profile: { label: 'Perfil', to: '/perfil' },
   site: { label: 'Volver al sitio', to: '/' },
-  logout: { label: 'Cerrar sesion', to: '/login' },
+  logout: { label: 'Cerrar sesión', to: '/login' },
 } as const;
 
 interface AdminLayoutProps {
@@ -98,7 +98,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
     } catch (error) {
       notifications.show({
         title: 'No se pudo cerrar la sesión',
-        message: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente.',
         color: 'red',
       });
     }
@@ -129,7 +129,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                 onClick={() => setOpened(!opened)}
                 hiddenFrom="sm"
                 size="sm"
-                aria-label="Abrir menu de navegacion"
+                aria-label="Abrir menú de navegación"
               />
               <UnstyledButton component={Link} to="/admin">
                 <Group gap="xs">

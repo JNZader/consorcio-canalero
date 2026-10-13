@@ -57,7 +57,7 @@ describe('PadronPanel', () => {
     expect(await screen.findByText('Padrón de Consorcistas')).toBeInTheDocument();
     expect(screen.getByText('Perez, Ana')).toBeInTheDocument();
     expect(
-      screen.getByText(/la gestion de pagos y cuotas no esta disponible en esta version/i)
+      screen.getByText(/la gesti[oó]n de pagos y cuotas no est[aá] disponible en esta versi[oó]n/i)
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /pagos|cuotas/i })).not.toBeInTheDocument();
     expect(
@@ -127,7 +127,7 @@ describe('PadronPanel', () => {
     renderPanel();
     await screen.findByText('Padrón de Consorcistas');
     await user.click(screen.getByRole('button', { name: /importar csv\/xls/i }));
-    const dialog = await screen.findByRole('dialog', { name: /importar padron desde archivo/i });
+    const dialog = await screen.findByRole('dialog', { name: /importar padr[oó]n desde archivo/i });
     expect(
       within(dialog).getByText(/los cuit nuevos se crean; los existentes o duplicados se omiten/i)
     ).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe('PadronPanel', () => {
     expect(within(dialog).getByText(/fila 2: CUIT invalido/i)).toBeInTheDocument();
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Importacion completada',
+        title: 'Importación completada',
         message: 'Procesadas 3 filas; registros creados: 2; filas omitidas: 1',
         color: 'yellow',
       })
@@ -158,7 +158,7 @@ describe('PadronPanel', () => {
     expect(await screen.findByText('Padrón de Consorcistas')).toBeInTheDocument();
     expect(screen.getByText('Perez, Ana')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /importar csv\/xls/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('dialog', { name: /importar padron/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /importar padr[oó]n/i })).not.toBeInTheDocument();
 
     const search = screen.getByRole('textbox', { name: /buscar consorcistas/i });
     await user.type(search, 'Ana');

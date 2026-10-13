@@ -12,6 +12,7 @@ import {
 } from '@mantine/core';
 import type { Feature } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
+import mapStyles from '../../styles/components/map.module.css';
 import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import { InfoPanel } from '../map2d/InfoPanel';
@@ -27,7 +28,6 @@ import { TerrainExaggerationControls } from './TerrainExaggerationControls';
 import { TerrainLayerTogglesPanel } from './TerrainLayerTogglesPanel';
 import { TerrainLegendsPanel } from './TerrainLegendsPanel';
 import { TerrainOrientationControls } from './TerrainOrientationControls';
-import mapStyles from '../../styles/components/map.module.css';
 import { exaggerationCanvasLabel } from './terrainExaggeration';
 import { heavy3dLoadLines, heavy3dWarning } from './terrainHeavyLayers';
 import {
@@ -357,7 +357,7 @@ export function TerrainViewer3DChrome({
               </Text>
               {terrainSmoothingEnabled && (
                 <Text size="xs" c="gray.4">
-                  Terreno suavizado: reduce picos de arboles/construcciones
+                  Terreno suavizado: reduce picos de árboles/construcciones
                 </Text>
               )}
               {selectedImage && (
@@ -403,7 +403,9 @@ export function TerrainViewer3DChrome({
                 demEnabled={rasterLayers.length > 0}
                 showDemOverlay={Boolean(activeRasterLayerId)}
                 onShowDemOverlayChange={(visible) => {
-                  onActiveRasterLayerChange(visible ? (activeRasterLayerId ?? rasterLayers[0]?.id ?? null) : null);
+                  onActiveRasterLayerChange(
+                    visible ? (activeRasterLayerId ?? rasterLayers[0]?.id ?? null) : null
+                  );
                 }}
                 activeDemLayerId={activeRasterLayerId ?? null}
                 onActiveDemLayerIdChange={onActiveRasterLayerChange}

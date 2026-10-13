@@ -9,7 +9,7 @@ import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 import { buildOptionData, normalizeArray } from './finanzasUtils';
 
 function validateDescripcion(value: string) {
-  return value.trim().length < 3 ? 'Descripcion requerida' : null;
+  return value.trim().length < 3 ? 'Descripción requerida' : null;
 }
 
 function validateMonto(value: number) {
@@ -17,7 +17,7 @@ function validateMonto(value: number) {
 }
 
 function validateCategoria(value: string) {
-  return value ? null : 'Categoria requerida';
+  return value ? null : 'Categoría requerida';
 }
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -125,8 +125,8 @@ export function useFinanzasController() {
       setEditingGasto(null);
       await fetchFinanzas();
       notifications.show({
-        title: 'Categoria actualizada',
-        message: 'La categoria del gasto fue actualizada',
+        title: 'Categoría actualizada',
+        message: 'La categoría del gasto fue actualizada',
         color: 'green',
       });
     } catch (error) {
@@ -212,7 +212,7 @@ export function useFinanzasController() {
       logger.error('Error downloading financial summary PDF:', error);
       notifications.show({
         title: 'No se pudo descargar el resumen',
-        message: error instanceof Error ? error.message : 'Intenta nuevamente en unos minutos.',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
         color: 'red',
       });
     } finally {

@@ -6,6 +6,7 @@
 const API_URL =
   import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
 const AUTH_BASE = `${API_URL}/api/v2`;
+
 import {
   clearApiServiceWorkerCaches,
   clearAuthStorage,
@@ -116,7 +117,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     });
 
     if (!response.ok) {
-      throw new Error('No se pudo iniciar la autenticacion con Google');
+      throw new Error('No se pudo iniciar la autenticación con Google');
     }
 
     const data = await response.json();

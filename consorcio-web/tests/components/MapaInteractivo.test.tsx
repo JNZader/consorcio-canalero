@@ -42,7 +42,7 @@ describe('<MapaContenido /> error fallback', () => {
     ).toBeInTheDocument();
 
     const alternative = screen.getByRole('region', {
-      name: /descripcion textual del mapa/i,
+      name: /descripción textual del mapa/i,
     });
     expect(alternative).toHaveTextContent(/cuencas, canales e infraestructura/i);
   });

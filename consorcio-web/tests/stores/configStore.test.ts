@@ -168,7 +168,7 @@ describe('configStore', () => {
       await fetchConfig();
 
       const state = useConfigStore.getState();
-      expect(state.error).toBe('Error desconocido al cargar configuracion');
+      expect(state.error).toBe('Error desconocido al cargar configuración');
     });
 
     it('should clear previous errors on new fetch', async () => {
@@ -196,8 +196,6 @@ describe('configStore', () => {
       expect(state.error).toBeNull();
     });
   });
-
-
 
   describe('Store state management', () => {
     it('should track initialized flag correctly', async () => {

@@ -217,7 +217,7 @@ describe('configStore — modo degradado', () => {
 
     await useConfigStore.getState().fetchConfig();
 
-    expect(useConfigStore.getState().error).toBe('Error desconocido al cargar configuracion');
+    expect(useConfigStore.getState().error).toBe('Error desconocido al cargar configuración');
   });
 
   it('limpia el error anterior al empezar un intento nuevo', async () => {

@@ -50,7 +50,7 @@ export function getBalanceCards(balance: Balance | null, currentYear: number) {
       title: 'Ingresos Totales',
       color: 'green',
       amount: balance?.total_ingresos ?? 0,
-      description: `Cuotas e ingresos operativos ano ${currentYear}`,
+      description: `Cuotas e ingresos operativos año ${currentYear}`,
       icon: IconArrowUpRight,
     },
     {

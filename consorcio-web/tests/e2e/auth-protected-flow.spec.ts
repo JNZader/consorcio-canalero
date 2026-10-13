@@ -94,7 +94,7 @@ test.describe('E2E auth flow — login → protected → logout', () => {
       body.includes('Dashboard') ||
       body.includes('Bienvenido') ||
       body.includes('Cerrar sesión') ||
-      body.includes('Cerrar sesion');
+      body.includes('Cerrar sesión');
 
     expect(authenticatedSignals).toBeTruthy();
   });

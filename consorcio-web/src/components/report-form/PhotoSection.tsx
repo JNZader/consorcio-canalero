@@ -53,7 +53,7 @@ export function PhotoSection({ fotoPreview, onDrop, onRemove }: Readonly<PhotoSe
             &#128247;
           </Text>
           <Text id={PHOTO_INSTRUCTIONS_ID} size="sm" c="gray.6" ta="center">
-            Arrastra una foto o haz clic para seleccionar
+            Arrastrá una foto o hacé clic para seleccionar
           </Text>
           <Text id={PHOTO_LIMIT_ID} size="xs" c="gray.6" ta="center">
             Max 5MB

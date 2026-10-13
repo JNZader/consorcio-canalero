@@ -5,18 +5,18 @@ import {
   Divider,
   Group,
   LoadingOverlay,
-  Overlay,
   Paper,
   Stack,
   Text,
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { publicApi } from '../lib/api';
+import { loadReportDraft } from '../lib/formDrafts';
 import { logger } from '../lib/logger';
 import { useConfigStore } from '../stores/configStore';
 import {
@@ -26,11 +26,11 @@ import {
   TipoProblemaField,
   UbicacionField,
 } from './report-form/ReportFormFields';
-import { StepHeader } from './report-form/StepHeader';
 import { getErrorString } from './report-form/reportFormUtils';
+import { StepHeader } from './report-form/StepHeader';
 import { useReportFormSubmission } from './report-form/useReportFormSubmission';
 import { useReportLocation } from './report-form/useReportLocation';
-import { LiveRegionProvider, VisuallyHidden, useLiveRegion } from './ui/accessibility';
+import { LiveRegionProvider, useLiveRegion, VisuallyHidden } from './ui/accessibility';
 import { IconBuildingBridge, IconDroplet, IconFileDescription, IconRoad } from './ui/icons';
 import { ContactVerificationSection } from './verification';
 
@@ -65,9 +65,9 @@ function FormularioContenido() {
       foto: null as File | null,
     },
     validate: {
-      tipo: (value) => (!value ? 'Selecciona un tipo de denuncia' : null),
+      tipo: (value) => (!value ? 'Seleccioná un tipo de denuncia' : null),
       descripcion: (value) =>
-        value.length < 10 ? 'La descripcion debe tener al menos 10 caracteres' : null,
+        value.length < 10 ? 'La descripción debe tener al menos 10 caracteres' : null,
     },
   });
 
@@ -91,7 +91,7 @@ function FormularioContenido() {
     useContactVerification({
       onVerified: (email, name) => {
         const displayName = name || email;
-        announce(`Identidad verificada como ${displayName}. Puedes continuar con la denuncia.`);
+        announce(`Identidad verificada como ${displayName}. Podés continuar con la denuncia.`);
       },
     });
 
@@ -121,6 +121,19 @@ function FormularioContenido() {
     setRemainingToday(0);
   }, []);
 
+  const restoredDraft = useRef(false);
+  useEffect(() => {
+    if (restoredDraft.current) return;
+    restoredDraft.current = true;
+    const draft = loadReportDraft();
+    if (!draft) return;
+    form.setFieldValue('tipo', draft.tipo);
+    form.setFieldValue('descripcion', draft.descripcion);
+    if (typeof draft.lat === 'number' && typeof draft.lng === 'number') {
+      setUbicacion({ lat: draft.lat, lng: draft.lng });
+    }
+  }, [form, setUbicacion]);
+
   const handleSubmit = useReportFormSubmission({
     contactoVerificado,
     userEmail,
@@ -141,7 +154,7 @@ function FormularioContenido() {
       <LoadingOverlay visible={enviando} />
       {enviando && (
         <VisuallyHidden as="p" role="status" aria-live="polite">
-          Enviando reporte, por favor espera.
+          Enviando reporte, por favor esperá.
         </VisuallyHidden>
       )}
 
@@ -149,7 +162,7 @@ function FormularioContenido() {
         Nuevo Reporte
       </Title>
       <Text c="gray.6" mb="xl">
-        Reporta problemas en la red de canales y caminos rurales
+        Reportá problemas en la red de canales y caminos rurales
       </Text>
 
       <Box mb="xl">
@@ -176,23 +189,20 @@ function FormularioContenido() {
       <Divider my="xl" />
 
       <Box pos="relative">
-        {!contactoVerificado && (
-          <Overlay
-            style={{ background: 'light-dark(rgba(255,255,255,0.6), rgba(36,36,36,0.6))' }}
-            backgroundOpacity={0}
-            blur={2}
-            zIndex={5}
-            radius="md"
-          />
-        )}
-
         <StepHeader
           step={2}
           title="Completar reporte"
           subtitle="Detalles del incidente"
-          isComplete={contactoVerificado}
+          isComplete={false}
           variant="secondary"
         />
+
+        {!contactoVerificado && (
+          <Alert color="blue" variant="light" mb="md">
+            Podés completar el reporte ahora. Al enviarlo te pedimos verificar la identidad para
+            evitar spam. Guardamos el texto y la ubicación; la foto hay que volver a adjuntarla.
+          </Alert>
+        )}
 
         {contactoVerificado && remainingToday !== null && (
           <Group justify="flex-end" mb="xs">
@@ -204,14 +214,13 @@ function FormularioContenido() {
 
         {remainingToday === 0 && contactoVerificado && (
           <Alert color="red" variant="light" mb="md" role="alert" aria-live="assertive">
-            Llegaste al limite de 5 reportes cada 24 horas. Volvé más tarde.
+            Llegaste al límite de 5 reportes cada 24 horas. Volvé más tarde.
           </Alert>
         )}
 
         <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="lg">
             <TipoProblemaField
-              contactoVerificado={contactoVerificado}
               value={form.values.tipo}
               error={getErrorString(form.errors.tipo)}
               onChange={(value) => form.setFieldValue('tipo', value)}
@@ -219,13 +228,11 @@ function FormularioContenido() {
             />
 
             <DescripcionField
-              contactoVerificado={contactoVerificado}
               error={getErrorString(form.errors.descripcion)}
               getInputProps={form.getInputProps}
             />
 
             <UbicacionField
-              contactoVerificado={contactoVerificado}
               ubicacion={ubicacion}
               mostrarInputManual={mostrarInputManual}
               obteniendoUbicacion={obteniendoUbicacion}
@@ -238,17 +245,9 @@ function FormularioContenido() {
               defaultZoom={defaultZoom}
             />
 
-            <FotoField
-              contactoVerificado={contactoVerificado}
-              fotoPreview={fotoPreview}
-              onDrop={handleDrop}
-              onRemove={handleRemoveFoto}
-            />
+            <FotoField fotoPreview={fotoPreview} onDrop={handleDrop} onRemove={handleRemoveFoto} />
 
-            <SubmitButton
-              contactoVerificado={contactoVerificado}
-              disabled={!ubicacion || remainingToday === 0}
-            />
+            <SubmitButton disabled={remainingToday === 0} />
           </Stack>
         </form>
       </Box>
