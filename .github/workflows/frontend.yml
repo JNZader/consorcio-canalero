@@ -421,7 +421,9 @@ jobs:
     # al salteo a todo el que lo tenga en `needs`, y desde que esos dos corren
     # solo en el PR de release eso habria apagado el build en cada PR.
     needs: [changes, lint, test, typecheck, smoke]
-    timeout-minutes: 10
+    # El build de Vite entra en 10 min; el chequeo de Pages arranca wrangler
+    # despues y no debe comerse el margen si el bundle crece.
+    timeout-minutes: 15
     steps:
       - uses: actions/setup-node@v7
       - uses: actions/checkout@v7
@@ -431,6 +433,19 @@ jobs:
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run build
+      # Regresion de produccion (FE-01 + SPA): /mapa tiene que ser 200 con el
+      # shell, y un /assets/*.js que no existe tiene que ser 404 text/plain.
+      # Un test unitario sobre el texto de _redirects no lo ve: Pages deja
+      # de hacer fallback SPA en cuanto hay un 404.html de raiz, y
+      # `/* /index.html 200` choca con el 308 de /index.html → /.
+      # El 404 de los assets lo hace dist/_worker.js, no functions/.
+      - name: Check Cloudflare Pages routing
+        run: |
+          npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.150.0
+          WRANGLER_BIN="$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" \
+            node scripts/check-pages-routing.mjs --fixture
+          WRANGLER_BIN="$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" \
+            node scripts/check-pages-routing.mjs
 
   image:
     name: Final Frontend Image Gate

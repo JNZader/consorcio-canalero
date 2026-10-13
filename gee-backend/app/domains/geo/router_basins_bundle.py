@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.core.logging import get_logger
+from app.db.session import get_db, relax_statement_timeout
+from app.shared.upload_limits import read_upload_bounded
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_common import (
     ApprovedZonesMapPdfRequest,
@@ -34,6 +36,7 @@ from app.domains.geo.schemas import (
     BasinCatastroMembershipResponse,
 )
 
+logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
 
 
@@ -120,14 +123,15 @@ def get_basins(
 
 
 @router.post("/basins/import", response_model=GeoJsonImportResponse)
-async def import_basins_geojson(
+def import_basins_geojson(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _user=Depends(_require_admin()),
 ):
     """Replace operational basins from a GeoJSON FeatureCollection."""
     _validate_geojson_filename(file.filename)
-    payload = _read_geojson_upload(await file.read())
+    relax_statement_timeout(db, "120s")
+    payload = _read_geojson_upload(read_upload_bounded(file))
     result = _import_zonas_operativas_payload(db, payload)
     db.commit()
 
@@ -179,7 +183,7 @@ def save_current_approved_basin_zones(
 
 
 @router.post("/basins/approved-zones/import", response_model=GeoJsonImportResponse)
-async def import_current_approved_basin_zones(
+def import_current_approved_basin_zones(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
@@ -187,7 +191,8 @@ async def import_current_approved_basin_zones(
 ):
     """Import an approved zoning FeatureCollection from GeoJSON."""
     _validate_geojson_filename(file.filename)
-    payload = _read_geojson_upload(await file.read())
+    relax_statement_timeout(db, "120s")
+    payload = _read_geojson_upload(read_upload_bounded(file))
     result = _import_approved_zoning_payload(
         db,
         repo,
@@ -295,7 +300,11 @@ def export_current_map_approved_basin_zones_pdf(
         with slot_de_pdf():
             pdf_buffer = build_approved_zoning_map_pdf(payload.model_dump(by_alias=True), branding)
     except (ImagenDemasiadoGrande, ImagenInvalida) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        logger.warning("map_pdf.image_rejected", error_type=type(exc).__name__)
+        raise HTTPException(
+            status_code=422,
+            detail="La imagen del mapa no es válida o es demasiado grande.",
+        ) from exc
     filename = "zonificacion-aprobada-mapa.pdf"
     return StreamingResponse(
         pdf_buffer,

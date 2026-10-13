@@ -96,6 +96,7 @@ def main() -> None:
         workers=2,
         proxy_headers=True,
         forwarded_allow_ips=trusted_peers,
+        server_header=False,
     )
 
 
