@@ -33,7 +33,7 @@ const baseProps = {
 };
 
 describe('LayerControlsPanel variant 3d', () => {
-  it('hides Base, raster analysis, and ajustes', () => {
+  it('shows a 3D Base note, hides raster analysis and ajustes', () => {
     wrap(
       <LayerControlsPanel
         {...baseProps}
@@ -41,9 +41,25 @@ describe('LayerControlsPanel variant 3d', () => {
         unsupportedLayerIds={['escuelas']}
       />,
     );
-    expect(screen.queryByTestId('layer-controls-capas')).not.toBeInTheDocument();
+    expect(screen.getByTestId('layer-controls-capas')).toBeInTheDocument();
+    expect(screen.getByText(/Zona Consorcio es el terreno 3D/)).toBeInTheDocument();
     expect(screen.queryByTestId('layer-controls-raster')).not.toBeInTheDocument();
     expect(screen.queryByTestId('layer-controls-ajustes')).not.toBeInTheDocument();
+  });
+
+  it('lists the 3D raster overlay in En el mapa (MAP-09)', () => {
+    wrap(
+      <LayerControlsPanel
+        {...baseProps}
+        variant="3d"
+        demEnabled
+        showDemOverlay
+        activeDemLayerId="hand-1"
+        demOptions={[{ value: 'hand-1', label: 'Altura sobre Drenaje (HAND)', tipo: 'hand' }]}
+      />,
+    );
+    expect(screen.getByTestId('map-active-remove-__dem')).toBeInTheDocument();
+    expect(screen.queryByText('Nada prendido')).not.toBeInTheDocument();
   });
 
   it('grays unsupported layers with tooltip no disponible en 3D', async () => {
