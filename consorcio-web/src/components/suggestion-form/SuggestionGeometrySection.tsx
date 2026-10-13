@@ -131,7 +131,7 @@ export function SuggestionGeometrySection({
       </Group>
 
       <Text id={SUGGESTION_GEOMETRY_INSTRUCTIONS_ID} size="xs" c="dimmed">
-        Haz un clic para marcar un punto. Si haces otro clic, se convierte en línea. Clic derecho o
+        Hacé un clic para marcar un punto. Si hacés otro clic, se convierte en línea. Clic derecho o
         clic sobre el punto para borrar lo último.
       </Text>
 

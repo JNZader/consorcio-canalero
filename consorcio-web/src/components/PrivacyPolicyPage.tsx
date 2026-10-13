@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
         <Stack gap="md">
           <Title order={1}>Política de Privacidad</Title>
           <Text size="sm" c="dimmed">
-            Última actualización: 19 de mayo de 2026 — Versión 1.0
+            Última actualización: 13 de octubre de 2026 — Versión 1.1
           </Text>
 
           <Text>
@@ -113,10 +113,54 @@ export default function PrivacyPolicyPage() {
             registro de auditoría de consultas catastrales, ausencia de metadatos de geolocalización
             en las fotos almacenadas (las coordenadas EXIF GPS son eliminadas en el momento de la
             carga), tokens de sesión de corta duración con rotación. Los proveedores que procesan
-            datos en nuestro nombre (alojamiento en Hetzner, correo transaccional, monitoreo de
-            errores) están listados en la sección "Encargados de tratamiento" disponible bajo
-            solicitud.
+            datos en nuestro nombre están listados en la sección Encargados de tratamiento de esta
+            misma página.
           </Text>
+
+          <Title order={2} size="h3" id="encargados-de-tratamiento">
+            Encargados de tratamiento
+          </Title>
+          <Text>
+            El Consorcio es el responsable del tratamiento. Estas organizaciones procesan datos por
+            cuenta del Consorcio, solo cuando el despliegue las tiene configuradas. No vendemos
+            datos ni los cedemos para publicidad.
+          </Text>
+          <List>
+            <List.Item>
+              <strong>Cloudflare, Inc.</strong> — la aplicación web se publica en Cloudflare Pages.
+              El navegador recibe el sitio a través de su red.
+            </List.Item>
+            <List.Item>
+              <strong>Hetzner Online GmbH</strong> — la API, la base de datos y los servicios del
+              consorcio corren en un servidor propio alojado en Hetzner.
+            </List.Item>
+            <List.Item>
+              <strong>Functional Software, Inc. (Sentry)</strong> — si el despliegue define un DSN
+              de Sentry, el navegador envía reportes de error técnico. La configuración desactiva el
+              envío de datos de usuario y de cookies.
+            </List.Item>
+            <List.Item>
+              <strong>Better Stack (Logtail)</strong> — si el despliegue define un token de Logtail,
+              se envían registros de la aplicación. Antes de salir del navegador se redactan correos
+              y tokens de acceso. La carga del módulo se difiere hasta que el navegador está
+              inactivo.
+            </List.Item>
+            <List.Item>
+              <strong>Google Earth Engine (Google)</strong> — los mosaicos satelitales se piden
+              desde el navegador a earthengine.googleapis.com. Esas solicitudes incluyen la tesela
+              visible, no la cuenta del consorcista.
+            </List.Item>
+            <List.Item>
+              <strong>Google (inicio de sesión opcional)</strong> — si el operador habilita el
+              acceso con Google, el navegador redirige a accounts.google.com para autenticar. El
+              Consorcio recibe la identidad que Google confirma y no la contraseña de esa cuenta.
+            </List.Item>
+            <List.Item>
+              <strong>Correo transaccional</strong> — los avisos (recuperación de contraseña y
+              mensajes operativos) salen por el servidor SMTP que configura el propio consorcio. No
+              hay un proveedor de correo fijo en la aplicación.
+            </List.Item>
+          </List>
 
           <Title order={2} size="h3">
             5. Sus derechos (ARCO)

@@ -3,6 +3,7 @@
  */
 
 import type { DashboardStats, PublicReportCreate, PublicReportResponse, Report } from '../../types';
+import { erroresUi, textoError } from '../userFacingError';
 import { API_PREFIX, API_URL, apiFetch, getAuthToken, LONG_TIMEOUT } from './core';
 import type { ResolveInput, ResolveStatus } from './reportsResolve';
 
@@ -169,7 +170,7 @@ export const publicApi = {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Error al subir foto');
+        throw new Error(error.detail || textoError(erroresUi.subirFoto));
       }
 
       return response.json();
@@ -286,7 +287,7 @@ export const statsApi = {
       });
 
       if (!response.ok) {
-        throw new Error('Error al exportar');
+        throw new Error(textoError(erroresUi.exportarDatos));
       }
 
       return response.blob();

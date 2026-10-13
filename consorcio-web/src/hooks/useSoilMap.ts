@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
+import { mapColorTokens } from '../lib/mapColorTokens';
 import { queryKeys } from '../lib/query';
 
 export interface SoilFeatureProperties {
@@ -9,14 +10,14 @@ export interface SoilFeatureProperties {
 }
 
 export const SOIL_CAPABILITY_COLORS: Record<string, string> = {
-  I: '#1b5e20',
-  II: '#2e7d32',
-  III: '#689f38',
-  IV: '#c0ca33',
-  V: '#f9a825',
-  VI: '#fb8c00',
-  VII: '#ef6c00',
-  VIII: '#c62828',
+  I: mapColorTokens.h1b5e20,
+  II: mapColorTokens.h2e7d32,
+  III: mapColorTokens.h689f38,
+  IV: mapColorTokens.hc0ca33,
+  V: mapColorTokens.hf9a825,
+  VI: mapColorTokens.hfb8c00,
+  VII: mapColorTokens.hef6c00,
+  VIII: mapColorTokens.hc62828,
 };
 
 /**
@@ -47,10 +48,10 @@ export const SOIL_CAPABILITY_ORDER: readonly string[] = [
 ];
 
 export function getSoilColor(capability?: string | null): string {
-  if (!capability) return '#8d6e63';
+  if (!capability) return mapColorTokens.h8d6e63;
   const normalized = capability.trim().toUpperCase();
   const match = normalized.match(/^(VIII|VII|VI|IV|III|II|I)/);
-  return SOIL_CAPABILITY_COLORS[match?.[1] ?? ''] ?? '#8d6e63';
+  return SOIL_CAPABILITY_COLORS[match?.[1] ?? ''] ?? mapColorTokens.h8d6e63;
 }
 
 export interface UseSoilMapOptions {

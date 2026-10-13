@@ -1,6 +1,7 @@
 import { Alert, Box, Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useState } from 'react';
 import { logger } from '../../../lib/logger';
+import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { useLiveRegion } from './liveRegion';
 import { AccessibleError } from './primitives';
 
@@ -70,9 +71,9 @@ export function CoordinatesInput({
         announce('Dirección no encontrada', 'assertive');
       }
     } catch (error) {
-      logger.error('Error al buscar dirección:', error);
-      setError('Error al buscar la dirección');
-      announce('Error en la búsqueda', 'assertive');
+      logger.error(erroresUi.buscarDireccion.titulo, error);
+      setError(textoError(erroresUi.buscarDireccion));
+      announce(textoError(erroresUi.buscarDireccion), 'assertive');
     } finally {
       setSearching(false);
     }
@@ -115,7 +116,7 @@ export function CoordinatesInput({
           </Button>
         </Group>
         <Text id="lat-format-help" size="xs" c="gray.6" mt="xs">
-          Formato: numeros decimales (ej: -32.63000 para latitud sur)
+          Formato: números decimales (ej: -32.63000 para latitud sur)
         </Text>
       </Box>
 

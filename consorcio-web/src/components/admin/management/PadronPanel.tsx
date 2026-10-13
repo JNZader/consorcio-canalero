@@ -18,6 +18,7 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
+import { erroresUi } from '../../../lib/userFacingError';
 import { isValidCUIT } from '../../../lib/validators';
 import { useUserRole } from '../../../stores/authStore';
 import { IconPlus, IconSearch, IconUser } from '../../ui/icons';
@@ -68,7 +69,8 @@ export default function PadronPanel() {
       setConsorcistas(data);
     } catch (err) {
       handleError(err, {
-        title: 'Error al cargar consorcistas',
+        title: erroresUi.cargarPadron.titulo,
+        fallbackMessage: erroresUi.cargarPadron.detalle,
         context: 'PadronPanel.fetchConsorcistas',
       });
     } finally {
@@ -112,7 +114,8 @@ export default function PadronPanel() {
       form.reset();
     } catch (err) {
       handleError(err, {
-        title: 'Error al crear consorcista',
+        title: erroresUi.crearConsorcista.titulo,
+        fallbackMessage: erroresUi.crearConsorcista.detalle,
         context: 'PadronPanel.handleCreate',
       });
     }
@@ -149,7 +152,8 @@ export default function PadronPanel() {
       });
     } catch (err) {
       handleError(err, {
-        title: 'Error al importar padrón',
+        title: erroresUi.importarPadron.titulo,
+        fallbackMessage: erroresUi.importarPadron.detalle,
         context: 'PadronPanel.handleImportPadron',
       });
     } finally {

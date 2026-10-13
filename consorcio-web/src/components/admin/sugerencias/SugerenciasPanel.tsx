@@ -6,6 +6,7 @@ import { useCanales } from '../../../hooks/useCanales';
 import { apiFetch, type Sugerencia, type SugerenciasStats, sugerenciasApi } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
+import { mapColorTokens } from '../../../lib/mapColorTokens';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
 import { IconBuilding, IconCalendar, IconCheck, IconClock, IconUsers } from '../../ui/icons';
 import { ProximaReunionSection } from './components/ProximaReunionSection';
@@ -75,7 +76,7 @@ export default function SugerenciasPanel() {
               data: relevadosFC as import('geojson').FeatureCollection,
               // Match the default relevados palette used by Pilar Azul's map
               // paint factory (see `canalesLayers.ts::CANALES_COLORS`).
-              style: { color: '#1D4ED8', weight: 3, opacity: 0.9 },
+              style: { color: mapColorTokens.h1D4ED8, weight: 3, opacity: 0.9 },
             },
           ]
         : [],

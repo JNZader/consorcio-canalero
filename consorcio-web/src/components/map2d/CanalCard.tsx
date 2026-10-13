@@ -29,7 +29,7 @@
 
 import { Badge, Divider, Stack, Text, Title } from '@mantine/core';
 import { memo } from 'react';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import { formatLongitud } from './canalesFormat';
 import { CANALES_COLORS } from './canalesLayers';
@@ -113,7 +113,7 @@ export const CanalCard = memo(function CanalCard({ properties }: CanalCardProps)
           data-color={etapaColor(prioridad)}
           style={{
             backgroundColor: etapaColor(prioridad),
-            color: '#fff',
+            color: mapColorTokens.hfff,
           }}
         >
           {prioridad}

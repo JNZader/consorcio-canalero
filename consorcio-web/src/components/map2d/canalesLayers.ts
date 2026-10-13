@@ -21,7 +21,7 @@
  */
 
 import type { ExpressionSpecification, LineLayerSpecification } from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { PILAR_AZUL_LAYER_IDS } from '../../stores/mapLayerSyncStore';
 import type { Etapa } from '../../types/canales';
 
@@ -45,30 +45,30 @@ export type CanalesLayerId = (typeof CANALES_Z_ORDER)[number];
 export const CANALES_COLORS = {
   // Relevados — solid blue family keyed by `source_style`.
   /** blue-700 — relevados without intervención programada. */
-  relevadoSinObra: '#1D4ED8',
+  relevadoSinObra: mapColorTokens.h1D4ED8,
   /** blue-500 — relevados con readecuación. */
-  relevadoReadec: '#3B82F6',
+  relevadoReadec: mapColorTokens.h3B82F6,
   /** blue-400 — canales asociados (red receptora / interconexión). */
-  relevadoAsociada: '#60A5FA',
+  relevadoAsociada: mapColorTokens.h60A5FA,
   // Propuestos — ColorBrewer YlOrRd (CART-01, safer for deutan).
   /** YlOrRd 9 — Etapa 1 (Alta). */
-  propuestoAlta: '#B10026',
+  propuestoAlta: mapColorTokens.hB10026,
   /** YlOrRd 7 — Etapa 2 (Media-Alta). */
-  propuestoMediaAlta: '#E31A1C',
+  propuestoMediaAlta: mapColorTokens.hE31A1C,
   /** YlOrRd 5 — Etapa 3 (Media). */
-  propuestoMedia: '#FC4E2A',
+  propuestoMedia: mapColorTokens.hFC4E2A,
   /** YlOrRd 3 — Etapa 4 (Opcional). */
-  propuestoOpcional: '#FD8D3C',
+  propuestoOpcional: mapColorTokens.hFD8D3C,
   /** YlOrRd 2 — Etapa 5 (Largo plazo). */
-  propuestoLargoPlazo: '#FEB24C',
+  propuestoLargoPlazo: mapColorTokens.hFEB24C,
   // Outlines — darker than their fills so the 2 line families read as a
   // cohesive block even when overlapping.
   /** Shared relevado outline — blue-900. */
-  outlineRelevado: '#1E3A8A',
+  outlineRelevado: mapColorTokens.h1E3A8A,
   /** Shared propuesto outline — slate-700. */
-  outlinePropuesto: '#334155',
+  outlinePropuesto: mapColorTokens.h334155,
   /** Official APRHI SR PA opted into the public map. */
-  aprhiSrPa: '#c2410c',
+  aprhiSrPa: mapColorTokens.hc2410c,
 } as const;
 
 /**

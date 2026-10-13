@@ -1,6 +1,7 @@
 import type { FeatureCollection } from 'geojson';
 import { getSoilColor } from '../../hooks/useSoilMap';
 import { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { ROAD_LAYER_LABEL } from './mapLayerLabels';
 
 export type ActiveLegendItem = {
@@ -10,13 +11,10 @@ export type ActiveLegendItem = {
   layerId?: string;
 };
 
-function pushApprovedZoneLegendItems(
-  items: ActiveLegendItem[],
-  approvedZones: FeatureCollection
-) {
+function pushApprovedZoneLegendItems(items: ActiveLegendItem[], approvedZones: FeatureCollection) {
   for (const feature of approvedZones.features) {
     items.push({
-      color: (feature.properties?.__color as string | undefined) || '#1971c2',
+      color: (feature.properties?.__color as string | undefined) || mapColorTokens.h1971c2,
       label: String(feature.properties?.nombre || 'Cuenca'),
       type: 'fill',
       layerId: 'approved_zones',
@@ -58,7 +56,12 @@ export function buildActiveLegendItems(params: {
   const items: ActiveLegendItem[] = [];
 
   if (zonaCollection && zonaCollection.features.length > 0 && vectorVisibility.zona !== false) {
-    items.push({ color: '#FF0000', label: 'Zona Consorcio', type: 'border', layerId: 'zona' });
+    items.push({
+      color: mapColorTokens.hFF0000,
+      label: 'Zona Consorcio',
+      type: 'border',
+      layerId: 'zona',
+    });
   }
 
   if (vectorVisibility.approved_zones && hasApprovedZones && approvedZones) {
@@ -67,7 +70,7 @@ export function buildActiveLegendItems(params: {
 
   if (vectorVisibility.basins && basins && basins.features.length > 0) {
     items.push({
-      color: '#00897B',
+      color: mapColorTokens.h00897B,
       label: 'Subcuencas operativas',
       type: 'border',
       layerId: 'basins',
@@ -398,8 +401,7 @@ export function buildFamilyActiveCounts(params: {
     [LAYER_CATEGORY.TERRITORIO]: 0,
     [LAYER_CATEGORY.PILAR_VERDE]: 0,
     [LAYER_CATEGORY.CANALES]:
-      (vectorVisibility.canales_relevados ? 1 : 0) +
-      (vectorVisibility.canales_propuestos ? 1 : 0),
+      (vectorVisibility.canales_relevados ? 1 : 0) + (vectorVisibility.canales_propuestos ? 1 : 0),
     [LAYER_CATEGORY.ANALISIS]: 0,
   };
 

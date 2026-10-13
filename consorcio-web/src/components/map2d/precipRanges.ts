@@ -1,3 +1,4 @@
+import { mapColorTokens } from '../../lib/mapColorTokens';
 export interface PrecipitationRange {
   readonly colorStops: readonly string[];
   readonly label: string;
@@ -7,12 +8,12 @@ export interface PrecipitationRange {
 }
 
 const PRECIPITATION_COLOR_STOPS = [
-  '#ffffcc',
-  '#c7e9b4',
-  '#7fcdbb',
-  '#41b6c4',
-  '#1d91c0',
-  '#0c2c84',
+  mapColorTokens.hffffcc,
+  mapColorTokens.hc7e9b4,
+  mapColorTokens.h7fcdbb,
+  mapColorTokens.h41b6c4,
+  mapColorTokens.h1d91c0,
+  mapColorTokens.h0c2c84,
 ] as const;
 
 const ANNUAL_PRECIPITATION_RANGE: PrecipitationRange = {

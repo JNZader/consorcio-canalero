@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { publicApi } from '../../lib/api';
 import { clearReportDraft, saveReportDraft } from '../../lib/formDrafts';
 import { logger } from '../../lib/logger';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import type { Ubicacion } from './reportFormTypes';
 import { showNotification, uploadPhotoIfExists } from './reportFormUtils';
 
@@ -131,7 +132,7 @@ export function useReportFormSubmission({
           onLimitReached();
         }
         showNotification('Error', message, 'red');
-        announce('Error al enviar la denuncia. Intentá nuevamente.', 'assertive');
+        announce(textoError(erroresUi.enviarDenuncia), 'assertive');
       } finally {
         setEnviando(false);
       }

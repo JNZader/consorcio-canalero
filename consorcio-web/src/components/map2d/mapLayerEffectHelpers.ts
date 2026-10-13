@@ -4,27 +4,32 @@ import type * as maplibregl from 'maplibre-gl';
 import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
-import { CANAL_LABEL_TEXT_FIELD, buildAlongLineLabelLayer } from './alongLineLabel';
+import { buildAlongLineLabelLayer, CANAL_LABEL_TEXT_FIELD } from './alongLineLabel';
+import {
+  buildCaminosHuecosFuenteFilter,
+  buildCaminosHuecosIgnPaint,
+  buildCaminosHuecosOsmPaint,
+  CAMINOS_HUECOS_FUENTE,
+  CAMINOS_HUECOS_GEOJSON_URL,
+  CAMINOS_HUECOS_LAYER_IDS,
+  CAMINOS_HUECOS_SOURCE_ID,
+} from './caminosHuecosLayers';
 import {
   buildCanalesPropuestasFilter,
   buildCanalesPropuestasPaint,
   buildCanalesRelevadosFilter,
   buildCanalesRelevadosPaint,
 } from './canalesLayers';
-import { ESCUELAS_LAYER_ID, buildEscuelasCirclePaint } from './escuelasLayers';
+import { buildEscuelasCirclePaint, ESCUELAS_LAYER_ID } from './escuelasLayers';
 import type { HazardBasinFilter } from './hazardBasinFilter';
-import {
-  applyLayerMinZoom,
-  CATASTRO_LAYER_MIN_ZOOM,
-  SOIL_LAYER_MIN_ZOOM,
-} from './layerMinZoom';
-import { CATASTRO_FILL_OPACITY, SOURCE_IDS, buildWaterwayLayerConfigs } from './map2dConfig';
+import { applyLayerMinZoom, CATASTRO_LAYER_MIN_ZOOM, SOIL_LAYER_MIN_ZOOM } from './layerMinZoom';
 import { casingLayerId, ensureLineCasing } from './lineCasing';
+import { buildWaterwayLayerConfigs, CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
-  PILAR_VERDE_Z_ORDER,
   buildAgroAceptadaFillPaint,
   buildAgroAceptadaLinePaint,
   buildAgroPresentadaFillPaint,
@@ -34,50 +39,42 @@ import {
   buildBpaHistoricoFillPaint,
   buildBpaHistoricoLinePaint,
   buildPorcentajeForestacionFillPaint,
+  PILAR_VERDE_Z_ORDER,
 } from './pilarVerdeLayers';
 import {
-  PUNTOS_INTERES_HIT_LAYER_ID,
-  PUNTOS_INTERES_LABEL_LAYER_ID,
-  PUNTOS_INTERES_LAYER_ID,
   buildPuntosInteresCirclePaint,
   buildPuntosInteresHitPaint,
   buildPuntosInteresLabelLayer,
+  PUNTOS_INTERES_HIT_LAYER_ID,
+  PUNTOS_INTERES_LABEL_LAYER_ID,
+  PUNTOS_INTERES_LAYER_ID,
 } from './puntosInteresLayers';
 import {
-  CAMINOS_HUECOS_FUENTE,
-  CAMINOS_HUECOS_GEOJSON_URL,
-  CAMINOS_HUECOS_LAYER_IDS,
-  CAMINOS_HUECOS_SOURCE_ID,
-  buildCaminosHuecosFuenteFilter,
-  buildCaminosHuecosIgnPaint,
-  buildCaminosHuecosOsmPaint,
-} from './caminosHuecosLayers';
-import {
+  buildRedVialOficialEstadoFilter,
+  buildRedVialOficialFaltaPaint,
   RED_VIAL_OFICIAL_ESTADO,
   RED_VIAL_OFICIAL_GEOJSON_URL,
   RED_VIAL_OFICIAL_LAYER_IDS,
   RED_VIAL_OFICIAL_SOURCE_ID,
-  buildRedVialOficialEstadoFilter,
-  buildRedVialOficialFaltaPaint,
 } from './redVialOficialLayers';
 import { ensureFlowArrowImage, pickArrowCollection } from './roadFlowArrows';
 import {
-  ROAD_FLOW_ALL_KINDS_VISIBLE,
-  ROAD_FLOW_LAYER_IDS,
-  type RoadFlowKindVisibility,
   applyRoadFlowKindFilter,
   buildRoadFlowCanalPaint,
   buildRoadFlowConduccionArrowLayout,
   buildRoadFlowConduccionArrowPaint,
   buildRoadFlowFlujoPaint,
   buildRoadFlowTipoFilter,
+  ROAD_FLOW_ALL_KINDS_VISIBLE,
+  ROAD_FLOW_LAYER_IDS,
+  type RoadFlowKindVisibility,
 } from './roadFlowLayers';
 import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
 import {
+  buildYpfEstacionBombeoPaint,
   YPF_ESTACION_BOMBEO_GEOJSON,
   YPF_ESTACION_BOMBEO_LAYER_ID,
   YPF_ESTACION_BOMBEO_SOURCE_ID,
-  buildYpfEstacionBombeoPaint,
 } from './ypfEstacionBombeoLayer';
 
 export function syncBaseTileVisibility(map: maplibregl.Map, baseLayer: 'osm' | 'satellite') {
@@ -112,7 +109,9 @@ export function syncWaterwayLayers(
           'line-opacity': 0.9,
           ...(waterwayFile.dashArray
             ? {
-                'line-dasharray': waterwayFile.dashArray.split(',').map((part: string) => Number(part)),
+                'line-dasharray': waterwayFile.dashArray
+                  .split(',')
+                  .map((part: string) => Number(part)),
               }
             : {}),
         },
@@ -162,15 +161,11 @@ export function soilFillColorExpression(): unknown[] {
     ]);
     expr.push(SOIL_CAPABILITY_COLORS[cap]);
   }
-  expr.push('#8d6e63');
+  expr.push(mapColorTokens.h8d6e63);
   return expr;
 }
 
-export function syncSoilLayers(
-  map: maplibregl.Map,
-  isVisible: boolean,
-  archiveKey: string | null
-) {
+export function syncSoilLayers(map: maplibregl.Map, isVisible: boolean, archiveKey: string | null) {
   if (!archiveKey) {
     return;
   }
@@ -203,7 +198,7 @@ export function syncSoilLayers(
       'source-layer': SOIL_PMTILES_LAYER,
       minzoom: SOIL_LAYER_MIN_ZOOM,
       paint: {
-        'line-color': '#6d4c41',
+        'line-color': mapColorTokens.h6d4c41,
         'line-width': 1.2,
         'line-opacity': 0.85,
       },
@@ -248,7 +243,7 @@ export function syncCatastroLayers(
       // fill subtle (the white outline still carries the shape) while making the
       // clickable surface actually perceivable.
       minzoom: CATASTRO_LAYER_MIN_ZOOM,
-      paint: { 'fill-color': '#8d6e63', 'fill-opacity': CATASTRO_FILL_OPACITY },
+      paint: { 'fill-color': mapColorTokens.h8d6e63, 'fill-opacity': CATASTRO_FILL_OPACITY },
     });
     // Pointer affordance: the fill IS the ficha-territorial hit target, so the
     // cursor has to say so. Registered inside the create-once branch — this
@@ -276,7 +271,7 @@ export function syncCatastroLayers(
       'source-layer': 'parcelas_catastro',
       minzoom: CATASTRO_LAYER_MIN_ZOOM,
       paint: {
-        'line-color': '#FFFFFF',
+        'line-color': mapColorTokens.hFFFFFF,
         'line-width': 1.5,
         'line-opacity': 0.85,
       },
@@ -315,7 +310,7 @@ export function syncRoadLayers(
       type: 'line',
       source: SOURCE_IDS.ROADS,
       paint: {
-        'line-color': ['coalesce', ['get', 'color'], '#FFEB3B'],
+        'line-color': ['coalesce', ['get', 'color'], mapColorTokens.hFFEB3B],
         'line-width': 2,
         'line-opacity': 0.9,
       },
@@ -436,7 +431,7 @@ export function syncBasinLayers(
       id: `${SOURCE_IDS.BASINS}-fill`,
       type: 'fill',
       source: SOURCE_IDS.BASINS,
-      paint: { 'fill-color': '#00897B', 'fill-opacity': 0.08 },
+      paint: { 'fill-color': mapColorTokens.h00897B, 'fill-opacity': 0.08 },
     });
   }
 
@@ -446,7 +441,7 @@ export function syncBasinLayers(
       type: 'line',
       source: SOURCE_IDS.BASINS,
       paint: {
-        'line-color': '#00897B',
+        'line-color': mapColorTokens.h00897B,
         'line-width': 1.5,
         'line-opacity': 0.95,
       },
@@ -460,7 +455,7 @@ export function syncBasinLayers(
 export function syncZonaLayer(
   map: maplibregl.Map,
   zonaCollection: FeatureCollection | null,
-  isVisible = true,
+  isVisible = true
 ) {
   ensureGeoJsonSource(map, SOURCE_IDS.ZONA, zonaCollection ?? asFeatureCollection([]));
 
@@ -469,7 +464,7 @@ export function syncZonaLayer(
       id: `${SOURCE_IDS.ZONA}-line`,
       type: 'line',
       source: SOURCE_IDS.ZONA,
-      paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 0.95 },
+      paint: { 'line-color': mapColorTokens.hFF0000, 'line-width': 3, 'line-opacity': 0.95 },
     });
   }
 
@@ -493,7 +488,7 @@ export function syncApprovedZoneLayers(
       type: 'fill',
       source: SOURCE_IDS.APPROVED_ZONES,
       paint: {
-        'fill-color': ['coalesce', ['get', '__color'], '#1971c2'],
+        'fill-color': ['coalesce', ['get', '__color'], mapColorTokens.h1971c2],
         'fill-opacity': 0.18,
       },
     });
@@ -505,7 +500,7 @@ export function syncApprovedZoneLayers(
       type: 'line',
       source: SOURCE_IDS.APPROVED_ZONES,
       paint: {
-        'line-color': ['coalesce', ['get', '__color'], '#1971c2'],
+        'line-color': ['coalesce', ['get', '__color'], mapColorTokens.h1971c2],
         'line-width': 3,
         'line-opacity': 0.95,
       },
@@ -914,7 +909,7 @@ export function syncCanalNetworkLayer(map: maplibregl.Map, isVisible: boolean): 
       paint: {
         // Cyan, thick, high-opacity so the selectable canal reads as the active
         // target while in canal mode.
-        'line-color': '#06b6d4',
+        'line-color': mapColorTokens.h06b6d4,
         'line-width': 4,
         'line-opacity': 0.9,
       },

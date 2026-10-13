@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';
 import { logger } from '../../lib/logger';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibreLoader';
 import formStyles from '../../styles/components/form.module.css';
 import { CoordinatesInput } from '../ui/accessibility';
@@ -218,7 +219,7 @@ export function LocationSection({
     if (markerRef.current) {
       markerRef.current.setLngLat([ubicacion.lng, ubicacion.lat]);
     } else {
-      markerRef.current = new maplibregl.Marker({ color: '#e03131' })
+      markerRef.current = new maplibregl.Marker({ color: mapColorTokens.he03131 })
         .setLngLat([ubicacion.lng, ubicacion.lat])
         .addTo(map);
     }

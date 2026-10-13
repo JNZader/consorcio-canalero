@@ -1,11 +1,7 @@
 import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
-
-import {
-  cursorCollection,
-  rangeCollection,
-  type ElevationProfileHover,
-} from './elevationCursor';
+import { mapColorTokens } from '../../lib/mapColorTokens';
+import { cursorCollection, type ElevationProfileHover, rangeCollection } from './elevationCursor';
 import { ensureGeoJsonSource } from './map2dUtils';
 import type { ProfileRangeStats } from './profileRange';
 
@@ -42,9 +38,9 @@ export function useElevationProfileCursor({
         source: ELEVATION_CURSOR_SOURCE,
         paint: {
           'circle-radius': 7,
-          'circle-color': '#f97316',
+          'circle-color': mapColorTokens.hf97316,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': mapColorTokens.hffffff,
         },
       });
     }
@@ -63,7 +59,7 @@ export function useElevationProfileCursor({
         source: ELEVATION_RANGE_SOURCE,
         filter: ['==', ['get', 'kind'], 'span'],
         paint: {
-          'line-color': '#f97316',
+          'line-color': mapColorTokens.hf97316,
           'line-width': 6,
           'line-opacity': 0.85,
         },
@@ -77,9 +73,9 @@ export function useElevationProfileCursor({
         filter: ['==', ['get', 'kind'], 'min'],
         paint: {
           'circle-radius': 8,
-          'circle-color': '#2563eb',
+          'circle-color': mapColorTokens.h2563eb,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': mapColorTokens.hffffff,
         },
       });
     }
@@ -91,9 +87,9 @@ export function useElevationProfileCursor({
         filter: ['==', ['get', 'kind'], 'max'],
         paint: {
           'circle-radius': 8,
-          'circle-color': '#dc2626',
+          'circle-color': mapColorTokens.hdc2626,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': mapColorTokens.hffffff,
         },
       });
     }

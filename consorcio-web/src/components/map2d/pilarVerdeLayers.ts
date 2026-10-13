@@ -22,7 +22,7 @@
  */
 
 import type { FillLayerSpecification, LineLayerSpecification } from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { PILAR_VERDE_LAYER_IDS } from '../../stores/mapLayerSyncStore';
 
 /**
@@ -69,30 +69,30 @@ export const PILAR_VERDE_COLORS = {
    * four stops read as distinct tiers even when overlaid on the basemap.
    * Kept as individual keys so the legend can render matching color chips.
    */
-  bpaHistoricoStop1: '#DCFCE7', // 1 año — sporadic (green-100)
-  bpaHistoricoStop3: '#86EFAC', // 3 años (green-300)
-  bpaHistoricoStop5: '#16A34A', // 5 años (green-600)
-  bpaHistoricoStop7: '#14532D', // 7 años — full commitment (green-900)
+  bpaHistoricoStop1: mapColorTokens.hDCFCE7, // 1 año — sporadic (green-100)
+  bpaHistoricoStop3: mapColorTokens.h86EFAC, // 3 años (green-300)
+  bpaHistoricoStop5: mapColorTokens.h16A34A, // 5 años (green-600)
+  bpaHistoricoStop7: mapColorTokens.h14532D, // 7 años — full commitment (green-900)
   /** Outline for the historical BPA layer (thin green-900 line). */
-  bpaHistoricoLine: '#14532D',
+  bpaHistoricoLine: mapColorTokens.h14532D,
   /**
    * Agro-aceptada (compliant). Solid blue-600 @ 0.30 opacity. Was green but
    * collided with the BPA green gradient when both layers were on → moved to
    * blue so each layer family is unique.
    */
-  agroAceptadaFill: '#2563EB',
+  agroAceptadaFill: mapColorTokens.h2563EB,
   /** Agro-aceptada outline — blue-800, darker than the fill for separation. */
-  agroAceptadaLine: '#1E40AF',
+  agroAceptadaLine: mapColorTokens.h1E40AF,
   /** Agro-presentada (non-compliant). Solid red-600 @ 0.30 opacity. */
-  agroPresentadaFill: '#DC2626',
+  agroPresentadaFill: mapColorTokens.hDC2626,
   /** Agro-presentada outline — red-800. */
-  agroPresentadaLine: '#991B1B',
+  agroPresentadaLine: mapColorTokens.h991B1B,
   /**
    * Agroforestal zonas — FALLBACK color for zones whose `leyenda` doesn't
    * match one of the 3 known systems. Uses the same warm anchor as the
    * Río Tercero zone so the fallback still reads as part of the zonas block.
    */
-  agroZonasFill: '#FCD34D',
+  agroZonasFill: mapColorTokens.hFCD34D,
   /**
    * Per-zone agroforestal colors. The consorcio zone has EXACTLY 3 systems,
    * each identified by a distinct `leyenda` property. Palette redesign moved
@@ -107,11 +107,11 @@ export const PILAR_VERDE_COLORS = {
    * "zonas agroforestales" block but the 3 systems are now distinguishable
    * at a glance without clicking each polygon.
    */
-  agroZonaRioTercero: '#FCD34D',
-  agroZonaCarcarana: '#F97316',
-  agroZonaTortugas: '#B45309',
+  agroZonaRioTercero: mapColorTokens.hFCD34D,
+  agroZonaCarcarana: mapColorTokens.hF97316,
+  agroZonaTortugas: mapColorTokens.hB45309,
   /** Shared outline for all 3 zonas — amber-700, darker than any of the fills. */
-  agroZonasLine: '#B45309',
+  agroZonasLine: mapColorTokens.hB45309,
   /**
    * Porcentaje forestación obligatoria — categorized into 3 tiers by
    * `forest_obligatoria` (%). Real zone data ranges 2.1–2.88%, not the
@@ -130,18 +130,18 @@ export const PILAR_VERDE_COLORS = {
    * Keys map 1:1 to the legend chips in `LeyendaPanel` — single source of
    * truth for the MapLibre `step` paint expression.
    */
-  porcentajeForestacionBaja: '#EDE9FE',
-  porcentajeForestacionMedia: '#8B5CF6',
-  porcentajeForestacionAlta: '#4C1D95',
+  porcentajeForestacionBaja: mapColorTokens.hEDE9FE,
+  porcentajeForestacionMedia: mapColorTokens.h8B5CF6,
+  porcentajeForestacionAlta: mapColorTokens.h4C1D95,
   // ── Eje palette (mirrored by InfoPanel in Phase 3) ──
   /** Persona — blue-500. */
-  ejePersona: '#3B82F6',
+  ejePersona: mapColorTokens.h3B82F6,
   /** Planeta — emerald-500. */
-  ejePlaneta: '#10B981',
+  ejePlaneta: mapColorTokens.h10B981,
   /** Prosperidad — amber-500. */
-  ejeProsperidad: '#F59E0B',
+  ejeProsperidad: mapColorTokens.hF59E0B,
   /** Alianza — violet-500. */
-  ejeAlianza: '#8B5CF6',
+  ejeAlianza: mapColorTokens.h8B5CF6,
 } as const;
 
 // ---------------------------------------------------------------------------

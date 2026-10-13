@@ -22,7 +22,7 @@
 import type { Feature, FeatureCollection, LineString, Polygon } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
-
+import { mapColorTokens } from '../../../lib/mapColorTokens';
 import type { MeasurementEntry } from './useMeasurement';
 
 const SOURCE_ID = 'measurement-shapes';
@@ -69,7 +69,7 @@ function ensureSourceAndLayers(map: maplibregl.Map): void {
       source: SOURCE_ID,
       filter: ['==', ['geometry-type'], 'Polygon'],
       paint: {
-        'fill-color': '#2563eb',
+        'fill-color': mapColorTokens.h2563eb,
         'fill-opacity': 0.18,
       },
     });
@@ -81,7 +81,7 @@ function ensureSourceAndLayers(map: maplibregl.Map): void {
       source: SOURCE_ID,
       filter: ['==', ['geometry-type'], 'Polygon'],
       paint: {
-        'line-color': '#1d4ed8',
+        'line-color': mapColorTokens.h1d4ed8,
         'line-width': 2,
         'line-opacity': 0.9,
       },
@@ -94,7 +94,7 @@ function ensureSourceAndLayers(map: maplibregl.Map): void {
       source: SOURCE_ID,
       filter: ['==', ['geometry-type'], 'LineString'],
       paint: {
-        'line-color': '#1d4ed8',
+        'line-color': mapColorTokens.h1d4ed8,
         'line-width': 3,
         'line-opacity': 0.95,
       },

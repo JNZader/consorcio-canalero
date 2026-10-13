@@ -34,6 +34,7 @@
 import type { ExpressionSpecification, FilterSpecification } from 'maplibre-gl';
 
 import { ROAD_FLOW_KINDS, type RoadFlowKind } from '../../lib/api/roadFlow';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 import { FLOW_ARROW_IMAGE_ID } from './roadFlowArrows';
 
@@ -113,10 +114,10 @@ export function buildRoadFlowFlujoRadius(totalFlujoNatural: number): ExpressionS
 export function buildRoadFlowFlujoPaint(totalFlujoNatural: number) {
   return {
     'circle-radius': buildRoadFlowFlujoRadius(totalFlujoNatural),
-    'circle-color': '#1565C0',
+    'circle-color': mapColorTokens.h1565C0,
     'circle-opacity': ROAD_FLOW_FLUJO_FILL_OPACITY,
     'circle-stroke-width': 1,
-    'circle-stroke-color': '#0D47A1',
+    'circle-stroke-color': mapColorTokens.h0D47A1,
     'circle-stroke-opacity': buildConfianzaStrokeOpacity(),
   } as const;
 }
@@ -125,10 +126,10 @@ export function buildRoadFlowFlujoPaint(totalFlujoNatural: number) {
 export function buildRoadFlowCanalPaint() {
   return {
     'circle-radius': ROAD_FLOW_CANAL_RADIUS_PX,
-    'circle-color': '#00838F',
+    'circle-color': mapColorTokens.h00838F,
     'circle-opacity': ROAD_FLOW_CANAL_FILL_OPACITY,
     'circle-stroke-width': 3,
-    'circle-stroke-color': '#006064',
+    'circle-stroke-color': mapColorTokens.h006064,
     'circle-stroke-opacity': buildConfianzaStrokeOpacity(),
   } as const;
 }

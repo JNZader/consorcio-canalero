@@ -103,7 +103,7 @@ export function useContactVerification(
             }
       );
     } catch (error) {
-      logger.error('Error al cerrar sesión:', error);
+      logger.error('No se pudo cerrar la sesión en el servidor', error);
     }
   }, []);
 
