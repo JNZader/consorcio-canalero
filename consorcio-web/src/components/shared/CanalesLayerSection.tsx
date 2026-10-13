@@ -181,7 +181,10 @@ export function CanalesLayerSection({
   onFocusCanal,
 }: CanalesLayerSectionProps) {
   const bulk = computeBulkState(entries, vectorVisibility);
-  const masterLabel = bulk.allOn ? `Apagar todos los ${side}` : `Encender todos los ${side}`;
+  const masterChecked = !!masterOn && bulk.allOn;
+  const masterLabel = masterChecked
+    ? `Apagar todos los ${side}`
+    : `Encender todos los ${side}`;
   if (!entries || entries.length === 0) return null;
   const activateMaster = () => {
     if (!masterOn) onLayerVisibilityChange(masterFlag, true);
@@ -196,7 +199,7 @@ export function CanalesLayerSection({
       >
         <Checkbox
           label={masterLabel}
-          checked={bulk.allOn}
+          checked={masterChecked}
           indeterminate={bulk.indeterminate}
           onChange={(event) => {
             const next = event.currentTarget.checked;

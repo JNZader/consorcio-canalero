@@ -1166,6 +1166,7 @@ export default function MapaMapLibre() {
         showIGNOverlay,
         showHillshade,
         showDemOverlay,
+        showSatellite: Boolean(satelliteLayer),
       })
     ) + hazard.visibleRasterLayers.length;
 
