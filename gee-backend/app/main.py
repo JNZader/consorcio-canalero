@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.config import settings
 from app.api.v2.router import api_router as api_v2_router
@@ -29,6 +29,7 @@ from app.core.logging import (
     RequestIdMiddleware,
 )
 from app.core.exceptions import AppException, RateLimitExceededError
+from app.core.metrics import RequestMetricsMiddleware, render_prometheus
 from app.core.middleware import (
     DistributedRateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -231,6 +232,9 @@ app.add_middleware(
     # preflights that cost 800 ms (warm) to 8 s (cold) each.
     max_age=86400,
 )
+# Outermost: times every request that the inner middleware, including the
+# rate limiter, already turned into a status code (OBS-02).
+app.add_middleware(RequestMetricsMiddleware)
 
 # ===========================================
 # ROUTERS
@@ -481,6 +485,15 @@ async def root():
         "service": "Consorcio Canalero Backend",
         "version": APP_VERSION,
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus text for HTTP latency, HTTP 429s, and GEE call latency."""
+    return PlainTextResponse(
+        render_prometheus(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.get("/live")

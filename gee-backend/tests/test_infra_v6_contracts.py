@@ -118,7 +118,7 @@ def test_production_services_drop_capabilities(path: str) -> None:
         for cap in PRIV_DROP_CAPS:
             assert f"- {cap}" in blocks["pgbouncer"]
         assert "edoburu/pgbouncer:v1.23.1-p3@sha256:" in blocks["pgbouncer"]
-    assert "ghcr.io/maplibre/martin:v0.14.2@sha256:" in blocks["martin"]
+    assert "ghcr.io/maplibre/martin:1.16.1@sha256:" in blocks["martin"]
     assert ":-" not in blocks["martin"]
 
 
@@ -140,7 +140,7 @@ def test_known_image_digests_are_the_ones_resolved_for_this_change() -> None:
         in prod
     )
     assert (
-        "ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011"
+        "ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca"
         in prod
     )
     assert (
@@ -178,6 +178,15 @@ def test_pages_promoter_does_not_force_push_or_check_out_the_trigger_sha() -> No
     assert "identical|behind" in script
 
 
+def test_legacy_deploy_compose_is_deprecated_and_unused_by_ci() -> None:
+    text = _read("docker-compose.deploy.yml")
+    assert "DEPRECATED (INF-07)" in text[:800]
+    for workflow in WORKFLOWS.glob("*.yml"):
+        assert "docker-compose.deploy.yml" not in workflow.read_text(encoding="utf-8"), (
+            workflow.name
+        )
+
+
 def test_stock_caddyfile_has_no_rate_limit_directive() -> None:
     stock = _read("deploy/Caddyfile")
     limited = _read("deploy/Caddyfile.with-ratelimit")
@@ -187,6 +196,8 @@ def test_stock_caddyfile_has_no_rate_limit_directive() -> None:
         assert "Strict-Transport-Security" in text
         assert "preload" in text
         assert "-Server" in text
+        assert "-Via" in text
+        assert "defer" in text
         assert "max_size 20MB" in text
     assert "rate_limit {" not in stock
     assert "rate_limit {" in limited

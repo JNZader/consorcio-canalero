@@ -32,11 +32,13 @@
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "DENY"
-		# BE-05: no anunciar el proxy. Caddy agrega Server; Via aparece en
-		# algunos saltos. El signo menos las quita de la respuesta.
+		# BE-05: no anunciar el proxy. reverse_proxy agrega Via y Server
+		# después de este handler; `defer` aplica el borrado a la
+		# respuesta ya escrita.
 		-Server
 		-Via
 		-X-XSS-Protection
+		defer
 	}
 	log {
 		output stdout

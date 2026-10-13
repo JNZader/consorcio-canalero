@@ -27,6 +27,7 @@
 		-Server
 		-Via
 		-X-XSS-Protection
+		defer
 	}
 	log {
 		output stdout

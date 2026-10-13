@@ -140,7 +140,7 @@ jobs:
       # container with GDAL + WhiteboxTools + Earth Engine the backend
       # CI does NOT have, so their tests skip here. The floor is 70
       # (CI-04); the v6 verification measured about 83% on this suite.
-      - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-report=json:coverage.json --cov-fail-under=70 -q --no-header --tb=short
+      - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-report=json:coverage.json --cov-fail-under=70 -n auto --dist loadscope -q --no-header --tb=short
       - run: python3 scripts/critical_coverage_gate.py coverage.json
 
   mutation-backend:
