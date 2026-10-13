@@ -14,6 +14,7 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
@@ -258,7 +259,7 @@ async def get_public_current_image(
     """Regenerate only the operator-approved current image; accepts no caller inputs."""
     _set_cache(response, _PUBLIC_DEGRADED_CACHE)
     try:
-        raw = service.get_setting(db, "mapa/imagen_principal")
+        raw = await run_in_threadpool(service.get_setting, db, "mapa/imagen_principal")
     except Exception as exc:
         logger.warning(
             "Public current map setting unavailable",

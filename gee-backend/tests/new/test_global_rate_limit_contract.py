@@ -174,3 +174,76 @@ def test_the_disabled_switch_is_what_the_suite_fixture_uses(monkeypatch) -> None
     responses = asyncio.run(_drive(limiter.max_requests + 1))
 
     assert {response.status_code for response in responses} == {200}
+
+
+@pytest.mark.rate_limited
+def test_public_map_get_sends_etag_and_honors_if_none_match(monkeypatch) -> None:
+    from app.config import settings
+    from app.core.middleware import _etag_for_body
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    public_path = "/api/v2/public/settings/branding"
+
+    async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse({"ok": True})
+
+    app = Starlette(routes=[Route(public_path, endpoint, methods=["GET"])])
+    app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=get_rate_limiter())
+
+    async def run() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.21", 12345))
+        async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+            first = await client.get(public_path)
+            second = await client.get(public_path, headers={"If-None-Match": first.headers["etag"]})
+            return first, second
+
+    first, second = asyncio.run(run())
+    assert first.status_code == 200
+    assert first.headers["etag"] == _etag_for_body(first.content)
+    assert second.status_code == 304
+    assert second.headers["etag"] == first.headers["etag"]
+    assert second.content == b""
+    assert second.headers["cache-control"] == first.headers["cache-control"]
+
+
+@pytest.mark.rate_limited
+def test_only_exact_tile_urls_skip_the_generic_budget(monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    limiter = get_rate_limiter()
+    fake_tile = "/api/v2/geo/layers/tiles/sentinel2"
+    real_tile = "/api/v2/geo/layers/11111111-1111-1111-1111-111111111111/tiles/1/0/0.png"
+    worker_tile = "/tiles/dem-1/2/1/0.png"
+
+    async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse({"ok": True})
+
+    app = Starlette(
+        routes=[
+            Route(fake_tile, endpoint, methods=["GET"]),
+            Route(
+                "/api/v2/geo/layers/{layer_id}/tiles/{z}/{x}/{y}.png",
+                endpoint,
+                methods=["GET"],
+            ),
+            Route("/tiles/{layer_id}/{z}/{x}/{y}.png", endpoint, methods=["GET"]),
+        ]
+    )
+    app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=limiter)
+
+    async def hammer(path: str, client_ip: str, count: int) -> list[int]:
+        transport = httpx.ASGITransport(app=app, client=(client_ip, 12345))
+        async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+            return [(await client.get(path)).status_code for _ in range(count)]
+
+    async def run() -> tuple[list[int], list[int], list[int]]:
+        fake = await hammer(fake_tile, "198.51.100.31", limiter.max_requests + 1)
+        real = await hammer(real_tile, "198.51.100.32", limiter.max_requests + 5)
+        worker = await hammer(worker_tile, "198.51.100.33", limiter.max_requests + 5)
+        return fake, real, worker
+
+    fake, real, worker = asyncio.run(run())
+    assert fake[-1] == 429
+    assert all(code == 200 for code in real)
+    assert all(code == 200 for code in worker)

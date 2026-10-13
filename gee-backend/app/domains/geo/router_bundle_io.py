@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.core.logging import get_logger
+from app.db.session import get_db, relax_statement_timeout
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.router_common import (
@@ -33,6 +34,8 @@ from app.domains.geo.router_common import (
 #   - largest known production bundle: ~150 MB compressed, ~600 MB
 #     uncompressed, ~30 files (DEM tiles + vectors + manifest.json).
 #   - 4× headroom gives operators slack for ad-hoc imports.
+logger = get_logger(__name__)
+
 _MAX_BUNDLE_BYTES = 500 * 1024 * 1024  # 500 MB compressed upload
 _MAX_BUNDLE_FILES = 200  # member count inside the zip
 _MAX_FILE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GB per file
@@ -189,7 +192,7 @@ def export_geo_bundle(
 
 
 @router.post("/bundle/import", response_model=GeoBundleImportResponse)
-async def import_geo_bundle(
+def import_geo_bundle(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
@@ -202,10 +205,11 @@ async def import_geo_bundle(
     # Cap the compressed upload BEFORE buffering it in memory. We read in
     # chunks and bail on the first byte past the limit, so a 10 GB upload
     # from a phished admin can't OOM the worker.
+    relax_statement_timeout(db, "120s")
     buffer = io.BytesIO()
     received = 0
     while True:
-        chunk = await file.read(1024 * 1024)
+        chunk = file.file.read(1024 * 1024)
         if not chunk:
             break
         received += len(chunk)
@@ -294,7 +298,11 @@ async def import_geo_bundle(
         raise
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("geo_bundle.import_failed")
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo importar el bundle geográfico.",
+        ) from exc
 
     return GeoBundleImportResponse(
         vectorsImported=vectors_imported,

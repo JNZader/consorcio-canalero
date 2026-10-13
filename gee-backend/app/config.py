@@ -380,12 +380,14 @@ class Settings(BaseSettings):
     # interpolated field sampled sub-pixel is exact, not approximate).
     ficha_low_confidence_pixel_ratio: float = 10.0
     # F1 (R1-002 + R4-002) — transaction-local statement_timeout for the compute
-    # path. ``_resolver_parcela`` (ST_Transform/ST_Area) and ``_suelos_dataset``
-    # (ST_Intersection over suelos_catastro) run on the sync request session,
-    # which has no timeout of its own; the area cap is a loose 20 000 ha, so ONE
-    # legitimate giant catastro parcel could otherwise pin a DB connection + a
-    # threadpool thread unbounded. 5 s is deliberately generous over the 1.5 s
-    # p95 gate — it only ever trips a pathological query, never a normal ficha.
+    # path. ``_resolver_parcela`` (stored EPSG:32720, with ST_Transform only as
+    # fallback) and ``_suelos_dataset`` (ST_Intersection over suelos_catastro)
+    # run on the sync request session. The session itself now has a 15 s
+    # statement_timeout (DB-01); this 5 s ceiling is tighter. The area cap is a
+    # loose 20 000 ha, so ONE legitimate giant catastro parcel could otherwise
+    # pin a DB connection + a threadpool thread for the whole 15 s. 5 s is
+    # deliberately generous over the 1.5 s p95 gate — it only ever trips a
+    # pathological query, never a normal ficha.
     ficha_statement_timeout_ms: int = 5000
     # Area id the ficha resolves precipitation normals for. The CHIRPS pipeline
     # (``etl/generate_chirps_normals.py``) registers its 13 rasters under an

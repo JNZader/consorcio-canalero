@@ -502,9 +502,12 @@ def compute_road_flow_crossings(area_id: str, job_id: str | None = None) -> dict
 @celery_app.task(queue="geo", name="geo.intelligence.refresh_materialized_views")
 def task_refresh_materialized_views() -> dict:
     """Refresh all geo materialized views (zone stats, alert summary, conflict density)."""
+    from app.db.session import relax_statement_timeout
+
     deps = _get_deps()
     db = _get_db()
     try:
+        relax_statement_timeout(db, "300s")
         result = deps["intel_repo"].refresh_materialized_views(db)
         logger.info("matviews.refreshed", views=result)
         return {"status": "completed", **result}

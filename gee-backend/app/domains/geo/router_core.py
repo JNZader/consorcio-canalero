@@ -8,6 +8,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 from fastapi import Path as PathParam
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import and_, or_
@@ -418,6 +419,19 @@ def trigger_dem_pipeline(
 # ──────────────────────────────────────────────
 
 
+def _public_layer_for_rescale(db: Session, layer_id: uuid.UUID):
+    """Sync lookup so the async tile proxy does not block the event loop."""
+    return (
+        db.query(GeoLayer)
+        .filter(
+            GeoLayer.id == layer_id,
+            GeoLayer.tipo.in_(_public_layer_types()),
+            _public_layer_source_filter(),
+        )
+        .one_or_none()
+    )
+
+
 @router.get("/layers/{layer_id}/tiles/{z}/{x}/{y}.png")
 async def proxy_tile(
     layer_id: uuid.UUID,
@@ -443,9 +457,10 @@ async def proxy_tile(
     on tile requests, and DEM tiles are not sensitive data.
 
     z/x/y are BOUNDED here. This route is public AND exempt from the global
-    rate limiter (``DistributedRateLimitMiddleware`` skips any path containing
-    ``/tiles/``, because tiles are high-volume), so an unbounded ``z`` was an
-    unauthenticated, unthrottled amplification knob: the tile service computes
+    rate limiter (only the exact ``/tiles/{id}/{z}/{x}/{y}.png`` and
+    ``/api/v2/geo/layers/{id}/tiles/{z}/{x}/{y}.png`` prefixes), so an unbounded
+    ``z`` was an unauthenticated, unthrottled amplification knob: the tile
+    service computes
     ``2 ** z`` to derive the mercator bounds, and a caller-chosen exponent in
     the billions turns that into a multi-hundred-MB bigint on the geo-worker.
     Zoom 22 is already ~4 cm/px — far past any DEM product we serve.
@@ -461,15 +476,7 @@ async def proxy_tile(
     canonical_rescale = None
     if parsed_rescale_min is not None:
         try:
-            layer = (
-                db.query(GeoLayer)
-                .filter(
-                    GeoLayer.id == layer_id,
-                    GeoLayer.tipo.in_(_public_layer_types()),
-                    _public_layer_source_filter(),
-                )
-                .one_or_none()
-            )
+            layer = await run_in_threadpool(_public_layer_for_rescale, db, layer_id)
         except SQLAlchemyError as exc:
             # The layer-tipo lookup hit a database failure. It exists only to
             # resolve the CANONICAL rescale override for the layer's type, so

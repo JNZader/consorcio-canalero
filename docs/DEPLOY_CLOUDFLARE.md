@@ -34,7 +34,9 @@ Set different `VITE_API_URL` values for Production and Preview environments.
 
 ## SPA Routing
 
-The file `consorcio-web/public/_redirects` handles client-side routing by redirecting all paths to `index.html` with a 200 status. Cloudflare Pages copies files from `public/` into the build output automatically via Vite.
+Cloudflare Pages serves the SPA itself **only when the build output has no top-level `404.html`**. Do not add `public/404.html`, and do not add `/* /index.html 200` or `/* / 200` to `public/_redirects`. `/index.html` already 308-redirects to `/` (pretty URLs); a splat onto that URL does not restore deep links, and a root `404.html` makes `/mapa`, `/participacion` and `/admin` return 404.
+
+`public/_redirects` only keeps the explicit 301s for retired URLs (`/reportes`, `/sugerencias`). Missing hashed chunks and other static files are turned into a plain-text 404 by `public/_worker.js`, which Vite copies to `dist/_worker.js` (Pages advanced mode). A `functions/` directory was not invoked on the preview for this project. `npm run test:pages-routing` (and the Frontend build job) boots that output with Wrangler and checks both sides.
 
 ## Security Headers
 

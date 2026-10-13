@@ -237,10 +237,14 @@ export default defineConfig({
           // otherwise the SW happily serves the build's own SHA forever
           // and the in-app "Reload to update" banner never fires.
           'version.json',
-          // Map stacks stay out of the install precache. The first visit to
-          // /mapa fetches them and the runtime CacheFirst below keeps them
-          // for later offline use. Precaching them made every install pay
-          // ~1 MB before the visitor opened a map.
+          // Pages consumes dist/_worker.js as the advanced-mode worker.
+          // Precaching it would ship the worker source to every client and
+          // a stale copy would not be the file Pages executes.
+          '_worker.js',
+          // Map stacks stay out of the install precache (auditoría v6,
+          // PERF-07). The first visit to /mapa fetches them and the runtime
+          // CacheFirst below keeps them for later offline use. Precaching
+          // them made every install pay ~1 MB before the visitor opened a map.
           '**/vendor-maplibre-*.js',
           '**/MapaMapLibre-*.js',
           '**/MapaPage-*.js',

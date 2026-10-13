@@ -5,7 +5,7 @@ import sys
 from collections.abc import AsyncGenerator, Generator
 from uuid import uuid4
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -35,6 +35,37 @@ _IS_CELERY_PROCESS = _argv0_basename in {"celery", "celery.exe", "__main__.py"} 
 _POOL_SIZE = 5 if _IS_CELERY_PROCESS else 20
 _MAX_OVERFLOW = 5 if _IS_CELERY_PROCESS else 20
 
+# DB-01. The API role also gets these via ALTER ROLE in provision_app_rw.sql.
+# The connect hook covers the process even before that role is activated.
+# Ficha keeps a tighter transaction-local 5s on top of this ceiling.
+API_STATEMENT_TIMEOUT_MS = 15_000
+API_IDLE_IN_TRANSACTION_TIMEOUT_MS = 60_000
+CELERY_STATEMENT_TIMEOUT_MS = 300_000
+CELERY_IDLE_IN_TRANSACTION_TIMEOUT_MS = 300_000
+
+
+def _apply_session_timeouts(dbapi_connection, _connection_record) -> None:
+    if _IS_CELERY_PROCESS:
+        statement_ms = CELERY_STATEMENT_TIMEOUT_MS
+        idle_ms = CELERY_IDLE_IN_TRANSACTION_TIMEOUT_MS
+    else:
+        statement_ms = API_STATEMENT_TIMEOUT_MS
+        idle_ms = API_IDLE_IN_TRANSACTION_TIMEOUT_MS
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute(f"SET statement_timeout = {int(statement_ms)}")
+        cursor.execute(f"SET idle_in_transaction_session_timeout = {int(idle_ms)}")
+    finally:
+        cursor.close()
+
+
+def relax_statement_timeout(db: Session, timeout: str) -> None:
+    """Raise the 15s API ceiling for one transaction (imports, matview refresh)."""
+    db.execute(
+        text("SELECT set_config('statement_timeout', :timeout, true)"),
+        {"timeout": timeout},
+    )
+
 
 # --- Sync engine (for domain services, repositories, migrations) ---
 #
@@ -63,6 +94,8 @@ else:
         pool_size=_POOL_SIZE,
         max_overflow=_MAX_OVERFLOW,
     )
+
+event.listen(engine, "connect", _apply_session_timeouts)
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
@@ -128,6 +161,8 @@ else:
         pool_size=_POOL_SIZE,
         max_overflow=_MAX_OVERFLOW,
     )
+
+event.listen(async_engine.sync_engine, "connect", _apply_session_timeouts)
 
 AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 

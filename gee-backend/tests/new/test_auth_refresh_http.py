@@ -137,7 +137,10 @@ def test_login_sets_refresh_cookie_and_refresh_rotates_it(client: TestClient, se
     _discard_async_pool()
     refreshed = client.post(
         "/api/v2/auth/jwt/refresh",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Origin": "http://localhost:3000",
+        },
     )
     assert refreshed.status_code == 200, f"refresh failed: {refreshed.text}"
     body = refreshed.json()
@@ -184,7 +187,10 @@ def test_refresh_works_again_with_rotated_cookie(client: TestClient, seeded_user
         _discard_async_pool()
         resp = client.post(
             "/api/v2/auth/jwt/refresh",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Origin": "http://localhost:3000",
+            },
         )
         assert resp.status_code == 200, f"rotation #{i + 1} failed: {resp.text}"
         cookie = client.cookies.get("refresh_token")
