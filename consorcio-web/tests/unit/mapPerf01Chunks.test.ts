@@ -32,9 +32,10 @@ describe('PERF-01 first-paint chunks', () => {
     expect(mapa).toMatch("lazy(() => import('./map/DrawControl'))");
   });
 
-  it('dns-prefetches CARTO, not tile.openstreetmap.org', () => {
+  it('dns-prefetches Esri streets, not CARTO or tile.openstreetmap.org', () => {
     const html = readFileSync(join(here, '../../index.html'), 'utf8');
     expect(html).not.toMatch('tile.openstreetmap.org');
-    expect(html).toMatch('basemaps.cartocdn.com');
+    expect(html).not.toMatch('basemaps.cartocdn.com');
+    expect(html).toMatch('server.arcgisonline.com');
   });
 });

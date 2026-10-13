@@ -22,7 +22,8 @@ describe('Cloudflare Pages security headers', () => {
 
     expect(cspLine).toContain('connect-src');
     expect(cspLine).toContain('https://tiles.openfreemap.org');
-    expect(cspLine).toContain('https://basemaps.cartocdn.com');
+    expect(cspLine).toContain('https://server.arcgisonline.com');
+    expect(cspLine).not.toContain('https://basemaps.cartocdn.com');
     expect(cspLine).not.toContain('https://demotiles.maplibre.org');
   });
 });
