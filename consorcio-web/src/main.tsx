@@ -66,14 +66,20 @@ function isChunkLoadError(reason: unknown): boolean {
   return /dynamically imported module|module script failed|chunk/i.test(message);
 }
 
-globalThis.addEventListener('unhandledrejection', (event) => {
-  if (!isChunkLoadError(event.reason)) return;
-
-  const alreadyReloaded = sessionStorage.getItem(CHUNK_RELOAD_GUARD) === '1';
-  if (alreadyReloaded) return;
-
+function reloadOnceForStaleChunk(): void {
+  if (sessionStorage.getItem(CHUNK_RELOAD_GUARD) === '1') return;
   sessionStorage.setItem(CHUNK_RELOAD_GUARD, '1');
   globalThis.location.reload();
+}
+
+globalThis.addEventListener('unhandledrejection', (event) => {
+  if (!isChunkLoadError(event.reason)) return;
+  reloadOnceForStaleChunk();
+});
+
+globalThis.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  reloadOnceForStaleChunk();
 });
 
 globalThis.addEventListener('load', () => {
