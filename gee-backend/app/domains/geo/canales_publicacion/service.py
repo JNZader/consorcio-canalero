@@ -38,7 +38,7 @@ _LIST_SQL = text(
     SELECT c.id, c.estado, c.nombre AS nombre_interno,
            COALESCE(p.nombre_publico, c.nombre) AS nombre_publico,
            COALESCE(p.publicado, TRUE) AS publicado,
-           c.longitud_m,
+           COALESCE(c.longitud_m, ST_Length(c.geom::geography)) AS longitud_m,
            ST_AsGeoJSON(c.geom) AS geom_json
     FROM canal_consorcio c
     LEFT JOIN canal_publicacion p ON p.canal_id = c.id
@@ -66,7 +66,7 @@ _PATCH_SQL = text(
 _PUBLIC_SQL = text(
     """
     SELECT c.id, c.estado, COALESCE(p.nombre_publico, c.nombre) AS nombre,
-           c.longitud_m,
+           COALESCE(c.longitud_m, ST_Length(c.geom::geography)) AS longitud_m,
            ST_AsGeoJSON(c.geom) AS geom_json
     FROM canal_consorcio c
     JOIN canal_publicacion p ON p.canal_id = c.id
@@ -77,7 +77,7 @@ _PUBLIC_SQL = text(
 _PUBLIC_FALLBACK_SQL = text(
     """
     SELECT c.id, c.estado, c.nombre,
-           c.longitud_m,
+           COALESCE(c.longitud_m, ST_Length(c.geom::geography)) AS longitud_m,
            ST_AsGeoJSON(c.geom) AS geom_json
     FROM canal_consorcio c
     """
