@@ -3,8 +3,9 @@
 #
 # One weekly PR per ecosystem for minor+patch, and a separate PR for majors.
 # github-actions and docker only accept cooldown.default-days.
-# Python image pre-releases (3.15.0rc*, alpha, beta) are ignored: Dependabot
-# classified 3.14.7 → 3.15.0rc2 as an in-line bump (#512).
+# Python image pre-releases and the 3.15.0-slim-trixie tag are ignored:
+# Dependabot classified 3.14.7 → 3.15.0rc2 as an in-line bump (#512).
+# ipython majors are ignored (#523); minors and patches still group.
 
 version: 2
 
@@ -66,6 +67,11 @@ updates:
       - "python"
       - "backend"
       - "automated"
+    ignore:
+      # #523. ipython 9 was the major over the old 8.x floor; the lock is
+      # already on 9.17.1. Further majors stay out of the weekly group.
+      - dependency-name: "ipython"
+        update-types: ["version-update:semver-major"]
     groups:
       pip-minor-patch:
         patterns:
@@ -110,6 +116,11 @@ updates:
       # `npm ci` fail with ERESOLVE. Drop this once the plugin accepts >=0.154.
       - dependency-name: "oxc-transform-react"
         versions: [">=0.153.0"]
+      # Alias of the JS compiler API that Stryker's sandbox preprocessor
+      # imports. TypeScript 7 does not export that API; 6.0.3 does.
+      # `typescript` itself stays on 7.x for tsc.
+      - dependency-name: "typescript-for-stryker"
+        versions: [">=7.0.0"]
     groups:
       npm-minor-patch:
         patterns:
@@ -144,8 +155,10 @@ updates:
       - "docker"
       - "automated"
     ignore:
-      # #512 opened 3.15.0rc2 inside the minor/patch group. Ignore pre-release
-      # tags; a stable 3.15 lands in docker-major.
+      # #512 opened 3.15.0rc2 inside the minor/patch group. Wildcards cover
+      # later pre-release tags. The explicit list is the 3.15 set from #523,
+      # including the stable 3.15.0-slim-trixie tag (the wildcards do not
+      # match it: there is no rc/alpha/beta in that string).
       - dependency-name: "python"
         versions:
           - "*rc*"
@@ -154,6 +167,10 @@ updates:
           - "*preview*"
           - "*0a*"
           - "*0b*"
+          - "3.15.0rc1-slim-trixie"
+          - "3.15.0rc2-slim-trixie"
+          - "3.15.0rc3-slim-trixie"
+          - "3.15.0-slim-trixie"
     groups:
       docker-minor-patch:
         patterns:
