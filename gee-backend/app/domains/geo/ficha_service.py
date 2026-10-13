@@ -402,8 +402,10 @@ def _resolver_parcela(db: Session, nomenclatura: str) -> tuple[str, str, float]:
         fila = db.execute(
             text(
                 "SELECT ST_AsGeoJSON(geometria) AS g4326, "
-                "ST_AsGeoJSON(ST_Transform(geometria, 32720)) AS g32720, "
-                "ST_Area(ST_Transform(geometria, 32720)) AS area_m2 "
+                "ST_AsGeoJSON(COALESCE(geometria_32720, "
+                "ST_Transform(geometria, 32720))) AS g32720, "
+                "ST_Area(COALESCE(geometria_32720, ST_Transform(geometria, 32720))) "
+                "AS area_m2 "
                 "FROM parcelas_catastro WHERE nomenclatura = :nom LIMIT 1"
             ),
             {"nom": nomenclatura},
@@ -437,20 +439,22 @@ _PARCELAS_SQL = text(
     """
     WITH filas AS (
         SELECT DISTINCT ON (p.nomenclatura) p.nomenclatura AS nomenclatura,
-               p.geometria AS geometria
+               p.geometria AS geometria,
+               COALESCE(p.geometria_32720, ST_Transform(p.geometria, 32720)) AS geom_32720
         FROM parcelas_catastro p
         WHERE p.nomenclatura = ANY(CAST(:noms AS text[]))
         ORDER BY p.nomenclatura
     ), unida AS (
         SELECT array_agg(nomenclatura ORDER BY nomenclatura) AS encontradas,
-               ST_CollectionExtract(ST_MakeValid(ST_Union(geometria)), 3) AS geom
+               ST_CollectionExtract(ST_MakeValid(ST_Union(geometria)), 3) AS geom,
+               ST_CollectionExtract(ST_MakeValid(ST_Union(geom_32720)), 3) AS geom_32720
         FROM filas
     )
     SELECT encontradas,
            geom IS NULL OR ST_IsEmpty(geom) AS vacio,
            ST_AsGeoJSON(geom) AS g4326,
-           ST_AsGeoJSON(ST_Transform(geom, 32720)) AS g32720,
-           ST_Area(ST_Transform(geom, 32720)) AS area_m2
+           ST_AsGeoJSON(geom_32720) AS g32720,
+           ST_Area(geom_32720) AS area_m2
     FROM unida
     """
 )
@@ -483,6 +487,8 @@ def _resolver_parcelas(db: Session, nomenclaturas: list[str]) -> tuple[str, str,
     return fila.g4326, fila.g32720, float(fila.area_m2)
 
 
+# The caller-drawn polygon is not a stored row, so there is no ``geometria_32720``
+# to reuse (DB-02). One ``ST_Transform`` of the repaired GeoJSON stays here.
 # The caller-drawn polygon repaired in PostGIS (§2.7, JDB-008). ``ST_MakeValid``
 # fixes a self-intersecting (bow-tie) ring; ``ST_CollectionExtract(..., 3)`` keeps
 # only the polygonal component (a bow-tie that collapses to a line/point yields an

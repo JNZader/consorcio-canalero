@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.router_common import parse_bounded_json_object
 from app.domains.geo.rainfall.repository import RainfallRepository, ScopeConfigurationError
@@ -30,6 +31,8 @@ from app.domains.geo.rainfall.scope import (
     UnsupportedDirectScope,
     executable_scope,
 )
+
+logger = get_logger(__name__)
 
 MAX_RAINFALL_REQUEST_BYTES = 16_384
 
@@ -112,7 +115,8 @@ def resolve_scope(
             return {"choices": choices, "regional_estimate": True}
         scope = executable_scope(ScopeRef(**payload.model_dump()))
     except (UnsupportedDirectScope, NoScopeMatch, ScopeConfigurationError, ValueError) as exc:
-        raise HTTPException(422, detail=str(exc)) from exc
+        logger.warning("rainfall.scope_rejected", error_type=type(exc).__name__)
+        raise HTTPException(422, detail="No se pudo resolver el alcance de lluvia.") from exc
     return {"scope": scope, "regional_estimate": scope.regional_estimate}
 
 
@@ -185,7 +189,8 @@ def read_analysis(
     try:
         scope = executable_scope(ScopeRef(**payload.scope.model_dump()))
     except (UnsupportedDirectScope, NoScopeMatch, ValueError) as exc:
-        raise HTTPException(422, detail=str(exc)) from exc
+        logger.warning("rainfall.analysis_rejected", error_type=type(exc).__name__)
+        raise HTTPException(422, detail="No se pudo leer el análisis de lluvia.") from exc
     request = {
         "scope": {"kind": scope.kind, "id": scope.id, "version": scope.version},
         "year": payload.year,
