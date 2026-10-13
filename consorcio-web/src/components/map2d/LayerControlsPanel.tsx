@@ -534,7 +534,9 @@ export function LayerControlsPanel({
     vectorVisibility,
     canalChildIds: canalesChildIds,
     showIGNOverlay,
+    showHillshade,
     showDemOverlay,
+    showSatellite: Boolean(satelliteLayer),
   });
   const canalesActiveCount = familyActiveCounts[LAYER_CATEGORY.CANALES];
 
@@ -1165,12 +1167,17 @@ export function LayerControlsPanel({
             onHideSatellite?.();
             return;
           }
+          if (id === '__hillshade') {
+            onShowHillshadeChange?.(false);
+            return;
+          }
           onLayerVisibilityChange(id, false);
         }}
         onClearAll={() => {
           hideAllCatalogLayers('map2d');
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
+          onShowHillshadeChange?.(false);
           hazardLayerControl?.onActiveChange(false);
           onHideSatellite?.();
         }}

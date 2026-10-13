@@ -93,6 +93,16 @@ describe('buildFamilyActiveCounts (T3c fix 3)', () => {
     expect(sumFamilyActiveCounts(counts)).toBe(6);
   });
 
+  it('counts the published satellite image in BASE (MAP-10)', () => {
+    const counts = buildFamilyActiveCounts({
+      layerItems,
+      vectorVisibility: {},
+      showSatellite: true,
+      showHillshade: true,
+    });
+    expect(counts[LAYER_CATEGORY.BASE]).toBe(2);
+  });
+
   it('counts canal masters, not children (UX-14)', () => {
     const counts = buildFamilyActiveCounts({
       layerItems,

@@ -586,7 +586,7 @@ export const useMapLayerSyncStore = create<
       hideAllCatalogLayers: (view) =>
         set((state) => {
           const nextVectors = { ...state[view].visibleVectors };
-          for (const id of MAP2D_CATALOG_VECTOR_IDS) {
+          for (const id of Object.keys(nextVectors)) {
             nextVectors[id] = false;
           }
           return {

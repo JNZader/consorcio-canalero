@@ -37,4 +37,34 @@ describe('En el mapa satellite row (UX-02)', () => {
     fireEvent.click(screen.getByTestId('map-active-remove-__satellite'));
     expect(onHideSatellite).toHaveBeenCalledTimes(1);
   });
+
+  it('clears hillshade from Apagar todo and the row remove (MAP-14)', () => {
+    const onShowHillshadeChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <LayerControlsPanel
+          baseLayer="osm"
+          onBaseLayerChange={() => {}}
+          layerItems={[]}
+          vectorVisibility={{}}
+          onLayerVisibilityChange={() => {}}
+          showIGNOverlay={false}
+          onShowIGNOverlayChange={() => {}}
+          showHillshade
+          onShowHillshadeChange={onShowHillshadeChange}
+          hillshadeAvailable
+          demEnabled={false}
+          showDemOverlay={false}
+          onShowDemOverlayChange={() => {}}
+          activeDemLayerId={null}
+          onActiveDemLayerIdChange={() => {}}
+          demOptions={[]}
+        />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByTestId('map-active-remove-__hillshade'));
+    expect(onShowHillshadeChange).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByTestId('map-active-clear'));
+    expect(onShowHillshadeChange).toHaveBeenCalledWith(false);
+  });
 });
