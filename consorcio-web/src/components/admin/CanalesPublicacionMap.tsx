@@ -1,8 +1,8 @@
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson';
-import * as maplibregl from 'maplibre-gl';
 import type { DataDrivenPropertyValueSpecification, FilterSpecification } from 'maplibre-gl';
-import { bootMapLibreWorker } from '../../lib/maplibreLoader';
+import * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
+import { bootMapLibreWorker } from '../../lib/maplibreLoader';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
@@ -20,6 +20,7 @@ import {
   overlayLineOpacity,
   pickDefaultHit,
 } from '../../lib/canalesPublicacionOverlap';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 
 const CONS_SRC = 'pub-consorcio';
@@ -62,10 +63,10 @@ function srPaPaint(
     'line-color': [
       'case',
       ['==', ['get', 'list_id'], selected],
-      '#facc15',
+      mapColorTokens.hfacc15,
       ['==', ['get', 'Estado_Registro'], 'Eliminado'],
-      '#78716c',
-      '#c2410c',
+      mapColorTokens.h78716c,
+      mapColorTokens.hc2410c,
     ],
     'line-width': ['case', ['==', ['get', 'list_id'], selected], 6, 3],
     'line-opacity': overlayOpacityExpr(selectedId, kmzVisible, 'list_id'),
@@ -88,10 +89,10 @@ function consorcioPaint(selectedId: string | null): {
     'line-color': [
       'case',
       ['==', ['get', 'id'], selected],
-      '#facc15',
+      mapColorTokens.hfacc15,
       ['boolean', ['get', 'publicado'], false],
-      '#22c55e',
-      '#94a3b8',
+      mapColorTokens.h22c55e,
+      mapColorTokens.h94a3b8,
     ],
     'line-width': ['case', ['==', ['get', 'id'], selected], 7, 4],
     'line-opacity': ['case', ['boolean', ['get', 'publicado'], false], 0.95, 0.5],
@@ -105,7 +106,7 @@ function consorcioCasingPaint(selectedId: string | null): {
 } {
   const selected = selectedId ?? '';
   return {
-    'line-color': '#0f172a',
+    'line-color': mapColorTokens.h0f172a,
     'line-width': ['case', ['==', ['get', 'id'], selected], 10, 7],
     'line-opacity': 0.85,
   };
@@ -122,7 +123,12 @@ function existentesPaint(
 } {
   const selected = selectedId ?? '';
   return {
-    'line-color': ['case', ['==', ['get', 'id'], selected], '#facc15', '#7c3aed'],
+    'line-color': [
+      'case',
+      ['==', ['get', 'id'], selected],
+      mapColorTokens.hfacc15,
+      mapColorTokens.h7c3aed,
+    ],
     'line-width': ['case', ['==', ['get', 'id'], selected], 6, 3],
     'line-opacity': overlayOpacityExpr(selectedId, kmzVisible, 'id'),
     'line-offset': overlayLineOffsetPx(CANAL_HIT_LAYER.EXISTENTES, kmzVisible),
@@ -350,13 +356,13 @@ export function CanalesPublicacionMap({
             id: 'pub-zona-fill',
             type: 'fill',
             source: ZONA_SRC,
-            paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.06 },
+            paint: { 'fill-color': mapColorTokens.hef4444, 'fill-opacity': 0.06 },
           });
           map.addLayer({
             id: 'pub-zona-line',
             type: 'line',
             source: ZONA_SRC,
-            paint: { 'line-color': '#ef4444', 'line-width': 2, 'line-opacity': 0.9 },
+            paint: { 'line-color': mapColorTokens.hef4444, 'line-width': 2, 'line-opacity': 0.9 },
           });
         })
         .catch(() => undefined);
@@ -398,7 +404,7 @@ export function CanalesPublicacionMap({
           'text-keep-upright': true,
         },
         paint: {
-          'text-color': '#ffedd5',
+          'text-color': mapColorTokens.hffedd5,
           'text-halo-color': 'rgba(0,0,0,0.75)',
           'text-halo-width': 1.2,
         },
@@ -435,7 +441,7 @@ export function CanalesPublicacionMap({
           'text-keep-upright': true,
         },
         paint: {
-          'text-color': '#ddd6fe',
+          'text-color': mapColorTokens.hddd6fe,
           'text-halo-color': 'rgba(0,0,0,0.75)',
           'text-halo-width': 1.2,
         },
@@ -475,7 +481,7 @@ export function CanalesPublicacionMap({
           'text-keep-upright': true,
         },
         paint: {
-          'text-color': '#ffffff',
+          'text-color': mapColorTokens.hffffff,
           'text-halo-color': 'rgba(0,0,0,0.75)',
           'text-halo-width': 1.4,
         },

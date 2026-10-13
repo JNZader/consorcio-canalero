@@ -1,6 +1,7 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, LineString, Point } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { DrawnLineFeatureCollection } from './LineDrawControl';
 
 interface SuggestionGeometryControlProps {
@@ -88,7 +89,7 @@ export default function SuggestionGeometryControl({
         source: DRAW_SOURCE_ID,
         filter: ['==', '$type', 'LineString'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#0f766e', 'line-width': 4, 'line-opacity': 0.95 },
+        paint: { 'line-color': mapColorTokens.h0f766e, 'line-width': 4, 'line-opacity': 0.95 },
       });
     }
 
@@ -100,9 +101,9 @@ export default function SuggestionGeometryControl({
         filter: ['==', '$type', 'Point'],
         paint: {
           'circle-radius': 8,
-          'circle-color': '#dc2626',
+          'circle-color': mapColorTokens.hdc2626,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': mapColorTokens.hffffff,
         },
       });
     }

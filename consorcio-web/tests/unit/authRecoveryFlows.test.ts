@@ -100,7 +100,8 @@ describe('resetPassword', () => {
 
     await expect(resetPassword('ana@example.com')).resolves.toEqual({
       success: false,
-      error: 'Error al enviar el email de recuperación.',
+      error:
+        'No pudimos enviar el correo de recuperación. Revisá que el email esté bien escrito y volvé a intentar en unos minutos.',
     });
   });
 });
@@ -122,7 +123,8 @@ describe('updatePassword', () => {
 
     await expect(updatePassword('corta')).resolves.toEqual({
       success: false,
-      error: 'Error al cambiar la contraseña.',
+      error:
+        'No pudimos cambiar la contraseña. Revisá que cumpla los requisitos y volvé a intentar.',
     });
   });
 });

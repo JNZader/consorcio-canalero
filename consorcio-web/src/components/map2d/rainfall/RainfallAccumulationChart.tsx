@@ -62,7 +62,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-
 import { useRainfallSeries } from '../../../hooks/useRainfallAnalysis';
 import {
   RAINFALL_NORMAL_CURVE_STATE,
@@ -70,12 +69,9 @@ import {
   type RainfallNormalCurveState,
   type RainfallSeriesPoint,
 } from '../../../lib/api/rainfall';
+import { mapColorTokens } from '../../../lib/mapColorTokens';
+import { CAMPAIGN_PRESET, CAMPAIGN_START_MONTH_DAY, type CampaignPreset } from './rainfallCampaign';
 import { evidenceFooter, formatAccumulated, isoDay, lastEvidenceDay } from './rainfallFormat';
-import {
-  CAMPAIGN_PRESET,
-  CAMPAIGN_START_MONTH_DAY,
-  type CampaignPreset,
-} from './rainfallCampaign';
 
 export { CAMPAIGN_PRESET, type CampaignPreset } from './rainfallCampaign';
 
@@ -399,7 +395,7 @@ export function RainfallAccumulationChart({
                   and never relies on this mark alone. */}
               <ReferenceLine
                 x={comparisonEndDay}
-                stroke="#868e96"
+                stroke={mapColorTokens.h868e96}
                 strokeDasharray="4 4"
                 ifOverflow="hidden"
               />
@@ -410,7 +406,7 @@ export function RainfallAccumulationChart({
                 type="monotone"
                 dataKey="accumulated"
                 name={`Año ${snapshot.year}`}
-                stroke="#1c7ed6"
+                stroke={mapColorTokens.h1c7ed6}
                 strokeWidth={2}
                 dot={false}
                 isAnimationActive={false}
@@ -424,7 +420,7 @@ export function RainfallAccumulationChart({
                   type="monotone"
                   dataKey="normal_accumulated"
                   name={`Normal ${snapshot.baseline}`}
-                  stroke="#f08c00"
+                  stroke={mapColorTokens.hf08c00}
                   strokeWidth={2}
                   strokeDasharray="6 4"
                   dot={false}

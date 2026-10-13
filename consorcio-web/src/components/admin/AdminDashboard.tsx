@@ -21,6 +21,7 @@ import { withBasePath } from '../../lib/basePath';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import { useConfigStore } from '../../stores/configStore';
 import { IconDownload } from '../ui/icons';
 import { LoadingState } from '../ui/LoadingState';
@@ -75,7 +76,7 @@ export default function AdminDashboard() {
         },
       });
 
-      if (!response.ok) throw new Error('Error al exportar los datos del dashboard');
+      if (!response.ok) throw new Error(textoError(erroresUi.exportarDashboard));
 
       const payload: unknown = await response.json();
       const { blob, filename } = createDashboardJsonExport(payload);
@@ -90,8 +91,8 @@ export default function AdminDashboard() {
     } catch (error) {
       logger.error('Export error:', error);
       notifications.show({
-        title: 'Error al exportar datos',
-        message: 'No se pudieron descargar los datos del dashboard. Intentá nuevamente.',
+        title: erroresUi.exportarDashboard.titulo,
+        message: erroresUi.exportarDashboard.detalle,
         color: 'red',
       });
     } finally {
@@ -131,7 +132,9 @@ export default function AdminDashboard() {
     } | null;
 
     if (!response.ok) {
-      throw new Error(payload?.detail || `Error al importar (${response.status})`);
+      throw new Error(
+        payload?.detail || textoError(erroresUi.importarArchivo, `Respuesta ${response.status}.`)
+      );
     }
 
     notifications.show({
@@ -154,7 +157,7 @@ export default function AdminDashboard() {
     } catch (error) {
       logger.error('Basins import error:', error);
       notifications.show({
-        title: 'Error al importar subcuencas',
+        title: erroresUi.importarSubcuencas.titulo,
         message: error instanceof Error ? error.message : 'No se pudo importar el archivo.',
         color: 'red',
       });
@@ -175,7 +178,7 @@ export default function AdminDashboard() {
     } catch (error) {
       logger.error('Approved zones import error:', error);
       notifications.show({
-        title: 'Error al importar zonificación',
+        title: erroresUi.importarZonificacion.titulo,
         message: error instanceof Error ? error.message : 'No se pudo importar el archivo.',
         color: 'red',
       });
@@ -193,7 +196,7 @@ export default function AdminDashboard() {
       });
 
       if (!response.ok) {
-        throw new Error(`Error al exportar bundle (${response.status})`);
+        throw new Error(textoError(erroresUi.exportarBundle, `Respuesta ${response.status}.`));
       }
 
       const blob = await response.blob();
@@ -214,7 +217,7 @@ export default function AdminDashboard() {
     } catch (error) {
       logger.error('Bundle export error:', error);
       notifications.show({
-        title: 'Error al exportar bundle',
+        title: erroresUi.exportarBundle.titulo,
         message: error instanceof Error ? error.message : 'No se pudo exportar el bundle.',
         color: 'red',
       });
@@ -252,7 +255,9 @@ export default function AdminDashboard() {
       } | null;
 
       if (!response.ok) {
-        throw new Error(payload?.detail || `Error al importar bundle (${response.status})`);
+        throw new Error(
+          payload?.detail || textoError(erroresUi.importarBundle, `Respuesta ${response.status}.`)
+        );
       }
 
       notifications.show({
@@ -264,7 +269,7 @@ export default function AdminDashboard() {
     } catch (error) {
       logger.error('Bundle import error:', error);
       notifications.show({
-        title: 'Error al importar bundle',
+        title: erroresUi.importarBundle.titulo,
         message: error instanceof Error ? error.message : 'No se pudo importar el bundle.',
         color: 'red',
       });
@@ -280,8 +285,8 @@ export default function AdminDashboard() {
   if (reportsError) {
     return (
       <Container size="xl" py="xl">
-        <Alert color="red" title="Error de conexión">
-          Error al cargar datos. Verificá que el backend esté activo.
+        <Alert color="red" title={erroresUi.cargarDashboard.titulo}>
+          {erroresUi.cargarDashboard.detalle}
           <Button mt="sm" size="xs" onClick={handleRetry}>
             Reintentar
           </Button>

@@ -12,7 +12,7 @@
  */
 
 import type { FilterSpecification, LineLayerSpecification } from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 
 export const CAMINOS_HUECOS_GEOJSON_URL = '/capas/caminos_huecos.geojson' as const;
@@ -34,12 +34,12 @@ export const CAMINOS_HUECOS_LAYER_IDS = {
 
 export const CAMINOS_HUECOS_PAINT = {
   osm: {
-    color: '#c026d3',
+    color: mapColorTokens.hc026d3,
     width: 3,
     opacity: 0.95,
   },
   ign: {
-    color: '#0891b2',
+    color: mapColorTokens.h0891b2,
     width: 3,
     opacity: 0.9,
     dasharray: [3, 2],

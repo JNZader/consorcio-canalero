@@ -17,6 +17,7 @@ import { type AuthUser, authAdapter } from '../lib/auth/index';
 import { subscribeToLocalLogout } from '../lib/auth/storage';
 import { logger } from '../lib/logger';
 import { safeGetUserRole } from '../lib/typeGuards';
+import { erroresUi, textoError } from '../lib/userFacingError';
 import type { Usuario } from '../types';
 
 export type UserRole = 'ciudadano' | 'operador' | 'admin';
@@ -225,7 +226,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             set({
               loading: false,
               initialized: true,
-              error: 'Error al inicializar autenticación',
+              error: textoError(erroresUi.inicializarSesion),
             });
           } finally {
             // Clear the promise so future calls (after reset) can reinitialize

@@ -4,6 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
+import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import { GASTO_CATEGORIES, INGRESO_CATEGORIES } from './constants';
 import type { Balance, Gasto, Ingreso } from './finanzasTypes';
 import { buildOptionData, normalizeArray } from './finanzasUtils';
@@ -192,11 +193,11 @@ export function useFinanzasController() {
         },
       });
       if (!response.ok) {
-        throw new Error(`Error al descargar el resumen financiero (${response.status})`);
+        throw new Error(textoError(erroresUi.descargarResumen, `Respuesta ${response.status}.`));
       }
       const contentType = response.headers.get('content-type') ?? '';
       if (!contentType.includes('application/pdf')) {
-        throw new Error('El servidor no devolvio un documento PDF');
+        throw new Error(textoError(erroresUi.pdfInvalido));
       }
 
       const blob = await response.blob();

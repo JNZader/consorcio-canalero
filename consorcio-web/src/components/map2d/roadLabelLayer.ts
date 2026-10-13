@@ -20,7 +20,7 @@ import type {
   LineLayerSpecification,
   SymbolLayerSpecification,
 } from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 /** SDF glyph template. Font folder names must match `text-font` exactly. */
 /** PERF-03: production glyph host, not MapLibre demotiles. */
@@ -61,7 +61,7 @@ export function buildRoadHitLayer(id: string, source: string): LineLayerSpecific
     type: 'line',
     source,
     paint: {
-      'line-color': '#000000',
+      'line-color': mapColorTokens.h000000,
       'line-width': ROAD_HIT_LINE_WIDTH,
       'line-opacity': 0,
     },
@@ -90,7 +90,7 @@ export function buildRoadLabelLayer(id: string, source: string): SymbolLayerSpec
       'text-ignore-placement': false,
     },
     paint: {
-      'text-color': '#ffffff',
+      'text-color': mapColorTokens.hffffff,
       'text-halo-color': 'rgba(0,0,0,0.75)',
       'text-halo-width': 1.6,
       'text-opacity': 0.95,

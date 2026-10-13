@@ -56,7 +56,8 @@ async function expectVisibleIfAny(locator: Locator) {
  */
 async function requiredMarkerText(field: Locator): Promise<string> {
   const text = await field.evaluate((node) => {
-    const normalize = (value: string | null | undefined) => value?.replace(/\s+/g, ' ').trim() ?? '';
+    const normalize = (value: string | null | undefined) =>
+      value?.replace(/\s+/g, ' ').trim() ?? '';
 
     const labelledBy = node.getAttribute('aria-labelledby');
     if (labelledBy) {
@@ -371,12 +372,14 @@ test.describe('Mapa, modo oscuro, movimiento y filtros', () => {
     );
     const mapDescription = page.locator('[role="application"][aria-label*="mapa"]');
     const renderedMap = page.locator('.maplibregl-map');
-    const mapError = page.getByRole('alert').filter({ hasText: /error al cargar el mapa/i });
+    const mapError = page.getByRole('alert').filter({ hasText: /no pudimos cargar el mapa/i });
 
     await expect(renderedMap.or(mapError)).toBeVisible();
 
     if (await renderedMap.isVisible()) {
       await expect(mapDescription).toBeVisible();
+      await expect(mapDescription).toHaveAttribute('aria-describedby', 'mapa-instrucciones-lector');
+      await expect(page.locator('#mapa-instrucciones-lector')).toContainText(/tabulador/i);
       await expect(page.locator('.maplibregl-ctrl-zoom-in')).toHaveAttribute('aria-label', /.+/);
       await expect(page.locator('.maplibregl-ctrl-zoom-out')).toHaveAttribute('aria-label', /.+/);
     } else {

@@ -53,7 +53,7 @@
 
 import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
-
+import { mapColorTokens } from '../../../lib/mapColorTokens';
 import styles from '../../../styles/components/map.module.css';
 import {
   IconLayers,
@@ -179,8 +179,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
         {...(isToggleOff ? { onClick: onCancel } : {})}
         className={styles.mapCtrlButton}
         style={{
-          background: isMeasuring ? '#fb923c' : 'transparent',
-          color: isMeasuring ? '#fff' : '#333',
+          background: isMeasuring ? mapColorTokens.hfb923c : 'transparent',
+          color: isMeasuring ? mapColorTokens.hfff : mapColorTokens.h333,
         }}
       >
         <IconRuler size={MAP_CTRL_GLYPH_SIZE} />
@@ -196,9 +196,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
     >
       {isMeasuring && (
         <div className={styles.measurementHint} data-testid="measurement-hint">
-          {liveLabel ? (
-            <span data-testid="measurement-live">{liveLabel} · </span>
-          ) : null}
+          {liveLabel ? <span data-testid="measurement-live">{liveLabel} · </span> : null}
           Clic para puntos · doble clic termina · Esc cancela
         </div>
       )}
@@ -229,8 +227,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               onClick={onToggleFichaDraw}
               className={styles.mapCtrlButton}
               style={{
-                background: fichaDrawActive ? '#fb923c' : 'transparent',
-                color: fichaDrawActive ? '#fff' : '#333',
+                background: fichaDrawActive ? mapColorTokens.hfb923c : 'transparent',
+                color: fichaDrawActive ? mapColorTokens.hfff : mapColorTokens.h333,
               }}
             >
               <IconVectorTriangle size={MAP_CTRL_GLYPH_SIZE} />
@@ -247,7 +245,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               onClick={onRedrawPolygon}
               className={styles.mapCtrlButton}
               data-testid="ficha-draw-new-polygon"
-              style={{ color: '#333' }}
+              style={{ color: mapColorTokens.h333 }}
             >
               <IconPolygon size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Otro</span>
@@ -263,7 +261,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               onClick={onDeletePolygon}
               className={styles.mapCtrlButton}
               data-testid="ficha-draw-delete-polygon"
-              style={{ color: '#dc2626' }}
+              style={{ color: mapColorTokens.hdc2626 }}
             >
               <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
               <span className={styles.mapCtrlButtonLabel}>Borrar</span>
@@ -280,8 +278,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               onClick={onToggleFichaCanal}
               className={styles.mapCtrlButton}
               style={{
-                background: fichaCanalActive ? '#06b6d4' : 'transparent',
-                color: fichaCanalActive ? '#fff' : '#333',
+                background: fichaCanalActive ? mapColorTokens.h06b6d4 : 'transparent',
+                color: fichaCanalActive ? mapColorTokens.hfff : mapColorTokens.h333,
               }}
             >
               <IconRoute size={MAP_CTRL_GLYPH_SIZE} />
@@ -299,8 +297,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               onClick={onTogglePoiPlace}
               className={styles.mapCtrlButton}
               style={{
-                background: poiPlaceActive ? '#c45c26' : 'transparent',
-                color: poiPlaceActive ? '#fff' : '#333',
+                background: poiPlaceActive ? mapColorTokens.hc45c26 : 'transparent',
+                color: poiPlaceActive ? mapColorTokens.hfff : mapColorTokens.h333,
               }}
             >
               <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
@@ -318,8 +316,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               onClick={onToggleFichaMultiSelect}
               className={styles.mapCtrlButton}
               style={{
-                background: fichaMultiSelectActive ? '#f59f00' : 'transparent',
-                color: fichaMultiSelectActive ? '#fff' : '#333',
+                background: fichaMultiSelectActive ? mapColorTokens.hf59f00 : 'transparent',
+                color: fichaMultiSelectActive ? mapColorTokens.hfff : mapColorTokens.h333,
               }}
               data-testid="ficha-multi-select-toggle"
             >
@@ -336,7 +334,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
               aria-label={exitLabel}
               onClick={handleExit}
               className={styles.mapCtrlButton}
-              style={{ color: '#dc2626' }}
+              style={{ color: mapColorTokens.hdc2626 }}
             >
               <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
               {/* The exit button shares the coarse-pointer label treatment: a

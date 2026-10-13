@@ -3,6 +3,7 @@
  * Requires `MAP_GLYPHS_URL` on the style (same as road labels).
  */
 import type { ExpressionSpecification, SymbolLayerSpecification } from 'maplibre-gl';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 /** CART-08: below MAP_DEFAULT_ZOOM (11) so canal/waterway names show on first load. */
 export const ALONG_LINE_LABEL_MIN_ZOOM = 10;
@@ -51,7 +52,7 @@ export function buildAlongLineLabelLayer(options: {
       'text-ignore-placement': false,
     },
     paint: {
-      'text-color': '#ffffff',
+      'text-color': mapColorTokens.hffffff,
       'text-halo-color': 'rgba(0,0,0,0.75)',
       'text-halo-width': 1.6,
       'text-opacity': 0.95,

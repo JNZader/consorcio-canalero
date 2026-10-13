@@ -1,4 +1,5 @@
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 export const GEE_LAYER_NAMES = ['zona'] as const;
 
@@ -137,35 +138,35 @@ const WATERWAY_FILE_SPECS = [
     url: '/waterways/rio_tercero.geojson',
     layer: 'rio_tercero',
     waterwayId: 'rio_tercero',
-    fallbackColor: '#1565C0',
+    fallbackColor: mapColorTokens.h1565C0,
   },
   {
     suffix: 'canal-desviador',
     url: '/waterways/canal_desviador.geojson',
     layer: 'canal_desviador',
     waterwayId: 'canal_desviador',
-    fallbackColor: '#00897B',
+    fallbackColor: mapColorTokens.h00897B,
   },
   {
     suffix: 'canal-litin',
     url: '/waterways/canal_litin_tortugas.geojson',
     layer: 'canal_litin_tortugas',
     waterwayId: 'canal_litin_tortugas',
-    fallbackColor: '#00ACC1',
+    fallbackColor: mapColorTokens.h00ACC1,
   },
   {
     suffix: 'arroyo-algodon',
     url: '/waterways/arroyo_algodon.geojson',
     layer: 'arroyo_algodon',
     waterwayId: 'arroyo_algodon',
-    fallbackColor: '#42A5F5',
+    fallbackColor: mapColorTokens.h42A5F5,
   },
   {
     suffix: 'arroyo-mojarras',
     url: '/waterways/arroyo_las_mojarras.geojson',
     layer: 'arroyo_las_mojarras',
     waterwayId: 'arroyo_las_mojarras',
-    fallbackColor: '#64B5F6',
+    fallbackColor: mapColorTokens.h64B5F6,
   },
 ];
 
@@ -177,6 +178,7 @@ export function buildWaterwayLayerConfigs(waterwayDefs: readonly WaterwayDef[]) 
     color:
       waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.color ?? spec.fallbackColor,
     weight: waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.weight ?? 3,
-    dashArray: waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.dashArray ?? undefined,
+    dashArray:
+      waterwayDefs.find((item) => item.id === spec.waterwayId)?.style.dashArray ?? undefined,
   }));
 }

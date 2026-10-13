@@ -1,3 +1,4 @@
+import { mapColorTokens } from '../lib/mapColorTokens';
 /**
  * Centralized constants for the Consorcio Canalero application.
  * All shared constants, enums, and derived types should be defined here.
@@ -443,47 +444,47 @@ export const SUPPORT_PHONE_DISPLAY = 'Llamar al Consorcio';
 export const MAP_COLORS = {
   // Drawing and selection
   draw: {
-    primary: '#3b82f6', // Blue - primary drawing color
-    stroke: '#2563eb',
+    primary: mapColorTokens.h3b82f6, // Blue - primary drawing color
+    stroke: mapColorTokens.h2563eb,
     fill: 'rgba(59, 130, 246, 0.2)',
   },
   // Flood/Water indicators
   flood: {
-    water: '#2196F3', // Blue - water/flood areas
-    danger: '#FF0000', // Red - danger zones
-    warning: '#FFA500', // Orange - warning zones
-    safe: '#4CAF50', // Green - safe areas
+    water: mapColorTokens.h2196F3, // Blue - water/flood areas
+    danger: mapColorTokens.hFF0000, // Red - danger zones
+    warning: mapColorTokens.hFFA500, // Orange - warning zones
+    safe: mapColorTokens.h4CAF50, // Green - safe areas
   },
   // Classification colors
   classification: {
-    productivo: '#2ECC71', // Green - productive land
-    anegamiento: '#3498DB', // Blue - flooded
-    improductivo: '#F39C12', // Orange - unproductive
-    agua: '#1ABC9C', // Teal - water bodies
-    vegetacion: '#27AE60', // Green - vegetation
-    suelo: '#D35400', // Brown - bare soil
+    productivo: mapColorTokens.h2ECC71, // Green - productive land
+    anegamiento: mapColorTokens.h3498DB, // Blue - flooded
+    improductivo: mapColorTokens.hF39C12, // Orange - unproductive
+    agua: mapColorTokens.h1ABC9C, // Teal - water bodies
+    vegetacion: mapColorTokens.h27AE60, // Green - vegetation
+    suelo: mapColorTokens.hD35400, // Brown - bare soil
   },
   // Training/Machine Learning
   training: {
-    class1: '#2ECC71', // Green
-    class2: '#3498DB', // Blue
-    class3: '#F39C12', // Orange
-    class4: '#E74C3C', // Red
-    class5: '#9B59B6', // Purple
+    class1: mapColorTokens.h2ECC71, // Green
+    class2: mapColorTokens.h3498DB, // Blue
+    class3: mapColorTokens.hF39C12, // Orange
+    class4: mapColorTokens.hE74C3C, // Red
+    class5: mapColorTokens.h9B59B6, // Purple
   },
   // Cuenca-specific colors (hex versions for map rendering)
   cuencas: {
-    candil: '#3b82f6', // Blue
-    ml: '#14b8a6', // Teal
-    noroeste: '#f97316', // Orange
-    norte: '#8b5cf6', // Violet
+    candil: mapColorTokens.h3b82f6, // Blue
+    ml: mapColorTokens.h14b8a6, // Teal
+    noroeste: mapColorTokens.hf97316, // Orange
+    norte: mapColorTokens.h8b5cf6, // Violet
   },
   // Risk levels
   risk: {
-    low: '#22c55e', // Green
-    medium: '#eab308', // Yellow
-    high: '#f97316', // Orange
-    critical: '#ef4444', // Red
+    low: mapColorTokens.h22c55e, // Green
+    medium: mapColorTokens.heab308, // Yellow
+    high: mapColorTokens.hf97316, // Orange
+    critical: mapColorTokens.hef4444, // Red
   },
 } as const;
 

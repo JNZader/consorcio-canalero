@@ -3,6 +3,7 @@ import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import { resetPassword } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import { validateEmail } from '../../lib/validators';
 import { IconAlertCircle, IconArrowLeft, IconCheck, IconMail } from '../ui/icons';
 
@@ -28,7 +29,7 @@ export default function ForgotPasswordForm() {
       if (result.success) {
         setSent(true);
       } else {
-        setError(result.error || 'Error al enviar el email de recuperación.');
+        setError(result.error || textoError(erroresUi.recuperarClave));
       }
     } catch {
       setError('Error inesperado. Intentá de nuevo.');

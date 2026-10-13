@@ -1,6 +1,7 @@
 import { Box, Menu, UnstyledButton } from '@mantine/core';
 
 import { MAP_QUICK_PLACES } from '../../constants';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import styles from '../../styles/components/map.module.css';
 import { IconCurrentLocation, IconHome, IconMapPin } from '../ui/icons';
 import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';
@@ -19,9 +20,7 @@ interface MapPlacesControlProps {
  */
 export function MapPlacesControl({ onRecenter, onFlyToPlace, onGeolocate }: MapPlacesControlProps) {
   return (
-    <Box
-      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapPlacesDock}`}
-    >
+    <Box className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapPlacesDock}`}>
       <UnstyledButton
         type="button"
         aria-label="Volver al consorcio"
@@ -29,7 +28,7 @@ export function MapPlacesControl({ onRecenter, onFlyToPlace, onGeolocate }: MapP
         className={styles.mapCtrlButton}
         data-testid="map-recenter-consorcio"
         onClick={onRecenter}
-        style={{ color: '#333' }}
+        style={{ color: mapColorTokens.h333 }}
       >
         <IconHome size={MAP_CTRL_GLYPH_SIZE} />
       </UnstyledButton>
@@ -41,7 +40,7 @@ export function MapPlacesControl({ onRecenter, onFlyToPlace, onGeolocate }: MapP
             title="Lugares rápidos"
             className={styles.mapCtrlButton}
             data-testid="map-quick-places"
-            style={{ color: '#333' }}
+            style={{ color: mapColorTokens.h333 }}
           >
             <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
           </UnstyledButton>
@@ -57,10 +56,7 @@ export function MapPlacesControl({ onRecenter, onFlyToPlace, onGeolocate }: MapP
             </Menu.Item>
           ) : null}
           {MAP_QUICK_PLACES.map((place) => (
-            <Menu.Item
-              key={place.id}
-              onClick={() => onFlyToPlace(place.id)}
-            >
+            <Menu.Item key={place.id} onClick={() => onFlyToPlace(place.id)}>
               {place.label}
             </Menu.Item>
           ))}

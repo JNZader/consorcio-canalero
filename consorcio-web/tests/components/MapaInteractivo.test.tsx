@@ -36,9 +36,9 @@ describe('<MapaContenido /> error fallback', () => {
 
     renderWithMantine(<MapaContenido />);
 
-    expect(await screen.findByText('Error al cargar el mapa')).toBeInTheDocument();
+    expect(await screen.findByText('No pudimos cargar el mapa')).toBeInTheDocument();
     expect(
-      screen.getByText(/No se pudo cargar el componente del mapa/i),
+      screen.getByText(/Recargá la página\. Si sigue igual, probá de nuevo en unos minutos\./i),
     ).toBeInTheDocument();
 
     const alternative = screen.getByRole('region', {

@@ -1,7 +1,8 @@
 import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo } from 'react';
-import styles from '../../styles/components/map.module.css';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { showSuccess, showWarning } from '../../lib/notifications';
+import styles from '../../styles/components/map.module.css';
 import { IconCopy, IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
 import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';
 
@@ -55,9 +56,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
   onExportMenuOpen,
 }: MapActionsPanelProps) {
   return (
-    <Box
-      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapActionsDock}`}
-    >
+    <Box className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapActionsDock}`}>
       <Menu shadow="md" width={200} onOpen={onExportMenuOpen}>
         <Menu.Target>
           <Tooltip label="Exportar" position="left" withArrow>
@@ -65,7 +64,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               type="button"
               aria-label="Exportar"
               className={styles.mapCtrlButton}
-              style={{ color: '#333' }}
+              style={{ color: mapColorTokens.h333 }}
             >
               <IconDownload size={MAP_CTRL_GLYPH_SIZE} />
               {/* The shared coarse-pointer caption slot. It is deliberately

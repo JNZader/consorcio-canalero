@@ -1,7 +1,8 @@
 import type { FeatureCollection } from 'geojson';
 import { useMemo } from 'react';
-import { GEO_LAYER_LABELS, buildTileUrl } from '../../hooks/useGeoLayers';
+import { buildTileUrl, GEO_LAYER_LABELS } from '../../hooks/useGeoLayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { CanalesData } from '../../types/canales';
 import type { EscuelasData } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
@@ -94,7 +95,10 @@ export function useMapDerivedState(params: {
   const waterwaysCollection = useMemo((): FeatureCollection | null => {
     const features = waterways.flatMap((layer) =>
       layer.data.features.map((feature) =>
-        decorateFeature(feature, { __color: layer.style.color ?? '#1565C0', __label: layer.nombre })
+        decorateFeature(feature, {
+          __color: layer.style.color ?? mapColorTokens.h1565C0,
+          __label: layer.nombre,
+        })
       )
     );
     return features.length > 0 ? asFeatureCollection(features) : null;

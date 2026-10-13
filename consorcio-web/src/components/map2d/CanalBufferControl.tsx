@@ -29,9 +29,9 @@
 
 import { Group, NumberInput, SegmentedControl, Stack, Text } from '@mantine/core';
 import { memo, useEffect, useState } from 'react';
-
-import type { CanalAnalysisMode } from './useFichaInteraction';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { IconRoute } from '../ui/icons';
+import type { CanalAnalysisMode } from './useFichaInteraction';
 
 export interface CanalBufferControlProps {
   readonly canalNombre: string;
@@ -75,7 +75,7 @@ export const CanalBufferControl = memo(function CanalBufferControl({
   return (
     <Stack gap={6} data-testid="canal-buffer-control">
       <Group gap={6} wrap="nowrap">
-        <IconRoute size={16} color="#06b6d4" />
+        <IconRoute size={16} color={mapColorTokens.h06b6d4} />
         <Text size="sm" fw={600} lineClamp={1} title={canalNombre}>
           {canalNombre}
         </Text>

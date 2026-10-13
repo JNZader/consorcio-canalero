@@ -13,6 +13,7 @@
  */
 
 import {
+  Alert,
   Badge,
   Box,
   Card,
@@ -27,11 +28,11 @@ import {
   Title,
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
-
-import { sugerenciasApi } from '../../lib/api';
 import type { Sugerencia } from '../../lib/api';
+import { sugerenciasApi } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 
 const PAGE_SIZE = 5;
 
@@ -70,8 +71,8 @@ export function MySuggestionsSection() {
         setTotal(data.total);
       } catch (err) {
         if (cancelled) return;
-        logger.error('Error al cargar Mis sugerencias:', err);
-        setError('No se pudieron cargar tus sugerencias.');
+        logger.error(erroresUi.misSugerencias.titulo, err);
+        setError(textoError(erroresUi.misSugerencias));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -97,15 +98,15 @@ export function MySuggestionsSection() {
         </Group>
 
         {loading && (
-          <Center py="md">
-            <Loader size="sm" />
+          <Center py="md" role="status" aria-live="polite" aria-busy="true">
+            <Loader size="sm" aria-label="Cargando tus sugerencias" />
           </Center>
         )}
 
         {!loading && error && (
-          <Text c="red" size="sm">
+          <Alert color="red" variant="light" role="alert" aria-live="assertive">
             {error}
-          </Text>
+          </Alert>
         )}
 
         {!loading && !error && items.length === 0 && (

@@ -32,7 +32,7 @@
 
 import { Badge, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { memo } from 'react';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type {
   Bpa2025EnrichedRecord,
   BpaEjeKey,
@@ -103,7 +103,7 @@ function EjeBadges({ bpa }: { bpa: Bpa2025EnrichedRecord }) {
             data-eje-adopted={flag === 'Si' ? 'true' : 'false'}
             style={{
               backgroundColor: color,
-              color: '#fff',
+              color: mapColorTokens.hfff,
               opacity: flag === 'Si' ? 1 : 0.5,
             }}
           >

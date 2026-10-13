@@ -4,6 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
 import { ReportDetailModal } from './components/ReportDetailModal';
 import { ReportsFilters } from './components/ReportsFilters';
@@ -58,11 +59,11 @@ export default function ReportsPanel() {
     } catch (error) {
       logger.error('Error loading reports:', error);
       notifications.show({
-        title: 'Error',
-        message: 'No se pudieron cargar los reportes',
+        title: erroresUi.cargarDenuncias.titulo,
+        message: erroresUi.cargarDenuncias.detalle,
         color: 'red',
       });
-      announceRef.current('Error al cargar los reportes');
+      announceRef.current(textoError(erroresUi.cargarDenuncias));
     } finally {
       setLoading(false);
     }
@@ -108,7 +109,7 @@ export default function ReportsPanel() {
    * The previous version POSTed to `/management/seguimiento` (404) with a
    * payload shaped for an `entidad_tipo`/`entidad_id` audit row that the
    * current backend does not have — that's what was throwing the
-   * "Error al actualizar reporte: Not Found" toast.
+   * el toast genérico de actualización cuando el endpoint no existía.
    *
    * Mapping:
    *   newStatus      → estado
@@ -141,13 +142,13 @@ export default function ReportsPanel() {
       closeDetail();
       loadReports();
     } catch (error) {
-      logger.error('Error al actualizar reporte:', error);
+      logger.error(erroresUi.actualizarDenuncia.titulo, error);
       notifications.show({
-        title: 'Error',
-        message: 'No se pudo actualizar el reporte',
+        title: erroresUi.actualizarDenuncia.titulo,
+        message: erroresUi.actualizarDenuncia.detalle,
         color: 'red',
       });
-      announceRef.current('Error al actualizar el reporte');
+      announceRef.current(textoError(erroresUi.actualizarDenuncia));
     } finally {
       setUpdating(false);
     }

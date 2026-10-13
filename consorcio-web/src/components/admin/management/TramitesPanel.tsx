@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
 
@@ -192,12 +193,12 @@ export default function TramitesPanel() {
         },
       });
       if (!response.ok) {
-        throw new Error(`Error al descargar el trámite (${response.status})`);
+        throw new Error(textoError(erroresUi.descargarTramite, `Respuesta ${response.status}.`));
       }
 
       const contentType = response.headers.get('content-type') ?? '';
       if (!contentType.includes('application/pdf')) {
-        throw new Error('El servidor no devolvio un documento PDF');
+        throw new Error(textoError(erroresUi.pdfInvalido));
       }
 
       const blob = await response.blob();

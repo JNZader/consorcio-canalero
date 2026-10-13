@@ -1,4 +1,5 @@
 import type * as maplibregl from 'maplibre-gl';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 export function removeMapboxDrawArtifacts(map: maplibregl.Map): void {
   const style = map.getStyle();
@@ -29,7 +30,7 @@ export const MAPBOX_DRAW_LINE_STYLES = [
     type: 'line',
     filter: ['all', ['==', '$type', 'LineString'], ['==', 'meta', 'feature']],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#0B3D91', 'line-width': 4, 'line-opacity': 0.95 },
+    paint: { 'line-color': mapColorTokens.h0B3D91, 'line-width': 4, 'line-opacity': 0.95 },
   },
   {
     id: 'gl-draw-lines-active',
@@ -41,7 +42,7 @@ export const MAPBOX_DRAW_LINE_STYLES = [
       ['==', 'active', 'true'],
     ],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#2563eb', 'line-width': 5, 'line-opacity': 1 },
+    paint: { 'line-color': mapColorTokens.h2563eb, 'line-width': 5, 'line-opacity': 1 },
   },
   {
     id: 'gl-draw-points',
@@ -49,9 +50,9 @@ export const MAPBOX_DRAW_LINE_STYLES = [
     filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature']],
     paint: {
       'circle-radius': 6,
-      'circle-color': '#dc2626',
+      'circle-color': mapColorTokens.hdc2626,
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': mapColorTokens.hffffff,
     },
   },
   {
@@ -60,9 +61,9 @@ export const MAPBOX_DRAW_LINE_STYLES = [
     filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature'], ['==', 'active', 'true']],
     paint: {
       'circle-radius': 7,
-      'circle-color': '#ef4444',
+      'circle-color': mapColorTokens.hef4444,
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': mapColorTokens.hffffff,
     },
   },
   {
@@ -71,9 +72,9 @@ export const MAPBOX_DRAW_LINE_STYLES = [
     filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
     paint: {
       'circle-radius': 5,
-      'circle-color': '#2563eb',
+      'circle-color': mapColorTokens.h2563eb,
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': mapColorTokens.hffffff,
     },
   },
 ] as const;

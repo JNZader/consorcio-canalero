@@ -7,6 +7,8 @@ const API_URL =
   import.meta.env.VITE_API_URL || import.meta.env.PUBLIC_API_URL || 'http://localhost:8000';
 const AUTH_BASE = `${API_URL}/api/v2`;
 
+import { erroresUi, textoError } from '../userFacingError';
+
 import {
   clearApiServiceWorkerCaches,
   clearAuthStorage,
@@ -51,7 +53,7 @@ export class JWTAuthAdapter implements AuthAdapter {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || 'Error al iniciar sesión');
+      throw new Error(error.detail || 'Email o contraseña incorrectos');
     }
 
     const data = await response.json();
@@ -95,7 +97,7 @@ export class JWTAuthAdapter implements AuthAdapter {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || 'Error al registrarse');
+      throw new Error(error.detail || textoError(erroresUi.crearCuenta));
     }
 
     // Auto-login after registration
@@ -228,7 +230,7 @@ export class JWTAuthAdapter implements AuthAdapter {
     });
 
     if (!response.ok) {
-      throw new Error('Error al obtener el perfil del usuario');
+      throw new Error(textoError(erroresUi.perfilUsuario));
     }
 
     const data = await response.json();

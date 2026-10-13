@@ -20,7 +20,7 @@
  */
 
 import type * as maplibregl from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 
 /** Layer ids of the selection highlight. The SOURCE is catastro's, not ours. */
@@ -37,7 +37,7 @@ const CATASTRO_SOURCE_LAYER = 'parcelas_catastro';
  * and the satellite basemap, with a thick outline carrying the shape at zooms
  * where the fill is a few pixels wide.
  */
-export const PARCELA_HIGHLIGHT_COLOR = '#f59f00';
+export const PARCELA_HIGHLIGHT_COLOR = mapColorTokens.hf59f00;
 export const PARCELA_HIGHLIGHT_FILL_OPACITY = 0.35;
 export const PARCELA_HIGHLIGHT_LINE_WIDTH = 2.5;
 

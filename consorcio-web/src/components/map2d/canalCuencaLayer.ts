@@ -17,6 +17,7 @@
 
 import type { Geometry } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 /** Source + layer ids for the catchment outline (one dedicated set). */
 export const CANAL_CUENCA_SOURCE = 'canal-cuenca-outline';
@@ -24,8 +25,8 @@ export const CANAL_CUENCA_FILL_LAYER = `${CANAL_CUENCA_SOURCE}-fill`;
 export const CANAL_CUENCA_LINE_LAYER = `${CANAL_CUENCA_SOURCE}-line`;
 
 /** Cyan family, matching the canal selection accent (`#06b6d4`). */
-const CUENCA_OUTLINE_COLOR = '#0e7490';
-const CUENCA_FILL_COLOR = '#06b6d4';
+const CUENCA_OUTLINE_COLOR = mapColorTokens.h0e7490;
+const CUENCA_FILL_COLOR = mapColorTokens.h06b6d4;
 
 function removeCanalCuenca(map: maplibregl.Map) {
   if (map.getLayer(CANAL_CUENCA_LINE_LAYER)) map.removeLayer(CANAL_CUENCA_LINE_LAYER);

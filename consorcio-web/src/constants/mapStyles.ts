@@ -1,3 +1,4 @@
+import { mapColorTokens } from '../lib/mapColorTokens';
 /**
  * Centralized map styles and configurations.
  * Used across MapaLeaflet, MapaAnalisis, TrainingMap, etc.
@@ -22,17 +23,17 @@ export interface PathOptions {
  * Matches backend config.py CUENCA_COLORS.
  */
 export const MAP_LAYER_COLORS = {
-  zona: '#FF0000',
-  candil: '#2196F3',
-  ml: '#4CAF50',
-  noroeste: '#FF9800',
-  norte: '#9C27B0',
-  caminos: '#FFEB3B',
+  zona: mapColorTokens.hFF0000,
+  candil: mapColorTokens.h2196F3,
+  ml: mapColorTokens.h4CAF50,
+  noroeste: mapColorTokens.hFF9800,
+  norte: mapColorTokens.h9C27B0,
+  caminos: mapColorTokens.hFFEB3B,
   // Analysis-specific
-  analysisArea: '#3b82f6',
-  flood: '#0EA5E9',
-  floodOptical: '#22C55E',
-  floodFusion: '#A855F7',
+  analysisArea: mapColorTokens.h3b82f6,
+  flood: mapColorTokens.h0EA5E9,
+  floodOptical: mapColorTokens.h22C55E,
+  floodFusion: mapColorTokens.hA855F7,
 } as const;
 
 // ===========================================
@@ -95,7 +96,7 @@ export const LAYER_STYLES: Record<string, PathOptions> = {
 export function getLayerStyle(layerName: string): PathOptions {
   return (
     LAYER_STYLES[layerName] || {
-      color: '#3388ff',
+      color: mapColorTokens.h3388ff,
       weight: 2,
       fillOpacity: 0.1,
     }

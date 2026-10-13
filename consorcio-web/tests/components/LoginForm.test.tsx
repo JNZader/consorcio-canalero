@@ -227,7 +227,7 @@ describe('LoginForm', () => {
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Error al iniciar sesión',
+          title: 'No pudimos iniciar sesión',
           message: 'Email o contraseña incorrectos',
           color: 'red',
         })
@@ -314,7 +314,7 @@ describe('LoginForm', () => {
     });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Error con Google',
+        title: 'No pudimos conectar con Google',
         message: 'No se pudo conectar con Google',
         color: 'red',
       })
@@ -333,7 +333,7 @@ describe('LoginForm', () => {
     });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Error',
+        title: 'No pudimos iniciar sesión',
         message: 'Ocurrió un error inesperado. Intentá de nuevo.',
         color: 'red',
       })

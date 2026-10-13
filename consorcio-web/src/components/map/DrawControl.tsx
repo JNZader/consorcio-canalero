@@ -14,6 +14,7 @@
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import type * as maplibregl from 'maplibre-gl';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
 import { ensureMapboxDrawCompatibility } from './mapboxDrawCompatibility';
 import { removeMapboxDrawArtifacts } from './mapboxDrawShared';
@@ -93,21 +94,21 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
             id: 'gl-draw-polygon-fill',
             type: 'fill',
             filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
-            paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.2 },
+            paint: { 'fill-color': mapColorTokens.h3b82f6, 'fill-opacity': 0.2 },
           },
           // Polygon outline (active)
           {
             id: 'gl-draw-polygon-stroke-active',
             type: 'line',
             filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
-            paint: { 'line-color': '#3b82f6', 'line-width': 3 },
+            paint: { 'line-color': mapColorTokens.h3b82f6, 'line-width': 3 },
           },
           // Vertex points
           {
             id: 'gl-draw-polygon-and-line-vertex-active',
             type: 'circle',
             filter: ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
-            paint: { 'circle-radius': 5, 'circle-color': '#3b82f6' },
+            paint: { 'circle-radius': 5, 'circle-color': mapColorTokens.h3b82f6 },
           },
         ],
       });

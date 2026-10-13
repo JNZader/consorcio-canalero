@@ -49,6 +49,7 @@ import {
 } from '../../components/map2d/ypfEstacionBombeoLayer';
 import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';
 import { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { mapColorTokens } from '../mapColorTokens';
 
 /** Geometry dispatch hint used by Phase 2 style builders. */
 export type KmzLayerGeometry = 'point' | 'line' | 'polygon';
@@ -136,8 +137,8 @@ export const KMZ_LAYER_REGISTRY: readonly KmzLayerEntry[] = [
     geometryHint: 'point',
     // mirrors escuelas MapLibre `circle-color` (escuelasLayers.ts::
     // buildEscuelasCirclePaint). Promote to a named export if reused.
-    color: '#1976d2',
-    strokeColor: '#ffffff',
+    color: mapColorTokens.h1976d2,
+    strokeColor: mapColorTokens.hffffff,
   },
   // ── Pilar Verde ─────────────────────────────────────────────────────
   {
@@ -196,8 +197,8 @@ export const KMZ_LAYER_REGISTRY: readonly KmzLayerEntry[] = [
     geometryHint: 'line',
     // mirrors roads MapLibre `line-color` coalesce fallback
     // (mapLayerEffectHelpers.ts::syncRoadLayers — `'line-color': ['coalesce',
-    // ['get', 'color'], '#FFEB3B']`). Promote to a named export if reused.
-    color: '#FFEB3B',
+    // ['get', 'color'], mapColorTokens.hFFEB3B]`). Promote to a named export if reused.
+    color: mapColorTokens.hFFEB3B,
   },
   {
     key: 'catastro',
@@ -206,8 +207,8 @@ export const KMZ_LAYER_REGISTRY: readonly KmzLayerEntry[] = [
     // mirrors catastro MapLibre `fill-color` / `line-color`
     // (mapLayerEffectHelpers.ts::syncCatastroLayers — fill `#8d6e63` @ 0.08,
     // line `#FFFFFF`). Promote to named exports if reused elsewhere.
-    color: '#8d6e63',
-    strokeColor: '#FFFFFF',
+    color: mapColorTokens.h8d6e63,
+    strokeColor: mapColorTokens.hFFFFFF,
   },
   {
     key: 'soil',
@@ -224,6 +225,6 @@ export const KMZ_LAYER_REGISTRY: readonly KmzLayerEntry[] = [
     label: YPF_ESTACION_BOMBEO_LABEL,
     geometryHint: 'point',
     color: YPF_ESTACION_BOMBEO_COLOR,
-    strokeColor: '#ffffff',
+    strokeColor: mapColorTokens.hffffff,
   },
 ] as const;

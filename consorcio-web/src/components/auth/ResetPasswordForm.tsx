@@ -19,6 +19,7 @@ import {
   resetPasswordWithToken,
 } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import { validatePassword } from '../../lib/validators';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
 
@@ -125,7 +126,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
         }
         setSuccess(true);
       } else {
-        setError(result.error || 'Error al restablecer la contraseña.');
+        setError(result.error || textoError(erroresUi.restablecerClave));
       }
     } catch {
       setError('Error inesperado. Intentá de nuevo.');

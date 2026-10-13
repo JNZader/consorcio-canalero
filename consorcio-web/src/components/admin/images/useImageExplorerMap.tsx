@@ -1,11 +1,11 @@
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { bootMapLibreWorker } from '../../../lib/maplibreLoader';
 import { useCallback, useEffect, useRef } from 'react';
-
 import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
 import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { mapColorTokens } from '../../../lib/mapColorTokens';
+import { bootMapLibreWorker } from '../../../lib/maplibreLoader';
 import { useConfigStore } from '../../../stores/configStore';
 
 /**
@@ -115,7 +115,7 @@ export function useImageExplorerMap() {
         id: layerId,
         type: 'line',
         source: sourceId,
-        paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 1 },
+        paint: { 'line-color': mapColorTokens.hFF0000, 'line-width': 3, 'line-opacity': 1 },
       });
       zonaLayerIdRef.current = layerId;
     };

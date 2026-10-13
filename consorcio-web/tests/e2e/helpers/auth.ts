@@ -88,13 +88,12 @@ const OK: LoginResult = { ok: true, skipReason: null };
 /**
  * Best-effort read of whatever error the login screen is showing.
  *
- * `LoginForm` raises a Mantine notification titled "Error al iniciar sesión"
- * with the API detail (or "Verifica tus credenciales") as its body. Anything we
- * find beats "waiting for … timed out".
+ * `LoginForm` muestra una notificación titulada "No pudimos iniciar sesión".
+ * Cualquier texto visible sirve mejor que un timeout.
  */
 async function readLoginError(page: Page): Promise<string | null> {
   const candidates = [
-    page.getByText(/error al iniciar sesi/i).first(),
+    page.getByText(/no pudimos iniciar sesión/i).first(),
     page.locator('[role="alert"]').first(),
     page.locator('.mantine-Notification-root').first(),
   ];

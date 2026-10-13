@@ -1,8 +1,8 @@
 import type { FeatureCollection } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { buildRoadHitLayer, buildRoadLabelLayer } from '../map2d/roadLabelLayer';
-import { type TerrainVectorLayerVisibility, asFeatureCollection } from './terrainViewer3DUtils';
+import { asFeatureCollection, type TerrainVectorLayerVisibility } from './terrainViewer3DUtils';
 
 export const TERRAIN_SOURCE_IDS = {
   approved_zones: 'terrain-vector-approved-zones',
@@ -62,7 +62,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'fill',
       source: TERRAIN_SOURCE_IDS.approved_zones,
       paint: {
-        'fill-color': ['coalesce', ['get', '__color'], '#1971c2'],
+        'fill-color': ['coalesce', ['get', '__color'], mapColorTokens.h1971c2],
         'fill-opacity': 0.18,
       },
     });
@@ -73,7 +73,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'line',
       source: TERRAIN_SOURCE_IDS.approved_zones,
       paint: {
-        'line-color': ['coalesce', ['get', '__color'], '#1971c2'],
+        'line-color': ['coalesce', ['get', '__color'], mapColorTokens.h1971c2],
         'line-width': 3,
         'line-opacity': 0.95,
       },
@@ -87,7 +87,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'fill',
       source: TERRAIN_SOURCE_IDS.cuencas,
       paint: {
-        'fill-color': ['coalesce', ['get', '__color'], '#3388ff'],
+        'fill-color': ['coalesce', ['get', '__color'], mapColorTokens.h3388ff],
         'fill-opacity': 0.12,
       },
     });
@@ -98,7 +98,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'line',
       source: TERRAIN_SOURCE_IDS.cuencas,
       paint: {
-        'line-color': ['coalesce', ['get', '__color'], '#3388ff'],
+        'line-color': ['coalesce', ['get', '__color'], mapColorTokens.h3388ff],
         'line-width': 2,
         'line-opacity': 0.9,
       },
@@ -111,7 +111,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       id: `${TERRAIN_SOURCE_IDS.basins}-fill`,
       type: 'fill',
       source: TERRAIN_SOURCE_IDS.basins,
-      paint: { 'fill-color': '#00897B', 'fill-opacity': 0.08 },
+      paint: { 'fill-color': mapColorTokens.h00897B, 'fill-opacity': 0.08 },
     });
   }
   if (!map.getLayer(`${TERRAIN_SOURCE_IDS.basins}-line`)) {
@@ -119,7 +119,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       id: `${TERRAIN_SOURCE_IDS.basins}-line`,
       type: 'line',
       source: TERRAIN_SOURCE_IDS.basins,
-      paint: { 'line-color': '#00897B', 'line-width': 1.5, 'line-opacity': 0.95 },
+      paint: { 'line-color': mapColorTokens.h00897B, 'line-width': 1.5, 'line-opacity': 0.95 },
     });
   }
 
@@ -130,7 +130,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'line',
       source: TERRAIN_SOURCE_IDS.roads,
       paint: {
-        'line-color': ['coalesce', ['get', 'color'], '#FFEB3B'],
+        'line-color': ['coalesce', ['get', 'color'], mapColorTokens.hFFEB3B],
         'line-width': 2,
         'line-opacity': 0.9,
       },
@@ -152,7 +152,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'line',
       source: TERRAIN_SOURCE_IDS.waterways,
       paint: {
-        'line-color': ['coalesce', ['get', '__color'], '#1565C0'],
+        'line-color': ['coalesce', ['get', '__color'], mapColorTokens.h1565C0],
         'line-width': 3,
         'line-opacity': 0.9,
       },
@@ -166,7 +166,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       type: 'fill',
       source: TERRAIN_SOURCE_IDS.soil,
       paint: {
-        'fill-color': ['coalesce', ['get', '__color'], '#8d6e63'],
+        'fill-color': ['coalesce', ['get', '__color'], mapColorTokens.h8d6e63],
         'fill-opacity': 0.3,
       },
     });
@@ -176,7 +176,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       id: `${TERRAIN_SOURCE_IDS.soil}-line`,
       type: 'line',
       source: TERRAIN_SOURCE_IDS.soil,
-      paint: { 'line-color': '#6d4c41', 'line-width': 1.2, 'line-opacity': 0.85 },
+      paint: { 'line-color': mapColorTokens.h6d4c41, 'line-width': 1.2, 'line-opacity': 0.85 },
     });
   }
 
@@ -191,7 +191,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
       id: `${TERRAIN_SOURCE_IDS.catastro}-line`,
       type: 'line',
       source: TERRAIN_SOURCE_IDS.catastro,
-      paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-opacity': 0.85 },
+      paint: { 'line-color': mapColorTokens.hFFFFFF, 'line-width': 1.5, 'line-opacity': 0.85 },
     });
   }
 }

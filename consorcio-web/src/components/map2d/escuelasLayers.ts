@@ -52,7 +52,7 @@
  */
 
 import type { CircleLayerSpecification } from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 
 /**
@@ -99,8 +99,8 @@ type CirclePaint = NonNullable<CircleLayerSpecification['paint']>;
 export function buildEscuelasCirclePaint(): CirclePaint {
   return {
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 16, 8],
-    'circle-color': '#1976d2',
-    'circle-stroke-color': '#ffffff',
+    'circle-color': mapColorTokens.h1976d2,
+    'circle-stroke-color': mapColorTokens.hffffff,
     'circle-stroke-width': 2,
   };
 }

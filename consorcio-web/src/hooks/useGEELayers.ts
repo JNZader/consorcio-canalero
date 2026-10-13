@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
 import { API_URL } from '../lib/api';
 import { logger } from '../lib/logger';
+import { mapColorTokens } from '../lib/mapColorTokens';
 import { queryKeys } from '../lib/query';
 import { parseFeatureCollection } from '../lib/typeGuards';
 import {
@@ -45,12 +46,12 @@ function isPublicGEELayerName(name: GEELayerName): name is PublicGEELayerName {
 
 // Layer colors for styling and legends
 export const GEE_LAYER_COLORS: Record<GEELayerName, string> = {
-  zona: '#FF0000',
-  candil: '#2196F3',
-  ml: '#4CAF50',
-  noroeste: '#FF9800',
-  norte: '#9C27B0',
-  caminos: '#FFEB3B',
+  zona: mapColorTokens.hFF0000,
+  candil: mapColorTokens.h2196F3,
+  ml: mapColorTokens.h4CAF50,
+  noroeste: mapColorTokens.hFF9800,
+  norte: mapColorTokens.h9C27B0,
+  caminos: mapColorTokens.hFFEB3B,
 };
 
 /** GEE layer paint properties for MapLibre GL rendering. */
@@ -62,12 +63,32 @@ export interface GEELayerPaint {
 }
 
 export const GEE_LAYER_STYLES: Record<GEELayerName, GEELayerPaint> = {
-  zona: { color: '#FF0000', weight: 3, fillOpacity: 0 },
-  candil: { color: '#2196F3', weight: 2, fillOpacity: 0.1, fillColor: '#2196F3' },
-  ml: { color: '#4CAF50', weight: 2, fillOpacity: 0.1, fillColor: '#4CAF50' },
-  noroeste: { color: '#FF9800', weight: 2, fillOpacity: 0.1, fillColor: '#FF9800' },
-  norte: { color: '#9C27B0', weight: 2, fillOpacity: 0.1, fillColor: '#9C27B0' },
-  caminos: { color: '#FFEB3B', weight: 2, fillOpacity: 0 },
+  zona: { color: mapColorTokens.hFF0000, weight: 3, fillOpacity: 0 },
+  candil: {
+    color: mapColorTokens.h2196F3,
+    weight: 2,
+    fillOpacity: 0.1,
+    fillColor: mapColorTokens.h2196F3,
+  },
+  ml: {
+    color: mapColorTokens.h4CAF50,
+    weight: 2,
+    fillOpacity: 0.1,
+    fillColor: mapColorTokens.h4CAF50,
+  },
+  noroeste: {
+    color: mapColorTokens.hFF9800,
+    weight: 2,
+    fillOpacity: 0.1,
+    fillColor: mapColorTokens.hFF9800,
+  },
+  norte: {
+    color: mapColorTokens.h9C27B0,
+    weight: 2,
+    fillOpacity: 0.1,
+    fillColor: mapColorTokens.h9C27B0,
+  },
+  caminos: { color: mapColorTokens.hFFEB3B, weight: 2, fillOpacity: 0 },
 };
 
 export interface GEELayerData {

@@ -12,8 +12,9 @@ import { useQuery } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { logger } from '../lib/logger';
+import { mapColorTokens } from '../lib/mapColorTokens';
 import { useGEELayers } from './useGEELayers';
-import { type WaterwayLayer, useWaterways } from './useWaterways';
+import { useWaterways, type WaterwayLayer } from './useWaterways';
 
 // ── Static file loaders ─────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export function addReferenceLayers(
           id: `${FORM_CAMINOS_SOURCE}-line`,
           type: 'line',
           source: FORM_CAMINOS_SOURCE,
-          paint: { 'line-color': '#FFEB3B', 'line-width': 2, 'line-opacity': 0.9 },
+          paint: { 'line-color': mapColorTokens.hFFEB3B, 'line-width': 2, 'line-opacity': 0.9 },
         },
         firstDrawLayer
       );
@@ -137,7 +138,7 @@ export function addReferenceLayers(
           id: `${FORM_ZONA_SOURCE}-line`,
           type: 'line',
           source: FORM_ZONA_SOURCE,
-          paint: { 'line-color': '#FF0000', 'line-width': 3, 'line-opacity': 0.95 },
+          paint: { 'line-color': mapColorTokens.hFF0000, 'line-width': 3, 'line-opacity': 0.95 },
         },
         firstDrawLayer
       );

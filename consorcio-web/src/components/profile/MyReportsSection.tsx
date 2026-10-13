@@ -13,6 +13,7 @@
  */
 
 import {
+  Alert,
   Badge,
   Box,
   Button,
@@ -33,6 +34,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { publicApi } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import type { Report, ReportHistory } from '../../types';
 import { AuthenticatedImage } from '../shared/AuthenticatedImage';
 
@@ -72,8 +74,8 @@ export function MyReportsSection() {
         setTotal(data.total);
       } catch (err) {
         if (cancelled) return;
-        logger.error('Error al cargar Mis reportes:', err);
-        setError('No se pudieron cargar tus denuncias.');
+        logger.error(erroresUi.misDenuncias.titulo, err);
+        setError(textoError(erroresUi.misDenuncias));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -99,15 +101,15 @@ export function MyReportsSection() {
         </Group>
 
         {loading && (
-          <Center py="md">
-            <Loader size="sm" />
+          <Center py="md" role="status" aria-live="polite" aria-busy="true">
+            <Loader size="sm" aria-label="Cargando tus denuncias" />
           </Center>
         )}
 
         {!loading && error && (
-          <Text c="red" size="sm">
+          <Alert color="red" variant="light" role="alert" aria-live="assertive">
             {error}
-          </Text>
+          </Alert>
         )}
 
         {!loading && !error && reports.length === 0 && (

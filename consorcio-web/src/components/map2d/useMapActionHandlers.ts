@@ -8,9 +8,11 @@ import { API_URL, getAuthToken } from '../../lib/api';
 import { buildKmz, findMissingVisibleLayerKeys } from '../../lib/kmzExport/kmzBuilder';
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
 import { logger } from '../../lib/logger';
+import { mapColorTokens } from '../../lib/mapColorTokens';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import type { CanalesFeatureCollection } from '../../types/canales';
-import { CANALES_COLORS, CANAL_STYLE_COLORS } from './canalesLayers';
+import { CANAL_STYLE_COLORS, CANALES_COLORS } from './canalesLayers';
 import { formatExportFilename, resolveConsorcioBounds } from './map2dUtils';
 
 interface LegendItem {
@@ -144,7 +146,7 @@ function buildRasterLegendsPayload(
         items: [
           {
             label: `${config.min}${config.unit ? ` ${config.unit}` : ''} – ${config.max}${config.unit ? ` ${config.unit}` : ''}`,
-            color: config.colorStops.at(-1) ?? '#888888',
+            color: config.colorStops.at(-1) ?? mapColorTokens.h888888,
           },
         ],
       } satisfies RasterLegendGroupPayload;
@@ -303,7 +305,7 @@ export function useMapExportHandlers({
         name: String(feature.properties?.nombre || 'Zona'),
         subcuencas: Number(feature.properties?.basin_count || 0),
         areaHa: Number(feature.properties?.superficie_ha || 0).toFixed(1),
-        color: String(feature.properties?.__color || '#1971c2'),
+        color: String(feature.properties?.__color || mapColorTokens.h1971c2),
       }));
 
       const response = await fetch(
@@ -347,8 +349,8 @@ export function useMapExportHandlers({
           : undefined;
         throw new Error(
           typeof firstMsg === 'string'
-            ? `Error al generar PDF: ${firstMsg}`
-            : 'Error al generar PDF'
+            ? textoError(erroresUi.generarPdf, String(firstMsg))
+            : textoError(erroresUi.generarPdf)
         );
       }
 

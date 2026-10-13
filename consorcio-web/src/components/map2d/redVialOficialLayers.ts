@@ -11,7 +11,7 @@
  */
 
 import type { FilterSpecification, LineLayerSpecification } from 'maplibre-gl';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 
 export const RED_VIAL_OFICIAL_GEOJSON_URL = '/capas/red_vial_oficial_clip.geojson' as const;
@@ -33,7 +33,7 @@ export const RED_VIAL_OFICIAL_LAYER_IDS = {
 
 export const RED_VIAL_OFICIAL_PAINT = {
   falta_en_padron: {
-    color: '#ea580c',
+    color: mapColorTokens.hea580c,
     width: 3,
     opacity: 1,
   },

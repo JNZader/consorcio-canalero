@@ -45,7 +45,7 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText('Success content')).toBeInTheDocument();
-    expect(screen.queryByText('Algo salio mal')).not.toBeInTheDocument();
+    expect(screen.queryByText('No pudimos mostrar esta sección')).not.toBeInTheDocument();
   });
 
   it('shows the default fallback UI and logs the caught error', () => {
@@ -55,9 +55,9 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText('Algo salio mal')).toBeInTheDocument();
+    expect(screen.getByText('No pudimos mostrar esta sección')).toBeInTheDocument();
     expect(
-      screen.getByText(/Ha ocurrido un error inesperado\. Por favor, intentá recargar la página\./i)
+      screen.getByText('Tocá Reintentar o recargá la página.')
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Intentar de nuevo/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Recargar página/i })).toBeInTheDocument();
@@ -92,7 +92,7 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText('Custom Error UI')).toBeInTheDocument();
-    expect(screen.queryByText('Algo salio mal')).not.toBeInTheDocument();
+    expect(screen.queryByText('No pudimos mostrar esta sección')).not.toBeInTheDocument();
   });
 
   it('shows developer error details in DEV mode', () => {
@@ -149,15 +149,15 @@ describe('ErrorBoundary', () => {
 
     renderWithMantine(<RecoverableHarness />);
 
-    expect(screen.getByText('Algo salio mal')).toBeInTheDocument();
+    expect(screen.getByText('No pudimos mostrar esta sección')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fix child' }));
-    expect(screen.getByText('Algo salio mal')).toBeInTheDocument();
+    expect(screen.getByText('No pudimos mostrar esta sección')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Intentar de nuevo/i }));
 
     expect(screen.getByText('Recovered content')).toBeInTheDocument();
-    expect(screen.queryByText('Algo salio mal')).not.toBeInTheDocument();
+    expect(screen.queryByText('No pudimos mostrar esta sección')).not.toBeInTheDocument();
   });
 });
 
@@ -165,8 +165,8 @@ describe('ErrorFallback', () => {
   it('renders the default message without a retry button', () => {
     renderWithMantine(<ErrorFallback />);
 
-    expect(screen.getByText('Error')).toBeInTheDocument();
-    expect(screen.getByText('Error al cargar este componente')).toBeInTheDocument();
+    expect(screen.getByText('No pudimos mostrar esta sección')).toBeInTheDocument();
+    expect(screen.getByText('Tocá Reintentar o recargá la página.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Reintentar/i })).not.toBeInTheDocument();
   });
 
