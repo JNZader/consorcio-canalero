@@ -256,7 +256,7 @@ def test_pages_node_pin_is_at_the_repo_root() -> None:
 
 
 def test_recharts_react_is_is_a_direct_dependency() -> None:
-    """`--legacy-peer-deps` (the Pages install) does not install recharts' peer."""
+    """recharts' peer stays direct so `npm ci` resolves without `--legacy-peer-deps`."""
     package = json.loads(_read("consorcio-web/package.json"))
     lock = json.loads(_read("consorcio-web/package-lock.json"))
     assert package["dependencies"]["react-is"] == "^19.2.3"
@@ -287,19 +287,24 @@ def test_mantine_patch_matches_the_installed_version() -> None:
 
 def test_frontend_coverage_thresholds_are_the_v6_floors() -> None:
     config = _read("consorcio-web/vitest.config.ts")
-    assert "statements: 75" in config
-    assert "branches: 70" in config
-    assert "functions: 65" in config
-    assert "lines: 75" in config
+    assert "statements: 78" in config
+    assert "branches: 73" in config
+    assert "functions: 76" in config
+    assert "lines: 79" in config
 
 
 def test_critical_coverage_gate_rejects_a_regressed_module(tmp_path: Path) -> None:
     gate = _load("gee-backend/scripts/critical_coverage_gate.py", "critical_coverage_gate")
+    assert gate.FLOORS == {
+        "app/auth/router.py": 27.0,
+        "app/core/rate_limit.py": 61.0,
+        "app/domains/denuncias/router.py": 80.0,
+    }
     report = {
         "files": {
-            "app/auth/router.py": {"summary": {"percent_covered": 24.0}},
-            "app/core/rate_limit.py": {"summary": {"percent_covered": 45.0}},
-            "app/domains/denuncias/router.py": {"summary": {"percent_covered": 40.0}},
+            "app/auth/router.py": {"summary": {"percent_covered": 27.0}},
+            "app/core/rate_limit.py": {"summary": {"percent_covered": 61.0}},
+            "app/domains/denuncias/router.py": {"summary": {"percent_covered": 80.0}},
         }
     }
     assert gate.evaluate(report) == []
@@ -476,3 +481,67 @@ def test_shell_scripts_and_units_parse() -> None:
         check=False,
     )
     assert py.returncode == 0, py.stderr
+
+
+def test_npm_ci_does_not_pass_legacy_peer_deps() -> None:
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        assert "--legacy-peer-deps" not in workflow.read_text(encoding="utf-8"), workflow.name
+    dockerfile = _read("consorcio-web/Dockerfile")
+    assert "--legacy-peer-deps" not in dockerfile
+    assert "npm ci --prefer-offline --no-audit\n" in dockerfile
+
+
+def test_sast_workflow_runs_gitleaks_and_semgrep_with_a_baseline() -> None:
+    sast = _read(".github/workflows/sast.yml")
+    assert "gitleaks detect --source . --config .gitleaks.toml" in sast
+    assert "version=8.30.1" in sast
+    assert "linux_x64.tar.gz" in sast
+    assert "--config p/python" in sast
+    assert "--config p/typescript" in sast
+    assert "--baseline-commit" in sast
+    assert "--error" in sast
+    assert "semgrep==1.180.0" in sast
+    assert "fetch-depth: 0" in sast
+
+
+def test_pages_prod_smoke_checks_deep_routes_without_calling_the_api() -> None:
+    smoke = _read(".github/workflows/pages-prod-smoke.yml")
+    header = smoke.split("\njobs:", 1)[0]
+    assert "pull_request:" not in header
+    assert "workflows: [Frontend]" in header
+    assert "github.event.workflow_run.event == 'push'" in smoke
+    assert "github.event.workflow_run.head_branch == 'main'" in smoke
+    assert "ref: ${{ github.sha }}" in smoke
+    assert "ref: ${{ github.event.workflow_run.head_sha }}" not in smoke
+    assert "https://consorcio-canalero.pages.dev" in smoke
+    assert 'node consorcio-web/scripts/check-pages-routing.mjs --url "$APP_URL"' in smoke
+    for forbidden in ("E2E_API_BASE", "E2E_ADMIN_", "/api/v2", "api.consorcio"):
+        assert forbidden not in smoke, forbidden
+    routing = _read("consorcio-web/scripts/check-pages-routing.mjs")
+    for path in ("'/'", "'/mapa'", "'/login'", "'/participacion'", "'/admin'"):
+        assert path in routing
+    assert "text/plain" in routing
+    assert "soft-404 /esta-ruta-no-existe" in routing
+
+
+def test_robots_and_not_found_are_not_indexed() -> None:
+    robots = _read("consorcio-web/public/robots.txt")
+    agents = [
+        line.strip() for line in robots.splitlines() if line.lower().startswith("user-agent:")
+    ]
+    assert agents == ["User-agent: *"]
+    assert "crawl-delay" not in robots.lower()
+    route_tree = _read("consorcio-web/src/routeTree.gen.tsx")
+    block = route_tree.split("const NotFoundComponent", 1)[1].split(
+        "const rootRouteWithComponent", 1
+    )[0]
+    assert "noindex={true}" in block
+
+
+def test_phase_reports_left_the_frontend_tree() -> None:
+    web = REPO_ROOT / "consorcio-web"
+    leftover = list(web.glob("PHASE_*.md")) + list(web.glob("MUTATION_*.md"))
+    assert leftover == []
+    archive = REPO_ROOT / "docs" / "archive"
+    assert (archive / "MUTATION_TESTING.md").is_file()
+    assert (archive / "PHASE_1_SUMMARY.md").is_file()

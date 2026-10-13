@@ -114,6 +114,16 @@ async function check(base) {
     });
   }
 
+  // SEO-02: una ruta que la app no conoce sigue en 200 con el shell. Eso es
+  // el soft-404 del fallback SPA. NotFound pone robots noindex en el cliente;
+  // acá se verifica que el edge no la convierta en un 404 duro.
+  await run('soft-404 /esta-ruta-no-existe', async () => {
+    assertSpa(
+      '/esta-ruta-no-existe',
+      await fetchManual(`${origin}/esta-ruta-no-existe`),
+    );
+  });
+
   await run('SPA /participacion?tab=sugerencias', async () => {
     assertSpa('/participacion?tab=sugerencias', await fetchManual(
       `${origin}/participacion?tab=sugerencias`,

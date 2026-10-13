@@ -107,7 +107,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: consorcio-web
-        run: npm ci --no-audit --no-fund --legacy-peer-deps
+        run: npm ci --no-audit --no-fund
 
       # Only chromium: see the header. `--with-deps` pulls the system libs.
       - name: Install Playwright chromium
