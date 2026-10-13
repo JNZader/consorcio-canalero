@@ -39,7 +39,7 @@ scipy>=1.11.0
 opencv-python-headless>=4.9.0
 
 # Temporal analysis
-xarray>=2024.1.0
+xarray>=2026.9.0
 rioxarray>=0.15.0
 xee>=0.0.16
 
