@@ -272,7 +272,7 @@ Cloudflare Pages construye el proyecto desde `consorcio-web/` y publica el conte
 ### Archivos relevantes
 
 - `public/_headers` — headers de seguridad, CSP, cache de assets.
-- `public/_redirects` — 301 de `/reportes` y `/sugerencias`. El fallback SPA lo hace Pages mientras no haya un `404.html` en la raíz; `functions/_middleware.js` devuelve 404 de texto si falta un asset.
+- `public/_redirects` — 301 de `/reportes` y `/sugerencias`. El fallback SPA lo hace Pages mientras no haya un `404.html` en la raíz; `public/_worker.js` devuelve 404 de texto si falta un asset.
 - `public/robots.txt` — control de indexación.
 
 ### Variables de entorno en Cloudflare Pages

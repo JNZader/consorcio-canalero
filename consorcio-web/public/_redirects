@@ -17,6 +17,6 @@
 # y la regla entra en bucle o se descarta.
 #
 # Los chunks y demas assets que ya no existen NO deben caer en ese shell
-# (FE-01). Eso lo resuelve `functions/_middleware.js`: si la URL tiene
-# extension de archivo estatico y el cuerpo es HTML, responde 404
-# `text/plain`.
+# (FE-01). Lo resuelve `public/_worker.js` (copiado a `dist/_worker.js`):
+# si la URL tiene extension de archivo estatico y el cuerpo es HTML,
+# responde 404 `text/plain`.
