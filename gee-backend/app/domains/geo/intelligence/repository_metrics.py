@@ -208,9 +208,6 @@ class IntelligenceRepositoryMetricsMixin:
         }
 
     def refresh_materialized_views(self, db: Session) -> dict[str, str]:
-        from app.db.session import relax_statement_timeout
-
-        relax_statement_timeout(db, "300s")
         results: dict[str, str] = {}
         for view in ["mv_dashboard_geo_stats", "mv_hci_por_zona", "mv_alertas_resumen"]:
             try:

@@ -48,30 +48,53 @@ def _if_none_match_hits(header: Optional[str], etag: str) -> bool:
     return False
 
 
-def _apply_public_map_cache(request: Request, response: Response) -> Response:
-    """Cache-Control plus a strong ETag so a repeat GET can answer 304 (BE-01)."""
-    if "cache-control" not in {key.lower() for key in response.headers.keys()}:
-        response.headers["Cache-Control"] = (
-            DistributedRateLimitMiddleware.PUBLIC_MAP_GET_CACHE_CONTROL
-        )
-    existing = response.headers.get("etag")
-    if existing:
-        etag = existing
-    else:
-        body = getattr(response, "body", None)
-        if not isinstance(body, (bytes, bytearray)) or not body:
-            return response
-        etag = _etag_for_body(bytes(body))
+async def _apply_public_map_cache(request: Request, response: Response) -> Response:
+    """Cache-Control plus a strong ETag so a repeat GET can answer 304 (BE-01).
+
+    ``BaseHTTPMiddleware`` hands back a streaming response whose ``.body`` is
+    empty. The bytes are read from the iterator and the response is rebuilt.
+    """
+    cache_control = response.headers.get("cache-control")
+    if not cache_control:
+        cache_control = DistributedRateLimitMiddleware.PUBLIC_MAP_GET_CACHE_CONTROL
+        response.headers["Cache-Control"] = cache_control
+
+    etag = response.headers.get("etag")
+    body: bytes | None = None
+    if not etag:
+        chunks: list[bytes] = []
+        async for chunk in response.body_iterator:
+            if isinstance(chunk, str):
+                chunk = chunk.encode(getattr(response, "charset", None) or "utf-8")
+            chunks.append(chunk)
+        body = b"".join(chunks)
+        if not body:
+            empty = Response(
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+                background=response.background,
+            )
+            return empty
+        etag = _etag_for_body(body)
         response.headers["ETag"] = etag
+
     if _if_none_match_hits(request.headers.get("if-none-match"), etag):
-        not_modified = Response(status_code=304)
+        not_modified = Response(status_code=304, background=response.background)
         not_modified.headers["ETag"] = etag
-        not_modified.headers["Cache-Control"] = response.headers.get(
-            "cache-control",
-            DistributedRateLimitMiddleware.PUBLIC_MAP_GET_CACHE_CONTROL,
-        )
+        not_modified.headers["Cache-Control"] = cache_control
         return not_modified
-    return response
+
+    if body is None:
+        return response
+
+    return Response(
+        content=body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+        background=response.background,
+    )
 
 
 def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
@@ -174,7 +197,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
 
         if self._is_public_map_get(request.method, request.url.path):
             response = await call_next(request)
-            return _apply_public_map_cache(request, response)
+            return await _apply_public_map_cache(request, response)
 
         # Skip rate limiting when disabled via settings (local dev / E2E).
         # ``settings.rate_limit_disabled`` is read once at boot from the

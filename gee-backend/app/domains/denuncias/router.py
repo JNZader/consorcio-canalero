@@ -260,9 +260,7 @@ async def upload_denuncia_photo(
     except OSError as exc:
         raise HTTPException(status_code=503, detail="No se pudo guardar la foto") from exc
 
-    await run_in_threadpool(
-        _persist_denuncia_photo, db, denuncia, photo_url, previous_photo_url
-    )
+    await run_in_threadpool(_persist_denuncia_photo, db, denuncia, photo_url, previous_photo_url)
 
     previous_key = _scoped_photo_key(previous_photo_url, denuncia_id)
     if previous_key:

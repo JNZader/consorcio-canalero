@@ -194,9 +194,7 @@ def test_public_map_get_sends_etag_and_honors_if_none_match(monkeypatch) -> None
         transport = httpx.ASGITransport(app=app, client=("198.51.100.21", 12345))
         async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
             first = await client.get(public_path)
-            second = await client.get(
-                public_path, headers={"If-None-Match": first.headers["etag"]}
-            )
+            second = await client.get(public_path, headers={"If-None-Match": first.headers["etag"]})
             return first, second
 
     first, second = asyncio.run(run())

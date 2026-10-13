@@ -79,7 +79,7 @@ BEGIN
 
     -- PostgreSQL has no GRANT REFRESH. The API refreshes these views, so the
     -- app role must own them (and their indexes). Everything else stays on
-    -- the migrator. CREATE EXTENSION is not granted.
+    -- the migrator. Installing extensions stays on the migrator.
     FOR rel IN
         SELECT c.oid, c.relname
         FROM pg_class c

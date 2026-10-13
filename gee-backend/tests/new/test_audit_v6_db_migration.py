@@ -145,8 +145,14 @@ def test_audit_v6_ddl_is_reversible(db):
         for row in db.execute(
             text(
                 """
-                SELECT column_name FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'vt_parcelas_catastro'
+                SELECT a.attname
+                FROM pg_attribute a
+                JOIN pg_class c ON c.oid = a.attrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.relname = 'vt_parcelas_catastro'
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped
                 """
             )
         )

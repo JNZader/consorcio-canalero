@@ -436,6 +436,18 @@ def _a_item(fila: Any) -> ItemBuzon:
     )
 
 
+def _encolar_en_buzon(db: Session, usuario_id: Any, pregunta: str):
+    try:
+        item = buzon.encolar(db, usuario_id=usuario_id, pregunta=pregunta)
+    except buzon.PreguntaInvalida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "pregunta_invalida", "detalle": str(exc)},
+        ) from exc
+    db.commit()
+    return item.id, item.creada_en
+
+
 @router.post(
     "/preguntas",
     response_model=ConsultaEncolada,
@@ -454,18 +466,6 @@ def _a_item(fila: Any) -> ItemBuzon:
         Depends(enforce_qa_quota),
     ],
 )
-def _encolar_en_buzon(db: Session, usuario_id: Any, pregunta: str):
-    try:
-        item = buzon.encolar(db, usuario_id=usuario_id, pregunta=pregunta)
-    except buzon.PreguntaInvalida as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"error": "pregunta_invalida", "detalle": str(exc)},
-        ) from exc
-    db.commit()
-    return item.id, item.creada_en
-
-
 async def encolar_pregunta(
     request: Request,
     usuario: Any = Depends(_require_admin()),
@@ -501,9 +501,7 @@ async def encolar_pregunta(
             },
         ) from exc
 
-    item_id, creada_en = await run_in_threadpool(
-        _encolar_en_buzon, db, usuario.id, cuerpo.pregunta
-    )
+    item_id, creada_en = await run_in_threadpool(_encolar_en_buzon, db, usuario.id, cuerpo.pregunta)
     return ConsultaEncolada(id=item_id, creada_en=creada_en)
 
 
