@@ -1,0 +1,79 @@
+name: SAST
+
+# SEC-07: gitleaks on the full git history (pre-commit only sees the commit).
+# SEC-08: Semgrep p/python + p/typescript. --baseline-commit keeps existing
+# findings from failing the job; a finding introduced by the change still fails.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks 8.30.1
+        run: |
+          set -euo pipefail
+          version=8.30.1
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}" -o "$RUNNER_TEMP/${archive}"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/${archive}" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/${archive}" -C "$RUNNER_TEMP" gitleaks
+          sudo mv "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan git history
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --exit-code 1
+
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Install Semgrep
+        run: pip install semgrep==1.180.0
+      - name: Scan findings introduced since the baseline commit
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PR_BASE_SHA" ]; then
+            baseline="$PR_BASE_SHA"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            baseline="$PUSH_BEFORE"
+          else
+            baseline="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "${baseline}^{commit}"
+          echo "Semgrep baseline commit: $baseline"
+          semgrep scan \
+            --config p/python \
+            --config p/typescript \
+            --baseline-commit "$baseline" \
+            --error \
+            --metrics=off \
+            --exclude node_modules \
+            --exclude .venv \
+            --exclude venv
