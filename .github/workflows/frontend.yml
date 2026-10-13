@@ -3,8 +3,8 @@ name: Frontend
 on:
   push:
     # main, not develop: develop no existe (trigger muerto desde el flujo
-    # PR→main). Cloudflare Pages publica el frontend desde main en cada push,
-    # así que sin esto lo publicado no tenía NINGUNA señal de CI.
+    # PR→main). CI-05: Pages production tracks `pages-production` after this
+    # workflow succeeds (see pages.yml); main itself must not auto-deploy.
     # OJO: en push corren lint + test + typecheck + image; mutation queda
     # gateado al PR de release, mientras a11y y build corren en PR/dispatch
     # (ver los `if:` de esos jobs). La cobertura completa sigue siendo la del PR.

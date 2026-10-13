@@ -1,0 +1,4 @@
+.footer {
+  background: var(--mantine-color-gray-8);
+  border-top: 1px solid var(--mantine-color-gray-7);
+}

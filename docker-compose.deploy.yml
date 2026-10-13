@@ -108,6 +108,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      # DB-04: runtime is consorcio_app (no SUPERUSER). Until APP_DATABASE_URL
+      # is set, this is the same URL as migrate.
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
       # Trust only loopback and the exact Caddy peer resolved by app.server.
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
     volumes:
@@ -178,6 +181,8 @@ services:
     restart: unless-stopped
     command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
     env_file: .env
+    environment:
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - ./credentials:/app/credentials:ro
       - celery-beat-schedule:/var/run/celery
@@ -224,6 +229,8 @@ services:
     # loop. gevent / eventlet pools would crash that beat task.
     command: celery -A app.core.celery_app worker --pool=prefork --loglevel=info --concurrency=2 -Q celery
     env_file: .env
+    environment:
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - geo-data:/data/geo
       - ./credentials:/app/credentials:ro
@@ -260,6 +267,8 @@ services:
     container_name: consorcio-geo-worker
     restart: unless-stopped
     env_file: .env
+    environment:
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - geo-data:/data/geo
       - ./gee-backend/data/waterways:/app/data/waterways:ro

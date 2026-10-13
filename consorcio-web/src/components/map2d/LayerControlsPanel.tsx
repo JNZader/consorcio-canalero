@@ -389,7 +389,7 @@ function LayerHealthErrorRow({
       </Text>
       {onRetry && (
         <Button
-          size="compact-xs"
+          size="xs"
           variant="subtle"
           color="red"
           leftSection={<IconRefresh size={12} />}
@@ -998,7 +998,7 @@ export function LayerControlsPanel({
                 {demLoadError}
               </Text>
               {onRetryDem ? (
-                <Button size="compact-xs" variant="light" onClick={() => onRetryDem()}>
+                <Button size="xs" variant="light" onClick={() => onRetryDem()}>
                   Reintentar
                 </Button>
               ) : null}
@@ -1233,7 +1233,7 @@ export function LayerControlsPanel({
               </Text>
               {canRetryAll && (
                 <Button
-                  size="compact-xs"
+                  size="xs"
                   variant="subtle"
                   color="red"
                   leftSection={<IconRefresh size={12} />}
