@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "node scripts/apply-patches.mjs",
     "dev": "vite",
     "build": "node scripts/gen-version.mjs && tsc && vite build",
     "gen:version": "node scripts/gen-version.mjs",
@@ -63,6 +63,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-helmet-async": "^3.0.0",
+    "react-is": "^19.2.3",
     "recharts": "^3.7.0",
     "zustand": "^5.0.0"
   },
@@ -85,13 +86,13 @@
     "happy-dom": "^20.1.0",
     "openapi-typescript": "^7.10.1",
     "oxc-transform-react": "^0.152.0",
-    "patch-package": "^8.0.1",
     "typescript": "^5.7.0",
     "vite": "^8.3.2",
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.0.2"
   },
   "overrides": {
-    "serialize-javascript": "7.0.5"
+    "serialize-javascript": "7.0.5",
+    "qs": "6.16.0"
   }
 }

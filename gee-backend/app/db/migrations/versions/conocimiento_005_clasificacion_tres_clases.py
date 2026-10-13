@@ -87,7 +87,7 @@ def downgrade() -> None:
     """
     op.execute(
         sa.text(
-            f"UPDATE {TABLE} SET clasificacion = 'privado' WHERE clasificacion = 'institucional'"
+            f"UPDATE {TABLE} SET clasificacion = 'privado' WHERE clasificacion = 'institucional'"  # nosec B608  # internal constant, not user input
         )
     )
     op.drop_column(TABLE, EVIDENCIA_COLUMN)
