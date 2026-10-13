@@ -319,17 +319,7 @@ export default defineConfig({
               },
             },
           },
-          {
-            urlPattern: /^https:\/\/basemaps\.cartocdn\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'osm-tiles',
-              expiration: {
-                maxEntries: 500,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
-              },
-            },
-          },
+
           // Heavy lazy vendor chunks — do not precache on install; cache after first use.
           {
             urlPattern:
