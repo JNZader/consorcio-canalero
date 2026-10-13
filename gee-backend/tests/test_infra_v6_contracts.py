@@ -192,6 +192,24 @@ def test_stock_caddyfile_has_no_rate_limit_directive() -> None:
     assert "rate_limit {" in limited
 
 
+def test_pages_node_pin_is_at_the_repo_root() -> None:
+    """Pages reads .node-version from the repo root, before `cd consorcio-web`."""
+    assert _read(".node-version").strip() == "22.23.3"
+    assert _read("consorcio-web/.node-version").strip() == "22.23.3"
+
+
+def test_recharts_react_is_is_a_direct_dependency() -> None:
+    """`--legacy-peer-deps` (the Pages install) does not install recharts' peer."""
+    package = json.loads(_read("consorcio-web/package.json"))
+    lock = json.loads(_read("consorcio-web/package-lock.json"))
+    assert package["dependencies"]["react-is"] == "^19.2.3"
+    assert "react-is" in lock["packages"][""]["dependencies"]
+    react = lock["packages"]["node_modules/react"]["version"]
+    installed = lock["packages"]["node_modules/react-is"]
+    assert installed["version"] == react
+    assert installed.get("peer") is not True
+
+
 def test_pages_npmrc_keeps_dev_dependencies() -> None:
     """Pages can install with NODE_ENV=production, which omits tsc and vite."""
     npmrc = _read("consorcio-web/.npmrc")

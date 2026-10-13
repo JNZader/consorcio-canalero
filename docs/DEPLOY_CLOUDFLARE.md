@@ -26,7 +26,7 @@ Set these in **Cloudflare Dashboard > Pages project > Settings > Environment var
 | `VITE_API_URL` | `https://api.consorcio.example.com` | Backend API base URL |
 | `VITE_MARTIN_URL` | `https://tiles.consorcio.example.com` | Public Martin/vector tiles URL |
 
-> **Node version**: `consorcio-web/.node-version` and `consorcio-web/.nvmrc` both pin Node `22.23.3`. Pages v3 otherwise defaults to 22.16.0, and Babel 8 (pulled in by Stryker) declares `engines.node` `^22.18.0`. The files have to live in the Pages root (`consorcio-web`), not the repo root. Do not set a lower `NODE_VERSION` in the dashboard: environment variables override these files.
+> **Node version**: the Pages build command is `cd consorcio-web && npm install --legacy-peer-deps && npm run build`, so the project root Pages uses to pick Node is the repo root. `.node-version` at the repo root pins `22.23.3`. The copies in `consorcio-web/` (`.node-version` and `.nvmrc`) are for local `nvm`. Without the root file, build image v3 stays on 22.16.0 and Babel 8 warns `EBADENGINE` (`engines.node` `^22.18.0`). Do not set a lower `NODE_VERSION` in the dashboard: environment variables override these files.
 >
 > **devDependencies**: `consorcio-web/.npmrc` sets `include=dev`. Pages sometimes installs with `NODE_ENV=production`, and npm then skips `tsc` and `vite`. `include` wins over that omit.
 
