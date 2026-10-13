@@ -1,0 +1,36 @@
+{
+  "provider_note": "INF-04. Este archivo es el contrato de los chequeos. Crearlos en Uptime Kuma (ya está en el VPS) o en UptimeRobot es un paso manual: el repo no tiene token de ninguno de los dos. Intervalo en segundos.",
+  "monitors": [
+    {
+      "name": "Consorcio API live",
+      "url": "https://cc10demayo-api.javierzader.com/live",
+      "type": "https",
+      "interval_seconds": 300,
+      "expected_status": 200,
+      "note": "/health responde 200 aunque la base esté caída. /live es la sonda de proceso."
+    },
+    {
+      "name": "Consorcio API ready",
+      "url": "https://cc10demayo-api.javierzader.com/ready",
+      "type": "https",
+      "interval_seconds": 300,
+      "expected_status": 200,
+      "note": "503 cuando Postgres o Redis no responden."
+    },
+    {
+      "name": "Consorcio frontend home",
+      "url": "https://consorcio-canalero.pages.dev/",
+      "type": "https",
+      "interval_seconds": 300,
+      "expected_status": 200
+    },
+    {
+      "name": "Consorcio frontend mapa",
+      "url": "https://consorcio-canalero.pages.dev/mapa",
+      "type": "https",
+      "interval_seconds": 300,
+      "expected_status": 200,
+      "note": "La auditoría v6 vio /mapa en 404 por el fallback SPA. El monitor debe quedar en rojo hasta que eso se corrija; no lo marques como esperado 404."
+    }
+  ]
+}
