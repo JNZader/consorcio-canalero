@@ -13,6 +13,10 @@ import {
   RENDERABLE_UI_LAYER_IDS,
 } from '../../src/components/map2d/layerRenderRegistry';
 import { WATERWAY_DEFS } from '../../src/hooks/useWaterways';
+import {
+  SOIL_PMTILES_ARCHIVE_KEY,
+  setSoilPmtilesArchiveKeyForTests,
+} from '../../src/lib/soilPmtiles';
 import { ALL_ETAPAS } from '../../src/types/canales';
 
 const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
@@ -183,6 +187,7 @@ describe('comparison overlay vector coverage', () => {
   });
 
   it('mounts every concrete comparison-vector layer', () => {
+    setSoilPmtilesArchiveKeyForTests(SOIL_PMTILES_ARCHIVE_KEY);
     const harness = createFakeMap();
 
     syncComparisonVectorLayers(harness.map, createInputs());
@@ -195,6 +200,7 @@ describe('comparison overlay vector coverage', () => {
   });
 
   it('reacts to subfilters, opacity and order on the same map', () => {
+    setSoilPmtilesArchiveKeyForTests(SOIL_PMTILES_ARCHIVE_KEY);
     const harness = createFakeMap();
     const inputs = createInputs({
       vectorVisibility: {

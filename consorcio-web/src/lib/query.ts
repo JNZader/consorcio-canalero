@@ -6,6 +6,7 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { type Layer, layersApi, monitoringApi, reportsApi, statsApi } from './api';
+import { shouldRetryQuery } from './queryRetry';
 
 // ===========================================
 // QUERY CLIENT
@@ -21,7 +22,7 @@ export const queryClient = new QueryClient({
       // override this per-query with `retry: 0 | 1` — a 404 on a bundled
       // geojson never recovers, so 3 exponential-backoff retries only delay
       // the graceful fallback.
-      retry: 3,
+      retry: shouldRetryQuery,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,

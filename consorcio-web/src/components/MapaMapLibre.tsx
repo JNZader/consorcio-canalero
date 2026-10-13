@@ -17,17 +17,15 @@ import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { ALL_ETAPAS, type Etapa } from '../types/canales';
 import { collectCanalChildIds, groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Protocol } from 'pmtiles';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import '../lib/pmtilesProtocol';
 
-// Register PMTiles protocol once at module level.
+// Register PMTiles protocol once at module level (see pmtilesProtocol.ts).
 // NOTE: migrating the vector layers to PMTiles is a SEPARATE ticket — several
 // layers (waterways especially) are consumed as decorated FeatureCollections
 // both by the map and by the KMZ export (`exportSources`), so a tile source
 // would have to keep a GeoJSON twin alive for the export path.
 void bootMapLibreWorker();
-const _pmtilesProtocol = new Protocol();
-maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import {
   MAP_BOUNDS,
   MAP_CENTER,

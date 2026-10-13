@@ -250,13 +250,13 @@ describe('mapLayerEffectHelpers', () => {
   it('renders the soil fill and line with the audited visibility-boost paint', () => {
     const map = createMapMock();
 
-    syncSoilLayers(map as never, true);
+    syncSoilLayers(map as never, true, 'suelos_cu.pmtiles');
 
     expect(map.addSource).toHaveBeenCalledWith(
       SOURCE_IDS.SOIL,
       expect.objectContaining({
         type: 'vector',
-        url: expect.stringMatching(/^pmtiles:\/\/.+\/data\/suelos_cu\.pmtiles$/),
+        url: 'pmtiles://suelos_cu.pmtiles',
       })
     );
     const fillCall = map.addLayer.mock.calls.find(
@@ -279,6 +279,12 @@ describe('mapLayerEffectHelpers', () => {
       'line-width': 1.2,
       'line-opacity': 0.85,
     });
+  });
+
+  it('does not add a Range HTTP soil source when the archive key is missing', () => {
+    const map = createMapMock();
+    syncSoilLayers(map as never, true, null);
+    expect(map.addSource).not.toHaveBeenCalled();
   });
 
   it('mounts the DEM raster layer with the audited 0.6 opacity', () => {
