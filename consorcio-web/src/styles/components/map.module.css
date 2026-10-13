@@ -150,11 +150,36 @@
   min-width: 0;
 }
 
+.workspaceDrawerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1150;
+  background: rgb(0 0 0 / 0.35);
+}
+
+/* MAP-11: same sidebar host as desktop. Hidden until the burger opens it as a
+   75% overlay so LayerControlsPanel is never remounted across 48em. */
+.workspaceRoot[data-desktop='false'] .workspaceSidebar {
+  display: none;
+}
+
+.workspaceRoot[data-desktop='false'][data-drawer-open='true'] .workspaceSidebar {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1200;
+  width: var(--map-mobile-drawer-size, 75%);
+  height: 100%;
+  max-height: var(--map-canvas-height);
+  box-shadow: var(--mantine-shadow-md);
+}
+
 .workspaceBurger {
   position: absolute;
   top: var(--mantine-spacing-sm);
   left: var(--mantine-spacing-sm);
-  z-index: 1100;
+  z-index: 1250;
   background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
   border-radius: var(--mantine-radius-sm);
   box-shadow: var(--mantine-shadow-sm);
