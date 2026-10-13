@@ -4,18 +4,13 @@
 User-agent: *
 Allow: /
 
-# Restricted areas
+# Restricted areas and preview URLs. One group: a second
+# User-agent: * replaces the first instead of extending it.
 Disallow: /admin/
 Disallow: /dashboard/
 Disallow: /api/
-
-# Prevent indexing of development/staging URLs
-User-agent: *
 Disallow: /*?preview=*
 Disallow: /*?draft=*
-
-# Crawl delay (optional, be nice to the server)
-Crawl-delay: 1
 
 # Sitemap location
 Sitemap: https://consorcio-canalero.pages.dev/sitemap.xml

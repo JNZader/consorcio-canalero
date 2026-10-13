@@ -1,0 +1,62 @@
+name: Pages prod smoke
+
+# TEST-01. Frontend CI on a push to main is what pages.yml promotes. This job
+# waits until Cloudflare publishes that commit and checks deep links on the
+# production origin. GETs stay on that origin: no API host, no credentials.
+
+on:
+  workflow_run:
+    workflows: [Frontend]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Deep routes against production
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # CI-07: workflow_run runs with the default-branch token. Check out
+          # that commit, not the triggering head SHA.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Wait for the Cloudflare deploy
+        env:
+          APP_URL: https://consorcio-canalero.pages.dev
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -uo pipefail
+          sha_len=12
+          deadline=$(( SECONDS + 480 ))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            deployed=$(curl -fsSL --max-time 20 "$APP_URL/version.json" 2>/dev/null \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha",""))' 2>/dev/null || true)
+            if [ -n "$deployed" ] && [ "${#deployed}" -ge "$sha_len" ]; then
+              case "$EXPECTED_SHA" in
+                "$deployed"*) echo "Deployed sha matches $deployed"; exit 0 ;;
+              esac
+            fi
+            echo "waiting… deployed='${deployed:-<none>}' expected='${EXPECTED_SHA}'"
+            sleep 15
+          done
+          echo "::error::Cloudflare never published ${EXPECTED_SHA}. This is a DEPLOY failure, not a routing failure."
+          exit 1
+      - name: Probe deep routes and a missing asset
+        env:
+          APP_URL: https://consorcio-canalero.pages.dev
+        run: node consorcio-web/scripts/check-pages-routing.mjs --url "$APP_URL"
