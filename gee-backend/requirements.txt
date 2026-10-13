@@ -33,7 +33,7 @@ fastapi>=0.115.0,!=0.137.0,!=0.137.1,<0.144.0
 uvicorn[standard]>=0.34.0
 python-dotenv>=1.0.0
 pydantic[email]>=2.11.0
-pydantic-settings>=2.7.0
+pydantic-settings>=2.15.0
 
 # Google Earth Engine
 earthengine-api>=1.4.0
@@ -101,7 +101,7 @@ sentry-sdk[fastapi,celery,sqlalchemy]>=2.0.0
 
 # Centralised log shipping — opt-in. Active only when BETTERSTACK_TOKEN
 # is set (see app/core/logging.py). Free tier ships 1 GB/mes.
-logtail-python>=0.3.0
+logtail-python>=0.5.1
 
 # SEC-08: scripts/etl_pilar_verde/kml.py parses a local KML. defusedxml refuses
 # the entity expansion stdlib ElementTree would follow.
