@@ -13,7 +13,7 @@
  * The remaining desktop hint is localised via the `locale` option.
  */
 
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import type * as maplibregl from 'maplibre-gl';
 import type { RefObject } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -104,33 +104,34 @@ describe('useMapInitialization — cooperative gestures', () => {
     restore = null;
   });
 
-  it('ENABLES cooperativeGestures on a fine pointer (desktop mouse)', () => {
+  it('ENABLES cooperativeGestures on a fine pointer (desktop mouse)', async () => {
     restore = stubPointerCoarse(false);
     const { maplibre, capturedOptions } = createFakeMaplibre();
 
     renderInit(maplibre);
 
-    expect(capturedOptions).toHaveLength(1);
+    await waitFor(() => expect(capturedOptions).toHaveLength(1));
     expect(capturedOptions[0]?.cooperativeGestures).toBe(true);
     expect(capturedOptions[0]?.keyboard).toBe(true);
   });
 
-  it('DISABLES cooperativeGestures on a coarse pointer so one-finger pan works', () => {
+  it('DISABLES cooperativeGestures on a coarse pointer so one-finger pan works', async () => {
     restore = stubPointerCoarse(true);
     const { maplibre, capturedOptions } = createFakeMaplibre();
 
     renderInit(maplibre);
 
-    expect(capturedOptions).toHaveLength(1);
+    await waitFor(() => expect(capturedOptions).toHaveLength(1));
     expect(capturedOptions[0]?.cooperativeGestures).toBe(false);
   });
 
-  it('passes the Spanish locale for the cooperative-gestures hint', () => {
+  it('passes the Spanish locale for the cooperative-gestures hint', async () => {
     restore = stubPointerCoarse(false);
     const { maplibre, capturedOptions } = createFakeMaplibre();
 
     renderInit(maplibre);
 
+    await waitFor(() => expect(capturedOptions).toHaveLength(1));
     // Keys are the canonical MapLibre locale ids — a typo here silently leaves
     // the English default in place, so pin them explicitly.
     expect(capturedOptions[0]?.locale).toEqual({ ...MAP_LOCALE_ES });
@@ -164,7 +165,7 @@ describe('useMapInitialization — cooperative gestures', () => {
  * possible assertion of that invariant.
  */
 describe('useMapInitialization — onMapError does not rebuild the map', () => {
-  it('constructs the map exactly ONCE across renders with a new callback each time', () => {
+  it('constructs the map exactly ONCE across renders with a new callback each time', async () => {
     const { maplibre, capturedOptions } = createFakeMaplibre();
     const container = document.createElement('div');
     const containerRef: RefObject<HTMLDivElement | null> = { current: container };
@@ -186,6 +187,7 @@ describe('useMapInitialization — onMapError does not rebuild the map', () => {
       { initialProps: { onMapError: () => {} } }
     );
 
+    await waitFor(() => expect(capturedOptions).toHaveLength(1));
     rerender({ onMapError: () => {} });
     rerender({ onMapError: () => {} });
     rerender({ onMapError: () => {} });
@@ -195,7 +197,7 @@ describe('useMapInitialization — onMapError does not rebuild the map', () => {
 });
 
 describe('useMapInitialization — live camera does not rebuild the map', () => {
-  it('constructs the map exactly ONCE when center/zoom change after mount', () => {
+  it('constructs the map exactly ONCE when center/zoom change after mount', async () => {
     const { maplibre, capturedOptions } = createFakeMaplibre();
     const container = document.createElement('div');
     const containerRef: RefObject<HTMLDivElement | null> = { current: container };
@@ -216,6 +218,7 @@ describe('useMapInitialization — live camera does not rebuild the map', () => 
       { initialProps: { centerLat: -32.5, zoom: 10 } }
     );
 
+    await waitFor(() => expect(capturedOptions).toHaveLength(1));
     rerender({ centerLat: -32.50001, zoom: 10.02 });
     rerender({ centerLat: -32.51, zoom: 11 });
 

@@ -25,7 +25,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 // layers (waterways especially) are consumed as decorated FeatureCollections
 // both by the map and by the KMZ export (`exportSources`), so a tile source
 // would have to keep a GeoJSON twin alive for the export path.
-bootMapLibreWorker();
+void bootMapLibreWorker();
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import {

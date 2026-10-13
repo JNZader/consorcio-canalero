@@ -110,11 +110,22 @@ export function useMapInitialization({
     if (!containerRef.current) return;
 
     const removeNativeDragGuards = installMapNativeDragGuards(containerRef.current);
-    bootMapLibreWorker();
+    let cancelled = false;
+    let map: maplibregl.Map | undefined;
+    const onContextLost = (event: { preventDefault?: () => void }) => {
+      event.preventDefault?.();
+      setMapReady(false);
+    };
+    const onContextRestored = () => {
+      setMapReady(true);
+    };
 
-    let map: maplibregl.Map;
-    try {
-      map = new maplibre.Map({
+    void (async () => {
+      await bootMapLibreWorker();
+      if (cancelled || !containerRef.current) return;
+
+      try {
+        map = new maplibre.Map({
       container: containerRef.current,
       style: {
         version: 8,
@@ -199,49 +210,48 @@ export function useMapInitialization({
           sourceType: null,
           status: null,
           url: null,
-          message: 'Este navegador no soporta WebGL2, necesario para el mapa.',
+          message: 'Error al cargar el mapa: este navegador no soporta WebGL2.',
         });
-        return removeNativeDragGuards;
+        return;
       }
       throw error;
     }
-
-    map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new maplibre.FullscreenControl(), 'top-right');
-    map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
-
-    map.on('load', () => {
-      setMapReady(true);
-    });
-    const onContextLost = (event: { preventDefault?: () => void }) => {
-      event.preventDefault?.();
-      setMapReady(false);
-    };
-    const onContextRestored = () => {
-      setMapReady(true);
-    };
-    listenMapEvent(map, 'webglcontextlost', onContextLost);
-    listenMapEvent(map, 'webglcontextrestored', onContextRestored);
-
-    map.on('error', (event) => {
-      // Same heuristic as before, now shared with the tile-health counter —
-      // see `mapErrorClassify.ts`.
-      const classified = classifyMapError(event);
-      onMapErrorRef.current?.(classified);
-      if (classified.kind !== 'tile') {
-        logger.error('MapaMapLibre error', event.error);
+      if (cancelled) {
+        map.remove();
+        return;
       }
-    });
 
-    mapRef.current = map;
+      map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right');
+      map.addControl(new maplibre.FullscreenControl(), 'top-right');
+      map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+      map.on('load', () => {
+        setMapReady(true);
+      });
+      listenMapEvent(map, 'webglcontextlost', onContextLost);
+      listenMapEvent(map, 'webglcontextrestored', onContextRestored);
+
+      map.on('error', (event) => {
+        const classified = classifyMapError(event);
+        onMapErrorRef.current?.(classified);
+        if (classified.kind !== 'tile') {
+          logger.error('MapaMapLibre error', event.error);
+        }
+      });
+
+      mapRef.current = map;
+    })();
 
     return () => {
-      if (typeof map.off === 'function') {
-        unlistenMapEvent(map, 'webglcontextlost', onContextLost);
-        unlistenMapEvent(map, 'webglcontextrestored', onContextRestored);
+      cancelled = true;
+      if (map) {
+        if (typeof map.off === 'function') {
+          unlistenMapEvent(map, 'webglcontextlost', onContextLost);
+          unlistenMapEvent(map, 'webglcontextrestored', onContextRestored);
+        }
+        map.remove();
       }
       removeNativeDragGuards();
-      map.remove();
       mapRef.current = null;
       setMapReady(false);
     };

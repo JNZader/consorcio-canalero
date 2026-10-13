@@ -5,7 +5,7 @@ import type * as maplibregl from 'maplibre-gl';
  */
 export type MapLibreModule = typeof maplibregl;
 
-let workerUrlSet = false;
+let workerBoot: Promise<void> | null = null;
 
 function asModule(value: unknown): MapLibreModule | null {
   if (typeof value !== 'object' || value === null) return null;
@@ -15,21 +15,21 @@ function asModule(value: unknown): MapLibreModule | null {
 
 /**
  * Vite cannot see `import.meta.url` inside the MapLibre package, so the
- * worker URL must be set once before `new Map()`. Tests skip this: they mock
- * `maplibre-gl` without `setWorkerUrl` and without the worker file.
+ * worker URL must be set once before `new Map()`. Callers must await this.
+ * Tests skip the worker file (mocked `maplibre-gl`, no `?worker&url`).
  */
-export function bootMapLibreWorker(): void {
-  if (workerUrlSet) return;
-  workerUrlSet = true;
-  if (import.meta.env.MODE === 'test') return;
-  void Promise.all([
-    import('maplibre-gl'),
-    import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
-  ]).then(([ml, worker]) => {
+export function bootMapLibreWorker(): Promise<void> {
+  workerBoot ??= (async () => {
+    if (import.meta.env.MODE === 'test') return;
+    const [ml, worker] = await Promise.all([
+      import('maplibre-gl'),
+      import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
+    ]);
     if (typeof ml.setWorkerUrl === 'function') {
       ml.setWorkerUrl(worker.default);
     }
-  });
+  })();
+  return workerBoot;
 }
 
 /**
@@ -43,7 +43,7 @@ export async function loadMapLibre(): Promise<MapLibreModule> {
   const [module] = await Promise.all([
     import('maplibre-gl'),
     import('maplibre-gl/dist/maplibre-gl.css'),
+    bootMapLibreWorker(),
   ]);
-  bootMapLibreWorker();
   return asModule((module as { default?: unknown }).default) ?? asModule(module) ?? (module as MapLibreModule);
 }
