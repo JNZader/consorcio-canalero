@@ -59,7 +59,10 @@ jobs:
   canary:
     name: E2E canary (prod)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15m was eaten by Pages wait (~6m) + npm ci + Playwright chromium +
+    # /mapa canary. Two post-merge runs (#485, #486) cancelled on the test
+    # step at the 15m ceiling with no assertion failure.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
