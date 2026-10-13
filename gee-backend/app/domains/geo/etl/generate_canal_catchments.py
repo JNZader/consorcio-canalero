@@ -549,7 +549,7 @@ def _upsert_catchment(
                 flow_dir_layer_id = EXCLUDED.flow_dir_layer_id,
                 version = EXCLUDED.version,
                 updated_at = now()
-            """
+            """  # nosec B608  # internal constant, not user input
         ),
         {
             "id": uuid.uuid4(),
@@ -586,7 +586,7 @@ def _in_scope_canal_refs(
     if estado is not None:
         clauses.append("estado = :estado")
         params["estado"] = estado
-    sql = f"SELECT id FROM canal_consorcio WHERE {' AND '.join(clauses)} ORDER BY id"
+    sql = f"SELECT id FROM canal_consorcio WHERE {' AND '.join(clauses)} ORDER BY id"  # nosec B608  # internal constant, not user input
     if limit is not None:
         sql += " LIMIT :limit"
         params["limit"] = limit

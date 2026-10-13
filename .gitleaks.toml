@@ -1,0 +1,15 @@
+title = "consorcio-canalero"
+
+# SEC-07. Pre-commit already runs gitleaks (see .pre-commit-config.yaml).
+# This allowlist covers the false positives from the full-history scan:
+# test fixtures (JWT_SECRET / SUPABASE_* set to test-… values) and the
+# documented ACCESS_TOKEN placeholder in the WhatsApp plan.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and the documented WhatsApp placeholder"
+paths = [
+  '''(?:^|/)tests/''',
+  '''docs/PLAN_WHATSAPP_BOT\.md''',
+]

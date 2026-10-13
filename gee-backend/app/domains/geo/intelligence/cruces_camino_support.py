@@ -78,7 +78,7 @@ SQL_DEM_JOB_OCUPADO = text(
        AND estado::text = ANY(:estados)
        AND {_AREA_PREDICATE}
      LIMIT 1
-    """
+    """  # nosec B608  # internal constant, not user input
 )
 
 SQL_DEM_JOB_INTERVINO = text(
@@ -89,7 +89,7 @@ SQL_DEM_JOB_INTERVINO = text(
        AND updated_at >= :desde
        AND {_AREA_PREDICATE}
      LIMIT 1
-    """
+    """  # nosec B608  # internal constant, not user input
 )
 
 #: ``created_at``, not ``updated_at``, and the reason is directional.
@@ -111,7 +111,7 @@ SQL_MAX_DEM_CREATED_AT = text(
      WHERE tipo::text = ANY(:tipos)
        AND estado::text = ANY(:estados)
        AND {_AREA_PREDICATE}
-    """
+    """  # nosec B608  # internal constant, not user input
 )
 
 #: Terrain is not the only input. A road reload changes the geometry the
@@ -137,7 +137,7 @@ SQL_DEM_RESULTADOS = text(
        AND resultado IS NOT NULL
        AND {_AREA_PREDICATE}
      ORDER BY created_at DESC
-    """
+    """  # nosec B608  # internal constant, not user input
 )
 
 #: The keys a DEM run writes into ``outputs`` ONLY inside its burn branch.

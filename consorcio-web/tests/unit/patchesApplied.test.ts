@@ -1,11 +1,11 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
  * Every patch under `patches/` must actually be applied inside `node_modules`.
  *
- * `patch-package` only runs from the `postinstall` script, so a `node_modules`
+ * `scripts/apply-patches.mjs` only runs from the `postinstall` script, so a `node_modules`
  * tree that was installed before a patch landed on `main` stays silently
  * unpatched: checking out the branch does not re-run the install.
  *
@@ -88,12 +88,20 @@ function missingHunks(): MissingHunk[] {
   return missing;
 }
 
-describe('patch-package patches', () => {
+describe('vendored patches', () => {
   it('are applied in node_modules (otherwise run `npm install`)', () => {
     expect(missingHunks()).toEqual([]);
   });
 
   it('finds at least one patch (otherwise the guard above is vacuous)', () => {
     expect(patchFiles().length).toBeGreaterThan(0);
+  });
+
+  it('names the Mantine patch after the installed @mantine/core version (CI-03)', () => {
+    const installed = JSON.parse(
+      readFileSync(join(WEB_ROOT, 'node_modules/@mantine/core/package.json'), 'utf8')
+    ) as { version: string };
+    const mantinePatches = patchFiles().filter((name) => name.startsWith('@mantine+core+'));
+    expect(mantinePatches).toEqual([`@mantine+core+${installed.version}.patch`]);
   });
 });

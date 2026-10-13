@@ -13,8 +13,11 @@ WORKDIR /app
 # Install dependencies for native modules
 RUN apk add --no-cache libc6-compat
 
-# Copy package files and patches for postinstall
+# Copy package files and patches for postinstall.
+# apply-patches.mjs replaces patch-package and runs from the postinstall
+# script, so it has to be in the image before npm ci.
 COPY package.json package-lock.json ./
+COPY scripts/apply-patches.mjs ./scripts/apply-patches.mjs
 COPY patches ./patches
 
 # Install dependencies with clean install (runs postinstall which applies patches)

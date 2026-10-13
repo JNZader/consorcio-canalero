@@ -367,7 +367,7 @@ _EXPLODE = text(f"""
         GeometryType(parte_geom) AS geom_type
     FROM partes
     ORDER BY parte
-""")
+""")  # nosec B608  # internal constant, not user input
 
 
 def explode_parts(db: Session, feature: SourceFeature) -> list[Part]:
@@ -423,7 +423,7 @@ _SELECT_LINEAGE_PKS = text(
 )
 
 _SELECT_HAUSDORFF = text(
-    "SELECT ST_HausdorffDistance("
+    "SELECT ST_HausdorffDistance("  # nosec B608  # internal constant, not user input
     f"  ST_Transform(geom, {METRIC_SRID}), "
     f"  ST_Transform(ST_GeomFromEWKB(:geom_wkb), {METRIC_SRID})"
     ") FROM red_vial WHERE id = :id"
@@ -432,7 +432,7 @@ _SELECT_HAUSDORFF = text(
 #: The geometry travels as the EWKB the decomposition already produced, so the
 #: stored bytes are exactly the bytes ``geom_hash`` was computed over.
 _INSERT = text(
-    "INSERT INTO red_vial (id, source_id, parte, "
+    "INSERT INTO red_vial (id, source_id, parte, "  # nosec B608  # internal constant, not user input
     + ", ".join(TEXT_ATTRIBUTES)
     + ", lzn, geom, geom_hash, activo, ultima_carga_en) VALUES (:id, :source_id, :parte, "
     + ", ".join(f":{name}" for name in TEXT_ATTRIBUTES)
@@ -444,7 +444,7 @@ _INSERT = text(
 # "the load IS the event" guarantee would be unobservable. The column default
 # stays ``now()``; the loader is explicit.
 _UPDATE = text(
-    "UPDATE red_vial SET "
+    "UPDATE red_vial SET "  # nosec B608  # internal constant, not user input
     + ", ".join(f"{name} = :{name}" for name in TEXT_ATTRIBUTES)
     + ", lzn = :lzn, parte = :parte, geom = ST_GeomFromEWKB(:geom_wkb), geom_hash = :geom_hash, "
     + "ultima_carga_en = clock_timestamp(), updated_at = clock_timestamp() WHERE id = :id"

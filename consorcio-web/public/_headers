@@ -17,13 +17,21 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Content-Type: application/json
 
+# SEC-02: connect-src/img-src list exact hosts. pages.dev is only
+# consorcio-canalero.pages.dev ('self' covers it when that is the document
+# origin). javierzader.com is only the API and the Martin host from the runbook.
+# SEC-05: consorcio10demayo.com.ar does not answer TLS and is not listed.
+# OBS-01: Sentry DSN shape in the runbook is <org>.ingest.us.sentry.io (the org
+# label is per deploy and is not in the repo). Better Stack browser ingest is
+# the @logtail/core default https://in.logs.betterstack.com; the EU override
+# documented in src/lib/logtail.ts is https://eu1.logs.betterstack.com.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(self), interest-cohort=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com https://earthengine.googleapis.com https://cc10demayo-api.javierzader.com https://*.javierzader.com https://*.consorcio10demayo.com.ar https://consorcio10demayo.com.ar; font-src 'self' data:; connect-src 'self' https://consorcio-canalero.pages.dev https://*.pages.dev https://cc10demayo-api.javierzader.com https://*.javierzader.com https://*.consorcio10demayo.com.ar https://consorcio10demayo.com.ar https://earthengine.googleapis.com https://server.arcgisonline.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://api.mapbox.com https://tiles.openfreemap.org; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com https://earthengine.googleapis.com https://cc10demayo-api.javierzader.com https://cc10demayo-tiles.javierzader.com; font-src 'self' data:; connect-src 'self' https://consorcio-canalero.pages.dev https://cc10demayo-api.javierzader.com https://cc10demayo-tiles.javierzader.com https://earthengine.googleapis.com https://server.arcgisonline.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://tiles.openfreemap.org https://*.ingest.us.sentry.io https://in.logs.betterstack.com https://eu1.logs.betterstack.com; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

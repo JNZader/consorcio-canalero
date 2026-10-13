@@ -194,7 +194,7 @@ _SEED_APRHI_SQL = text(
         nombre_origen
     FROM ranked
     ON CONFLICT (nombre_origen) DO NOTHING
-    """
+    """  # nosec B608  # internal constant, not user input
 )
 
 _APRHI_DISSOLVE = f"""
@@ -210,7 +210,7 @@ _APRHI_DISSOLVE = f"""
       ON cn.tipo = 'canales_existentes'
      AND {_APRHI_NOMBRE} = p.nombre_origen
      AND ST_Intersects(cn.geom, {_HULL})
-"""
+"""  # nosec B608  # internal constant, not user input
 
 _LIST_APRHI_SQL = text(
     f"""
