@@ -187,17 +187,21 @@ The two services live behind the `backup` compose profile so they
 don't auto-start with `docker compose up`. First run will build the
 image (~1 min); subsequent runs are seconds.
 
-#### 1.4.d Schedule the daily backup via host crontab
+#### 1.4.d Schedule the daily backup with the versioned systemd timer
+
+Do not install the old crontab. `deploy/backup.timer` runs both backup
+services at 03:20 and writes a success stamp only if both exit 0.
+`deploy/backup-age-check.timer` fails (and notifies) when that stamp is
+older than 26 h. Leaving the crontab in place runs the backup twice.
+
+Install steps, the notify hook, and the monthly restore drill are in
+[`docs/runbooks/infra-cicd-v6.md`](runbooks/infra-cicd-v6.md). If a host
+still has the previous crontab, delete these two lines:
 
 ```cron
-# m h dom mon dow  command
 15 03 * * *  cd /home/javier/stacks/consorcio && /usr/bin/docker compose --profile backup run --rm backup-postgres >>/var/log/consorcio-backup-postgres.log 2>&1
 45 03 * * *  cd /home/javier/stacks/consorcio && /usr/bin/docker compose --profile backup run --rm backup-volumes  >>/var/log/consorcio-backup-volumes.log  2>&1
 ```
-
-The 30-min gap keeps the two jobs from saturating the upload bandwidth
-at the same time. Both logs rotate via logrotate in
-`/etc/logrotate.d/consorcio` (template in `docs/templates/`).
 
 ### 1.5 Email / SMTP (Phase 2 / F2-J)
 
@@ -467,8 +471,10 @@ What it covers (each step mirrors what the GH Actions workflow ran):
 3. **auth-gate regression tests** —
    `tests/new/test_auth_gates.py`. Catches a missing `Depends(...)`
    on a PII endpoint.
-4. **Backend coverage ≥ 60%** —
-   `pytest tests/new/ --cov-config=.coveragerc --cov-fail-under=60`.
+4. **Backend coverage ≥ 70%** —
+   `pytest tests/new/ --cov-config=.coveragerc --cov-fail-under=70`,
+   plus `scripts/critical_coverage_gate.py` for auth, denuncias, and
+   rate limit (CI-04).
 5. **Mutation kill-rate ≥ 0.30** —
    `scripts/cosmic_gate.py` against denuncias.service,
    monitoring.service, tramites.schemas.
@@ -794,12 +800,21 @@ real run.
 
 ---
 
-### 4.1 Server-vs-repo compose drift (F5-A2)
+### 4.1 Server-vs-repo compose drift (F5-A2, INF-07)
 
-The Hetzner stack runs a CUSTOM ``docker-compose.yml`` that diverged
+The file to install on Hetzner from here on is ``docker-compose.prod.yml``
+(GHCR digests, external Postgres and Redis, PgBouncer, backups).
+``docker-compose.deploy.yml`` stays in the repo as the legacy embedded
+stack (local build, Postgres and Redis in the same compose). Both files
+now share ``cap_drop``, ``no-new-privileges``, and JSON logs. The cutover
+— and the fact that the live server may still be on the embedded shape —
+is in [`docs/runbooks/infra-cicd-v6.md`](runbooks/infra-cicd-v6.md). This
+section does not claim that cutover already happened.
+
+The Hetzner stack has run a CUSTOM ``docker-compose.yml`` that diverged
 from the in-repo ``docker-compose.yml`` (dev local) and from
-``docker-compose.prod.yml`` (the canonical prod template). All three
-files coexist; only the server's is load-bearing for live traffic.
+``docker-compose.prod.yml``. Until the cutover, the server's file is
+still the one serving live traffic.
 
 **What's different on the server (vs ``docker-compose.prod.yml``):**
 

@@ -26,6 +26,8 @@ DECLARE
     target_db text := current_setting('appdb.database_name');
     migrator_name text := current_setting('appdb.migrator_role');
     app_name text := current_setting('appdb.app_role');
+    rel record;
+    idx record;
 BEGIN
     IF current_database() <> target_db THEN
         RAISE EXCEPTION 'connected to database %, expected %', current_database(), target_db;
@@ -50,6 +52,11 @@ BEGIN
         app_name
     );
     EXECUTE format('ALTER ROLE %I SET statement_timeout = %L', app_name, '15s');
+    EXECUTE format(
+        'ALTER ROLE %I SET idle_in_transaction_session_timeout = %L',
+        app_name,
+        '60s'
+    );
     EXECUTE format('ALTER ROLE %I SET search_path = public, pg_catalog', app_name);
 
     EXECUTE format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO %I', target_db, app_name);
@@ -69,6 +76,40 @@ BEGIN
         migrator_name,
         app_name
     );
+
+    -- PostgreSQL has no GRANT REFRESH. The API refreshes these views, so the
+    -- app role must own them (and their indexes). Everything else stays on
+    -- the migrator. Installing extensions stays on the migrator.
+    FOR rel IN
+        SELECT c.oid, c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'm'
+          AND c.relname = ANY (ARRAY[
+              'mv_dashboard_geo_stats',
+              'mv_hci_por_zona',
+              'mv_alertas_resumen',
+              'mv_suelos_por_zona',
+              'mv_canales_por_zona',
+              'mv_caminos_por_zona',
+              'vt_parcelas_catastro'
+          ])
+    LOOP
+        EXECUTE format(
+            'ALTER MATERIALIZED VIEW public.%I OWNER TO %I',
+            rel.relname,
+            app_name
+        );
+        FOR idx IN
+            SELECT ic.relname
+            FROM pg_index i
+            JOIN pg_class ic ON ic.oid = i.indexrelid
+            WHERE i.indrelid = rel.oid
+        LOOP
+            EXECUTE format('ALTER INDEX public.%I OWNER TO %I', idx.relname, app_name);
+        END LOOP;
+    END LOOP;
 END
 $provision$;
 

@@ -31,6 +31,9 @@ HNSW_INDEX_NAME = "ix_rag_unidad_embedding_hnsw"
 PROBE_EXTENSION_AVAILABLE_SQL = "SELECT 1 FROM pg_available_extensions WHERE name = :extension_name"
 
 # Order matters: extension before column, column before index.
+# Migration-only (conocimiento_002 and the pgvector test fixture). Request
+# handlers must not execute these statements: ``consorcio_app`` cannot
+# CREATE EXTENSION (DB-04). Runtime code only SELECTs ``pg_extension``.
 UPGRADE_STATEMENTS: tuple[str, ...] = (
     f"CREATE EXTENSION IF NOT EXISTS {EXTENSION_NAME}",
     f"ALTER TABLE {EMBEDDING_TABLE} ADD COLUMN IF NOT EXISTS "

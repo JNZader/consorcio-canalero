@@ -16,10 +16,11 @@
 #
 # Tagged `consorcio-postgres:16-vector`. Used ONLY via
 # `docker-compose.pgvector.yml` (`-f`, opt-in) — never the default
-# `docker-compose.yml`, which keeps `image: pgrouting/pgrouting:...`
-# untouched (design.md D7 "prod untouched"; consorcio's prod box runs a
-# compose file outside this repository entirely, so this image is
-# unreachable by construction from production).
+# `docker-compose.yml`, which keeps `image: pgrouting/pgrouting:16-3.4-3.6.1`
+# untouched. The embedded production compose (`docker-compose.deploy.yml`)
+# tracks `pgrouting/pgrouting:16-3.5-3.8` instead. This Dockerfile stays on
+# the Debian 11 base because `postgresql-16-pgvector=0.8.6-1.pgdg11+1` is
+# pinned to that release. See docs/runbooks/infra-cicd-v6.md (DB-05).
 FROM pgrouting/pgrouting:16-3.4-3.6.1
 
 RUN apt-get update \
