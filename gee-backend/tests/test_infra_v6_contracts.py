@@ -469,11 +469,15 @@ def test_pages_prod_smoke_checks_deep_routes_without_calling_the_api() -> None:
 
 def test_robots_and_not_found_are_not_indexed() -> None:
     robots = _read("consorcio-web/public/robots.txt")
-    agents = [line.strip() for line in robots.splitlines() if line.lower().startswith("user-agent:")]
+    agents = [
+        line.strip() for line in robots.splitlines() if line.lower().startswith("user-agent:")
+    ]
     assert agents == ["User-agent: *"]
     assert "crawl-delay" not in robots.lower()
     route_tree = _read("consorcio-web/src/routeTree.gen.tsx")
-    block = route_tree.split("const NotFoundComponent", 1)[1].split("const rootRouteWithComponent", 1)[0]
+    block = route_tree.split("const NotFoundComponent", 1)[1].split(
+        "const rootRouteWithComponent", 1
+    )[0]
     assert "noindex={true}" in block
 
 
