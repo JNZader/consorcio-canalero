@@ -21,9 +21,18 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { InfoPanel } from '../../src/components/map2d/InfoPanel';
+import { useCanAccess } from '../../src/stores/authStore';
+
+vi.mock('../../src/stores/authStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/stores/authStore')>();
+  return {
+    ...actual,
+    useCanAccess: vi.fn(() => false),
+  };
+});
 import type { CanalFeatureProperties } from '../../src/types/canales';
 
 function renderWithMantine(ui: ReactNode) {
@@ -71,6 +80,10 @@ function buildGenericFeature(): Feature {
 // ---------------------------------------------------------------------------
 
 describe('<InfoPanel /> — Canal detection branch', () => {
+  afterEach(() => {
+    vi.mocked(useCanAccess).mockReturnValue(false);
+  });
+
   it('renders <CanalCard> for a relevado feature', () => {
     const feature = buildCanalFeature({ estado: 'relevado' });
     renderWithMantine(
@@ -120,7 +133,7 @@ describe('<InfoPanel /> — Canal detection branch', () => {
     expect(screen.queryByTestId('canal-card')).not.toBeInTheDocument();
     expect(screen.getByTestId('info-feature-chips')).toBeInTheDocument();
     expect(screen.getByTestId('info-panel-group-summary')).toBeInTheDocument();
-    expect(await screen.findAllByTestId('elevation-profile')).toHaveLength(1);
+    expect(screen.queryByTestId('elevation-profile')).not.toBeInTheDocument();
     await user.click(screen.getByText('Canal A'));
     expect(screen.getAllByTestId('canal-card')).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'Canal A' })).toBeInTheDocument();
@@ -140,5 +153,13 @@ describe('<InfoPanel /> — Canal detection branch', () => {
     await user.click(screen.getByText('Canal Primero'));
     expect(screen.getAllByTestId('canal-card')).toHaveLength(1);
     expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
+  });
+
+  it('loads the elevation profile only for operators', async () => {
+    vi.mocked(useCanAccess).mockReturnValue(true);
+    renderWithMantine(
+      <InfoPanel feature={buildCanalFeature()} onClose={() => {}} />,
+    );
+    expect(await screen.findByTestId('elevation-profile')).toBeInTheDocument();
   });
 });

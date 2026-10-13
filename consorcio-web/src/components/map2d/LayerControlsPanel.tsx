@@ -22,6 +22,7 @@ import {
 } from '@mantine/core';
 import type { ComponentType, ReactNode } from 'react';
 import { isValidElement, useEffect, useState } from 'react';
+import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import styles from '../../styles/components/map.module.css';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
@@ -496,6 +497,8 @@ export function LayerControlsPanel({
   onFocusCanal,
   mapZoom = MAP_DEFAULT_ZOOM,
 }: LayerControlsPanelProps) {
+  const liveZoom = useMapCameraStore((state) => state.camera?.zoom);
+  const effectiveZoom = liveZoom ?? mapZoom;
   const [query, setQuery] = useState('');
   const [accordionStored, setAccordionStored] = useState<string[] | null>(null);
   // Accent-folded, not just lowercased (R3-003): the labels mix accented
@@ -897,7 +900,7 @@ export function LayerControlsPanel({
                       onChange={layerFineControl.onLayerOpacityChange}
                     />
                   )}
-                  {layerBelowMinZoom(item.id, mapZoom) && (
+                  {layerBelowMinZoom(item.id, effectiveZoom) && (
                     <Text size="xs" c="dimmed">
                       {LAYER_ZOOM_IN_HINT}
                     </Text>

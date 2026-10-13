@@ -13,9 +13,10 @@
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
+import { useMapCameraStore } from '../../src/stores/mapCameraStore';
 
 function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -210,6 +211,10 @@ describe('<LayerControlsPanel /> — active-count badge (2.4)', () => {
 });
 
 describe('<LayerControlsPanel /> — CART-06 zoom hint', () => {
+  afterEach(() => {
+    useMapCameraStore.setState({ camera: null });
+  });
+
   it('tells the user to zoom in when catastro is below minzoom', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} mapZoom={11} />);
     fireEvent.click(screen.getByTestId('layer-family-territorio-control'));
@@ -218,6 +223,19 @@ describe('<LayerControlsPanel /> — CART-06 zoom hint', () => {
 
   it('hides the hint once zoom reaches the layer minzoom', () => {
     renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} mapZoom={12} />);
+    fireEvent.click(screen.getByTestId('layer-family-territorio-control'));
+    expect(screen.queryByText('Acercate para ver esta capa')).not.toBeInTheDocument();
+  });
+
+  it('reads live camera zoom when the parent omits mapZoom', () => {
+    useMapCameraStore.getState().setCamera({
+      lng: -62.7,
+      lat: -32.6,
+      zoom: 17,
+      bearing: 0,
+      pitch: 0,
+    });
+    renderWithMantine(<LayerControlsPanel {...baseProps} vectorVisibility={{}} />);
     fireEvent.click(screen.getByTestId('layer-family-territorio-control'));
     expect(screen.queryByText('Acercate para ver esta capa')).not.toBeInTheDocument();
   });
