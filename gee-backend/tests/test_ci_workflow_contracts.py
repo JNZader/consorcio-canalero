@@ -2195,3 +2195,17 @@ def test_only_the_publishing_workflow_writes_full_buildkit_layer_caches() -> Non
     deploy = _without_comments(_read(".github/workflows/deploy.yml"))
     assert len(mode_max.findall(deploy)) == 2
     assert mode_min.findall(deploy) == []
+
+
+def test_ci05_pages_promote_waits_for_frontend() -> None:
+    """CI-05: Pages production advances only after Frontend CI on main."""
+    pages = _read(".github/workflows/pages.yml")
+    assert "workflow_run:" in pages
+    assert "workflows: [Frontend]" in pages
+    assert "types: [completed]" in pages
+    assert "head_branch == 'main'" in pages
+    assert "conclusion == 'success'" in pages
+    assert "github.event.workflow_run.event == 'push'" in pages
+    assert "pages-production" in pages
+    assert "wrangler" not in pages
+    assert "contents: write" in pages

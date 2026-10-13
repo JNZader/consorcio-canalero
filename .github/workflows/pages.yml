@@ -1,0 +1,33 @@
+name: Pages promote
+
+# CI-05: Cloudflare must NOT auto-deploy from main. Production Pages tracks
+# `pages-production`, which this job fast-forwards only after Frontend CI is
+# green on a push to main. Dashboard: production branch = pages-production.
+
+on:
+  workflow_run:
+    workflows: [Frontend]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote main to pages-production
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Point pages-production at the green SHA
+        run: git push --force origin "HEAD:refs/heads/pages-production"
