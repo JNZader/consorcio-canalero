@@ -7,8 +7,9 @@
  *
  */
 
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { bootMapLibreWorker } from '../../lib/maplibreLoader';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Alert, Button, Stack } from '@mantine/core';
 import type { Feature } from 'geojson';
@@ -530,6 +531,7 @@ export default function TerrainViewer3D({
     setReady(false);
     setErrorMessage(null);
 
+    bootMapLibreWorker();
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: {

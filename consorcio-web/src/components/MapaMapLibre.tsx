@@ -12,7 +12,8 @@
 import { Box, Stack } from '@mantine/core';
 import type { Feature, FeatureCollection } from 'geojson';
 
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { ALL_ETAPAS, type Etapa } from '../types/canales';
 import { collectCanalChildIds, groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -24,6 +25,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 // layers (waterways especially) are consumed as decorated FeatureCollections
 // both by the map and by the KMZ export (`exportSources`), so a tile source
 // would have to keep a GeoJSON twin alive for the export path.
+bootMapLibreWorker();
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 import {

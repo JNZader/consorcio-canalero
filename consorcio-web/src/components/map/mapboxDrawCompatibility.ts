@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 /**
  * @mapbox/mapbox-gl-draw expects Mapbox GL class names on the map container/canvas.

@@ -1,5 +1,5 @@
 import type { Feature } from 'geojson';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useState } from 'react';
 
 import { prefersFineHover, subscribePrefersFineHover } from '../map2d/prefersFineHover';

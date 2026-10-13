@@ -1,5 +1,5 @@
 import type { FeatureCollection, Point } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useEffect } from 'react';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
@@ -559,21 +559,21 @@ export function useMapLayerEffects({
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
-    applyLayerOpacity(map, opacityByLayer);
+    applyLayerOpacity(map as unknown as Parameters<typeof applyLayerOpacity>[0], opacityByLayer);
     });
   }, [mapReady, mapRef, opacityByLayer, layerMountSignal]);
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
-    applyMapLabelSize(map, labelSizeScale);
+    applyMapLabelSize(map as unknown as Parameters<typeof applyMapLabelSize>[0], labelSizeScale);
     });
   }, [mapReady, mapRef, labelSizeScale, layerMountSignal]);
 
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
-    applyMapLineWidth(map, lineWidthScale);
+    applyMapLineWidth(map as unknown as Parameters<typeof applyMapLineWidth>[0], lineWidthScale);
     });
   }, [mapReady, mapRef, lineWidthScale, layerMountSignal]);
 
@@ -585,7 +585,7 @@ export function useMapLayerEffects({
   useEffect(() => {
     runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
     void layerMountSignal;
-    applyLayerOrder(map, orderByLayer);
+    applyLayerOrder(map as unknown as Parameters<typeof applyLayerOrder>[0], orderByLayer);
     });
   }, [mapReady, mapRef, orderByLayer, layerMountSignal]);
 

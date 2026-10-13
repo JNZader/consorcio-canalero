@@ -36,7 +36,7 @@ vi.mock('maplibre-gl', () => {
   return { default: { Popup, Marker } };
 });
 
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { useQuickPlaceMarker } from '../../src/components/map2d/useQuickPlaceMarker';
 
 describe('useQuickPlaceMarker', () => {

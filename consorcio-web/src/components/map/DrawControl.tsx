@@ -12,8 +12,9 @@
  */
 
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
 import { ensureMapboxDrawCompatibility } from './mapboxDrawCompatibility';
 import { removeMapboxDrawArtifacts } from './mapboxDrawShared';
 
@@ -155,16 +156,16 @@ const DrawControl = forwardRef<DrawControlHandle, DrawControlProps>(
         removeMapboxDrawArtifacts(map);
       };
 
-      map.on('draw.create', handleCreate);
-      map.on('draw.delete', handleDelete);
-      map.on('draw.update', handleUpdate);
-      map.on('webglcontextlost', handleContextLost);
+      listenMapEvent(map, 'draw.create', handleCreate);
+      listenMapEvent(map, 'draw.delete', handleDelete);
+      listenMapEvent(map, 'draw.update', handleUpdate);
+      listenMapEvent(map, 'webglcontextlost', handleContextLost);
 
       return () => {
-        map.off('draw.create', handleCreate);
-        map.off('draw.delete', handleDelete);
-        map.off('draw.update', handleUpdate);
-        map.off('webglcontextlost', handleContextLost);
+        unlistenMapEvent(map, 'draw.create', handleCreate);
+        unlistenMapEvent(map, 'draw.delete', handleDelete);
+        unlistenMapEvent(map, 'draw.update', handleUpdate);
+        unlistenMapEvent(map, 'webglcontextlost', handleContextLost);
         try {
           removeMapboxDrawArtifacts(map);
           if (map.hasControl(draw as unknown as maplibregl.IControl)) {

@@ -21,7 +21,7 @@
  * field.
  */
 
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useCallback, useEffect } from 'react';
 
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';

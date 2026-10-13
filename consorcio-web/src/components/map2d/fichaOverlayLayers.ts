@@ -13,7 +13,7 @@
  * second palette here.
  */
 
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import type { FeatureCollection } from 'geojson';
 
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';

@@ -5,7 +5,7 @@
  */
 
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 import { ROAD_FLOW_KINDS, type RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
 

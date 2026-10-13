@@ -1,5 +1,5 @@
 import type { FeatureCollection, LineString, Point } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
@@ -177,8 +177,8 @@ export function syncComparisonVectorLayers(
   });
   syncEscuelasLayer(map, inputs.escuelasCollection, !!visible.escuelas);
 
-  applyLayerOpacity(map, inputs.opacityByLayer);
-  applyLayerOrder(map, inputs.orderByLayer);
+  applyLayerOpacity(map as unknown as Parameters<typeof applyLayerOpacity>[0], inputs.opacityByLayer);
+  applyLayerOrder(map as unknown as Parameters<typeof applyLayerOrder>[0], inputs.orderByLayer);
 }
 
 export interface ComparisonMapConstructor {

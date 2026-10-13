@@ -22,7 +22,7 @@
  */
 
 import type { FeatureCollection, Point } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useCallback, useMemo, useState } from 'react';
 
 import { useAuth } from '../../hooks/useAuth';

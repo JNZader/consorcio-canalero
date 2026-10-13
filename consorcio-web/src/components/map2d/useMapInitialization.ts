@@ -1,6 +1,8 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
+import { bootMapLibreWorker } from '../../lib/maplibreLoader';
+import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
 import { TILE_LAYERS } from '../../constants/mapStyles';
 import { logger } from '../../lib/logger';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
@@ -108,8 +110,11 @@ export function useMapInitialization({
     if (!containerRef.current) return;
 
     const removeNativeDragGuards = installMapNativeDragGuards(containerRef.current);
+    bootMapLibreWorker();
 
-    const map = new maplibre.Map({
+    let map: maplibregl.Map;
+    try {
+      map = new maplibre.Map({
       container: containerRef.current,
       style: {
         version: 8,
@@ -183,6 +188,23 @@ export function useMapInitialization({
       hash: 'v',
       locale: { ...MAP_LOCALE_ES },
     });
+    } catch (error) {
+      const GPUError = (
+        maplibre as { GPUInitializationError?: new (...args: never[]) => Error }
+      ).GPUInitializationError;
+      if (GPUError && error instanceof GPUError) {
+        onMapErrorRef.current?.({
+          kind: 'other',
+          sourceId: null,
+          sourceType: null,
+          status: null,
+          url: null,
+          message: 'Este navegador no soporta WebGL2, necesario para el mapa.',
+        });
+        return removeNativeDragGuards;
+      }
+      throw error;
+    }
 
     map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right');
     map.addControl(new maplibre.FullscreenControl(), 'top-right');
@@ -198,8 +220,8 @@ export function useMapInitialization({
     const onContextRestored = () => {
       setMapReady(true);
     };
-    map.on('webglcontextlost', onContextLost);
-    map.on('webglcontextrestored', onContextRestored);
+    listenMapEvent(map, 'webglcontextlost', onContextLost);
+    listenMapEvent(map, 'webglcontextrestored', onContextRestored);
 
     map.on('error', (event) => {
       // Same heuristic as before, now shared with the tile-health counter —
@@ -215,8 +237,8 @@ export function useMapInitialization({
 
     return () => {
       if (typeof map.off === 'function') {
-        map.off('webglcontextlost', onContextLost);
-        map.off('webglcontextrestored', onContextRestored);
+        unlistenMapEvent(map, 'webglcontextlost', onContextLost);
+        unlistenMapEvent(map, 'webglcontextrestored', onContextRestored);
       }
       removeNativeDragGuards();
       map.remove();

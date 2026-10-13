@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import type { Polygon } from 'geojson';
 import type { MutableRefObject } from 'react';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

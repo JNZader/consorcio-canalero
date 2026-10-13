@@ -27,7 +27,7 @@
  */
 
 import type { FeatureCollection } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
 
 import type { PilarVerdeData } from '../../types/pilarVerde';

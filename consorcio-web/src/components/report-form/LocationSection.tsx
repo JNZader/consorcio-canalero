@@ -1,6 +1,6 @@
 import { Badge, Box, Button, Collapse, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';

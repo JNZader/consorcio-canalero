@@ -1,5 +1,6 @@
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
+import { bootMapLibreWorker } from '../../../../lib/maplibreLoader';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../../constants';
@@ -90,6 +91,7 @@ export function SugerenciaGeometryMap({
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
+    bootMapLibreWorker();
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {

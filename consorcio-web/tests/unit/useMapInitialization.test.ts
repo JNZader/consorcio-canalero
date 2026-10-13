@@ -14,7 +14,7 @@
  */
 
 import { renderHook } from '@testing-library/react';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import type { RefObject } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

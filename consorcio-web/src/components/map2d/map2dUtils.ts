@@ -1,6 +1,6 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry, Position } from 'geojson';
 import type { LngLatBoundsLike } from 'maplibre-gl';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { MAP_BOUNDS } from '../../constants';
 
 // MapLibre note: center is [lng, lat] — opposite from Leaflet [lat, lng]

@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 import { GEE_LAYER_COLORS } from '../../hooks/useGEELayers';
 import { getSoilColor } from '../../hooks/useSoilMap';

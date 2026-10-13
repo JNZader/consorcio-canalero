@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
 
 import { ensureGeoJsonSource } from './map2dUtils';

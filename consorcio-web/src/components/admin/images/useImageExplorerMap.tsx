@@ -1,5 +1,6 @@
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { bootMapLibreWorker } from '../../../lib/maplibreLoader';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { MAP_BOUNDS, MAP_CENTER, MAP_DEFAULT_ZOOM } from '../../../constants';
@@ -41,6 +42,7 @@ export function useImageExplorerMap() {
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
+    bootMapLibreWorker();
     const map = new maplibregl.Map({
       container: mapRef.current,
       style: {

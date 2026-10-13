@@ -42,7 +42,7 @@
  */
 
 import type { FeatureCollection, LineString } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
 
 import { ALL_ETAPAS, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';

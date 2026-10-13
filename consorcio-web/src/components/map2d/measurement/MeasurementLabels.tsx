@@ -28,7 +28,7 @@
  *     elsewhere in the measurement subdirectory.
  */
 
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 
 import { formatArea, formatDistance } from './measurementFormat';
