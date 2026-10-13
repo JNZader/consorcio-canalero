@@ -50,6 +50,21 @@ describe('public SEO and offline basemap', () => {
     expect(sitemap).not.toContain('/login');
   });
 
+  it('keeps a single User-agent group and no Crawl-delay', () => {
+    const robots = readFileSync(join(webRoot, 'public/robots.txt'), 'utf8');
+    const agents = robots.split('\n').filter((line) => /^User-agent:/i.test(line.trim()));
+    expect(agents).toEqual(['User-agent: *']);
+    expect(robots.toLowerCase()).not.toContain('crawl-delay');
+  });
+
+  it('marks the not-found route noindex', () => {
+    const routeTree = readFileSync(join(webRoot, 'src/routeTree.gen.tsx'), 'utf8');
+    const start = routeTree.indexOf('const NotFoundComponent');
+    const end = routeTree.indexOf('const rootRouteWithComponent');
+    const block = routeTree.slice(start, end);
+    expect(block).toContain('noindex={true}');
+  });
+
   it('caches opaque Esri tiles and leaves map chunks out of precache', () => {
     const vite = readFileSync(join(webRoot, 'vite.config.ts'), 'utf8');
     const arcgis = vite.slice(vite.indexOf('arcgis-tiles'), vite.indexOf('arcgis-tiles') + 500);

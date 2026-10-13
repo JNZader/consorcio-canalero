@@ -471,8 +471,8 @@ What it covers (each step mirrors what the GH Actions workflow ran):
 3. **auth-gate regression tests** —
    `tests/new/test_auth_gates.py`. Catches a missing `Depends(...)`
    on a PII endpoint.
-4. **Backend coverage ≥ 70%** —
-   `pytest tests/new/ --cov-config=.coveragerc --cov-fail-under=70`,
+4. **Backend coverage ≥ 80%** —
+   `pytest tests/new/ --cov-config=.coveragerc --cov-fail-under=80`,
    plus `scripts/critical_coverage_gate.py` for auth, denuncias, and
    rate limit (CI-04).
 5. **Mutation kill-rate ≥ 0.30** —

@@ -8,8 +8,16 @@ title = "consorcio-canalero"
 useDefault = true
 
 [allowlist]
-description = "Test fixtures and the documented WhatsApp placeholder"
+description = "Test fixtures, the documented WhatsApp placeholder, and generic-api-key false positives"
 paths = [
   '''(?:^|/)tests/''',
   '''docs/PLAN_WHATSAPP_BOT\.md''',
+  # Corpus catalogue keys (`key_prefix:`), not credentials.
+  '''gee-backend/app/domains/conocimiento/corpus_expectations\.yaml''',
+]
+regexes = [
+  # Recharts dataKey, not a token.
+  '''elevation_aw3d30''',
+  # Public API hostname written in a comment.
+  '''cc10demayo-api\.javierzader\.com''',
 ]

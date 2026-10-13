@@ -20,9 +20,9 @@ COPY package.json package-lock.json ./
 COPY scripts/apply-patches.mjs ./scripts/apply-patches.mjs
 COPY patches ./patches
 
-# Install dependencies with clean install (runs postinstall which applies patches)
-# Using --legacy-peer-deps due to react-helmet-async not yet supporting React 19
-RUN npm ci --prefer-offline --no-audit --legacy-peer-deps
+# Install dependencies with clean install (runs postinstall which applies patches).
+# CI-02: peer deps resolve on their own; react-is is a direct dependency.
+RUN npm ci --prefer-offline --no-audit
 
 # ----------------------------------------------
 # Stage 2: Development - For local development
@@ -83,7 +83,7 @@ ENV NODE_ENV=production \
 RUN npm run build
 
 # Remove dev dependencies after build
-RUN npm prune --production --legacy-peer-deps
+RUN npm prune --production
 
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server

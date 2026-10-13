@@ -3,8 +3,8 @@
 
 The global ``--cov-fail-under`` stays a single number. These files were the
 ones the v6 audit called out (auth, denuncias, rate limit). The floors sit
-just under the coverage measured for that audit so a deleted test fails CI
-without demanding a new test suite in this change.
+at the coverage measured on main (capped at 80%) so a deleted test fails CI
+without demanding a suite the code does not have yet.
 
 Coverage JSON is the pytest-cov ``--cov-report=json`` output.
 """
@@ -15,12 +15,14 @@ import json
 import sys
 from pathlib import Path
 
-# v6 deep pass: auth/router.py 26%, core/rate_limit.py 47%. Denuncias has a
-# dedicated suite; 40% is the regression floor, not an 80% target.
+# Measured on main 2026-10-13 (tests/new + .coveragerc): auth/router.py 27.1%,
+# core/rate_limit.py 61.5%, denuncias/router.py 85.4%. Floors sit at the
+# integer of that measurement, capped at the 80% target. Auth and rate limit
+# stay under 80 because that is the coverage the suite already reaches.
 FLOORS: dict[str, float] = {
-    "app/auth/router.py": 24.0,
-    "app/core/rate_limit.py": 45.0,
-    "app/domains/denuncias/router.py": 40.0,
+    "app/auth/router.py": 27.0,
+    "app/core/rate_limit.py": 61.0,
+    "app/domains/denuncias/router.py": 80.0,
 }
 
 
