@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -99,7 +99,7 @@ describe('vendored patches', () => {
 
   it('names the Mantine patch after the installed @mantine/core version (CI-03)', () => {
     const installed = JSON.parse(
-      readFileSync(join(WEB_ROOT, 'node_modules/@mantine/core/package.json'), 'utf8'),
+      readFileSync(join(WEB_ROOT, 'node_modules/@mantine/core/package.json'), 'utf8')
     ) as { version: string };
     const mantinePatches = patchFiles().filter((name) => name.startsWith('@mantine+core+'));
     expect(mantinePatches).toEqual([`@mantine+core+${installed.version}.patch`]);
