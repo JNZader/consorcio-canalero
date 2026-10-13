@@ -47,7 +47,7 @@ const NAV_SECTIONS = [
   {
     label: 'Gestion',
     items: [
-      { label: 'Participacion', to: '/admin/participacion', icon: IconUsers },
+      { label: 'Participación', to: '/admin/participacion', icon: IconUsers },
       { label: 'Tramites', to: '/admin/tramites', icon: IconSettings },
       { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
       { label: 'Padron', to: '/admin/padron', icon: IconUser },

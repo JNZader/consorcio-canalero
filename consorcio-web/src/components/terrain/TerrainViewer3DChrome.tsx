@@ -287,6 +287,7 @@ export function TerrainViewer3DChrome({
               vectorLayerVisibility,
               etapaGate
             ),
+            showDemOverlay: Boolean(activeRasterLayerId),
           })
         )}
         canvas={
@@ -399,12 +400,18 @@ export function TerrainViewer3DChrome({
                 onLayerVisibilityChange={onVectorLayerToggle}
                 showIGNOverlay={false}
                 onShowIGNOverlayChange={() => undefined}
-                demEnabled={false}
-                showDemOverlay={false}
-                onShowDemOverlayChange={() => undefined}
-                activeDemLayerId={null}
-                onActiveDemLayerIdChange={() => undefined}
-                demOptions={[]}
+                demEnabled={rasterLayers.length > 0}
+                showDemOverlay={Boolean(activeRasterLayerId)}
+                onShowDemOverlayChange={(visible) => {
+                  onActiveRasterLayerChange(visible ? (activeRasterLayerId ?? rasterLayers[0]?.id ?? null) : null);
+                }}
+                activeDemLayerId={activeRasterLayerId ?? null}
+                onActiveDemLayerIdChange={onActiveRasterLayerChange}
+                demOptions={rasterLayers.map((layer) => ({
+                  value: layer.id,
+                  label: layer.label,
+                  tipo: layer.tipo,
+                }))}
                 canalesRelevadosItems={canalesRelevadosItems}
                 canalesPropuestosItems={canalesPropuestosItems}
                 etapaGate={etapaGate}

@@ -54,7 +54,7 @@ describe('errorHandler - missing lines coverage', () => {
     it('should handle 400 Bad Request', () => {
       const message = getHttpErrorMessage(400);
       expect(message).toContain('datos');
-      expect(message).toContain('validos');
+      expect(message).toContain('válidos');
     });
 
     it('should handle 402 Payment Required', () => {
@@ -94,7 +94,7 @@ describe('errorHandler - missing lines coverage', () => {
     it('should handle null/undefined gracefully', () => {
       const message = getErrorMessage(null);
       expect(message).toBeTruthy();
-      expect(message).toBe('Ocurrio un error inesperado');
+      expect(message).toBe('Ocurrió un error inesperado');
     });
 
     it('should handle undefined errors', () => {

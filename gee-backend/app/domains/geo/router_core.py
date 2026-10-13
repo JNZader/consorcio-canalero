@@ -426,6 +426,7 @@ async def proxy_tile(
     y: int = PathParam(..., ge=0),
     colormap: Optional[str] = Query(default=None),
     encoding: Optional[str] = Query(default=None),
+    z_factor: Optional[float] = Query(default=None, ge=1, le=30),
     hide_classes: Optional[str] = Query(default=None),
     hide_ranges: Optional[str] = Query(default=None),
     terrain_smoothing: Optional[str] = Query(default=None),
@@ -524,6 +525,8 @@ async def proxy_tile(
         params["colormap"] = colormap
     if encoding:
         params["encoding"] = encoding
+    if z_factor is not None:
+        params["z_factor"] = z_factor
     if hide_classes:
         params["hide_classes"] = hide_classes
     if hide_ranges:

@@ -4,7 +4,9 @@
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) > Workers & Pages > Create application > Pages
 2. Connect your GitHub repository (`consorcio-canalero`)
-3. Select the branch to deploy (e.g., `main` for production)
+3. Production branch: `pages-production` (not `main`). CI-05: GitHub Actions
+   fast-forwards that branch only after Frontend CI is green on `main`.
+   Disable automatic deployments from `main` in the Pages project settings.
 
 ## Build Settings
 
@@ -55,9 +57,10 @@ Every push to a non-production branch generates a preview URL at `<branch>.<proj
 
 ## GitHub Actions Quality Gates
 
-Cloudflare Pages remains responsible for building and deploying the frontend from
-the connected repository. GitHub Actions provides a separate, non-deploying
-quality gate in `.github/workflows/frontend.yml`:
+Cloudflare Pages builds from `pages-production`. GitHub Actions
+(`.github/workflows/pages.yml`) updates that branch only after `.github/workflows/frontend.yml`
+succeeds on a push to `main`. Until the dashboard production branch is switched
+off `main`, a broken push can still go live.
 
 - pull requests to `main` and manual `workflow_dispatch` runs execute lint,
   unit tests, type checking, smoke tests, Stryker mutation tests, the Playwright
@@ -69,8 +72,7 @@ quality gate in `.github/workflows/frontend.yml`:
 The accessibility projects are defined in
 `consorcio-web/tests/accessibility/playwright.config.ts`. Cloudflare preview
 and production deployments still use the dashboard environment variables
-documented above; the GitHub workflow does not deploy the frontend or store
-`VITE_*` values as secrets.
+documented above. GitHub does not run `wrangler`; it only moves `pages-production`.
 
 After the first green pull-request run, configure branch protection in GitHub to
 require the frontend and backend quality checks appropriate for `main`. That

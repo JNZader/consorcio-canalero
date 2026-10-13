@@ -66,6 +66,7 @@ import {
 import { pickPresetRasterId } from './mapPresets';
 import { MAP_DEFAULT_ZOOM } from '../../constants';
 import { LAYER_ZOOM_IN_HINT, layerBelowMinZoom } from './layerMinZoom';
+import { MAP2D_HILLSHADE_Z_FACTOR } from './mapRasterOverlayHelpers';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
 
@@ -290,6 +291,8 @@ const BASE_SEARCH_LABELS = [
   'satélite',
   'ign altimetría',
   'visor de riesgos',
+  'zona consorcio',
+  'ypf',
 ].map(normalizeSearchText);
 
 const AJUSTES_SEARCH_LABELS = ['ajustes', 'etiquetas', 'grosor', 'líneas'].map(normalizeSearchText);
@@ -386,7 +389,7 @@ function LayerHealthErrorRow({
       </Text>
       {onRetry && (
         <Button
-          size="compact-xs"
+          size="xs"
           variant="subtle"
           color="red"
           leftSection={<IconRefresh size={12} />}
@@ -533,7 +536,9 @@ export function LayerControlsPanel({
     vectorVisibility,
     canalChildIds: canalesChildIds,
     showIGNOverlay,
+    showHillshade,
     showDemOverlay,
+    showSatellite: Boolean(satelliteLayer),
   });
   const canalesActiveCount = familyActiveCounts[LAYER_CATEGORY.CANALES];
 
@@ -659,7 +664,34 @@ export function LayerControlsPanel({
 
     // ── Base: structural controls (capa base / IGN / DEM), NOT in layerItems.
     if (family.value === LAYER_CATEGORY.BASE) {
-      if (is3d) continue;
+      if (is3d) {
+        if (isSearching && !BASE_SEARCH_LABELS.some((label) => label.includes(normalizedQuery))) {
+          continue;
+        }
+        const baseActiveCount = familyActiveCounts[LAYER_CATEGORY.BASE];
+        accordionItems.push(
+          <Accordion.Item key={family.value} value={family.value} data-testid="layer-controls-capas">
+            <Accordion.Control icon={<Icon size={16} />}>
+              <FamilyControlLabel label={family.label} count={baseActiveCount} />
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed">
+                  Zona Consorcio es el terreno 3D; no hay perímetro extra.
+                </Text>
+                {demEnabled ? (
+                  <Checkbox
+                    label="Capa raster 3D"
+                    checked={showDemOverlay}
+                    onChange={(event) => onShowDemOverlayChange(event.currentTarget.checked)}
+                  />
+                ) : null}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        );
+        continue;
+      }
       // FF2: Base stays searchable by its control labels (Capa base / IGN /
       // Capa DEM / OSM / Satélite).
       if (isSearching && !BASE_SEARCH_LABELS.some((label) => label.includes(normalizedQuery))) {
@@ -709,11 +741,18 @@ export function LayerControlsPanel({
                 onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
               />
               {hillshadeAvailable && onShowHillshadeChange ? (
-                <Checkbox
-                  label="Relieve sombreado"
-                  checked={showHillshade}
-                  onChange={(event) => onShowHillshadeChange(event.currentTarget.checked)}
-                />
+                <>
+                  <Checkbox
+                    label="Relieve sombreado"
+                    checked={showHillshade}
+                    onChange={(event) => onShowHillshadeChange(event.currentTarget.checked)}
+                  />
+                  {showHillshade ? (
+                    <Text size="xs" c="dimmed">
+                      Exagerado ×{MAP2D_HILLSHADE_Z_FACTOR} para que se note en terreno llano
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
               {hazardLayerControl?.visible && (
                 <Checkbox
@@ -959,7 +998,7 @@ export function LayerControlsPanel({
                 {demLoadError}
               </Text>
               {onRetryDem ? (
-                <Button size="compact-xs" variant="light" onClick={() => onRetryDem()}>
+                <Button size="xs" variant="light" onClick={() => onRetryDem()}>
                   Reintentar
                 </Button>
               ) : null}
@@ -1157,12 +1196,17 @@ export function LayerControlsPanel({
             onHideSatellite?.();
             return;
           }
+          if (id === '__hillshade') {
+            onShowHillshadeChange?.(false);
+            return;
+          }
           onLayerVisibilityChange(id, false);
         }}
         onClearAll={() => {
           hideAllCatalogLayers('map2d');
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
+          onShowHillshadeChange?.(false);
           hazardLayerControl?.onActiveChange(false);
           onHideSatellite?.();
         }}
@@ -1189,7 +1233,7 @@ export function LayerControlsPanel({
               </Text>
               {canRetryAll && (
                 <Button
-                  size="compact-xs"
+                  size="xs"
                   variant="subtle"
                   color="red"
                   leftSection={<IconRefresh size={12} />}

@@ -417,6 +417,23 @@ def test_hidden_ranges_render_through_the_manual_path(client, cache, monkeypatch
 # ── caching ────────────────────────────────────────────────────────────────
 
 
+def test_terrain_rgb_z_factor_does_not_reuse_the_default_cache(
+    client, cache, monkeypatch, tmp_path
+) -> None:
+    path = _write_raster(tmp_path / "dem.tif", np.full((64, 64), 120.0), "float32")
+    _serve(monkeypatch, _layer(path))
+    monkeypatch.setattr(tile_service, "_get_elevation_baseline", lambda _path: 0.0)
+    x, y = _covering_tile()
+
+    plain = client.get(_url(LAYER_ID, x, y, encoding="terrain-rgb"))
+    boosted = client.get(_url(LAYER_ID, x, y, encoding="terrain-rgb", z_factor=15))
+
+    assert plain.status_code == 200
+    assert boosted.status_code == 200
+    assert boosted.headers["x-cache"] == "MISS"
+    assert plain.content != boosted.content
+
+
 def test_second_request_is_served_from_cache(client, cache, monkeypatch, tmp_path) -> None:
     path = _write_raster(tmp_path / "dem.tif", np.full((64, 64), 120.0), "float32")
     _serve(monkeypatch, _layer(path))

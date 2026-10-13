@@ -8,6 +8,8 @@
  *     every existing caller and test).
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -244,5 +246,13 @@ describe('<LayerControlsPanel /> — inline family rows', () => {
     const row = screen.getByTestId('pilar-verde-layers-error');
     expect(row.textContent).toMatch(/reintentá/i);
     expect(screen.queryByTestId('layer-health-error-pilar_verde')).toBeNull();
+  });
+
+  it('A11Y-10: retry buttons use size xs, not compact-xs', () => {
+    const src = readFileSync(
+      resolve(process.cwd(), 'src/components/map2d/LayerControlsPanel.tsx'),
+      'utf-8',
+    );
+    expect(src).not.toMatch(/size="compact-xs"/);
   });
 });

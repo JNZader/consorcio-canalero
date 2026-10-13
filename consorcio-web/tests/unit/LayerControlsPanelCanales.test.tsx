@@ -100,6 +100,24 @@ describe('<LayerControlsPanel /> — Canales section', () => {
     expect(screen.getByLabelText('Apagar todos los relevados')).toBeInTheDocument();
   });
 
+  it('does not keep the master checked after Apagar todo leaves children on (MAP-08)', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{
+          canales_relevados: false,
+          canal_relevado_norte: true,
+          canal_relevado_sur: true,
+        }}
+        onLayerVisibilityChange={() => {}}
+        canalesRelevadosItems={canalesRelevadosItems}
+        canalesPropuestosItems={canalesPropuestosItems}
+      />,
+    );
+    expandCanales();
+    expect(screen.getByLabelText('Encender todos los relevados')).not.toBeChecked();
+  });
+
   it('toggling a master calls onLayerVisibilityChange for the master flag', () => {
     const onLayerVisibilityChange = vi.fn();
     renderWithMantine(

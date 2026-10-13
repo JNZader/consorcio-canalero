@@ -29,7 +29,14 @@ describe('syncHillshadeLayer', () => {
       expect.objectContaining({ type: 'raster-dem', encoding: 'mapbox' }),
     );
     expect(map.addLayer).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'hillshade', source: SOURCE_IDS.HILLSHADE }),
+      expect.objectContaining({
+        type: 'hillshade',
+        source: SOURCE_IDS.HILLSHADE,
+        paint: expect.objectContaining({
+          'hillshade-exaggeration': 1,
+          'hillshade-method': 'multidirectional',
+        }),
+      }),
       'vector-layers-start',
     );
   });

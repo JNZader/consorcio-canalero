@@ -99,6 +99,12 @@ def get_tile(
         default=None,
         description="Tile encoding: 'terrain-rgb' for Mapbox elevation encoding",
     ),
+    z_factor: Optional[float] = Query(
+        default=None,
+        ge=1,
+        le=30,
+        description="Vertical exaggeration for terrain-rgb used by 2D hillshade only",
+    ),
     hide_classes: Optional[str] = Query(
         default=None,
         description="Comma-separated class values to hide (e.g. '1,3'). "
@@ -163,6 +169,8 @@ def get_tile(
         f":smooth={terrain_smoothing or '-'}"
         f":r={rescale_cache_token(rescale_min, rescale_max)}"
     )
+    if z_factor is not None:
+        cache_key += f":zf={z_factor:g}"
     bytes_cache = get_bytes_cache()
     cached = bytes_cache.get(cache_key)
     if cached is not None:
@@ -243,6 +251,8 @@ def get_tile(
         # ``feather_nodata_elevation`` inside ``render_terrain_rgb_png``, which
         # ramps them down to the baseline instead of snapping them to it.
         normalized_elevation = np.where(valid_mask, elevation - baseline, 0.0)
+        if z_factor is not None and z_factor != 1:
+            normalized_elevation = normalized_elevation * z_factor
         normalized_elevation = _smooth_elevation_tile(
             normalized_elevation,
             valid_mask,

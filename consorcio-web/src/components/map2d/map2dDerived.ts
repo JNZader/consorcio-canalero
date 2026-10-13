@@ -376,6 +376,7 @@ export function buildFamilyActiveCounts(params: {
   showIGNOverlay?: boolean;
   showHillshade?: boolean;
   showDemOverlay?: boolean;
+  showSatellite?: boolean;
 }): Record<LayerCategory, number> {
   const {
     layerItems,
@@ -384,11 +385,15 @@ export function buildFamilyActiveCounts(params: {
     showIGNOverlay = false,
     showHillshade = false,
     showDemOverlay = false,
+    showSatellite = false,
   } = params;
 
   const counts: Record<LayerCategory, number> = {
     [LAYER_CATEGORY.BASE]:
-      (showIGNOverlay ? 1 : 0) + (showHillshade ? 1 : 0) + (showDemOverlay ? 1 : 0),
+      (showIGNOverlay ? 1 : 0) +
+      (showHillshade ? 1 : 0) +
+      (showDemOverlay ? 1 : 0) +
+      (showSatellite ? 1 : 0),
     [LAYER_CATEGORY.HIDROGRAFIA]: 0,
     [LAYER_CATEGORY.TERRITORIO]: 0,
     [LAYER_CATEGORY.PILAR_VERDE]: 0,

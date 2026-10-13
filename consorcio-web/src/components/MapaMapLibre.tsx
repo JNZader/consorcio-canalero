@@ -102,7 +102,10 @@ import {
   shouldLatchBpaJoin,
   sumFamilyActiveCounts,
 } from './map2d/map2dDerived';
-import { reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
+import {
+  MAP2D_HILLSHADE_Z_FACTOR,
+  reloadIgnSource,
+} from './map2d/mapRasterOverlayHelpers';
 import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
 import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
 import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
@@ -336,7 +339,10 @@ export default function MapaMapLibre() {
   );
   const demRawLayer = allGeoLayers.find((layer) => layer.tipo === 'dem_raw');
   const hillshadeTileUrl = demRawLayer
-    ? buildTileUrl(demRawLayer.id, { encoding: 'terrain-rgb' })
+    ? buildTileUrl(demRawLayer.id, {
+        encoding: 'terrain-rgb',
+        zFactor: MAP2D_HILLSHADE_Z_FACTOR,
+      })
     : null;
   const { layers: precipNormalLayers } = usePrecipNormalLayers();
   const hazardGeoLayers = combineHazardGeoLayers(allGeoLayers, precipNormalLayers);
@@ -1160,6 +1166,7 @@ export default function MapaMapLibre() {
         showIGNOverlay,
         showHillshade,
         showDemOverlay,
+        showSatellite: Boolean(satelliteLayer),
       })
     ) + hazard.visibleRasterLayers.length;
 

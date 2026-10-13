@@ -182,6 +182,7 @@ export function buildTileUrl(
     rescaleMin?: number;
     rescaleMax?: number;
     encoding?: string;
+    zFactor?: number;
   }
 ): string {
   const base = `${API_URL}/api/v2/geo/layers/${layerId}/tiles/{z}/{x}/{y}.png`;
@@ -203,6 +204,9 @@ export function buildTileUrl(
   }
   if (options?.encoding) {
     params.set('encoding', options.encoding);
+  }
+  if (options?.zFactor !== undefined) {
+    params.set('z_factor', String(options.zFactor));
   }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;

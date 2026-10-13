@@ -49,14 +49,14 @@ async function switchToRegister(user: ReturnType<typeof userEvent.setup>) {
 
 function getPasswordInputs() {
   return screen
-    .getAllByLabelText(/contrasena/i)
+    .getAllByLabelText(/contraseña/i)
     .filter((element) => element.tagName === 'INPUT');
 }
 
 async function submitLogin(user: ReturnType<typeof userEvent.setup>, email: string, password: string) {
   await user.type(screen.getByLabelText(/email/i), email);
   await user.type(getPasswordInputs()[0], password);
-  await user.click(screen.getByRole('button', { name: /iniciar sesion/i }));
+  await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 }
 
 async function submitRegister(
@@ -82,10 +82,10 @@ describe('LoginForm', () => {
     const user = userEvent.setup();
     renderForm();
 
-    expect(screen.getByRole('heading', { name: /iniciar sesion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /iniciar sesión/i })).toBeInTheDocument();
     expect(screen.getByText('Consorcio Canalero')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /google/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /olvidaste tu contrasena/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /olvidaste tu contraseña/i })).toHaveAttribute(
       'href',
       '/forgot-password'
     );
@@ -94,8 +94,17 @@ describe('LoginForm', () => {
 
     expect(screen.getByRole('heading', { name: /crear cuenta/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/confirmar contrasena/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /inicia sesion/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/confirmar contraseña/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /iniciá sesión/i })).toBeInTheDocument();
+  });
+
+  it('sets autocomplete for password managers (UI-01)', () => {
+    renderForm();
+    expect(screen.getByLabelText(/email/i)).toHaveAttribute('autocomplete', 'email');
+    expect(getPasswordInputs()[0]).toHaveAttribute('autocomplete', 'current-password');
+    expect(
+      screen.getByRole('button', { name: /mostrar u ocultar contraseña/i }),
+    ).toBeInTheDocument();
   });
 
   it('validates login fields before submit', async () => {
@@ -113,10 +122,10 @@ describe('LoginForm', () => {
     const user = userEvent.setup();
     renderForm();
 
-    await user.click(screen.getByRole('button', { name: /iniciar sesion/i }));
+    await user.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     const email = screen.getByLabelText(/email/i);
-    const password = screen.getByPlaceholderText('Tu contrasena');
+    const password = screen.getByPlaceholderText('Tu contraseña');
 
     await waitFor(() => {
       expect(email).toHaveAttribute('aria-invalid', 'true');
@@ -142,8 +151,8 @@ describe('LoginForm', () => {
     await user.click(screen.getByRole('button', { name: /crear cuenta/i }));
 
     const name = screen.getByLabelText(/nombre/i);
-    const password = screen.getByPlaceholderText('Tu contrasena');
-    const confirmPassword = screen.getByPlaceholderText('Repite tu contrasena');
+    const password = screen.getByPlaceholderText('Tu contraseña');
+    const confirmPassword = screen.getByPlaceholderText('Repetí tu contraseña');
 
     await waitFor(() => {
       expect(name).toHaveAttribute('aria-invalid', 'true');
@@ -156,7 +165,7 @@ describe('LoginForm', () => {
       );
     });
 
-    expect(screen.getByText(/ingresa tu nombre/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/ingresá tu nombre/i)).toHaveAttribute('role', 'alert');
     expect(screen.getByText(/al menos un numero/i)).toHaveAttribute('role', 'alert');
     expect(screen.getByText(/no coinciden/i)).toHaveAttribute('role', 'alert');
     expect(signUpWithEmail).not.toHaveBeenCalled();
@@ -191,7 +200,7 @@ describe('LoginForm', () => {
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Error al iniciar sesion',
+          title: 'Error al iniciar sesión',
           message: 'Email o contrasena incorrectos',
           color: 'red',
         })
@@ -210,7 +219,7 @@ describe('LoginForm', () => {
       confirmPassword: 'different',
     });
 
-    expect(await screen.findByText(/ingresa tu nombre/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ingresá tu nombre/i)).toBeInTheDocument();
     expect(screen.getByText(/al menos un numero/i)).toBeInTheDocument();
     expect(screen.getByText(/no coinciden/i)).toBeInTheDocument();
     expect(signUpWithEmail).not.toHaveBeenCalled();
@@ -234,7 +243,7 @@ describe('LoginForm', () => {
     await waitFor(() => {
       expect(signUpWithEmail).toHaveBeenCalledWith('test@example.com', 'password123', 'Test User');
     });
-    expect(screen.getByText(/confirma tu email/i)).toBeInTheDocument();
+    expect(screen.getByText(/confirmá tu email/i)).toBeInTheDocument();
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Cuenta creada', color: 'blue' })
     );
@@ -256,7 +265,7 @@ describe('LoginForm', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /iniciar sesion/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /iniciar sesión/i })).toBeInTheDocument();
     });
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Cuenta creada', color: 'green' })
@@ -298,7 +307,7 @@ describe('LoginForm', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Error',
-        message: 'Ocurrio un error inesperado. Intenta de nuevo.',
+        message: 'Ocurrió un error inesperado. Intentá de nuevo.',
         color: 'red',
       })
     );

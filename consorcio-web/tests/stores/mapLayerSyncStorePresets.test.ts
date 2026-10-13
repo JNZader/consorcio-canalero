@@ -42,7 +42,7 @@ describe('mapLayerSyncStore applyPreset', () => {
     useMapLayerSyncStore.getState().applyPreset('map2d', 'agua');
     useMapLayerSyncStore.getState().hideAllCatalogLayers('map2d');
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.waterways).toBe(false);
-    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.canal_relevado_foo).toBe(true);
+    expect(useMapLayerSyncStore.getState().map2d.visibleVectors.canal_relevado_foo).toBe(false);
     useMapLayerSyncStore.getState().restoreCatalogDefaults('map2d');
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(true);
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.waterways).toBe(true);

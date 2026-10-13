@@ -18,4 +18,10 @@ describe('buildTileUrl hazard options', () => {
   it('keeps a zero rescale bound instead of treating it as absent', () => {
     expect(buildTileUrl('precip-month', { rescaleMin: 0 })).toContain('rescale_min=0');
   });
+
+  it('serializes z_factor for 2D hillshade terrain-rgb', () => {
+    expect(
+      buildTileUrl('dem-raw', { encoding: 'terrain-rgb', zFactor: 15 })
+    ).toContain('z_factor=15');
+  });
 });

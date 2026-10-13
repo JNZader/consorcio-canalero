@@ -94,7 +94,7 @@ describe('MapaPage', () => {
 
       it('should render page description', () => {
         renderWithMantine(<MapaContent />);
-        expect(screen.getByText(/Explora las cuencas/i)).toBeInTheDocument();
+        expect(screen.getByText(/Explorá las cuencas/i)).toBeInTheDocument();
       });
     });
 
