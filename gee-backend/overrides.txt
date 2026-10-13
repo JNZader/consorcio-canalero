@@ -11,7 +11,13 @@
 # greenlet from the lock. CI/Docker install with --no-deps, so missing
 # greenlet becomes ImportError on sqlalchemy.ext.asyncio.
 #
-# Exact pin so `uv pip install --overrides overrides.txt --require-hashes`
-# also works. Keep in sync with the sqlalchemy== line in the lockfiles.
-# Revisit / drop when fastapi-users-db-sqlalchemy allows sqlalchemy>=2.1.
+# Supported combination (BE-12), pinned exactly and tested:
+#   sqlalchemy==2.1.4
+#   fastapi-users==15.0.5
+#   fastapi-users-db-sqlalchemy==7.0.0
+# Upstream still declares sqlalchemy<2.1. The only 2.1 break we tracked
+# (MappedAsDataclass, fastapi-users#1441) is not used by app.auth.models.User.
+# Do not bump one of the three without updating the other two and
+# tests/new/test_sqlalchemy_supported_combination.py.
+# Drop the override when fastapi-users-db-sqlalchemy allows sqlalchemy>=2.1.
 sqlalchemy[asyncio]==2.1.4

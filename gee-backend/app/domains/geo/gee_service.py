@@ -1,7 +1,7 @@
 """Google Earth Engine service entrypoints and compatibility wrappers."""
 
 import asyncio
-import ee
+import hashlib
 import json
 import logging as _logging
 import threading
@@ -11,7 +11,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
 
+import ee
+
 from app.config import settings
+from app.core.metrics import observe_gee_call
 from app.domains.geo.gee_service_layers_support import (
     CONSORCIO_COLORS,
     ensure_consorcio_bucket,
@@ -56,6 +59,7 @@ _gee_init_error: str | None = None
 _gee_init_retry_at = 0.0
 _gee_init_failures = 0
 _gee_init_permanent_error = False
+_gee_credential_fingerprint: tuple[str, str] | None = None
 GEE_INIT_RETRY_BASE_SECONDS = 5.0
 GEE_INIT_RETRY_MAX_SECONDS = 300.0
 _monotonic = time.monotonic
@@ -98,6 +102,49 @@ def _empty_feature_collection() -> Any:
     return ee.FeatureCollection(ee.List([]))
 
 
+def credential_fingerprint() -> tuple[str, str]:
+    """Identity of the credentials the next init would use.
+
+    A mounted key file wins over the environment JSON. The fingerprint is a
+    hash or mtime, never the key itself, so logs and metrics stay clean.
+    Replacing the file (new mtime or size) is how an operator rotates it
+    without restarting the process.
+    """
+    path_value = settings.gee_key_file_path
+    if path_value:
+        key_path = Path(path_value)
+        if key_path.is_file():
+            stat = key_path.stat()
+            return ("file", f"{key_path}:{stat.st_mtime_ns}:{stat.st_size}")
+    key = settings.gee_service_account_key
+    if key:
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        return ("env", digest)
+    return ("adc", settings.gee_project_id or "")
+
+
+def _credentials_changed(current: tuple[str, str]) -> bool:
+    return _gee_credential_fingerprint is not None and _gee_credential_fingerprint != current
+
+
+def _reset_gee_runtime() -> None:
+    """Drop a live Earth Engine session so a rotated key can initialize again."""
+    global _gee_initialized, _gee_init_error, _gee_init_retry_at
+    global _gee_init_failures, _gee_init_permanent_error, _gee_credential_fingerprint
+    reset = getattr(ee, "Reset", None)
+    if reset is not None:
+        try:
+            reset()
+        except Exception:
+            _logging.getLogger(__name__).warning("GEE reset during credential rotation failed")
+    _gee_initialized = False
+    _gee_init_error = None
+    _gee_init_retry_at = 0.0
+    _gee_init_failures = 0
+    _gee_init_permanent_error = False
+    _gee_credential_fingerprint = None
+
+
 def _is_permanent_init_error(exc: Exception) -> bool:
     """Return True for credential/configuration failures that need operator action."""
     if isinstance(exc, (json.JSONDecodeError, KeyError)):
@@ -115,28 +162,41 @@ def _is_permanent_init_error(exc: Exception) -> bool:
     )
 
 
-def _ensure_initialized() -> None:
-    """Lazy-init GEE, retrying transient failures after bounded backoff."""
-    global _gee_initialized, _gee_init_error, _gee_init_retry_at
-    global _gee_init_failures, _gee_init_permanent_error
-
-    if _gee_initialized:
+def _refuse_if_init_is_latched() -> None:
+    if not _gee_init_error:
         return
-    if _gee_init_error:
-        if _gee_init_permanent_error:
-            raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
-        if _monotonic() < _gee_init_retry_at:
-            raise RuntimeError(f"GEE no disponible temporalmente: {_gee_init_error}")
+    if _gee_init_permanent_error:
+        raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
+    if _monotonic() < _gee_init_retry_at:
+        raise RuntimeError(f"GEE no disponible temporalmente: {_gee_init_error}")
 
-    with _gee_init_lock:
+
+def _ensure_initialized() -> None:
+    """Lazy-init GEE, retrying transient failures after bounded backoff.
+
+    A change in the mounted key file or the environment JSON drops the
+    cached session and initializes again (GEE-01). The attempt itself is
+    timed for the ``initialize`` histogram (GEE-02).
+    """
+    global _gee_initialized, _gee_init_error, _gee_init_retry_at
+    global _gee_init_failures, _gee_init_permanent_error, _gee_credential_fingerprint
+
+    current = credential_fingerprint()
+    if not _credentials_changed(current):
         if _gee_initialized:
             return
-        if _gee_init_error:
-            if _gee_init_permanent_error:
-                raise RuntimeError(f"GEE no disponible: {_gee_init_error}")
-            if _monotonic() < _gee_init_retry_at:
-                raise RuntimeError(f"GEE no disponible temporalmente: {_gee_init_error}")
+        _refuse_if_init_is_latched()
 
+    with _gee_init_lock:
+        current = credential_fingerprint()
+        if _credentials_changed(current):
+            _reset_gee_runtime()
+        elif _gee_initialized:
+            return
+        else:
+            _refuse_if_init_is_latched()
+
+        started = time.perf_counter()
         try:
             if settings.gee_key_file_path:
                 key_path = Path(settings.gee_key_file_path)
@@ -175,7 +235,9 @@ def _ensure_initialized() -> None:
             _gee_init_retry_at = 0.0
             _gee_init_failures = 0
             _gee_init_permanent_error = False
+            _gee_credential_fingerprint = current
         except Exception as exc:
+            _gee_credential_fingerprint = current
             _gee_init_error = str(exc)
             _gee_init_permanent_error = _is_permanent_init_error(exc)
             if not _gee_init_permanent_error:
@@ -188,13 +250,38 @@ def _ensure_initialized() -> None:
             raise ValueError(
                 "No se pudo inicializar GEE. Verifica credenciales o conectividad del servicio"
             ) from exc
+        finally:
+            observe_gee_call("initialize", time.perf_counter() - started)
+
+
+def _install_gee_call_metrics() -> None:
+    """Time ``ComputedObject.getInfo``, the RPC every GEE read goes through."""
+    computed = getattr(ee, "ComputedObject", None)
+    if computed is None:
+        return
+    original = getattr(computed, "getInfo", None)
+    if original is None or getattr(original, "_observes_gee_latency", False):
+        return
+
+    def timed_getinfo(self, *args, **kwargs):
+        started = time.perf_counter()
+        try:
+            return original(self, *args, **kwargs)
+        finally:
+            observe_gee_call("getInfo", time.perf_counter() - started)
+
+    timed_getinfo._observes_gee_latency = True  # type: ignore[attr-defined]
+    computed.getInfo = timed_getinfo
+
+
+_install_gee_call_metrics()
 
 
 async def ensure_initialized_async() -> None:
     """Async wrapper for _ensure_initialized — runs the blocking init in a
     thread executor so the event loop stays responsive while the OAuth
     handshake completes."""
-    if _gee_initialized:
+    if _gee_initialized and not _credentials_changed(credential_fingerprint()):
         return
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _ensure_initialized)

@@ -14,9 +14,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 from uuid import uuid4
 
-import httpx
-
 from app.core.logging import get_logger
+from app.domains.geo.martin_catalog import fetch_martin_catalog
 
 logger = get_logger(__name__)
 
@@ -60,10 +59,7 @@ async def fetch_vt_layers(martin_internal_url: str) -> list[str]:
     """
     catalog_url = f"{martin_internal_url.rstrip('/')}/catalog"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(catalog_url)
-            response.raise_for_status()
-            data = response.json()
+        data = await fetch_martin_catalog(martin_internal_url)
         tiles: dict = data.get("tiles", {})
         vt_layers = sorted(k for k in tiles if k.startswith("vt_"))
         if vt_layers:

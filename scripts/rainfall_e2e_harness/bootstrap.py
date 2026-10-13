@@ -754,7 +754,7 @@ def _http_code(body: str) -> int:
 
 
 def _catalog_sources(body: str) -> set[str]:
-    """Source names from a Martin /catalog response. Martin v0.14.2 shape is
+    """Source names from a Martin /catalog response. Martin 1.16 shape is
     ``{"tiles": {...}}`` (+ sprites/fonts); older shapes used ``{"tables": ...}``
     / ``{"functions": ...}`` — accept all three so a catalog-shape drift is a
     diagnostic, not a parse hole."""
@@ -848,7 +848,7 @@ def validate_services(
         )
 
     # One vector tile per declared click target (parcel interior point). The
-    # URL matches the production client (useMartinLayers.ts): Martin v0.14.2
+    # URL matches the production client (useMartinLayers.ts): Martin 1.16
     # serves `/{source}/{z}/{x}/{y}` with the format negotiated via the Accept
     # header (the `.pbf` suffix is NOT a route in this version).
     tile_ok: list[str] = []

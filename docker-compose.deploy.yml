@@ -1,12 +1,13 @@
 # ===========================================
 # Docker Compose - stack legado embebido
+# DEPRECATED (INF-07). No instalar. Ningún workflow lo usa.
 # ===========================================
-# INF-07: NO es el archivo que DEPLOY.md instala en Hetzner. La fuente de
-# verdad es docker-compose.prod.yml (GHCR por digest, Postgres y Redis
-# externos). Este archivo se conserva para el server que todavía buildea
-# en local y trae Postgres y Redis propios. Los controles de INF-08
-# (cap_drop, no-new-privileges, logs) están alineados con el otro archivo.
-# Ver docs/runbooks/infra-cicd-v6.md.
+# La fuente de verdad es docker-compose.prod.yml (GHCR por digest, Postgres
+# y Redis externos). Este archivo queda solo hasta que el VPS deje la
+# topología embebida; el corte está en docs/runbooks/infra-cicd-v6.md.
+# No agregues servicios nuevos acá. Los controles de INF-08 (cap_drop,
+# no-new-privileges, logs) siguen alineados para que una copia vieja en el
+# server no vuelva a un compose sin ellos.
 # Frontend: Cloudflare Pages (NO incluido).
 # PostgreSQL + Redis: propios de este stack.
 # Caddy (deploy/Caddyfile) rutea por host, no por path:
@@ -392,7 +393,7 @@ services:
   # --- Martin Vector Tile Server ---
   martin:
     <<: [*hardening, *readonly]
-    image: ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011
+    image: ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca
     container_name: consorcio-martin
     restart: unless-stopped
     volumes:

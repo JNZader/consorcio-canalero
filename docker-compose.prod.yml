@@ -223,6 +223,9 @@ services:
       # files vanish on every `docker compose up -d --pull` (image rebuild),
       # which is exactly what happened in past deploys.
       - denuncia-uploads:/app/uploads
+      # GEE-01: JSON de la service account. Vacío cae al env var. Rotar es
+      # reemplazar el archivo; el proceso relee mtime sin rebuild.
+      - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
     networks:
       - proxy
       - backend
@@ -273,6 +276,7 @@ services:
     env_file: .env
     volumes:
       - geo-data:/data/geo
+      - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
     networks:
       - backend
       - consorcio-internal
@@ -394,6 +398,7 @@ services:
     env_file: .env
     volumes:
       - geo-data:/data/geo
+      - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
       # Zona outline for clipping visual raster tiles to the consorcio —
       # same mount dev uses (single source of truth: the geojson the
       # frontend serves). Without it the tile service logs a warning and
@@ -421,7 +426,7 @@ services:
   # --- Martin Vector Tile Server ---
   martin:
     <<: [*hardening, *readonly]
-    image: ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011
+    image: ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca
     container_name: consorcio-martin
     restart: unless-stopped
     ports:

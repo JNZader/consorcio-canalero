@@ -154,7 +154,7 @@ services:
   # seven properties, no auto-discovery).
   # --------------------------------------------------------------------------
   martin:
-    image: ghcr.io/maplibre/martin:v0.14.2
+    image: ghcr.io/maplibre/martin:1.16.1
     container_name: rmeh-${RMEH_RUN_ID_PREFIX}-martin-1
     # on-failure: a transient Docker DNS race right after network creation can
     # kill martin at startup (failed to lookup "db"); restarting on non-zero

@@ -175,13 +175,15 @@ jobs:
       fail-fast: false
       # Measured PR #249 evidence shows authStore dominates elapsed time. Its
       # 238/239 boundary has no spanning mutants, so two contiguous ranges keep
-      # every mutant in exactly one shard. The full baseline matrix is identical.
+      # every mutant in exactly one shard. auth2 ends on the last line of
+      # authStore.ts; the workflow contract derives that bound from the file.
+      # The full baseline matrix is identical.
       matrix:
         include:
           - shard: auth1
             mutate: src/stores/authStore.ts:1-238
           - shard: auth2
-            mutate: src/stores/authStore.ts:239-324
+            mutate: src/stores/authStore.ts:239-325
           - shard: a
             mutate: src/components/map2d/rainfall/rainfallFormat.ts,src/lib/formatters.ts,src/hooks/useRainfallAnalysis.ts,src/stores/configStore.ts,src/lib/auth.ts,src/components/map2d/bpaPracticas.ts,src/components/map2d/canalesFormat.ts
           - shard: b
@@ -311,7 +313,7 @@ jobs:
           - shard: auth1
             mutate: src/stores/authStore.ts:1-238
           - shard: auth2
-            mutate: src/stores/authStore.ts:239-324
+            mutate: src/stores/authStore.ts:239-325
           - shard: a
             mutate: src/components/map2d/rainfall/rainfallFormat.ts,src/lib/formatters.ts,src/hooks/useRainfallAnalysis.ts,src/stores/configStore.ts,src/lib/auth.ts,src/components/map2d/bpaPracticas.ts,src/components/map2d/canalesFormat.ts
           - shard: b

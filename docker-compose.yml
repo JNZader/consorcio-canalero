@@ -402,7 +402,7 @@ services:
   # MARTIN - PostGIS Vector Tile Server
   # ============================================
   martin:
-    image: ghcr.io/maplibre/martin:v0.14.2
+    image: ghcr.io/maplibre/martin:1.16.1
     container_name: consorcio-martin
     restart: unless-stopped
     # No host port published — Martin is reached via the consorcio-network

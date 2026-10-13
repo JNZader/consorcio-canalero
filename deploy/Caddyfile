@@ -32,11 +32,13 @@
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "DENY"
-		# BE-05: no anunciar el proxy. Caddy agrega Server; Via aparece en
-		# algunos saltos. El signo menos las quita de la respuesta.
+		# BE-05: no anunciar el proxy. reverse_proxy agrega Via y Server
+		# después de este handler; `defer` aplica el borrado a la
+		# respuesta ya escrita.
 		-Server
 		-Via
 		-X-XSS-Protection
+		defer
 	}
 	log {
 		output stdout
@@ -49,12 +51,28 @@
 
 api.consorcio.{$DOMAIN} {
 	import consorcio_edge
-	reverse_proxy consorcio-backend:8000
+	# OBS-02: /metrics no se publica. El scrape es
+	# http://consorcio-backend:8000/metrics dentro de la red Docker.
+	# El handle que matchea va antes del proxy: si no, reverse_proxy
+	# se queda con el request.
+	@metrics path /metrics /metrics/*
+	handle @metrics {
+		respond 404
+	}
+	handle {
+		reverse_proxy consorcio-backend:8000
+	}
 }
 
 tiles.consorcio.{$DOMAIN} {
 	import consorcio_edge
-	reverse_proxy consorcio-martin:3000
+	@metrics path /metrics /metrics/*
+	handle @metrics {
+		respond 404
+	}
+	handle {
+		reverse_proxy consorcio-martin:3000
+	}
 }
 
 # El receptor (deploy/deploy_webhook.py) solo escucha en 127.0.0.1:8090.
@@ -63,5 +81,11 @@ tiles.consorcio.{$DOMAIN} {
 # no incluye Authorization por defecto).
 deploy.consorcio.{$DOMAIN} {
 	import consorcio_edge
-	reverse_proxy 127.0.0.1:8090
+	@metrics path /metrics /metrics/*
+	handle @metrics {
+		respond 404
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8090
+	}
 }

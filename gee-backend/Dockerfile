@@ -89,7 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # util-linux hotfix below: --only-upgrade + installed-version assertion, base
 # digest untouched. This block sits BEFORE the CVE-2026-53615 marker on purpose:
 # tests/test_image_security_policy.py extracts that hotfix by comment markers
-# and executes it. REMOVE this block when the python:3.11-slim-trixie digest
+# and executes it. REMOVE this block when the python:3.14.7-slim-trixie digest
 # is bumped to one carrying openssl >= 3.5.7-1~deb13u2.
 RUN set -eu; \
     apt-get update; \

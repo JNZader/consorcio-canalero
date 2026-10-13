@@ -1365,7 +1365,7 @@ class TestBootstrap:
         identity = _identity()
         runner = RecordingCommandRunner()
         # probe convention: last stdout line = HTTP code (curl -w '%{http_code}')
-        # Martin v0.14.2 catalog shape uses the "tiles" key.
+        # Martin 1.16 catalog shape uses the "tiles" key.
         runner.program(CommandKind.DOCKER_INSPECT, _ok('{"tiles": {"parcelas_catastro": {}}}\n200'))
         for _ in range(3):
             runner.program(CommandKind.DOCKER_INSPECT, _ok("tile-bytes\n200"))
