@@ -30,9 +30,9 @@ const PUBLIC_LINKS = [
 // Skeleton de carga para el UserMenu (desktop)
 function UserMenuSkeleton() {
   return (
-    <Box style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
+    <Group justify="flex-end" wrap="nowrap" miw={120}>
       <Skeleton height={36} width={120} radius="sm" />
-    </Box>
+    </Group>
   );
 }
 

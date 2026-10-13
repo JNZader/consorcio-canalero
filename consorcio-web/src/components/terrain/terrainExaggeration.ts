@@ -24,6 +24,10 @@ export const TERRAIN_EXAGGERATION_PRESETS: readonly TerrainExaggerationPreset[] 
   { value: 200, label: '×200', tooltip: 'Máximo. Sirve para ver escurrimiento; no son lomas reales.' },
 ];
 
+export function formatExaggerationMultiplier(value: number): string {
+  return `×${value}`;
+}
+
 export function exaggerationCanvasLabel(value: number): string {
-  return `Relieve exagerado ×${value}`;
+  return `Relieve exagerado ${formatExaggerationMultiplier(value)}`;
 }

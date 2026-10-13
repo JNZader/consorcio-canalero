@@ -58,9 +58,11 @@ function ProfileContent() {
     },
     validate: {
       newPassword: (value) =>
-        value.length < 6 ? 'La contrasena debe tener al menos 6 caracteres' : null,
-      confirmPassword: (value, values) =>
-        value !== values.newPassword ? 'Las contrasenas no coinciden' : null,
+        value.length < 6 ? 'La contraseña debe tener al menos 6 caracteres' : null,
+      confirmPassword: (value, values) => {
+        if (!value) return 'Confirmá la contraseña';
+        return value !== values.newPassword ? 'Las contraseñas no coinciden' : null;
+      },
     },
   });
 
@@ -112,8 +114,8 @@ function ProfileContent() {
       }
 
       notifications.show({
-        title: 'Contrasena actualizada',
-        message: 'Tu contrasena se cambio correctamente',
+        title: 'Contraseña actualizada',
+        message: 'Tu contraseña se cambió correctamente',
         color: 'green',
         icon: <IconCheck size={16} />,
       });
@@ -122,7 +124,7 @@ function ProfileContent() {
     } catch (error) {
       notifications.show({
         title: 'Error',
-        message: error instanceof Error ? error.message : 'No se pudo cambiar la contrasena',
+        message: error instanceof Error ? error.message : 'No se pudo cambiar la contraseña',
         color: 'red',
       });
     } finally {
@@ -146,9 +148,9 @@ function ProfileContent() {
       <Container size="sm" py="xl">
         <Paper p="xl" radius="md" withBorder>
           <Stack align="center" gap="md">
-            <Text>Debes iniciar sesion para ver tu perfil</Text>
+            <Text>Tenés que iniciar sesión para ver tu perfil</Text>
             <Button component="a" href={withBasePath('/login')}>
-              Iniciar Sesion
+              Iniciar Sesión
             </Button>
           </Stack>
         </Paper>
@@ -237,11 +239,14 @@ function ProfileContent() {
         <Paper shadow="sm" p="lg" radius="md" withBorder>
           <form onSubmit={passwordForm.onSubmit(handlePasswordSubmit)} noValidate>
             <Stack gap="md">
-              <Title order={3}>Cambiar Contrasena</Title>
+              <Title order={3}>Cambiar Contraseña</Title>
 
               <PasswordInput
-                label="Nueva contrasena"
-                placeholder="Minimo 6 caracteres"
+                label="Nueva contraseña"
+                placeholder="Mínimo 6 caracteres"
+                name="newPassword"
+                autoComplete="new-password"
+                visibilityToggleButtonProps={{ 'aria-label': 'Mostrar u ocultar contraseña' }}
                 {...passwordForm.getInputProps('newPassword')}
                 aria-invalid={passwordForm.errors.newPassword ? 'true' : undefined}
                 errorProps={{
@@ -252,8 +257,11 @@ function ProfileContent() {
               />
 
               <PasswordInput
-                label="Confirmar contrasena"
-                placeholder="Repite la nueva contrasena"
+                label="Confirmar contraseña"
+                placeholder="Repetí la nueva contraseña"
+                name="confirmPassword"
+                autoComplete="new-password"
+                visibilityToggleButtonProps={{ 'aria-label': 'Mostrar u ocultar contraseña' }}
                 {...passwordForm.getInputProps('confirmPassword')}
                 aria-invalid={passwordForm.errors.confirmPassword ? 'true' : undefined}
                 errorProps={{
@@ -265,7 +273,7 @@ function ProfileContent() {
 
               <Group justify="flex-end">
                 <Button type="submit" loading={changingPassword} variant="outline">
-                  Cambiar Contrasena
+                  Cambiar Contraseña
                 </Button>
               </Group>
             </Stack>

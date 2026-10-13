@@ -1,6 +1,6 @@
 import { Box, Button, Group, Slider, Text, Tooltip } from '@mantine/core';
 
-import { TERRAIN_EXAGGERATION_PRESETS } from './terrainExaggeration';
+import { formatExaggerationMultiplier, TERRAIN_EXAGGERATION_PRESETS } from './terrainExaggeration';
 
 interface TerrainExaggerationControlsProps {
   readonly value: number;
@@ -42,11 +42,11 @@ export function TerrainExaggerationControls({
           max={max}
           step={1}
           size="xs"
-          label={(val) => `${val}x`}
+          label={(val) => formatExaggerationMultiplier(val)}
           marks={[
-            { value: 1, label: '1x' },
-            { value: 100, label: '100x' },
-            { value: 200, label: '200x' },
+            { value: 1, label: formatExaggerationMultiplier(1) },
+            { value: 100, label: formatExaggerationMultiplier(100) },
+            { value: 200, label: formatExaggerationMultiplier(200) },
           ]}
           aria-label="Exageración vertical"
         />

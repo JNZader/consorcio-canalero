@@ -105,6 +105,7 @@ POSTGRES_PASSWORD=PASSWORD_APP_REAL
 POSTGRES_DB=consorcio_canalero
 USE_PGBOUNCER=false
 DATABASE_URL=postgresql://consorcio:PASSWORD_APP_REAL@shared-postgres:5432/consorcio_canalero
+APP_DATABASE_URL=postgresql://consorcio_app:PASSWORD_APP_RW@shared-postgres:5432/consorcio_canalero
 REDIS_URL=redis://:PASSWORD_REDIS_REAL@shared-redis:6379/0
 JWT_SECRET=<output de: openssl rand -hex 32>
 CORS_ORIGINS=https://consorcio.TUDOMINIO,https://consorcio-canalero.pages.dev
@@ -114,8 +115,10 @@ FRONTEND_URL=https://consorcio.TUDOMINIO
 API_BASE_URL=https://api.consorcio.TUDOMINIO
 ```
 
-> `DATABASE_URL` usa el rol de aplicación `consorcio`; `MARTIN_DB_URL` usa
-> siempre `consorcio_martin` con otra contraseña. Usá URLs canónicas
+> `DATABASE_URL` es el migrador (`consorcio`, superuser de la imagen).
+> Runtime (`backend` / workers) usa `APP_DATABASE_URL` con `consorcio_app`
+> (DB-04, sin SUPERUSER). `MARTIN_DB_URL` usa `consorcio_martin`.
+> Ver [`docs/APP_DB_ROLE.md`](docs/APP_DB_ROLE.md). Usá URLs canónicas
 > `postgresql://`; la aplicación deriva internamente el driver async.
 
 Martin recibe `SELECT` solo sobre `vt_zonas_operativas`, `vt_puntos_conflicto` y
