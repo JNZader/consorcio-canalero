@@ -192,12 +192,19 @@ def test_stock_caddyfile_has_no_rate_limit_directive() -> None:
     assert "rate_limit {" in limited
 
 
+def test_pages_npmrc_keeps_dev_dependencies() -> None:
+    """Pages can install with NODE_ENV=production, which omits tsc and vite."""
+    npmrc = _read("consorcio-web/.npmrc")
+    assert "include=dev" in npmrc
+    assert "engine-strict=false" in npmrc
+
+
 def test_mantine_patch_matches_the_installed_version() -> None:
     lock = json.loads(_read("consorcio-web/package-lock.json"))
     version = lock["packages"]["node_modules/@mantine/core"]["version"]
     patches = list((REPO_ROOT / "consorcio-web" / "patches").glob("@mantine+core+*.patch"))
-    assert version == "9.6.3"
-    assert [path.name for path in patches] == ["@mantine+core+9.6.3.patch"]
+    assert version == "9.7.2"
+    assert [path.name for path in patches] == ["@mantine+core+9.7.2.patch"]
     body = patches[0].read_text(encoding="utf-8")
     assert "Transition.mjs" in body
     assert "get-env.mjs" in body
