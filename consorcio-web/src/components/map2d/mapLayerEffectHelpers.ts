@@ -145,10 +145,10 @@ export function syncWaterwayLayers(
 
 /** tippecanoe `--layer=suelos_cu` in `package.json` `gen:pmtiles`. */
 export const SOIL_PMTILES_LAYER = 'suelos_cu';
-export const SOIL_PMTILES_PATH = '/data/suelos_cu.pmtiles';
+export { SOIL_PMTILES_PATH } from '../../lib/soilPmtiles';
 
-export function soilPmtilesUrl(origin = window.location.origin): string {
-  return `pmtiles://${origin}${SOIL_PMTILES_PATH}`;
+export function soilPmtilesUrl(archiveKey: string): string {
+  return `pmtiles://${archiveKey}`;
 }
 
 /** Match `getSoilColor`: longest roman prefix of `cap` (VIII before I). */
@@ -166,11 +166,18 @@ export function soilFillColorExpression(): unknown[] {
   return expr;
 }
 
-export function syncSoilLayers(map: maplibregl.Map, isVisible: boolean) {
+export function syncSoilLayers(
+  map: maplibregl.Map,
+  isVisible: boolean,
+  archiveKey: string | null
+) {
+  if (!archiveKey) {
+    return;
+  }
   if (!map.getSource(SOURCE_IDS.SOIL)) {
     map.addSource(SOURCE_IDS.SOIL, {
       type: 'vector',
-      url: soilPmtilesUrl(),
+      url: soilPmtilesUrl(archiveKey),
     });
   }
 

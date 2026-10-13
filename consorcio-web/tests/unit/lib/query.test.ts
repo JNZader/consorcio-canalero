@@ -8,6 +8,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryError, queryClient, queryKeys } from '../../../src/lib/../../src/lib/query';
 import type { ReportFilters } from '../../../src/lib/../../src/lib/query';
+import { shouldRetryQuery } from '../../../src/lib/queryRetry';
 
 describe('query - queryClient configuration', () => {
   it('should have correct staleTime for queries', () => {
@@ -22,7 +23,7 @@ describe('query - queryClient configuration', () => {
 
   it('should have retry logic configured', () => {
     const defaultOptions = queryClient.getDefaultOptions();
-    expect(defaultOptions.queries?.retry).toBe(3);
+    expect(defaultOptions.queries?.retry).toBe(shouldRetryQuery);
   });
 
   it('should have retry delay with exponential backoff', () => {

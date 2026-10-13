@@ -105,27 +105,57 @@ def test_public_map_gets_do_not_spend_the_generic_budget(monkeypatch) -> None:
     async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
         return JSONResponse({"ok": True})
 
-    layer_path = "/api/v2/geo/gee/layers/zona"
+    public_path = "/api/v2/geo/layers/public"
     app = Starlette(
         routes=[
-            Route(layer_path, endpoint, methods=["GET"]),
+            Route(public_path, endpoint, methods=["GET"]),
             Route(PROBE_PATH, endpoint, methods=["GET"]),
         ]
     )
     app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=limiter)
 
-    async def run() -> tuple[list[int], int]:
+    async def run() -> tuple[list[int], int, str | None]:
         transport = httpx.ASGITransport(app=app, client=("198.51.100.11", 12345))
         async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
-            layer_codes = [
-                (await client.get(layer_path)).status_code for _ in range(limiter.max_requests + 5)
+            layer_responses = [
+                await client.get(public_path) for _ in range(limiter.max_requests + 5)
             ]
             probe = (await client.get(PROBE_PATH)).status_code
-            return layer_codes, probe
+            return (
+                [response.status_code for response in layer_responses],
+                probe,
+                layer_responses[0].headers.get("Cache-Control"),
+            )
 
-    layer_codes, probe = asyncio.run(run())
+    layer_codes, probe, cache_control = asyncio.run(run())
     assert all(code == 200 for code in layer_codes)
     assert probe == 200
+    assert cache_control == "public, max-age=300, stale-while-revalidate=60"
+
+
+@pytest.mark.rate_limited
+def test_admin_gee_layers_get_spends_the_generic_budget(monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    limiter = get_rate_limiter()
+
+    async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse({"ok": True})
+
+    admin_path = "/api/v2/geo/gee/layers/zona"
+    app = Starlette(routes=[Route(admin_path, endpoint, methods=["GET"])])
+    app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=limiter)
+
+    async def run() -> int:
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.13", 12345))
+        async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+            last = 200
+            for _ in range(limiter.max_requests + 1):
+                last = (await client.get(admin_path)).status_code
+            return last
+
+    assert asyncio.run(run()) == 429
 
 
 @pytest.mark.rate_limited

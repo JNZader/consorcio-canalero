@@ -2,6 +2,7 @@ import type { FeatureCollection, Point } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useEffect } from 'react';
+import { ensureSoilPmtilesArchive } from '../../lib/soilPmtiles';
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import type { CanalesData, Etapa } from '../../types/canales';
@@ -181,9 +182,20 @@ export function useMapLayerEffects({
   }, [mapReady, mapRef, vectorVisibility.waterways, waterwaysDefs]);
 
   useEffect(() => {
-    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
-    syncSoilLayers(map, !!vectorVisibility.soil);
-    });
+    let cancelled = false;
+    void ensureSoilPmtilesArchive()
+      .then((archiveKey) => {
+        if (cancelled) return;
+        runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
+          syncSoilLayers(map, !!vectorVisibility.soil, archiveKey);
+        });
+      })
+      .catch(() => {
+        /* Pages/Range-free load failed: leave soil source off rather than Range. */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [mapReady, mapRef, vectorVisibility.soil]);
 
   useEffect(() => {

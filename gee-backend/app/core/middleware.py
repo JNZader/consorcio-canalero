@@ -66,11 +66,29 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
     }
 
     # Public /mapa bootstrap GETs. Counting them against 100/60 made the
-    # first paint 429 (API-01). Mutations and /users/me still spend budget.
-    PUBLIC_MAP_GET_PREFIXES: tuple[str, ...] = (
-        "/api/v2/geo/gee/layers",
-        "/api/v2/geo/basins",
+    # first paint 429 (API-01 / BE-01). Mutations and /users/me still spend.
+    # Exact paths — do not skip admin `/geo/gee/layers`.
+    PUBLIC_MAP_GET_EXACT: frozenset[str] = frozenset(
+        {
+            "/api/v2/public/map/gee/zona",
+            "/api/v2/public/map/gee/caminos",
+            "/api/v2/public/map/gee/current-image",
+            "/api/v2/public/settings/branding",
+            "/api/v2/geo/canales/publico",
+            "/api/v2/geo/layers/public",
+            "/api/v2/geo/basins",
+        }
     )
+    PUBLIC_MAP_GET_NESTED_PREFIXES: tuple[str, ...] = ("/api/v2/geo/basins/",)
+    PUBLIC_MAP_GET_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=60"
+
+    @classmethod
+    def _is_public_map_get(cls, method: str, path: str) -> bool:
+        if method != "GET":
+            return False
+        if path in cls.PUBLIC_MAP_GET_EXACT:
+            return True
+        return path.startswith(cls.PUBLIC_MAP_GET_NESTED_PREFIXES)
 
     def __init__(
         self,
@@ -94,8 +112,11 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        if request.method == "GET" and request.url.path.startswith(self.PUBLIC_MAP_GET_PREFIXES):
-            return await call_next(request)
+        if self._is_public_map_get(request.method, request.url.path):
+            response = await call_next(request)
+            if "cache-control" not in {k.lower() for k in response.headers.keys()}:
+                response.headers["Cache-Control"] = self.PUBLIC_MAP_GET_CACHE_CONTROL
+            return response
 
         # Skip rate limiting when disabled via settings (local dev / E2E).
         # ``settings.rate_limit_disabled`` is read once at boot from the

@@ -2,6 +2,7 @@ import type { FeatureCollection, LineString, Point } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { getSoilPmtilesArchiveKey } from '../../lib/soilPmtiles';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
@@ -132,7 +133,7 @@ export function syncComparisonVectorLayers(
   }
 
   syncRoadLayers(map, inputs.roadsCollection, !!visible.roads);
-  syncSoilLayers(map, !!visible.soil);
+  syncSoilLayers(map, !!visible.soil, getSoilPmtilesArchiveKey());
   syncCatastroLayers(map, !!visible.catastro);
   syncBasinLayers(map, inputs.basins, !!visible.basins);
   syncApprovedZoneLayers(map, inputs.approvedZonesCollection, !!visible.approved_zones);
