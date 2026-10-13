@@ -1,6 +1,9 @@
 # ===========================================
 # Docker Compose - Produccion (Hetzner / Dockge)
 # ===========================================
+# INF-07: este es el archivo que se copia al server. El legado embebido
+# (Postgres y Redis en el mismo compose, build local) es
+# docker-compose.deploy.yml. Ver docs/runbooks/infra-cicd-v6.md.
 # Frontend: Cloudflare Pages (NO incluido aqui).
 # Esquema: imagenes pre-buildeadas desde GHCR.
 # PostgreSQL y Redis son EXTERNOS (shared stack).
@@ -39,6 +42,23 @@
 # it must persist their digest components as BACKEND_DIGEST and GEO_WORKER_DIGEST.
 # ===========================================
 
+x-hardening: &hardening
+  # INF-08. Servicios que arrancan como root y bajan de usuario agregan cap_add.
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-readonly: &readonly
+  read_only: true
+  tmpfs:
+    - /tmp:size=134217728,mode=1777
+
 services:
   # --- PgBouncer transaction-pool (Phase 4 / F4-F) ---
   # Sits between the app containers and postgres so SQLAlchemy
@@ -56,7 +76,14 @@ services:
   # postgres directly via DATABASE_URL; this service stays up but is
   # unused. Toggle both env vars together.
   pgbouncer:
-    image: edoburu/pgbouncer:v1.23.1-p3
+    <<: *hardening
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    image: edoburu/pgbouncer:v1.23.1-p3@sha256:377dec3c0e4a66a1077ec043e16a26ed5702a6d954011a7983a1457c2e070b1d
     container_name: consorcio-pgbouncer
     restart: unless-stopped
     environment:
@@ -111,6 +138,7 @@ services:
   # — alembic emits DDL with session-level state PgBouncer transaction
   # mode would discard between batches.
   migrate:
+    <<: [*hardening, *readonly]
     image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-migrate
     # NO ``profiles:`` here — backend / celery-worker / celery-beat
@@ -134,6 +162,8 @@ services:
     #      receive UUID-suffixed prepared-statement names that
     #      it doesn't need and that confuse some Postgres tooling.
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       DATABASE_URL: postgresql://${POSTGRES_USER:-consorcio}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-consorcio}
       USE_PGBOUNCER: "false"
     command: alembic upgrade head
@@ -152,6 +182,11 @@ services:
   # when a volume is first created. Run as root on every deployment to repair
   # an existing volume, then require successful completion before backend starts.
   uploads-init:
+    <<: *hardening
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
     image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-uploads-init
     user: "0:0"
@@ -169,11 +204,14 @@ services:
 
   # --- Backend FastAPI ---
   backend:
+    <<: [*hardening, *readonly]
     image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-backend
     restart: unless-stopped
     env_file: .env
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       # Exact proxy IPs/CIDRs or Docker DNS names. The launcher resolves
       # "caddy" to its current peer IP before binding; no subnet or wildcard.
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
@@ -224,6 +262,7 @@ services:
 
   # --- Celery Worker (solo queue celery, sin GDAL) ---
   celery-worker:
+    <<: [*hardening, *readonly]
     image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-worker
     restart: unless-stopped
@@ -242,6 +281,9 @@ services:
         condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
+    environment:
+      HOME: /tmp
+      TMPDIR: /tmp
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 5 || exit 1"]
       interval: 30s
@@ -263,6 +305,11 @@ services:
   # idempotently before every Beat start so existing root-owned volumes do not
   # prevent the non-root app user from opening the schedule database.
   celery-beat-init:
+    <<: *hardening
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
     image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-beat-init
     user: "0:0"
@@ -293,6 +340,7 @@ services:
   # ``celery-redbeat`` which uses Redis as the schedule store and
   # self-elects a leader.
   celery-beat:
+    <<: [*hardening, *readonly]
     image: ghcr.io/jnzader/consorcio-canalero/backend@${BACKEND_DIGEST:?BACKEND_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-celery-beat
     restart: unless-stopped
@@ -314,6 +362,9 @@ services:
         condition: service_healthy
     # Override the backend image HEALTHCHECK (HTTP /live:8000). Beat has no
     # Uvicorn — that probe always fails while the scheduler is fine.
+    environment:
+      HOME: /tmp
+      TMPDIR: /tmp
     healthcheck:
       test: ["CMD", "python", "-m", "app.beat_healthcheck"]
       interval: 30s
@@ -333,6 +384,8 @@ services:
 
   # --- Geo Worker (GDAL + WhiteboxTools, queue geo) ---
   geo-worker:
+    <<: *hardening
+    # INF-08: sin read_only. supervisord y WhiteboxTools escriben dentro de la imagen.
     image: ghcr.io/jnzader/consorcio-canalero/geo-worker@${GEO_WORKER_DIGEST:?GEO_WORKER_DIGEST is required from the deploy webhook payload}
     container_name: consorcio-geo-worker
     restart: unless-stopped
@@ -367,7 +420,8 @@ services:
 
   # --- Martin Vector Tile Server ---
   martin:
-    image: ghcr.io/maplibre/martin:v0.14.2
+    <<: [*hardening, *readonly]
+    image: ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011
     container_name: consorcio-martin
     restart: unless-stopped
     ports:
@@ -376,6 +430,8 @@ services:
       - ./martin-config.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       # Fail closed: Martin must use its dedicated synchronous reader URL.
       DATABASE_URL: ${MARTIN_DB_URL:?MARTIN_DB_URL is required for the dedicated read-only Martin role}
     networks:
@@ -406,9 +462,10 @@ services:
   # compose profile so they don't run unless explicitly invoked:
   #   docker compose --profile backup run --rm backup-postgres
   #   docker compose --profile backup run --rm backup-volumes
-  # Schedule from the host crontab (see docs/RUNBOOK.md).
+  # Schedule: deploy/backup.timer (03:20). Do not also install the old crontab.
   # ---------------------------------------------------------------
   backup-postgres:
+    <<: *hardening
     profiles: ["backup"]
     build:
       context: ./scripts
@@ -422,6 +479,7 @@ services:
       - consorcio-internal
 
   backup-volumes:
+    <<: *hardening
     profiles: ["backup"]
     build:
       context: ./scripts

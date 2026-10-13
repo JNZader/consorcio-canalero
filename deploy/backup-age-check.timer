@@ -1,0 +1,12 @@
+[Unit]
+Description=Consorcio Canalero — hourly backup freshness check
+Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/infra-cicd-v6.md
+
+[Timer]
+Unit=backup-age-check.service
+OnCalendar=hourly
+Persistent=true
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target

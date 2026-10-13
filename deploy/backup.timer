@@ -1,0 +1,15 @@
+[Unit]
+Description=Consorcio Canalero — daily offsite backup (03:20)
+Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/infra-cicd-v6.md
+
+[Timer]
+Unit=backup.service
+# 03:20, after the Sunday 03:00 ETL window. Randomized so it does not land on
+# the same minute as beat or the age check.
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

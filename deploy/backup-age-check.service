@@ -1,0 +1,20 @@
+[Unit]
+Description=Consorcio Canalero — alert if the last backup is older than 26 h
+Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/infra-cicd-v6.md
+OnFailure=notify@%n.service
+
+[Service]
+Type=oneshot
+User=javier
+Group=javier
+Environment=HOME=/home/javier
+Environment=STACK_DIR=/home/javier/stacks/consorcio
+Environment=BACKUP_MAX_AGE_HOURS=26
+ExecStart=/usr/local/bin/consorcio-backup-age-check.sh
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=consorcio-backup-age
+
+[Install]
+WantedBy=multi-user.target

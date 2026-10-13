@@ -1,0 +1,27 @@
+[Unit]
+# INF-13 / INF-02. Daily offsite backup. Install steps: docs/runbooks/infra-cicd-v6.md.
+Description=Consorcio Canalero — daily offsite backup
+Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/infra-cicd-v6.md
+Requires=docker.service
+After=docker.service network-online.target
+OnFailure=notify@%n.service
+
+[Service]
+Type=oneshot
+User=javier
+Group=javier
+# docker.sock is group-owned. Name the group so the unit does not depend on
+# systemd resolving supplementary groups from the user database.
+SupplementaryGroups=docker
+Environment=HOME=/home/javier
+Environment=STACK_DIR=/home/javier/stacks/consorcio
+WorkingDirectory=/home/javier/stacks/consorcio
+ExecStart=/usr/local/bin/consorcio-backup.sh
+TimeoutStartSec=2h
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=consorcio-backup
+
+[Install]
+WantedBy=multi-user.target

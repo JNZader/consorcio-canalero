@@ -2,7 +2,13 @@ name: Pages promote
 
 # CI-05: Cloudflare must NOT auto-deploy from main. Production Pages tracks
 # `pages-production`, which this job fast-forwards only after Frontend CI is
-# green on a push to main. Dashboard: production branch = pages-production.
+# green on a push to main. The dashboard change is manual; see
+# docs/runbooks/infra-cicd-v6.md.
+#
+# CI-07: workflow_run runs with the default-branch token. Checking out
+# github.event.workflow_run.head_sha would execute that commit with write
+# permissions. This job checks out github.sha (the default branch) and only
+# moves the git ref through the API. It never force-pushes.
 
 on:
   workflow_run:
@@ -10,7 +16,7 @@ on:
     types: [completed]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pages-promote
@@ -25,9 +31,15 @@ jobs:
       && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-      - name: Point pages-production at the green SHA
-        run: git push --force origin "HEAD:refs/heads/pages-production"
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Fast-forward pages-production to the verified SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash deploy/promote-pages-ref.sh
