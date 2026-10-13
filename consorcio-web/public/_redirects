@@ -2,13 +2,21 @@
 # sin JS (previews de WhatsApp/Facebook, buscadores) nunca ejecutan el
 # redirect cliente de beforeLoad, asi que sin esto verian el index.html
 # generico en vez del destino real. El orden importa: reglas especificas
-# ANTES del fallback SPA.
+# ANTES de cualquier splat futuro.
 /reportes /participacion 301
 /sugerencias /participacion?tab=sugerencias 301
 
-# Missing hashed chunks must 404, not the SPA index (FE-01). Status 404
-# keeps the browser from treating HTML as a JS module after a deploy.
-/assets/* /404.html 404
-
-# Cloudflare Pages SPA fallback. Static assets that exist are served first.
-/* /index.html 200
+# SPA: NO poner un `404.html` en la raiz de public/ y NO agregar
+# `/* /index.html 200` ni `/* / 200`.
+#
+# Sin `404.html` de raiz, Cloudflare Pages trata el proyecto como SPA y
+# sirve `/` (el index) con 200 para cualquier ruta que no sea un archivo.
+# Un `404.html` de raiz apaga ese fallback: `/mapa`, `/participacion` y
+# `/admin` pasan a responder 404. El splat `/* /index.html 200` no lo
+# rescata, porque Pages redirige `/index.html` → `/` con 308 (pretty URLs)
+# y la regla entra en bucle o se descarta.
+#
+# Los chunks y demas assets que ya no existen NO deben caer en ese shell
+# (FE-01). Lo resuelve `public/_worker.js` (copiado a `dist/_worker.js`):
+# si la URL tiene extension de archivo estatico y el cuerpo es HTML,
+# responde 404 `text/plain`.
