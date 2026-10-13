@@ -124,7 +124,7 @@ describe('<LocationSection />', () => {
     );
 
     expect(screen.getByRole('application', { name: /mapa interactivo/i })).toHaveAccessibleDescription(
-      /haz clic dentro del área del consorcio/i,
+      /hacé clic dentro del área del consorcio/i,
     );
 
     const manualToggle = screen.getByRole('button', { name: /ocultar entrada manual/i });
