@@ -26,7 +26,7 @@ export function ProximaReunionSection({
         <ThemeIcon color="blue" size="md" variant="light">
           <IconCalendar size={16} />
         </ThemeIcon>
-        <Title order={4}>Temas para Proxima Reunion</Title>
+        <Title order={4}>Temas para Próxima Reunión</Title>
         <Badge color="blue" variant="light">
           {proximaReunion.length} temas
         </Badge>

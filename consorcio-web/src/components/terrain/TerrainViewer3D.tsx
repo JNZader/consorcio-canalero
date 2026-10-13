@@ -14,7 +14,6 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Alert, Button, Stack } from '@mantine/core';
 import type { Feature } from 'geojson';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
-import { TILE_LAYERS } from '../../constants/mapStyles';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
 import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
@@ -23,7 +22,6 @@ import { useCatastroMap } from '../../hooks/useCatastroMap';
 import { useConflictos } from '../../hooks/useConflictos';
 import { useGEELayers } from '../../hooks/useGEELayers';
 import { buildTileUrl, type GeoLayerInfo, useGeoLayers } from '../../hooks/useGeoLayers';
-import { getMartinTileUrl, MARTIN_SOURCES } from '../../hooks/useMartinLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
 import { getSelectedImageSync, useSelectedImageListener } from '../../hooks/useSelectedImage';
 import { useSoilMap } from '../../hooks/useSoilMap';
@@ -33,7 +31,6 @@ import { logger } from '../../lib/logger';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
-import { MAP_GLYPHS_URL } from '../map2d/roadLabelLayer';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
@@ -41,6 +38,7 @@ import { terrainCameraShortcutFromEvent } from './terrainCameraShortcuts';
 import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
 import { resolveTerrainStartPitch, TERRAIN_DEFAULT_EXAGGERATION } from './terrainExaggeration';
 import { getSupported3DRasterLayers } from './terrainLayerConfig';
+import { buildTerrainMapStyle } from './terrainMapStyle';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   buildCuencasCollection,
@@ -534,83 +532,11 @@ export default function TerrainViewer3D({
     bootMapLibreWorker();
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: {
-        version: 8,
-        glyphs: MAP_GLYPHS_URL,
-        sources: {
-          'terrain-rgb': {
-            type: 'raster-dem',
-            tiles: [terrainRgbUrl],
-            tileSize: 256,
-            // Cap the DEM source zoom — the COG resolution does not warrant
-            // requests past z=14, MapLibre would otherwise upsample by
-            // default (assumes 22). Vector layers above can still use higher
-            // zooms; only the terrain source is capped.
-            maxzoom: 14,
-            encoding: 'mapbox',
-          },
-          'terrain-texture': {
-            type: 'raster',
-            tiles: [initialTextureUrl],
-            tileSize: 256,
-          },
-          satellite: {
-            type: 'raster',
-            tiles: [TILE_LAYERS.satellite.url],
-            tileSize: 256,
-            attribution: TILE_LAYERS.satellite.attribution,
-          },
-          // Martin MVT — same source the 2D viewer consumes via
-          // ``syncMartinSuggestionLayers``. Always declared, controlled by
-          // visibility, so the effect downstream only flips the layer
-          // visibility instead of mutating sources.
-          puntos_conflicto_src: {
-            type: 'vector',
-            tiles: [getMartinTileUrl('puntos_conflicto')],
-            minzoom: 0,
-            maxzoom: 22,
-          },
-        },
-        layers: [
-          {
-            id: 'satellite-base',
-            type: 'raster',
-            source: 'satellite',
-            // Audit v5 3D-06: keep Esri under the overlay. Opaque DEM/Sentinel
-            // footprints do not cover the globe; hiding the base shows white voids.
-            layout: { visibility: 'visible' },
-            paint: { 'raster-opacity': 1 },
-          },
-          {
-            id: 'dem-overlay',
-            type: 'raster',
-            source: 'terrain-texture',
-            paint: { 'raster-opacity': overlayOpacityRef.current },
-          },
-          // Conflictos puntos — drawn on top of every raster, drape onto
-          // the 3D terrain automatically because MapLibre samples the
-          // terrain elevation for any non-raster layer. Visibility flips
-          // via an effect below.
-          {
-            id: 'puntos_conflicto-circle',
-            type: 'circle',
-            source: 'puntos_conflicto_src',
-            'source-layer': MARTIN_SOURCES.puntos_conflicto.table,
-            layout: { visibility: 'none' },
-            paint: {
-              'circle-color': MARTIN_SOURCES.puntos_conflicto.style.fillColor,
-              'circle-opacity': MARTIN_SOURCES.puntos_conflicto.style.fillOpacity,
-              'circle-radius': MARTIN_SOURCES.puntos_conflicto.style.radius,
-              'circle-stroke-color': MARTIN_SOURCES.puntos_conflicto.style.color,
-              'circle-stroke-width': MARTIN_SOURCES.puntos_conflicto.style.weight,
-            },
-          },
-        ],
-        terrain: {
-          source: 'terrain-rgb',
-          exaggeration: TERRAIN_DEFAULT_EXAGGERATION,
-        },
-      },
+      style: buildTerrainMapStyle({
+        terrainRgbUrl,
+        textureUrl: initialTextureUrl,
+        overlayOpacity: overlayOpacityRef.current,
+      }),
       center: startCenter,
       zoom: startZoom,
       minZoom: MAP_MIN_ZOOM,

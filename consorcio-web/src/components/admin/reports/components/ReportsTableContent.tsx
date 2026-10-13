@@ -62,9 +62,9 @@ export function ReportsTableContent({
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Fecha</Table.Th>
-              <Table.Th>Categoria</Table.Th>
-              <Table.Th>Descripcion</Table.Th>
-              <Table.Th>Ubicacion</Table.Th>
+              <Table.Th>Categoría</Table.Th>
+              <Table.Th>Descripción</Table.Th>
+              <Table.Th>Ubicación</Table.Th>
               <Table.Th>Estado</Table.Th>
               <Table.Th>Acciones</Table.Th>
             </Table.Tr>
@@ -85,7 +85,7 @@ export function ReportsTableContent({
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm" c="gray.6" lineClamp={1} style={{ maxWidth: 200 }}>
-                    {report.ubicacion_texto || 'Sin direccion'}
+                    {report.ubicacion_texto || 'Sin dirección'}
                   </Text>
                 </Table.Td>
                 <Table.Td>{getStatusBadge(report.estado)}</Table.Td>
@@ -112,7 +112,7 @@ export function ReportsTableContent({
                             lng: String(report.longitud),
                             zoom: '15',
                           })}`}
-                          aria-label={`Ver ubicacion de denuncia en el mapa, coordenadas ${report.latitud}, ${report.longitud}`}
+                          aria-label={`Ver ubicación de denuncia en el mapa, coordenadas ${report.latitud}, ${report.longitud}`}
                         >
                           <IconMap size={18} />
                         </ActionIcon>
@@ -132,7 +132,7 @@ export function ReportsTableContent({
             total={totalPages}
             value={page}
             onChange={onPageChange}
-            aria-label="Paginacion de denuncias"
+            aria-label="Paginación de denuncias"
           />
         </Group>
       )}

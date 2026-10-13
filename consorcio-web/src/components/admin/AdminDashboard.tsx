@@ -22,9 +22,9 @@ import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
 import { useConfigStore } from '../../stores/configStore';
+import { IconDownload } from '../ui/icons';
 import { LoadingState } from '../ui/LoadingState';
 import { StatusBadge } from '../ui/StatusBadge';
-import { IconDownload } from '../ui/icons';
 import { createDashboardJsonExport } from './adminDashboardExport';
 import { DashboardEstadisticas } from './management/DashboardEstadisticas';
 import { PilarVerdeWidgetConnected } from './pilarVerdeWidget/PilarVerdeWidget';
@@ -91,7 +91,7 @@ export default function AdminDashboard() {
       logger.error('Export error:', error);
       notifications.show({
         title: 'Error al exportar datos',
-        message: 'No se pudieron descargar los datos del dashboard. Intenta nuevamente.',
+        message: 'No se pudieron descargar los datos del dashboard. Intentá nuevamente.',
         color: 'red',
       });
     } finally {
@@ -108,7 +108,7 @@ export default function AdminDashboard() {
     if (!file) {
       notifications.show({
         title: 'Archivo requerido',
-        message: 'Selecciona un archivo GeoJSON antes de importar.',
+        message: 'Seleccioná un archivo GeoJSON antes de importar.',
         color: 'yellow',
       });
       return;
@@ -227,7 +227,7 @@ export default function AdminDashboard() {
     if (!bundleFile) {
       notifications.show({
         title: 'Archivo requerido',
-        message: 'Selecciona un archivo ZIP antes de importar.',
+        message: 'Seleccioná un archivo ZIP antes de importar.',
         color: 'yellow',
       });
       return;
@@ -280,8 +280,8 @@ export default function AdminDashboard() {
   if (reportsError) {
     return (
       <Container size="xl" py="xl">
-        <Alert color="red" title="Error de conexion">
-          Error al cargar datos. Verifica que el backend este activo.
+        <Alert color="red" title="Error de conexión">
+          Error al cargar datos. Verificá que el backend esté activo.
           <Button mt="sm" size="xs" onClick={handleRetry}>
             Reintentar
           </Button>
@@ -294,7 +294,7 @@ export default function AdminDashboard() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Panel de Gestion Integral</Title>
+          <Title order={2}>Panel de Gestión Integral</Title>
           <Text c="gray.6">Inteligencia de datos y monitoreo satelital</Text>
         </div>
         <Group>
@@ -454,7 +454,7 @@ export default function AdminDashboard() {
             </Stack>
           ) : (
             <Text c="gray.6" ta="center" py="md">
-              Sin datos de inundacion disponibles
+              Sin datos de inundación disponibles
             </Text>
           )}
         </Paper>

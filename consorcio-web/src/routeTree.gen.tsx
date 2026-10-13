@@ -21,6 +21,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import { Center, Loader, Text, Stack } from '@mantine/core';
 
 import { RootLayout } from './components/RootLayout';
+import { parseLoginSearch } from './lib/loginSearch';
 import { parseMapaRouteSearch } from './lib/mapaSearch';
 import { useAuthStore } from './stores/authStore';
 import { withBasePath } from './lib/basePath';
@@ -115,7 +116,7 @@ const RootComponent = () => (
 );
 
 const NotFoundComponent = () => (
-  <RootLayout title="Pagina no encontrada" description="La pagina que buscas no existe.">
+  <RootLayout title="Página no encontrada" description="La página que buscás no existe.">
     <Suspense fallback={<PageLoader />}>
       <NotFound />
     </Suspense>
@@ -138,7 +139,7 @@ const indexRoute = createRoute({
   component: () => (
     <RootLayout
       title="Inicio"
-      description="Bienvenido al Consorcio Canalero 10 de Mayo. Sistema integral de gestion y monitoreo de cuencas hidricas."
+      description="Bienvenido al Consorcio Canalero 10 de Mayo. Sistema integral de gestión y monitoreo de cuencas hídricas."
     >
       <Suspense fallback={<PageLoader />}>
         <HomePage />
@@ -150,10 +151,11 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/login',
+  validateSearch: (search: Record<string, unknown>) => parseLoginSearch(search),
   component: () => (
     <RootLayout
-      title="Iniciar Sesion"
-      description="Accede al sistema de administracion del Consorcio Canalero 10 de Mayo."
+      title="Iniciar Sesión"
+      description="Accedé al sistema de administración del Consorcio Canalero 10 de Mayo."
       noindex={true}
     >
       <Suspense fallback={<PageLoader />}>
@@ -183,8 +185,8 @@ const forgotPasswordRoute = createRoute({
   path: '/forgot-password',
   component: () => (
     <RootLayout
-      title="Recuperar Contrasena"
-      description="Recupera el acceso a tu cuenta del Consorcio Canalero 10 de Mayo."
+      title="Recuperar Contraseña"
+      description="Recuperá el acceso a tu cuenta del Consorcio Canalero 10 de Mayo."
       noindex={true}
     >
       <Suspense fallback={<PageLoader />}>
@@ -211,8 +213,8 @@ const resetPasswordRoute = createRoute({
     const { token, code } = resetPasswordRoute.useSearch();
     return (
       <RootLayout
-        title="Nueva Contrasena"
-        description="Restablece tu contrasena del Consorcio Canalero 10 de Mayo."
+        title="Nueva Contraseña"
+        description="Restablece tu contraseña del Consorcio Canalero 10 de Mayo."
         noindex={true}
       >
         <Suspense fallback={<PageLoader />}>
@@ -236,7 +238,7 @@ const verifyEmailRoute = createRoute({
     return (
       <RootLayout
         title="Verificar Correo"
-        description="Verifica tu correo para activar tu cuenta del Consorcio Canalero 10 de Mayo."
+        description="Verificá tu correo para activar tu cuenta del Consorcio Canalero 10 de Mayo."
         noindex={true}
       >
         <Suspense fallback={<PageLoader />}>
@@ -254,7 +256,7 @@ const mapaRoute = createRoute({
   component: () => (
     <RootLayout
       title="Mapa Interactivo"
-      description="Explora el mapa interactivo de las cuencas hidricas del Consorcio Canalero 10 de Mayo."
+      description="Explora el mapa interactivo de las cuencas hídricas del Consorcio Canalero 10 de Mayo."
     >
       <Suspense fallback={<PageLoader />}>
         <MapaPage />
@@ -275,8 +277,8 @@ const participacionRoute = createRoute({
     search.tab === 'sugerencias' ? { tab: 'sugerencias' } : {},
   component: () => (
     <RootLayout
-      title="Participacion"
-      description="Reporta incidentes en los canales o propone mejoras al Consorcio Canalero 10 de Mayo."
+      title="Participación"
+      description="Reportá incidentes en los canales o proponé mejoras al Consorcio Canalero 10 de Mayo."
     >
       <Suspense fallback={<PageLoader />}>
         <ParticipacionPage />
@@ -331,7 +333,7 @@ function redactAuthCallbackUrl(rawUrl: string): string {
 
     return url.toString();
   } catch {
-    return 'URL de callback invalida';
+    return 'URL de callback inválida';
   }
 }
 
@@ -395,11 +397,11 @@ function AuthCallbackPage() {
         });
 
         if (errorParam) {
-          const errorMsg = `OAuth Error: ${errorParam} - ${errorDescription || 'Sin descripcion'}`;
+          const errorMsg = `OAuth Error: ${errorParam} - ${errorDescription || 'Sin descripción'}`;
           logger.error('[AUTH CALLBACK]', errorMsg);
           setError(errorMsg);
           setDebugInfo(
-            `Error de Google OAuth: ${errorParam}\nDescripcion: ${errorDescription || 'N/A'}\n\nRevisa la configuracion de OAuth en el backend.`
+            `Error de Google OAuth: ${errorParam}\nDescripción: ${errorDescription || 'N/A'}\n\nRevisá la configuración de OAuth en el backend.`
           );
           return; // No redirigir, mostrar error
         }
@@ -470,7 +472,7 @@ function AuthCallbackPage() {
       <Center mih="100vh">
         <Stack align="center" gap="md" style={{ maxWidth: 600, padding: 20 }}>
           <Text size="xl" fw={700} c="red">
-            Error de Autenticacion
+            Error de Autenticación
           </Text>
           <Text c="dimmed" style={{ whiteSpace: 'pre-wrap', textAlign: 'center' }}>
             {debugInfo}

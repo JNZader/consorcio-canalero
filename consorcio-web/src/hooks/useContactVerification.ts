@@ -77,7 +77,7 @@ export function useContactVerification(
       logger.error('Error en login con Google:', error);
       notifications.show({
         title: 'Error',
-        message: 'No se pudo iniciar sesion con Google',
+        message: 'No se pudo iniciar sesión con Google',
         color: 'red',
       });
       setLoading(false);
@@ -97,13 +97,13 @@ export function useContactVerification(
               color: 'yellow',
             }
           : {
-              title: 'Sesion cerrada',
-              message: 'Has cerrado sesion correctamente',
+              title: 'Sesión cerrada',
+              message: 'Cerraste sesión correctamente',
               color: 'blue',
             }
       );
     } catch (error) {
-      logger.error('Error al cerrar sesion:', error);
+      logger.error('Error al cerrar sesión:', error);
     }
   }, []);
 

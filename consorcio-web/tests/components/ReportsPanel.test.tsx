@@ -102,7 +102,7 @@ describe('ReportsPanel', () => {
     expect(await screen.findByText(/pendientes$/)).toBeInTheDocument();
     expect(screen.getByText('Canal desbordado en zona norte')).toBeInTheDocument();
     expect(screen.getByText('Ruta 9 km 500')).toBeInTheDocument();
-    expect(screen.getByLabelText(/ver ubicacion de denuncia en el mapa/i)).toHaveAttribute(
+    expect(screen.getByLabelText(/ver ubicación de denuncia en el mapa/i)).toHaveAttribute(
       'href',
       '/mapa?report=1&lat=-32.62&lng=-62.7&zoom=15'
     );
@@ -151,9 +151,9 @@ describe('ReportsPanel', () => {
     await user.click(await screen.findByRole('button', { name: /ver detalle de denuncia/i }));
 
     const modal = await screen.findByRole('dialog', { name: /detalle de denuncia/i });
-    await user.type(within(modal).getByLabelText(/comentario publico/i), 'Inspeccion programada');
+    await user.type(within(modal).getByLabelText(/comentario público/i), 'Inspeccion programada');
     await user.type(within(modal).getByLabelText(/notas internas/i), 'Asignar maquinaria');
-    await user.click(within(modal).getByRole('button', { name: /registrar gestion/i }));
+    await user.click(within(modal).getByRole('button', { name: /registrar gestión/i }));
 
     // PATCH /denuncias/{id} con el shape nuevo:
     // - `respuesta` = comentario público (visible al ciudadano)
@@ -219,7 +219,7 @@ describe('ReportsPanel', () => {
     await user.click(await screen.findByRole('button', { name: /ver detalle de denuncia/i }));
 
     const modal = await screen.findByRole('dialog', { name: /detalle de denuncia/i });
-    await user.click(within(modal).getByRole('button', { name: /registrar gestion/i }));
+    await user.click(within(modal).getByRole('button', { name: /registrar gestión/i }));
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
@@ -243,6 +243,6 @@ describe('ReportsPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/ver ubicacion de denuncia en el mapa/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/ver ubicación de denuncia en el mapa/i)).not.toBeInTheDocument();
   });
 });

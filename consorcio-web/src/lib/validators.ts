@@ -38,7 +38,7 @@ export function isValidEmail(email: string): boolean {
 export function validateEmail(value: string): string | null {
   if (!value) return 'El email es requerido';
   if (value.length > MAX_EMAIL_LENGTH) return 'Email demasiado largo';
-  if (!isValidEmail(value)) return 'Email invalido';
+  if (!isValidEmail(value)) return 'Email inválido';
   return null;
 }
 
@@ -70,7 +70,7 @@ export function isValidPhone(phone: string): boolean {
  */
 export function validatePhone(value: string): string | null {
   if (!value) return null; // Phone is usually optional
-  if (!isValidPhone(value)) return 'Telefono invalido';
+  if (!isValidPhone(value)) return 'Teléfono inválido';
   return null;
 }
 
@@ -111,7 +111,7 @@ export function isValidCUIT(cuit: string): boolean {
  */
 export function validateCUIT(value: string): string | null {
   if (!value) return 'El CUIT es requerido';
-  if (!isValidCUIT(value)) return 'CUIT invalido';
+  if (!isValidCUIT(value)) return 'CUIT inválido';
   return null;
 }
 
@@ -156,8 +156,8 @@ export function createLengthValidator(
  * Pre-built validators for common fields.
  */
 export const validators = {
-  titulo: createLengthValidator(5, MAX_LENGTHS.TITULO, 'El titulo'),
-  descripcion: createLengthValidator(10, MAX_LENGTHS.DESCRIPCION, 'La descripcion'),
+  titulo: createLengthValidator(5, MAX_LENGTHS.TITULO, 'El título'),
+  descripcion: createLengthValidator(10, MAX_LENGTHS.DESCRIPCION, 'La descripción'),
   nombre: createLengthValidator(2, MAX_LENGTHS.NOMBRE, 'El nombre'),
 };
 
@@ -179,13 +179,13 @@ export const MIN_PASSWORD_LENGTH = 8;
  */
 export function validatePassword(value: string): string | null {
   if (value.length < MIN_PASSWORD_LENGTH) {
-    return `La contrasena debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`;
+    return `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`;
   }
   if (!/[0-9]/.test(value)) {
-    return 'La contrasena debe incluir al menos un numero';
+    return 'La contraseña debe incluir al menos un número';
   }
   if (!/[a-zA-Z]/.test(value)) {
-    return 'La contrasena debe incluir al menos una letra';
+    return 'La contraseña debe incluir al menos una letra';
   }
   return null;
 }
@@ -220,7 +220,7 @@ export function isValidUrl(url: string): boolean {
  */
 export function validateOptionalHttpUrl(value: string): string | null {
   if (!value) return null;
-  if (!isValidUrl(value)) return 'Debe ser una URL valida que empiece con http:// o https://';
+  if (!isValidUrl(value)) return 'Debe ser una URL válida que empiece con http:// o https://';
   return null;
 }
 

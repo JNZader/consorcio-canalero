@@ -75,7 +75,7 @@ vi.mock('../../src/components/report-form/LocationSection', () => ({
   }) => (
     <div>
       <button type="button" onClick={onObtenerGPS}>
-        Usar mi ubicacion GPS
+        Usar mi ubicación GPS
       </button>
       <button type="button" onClick={onToggleInputManual}>
         {mostrarInputManual ? 'Ocultar entrada manual' : 'Ingresar coordenadas manualmente'}
@@ -134,19 +134,19 @@ describe('FormularioReporte', () => {
   });
 
   describe('Form State Transitions', () => {
-    it('disables submit button before coordinates are selected', async () => {
+    it('keeps submit enabled before coordinates so the form can explain what is missing', async () => {
       const user = userEvent.setup();
       renderForm();
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
       await user.type(
-        screen.getByLabelText(/descripcion/i),
+        screen.getByLabelText(/descripci[oó]n/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
 
       const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
-      expect(screen.getByLabelText(/descripcion/i).closest('form')).toHaveAttribute('novalidate');
-      expect(submitButton).toBeDisabled();
+      expect(screen.getByLabelText(/descripci[oó]n/i).closest('form')).toHaveAttribute('novalidate');
+      expect(submitButton).toBeEnabled();
     });
 
     it('enables submit button only after coordinates are set', async () => {
@@ -155,12 +155,12 @@ describe('FormularioReporte', () => {
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
       await user.type(
-        screen.getByLabelText(/descripcion/i),
+        screen.getByLabelText(/descripci[oó]n/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
 
       const submitButton = screen.getByRole('button', { name: /enviar reporte/i });
-      expect(submitButton).toBeDisabled();
+      expect(submitButton).toBeEnabled();
 
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
       await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
@@ -173,7 +173,7 @@ describe('FormularioReporte', () => {
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
       await user.type(
-        screen.getByLabelText(/descripcion/i),
+        screen.getByLabelText(/descripci[oó]n/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
@@ -191,7 +191,7 @@ describe('FormularioReporte', () => {
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
       await user.type(
-        screen.getByLabelText(/descripcion/i),
+        screen.getByLabelText(/descripci[oó]n/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
@@ -208,7 +208,7 @@ describe('FormularioReporte', () => {
       vi.stubGlobal('navigator', {});
       renderForm();
 
-      await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
+      await user.click(screen.getByRole('button', { name: /usar mi ubicación gps/i }));
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Error', color: 'red' })
@@ -226,7 +226,7 @@ describe('FormularioReporte', () => {
       });
 
       renderForm();
-      await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
+      await user.click(screen.getByRole('button', { name: /usar mi ubicación gps/i }));
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({ color: 'red' })
@@ -253,7 +253,7 @@ describe('FormularioReporte', () => {
       expect(screen.getByText(/Nuevo Reporte/i)).toBeInTheDocument();
     });
 
-    it('blocks submit button when contact not verified', () => {
+    it('keeps the submit button available before verification', () => {
       useContactVerificationMock.mockReturnValue({
         contactoVerificado: false,
         userEmail: null,
@@ -264,10 +264,10 @@ describe('FormularioReporte', () => {
       });
 
       renderForm();
-      expect(screen.queryByRole('button', { name: /enviar reporte/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enviar reporte/i })).toBeEnabled();
     });
 
-    it('renders blocked form state before verification', () => {
+    it('renders the editable form before verification', () => {
       useContactVerificationMock.mockReturnValue({
         contactoVerificado: false,
         userEmail: null,
@@ -279,8 +279,9 @@ describe('FormularioReporte', () => {
 
       renderForm();
 
-      expect(screen.getAllByText(/tipo de problema/i).length).toBeGreaterThan(0);
-      expect(screen.queryByRole('button', { name: /enviar reporte/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /select-type/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enviar reporte/i })).toBeInTheDocument();
+      expect(screen.getByText(/podés completar el reporte ahora/i)).toBeInTheDocument();
     });
   });
 
@@ -293,7 +294,7 @@ describe('FormularioReporte', () => {
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
       await user.type(
-        screen.getByLabelText(/descripcion/i),
+        screen.getByLabelText(/descripci[oó]n/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
@@ -328,7 +329,7 @@ describe('FormularioReporte', () => {
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
       await user.type(
-        screen.getByLabelText(/descripcion/i),
+        screen.getByLabelText(/descripci[oó]n/i),
         'Canal desbordado por lluvias intensas en el sector norte'
       );
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
@@ -357,7 +358,7 @@ describe('FormularioReporte', () => {
       renderForm();
 
       await user.click(screen.getByRole('button', { name: /select-type/i }));
-      await user.type(screen.getByLabelText(/descripcion/i), 'Test description');
+      await user.type(screen.getByLabelText(/descripci[oó]n/i), 'Test description');
       await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
       await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
       await user.click(screen.getByRole('button', { name: /attach-photo/i }));

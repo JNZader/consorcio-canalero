@@ -44,7 +44,7 @@ describe('ParticipacionPage', () => {
   it('muestra el header unico que abarca las dos acciones', () => {
     renderPage();
     expect(screen.getByRole('heading', { name: 'Participación' })).toBeInTheDocument();
-    expect(screen.getByText(/reporta un problema/i)).toBeInTheDocument();
+    expect(screen.getByText(/report[aá] un problema/i)).toBeInTheDocument();
   });
 
   it('muestra las dos pestanas nombradas por la accion del vecino', () => {
@@ -108,20 +108,17 @@ describe('ParticipacionPage', () => {
   describe('ayuda del tab Reportar', () => {
     it('muestra plazos, tip de foto y aviso de notificacion', () => {
       renderPage();
-      expect(screen.getByText('Informacion importante')).toBeInTheDocument();
+      expect(screen.getByText('Información importante')).toBeInTheDocument();
       expect(screen.getByText(/24-48 horas/i)).toBeInTheDocument();
       expect(screen.getByText(/incluir una foto/i)).toBeInTheDocument();
-      expect(screen.getByText(/notificacion cuando tu reporte/i)).toBeInTheDocument();
+      expect(screen.getByText(/notificación cuando tu reporte/i)).toBeInTheDocument();
     });
 
     it('muestra los contactos de emergencia', () => {
       renderPage();
       expect(screen.getByText('Emergencias')).toBeInTheDocument();
-      expect(screen.getByText(/situacion es urgente/i)).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /llamar al consorcio/i })).toHaveAttribute(
-        'href',
-        expect.stringContaining('tel:')
-      );
+      expect(screen.getByText(/situación es urgente/i)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /llamar al consorcio/i })).not.toBeInTheDocument();
       expect(screen.getByRole('link', { name: /defensa civil/i })).toHaveAttribute(
         'href',
         'tel:103'
@@ -139,12 +136,12 @@ describe('ParticipacionPage', () => {
       expect(await screen.findByText('Como funciona')).toBeInTheDocument();
       expect(screen.getByText(/iniciá sesión/i)).toBeInTheDocument();
       expect(screen.getByText(/hasta 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
-      expect(screen.getByText(/comision en sus reuniones/i)).toBeInTheDocument();
+      expect(screen.getByText(/comisi[oó]n en sus reuniones/i)).toBeInTheDocument();
 
       expect(screen.getByText('Tipos de sugerencias')).toBeInTheDocument();
       expect(screen.getByText(/infraestructura.*canales.*caminos/i)).toBeInTheDocument();
       expect(screen.getByText(/propuestas para servicios/i)).toBeInTheDocument();
-      expect(screen.getByText(/gestion ambiental/i)).toBeInTheDocument();
+      expect(screen.getByText(/gesti[oó]n ambiental/i)).toBeInTheDocument();
       expect(screen.getByText(/temas administrativos/i)).toBeInTheDocument();
     });
   });

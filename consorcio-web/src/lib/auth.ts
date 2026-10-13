@@ -4,16 +4,13 @@
 
 import { type UserRole, useAuthStore } from '../stores/authStore';
 import {
+  clearEmailCodeExchange,
   type EmailCodeExchangeRecord,
   type EmailCodePurpose,
-  clearEmailCodeExchange,
   getOrCreateEmailCodeExchange,
 } from './auth/emailCodeExchangeStorage';
 import { authAdapter } from './auth/index';
-import {
-  markLocalLogout,
-  storeLocalLogoutWarning,
-} from './auth/storage';
+import { markLocalLogout, storeLocalLogoutWarning } from './auth/storage';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
 
@@ -53,8 +50,8 @@ export async function signInWithEmail(email: string, password: string): Promise<
       user: { id: session.user.id, email: session.user.email },
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Error inesperado al iniciar sesion';
-    logger.error('Error al iniciar sesion:', err);
+    const message = err instanceof Error ? err.message : 'Error inesperado al iniciar sesión';
+    logger.error('Error al iniciar sesión:', err);
     return {
       success: false,
       error: translateAuthError(message),
@@ -179,20 +176,20 @@ export async function isOperadorOrAdmin(userId: string): Promise<boolean> {
  */
 function translateAuthError(message: string): string {
   const errorMessages: Record<string, string> = {
-    'Invalid login credentials': 'Email o contrasena incorrectos',
-    LOGIN_BAD_CREDENTIALS: 'Email o contrasena incorrectos',
-    'Email not confirmed': 'Debes confirmar tu email antes de iniciar sesion',
+    'Invalid login credentials': 'Email o contraseña incorrectos',
+    LOGIN_BAD_CREDENTIALS: 'Email o contraseña incorrectos',
+    'Email not confirmed': 'Debés confirmar tu email antes de iniciar sesión',
     'User already registered': 'Este email ya esta registrado',
     REGISTER_USER_ALREADY_EXISTS: 'Este email ya esta registrado',
-    'Password should be at least 6 characters': 'La contrasena debe tener al menos 6 caracteres',
-    'Unable to validate email address: invalid format': 'Formato de email invalido',
-    'Signup requires a valid password': 'Se requiere una contrasena valida',
+    'Password should be at least 6 characters': 'La contraseña debe tener al menos 6 caracteres',
+    'Unable to validate email address: invalid format': 'Formato de email inválido',
+    'Signup requires a valid password': 'Se requiere una contraseña válida',
     'User not found': 'Usuario no encontrado',
-    'Email rate limit exceeded': 'Demasiados intentos. Intenta de nuevo mas tarde',
-    'Error al iniciar sesion': 'Email o contrasena incorrectos',
+    'Email rate limit exceeded': 'Demasiados intentos. Intentá de nuevo más tarde',
+    'Error al iniciar sesión': 'Email o contraseña incorrectos',
     'Error al registrarse': 'Error al crear la cuenta',
-    RESET_PASSWORD_BAD_TOKEN: 'El enlace de recuperacion es invalido o ya expiro.',
-    RESET_PASSWORD_INVALID_PASSWORD: 'La contrasena no cumple los requisitos minimos de seguridad.',
+    RESET_PASSWORD_BAD_TOKEN: 'El enlace de recuperación es inválido o ya expiró.',
+    RESET_PASSWORD_INVALID_PASSWORD: 'La contraseña no cumple los requisitos mínimos de seguridad.',
   };
 
   // Buscar traduccion exacta
@@ -208,7 +205,7 @@ function translateAuthError(message: string): string {
   }
 
   // Retornar mensaje original si no hay traduccion
-  return message || 'Error de autenticacion';
+  return message || 'Error de autenticación';
 }
 
 /**
@@ -228,7 +225,7 @@ export async function resetPassword(email: string): Promise<AuthResult> {
     return { success: true };
   } catch (err) {
     logger.error('Error al solicitar reset de password:', err);
-    return { success: false, error: 'Error al enviar el email de recuperacion.' };
+    return { success: false, error: 'Error al enviar el email de recuperación.' };
   }
 }
 
@@ -246,7 +243,7 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
     return { success: true };
   } catch (err) {
     logger.error('Error al actualizar password:', err);
-    return { success: false, error: 'Error al cambiar la contrasena.' };
+    return { success: false, error: 'Error al cambiar la contraseña.' };
   }
 }
 
@@ -392,7 +389,7 @@ export async function resetPasswordWithToken(
 
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Error al restablecer la contrasena.';
+    const message = err instanceof Error ? err.message : 'Error al restablecer la contraseña.';
     logger.error('Error al restablecer password con token:', err);
     return { success: false, error: translateAuthError(message) };
   }

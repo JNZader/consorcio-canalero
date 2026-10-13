@@ -34,7 +34,7 @@ describe('NotFound', () => {
       </MantineProvider>
     );
 
-    expect(screen.getByText('Pagina no encontrada')).toBeInTheDocument();
+    expect(screen.getByText('Página no encontrada')).toBeInTheDocument();
   });
 
   it('should render helpful description', () => {
@@ -46,7 +46,7 @@ describe('NotFound', () => {
 
     expect(
       screen.getByText(
-        /La pagina que buscas no existe o fue movida/i
+        /La página que buscás no existe o fue movida/i
       )
     ).toBeInTheDocument();
   });
@@ -107,7 +107,7 @@ describe('NotFound', () => {
 
     // Main content should be accessible
     expect(screen.getByText('404')).toBeInTheDocument();
-    expect(screen.getByText('Pagina no encontrada')).toBeInTheDocument();
+    expect(screen.getByText('Página no encontrada')).toBeInTheDocument();
   });
 
   it('should render button with left icon section', () => {

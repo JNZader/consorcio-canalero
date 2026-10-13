@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
 import { LAYER_CATEGORY } from '../../src/components/map2d/map2dDerived';
+import { buildTerrainLayerControlItems } from '../../src/components/terrain/terrainLayerConfig';
 
 function wrap(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -43,6 +44,10 @@ describe('LayerControlsPanel variant 3d', () => {
     );
     expect(screen.getByTestId('layer-controls-capas')).toBeInTheDocument();
     expect(screen.getByText(/Zona Consorcio es el terreno 3D/)).toBeInTheDocument();
+    expect(screen.getByText(/Esri World Imagery/)).toBeInTheDocument();
+    const zona = screen.getByRole('checkbox', { name: 'Zona Consorcio', hidden: true });
+    expect(zona).toBeDisabled();
+    expect(zona).toBeChecked();
     expect(screen.queryByTestId('layer-controls-raster')).not.toBeInTheDocument();
     expect(screen.queryByTestId('layer-controls-ajustes')).not.toBeInTheDocument();
   });
@@ -75,5 +80,21 @@ describe('LayerControlsPanel variant 3d', () => {
     expect(checkbox).toBeDisabled();
     await user.hover(checkbox);
     expect(await screen.findByRole('tooltip', { name: 'No disponible en 3D' })).toBeInTheDocument();
+  });
+
+  it('lists YPF from the 3D catalog as unavailable', () => {
+    const items = buildTerrainLayerControlItems({});
+    wrap(
+      <LayerControlsPanel
+        {...baseProps}
+        variant="3d"
+        layerItems={items}
+        vectorVisibility={{}}
+        unsupportedLayerIds={['ypf_estacion_bombeo']}
+      />,
+    );
+    expect(
+      screen.getByRole('checkbox', { name: /YPF estación de bombeo/i, hidden: true })
+    ).toBeDisabled();
   });
 });

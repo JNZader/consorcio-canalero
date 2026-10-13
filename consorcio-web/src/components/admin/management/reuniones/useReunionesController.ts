@@ -32,7 +32,7 @@ export function useReunionesController() {
       referencias: [] as string[],
     },
     validate: {
-      titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
+      titulo: (value) => (value.trim().length < 3 ? 'Título requerido' : null),
     },
   });
 
@@ -46,12 +46,12 @@ export function useReunionesController() {
       tipo: 'ordinaria',
     },
     validate: {
-      titulo: (value) => (value.trim().length < 3 ? 'Titulo requerido' : null),
+      titulo: (value) => (value.trim().length < 3 ? 'Título requerido' : null),
       fecha_reunion: (value) => (!value ? 'Fecha y hora requeridas' : null),
       orden_del_dia_items: (value) =>
         value.some((item) => item.trim().length > 0)
           ? null
-          : 'Agrega al menos un punto al orden del dia',
+          : 'Agrega al menos un punto al orden del día',
     },
   });
 
@@ -145,8 +145,8 @@ export function useReunionesController() {
       });
 
       notifications.show({
-        title: 'Reunion creada',
-        message: 'La reunion fue registrada correctamente',
+        title: 'Reunión creada',
+        message: 'La reunión fue registrada correctamente',
         color: 'green',
       });
 
@@ -157,8 +157,8 @@ export function useReunionesController() {
     } catch (err) {
       logger.error('Error creating reunion:', err);
       notifications.show({
-        title: 'No se pudo crear la reunion',
-        message: 'Revisa los datos e intenta nuevamente',
+        title: 'No se pudo crear la reunión',
+        message: 'Revisá los datos e intentá nuevamente',
         color: 'red',
       });
     }
@@ -183,7 +183,7 @@ export function useReunionesController() {
   const handleDeleteTopic = async (item: AgendaItem) => {
     if (!selectedReunion) return;
     const confirmed = window.confirm(
-      `Eliminar el tema "${item.titulo}" de la agenda? Esta accion no se puede deshacer.`
+      `¿Eliminar el tema "${item.titulo}" de la agenda? Esta acción no se puede deshacer.`
     );
     if (!confirmed) return;
 
@@ -202,7 +202,7 @@ export function useReunionesController() {
       logger.error('Error deleting agenda topic:', error);
       notifications.show({
         title: 'No se pudo eliminar el tema',
-        message: 'Intenta nuevamente.',
+        message: 'Intentá nuevamente.',
         color: 'red',
       });
     } finally {

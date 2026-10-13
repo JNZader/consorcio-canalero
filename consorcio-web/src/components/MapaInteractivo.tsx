@@ -1,5 +1,5 @@
 import { Alert, Box, Center, Skeleton, Stack, Text } from '@mantine/core';
-import { Suspense, lazy } from 'react';
+import { lazy, Suspense } from 'react';
 import styles from '../styles/components/map.module.css';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -42,13 +42,13 @@ function MapaErrorFallback() {
       <Stack gap="sm" maw={560} p="md">
         <Alert color="red" title="Error al cargar el mapa" variant="light" radius="md">
           <Text size="sm">
-            No se pudo cargar el componente del mapa. Por favor, recarga la pagina o intenta mas
+            No se pudo cargar el componente del mapa. Por favor, recargá la página o intentá mas
             tarde.
           </Text>
         </Alert>
-        <Box component="section" role="region" aria-label="descripcion textual del mapa">
+        <Box component="section" role="region" aria-label="descripción textual del mapa">
           <Text size="sm" fw={600}>
-            Descripcion textual del mapa
+            Descripción textual del mapa
           </Text>
           <Text size="sm">
             El mapa interactivo permite explorar cuencas, canales e infraestructura del Consorcio.

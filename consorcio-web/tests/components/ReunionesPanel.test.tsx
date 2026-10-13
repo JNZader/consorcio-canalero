@@ -78,12 +78,12 @@ describe('ReunionesPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    expect(await screen.findByText('Reuniones de Comision')).toBeInTheDocument();
+    expect(await screen.findByText('Reuniones de Comisión')).toBeInTheDocument();
     expect(screen.getByText('Reunion mensual')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
 
-    expect(await screen.findByText('Orden del Dia')).toBeInTheDocument();
+    expect(await screen.findByText('Orden del Día')).toBeInTheDocument();
     expect(screen.getByText(/Agregar Tema a la Agenda/i)).toBeInTheDocument();
     expect(screen.getByText(/Reparacion compuerta/i)).toBeInTheDocument();
   });
@@ -92,22 +92,22 @@ describe('ReunionesPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await screen.findByText('Reuniones de Comision');
-    await user.click(screen.getByRole('button', { name: /nueva reunion/i }));
-    const dialog = await screen.findByRole('dialog', { name: /nueva reunion/i });
+    await screen.findByText('Reuniones de Comisión');
+    await user.click(screen.getByRole('button', { name: /nueva reunión/i }));
+    const dialog = await screen.findByRole('dialog', { name: /nueva reunión/i });
 
     await user.type(
-      within(dialog).getByPlaceholderText('Ej: Reunion de comision de marzo'),
+      within(dialog).getByPlaceholderText('Ej: Reunión de comisión de marzo'),
       'Reunion extraordinaria'
     );
     fireEvent.change(within(dialog).getByLabelText(/fecha y hora/i), {
       target: { value: '2026-04-10T09:30' },
     });
     await user.type(within(dialog).getByLabelText('Lugar'), 'Salon principal');
-    await user.type(within(dialog).getByPlaceholderText(/escribe un punto/i), 'Aprobar presupuesto');
-    await user.click(within(dialog).getByRole('button', { name: /anadir punto/i }));
+    await user.type(within(dialog).getByPlaceholderText(/escribí un punto/i), 'Aprobar presupuesto');
+    await user.click(within(dialog).getByRole('button', { name: /añadir punto/i }));
 
-    await user.click(within(dialog).getByRole('button', { name: /crear reunion/i }));
+    await user.click(within(dialog).getByRole('button', { name: /crear reuni[oó]n/i }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
@@ -118,7 +118,7 @@ describe('ReunionesPanel', () => {
 
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Reunion creada',
+        title: 'Reunión creada',
         color: 'green',
       })
     );
@@ -128,13 +128,13 @@ describe('ReunionesPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await screen.findByText('Reuniones de Comision');
-    await user.click(screen.getByRole('button', { name: /nueva reunion/i }));
-    const dialog = await screen.findByRole('dialog', { name: /nueva reunion/i });
+    await screen.findByText('Reuniones de Comisión');
+    await user.click(screen.getByRole('button', { name: /nueva reunión/i }));
+    const dialog = await screen.findByRole('dialog', { name: /nueva reunión/i });
 
-    await user.click(within(dialog).getByRole('button', { name: /crear reunion/i }));
+    await user.click(within(dialog).getByRole('button', { name: /crear reuni[oó]n/i }));
 
-    const title = within(dialog).getByLabelText(/titulo/i);
+    const title = within(dialog).getByLabelText(/t[ií]tulo/i);
     const date = within(dialog).getByLabelText(/fecha y hora/i);
 
     await waitFor(() => {
@@ -144,7 +144,7 @@ describe('ReunionesPanel', () => {
       expect(date.getAttribute('aria-describedby')).toContain('reunion-date-error');
     });
 
-    expect(within(dialog).getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
+    expect(within(dialog).getByText(/título requerido/i)).toHaveAttribute('role', 'alert');
     expect(within(dialog).getByText(/fecha y hora requeridas/i)).toHaveAttribute('role', 'alert');
     expect(within(dialog).getByText(/agrega al menos un punto/i)).toHaveAttribute('role', 'alert');
     expect(apiFetch).not.toHaveBeenCalledWith(
@@ -203,14 +203,14 @@ describe('ReunionesPanel', () => {
     });
 
     renderPanel();
-    await screen.findByText('Reuniones de Comision');
+    await screen.findByText('Reuniones de Comisión');
 
     await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
-    expect(await screen.findByText(/no hay temas en la agenda todavia/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no hay temas en la agenda todavía/i)).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText(/titulo del tema/i), 'Nuevo tema operativo');
-    await user.type(screen.getByPlaceholderText(/descripcion o puntos a discutir/i), 'Asignar cuadrillas');
-    await user.click(screen.getByRole('button', { name: /anadir tema/i }));
+    await user.type(screen.getByPlaceholderText(/título del tema/i), 'Nuevo tema operativo');
+    await user.type(screen.getByPlaceholderText(/descripción o puntos a discutir/i), 'Asignar cuadrillas');
+    await user.click(screen.getByRole('button', { name: /añadir tema/i }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
@@ -226,18 +226,18 @@ describe('ReunionesPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await screen.findByText('Reuniones de Comision');
+    await screen.findByText('Reuniones de Comisión');
     await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
 
-    const titleInput = await screen.findByLabelText(/titulo del tema/i);
-    await user.click(screen.getByRole('button', { name: /anadir tema/i }));
+    const titleInput = await screen.findByLabelText(/título del tema/i);
+    await user.click(screen.getByRole('button', { name: /añadir tema/i }));
 
     await waitFor(() => {
       expect(titleInput).toHaveAttribute('aria-invalid', 'true');
       expect(titleInput.getAttribute('aria-describedby')).toContain('agenda-topic-title-error');
     });
 
-    expect(screen.getByText(/titulo requerido/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/título requerido/i)).toHaveAttribute('role', 'alert');
     expect(apiFetch).not.toHaveBeenCalledWith(
       '/reuniones/r1/agenda',
       expect.objectContaining({ method: 'POST' })
@@ -267,23 +267,23 @@ describe('ReunionesPanel', () => {
     });
 
     renderPanel();
-    await screen.findByText('Reuniones de Comision');
+    await screen.findByText('Reuniones de Comisión');
 
-    await user.click(screen.getByRole('button', { name: /nueva reunion/i }));
-    const dialog = await screen.findByRole('dialog', { name: /nueva reunion/i });
+    await user.click(screen.getByRole('button', { name: /nueva reunión/i }));
+    const dialog = await screen.findByRole('dialog', { name: /nueva reunión/i });
 
-    await user.type(within(dialog).getByLabelText(/titulo/i), 'Reunion urgente');
+    await user.type(within(dialog).getByLabelText(/t[ií]tulo/i), 'Reunion urgente');
     fireEvent.change(within(dialog).getByLabelText(/fecha y hora/i), {
       target: { value: '2026-05-12T09:00' },
     });
-    await user.type(within(dialog).getByPlaceholderText(/escribe un punto/i), 'Revisar presupuesto');
-    await user.click(within(dialog).getByRole('button', { name: /anadir punto/i }));
-    await user.click(within(dialog).getByRole('button', { name: /crear reunion/i }));
+    await user.type(within(dialog).getByPlaceholderText(/escribí un punto/i), 'Revisar presupuesto');
+    await user.click(within(dialog).getByRole('button', { name: /añadir punto/i }));
+    await user.click(within(dialog).getByRole('button', { name: /crear reuni[oó]n/i }));
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'No se pudo crear la reunion',
+          title: 'No se pudo crear la reunión',
           color: 'red',
         })
       );
@@ -342,7 +342,7 @@ describe('ReunionesPanel', () => {
     });
 
     renderPanel();
-    await screen.findByText('Reuniones de Comision');
+    await screen.findByText('Reuniones de Comisión');
     await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
 
     const deleteButton = await screen.findByRole('button', {
@@ -372,7 +372,7 @@ describe('ReunionesPanel', () => {
     });
 
     expect(
-      await screen.findByText(/no hay temas en la agenda todavia/i)
+      await screen.findByText(/no hay temas en la agenda todavía/i)
     ).toBeInTheDocument();
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({

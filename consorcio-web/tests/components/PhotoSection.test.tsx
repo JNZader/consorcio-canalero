@@ -47,7 +47,7 @@ describe('<PhotoSection />', () => {
 
     const dropzone = screen.getByRole('button', { name: /foto \(opcional\)/i });
     expect(dropzone).toHaveAccessibleDescription(
-      'Arrastra una foto o haz clic para seleccionar Max 5MB',
+      'Arrastrá una foto o hacé clic para seleccionar Max 5MB',
     );
 
     await user.click(dropzone);

@@ -46,9 +46,9 @@ export default function ParticipacionPanel() {
   return (
     <Container size="xl" py="md">
       <div>
-        <Title order={2}>Participacion Ciudadana</Title>
+        <Title order={2}>Participación Ciudadana</Title>
         <Text c="gray.6">
-          Denuncias y sugerencias de los vecinos y de la comision, en un solo lugar
+          Denuncias y sugerencias de los vecinos y de la comisión, en un solo lugar
         </Text>
       </div>
 

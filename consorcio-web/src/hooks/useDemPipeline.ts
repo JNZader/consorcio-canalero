@@ -10,8 +10,8 @@
 
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { demPipelineApi } from '../lib/api/demPipeline';
 import type { BasinsGeoJSON, GeoJobResponse, GeoLayerResponse } from '../lib/api/demPipeline';
+import { demPipelineApi } from '../lib/api/demPipeline';
 import { logger } from '../lib/logger';
 
 type PipelineState = 'idle' | 'submitting' | 'polling' | 'completed' | 'failed';
@@ -84,7 +84,7 @@ export function useDemPipeline(): UseDemPipelineResult {
             setState('completed');
             notifications.show({
               title: 'Pipeline completado',
-              message: 'El analisis DEM se completo exitosamente.',
+              message: 'El análisis DEM se completó exitosamente.',
               color: 'green',
             });
             // Fetch results

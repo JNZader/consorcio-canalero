@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
 
 import { filterHtmlModulePreloadDeps } from '../../vite.modulePreload';
 
@@ -17,12 +17,8 @@ describe('filterHtmlModulePreloadDeps', () => {
         'assets/vendor-mantine-dropzone-DNmXbY_E.js',
         'assets/vendor-maplibre-BvR9Qrq-.js',
         'assets/vendor-router-De6djhwO.js',
-      ]),
-    ).toEqual([
-      'assets/vendor-mantine-CuUNZ9dC.js',
-      'assets/vendor-mantine-dates-fQk3pufK.js',
-      'assets/vendor-router-De6djhwO.js',
-    ]);
+      ])
+    ).toEqual(['assets/vendor-mantine-CuUNZ9dC.js', 'assets/vendor-router-De6djhwO.js']);
   });
 });
 
@@ -31,9 +27,19 @@ describe('shell does not static-import dropzone', () => {
     const imports = readFileSync(join(here, '../../src/styles/mantine-imports.ts'), 'utf8');
     const photo = readFileSync(
       join(here, '../../src/components/report-form/PhotoSection.tsx'),
-      'utf8',
+      'utf8'
     );
     expect(imports).not.toMatch('@mantine/dropzone');
-    expect(photo).toMatch("@mantine/dropzone/styles.css");
+    expect(imports).not.toMatch('@mantine/dates');
+    expect(photo).toMatch('@mantine/dropzone/styles.css');
+    const modal = readFileSync(
+      join(here, '../../src/components/admin/sugerencias/components/SuggestionDetailModal.tsx'),
+      'utf8'
+    );
+    const main = readFileSync(join(here, '../../src/main.tsx'), 'utf8');
+    expect(modal).toMatch('@mantine/dates/styles.css');
+    expect(main).not.toMatch("from '@mantine/dates'");
+    expect(main).not.toMatch("from './lib/sentry'");
+    expect(main).not.toMatch("from './lib/logtail'");
   });
 });

@@ -1,12 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockLoginWithGoogle, mockSignOut, mockNotificationsShow, mockLoggerError } = vi.hoisted(() => ({
-  mockLoginWithGoogle: vi.fn(),
-  mockSignOut: vi.fn(),
-  mockNotificationsShow: vi.fn(),
-  mockLoggerError: vi.fn(),
-}));
+const { mockLoginWithGoogle, mockSignOut, mockNotificationsShow, mockLoggerError } = vi.hoisted(
+  () => ({
+    mockLoginWithGoogle: vi.fn(),
+    mockSignOut: vi.fn(),
+    mockNotificationsShow: vi.fn(),
+    mockLoggerError: vi.fn(),
+  })
+);
 
 vi.mock('../../src/lib/auth/index', () => ({
   authAdapter: {
@@ -139,7 +141,7 @@ describe('useContactVerification', () => {
     expect(mockNotificationsShow).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Error',
-        message: 'No se pudo iniciar sesion con Google',
+        message: 'No se pudo iniciar sesión con Google',
         color: 'red',
       })
     );
@@ -156,8 +158,8 @@ describe('useContactVerification', () => {
     expect(mockSignOut).toHaveBeenCalledTimes(1);
     expect(mockNotificationsShow).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Sesion cerrada',
-        message: 'Has cerrado sesion correctamente',
+        title: 'Sesión cerrada',
+        message: 'Cerraste sesión correctamente',
         color: 'blue',
       })
     );

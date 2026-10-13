@@ -105,12 +105,12 @@ describe('validators', () => {
     });
 
     it('should return error for invalid format', () => {
-      expect(validateEmail('invalid-email')).toContain('invalido');
+      expect(validateEmail('invalid-email')).toContain('inválido');
     });
 
     it('should provide specific error messages', () => {
       expect(validateEmail('')).toBe('El email es requerido');
-      expect(validateEmail('invalid')).toBe('Email invalido');
+      expect(validateEmail('invalid')).toBe('Email inválido');
       expect(validateEmail('a'.repeat(300) + '@example.com')).toContain('largo');
     });
   });
@@ -136,12 +136,7 @@ describe('validators', () => {
     });
 
     it('should accept various Argentine phone formats', () => {
-      const formats = [
-        '+541123456789',
-        '541123456789',
-        '01123456789',
-        '1123456789',
-      ];
+      const formats = ['+541123456789', '541123456789', '01123456789', '1123456789'];
       formats.forEach((phone) => {
         expect(isValidPhone(phone)).toBe(true);
       });
@@ -176,11 +171,11 @@ describe('validators', () => {
     });
 
     it('should return error for invalid format', () => {
-      expect(validatePhone('123')).toContain('invalido');
+      expect(validatePhone('123')).toContain('inválido');
     });
 
     it('should provide specific error message', () => {
-      expect(validatePhone('invalid')).toBe('Telefono invalido');
+      expect(validatePhone('invalid')).toBe('Teléfono inválido');
     });
   });
 
@@ -243,22 +238,19 @@ describe('validators', () => {
     });
 
     it('should return error for invalid CUIT', () => {
-      expect(validateCUIT('12345678901')).toContain('invalido');
+      expect(validateCUIT('12345678901')).toContain('inválido');
     });
 
     it('should provide specific error messages', () => {
       expect(validateCUIT('')).toBe('El CUIT es requerido');
-      expect(validateCUIT('invalid')).toBe('CUIT invalido');
+      expect(validateCUIT('invalid')).toBe('CUIT inválido');
     });
   });
 
   describe('isValidUrl', () => {
-    it.each(Object.values(urlTestCases.valid))(
-      'should accept valid URL: %s',
-      (url) => {
-        expect(isValidUrl(url)).toBe(true);
-      }
-    );
+    it.each(Object.values(urlTestCases.valid))('should accept valid URL: %s', (url) => {
+      expect(isValidUrl(url)).toBe(true);
+    });
 
     it.each(urlTestCases.invalid)('should reject invalid URL: %s', (url) => {
       expect(isValidUrl(url)).toBe(false);
@@ -288,8 +280,7 @@ describe('validators', () => {
     });
 
     it('should handle complex URLs', () => {
-      const complexUrl =
-        'https://subdomain.example.co.uk:8443/path?query=value&foo=bar#hash';
+      const complexUrl = 'https://subdomain.example.co.uk:8443/path?query=value&foo=bar#hash';
       expect(isValidUrl(complexUrl)).toBe(true);
     });
   });
@@ -391,7 +382,6 @@ describe('validators', () => {
       expect(validators.nombre('J')).toContain('al menos');
       expect(validators.nombre('a'.repeat(101))).toContain('no puede exceder');
     });
-
   });
 
   describe('MAX_LENGTHS constant', () => {

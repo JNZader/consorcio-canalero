@@ -3,7 +3,7 @@
  */
 
 import type { Layer } from '../../types';
-import { API_PREFIX, API_URL, LONG_TIMEOUT, apiFetch, getAuthToken, unwrapItems } from './core';
+import { API_PREFIX, API_URL, apiFetch, getAuthToken, LONG_TIMEOUT, unwrapItems } from './core';
 
 export const layersApi = {
   /**
@@ -90,7 +90,7 @@ export const layersApi = {
       return response.json();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('La subida del archivo excedio el tiempo limite');
+        throw new Error('La subida del archivo excedió el tiempo límite');
       }
       throw error;
     } finally {

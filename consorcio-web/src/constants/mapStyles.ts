@@ -131,7 +131,7 @@ export const DEFAULT_LEGEND_ITEMS: LegendItem[] = [
  */
 export const ANALYSIS_LEGEND_ITEMS: LegendItem[] = [
   ...DEFAULT_LEGEND_ITEMS,
-  { color: MAP_LAYER_COLORS.analysisArea, label: 'Area de analisis', type: 'fill' },
+  { color: MAP_LAYER_COLORS.analysisArea, label: 'Área de análisis', type: 'fill' },
 ];
 
 // ===========================================

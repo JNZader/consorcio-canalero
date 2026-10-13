@@ -48,7 +48,7 @@ export function getStep2Badge(
   if (!contactoVerificado) {
     return (
       <Badge color="gray" size="sm" variant="light">
-        Verifica tu contacto primero
+        Verificá tu identidad para enviar
       </Badge>
     );
   }
@@ -77,7 +77,7 @@ export function SuccessScreen({
           Gracias por tu sugerencia
         </Title>
         <Text c="gray.6" ta="center">
-          Tu propuesta fue recibida y sera considerada en las proximas reuniones de la comision.
+          Tu propuesta fue recibida y será considerada en las próximas reuniones de la comisión.
         </Text>
         {showRemainingBadge && (
           <Badge color="blue" size="lg">
@@ -132,7 +132,7 @@ export function FormFieldWithSkeleton({
   }
   const accessibleLabel = label
     ? `${label} bloqueado hasta verificar contacto`
-    : 'Accion bloqueada hasta verificar contacto';
+    : 'Acción bloqueada hasta verificar contacto';
 
   return (
     <Box role="status" aria-live="polite" aria-busy="true" aria-label={accessibleLabel}>

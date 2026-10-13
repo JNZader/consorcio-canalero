@@ -29,7 +29,7 @@ export function CoordinatesInput({
     const lng = Number.parseFloat(manualLng);
 
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setError('Por favor, ingresa coordenadas validas (numeros decimales)');
+      setError('Por favor, ingresá coordenadas válidas (números decimales)');
       announce('Error: coordenadas invalidas', 'assertive');
       return;
     }
@@ -46,7 +46,7 @@ export function CoordinatesInput({
 
     setError(null);
     onCoordinatesChange(lat, lng);
-    announce(`Ubicacion establecida: latitud ${lat.toFixed(4)}, longitud ${lng.toFixed(4)}`);
+    announce(`Ubicación establecida: latitud ${lat.toFixed(4)}, longitud ${lng.toFixed(4)}`);
   };
 
   const handleAddressSearch = async () => {
@@ -54,7 +54,7 @@ export function CoordinatesInput({
 
     setSearching(true);
     setError(null);
-    announce('Buscando direccion...');
+    announce('Buscando dirección...');
 
     try {
       const result = await onAddressSearch(searchAddress);
@@ -63,16 +63,16 @@ export function CoordinatesInput({
         setManualLat(result.lat.toString());
         setManualLng(result.lng.toString());
         announce(
-          `Direccion encontrada: latitud ${result.lat.toFixed(4)}, longitud ${result.lng.toFixed(4)}`
+          `Dirección encontrada: latitud ${result.lat.toFixed(4)}, longitud ${result.lng.toFixed(4)}`
         );
       } else {
-        setError('No se encontro la direccion. Intenta con otra busqueda.');
-        announce('Direccion no encontrada', 'assertive');
+        setError('No se encontró la dirección. Intentá con otra búsqueda.');
+        announce('Dirección no encontrada', 'assertive');
       }
     } catch (error) {
-      logger.error('Error al buscar direccion:', error);
-      setError('Error al buscar la direccion');
-      announce('Error en la busqueda', 'assertive');
+      logger.error('Error al buscar dirección:', error);
+      setError('Error al buscar la dirección');
+      announce('Error en la búsqueda', 'assertive');
     } finally {
       setSearching(false);
     }
@@ -89,7 +89,7 @@ export function CoordinatesInput({
         }}
       >
         <Text component="legend" size="sm" fw={500} mb="xs">
-          Opcion 1: Ingresar coordenadas manualmente
+          Opción 1: Ingresar coordenadas manualmente
         </Text>
         <Group gap="sm" align="flex-end">
           <TextInput
@@ -129,14 +129,14 @@ export function CoordinatesInput({
           }}
         >
           <Text component="legend" size="sm" fw={500} mb="xs">
-            Opcion 2: Buscar por direccion
+            Opción 2: Buscar por dirección
           </Text>
           <Group gap="sm">
             <TextInput
               placeholder="Ej: Ruta 9 km 459, Bell Ville, Córdoba"
               value={searchAddress}
               onChange={(event) => setSearchAddress(event.target.value)}
-              aria-label="Direccion a buscar"
+              aria-label="Dirección a buscar"
               style={{ flex: 1 }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -157,7 +157,7 @@ export function CoordinatesInput({
       {currentLat && currentLng && (
         <Alert color="green" variant="light">
           <Text size="sm">
-            <strong>Ubicacion seleccionada:</strong> {currentLat.toFixed(5)},{' '}
+            <strong>Ubicación seleccionada:</strong> {currentLat.toFixed(5)},{' '}
             {currentLng.toFixed(5)}
           </Text>
         </Alert>

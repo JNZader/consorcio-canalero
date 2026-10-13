@@ -22,7 +22,7 @@ describe('sugerenciasPanelUtils', () => {
 
   it('returns friendly category labels', () => {
     expect(getCategoriaLabel('infraestructura')).toBe('Infraestructura');
-    expect(getCategoriaLabel(undefined)).toBe('Sin categoria');
+    expect(getCategoriaLabel(undefined)).toBe('Sin categoría');
   });
 
   it('creates a status badge element', () => {

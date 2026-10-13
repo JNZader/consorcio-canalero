@@ -44,7 +44,7 @@ describe('formatters', () => {
   describe('formatDate', () => {
     it('formats a Date with medium month (default)', () => {
       expect(formatDate(SAMPLE)).toBe(
-        localeDate(SAMPLE, { year: 'numeric', month: 'short', day: 'numeric' }),
+        localeDate(SAMPLE, { year: 'numeric', month: 'short', day: 'numeric' })
       );
     });
 
@@ -70,15 +70,9 @@ describe('formatters', () => {
       const short = formatDate(SAMPLE, { format: 'short' });
       const medium = formatDate(SAMPLE, { format: 'medium' });
       const long = formatDate(SAMPLE, { format: 'long' });
-      expect(short).toBe(
-        localeDate(SAMPLE, { year: 'numeric', month: '2-digit', day: 'numeric' }),
-      );
-      expect(medium).toBe(
-        localeDate(SAMPLE, { year: 'numeric', month: 'short', day: 'numeric' }),
-      );
-      expect(long).toBe(
-        localeDate(SAMPLE, { year: 'numeric', month: 'long', day: 'numeric' }),
-      );
+      expect(short).toBe(localeDate(SAMPLE, { year: 'numeric', month: '2-digit', day: 'numeric' }));
+      expect(medium).toBe(localeDate(SAMPLE, { year: 'numeric', month: 'short', day: 'numeric' }));
+      expect(long).toBe(localeDate(SAMPLE, { year: 'numeric', month: 'long', day: 'numeric' }));
       expect(short).not.toBe(medium);
       expect(medium).not.toBe(long);
       expect(long).toMatch(/enero/i);
@@ -93,7 +87,7 @@ describe('formatters', () => {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
-        }),
+        })
       );
       expect(spy.mock.calls[0]?.[1]).not.toHaveProperty('hour');
     });
@@ -105,13 +99,9 @@ describe('formatters', () => {
       expect(spy).toHaveBeenNthCalledWith(
         1,
         'es-AR',
-        expect.objectContaining({ month: '2-digit' }),
+        expect.objectContaining({ month: '2-digit' })
       );
-      expect(spy).toHaveBeenNthCalledWith(
-        2,
-        'es-AR',
-        expect.objectContaining({ month: 'long' }),
-      );
+      expect(spy).toHaveBeenNthCalledWith(2, 'es-AR', expect.objectContaining({ month: 'long' }));
     });
 
     it('adds hour and minute when includeTime is true', () => {
@@ -124,14 +114,14 @@ describe('formatters', () => {
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit',
-        }),
+        })
       );
       expect(withTime).not.toBe(withoutTime);
       const spy = spyLocaleDateString();
       formatDate(SAMPLE, { includeTime: true });
       expect(spy).toHaveBeenCalledWith(
         'es-AR',
-        expect.objectContaining({ hour: '2-digit', minute: '2-digit' }),
+        expect.objectContaining({ hour: '2-digit', minute: '2-digit' })
       );
     });
 
@@ -197,8 +187,8 @@ describe('formatters', () => {
     });
 
     it('formats one day vs many days', () => {
-      expect(formatRelativeTime('2024-01-14T12:00:00Z')).toBe('Hace 1 dia');
-      expect(formatRelativeTime('2024-01-12T12:00:00Z')).toBe('Hace 3 dias');
+      expect(formatRelativeTime('2024-01-14T12:00:00Z')).toBe('Hace 1 día');
+      expect(formatRelativeTime('2024-01-12T12:00:00Z')).toBe('Hace 3 días');
     });
 
     it('falls back to medium date after six days', () => {
@@ -208,10 +198,8 @@ describe('formatters', () => {
 
     it('uses formatDate at exactly seven days, not the day phrase', () => {
       const exactlySeven = new Date('2024-01-08T12:00:00Z');
-      expect(formatRelativeTime(exactlySeven)).toBe(
-        formatDate(exactlySeven, { format: 'medium' }),
-      );
-      expect(formatRelativeTime(exactlySeven)).not.toMatch(/Hace 7 dias/);
+      expect(formatRelativeTime(exactlySeven)).toBe(formatDate(exactlySeven, { format: 'medium' }));
+      expect(formatRelativeTime(exactlySeven)).not.toMatch(/Hace 7 días/);
     });
 
     it('returns "-" for null, undefined, and invalid dates', () => {
@@ -245,7 +233,7 @@ describe('formatters', () => {
         (1234567).toLocaleString('es-AR', {
           minimumFractionDigits: 0,
           maximumFractionDigits: 0,
-        }),
+        })
       );
     });
 
@@ -254,7 +242,7 @@ describe('formatters', () => {
         (1234.5678).toLocaleString('es-AR', {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
-        }),
+        })
       );
       expect(formatNumber(1234.5678, 0)).not.toBe(formatNumber(1234.5678, 2));
     });

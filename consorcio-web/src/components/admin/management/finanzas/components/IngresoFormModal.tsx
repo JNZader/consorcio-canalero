@@ -38,7 +38,7 @@ export function IngresoFormModal({
       <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
-            label="Descripcion"
+            label="Descripción"
             required
             {...form.getInputProps('descripcion')}
             errorProps={{
@@ -56,7 +56,7 @@ export function IngresoFormModal({
               errorProps={{ id: INGRESO_AMOUNT_ERROR_ID, role: 'alert', 'aria-live': 'assertive' }}
             />
             <NativeSelect
-              label="Categoria"
+              label="Categoría"
               data={categoryData}
               required
               {...form.getInputProps('categoria')}

@@ -38,7 +38,7 @@ export default function ImageExplorerPanel() {
 
           <Group gap="md" wrap="wrap">
             <Select
-              label="Visualizacion"
+              label="Visualización"
               value={controller.visualization}
               onChange={(v) => v && controller.setVisualization(v)}
               data={controller.visOptions}
@@ -98,7 +98,7 @@ export default function ImageExplorerPanel() {
               <Text size="xs" c="dimmed">
                 {controller.sensor === 'sentinel1'
                   ? 'SAR funciona con nubes'
-                  : 'Óptico: selecciona un día con baja nubosidad'}
+                  : 'Óptico: seleccioná un día con baja nubosidad'}
               </Text>
             </Group>
           </Group>

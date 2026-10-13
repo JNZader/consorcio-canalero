@@ -15,10 +15,12 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import { logger } from '../lib/logger';
+import { parseLoginSearch } from '../lib/loginSearch';
 import { MIN_PASSWORD_LENGTH, validateEmail, validatePassword } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
 
@@ -32,9 +34,19 @@ const LOGIN_CONFIRM_PASSWORD_ERROR_ID = 'login-confirm-password-error';
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function LoginFormContent() {
+  const navigate = useNavigate();
+  const rawSearch = useSearch({ strict: false });
+  const urlMode =
+    parseLoginSearch(rawSearch as Record<string, unknown>).modo === 'registro'
+      ? 'register'
+      : 'login';
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register'>(urlMode);
   const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
+
+  useEffect(() => {
+    setMode(urlMode);
+  }, [urlMode]);
 
   const form = useForm({
     initialValues: {
@@ -125,7 +137,7 @@ export function LoginFormContent() {
         }
       }
     } catch (error) {
-      logger.error('Error en autenticacion:', error);
+      logger.error('Error en autenticación:', error);
       notifications.show({
         title: 'Error',
         message: 'Ocurrió un error inesperado. Intentá de nuevo.',
@@ -169,6 +181,11 @@ export function LoginFormContent() {
     setMode(newMode);
     setShowEmailConfirmation(false);
     form.reset();
+    void navigate({
+      to: '/login',
+      search: newMode === 'register' ? { modo: 'registro' } : {},
+      replace: false,
+    });
   };
 
   return (

@@ -89,7 +89,7 @@ export function ImageExplorerMap({
             >
               <IconSatellite size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
               <Text c="dimmed" size="sm">
-                Selecciona un dia con imagenes
+                Seleccioná un día con imágenes
               </Text>
               <Text c="dimmed" size="xs">
                 del calendario para previsualizar
