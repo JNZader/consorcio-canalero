@@ -52,12 +52,15 @@ export function LoginFormContent() {
         }
         // Login: only sanity-check length; strength was enforced at signup.
         return value.length < MIN_PASSWORD_LENGTH
-          ? `La contrasena debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`
+          ? `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`
           : null;
       },
-      confirmPassword: (value, values) =>
-        mode === 'register' && value !== values.password ? 'Las contrasenas no coinciden' : null,
-      nombre: (value) => (mode === 'register' && value.length < 2 ? 'Ingresa tu nombre' : null),
+      confirmPassword: (value, values) => {
+        if (mode !== 'register') return null;
+        if (!value) return 'Confirmá la contraseña';
+        return value !== values.password ? 'Las contraseñas no coinciden' : null;
+      },
+      nombre: (value) => (mode === 'register' && value.length < 2 ? 'Ingresá tu nombre' : null),
     },
   });
 
@@ -73,7 +76,7 @@ export function LoginFormContent() {
         if (result.success) {
           notifications.show({
             title: 'Bienvenido',
-            message: 'Inicio de sesion exitoso',
+            message: 'Inicio de sesión exitoso',
             color: 'green',
             icon: <IconCheck size={16} />,
           });
@@ -81,8 +84,8 @@ export function LoginFormContent() {
           globalThis.location.href = withBasePath('/admin');
         } else {
           notifications.show({
-            title: 'Error al iniciar sesion',
-            message: result.error || 'Verifica tus credenciales',
+            title: 'Error al iniciar sesión',
+            message: result.error || 'Verificá tus credenciales',
             color: 'red',
             icon: <IconAlertCircle size={16} />,
           });
@@ -97,7 +100,7 @@ export function LoginFormContent() {
             setShowEmailConfirmation(true);
             notifications.show({
               title: 'Cuenta creada',
-              message: 'Revisa tu email para confirmar tu cuenta',
+              message: 'Revisá tu email para confirmar tu cuenta',
               color: 'blue',
               icon: <IconMail size={16} />,
               autoClose: 10000,
@@ -105,7 +108,7 @@ export function LoginFormContent() {
           } else {
             notifications.show({
               title: 'Cuenta creada',
-              message: 'Tu cuenta fue creada exitosamente. Ya puedes iniciar sesion.',
+              message: 'Tu cuenta fue creada exitosamente. Ya podés iniciar sesión.',
               color: 'green',
               icon: <IconCheck size={16} />,
             });
@@ -115,7 +118,7 @@ export function LoginFormContent() {
         } else {
           notifications.show({
             title: 'Error al crear cuenta',
-            message: result.error || 'Intenta de nuevo',
+            message: result.error || 'Intentá de nuevo',
             color: 'red',
             icon: <IconAlertCircle size={16} />,
           });
@@ -125,7 +128,7 @@ export function LoginFormContent() {
       logger.error('Error en autenticacion:', error);
       notifications.show({
         title: 'Error',
-        message: 'Ocurrio un error inesperado. Intenta de nuevo.',
+        message: 'Ocurrió un error inesperado. Intentá de nuevo.',
         color: 'red',
         icon: <IconAlertCircle size={16} />,
       });
@@ -154,7 +157,7 @@ export function LoginFormContent() {
       logger.error('Error al conectar con Google:', error);
       notifications.show({
         title: 'Error',
-        message: 'Ocurrio un error al conectar con Google',
+        message: 'Ocurrió un error al conectar con Google',
         color: 'red',
         icon: <IconAlertCircle size={16} />,
       });
@@ -184,14 +187,14 @@ export function LoginFormContent() {
         </Box>
 
         <Title order={2} ta="center" mb="md">
-          {mode === 'login' ? 'Iniciar Sesion' : 'Crear Cuenta'}
+          {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
         </Title>
 
         {showEmailConfirmation && (
-          <Alert color="blue" icon={<IconMail size={16} />} mb="md" title="Confirma tu email">
+          <Alert color="blue" icon={<IconMail size={16} />} mb="md" title="Confirmá tu email">
             <Text size="sm">
-              Te enviamos un email de confirmacion a <strong>{form.values.email}</strong>. Revisa tu
-              bandeja de entrada y haz clic en el enlace para activar tu cuenta.
+              Te enviamos un email de confirmación a <strong>{form.values.email}</strong>. Revisá tu
+              bandeja de entrada y hacé clic en el enlace para activar tu cuenta.
             </Text>
           </Alert>
         )}
@@ -202,6 +205,8 @@ export function LoginFormContent() {
               <TextInput
                 label="Nombre"
                 placeholder="Tu nombre"
+                name="nombre"
+                autoComplete="name"
                 {...form.getInputProps('nombre')}
                 required
                 errorProps={{
@@ -215,6 +220,10 @@ export function LoginFormContent() {
             <TextInput
               label="Email"
               placeholder="tu@email.com"
+              name="email"
+              type="email"
+              autoComplete="email"
+              autoCapitalize="none"
               {...form.getInputProps('email')}
               required
               errorProps={{
@@ -225,8 +234,11 @@ export function LoginFormContent() {
             />
 
             <PasswordInput
-              label="Contrasena"
-              placeholder="Tu contrasena"
+              label="Contraseña"
+              placeholder="Tu contraseña"
+              name="password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              visibilityToggleButtonProps={{ 'aria-label': 'Mostrar u ocultar contraseña' }}
               {...form.getInputProps('password')}
               required
               aria-invalid={form.errors.password ? 'true' : undefined}
@@ -239,8 +251,11 @@ export function LoginFormContent() {
 
             {mode === 'register' && (
               <PasswordInput
-                label="Confirmar contrasena"
-                placeholder="Repite tu contrasena"
+                label="Confirmar contraseña"
+                placeholder="Repetí tu contraseña"
+                name="confirmPassword"
+                autoComplete="new-password"
+                visibilityToggleButtonProps={{ 'aria-label': 'Mostrar u ocultar contraseña' }}
                 {...form.getInputProps('confirmPassword')}
                 required
                 aria-invalid={form.errors.confirmPassword ? 'true' : undefined}
@@ -254,17 +269,17 @@ export function LoginFormContent() {
 
             {mode === 'login' && (
               <Anchor component="a" href={withBasePath('/forgot-password')} size="sm" ta="right">
-                Olvidaste tu contrasena?
+                ¿Olvidaste tu contraseña?
               </Anchor>
             )}
 
             <Button type="submit" fullWidth loading={loading}>
-              {mode === 'login' ? 'Iniciar Sesion' : 'Crear Cuenta'}
+              {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </Button>
           </Stack>
         </form>
 
-        <Divider label="o continua con" labelPosition="center" my="lg" />
+        <Divider label="o continuá con" labelPosition="center" my="lg" />
 
         <Button
           variant="default"
@@ -298,16 +313,16 @@ export function LoginFormContent() {
         <Text ta="center" mt="md" size="sm">
           {mode === 'login' ? (
             <>
-              No tienes cuenta?{' '}
+              ¿No tenés cuenta?{' '}
               <Anchor component="button" onClick={() => switchMode('register')}>
                 Registrate
               </Anchor>
             </>
           ) : (
             <>
-              Ya tienes cuenta?{' '}
+              ¿Ya tenés cuenta?{' '}
               <Anchor component="button" onClick={() => switchMode('login')}>
-                Inicia sesion
+                Iniciá sesión
               </Anchor>
             </>
           )}

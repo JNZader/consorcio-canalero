@@ -28,10 +28,10 @@ export default function ForgotPasswordForm() {
       if (result.success) {
         setSent(true);
       } else {
-        setError(result.error || 'Error al enviar el email de recuperacion.');
+        setError(result.error || 'Error al enviar el email de recuperación.');
       }
     } catch {
-      setError('Error inesperado. Intenta de nuevo.');
+      setError('Error inesperado. Intentá de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -41,15 +41,15 @@ export default function ForgotPasswordForm() {
     <Center mih="80vh">
       <Paper shadow="md" p="xl" radius="md" w={400}>
         <Title order={2} ta="center" mb="md">
-          Recuperar Contrasena
+          Recuperar Contraseña
         </Title>
 
         {sent ? (
           <Stack gap="md">
             <Alert color="green" icon={<IconCheck size={16} />} title="Email enviado">
               <Text size="sm">
-                Si existe una cuenta con el email <strong>{form.values.email}</strong>, recibiras un
-                enlace para restablecer tu contrasena. Revisa tu bandeja de entrada y la carpeta de
+                Si existe una cuenta con el email <strong>{form.values.email}</strong>, recibirás un
+                enlace para restablecer tu contraseña. Revisá tu bandeja de entrada y la carpeta de
                 spam.
               </Text>
             </Alert>
@@ -67,7 +67,7 @@ export default function ForgotPasswordForm() {
         ) : (
           <>
             <Text c="dimmed" size="sm" ta="center" mb="lg">
-              Ingresa tu email y te enviaremos un enlace para restablecer tu contrasena.
+              Ingresá tu email y te enviaremos un enlace para restablecer tu contraseña.
             </Text>
 
             {error && (
@@ -81,6 +81,10 @@ export default function ForgotPasswordForm() {
                 <TextInput
                   label="Email"
                   placeholder="tu@email.com"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
                   leftSection={<IconMail size={16} />}
                   {...form.getInputProps('email')}
                   required
@@ -92,7 +96,7 @@ export default function ForgotPasswordForm() {
                 />
 
                 <Button type="submit" fullWidth loading={loading}>
-                  Enviar enlace de recuperacion
+                  Enviar enlace de recuperación
                 </Button>
               </Stack>
             </form>

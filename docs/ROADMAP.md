@@ -72,5 +72,5 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 | Reportes empíricos RAG (eval, diagnóstico, reranker, campaña recall) | `docs/rag/*.md` (untracked) + `gee-backend/artifacts/rag/` (gitignored — incluye gold del router ratificado) |
 | Gold privado de retrieval + corpus legal | `~/Escritorio/consorcio/` (fuera del repo, checkout pineado `12043582`) |
 | Memoria de decisiones/lecciones | engram, proyecto `consorcio-canalero` (topic keys `sdd/*`, `rag/*`, `backlog/*`) |
-| Box (único entorno, DEV) | Hetzner `157.180.29.238:2222` — compose custom FUERA del repo; frontend en Cloudflare Pages (auto-deploy con cada merge) |
+| Box (único entorno, DEV) | Hetzner `157.180.29.238:2222` — compose custom FUERA del repo; frontend en Cloudflare Pages (`pages-production` after Frontend CI) |
 | Backups | `~/backups/` en el box, cron 04:00 UTC desde `~/ops-tools/consorcio/backup_local.sh` |

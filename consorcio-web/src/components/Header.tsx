@@ -24,15 +24,15 @@ const UserMenu = lazy(() => import('./UserMenu'));
 const PUBLIC_LINKS = [
   { to: '/', label: 'Inicio' },
   { to: '/mapa', label: 'Mapa' },
-  { to: '/participacion', label: 'Participacion' },
+  { to: '/participacion', label: 'Participación' },
 ] as const;
 
 // Skeleton de carga para el UserMenu (desktop)
 function UserMenuSkeleton() {
   return (
-    <Box style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
+    <Group justify="flex-end" wrap="nowrap" miw={120}>
       <Skeleton height={36} width={120} radius="sm" />
-    </Box>
+    </Group>
   );
 }
 

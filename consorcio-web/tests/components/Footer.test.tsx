@@ -49,8 +49,8 @@ describe('Footer', () => {
 
     expect(screen.getByText('Inicio')).toBeInTheDocument();
     expect(screen.getByText('Mapa')).toBeInTheDocument();
-    expect(screen.getByText('Participacion')).toBeInTheDocument();
-    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(screen.getByText('Participación')).toBeInTheDocument();
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
   });
 
   it('should render contact information', () => {
@@ -136,7 +136,7 @@ describe('Footer', () => {
     expect(linkHrefs).toContain('/');
     expect(linkHrefs).toContain('/mapa');
     expect(linkHrefs).toContain('/participacion');
-    expect(linkHrefs).toContain('/admin');
+    expect(linkHrefs).not.toContain('/admin');
   });
 
   describe('footer styling and layout', () => {

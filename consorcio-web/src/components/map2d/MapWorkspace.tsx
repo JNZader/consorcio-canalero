@@ -1,15 +1,15 @@
-import { ActionIcon, Badge, Box, Burger, Drawer, Group, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Burger, Group, Text, Tooltip } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useEffect } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 import { useDrawerHistoryClose } from '../../hooks/useDrawerHistoryClose';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
 import styles from '../../styles/components/map.module.css';
-import { IconArrowLeft, IconArrowRight, IconLayers } from '../ui/icons';
+import { IconArrowLeft, IconArrowRight, IconLayers, IconX } from '../ui/icons';
 
 /**
- * Width of the mobile layers Drawer. Deliberately NOT 100%: see the Drawer
+ * Width of the mobile layers overlay. Deliberately NOT 100%: see the overlay
  * comment below (map-fluidity T2, fix 5). Exported so the test asserts the
  * contract instead of a magic string.
  */
@@ -18,10 +18,10 @@ export const MOBILE_DRAWER_SIZE = '75%';
 /**
  * The ONE desktop breakpoint of the 2D map shell.
  *
- * `MapWorkspace` decides sidebar-vs-Drawer with it, and `MapaMapLibre` decides
+ * `MapWorkspace` decides sidebar-vs-overlay with it, and `MapaMapLibre` decides
  * whether to render its floating top bar with it. Those two decisions MUST agree
  * — a mobile viewport that still painted the top bar would show the base-layer
- * control twice (once floating, once inside the Drawer). Exported as a single
+ * control twice (once floating, once inside the overlay). Exported as a single
  * constant so neither side can drift.
  *
  * El alto es tan load-bearing como el ancho (B2-2.1). Con `min-width` sola, un
@@ -29,8 +29,8 @@ export const MOBILE_DRAWER_SIZE = '75%';
  * sidebar fijo de 300-360px sobre un canvas de ~306px de alto, y el reflow
  * apaisado terminaba flotando la top bar ENCIMA de la cabecera del sidebar (con
  * el panel colapsado, el boton de expandir quedaba tapado del todo y el panel
- * era irrecuperable). 40em = 640px (UX-15) manda notebooks bajas al drawer
- * para no aplastar el mapa; el telefono acostado sigue en burger + Drawer.
+ * era irrecuperable). 40em = 640px (UX-15) manda notebooks bajas al overlay
+ * para no aplastar el mapa; el telefono acostado sigue en burger + overlay.
  *
  * ── OJO: el contrato es UNIDIRECCIONAL ─────────────────────────────────────
  * `map.module.css` hardcodea el COMPLEMENTO EXACTO de este `min-width` en el
@@ -78,47 +78,39 @@ interface MapWorkspaceProps {
 /**
  * Responsive controls shell for the 2D map (change `rediseno-ux-mapa`).
  *
- * A SINGLE `controls` tree is placed either in a collapsible left sidebar
- * (desktop) or in a full-screen `Drawer` opened by a ☰ burger (mobile). The
- * breakpoint is derived with `useMediaQuery` — NOT with patched desktop styles
- * — mirroring `Header.tsx`. The desktop collapse state is persisted
- * (`mapWorkspaceStore`) so the preference survives reloads.
- *
- * CRITICAL — single-tree render: `{canvas}` is ALWAYS child index 0 inside the
- * SAME wrapper (`styles.workspaceCanvas`), regardless of `isDesktop` or
- * collapse. Crossing 48em at runtime (window resize, tablet rotation) only
- * remounts the sibling at index 1 (sidebar ↔ burger/Drawer); the canvas fiber
- * is preserved, so MapLibre keeps its WebGL context (no permanent grey area —
- * the init effect never re-runs because `containerRef` is stable). Desktop
- * layout uses CSS grid `order` so the sidebar paints to the LEFT even though it
- * comes AFTER the canvas in the DOM.
+ * A SINGLE `controls` tree lives in one sidebar host. Desktop shows it as a
+ * collapsible left column; mobile CSS-hides that same host until the ☰ burger
+ * opens it as a 75% overlay (MAP-11). Crossing 48em never remounts `{controls}`
+ * — LayerControlsPanel keeps search/accordion local state. `{canvas}` stays
+ * child index 0 so MapLibre keeps its WebGL context.
  *
  * React Compiler is active → no manual `useMemo`/`useCallback`.
  */
 export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }: MapWorkspaceProps) {
-  // ONE source of truth for the breakpoint — see `useMapWorkspaceDesktop` above
-  // (the query, its height condition and the `getInitialValueInEffect` rationale
-  // all live there). `MapaMapLibre` consumes the SAME hook to decide whether to
-  // paint its floating top bar.
   const isDesktop = useMapWorkspaceDesktop();
   const sidebarCollapsed = useMapWorkspaceStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useMapWorkspaceStore((state) => state.toggleSidebar);
   const [drawerOpened, drawer] = useDisclosure(false);
+  const overlayOpen = !isDesktop && drawerOpened;
+  const headerCollapsed = isDesktop && sidebarCollapsed;
 
-  // FIX 3: when the viewport crosses into desktop, drop any open mobile Drawer
-  // so returning to mobile doesn't surface a Drawer that was never re-opened.
   useEffect(() => {
     if (isDesktop) {
       drawer.close();
     }
   }, [isDesktop, drawer]);
 
-  // AUD-005: on mobile, Back is "dismiss". Without this, Back with the layers
-  // Drawer open navigated away from the map — the user lost the page to close
-  // a panel. Disabled on desktop, where there IS no Drawer to dismiss and the
-  // history stack must stay untouched.
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') drawer.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlayOpen, drawer]);
+
   useDrawerHistoryClose({
-    opened: drawerOpened,
+    opened: overlayOpen,
     onClose: drawer.close,
     enabled: !isDesktop,
   });
@@ -134,11 +126,11 @@ export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }
     <Box
       className={styles.workspaceRoot}
       data-desktop={isDesktop ? 'true' : 'false'}
-      data-collapsed={isDesktop && sidebarCollapsed ? 'true' : 'false'}
+      data-collapsed={headerCollapsed ? 'true' : 'false'}
+      data-drawer-open={overlayOpen ? 'true' : 'false'}
       data-testid="map-workspace-root"
+      style={{ '--map-mobile-drawer-size': MOBILE_DRAWER_SIZE } as CSSProperties}
     >
-      {/* Canvas — ALWAYS child index 0, SAME wrapper in every mode. Never
-          remounts across the 48em breakpoint → MapLibre keeps its WebGL ctx. */}
       <Box className={styles.workspaceCanvas} data-testid="map-workspace-canvas">
         {canvas}
       </Box>
@@ -146,27 +138,55 @@ export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }
         {liveMessage ?? ''}
       </div>
 
-      {isDesktop ? (
+      {!isDesktop && (
+        <>
+          <Tooltip label="Capas y leyenda" position="right" withArrow>
+            <Burger
+              opened={drawerOpened}
+              onClick={drawer.toggle}
+              className={styles.workspaceBurger}
+              aria-label={
+                drawerOpened ? 'Cerrar panel de capas y leyenda' : 'Abrir panel de capas y leyenda'
+              }
+              data-testid="map-workspace-burger"
+              size="sm"
+            />
+          </Tooltip>
+          {overlayOpen && (
+            <Box
+              className={styles.workspaceDrawerOverlay}
+              onClick={drawer.close}
+              data-testid="map-workspace-drawer-overlay"
+            />
+          )}
+        </>
+      )}
+
+      <Box
+        className={styles.workspaceSidebar}
+        data-collapsed={headerCollapsed ? 'true' : 'false'}
+        data-testid="map-workspace-sidebar"
+        aria-label="Panel de capas y leyenda"
+        aria-hidden={!isDesktop && !overlayOpen ? true : undefined}
+        role={overlayOpen ? 'dialog' : undefined}
+        aria-modal={overlayOpen ? true : undefined}
+        style={!isDesktop ? { width: MOBILE_DRAWER_SIZE } : undefined}
+      >
         <Box
-          className={styles.workspaceSidebar}
-          data-collapsed={sidebarCollapsed ? 'true' : 'false'}
-          data-testid="map-workspace-sidebar"
-          aria-label="Panel de capas y leyenda"
+          className={`${styles.workspaceSidebarHeader} ${
+            headerCollapsed ? styles.workspaceSidebarHeaderCollapsed : ''
+          }`}
         >
-          <Box
-            className={`${styles.workspaceSidebarHeader} ${
-              sidebarCollapsed ? styles.workspaceSidebarHeaderCollapsed : ''
-            }`}
-          >
-            {!sidebarCollapsed && (
-              <Group gap="xs" wrap="nowrap">
-                <IconLayers size={18} />
-                <Text fw={600} size="sm">
-                  Capas
-                </Text>
-                {countBadge}
-              </Group>
-            )}
+          {!headerCollapsed && (
+            <Group gap="xs" wrap="nowrap">
+              <IconLayers size={18} />
+              <Text fw={600} size="sm">
+                {isDesktop ? 'Capas' : 'Capas y leyenda'}
+              </Text>
+              {countBadge}
+            </Group>
+          )}
+          {isDesktop ? (
             <Tooltip
               label={sidebarCollapsed ? 'Expandir panel' : 'Colapsar panel'}
               position="right"
@@ -185,50 +205,20 @@ export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }
                 {sidebarCollapsed ? <IconArrowRight size={18} /> : <IconArrowLeft size={18} />}
               </ActionIcon>
             </Tooltip>
-          </Box>
-          {/* FIX 2: controls stay MOUNTED across collapse — the body is hidden
-              via CSS (data-collapsed), never conditionally rendered, so
-              LeyendaPanel/LayerControlsPanel keep their local useState. */}
-          <Box className={styles.workspaceSidebarBody}>{controls}</Box>
+          ) : (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              onClick={drawer.close}
+              aria-label="Cerrar panel de capas y leyenda"
+              data-testid="map-workspace-drawer-close"
+            >
+              <IconX size={18} />
+            </ActionIcon>
+          )}
         </Box>
-      ) : (
-        <>
-          <Tooltip label="Capas y leyenda" position="right" withArrow>
-            <Burger
-              opened={drawerOpened}
-              onClick={drawer.open}
-              className={styles.workspaceBurger}
-              aria-label={
-                drawerOpened ? 'Cerrar panel de capas y leyenda' : 'Abrir panel de capas y leyenda'
-              }
-              data-testid="map-workspace-burger"
-              size="sm"
-            />
-          </Tooltip>
-          <Drawer
-            opened={drawerOpened}
-            onClose={drawer.close}
-            /* Partial, not full-screen (map-fluidity T2, fix 5). At 100% the
-               user could not see the effect of a layer toggle without closing
-               the Drawer first — open → toggle → close → look → repeat. 75%
-               keeps a slice of the map on screen while toggling. */
-            size={MOBILE_DRAWER_SIZE}
-            padding="md"
-            zIndex={1200}
-            trapFocus
-            returnFocus
-            title={
-              <Group gap="xs">
-                <IconLayers size={18} />
-                <Text fw={600}>Capas y leyenda</Text>
-                {countBadge}
-              </Group>
-            }
-          >
-            {controls}
-          </Drawer>
-        </>
-      )}
+        <Box className={styles.workspaceSidebarBody}>{controls}</Box>
+      </Box>
     </Box>
   );
 }

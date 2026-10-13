@@ -56,6 +56,7 @@ export const UNSUPPORTED_3D_VECTOR_LAYERS: Terrain3DVectorLayerConfig[] = [
   { id: 'sentido_camino', label: 'Sentido en camino', status: 'not_supported_yet' },
   { id: 'puntos_interes', label: 'Puntos de interés', status: 'not_supported_yet' },
   { id: 'escuelas', label: 'Escuelas rurales', status: 'not_supported_yet' },
+  { id: 'ypf_estacion_bombeo', label: 'YPF estación de bombeo', status: 'not_supported_yet' },
 ];
 
 const supportedRasterTypeSet = new Set(
@@ -115,6 +116,7 @@ const UNSUPPORTED_3D_LAYER_CATEGORIES: Record<string, LayerCategory> = {
   road_flow: LAYER_CATEGORY.TERRITORIO,
   sentido_camino: LAYER_CATEGORY.TERRITORIO,
   puntos_interes: LAYER_CATEGORY.TERRITORIO,
+  ypf_estacion_bombeo: LAYER_CATEGORY.TERRITORIO,
 };
 
 export function buildTerrainLayerControlItems(params: {

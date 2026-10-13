@@ -32,7 +32,7 @@ describe('Auth password forms', () => {
     const user = userEvent.setup();
     renderWithProvider(<ForgotPasswordForm />);
 
-    await user.click(screen.getByRole('button', { name: /enviar enlace de recuperacion/i }));
+    await user.click(screen.getByRole('button', { name: /enviar enlace de recuperaci[oó]n/i }));
 
     const email = screen.getByLabelText(/email/i);
 
@@ -49,12 +49,12 @@ describe('Auth password forms', () => {
     const user = userEvent.setup();
     renderWithProvider(<ResetPasswordForm token="reset-token" />);
 
-    await user.type(screen.getByPlaceholderText('Minimo 8 caracteres'), 'password');
-    await user.type(screen.getByPlaceholderText('Repite la nueva contrasena'), 'different');
-    await user.click(screen.getByRole('button', { name: /restablecer contrasena/i }));
+    await user.type(screen.getByPlaceholderText('Mínimo 8 caracteres'), 'password');
+    await user.type(screen.getByPlaceholderText('Repetí la nueva contraseña'), 'different');
+    await user.click(screen.getByRole('button', { name: /restablecer contraseña/i }));
 
-    const password = screen.getByPlaceholderText('Minimo 8 caracteres');
-    const confirmPassword = screen.getByPlaceholderText('Repite la nueva contrasena');
+    const password = screen.getByPlaceholderText('Mínimo 8 caracteres');
+    const confirmPassword = screen.getByPlaceholderText('Repetí la nueva contraseña');
 
     await waitFor(() => {
       expect(password).toHaveAttribute('aria-invalid', 'true');
@@ -89,8 +89,8 @@ describe('Auth password forms', () => {
 
     await user.click(retry);
 
-    expect(await screen.findByRole('heading', { name: /nueva contrasena/i })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Minimo 8 caracteres')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /nueva contraseña/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Mínimo 8 caracteres')).toBeInTheDocument();
     expect(exchangeEmailCode).toHaveBeenCalledTimes(2);
     expect(exchangeEmailCode).toHaveBeenNthCalledWith(2, 'RESET001', 'reset');
   });
@@ -106,11 +106,11 @@ describe('Auth password forms', () => {
 
     renderWithProvider(<ResetPasswordForm token="" code="RESET001" />);
 
-    await user.type(await screen.findByPlaceholderText('Minimo 8 caracteres'), 'Canalero1!');
-    await user.type(screen.getByPlaceholderText('Repite la nueva contrasena'), 'Canalero1!');
-    await user.click(screen.getByRole('button', { name: /restablecer contrasena/i }));
+    await user.type(await screen.findByPlaceholderText('Mínimo 8 caracteres'), 'Canalero1!');
+    await user.type(screen.getByPlaceholderText('Repetí la nueva contraseña'), 'Canalero1!');
+    await user.click(screen.getByRole('button', { name: /restablecer contraseña/i }));
 
-    expect(await screen.findByText(/contrasena actualizada/i)).toBeInTheDocument();
+    expect(await screen.findByText(/contraseña actualizada/i)).toBeInTheDocument();
     expect(completeEmailCodeExchange).toHaveBeenCalledWith(RESET_EXCHANGE_HANDLE);
   });
 
@@ -128,9 +128,9 @@ describe('Auth password forms', () => {
 
     renderWithProvider(<ResetPasswordForm token="" code="RESET001" />);
 
-    await user.type(await screen.findByPlaceholderText('Minimo 8 caracteres'), 'Canalero1!');
-    await user.type(screen.getByPlaceholderText('Repite la nueva contrasena'), 'Canalero1!');
-    await user.click(screen.getByRole('button', { name: /restablecer contrasena/i }));
+    await user.type(await screen.findByPlaceholderText('Mínimo 8 caracteres'), 'Canalero1!');
+    await user.type(screen.getByPlaceholderText('Repetí la nueva contraseña'), 'Canalero1!');
+    await user.click(screen.getByRole('button', { name: /restablecer contraseña/i }));
 
     expect(await screen.findByText('temporary reset failure')).toBeInTheDocument();
     expect(completeEmailCodeExchange).not.toHaveBeenCalled();
@@ -146,6 +146,6 @@ describe('Auth password forms', () => {
 
     expect(await screen.findByText(/este enlace de recuperacion es invalido o expiró/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reintentar/i })).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('Minimo 8 caracteres')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Mínimo 8 caracteres')).not.toBeInTheDocument();
   });
 });

@@ -97,7 +97,7 @@ describe('Header', () => {
       </MantineProvider>
     );
 
-    const links = screen.getAllByRole('link', { name: 'Participacion' });
+    const links = screen.getAllByRole('link', { name: 'Participación' });
     expect(links.length).toBeGreaterThan(0);
   });
 
@@ -130,7 +130,7 @@ describe('Header', () => {
       </MantineProvider>
     );
 
-    const participacionLinks = screen.getAllByRole('link', { name: 'Participacion' });
+    const participacionLinks = screen.getAllByRole('link', { name: 'Participación' });
     expect(participacionLinks[0]).toHaveAttribute('href', '/participacion');
   });
 
