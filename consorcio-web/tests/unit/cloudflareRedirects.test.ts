@@ -32,12 +32,13 @@ describe('Cloudflare Pages routing (SPA + FE-01)', () => {
     expect(shouldReplaceWithPlain404('/admin/images', 200, 'text/html')).toBe(false);
     expect(shouldReplaceWithPlain404('/index.html', 308, '')).toBe(false);
     expect(shouldReplaceWithPlain404('/assets/missing.js', 200, 'text/html; charset=utf-8')).toBe(
-      true,
+      true
     );
     expect(shouldReplaceWithPlain404('/assets/missing.css', 404, 'text/html')).toBe(true);
     expect(shouldReplaceWithPlain404('/assets/missing.woff2', 200, 'text/html')).toBe(true);
     expect(shouldReplaceWithPlain404('/workbox-stale.js', 200, 'text/html')).toBe(true);
-    expect(shouldReplaceWithPlain404('/sitemap.xml', 200, 'text/html')).toBe(true);
+    expect(shouldReplaceWithPlain404('/this-file-does-not-exist.xml', 200, 'text/html')).toBe(true);
+    expect(shouldReplaceWithPlain404('/sitemap.xml', 200, 'application/xml')).toBe(false);
     expect(shouldReplaceWithPlain404('/assets/real.js', 200, 'application/javascript')).toBe(false);
     expect(shouldReplaceWithPlain404('/assets/real.css', 200, 'text/css')).toBe(false);
     expect(shouldReplaceWithPlain404('/data/ok.geojson', 200, 'application/geo+json')).toBe(false);
