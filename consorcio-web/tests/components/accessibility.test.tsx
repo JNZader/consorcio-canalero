@@ -178,6 +178,32 @@ describe('accessibility helpers', () => {
     expect(onChange).toHaveBeenCalledWith('b');
   });
 
+  it('expone el asterisco de un grupo requerido en una etiqueta asociada', () => {
+    render(
+      <MantineProvider env="test">
+        <AccessibleRadioGroup
+          name="tipo"
+          label="Tipo de problema"
+          value="a"
+          onChange={() => undefined}
+          required
+          options={[
+            { value: 'a', label: 'A' },
+            { value: 'b', label: 'B' },
+          ]}
+        />
+      </MantineProvider>
+    );
+
+    const group = screen.getByRole('radiogroup');
+    expect(group).toHaveAttribute('aria-required', 'true');
+    const labelId = group.getAttribute('aria-labelledby');
+    expect(labelId).toBeTruthy();
+    const label = document.getElementById(labelId ?? '');
+    expect(label?.tagName).toBe('LABEL');
+    expect(label?.textContent?.toLowerCase()).toMatch(/\*|requerido/);
+  });
+
   it('renders skip links and toggles position on focus', () => {
     render(
       <MantineProvider env="test">

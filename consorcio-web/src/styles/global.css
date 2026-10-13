@@ -236,6 +236,30 @@ body {
   text-underline-offset: 0.15em;
 }
 
+/* Atribución MapLibre: el enlace "MapLibre" vive dentro de
+   .maplibregl-ctrl-attrib-inner, al lado del texto "Tiles © …".
+   El estilo de la librería pinta el enlace a rgba(0,0,0,.75) sin
+   subrayado sobre una barra blanca al 50 %. Eso da ~2:1 contra el
+   texto negro de al lado (link-in-text-block) y deja ver el satélite
+   por detrás. Fondo opaco, texto negro y enlace azul-6 subrayado:
+   ≥4.5:1 sobre blanco y ≥3:1 contra el texto circundante. */
+.maplibregl-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background-color: var(--mantine-color-white);
+  color: var(--mantine-color-black);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib a {
+  color: var(--mantine-color-blue-6);
+  text-decoration-line: underline;
+  text-underline-offset: 0.15em;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib a:hover,
+.maplibregl-map .maplibregl-ctrl-attrib a:focus {
+  color: var(--mantine-color-blue-8);
+  text-decoration-line: underline;
+}
+
 /* Indicador de campos requeridos */
 .required-field label::after {
   content: " *";
