@@ -240,3 +240,21 @@ describe('<LayerControlsPanel /> — CART-06 zoom hint', () => {
     expect(screen.queryByText('Acercate para ver esta capa')).not.toBeInTheDocument();
   });
 });
+
+describe('<LayerControlsPanel /> — MAP-05 hillshade note', () => {
+  it('explains exaggeration when Relieve sombreado is on', () => {
+    renderWithMantine(
+      <LayerControlsPanel
+        {...baseProps}
+        vectorVisibility={{}}
+        hillshadeAvailable
+        showHillshade
+        onShowHillshadeChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /base/i }));
+    expect(
+      screen.getByText(/Exagerado ×15 para que se note en terreno llano/),
+    ).toBeInTheDocument();
+  });
+});

@@ -66,6 +66,7 @@ import {
 import { pickPresetRasterId } from './mapPresets';
 import { MAP_DEFAULT_ZOOM } from '../../constants';
 import { LAYER_ZOOM_IN_HINT, layerBelowMinZoom } from './layerMinZoom';
+import { MAP2D_HILLSHADE_Z_FACTOR } from './mapRasterOverlayHelpers';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
 
@@ -709,11 +710,18 @@ export function LayerControlsPanel({
                 onChange={(event) => onShowIGNOverlayChange(event.currentTarget.checked)}
               />
               {hillshadeAvailable && onShowHillshadeChange ? (
-                <Checkbox
-                  label="Relieve sombreado"
-                  checked={showHillshade}
-                  onChange={(event) => onShowHillshadeChange(event.currentTarget.checked)}
-                />
+                <>
+                  <Checkbox
+                    label="Relieve sombreado"
+                    checked={showHillshade}
+                    onChange={(event) => onShowHillshadeChange(event.currentTarget.checked)}
+                  />
+                  {showHillshade ? (
+                    <Text size="xs" c="dimmed">
+                      Exagerado ×{MAP2D_HILLSHADE_Z_FACTOR} para que se note en terreno llano
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
               {hazardLayerControl?.visible && (
                 <Checkbox

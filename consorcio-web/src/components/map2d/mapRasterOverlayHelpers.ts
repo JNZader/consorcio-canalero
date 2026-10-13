@@ -360,6 +360,17 @@ export function syncIgnLayer(map: maplibregl.Map, showIGNOverlay: boolean) {
 
 const HILLSHADE_LAYER_ID = `${SOURCE_IDS.HILLSHADE}-shade`;
 
+/** Pampa slopes are ~0.1–0.4°. Style exaggeration max is 1; z_factor lives on the tile URL. */
+export const MAP2D_HILLSHADE_Z_FACTOR = 15;
+export const MAP2D_HILLSHADE_PAINT = {
+  'hillshade-exaggeration': 1,
+  'hillshade-method': 'multidirectional' as const,
+  'hillshade-illumination-direction': 315,
+  'hillshade-illumination-anchor': 'viewport' as const,
+  'hillshade-shadow-color': '#00000066',
+  'hillshade-highlight-color': '#ffffff55',
+};
+
 /** UX PDF T4 — 2D shaded relief from the same terrain-rgb DEM as 3D. Default off. */
 export function syncHillshadeLayer(
   map: maplibregl.Map,
@@ -387,11 +398,7 @@ export function syncHillshadeLayer(
       id: HILLSHADE_LAYER_ID,
       type: 'hillshade' as const,
       source: SOURCE_IDS.HILLSHADE,
-      paint: {
-        'hillshade-exaggeration': 0.35,
-        'hillshade-illumination-direction': 315,
-        'hillshade-illumination-anchor': 'viewport' as const,
-      },
+      paint: { ...MAP2D_HILLSHADE_PAINT },
     };
     if (map.getLayer('vector-layers-start')) {
       map.addLayer(layer, 'vector-layers-start');
