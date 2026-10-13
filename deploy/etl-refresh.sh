@@ -41,8 +41,8 @@
 #   twice in a row is a no-op the second time (modulo the matview refresh).
 #
 # KNOWN GAPS (documented in deploy/README-etl-cron.md, not silently ignored)
-#   * A failed run is visible in `systemctl status` and in the journal, but nothing
-#     NOTIFIES anyone. No OnFailure= hook yet — see the README.
+#   * A failed run notifies via OnFailure=notify@%n.service (INF-10). The unit
+#     still fails; the hook only fires when /etc/consorcio/notify.env is set.
 #   * A step that hangs is killed locally, but the python process inside the
 #     container survives it. See the TIMEOUT branch below.
 #

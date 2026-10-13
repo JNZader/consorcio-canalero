@@ -1,0 +1,67 @@
+# INF-01 / INF-06 / BE-05. Caddyfile de producción (binario stock de Caddy 2).
+#
+# No incluye rate_limit: esa directiva exige el módulo
+# github.com/mholt/caddy-ratelimit y un binario propio. El archivo
+# deploy/Caddyfile.with-ratelimit es el que hay que usar después de
+# compilar ese módulo. Recargar este archivo en un Caddy stock es válido.
+#
+# Hosts vivos (sustituir {$DOMAIN} o copiar los nombres literales):
+#   API:   cc10demayo-api.javierzader.com
+#   Tiles: cc10demayo-tiles.javierzader.com
+#   Hook:  solo loopback vía Caddy; no hace falta un nombre público si el
+#          webhook se publica en el host de la API bajo /hooks/deploy.
+#
+# HSTS con preload: el header se envía, pero NO hay que enviar el dominio a
+# hstspreload.org hasta que todos los subdominios del apex hablen HTTPS.
+# El preload de un subdominio no entra en la lista; la sumisión es manual
+# e irreversible a escala de meses. Ver el runbook.
+#
+# Variables de entorno que Caddy expande: DOMAIN, ACME_EMAIL.
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+(consorcio_edge) {
+	encode zstd gzip
+	header {
+		# INF-06. max-age de 2 años, el mínimo que pide la lista de preload.
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		# BE-05: no anunciar el proxy. Caddy agrega Server; Via aparece en
+		# algunos saltos. El signo menos las quita de la respuesta.
+		-Server
+		-Via
+		-X-XSS-Protection
+	}
+	log {
+		output stdout
+		format json
+	}
+	request_body {
+		max_size 20MB
+	}
+}
+
+api.consorcio.{$DOMAIN} {
+	import consorcio_edge
+	reverse_proxy consorcio-backend:8000
+}
+
+tiles.consorcio.{$DOMAIN} {
+	import consorcio_edge
+	reverse_proxy consorcio-martin:3000
+}
+
+# El receptor (deploy/deploy_webhook.py) solo escucha en 127.0.0.1:8090.
+# Si Caddy corre en el host (no en otra red Docker), este sitio lo publica.
+# El Bearer lo valida el receptor; Caddy no lo registra (el access log JSON
+# no incluye Authorization por defecto).
+deploy.consorcio.{$DOMAIN} {
+	import consorcio_edge
+	reverse_proxy 127.0.0.1:8090
+}
