@@ -2,6 +2,7 @@ import { Alert, Button, Code, Group, Paper, Stack, Text, Title } from '@mantine/
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component } from 'react';
 import { logger } from '../lib/logger';
+import { erroresUi } from '../lib/userFacingError';
 
 interface Props {
   readonly children: ReactNode;
@@ -184,10 +185,8 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <Paper shadow="md" p="xl" radius="md" withBorder>
           <Stack gap="md">
-            <Alert color="red" title="Algo salio mal" variant="light">
-              <Text size="sm">
-                Ha ocurrido un error inesperado. Por favor, intentá recargar la página.
-              </Text>
+            <Alert color="red" title={erroresUi.seccion.titulo} variant="light">
+              <Text size="sm">{erroresUi.seccion.detalle}</Text>
             </Alert>
 
             {import.meta.env.DEV && this.state.error && (
@@ -229,14 +228,14 @@ export class ErrorBoundary extends Component<Props, State> {
  * Simple error fallback for specific sections.
  */
 export function ErrorFallback({
-  message = 'Error al cargar este componente',
+  message = erroresUi.seccion.detalle,
   onRetry,
 }: Readonly<{
   message?: string;
   onRetry?: () => void;
 }>) {
   return (
-    <Alert color="red" title="Error" variant="light">
+    <Alert color="red" title={erroresUi.seccion.titulo} variant="light">
       <Text size="sm" mb="sm">
         {message}
       </Text>

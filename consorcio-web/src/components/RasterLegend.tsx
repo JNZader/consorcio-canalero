@@ -1,6 +1,7 @@
 import { Box, Checkbox, Group, Paper, Stack, Text } from '@mantine/core';
 import { memo } from 'react';
 import { LAYER_LEGEND_CONFIG } from '../config/rasterLegend';
+import { mapColorTokens } from '../lib/mapColorTokens';
 import styles from '../styles/components/map.module.css';
 
 interface RasterLegendProps {
@@ -85,7 +86,7 @@ export const RasterLegend = memo(function RasterLegend({
                         />
                         <Box
                           style={{
-                            background: isVisible ? cat.color : '#ccc',
+                            background: isVisible ? cat.color : mapColorTokens.hccc,
                             width: 14,
                             height: 14,
                             borderRadius: 'var(--mantine-radius-xs)',
@@ -145,7 +146,7 @@ export const RasterLegend = memo(function RasterLegend({
                         />
                         <Box
                           style={{
-                            background: isVisible ? range.color : '#ccc',
+                            background: isVisible ? range.color : mapColorTokens.hccc,
                             width: 14,
                             height: 14,
                             borderRadius: 'var(--mantine-radius-xs)',

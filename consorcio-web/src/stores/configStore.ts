@@ -10,6 +10,7 @@ import {
 } from '../constants';
 import { configApi, type SystemConfig } from '../lib/api';
 import { logger } from '../lib/logger';
+import { mapColorTokens } from '../lib/mapColorTokens';
 
 /**
  * Default system configuration used when the API is unavailable.
@@ -25,10 +26,10 @@ const DEFAULT_CONFIG: SystemConfig = {
     bounds: MAP_BOUNDS,
   },
   cuencas: [
-    { id: 'candil', nombre: 'Candil', ha: 18800, color: '#3b82f6' },
-    { id: 'ml', nombre: 'ML', ha: 18900, color: '#14b8a6' },
-    { id: 'noroeste', nombre: 'Noroeste', ha: 18500, color: '#f97316' },
-    { id: 'norte', nombre: 'Norte', ha: 18300, color: '#8b5cf6' },
+    { id: 'candil', nombre: 'Candil', ha: 18800, color: mapColorTokens.h3b82f6 },
+    { id: 'ml', nombre: 'ML', ha: 18900, color: mapColorTokens.h14b8a6 },
+    { id: 'noroeste', nombre: 'Noroeste', ha: 18500, color: mapColorTokens.hf97316 },
+    { id: 'norte', nombre: 'Norte', ha: 18300, color: mapColorTokens.h8b5cf6 },
   ],
   analysis: {
     default_max_cloud: DEFAULT_MAX_CLOUD,

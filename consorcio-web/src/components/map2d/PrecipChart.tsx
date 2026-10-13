@@ -50,8 +50,9 @@ import { memo } from 'react';
 import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 import type { FichaPrecipitacion } from '../../lib/api/ficha';
-import { LowConfidenceBadge } from './fichaShared';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import styles from '../../styles/components/map.module.css';
+import { LowConfidenceBadge } from './fichaShared';
 
 /** Short calendar-month labels, index 0 = January. Display only. */
 const MESES = [
@@ -206,7 +207,7 @@ export const PrecipChart = memo(function PrecipChart({
                     between "0" and "unknown".) */}
                 <Bar
                   dataKey="mm"
-                  fill="#1c7ed6"
+                  fill={mapColorTokens.h1c7ed6}
                   radius={[2, 2, 0, 0]}
                   isAnimationActive={false}
                   minPointSize={2}

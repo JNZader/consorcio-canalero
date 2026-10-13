@@ -24,6 +24,7 @@
 
 import type { FeatureCollection, Point } from 'geojson';
 import type { CircleLayerSpecification } from 'maplibre-gl';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 /** Source id for the hardcoded YPF pump station FeatureCollection. */
 export const YPF_ESTACION_BOMBEO_SOURCE_ID = 'ypf-estacion-bombeo' as const;
@@ -38,7 +39,7 @@ export const YPF_ESTACION_BOMBEO_LABEL = 'Estación de bombeo YPF' as const;
  * Circle fill color — Material Deep Orange 800. Kept as a public constant so
  * the LeyendaPanel swatch and the MapLibre paint stay in lock-step.
  */
-export const YPF_ESTACION_BOMBEO_COLOR = '#d84315' as const;
+export const YPF_ESTACION_BOMBEO_COLOR = mapColorTokens.hd84315;
 
 /**
  * Coordinates for the Monte Leña YPF pump station.
@@ -81,7 +82,7 @@ export function buildYpfEstacionBombeoPaint(): CirclePaint {
   return {
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 5, 16, 9],
     'circle-color': YPF_ESTACION_BOMBEO_COLOR,
-    'circle-stroke-color': '#ffffff',
+    'circle-stroke-color': mapColorTokens.hffffff,
     'circle-stroke-width': 2,
   };
 }

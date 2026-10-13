@@ -1,6 +1,7 @@
 import { FileSource, PMTiles } from 'pmtiles';
 
 import { pmtilesProtocol } from './pmtilesProtocol';
+import { erroresUi, textoError } from './userFacingError';
 
 /** Bundled archive (`package.json` `gen:pmtiles`). Pages cannot Range this file. */
 export const SOIL_PMTILES_PATH = '/data/suelos_cu.pmtiles';
@@ -34,7 +35,7 @@ export function ensureSoilPmtilesArchive(): Promise<string> {
   archivePromise ??= (async () => {
     const response = await fetch(SOIL_PMTILES_PATH);
     if (!response.ok) {
-      throw new Error(`Error al cargar suelos: ${response.status}`);
+      throw new Error(textoError(erroresUi.cargarSuelos, `Respuesta ${response.status}.`));
     }
     const buffer = await response.arrayBuffer();
     const file = new File([buffer], SOIL_PMTILES_ARCHIVE_KEY, {

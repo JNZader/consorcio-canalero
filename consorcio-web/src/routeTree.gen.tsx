@@ -27,6 +27,7 @@ import { useAuthStore } from './stores/authStore';
 import { withBasePath } from './lib/basePath';
 import { authAdapter } from './lib/auth/index';
 import { clearLocalLogoutTombstone, persistAuthSession } from './lib/auth/storage';
+import { erroresUi, textoError } from './lib/userFacingError';
 import { logger } from './lib/logger';
 
 // PERF — ``HomePage`` is the ONLY page loaded eagerly. It is the landing
@@ -443,7 +444,7 @@ function AuthCallbackPage() {
             return;
           }
           logger.error('[AUTH CALLBACK] Failed to fetch profile:', profileRes.status);
-          setError(`Error al obtener perfil: ${profileRes.status}`);
+          setError(textoError(erroresUi.perfilOAuth, `Respuesta ${profileRes.status}.`));
           return;
         }
 
@@ -539,7 +540,7 @@ const perfilRoute = createRoute({
     }
   },
   component: () => (
-    <RootLayout title="Mi Perfil" description="Gestiona tu perfil de usuario.">
+    <RootLayout title="Mi Perfil" description="Gestioná tu perfil de usuario.">
       <Suspense fallback={<PageLoader />}>
         <ProfilePanel />
       </Suspense>

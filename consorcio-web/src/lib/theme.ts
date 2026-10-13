@@ -6,6 +6,7 @@
  */
 
 import { createTheme } from '@mantine/core';
+import { mapColorTokens } from './mapColorTokens';
 
 /**
  * Tema personalizado para la aplicacion del Consorcio Canalero.
@@ -201,6 +202,8 @@ export const mantineTheme = createTheme({
     // #a0a0a0 tiene ratio 5.5:1 sobre #242424 (supera 4.5:1 requerido)
     dimmedColorLight: '#6b7280', // gray-500 - ratio 5.9:1 sobre blanco
     dimmedColorDark: '#a3a3a3', // neutral-400 - ratio 5.5:1 sobre #242424
+    /** Hex de mapa y estilos en línea. Mismo objeto que `mapColorTokens`. */
+    mapColors: mapColorTokens,
   },
 
   // Sombras personalizadas — dark mode gets stronger shadows since

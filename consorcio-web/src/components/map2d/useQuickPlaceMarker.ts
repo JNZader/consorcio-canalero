@@ -5,6 +5,7 @@
 
 import * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useRef } from 'react';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 export interface QuickPlacePin {
   readonly label: string;
@@ -39,7 +40,7 @@ export function useQuickPlaceMarker({ mapRef, mapReady, place }: UseQuickPlaceMa
       offset: 24,
     }).setDOMContent(popupContent);
 
-    const marker = new maplibregl.Marker({ color: '#2563eb' })
+    const marker = new maplibregl.Marker({ color: mapColorTokens.h2563eb })
       .setLngLat([place.lng, place.lat])
       .setPopup(popup)
       .addTo(map);

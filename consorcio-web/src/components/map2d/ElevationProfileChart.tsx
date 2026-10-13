@@ -6,8 +6,8 @@
  */
 
 import { Alert, Button, Stack, Text } from '@mantine/core';
-import { useEffect, useRef, useState } from 'react';
 import type { Geometry, LineString } from 'geojson';
+import { useEffect, useRef, useState } from 'react';
 import {
   Line,
   LineChart,
@@ -18,12 +18,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-
 import {
-  fetchElevationProfile,
   type ElevationProfileResponse,
+  fetchElevationProfile,
 } from '../../lib/api/elevationProfile';
-import { profileSliceStats, sliceProfile, type ProfileRangeStats } from './profileRange';
+import { mapColorTokens } from '../../lib/mapColorTokens';
+import { type ProfileRangeStats, profileSliceStats, sliceProfile } from './profileRange';
 
 function isLineString(geometry: Geometry | null | undefined): geometry is LineString {
   return geometry?.type === 'LineString' && geometry.coordinates.length >= 2;
@@ -40,7 +40,7 @@ function sampleIndex(rawIndex: unknown): number | null {
 
 function lngLatAtIndex(
   rows: readonly { lon?: number; lat?: number }[],
-  rawIndex: unknown,
+  rawIndex: unknown
 ): { lon: number; lat: number } | null {
   const index = sampleIndex(rawIndex);
   const row = index != null ? rows[index] : undefined;
@@ -52,7 +52,7 @@ function lngLatAtIndex(
 
 function distanceAtIndex(
   rows: readonly { distance_m: number }[],
-  rawIndex: unknown,
+  rawIndex: unknown
 ): number | null {
   const index = sampleIndex(rawIndex);
   const row = index != null ? rows[index] : undefined;
@@ -230,18 +230,20 @@ export function ElevationProfileChart({
                   }}
                 >
                   <XAxis dataKey="distance_m" tickFormatter={(v) => `${Math.round(Number(v))}`} />
-                  <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `${Number(v).toFixed(0)}`} width={40} />
+                  <YAxis
+                    domain={['auto', 'auto']}
+                    tickFormatter={(v) => `${Number(v).toFixed(0)}`}
+                    width={40}
+                  />
                   <Tooltip
-                    formatter={(value) =>
-                      value == null ? 'sin dato' : formatM(Number(value))
-                    }
+                    formatter={(value) => (value == null ? 'sin dato' : formatM(Number(value)))}
                     labelFormatter={(label) => `${Math.round(Number(label))} m`}
                   />
                   {range ? (
                     <ReferenceArea
                       x1={Math.min(range.a, range.b)}
                       x2={Math.max(range.a, range.b)}
-                      fill="#f97316"
+                      fill={mapColorTokens.hf97316}
                       fillOpacity={0.18}
                       ifOverflow="visible"
                     />
@@ -251,8 +253,8 @@ export function ElevationProfileChart({
                       x={selection.min_point.distance_m}
                       y={selection.min_point.elevation_m}
                       r={5}
-                      fill="#2563eb"
-                      stroke="#ffffff"
+                      fill={mapColorTokens.h2563eb}
+                      stroke={mapColorTokens.hffffff}
                     />
                   ) : null}
                   {selection?.max_point ? (
@@ -260,8 +262,8 @@ export function ElevationProfileChart({
                       x={selection.max_point.distance_m}
                       y={selection.max_point.elevation_m}
                       r={5}
-                      fill="#dc2626"
-                      stroke="#ffffff"
+                      fill={mapColorTokens.hdc2626}
+                      stroke={mapColorTokens.hffffff}
                     />
                   ) : null}
                   <Line

@@ -26,14 +26,15 @@
  */
 
 import type MapboxDraw from '@mapbox/mapbox-gl-draw';
+import { mapColorTokens } from '../../../lib/mapColorTokens';
 
 // `MapboxDrawOptions['styles']` is typed as `object[]`, so we expose a
 // permissive alias rather than inventing our own narrow type.
 type DrawStyle = object;
 
-const ACCENT = '#fd7e14'; // Mantine orange 6 — measurement accent
-const ACCENT_STRONG = '#e8590c'; // Mantine orange 8 — active/selected
-const WHITE = '#ffffff';
+const ACCENT = mapColorTokens.hfd7e14; // Mantine orange 6 — measurement accent
+const ACCENT_STRONG = mapColorTokens.he8590c; // Mantine orange 8 — active/selected
+const WHITE = mapColorTokens.hffffff;
 
 export const MEASUREMENT_DRAW_STYLES: DrawStyle[] = [
   // ── Polygon fills ─────────────────────────────────────────────────────

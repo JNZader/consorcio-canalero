@@ -2,7 +2,8 @@ import type * as maplibregl from 'maplibre-gl';
 
 import { buildTileUrl, findPrecipNormalLayer, type GeoLayerInfo } from '../../hooks/useGeoLayers';
 import { HAZARD_RISK_CLASSES } from '../../hooks/useHazardUrlState';
-import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
+import { getMartinTileUrl, MARTIN_SOURCES } from '../../hooks/useMartinLayers';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 import { IGN_IMAGE_URL, IGN_MAPLIBRE_COORDS, setLayerVisibility } from './map2dUtils';
 import { PILAR_VERDE_Z_ORDER } from './pilarVerdeLayers';
@@ -367,15 +368,15 @@ export const MAP2D_HILLSHADE_PAINT = {
   'hillshade-method': 'multidirectional' as const,
   'hillshade-illumination-direction': 315,
   'hillshade-illumination-anchor': 'viewport' as const,
-  'hillshade-shadow-color': '#00000066',
-  'hillshade-highlight-color': '#ffffff55',
+  'hillshade-shadow-color': mapColorTokens.h00000066,
+  'hillshade-highlight-color': mapColorTokens.hffffff55,
 };
 
 /** UX PDF T4 — 2D shaded relief from the same terrain-rgb DEM as 3D. Default off. */
 export function syncHillshadeLayer(
   map: maplibregl.Map,
   showHillshade: boolean,
-  tileUrl: string | null,
+  tileUrl: string | null
 ): void {
   if (!showHillshade && !map.getSource(SOURCE_IDS.HILLSHADE)) return;
   if (!showHillshade) {

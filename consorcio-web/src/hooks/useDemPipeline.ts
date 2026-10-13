@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BasinsGeoJSON, GeoJobResponse, GeoLayerResponse } from '../lib/api/demPipeline';
 import { demPipelineApi } from '../lib/api/demPipeline';
 import { logger } from '../lib/logger';
+import { erroresUi, textoError } from '../lib/userFacingError';
 
 type PipelineState = 'idle' | 'submitting' | 'polling' | 'completed' | 'failed';
 
@@ -131,11 +132,11 @@ export function useDemPipeline(): UseDemPipelineResult {
         });
         pollStatus(response.job_id);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Error al iniciar pipeline';
+        const message = err instanceof Error ? err.message : textoError(erroresUi.iniciarPipeline);
         setError(message);
         setState('failed');
         notifications.show({
-          title: 'Error',
+          title: erroresUi.iniciarPipeline.titulo,
           message,
           color: 'red',
         });

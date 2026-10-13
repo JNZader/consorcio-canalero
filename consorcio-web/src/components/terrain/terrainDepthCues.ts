@@ -1,18 +1,15 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
-
-import {
-  TERRAIN_HILLSHADE_SOURCE_ID,
-  buildHillshadeDemSource,
-} from './terrainHillshadeSource';
+import { mapColorTokens } from '../../lib/mapColorTokens';
+import { buildHillshadeDemSource, TERRAIN_HILLSHADE_SOURCE_ID } from './terrainHillshadeSource';
 
 export const TERRAIN_HILLSHADE_LAYER_ID = 'terrain-hillshade';
 
 export const TERRAIN_SKY = {
-  'sky-color': '#87CEEB',
+  'sky-color': mapColorTokens.h87CEEB,
   'sky-horizon-blend': 0.5,
-  'horizon-color': '#c8d6e5',
+  'horizon-color': mapColorTokens.hc8d6e5,
   'horizon-fog-blend': 0.5,
-  'fog-color': '#d8e1ea',
+  'fog-color': mapColorTokens.hd8e1ea,
   'fog-ground-blend': 0.45,
 } as const;
 

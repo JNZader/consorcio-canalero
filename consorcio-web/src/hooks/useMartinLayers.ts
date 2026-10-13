@@ -1,3 +1,5 @@
+import { mapColorTokens } from '../lib/mapColorTokens';
+
 /**
  * Martin MVT layer utilities for MapLibre GL.
  *
@@ -47,8 +49,8 @@ export const MARTIN_SOURCES: Record<string, MartinSource> = {
     label: 'Puntos de Conflicto',
     defaultVisible: false,
     style: {
-      color: '#b91c1c',
-      fillColor: '#ef4444',
+      color: mapColorTokens.hb91c1c,
+      fillColor: mapColorTokens.hef4444,
       fillOpacity: 0.85,
       weight: 1,
       opacity: 1,

@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
-
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { ensureGeoJsonSource } from './map2dUtils';
 
 export const SELECTED_LINE_SOURCE = 'map2d-selected-lines';
@@ -47,7 +47,7 @@ export function useSelectedLineHighlight({
         type: 'line',
         source: SELECTED_LINE_SOURCE,
         paint: {
-          'line-color': '#111827',
+          'line-color': mapColorTokens.h111827,
           'line-width': 8,
           'line-opacity': 0.9,
         },
@@ -59,7 +59,7 @@ export function useSelectedLineHighlight({
         type: 'line',
         source: SELECTED_LINE_SOURCE,
         paint: {
-          'line-color': '#f97316',
+          'line-color': mapColorTokens.hf97316,
           'line-width': 4,
           'line-opacity': 1,
         },

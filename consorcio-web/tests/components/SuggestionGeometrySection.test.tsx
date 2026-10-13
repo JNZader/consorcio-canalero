@@ -74,7 +74,7 @@ describe('<SuggestionGeometrySection />', () => {
     renderWithMantine(<SuggestionGeometrySection geometry={null} onChange={() => {}} />);
 
     expect(screen.getByRole('application', { name: /canal en mapa/i })).toHaveAccessibleDescription(
-      /haz un clic para marcar un punto/i,
+      /hacé un clic para marcar un punto/i,
     );
     expect(screen.getByRole('application', { name: /canal en mapa/i })).toHaveAccessibleDescription(
       /opcional: marcá un punto/i,

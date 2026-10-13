@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 import { loginAsAdmin } from './helpers/auth';
 
@@ -67,13 +67,10 @@ test.describe('Frontend Login Flow', () => {
     const submitBtn = page.locator('button[type="submit"]').first();
     await submitBtn.click();
 
-    // A visible error message MUST be shown to the user — LoginForm
-    // fires a Mantine notification titled "Error al iniciar sesion"
-    // with fallback body "Verifica tus credenciales". Waiting on it
-    // (instead of a fixed sleep) also absorbs backend latency.
-    await expect(
-      page.getByText(/error al iniciar sesi|verifica tus credenciales/i).first()
-    ).toBeVisible({ timeout: 15_000 });
+    // LoginForm muestra una notificación con título accionable.
+    await expect(page.getByText(/no pudimos iniciar sesión/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // And we must still be on the login page.
     expect(page.url()).toContain('/login');

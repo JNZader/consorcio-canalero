@@ -1,10 +1,11 @@
 import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
-import { bootMapLibreWorker } from '../../lib/maplibreLoader';
-import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
 import { TILE_LAYERS } from '../../constants/mapStyles';
 import { logger } from '../../lib/logger';
+import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
+import { bootMapLibreWorker } from '../../lib/maplibreLoader';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
 import { MAP_LOCALE_ES } from './mapLibreLocale';
 import { MAP_GLYPHS_URL } from './roadLabelLayer';
@@ -125,93 +126,92 @@ export function useMapInitialization({
         await bootMapLibreWorker();
         if (cancelled || !containerRef.current) return;
         map = new maplibre.Map({
-      container: containerRef.current,
-      style: {
-        version: 8,
-        glyphs: MAP_GLYPHS_URL,
-        sources: {
-          'osm-base': {
-            type: 'raster',
-            tiles: [TILE_LAYERS.osm.url],
-            tileSize: 256,
-            attribution: TILE_LAYERS.osm.attribution,
-            maxzoom: 19,
-          },
-          'satellite-base': {
-            type: 'raster',
-            tiles: [TILE_LAYERS.satellite.url],
-            tileSize: 256,
-            attribution: TILE_LAYERS.satellite.attribution,
-          },
-        },
-        layers: [
-          {
-            id: 'osm-tiles',
-            type: 'raster',
-            source: 'osm-base',
-            layout: { visibility: 'visible' },
-            paint: { 'raster-opacity': 1 },
-          },
-          {
-            id: 'satellite-tiles',
-            type: 'raster',
-            source: 'satellite-base',
-            layout: { visibility: 'none' },
-            paint: { 'raster-opacity': 1 },
-          },
-          {
-            id: 'vector-layers-start',
-            type: 'background',
-            paint: {
-              'background-color': 'rgba(0,0,0,0)',
-              'background-opacity': 0,
+          container: containerRef.current,
+          style: {
+            version: 8,
+            glyphs: MAP_GLYPHS_URL,
+            sources: {
+              'osm-base': {
+                type: 'raster',
+                tiles: [TILE_LAYERS.osm.url],
+                tileSize: 256,
+                attribution: TILE_LAYERS.osm.attribution,
+                maxzoom: 19,
+              },
+              'satellite-base': {
+                type: 'raster',
+                tiles: [TILE_LAYERS.satellite.url],
+                tileSize: 256,
+                attribution: TILE_LAYERS.satellite.attribution,
+              },
             },
+            layers: [
+              {
+                id: 'osm-tiles',
+                type: 'raster',
+                source: 'osm-base',
+                layout: { visibility: 'visible' },
+                paint: { 'raster-opacity': 1 },
+              },
+              {
+                id: 'satellite-tiles',
+                type: 'raster',
+                source: 'satellite-base',
+                layout: { visibility: 'none' },
+                paint: { 'raster-opacity': 1 },
+              },
+              {
+                id: 'vector-layers-start',
+                type: 'background',
+                paint: {
+                  'background-color': 'rgba(0,0,0,0)',
+                  'background-opacity': 0,
+                },
+              },
+            ],
           },
-        ],
-      },
-      center: [originRef.current.centerLng, originRef.current.centerLat],
-      zoom: originRef.current.zoom,
-      minZoom: MAP_MIN_ZOOM,
-      maxBounds: MAP_MAX_BOUNDS,
-      // KEPT UNCONDITIONALLY ON PURPOSE (T3c, fix 5b). PNG/PDF export reads the
-      // canvas back with `getCanvas().toDataURL()`, which returns a blank image
-      // unless the backbuffer is preserved. WebGL context attributes are frozen
-      // at context creation: MapLibre cannot flip this after `new Map()`, so
-      // "enable it only on export intent" would mean tearing the map down and
-      // rebuilding it mid-session (losing viewport, sources and draw state) the
-      // first time a user opens the Export menu. The cost is a modest GPU
-      // memory/compositing overhead on one canvas; the alternative is a broken
-      // export or a map that reloads under the user. Do not "optimize" this away
-      // without moving export to an offscreen render.
-      // MapLibre 5: WebGL options live under `canvasContextAttributes` (top-level
-      // `preserveDrawingBuffer` was removed in 5.0.0).
-      canvasContextAttributes: { preserveDrawingBuffer: true },
-      // Desktop wheel must NOT hijack the page scroll: cooperative gestures
-      // require Ctrl+wheel to zoom and show a hint otherwise (see change
-      // `rediseno-ux-mapa`). On TOUCH the same handler forces two-finger pan,
-      // which makes the map unresponsive to the one-finger drag every user
-      // tries first — so it is enabled for FINE pointers only.
-      cooperativeGestures: !isCoarsePointerDevice(),
-      // UX PDF R9: arrows and +/- when the canvas is focused (MapLibre default,
-      // set explicitly so a later "optimization" cannot disable it).
-      keyboard: true,
-      hash: 'v',
-      locale: { ...MAP_LOCALE_ES },
-    });
-    } catch (error) {
-      const detail =
-        error instanceof Error ? error.message : 'Error desconocido';
-      onMapErrorRef.current?.({
-        kind: 'other',
-        sourceId: null,
-        sourceType: null,
-        status: null,
-        url: null,
-        message: `Error al cargar el mapa: ${detail}`,
-      });
-      logger.error('MapaMapLibre failed to construct', error);
-      return;
-    }
+          center: [originRef.current.centerLng, originRef.current.centerLat],
+          zoom: originRef.current.zoom,
+          minZoom: MAP_MIN_ZOOM,
+          maxBounds: MAP_MAX_BOUNDS,
+          // KEPT UNCONDITIONALLY ON PURPOSE (T3c, fix 5b). PNG/PDF export reads the
+          // canvas back with `getCanvas().toDataURL()`, which returns a blank image
+          // unless the backbuffer is preserved. WebGL context attributes are frozen
+          // at context creation: MapLibre cannot flip this after `new Map()`, so
+          // "enable it only on export intent" would mean tearing the map down and
+          // rebuilding it mid-session (losing viewport, sources and draw state) the
+          // first time a user opens the Export menu. The cost is a modest GPU
+          // memory/compositing overhead on one canvas; the alternative is a broken
+          // export or a map that reloads under the user. Do not "optimize" this away
+          // without moving export to an offscreen render.
+          // MapLibre 5: WebGL options live under `canvasContextAttributes` (top-level
+          // `preserveDrawingBuffer` was removed in 5.0.0).
+          canvasContextAttributes: { preserveDrawingBuffer: true },
+          // Desktop wheel must NOT hijack the page scroll: cooperative gestures
+          // require Ctrl+wheel to zoom and show a hint otherwise (see change
+          // `rediseno-ux-mapa`). On TOUCH the same handler forces two-finger pan,
+          // which makes the map unresponsive to the one-finger drag every user
+          // tries first — so it is enabled for FINE pointers only.
+          cooperativeGestures: !isCoarsePointerDevice(),
+          // UX PDF R9: arrows and +/- when the canvas is focused (MapLibre default,
+          // set explicitly so a later "optimization" cannot disable it).
+          keyboard: true,
+          hash: 'v',
+          locale: { ...MAP_LOCALE_ES },
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'Error desconocido';
+        onMapErrorRef.current?.({
+          kind: 'other',
+          sourceId: null,
+          sourceType: null,
+          status: null,
+          url: null,
+          message: textoError(erroresUi.cargarMapa, detail),
+        });
+        logger.error('MapaMapLibre failed to construct', error);
+        return;
+      }
       if (cancelled) {
         map.remove();
         return;

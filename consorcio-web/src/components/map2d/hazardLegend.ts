@@ -1,5 +1,6 @@
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import { HAZARD_RISK_CLASSES, type HazardRiskClass } from '../../hooks/useHazardUrlState';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { HazardBasinOption } from './hazardControls.types';
 
 export interface HazardLegendInput {
@@ -15,9 +16,9 @@ export interface HazardLegendView {
   readonly basinLabel: string | null;
 }
 
-const FALLBACK_RISK_CLASS_COLOR = '#888888';
+const FALLBACK_RISK_CLASS_COLOR = mapColorTokens.h888888;
 
-export const HAZARD_BASIN_OUTLINE_COLOR = '#2563eb';
+export const HAZARD_BASIN_OUTLINE_COLOR = mapColorTokens.h2563eb;
 
 function resolveBasinLabel(
   selectedBasinId: string | null,

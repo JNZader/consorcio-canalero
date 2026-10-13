@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../../../constants';
 import type { Sugerencia } from '../../../../lib/api';
+import { mapColorTokens } from '../../../../lib/mapColorTokens';
 
 function addCanalLayers(
   map: maplibregl.Map,
@@ -24,7 +25,7 @@ function addCanalLayers(
       type: 'line',
       source: sourceId,
       paint: {
-        'line-color': canal.style.color ?? '#0B3D91',
+        'line-color': canal.style.color ?? mapColorTokens.h0B3D91,
         'line-width': canal.style.weight ?? 2,
         'line-opacity': canal.style.opacity ?? 0.8,
       },
@@ -60,7 +61,7 @@ function addSuggestionGeometry(map: maplibregl.Map, geometry: FeatureCollection 
     type: 'line',
     source: 'sugerencia-geom',
     paint: {
-      'line-color': '#7B1FA2',
+      'line-color': mapColorTokens.h7B1FA2,
       'line-width': 4,
       'line-opacity': 0.95,
       'line-dasharray': [8, 6],
