@@ -188,6 +188,11 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@stryker-mutator/*"
         update-types: ["version-update:semver-major"]
+      # @vitejs/plugin-react@6.1.2 (latest) peerOptional is
+      # oxc-transform-react@^0.152.0, which is <0.153.0. 0.154 makes
+      # `npm ci` fail with ERESOLVE. Drop this once the plugin accepts >=0.154.
+      - dependency-name: "oxc-transform-react"
+        versions: [">=0.153.0"]
     groups:
       # React ecosystem
       react-ecosystem:
