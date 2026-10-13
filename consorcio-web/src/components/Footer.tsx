@@ -2,12 +2,15 @@ import { Box, Container, Divider, Group, Stack, Text } from '@mantine/core';
 import { Link } from '@tanstack/react-router';
 import { memo } from 'react';
 
+import { useCanAccess } from '../stores/authStore';
+
 /**
  * FooterContent - Contenido interno del footer sin MantineProvider.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  * Memoizado porque es completamente estatico.
  */
 export const FooterContent = memo(function FooterContent() {
+  const showAdmin = useCanAccess(['admin', 'operador']);
   return (
     <Box
       component="footer"
@@ -45,9 +48,11 @@ export const FooterContent = memo(function FooterContent() {
                   <Text component={Link} to="/participacion" c="gray.3" size="sm">
                     Participación
                   </Text>
-                  <Text component={Link} to="/admin" c="gray.3" size="sm">
-                    Admin
-                  </Text>
+                  {showAdmin ? (
+                    <Text component={Link} to="/admin" c="gray.3" size="sm">
+                      Admin
+                    </Text>
+                  ) : null}
                   <Text component={Link} to="/privacidad" c="gray.3" size="sm">
                     Privacidad
                   </Text>
@@ -72,7 +77,7 @@ export const FooterContent = memo(function FooterContent() {
 
           <Group justify="space-between">
             <Text size="xs" c="gray.4">
-              {new Date().getFullYear()} Consorcio Canalero 10 de Mayo
+              © {new Date().getFullYear()} Consorcio Canalero 10 de Mayo
             </Text>
             <Text size="xs" c="gray.4">
               Desarrollado con Google Earth Engine + React
