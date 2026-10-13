@@ -66,6 +66,8 @@ def _line_range(target: str) -> tuple[str, int, int]:
     match = _LINE_RANGE.fullmatch(target)
     assert match is not None, target
     return match.group("path"), int(match.group("start")), int(match.group("end"))
+
+
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c"
 )
