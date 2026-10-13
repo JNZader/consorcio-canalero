@@ -112,7 +112,7 @@ describe('accessibility helpers', () => {
     await userEvent.type(screen.getByLabelText(/longitud/i), '-62.6');
     await userEvent.click(screen.getByRole('button', { name: /establecer/i }));
 
-    const addressInput = screen.getByLabelText(/direccion a buscar/i);
+    const addressInput = screen.getByLabelText(/dirección a buscar/i);
     await userEvent.type(addressInput, 'Bell Ville');
     await userEvent.click(screen.getByRole('button', { name: /buscar/i }));
     await waitFor(() => expect(onAddressSearch).toHaveBeenCalledWith('Bell Ville'));
@@ -138,15 +138,15 @@ describe('accessibility helpers', () => {
       </Wrapper>
     );
 
-    await userEvent.type(screen.getByLabelText(/direccion a buscar/i), 'Bell Ville');
+    await userEvent.type(screen.getByLabelText(/dirección a buscar/i), 'Bell Ville');
     await userEvent.click(screen.getByRole('button', { name: /buscar/i }));
     await waitFor(() => expect(onCoordinatesChange).toHaveBeenCalledWith(-32.7, -62.5));
 
-    await userEvent.clear(screen.getByLabelText(/direccion a buscar/i));
-    await userEvent.type(screen.getByLabelText(/direccion a buscar/i), 'Desconocido');
+    await userEvent.clear(screen.getByLabelText(/dirección a buscar/i));
+    await userEvent.type(screen.getByLabelText(/dirección a buscar/i), 'Desconocido');
     await userEvent.click(screen.getByRole('button', { name: /buscar/i }));
     await waitFor(() => {
-      expect(screen.getByText(/No se encontro la direccion/i)).toBeInTheDocument();
+      expect(screen.getByText(/no se encontró la dirección/i)).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: /buscar/i }).querySelector('[aria-hidden="true"]')
       ).not.toBeInTheDocument();
@@ -176,6 +176,32 @@ describe('accessibility helpers', () => {
     fireEvent.keyDown(screen.getByRole('radio', { name: 'B' }), { key: 'Enter' });
 
     expect(onChange).toHaveBeenCalledWith('b');
+  });
+
+  it('expone el asterisco de un grupo requerido en una etiqueta asociada', () => {
+    render(
+      <MantineProvider env="test">
+        <AccessibleRadioGroup
+          name="tipo"
+          label="Tipo de problema"
+          value="a"
+          onChange={() => undefined}
+          required
+          options={[
+            { value: 'a', label: 'A' },
+            { value: 'b', label: 'B' },
+          ]}
+        />
+      </MantineProvider>
+    );
+
+    const group = screen.getByRole('radiogroup');
+    expect(group).toHaveAttribute('aria-required', 'true');
+    const labelId = group.getAttribute('aria-labelledby');
+    expect(labelId).toBeTruthy();
+    const label = document.getElementById(labelId ?? '');
+    expect(label?.tagName).toBe('LABEL');
+    expect(label?.textContent?.toLowerCase()).toMatch(/\*|requerido/);
   });
 
   it('renders skip links and toggles position on focus', () => {

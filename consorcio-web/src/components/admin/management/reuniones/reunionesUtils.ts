@@ -31,7 +31,7 @@ export function buildReferrableOptions(
     ...tramites.map((tramite) => ({
       value: tramite.id,
       label: `${tramite.titulo} (${tramite.numero_expediente || 'S/N'})`,
-      group: 'Tramites',
+      group: 'Trámites',
       type: 'tramite',
     })),
   ];

@@ -218,7 +218,7 @@ describe('api core', () => {
     const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
     clearAuthTokenCache();
 
-    await expect(apiFetch('/reports')).rejects.toThrow(/sesion ha expirado/i);
+    await expect(apiFetch('/reports')).rejects.toThrow(/sesión ha expirado/i);
 
     expect(global.fetch).toHaveBeenCalledOnce();
     expect(mockReplaceAccessToken).not.toHaveBeenCalled();
@@ -260,7 +260,7 @@ describe('api core', () => {
       })
     );
 
-    await expect(request).rejects.toThrow(/sesion ha expirado/i);
+    await expect(request).rejects.toThrow(/sesión ha expirado/i);
     expect(mockReplaceAccessToken).not.toHaveBeenCalled();
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
@@ -376,7 +376,7 @@ describe('api core', () => {
     await vi.advanceTimersByTimeAsync(5);
 
     await expect(observedRejection).resolves.toEqual(
-      new Error('La solicitud excedio el tiempo limite (0.025s)')
+      new Error('La solicitud excedió el tiempo límite (0.025s)')
     );
   });
 
@@ -450,7 +450,7 @@ describe('api core', () => {
     await bodyStarted;
     await vi.advanceTimersByTimeAsync(25);
 
-    expect(rejection).toEqual(new Error('La solicitud excedio el tiempo limite (0.025s)'));
+    expect(rejection).toEqual(new Error('La solicitud excedió el tiempo límite (0.025s)'));
     vi.useRealTimers();
   });
 
@@ -506,7 +506,7 @@ describe('api core', () => {
     await bodyStarted;
     await vi.advanceTimersByTimeAsync(25);
 
-    expect(rejection).toEqual(new Error('La solicitud excedio el tiempo limite (0.025s)'));
+    expect(rejection).toEqual(new Error('La solicitud excedió el tiempo límite (0.025s)'));
     vi.useRealTimers();
   });
 
@@ -561,7 +561,7 @@ describe('api core', () => {
     const abortError = new Error('aborted');
     abortError.name = 'AbortError';
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(abortError);
-    await expect(apiFetch('/stats')).rejects.toThrow(/tiempo limite/i);
+    await expect(apiFetch('/stats')).rejects.toThrow(/tiempo límite/i);
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,

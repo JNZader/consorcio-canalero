@@ -6,6 +6,7 @@
 const DEFERRED_VENDOR_PRELOAD = [
   /vendor-mantine-charts/,
   /vendor-mantine-dropzone/,
+  /vendor-mantine-dates/,
   /vendor-charts/,
   /vendor-maplibre/,
   /vendor-map-draw/,

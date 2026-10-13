@@ -50,7 +50,7 @@ async function fetchVersion(): Promise<VersionInfo | null> {
     return { sha: data.sha, buildTime: data.buildTime ?? '' };
   } catch (err) {
     // Offline / blocked / 404 — treat as "no info" rather than crashing.
-    logger.debug('[version-check] fetch failed', err);
+    logger.debug('[versión-check] fetch failed', err);
     return null;
   }
 }

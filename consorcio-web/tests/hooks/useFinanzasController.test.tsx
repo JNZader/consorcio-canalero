@@ -193,7 +193,7 @@ describe('useFinanzasController — gastos', () => {
     expect(bodyOf('/finanzas/gastos/g1', 'PATCH')).toEqual({ categoria: 'obras' });
     expect(result.current.editGastoOpened).toBe(false);
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Categoria actualizada', color: 'green' })
+      expect.objectContaining({ title: 'Categoría actualizada', color: 'green' })
     );
   });
 

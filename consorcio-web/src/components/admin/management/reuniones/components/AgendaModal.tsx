@@ -9,8 +9,8 @@ import {
   Paper,
   Stack,
   Text,
-  TextInput,
   Textarea,
+  TextInput,
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconLink, IconPlus, IconTrash } from '../../../../ui/icons';
@@ -53,7 +53,7 @@ export function AgendaModal({
   loadingEntities: boolean;
 }>) {
   return (
-    <Modal opened={opened} onClose={onClose} title="Orden del Dia" size="xl">
+    <Modal opened={opened} onClose={onClose} title="Orden del Día" size="xl">
       {selectedReunion && (
         <Stack gap="md">
           <Group justify="space-between">
@@ -89,7 +89,7 @@ export function AgendaModal({
           {agenda.length === 0 ? (
             <Paper p="xl" withBorder style={{ borderStyle: 'dashed' }}>
               <Text ta="center" c="dimmed">
-                No hay temas en la agenda todavia.
+                No hay temas en la agenda todavía.
               </Text>
             </Paper>
           ) : (
@@ -146,8 +146,8 @@ export function AgendaModal({
             <form onSubmit={form.onSubmit(onAddTopic)} noValidate>
               <Stack gap="xs">
                 <TextInput
-                  label="Titulo del tema"
-                  placeholder="Titulo del tema (Ej: Reparacion Puente FFCC)"
+                  label="Título del tema"
+                  placeholder="Título del tema (Ej: Reparacion Puente FFCC)"
                   size="sm"
                   required
                   {...form.getInputProps('titulo')}
@@ -158,17 +158,17 @@ export function AgendaModal({
                   }}
                 />
                 <Textarea
-                  label="Descripcion"
-                  placeholder="Descripcion o puntos a discutir..."
+                  label="Descripción"
+                  placeholder="Descripción o puntos a discutir..."
                   size="sm"
                   {...form.getInputProps('descripcion')}
                 />
                 <MultiSelect
                   label="Vincular con (@)"
-                  placeholder="Escribe para buscar reportes, tramites o activos..."
+                  placeholder="Escribí para buscar reportes, trámites o activos..."
                   data={availableEntities}
                   searchable
-                  nothingFoundMessage="No se encontro nada..."
+                  nothingFoundMessage="No se encontró nada..."
                   clearable
                   size="sm"
                   {...form.getInputProps('referencias')}
@@ -180,7 +180,7 @@ export function AgendaModal({
                     leftSection={<IconPlus size={14} />}
                     loading={loadingEntities}
                   >
-                    Anadir Tema
+                    Añadir Tema
                   </Button>
                 </Group>
               </Stack>

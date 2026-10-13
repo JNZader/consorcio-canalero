@@ -94,7 +94,7 @@ describe('useReunionesController — initial load', () => {
         group: 'Reportes',
         type: 'reporte',
       },
-      { value: 't1', label: 'Permiso (EXP-1)', group: 'Tramites', type: 'tramite' },
+      { value: 't1', label: 'Permiso (EXP-1)', group: 'Trámites', type: 'tramite' },
     ]);
   });
 
@@ -295,7 +295,7 @@ describe('useReunionesController — create meeting', () => {
     expect(body.orden_del_dia_items).toEqual(['Punto A', 'Punto B']);
     expect(body.fecha_reunion).toBe(new Date('2026-04-01T10:00').toISOString());
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Reunion creada', color: 'green' })
+      expect.objectContaining({ title: 'Reunión creada', color: 'green' })
     );
     expect(result.current.createOpened).toBe(false);
     expect(result.current.reunionForm.values.titulo).toBe('');
@@ -320,7 +320,7 @@ describe('useReunionesController — create meeting', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo crear la reunion', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo crear la reunión', color: 'red' })
     );
     expect(result.current.createOpened).toBe(true);
   });

@@ -25,10 +25,4 @@ import '@mantine/notifications/styles.css';
 
 // Dropzone CSS lives next to PhotoSection — importing it here made the
 // entry bundle static-import vendor-mantine-dropzone on every route.
-
-// Estilos del paquete de fechas (DatePicker, DatePickerInput,
-// DateTimePicker). Sin esto los chevrones del header del calendario se
-// renderizan a tamaño SVG natural (gigantes) y la grilla queda
-// desalineada — visible a ojo en SuggestionDetailModal cuando se abre
-// "Agendar para Reunión".
-import '@mantine/dates/styles.css';
+// Dates CSS lives next to SuggestionDetailModal for the same reason.

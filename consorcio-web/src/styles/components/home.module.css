@@ -9,7 +9,7 @@
 }
 
 [data-mantine-color-scheme="dark"] .heroGradient {
-  background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, #071f18 100%);
+  background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, var(--mantine-color-dark-9) 100%);
 }
 
 .waveDecoration {
@@ -57,5 +57,23 @@
 
 /* Dark mode: CTA section uses a deeper, richer gradient */
 [data-mantine-color-scheme="dark"] .ctaSection {
-  background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, #071f18 100%);
+  background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, var(--mantine-color-dark-9) 100%);
+}
+
+.statCard {
+  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  border-left: 4px solid var(--mantine-color-institucional-6);
+}
+
+.statCardHelp {
+  cursor: help;
+}
+
+.featureCardSurface {
+  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  border-left: 4px solid var(--mantine-color-acento-5);
+}
+
+.bandMuted {
+  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
 }

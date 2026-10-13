@@ -20,11 +20,11 @@ export function EditGastoModal({
   onSubmit: (values: EditGastoFormValues) => void | Promise<void>;
 }>) {
   return (
-    <Modal opened={opened} onClose={onClose} title="Editar categoria de gasto">
+    <Modal opened={opened} onClose={onClose} title="Editar categoría de gasto">
       <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <NativeSelect
-            label="Categoria"
+            label="Categoría"
             data={categoryData}
             required
             {...form.getInputProps('categoria')}
@@ -35,7 +35,7 @@ export function EditGastoModal({
             }}
           />
           <Button type="submit" fullWidth mt="md">
-            Actualizar categoria
+            Actualizar categoría
           </Button>
         </Stack>
       </form>

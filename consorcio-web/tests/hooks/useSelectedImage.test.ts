@@ -36,6 +36,7 @@ vi.mock('../../src/lib/api/mapImage', () => ({
 
 import {
   getSelectedImageSync,
+  resetPublicImageFetchForTests,
   useSelectedImage,
   useSelectedImageListener,
 } from '../../src/hooks/useSelectedImage';
@@ -120,7 +121,9 @@ describe('useSelectedImage', () => {
       days_buffer: 10,
       mode: null,
     });
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'selectedImageChange' }));
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'selectedImageChange' })
+    );
 
     act(() => {
       result.current.clearSelectedImage();
@@ -148,7 +151,7 @@ describe('useSelectedImage', () => {
         new StorageEvent('storage', {
           key: 'other_key',
           newValue: JSON.stringify({ ...baseImage, target_date: '2026-04-01' }),
-        }),
+        })
       );
     });
     expect(result.current.selectedImage?.target_date).toBe('2026-03-01');
@@ -158,7 +161,7 @@ describe('useSelectedImage', () => {
         new StorageEvent('storage', {
           key: STORAGE_KEY,
           newValue: JSON.stringify({ ...baseImage, target_date: '2026-04-01' }),
-        }),
+        })
       );
     });
     expect(result.current.selectedImage?.target_date).toBe('2026-04-01');
@@ -173,6 +176,7 @@ describe('useSelectedImageListener', () => {
   };
 
   beforeEach(() => {
+    resetPublicImageFetchForTests();
     store.clear();
     window.localStorage.getItem = vi.fn((key: string) => store.get(key) ?? null);
     window.localStorage.setItem = vi.fn((key: string, value: string) => {
@@ -192,7 +196,9 @@ describe('useSelectedImageListener', () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent('selectedImageChange', { detail: { ...baseImage, target_date: '2026-03-20' } }),
+        new CustomEvent('selectedImageChange', {
+          detail: { ...baseImage, target_date: '2026-03-20' },
+        })
       );
     });
     expect(result.current?.target_date).toBe('2026-03-20');
@@ -227,6 +233,39 @@ describe('useSelectedImageListener', () => {
     expect(mapImageApiMock.getImageParams).not.toHaveBeenCalled();
     expect(mapImageApiMock.regenerateTile).not.toHaveBeenCalled();
     expect(result.current?.collection).toBe('server-approved');
+  });
+
+  it('shares one public current-image request across listeners', async () => {
+    let resolveImage: (value: unknown) => void = () => {};
+    mapImageApiMock.getPublicCurrentImage.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveImage = resolve;
+        })
+    );
+
+    const first = renderHook(() => useSelectedImageListener());
+    const second = renderHook(() => useSelectedImageListener());
+    expect(mapImageApiMock.getPublicCurrentImage).toHaveBeenCalledTimes(1);
+
+    resolveImage({
+      status: 'available',
+      image: {
+        tile_url: 'https://tiles.test/shared',
+        target_date: '2026-03-05',
+        sensor: 'Sentinel-2',
+        visualization: 'true_color',
+        visualization_description: 'Natural color',
+        images_count: 1,
+        days_buffer: 10,
+        max_cloud: 20,
+        mode: 'scene',
+      },
+      reason: null,
+    });
+
+    await waitFor(() => expect(first.result.current?.tile_url).toBe('https://tiles.test/shared'));
+    await waitFor(() => expect(second.result.current?.tile_url).toBe('https://tiles.test/shared'));
   });
 });
 

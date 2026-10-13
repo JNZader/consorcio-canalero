@@ -32,7 +32,7 @@ export function EditIngresoModal({
       <form onSubmit={form.onSubmit(onSubmit)} noValidate>
         <Stack gap="sm">
           <TextInput
-            label="Descripcion"
+            label="Descripción"
             required
             {...form.getInputProps('descripcion')}
             errorProps={{
@@ -54,7 +54,7 @@ export function EditIngresoModal({
               }}
             />
             <NativeSelect
-              label="Categoria"
+              label="Categoría"
               data={categoryData}
               required
               {...form.getInputProps('categoria')}

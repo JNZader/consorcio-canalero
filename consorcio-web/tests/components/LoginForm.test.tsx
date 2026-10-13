@@ -4,6 +4,16 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const routerState = vi.hoisted(() => ({
+  search: {} as Record<string, unknown>,
+  navigate: vi.fn(),
+}));
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => routerState.navigate,
+  useSearch: () => routerState.search,
+}));
+
 import { LoginFormContent } from '../../src/components/LoginForm';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../../src/lib/auth';
 import { logger } from '../../src/lib/logger';
@@ -76,6 +86,23 @@ describe('LoginForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocation.href = '';
+    routerState.search = {};
+  });
+
+  it('abre el registro en la URL para que Atrás vuelva al login', async () => {
+    const user = userEvent.setup();
+    routerState.search = { modo: 'registro' };
+    renderForm();
+    expect(screen.getByRole('heading', { name: /crear cuenta/i })).toBeInTheDocument();
+
+    routerState.search = {};
+    renderForm();
+    await user.click(screen.getByRole('button', { name: /registrate/i }));
+    expect(routerState.navigate).toHaveBeenCalledWith({
+      to: '/login',
+      search: { modo: 'registro' },
+      replace: false,
+    });
   });
 
   it('renders login mode by default and switches to register mode', async () => {
@@ -113,7 +140,7 @@ describe('LoginForm', () => {
 
     await submitLogin(user, 'correo-invalido', '1234567');
 
-    expect(await screen.findByText(/email invalido/i)).toBeInTheDocument();
+    expect(await screen.findByText(/email inv[aá]lido/i)).toBeInTheDocument();
     expect(screen.getByText(/al menos 8 caracteres/i)).toBeInTheDocument();
     expect(signInWithEmail).not.toHaveBeenCalled();
   });
@@ -166,7 +193,7 @@ describe('LoginForm', () => {
     });
 
     expect(screen.getByText(/ingresá tu nombre/i)).toHaveAttribute('role', 'alert');
-    expect(screen.getByText(/al menos un numero/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/al menos un n[uú]mero/i)).toHaveAttribute('role', 'alert');
     expect(screen.getByText(/no coinciden/i)).toHaveAttribute('role', 'alert');
     expect(signUpWithEmail).not.toHaveBeenCalled();
   });
@@ -191,7 +218,7 @@ describe('LoginForm', () => {
     const user = userEvent.setup();
     vi.mocked(signInWithEmail).mockResolvedValue({
       success: false,
-      error: 'Email o contrasena incorrectos',
+      error: 'Email o contraseña incorrectos',
     });
     renderForm();
 
@@ -201,7 +228,7 @@ describe('LoginForm', () => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Error al iniciar sesión',
-          message: 'Email o contrasena incorrectos',
+          message: 'Email o contraseña incorrectos',
           color: 'red',
         })
       );
@@ -220,7 +247,7 @@ describe('LoginForm', () => {
     });
 
     expect(await screen.findByText(/ingresá tu nombre/i)).toBeInTheDocument();
-    expect(screen.getByText(/al menos un numero/i)).toBeInTheDocument();
+    expect(screen.getByText(/al menos un n[uú]mero/i)).toBeInTheDocument();
     expect(screen.getByText(/no coinciden/i)).toBeInTheDocument();
     expect(signUpWithEmail).not.toHaveBeenCalled();
   });

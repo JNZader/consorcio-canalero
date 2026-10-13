@@ -100,7 +100,7 @@ describe('resetPassword', () => {
 
     await expect(resetPassword('ana@example.com')).resolves.toEqual({
       success: false,
-      error: 'Error al enviar el email de recuperacion.',
+      error: 'Error al enviar el email de recuperación.',
     });
   });
 });
@@ -122,7 +122,7 @@ describe('updatePassword', () => {
 
     await expect(updatePassword('corta')).resolves.toEqual({
       success: false,
-      error: 'Error al cambiar la contrasena.',
+      error: 'Error al cambiar la contraseña.',
     });
   });
 });
@@ -180,7 +180,7 @@ describe('resetPasswordWithToken', () => {
 
     await expect(resetPasswordWithToken('tok-viejo', 'clave')).resolves.toEqual({
       success: false,
-      error: 'El enlace de recuperacion es invalido o ya expiro.',
+      error: 'El enlace de recuperación es inválido o ya expiró.',
     });
   });
 
@@ -190,14 +190,14 @@ describe('resetPasswordWithToken', () => {
     );
 
     const resultado = await resetPasswordWithToken('tok', '123');
-    expect(resultado.error).toBe('La contrasena no cumple los requisitos minimos de seguridad.');
+    expect(resultado.error).toBe('La contraseña no cumple los requisitos mínimos de seguridad.');
   });
 
   it('cae al motivo por defecto cuando el error viene sin detalle', async () => {
     fetchMock.mockResolvedValue(respuesta({ status: 500, json: async () => ({}) }));
 
     const resultado = await resetPasswordWithToken('tok', 'clave');
-    expect(resultado.error).toBe('El enlace de recuperacion es invalido o ya expiro.');
+    expect(resultado.error).toBe('El enlace de recuperación es inválido o ya expiró.');
   });
 });
 
@@ -214,7 +214,7 @@ describe('traduccion de errores de auth', () => {
     );
 
     const resultado = await verifyEmailWithToken('tok');
-    expect(resultado.error).toBe('Email o contrasena incorrectos');
+    expect(resultado.error).toBe('Email o contraseña incorrectos');
   });
 
   it('devuelve el mensaje original cuando no hay traduccion disponible', async () => {

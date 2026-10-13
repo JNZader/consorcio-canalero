@@ -44,7 +44,7 @@ const organizationSchema = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'Consorcio Canalero 10 de Mayo',
-  description: 'Organizacion dedicada a la gestion y monitoreo de cuencas hidricas',
+  description: 'Organización dedicada a la gestión y monitoreo de cuencas hídricas',
   url: 'https://consorcio10demayo.org',
   logo: 'https://consorcio10demayo.org/logo.svg',
   address: {
@@ -68,7 +68,7 @@ const organizationSchema = {
  */
 export function RootLayout({
   title,
-  description = 'Sistema de gestion y monitoreo de cuencas hidricas del Consorcio Canalero 10 de Mayo. Reporta incidentes, consulta el mapa interactivo y accede a estadisticas en tiempo real.',
+  description = 'Sistema de gestión y monitoreo de cuencas hídricas del Consorcio Canalero 10 de Mayo. Reportá incidentes, consulta el mapa interactivo y accede a estadisticas en tiempo real.',
   image = '/og-image.jpg',
   type = 'website',
   noindex = false,

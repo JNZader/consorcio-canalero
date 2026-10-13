@@ -66,8 +66,8 @@ function AuthExpiredHandler({ children }: { children: React.ReactNode }) {
   const handleExpired = useCallback(() => {
     reset();
     notifications.show({
-      title: 'Sesion expirada',
-      message: 'Tu sesion ha expirado. Por favor inicia sesion nuevamente.',
+      title: 'Sesión expirada',
+      message: 'Tu sesión ha expirado. Por favor iniciá sesión nuevamente.',
       color: 'red',
       autoClose: 5000,
     });

@@ -65,7 +65,7 @@ describe('Auth password forms', () => {
       );
     });
 
-    expect(screen.getByText(/al menos un numero/i)).toHaveAttribute('role', 'alert');
+    expect(screen.getByText(/al menos un n[uú]mero/i)).toHaveAttribute('role', 'alert');
     expect(screen.getByText(/no coinciden/i)).toHaveAttribute('role', 'alert');
     expect(resetPasswordWithToken).not.toHaveBeenCalled();
     expect(exchangeEmailCode).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe('Auth password forms', () => {
 
     const retry = await screen.findByRole('button', { name: /reintentar verificación/i });
     expect(screen.getByText(/problema temporal de conexión/i)).toBeInTheDocument();
-    expect(screen.queryByText(/este enlace de recuperacion es invalido/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/este enlace de recuperaci[oó]n es inv[aá]lido/i)).not.toBeInTheDocument();
 
     await user.click(retry);
 
@@ -144,7 +144,7 @@ describe('Auth password forms', () => {
 
     renderWithProvider(<ResetPasswordForm token="" code="EXPIRED1" />);
 
-    expect(await screen.findByText(/este enlace de recuperacion es invalido o expiró/i)).toBeInTheDocument();
+    expect(await screen.findByText(/este enlace de recuperaci[oó]n es inv[aá]lido o expir[oó]/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reintentar/i })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Mínimo 8 caracteres')).not.toBeInTheDocument();
   });

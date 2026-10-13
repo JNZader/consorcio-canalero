@@ -28,7 +28,7 @@ export function useReportLocation({ announce, form }: Readonly<UseReportLocation
     }
 
     setObteniendoUbicacion(true);
-    announce('Obteniendo ubicacion GPS...');
+    announce('Obteniendo ubicación GPS...');
     navigator.geolocation.getCurrentPosition(
       (position) => handleGeoSuccess(position, setUbicacion, setObteniendoUbicacion, announce),
       () => handleGeoError(setObteniendoUbicacion, announce),
@@ -39,7 +39,7 @@ export function useReportLocation({ announce, form }: Readonly<UseReportLocation
   const handleLocationSelect = useCallback(
     (lat: number, lng: number) => {
       setUbicacion({ lat, lng });
-      announce(`Ubicacion seleccionada: latitud ${lat.toFixed(4)}, longitud ${lng.toFixed(4)}`);
+      announce(`Ubicación seleccionada: latitud ${lat.toFixed(4)}, longitud ${lng.toFixed(4)}`);
     },
     [announce]
   );

@@ -14,11 +14,17 @@ import {
   Tooltip,
 } from '@mantine/core';
 import type { ReactNode } from 'react';
+import { isConfiguredSupportPhone, SUPPORT_PHONE } from '../constants';
 import { useLandingStats } from '../hooks/useLandingStats';
 import { withBasePath } from '../lib/basePath';
 import styles from '../styles/components/home.module.css';
-import { IconInfoCircle } from './ui/icons';
-import { IconChartBar, IconClipboardList, IconLightbulb, IconMap } from './ui/icons';
+import {
+  IconChartBar,
+  IconClipboardList,
+  IconInfoCircle,
+  IconLightbulb,
+  IconMap,
+} from './ui/icons';
 
 function formatNumber(n: number, opts: { decimals?: number } = {}): string {
   return n.toLocaleString('es-AR', {
@@ -29,7 +35,9 @@ function formatNumber(n: number, opts: { decimals?: number } = {}): string {
 
 function CaminosTooltipContent({
   rows,
-}: { rows: { nombre: string; codigo: string; km: number }[] }) {
+}: {
+  rows: { nombre: string; codigo: string; km: number }[];
+}) {
   return (
     <Stack gap={4}>
       <Text size="xs" fw={600} mb={4}>
@@ -37,7 +45,7 @@ function CaminosTooltipContent({
       </Text>
       {rows.map((c) => (
         <Group key={c.codigo} justify="space-between" gap="xl" wrap="nowrap">
-          <Text size="xs" lineClamp={1} style={{ maxWidth: 180 }}>
+          <Text size="xs" lineClamp={1} maw={180}>
             {c.nombre}
           </Text>
           <Text size="xs" fw={600}>
@@ -51,7 +59,9 @@ function CaminosTooltipContent({
 
 function CanalesTooltipContent({
   rows,
-}: { rows: { label: string; tramos: number; km: number }[] }) {
+}: {
+  rows: { label: string; tramos: number; km: number }[];
+}) {
   return (
     <Stack gap={4}>
       <Text size="xs" fw={600} mb={4}>
@@ -59,7 +69,7 @@ function CanalesTooltipContent({
       </Text>
       {rows.map((r) => (
         <Group key={r.label} justify="space-between" gap="xl" wrap="nowrap">
-          <Text size="xs" lineClamp={1} style={{ maxWidth: 220 }}>
+          <Text size="xs" lineClamp={1} maw={220}>
             {r.label}
             {r.tramos > 1 ? ` · ${r.tramos} tramos` : ''}
           </Text>
@@ -196,12 +206,12 @@ export function HomeContent() {
             <Badge size="lg" variant="light" color="white">
               Departamento Unión, Córdoba
             </Badge>
-            <Title order={1} ta="center" c="white" size={48} style={{ maxWidth: 700 }}>
+            <Title order={1} ta="center" c="white" size={48} maw={700}>
               Consorcio Canalero 10 de Mayo
             </Title>
             <Text size="xl" ta="center" c="white" maw={600}>
-              Sistema colaborativo de gestion territorial para el monitoreo de cuencas, caminos
-              rurales e infraestructura hidrica
+              Sistema colaborativo de gestión territorial para el monitoreo de cuencas, caminos
+              rurales e infraestructura hídrica
             </Text>
             <Group mt="md">
               <Button
@@ -233,11 +243,7 @@ export function HomeContent() {
 
       {/* Stats Section */}
       <Container size="lg" className={styles.statsSection}>
-        <SimpleGrid
-          cols={{ base: 1, sm: 3 }}
-          spacing="xl"
-          style={{ maxWidth: 860, margin: '0 auto' }}
-        >
+        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl" maw={860} mx="auto">
           {STATS.map((stat) => {
             const hasTooltip = !!stat.tooltip;
             const cardContent = (
@@ -245,11 +251,7 @@ export function HomeContent() {
                 padding="lg"
                 radius="md"
                 shadow="sm"
-                style={{
-                  background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
-                  borderLeft: '4px solid var(--mantine-color-institucional-6)',
-                  cursor: hasTooltip ? 'help' : 'default',
-                }}
+                className={`${styles.statCard} ${hasTooltip ? styles.statCardHelp : ''}`}
               >
                 <Stack align="center" gap="xs">
                   <Text size="xl" fw={700} c="institucional.7">
@@ -289,19 +291,14 @@ export function HomeContent() {
       </Container>
 
       {/* Features Section */}
-      <Box
-        style={{
-          background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
-        }}
-        className={styles.featuresSection}
-      >
+      <Box className={`${styles.featuresSection} ${styles.bandMuted}`}>
         <Container size="lg">
           <Stack align="center" mb="xl">
             <Title order={2} ta="center">
               Funcionalidades
             </Title>
             <Text size="lg" c="gray.6" ta="center" maw={600}>
-              Herramientas para la gestion territorial y la participacion ciudadana
+              Herramientas para la gestión territorial y la participación ciudadana
             </Text>
           </Stack>
 
@@ -314,11 +311,7 @@ export function HomeContent() {
                 shadow="sm"
                 component="a"
                 href={withBasePath(feature.href)}
-                className={styles.featureCard}
-                style={{
-                  background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
-                  borderLeft: '4px solid var(--mantine-color-acento-5)',
-                }}
+                className={`${styles.featureCard} ${styles.featureCardSurface}`}
               >
                 <ThemeIcon size="xl" radius="md" variant="light" color="institucional" mb="md">
                   {feature.icon}
@@ -353,7 +346,7 @@ export function HomeContent() {
                     <Badge size="lg" variant="light" color="institucional" radius="xl">
                       {idx + 1}
                     </Badge>
-                    <Text size="md" c="dimmed" style={{ flex: 1 }}>
+                    <Text size="md" c="dimmed" flex={1}>
                       {bullet}
                     </Text>
                   </Group>
@@ -363,12 +356,7 @@ export function HomeContent() {
           </Container>
 
           {/* F5-I item #5: FAQ */}
-          <Box
-            style={{
-              background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
-            }}
-            py="xl"
-          >
+          <Box className={styles.bandMuted} py="xl">
             <Container size="md">
               <Stack align="center" mb="xl">
                 <Title order={2} ta="center">
@@ -417,32 +405,34 @@ export function HomeContent() {
                       c="institucional.7"
                       component="a"
                       href="mailto:contacto@consorcio10demayo.gob.ar"
-                      style={{ textDecoration: 'none' }}
+                      td="none"
                     >
                       contacto@consorcio10demayo.gob.ar
                     </Text>
                   </Stack>
                 </Card>
-                <Card padding="lg" radius="md" shadow="sm" withBorder>
-                  <Stack gap={4} align="center">
-                    <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
-                      Teléfono
-                    </Text>
-                    <Text
-                      size="md"
-                      fw={600}
-                      c="institucional.7"
-                      component="a"
-                      href="tel:+543534000000"
-                      style={{ textDecoration: 'none' }}
-                    >
-                      +54 353 400-0000
-                    </Text>
-                    <Text size="xs" c="gray.6">
-                      Lun a Vie 8:00–14:00
-                    </Text>
-                  </Stack>
-                </Card>
+                {isConfiguredSupportPhone(SUPPORT_PHONE) && (
+                  <Card padding="lg" radius="md" shadow="sm" withBorder>
+                    <Stack gap={4} align="center">
+                      <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
+                        Teléfono
+                      </Text>
+                      <Text
+                        size="md"
+                        fw={600}
+                        c="institucional.7"
+                        component="a"
+                        href={`tel:${SUPPORT_PHONE}`}
+                        td="none"
+                      >
+                        {SUPPORT_PHONE}
+                      </Text>
+                      <Text size="xs" c="gray.6">
+                        Lun a Vie 8:00–14:00
+                      </Text>
+                    </Stack>
+                  </Card>
+                )}
               </SimpleGrid>
             </Stack>
           </Container>
@@ -457,7 +447,7 @@ export function HomeContent() {
               Ayuda a mantener nuestras cuencas
             </Title>
             <Text size="lg" c="white" ta="center" maw={500}>
-              Reporta problemas en la infraestructura hidrica y colabora con el mantenimiento de
+              Reportá problemas en la infraestructura hídrica y colaborá con el mantenimiento de
               caminos y canales
             </Text>
             <Button

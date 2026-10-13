@@ -94,7 +94,7 @@ interface HandleErrorOptions {
 export function handleError(error: unknown, options: HandleErrorOptions = {}): string {
   const {
     title = 'Error',
-    fallbackMessage = 'Ocurrio un error inesperado',
+    fallbackMessage = 'Ocurrió un error inesperado',
     showNotification = true,
     color = 'red',
     logToConsole = true,

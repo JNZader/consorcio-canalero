@@ -5,27 +5,24 @@ import {
   Button,
   Divider,
   LoadingOverlay,
-  Overlay,
   Paper,
   Select,
   Stack,
   Text,
-  TextInput,
   Textarea,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useContactVerification } from '../hooks/useContactVerification';
+import { loadSuggestionDraft } from '../lib/formDrafts';
 import { MAX_LENGTHS, validators } from '../lib/validators';
+import type { DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { SuggestionGeometrySection } from './suggestion-form/SuggestionGeometrySection';
 import { SuggestionStepIndicator } from './suggestion-form/SuggestionStepIndicator';
 import { CATEGORIAS } from './suggestion-form/suggestionFormConstants';
-import {
-  FormFieldWithSkeleton,
-  SuccessScreen,
-  getStep2Badge,
-} from './suggestion-form/suggestionFormUtils';
+import { getStep2Badge, SuccessScreen } from './suggestion-form/suggestionFormUtils';
 import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState';
 import { LiveRegionProvider, VisuallyHidden } from './ui/accessibility';
 import { ContactVerificationSection } from './verification';
@@ -90,6 +87,22 @@ function FormularioContenido() {
     setGeometry,
   } = suggestionState;
 
+  const restoredDraft = useRef(false);
+  useEffect(() => {
+    if (restoredDraft.current) return;
+    restoredDraft.current = true;
+    const draft = loadSuggestionDraft();
+    if (!draft) return;
+    form.setValues({
+      titulo: draft.titulo,
+      descripcion: draft.descripcion,
+      categoria: draft.categoria,
+    });
+    if (draft.geometry) {
+      setGeometry(draft.geometry as DrawnLineFeatureCollection);
+    }
+  }, [form, setGeometry]);
+
   if (enviado) {
     return <SuccessScreen remainingToday={remainingToday} onReset={resetSuccess} />;
   }
@@ -99,7 +112,7 @@ function FormularioContenido() {
       <LoadingOverlay visible={enviando} />
       {enviando && (
         <VisuallyHidden as="p" role="status" aria-live="polite">
-          Enviando sugerencia, por favor espera.
+          Enviando sugerencia, por favor esperá.
         </VisuallyHidden>
       )}
 
@@ -107,7 +120,7 @@ function FormularioContenido() {
         Enviar Sugerencia
       </Title>
       <Text c="gray.6" mb="xl">
-        Propone temas o mejoras para que la comision las considere en sus proximas reuniones
+        Proponé temas o mejoras para que la comisión las considere en sus próximas reuniones
       </Text>
 
       <Box mb="xl">
@@ -131,7 +144,8 @@ function FormularioContenido() {
           loading={loading}
           onLoginWithGoogle={loginWithGoogle}
           onLogout={handleCambiarContacto}
-          verificationExplanation="Para evitar spam, necesitamos verificar tu identidad. Limite: 5 sugerencias cada 24 horas."
+          verificationExplanation="Para evitar spam, necesitamos verificar tu identidad. Límite: 5 sugerencias cada 24 horas."
+          privacyNote="Solo usamos tu email para identificarte y notificarte sobre tu sugerencia."
         />
       </Box>
 
@@ -141,100 +155,70 @@ function FormularioContenido() {
         <SuggestionStepIndicator
           step="2"
           isComplete={false}
-          isDisabled={!contactoVerificado}
           label="Completar sugerencia"
           badge={getStep2Badge(contactoVerificado, remainingToday)}
         />
 
         {!contactoVerificado && (
-          <Overlay
-            style={{ background: 'light-dark(rgba(255,255,255,0.6), rgba(36,36,36,0.6))' }}
-            backgroundOpacity={0}
-            blur={2}
-            zIndex={5}
-            radius="md"
-          />
+          <Alert color="blue" variant="light" mb="md">
+            Podés completar la sugerencia ahora. Al enviarla te pedimos verificar la identidad para
+            evitar spam.
+          </Alert>
         )}
 
         <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="md">
             {remainingToday === 0 && contactoVerificado && (
               <Alert color="red" variant="light" role="alert" aria-live="assertive">
-                Llegaste al limite de 5 sugerencias cada 24 horas. Volvé más tarde.
+                Llegaste al límite de 5 sugerencias cada 24 horas. Volvé más tarde.
               </Alert>
             )}
 
-            <FormFieldWithSkeleton
-              label="Titulo de la sugerencia"
-              isVerified={contactoVerificado}
-              skeletonHeight={36}
-            >
-              <TextInput
-                label="Titulo de la sugerencia"
-                placeholder="Resume tu propuesta en una frase"
-                required
-                disabled={remainingToday === 0}
-                maxLength={MAX_LENGTHS.TITULO}
-                description={`Maximo ${MAX_LENGTHS.TITULO} caracteres`}
-                {...form.getInputProps('titulo')}
-                errorProps={{
-                  id: SUGGESTION_TITLE_ERROR_ID,
-                  role: 'alert',
-                  'aria-live': 'assertive',
-                }}
-              />
-            </FormFieldWithSkeleton>
+            <TextInput
+              label="Título de la sugerencia"
+              placeholder="Resumí tu propuesta en una frase"
+              required
+              disabled={remainingToday === 0}
+              maxLength={MAX_LENGTHS.TITULO}
+              description={`Máximo ${MAX_LENGTHS.TITULO} caracteres`}
+              {...form.getInputProps('titulo')}
+              errorProps={{
+                id: SUGGESTION_TITLE_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
+            />
 
-            <FormFieldWithSkeleton
-              label="Categoria"
-              isVerified={contactoVerificado}
-              skeletonHeight={36}
-            >
-              <Select
-                label="Categoria"
-                placeholder="Selecciona una categoria"
-                data={CATEGORIAS}
-                clearable
-                disabled={remainingToday === 0}
-                {...form.getInputProps('categoria')}
-              />
-            </FormFieldWithSkeleton>
+            <Select
+              label="Categoría"
+              placeholder="Seleccioná una categoría"
+              data={CATEGORIAS}
+              clearable
+              disabled={remainingToday === 0}
+              {...form.getInputProps('categoria')}
+            />
 
-            <FormFieldWithSkeleton
-              label="Descripcion"
-              isVerified={contactoVerificado}
-              skeletonHeight={120}
-            >
-              <Textarea
-                label="Descripcion"
-                placeholder="Explica tu sugerencia con el mayor detalle posible..."
-                minRows={5}
-                required
-                disabled={remainingToday === 0}
-                maxLength={MAX_LENGTHS.DESCRIPCION}
-                description={`Maximo ${MAX_LENGTHS.DESCRIPCION} caracteres`}
-                {...form.getInputProps('descripcion')}
-                errorProps={{
-                  id: SUGGESTION_DESCRIPTION_ERROR_ID,
-                  role: 'alert',
-                  'aria-live': 'assertive',
-                }}
-              />
-            </FormFieldWithSkeleton>
+            <Textarea
+              label="Descripción"
+              placeholder="Explicá tu sugerencia con el mayor detalle posible..."
+              minRows={5}
+              required
+              disabled={remainingToday === 0}
+              maxLength={MAX_LENGTHS.DESCRIPCION}
+              description={`Máximo ${MAX_LENGTHS.DESCRIPCION} caracteres`}
+              {...form.getInputProps('descripcion')}
+              errorProps={{
+                id: SUGGESTION_DESCRIPTION_ERROR_ID,
+                role: 'alert',
+                'aria-live': 'assertive',
+              }}
+            />
 
-            <FormFieldWithSkeleton
-              label="Canal en mapa"
-              isVerified={contactoVerificado}
-              skeletonHeight={360}
-            >
-              <SuggestionGeometrySection geometry={geometry} onChange={setGeometry} />
-            </FormFieldWithSkeleton>
+            <SuggestionGeometrySection geometry={geometry} onChange={setGeometry} />
 
-            <FormFieldWithSkeleton label="" isVerified={contactoVerificado} skeletonHeight={42}>
-              <Button type="submit" size="lg" fullWidth mt="md" disabled={remainingToday === 0}>
-                Enviar Sugerencia
-              </Button>
-            </FormFieldWithSkeleton>
+            <Button type="submit" size="lg" fullWidth mt="md" disabled={remainingToday === 0}>
+              Enviar Sugerencia
+            </Button>
           </Stack>
         </form>
       </Box>

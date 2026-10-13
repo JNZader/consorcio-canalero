@@ -120,7 +120,7 @@ export function buildVisualizationOptions(
     const safeVisualizations = Array.isArray(visualizations) ? visualizations : [];
     return safeVisualizations.map((v, index) => ({
       value: v.id || `visualization-${index}`,
-      label: v.description || v.id || `Visualizacion ${index + 1}`,
+      label: v.description || v.id || `Visualización ${index + 1}`,
     }));
   }
   return [
