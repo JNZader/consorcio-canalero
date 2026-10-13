@@ -347,7 +347,6 @@ callarlo.
 
 ## Parche de Mantine (CI-03)
 
-`consorcio-web/patches/@mantine+core+9.6.3.patch` reemplaza al archivo
-`9.6.2`, que patch-package no aplicaba porque el lock instala 9.6.3. El
-arreglo de `getEnv` y el de las transiciones en `env === "test"` siguen
-haciendo falta en 9.6.3. No se subió Mantine a 9.7.
+`consorcio-web/patches/@mantine+core+9.7.2.patch` sigue al lock, que instala
+9.7.2. El arreglo de `getEnv` y el de las transiciones en `env === "test"`
+siguen haciendo falta en esa versión.
