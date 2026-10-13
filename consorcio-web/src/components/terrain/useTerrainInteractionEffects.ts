@@ -29,7 +29,7 @@
  */
 
 import type { Feature } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
 
 import { buildClickableLayers3D, filterExistingLayers } from './terrainViewer3DUtils';

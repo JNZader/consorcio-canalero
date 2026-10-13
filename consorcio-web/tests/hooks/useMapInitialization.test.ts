@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -104,7 +104,7 @@ describe('useMapInitialization', () => {
     expect(nextEvent.defaultPrevented).toBe(false);
   });
 
-  it('creates a map, registers controls and disposes on unmount', () => {
+  it('creates a map, registers controls and disposes on unmount', async () => {
     const mockMap = {
       addControl: vi.fn(),
       on: vi.fn(),
@@ -147,6 +147,7 @@ describe('useMapInitialization', () => {
       })
     );
 
+    await waitFor(() => expect(mapConstructor).toHaveBeenCalled());
     expect(mapConstructor).toHaveBeenCalledWith(
       expect.objectContaining({
         container: containerRef.current,
@@ -166,7 +167,7 @@ describe('useMapInitialization', () => {
     expect(setMapReady).toHaveBeenCalledWith(false);
   });
 
-  it('registers a FullscreenControl at top-right on the 2D map', () => {
+  it('registers a FullscreenControl at top-right on the 2D map', async () => {
     const mockMap = {
       addControl: vi.fn(),
       on: vi.fn(),
@@ -209,7 +210,7 @@ describe('useMapInitialization', () => {
       })
     );
 
-    expect(FullscreenControl).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(FullscreenControl).toHaveBeenCalledTimes(1));
     const fullscreenCall = mockMap.addControl.mock.calls.find(
       ([control]) => control && control.fullscreen === true
     );
@@ -217,7 +218,7 @@ describe('useMapInitialization', () => {
     expect(fullscreenCall?.[1]).toBe('top-right');
   });
 
-  it('initializes the MapLibre map with preserveDrawingBuffer=true so PNG/PDF export is not blank', () => {
+  it('initializes the MapLibre map with preserveDrawingBuffer=true so PNG/PDF export is not blank', async () => {
     const mockMap = {
       addControl: vi.fn(),
       on: vi.fn(),
@@ -260,6 +261,7 @@ describe('useMapInitialization', () => {
       })
     );
 
+    await waitFor(() => expect(mapConstructor).toHaveBeenCalled());
     expect(mapConstructor).toHaveBeenCalledWith(
       expect.objectContaining({
         canvasContextAttributes: { preserveDrawingBuffer: true },
@@ -312,8 +314,8 @@ describe('useMapInitialization — onMapError', () => {
     return { mockMap, maplibre, containerRef, mapRef, emitError };
   }
 
-  it('hands the callback an ALREADY CLASSIFIED tile error', () => {
-    const { maplibre, containerRef, mapRef, emitError } = setup();
+  it('hands the callback an ALREADY CLASSIFIED tile error', async () => {
+    const { mockMap, maplibre, containerRef, mapRef, emitError } = setup();
     const onMapError = vi.fn();
 
     renderHook(() =>
@@ -333,6 +335,7 @@ describe('useMapInitialization — onMapError', () => {
       status: 404,
       url: 'https://tiles.example/1/2/3.png',
     });
+    await waitFor(() => expect(mockMap.on).toHaveBeenCalled());
     emitError({ sourceId: 'dem-tiles', error });
 
     expect(onMapError).toHaveBeenCalledTimes(1);
@@ -348,8 +351,8 @@ describe('useMapInitialization — onMapError', () => {
     });
   });
 
-  it('still routes a NON-tile error to logger.error (unchanged behaviour)', () => {
-    const { maplibre, containerRef, mapRef, emitError } = setup();
+  it('still routes a NON-tile error to logger.error (unchanged behaviour)', async () => {
+    const { mockMap, maplibre, containerRef, mapRef, emitError } = setup();
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     const onMapError = vi.fn();
 
@@ -367,6 +370,7 @@ describe('useMapInitialization — onMapError', () => {
     );
 
     const realError = new Error('Style is not done loading');
+    await waitFor(() => expect(mockMap.on).toHaveBeenCalled());
     emitError({ error: realError });
 
     expect(onMapError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'other' }));
@@ -374,8 +378,8 @@ describe('useMapInitialization — onMapError', () => {
     errorSpy.mockRestore();
   });
 
-  it('does NOT log a tile error to logger.error', () => {
-    const { maplibre, containerRef, mapRef, emitError } = setup();
+  it('does NOT log a tile error to logger.error', async () => {
+    const { mockMap, maplibre, containerRef, mapRef, emitError } = setup();
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
 
     renderHook(() =>
@@ -391,13 +395,14 @@ describe('useMapInitialization — onMapError', () => {
       })
     );
 
+    await waitFor(() => expect(mockMap.on).toHaveBeenCalled());
     emitError({ tile: {}, error: new Error('boom') });
 
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
-  it('NEVER remounts the map when the callback identity changes', () => {
+  it('NEVER remounts the map when the callback identity changes', async () => {
     const { mockMap, maplibre, containerRef, mapRef, emitError } = setup();
     const first = vi.fn();
     const second = vi.fn();
@@ -426,6 +431,7 @@ describe('useMapInitialization — onMapError', () => {
     rerender({ onMapError: second as (e: unknown) => void });
     rerender({ onMapError: third as (e: unknown) => void });
 
+    await waitFor(() => expect(maplibre.Map).toHaveBeenCalledTimes(1));
     expect(mockMap.remove).not.toHaveBeenCalled();
     expect(maplibre.Map).toHaveBeenCalledTimes(1);
 
@@ -439,8 +445,8 @@ describe('useMapInitialization — onMapError', () => {
     expect(second).not.toHaveBeenCalled();
   });
 
-  it('keeps working when no callback is passed at all', () => {
-    const { maplibre, containerRef, mapRef, emitError } = setup();
+  it('keeps working when no callback is passed at all', async () => {
+    const { mockMap, maplibre, containerRef, mapRef, emitError } = setup();
 
     renderHook(() =>
       useMapInitialization({
@@ -454,6 +460,7 @@ describe('useMapInitialization — onMapError', () => {
       })
     );
 
+    await waitFor(() => expect(mockMap.on).toHaveBeenCalled());
     expect(() => emitError({ tile: {}, error: new Error('boom') })).not.toThrow();
   });
 });

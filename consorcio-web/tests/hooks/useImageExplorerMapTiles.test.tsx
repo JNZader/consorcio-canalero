@@ -35,21 +35,24 @@ const mapaSimulado = {
   resize: vi.fn(),
 };
 
-vi.mock('maplibre-gl', () => ({
-  default: {
-    // `function` y no arrow: el hook hace `new maplibregl.Map(...)` y una
-    // arrow no puede usarse como constructor.
-    Map: vi.fn(function MapaFalso() {
-      return mapaSimulado;
-    }),
-    NavigationControl: vi.fn(function NavFalso() {
-      return {};
-    }),
-    FullscreenControl: vi.fn(function PantallaCompletaFalsa() {
-      return {};
-    }),
-  },
-}));
+vi.mock('maplibre-gl', () => {
+  const Map = vi.fn(function MapaFalso() {
+    return mapaSimulado;
+  });
+  const NavigationControl = vi.fn(function NavFalso() {
+    return {};
+  });
+  const FullscreenControl = vi.fn(function PantallaCompletaFalsa() {
+    return {};
+  });
+  return {
+    Map,
+    NavigationControl,
+    FullscreenControl,
+    setWorkerUrl: () => {},
+    default: { Map, NavigationControl, FullscreenControl },
+  };
+});
 vi.mock('maplibre-gl/dist/maplibre-gl.css', () => ({}));
 vi.mock('../../src/lib/api', () => ({
   apiFetch: vi.fn(() => new Promise(() => undefined)),

@@ -15,7 +15,7 @@
  * required; `zoom` defaults to 15 when missing or invalid.
  */
 
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useMemo, useRef } from 'react';
 
 interface ReportHighlight {

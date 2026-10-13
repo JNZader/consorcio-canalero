@@ -1,8 +1,7 @@
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson';
-import maplibregl, {
-  type DataDrivenPropertyValueSpecification,
-  type FilterSpecification,
-} from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { DataDrivenPropertyValueSpecification, FilterSpecification } from 'maplibre-gl';
+import { bootMapLibreWorker } from '../../lib/maplibreLoader';
 import { useEffect, useRef } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -316,6 +315,7 @@ export function CanalesPublicacionMap({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    bootMapLibreWorker();
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: {

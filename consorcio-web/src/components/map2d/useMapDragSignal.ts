@@ -25,7 +25,7 @@
  * without cycling `mapReady` breaks this hook.
  */
 
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useState } from 'react';
 
 /** The map event that arms the auto-minimize. Exported so tests pin the choice. */

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import { useHazardUrlState, type BasinCatalogStatus } from '../../hooks/useHazardUrlState';

@@ -67,6 +67,10 @@ export default defineConfig({
       '@lib': resolve(rootDir, './src/lib'),
       '@types': resolve(rootDir, './src/types'),
       '@constants': resolve(rootDir, './src/constants'),
+      'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url': resolve(
+        rootDir,
+        './tests/stubs/maplibre-worker-url.ts',
+      ),
     },
   },
 });

@@ -44,6 +44,7 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { useEffect, useRef } from 'react';
 import { useMapboxDrawSlot } from '../../stores/mapboxDrawSlot';
+import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
 import { ensureMapboxDrawCompatibility } from './mapboxDrawCompatibility';
 import { MAPBOX_DRAW_LINE_STYLES, removeMapboxDrawArtifacts } from './mapboxDrawShared';
 
@@ -129,16 +130,16 @@ export default function LineDrawControl({ map, value, onChange }: LineDrawContro
       removeMapboxDrawArtifacts(map);
     };
 
-    map.on('draw.create', emitCurrent);
-    map.on('draw.update', emitCurrent);
-    map.on('draw.delete', emitCurrent);
-    map.on('webglcontextlost', handleContextLost);
+    listenMapEvent(map, 'draw.create', emitCurrent);
+    listenMapEvent(map, 'draw.update', emitCurrent);
+    listenMapEvent(map, 'draw.delete', emitCurrent);
+    listenMapEvent(map, 'webglcontextlost', handleContextLost);
 
     return () => {
-      map.off('draw.create', emitCurrent);
-      map.off('draw.update', emitCurrent);
-      map.off('draw.delete', emitCurrent);
-      map.off('webglcontextlost', handleContextLost);
+      unlistenMapEvent(map, 'draw.create', emitCurrent);
+      unlistenMapEvent(map, 'draw.update', emitCurrent);
+      unlistenMapEvent(map, 'draw.delete', emitCurrent);
+      unlistenMapEvent(map, 'webglcontextlost', handleContextLost);
       try {
         removeMapboxDrawArtifacts(map);
         if (map.hasControl(draw as unknown as import('maplibre-gl').IControl)) {

@@ -4,15 +4,13 @@ Campaign from `auditoria-v6.pdf` (12/10/2026, base `6f76b97`). One theme per PR.
 
 ## Wave A (parallel, no MapLibre API)
 
-- [ ] FE-01 — `/assets/*` 404 before SPA fallback + `vite:preloadError` (same reload guard as chunk errors)
-- [ ] UI-07 — finite `longitud_m` on landing; SQL `COALESCE` + `ST_Length` on public canales
-- [ ] MAP-06 — drop CARTO Voyager watermark; Esri World Street Map raster (same host as satellite)
+- [x] FE-01 — #479
+- [x] UI-07 + MAP-06 — #482
 
 ## Wave B (after A, or MAP-07 before MapLibre)
 
-- [ ] MAP-07 — pass live `mapZoom` into every `LayerControlsPanel`
-- [ ] MAP-13 — do not POST elevation-profile for anonymous visitors
-- [ ] MapLibre 6 — pin ≥6.4.1, namespace imports, Vite `setWorkerUrl`, keep mapbox-gl-draw
+- [x] MAP-07 + MAP-13 — #483
+- [x] MapLibre 6 — pin 6.14.0, namespace imports, Vite `setWorkerUrl`, keep mapbox-gl-draw
 
 ## Wave C
 

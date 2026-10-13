@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 import { buildTileUrl, findPrecipNormalLayer, type GeoLayerInfo } from '../../hooks/useGeoLayers';
 import { HAZARD_RISK_CLASSES } from '../../hooks/useHazardUrlState';

@@ -1,6 +1,8 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
+import { bootMapLibreWorker } from '../../lib/maplibreLoader';
+import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
 import { TILE_LAYERS } from '../../constants/mapStyles';
 import { logger } from '../../lib/logger';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
@@ -108,8 +110,21 @@ export function useMapInitialization({
     if (!containerRef.current) return;
 
     const removeNativeDragGuards = installMapNativeDragGuards(containerRef.current);
+    let cancelled = false;
+    let map: maplibregl.Map | undefined;
+    const onContextLost = (event: { preventDefault?: () => void }) => {
+      event.preventDefault?.();
+      setMapReady(false);
+    };
+    const onContextRestored = () => {
+      setMapReady(true);
+    };
 
-    const map = new maplibre.Map({
+    void (async () => {
+      try {
+        await bootMapLibreWorker();
+        if (cancelled || !containerRef.current) return;
+        map = new maplibre.Map({
       container: containerRef.current,
       style: {
         version: 8,
@@ -183,43 +198,56 @@ export function useMapInitialization({
       hash: 'v',
       locale: { ...MAP_LOCALE_ES },
     });
-
-    map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new maplibre.FullscreenControl(), 'top-right');
-    map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
-
-    map.on('load', () => {
-      setMapReady(true);
-    });
-    const onContextLost = (event: { preventDefault?: () => void }) => {
-      event.preventDefault?.();
-      setMapReady(false);
-    };
-    const onContextRestored = () => {
-      setMapReady(true);
-    };
-    map.on('webglcontextlost', onContextLost);
-    map.on('webglcontextrestored', onContextRestored);
-
-    map.on('error', (event) => {
-      // Same heuristic as before, now shared with the tile-health counter —
-      // see `mapErrorClassify.ts`.
-      const classified = classifyMapError(event);
-      onMapErrorRef.current?.(classified);
-      if (classified.kind !== 'tile') {
-        logger.error('MapaMapLibre error', event.error);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : 'Error desconocido';
+      onMapErrorRef.current?.({
+        kind: 'other',
+        sourceId: null,
+        sourceType: null,
+        status: null,
+        url: null,
+        message: `Error al cargar el mapa: ${detail}`,
+      });
+      logger.error('MapaMapLibre failed to construct', error);
+      return;
+    }
+      if (cancelled) {
+        map.remove();
+        return;
       }
-    });
 
-    mapRef.current = map;
+      map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right');
+      map.addControl(new maplibre.FullscreenControl(), 'top-right');
+      map.addControl(new maplibre.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+      map.on('load', () => {
+        setMapReady(true);
+      });
+      listenMapEvent(map, 'webglcontextlost', onContextLost);
+      listenMapEvent(map, 'webglcontextrestored', onContextRestored);
+
+      map.on('error', (event) => {
+        const classified = classifyMapError(event);
+        onMapErrorRef.current?.(classified);
+        if (classified.kind !== 'tile') {
+          logger.error('MapaMapLibre error', event.error);
+        }
+      });
+
+      mapRef.current = map;
+    })();
 
     return () => {
-      if (typeof map.off === 'function') {
-        map.off('webglcontextlost', onContextLost);
-        map.off('webglcontextrestored', onContextRestored);
+      cancelled = true;
+      if (map) {
+        if (typeof map.off === 'function') {
+          unlistenMapEvent(map, 'webglcontextlost', onContextLost);
+          unlistenMapEvent(map, 'webglcontextrestored', onContextRestored);
+        }
+        map.remove();
       }
       removeNativeDragGuards();
-      map.remove();
       mapRef.current = null;
       setMapReady(false);
     };

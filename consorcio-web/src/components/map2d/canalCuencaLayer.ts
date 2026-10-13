@@ -16,7 +16,7 @@
  */
 
 import type { Geometry } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 /** Source + layer ids for the catchment outline (one dedicated set). */
 export const CANAL_CUENCA_SOURCE = 'canal-cuenca-outline';

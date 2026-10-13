@@ -27,6 +27,8 @@ const { addReferenceLayersMock, MockMap } = vi.hoisted(() => {
 });
 
 vi.mock('maplibre-gl', () => ({
+  Map: MockMap,
+  setWorkerUrl: () => {},
   default: {
     Map: MockMap,
   },

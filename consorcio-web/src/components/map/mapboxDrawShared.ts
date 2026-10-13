@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 export function removeMapboxDrawArtifacts(map: maplibregl.Map): void {
   const style = map.getStyle();

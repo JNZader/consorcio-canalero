@@ -4,9 +4,10 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('maplibre-gl', () => ({
-  default: { Map: vi.fn(), Popup: vi.fn(), LngLatBounds: vi.fn() },
-}));
+vi.mock('maplibre-gl', () => {
+  const api = { Map: vi.fn(), Popup: vi.fn(), LngLatBounds: vi.fn(), setWorkerUrl: () => {} };
+  return { ...api, default: api };
+});
 
 const listCanalPublicacion = vi.fn();
 const fetchAprhiReferencia = vi.fn();

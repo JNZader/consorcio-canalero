@@ -1,6 +1,6 @@
 import { notifications } from '@mantine/notifications';
 import type { FeatureCollection } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useCallback } from 'react';
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';

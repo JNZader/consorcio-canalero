@@ -48,7 +48,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // `useImageExplorerController` pulls in `useImageExplorerMap`, which imports
 // maplibre-gl at module scope. The map is not under test here and happy-dom has
 // no WebGL, so the module is stubbed rather than the hook being reshaped.
-vi.mock('maplibre-gl', () => ({ default: { Map: vi.fn() } }));
+vi.mock('maplibre-gl', () => {
+  const Map = vi.fn();
+  return { Map, setWorkerUrl: () => {}, default: { Map } };
+});
 
 const apiFetch = vi.fn();
 vi.mock('../../src/lib/api', async (importOriginal) => {

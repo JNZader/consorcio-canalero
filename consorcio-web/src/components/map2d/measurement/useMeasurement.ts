@@ -44,7 +44,8 @@
 
 import type MapboxDraw from '@mapbox/mapbox-gl-draw';
 import type { Feature, LineString, Point, Polygon } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
+import { listenMapEvent, unlistenMapEvent } from '../../../lib/maplibreListen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import area from '@turf/area';
@@ -257,9 +258,9 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     const handleCreate = handleCreateRef.current;
     const handleRender = handleRenderRef.current;
     const handleContextLost = handleContextLostRef.current;
-    if (handleCreate) map.on('draw.create', handleCreate);
-    if (handleRender) map.on('draw.render', handleRender);
-    if (handleContextLost) map.on('webglcontextlost', handleContextLost);
+    if (handleCreate) listenMapEvent(map, 'draw.create', handleCreate);
+    if (handleRender) listenMapEvent(map, 'draw.render', handleRender);
+    if (handleContextLost) listenMapEvent(map, 'webglcontextlost', handleContextLost);
 
     return draw;
   }, [map]);
@@ -271,9 +272,9 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     const handleCreate = handleCreateRef.current;
     const handleRender = handleRenderRef.current;
     const handleContextLost = handleContextLostRef.current;
-    if (handleCreate) map.off('draw.create', handleCreate);
-    if (handleRender) map.off('draw.render', handleRender);
-    if (handleContextLost) map.off('webglcontextlost', handleContextLost);
+    if (handleCreate) unlistenMapEvent(map, 'draw.create', handleCreate);
+    if (handleRender) unlistenMapEvent(map, 'draw.render', handleRender);
+    if (handleContextLost) unlistenMapEvent(map, 'webglcontextlost', handleContextLost);
 
     if (draw) {
       try {

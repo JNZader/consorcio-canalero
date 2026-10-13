@@ -1,5 +1,5 @@
 import type { FeatureCollection, LineString, Point } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';

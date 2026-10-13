@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, LineString, Point } from 'geojson';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import type { DrawnLineFeatureCollection } from './LineDrawControl';
 

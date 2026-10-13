@@ -1,26 +1,49 @@
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 /**
- * The `maplibre-gl` default export, typed WITHOUT pulling the runtime module
- * into the importing chunk: `import type` is erased by the compiler.
+ * The `maplibre-gl` module namespace. v6 is ESM-only: there is no default export.
  */
 export type MapLibreModule = typeof maplibregl;
 
+let workerBoot: Promise<void> | null = null;
+
+function asModule(value: unknown): MapLibreModule | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (typeof (value as { Map?: unknown }).Map !== 'function') return null;
+  return value as MapLibreModule;
+}
+
 /**
- * PERF-005 — `maplibre-gl` is ~800 KB raw (~215 KB gzipped) and its stylesheet
- * another ~65 KB. Any STATIC import of it welds the whole engine into the
- * importing route's chunk, so pages that only MIGHT show a map (the
- * `/participacion` forms: report location picker, suggestion geometry) paid for
- * it up front, even for users who never scrolled that far.
+ * Vite cannot see `import.meta.url` inside the MapLibre package, so the
+ * worker URL must be set once before `new Map()`. Callers must await this.
+ * Tests skip the worker file (mocked `maplibre-gl`, no `?worker&url`).
+ */
+export function bootMapLibreWorker(): Promise<void> {
+  workerBoot ??= (async () => {
+    if (import.meta.env.MODE === 'test') return;
+    const [ml, worker] = await Promise.all([
+      import('maplibre-gl'),
+      import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
+    ]);
+    if (typeof ml.setWorkerUrl === 'function') {
+      ml.setWorkerUrl(worker.default);
+    }
+  })();
+  return workerBoot;
+}
+
+/**
+ * PERF-005 — `maplibre-gl` is ~800 KB raw. Call this from a map init effect
+ * instead of a static import on routes that only might show a map.
  *
- * Call this from the map's init effect instead. Rollup keeps the engine in the
- * shared `vendor-maplibre` chunk and fetches it on demand; the CSS rides along
- * in the same lazy request.
+ * Vitest factories often still stub `{ default: { Map } }`. Prefer that when
+ * present so lazy-load tests keep working; production v6 has no default.
  */
 export async function loadMapLibre(): Promise<MapLibreModule> {
   const [module] = await Promise.all([
     import('maplibre-gl'),
     import('maplibre-gl/dist/maplibre-gl.css'),
+    bootMapLibreWorker(),
   ]);
-  return module.default;
+  return asModule((module as { default?: unknown }).default) ?? asModule(module) ?? (module as MapLibreModule);
 }
