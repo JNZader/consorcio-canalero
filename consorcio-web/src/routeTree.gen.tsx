@@ -117,7 +117,11 @@ const RootComponent = () => (
 );
 
 const NotFoundComponent = () => (
-  <RootLayout title="Página no encontrada" description="La página que buscás no existe.">
+  <RootLayout
+    title="Página no encontrada"
+    description="La página que buscás no existe."
+    noindex={true}
+  >
     <Suspense fallback={<PageLoader />}>
       <NotFound />
     </Suspense>

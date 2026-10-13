@@ -43,10 +43,13 @@ export default defineConfig({
         'src/constants/**',
       ],
       thresholds: {
-        statements: 75,
-        branches: 70,
-        functions: 65,
-        lines: 75,
+        // CI-04: pisos al entero de la medición en main (2026-10-13):
+        // statements 78.17, branches 73.53, functions 76.43, lines 79.47.
+        // Hacia 80, sin pasar la cobertura real.
+        statements: 78,
+        branches: 73,
+        functions: 76,
+        lines: 79,
       },
     },
 
