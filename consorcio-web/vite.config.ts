@@ -237,6 +237,10 @@ export default defineConfig({
           // otherwise the SW happily serves the build's own SHA forever
           // and the in-app "Reload to update" banner never fires.
           'version.json',
+          // Pages consumes dist/_worker.js as the advanced-mode worker.
+          // Precaching it would ship the worker source to every client and
+          // a stale copy would not be the file Pages executes.
+          '_worker.js',
           // ``vendor-maplibre`` was intentionally precached (~780 kb) so the
           // 3D viewer doesn't pay a cold network fetch the first time the
           // user opens it — the entire app is map-centric, the trade-off
