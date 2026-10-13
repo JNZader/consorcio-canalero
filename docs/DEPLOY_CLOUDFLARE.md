@@ -26,7 +26,7 @@ Set these in **Cloudflare Dashboard > Pages project > Settings > Environment var
 | `VITE_API_URL` | `https://api.consorcio.example.com` | Backend API base URL |
 | `VITE_MARTIN_URL` | `https://tiles.consorcio.example.com` | Public Martin/vector tiles URL |
 
-> **Node version**: `consorcio-web/.node-version` pins Node `22.23.3`. Pages v3 otherwise defaults to 22.16.0, and Babel 8 (pulled in by Stryker) declares `engines.node` `^22.18.0`. The file has to live in the Pages root (`consorcio-web`), not the repo root. Do not set a lower `NODE_VERSION` in the dashboard: environment variables override this file.
+> **Node version**: `consorcio-web/.node-version` and `consorcio-web/.nvmrc` both pin Node `22.23.3`. Pages v3 otherwise defaults to 22.16.0, and Babel 8 (pulled in by Stryker) declares `engines.node` `^22.18.0`. The files have to live in the Pages root (`consorcio-web`), not the repo root. Do not set a lower `NODE_VERSION` in the dashboard: environment variables override these files.
 
 Set different `VITE_API_URL` values for Production and Preview environments.
 
