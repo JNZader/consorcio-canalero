@@ -36,7 +36,6 @@ vi.mock('../../src/lib/logger', () => ({
   },
 }));
 
-import { consumeLocalLogoutWarning, hasLocalLogoutTombstone } from '../../src/lib/auth/storage';
 import {
   getUserRole,
   hasRole,
@@ -49,6 +48,7 @@ import {
   signUpWithEmail,
   updatePassword,
 } from '../../src/lib/auth';
+import { consumeLocalLogoutWarning, hasLocalLogoutTombstone } from '../../src/lib/auth/storage';
 
 describe('auth library', () => {
   beforeEach(() => {
@@ -125,7 +125,8 @@ describe('auth library', () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
     await expect(resetPassword('mail@test.com')).resolves.toEqual({
       success: false,
-      error: 'Error al enviar el email de recuperación.',
+      error:
+        'No pudimos enviar el correo de recuperación. Revisá que el email esté bien escrito y volvé a intentar en unos minutos.',
     });
 
     // updatePassword imports apiFetch dynamically, mock it

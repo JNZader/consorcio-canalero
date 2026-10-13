@@ -194,13 +194,15 @@ describe('ReportsPanel', () => {
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Error',
-          message: 'No se pudieron cargar los reportes',
+          title: 'No pudimos cargar las denuncias',
+          message: 'Actualizá la página. Si sigue igual, esperá un momento y volvé a entrar.',
           color: 'red',
         })
       );
     });
-    expect(announceMock).toHaveBeenCalledWith('Error al cargar los reportes');
+    expect(announceMock).toHaveBeenCalledWith(
+      'No pudimos cargar las denuncias. Actualizá la página. Si sigue igual, esperá un momento y volvé a entrar.'
+    );
   });
 
   it('shows an error notification when the management update fails', async () => {
@@ -224,13 +226,15 @@ describe('ReportsPanel', () => {
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Error',
-          message: 'No se pudo actualizar el reporte',
+          title: 'No pudimos guardar el cambio de la denuncia',
+          message: 'Revisá la conexión y volvé a intentar.',
           color: 'red',
         })
       );
     });
-    expect(announceMock).toHaveBeenCalledWith('Error al actualizar el reporte');
+    expect(announceMock).toHaveBeenCalledWith(
+      'No pudimos guardar el cambio de la denuncia. Revisá la conexión y volvé a intentar.'
+    );
   });
 
   it('hides the map action when report coordinates are missing', async () => {

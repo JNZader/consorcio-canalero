@@ -9,15 +9,13 @@
  * MapaInteractivo.tsx only needs a 1-line lazy import change to activate this.
  */
 
-import { Alert, Box, Stack, Text } from '@mantine/core';
-import type { Feature, FeatureCollection } from 'geojson';
+import type { Feature } from 'geojson';
 
 import * as maplibregl from 'maplibre-gl';
 import { bootMapLibreWorker } from '../lib/maplibreLoader';
-import { ALL_ETAPAS, type Etapa } from '../types/canales';
-import { collectCanalChildIds, groupCanalesByFolder } from './shared/canalesGrouping';
+import { groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../lib/pmtilesProtocol';
 
 // Register PMTiles protocol once at module level (see pmtilesProtocol.ts).
@@ -27,13 +25,7 @@ import '../lib/pmtilesProtocol';
 // would have to keep a GeoJSON twin alive for the export path.
 void bootMapLibreWorker();
 
-import {
-  MAP_BOUNDS,
-  MAP_CENTER,
-  MAP_DEFAULT_ZOOM,
-  MAP_HOME_FIT_PADDING,
-  MAP_QUICK_PLACES,
-} from '../constants';
+import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useAuth } from '../hooks/useAuth';
 import { useBasins } from '../hooks/useBasins';
@@ -43,8 +35,6 @@ import { useCatastroMap } from '../hooks/useCatastroMap';
 import { useConflictos } from '../hooks/useConflictos';
 import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useEscuelas } from '../hooks/useEscuelas';
-import { useFichaOverlay } from '../hooks/useFichaOverlay';
-import { fichaSelectionKey, useFichaTerritorial } from '../hooks/useFichaTerritorial';
 import { useGEELayers } from '../hooks/useGEELayers';
 import {
   buildTileUrl,
@@ -52,15 +42,11 @@ import {
   useGeoLayers,
   usePrecipNormalLayers,
 } from '../hooks/useGeoLayers';
-import { useHazardBasinMembership } from '../hooks/useHazardBasinMembership';
-import { type HazardRiskClass, resolveBasinCatalogStatus } from '../hooks/useHazardUrlState';
 import { useImageComparisonListener } from '../hooks/useImageComparison';
 import { usePilarVerde } from '../hooks/usePilarVerde';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { useSoilMap } from '../hooks/useSoilMap';
-import { useWaterways, WATERWAY_DEFS } from '../hooks/useWaterways';
-import { FICHA_MAX_BUFFER_M, FICHA_PARCELAS_MAX } from '../lib/api/ficha';
-import { showWarning } from '../lib/notifications';
+import { useWaterways } from '../hooks/useWaterways';
 import { useConfigStore } from '../stores/configStore';
 import { useMapCameraStore } from '../stores/mapCameraStore';
 import {
@@ -68,108 +54,30 @@ import {
   selectEtapaGate,
   useMapLayerSyncStore,
 } from '../stores/mapLayerSyncStore';
-import styles from '../styles/components/map.module.css';
 import type { DrawControlHandle } from './map/DrawControl';
-import { RasterLegend } from './RasterLegend';
-
-const DrawControl = lazy(() => import('./map/DrawControl'));
-
-import { syncCanalCuencaLayer } from './map2d/canalCuencaLayer';
 import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
-import {
-  type ComparisonOverlayController,
-  type ComparisonOverlaySyncInputs,
-  createComparisonOverlayController,
-} from './map2d/comparisonOverlay';
-import { syncFichaOverlayLayers } from './map2d/fichaOverlayLayers';
-import { HazardMapControls } from './map2d/HazardMapControls';
-import { buildHazardBasinOptions } from './map2d/hazardBasinOptions';
-import { buildHazardLegendView } from './map2d/hazardLegend';
-import { LayerControlsPanel } from './map2d/LayerControlsPanel';
 import { buildLayerProvenance } from './map2d/layerProvenance';
-import { MapBaseSelectorPanel } from './map2d/MapBaseSelectorPanel';
-import { MapCursorReadout } from './map2d/MapCursorReadout';
-import { MapPlacesControl } from './map2d/MapPlacesControl';
-import { MapUiPanels } from './map2d/MapUiPanels';
-import { MapViewportOverlay } from './map2d/MapViewportOverlay';
-import { MapWorkspace, useMapWorkspaceDesktop } from './map2d/MapWorkspace';
+import { MapaMapLibreView } from './map2d/MapaMapLibreView';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
-import {
-  buildFamilyActiveCounts,
-  shouldLatchBpaJoin,
-  sumFamilyActiveCounts,
-} from './map2d/map2dDerived';
 import type { ClassifiedMapError } from './map2d/mapErrorClassify';
-import { requestMapGeolocate } from './map2d/mapGeolocate';
 import { MAP2D_HILLSHADE_Z_FACTOR, reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
-import { MeasurementLabels } from './map2d/measurement/MeasurementLabels';
-import { MeasurementShapes } from './map2d/measurement/MeasurementShapes';
-import { MeasurementToolbar } from './map2d/measurement/MeasurementToolbar';
-import { useMeasurement } from './map2d/measurement/useMeasurement';
-import { PuntoInteresPlaceModal } from './map2d/PuntoInteresPlaceModal';
-import { syncParcelaHighlightLayers } from './map2d/parcelaHighlightLayers';
 import type { ProfileRangeStats } from './map2d/profileRange';
-import { useAnalysisToolsGate } from './map2d/useAnalysisToolsGate';
-import { useComparisonSlider } from './map2d/useComparisonSlider';
-import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
-import { useFichaDrawWiring } from './map2d/useFichaDrawWiring';
-import { useFichaInteraction } from './map2d/useFichaInteraction';
-import { useFichaOverlayTabs } from './map2d/useFichaOverlayTabs';
-import { useHazardMapState } from './map2d/useHazardMapState';
 import { useLayerHealth } from './map2d/useLayerHealth';
-import { useMapExportHandlers } from './map2d/useMapActionHandlers';
+import { useMapaMapLibreStage } from './map2d/useMapaMapLibreStage';
 import { useMapDerivedState } from './map2d/useMapDerivedState';
-import { useMapDragSignal } from './map2d/useMapDragSignal';
-import { useMapEscapeExit } from './map2d/useMapEscapeExit';
-import { useMapHoverTooltip } from './map2d/useMapHoverTooltip';
 import { useMapInitialization } from './map2d/useMapInitialization';
-import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
-import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { useMapPermalink } from './map2d/useMapPermalink';
-import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
-import { type QuickPlacePin, useQuickPlaceMarker } from './map2d/useQuickPlaceMarker';
+import type { QuickPlacePin } from './map2d/useQuickPlaceMarker';
 import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { useRasterTileLoading } from './map2d/useRasterTileLoading';
-import { useReportHighlight } from './map2d/useReportHighlight';
 import { useRoadFlowWiring } from './map2d/useRoadFlowWiring';
-import { useSelectedLineHighlight } from './map2d/useSelectedLineHighlight';
-import { type ViewMode, ViewModePanel } from './map2d/ViewModePanel';
-import { YPF_ESTACION_BOMBEO_GEOJSON } from './map2d/ypfEstacionBombeoLayer';
+import type { ViewMode } from './map2d/ViewModePanel';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
 /* -------------------------------------------------------------------------- */
 
 const DEFAULT_ZOOM = MAP_DEFAULT_ZOOM;
-
-/**
- * Is the ficha overlay ACTUALLY painting? (Enabled is not enough: the fetch may
- * still be in flight, and an enabled-but-empty overlay paints nothing.)
- *
- * ONE definition, TWO consumers — the overlay effect's `visible`, and the parcel
- * highlight's `overlayActive`. They must never disagree: the highlight
- * suppresses its amber fill precisely while these classes are on screen, so a
- * duplicated literal that drifted would put the wash back over the legend.
- *
- * A module-level helper rather than an inline expression because `MapaMapLibre`
- * sits exactly ON biome's `noExcessiveCognitiveComplexity` ceiling
- * (`maxAllowedComplexity: 30`, `biome.json`) — measured: inlining this one `&&`
- * anywhere inside the component takes it to 31 and trips the rule. The predicate
- * belongs outside the component anyway, since it is pure.
- */
-function isFichaOverlayPainting(enabled: boolean, data: unknown): boolean {
-  return enabled && data != null;
-}
-
-function toggleHazardRiskClass(
-  riskClasses: readonly HazardRiskClass[],
-  riskClass: HazardRiskClass,
-  visible: boolean
-): HazardRiskClass[] {
-  return visible
-    ? [...new Set([...riskClasses, riskClass])]
-    : riskClasses.filter((currentRiskClass) => currentRiskClass !== riskClass);
-}
 
 /* -------------------------------------------------------------------------- */
 /*  Main component                                                             */
@@ -539,7 +447,7 @@ export default function MapaMapLibre() {
   const { degradedSourceIds, onMapError, clearSource } = useRasterTileHealth();
   const handleMapError = (error: ClassifiedMapError) => {
     onMapError(error);
-    if (error.kind === 'other' && /error al cargar el mapa/i.test(error.message)) {
+    if (error.kind === 'other' && /no pudimos cargar el mapa/i.test(error.message)) {
       setMapLoadError(error.message);
     }
   };
@@ -627,1020 +535,152 @@ export default function MapaMapLibre() {
     };
   }, [mapReady]);
 
-  /* ---------------------------------------------------------------------- */
-  /*  Measurement tools (SDD map-measurement-tools)                          */
-  /* ---------------------------------------------------------------------- */
-  // `useMeasurement` owns a DEDICATED MapboxDraw instance so its `clear()`
-  // never touches LineDrawControl features. We pass `mapReady ? map : null`
-  // so the hook's `useEffect` re-runs once the map finishes loading (the
-  // bare ref would never re-trigger React on its own).
-  const measurementMap = mapReady ? mapRef.current : null;
-  const {
-    state: measurementState,
-    liveLabel: measurementLiveLabel,
-    startDistance: startMeasureDistance,
-    startArea: startMeasureArea,
-    clear: clearMeasurements,
-    cancel: cancelMeasurement,
-  } = useMeasurement(measurementMap);
-
-  // The ONE interaction-mode coordinator (design §6.1, JDB-012): it derives the
-  // single mode from measurement + ficha-draw, enforces their mutual exclusion,
-  // and owns parcel/polygon selection. Entering draw mode cancels measurement via
-  // `clearMeasurements` so only one MapboxDraw instance ever mounts.
-  // T4 fix round — at `FICHA_PARCELAS_MAX` an additive click is dropped, and a
-  // click that changes nothing and says nothing reads as a broken map. The
-  // coordinator reports the drop; the toast lives here so the hook keeps no UI
-  // dependency.
-  const handleParcelasCapReached = useCallback(() => {
-    showWarning(
-      'Selección al máximo',
-      `No se pueden analizar más de ${FICHA_PARCELAS_MAX} parcelas a la vez. Quitá alguna para agregar otra.`
-    );
-  }, []);
-
-  const fichaInteraction = useFichaInteraction(
-    measurementState.mode,
-    clearMeasurements,
-    handleParcelasCapReached
-  );
-  const fichaDraw = useFichaDrawWiring({
-    interactionMode: fichaInteraction.interactionMode,
-    drawSession: fichaInteraction.state.drawing,
-    redrawPolygon: fichaInteraction.redrawPolygon,
-    drawControlRef,
-  });
-  const isFichaDrawSession = fichaDraw.isDrawSession;
-  const puntosInteres = usePuntosInteresWiring({
-    layerOn: !!vectorVisibility.puntos_interes,
-    fichaInteractionMode: fichaInteraction.interactionMode,
-    fichaDrawEscapeMode: fichaDraw.escapeMode,
-    onCancelMeasurement: cancelMeasurement,
-    onClearFicha: fichaInteraction.clearFicha,
-  });
-  // Memoized: `useHazardMapState` feeds these options to the basin-zoom
-  // effect's deps — a fresh identity per render would re-fire fitBounds.
-  const hazardBasins = useMemo(() => buildHazardBasinOptions(basins), [basins]);
-  const hazard = useHazardMapState({
-    mapRef,
-    mapReady,
-    allGeoLayers: hazardGeoLayers,
-    basinIds: hazardBasins.map((basin) => basin.id),
-    basinCatalogStatus: resolveBasinCatalogStatus({
-      loading: basinsLoading,
-      error: basinsError,
-      hasData: basins != null,
-    }),
-    basinOptions: hazardBasins,
-    fichaActive: fichaInteraction.request !== null,
-  });
-  const hazardLegend = buildHazardLegendView({
-    active: hazard.isHazardActive,
-    riskClasses: hazard.url.riskClasses,
-    selectedBasinId: hazard.url.basin,
-    basinOptions: hazardBasins,
-  });
-  const basinMembership = useHazardBasinMembership(hazard.isHazardActive ? hazard.url.basin : null);
-
-  // Canal-selection mode gate (A6). Declared here so it can feed BOTH the
-  // vt_canal_network cyan-line effect below AND `useMapLayerEffects`, which is
-  // the SINGLE owner of the static `canales_relevados-line` visibility: passing
-  // `isFichaCanal` lets it suppress the redundant relevados twin race-free (no
-  // second effect fighting over the same layer).
-  const isFichaCanal = fichaInteraction.interactionMode === 'ficha-canal';
-
-  // Latch the BPA-join fetch the first time a PARCELA ficha opens — that is the
-  // ONLY consumer of `bpa_enriched.json` in the ficha (`PilarVerdeBadges`
-  // renders nothing for `poligono`/`canal_*`). Never reset: `staleTime:
-  // Infinity` means one fetch per session.
-  useEffect(() => {
-    if (shouldLatchBpaJoin(fichaInteraction.request, fichaInteraction.tipo)) {
-      setBpaJoinIntent(true);
-    }
-  }, [fichaInteraction.request, fichaInteraction.tipo]);
-
-  useMapLayerEffects({
-    mapRef,
-    mapReady,
-    baseLayer,
-    vectorVisibility,
-    soilCollection,
-    roadsCollection,
-    basins,
-    zonaCollection,
-    approvedZonesCollection,
-    activeDemLayerId: rasterCompareActive ? rasterCompareId : activeDemLayerId,
-    showDemOverlay: showDemOverlay || rasterCompareActive,
-    demTileUrl: rasterCompareActive && rasterCompareId ? buildTileUrl(rasterCompareId) : demTileUrl,
-    allGeoLayers,
-    setVisibleRasterLayers,
-    showIGNOverlay,
-    showHillshade,
-    hillshadeTileUrl,
-    viewMode,
-    selectedImage,
-    comparison,
-    waterwaysDefs: WATERWAY_DEFS,
-    pilarVerde,
-    canales: canalesData,
-    escuelas: escuelasData,
-    isFichaCanal,
-    roadFlowCrossings: roadFlow.mapCollection,
-    roadFlowFlechas: roadFlow.mapFlechas,
-    roadFlowTotalFlujoNatural: roadFlow.totalFlujoNatural,
-    roadFlowKinds: roadFlow.kinds,
-    puntosInteresCollection: puntosInteres.collection,
-    catastroMembership: basinMembership.membership,
-    showRedVialOficial: isStaff,
-    showCaminosHuecos: isStaff,
-  });
-
-  useMapInteractionEffects({
-    mapRef,
-    mapReady,
-    measurementMode: puntosInteres.interactionMode,
-    setSelectedFeatures,
-    selectedFeatures,
-    roadsFeatures: caminos?.features ?? [],
-    onParcelaResolved: fichaInteraction.resolveParcela,
-    // Mode transitions ALWAYS discard the selection, including with the sticky
-    // touch mode on (where a null resolve means "you missed", not "clear").
-    onClearParcelas: fichaInteraction.clearParcelas,
-    onCanalResolved: fichaInteraction.resolveCanal,
-    onPoiPlace: puntosInteres.onPoiPlace,
-  });
-  useMapHoverTooltip({
-    mapRef,
-    mapReady,
-    mode: puntosInteres.interactionMode,
-  });
-
-  // Ficha territorial fetch — owned by the container, threaded to MapUiPanels as
-  // props so `InfoPanel` never fetches (design §6). Idle when nothing selected.
-  // A `tipo=parcela` (click) or `tipo=poligono` (free draw) request, or null.
-  const ficha = useFichaTerritorial(fichaInteraction.request);
-
-  // Identity of the selection, derived from the REQUEST (same derivation as the
-  // query key). The panels use it as their reset trigger, so it must never be
-  // rebuilt from display fields: `nro_cuenta` is optional and a drawn polygon or
-  // a duplicated canal name has none, which made two different selections look
-  // identical and left the new analysis stuck behind the old pill.
-  const fichaKey = fichaSelectionKey(fichaInteraction.request);
-
-  // On-map overlay (A(b) slice 1, soils): opt-in "ver recortado en el mapa"
-  // toggle. The overlay query is ENABLED only while the toggle is on AND a zone
-  // is selected, so it never fetches unless the user opts in. The geometry lives
-  // in the ficha state, so a null request (clearFicha / every mode switch resets
-  // the coordinator to IDLE) drops the fetch and the paint effect below removes
-  // any lingering layer.
-  //
-  // ONE selector (T3b): the ficha panel's dataset TAB picks both the table the
-  // user reads and the dataset the map paints, and the class rows of that table
-  // filter the paint. All of it lives in `useFichaOverlayTabs` because the
-  // pieces are only correct together (see that file's header).
-  const fichaTabs = useFichaOverlayTabs({
-    selectionKey: fichaKey,
-    ficha: ficha.data,
-  });
-
-  // A selected zone is the container's business, not the panel's: with no
-  // request there is no geometry to clip and the query must stay idle.
-  const fichaOverlayEnabled = fichaTabs.overlayEnabled && fichaInteraction.request !== null;
-  const fichaOverlay = useFichaOverlay(
-    fichaInteraction.request,
-    fichaTabs.overlayDataset,
-    fichaOverlayEnabled
-  );
-
-  const fichaOverlayPainting = isFichaOverlayPainting(fichaOverlayEnabled, fichaOverlay.data);
-
-  // Auto-minimize signal (T3a, fix 2): one bump per map DRAG gesture, so open
-  // panels collapse to their pills the moment the user starts panning. Zoom and
-  // click are deliberately NOT subscribed — see `useMapDragSignal`.
-  const mapDragSignal = useMapDragSignal(mapRef, mapReady);
-
-  // Paint / clear the clipped overlay. `visible` is false whenever the toggle is
-  // off, no zone is selected, or the fetch has no data yet — so a stale overlay
-  // never lingers over a new selection (the query key changes with the selection,
-  // dropping the previous data, and this effect then removes the layer).
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncFichaOverlayLayers(map, {
-      featureCollection: (fichaOverlay.data as unknown as FeatureCollection | undefined) ?? null,
-      dataset: fichaTabs.overlayDataset,
-      visible: fichaOverlayPainting,
-      // Same call, same effect: the sync re-creates the layers whenever they
-      // were removed, and a fresh layer carries no filter — reapplying it in a
-      // second effect would leave one frame painting the hidden classes.
-      visibleClases: fichaTabs.visibleClases,
-    });
-  }, [
-    mapReady,
-    fichaOverlayPainting,
-    fichaOverlay.data,
-    fichaTabs.overlayDataset,
-    fichaTabs.visibleClases,
-  ]);
-
-  // Paint / clear the multi-parcel selection highlight (T4). Driven by the
-  // coordinator's `parcelas` set — NOT by the settled/analyzed one — so it
-  // answers every ctrl-click immediately while the request is still debouncing,
-  // and clears itself on every reset, mode switch and deselect without a second
-  // piece of state to keep in sync.
-  //
-  // The catastro VISIBILITY is a real input: the source stays on the map when
-  // the layer is turned off (only the layers' visibility flips), so without this
-  // the highlight painted parcels the user had just hidden.
-  //
-  // So is whether the ficha OVERLAY is painting. This effect runs AFTER the
-  // overlay effect above, so the highlight's amber fill lands on top of it: over
-  // a no-coverage area it reads as the legend's "Alto" class, and over a covered
-  // one it tints every real class orange. `overlayActive` drops the fill (the
-  // outline still identifies the selection) exactly while the overlay is up —
-  // see the long note in `parcelaHighlightLayers.ts`. It mirrors the SAME
-  // expression fed to the overlay's `visible`, so the two can never disagree.
-  const parcelasSeleccionadas = fichaInteraction.state.parcelas;
-  const catastroVisible = vectorVisibility.catastro !== false;
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncParcelaHighlightLayers(map, parcelasSeleccionadas, catastroVisible, fichaOverlayPainting);
-  }, [mapReady, parcelasSeleccionadas, catastroVisible, fichaOverlayPainting]);
-
-  // Canal mode (A6 + A7): the CURATED relevados/propuestos layers are the ficha
-  // canal source now (their visibility in canal mode is owned by
-  // `useMapLayerEffects` via `isFichaCanal`), so there is no separate clickable
-  // layer to mount here. Instead this effect paints the CATCHMENT outline the
-  // backend echoed for a resolved `tipo=canal_cuenca` ficha, and clears it for
-  // any other tipo or when the selection changes (the query key drops stale data
-  // and `geometria_cuenca` goes undefined). The A(b) "ver recortado" overlay
-  // clips to this same basin.
-  const cuencaOutline =
-    ficha.data?.tipo === 'canal_cuenca'
-      ? ((ficha.data.geometria_cuenca as unknown as import('geojson').Geometry | undefined) ?? null)
-      : null;
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncCanalCuencaLayer(map, cuencaOutline);
-  }, [mapReady, cuencaOutline]);
-
-  // Measurement and ficha-draw are mutually exclusive: starting a measurement
-  // ends drawing first (the reverse — draw cancelling measurement — is handled by
-  // `useFichaInteraction.startDraw` → `clearMeasurements`).
-  const handleStartMeasureDistance = useCallback(() => {
-    puntosInteres.cancelPlace();
-    fichaInteraction.stopDraw();
-    startMeasureDistance();
-  }, [fichaInteraction, puntosInteres.cancelPlace, startMeasureDistance]);
-  const handleStartMeasureArea = useCallback(() => {
-    puntosInteres.cancelPlace();
-    fichaInteraction.stopDraw();
-    startMeasureArea();
-  }, [fichaInteraction, puntosInteres.cancelPlace, startMeasureArea]);
-  const handleToggleFichaDraw = useCallback(() => {
-    puntosInteres.cancelPlace();
-    if (fichaInteraction.state.drawing) fichaInteraction.stopDraw();
-    else fichaInteraction.startDraw();
-  }, [fichaInteraction, puntosInteres.cancelPlace]);
-  // Draw-mode sub-controls (T3c, fix 4). MapboxDraw returns to `simple_select`
-  // after `draw.create`, so these re-enter draw mode / wipe the polygon without
-  // toggling the whole ficha-draw mode off and on.
-  const handleRedrawPolygon = fichaDraw.handleRedrawPolygon;
-  const handleDeleteDrawnPolygon = fichaDraw.handleDeletePolygon;
-  const handleToggleFichaCanal = useCallback(() => {
-    puntosInteres.cancelPlace();
-    if (fichaInteraction.state.canalMode) fichaInteraction.stopCanal();
-    else fichaInteraction.startCanal();
-  }, [fichaInteraction, puntosInteres.cancelPlace]);
-  // T4 — the touch equivalent of holding ctrl. Unlike draw/canal this is NOT a
-  // map interaction mode: clicks keep resolving parcels exactly as in idle, they
-  // just accumulate, so nothing here touches `interactionMode`.
-  const handleToggleFichaMultiSelect = useCallback(() => {
-    fichaInteraction.setMultiSelect(!fichaInteraction.state.multiSelect);
-  }, [fichaInteraction]);
-
-  // Login gate for the ANALYSIS tools (draw / canal / sticky multi-select). The
-  // hook returns the toolbar callbacks only for a CONFIRMED session, and the
-  // toolbar renders each button only when its callback is present — so anonymous
-  // visitors get no button in the DOM at all, while MEDIR, DESCARGAR, CAPAS and
-  // the ficha-on-click (including the ctrl+clic gesture) stay public. It is a
-  // render gate, NOT an authz boundary: the ficha endpoints remain public behind
-  // their own caps. See `useAnalysisToolsGate` for the full rationale.
-  const analysisToolProps = useAnalysisToolsGate({
-    drawing: fichaInteraction.state.drawing,
-    canalMode: fichaInteraction.state.canalMode,
-    multiSelect: fichaInteraction.state.multiSelect,
-    stopDraw: fichaInteraction.stopDraw,
-    stopCanal: fichaInteraction.stopCanal,
-    setMultiSelect: fichaInteraction.setMultiSelect,
-    onToggleFichaDraw: handleToggleFichaDraw,
-    onRedrawPolygon: handleRedrawPolygon,
-    onDeletePolygon: handleDeleteDrawnPolygon,
-    onToggleFichaCanal: handleToggleFichaCanal,
-    onToggleFichaMultiSelect: handleToggleFichaMultiSelect,
-  });
-
-  // Escape is the universal exit from ANY active interaction mode. Until this
-  // was wired, `useMeasurement.cancel()` had no caller at all and a user who
-  // started measuring had no way back to idle (map-fluidity T1).
-  const handleExitDraw = useCallback(() => fichaInteraction.stopDraw(), [fichaInteraction]);
-  const handleExitCanal = useCallback(() => fichaInteraction.stopCanal(), [fichaInteraction]);
-  const handleCloseInfoPanel = useCallback(() => {
-    setSelectedFeatures([]);
-    setElevationProfileHover(null);
-    setElevationProfileRange(null);
-  }, []);
-  const handleClosePanels = useCallback(() => {
-    handleCloseInfoPanel();
-    fichaInteraction.clearFicha();
-  }, [fichaInteraction, handleCloseInfoPanel]);
-  useMapEscapeExit({
-    // Escape must still leave the draw SESSION after the polygon is finished,
-    // when `interactionMode` has already gone back to idle (T4).
-    mode: puntosInteres.escapeMode,
-    onCancelMeasurement: cancelMeasurement,
-    onExitDraw: handleExitDraw,
-    onExitCanal: handleExitCanal,
-    onExitPoiPlace: puntosInteres.cancelPlace,
-    onClosePanels: handleClosePanels,
-  });
-
-  // Drop a temporary marker when the page is opened with `?lat=&lng=&zoom=`
-  // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
-  // marker is auto-popped and the user can close it.
-  useReportHighlight({ mapRef, mapReady });
-  useQuickPlaceMarker({ mapRef, mapReady, place: quickPlace });
-  useElevationProfileCursor({
-    mapRef,
-    mapReady,
-    hover: elevationProfileHover,
-    range: elevationProfileRange,
-  });
-  useSelectedLineHighlight({
-    mapRef,
-    mapReady,
-    features: selectedFeatures,
-  });
-
-  const comparisonVisibleRelevadoIds = (canalesIndex?.relevados ?? [])
-    .map((canal) => canal.id)
-    .filter((slug) => {
-      const key = `canal_relevado_${slug.replace(/-/g, '_')}`;
-      return vectorVisibility[key] !== false;
-    });
-  const comparisonVisiblePropuestaIds = useMapLayerSyncStore
-    .getState()
-    .getVisiblePropuestaIds('map2d');
-  const comparisonActiveEtapas = (Object.entries(propuestasEtapasVisibility) as [Etapa, boolean][])
-    .filter(([, visible]) => visible)
-    .map(([etapa]) => etapa);
-
-  useEffect(() => {
-    if (rasterCompareActive) setViewMode('comparison');
-  }, [rasterCompareActive]);
-
-  const comparisonSyncInputs: ComparisonOverlaySyncInputs = {
-    leftTileUrl: rasterCompareActive
-      ? buildTileUrl(activeDemLayerId as string)
-      : (comparison?.left?.tile_url ?? ''),
-    vectorVisibility,
-    waterwaysDefs: WATERWAY_DEFS,
-    soilCollection,
-    roadsCollection,
-    basins,
-    approvedZonesCollection,
-    pilarVerde,
-    canales: {
-      relevados: canalesRelevados,
-      propuestas: canalesPropuestas,
-      visibleRelevadoIds: comparisonVisibleRelevadoIds,
-      visiblePropuestaIds: comparisonVisiblePropuestaIds,
-      activeEtapas: comparisonActiveEtapas.length > 0 ? comparisonActiveEtapas : ALL_ETAPAS,
-    },
-    escuelasCollection,
-    opacityByLayer,
-    orderByLayer,
-  };
-  const comparisonSyncInputsRef = useRef(comparisonSyncInputs);
-  comparisonSyncInputsRef.current = comparisonSyncInputs;
-  const comparisonControllerRef = useRef<ComparisonOverlayController | null>(null);
-  const comparisonActive =
-    mapReady &&
-    viewMode === 'comparison' &&
-    (rasterCompareActive || (!!comparison?.left?.tile_url && !!comparison?.right?.tile_url));
-
-  // The overlay map has a narrow lifecycle: it is created once for an active
-  // comparison and removed when the comparison closes. Vector/data/fine-control
-  // changes are synchronized by the separate effect below.
-  useEffect(() => {
-    if (!comparisonActive) return;
-
-    const baseMap = mapRef.current;
-    const comparisonContainer = comparisonContainerRef.current;
-    if (!baseMap || !comparisonContainer) return;
-
-    const controller = createComparisonOverlayController({
-      mapConstructor: maplibregl.Map,
-      container: comparisonContainer,
-      baseMap,
-      initialInputs: comparisonSyncInputsRef.current,
-    });
-    comparisonControllerRef.current = controller;
-    comparisonMapRef.current = controller.map;
-
-    return () => {
-      controller.dispose();
-      if (comparisonControllerRef.current === controller) {
-        comparisonControllerRef.current = null;
-      }
-      if (comparisonMapRef.current === controller.map) {
-        comparisonMapRef.current = null;
-      }
-    };
-  }, [comparisonActive]);
-
-  // Idempotent synchronization intentionally runs after every render. This
-  // keeps the existing overlay instance current for data, visibility,
-  // sub-filter, opacity and order changes, while the controller retains the
-  // latest inputs until the style load event wins any startup race.
-  useEffect(() => {
-    comparisonControllerRef.current?.update(comparisonSyncInputs);
-  });
-
-  /* ---------------------------------------------------------------------- */
-  /*  Comparison slider — Task 2.11 (CSS clip-path on right image layer)    */
-  /* ---------------------------------------------------------------------- */
-  const handleSliderPointerDown = useComparisonSlider({
-    sliderContainerRef,
-    isDraggingSlider,
-    setSliderPosition,
-  });
-
-  /* ---------------------------------------------------------------------- */
-  /*  Draw controls — Task 2.10                                              */
-  /* ---------------------------------------------------------------------- */
-  // Draw controls are mounted as React components that receive the map instance
-  // after it's ready. The actual integration happens via the DrawControl component
-  // which uses map.addControl() imperatively (see DrawControl.tsx).
-
-  // ── KMZ export data sources ────────────────────────────────────────────
-  // Keys MUST match `kmzLayerRegistry` entries. Missing/null slots are
-  // silently skipped by `buildKmz` — the hook does not refuse when a slot
-  // is empty. Memoised explicitly: a fresh object identity every render
-  // would invalidate `useMapExportHandlers`'s `handleExportKmz` useCallback
-  // (dep: `exportSources`) and everything downstream of it.
-  const exportSources = useMemo(
-    () => ({
-      canales_relevados: canalesRelevados,
-      canales_propuestos: canalesPropuestas,
-      escuelas: escuelasCollection,
-      pilar_verde_bpa_historico: pilarVerde?.bpaHistorico ?? null,
-      pilar_verde_agro_aceptada: pilarVerde?.agroAceptada ?? null,
-      pilar_verde_agro_presentada: pilarVerde?.agroPresentada ?? null,
-      pilar_verde_agro_zonas: pilarVerde?.agroZonas ?? null,
-      pilar_verde_porcentaje_forestacion: pilarVerde?.porcentajeForestacion ?? null,
-      waterways: waterwaysCollection,
-      roads: roadsCollection ?? null,
-      catastro: catastroMap,
-      soil: soilCollection,
-      'ypf-estacion-bombeo': YPF_ESTACION_BOMBEO_GEOJSON,
-    }),
-    [
-      canalesRelevados,
-      canalesPropuestas,
-      escuelasCollection,
-      pilarVerde?.bpaHistorico,
-      pilarVerde?.agroAceptada,
-      pilarVerde?.agroPresentada,
-      pilarVerde?.agroZonas,
-      pilarVerde?.porcentajeForestacion,
-      waterwaysCollection,
-      roadsCollection,
-      catastroMap,
-      soilCollection,
-    ]
-  );
-
-  const { handleExportPng, handleExportApprovedZonesPdf, handleExportKmz } = useMapExportHandlers({
-    mapRef,
-    exportTitle,
-    setExportPngModalOpen,
-    approvedZones,
+  const stage = useMapaMapLibreStage({
+    activeDemLayerId,
     activeLegendItems,
-    consorcios: vectorVisibility.roads && roadsCollection ? consorcios : [],
-    visibleRasterLayers,
+    allGeoLayers,
+    approvedZones,
+    approvedZonesCollection,
+    baseLayer,
+    basins,
+    basinsError,
+    basinsLoading,
+    caminos,
+    canalesData,
+    canalesIndex,
+    canalesPropuestas,
+    canalesRelevados,
+    catastroMap,
+    comparison,
+    comparisonContainerRef,
+    comparisonMapRef,
+    consorcios,
+    demTileUrl,
+    drawControlRef,
+    elevationProfileHover,
+    elevationProfileRange,
+    escuelasCollection,
+    escuelasData,
+    exportTitle,
+    hazardGeoLayers,
     hiddenClasses,
     hiddenRanges,
-    exportSources,
+    hillshadeTileUrl,
+    isDraggingSlider,
+    isStaff,
+    mapReady,
+    mapRef,
+    opacityByLayer,
+    orderByLayer,
+    pilarVerde,
+    propuestasEtapasVisibility,
+    quickPlace,
+    rasterCompareActive,
+    rasterCompareId,
+    roadFlow,
+    roadsCollection,
+    selectedFeatures,
+    selectedImage,
+    setBpaJoinIntent,
+    setElevationProfileHover,
+    setElevationProfileRange,
+    setExportPngModalOpen,
+    setSelectedFeatures,
+    setSliderPosition,
+    setViewMode,
+    setVisibleRasterLayers,
+    showDemOverlay,
+    showHillshade,
+    showIGNOverlay,
+    sliderContainerRef,
+    soilCollection,
+    vectorVisibility,
+    viewMode,
+    visibleRasterLayers,
+    waterwaysCollection,
     zonaCollection,
-    canalesRelevados:
-      vectorVisibility.canales_relevados && canalesRelevados ? canalesRelevados : null,
   });
 
-  /* ---------------------------------------------------------------------- */
-  /*  Render                                                                 */
-  /* ---------------------------------------------------------------------- */
-
-  // Same hook `MapWorkspace` uses for the sidebar-vs-Drawer decision, so the
-  // floating top bar and the Drawer can never both own the base-layer control.
-  const isDesktop = useMapWorkspaceDesktop();
-
-  // "N capas activas" indicator. It counts EXACTLY what the control panel shows
-  // as rows — same derivation as the per-family badges (`buildFamilyActiveCounts`,
-  // also called by `LayerControlsPanel`), so the two numbers agree by
-  // construction. Counting raw `vectorVisibility` keys instead reported ~68
-  // "active" layers (per-canal + per-waterway sub-keys) over a map with ~6
-  // visible ones, flatly contradicting the badges beside it.
-  const canalChildIds = collectCanalChildIds(
-    canalesRelevadosItems,
-    canalesPropuestosItems,
-    vectorVisibility,
-    etapaGate
-  );
-  const activeLayerCount =
-    sumFamilyActiveCounts(
-      buildFamilyActiveCounts({
-        layerItems: vectorLayerItems,
-        vectorVisibility,
-        canalChildIds,
-        showIGNOverlay,
-        showHillshade,
-        showDemOverlay,
-        showSatellite: Boolean(satelliteLayer),
-      })
-    ) + hazard.visibleRasterLayers.length;
-
-  // ONE definition of the base-layer controls (capa base + the satellite view
-  // mode slot), consumed by BOTH placements below so they cannot drift: the
-  // desktop `.mapTopBar`, and — on mobile — `LayerControlsPanel`'s own "Base"
-  // section inside the Drawer. `MapBaseSelectorPanel` and `LayerControlsPanel`
-  // take the exact same three props, so the object is spread into either one.
-  const baseControls = {
-    baseLayer,
-    onBaseLayerChange: setBaseLayer,
-    viewModePanel:
-      baseLayer === 'satellite' ? (
-        <ViewModePanel
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          hasSingleImage={hasSingleImage}
-          hasComparison={hasComparison || rasterCompareActive}
-          singleImageInfo={singleImageInfo}
-          comparisonInfo={comparisonInfo}
-        />
-      ) : null,
-  };
-
   return (
-    <Box
-      className={styles.mapWorkspace}
-      data-testid="map-workspace"
-      /* Published so the stylesheet can collapse the grid's first (top bar)
-         row when the bar is not rendered — otherwise the `auto` row plus the
-         `gap` leave 12px of dead space above the canvas on mobile. */
-      data-topbar={isDesktop ? 'true' : 'false'}
-    >
-      {/* Desktop ONLY. On mobile the very same controls live in the layers
-          Drawer (see the `controls` tree below): a floating bar over a 360px
-          canvas cost ~149px of map and duplicated a control the Drawer already
-          owns. Both branches read `baseControls`, so there is exactly one
-          definition of what "base layer controls" means. */}
-      {isDesktop && (
-        <Box
-          className={styles.mapTopBar}
-          aria-label="Selector de capa base y vista satelital"
-          data-testid="map-top-bar"
-        >
-          <MapBaseSelectorPanel {...baseControls} />
-        </Box>
-      )}
-
-      <MapWorkspace
-        activeLayerCount={activeLayerCount}
-        liveMessage={waterwaysError ?? geoLayersError ?? undefined}
-        canvas={
-          <Box
-            className={styles.mapCanvasWrapper}
-            role="application"
-            aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
-          >
-            {/* Map container */}
-            <div
-              ref={sliderContainerRef}
-              style={{ width: '100%', height: '100%', position: 'relative' }}
-            >
-              <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-              {mapLoadError ? (
-                <Box
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 16,
-                    zIndex: 20,
-                  }}
-                >
-                  <Stack gap="sm" maw={560}>
-                    <Alert color="red" title="Error al cargar el mapa" variant="light">
-                      <Text size="sm">{mapLoadError}</Text>
-                    </Alert>
-                    <Box
-                      component="section"
-                      role="region"
-                      aria-label="descripción textual del mapa"
-                    >
-                      <Text size="sm">
-                        El mapa interactivo permite explorar cuencas, canales e infraestructura del
-                        Consorcio.
-                      </Text>
-                    </Box>
-                  </Stack>
-                </Box>
-              ) : null}
-              {comparisonActive && (
-                <div
-                  ref={comparisonContainerRef}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    pointerEvents: 'none',
-                    zIndex: 10,
-                    clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
-                  }}
-                />
-              )}
-              <MapViewportOverlay
-                viewMode={viewMode}
-                sliderPosition={sliderPosition}
-                mapReady={mapReady}
-                onSliderPointerDown={handleSliderPointerDown}
-              />
-            </div>
-
-            {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
-            <MeasurementToolbar
-              mode={puntosInteres.interactionMode}
-              hasMeasurements={measurementState.measurements.length > 0}
-              liveLabel={measurementLiveLabel}
-              onStartDistance={handleStartMeasureDistance}
-              onStartArea={handleStartMeasureArea}
-              onClear={clearMeasurements}
-              onCancel={cancelMeasurement}
-              fichaDrawActive={isFichaDrawSession}
-              fichaCanalActive={isFichaCanal}
-              fichaMultiSelectActive={fichaInteraction.state.multiSelect}
-              poiPlaceActive={puntosInteres.placing}
-              onTogglePoiPlace={puntosInteres.onTogglePoiPlace}
-              /* Draw / canal / multi-select callbacks are login-gated: absent for
-                 anonymous visitors, so those buttons are not rendered at all. */
-              {...analysisToolProps}
-            />
-            <PuntoInteresPlaceModal
-              opened={puntosInteres.modalOpen}
-              saving={puntosInteres.saving}
-              error={puntosInteres.saveError}
-              onClose={puntosInteres.closeModal}
-              onSave={puntosInteres.saveDraft}
-            />
-
-            {/* Canal analysis (A6 + A7): the influence-strip vs catchment control
-                is NO LONGER a standalone floating card — it now renders as a
-                header section INSIDE `FichaTerritorialPanel` (threaded below via
-                the `fichaCanal*` props) so it can never be covered by the ficha
-                card and stays reachable in loading/error states. */}
-            <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
-            <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
-
-            {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
-                never coexists with the measurement MapboxDraw (shared-slot bug). A
-                completed polygon fires a `tipo=poligono` ficha via the container. */}
-            {measurementMap && isFichaDrawSession && (
-              <Suspense fallback={null}>
-                <DrawControl
-                  ref={drawControlRef}
-                  map={measurementMap}
-                  onPolygonCreated={fichaInteraction.completePolygon}
-                  onPolygonDeleted={fichaInteraction.deletePolygon}
-                />
-              </Suspense>
-            )}
-
-            <MapUiPanels
-              baseLayer={baseLayer}
-              onBaseLayerChange={setBaseLayer}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              hasSingleImage={hasSingleImage}
-              hasComparison={hasComparison || rasterCompareActive}
-              singleImageInfo={singleImageInfo}
-              comparisonInfo={comparisonInfo}
-              layerItems={vectorLayerItems}
-              vectorVisibility={vectorVisibility}
-              onLayerVisibilityChange={toggleLayer}
-              showIGNOverlay={showIGNOverlay}
-              onShowIGNOverlayChange={setShowIGNOverlay}
-              showHillshade={showHillshade}
-              onShowHillshadeChange={setShowHillshade}
-              hillshadeAvailable={!!hillshadeTileUrl}
-              demEnabled={demLayers.length > 0}
-              showDemOverlay={showDemOverlay}
-              onShowDemOverlayChange={setShowDemOverlay}
-              activeDemLayerId={activeDemLayerId}
-              onActiveDemLayerIdChange={setActiveDemLayerId}
-              demOptions={demLayerOptions}
-              satelliteLayer={satelliteLayer}
-              onHideSatellite={() => setViewMode('base')}
-              rasterLoading={rasterLoading}
-              demLoadError={geoLayersError}
-              onRetryDem={() => {
-                void reloadGeoLayers();
-              }}
-              onFocusCanal={flyToCanal}
-              rasterCompareId={rasterCompareId}
-              onRasterCompare={setRasterCompareId}
-              canalesRelevadosItems={canalesRelevadosItems}
-              canalesPropuestosItems={canalesPropuestosItems}
-              etapaGate={etapaGate}
-              layerFineControl={layerFineControl}
-              hasApprovedZones={hasApprovedZones}
-              onOpenExportPng={() => setExportPngModalOpen(true)}
-              onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
-              onExportKmz={handleExportKmz}
-              onExportMenuOpen={handleExportIntent}
-              cursorReadout={<MapCursorReadout map={mapRef.current} mapReady={mapReady} />}
-              placesControl={
-                <MapPlacesControl
-                  onRecenter={() => {
-                    setQuickPlace(null);
-                    mapRef.current?.fitBounds(
-                      [
-                        [MAP_BOUNDS.west, MAP_BOUNDS.south],
-                        [MAP_BOUNDS.east, MAP_BOUNDS.north],
-                      ],
-                      { padding: MAP_HOME_FIT_PADDING, duration: 800 }
-                    );
-                  }}
-                  onFlyToPlace={(placeId) => {
-                    const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
-                    if (!place) return;
-                    setQuickPlace({
-                      label: place.label,
-                      lng: place.center[0],
-                      lat: place.center[1],
-                    });
-                    mapRef.current?.flyTo({
-                      center: place.center,
-                      zoom: place.zoom,
-                      duration: 800,
-                    });
-                  }}
-                  onGeolocate={() => {
-                    requestMapGeolocate(mapRef.current);
-                  }}
-                />
-              }
-              showLegend={showLegend}
-              consorcios={vectorVisibility.roads && roadsCollection ? consorcios : []}
-              activeLegendItems={activeLegendItems}
-              visibleRasterLayers={visibleRasterLayers}
-              hiddenClasses={hiddenClasses}
-              hiddenRanges={hiddenRanges}
-              onClassToggle={(layerType, classIndex, visible) =>
-                setHiddenClasses((prev) => {
-                  const curr = prev[layerType] ?? [];
-                  const next = visible
-                    ? curr.filter((i) => i !== classIndex)
-                    : [...curr, classIndex];
-                  return { ...prev, [layerType]: next };
-                })
-              }
-              onRangeToggle={(layerType, rangeIndex, visible) =>
-                setHiddenRanges((prev) => {
-                  const curr = prev[layerType] ?? [];
-                  const next = visible
-                    ? curr.filter((i) => i !== rangeIndex)
-                    : [...curr, rangeIndex];
-                  return { ...prev, [layerType]: next };
-                })
-              }
-              selectedFeatures={selectedFeatures}
-              onCloseInfoPanel={handleCloseInfoPanel}
-              onElevationProfileHover={setElevationProfileHover}
-              onElevationProfileRange={setElevationProfileRange}
-              fichaActive={fichaInteraction.request !== null}
-              fichaTipo={fichaInteraction.tipo}
-              fichaNroCuenta={fichaInteraction.nroCuenta}
-              fichaSelectionKey={fichaKey}
-              fichaParcelaProps={fichaInteraction.parcelaProps}
-              fichaParcelasCount={fichaInteraction.parcelasAnalizadas.length}
-              onFichaRemoveParcelas={fichaInteraction.removeParcelas}
-              fichaLoading={ficha.isLoading}
-              fichaFetching={ficha.isFetching}
-              fichaError={ficha.error}
-              fichaData={ficha.data}
-              onCloseFicha={fichaInteraction.clearFicha}
-              onRetryFicha={ficha.refetch}
-              fichaOverlayVisible={fichaTabs.overlayVisible}
-              onToggleFichaOverlay={fichaTabs.setOverlayVisible}
-              fichaTab={fichaTabs.tab}
-              onChangeFichaTab={fichaTabs.changeTab}
-              fichaHiddenClases={fichaTabs.hiddenClases}
-              onToggleFichaClase={fichaTabs.toggleClase}
-              fichaOverlayLoading={fichaOverlay.isLoading}
-              fichaOverlayError={fichaOverlay.isError}
-              mapDragSignal={mapDragSignal}
-              fichaCanalNombre={fichaInteraction.state.canal?.canalNombre ?? null}
-              fichaCanalAnalysisMode={fichaInteraction.state.canal?.analysisMode}
-              onFichaCanalAnalysisModeChange={fichaInteraction.setCanalAnalysisMode}
-              fichaCanalBufferM={fichaInteraction.state.canal?.bufferM}
-              fichaCanalMaxBufferM={FICHA_MAX_BUFFER_M}
-              onFichaCanalBufferChange={fichaInteraction.setBuffer}
-              bpaEnriched={pilarVerde?.bpaEnriched}
-              bpaLoading={bpaJoinLoading}
-              bpaError={bpaJoinError}
-              bpaHistory={pilarVerde?.bpaHistory}
-              onDeletePuntoInteres={async (id) => {
-                try {
-                  await puntosInteres.deletePunto(id);
-                } finally {
-                  setSelectedFeatures((current) =>
-                    current.filter((feature) => {
-                      const featureId = feature.id == null ? '' : String(feature.id);
-                      const propertyId =
-                        feature.properties && 'id' in feature.properties
-                          ? String(feature.properties.id)
-                          : '';
-                      return featureId !== id && propertyId !== id;
-                    })
-                  );
-                }
-              }}
-              exportPngModalOpen={exportPngModalOpen}
-              onCloseExportPngModal={() => setExportPngModalOpen(false)}
-              exportTitle={exportTitle}
-              exportIncludeLegend={exportIncludeLegend}
-              exportIncludeMetadata={exportIncludeMetadata}
-              onExportTitleChange={setExportTitle}
-              onExportIncludeLegendChange={setExportIncludeLegend}
-              onExportIncludeMetadataChange={setExportIncludeMetadata}
-              onExportPng={handleExportPng}
-              layerHealth={layerHealth}
-              layerProvenance={layerProvenance}
-              showEmbeddedMapControls={false}
-              showEmbeddedRasterLegend={false}
-              roadFlowActive={roadFlow.roadFlowActive}
-              roadFlowCrossings={roadFlow.crossings}
-              roadFlowCobertura={roadFlow.cobertura}
-              roadFlowKinds={roadFlow.kinds}
-              onRoadFlowKindsChange={roadFlow.setKinds}
-              onSelectRoadFlowCrossing={roadFlow.onSelectCrossing}
-              onSurveyTramo={roadFlow.onSurveyTramo}
-              onCloseRoadFlow={roadFlow.onClose}
-              tramoSurveyRef={roadFlow.tramoRef}
-              tramoSurveyDetalle={roadFlow.tramoDetalle}
-              tramoSurveyLoading={roadFlow.tramoLoading}
-              tramoSurveyError={roadFlow.tramoError}
-              onRetryTramoSurvey={roadFlow.onRetryTramoSurvey}
-              onSubmitTramoSurvey={roadFlow.onSubmitTramoSurvey}
-              onCloseTramoSurvey={roadFlow.onCloseTramoSurvey}
-            />
-            <HazardMapControls
-              active={hazard.isHazardActive}
-              desktop={isDesktop}
-              desktopCollapsed={!hazard.panelOpen}
-              mobileCollapsed={!hazard.mobileExpanded}
-              onDesktopCollapsedChange={(collapsed) => hazard.setPanelOpen(!collapsed)}
-              onMobileCollapsedChange={(collapsed) => hazard.setMobileExpanded(!collapsed)}
-              controls={{
-                basins: hazardBasins,
-                selectedBasinId: hazard.url.basin,
-                onBasinChange: hazard.url.setBasin,
-                visibleRiskClasses: hazard.url.riskClasses,
-                onRiskClassChange: (riskClass, visible) =>
-                  hazard.url.setRiskClasses(
-                    toggleHazardRiskClass(hazard.url.riskClasses, riskClass, visible)
-                  ),
-                precipitationPeriod: hazard.url.precipMonth,
-                onPrecipitationPeriodChange: hazard.url.setPrecipMonth,
-                onReset: hazard.url.resetToDefaults,
-                fichaOpen: fichaInteraction.request !== null,
-              }}
-            />
-          </Box>
-        }
-        controls={
-          /* ONE scroll only (T5): `.workspaceSidebarBody` (desktop) / the Drawer
-             body (mobile) is the scroller, so every panel in this tree renders
-             unbounded. Three nested scroll areas used to push the legend out of
-             reach and trap the wheel gesture. */
-          <Stack gap="sm" data-testid="map-controls-tree">
-            <LayerControlsPanel
-              insideScrollContainer
-              /* Mobile ONLY. `LayerControlsPanel` renders the "Capa base"
-                 selector and the `viewModePanel` slot only when these props are
-                 defined, so spreading them exclusively on !isDesktop is what
-                 keeps EXACTLY ONE base-layer control on screen: the floating
-                 `.mapTopBar` owns it on desktop, the Drawer owns it here. Same
-                 `baseControls` either way. */
-              {...(isDesktop ? {} : baseControls)}
-              layerItems={vectorLayerItems}
-              vectorVisibility={vectorVisibility}
-              onLayerVisibilityChange={toggleLayer}
-              showIGNOverlay={showIGNOverlay}
-              onShowIGNOverlayChange={setShowIGNOverlay}
-              showHillshade={showHillshade}
-              onShowHillshadeChange={setShowHillshade}
-              hillshadeAvailable={!!hillshadeTileUrl}
-              demEnabled={demLayers.length > 0}
-              showDemOverlay={showDemOverlay}
-              onShowDemOverlayChange={setShowDemOverlay}
-              activeDemLayerId={activeDemLayerId}
-              onActiveDemLayerIdChange={setActiveDemLayerId}
-              demOptions={demLayerOptions}
-              satelliteLayer={satelliteLayer}
-              onHideSatellite={() => setViewMode('base')}
-              rasterLoading={rasterLoading}
-              demLoadError={geoLayersError}
-              onRetryDem={() => {
-                void reloadGeoLayers();
-              }}
-              onFocusCanal={flyToCanal}
-              rasterCompareId={rasterCompareId}
-              onRasterCompare={setRasterCompareId}
-              canalesRelevadosItems={canalesRelevadosItems}
-              canalesPropuestosItems={canalesPropuestosItems}
-              etapaGate={etapaGate}
-              layerFineControl={layerFineControl}
-              hazardLayerControl={{
-                active: hazard.isHazardActive,
-                activeLayerCount: hazard.visibleRasterLayers.length,
-                onActiveChange: hazard.url.setHazard,
-                visible: hazard.gateOpen,
-              }}
-              pilarVerdeLayersLoading={pilarVerdeLayersLoading}
-              pilarVerdeLayersError={pilarVerdeLayersError}
-              layerHealth={layerHealth}
-              layerProvenance={layerProvenance}
-              legendPanelProps={
-                showLegend
-                  ? {
-                      consorcios: vectorVisibility.roads && roadsCollection ? consorcios : [],
-                      customItems: activeLegendItems,
-                      pilarVerdeBpaHistoricoVisible: !!vectorVisibility.pilar_verde_bpa_historico,
-                      pilarVerdeAgroAceptadaVisible: !!vectorVisibility.pilar_verde_agro_aceptada,
-                      pilarVerdeAgroPresentadaVisible:
-                        !!vectorVisibility.pilar_verde_agro_presentada,
-                      pilarVerdeAgroZonasVisible: !!vectorVisibility.pilar_verde_agro_zonas,
-                      pilarVerdePorcentajeForestacionVisible:
-                        !!vectorVisibility.pilar_verde_porcentaje_forestacion,
-                      pilarAzulCanalesRelevadosVisible: !!vectorVisibility.canales_relevados,
-                      pilarAzulCanalesPropuestosVisible: !!vectorVisibility.canales_propuestos,
-                      pilarAzulEscuelasVisible: !!vectorVisibility.escuelas,
-                      hazardPrecipitationRange: hazard.precipitationRange,
-                      hazardLegend,
-                      propuestasEtapasVisibility,
-                      onSetEtapaVisible: setEtapaVisible,
-                    }
-                  : undefined
-              }
-            />
-            {showLegend && (
-              <>
-                {visibleRasterLayers.length > 0 && (
-                  <RasterLegend
-                    layers={visibleRasterLayers}
-                    hiddenClasses={hiddenClasses}
-                    hiddenRanges={hiddenRanges}
-                    floating={false}
-                    onClassToggle={(layerType, classIndex, visible) =>
-                      setHiddenClasses((prev) => {
-                        const curr = prev[layerType] ?? [];
-                        const next = visible
-                          ? curr.filter((i) => i !== classIndex)
-                          : [...curr, classIndex];
-                        return { ...prev, [layerType]: next };
-                      })
-                    }
-                    onRangeToggle={(layerType, rangeIndex, visible) =>
-                      setHiddenRanges((prev) => {
-                        const curr = prev[layerType] ?? [];
-                        const next = visible
-                          ? curr.filter((i) => i !== rangeIndex)
-                          : [...curr, rangeIndex];
-                        return { ...prev, [layerType]: next };
-                      })
-                    }
-                  />
-                )}
-              </>
-            )}
-          </Stack>
-        }
-      />
-    </Box>
+    <MapaMapLibreView
+      {...stage}
+      activeDemLayerId={activeDemLayerId}
+      activeLegendItems={activeLegendItems}
+      baseLayer={baseLayer}
+      bpaJoinError={bpaJoinError}
+      bpaJoinLoading={bpaJoinLoading}
+      canalesPropuestosItems={canalesPropuestosItems}
+      canalesRelevadosItems={canalesRelevadosItems}
+      comparisonContainerRef={comparisonContainerRef}
+      comparisonInfo={comparisonInfo}
+      consorcios={consorcios}
+      containerRef={containerRef}
+      demLayerOptions={demLayerOptions}
+      demLayers={demLayers}
+      drawControlRef={drawControlRef}
+      etapaGate={etapaGate}
+      exportIncludeLegend={exportIncludeLegend}
+      exportIncludeMetadata={exportIncludeMetadata}
+      exportPngModalOpen={exportPngModalOpen}
+      exportTitle={exportTitle}
+      flyToCanal={flyToCanal}
+      geoLayersError={geoLayersError}
+      handleExportIntent={handleExportIntent}
+      hasApprovedZones={hasApprovedZones}
+      hasComparison={hasComparison}
+      hasSingleImage={hasSingleImage}
+      hiddenClasses={hiddenClasses}
+      hiddenRanges={hiddenRanges}
+      hillshadeTileUrl={hillshadeTileUrl}
+      layerFineControl={layerFineControl}
+      layerHealth={layerHealth}
+      layerProvenance={layerProvenance}
+      mapLoadError={mapLoadError}
+      mapReady={mapReady}
+      mapRef={mapRef}
+      pilarVerde={pilarVerde}
+      pilarVerdeLayersError={pilarVerdeLayersError}
+      pilarVerdeLayersLoading={pilarVerdeLayersLoading}
+      propuestasEtapasVisibility={propuestasEtapasVisibility}
+      rasterCompareActive={rasterCompareActive}
+      rasterCompareId={rasterCompareId}
+      rasterLoading={rasterLoading}
+      reloadGeoLayers={reloadGeoLayers}
+      roadFlow={roadFlow}
+      roadsCollection={roadsCollection}
+      satelliteLayer={satelliteLayer}
+      selectedFeatures={selectedFeatures}
+      setActiveDemLayerId={setActiveDemLayerId}
+      setBaseLayer={setBaseLayer}
+      setElevationProfileHover={setElevationProfileHover}
+      setElevationProfileRange={setElevationProfileRange}
+      setEtapaVisible={setEtapaVisible}
+      setExportIncludeLegend={setExportIncludeLegend}
+      setExportIncludeMetadata={setExportIncludeMetadata}
+      setExportPngModalOpen={setExportPngModalOpen}
+      setExportTitle={setExportTitle}
+      setHiddenClasses={setHiddenClasses}
+      setHiddenRanges={setHiddenRanges}
+      setQuickPlace={setQuickPlace}
+      setRasterCompareId={setRasterCompareId}
+      setSelectedFeatures={setSelectedFeatures}
+      setShowDemOverlay={setShowDemOverlay}
+      setShowHillshade={setShowHillshade}
+      setShowIGNOverlay={setShowIGNOverlay}
+      setViewMode={setViewMode}
+      showDemOverlay={showDemOverlay}
+      showHillshade={showHillshade}
+      showIGNOverlay={showIGNOverlay}
+      showLegend={showLegend}
+      singleImageInfo={singleImageInfo}
+      sliderContainerRef={sliderContainerRef}
+      sliderPosition={sliderPosition}
+      toggleLayer={toggleLayer}
+      vectorLayerItems={vectorLayerItems}
+      vectorVisibility={vectorVisibility}
+      viewMode={viewMode}
+      visibleRasterLayers={visibleRasterLayers}
+      waterwaysError={waterwaysError}
+    />
   );
 }

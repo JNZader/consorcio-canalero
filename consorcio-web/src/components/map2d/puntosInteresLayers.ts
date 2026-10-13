@@ -11,8 +11,8 @@ import type {
   ExpressionSpecification,
   SymbolLayerSpecification,
 } from 'maplibre-gl';
-
 import { PUNTO_INTERES_TIPOS } from '../../lib/api/puntosInteres';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { SOURCE_IDS } from './map2dConfig';
 
 export const PUNTOS_INTERES_SOURCE_ID = SOURCE_IDS.PUNTOS_INTERES;
@@ -43,10 +43,10 @@ export function isPuntoInteresLayerId(layerId: string | undefined): boolean {
 type CirclePaint = NonNullable<CircleLayerSpecification['paint']>;
 
 const TIPO_COLORS = {
-  [PUNTO_INTERES_TIPOS.ALCANTARILLA]: '#c45c26',
-  [PUNTO_INTERES_TIPOS.ALTEO]: '#e0a100',
-  [PUNTO_INTERES_TIPOS.TAPONAMIENTO]: '#c62828',
-  [PUNTO_INTERES_TIPOS.OTRO]: '#6d4c41',
+  [PUNTO_INTERES_TIPOS.ALCANTARILLA]: mapColorTokens.hc45c26,
+  [PUNTO_INTERES_TIPOS.ALTEO]: mapColorTokens.he0a100,
+  [PUNTO_INTERES_TIPOS.TAPONAMIENTO]: mapColorTokens.hc62828,
+  [PUNTO_INTERES_TIPOS.OTRO]: mapColorTokens.h6d4c41,
 } as const;
 
 export function buildPuntosInteresCirclePaint(): CirclePaint {
@@ -63,7 +63,7 @@ export function buildPuntosInteresCirclePaint(): CirclePaint {
       TIPO_COLORS[PUNTO_INTERES_TIPOS.TAPONAMIENTO],
       TIPO_COLORS[PUNTO_INTERES_TIPOS.OTRO],
     ],
-    'circle-stroke-color': '#ffffff',
+    'circle-stroke-color': mapColorTokens.hffffff,
     'circle-stroke-width': 2,
   };
 }
@@ -72,15 +72,12 @@ export function buildPuntosInteresCirclePaint(): CirclePaint {
 export function buildPuntosInteresHitPaint(): CirclePaint {
   return {
     'circle-radius': 16,
-    'circle-color': '#000000',
+    'circle-color': mapColorTokens.h000000,
     'circle-opacity': 0,
   };
 }
 
-export function buildPuntosInteresLabelLayer(
-  id: string,
-  source: string
-): SymbolLayerSpecification {
+export function buildPuntosInteresLabelLayer(id: string, source: string): SymbolLayerSpecification {
   return {
     id,
     type: 'symbol',
@@ -98,7 +95,7 @@ export function buildPuntosInteresLabelLayer(
       'symbol-sort-key': ['get', 'prioridad'],
     },
     paint: {
-      'text-color': '#ffffff',
+      'text-color': mapColorTokens.hffffff,
       'text-halo-color': 'rgba(0,0,0,0.75)',
       'text-halo-width': 1.6,
       'text-opacity': 0.95,

@@ -3,6 +3,7 @@
  */
 
 import type { Layer } from '../../types';
+import { erroresUi, textoError } from '../userFacingError';
 import { API_PREFIX, API_URL, apiFetch, getAuthToken, LONG_TIMEOUT, unwrapItems } from './core';
 
 export const layersApi = {
@@ -84,7 +85,7 @@ export const layersApi = {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Error al subir archivo');
+        throw new Error(error.detail || textoError(erroresUi.subirArchivo));
       }
 
       return response.json();

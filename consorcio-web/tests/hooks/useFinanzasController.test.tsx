@@ -358,7 +358,8 @@ describe('useFinanzasController — summary PDF', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'No se pudo descargar el resumen',
-        message: 'Error al descargar el resumen financiero (503)',
+        message:
+          'No pudimos descargar el resumen financiero. Respuesta 503. Volvé a intentar en unos segundos.',
         color: 'red',
       })
     );
@@ -377,7 +378,7 @@ describe('useFinanzasController — summary PDF', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'El servidor no devolvio un documento PDF' })
+      expect.objectContaining({ message: 'No pudimos preparar el PDF. El servidor no devolvió un documento. Volvé a intentar.' })
     );
     expect(window.URL.createObjectURL).not.toHaveBeenCalled();
   });
@@ -391,7 +392,7 @@ describe('useFinanzasController — summary PDF', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'El servidor no devolvio un documento PDF' })
+      expect.objectContaining({ message: 'No pudimos preparar el PDF. El servidor no devolvió un documento. Volvé a intentar.' })
     );
   });
 });

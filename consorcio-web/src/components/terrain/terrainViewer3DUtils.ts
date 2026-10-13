@@ -3,6 +3,7 @@ import type * as maplibregl from 'maplibre-gl';
 
 import { GEE_LAYER_COLORS } from '../../hooks/useGEELayers';
 import { getSoilColor } from '../../hooks/useSoilMap';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { MAP3D_DEFAULT_VISIBLE_VECTORS } from '../../stores/mapLayerSyncStore';
 
 /**
@@ -114,7 +115,7 @@ export function buildWaterwaysCollection(waterways: WaterwayLike[]): FeatureColl
   const features = waterways.flatMap((layer) =>
     layer.data.features.map((feature) =>
       decorateFeature(feature, {
-        __color: layer.style.color ?? '#1565C0',
+        __color: layer.style.color ?? mapColorTokens.h1565C0,
         __label: layer.nombre,
       })
     )

@@ -13,6 +13,7 @@ import { authAdapter } from './auth/index';
 import { markLocalLogout, storeLocalLogoutWarning } from './auth/storage';
 import { logger } from './logger';
 import { safeGetUserRole } from './typeGuards';
+import { erroresUi, textoError } from './userFacingError';
 
 // Re-export types from store for backwards compatibility
 export type { UserRole };
@@ -103,7 +104,7 @@ export async function signInWithGoogle(): Promise<AuthResult> {
     logger.error('Error al conectar con Google:', err);
     return {
       success: false,
-      error: 'Error inesperado al conectar con Google',
+      error: textoError(erroresUi.google),
     };
   }
 }
@@ -179,15 +180,17 @@ function translateAuthError(message: string): string {
     'Invalid login credentials': 'Email o contraseña incorrectos',
     LOGIN_BAD_CREDENTIALS: 'Email o contraseña incorrectos',
     'Email not confirmed': 'Debés confirmar tu email antes de iniciar sesión',
-    'User already registered': 'Este email ya esta registrado',
-    REGISTER_USER_ALREADY_EXISTS: 'Este email ya esta registrado',
+    'User already registered':
+      'Este email ya está registrado. Iniciá sesión o recuperá la contraseña.',
+    REGISTER_USER_ALREADY_EXISTS:
+      'Este email ya está registrado. Iniciá sesión o recuperá la contraseña.',
     'Password should be at least 6 characters': 'La contraseña debe tener al menos 6 caracteres',
     'Unable to validate email address: invalid format': 'Formato de email inválido',
     'Signup requires a valid password': 'Se requiere una contraseña válida',
     'User not found': 'Usuario no encontrado',
     'Email rate limit exceeded': 'Demasiados intentos. Intentá de nuevo más tarde',
     'Error al iniciar sesión': 'Email o contraseña incorrectos',
-    'Error al registrarse': 'Error al crear la cuenta',
+    'Error al registrarse': textoError(erroresUi.crearCuenta),
     RESET_PASSWORD_BAD_TOKEN: 'El enlace de recuperación es inválido o ya expiró.',
     RESET_PASSWORD_INVALID_PASSWORD: 'La contraseña no cumple los requisitos mínimos de seguridad.',
   };
@@ -225,7 +228,7 @@ export async function resetPassword(email: string): Promise<AuthResult> {
     return { success: true };
   } catch (err) {
     logger.error('Error al solicitar reset de password:', err);
-    return { success: false, error: 'Error al enviar el email de recuperación.' };
+    return { success: false, error: textoError(erroresUi.recuperarClave) };
   }
 }
 
@@ -243,7 +246,7 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
     return { success: true };
   } catch (err) {
     logger.error('Error al actualizar password:', err);
-    return { success: false, error: 'Error al cambiar la contraseña.' };
+    return { success: false, error: textoError(erroresUi.cambiarClave) };
   }
 }
 
@@ -359,7 +362,7 @@ export async function verifyEmailWithToken(token: string): Promise<AuthResult> {
 
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Error al verificar el correo.';
+    const message = err instanceof Error ? err.message : textoError(erroresUi.verificarCorreo);
     logger.error('Error al verificar correo con token:', err);
     return { success: false, error: translateAuthError(message) };
   }
@@ -389,7 +392,7 @@ export async function resetPasswordWithToken(
 
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Error al restablecer la contraseña.';
+    const message = err instanceof Error ? err.message : textoError(erroresUi.restablecerClave);
     logger.error('Error al restablecer password con token:', err);
     return { success: false, error: translateAuthError(message) };
   }

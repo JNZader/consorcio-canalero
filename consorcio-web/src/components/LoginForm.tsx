@@ -21,6 +21,7 @@ import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../lib/auth'
 import { withBasePath } from '../lib/basePath';
 import { logger } from '../lib/logger';
 import { parseLoginSearch } from '../lib/loginSearch';
+import { erroresUi } from '../lib/userFacingError';
 import { MIN_PASSWORD_LENGTH, validateEmail, validatePassword } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
 
@@ -96,8 +97,8 @@ export function LoginFormContent() {
           globalThis.location.href = withBasePath('/admin');
         } else {
           notifications.show({
-            title: 'Error al iniciar sesión',
-            message: result.error || 'Verificá tus credenciales',
+            title: erroresUi.iniciarSesion.titulo,
+            message: result.error || erroresUi.iniciarSesion.detalle,
             color: 'red',
             icon: <IconAlertCircle size={16} />,
           });
@@ -129,8 +130,8 @@ export function LoginFormContent() {
           }
         } else {
           notifications.show({
-            title: 'Error al crear cuenta',
-            message: result.error || 'Intentá de nuevo',
+            title: erroresUi.crearCuenta.titulo,
+            message: result.error || erroresUi.crearCuenta.detalle,
             color: 'red',
             icon: <IconAlertCircle size={16} />,
           });
@@ -139,7 +140,7 @@ export function LoginFormContent() {
     } catch (error) {
       logger.error('Error en autenticación:', error);
       notifications.show({
-        title: 'Error',
+        title: erroresUi.iniciarSesion.titulo,
         message: 'Ocurrió un error inesperado. Intentá de nuevo.',
         color: 'red',
         icon: <IconAlertCircle size={16} />,
@@ -157,8 +158,8 @@ export function LoginFormContent() {
 
       if (!result.success) {
         notifications.show({
-          title: 'Error con Google',
-          message: result.error || 'No se pudo conectar con Google',
+          title: erroresUi.google.titulo,
+          message: result.error || erroresUi.google.detalle,
           color: 'red',
           icon: <IconAlertCircle size={16} />,
         });
@@ -166,10 +167,10 @@ export function LoginFormContent() {
       }
       // Si es exitoso, el backend redirigira automaticamente
     } catch (error) {
-      logger.error('Error al conectar con Google:', error);
+      logger.error(erroresUi.google.titulo, error);
       notifications.show({
-        title: 'Error',
-        message: 'Ocurrió un error al conectar con Google',
+        title: erroresUi.google.titulo,
+        message: erroresUi.google.detalle,
         color: 'red',
         icon: <IconAlertCircle size={16} />,
       });

@@ -28,8 +28,10 @@ describe('PERF-01 first-paint chunks', () => {
 
   it('does not statically import DrawControl from MapaMapLibre', () => {
     const mapa = readFileSync(join(here, '../../src/components/MapaMapLibre.tsx'), 'utf8');
+    const view = readFileSync(join(here, '../../src/components/map2d/MapaMapLibreView.tsx'), 'utf8');
     expect(mapa).not.toMatch(/import DrawControl,/);
-    expect(mapa).toMatch("lazy(() => import('./map/DrawControl'))");
+    expect(mapa).not.toMatch(/lazy\(\(\) => import\('\.\/map\/DrawControl'\)\)/);
+    expect(view).toMatch("lazy(() => import('../map/DrawControl'))");
   });
 
   it('dns-prefetches Esri streets, not CARTO or tile.openstreetmap.org', () => {

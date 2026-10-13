@@ -1,5 +1,6 @@
 import { Alert, Box, Center, Skeleton, Stack, Text } from '@mantine/core';
 import { lazy, Suspense } from 'react';
+import { erroresUi } from '../lib/userFacingError';
 import styles from '../styles/components/map.module.css';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -40,11 +41,8 @@ function MapaErrorFallback() {
       }}
     >
       <Stack gap="sm" maw={560} p="md">
-        <Alert color="red" title="Error al cargar el mapa" variant="light" radius="md">
-          <Text size="sm">
-            No se pudo cargar el componente del mapa. Por favor, recargá la página o intentá mas
-            tarde.
-          </Text>
+        <Alert color="red" title={erroresUi.cargarMapa.titulo} variant="light" radius="md">
+          <Text size="sm">{erroresUi.cargarMapa.detalle}</Text>
         </Alert>
         <Box component="section" role="region" aria-label="descripción textual del mapa">
           <Text size="sm" fw={600}>

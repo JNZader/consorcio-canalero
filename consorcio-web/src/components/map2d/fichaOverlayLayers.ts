@@ -13,12 +13,13 @@
  * second palette here.
  */
 
-import type * as maplibregl from 'maplibre-gl';
 import type { FeatureCollection } from 'geojson';
+import type * as maplibregl from 'maplibre-gl';
 
 import { LAYER_LEGEND_CONFIG } from '../../config/rasterLegend';
 import { SOIL_CAPABILITY_COLORS } from '../../hooks/useSoilMap';
 import type { FichaOverlayDataset } from '../../lib/api/ficha';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 /** Source + layer ids for the ficha overlay (one set, slice 1 paints soils). */
 export const FICHA_OVERLAY_SOURCE = 'ficha-overlay';
@@ -26,10 +27,10 @@ export const FICHA_OVERLAY_FILL_LAYER = `${FICHA_OVERLAY_SOURCE}-fill`;
 export const FICHA_OVERLAY_LINE_LAYER = `${FICHA_OVERLAY_SOURCE}-line`;
 
 /** Fallback for an unclassified / unknown clase — matches `getSoilColor`'s default. */
-export const SOIL_OVERLAY_FALLBACK_COLOR = '#8d6e63';
+export const SOIL_OVERLAY_FALLBACK_COLOR = mapColorTokens.h8d6e63;
 
 /** Fallback for a flood/drainage clase not found in the legend ranges (neutral grey). */
-export const RIESGO_OVERLAY_FALLBACK_COLOR = '#9e9e9e';
+export const RIESGO_OVERLAY_FALLBACK_COLOR = mapColorTokens.h9e9e9e;
 
 /**
  * Fill opacity of the clipped analysis (T3a, fix 1b).
@@ -48,7 +49,7 @@ export const FICHA_OVERLAY_FILL_OPACITY = 0.7;
  * opacity separates adjacent classes regardless of how close their fills are, and
  * reads as an outline rather than as a fifth palette entry.
  */
-export const FICHA_OVERLAY_LINE_COLOR = '#212121';
+export const FICHA_OVERLAY_LINE_COLOR = mapColorTokens.h212121;
 export const FICHA_OVERLAY_LINE_WIDTH = 1;
 export const FICHA_OVERLAY_LINE_OPACITY = 0.55;
 

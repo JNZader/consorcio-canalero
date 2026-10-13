@@ -30,7 +30,7 @@
 
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useState } from 'react';
-
+import { mapColorTokens } from '../../../lib/mapColorTokens';
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
 
@@ -148,7 +148,7 @@ export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps)
               fontWeight: 600,
               boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
               whiteSpace: 'nowrap',
-              color: '#333',
+              color: mapColorTokens.h333,
             }}
           >
             {text}

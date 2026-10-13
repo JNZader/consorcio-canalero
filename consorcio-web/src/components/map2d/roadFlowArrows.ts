@@ -8,6 +8,7 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 
 import { ROAD_FLOW_KINDS, type RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 export const FLOW_ARROW_IMAGE_ID = 'road-flow-arrow';
 
@@ -42,10 +43,10 @@ export function ensureFlowArrowImage(map: Pick<maplibregl.Map, 'hasImage' | 'add
   ctx.lineTo(size - 6, size - 6);
   ctx.lineTo(6, size - 6);
   ctx.closePath();
-  ctx.fillStyle = '#FF6D00';
+  ctx.fillStyle = mapColorTokens.hFF6D00;
   ctx.fill();
   ctx.lineWidth = 5;
-  ctx.strokeStyle = '#111111';
+  ctx.strokeStyle = mapColorTokens.h111111;
   ctx.stroke();
   map.addImage(FLOW_ARROW_IMAGE_ID, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
 }

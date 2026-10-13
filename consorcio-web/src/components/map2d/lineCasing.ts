@@ -1,9 +1,10 @@
 import type { LineLayerSpecification } from 'maplibre-gl';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 export const LINE_CASING_OPACITY = 0.6;
 export const LINE_CASING_EXTRA_WIDTH = 2;
-export const LINE_CASING_COLOR_LIGHT = '#ffffff';
-export const LINE_CASING_COLOR_DARK = '#111111';
+export const LINE_CASING_COLOR_LIGHT = mapColorTokens.hffffff;
+export const LINE_CASING_COLOR_DARK = mapColorTokens.h111111;
 
 export function casingLayerId(lineLayerId: string): string {
   return `${lineLayerId}-casing`;
@@ -47,7 +48,10 @@ export function buildLineCasingLayer(input: {
   };
 }
 
-export function shouldAddCasing(map: { getLayer: (id: string) => unknown }, lineLayerId: string): boolean {
+export function shouldAddCasing(
+  map: { getLayer: (id: string) => unknown },
+  lineLayerId: string
+): boolean {
   return !map.getLayer(casingLayerId(lineLayerId));
 }
 
@@ -62,7 +66,7 @@ export function ensureLineCasing(
     width: number;
     dashArray?: string;
     darkHalo?: boolean;
-  },
+  }
 ): void {
   if (!map.getLayer(input.lineLayerId)) return;
   if (!shouldAddCasing(map, input.lineLayerId)) return;

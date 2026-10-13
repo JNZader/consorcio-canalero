@@ -17,6 +17,7 @@
 
 import * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect, useMemo, useRef } from 'react';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 
 interface ReportHighlight {
   readonly lat: number;
@@ -100,7 +101,7 @@ export function useReportHighlight({ mapRef, mapReady }: UseReportHighlightParam
       offset: 24,
     }).setDOMContent(popupContent);
 
-    const marker = new maplibregl.Marker({ color: '#dc2626' })
+    const marker = new maplibregl.Marker({ color: mapColorTokens.hdc2626 })
       .setLngLat([highlight.lng, highlight.lat])
       .setPopup(popup)
       .addTo(map);

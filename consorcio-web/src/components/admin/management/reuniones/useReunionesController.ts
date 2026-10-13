@@ -4,6 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
+import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import type { AgendaItem, EntityOption, Reunion } from './reunionesTypes';
 import {
   buildAgendaTopicPayload,
@@ -219,7 +220,7 @@ export function useReunionesController() {
       const response = await fetch(`${API_URL}/api/v2/reuniones/${selectedReunion.id}/export-pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error('Error al generar PDF');
+      if (!response.ok) throw new Error(textoError(erroresUi.generarPdf));
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
