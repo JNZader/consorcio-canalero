@@ -18,31 +18,54 @@ GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
 # PR #249 measured that moving authStore between two file-level shards only
 # flipped the bottleneck. The 238/239 boundary has no spanning mutants, so two
 # contiguous ranges form a lossless partition while the remaining files stay
-# cost-balanced. This contract keeps the PR and full-baseline matrices identical.
-STRYKER_SHARDS = {
-    "auth1": ["src/stores/authStore.ts:1-238"],
-    "auth2": ["src/stores/authStore.ts:239-324"],
-    "a": [
-        "src/components/map2d/rainfall/rainfallFormat.ts",
-        "src/lib/formatters.ts",
-        "src/hooks/useRainfallAnalysis.ts",
-        "src/stores/configStore.ts",
-        "src/lib/auth.ts",
-        "src/components/map2d/bpaPracticas.ts",
-        "src/components/map2d/canalesFormat.ts",
-    ],
-    "b": [
-        "src/components/map2d/rainfall/RainfallMetricList.tsx",
-        "src/components/map2d/rainfall/RainfallDetailPanel.tsx",
-        "src/lib/api/core.ts",
-        "src/lib/validators.ts",
-        "src/lib/typeGuards.ts",
-        "src/lib/errorHandler.ts",
-        "src/components/admin/pilarVerdeWidget/fmt.ts",
-        "src/components/admin/pilarVerdeWidget/computeKpis.ts",
-        "src/lib/api/rainfall.ts",
-    ],
-}
+# cost-balanced. auth2's end line is derived from authStore.ts so a new import
+# cannot fall outside the matrix. This contract keeps the PR and full-baseline
+# matrices identical.
+AUTH_STORE_SOURCE = "src/stores/authStore.ts"
+AUTH_STORE_RANGE_SPLIT = 238
+_STRYKER_SHARD_A = [
+    "src/components/map2d/rainfall/rainfallFormat.ts",
+    "src/lib/formatters.ts",
+    "src/hooks/useRainfallAnalysis.ts",
+    "src/stores/configStore.ts",
+    "src/lib/auth.ts",
+    "src/components/map2d/bpaPracticas.ts",
+    "src/components/map2d/canalesFormat.ts",
+]
+_STRYKER_SHARD_B = [
+    "src/components/map2d/rainfall/RainfallMetricList.tsx",
+    "src/components/map2d/rainfall/RainfallDetailPanel.tsx",
+    "src/lib/api/core.ts",
+    "src/lib/validators.ts",
+    "src/lib/typeGuards.ts",
+    "src/lib/errorHandler.ts",
+    "src/components/admin/pilarVerdeWidget/fmt.ts",
+    "src/components/admin/pilarVerdeWidget/computeKpis.ts",
+    "src/lib/api/rainfall.ts",
+]
+_LINE_RANGE = re.compile(r"^(?P<path>.+):(?P<start>[1-9]\d*)-(?P<end>[1-9]\d*)$")
+
+
+def _auth_store_line_count() -> int:
+    source = REPO_ROOT / "consorcio-web" / AUTH_STORE_SOURCE
+    return len(source.read_text(encoding="utf-8").splitlines())
+
+
+def _stryker_shards() -> dict[str, list[str]]:
+    """PR and full-baseline matrices, with auth2 closed on the live file."""
+    end = _auth_store_line_count()
+    return {
+        "auth1": [f"{AUTH_STORE_SOURCE}:1-{AUTH_STORE_RANGE_SPLIT}"],
+        "auth2": [f"{AUTH_STORE_SOURCE}:{AUTH_STORE_RANGE_SPLIT + 1}-{end}"],
+        "a": list(_STRYKER_SHARD_A),
+        "b": list(_STRYKER_SHARD_B),
+    }
+
+
+def _line_range(target: str) -> tuple[str, int, int]:
+    match = _LINE_RANGE.fullmatch(target)
+    assert match is not None, target
+    return match.group("path"), int(match.group("start")), int(match.group("end"))
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c"
 )
@@ -1703,24 +1726,26 @@ def test_frontend_mutation_matrices_partition_the_canonical_scope() -> None:
     pr_shards = _mutation_matrix(workflow, "mutation")
     full_shards = _mutation_matrix(workflow, "mutation-full")
     canonical = _stryker_config_targets()
+    expected = _stryker_shards()
 
     assert len(canonical) == len(set(canonical)) == 17
-    assert pr_shards == STRYKER_SHARDS
-    assert full_shards == STRYKER_SHARDS
+    assert pr_shards == expected
+    assert full_shards == expected
     assert set(pr_shards) == {"a", "b", "auth1", "auth2"}
     ordinary_shards = pr_shards["a"] + pr_shards["b"]
     assert set(pr_shards["a"]).isdisjoint(pr_shards["b"])
     assert len(ordinary_shards) == len(set(ordinary_shards)) == 16
     assert set(_mutation_source(target) for target in ordinary_shards) == set(canonical) - {
-        "src/stores/authStore.ts"
+        AUTH_STORE_SOURCE
     }
-    assert pr_shards["auth1"] == ["src/stores/authStore.ts:1-238"]
-    assert pr_shards["auth2"] == ["src/stores/authStore.ts:239-324"]
-    auth_ranges = [(1, 238), (239, 324)]
-    assert auth_ranges[0][1] + 1 == auth_ranges[1][0]
-    assert auth_ranges[0][1] < auth_ranges[1][0]
-    auth_store = REPO_ROOT / "consorcio-web/src/stores/authStore.ts"
-    assert auth_ranges[-1][1] == len(auth_store.read_text(encoding="utf-8").splitlines())
+    auth1_path, auth1_start, auth1_end = _line_range(pr_shards["auth1"][0])
+    auth2_path, auth2_start, auth2_end = _line_range(pr_shards["auth2"][0])
+    assert auth1_path == auth2_path == AUTH_STORE_SOURCE
+    assert auth1_start == 1
+    assert auth1_end == AUTH_STORE_RANGE_SPLIT
+    assert auth2_start == auth1_end + 1
+    assert auth1_end < auth2_start
+    assert auth2_end == _auth_store_line_count()
     for job in ("mutation", "mutation-full"):
         assert workflow["jobs"][job]["strategy"]["fail-fast"] is False
         # 90 -> 120 (PR #242 incident, 2026-08-26): a COLD shard-a run measures
