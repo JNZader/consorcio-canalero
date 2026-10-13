@@ -69,7 +69,7 @@ jobs:
 
       - name: Install frontend dependencies (lockfile)
         working-directory: consorcio-web
-        run: npm ci --no-audit --no-fund --legacy-peer-deps
+        run: npm ci --no-audit --no-fund
 
       # Only chromium: the harness config is single-project chromium.
       - name: Install Playwright chromium

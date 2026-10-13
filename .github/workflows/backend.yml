@@ -145,9 +145,9 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
-      # CI-04: piso 70 (antes 60). El gate de main con .coveragerc está en
-      # deploy.yml. Este job no omite los módulos geo, así que el número es
-      # el mismo piso y no el 75 del informe filtrado.
+      # CI-04: piso 80. La corrida de main del 2026-10-13 midió 80.82% en
+      # tests/new con .coveragerc (esta suite, que también lo carga, quedó
+      # en 83% el mismo día). El piso no pasa de la medición.
       #
       # Los tests del renderer VTK offscreen corren en un PROCESO pytest
       # separado: compartir proceso con el resto de la suite producia
@@ -159,7 +159,7 @@ jobs:
       - run: pytest tests/new/test_geo_visualization_renderer.py -v --cov=app
       - run: >
           pytest tests/ -v --ignore=tests/new/test_geo_visualization_renderer.py
-          --cov=app --cov-append --cov-report=json:coverage.json --cov-fail-under=70
+          --cov=app --cov-append --cov-report=json:coverage.json --cov-fail-under=80
       - run: python3 scripts/critical_coverage_gate.py coverage.json
 
   mutation:

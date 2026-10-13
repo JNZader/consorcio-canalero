@@ -648,7 +648,8 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
     assert package["scripts"]["test:a11y"].startswith("playwright test")
     assert "@playwright/test" in package["devDependencies"]
     assert playwright["version"] == playwright["dependencies"]["playwright"]
-    assert "npm ci --no-audit --no-fund --legacy-peer-deps" in accessibility
+    assert "npm ci --no-audit --no-fund" in accessibility
+    assert "--legacy-peer-deps" not in accessibility
     assert "npx playwright install --with-deps chromium firefox webkit" in accessibility
     assert "@latest" not in accessibility
     assert "CI=1 npm run test:a11y" in accessibility
@@ -679,7 +680,7 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     # corrida final, que combina con --cov-append.
     assert "pytest tests/new/test_geo_visualization_renderer.py -v --cov=app" in backend
     assert "--ignore=tests/new/test_geo_visualization_renderer.py" in backend
-    assert "--cov-append --cov-report=json:coverage.json --cov-fail-under=70" in backend
+    assert "--cov-append --cov-report=json:coverage.json --cov-fail-under=80" in backend
     assert "python3 scripts/critical_coverage_gate.py coverage.json" in backend
     assert "python3 scripts/cosmic_gate.py --config .cosmic-ray.selected.toml" in backend
     assert "mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}" in backend

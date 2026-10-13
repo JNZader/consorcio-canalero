@@ -133,14 +133,14 @@ jobs:
           tests/new/test_gee_public_contract.py
           tests/new/test_production_security_config.py
           -q --no-header --tb=short
-      # CI-04: backend coverage gate at 70% on the full
+      # CI-04: backend coverage gate at 80% on the full
       # ``tests/new/`` suite. The .coveragerc omits the geo-worker
       # modules (composites / processing / tile_service /
       # water_detection / gee_service*) — they live in the geo-worker
       # container with GDAL + WhiteboxTools + Earth Engine the backend
-      # CI does NOT have, so their tests skip here. The floor is 70
-      # (CI-04); the v6 verification measured about 83% on this suite.
-      - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-report=json:coverage.json --cov-fail-under=70 -q --no-header --tb=short
+      # CI does NOT have, so their tests skip here. Measured 80.82%
+      # on main (2026-10-13); the floor does not sit above that.
+      - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-report=json:coverage.json --cov-fail-under=80 -q --no-header --tb=short
       - run: python3 scripts/critical_coverage_gate.py coverage.json
 
   mutation-backend:

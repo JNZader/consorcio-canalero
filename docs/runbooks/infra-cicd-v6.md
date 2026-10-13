@@ -341,9 +341,11 @@ callarlo.
 
 ## Pisos de cobertura (CI-04)
 
-- Backend: `--cov-fail-under=70` (antes 60).
-- Módulos críticos, en `gee-backend/scripts/critical_coverage_gate.py`: `app/auth/router.py` ≥ 24 %, `app/core/rate_limit.py` ≥ 45 %, `app/domains/denuncias/router.py` ≥ 40 %. Son pisos de no-regresión respecto de la medición v6 (auth 26 %, rate limit 47 %), no el 80 % que pediría una tanda de tests nueva.
-- Frontend (`vitest.config.ts`): statements 75, lines 75, branches 70, functions 65 (antes 60 en los cuatro).
+Medidos en `main` el 2026-10-13. El piso sube hacia 80 % y se queda en el entero de esa medición cuando la cobertura real no llega.
+
+- Backend: `--cov-fail-under=80` (antes 70). `tests/new/` con `.coveragerc` midió 80.82 %.
+- Módulos críticos, en `gee-backend/scripts/critical_coverage_gate.py`: `app/auth/router.py` ≥ 27 % (medido 27.1 %), `app/core/rate_limit.py` ≥ 61 % (medido 61.5 %), `app/domains/denuncias/router.py` ≥ 80 % (medido 85.4 %).
+- Frontend (`vitest.config.ts`): statements 78, branches 73, functions 76, lines 79 (medido 78.17 / 73.53 / 76.43 / 79.47).
 
 ## Parche de Mantine (CI-03)
 

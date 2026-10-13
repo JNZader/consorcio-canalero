@@ -96,7 +96,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - run: npm run lint
 
   test:
@@ -112,9 +112,9 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       # Con cobertura, no `test:run`: los thresholds de vitest.config.ts
-      # (CI-04: 75/70/65/75) solo actuan como gate si el reporter de coverage corre.
+      # (CI-04: 78/73/76/79) solo actuan como gate si el reporter de coverage corre.
       # Con `vitest run` a secas los umbrales estaban declarados pero nunca se
       # evaluaban, asi que una caida de cobertura pasaba el CI en verde.
       - run: npm run test:coverage
@@ -132,7 +132,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
 
   smoke:
@@ -148,7 +148,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - run: npm run test:smoke
 
   mutation:
@@ -197,7 +197,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - name: Restore shard mutation baseline
         id: baseline-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -326,7 +326,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - name: Full mutation run (rebuilds the baseline)
         run: npm run mutation:run -- --force --mutate "$MUTATE"
       - name: Upload full shard mutation reports
@@ -401,7 +401,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - name: Install locked Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run accessibility matrix
@@ -435,7 +435,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
       # Regresion de produccion (FE-01 + SPA): /mapa tiene que ser 200 con el
       # shell, y un /assets/*.js que no existe tiene que ser 404 text/plain.
