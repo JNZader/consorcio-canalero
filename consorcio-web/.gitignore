@@ -1,5 +1,7 @@
 # build output
 dist/
+# wrangler pages dev (local state; the routing check passes --persist-to)
+.wrangler/
 # generated types
 .astro/
 
