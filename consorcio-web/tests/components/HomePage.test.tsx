@@ -186,6 +186,41 @@ describe('HomePage', () => {
           canalesResultMock.relevados = null;
         }
       });
+
+      it('does not show NaN km when a canal lacks longitud_m', () => {
+        canalesResultMock.relevados = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                nombre: 'Canal A',
+                longitud_m: 4000,
+                tramo_folder: null,
+                source_style: null,
+              },
+              geometry: { type: 'LineString', coordinates: [[0, 0], [0, 0.01]] },
+            },
+            {
+              type: 'Feature',
+              properties: {
+                nombre: 'Canal B',
+                longitud_m: null,
+                tramo_folder: null,
+                source_style: null,
+              },
+              geometry: { type: 'LineString', coordinates: [[0, 0], [0, 0.01]] },
+            },
+          ],
+        };
+        try {
+          renderWithMantine(<HomeContent />);
+          expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+          expect(screen.getByText('4')).toBeInTheDocument();
+        } finally {
+          canalesResultMock.relevados = null;
+        }
+      });
     });
 
     describe('features section', () => {

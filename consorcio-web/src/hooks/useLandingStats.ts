@@ -56,28 +56,34 @@ export function useLandingStats(): LandingStats {
     if (!relevados) return { canalesKm: null, canalesByGroup: [] as CanalGroupSummary[] };
     const groups = new Map<string, CanalGroupSummary>();
     let totalM = 0;
+    let sawFinite = false;
     for (const f of relevados.features) {
       const p = f.properties;
+      const meters = p.longitud_m;
+      const km = typeof meters === 'number' && Number.isFinite(meters) ? meters / 1000 : 0;
+      if (typeof meters === 'number' && Number.isFinite(meters)) {
+        sawFinite = true;
+        totalM += meters;
+      }
       const folder = p.tramo_folder ?? null;
       const key = folder ?? p.nombre;
       const label = folder ? p.nombre.replace(/\s*\(tramo\s+\d+\s+de\s+\d+\)\s*$/i, '') : p.nombre;
       const prev = groups.get(key);
       if (prev) {
         prev.tramos += 1;
-        prev.km += p.longitud_m / 1000;
+        prev.km += km;
       } else {
         groups.set(key, {
           label,
           key,
           tramos: 1,
-          km: p.longitud_m / 1000,
+          km,
           source_style: p.source_style,
         });
       }
-      totalM += p.longitud_m;
     }
     const arr = Array.from(groups.values()).sort((a, b) => b.km - a.km);
-    return { canalesKm: totalM / 1000, canalesByGroup: arr };
+    return { canalesKm: sawFinite ? totalM / 1000 : null, canalesByGroup: arr };
   }, [relevados]);
 
   return {
