@@ -209,15 +209,18 @@ describe('base-layer controls placement (portrait rework)', () => {
     mockViewport(MOBILE);
     renderMap(<MapaMapLibre />);
 
-    // Nothing is dropped — it MOVED. Closed Drawer → controls not mounted yet.
-    expect(screen.queryByLabelText(BASE_CONTROL_LABEL)).not.toBeInTheDocument();
+    // MAP-11: the tree stays mounted while the overlay is closed.
+    expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('map-controls-tree')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('map-workspace-burger'));
 
     const tree = screen.getByTestId('map-controls-tree');
-    expect(tree).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
     const controls = screen.getAllByLabelText(BASE_CONTROL_LABEL);
     expect(controls).toHaveLength(1);
     expect(tree).toContainElement(controls[0]);
+    expect(dialog).toContainElement(tree);
   });
 });

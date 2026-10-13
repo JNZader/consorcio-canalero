@@ -5,8 +5,7 @@
  * - Desktop (viewport >= 48em): renders a collapsible sidebar + the canvas,
  *   both fed by the SAME `controls`/`canvas` nodes.
  * - Mobile (viewport < 48em): renders the canvas full-width + a ☰ burger that
- *   opens a full-screen Drawer; the Drawer (and its controls) is closed until
- *   the burger is pressed.
+ *   opens the SAME sidebar as a 75% overlay. Controls stay mounted (MAP-11).
  *
  * SINGLE-TREE INVARIANT (FIX 1): `{canvas}` is ALWAYS child index 0 in the SAME
  * wrapper across both modes, so crossing the 48em breakpoint at runtime never
@@ -136,7 +135,7 @@ describe('<MapWorkspace />', () => {
     expect(useMapWorkspaceStore.getState().sidebarCollapsed).toBe(true);
   });
 
-  it('mobile: renders canvas + burger, Drawer (controls) closed until opened', () => {
+  it('mobile: renders canvas + burger, overlay closed until opened', () => {
     mockViewport(false);
     renderWithMantine(
       <MapWorkspace canvas={canvas} controls={controls} activeLayerCount={2} />,
@@ -145,10 +144,10 @@ describe('<MapWorkspace />', () => {
     expect(screen.getByTestId('map-workspace-canvas')).toBeInTheDocument();
     expect(screen.getByTestId('canvas-marker')).toBeInTheDocument();
     expect(screen.getByTestId('map-workspace-burger')).toBeInTheDocument();
-    // No desktop sidebar on mobile.
-    expect(screen.queryByTestId('map-workspace-sidebar')).not.toBeInTheDocument();
-    // Drawer closed → controls not mounted yet.
-    expect(screen.queryByTestId('controls-marker')).not.toBeInTheDocument();
+    expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // MAP-11: controls stay mounted (CSS-hidden) so resize does not reset them.
+    expect(screen.getByTestId('controls-marker')).toBeInTheDocument();
   });
 
   it('mobile: pressing the burger opens the Drawer with the controls', async () => {
@@ -158,8 +157,8 @@ describe('<MapWorkspace />', () => {
     );
 
     fireEvent.click(screen.getByTestId('map-workspace-burger'));
-    // Drawer content mounts through Mantine's open transition.
-    expect(await screen.findByTestId('controls-marker')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('controls-marker')).toBeInTheDocument();
   });
 
   it('T2 fix 5: the mobile Drawer is PARTIAL so the map stays partly visible', async () => {
@@ -169,17 +168,30 @@ describe('<MapWorkspace />', () => {
     );
 
     fireEvent.click(screen.getByTestId('map-workspace-burger'));
-    await screen.findByTestId('controls-marker');
+    await screen.findByRole('dialog');
 
-    // Mantine publishes the `size` prop as the `--drawer-size` custom property.
-    // Full-screen (100%) made a layer toggle unobservable: the user had to
-    // open → toggle → close → look → repeat.
-    const root = container.ownerDocument.querySelector(
-      '[style*="--drawer-size"]',
-    ) as HTMLElement;
-    expect(root).not.toBeNull();
-    expect(root.style.getPropertyValue('--drawer-size')).toBe(MOBILE_DRAWER_SIZE);
+    const sidebar = screen.getByTestId('map-workspace-sidebar');
+    expect(sidebar.style.width).toBe(MOBILE_DRAWER_SIZE);
     expect(MOBILE_DRAWER_SIZE).not.toBe('100%');
+    expect(container.querySelector('[data-testid="map-workspace-drawer-overlay"]')).not.toBeNull();
+  });
+
+  it('MAP-11: the controls node is NEVER remounted across the 48em breakpoint', () => {
+    const viewport = installControllableViewport(true);
+    renderWithMantine(
+      <MapWorkspace canvas={canvas} controls={controls} activeLayerCount={1} />,
+    );
+
+    const controlsNode = screen.getByTestId('controls-marker');
+    expect(screen.getByTestId('map-workspace-sidebar')).toBeInTheDocument();
+
+    viewport.set(false);
+    expect(screen.getByTestId('map-workspace-burger')).toBeInTheDocument();
+    expect(screen.getByTestId('controls-marker')).toBe(controlsNode);
+
+    viewport.set(true);
+    expect(screen.getByTestId('map-workspace-sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('controls-marker')).toBe(controlsNode);
   });
 
   it('FIX 1: the canvas node is NEVER remounted across the 48em breakpoint', () => {
@@ -196,7 +208,7 @@ describe('<MapWorkspace />', () => {
     // (child index 0) must be the SAME node — not recreated.
     viewport.set(false);
     expect(screen.getByTestId('map-workspace-burger')).toBeInTheDocument();
-    expect(screen.queryByTestId('map-workspace-sidebar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('map-workspace-sidebar')).toBeInTheDocument();
     expect(screen.getByTestId('canvas-marker')).toBe(canvasNode);
 
     // Mobile → desktop: same guarantee on the way back.
@@ -227,19 +239,19 @@ describe('<MapWorkspace />', () => {
       <MapWorkspace canvas={canvas} controls={controls} activeLayerCount={2} />,
     );
 
-    // Open the Drawer on mobile.
     fireEvent.click(screen.getByTestId('map-workspace-burger'));
-    expect(await screen.findByTestId('controls-marker')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    const controlsNode = screen.getByTestId('controls-marker');
 
-    // Cross into desktop (the effect closes the Drawer) …
     viewport.set(true);
     expect(screen.getByTestId('map-workspace-sidebar')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    // … then back to mobile: the Drawer must be CLOSED (its controls unmounted),
-    // never re-surfaced on its own.
     viewport.set(false);
     expect(screen.getByTestId('map-workspace-burger')).toBeInTheDocument();
-    expect(screen.queryByTestId('controls-marker')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false');
+    expect(screen.getByTestId('controls-marker')).toBe(controlsNode);
   });
 
   /**
@@ -254,19 +266,16 @@ describe('<MapWorkspace />', () => {
     renderWithMantine(<MapWorkspace canvas={canvas} controls={controls} />);
 
     fireEvent.click(screen.getByTestId('map-workspace-burger'));
-    expect(await screen.findByTestId('controls-marker')).toBeInTheDocument();
-    // Opening pushed a synthetic entry for Back to consume.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(window.history.state).toMatchObject({ __consorcioDrawer: true });
 
     act(() => {
-      // The browser pops the marker entry, THEN notifies the page.
       window.history.replaceState(null, '');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
-    await waitFor(() =>
-      expect(screen.queryByTestId('controls-marker')).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByTestId('controls-marker')).toBeInTheDocument();
     // The pop was already consumed by the browser — no extra rewind.
     expect(back).not.toHaveBeenCalled();
   });
