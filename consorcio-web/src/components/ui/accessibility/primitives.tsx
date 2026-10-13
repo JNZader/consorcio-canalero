@@ -56,8 +56,8 @@ interface SkipLinksProps {
 
 const DEFAULT_SKIP_LINKS: SkipLink[] = [
   { href: '#main-content', label: 'Saltar al contenido principal' },
-  { href: '#primary-nav', label: 'Saltar a navegacion' },
-  { href: '#footer', label: 'Saltar al pie de pagina' },
+  { href: '#primary-nav', label: 'Saltar a navegación' },
+  { href: '#footer', label: 'Saltar al pie de página' },
 ];
 
 export function SkipLinks({ links = DEFAULT_SKIP_LINKS }: SkipLinksProps) {

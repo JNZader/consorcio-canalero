@@ -72,7 +72,7 @@ describe('auth library', () => {
     mockAdapter.login.mockRejectedValueOnce(new Error('Invalid login credentials'));
     await expect(signInWithEmail('mail@test.com', 'bad')).resolves.toEqual({
       success: false,
-      error: 'Email o contrasena incorrectos',
+      error: 'Email o contraseña incorrectos',
     });
   });
 
@@ -125,7 +125,7 @@ describe('auth library', () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
     await expect(resetPassword('mail@test.com')).resolves.toEqual({
       success: false,
-      error: 'Error al enviar el email de recuperacion.',
+      error: 'Error al enviar el email de recuperación.',
     });
 
     // updatePassword imports apiFetch dynamically, mock it

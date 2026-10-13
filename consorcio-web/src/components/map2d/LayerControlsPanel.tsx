@@ -1,7 +1,6 @@
 import {
   Accordion,
   ActionIcon,
-  Badge,
   Box,
   Button,
   Checkbox,
@@ -22,9 +21,11 @@ import {
 } from '@mantine/core';
 import type { ComponentType, ReactNode } from 'react';
 import { isValidElement, useEffect, useState } from 'react';
+import { MAP_DEFAULT_ZOOM } from '../../constants';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import styles from '../../styles/components/map.module.css';
+import { RasterLegend } from '../RasterLegend';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import {
   type CanalToggleEntry,
@@ -43,13 +44,26 @@ import {
   IconSearch,
   IconSettings,
 } from '../ui/icons';
-import { RasterLegend } from '../RasterLegend';
 import { ActiveLayersSection } from './ActiveLayersSection';
+import {
+  displayedAccordionValue,
+  idleAccordionValue,
+  rememberAccordionChange,
+} from './accordionOpenState';
 import { mergeRasterSearchOptions } from './knownRasterCatalog';
 import { LayerOrderSection } from './LayerOrderSection';
 import { LeyendaPanel, type LeyendaPanelProps } from './LeyendaPanel';
 import { getActiveAttributions } from './layerAttributions';
+import {
+  FamilyControlLabel,
+  filterCanalEntries,
+  LayerHealthErrorRow,
+  LayerOpacityControl,
+  LayerProvenanceLine,
+  resolveFamilyHealthRow,
+} from './layerControlWidgets';
 import { buildHealthBannerText, type LayerHealth } from './layerHealth';
+import { LAYER_ZOOM_IN_HINT, layerBelowMinZoom } from './layerMinZoom';
 import { RENDERABLE_UI_LAYER_IDS } from './layerRenderRegistry';
 import { MapPresetChips } from './MapPresetChips';
 import {
@@ -58,14 +72,7 @@ import {
   type LayerCategory,
   normalizeSearchText,
 } from './map2dDerived';
-import {
-  displayedAccordionValue,
-  idleAccordionValue,
-  rememberAccordionChange,
-} from './accordionOpenState';
 import { pickPresetRasterId } from './mapPresets';
-import { MAP_DEFAULT_ZOOM } from '../../constants';
-import { LAYER_ZOOM_IN_HINT, layerBelowMinZoom } from './layerMinZoom';
 import { MAP2D_HILLSHADE_Z_FACTOR } from './mapRasterOverlayHelpers';
 
 const RENDERABLE_UI_LAYER_ID_SET = new Set<string>(RENDERABLE_UI_LAYER_IDS);
@@ -298,165 +305,6 @@ const BASE_SEARCH_LABELS = [
 const AJUSTES_SEARCH_LABELS = ['ajustes', 'etiquetas', 'grosor', 'líneas'].map(normalizeSearchText);
 
 /**
- * Filter canal entries by label for the search box (FF2). A `leaf` matches on
- * its own label; a `group` is kept WHOLE when the group label OR any child
- * label matches (we never partially filter a group's children).
- *
- * `query` MUST already be normalized by `normalizeSearchText` — labels are
- * folded here so an accented canal name is reachable without typing accents.
- */
-function filterCanalEntries(
-  entries: readonly CanalToggleEntry[] | undefined,
-  query: string
-): CanalToggleEntry[] {
-  if (!entries) return [];
-  return entries.filter((entry) => {
-    if (entry.kind === 'leaf') return normalizeSearchText(entry.label).includes(query);
-    return (
-      normalizeSearchText(entry.label).includes(query) ||
-      entry.children.some((child) => normalizeSearchText(child.label).includes(query))
-    );
-  });
-}
-
-/**
- * Compact per-layer opacity slider (task 3.3). Rendered only for an ACTIVE
- * layer that is in the render registry. Value is the 0..100 % view of the
- * store's 0..1 multiplier; the ↺ button resets the multiplier to 1 (Tanda A
- * made multiplier===1 restore the true hardcoded default).
- */
-function LayerOpacityControl({
-  layerId,
-  label,
-  multiplier,
-  onChange,
-}: {
-  layerId: string;
-  label: string;
-  multiplier: number;
-  onChange: (layerId: string, multiplier: number) => void;
-}) {
-  const percent = Math.round(multiplier * 100);
-  return (
-    <Group gap={6} wrap="nowrap" pl={26} pr={4} data-testid={`layer-opacity-${layerId}`}>
-      <Slider
-        style={{ flex: 1 }}
-        min={0}
-        max={100}
-        step={1}
-        value={percent}
-        onChange={(value) => onChange(layerId, value / 100)}
-        label={(value) => `${value}%`}
-        thumbLabel={`Opacidad de ${label}`}
-      />
-      <Text size="xs" c="dimmed" w={28} ta="right">
-        {percent}%
-      </Text>
-      <Tooltip label="Restablecer opacidad" withArrow>
-        <ActionIcon
-          variant="subtle"
-          size="sm"
-          color="gray"
-          aria-label={`Restablecer opacidad de ${label}`}
-          data-testid={`layer-opacity-reset-${layerId}`}
-          onClick={() => onChange(layerId, 1)}
-        >
-          <IconRefresh size={12} />
-        </ActionIcon>
-      </Tooltip>
-    </Group>
-  );
-}
-
-/**
- * Inline failure row for ONE layer family. Generalized from the old
- * pilar-verde-only markup; `testId` stays a parameter because the Pilar Verde
- * row keeps its historical `pilar-verde-layers-error` id (two tests pin it).
- */
-function LayerHealthErrorRow({
-  testId,
-  message,
-  onRetry,
-}: {
-  testId: string;
-  message: string;
-  onRetry?: (() => void) | null;
-}) {
-  return (
-    <Group gap={6} wrap="nowrap" align="center">
-      <Text size="xs" c="red" data-testid={testId} style={{ flex: 1 }}>
-        {message}
-      </Text>
-      {onRetry && (
-        <Button
-          size="xs"
-          variant="subtle"
-          color="red"
-          leftSection={<IconRefresh size={12} />}
-          onClick={onRetry}
-        >
-          Reintentar
-        </Button>
-      )}
-    </Group>
-  );
-}
-
-/**
- * Resolve the inline failure row for one family, or `null` when it is healthy.
- *
- * Pilar Verde keeps its legacy contract: while the `pilarVerdeLayersError` prop
- * is set it wins over the registry, so its historical copy AND its
- * `pilar-verde-layers-error` testid survive untouched (two tests pin them).
- * Extracted from the render loop to keep that precedence in ONE readable place.
- */
-function resolveFamilyHealthRow(
-  category: LayerCategory,
-  isPilarVerde: boolean,
-  pilarVerdeLayersError: string | null,
-  layerHealth: LayerHealth | undefined
-): { testId: string; message: string; onRetry: (() => void) | null } | null {
-  const entry = layerHealth?.byCategory[category] ?? null;
-  if (isPilarVerde && pilarVerdeLayersError) {
-    return {
-      testId: 'pilar-verde-layers-error',
-      message: 'No se pudieron cargar las capas — reintentá',
-      onRetry: entry?.reload ?? null,
-    };
-  }
-  if (!entry?.message) return null;
-  return {
-    testId: isPilarVerde ? 'pilar-verde-layers-error' : `layer-health-error-${category}`,
-    message: entry.message,
-    onRetry: entry.reload,
-  };
-}
-
-/** Dimmed "Datos al …" footer line, sibling of the attribution lines. */
-function LayerProvenanceLine({ category, text }: { category: LayerCategory; text: string }) {
-  return (
-    <Text size="xs" c="dimmed" data-testid={`layer-provenance-${category}`}>
-      {text}
-    </Text>
-  );
-}
-
-function FamilyControlLabel({ label, count }: { label: string; count: number }) {
-  return (
-    <Group gap="xs" justify="space-between" wrap="nowrap" style={{ flex: 1 }}>
-      <Text size="xs" fw={600}>
-        {label}
-      </Text>
-      {count > 0 && (
-        <Badge size="xs" variant="light" color="blue">
-          {count}
-        </Badge>
-      )}
-    </Group>
-  );
-}
-
-/**
  * React Compiler is active → no manual `useMemo`/`useCallback`/`memo`.
  */
 export function LayerControlsPanel({
@@ -613,9 +461,7 @@ export function LayerControlsPanel({
     ...(hazardLayerControl?.active
       ? [{ id: '__hazard', label: 'Visor de riesgos', legend: legendFor('__hazard') }]
       : []),
-    ...(satelliteLayer
-      ? [{ id: '__satellite', label: satelliteLayer.label }]
-      : []),
+    ...(satelliteLayer ? [{ id: '__satellite', label: satelliteLayer.label }] : []),
   ];
 
   const firstDemLayerId = demOptions[0]?.value ?? null;
@@ -647,7 +493,7 @@ export function LayerControlsPanel({
   // layer the map can absolutely paint. They now get their own results section.
   const rasterSearchMatches = isSearching
     ? mergeRasterSearchOptions(demOptions, query).filter((option) =>
-        normalizeSearchText(option.label).includes(normalizedQuery),
+        normalizeSearchText(option.label).includes(normalizedQuery)
       )
     : [];
 
@@ -670,7 +516,11 @@ export function LayerControlsPanel({
         }
         const baseActiveCount = familyActiveCounts[LAYER_CATEGORY.BASE];
         accordionItems.push(
-          <Accordion.Item key={family.value} value={family.value} data-testid="layer-controls-capas">
+          <Accordion.Item
+            key={family.value}
+            value={family.value}
+            data-testid="layer-controls-capas"
+          >
             <Accordion.Control icon={<Icon size={16} />}>
               <FamilyControlLabel label={family.label} count={baseActiveCount} />
             </Accordion.Control>
@@ -679,6 +529,10 @@ export function LayerControlsPanel({
                 <Text size="xs" c="dimmed">
                   Zona Consorcio es el terreno 3D; no hay perímetro extra.
                 </Text>
+                <Text size="xs" c="dimmed">
+                  La base satelital es Esri World Imagery.
+                </Text>
+                <Checkbox label="Zona Consorcio" checked disabled />
                 {demEnabled ? (
                   <Checkbox
                     label="Capa raster 3D"
@@ -918,7 +772,11 @@ export function LayerControlsPanel({
                       withArrow
                       events={{ hover: true, focus: true, touch: true }}
                     >
-                      <Box tabIndex={0} role="group" aria-label={`${item.label}: no disponible en 3D`}>
+                      <Box
+                        tabIndex={0}
+                        role="group"
+                        aria-label={`${item.label}: no disponible en 3D`}
+                      >
                         {checkbox}
                       </Box>
                     </Tooltip>
@@ -1049,16 +907,16 @@ export function LayerControlsPanel({
       </Accordion.Item>
     );
     const rasterIdx = accordionItems.findIndex(
-      (node) => isValidElement(node) && node.key === 'raster',
+      (node) => isValidElement(node) && node.key === 'raster'
     );
     const hidroIdx = accordionItems.findIndex(
-      (node) => isValidElement(node) && node.key === LAYER_CATEGORY.HIDROGRAFIA,
+      (node) => isValidElement(node) && node.key === LAYER_CATEGORY.HIDROGRAFIA
     );
     if (rasterIdx >= 0 && hidroIdx >= 0 && rasterIdx !== hidroIdx + 1) {
       const [rasterNode] = accordionItems.splice(rasterIdx, 1);
       const insertAt =
         accordionItems.findIndex(
-          (node) => isValidElement(node) && node.key === LAYER_CATEGORY.HIDROGRAFIA,
+          (node) => isValidElement(node) && node.key === LAYER_CATEGORY.HIDROGRAFIA
         ) + 1;
       accordionItems.splice(insertAt, 0, rasterNode);
     }

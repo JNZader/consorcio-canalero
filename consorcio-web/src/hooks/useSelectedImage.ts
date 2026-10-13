@@ -296,7 +296,23 @@ export function useSelectedImageListener() {
  * Fetch the server-approved public image projection. Returns null when no image
  * is configured, the stored configuration is unsafe, or GEE is degraded.
  */
-async function restoreFromBackend(): Promise<SelectedImage | null> {
+let publicImageInflight: Promise<SelectedImage | null> | null = null;
+
+/** Test-only: the shared in-flight promise must not leak between cases. */
+export function resetPublicImageFetchForTests(): void {
+  publicImageInflight = null;
+}
+
+function restoreFromBackend(): Promise<SelectedImage | null> {
+  if (!publicImageInflight) {
+    publicImageInflight = fetchPublicCurrentImage().finally(() => {
+      publicImageInflight = null;
+    });
+  }
+  return publicImageInflight;
+}
+
+async function fetchPublicCurrentImage(): Promise<SelectedImage | null> {
   try {
     const response = await mapImageApi.getPublicCurrentImage();
     const image = response.image;

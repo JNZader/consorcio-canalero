@@ -5,36 +5,35 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { DatesProvider } from '@mantine/dates';
 import { Notifications } from '@mantine/notifications';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { RouterProvider, createRouter } from '@tanstack/react-router';
-import dayjs from 'dayjs';
-import 'dayjs/locale/es';
+import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { type ReactNode, StrictMode, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 
-// Configure dayjs (used by @mantine/dates) with Spanish locale + Argentina
-// timezone-friendly defaults so DatePickerInputs across the app render
-// "Lunes / Martes / ..." and accept dd/mm/yyyy without per-component setup.
-dayjs.locale('es');
-
 import { UpdateBanner } from './components/UpdateBanner';
-import { initLogtail } from './lib/logtail';
 import { sharedColorSchemeManager } from './lib/mantine';
 import { queryClient } from './lib/query';
-import { initSentry } from './lib/sentry';
 import { mantineTheme } from './lib/theme';
 import { routeTree } from './routeTree.gen';
 import { useAuthStore } from './stores/authStore';
 import { useConfigStore } from './stores/configStore';
 
-// Initialise observability as early as possible (before the router or
-// any other module-load code can throw). Both are silent no-ops when
-// the respective env vars are unset.
-initSentry();
-initLogtail();
+// Observability leaves the entry graph. Errors thrown before the idle
+// callback are not captured; that is the tradeoff for a lighter first paint.
+function scheduleIdle(task: () => void): void {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => task());
+    return;
+  }
+  setTimeout(task, 1);
+}
+
+scheduleIdle(() => {
+  void import('./lib/sentry').then((mod) => mod.initSentry());
+  void import('./lib/logtail').then((mod) => mod.initLogtail());
+});
 
 // Mantine styles first, then global overrides.
 import './styles/mantine-imports';
@@ -121,13 +120,11 @@ function App() {
           defaultColorScheme="auto"
           colorSchemeManager={sharedColorSchemeManager}
         >
-          <DatesProvider settings={{ locale: 'es', firstDayOfWeek: 1 }}>
-            <Notifications position="top-right" zIndex={10002} />
-            <UpdateBanner />
-            <AuthInitializer>
-              <RouterProvider router={router} />
-            </AuthInitializer>
-          </DatesProvider>
+          <Notifications position="top-right" zIndex={10002} />
+          <UpdateBanner />
+          <AuthInitializer>
+            <RouterProvider router={router} />
+          </AuthInitializer>
         </MantineProvider>
       </QueryClientProvider>
     </HelmetProvider>

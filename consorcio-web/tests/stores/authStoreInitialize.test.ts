@@ -248,7 +248,7 @@ describe('authStore.initialize', () => {
 
       const estado = useAuthStore.getState();
       expect(loggerError).toHaveBeenCalled();
-      expect(estado.error).toBe('Error al inicializar autenticacion');
+      expect(estado.error).toBe('Error al inicializar autenticación');
       // Lo importante: loading en false e initialized en true. Si quedaran al
       // reves, la UI se queda esperando para siempre en el spinner.
       expect(estado.loading).toBe(false);

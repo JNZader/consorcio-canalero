@@ -90,7 +90,7 @@ export function formatRelativeTime(date: string | Date | null | undefined): stri
     if (diffMins < 1) return 'Ahora mismo';
     if (diffMins < 60) return `Hace ${diffMins} ${diffMins === 1 ? 'minuto' : 'minutos'}`;
     if (diffHours < 24) return `Hace ${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`;
-    if (diffDays < 7) return `Hace ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`;
+    if (diffDays < 7) return `Hace ${diffDays} ${diffDays === 1 ? 'día' : 'días'}`;
 
     return formatDate(dateObj, { format: 'medium' });
   } catch {

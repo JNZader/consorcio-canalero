@@ -2,8 +2,8 @@ import { Box, Button, Center, Group, Paper, Stack, Text, ThemeIcon } from '@mant
 import { useRouter } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { type UserRole, useAuth } from '../../hooks/useAuth';
-import { LoadingState } from '../ui/LoadingState';
 import { IconArrowLeft, IconLock } from '../ui/icons';
+import { LoadingState } from '../ui/LoadingState';
 
 /**
  * Props para el componente ProtectedRoute
@@ -97,7 +97,7 @@ export function ProtectedRouteContent({
   allowedRoles = ['admin', 'operador'],
   loginUrl = '/login',
   unauthorizedUrl,
-  unauthorizedMessage = 'No tienes permisos para acceder a esta seccion.',
+  unauthorizedMessage = 'No tenés permisos para acceder a esta sección.',
 }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, profile, canAccess } = useAuth();
   const router = useRouter();
@@ -184,7 +184,7 @@ export function ProtectedRouteContent({
  *
  * @example
  * ```tsx
- * // Solo requiere autenticacion, cualquier rol
+ * // Solo requiere autenticación, cualquier rol
  * <ProtectedRoute allowedRoles={[]}>
  *   <UserProfile />
  * </ProtectedRoute>

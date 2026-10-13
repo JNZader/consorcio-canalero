@@ -24,10 +24,7 @@ import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
 import { MapViewPanes, notifyMapPaneShown, shouldArmThreeD } from './map2d/MapViewPanes';
-import {
-  resolveTerrainAvailability,
-  terrainAvailabilityHint,
-} from './map2d/terrainAvailability';
+import { resolveTerrainAvailability, terrainAvailabilityHint } from './map2d/terrainAvailability';
 import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
 
 // Lazy-load TerrainViewer3D (MapLibre terrain, not deck.gl).
@@ -161,7 +158,7 @@ export function MapaContent() {
                   size="sm"
                   leftSection={<IconPhoto size={16} />}
                 >
-                  {selectedImage ? 'Cambiar imagen' : 'Explorar imagenes'}
+                  {selectedImage ? 'Cambiar imagen' : 'Explorar imágenes'}
                 </Button>
               )}
             </Group>
@@ -223,7 +220,13 @@ export function MapaContent() {
         </Group>
 
         {/* Mapa 2D o Terreno 3D */}
-        <Paper shadow="sm" radius="md" className={mapStyles.mapPageCanvas} style={{ overflow: 'hidden' }} mb="sm">
+        <Paper
+          shadow="sm"
+          radius="md"
+          className={mapStyles.mapPageCanvas}
+          style={{ overflow: 'hidden' }}
+          mb="sm"
+        >
           {/*
             `.canvasHeightBudget` publishes the SAME `--map-canvas-height`
             as `.mapCanvasWrapper`. UX-17 hides rather than unmounts 2D.

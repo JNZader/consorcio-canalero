@@ -24,16 +24,20 @@ describe('reunionesUtils', () => {
     // reports y tramites — el tercer arg de assets ya no existe.
     const options = buildReferrableOptions(
       [{ id: 'r1', tipo: 'rotura_canal', ubicacion_texto: 'Canal Norte' }],
-      [{ id: 't1', titulo: 'Expediente', numero_expediente: '123' }],
+      [{ id: 't1', titulo: 'Expediente', numero_expediente: '123' }]
     );
 
     expect(options).toEqual([
       { value: 'r1', label: 'rotura canal - Canal Norte', group: 'Reportes', type: 'reporte' },
-      { value: 't1', label: 'Expediente (123)', group: 'Tramites', type: 'tramite' },
+      { value: 't1', label: 'Expediente (123)', group: 'Trámites', type: 'tramite' },
     ]);
 
     expect(buildAgendaReferences(['r1'], options)).toEqual([
-      { entidad_id: 'r1', entidad_tipo: 'reporte', metadata: { label: 'rotura canal - Canal Norte' } },
+      {
+        entidad_id: 'r1',
+        entidad_tipo: 'reporte',
+        metadata: { label: 'rotura canal - Canal Norte' },
+      },
     ]);
   });
 
@@ -43,13 +47,15 @@ describe('reunionesUtils', () => {
       buildAgendaTopicPayload(
         { titulo: 'Tema', descripcion: 'Detalle', referencias: ['r1'] },
         [],
-        options,
-      ),
+        options
+      )
     ).toEqual({
       titulo: 'Tema',
       descripcion: 'Detalle',
       orden: 1,
-      referencias: [{ entidad_id: 'r1', entidad_tipo: 'reporte', metadata: { label: 'Reporte 1' } }],
+      referencias: [
+        { entidad_id: 'r1', entidad_tipo: 'reporte', metadata: { label: 'Reporte 1' } },
+      ],
     });
 
     expect(getAgendaReferenceColor('reporte')).toBe('red');

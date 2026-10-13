@@ -3,7 +3,8 @@
  * Uses Google OAuth (1-click) for verification.
  */
 
-import { Alert, Button, Group, Loader, Stack, Text } from '@mantine/core';
+import { Alert, Anchor, Button, Group, Loader, Stack, Text } from '@mantine/core';
+import { withBasePath } from '../../lib/basePath';
 import { IconShieldCheck } from '../ui/icons';
 
 export interface ContactVerificationSectionProps {
@@ -21,6 +22,8 @@ export interface ContactVerificationSectionProps {
   readonly onLogout: () => void;
   /** Optional: Custom verification explanation text */
   readonly verificationExplanation?: string;
+  /** Nota de privacidad. El flujo de sugerencias cambia el sustantivo. */
+  readonly privacyNote?: string;
 }
 
 // Google logo SVG component
@@ -60,7 +63,8 @@ export function ContactVerificationSection({
   // de 5 envios cada 24hs via app.shared.submission_limit — y con las dos
   // pestanas conviviendo en /participacion, cualquier divergencia de texto
   // se lee como si fueran reglas distintas.
-  verificationExplanation = 'Para evitar spam, necesitamos verificar tu identidad. Limite: 5 reportes cada 24 horas.',
+  verificationExplanation = 'Para evitar spam, necesitamos verificar tu identidad. Límite: 5 reportes cada 24 horas.',
+  privacyNote = 'Solo usamos tu email para identificarte y notificarte sobre tu reporte.',
 }: ContactVerificationSectionProps) {
   // Estado verificado
   if (contactoVerificado) {
@@ -113,7 +117,12 @@ export function ContactVerificationSection({
       </Button>
 
       <Text size="xs" c="dimmed" ta="center">
-        Solo usamos tu email para identificarte y notificarte sobre tu reporte.
+        {privacyNote}
+      </Text>
+      <Text size="xs" c="dimmed" ta="center">
+        <Anchor href={withBasePath('/login?modo=registro')} size="xs">
+          También podés crear una cuenta con email
+        </Anchor>
       </Text>
     </Stack>
   );

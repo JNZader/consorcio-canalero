@@ -29,8 +29,8 @@ import {
 } from '../../lib/api/canalesPublicacion';
 import {
   APRHI_SR_PA_URL,
-  type SrPaListRow,
   parseSrPaRows,
+  type SrPaListRow,
   tagSrPaListIds,
 } from '../../lib/aprhiSrPa';
 import {
@@ -295,7 +295,7 @@ export default function CanalesPublicacionPanel() {
           aria-label="Ver existentes"
         />
         <Text size="xs" c="dimmed">
-          Solo oculta en esta pantalla. No publica ni despublica.
+          Solo oculta en esta pantalla. No pública ni despublica.
         </Text>
         <Badge color="green" variant="light">
           {publicados} publicados

@@ -1,6 +1,6 @@
 import { Alert, Button, Code, Group, Paper, Stack, Text, Title } from '@mantine/core';
-import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { Component } from 'react';
 import { logger } from '../lib/logger';
 
 interface Props {
@@ -186,7 +186,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <Stack gap="md">
             <Alert color="red" title="Algo salio mal" variant="light">
               <Text size="sm">
-                Ha ocurrido un error inesperado. Por favor, intenta recargar la pagina.
+                Ha ocurrido un error inesperado. Por favor, intentá recargar la página.
               </Text>
             </Alert>
 
@@ -213,7 +213,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 Intentar de nuevo
               </Button>
               <Button onClick={() => globalThis.location.reload()} variant="subtle">
-                Recargar pagina
+                Recargar página
               </Button>
             </Group>
           </Stack>

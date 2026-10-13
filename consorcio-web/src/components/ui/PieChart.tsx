@@ -72,7 +72,7 @@ export default function PieChart({ data, size = 180, showLegend = true, title }:
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         role="img"
-        aria-label="Grafico circular de distribucion de datos"
+        aria-label="Gráfico circular de distribución de datos"
       >
         {slices.map((slice) => (
           <path

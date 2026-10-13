@@ -138,7 +138,7 @@ describe('ProfilePanel', () => {
 
     it('should have telefono input field', () => {
       renderWithMantine(<ProfilePanel />);
-      const telefonoInput = screen.getByLabelText(/Telefono/i);
+      const telefonoInput = screen.getByLabelText(/Tel[eé]fono/i);
       expect(telefonoInput).toBeInTheDocument();
       expect(telefonoInput).toHaveValue('5491112345678');
     });
@@ -166,7 +166,7 @@ describe('ProfilePanel', () => {
       const user = userEvent.setup();
       renderWithMantine(<ProfilePanel />);
 
-      const telefonoInput = screen.getByLabelText(/Telefono/i) as HTMLInputElement;
+      const telefonoInput = screen.getByLabelText(/Tel[eé]fono/i) as HTMLInputElement;
       const initialValue = telefonoInput.value;
       await user.clear(telefonoInput);
       await user.type(telefonoInput, '+549223334444');
@@ -352,7 +352,7 @@ describe('ProfilePanel', () => {
       renderWithMantine(<ProfilePanel />);
       expect(screen.getByLabelText(/Nombre completo/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Email/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Telefono/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Tel[eé]fono/i)).toBeInTheDocument();
     });
 
     it('should have descriptive button text', () => {
@@ -385,7 +385,7 @@ describe('ProfilePanel', () => {
       const user = userEvent.setup();
       renderWithMantine(<ProfilePanel />);
 
-      const telefonoInput = screen.getByLabelText(/Telefono/i) as HTMLInputElement;
+      const telefonoInput = screen.getByLabelText(/Tel[eé]fono/i) as HTMLInputElement;
       await user.clear(telefonoInput);
       await user.type(telefonoInput, '+54 9 11 1234-5678');
 
