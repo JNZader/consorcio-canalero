@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
@@ -141,7 +141,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
@@ -179,7 +179,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
@@ -200,23 +200,18 @@ jobs:
       #
       # The module list has grown twice since that baseline, each time with
       # its own measurement recorded in ``.cosmic-ray.toml``: finanzas
-      # (+74 mutations, 97.30% on this interpreter) and padron (+191,
-      # 95.29%). Both land far above the floor, so 0.30 keeps widening its
-      # cushion instead of narrowing it. Full gate at 541 mutations,
-      # measured end to end: 75.23% (407/541) on the local 3.14 venv, which
-      # the two stage write-ups show is the PESSIMISTIC interpreter — this
-      # job's 3.11 kills 22 more annotation mutants on top (11 finanzas +
-      # 11 padron, each measured per stage), so expect ~79% here; that half
-      # is DERIVED, not measured end to end. Raising the floor is a separate
-      # change anyway: the literal `--min-kill-rate 0.30` is asserted by
+      # (+74 mutations, 82.43% on Python 3.14) and padron (+191, 89.53%).
+      # Both land far above the floor. Full gate at 541 mutations, measured
+      # end to end: 75.23% (407/541) on Python 3.14, which is now this job's
+      # interpreter. PEP 649 leaves 22 annotation mutants alive that 3.11
+      # used to kill. 75% is still far above the 0.30 floor. The literal
+      # `--min-kill-rate 0.30` is asserted by
       # tests/test_ci_workflow_contracts.py here AND in deploy.yml.
       #
-      # Wallclock budget: 19m33s measured for the 541 mutations on the
-      # desktop 3.14 venv; 3.11 runs the same workload ~2x faster, and a GH
-      # runner is 1.5-2x slower than the desktop → ~15-22 min expected.
-      # Inside the 35-min timeout below, but the margin is now ~13 min and
-      # not the ~20 it used to be: stage 3 (refresh_tokens, +300 mutations)
-      # does NOT fit here and needs its own job.
+      # Wallclock: 19m33s for all 541 mutations on a desktop 3.14 venv.
+      # This job's timeout is 20 minutes and the matrix splits targets, so
+      # a single shard stays inside it. Stage 3 (refresh_tokens) still does
+      # not fit and needs its own job.
       - run: >
           python3 scripts/cosmic_gate.py --config .cosmic-ray.selected.toml
           --session ".cosmic-ray-${{ matrix.target }}.sqlite" --min-kill-rate 0.30

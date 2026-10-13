@@ -83,7 +83,7 @@ services:
       - FOWNER
       - SETGID
       - SETUID
-    image: edoburu/pgbouncer:v1.23.1-p3@sha256:377dec3c0e4a66a1077ec043e16a26ed5702a6d954011a7983a1457c2e070b1d
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
     container_name: consorcio-pgbouncer
     restart: unless-stopped
     environment:
@@ -421,7 +421,7 @@ services:
   # --- Martin Vector Tile Server ---
   martin:
     <<: [*hardening, *readonly]
-    image: ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011
+    image: ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca
     container_name: consorcio-martin
     restart: unless-stopped
     ports:

@@ -392,7 +392,7 @@ services:
   # --- Martin Vector Tile Server ---
   martin:
     <<: [*hardening, *readonly]
-    image: ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011
+    image: ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca
     container_name: consorcio-martin
     restart: unless-stopped
     volumes:

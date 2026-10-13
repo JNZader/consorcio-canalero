@@ -76,13 +76,13 @@ rollback; no hace falta devolverle capabilities de más.
 | Imagen | Pin |
 |---|---|
 | Redis | `redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499` |
-| Martin | `ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011` |
-| PgBouncer | `edoburu/pgbouncer:v1.23.1-p3@sha256:377dec3c0e4a66a1077ec043e16a26ed5702a6d954011a7983a1457c2e070b1d` |
+| Martin | `ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca` |
+| PgBouncer | `edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711` |
 | Node (build del frontend) | `node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402` |
 | Backup | `alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8` |
 | Postgres embebido | `pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8` |
 
-Martin se queda en 0.14.2. Subir a 1.x cambia el formato de config y es otro PR.
+Martin corre 1.16.1. La 1.0 no cambia el formato respecto de 0.20; el config de este repo (`connection_string`, `auto_publish: false`, `tables`) es el esquema que documenta 1.16. No subir a 2.x: esa línea deja de leer `DATABASE_URL` suelto y exige PostGIS 3.5 con otros defaults. Recrear el contenedor alcanza: Martin no tiene volumen de datos.
 
 El Dockerfile de pgvector de desarrollo (`docker/postgres/Dockerfile`) sigue en
 `pgrouting/pgrouting:16-3.4-3.6.1` porque el paquete
@@ -117,9 +117,61 @@ se aplica a esa imagen, no a un servicio de `docker-compose.prod.yml` (ahí
 Postgres no está). El gate de `deploy.yml` ya levanta la imagen nueva vacía
 para las migraciones.
 
-Postgres 17 queda para una ventana aparte: backup, `pg_upgrade` o
-dump/restore, y una imagen `17-3.5-*` pinneada por digest. No mezclarlo con
-este minor.
+### Postgres 17 + pgRouting 4.0 (no aplicado)
+
+El pin de deploy, de desarrollo y de CI sigue en
+`pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8`
+(PostgreSQL 16, PostGIS 3.5, pgRouting 3.8). La imagen upstream
+`pgrouting/pgrouting:17-3.5-4.0` existe
+(`sha256:6d9953bfbebf31b32cd6d9d87691d093d4eb1cf35b5b4e6f8cf87e3a2f29b49c`,
+linux/amd64). No se cambia el pin: un directorio de datos de PostgreSQL 16
+no arranca con un binario 17. En desarrollo el volumen nombrado del compose
+es el mismo caso; en CI los tests usan `postgis/postgis:16-3.4` vacío, pero
+el gate de migraciones de `deploy.yml` y el Postgres embebido del server
+comparten el pin de producción. El Dockerfile de pgvector
+(`docker/postgres/Dockerfile`) sigue en `16-3.4-3.6.1` porque
+`postgresql-16-pgvector=0.8.6-1.pgdg11+1` es un paquete de Debian 11.
+
+Hay también `pgrouting/pgrouting:16-3.5-4.0` (mismo major de Postgres,
+pgRouting 4.0). Eso tampoco se aplica acá: `ALTER EXTENSION pgrouting UPDATE`
+a 4.0 cambia firmas SQL y hay que medirlo contra las funciones de ruteo, no
+esconderlo en un bump de digest.
+
+Ventana, con backup verificado y el server en mantenimiento:
+
+**Dump / restore** (el camino si no hay binarios de las dos majors en el
+mismo contenedor):
+
+1. `SELECT version();` y `SELECT extname, extversion FROM pg_extension;`.
+2. Desde la imagen de backup (cliente 16, `scripts/Dockerfile.backup`):
+   `pg_dump -Fc -d "$DATABASE_URL" -f consorcio-16.dump`.
+3. Levantar un contenedor nuevo con
+   `pgrouting/pgrouting:17-3.5-4.0` y un volumen vacío. No reutilizar el
+   PGDATA de la 16.
+4. `pg_restore -d "$DATABASE_URL" --no-owner consorcio-16.dump`.
+5. `ALTER EXTENSION postgis UPDATE;` y `ALTER EXTENSION pgrouting UPDATE;`
+   hasta PostGIS 3.5 y pgRouting 4.0.
+6. `alembic upgrade head` y comparar `count(*)` de las tablas de padrón,
+   canales y catastro contra el conteo anotado antes del dump.
+
+**pg_upgrade** (menos copia, más frágil; exige los dos clusters en el mismo
+host):
+
+1. Mismo backup `pg_dump -Fc` del paso anterior, por si el upgrade aborta.
+2. Instalar binarios 17 al lado de los 16 (la imagen 17 trae solo la 17;
+   hace falta un contenedor con ambos, o correr `pg_upgrade` desde un
+   sidecar que monte el PGDATA viejo y uno nuevo).
+3. `pg_upgrade --old-datadir /var/lib/postgresql/16/main --new-datadir /var/lib/postgresql/17/main --old-bindir /usr/lib/postgresql/16/bin --new-bindir /usr/lib/postgresql/17/bin --check`
+   y, si el check pasa, el mismo comando sin `--check`.
+4. Arrancar solo el cluster 17, `ALTER EXTENSION` como arriba, y apuntar
+   `POSTGRES_HOST` / el digest del compose al tag `17-3.5-4.0` pineado.
+5. Borrar el PGDATA 16 recién cuando un `SELECT count(*)` y un tile de
+   Martin respondan.
+
+La imagen de backup no sube a Alpine 3.23+: ahí desaparece
+`postgresql16-client` y queda solo el cliente 17. Un `pg_dump` 17 de un
+server 16 funciona, pero el restore de ese archivo custom contra un server
+16 no. Mientras el server sea 16, el cliente del backup se queda en 16.
 
 ## Caddy (INF-01, INF-06)
 

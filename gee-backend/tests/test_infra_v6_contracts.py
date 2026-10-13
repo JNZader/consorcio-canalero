@@ -117,8 +117,8 @@ def test_production_services_drop_capabilities(path: str) -> None:
     else:
         for cap in PRIV_DROP_CAPS:
             assert f"- {cap}" in blocks["pgbouncer"]
-        assert "edoburu/pgbouncer:v1.23.1-p3@sha256:" in blocks["pgbouncer"]
-    assert "ghcr.io/maplibre/martin:v0.14.2@sha256:" in blocks["martin"]
+        assert "edoburu/pgbouncer:v1.26.0-p0@sha256:" in blocks["pgbouncer"]
+    assert "ghcr.io/maplibre/martin:1.16.1@sha256:" in blocks["martin"]
     assert ":-" not in blocks["martin"]
 
 
@@ -136,11 +136,11 @@ def test_known_image_digests_are_the_ones_resolved_for_this_change() -> None:
         in deploy
     )
     assert (
-        "edoburu/pgbouncer:v1.23.1-p3@sha256:377dec3c0e4a66a1077ec043e16a26ed5702a6d954011a7983a1457c2e070b1d"
+        "edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711"
         in prod
     )
     assert (
-        "ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011"
+        "ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca"
         in prod
     )
     assert (
@@ -202,7 +202,7 @@ def test_recharts_react_is_is_a_direct_dependency() -> None:
     """recharts' peer stays direct so `npm ci` resolves without `--legacy-peer-deps`."""
     package = json.loads(_read("consorcio-web/package.json"))
     lock = json.loads(_read("consorcio-web/package-lock.json"))
-    assert package["dependencies"]["react-is"] == "^19.2.3"
+    assert package["dependencies"]["react-is"] == "^19.3.0"
     assert "react-is" in lock["packages"][""]["dependencies"]
     react = lock["packages"]["node_modules/react"]["version"]
     installed = lock["packages"]["node_modules/react-is"]

@@ -5,14 +5,19 @@
 #   requirements.lock       runtime closure  (backend image, deploy)
 #   requirements-dev.lock   runtime + dev    (CI: lint/typecheck/test/mutation)
 #
-# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.11 = the
-# backend image's interpreter). Pass --overrides so fastapi-users-db-sqlalchemy's
-# stale sqlalchemy<2.1 pin does not block Wave C5 (see overrides.txt):
+# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.14 = the
+# backend image's interpreter and CI). Pass --overrides so
+# fastapi-users-db-sqlalchemy's stale sqlalchemy<2.1 pin does not block Wave C5
+# (see overrides.txt). --universal keeps cp312 wheels in the hash set so the
+# geo-worker (Ubuntu 24.04 / Python 3.12 on the GDAL base) can install the same
+# lock; resolution itself is Python 3.14 so numpy 2.5 / scipy 1.18 / rasterio
+# 1.5 / pyproj 3.8 (requires-python >=3.12) are eligible.
 #
-#   uv pip compile requirements.txt --python-version 3.11 --generate-hashes \
-#       --overrides overrides.txt --output-file requirements.lock
-#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.11 \
+#   uv pip compile requirements.txt --python-version 3.14 --universal \
 #       --generate-hashes --overrides overrides.txt \
+#       --output-file requirements.lock
+#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.14 \
+#       --universal --generate-hashes --overrides overrides.txt \
 #       --output-file requirements-dev.lock
 #
 # Install from the lock with --no-deps --require-hashes (full closure; --no-deps
@@ -36,7 +41,7 @@ pydantic[email]>=2.11.0
 pydantic-settings>=2.15.0
 
 # Google Earth Engine
-earthengine-api>=1.4.0
+earthengine-api>=1.7.48
 google-auth>=2.37.0
 
 # Database
@@ -56,12 +61,15 @@ asyncpg>=0.30.0
 geoalchemy2>=0.17.0
 
 # GeoJSON/Geospatial
+# numpy 2.5, rasterio 1.5 and pyproj 3.8 require Python >=3.12. CI and the
+# backend image are 3.14; the lock is resolved at that version.
 geojson>=3.2.0
 geopandas>=1.0.0
 shapely>=2.0.0
 rasterstats>=0.20.0
-rasterio>=1.4.0
-pyproj>=3.6.0
+numpy>=2.5.0
+rasterio>=1.5.0
+pyproj>=3.8.0
 whitebox>=2.3.5
 
 # 3D Visualization
