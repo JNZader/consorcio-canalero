@@ -1,0 +1,10 @@
+[Unit]
+Description=Notify failure of %i
+Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/infra-cicd-v6.md
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/consorcio-notify.sh %i
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=consorcio-notify

@@ -155,14 +155,20 @@ class TestAuthSessionGates:
     def test_refresh_without_cookie_401(self, client: TestClient):
         resp = client.post(
             "/api/v2/auth/jwt/refresh",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Origin": "http://localhost:3000",
+            },
         )
         assert resp.status_code == 401
 
     def test_logout_all_unauthenticated_401(self, client: TestClient):
         resp = client.post(
             "/api/v2/auth/jwt/logout-all",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Origin": "http://localhost:3000",
+            },
         )
         assert resp.status_code == 401
 

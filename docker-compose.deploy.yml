@@ -1,11 +1,17 @@
 # ===========================================
-# Docker Compose - Hetzner (build en server)
+# Docker Compose - stack legado embebido
 # ===========================================
+# INF-07: NO es el archivo que DEPLOY.md instala en Hetzner. La fuente de
+# verdad es docker-compose.prod.yml (GHCR por digest, Postgres y Redis
+# externos). Este archivo se conserva para el server que todavía buildea
+# en local y trae Postgres y Redis propios. Los controles de INF-08
+# (cap_drop, no-new-privileges, logs) están alineados con el otro archivo.
+# Ver docs/runbooks/infra-cicd-v6.md.
 # Frontend: Cloudflare Pages (NO incluido).
 # PostgreSQL + Redis: propios de este stack.
-# Caddy rutea cc10demayo-api.javierzader.com:
-#   /           → consorcio-backend:8000
-#   /tiles/     → consorcio-martin:3000
+# Caddy (deploy/Caddyfile) rutea por host, no por path:
+#   cc10demayo-api.javierzader.com   → consorcio-backend:8000
+#   cc10demayo-tiles.javierzader.com → consorcio-martin:3000
 #
 # Uso:
 #   cd ~/stacks/consorcio
@@ -13,10 +19,36 @@
 #   docker compose -f docker-compose.deploy.yml up -d --build
 # ===========================================
 
+x-hardening: &hardening
+  # INF-08. Servicios que arrancan como root y bajan de usuario agregan cap_add.
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-readonly: &readonly
+  read_only: true
+  tmpfs:
+    - /tmp:size=134217728,mode=1777
+
 services:
   # --- PostgreSQL + PostGIS + pgRouting ---
   postgres:
-    image: pgrouting/pgrouting:16-3.4-3.6.1
+    <<: *hardening
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    # DB-05: Postgres 16 + PostGIS 3.5 + pgRouting 3.8, fijada por digest.
+    # Minor dentro de 16: no hace falta dump. Seguir el runbook antes de recrear.
+    image: pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8
     container_name: consorcio-postgres
     restart: unless-stopped
     environment:
@@ -45,7 +77,14 @@ services:
 
   # --- Redis ---
   redis:
-    image: redis:7-alpine
+    <<: *hardening
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     container_name: consorcio-redis
     restart: unless-stopped
     # AOF persistence: redis is Celery broker + result backend — losing it
@@ -77,6 +116,7 @@ services:
   # out-of-date schema. If the migration fails, dependents don't start
   # and the deploy fails loudly instead of producing 500s at runtime.
   migrate:
+    <<: [*hardening, *readonly]
     build:
       context: ./gee-backend
       dockerfile: Dockerfile
@@ -88,6 +128,9 @@ services:
       - ./credentials:/app/credentials:ro
     networks:
       - consorcio-internal
+    environment:
+      HOME: /tmp
+      TMPDIR: /tmp
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,8 +141,34 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # Named volume ownership repair. Same contract as docker-compose.prod.yml.
+  uploads-init:
+    <<: *hardening
+    build:
+      context: ./gee-backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: consorcio-uploads-init
+    user: "0:0"
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    command:
+      - sh
+      - -ec
+      - |
+        chown -R app:app /app/uploads
+        chmod 0750 /app/uploads
+    volumes:
+      - denuncia-uploads:/app/uploads
+    network_mode: none
+    read_only: true
+    restart: "no"
+
   # --- Backend FastAPI ---
   backend:
+    <<: [*hardening, *readonly]
     build:
       context: ./gee-backend
       dockerfile: Dockerfile
@@ -108,6 +177,8 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       # DB-04: runtime is consorcio_app (no SUPERUSER). Until APP_DATABASE_URL
       # is set, this is the same URL as migrate.
       DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
@@ -136,6 +207,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      uploads-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -152,6 +225,11 @@ services:
 
   # --- One-shot Celery Beat schedule ownership repair ---
   celery-beat-init:
+    <<: *hardening
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
     build:
       context: ./gee-backend
       dockerfile: Dockerfile
@@ -173,6 +251,7 @@ services:
   # --- Celery Beat (cron scheduler) ---
   # Phase 3 / F3-L. See docker-compose.prod.yml for the rationale.
   celery-beat:
+    <<: [*hardening, *readonly]
     build:
       context: ./gee-backend
       dockerfile: Dockerfile
@@ -182,6 +261,8 @@ services:
     command: celery -A app.core.celery_app beat --loglevel=info --schedule=/var/run/celery/celerybeat-schedule
     env_file: .env
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - ./credentials:/app/credentials:ro
@@ -218,6 +299,7 @@ services:
 
   # --- Celery Worker ---
   celery-worker:
+    <<: [*hardening, *readonly]
     build:
       context: ./gee-backend
       dockerfile: Dockerfile
@@ -230,6 +312,8 @@ services:
     command: celery -A app.core.celery_app worker --pool=prefork --loglevel=info --concurrency=2 -Q celery
     env_file: .env
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - geo-data:/data/geo
@@ -261,6 +345,8 @@ services:
 
   # --- Geo Worker (GDAL + WhiteboxTools) ---
   geo-worker:
+    <<: *hardening
+    # INF-08: sin read_only. supervisord y WhiteboxTools escriben dentro de la imagen.
     build:
       context: ./gee-backend
       dockerfile: Dockerfile.geo
@@ -305,13 +391,16 @@ services:
 
   # --- Martin Vector Tile Server ---
   martin:
-    image: ghcr.io/maplibre/martin:v0.14.2
+    <<: [*hardening, *readonly]
+    image: ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011
     container_name: consorcio-martin
     restart: unless-stopped
     volumes:
       - ./martin-config.deploy.yaml:/config/config.yaml:ro
     command: --config /config/config.yaml
     environment:
+      HOME: /tmp
+      TMPDIR: /tmp
       # Fail closed: never inherit or fall back to the application owner URL.
       DATABASE_URL: ${MARTIN_DB_URL:?MARTIN_DB_URL is required for the dedicated read-only Martin role}
     networks:
@@ -335,6 +424,36 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+  # INF-02 / INF-13. Opt-in: docker compose --profile backup run --rm backup-postgres
+  backup-postgres:
+    <<: *hardening
+    profiles: ["backup"]
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.backup
+    container_name: consorcio-backup-postgres
+    restart: "no"
+    env_file: .env
+    command: ["/opt/backup/backup_postgres.sh"]
+    networks:
+      - consorcio-internal
+
+  backup-volumes:
+    <<: *hardening
+    profiles: ["backup"]
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.backup
+    container_name: consorcio-backup-volumes
+    restart: "no"
+    env_file: .env
+    volumes:
+      - geo-data:/data/geo:ro
+      - denuncia-uploads:/app/uploads:ro
+    command: ["/opt/backup/backup_volumes.sh"]
+    networks:
+      - consorcio-internal
 
 networks:
   proxy:

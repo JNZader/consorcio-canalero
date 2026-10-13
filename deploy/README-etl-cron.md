@@ -139,13 +139,14 @@ everything.
 
 Two, both real, both documented instead of papered over.
 
-**1. A failed run notifies nobody.** It is visible — `systemctl status`, the journal,
-the run log — but only if somebody looks. There is no `OnFailure=` hook and no
-heartbeat. The plan, for when the owner turns on the uptime monitoring that already
-exists on this box: have the script emit a heartbeat on success (touch a file the
-proxy serves, or curl a push-monitor URL) and point Uptime Kuma at it, so a run that
-never happens is as loud as one that failed. Not implemented on purpose — a
-half-wired alerting path is worse than a documented gap.
+**1. A failed run now notifies, a skipped week still does not.** `etl-refresh.service`
+has `OnFailure=notify@%n.service` (INF-10). The hook is `deploy/notify@.service`,
+which runs `deploy/notify-failure.sh`. It sends JSON to `ALERT_WEBHOOK_URL` and,
+if `sendmail` exists, mail to `MAILTO`. Both come from `/etc/consorcio/notify.env`
+(mode 0600, root). Without that file the unit still fails and the hook exits 1,
+so the failure stays in the journal only. A run that never starts (timer disabled,
+host down) still has no heartbeat: point Uptime Kuma at the backup-age stamp and
+at `/live`, not at a file this script does not write.
 
 **2. A hung step is only killed on the host side.** Each step runs under `timeout`
 (`ETL_STEP_TIMEOUT_S`, default 2100 s), which is well under the unit's
