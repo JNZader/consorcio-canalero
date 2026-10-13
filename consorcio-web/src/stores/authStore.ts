@@ -225,7 +225,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             set({
               loading: false,
               initialized: true,
-              error: 'Error al inicializar autenticacion',
+              error: 'Error al inicializar autenticación',
             });
           } finally {
             // Clear the promise so future calls (after reset) can reinitialize

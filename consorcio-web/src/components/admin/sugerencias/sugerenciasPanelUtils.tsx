@@ -14,7 +14,7 @@ export function getStatusBadge(status: string): ReactNode {
 
 export function getCategoriaLabel(categoria?: string | null): string {
   return (
-    CATEGORIA_OPTIONS.find((c) => c.value === categoria)?.label || categoria || 'Sin categoria'
+    CATEGORIA_OPTIONS.find((c) => c.value === categoria)?.label || categoria || 'Sin categoría'
   );
 }
 

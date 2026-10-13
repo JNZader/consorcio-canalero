@@ -8,7 +8,7 @@ import {
   MAP_CENTER,
   MAP_DEFAULT_ZOOM,
 } from '../constants';
-import { type SystemConfig, configApi } from '../lib/api';
+import { configApi, type SystemConfig } from '../lib/api';
 import { logger } from '../lib/logger';
 
 /**
@@ -84,7 +84,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         config: DEFAULT_CONFIG,
         loading: false,
         initialized: true,
-        error: err instanceof Error ? err.message : 'Error desconocido al cargar configuracion',
+        error: err instanceof Error ? err.message : 'Error desconocido al cargar configuración',
       });
     }
   },

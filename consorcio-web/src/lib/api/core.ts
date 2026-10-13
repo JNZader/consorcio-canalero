@@ -280,7 +280,7 @@ async function authenticatedFetchResponse<T>(
 
         if (!_handlingAuthExpiry) {
           _handlingAuthExpiry = true;
-          logger.warn('Sesion expirada — redirigiendo a login');
+          logger.warn('Sesión expirada — redirigiendo a login');
           clearAuthTokenCache();
           authAdapter.clearTokens();
           window.dispatchEvent(new CustomEvent('auth:expired'));
@@ -288,7 +288,7 @@ async function authenticatedFetchResponse<T>(
             _handlingAuthExpiry = false;
           }, 10_000);
         }
-        throw new Error('Tu sesion ha expirado. Por favor inicia sesion nuevamente.');
+        throw new Error('Tu sesión ha expirado. Por favor iniciá sesión nuevamente.');
       }
 
       throw new Error(getApiErrorMessage(error, response.status));
@@ -300,7 +300,7 @@ async function authenticatedFetchResponse<T>(
       if (callerSignal?.aborted) {
         throw error;
       }
-      throw new Error(`La solicitud excedio el tiempo limite (${timeout / 1000}s)`);
+      throw new Error(`La solicitud excedió el tiempo límite (${timeout / 1000}s)`);
     }
     throw error;
   } finally {

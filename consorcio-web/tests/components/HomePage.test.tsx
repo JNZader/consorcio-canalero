@@ -57,7 +57,7 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
         expect(
           screen.getByText(
-            /Sistema colaborativo de gestion territorial/i
+            /Sistema colaborativo de gesti[oó]n territorial/i
           )
         ).toBeInTheDocument();
       });
@@ -286,7 +286,7 @@ describe('HomePage', () => {
 
       it('should render CTA description', () => {
         renderWithMantine(<HomeContent />);
-        expect(screen.getByText(/Reporta problemas en la infraestructura hidrica/i)).toBeInTheDocument();
+        expect(screen.getByText(/Report[aá] problemas en la infraestructura h[ií]drica/i)).toBeInTheDocument();
       });
 
       it('should render CTA button', () => {

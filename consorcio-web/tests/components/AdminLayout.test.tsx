@@ -44,7 +44,7 @@ function renderLayout() {
 
 async function clickLogout() {
   fireEvent.click(screen.getByRole('button', { name: /admin/i }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesion' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }));
 }
 
 describe('AdminLayout account navigation', () => {
@@ -57,7 +57,7 @@ describe('AdminLayout account navigation', () => {
     expect(ADMIN_ACCOUNT_MENU_ITEMS).toEqual({
       profile: { label: 'Perfil', to: '/perfil' },
       site: { label: 'Volver al sitio', to: '/' },
-      logout: { label: 'Cerrar sesion', to: '/login' },
+      logout: { label: 'Cerrar sesión', to: '/login' },
     });
 
     const labels = Object.values(ADMIN_ACCOUNT_MENU_ITEMS).map((item) => item.label);

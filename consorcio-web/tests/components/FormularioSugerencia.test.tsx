@@ -100,7 +100,7 @@ describe('FormularioSugerencia', () => {
   });
 
   describe('Verification State Handling', () => {
-    it('renders blocked step state when contact is not verified', () => {
+    it('keeps the suggestion form editable before verification', () => {
       useContactVerificationMock.mockReturnValue({
         contactoVerificado: false,
         userEmail: null,
@@ -112,8 +112,9 @@ describe('FormularioSugerencia', () => {
 
       renderForm();
 
-      expect(screen.getByText(/Verifica tu contacto primero/i)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /enviar sugerencia/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/verificá tu identidad para enviar/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toBeEnabled();
+      expect(screen.getByText(/podés completar la sugerencia ahora/i)).toBeInTheDocument();
     });
 
     it.each([
@@ -146,9 +147,9 @@ describe('FormularioSugerencia', () => {
       const user = userEvent.setup();
       renderForm();
 
-      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), 'Mejorar drenaje principal');
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), 'Mejorar drenaje principal');
       await user.type(
-        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
         'Propongo limpiar y ensanchar el drenaje antes de la temporada de lluvias'
       );
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
@@ -171,9 +172,9 @@ describe('FormularioSugerencia', () => {
       const user = userEvent.setup();
       renderForm();
 
-      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), 'Mejorar drenaje principal');
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), 'Mejorar drenaje principal');
       await user.type(
-        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
         'Propongo limpiar y ensanchar el drenaje antes de la temporada de lluvias'
       );
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
@@ -201,9 +202,9 @@ describe('FormularioSugerencia', () => {
       const user = userEvent.setup();
       renderForm();
 
-      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), title);
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), title);
       await user.type(
-        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
         description
       );
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
@@ -234,7 +235,7 @@ describe('FormularioSugerencia', () => {
       renderForm();
 
       await waitFor(() => {
-        expect(screen.getByText(/Llegaste al limite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
+        expect(screen.getByText(/llegaste al l[ií]mite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toBeDisabled();
       });
     });
@@ -266,7 +267,7 @@ describe('FormularioSugerencia', () => {
       renderForm();
 
       await waitFor(() => {
-        expect(screen.getByText(/Llegaste al limite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
+        expect(screen.getByText(/llegaste al l[ií]mite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
         const submitButton = screen.getByRole('button', { name: /enviar sugerencia/i });
         expect(submitButton).toBeDisabled();
       });
@@ -286,9 +287,9 @@ describe('FormularioSugerencia', () => {
       const user = userEvent.setup();
       renderForm();
 
-      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), 'Mejorar drenaje principal');
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), 'Mejorar drenaje principal');
       await user.type(
-        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
         'Propongo limpiar y ensanchar el drenaje antes de la temporada de lluvias'
       );
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
@@ -297,7 +298,7 @@ describe('FormularioSugerencia', () => {
         expect(notifications.show).toHaveBeenCalledWith(
           expect.objectContaining({ title: 'Error', color: 'red' })
         );
-        expect(screen.getByText(/Llegaste al limite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
+        expect(screen.getByText(/llegaste al l[ií]mite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
       });
     });
   });
@@ -317,9 +318,9 @@ describe('FormularioSugerencia', () => {
       const user = userEvent.setup();
       renderForm();
 
-      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), 'Test title');
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), 'Test title');
       await user.type(
-        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
         'Test description'
       );
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
@@ -349,9 +350,9 @@ describe('FormularioSugerencia', () => {
       const user = userEvent.setup();
       renderForm();
 
-      await user.type(screen.getByLabelText(/titulo de la sugerencia/i), 'Test title');
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), 'Test title');
       await user.type(
-        screen.getByPlaceholderText(/Explica tu sugerencia con el mayor detalle posible/i),
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
         'Test description'
       );
       await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));

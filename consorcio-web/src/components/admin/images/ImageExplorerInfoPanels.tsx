@@ -114,7 +114,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
                   Izquierda
                 </Button>
               </Tooltip>
-              <Tooltip label="Comparar: imagen derecha (despues)">
+              <Tooltip label="Comparar: imagen derecha (después)">
                 <Button
                   variant={comparison?.right?.tile_url === result?.tile_url ? 'light' : 'outline'}
                   color="green"
@@ -252,7 +252,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
           {isOpticalSensor(sensor) ? (
             <Text size="sm" c="dimmed">
               RGB = Color natural | Falso color = vegetacion en rojo | NDWI/MNDWI = Agua |
-              Inundacion = NDWI &gt; 0
+              Inundación = NDWI &gt; 0
               {sensor === 'landsat7' ? ' | Landsat 7 puede tener gaps SLC-off' : ''}
             </Text>
           ) : (

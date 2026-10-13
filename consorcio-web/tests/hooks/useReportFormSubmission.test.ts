@@ -1,6 +1,6 @@
+import { notifications } from '@mantine/notifications';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { notifications } from '@mantine/notifications';
 import { useReportFormSubmission } from '../../src/components/report-form/useReportFormSubmission';
 import { publicApi } from '../../src/lib/api';
 
@@ -62,6 +62,12 @@ describe('useReportFormSubmission', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Identidad no verificada', color: 'orange' })
     );
+    expect(JSON.parse(sessionStorage.getItem('cc-draft-reporte') ?? '{}')).toMatchObject({
+      tipo: 'desborde',
+      descripcion: 'descripcion valida',
+      lat: -32.6,
+      lng: -62.7,
+    });
   });
 
   it('blocks submission when daily limit is exhausted', async () => {
@@ -91,7 +97,7 @@ describe('useReportFormSubmission', () => {
     // garantizado y rinde mejor UX cuando el badge ya muestra 0.
     expect(publicApi.createReport).not.toHaveBeenCalled();
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Limite alcanzado', color: 'orange' })
+      expect.objectContaining({ title: 'Límite alcanzado', color: 'orange' })
     );
   });
 

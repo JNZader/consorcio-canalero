@@ -28,7 +28,7 @@ describe('mapStyles', () => {
 
   it('includes analysis legend extension and map tile presets', () => {
     expect(ANALYSIS_LEGEND_ITEMS.length).toBe(DEFAULT_LEGEND_ITEMS.length + 1);
-    expect(ANALYSIS_LEGEND_ITEMS.at(-1)?.label).toMatch(/Area de analisis/i);
+    expect(ANALYSIS_LEGEND_ITEMS.at(-1)?.label).toMatch(/Área de análisis/i);
     expect(TILE_LAYERS.osm.url).toContain('World_Street_Map');
     expect(TILE_LAYERS.osm.url).toContain('server.arcgisonline.com');
     expect(TILE_LAYERS.osm.url).not.toContain('tile.openstreetmap.org');

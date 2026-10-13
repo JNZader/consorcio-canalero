@@ -1,3 +1,7 @@
+-- HISTÓRICO. La aplicación no usa Supabase.
+-- Este archivo se conserva solo como referencia del esquema anterior.
+-- El backend vigente está en gee-backend (PostgreSQL + Alembic).
+
 -- ============================================
 -- CONSORCIO CANALERO 10 DE MAYO
 -- Schema para Supabase

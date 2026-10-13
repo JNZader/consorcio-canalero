@@ -25,10 +25,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useDemPipeline } from '../../hooks/useDemPipeline';
-import { demPipelineApi } from '../../lib/api/demPipeline';
 import type { GeoLayerResponse } from '../../lib/api/demPipeline';
+import { demPipelineApi } from '../../lib/api/demPipeline';
 import {
   IconAlertTriangle,
   IconChartBar,
@@ -46,7 +46,7 @@ const LAYER_TYPE_LABELS: Record<string, string> = {
   dem_raw: 'DEM Original',
   slope: 'Pendiente',
   aspect: 'Orientacion',
-  flow_dir: 'Direccion de Flujo',
+  flow_dir: 'Dirección de Flujo',
   flow_acc: 'Acumulacion de Flujo',
   twi: 'Indice de Humedad (TWI)',
   hand: 'Altura sobre Drenaje (HAND)',
@@ -82,7 +82,7 @@ export default function DemPipelinePanel() {
             <Title order={2}>DEM Pipeline</Title>
           </Group>
           <Text c="dimmed" size="sm">
-            Analisis de elevacion digital: descarga desde GEE, analisis de terreno y delineacion de
+            Análisis de elevación digital: descarga desde GEE, análisis de terreno y delineación de
             cuencas
           </Text>
         </div>
@@ -108,7 +108,7 @@ export default function DemPipelinePanel() {
 
             <Group>
               <NumberInput
-                label="Area minima de cuenca (ha)"
+                label="Área mínima de cuenca (ha)"
                 description="Cuencas menores a este valor se descartan"
                 value={minBasinAreaHa}
                 onChange={(val) => setMinBasinAreaHa(typeof val === 'number' ? val : 5000)}

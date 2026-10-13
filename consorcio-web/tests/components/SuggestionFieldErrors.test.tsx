@@ -52,8 +52,8 @@ describe('suggestion field errors', () => {
   it('connects title and description validation errors to their fields', async () => {
     renderWithMantine(<FormularioSugerenciaContent />);
 
-    const title = screen.getByRole('textbox', { name: /titulo de la sugerencia/i });
-    const description = screen.getByRole('textbox', { name: /descripcion/i });
+    const title = screen.getByRole('textbox', { name: /t[ií]tulo de la sugerencia/i });
+    const description = screen.getByRole('textbox', { name: /descripci[oó]n/i });
     const form = title.closest('form') as HTMLFormElement;
 
     expect(form).toHaveAttribute('novalidate');
@@ -65,11 +65,11 @@ describe('suggestion field errors', () => {
       expectFieldDescribedByError(description, 'suggestion-description-error');
     });
 
-    expect(screen.getByText(/el titulo debe tener al menos 5 caracteres/i)).toHaveAttribute(
+    expect(screen.getByText(/el título debe tener al menos 5 caracteres/i)).toHaveAttribute(
       'role',
       'alert'
     );
-    expect(screen.getByText(/la descripcion debe tener al menos 10 caracteres/i)).toHaveAttribute(
+    expect(screen.getByText(/la descripción debe tener al menos 10 caracteres/i)).toHaveAttribute(
       'role',
       'alert'
     );

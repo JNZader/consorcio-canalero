@@ -15,8 +15,8 @@ import {
   Title,
 } from '@mantine/core';
 import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
-import { API_URL } from '../../../../lib/api';
 import type { Report } from '../../../../lib/api';
+import { API_URL } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { AuthenticatedImage } from '../../../shared/AuthenticatedImage';
 
@@ -62,6 +62,7 @@ function gatherPhotoUrls(report: Report): ReportPhoto[] {
   }
   return photos;
 }
+
 import { IconHistory } from '../../../ui/icons';
 import type { SeguimientoEntry } from '../reportsPanelTypes';
 
@@ -115,7 +116,7 @@ export function ReportDetailModal({
             </div>
             <div>
               <Text size="sm" fw={500}>
-                Categoria
+                Categoría
               </Text>
               <Badge variant="outline">
                 {CATEGORY_OPTIONS.find((c) => c.value === selectedReport.categoria)?.label ||
@@ -126,7 +127,7 @@ export function ReportDetailModal({
 
           <div>
             <Text size="sm" fw={500} id="descripcion-label">
-              Descripcion
+              Descripción
             </Text>
             <Paper
               p="sm"
@@ -144,7 +145,7 @@ export function ReportDetailModal({
             (selectedReport.latitud != null && selectedReport.longitud != null)) && (
             <div>
               <Text size="sm" fw={500}>
-                Ubicacion
+                Ubicación
               </Text>
               {selectedReport.ubicacion_texto && (
                 <Text size="sm" c="gray.6">
@@ -165,11 +166,11 @@ export function ReportDetailModal({
             return (
               <div>
                 <Text size="sm" fw={500} mb="xs" id="imagenes-label">
-                  Imagenes adjuntas
+                  Imágenes adjuntas
                 </Text>
                 <SimpleGrid cols={3} aria-labelledby="imagenes-label">
                   {photoUrls.map((photo) => {
-                    const alt = `Imagen de la denuncia sobre ${selectedReport.categoria || 'problema reportado'} en ${selectedReport.ubicacion_texto || 'ubicacion no especificada'}`;
+                    const alt = `Imagen de la denuncia sobre ${selectedReport.categoria || 'problema reportado'} en ${selectedReport.ubicacion_texto || 'ubicación no especificada'}`;
                     return (
                       <Card
                         key={`${photo.authenticated ? 'protected' : 'legacy'}:${photo.url}`}
@@ -228,7 +229,7 @@ export function ReportDetailModal({
             radius="md"
           >
             <Title order={6} mb="md" id="admin-section-label">
-              Gestion del reporte
+              Gestión del reporte
             </Title>
             <Stack gap="sm" aria-labelledby="admin-section-label">
               <Select
@@ -246,15 +247,15 @@ export function ReportDetailModal({
                 }
               />
               <Textarea
-                label="Comentario Publico"
-                placeholder="Lo que el ciudadano vera..."
+                label="Comentario Público"
+                placeholder="Lo que el ciudadano verá..."
                 value={publicComment}
                 onChange={(e) => setPublicComment(e.target.value)}
                 minRows={2}
               />
               <Textarea
                 label="Notas Internas (Consorcio)"
-                placeholder="Detalles tecnicos, costos, etc..."
+                placeholder="Detalles técnicos, costos, etc..."
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
                 minRows={2}
@@ -302,7 +303,7 @@ export function ReportDetailModal({
               Cancelar
             </Button>
             <Button onClick={onUpdate} loading={updating}>
-              Registrar Gestion
+              Registrar Gestión
             </Button>
           </Group>
         </Stack>

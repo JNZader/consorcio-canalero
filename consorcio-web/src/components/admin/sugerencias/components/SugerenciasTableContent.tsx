@@ -62,8 +62,8 @@ export function SugerenciasTableContent({
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Fecha</Table.Th>
-              <Table.Th>Titulo</Table.Th>
-              <Table.Th>Categoria</Table.Th>
+              <Table.Th>Título</Table.Th>
+              <Table.Th>Categoría</Table.Th>
               <Table.Th>Tipo</Table.Th>
               <Table.Th>Estado</Table.Th>
               <Table.Th>Acciones</Table.Th>
@@ -123,7 +123,7 @@ export function SugerenciasTableContent({
             total={totalPages}
             value={page}
             onChange={onPageChange}
-            aria-label="Paginacion de sugerencias"
+            aria-label="Paginación de sugerencias"
           />
         </Group>
       )}

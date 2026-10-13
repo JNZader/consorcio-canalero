@@ -3,7 +3,7 @@
  */
 
 import type { DashboardStats, PublicReportCreate, PublicReportResponse, Report } from '../../types';
-import { API_PREFIX, API_URL, LONG_TIMEOUT, apiFetch, getAuthToken } from './core';
+import { API_PREFIX, API_URL, apiFetch, getAuthToken, LONG_TIMEOUT } from './core';
 import type { ResolveInput, ResolveStatus } from './reportsResolve';
 
 export const reportsApi = {
@@ -175,7 +175,7 @@ export const publicApi = {
       return response.json();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('La subida de la foto excedio el tiempo limite');
+        throw new Error('La subida de la foto excedió el tiempo límite');
       }
       throw error;
     } finally {
@@ -292,7 +292,7 @@ export const statsApi = {
       return response.blob();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('La exportacion excedio el tiempo limite');
+        throw new Error('La exportación excedió el tiempo límite');
       }
       throw error;
     } finally {

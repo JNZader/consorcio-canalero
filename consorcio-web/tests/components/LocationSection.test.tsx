@@ -167,7 +167,7 @@ describe('<LocationSection />', () => {
   it('marks the GPS button as busy while geolocation is running', () => {
     renderWithMantine(<LocationSection {...baseProps} obteniendoUbicacion />);
 
-    expect(screen.getByRole('button', { name: /usar mi ubicacion gps/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /usar mi ubicación gps/i })).toHaveAttribute(
       'aria-busy',
       'true',
     );
@@ -192,7 +192,7 @@ describe('<LocationSection />', () => {
       </form>,
     );
 
-    await user.click(screen.getByRole('button', { name: /usar mi ubicacion gps/i }));
+    await user.click(screen.getByRole('button', { name: /usar mi ubicación gps/i }));
     await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
     await user.click(
       screen.getByRole('button', {

@@ -96,7 +96,7 @@ describe('FinanzasPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    expect(await screen.findByText('Administracion Financiera')).toBeInTheDocument();
+    expect(await screen.findByText('Administración Financiera')).toBeInTheDocument();
     expect(screen.getByText(/ingresos totales/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /libro de gastos/i }));
@@ -110,20 +110,20 @@ describe('FinanzasPanel', () => {
   it('creates a gasto with the shared backend contract and offers no fake upload', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
 
     await user.click(screen.getByRole('button', { name: /registrar gasto/i }));
     const dialog = await screen.findByRole('dialog', { name: /registrar gasto de caja/i });
 
     await user.type(
-      within(dialog).getByLabelText(/descripcion del gasto/i),
+      within(dialog).getByLabelText(/descripción del gasto/i),
       contracts.finanzas.gasto_create.descripcion
     );
     await user.type(
       within(dialog).getByLabelText(/monto \(\$\)/i),
       String(contracts.finanzas.gasto_create.monto)
     );
-    await chooseOption(within(dialog).getByLabelText(/categoria/i), 'obras');
+    await chooseOption(within(dialog).getByLabelText(/categor[ií]a/i), 'obras');
     fireEvent.change(within(dialog).getByLabelText(/^fecha/i), {
       target: { value: contracts.finanzas.gasto_create.fecha },
     });
@@ -151,15 +151,15 @@ describe('FinanzasPanel', () => {
   it('connects new gasto validation errors to required fields', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
 
     await user.click(screen.getByRole('button', { name: /registrar gasto/i }));
     const dialog = await screen.findByRole('dialog', { name: /registrar gasto de caja/i });
     await user.click(within(dialog).getByRole('button', { name: /guardar gasto/i }));
 
-    const description = within(dialog).getByLabelText(/descripcion del gasto/i);
+    const description = within(dialog).getByLabelText(/descripción del gasto/i);
     const amount = within(dialog).getByLabelText(/monto \(\$\)/i);
-    const category = within(dialog).getByLabelText(/categoria/i);
+    const category = within(dialog).getByLabelText(/categor[ií]a/i);
 
     await waitFor(() => {
       expect(description).toHaveAttribute('aria-invalid', 'true');
@@ -174,19 +174,19 @@ describe('FinanzasPanel', () => {
   it('creates an ingreso with backend field names and enum values', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
 
     await user.click(screen.getByRole('button', { name: /registrar ingreso/i }));
     const dialog = await screen.findByRole('dialog', { name: /registrar ingreso/i });
     await user.type(
-      within(dialog).getByLabelText(/descripcion/i),
+      within(dialog).getByLabelText(/descripci[oó]n/i),
       contracts.finanzas.ingreso_create.descripcion
     );
     await user.type(
       within(dialog).getByLabelText(/monto \(\$\)/i),
       String(contracts.finanzas.ingreso_create.monto)
     );
-    await chooseOption(within(dialog).getByLabelText(/categoria/i), 'subsidio');
+    await chooseOption(within(dialog).getByLabelText(/categor[ií]a/i), 'subsidio');
     fireEvent.change(within(dialog).getByLabelText(/^fecha/i), {
       target: { value: contracts.finanzas.ingreso_create.fecha },
     });
@@ -208,14 +208,14 @@ describe('FinanzasPanel', () => {
   it('connects edit ingreso validation errors to required fields', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
 
     await user.click(screen.getByRole('tab', { name: /libro de ingresos/i }));
     const row = await screen.findByRole('row', { name: /cuota marzo/i });
     await user.click(within(row).getByRole('button'));
 
     const dialog = await screen.findByRole('dialog', { name: /editar ingreso/i });
-    const description = within(dialog).getByLabelText(/descripcion/i);
+    const description = within(dialog).getByLabelText(/descripci[oó]n/i);
     const amount = within(dialog).getByLabelText(/monto \(\$\)/i);
     await user.clear(description);
     await user.clear(amount);
@@ -234,15 +234,15 @@ describe('FinanzasPanel', () => {
   it('updates a gasto using a backend-supported category', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
 
     await user.click(screen.getByRole('tab', { name: /libro de gastos/i }));
     const row = await screen.findByRole('row', { name: /mantenimiento retroexcavadora/i });
     await user.click(within(row).getByRole('button'));
 
-    const dialog = await screen.findByRole('dialog', { name: /editar categoria de gasto/i });
-    await chooseOption(within(dialog).getByLabelText(/categoria/i), 'obras');
-    await user.click(within(dialog).getByRole('button', { name: /actualizar categoria/i }));
+    const dialog = await screen.findByRole('dialog', { name: /editar categoría de gasto/i });
+    await chooseOption(within(dialog).getByLabelText(/categor[ií]a/i), 'obras');
+    await user.click(within(dialog).getByRole('button', { name: /actualizar categoría/i }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/finanzas/gastos/g1', {
@@ -265,7 +265,7 @@ describe('FinanzasPanel', () => {
     const appendSpy = vi.spyOn(document.body, 'appendChild');
 
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
 
     await user.click(
       screen.getByRole('button', { name: /descargar resumen financiero pdf/i })
@@ -304,7 +304,7 @@ describe('FinanzasPanel', () => {
     );
 
     renderPanel();
-    await screen.findByText('Administracion Financiera');
+    await screen.findByText('Administración Financiera');
     await user.click(
       screen.getByRole('button', { name: /descargar resumen financiero pdf/i })
     );

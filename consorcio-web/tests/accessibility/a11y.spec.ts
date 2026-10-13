@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { type Locator, type Page, expect, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 const ROUTES = [
   { path: '/', name: 'Homepage' },
@@ -136,11 +136,9 @@ test.describe('Formularios', () => {
     await gotoAndWait(page, '/participacion');
     await expectLabelsForInputs(page, 'input, textarea, select');
 
-    // Sin sesión, /participacion ya no ofrece ningún formulario con submit: la
-    // verificación de contacto quedó en "Continuar con Google" solamente (el
-    // form de magic-link se retiró en el batch móvil). El submit real solo
-    // existe autenticado, así que el resto del chequeo es condicional — mismo
-    // patrón que el fallback de navegación por teclado de este archivo.
+    // Sin sesión el formulario sigue visible: el envío pide verificación y
+    // guarda un borrador. El fallback de Google cubre el caso en que el
+    // submit no llegó a montarse.
     const submit = page.locator('button[type="submit"]').first();
     if ((await submit.count()) > 0) {
       await expect(submit).toBeVisible();

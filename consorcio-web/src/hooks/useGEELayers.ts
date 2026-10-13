@@ -13,8 +13,8 @@ import { logger } from '../lib/logger';
 import { queryKeys } from '../lib/query';
 import { parseFeatureCollection } from '../lib/typeGuards';
 import {
-  NO_LAYERS_ERROR_MESSAGE,
   layersMapToArray,
+  NO_LAYERS_ERROR_MESSAGE,
   processLoadResults,
   shouldSetError,
 } from './geeLayerHelpers';
@@ -25,7 +25,7 @@ export type GEELayerName = (typeof GEE_LAYER_NAMES)[number];
 export const PUBLIC_GEE_LAYER_NAMES = ['zona', 'caminos'] as const;
 export type PublicGEELayerName = (typeof PUBLIC_GEE_LAYER_NAMES)[number];
 export const PUBLIC_GEE_LAYER_UNAVAILABLE_MESSAGE =
-  'Las capas GEE solicitadas no estan disponibles en el mapa publico';
+  'Las capas GEE solicitadas no estan disponibles en el mapa público';
 
 const PUBLIC_GEE_LAYER_ENDPOINTS: Record<PublicGEELayerName, string> = {
   zona: '/api/v2/public/map/gee/zona',
