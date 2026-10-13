@@ -198,7 +198,7 @@ class TestFetchVtLayers:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("app.domains.geo.qgis_export.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_vt_layers("http://martin:3000")
 
         assert all(layer.startswith("vt_") for layer in result)
@@ -222,7 +222,7 @@ class TestFetchVtLayers:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("app.domains.geo.qgis_export.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_vt_layers("http://martin:3000")
 
         assert result == sorted(result)
@@ -237,7 +237,7 @@ class TestFetchVtLayers:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("app.domains.geo.qgis_export.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_vt_layers("http://martin:3000")
 
         assert result == FALLBACK_LAYERS
@@ -252,7 +252,7 @@ class TestFetchVtLayers:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("app.domains.geo.qgis_export.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_vt_layers("http://martin:3000")
 
         assert result == FALLBACK_LAYERS
@@ -273,7 +273,7 @@ class TestFetchVtLayers:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("app.domains.geo.qgis_export.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client):
             result = await fetch_vt_layers("http://martin:3000")
 
         assert result == FALLBACK_LAYERS
@@ -293,7 +293,7 @@ class TestFetchVtLayers:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("app.domains.geo.qgis_export.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client):
             await fetch_vt_layers("http://martin:3000/")
 
         # Should strip trailing slash before appending /catalog

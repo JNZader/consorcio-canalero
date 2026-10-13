@@ -451,7 +451,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -474,7 +474,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -497,7 +497,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -520,7 +520,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -546,7 +546,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -569,7 +569,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Request timed out"))
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -591,7 +591,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -612,7 +612,7 @@ class TestMartinCatalogHandler:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         with (
-            patch("app.api.v2.public.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
             patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
             patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
         ):
@@ -620,6 +620,36 @@ class TestMartinCatalogHandler:
 
         assert result.count == 0
         assert result.layers == []
+
+    @pytest.mark.asyncio
+    async def test_catalog_is_cached_until_the_ttl_expires(self):
+        """A second read inside the TTL must not call Martin again (BE-11)."""
+        from app.api.v2.public import get_martin_catalog
+        from app.domains.geo import martin_catalog
+
+        mock_resp = _make_httpx_response(MARTIN_CATALOG_RESPONSE)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        clock = {"now": 1_000.0}
+
+        def monotonic() -> float:
+            return clock["now"]
+
+        with (
+            patch("app.domains.geo.martin_catalog.httpx.AsyncClient", return_value=mock_client),
+            patch("app.domains.geo.martin_catalog.time.monotonic", monotonic),
+            patch("app.api.v2.public.settings.martin_internal_url", "http://martin:3000"),
+            patch("app.api.v2.public.settings.martin_public_url", "https://tiles.example.com"),
+        ):
+            first = await get_martin_catalog()
+            second = await get_martin_catalog()
+            clock["now"] += martin_catalog.MARTIN_CATALOG_TTL_SECONDS + 1
+            third = await get_martin_catalog()
+
+        assert first.count == second.count == third.count == 2
+        assert mock_client.get.call_count == 2
 
 
 @pytest.mark.integration

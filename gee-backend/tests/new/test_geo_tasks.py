@@ -20,11 +20,22 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _mock_celery_app():
-    """Neuter the celery_app.task decorator so tasks are plain functions."""
+    """Neuter the celery_app.task decorator so tasks are plain functions.
+
+    ``_reload_tasks`` reimports the module while this mock is active, and
+    that object stays in ``sys.modules``. On a pytest-xdist worker the next
+    module would then see plain functions instead of Celery tasks (TEST-02).
+    Reloading after the mock is gone puts the real tasks back.
+    """
+    import importlib
+
+    import app.domains.geo.tasks as tasks_mod
+
     with patch("app.core.celery_app.celery_app") as mock_app:
         # Make @celery_app.task(...) return the original function
         mock_app.task = lambda *a, **kw: lambda fn: fn
         yield mock_app
+    importlib.reload(tasks_mod)
 
 
 @pytest.fixture

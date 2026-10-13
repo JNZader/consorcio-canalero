@@ -5,7 +5,7 @@ listen_addresses: '0.0.0.0:3000'
 
 postgres:
   # Sourced from the env_file gee-backend/.env so credential rotations stay
-  # in one place. Martin v0.14.2 supports ${VAR} interpolation in config.
+  # in one place. Martin 1.16.1 still expands ${VAR} in the config file.
   connection_string: ${DATABASE_URL}
 
   # Never discover schemas automatically: Martin's hostname is public and
