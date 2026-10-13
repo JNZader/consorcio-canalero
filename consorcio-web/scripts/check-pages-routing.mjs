@@ -224,6 +224,7 @@ function writeFixture() {
   writeFileSync(join(dir, 'version.json'), '{"sha":"fixture"}\n');
   writeFileSync(join(dir, '_redirects'), readFileSync(join(root, 'public/_redirects')));
   writeFileSync(join(dir, '_headers'), readFileSync(join(root, 'public/_headers')));
+  writeFileSync(join(dir, '_worker.js'), readFileSync(join(root, 'public/_worker.js')));
   // Si alguien vuelve a commitear public/404.html, el fixture lo incluye
   // y las rutas profundas tienen que fallar esta prueba.
   try {

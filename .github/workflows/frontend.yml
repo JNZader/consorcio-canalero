@@ -438,6 +438,7 @@ jobs:
       # Un test unitario sobre el texto de _redirects no lo ve: Pages deja
       # de hacer fallback SPA en cuanto hay un 404.html de raiz, y
       # `/* /index.html 200` choca con el 308 de /index.html → /.
+      # El 404 de los assets lo hace dist/_worker.js, no functions/.
       - name: Check Cloudflare Pages routing
         run: |
           npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.150.0
