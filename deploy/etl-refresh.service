@@ -7,6 +7,9 @@ Documentation=file:/home/javier/programacion/consorcio-canalero/deploy/README-et
 # where dockerd is not up yet and every step fails on a missing socket.
 Requires=docker.service
 After=docker.service network-online.target
+# INF-10: javier is in the docker group, which can control the host as root.
+# OnFailure notifies; configure /etc/consorcio/notify.env (see the runbook).
+OnFailure=notify@%n.service
 
 [Service]
 Type=oneshot

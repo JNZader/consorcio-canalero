@@ -1,0 +1,60 @@
+# INF-01. Igual que deploy/Caddyfile, más rate limit en el borde.
+#
+# NO recargar este archivo en el Caddy del servidor hasta que el binario
+# incluya el módulo. Comprobar con `caddy adapt --config deploy/Caddyfile.with-ratelimit`.
+#
+# Build:
+#   xcaddy build --with github.com/mholt/caddy-ratelimit
+#
+# La API queda en 100 pedidos/minuto por IP. Las teselas no entran en esa
+# zona: Martin ya está detrás del allowlist de Caddy y un mapa legítimo
+# pide muchas teselas. El webhook tampoco: un límite bajo ahí bloquearía
+# el único POST de deploy.
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+(consorcio_edge) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
+		-Via
+		-X-XSS-Protection
+	}
+	log {
+		output stdout
+		format json
+	}
+	request_body {
+		max_size 20MB
+	}
+}
+
+api.consorcio.{$DOMAIN} {
+	import consorcio_edge
+	rate_limit {
+		zone api_per_ip {
+			key {remote_host}
+			events 100
+			window 1m
+		}
+	}
+	reverse_proxy consorcio-backend:8000
+}
+
+tiles.consorcio.{$DOMAIN} {
+	import consorcio_edge
+	reverse_proxy consorcio-martin:3000
+}
+
+deploy.consorcio.{$DOMAIN} {
+	import consorcio_edge
+	reverse_proxy 127.0.0.1:8090
+}

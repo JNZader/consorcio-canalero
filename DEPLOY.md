@@ -21,11 +21,17 @@ Si los dejás privados, el server va a necesitar `docker login ghcr.io` con un t
 | `ENABLE_PRODUCTION_DEPLOY` | `true` únicamente cuando quieras habilitar el rollout automático; dejala sin definir o en `false` por defecto |
 | `DEPLOY_WEBHOOK_URL` | URL del webhook del server (ver paso 3.4); por sí sola no habilita el deploy |
 
-### 1.3 Repository Secrets (Settings → Secrets and variables → Actions → Secrets)
+### 1.3 Secret del webhook (environment `production`, no secret de repositorio)
 
-| Secret | Valor |
-|--------|-------|
-| `DEPLOY_WEBHOOK_SECRET` | Token que elegís vos para el webhook (cualquier string largo) |
+Creá el environment **antes** de poner `ENABLE_PRODUCTION_DEPLOY=true`. Si no existe, GitHub lo crea vacío en el primer deploy y no pide aprobación. Los pasos del panel están en [`docs/runbooks/infra-cicd-v6.md`](docs/runbooks/infra-cicd-v6.md).
+
+| Dónde | Nombre | Valor |
+|-------|--------|-------|
+| Environment `production` → Secrets | `DEPLOY_WEBHOOK_SECRET` | Token de 32 caracteres o más, el mismo que `/etc/consorcio/deploy-webhook.env` en el server |
+| Environment `production` → Protection rules | Required reviewers | Quien aprueba un deploy a Hetzner |
+| Environment `production` → Deployment branches | `main` | Solo esa rama |
+
+Borrá el secret de repositorio con el mismo nombre si todavía está: un job sin este environment no tiene que verlo. `ENABLE_PRODUCTION_DEPLOY` sigue siendo variable de repositorio y apaga el job aunque el environment exista.
 
 ### 1.4 Disparar el primer build
 
@@ -59,9 +65,13 @@ Verificá en la pestaña **Actions** que los dos jobs terminen en verde. El geo-
 
 5. **Custom domain**: configurá `consorcio.TUDOMINIO` en la pestaña Domains.
 
-> CF Pages buildea automáticamente en cada push a `main`. El workflow
-> `frontend.yml` de GitHub valida pull requests y ejecuciones manuales, pero no
-> despliega ni reemplaza la integración de Cloudflare.
+> La rama de producción de Pages tiene que ser `pages-production`, no `main`.
+> El workflow `pages.yml` adelanta esa rama solo cuando Frontend CI termina en
+> verde en un push a `main`. Hasta cambiar el panel, Cloudflare sigue publicando
+> `main` sin esperar al CI. El cambio es manual y está en
+> [`docs/runbooks/infra-cicd-v6.md`](docs/runbooks/infra-cicd-v6.md): esperá a
+> que `pages-production` exista y después, en Workers & Pages → el proyecto →
+> Settings → Builds & deployments, poné Production branch = `pages-production`.
 
 ---
 
@@ -157,31 +167,22 @@ curl -s http://localhost:3000/health
 curl -s http://localhost:8001/health
 ~~~
 
-### 3.5 Agregar las entradas al Caddyfile del server
+### 3.5 Instalar el Caddyfile versionado
+
+La fuente es [`deploy/Caddyfile`](deploy/Caddyfile) (encode, HSTS con `preload`,
+sin `Server`/`Via`/`X-XSS-Protection`, body máximo 20 MB, logs JSON). No uses
+`deploy/Caddyfile.with-ratelimit` en el Caddy stock: `rate_limit` exige un
+binario con el módulo `caddy-ratelimit`.
 
 ```bash
-nano /home/javier/caddy/Caddyfile
+cp /home/javier/caddy/Caddyfile /home/javier/caddy/Caddyfile.bak.$(date -u +%Y%m%d)
+# Ajustá los hosts vivos (cc10demayo-api / cc10demayo-tiles) o DOMAIN.
+caddy validate --config /home/javier/caddy/Caddyfile
+caddy reload --config /home/javier/caddy/Caddyfile
 ```
 
-Agregá al final (antes del `CADDYEOF` si seguiste la guía):
-
-```caddy
-# --- Consorcio API ---
-api.consorcio.{$DOMAIN} {
-    reverse_proxy consorcio-backend:8000
-}
-
-# --- Consorcio Tiles (Martin) ---
-tiles.consorcio.{$DOMAIN} {
-    reverse_proxy consorcio-martin:3000
-}
-```
-
-Recargá Caddy:
-```bash
-docker exec caddy caddy reload --config /etc/caddy/Caddyfile
-docker logs caddy --tail 10
-```
+El procedimiento completo, el rate limit y la advertencia de no enviar el
+dominio a hstspreload.org están en [`docs/runbooks/infra-cicd-v6.md`](docs/runbooks/infra-cicd-v6.md).
 
 ---
 
@@ -223,11 +224,14 @@ Cada `git push origin main` que toque `gee-backend/**` o
 
 El workflow de publicación es deliberadamente push-only: ni los pull requests ni
 `workflow_dispatch` pueden publicar imágenes. Para habilitar el rollout
-automático, configurá el webhook del servidor, cargá
-`DEPLOY_WEBHOOK_SECRET` como Repository Secret, cargá la URL como Repository
-Variable y recién entonces establecé `ENABLE_PRODUCTION_DEPLOY=true`. Una URL
-existente, sin ese opt-in explícito, deja el job de deploy deshabilitado.
+automático: instalá el receptor (`deploy/deploy_webhook.py`, pasos en el
+runbook), cargá `DEPLOY_WEBHOOK_URL` como variable de repositorio, creá el
+environment `production` con un revisor y el secret `DEPLOY_WEBHOOK_SECRET`,
+y recién entonces establecé `ENABLE_PRODUCTION_DEPLOY=true`. El job declara
+`environment: production`, así que con el kill switch prendido igual espera
+esa aprobación. Una URL existente, sin ese opt-in, deja el job deshabilitado.
 
-Para el frontend, Cloudflare Pages despliega desde el repositorio conectado. El
-workflow `frontend.yml` ejecuta el gate completo en pull requests a `main` y
+Para el frontend, Cloudflare Pages tiene que publicar la rama `pages-production`.
+El workflow `frontend.yml` ejecuta el gate completo en pull requests a `main` y
 en ejecuciones manuales, incluida la matriz de accesibilidad Chromium/Firefox/WebKit.
+`pages.yml` adelanta `pages-production` solo después de ese gate en un push a `main`.
