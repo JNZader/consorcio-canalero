@@ -47,6 +47,69 @@ async function expectVisibleIfAny(locator: Locator) {
   }
 }
 
+/**
+ * Texto que marca un campo obligatorio. El xpath relativo del control no
+ * espera: si no hay etiqueta, devuelve '' y la aserción falla enseguida.
+ * Prioriza el nombre accesible del propio campo (aria-labelledby, label[for],
+ * label que lo envuelve, label hermana) y solo después la label precedente.
+ * Sigue exigiendo "*" o "requerido" en ese texto.
+ */
+async function requiredMarkerText(field: Locator): Promise<string> {
+  const text = await field.evaluate((node) => {
+    const normalize = (value: string | null | undefined) => value?.replace(/\s+/g, ' ').trim() ?? '';
+
+    const labelledBy = node.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      const fromIds = labelledBy
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((id) => normalize(document.getElementById(id)?.textContent))
+        .filter(Boolean)
+        .join(' ');
+      if (fromIds) return fromIds;
+    }
+
+    const fieldId = node.getAttribute('id');
+    if (fieldId) {
+      const explicit = normalize(
+        document.querySelector(`label[for="${CSS.escape(fieldId)}"]`)?.textContent
+      );
+      if (explicit) return explicit;
+    }
+
+    const wrappingLabel = node.closest('label');
+    if (wrappingLabel && wrappingLabel !== node) {
+      const wrapping = normalize(wrappingLabel.textContent);
+      if (wrapping) return wrapping;
+    }
+
+    let sibling = node.previousElementSibling;
+    while (sibling) {
+      if (sibling.tagName === 'LABEL') {
+        const siblingText = normalize(sibling.textContent);
+        if (siblingText) return siblingText;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+
+    const preceding = document.evaluate(
+      'preceding::label[1]',
+      node,
+      null,
+      XPathResult.FIRST_ORDERED_NODE_TYPE,
+      null
+    ).singleNodeValue;
+    if (preceding instanceof Element) {
+      const precedingText = normalize(preceding.textContent);
+      if (precedingText) return precedingText;
+    }
+
+    return '';
+  });
+
+  return text.toLowerCase();
+}
+
 test.describe('Auditoria de Accesibilidad WCAG 2.1 AA', () => {
   test.describe.configure({ mode: 'parallel' });
 
@@ -154,9 +217,10 @@ test.describe('Formularios', () => {
       await expect(page.getByRole('button', { name: /continuar con google/i })).toBeVisible();
     }
 
-    for (const field of await page.locator('[aria-required="true"], [required]').all()) {
-      const label = field.locator('xpath=preceding-sibling::label | preceding::label[1]');
-      const labelText = (await label.textContent())?.toLowerCase() ?? '';
+    const requiredFields = await page.locator('[aria-required="true"], [required]').all();
+    expect(requiredFields.length).toBeGreaterThan(0);
+    for (const field of requiredFields) {
+      const labelText = await requiredMarkerText(field);
       expect(labelText.includes('*') || labelText.includes('requerido')).toBe(true);
     }
 
