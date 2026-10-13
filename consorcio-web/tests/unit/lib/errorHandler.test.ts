@@ -38,7 +38,7 @@ describe('errorHandler', () => {
 
   describe('HTTP_ERROR_MESSAGES', () => {
     it('should have Spanish error messages for common status codes', () => {
-      expect(HTTP_ERROR_MESSAGES[400]).toBe('Los datos enviados no son validos');
+      expect(HTTP_ERROR_MESSAGES[400]).toBe('Los datos enviados no son válidos');
       expect(HTTP_ERROR_MESSAGES[401]).toContain('autenticado');
       expect(HTTP_ERROR_MESSAGES[403]).toContain('permisos');
       expect(HTTP_ERROR_MESSAGES[404]).toContain('no existe');
@@ -55,9 +55,9 @@ describe('errorHandler', () => {
 
   describe('getHttpErrorMessage', () => {
     it('should return message for known status code', () => {
-      expect(getHttpErrorMessage(400)).toBe('Los datos enviados no son validos');
+      expect(getHttpErrorMessage(400)).toBe('Los datos enviados no son válidos');
       expect(getHttpErrorMessage(404)).toBe('El recurso solicitado no existe');
-      expect(getHttpErrorMessage(500)).toBe('Error interno del servidor. Intenta nuevamente');
+      expect(getHttpErrorMessage(500)).toBe('Error interno del servidor. Intentá de nuevo');
     });
 
     it('should return generic message for unknown status code', () => {
@@ -112,9 +112,9 @@ describe('errorHandler', () => {
     });
 
     it('should return default message for unknown error types', () => {
-      expect(getErrorMessage(null)).toBe('Ocurrio un error inesperado');
-      expect(getErrorMessage(undefined)).toBe('Ocurrio un error inesperado');
-      expect(getErrorMessage(123)).toBe('Ocurrio un error inesperado');
+      expect(getErrorMessage(null)).toBe('Ocurrió un error inesperado');
+      expect(getErrorMessage(undefined)).toBe('Ocurrió un error inesperado');
+      expect(getErrorMessage(123)).toBe('Ocurrió un error inesperado');
     });
 
     it('should catch mutation on error type checks', () => {

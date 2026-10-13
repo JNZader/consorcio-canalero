@@ -157,7 +157,7 @@ export function LoginFormContent() {
       logger.error('Error al conectar con Google:', error);
       notifications.show({
         title: 'Error',
-        message: 'Ocurrio un error al conectar con Google',
+        message: 'Ocurrió un error al conectar con Google',
         color: 'red',
         icon: <IconAlertCircle size={16} />,
       });
