@@ -328,7 +328,7 @@ export function LocationSection({
         )}
       </Box>
       <Text id={LOCATION_HELP_ID} size="xs" c="gray.6" mt="xs">
-        Haz clic dentro del área del consorcio para marcar la ubicación del incidente. Referencia:
+        Hacé clic dentro del área del consorcio para marcar la ubicación del incidente. Referencia:
         límite del consorcio (rojo), hidrografía (azul), caminos (amarillo).
       </Text>
     </>
