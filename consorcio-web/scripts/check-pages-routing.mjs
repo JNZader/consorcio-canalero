@@ -27,7 +27,7 @@ const MISSING_ASSETS = [
   '/assets/this-chunk-does-not-exist.css',
   '/assets/this-font-does-not-exist.woff2',
   '/workbox-this-build-does-not-exist.js',
-  '/sitemap.xml',
+  '/this-file-does-not-exist.xml',
 ];
 
 function parseArgs(argv) {
@@ -135,6 +135,17 @@ async function check(base) {
     if (file.body.includes('id="root"')) throw new Error('/robots.txt sirvio el shell de la SPA');
   });
 
+  await run('sitemap.xml', async () => {
+    const file = await fetchManual(`${origin}/sitemap.xml`);
+    const type = header(file.response, 'content-type').toLowerCase();
+    if (file.response.status !== 200 || !type.includes('application/xml')) {
+      throw new Error(
+        `/sitemap.xml deberia ser 200 application/xml y fue ${file.response.status} ${type}`,
+      );
+    }
+    if (file.body.includes('id="root"')) throw new Error('/sitemap.xml sirvio el shell de la SPA');
+  });
+
   await run('version.json', async () => {
     const file = await fetchManual(`${origin}/version.json`);
     const type = header(file.response, 'content-type').toLowerCase();
@@ -221,6 +232,10 @@ function writeFixture() {
   writeFileSync(join(dir, 'assets', 'real.js'), 'console.log("real-chunk")\n');
   writeFileSync(join(dir, 'data', 'ok.json'), '{}\n');
   writeFileSync(join(dir, 'robots.txt'), 'ok\n');
+  writeFileSync(
+    join(dir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>\n',
+  );
   writeFileSync(join(dir, 'version.json'), '{"sha":"fixture"}\n');
   writeFileSync(join(dir, '_redirects'), readFileSync(join(root, 'public/_redirects')));
   writeFileSync(join(dir, '_headers'), readFileSync(join(root, 'public/_headers')));
