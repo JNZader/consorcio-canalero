@@ -214,7 +214,7 @@ export function MapaContent() {
                 {terrainHint}
               </Text>
               {terrainStatus === 'error' && (
-                <Button size="compact-xs" variant="light" onClick={() => void reloadDem()}>
+                <Button size="xs" variant="light" onClick={() => void reloadDem()}>
                   Reintentar
                 </Button>
               )}

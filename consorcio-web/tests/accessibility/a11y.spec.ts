@@ -5,6 +5,7 @@ const ROUTES = [
   { path: '/', name: 'Homepage' },
   { path: '/mapa', name: 'Mapa Interactivo' },
   { path: '/participacion', name: 'Participacion' },
+  { path: '/perfil', name: 'Perfil' },
   { path: '/dashboard', name: 'Dashboard' },
   { path: '/login', name: 'Login' },
 ] as const;

@@ -26,18 +26,18 @@ describe('errorHandler', () => {
 
   describe('getHttpErrorMessage', () => {
     it('should return specific message for known status codes', () => {
-      expect(getHttpErrorMessage(400)).toBe('Los datos enviados no son validos');
-      expect(getHttpErrorMessage(401)).toBe('No estas autenticado. Por favor inicia sesion');
-      expect(getHttpErrorMessage(403)).toBe('No tienes permisos para realizar esta accion');
+      expect(getHttpErrorMessage(400)).toBe('Los datos enviados no son válidos');
+      expect(getHttpErrorMessage(401)).toBe('No estás autenticado. Iniciá sesión');
+      expect(getHttpErrorMessage(403)).toBe('No tenés permisos para esta acción');
       expect(getHttpErrorMessage(404)).toBe('El recurso solicitado no existe');
       expect(getHttpErrorMessage(409)).toBe('Hubo un conflicto con el estado actual del recurso');
       expect(getHttpErrorMessage(413)).toBe('El archivo es demasiado grande');
       expect(getHttpErrorMessage(422)).toBe('Los datos no pudieron ser procesados');
-      expect(getHttpErrorMessage(429)).toBe('Demasiadas solicitudes. Por favor espera un momento');
-      expect(getHttpErrorMessage(500)).toBe('Error interno del servidor. Intenta nuevamente');
-      expect(getHttpErrorMessage(502)).toBe('El servidor no esta disponible temporalmente');
-      expect(getHttpErrorMessage(503)).toBe('Servicio no disponible. Intenta mas tarde');
-      expect(getHttpErrorMessage(504)).toBe('El servidor tardo demasiado en responder');
+      expect(getHttpErrorMessage(429)).toBe('Demasiadas solicitudes. Esperá un momento');
+      expect(getHttpErrorMessage(500)).toBe('Error interno del servidor. Intentá de nuevo');
+      expect(getHttpErrorMessage(502)).toBe('El servidor no está disponible temporalmente');
+      expect(getHttpErrorMessage(503)).toBe('Servicio no disponible. Intentá más tarde');
+      expect(getHttpErrorMessage(504)).toBe('El servidor tardó demasiado en responder');
     });
 
     it('should return generic message for unknown status codes', () => {
@@ -73,10 +73,10 @@ describe('errorHandler', () => {
     });
 
     it('should return fallback for unknown error types', () => {
-      expect(getErrorMessage(null)).toBe('Ocurrio un error inesperado');
-      expect(getErrorMessage(undefined)).toBe('Ocurrio un error inesperado');
-      expect(getErrorMessage({})).toBe('Ocurrio un error inesperado');
-      expect(getErrorMessage(123)).toBe('Ocurrio un error inesperado');
+      expect(getErrorMessage(null)).toBe('Ocurrió un error inesperado');
+      expect(getErrorMessage(undefined)).toBe('Ocurrió un error inesperado');
+      expect(getErrorMessage({})).toBe('Ocurrió un error inesperado');
+      expect(getErrorMessage(123)).toBe('Ocurrió un error inesperado');
     });
   });
 
@@ -123,10 +123,10 @@ describe('errorHandler', () => {
     it('should use fallback message when error extraction fails', () => {
       const result = handleError(null, { fallbackMessage: 'Custom fallback' });
 
-      expect(result).toBe('Ocurrio un error inesperado'); // getErrorMessage returns this
+      expect(result).toBe('Ocurrió un error inesperado'); // getErrorMessage returns this
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Ocurrio un error inesperado',
+          message: 'Ocurrió un error inesperado',
         })
       );
     });

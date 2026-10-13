@@ -2195,3 +2195,32 @@ def test_only_the_publishing_workflow_writes_full_buildkit_layer_caches() -> Non
     deploy = _without_comments(_read(".github/workflows/deploy.yml"))
     assert len(mode_max.findall(deploy)) == 2
     assert mode_min.findall(deploy) == []
+
+
+def test_db04_app_rw_runtime_is_not_superuser() -> None:
+    script = _read("scripts/provision_app_rw.sql")
+    compose = _read("docker-compose.deploy.yml")
+    deploy = _read("DEPLOY.md")
+    assert r"\set ON_ERROR_STOP on" in script
+    assert "CREATE ROLE %I LOGIN" in script
+    assert "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT" in script
+    assert "statement_timeout" in script
+    assert "PASSWORD" not in script.upper()
+    assert "REASSIGN OWNED" not in script.upper()
+    assert "APP_DATABASE_URL:-${DATABASE_URL}" in compose
+    assert "APP_DB_ROLE.md" in deploy
+    assert "consorcio_app" in deploy
+
+
+def test_ci05_pages_promote_waits_for_frontend() -> None:
+    """CI-05: Pages production advances only after Frontend CI on main."""
+    pages = _read(".github/workflows/pages.yml")
+    assert "workflow_run:" in pages
+    assert "workflows: [Frontend]" in pages
+    assert "types: [completed]" in pages
+    assert "head_branch == 'main'" in pages
+    assert "conclusion == 'success'" in pages
+    assert "github.event.workflow_run.event == 'push'" in pages
+    assert "pages-production" in pages
+    assert "wrangler" not in pages
+    assert "contents: write" in pages

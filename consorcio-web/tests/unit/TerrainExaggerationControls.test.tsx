@@ -47,6 +47,15 @@ describe('TerrainExaggerationControls', () => {
 });
 
 describe('exaggerationCanvasLabel', () => {
+  it('MAP-03: slider marks use ×N, not 200x', () => {
+    wrap(
+      <TerrainExaggerationControls value={20} onChange={() => {}} min={1} max={200} />,
+    );
+    expect(screen.queryByText('200x')).not.toBeInTheDocument();
+    expect(screen.queryByText('100x')).not.toBeInTheDocument();
+    expect(screen.queryByText('1x')).not.toBeInTheDocument();
+  });
+
   it('names the live multiplier on the canvas', () => {
     expect(exaggerationCanvasLabel(200)).toBe('Relieve exagerado ×200');
   });
