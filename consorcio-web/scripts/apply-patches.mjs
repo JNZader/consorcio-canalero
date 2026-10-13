@@ -119,9 +119,25 @@ function applyHunks(original, hunks) {
   return result;
 }
 
+function installedPackageDir(relativePath) {
+  const parts = relativePath.split('/');
+  if (parts[0] !== 'node_modules' || parts.length < 2) return null;
+  const depth = parts[1].startsWith('@') ? 3 : 2;
+  if (parts.length < depth) return null;
+  return join(root, parts.slice(0, depth).join('/'));
+}
+
 function applyFile(relativePath, hunks) {
   const absolute = join(root, relativePath);
   if (!existsSync(absolute)) {
+    // patch-package skipped dev-only patches when NODE_ENV=production omitted
+    // the package (Cloudflare Pages sets that). A missing file inside an
+    // installed package is still a stale patch and must fail.
+    const pkgDir = installedPackageDir(relativePath);
+    if (pkgDir && !existsSync(pkgDir)) {
+      console.log(`omitido (devDependency no instalada): ${relativePath}`);
+      return;
+    }
     throw new Error(`No existe ${relativePath}. ¿Falta npm install?`);
   }
   const originalText = readFileSync(absolute, 'utf8');
