@@ -247,9 +247,17 @@ http {
             log_not_found off;
         }
 
-        # Error pages
-        error_page 404 /404.html;
+        # Missing files (a stale hashed chunk, an unknown static path).
+        # SPA routes never reach this: `try_files` above serves index.html.
+        # There is no root /404.html — that file disables Cloudflare Pages'
+        # SPA fallback. Keep the body plain text so a chunk URL is not HTML.
+        error_page 404 @plain_not_found;
         error_page 500 502 503 504 /50x.html;
+        location @plain_not_found {
+            internal;
+            default_type text/plain;
+            return 404 'Not found\n';
+        }
         location = /50x.html {
             root /usr/share/nginx/html;
         }
