@@ -85,7 +85,7 @@ SEED_FROM_NETWORK: str = f"""
         nombre_origen
     FROM ranked
     ON CONFLICT (nombre_origen) DO NOTHING
-"""
+"""  # nosec B608  # internal constant, not user input
 
 DROP_CANAL_PUBLICACION_APRHI: str = "DROP TABLE IF EXISTS canal_publicacion_aprhi"
 

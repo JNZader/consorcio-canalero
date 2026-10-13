@@ -2,7 +2,8 @@
  * Sentry init wrapper — fires only when ``VITE_SENTRY_DSN`` is set.
  *
  * Off by default so dev and forks pay zero overhead and no
- * cross-origin network request to ingest.sentry.io on every page load.
+ * cross-origin request to the DSN host (<org>.ingest.us.sentry.io) on every
+ * page load. That host pattern is allow-listed in public/_headers.
  * The DSN comes in via Vite's ``import.meta.env`` at build time —
  * Cloudflare Pages sets it as a project variable.
  *

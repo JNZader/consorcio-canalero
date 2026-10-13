@@ -157,7 +157,7 @@ def table_row_count(db: Session, table: str) -> int | None:
         return None
 
     # Safe interpolation: ``table`` is whitelisted against PREREQ_TABLES above.
-    return int(db.execute(text(f"SELECT count(*) FROM {table}")).scalar_one())
+    return int(db.execute(text(f"SELECT count(*) FROM {table}")).scalar_one())  # nosec B608  # internal constant, not user input
 
 
 def check_prereqs(db: Session) -> list[TableReport]:
@@ -458,7 +458,7 @@ def refresh_materialized_view(db: Session) -> int:
                 file=sys.stderr,
             )
             conn.execute(text(f"REFRESH MATERIALIZED VIEW {MATERIALIZED_VIEW}"))
-        return int(conn.execute(text(f"SELECT count(*) FROM {MATERIALIZED_VIEW}")).scalar_one())
+        return int(conn.execute(text(f"SELECT count(*) FROM {MATERIALIZED_VIEW}")).scalar_one())  # nosec B608  # internal constant, not user input
 
 
 def resolve_source(explicit: str | None) -> Path:

@@ -1,19 +1,21 @@
 """KML -> GeoJSON conversion for the ZONA CC AMPLIADA polygon.
 
 The production KML has a single Placemark with a single Polygon / outerBoundaryIs
-(no holes) — verified in the exploration.  We use pure stdlib (``xml.etree``)
+(no holes) — verified in the exploration.  We parse with defusedxml
 instead of a full KML parser because:
 
 1. Fiona is not available in this project's venv (verified).
 2. The KML shape is known and extremely narrow.
-3. Zero new dependency.
+3. The parser is defusedxml (SEC-08): same ElementTree API, but it refuses
+   entity expansion that the stdlib parser would follow.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree as ET
+
+from defusedxml.ElementTree import parse as parse_xml
 
 KML_NS = "{http://www.opengis.net/kml/2.2}"
 
@@ -48,7 +50,7 @@ def kml_to_geojson(kml_path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"KML file not found: {path}")
 
-    tree = ET.parse(path)
+    tree = parse_xml(path)
     root = tree.getroot()
 
     features: list[dict[str, Any]] = []
