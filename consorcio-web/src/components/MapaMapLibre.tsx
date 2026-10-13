@@ -9,7 +9,7 @@
  * MapaInteractivo.tsx only needs a 1-line lazy import change to activate this.
  */
 
-import { Box, Stack } from '@mantine/core';
+import { Alert, Box, Stack, Text } from '@mantine/core';
 import type { Feature, FeatureCollection } from 'geojson';
 
 import * as maplibregl from 'maplibre-gl';
@@ -126,6 +126,7 @@ import { useMapHoverTooltip } from './map2d/useMapHoverTooltip';
 import { useMapInteractionEffects } from './map2d/useMapInteractionEffects';
 import { useMapLayerEffects } from './map2d/useMapLayerEffects';
 import { usePuntosInteresWiring } from './map2d/usePuntosInteresWiring';
+import type { ClassifiedMapError } from './map2d/mapErrorClassify';
 import { useRasterTileHealth } from './map2d/useRasterTileHealth';
 import { useElevationProfileCursor } from './map2d/useElevationProfileCursor';
 import { type QuickPlacePin, useQuickPlaceMarker } from './map2d/useQuickPlaceMarker';
@@ -194,6 +195,7 @@ export default function MapaMapLibre() {
   const comparisonContainerRef = useRef<HTMLDivElement>(null);
   const comparisonMapRef = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapLoadError, setMapLoadError] = useState<string | null>(null);
 
   // Comparison slider
   const sliderContainerRef = useRef<HTMLDivElement>(null);
@@ -529,6 +531,12 @@ export default function MapaMapLibre() {
   // transition. `onMapError` enters `useMapInitialization` through a REF — it
   // must never join that hook's dependency array (it would remount the map).
   const { degradedSourceIds, onMapError, clearSource } = useRasterTileHealth();
+  const handleMapError = (error: ClassifiedMapError) => {
+    onMapError(error);
+    if (error.kind === 'other' && /error al cargar el mapa/i.test(error.message)) {
+      setMapLoadError(error.message);
+    }
+  };
 
   // The IGN overlay is the ONE degraded source with a real retry: an
   // `ImageSource` fetches once from `onAdd` and never again, so the only way
@@ -588,7 +596,7 @@ export default function MapaMapLibre() {
     zoom,
     mapRef,
     setMapReady,
-    onMapError,
+    onMapError: handleMapError,
   });
 
   useEffect(() => {
@@ -1217,6 +1225,31 @@ export default function MapaMapLibre() {
               style={{ width: '100%', height: '100%', position: 'relative' }}
             >
               <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+              {mapLoadError ? (
+                <Box
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 16,
+                    zIndex: 20,
+                  }}
+                >
+                  <Stack gap="sm" maw={560}>
+                    <Alert color="red" title="Error al cargar el mapa" variant="light">
+                      <Text size="sm">{mapLoadError}</Text>
+                    </Alert>
+                    <Box component="section" role="region" aria-label="descripcion textual del mapa">
+                      <Text size="sm">
+                        El mapa interactivo permite explorar cuencas, canales e infraestructura del
+                        Consorcio.
+                      </Text>
+                    </Box>
+                  </Stack>
+                </Box>
+              ) : null}
               {comparisonActive && (
                 <div
                   ref={comparisonContainerRef}

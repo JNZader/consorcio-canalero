@@ -121,10 +121,9 @@ export function useMapInitialization({
     };
 
     void (async () => {
-      await bootMapLibreWorker();
-      if (cancelled || !containerRef.current) return;
-
       try {
+        await bootMapLibreWorker();
+        if (cancelled || !containerRef.current) return;
         map = new maplibre.Map({
       container: containerRef.current,
       style: {
@@ -200,21 +199,18 @@ export function useMapInitialization({
       locale: { ...MAP_LOCALE_ES },
     });
     } catch (error) {
-      const GPUError = (
-        maplibre as { GPUInitializationError?: new (...args: never[]) => Error }
-      ).GPUInitializationError;
-      if (GPUError && error instanceof GPUError) {
-        onMapErrorRef.current?.({
-          kind: 'other',
-          sourceId: null,
-          sourceType: null,
-          status: null,
-          url: null,
-          message: 'Error al cargar el mapa: este navegador no soporta WebGL2.',
-        });
-        return;
-      }
-      throw error;
+      const detail =
+        error instanceof Error ? error.message : 'Error desconocido';
+      onMapErrorRef.current?.({
+        kind: 'other',
+        sourceId: null,
+        sourceType: null,
+        status: null,
+        url: null,
+        message: `Error al cargar el mapa: ${detail}`,
+      });
+      logger.error('MapaMapLibre failed to construct', error);
+      return;
     }
       if (cancelled) {
         map.remove();
