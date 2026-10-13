@@ -20,12 +20,10 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/Argentina/Buenos_Aires"
-    # SEC-08: don't apply a release the day it is published.
+    # SEC-08. github-actions only accepts cooldown.default-days.
+    # 7 keeps the previous semver-major wait.
     cooldown:
-      default-days: 3
-      semver-major-days: 7
-      semver-minor-days: 3
-      semver-patch-days: 1
+      default-days: 7
     open-pull-requests-limit: 3
     commit-message:
       prefix: "ci(deps)"
@@ -65,8 +63,6 @@ updates:
       - "python"
       - "backend"
       - "automated"
-    reviewers:
-      - "maintainers"
     ignore:
       # Majors reviewed manually (SQLAlchemy 3.x / psycopg majors)
       - dependency-name: "fastapi"
@@ -169,8 +165,6 @@ updates:
       - "javascript"
       - "frontend"
       - "automated"
-    reviewers:
-      - "maintainers"
     versioning-strategy: increase
     ignore:
       # Core frameworks + Wave C majors (explicit upgrade PRs)
@@ -259,12 +253,10 @@ updates:
       day: "thursday"
       time: "09:00"
       timezone: "America/Argentina/Buenos_Aires"
-    # SEC-08: don't apply a release the day it is published.
+    # SEC-08. docker only accepts cooldown.default-days.
+    # 7 keeps the previous semver-major wait.
     cooldown:
-      default-days: 3
-      semver-major-days: 7
-      semver-minor-days: 3
-      semver-patch-days: 1
+      default-days: 7
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(docker)"
@@ -293,12 +285,10 @@ updates:
       day: "thursday"
       time: "09:00"
       timezone: "America/Argentina/Buenos_Aires"
-    # SEC-08: don't apply a release the day it is published.
+    # SEC-08. docker only accepts cooldown.default-days.
+    # 7 keeps the previous semver-major wait.
     cooldown:
-      default-days: 3
-      semver-major-days: 7
-      semver-minor-days: 3
-      semver-patch-days: 1
+      default-days: 7
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(docker)"
