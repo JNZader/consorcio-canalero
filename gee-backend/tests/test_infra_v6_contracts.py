@@ -91,7 +91,7 @@ def test_production_services_drop_capabilities(path: str) -> None:
     text = _read(path)
     assert "no-new-privileges:true" in text
     assert "cap_drop:\n    - ALL" in text
-    assert 'driver: json-file' in text or "driver: json-file" in text
+    assert "driver: json-file" in text or "driver: json-file" in text
     blocks = _service_blocks(path)
     for name, block in blocks.items():
         assert "<<: *hardening" in block or "<<: [*hardening, *readonly]" in block, name
@@ -102,7 +102,7 @@ def test_production_services_drop_capabilities(path: str) -> None:
             assert "TMPDIR: /tmp" in block, name
         if name in EXPLICIT_READONLY:
             assert "read_only: true" in block, name
-            assert "user: \"0:0\"" in block, name
+            assert 'user: "0:0"' in block, name
             for cap in CHOWN_CAPS:
                 assert f"- {cap}" in block, (name, cap)
         if name in WRITABLE_ROOT:
@@ -127,13 +127,33 @@ def test_known_image_digests_are_the_ones_resolved_for_this_change() -> None:
     deploy = _read("docker-compose.deploy.yml")
     web = _read("consorcio-web/Dockerfile")
     backup = _read("scripts/Dockerfile.backup")
-    assert "redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499" in deploy
-    assert "pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8" in deploy
-    assert "edoburu/pgbouncer:v1.23.1-p3@sha256:377dec3c0e4a66a1077ec043e16a26ed5702a6d954011a7983a1457c2e070b1d" in prod
-    assert "ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011" in prod
-    assert web.count("node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402") == 3
+    assert (
+        "redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"
+        in deploy
+    )
+    assert (
+        "pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8"
+        in deploy
+    )
+    assert (
+        "edoburu/pgbouncer:v1.23.1-p3@sha256:377dec3c0e4a66a1077ec043e16a26ed5702a6d954011a7983a1457c2e070b1d"
+        in prod
+    )
+    assert (
+        "ghcr.io/maplibre/martin:v0.14.2@sha256:2326005041eab08a54c63dde518f6e30d7642b80109445b8b916ba7d98d33011"
+        in prod
+    )
+    assert (
+        web.count(
+            "node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402"
+        )
+        == 3
+    )
     assert not re.search(r"^FROM node:22-alpine\s", web, re.M)
-    assert "alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8" in backup
+    assert (
+        "alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8"
+        in backup
+    )
     assert "alpine:3.20" not in backup
     assert "postgresql16-client" in backup
 
