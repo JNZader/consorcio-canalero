@@ -961,6 +961,8 @@ def test_e2e_canary_only_runs_after_a_main_push() -> None:
     assert "pull_request" not in canary
     assert "branches: [main]" in canary
     assert "cancel-in-progress: true" in canary
+    # Job budget, not the `sleep 15` in the Pages poller.
+    assert re.search(r"(?m)^    timeout-minutes: 30$", canary)
 
 
 def test_codeql_keeps_javascript_and_python_security_scans() -> None:
