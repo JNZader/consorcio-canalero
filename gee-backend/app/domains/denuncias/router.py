@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -130,6 +131,81 @@ def create_denuncia(
     )
 
 
+def _load_denuncia_for_photo(db: Session, denuncia_id: uuid.UUID, user_id: uuid.UUID) -> Denuncia:
+    denuncia = db.get(Denuncia, denuncia_id)
+    if denuncia is None:
+        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
+    # Legacy denuncias (pre-auth) may have ``user_id=None``. ``UUID(str(None))``
+    # would raise ValueError → 500; explicit guard makes it a clean 403.
+    if denuncia.user_id is None or denuncia.user_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="No podés modificar una denuncia que no es tuya.",
+        )
+    return denuncia
+
+
+def _persist_denuncia_photo(
+    db: Session,
+    denuncia: Denuncia,
+    photo_url: str,
+    previous_photo_url: str | None,
+) -> None:
+    denuncia.foto_url = photo_url
+    try:
+        db.commit()
+    except Exception as exc:
+        # A disconnect can be reported after PostgreSQL made COMMIT durable.
+        # Never delete the new file here: an orphan is recoverable, while a
+        # durable DB pointer to a deleted file is permanent data loss.
+        db.rollback()
+        denuncia.foto_url = previous_photo_url
+        raise HTTPException(status_code=503, detail="No se pudo confirmar la foto") from exc
+    try:
+        db.refresh(denuncia)
+    except Exception as exc:
+        # COMMIT succeeded. Preserve both files and the committed pointer;
+        # refresh failure only makes the response acknowledgement ambiguous.
+        raise HTTPException(
+            status_code=503, detail="La foto fue guardada; reintente la consulta"
+        ) from exc
+
+
+def _tombstone_denuncia(db: Session, denuncia_id: uuid.UUID, user_id: uuid.UUID) -> str | None:
+    from datetime import datetime, timezone
+    from sqlalchemy import select as sa_select
+
+    stmt = sa_select(Denuncia).where(Denuncia.id == denuncia_id)
+    denuncia = db.execute(stmt).scalar_one_or_none()
+    if denuncia is None or denuncia.deleted_at is not None:
+        # 404 either way — don't leak that a deleted row exists
+        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
+    if denuncia.user_id is None or denuncia.user_id != user_id:
+        # Same 404 vs 403 reasoning as the photo GET endpoint
+        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
+
+    previous_photo_url = denuncia.foto_url
+    previous_deleted_at = denuncia.deleted_at
+    photo_key = _scoped_photo_key(previous_photo_url, denuncia_id)
+
+    # Make the tombstone and pointer removal durable before unlinking bytes.
+    # This guarantees a failed commit never leaves a live DB pointer to a
+    # missing photo. Cleanup failures are retried by the orphan reconciler.
+    denuncia.foto_url = None
+    denuncia.deleted_at = datetime.now(tz=timezone.utc)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        denuncia.foto_url = previous_photo_url
+        denuncia.deleted_at = previous_deleted_at
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo confirmar la cancelación; reintente más tarde",
+        ) from exc
+    return photo_key
+
+
 @router.post(
     "/{denuncia_id}/photo",
     response_model=DenunciaPhotoResponse,
@@ -163,16 +239,9 @@ async def upload_denuncia_photo(
     On success the denuncia's `foto_url` is updated and the URL is
     returned.
     """
-    denuncia = db.get(Denuncia, denuncia_id)
-    if denuncia is None:
-        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
-    # Legacy denuncias (pre-auth) may have ``user_id=None``. ``UUID(str(None))``
-    # would raise ValueError → 500; explicit guard makes it a clean 403.
-    if denuncia.user_id is None or denuncia.user_id != uuid.UUID(str(user.id)):
-        raise HTTPException(
-            status_code=403,
-            detail="No podés modificar una denuncia que no es tuya.",
-        )
+    denuncia = await run_in_threadpool(
+        _load_denuncia_for_photo, db, denuncia_id, uuid.UUID(str(user.id))
+    )
 
     content_type = (file.content_type or "").lower()
     if content_type not in ALLOWED_PHOTO_MIME_TYPES:
@@ -191,25 +260,7 @@ async def upload_denuncia_photo(
     except OSError as exc:
         raise HTTPException(status_code=503, detail="No se pudo guardar la foto") from exc
 
-    denuncia.foto_url = photo_url
-    try:
-        db.commit()
-    except Exception as exc:
-        # A disconnect can be reported after PostgreSQL made COMMIT durable.
-        # Never delete the new file here: an orphan is recoverable, while a
-        # durable DB pointer to a deleted file is permanent data loss.
-        db.rollback()
-        denuncia.foto_url = previous_photo_url
-        raise HTTPException(status_code=503, detail="No se pudo confirmar la foto") from exc
-
-    try:
-        db.refresh(denuncia)
-    except Exception as exc:
-        # COMMIT succeeded. Preserve both files and the committed pointer;
-        # refresh failure only makes the response acknowledgement ambiguous.
-        raise HTTPException(
-            status_code=503, detail="La foto fue guardada; reintente la consulta"
-        ) from exc
+    await run_in_threadpool(_persist_denuncia_photo, db, denuncia, photo_url, previous_photo_url)
 
     previous_key = _scoped_photo_key(previous_photo_url, denuncia_id)
     if previous_key:
@@ -250,37 +301,9 @@ async def delete_my_denuncia(
     admin endpoint with full justification logging (out of scope of
     this commit).
     """
-    from datetime import datetime, timezone
-    from sqlalchemy import select as sa_select
-
-    stmt = sa_select(Denuncia).where(Denuncia.id == denuncia_id)
-    denuncia = db.execute(stmt).scalar_one_or_none()
-    if denuncia is None or denuncia.deleted_at is not None:
-        # 404 either way — don't leak that a deleted row exists
-        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
-    if denuncia.user_id is None or denuncia.user_id != uuid.UUID(str(user.id)):
-        # Same 404 vs 403 reasoning as the photo GET endpoint
-        raise HTTPException(status_code=404, detail="Denuncia no encontrada")
-
-    previous_photo_url = denuncia.foto_url
-    previous_deleted_at = denuncia.deleted_at
-    photo_key = _scoped_photo_key(previous_photo_url, denuncia_id)
-
-    # Make the tombstone and pointer removal durable before unlinking bytes.
-    # This guarantees a failed commit never leaves a live DB pointer to a
-    # missing photo. Cleanup failures are retried by the orphan reconciler.
-    denuncia.foto_url = None
-    denuncia.deleted_at = datetime.now(tz=timezone.utc)
-    try:
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        denuncia.foto_url = previous_photo_url
-        denuncia.deleted_at = previous_deleted_at
-        raise HTTPException(
-            status_code=503,
-            detail="No se pudo confirmar la cancelación; reintente más tarde",
-        ) from exc
+    photo_key = await run_in_threadpool(
+        _tombstone_denuncia, db, denuncia_id, uuid.UUID(str(user.id))
+    )
 
     if photo_key:
         try:

@@ -7,11 +7,26 @@ the database container.
 | Component | Role | Scope |
 |---|---|---|
 | `migrate` / Alembic | `consorcio` (bootstrap superuser) | DDL |
-| Backend, workers, beat | `consorcio_app` | DML, `statement_timeout=15s`, no `SUPERUSER` |
+| Backend, workers, beat | `consorcio_app` | DML, `statement_timeout=15s`, `idle_in_transaction_session_timeout=60s`, no `SUPERUSER` |
 
-This script does **not** `REASSIGN OWNED`. Ownership stays on the migrator.
-It does **not** set a password. After `CREATE ROLE`, login is unusable until
+This script does **not** `REASSIGN OWNED`. Table ownership stays on the migrator.
+The materialized views the app refreshes (`mv_dashboard_geo_stats`,
+`mv_hci_por_zona`, `mv_alertas_resumen`, `mv_suelos_por_zona`,
+`mv_canales_por_zona`, `mv_caminos_por_zona`, `vt_parcelas_catastro`) and
+their indexes are transferred to `consorcio_app`. PostgreSQL has no
+`GRANT REFRESH`, and `REFRESH CONCURRENTLY` cannot run inside a function, so
+ownership is the privilege that lets the non-superuser role refresh them.
+
+`CREATE EXTENSION` stays on the migrator. Request handlers only read
+`pg_extension`; they do not install it.
+
+The script does **not** set a password. After `CREATE ROLE`, login is unusable until
 `\password consorcio_app` in an interactive `psql`.
+
+The role is created here, after migrations. Re-run this script after
+`alembic upgrade head` so a view added by a later migration is owned by the
+app role. The migration `zz_audit_v6_db` does the same transfer when the role
+already exists.
 
 ## Before applying
 

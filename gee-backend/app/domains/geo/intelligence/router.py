@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.db.session import get_db
+from app.db.session import get_db, relax_statement_timeout
 from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.intelligence.router_support import (
     build_baseline_by_zona,
@@ -77,6 +77,7 @@ def refresh_views(
     repo: IntelligenceRepository = Depends(_get_repo),
     _user=Depends(_require_admin()),
 ) -> RefreshViewsResponse:
+    relax_statement_timeout(db, "300s")
     results = repo.refresh_materialized_views(db)
     return RefreshViewsResponse(status="refreshed", views=results)
 
@@ -125,8 +126,9 @@ def calculate_hci(
             pesos=payload.pesos,
         )
         return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as exc:
+        logger.warning("hci.zone_not_found", error_type=type(exc).__name__)
+        raise HTTPException(status_code=404, detail="Zona operativa no encontrada") from exc
 
 
 @router.get("/hci", response_model=dict)

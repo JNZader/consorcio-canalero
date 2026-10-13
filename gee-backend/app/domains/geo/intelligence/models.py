@@ -513,6 +513,13 @@ class ParcelaCatastro(Base):
         Geometry("POLYGON", srid=4326),
         nullable=False,
     )
+    # Stored EPSG:32720 copy so the ficha does not reproject on every read
+    # (DB-02). Nullable: the COALESCE in the ficha SQL falls back to
+    # ST_Transform when a row was inserted before the sync trigger ran.
+    geometria_32720: Mapped[Optional[str]] = mapped_column(
+        Geometry("GEOMETRY", srid=32720),
+        nullable=True,
+    )
     tipo_parcela: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     desig_oficial: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     departamento: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

@@ -36,6 +36,7 @@ async def test_security_headers_are_added_to_api_responses():
 
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
+    assert "X-XSS-Protection" not in response.headers
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
     assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
     assert "Strict-Transport-Security" not in response.headers
@@ -73,6 +74,15 @@ async def test_csp_is_not_applied_to_the_docs_ui_when_docs_are_enabled(monkeypat
     for path in ("/docs", "/redoc"):
         response = await middleware.dispatch(make_request(path), call_next)
         assert "Content-Security-Policy" not in response.headers
+
+
+def test_uvicorn_launchers_hide_the_server_header():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "app"
+    for name in ("server.py", "main.py"):
+        source = (root / name).read_text()
+        assert "server_header=False" in source
 
 
 @pytest.mark.asyncio

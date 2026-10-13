@@ -206,6 +206,17 @@ def test_engine():
 
     Base.metadata.create_all(bind=engine)
 
+    # create_all does not ALTER an existing table. A persisted test database
+    # from before DB-02 is missing this column and the ficha SQL would fail.
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE parcelas_catastro "
+                "ADD COLUMN IF NOT EXISTS geometria_32720 geometry(Geometry, 32720)"
+            )
+        )
+        conn.commit()
+
     yield engine
 
     Base.metadata.drop_all(bind=engine)
