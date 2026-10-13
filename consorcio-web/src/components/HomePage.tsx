@@ -170,18 +170,18 @@ export function HomeContent() {
   }> = [
     {
       value: formatNumber(stats.areaHa),
-      label: 'Hectareas',
-      sublabel: 'Area total del consorcio',
+      label: 'Hectáreas',
+      sublabel: 'Área total del consorcio',
     },
     {
       value: stats.caminosKm == null ? '—' : formatNumber(stats.caminosKm),
-      label: 'Kilometros',
+      label: 'Kilómetros',
       sublabel: 'Red de caminos rurales',
       tooltip: <CaminosTooltipContent rows={stats.caminosByConsorcio} />,
     },
     {
       value: stats.canalesKm == null ? '—' : formatNumber(stats.canalesKm),
-      label: 'Kilometros',
+      label: 'Kilómetros',
       sublabel: 'Canales existentes relevados',
       tooltip: <CanalesTooltipContent rows={stats.canalesByGroup} />,
     },

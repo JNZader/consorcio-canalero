@@ -104,7 +104,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
       // Shared strength rules (same as register flow) — see lib/validators.ts
       password: validatePassword,
       confirmPassword: (value, values) =>
-        value !== values.password ? 'Las contrasenas no coinciden' : null,
+        !value ? 'Confirmá la contraseña' : value !== values.password ? 'Las contraseñas no coinciden' : null,
     },
   });
 
@@ -121,10 +121,10 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
         }
         setSuccess(true);
       } else {
-        setError(result.error || 'Error al restablecer la contrasena.');
+        setError(result.error || 'Error al restablecer la contraseña.');
       }
     } catch {
-      setError('Error inesperado. Intenta de nuevo.');
+      setError('Error inesperado. Intentá de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -202,25 +202,25 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
     <Center mih="80vh">
       <Paper shadow="md" p="xl" radius="md" w={400}>
         <Title order={2} ta="center" mb="md">
-          Nueva Contrasena
+          Nueva Contraseña
         </Title>
 
         {success ? (
           <Stack gap="md">
-            <Alert color="green" icon={<IconCheck size={16} />} title="Contrasena actualizada">
+            <Alert color="green" icon={<IconCheck size={16} />} title="Contraseña actualizada">
               <Text size="sm">
-                Tu contrasena fue restablecida exitosamente. Ya podes iniciar sesion con tu nueva
-                contrasena.
+                Tu contraseña fue restablecida. Ya podés iniciar sesión con tu nueva
+                contraseña.
               </Text>
             </Alert>
             <Button fullWidth component="a" href={withBasePath('/login')}>
-              Iniciar Sesion
+              Iniciar Sesión
             </Button>
           </Stack>
         ) : (
           <>
             <Text c="dimmed" size="sm" ta="center" mb="lg">
-              Ingresa tu nueva contrasena.
+              Ingresá tu nueva contraseña.
             </Text>
 
             {error && (
@@ -232,8 +232,11 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
             <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
               <Stack gap="md">
                 <PasswordInput
-                  label="Nueva contrasena"
-                  placeholder="Minimo 8 caracteres"
+                  label="Nueva contraseña"
+                  placeholder="Mínimo 8 caracteres"
+                  name="password"
+                  autoComplete="new-password"
+                  visibilityToggleButtonProps={{ 'aria-label': 'Mostrar u ocultar contraseña' }}
                   leftSection={<IconLock size={16} />}
                   {...form.getInputProps('password')}
                   required
@@ -246,8 +249,11 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
                 />
 
                 <PasswordInput
-                  label="Confirmar contrasena"
-                  placeholder="Repite la nueva contrasena"
+                  label="Confirmar contraseña"
+                  placeholder="Repetí la nueva contraseña"
+                  name="confirmPassword"
+                  autoComplete="new-password"
+                  visibilityToggleButtonProps={{ 'aria-label': 'Mostrar u ocultar contraseña' }}
                   leftSection={<IconLock size={16} />}
                   {...form.getInputProps('confirmPassword')}
                   required
@@ -260,7 +266,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
                 />
 
                 <Button type="submit" fullWidth loading={loading}>
-                  Restablecer Contrasena
+                  Restablecer Contraseña
                 </Button>
               </Stack>
             </form>

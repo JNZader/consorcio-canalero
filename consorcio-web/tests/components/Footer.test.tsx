@@ -49,7 +49,7 @@ describe('Footer', () => {
 
     expect(screen.getByText('Inicio')).toBeInTheDocument();
     expect(screen.getByText('Mapa')).toBeInTheDocument();
-    expect(screen.getByText('Participacion')).toBeInTheDocument();
+    expect(screen.getByText('Participación')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 

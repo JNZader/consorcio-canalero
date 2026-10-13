@@ -43,7 +43,7 @@ export const FooterContent = memo(function FooterContent() {
                     Mapa
                   </Text>
                   <Text component={Link} to="/participacion" c="gray.3" size="sm">
-                    Participacion
+                    Participación
                   </Text>
                   <Text component={Link} to="/admin" c="gray.3" size="sm">
                     Admin

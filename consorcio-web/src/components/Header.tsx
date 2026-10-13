@@ -24,7 +24,7 @@ const UserMenu = lazy(() => import('./UserMenu'));
 const PUBLIC_LINKS = [
   { to: '/', label: 'Inicio' },
   { to: '/mapa', label: 'Mapa' },
-  { to: '/participacion', label: 'Participacion' },
+  { to: '/participacion', label: 'Participación' },
 ] as const;
 
 // Skeleton de carga para el UserMenu (desktop)

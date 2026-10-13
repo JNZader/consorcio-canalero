@@ -79,15 +79,15 @@ describe('HomePage', () => {
       it('should render hectareas stat', () => {
         renderWithMantine(<HomeContent />);
         expect(screen.getByText('88.484')).toBeInTheDocument();
-        expect(screen.getByText('Hectareas')).toBeInTheDocument();
-        expect(screen.getByText('Area total del consorcio')).toBeInTheDocument();
+        expect(screen.getByText('Hectáreas')).toBeInTheDocument();
+        expect(screen.getByText('Área total del consorcio')).toBeInTheDocument();
       });
 
       it('should render kilometros stats (placeholder while geojson loads)', () => {
         renderWithMantine(<HomeContent />);
         // caminosKm / canalesKm son runtime-derived; sin data quedan en '—'
         expect(screen.getAllByText('—').length).toBe(2);
-        expect(screen.getAllByText('Kilometros').length).toBe(2);
+        expect(screen.getAllByText('Kilómetros').length).toBe(2);
         expect(screen.getByText('Red de caminos rurales')).toBeInTheDocument();
         expect(screen.getByText('Canales existentes relevados')).toBeInTheDocument();
       });

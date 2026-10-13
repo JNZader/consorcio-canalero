@@ -116,7 +116,7 @@ export function MapaContent() {
                   Mapa Interactivo
                 </Title>
                 <Text size="xs" c="gray.6">
-                  Explora las cuencas, caminos e infraestructura del consorcio
+                  Explorá las cuencas, caminos e infraestructura del consorcio
                 </Text>
               </Stack>
               {multiHazardEnabled && (
