@@ -109,7 +109,9 @@ def _mutation_source(target: str) -> str:
 
 
 def _assert_fail_closed_trivy(job: str) -> None:
-    upload = "uses: github/codeql-action/upload-sarif@v4"
+    upload = (
+        "uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3"
+    )
 
     assert f"uses: {TRIVY_ACTION}" in job
     assert f"version: {TRIVY_VERSION}" in job
@@ -190,14 +192,18 @@ def _assert_frozen_image_policy(
     assert repo_root_arg in job
     assert job.index(scan) < job.index(convert) < job.index(validate)
 
-    artifact = job.index("uses: actions/upload-artifact@v7")
+    artifact = job.index(
+        "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
+    )
     artifact_tail = job[artifact:]
     assert "if: always()" in artifact_tail
     assert "if-no-files-found: error" in artifact_tail
     assert report in artifact_tail
     assert sarif in artifact_tail
 
-    upload_sarif = job.index("uses: github/codeql-action/upload-sarif@v4")
+    upload_sarif = job.index(
+        "uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3"
+    )
     upload_tail = job[upload_sarif:]
     assert "if: always()" in upload_tail
     assert f"sarif_file: {sarif}" in upload_tail
@@ -249,7 +255,10 @@ def _assert_image_policy_aggregate(
         assert f"{env_name}_RESULT: {needs_expression}" in aggregate
         result_check = 'test "$' + f'{env_name}_RESULT" = "success"'
         assert result_check in aggregate
-    assert "uses: actions/download-artifact@v8" in aggregate
+    assert (
+        "uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2"
+        in aggregate
+    )
     assert "pattern: image-security-*" in aggregate
     assert "merge-multiple: true" in aggregate
     if workspace_rooted:
@@ -274,7 +283,7 @@ def _assert_non_publishing_image_gate(
     *,
     workspace_rooted: bool = False,
 ) -> None:
-    build = "uses: docker/build-push-action@v7"
+    build = "uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0"
     scan = f"uses: {TRIVY_ACTION}"
 
     assert f'CANDIDATE_IMAGE: "{candidate}"' in job
@@ -323,9 +332,9 @@ def _assert_non_publishing_image_gate(
 def _assert_scanned_manifest_is_published(
     job: str, candidate: str, repository: str, role: str
 ) -> None:
-    build = "uses: docker/build-push-action@v7"
+    build = "uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0"
     scan = f"uses: {TRIVY_ACTION}"
-    login = "uses: docker/login-action@v4"
+    login = "uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0"
     push_candidate = 'docker push "$CANDIDATE_IMAGE"'
     inspect_remote = (
         "docker buildx imagetools inspect \"$CANDIDATE_IMAGE\" --format '{{json .Manifest}}'"
@@ -643,7 +652,10 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
     assert "npx playwright install --with-deps chromium firefox webkit" in accessibility
     assert "@latest" not in accessibility
     assert "CI=1 npm run test:a11y" in accessibility
-    assert "uses: actions/upload-artifact@v7" in accessibility
+    assert (
+        "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
+        in accessibility
+    )
     assert "if: always()" in accessibility
     assert "consorcio-web/a11y-report/" in accessibility
     assert "consorcio-web/test-results/" in accessibility
@@ -667,7 +679,8 @@ def test_backend_pr_and_manual_runs_reach_mutation_and_security() -> None:
     # corrida final, que combina con --cov-append.
     assert "pytest tests/new/test_geo_visualization_renderer.py -v --cov=app" in backend
     assert "--ignore=tests/new/test_geo_visualization_renderer.py" in backend
-    assert "--cov-append --cov-fail-under=60" in backend
+    assert "--cov-append --cov-report=json:coverage.json --cov-fail-under=70" in backend
+    assert "python3 scripts/critical_coverage_gate.py coverage.json" in backend
     assert "python3 scripts/cosmic_gate.py --config .cosmic-ray.selected.toml" in backend
     assert "mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}" in backend
     assert "matrix: ${{ fromJSON(needs.changes.outputs.mutation_matrix) }}" in _job_block(
@@ -1735,9 +1748,13 @@ def test_frontend_mutation_shards_use_isolated_reports_artifacts_and_caches() ->
         assert "stryker-incremental-${{ matrix.shard }}.json" in producer
         assert "if-no-files-found: error" in producer
 
-    assert "uses: actions/cache/restore@v6" in mutation
+    assert (
+        "uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0" in mutation
+    )
     assert "uses: actions/cache@v6" not in mutation
-    assert "uses: actions/cache/save@v6" not in mutation
+    assert (
+        "uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0" not in mutation
+    )
     assert "stryker-incremental-v2-${{ matrix.shard }}-" in mutation
     assert "stryker-incremental-${{ github.sha }}" not in mutation
     assert "mutation-pr-${{ matrix.shard }}-${{ github.run_id }}" in mutation
@@ -1750,9 +1767,12 @@ def test_frontend_mutation_shards_use_isolated_reports_artifacts_and_caches() ->
     assert "if: ${{ always()" in publish
     assert 'test "$MUTATION_FULL_RESULT" = "success"' in publish
     assert publish.index('test "$MUTATION_FULL_RESULT" = "success"') < publish.index(
-        "uses: actions/cache/save@v6"
+        "uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0"
     )
-    assert publish.count("uses: actions/cache/save@v6") == 4
+    assert (
+        publish.count("uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0")
+        == 4
+    )
     for shard in ("a", "b", "auth1", "auth2"):
         assert f"stryker-incremental-{shard}.json" in publish
         assert f"stryker-incremental-v2-{shard}-${{{{ github.sha }}}}" in publish
@@ -2226,3 +2246,18 @@ def test_ci05_pages_promote_waits_for_frontend() -> None:
     assert "pages-production" in pages
     assert "wrangler" not in pages
     assert "contents: write" in pages
+    # CI-07: write permission stays on the job. The checkout is the default
+    # branch (github.sha). head_sha is only an env value for the API script.
+    executable = "\n".join(line for line in pages.splitlines() if not line.lstrip().startswith("#"))
+    assert executable.count("github.event.workflow_run.head_sha") == 1
+    assert "PROMOTE_SHA: ${{ github.event.workflow_run.head_sha }}" in executable
+    checkout = executable.split("uses: actions/checkout", 1)[1].split(
+        "persist-credentials: false", 1
+    )[0]
+    assert "head_sha" not in checkout
+    assert "ref: ${{ github.sha }}" in executable
+    assert "persist-credentials: false" in executable
+    assert "git push" not in executable
+    assert "force=true" not in executable
+    assert "--force" not in executable
+    assert "bash deploy/promote-pages-ref.sh" in executable

@@ -1,0 +1,27 @@
+[Unit]
+Description=Consorcio Canalero — deploy webhook receiver
+Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/infra-cicd-v6.md
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+# javier is in the docker group, which is root-equivalent on this host.
+# Same constraint as etl-refresh.service (INF-10). Do not switch this user
+# to one outside the docker group: compose would be unable to pull.
+User=javier
+Group=javier
+SupplementaryGroups=docker
+Environment=HOME=/home/javier
+EnvironmentFile=-/etc/consorcio/deploy-webhook.env
+ExecStart=/usr/bin/python3 /usr/local/bin/consorcio-deploy-webhook.py
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=consorcio-deploy-webhook
+
+[Install]
+WantedBy=multi-user.target

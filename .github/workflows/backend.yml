@@ -26,6 +26,10 @@ defaults:
   run:
     working-directory: gee-backend
 
+# CI-01: el token por defecto solo lee. Los jobs que publican SARIF lo amplían.
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect changed areas
@@ -36,7 +40,7 @@ jobs:
       backend_image: ${{ steps.detect.outputs.backend_image }}
       mutation_matrix: ${{ steps.detect.outputs.mutation_matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Historia completa: sin esto el merge-base contra la rama base no
           # existe en el clon y el diff de abajo falla o miente.
@@ -87,8 +91,8 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
           cache: pip
@@ -115,8 +119,8 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
           cache: pip
@@ -134,15 +138,16 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
-      # Unified coverage floor: 60 everywhere (backend.yml, deploy.yml,
-      # package.json test:backend) — the real prod gate is deploy.yml's 60.
+      # CI-04: piso 70 (antes 60). El gate de main con .coveragerc está en
+      # deploy.yml. Este job no omite los módulos geo, así que el número es
+      # el mismo piso y no el 75 del informe filtrado.
       #
       # Los tests del renderer VTK offscreen corren en un PROCESO pytest
       # separado: compartir proceso con el resto de la suite producia
@@ -154,7 +159,8 @@ jobs:
       - run: pytest tests/new/test_geo_visualization_renderer.py -v --cov=app
       - run: >
           pytest tests/ -v --ignore=tests/new/test_geo_visualization_renderer.py
-          --cov=app --cov-append --cov-fail-under=60
+          --cov=app --cov-append --cov-report=json:coverage.json --cov-fail-under=70
+      - run: python3 scripts/critical_coverage_gate.py coverage.json
 
   mutation:
     name: Mutation tests (cosmic-ray — ${{ matrix.target }})
@@ -170,8 +176,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.mutation_matrix) }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
           cache: pip
@@ -228,7 +234,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pinned to commit SHA of v0.36.0 (peeled tag, verified via git ls-remote)
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -239,7 +245,7 @@ jobs:
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           exit-code: '1'
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -259,10 +265,10 @@ jobs:
     env:
       CANDIDATE_IMAGE: "local/consorcio-backend:${{ github.sha }}"
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build backend candidate image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ github.workspace }}/gee-backend
           file: ${{ github.workspace }}/gee-backend/Dockerfile
@@ -324,7 +330,7 @@ jobs:
             --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --repo-root "${{ github.workspace }}"
       - name: Upload backend image evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: image-security-backend
@@ -334,7 +340,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload backend image SARIF
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: ${{ github.workspace }}/image-security/backend-trivy.sarif
@@ -358,10 +364,10 @@ jobs:
     env:
       CANDIDATE_IMAGE: "local/consorcio-geo-worker:${{ github.sha }}"
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build geo-worker candidate image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ github.workspace }}/gee-backend
           file: ${{ github.workspace }}/gee-backend/Dockerfile.geo
@@ -418,7 +424,7 @@ jobs:
             --expected-source-repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --repo-root "${{ github.workspace }}"
       - name: Upload Geo image evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: image-security-geo-worker
@@ -428,7 +434,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload Geo image SARIF
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: ${{ github.workspace }}/image-security/geo-worker-trivy.sarif
@@ -466,7 +472,7 @@ jobs:
           echo "policy_needed=true" >> "$GITHUB_OUTPUT"
         id: gate
       - name: Download image security evidence
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: ${{ always() && steps.gate.outputs.policy_needed == 'true' }}
         with:
           pattern: image-security-*
