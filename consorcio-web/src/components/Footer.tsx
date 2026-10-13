@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { memo } from 'react';
 
 import { useCanAccess } from '../stores/authStore';
+import styles from '../styles/components/footer.module.css';
 
 /**
  * FooterContent - Contenido interno del footer sin MantineProvider.
@@ -16,10 +17,7 @@ export const FooterContent = memo(function FooterContent() {
       component="footer"
       role="contentinfo"
       py="xl"
-      style={{
-        background: 'var(--mantine-color-gray-8)',
-        borderTop: '1px solid var(--mantine-color-gray-7)',
-      }}
+      className={styles.footer}
     >
       <Container size="xl">
         <Stack gap="lg">
