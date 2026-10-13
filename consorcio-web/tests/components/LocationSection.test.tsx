@@ -63,6 +63,9 @@ const { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMark
 );
 
 vi.mock('maplibre-gl', () => ({
+  Map: MockMap,
+  Marker: MockMarker,
+  setWorkerUrl: () => {},
   default: {
     Map: MockMap,
     Marker: MockMarker,

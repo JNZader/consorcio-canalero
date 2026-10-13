@@ -33,7 +33,7 @@ vi.mock('maplibre-gl', () => {
       this.removed = true;
     }
   }
-  return { default: { Popup, Marker } };
+  return { Popup, Marker, setWorkerUrl: () => {}, default: { Popup, Marker } };
 });
 
 import * as maplibregl from 'maplibre-gl';

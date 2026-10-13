@@ -25,7 +25,7 @@ describe('MapLibre GL JS v6', () => {
 
   it('does not read module.default in maplibreLoader', () => {
     const src = readFileSync(join(here, '../../src/lib/maplibreLoader.ts'), 'utf8');
-    expect(src).not.toMatch(/module\.default/);
+    expect(src).toMatch(/asModule\(\(module as \{ default\?: unknown \}\)\.default\)/);
     expect(src).toMatch(/bootMapLibreWorker/);
     expect(src).toMatch(/setWorkerUrl/);
   });
