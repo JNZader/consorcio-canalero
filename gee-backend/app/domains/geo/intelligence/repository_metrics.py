@@ -240,10 +240,11 @@ class IntelligenceRepositoryMetricsMixin:
             where_clause = "WHERE cuenca = :cuenca"
             params["cuenca"] = cuenca_filter
         total: int = db.execute(
-            text(f"SELECT COUNT(*) FROM mv_hci_por_zona {where_clause}"), params
+            text(f"SELECT COUNT(*) FROM mv_hci_por_zona {where_clause}"),  # nosec B608  # internal constant, not user input
+            params,
         ).scalar_one()
         params.update({"offset": (page - 1) * limit, "limit": limit})
-        data_sql = f"SELECT zona_id, zona_nombre, cuenca, superficie_ha, indice_final, nivel_riesgo, fecha_calculo FROM mv_hci_por_zona {where_clause} ORDER BY indice_final DESC OFFSET :offset LIMIT :limit"
+        data_sql = f"SELECT zona_id, zona_nombre, cuenca, superficie_ha, indice_final, nivel_riesgo, fecha_calculo FROM mv_hci_por_zona {where_clause} ORDER BY indice_final DESC OFFSET :offset LIMIT :limit"  # nosec B608  # internal constant, not user input
         return [dict(r) for r in db.execute(text(data_sql), params).mappings().all()], total
 
     def get_alertas_resumen(self, db: Session) -> dict[str, Any]:
