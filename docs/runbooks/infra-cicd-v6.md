@@ -407,13 +407,15 @@ histogram_quantile(0.95, sum by (le, operation) (rate(gee_call_duration_seconds_
 sum by (path) (rate(http_responses_429_total[5m]))
 ```
 
-El scrape no está instalado en el VPS. Hay que agregarlo a mano (el mismo
-Prometheus o Uptime Kuma que ya corre ahí, o un scrape interno a
-`http://consorcio-backend:8000/metrics` en la red de Docker). El puerto 8000
-está en `127.0.0.1`; Caddy publica el host de la API. Si no querés el
-endpoint en internet, un `handle /metrics` en el Caddyfile que responda 404
-hacia afuera y dejar el scrape en la red interna. Recargar Caddy es el mismo
-paso manual de la sección Caddy.
+Los dos Caddyfile responden 404 a `/metrics` y a `/metrics/*` en los tres
+hosts públicos (`@metrics`, antes del `reverse_proxy`). El proceso sigue sirviendo el
+endpoint en la red de Docker: `http://consorcio-backend:8000/metrics`. El
+puerto publicado del backend es `127.0.0.1:8000`, no la internet.
+
+El scrape no está instalado en el VPS. Hay que agregarlo a mano contra esa
+URL interna (Prometheus en la misma red, no contra el nombre público de la
+API). Recargar el Caddyfile en el VPS sigue siendo el paso manual de la
+sección Caddy: sin esa recarga el borde viejo todavía reenvía `/metrics`.
 
 ## Pisos de cobertura (CI-04)
 

@@ -47,15 +47,34 @@ api.consorcio.{$DOMAIN} {
 			window 1m
 		}
 	}
-	reverse_proxy consorcio-backend:8000
+	# OBS-02: igual que el Caddyfile stock. /metrics solo en la red Docker.
+	@metrics path /metrics /metrics/*
+	handle @metrics {
+		respond 404
+	}
+	handle {
+		reverse_proxy consorcio-backend:8000
+	}
 }
 
 tiles.consorcio.{$DOMAIN} {
 	import consorcio_edge
-	reverse_proxy consorcio-martin:3000
+	@metrics path /metrics /metrics/*
+	handle @metrics {
+		respond 404
+	}
+	handle {
+		reverse_proxy consorcio-martin:3000
+	}
 }
 
 deploy.consorcio.{$DOMAIN} {
 	import consorcio_edge
-	reverse_proxy 127.0.0.1:8090
+	@metrics path /metrics /metrics/*
+	handle @metrics {
+		respond 404
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8090
+	}
 }

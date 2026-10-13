@@ -187,6 +187,52 @@ def test_legacy_deploy_compose_is_deprecated_and_unused_by_ci() -> None:
         )
 
 
+def _caddy_block(text: str, header: str) -> str:
+    marker = header + " {"
+    start = text.index(marker)
+    depth = 0
+    for index in range(start + len(header), len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index]
+    raise AssertionError(f"bloque sin cerrar: {header}")
+
+
+_PUBLIC_CADDY_SITES = (
+    "api.consorcio.{$DOMAIN}",
+    "tiles.consorcio.{$DOMAIN}",
+    "deploy.consorcio.{$DOMAIN}",
+)
+
+
+def test_public_caddy_returns_404_for_metrics() -> None:
+    """OBS-02: /metrics is not proxied to the internet.
+
+    The backend still serves it on the Docker network
+    (``consorcio-backend:8000``). Every public site answers 404 first,
+    in its own ``handle``, before ``reverse_proxy``.
+    """
+    for path in ("deploy/Caddyfile", "deploy/Caddyfile.with-ratelimit"):
+        text = _read(path)
+        for site_name in _PUBLIC_CADDY_SITES:
+            site = _caddy_block(text, site_name)
+            code = "\n".join(
+                line for line in site.splitlines() if not line.lstrip().startswith("#")
+            )
+            matcher_at = code.find("@metrics path /metrics /metrics/*")
+            handle_at = code.find("handle @metrics")
+            proxy_at = code.find("reverse_proxy ")
+            assert matcher_at != -1, (path, site_name)
+            assert handle_at != -1, (path, site_name)
+            assert proxy_at != -1, (path, site_name)
+            assert matcher_at < handle_at < proxy_at, (path, site_name)
+            assert "respond 404" in code[handle_at:proxy_at], (path, site_name)
+
+
 def test_stock_caddyfile_has_no_rate_limit_directive() -> None:
     stock = _read("deploy/Caddyfile")
     limited = _read("deploy/Caddyfile.with-ratelimit")
