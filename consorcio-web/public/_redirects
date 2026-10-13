@@ -6,5 +6,9 @@
 /reportes /participacion 301
 /sugerencias /participacion?tab=sugerencias 301
 
-# Cloudflare Pages SPA fallback. Static assets are served before this rule.
+# Missing hashed chunks must 404, not the SPA index (FE-01). Status 404
+# keeps the browser from treating HTML as a JS module after a deploy.
+/assets/* /404.html 404
+
+# Cloudflare Pages SPA fallback. Static assets that exist are served first.
 /* /index.html 200
