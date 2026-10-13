@@ -217,19 +217,21 @@ test.describe('MapaMapLibre — rediseño UX (mobile shell)', () => {
       const root = page.getByTestId('map-workspace-root');
       await expect(root).toHaveAttribute('data-desktop', 'false');
 
-      // The desktop sidebar must NOT be present on mobile.
-      await expect(page.getByTestId('map-workspace-sidebar')).toHaveCount(0);
+      // MAP-11: the sidebar host stays mounted (CSS-hidden) on mobile.
+      await expect(page.getByTestId('map-workspace-sidebar')).toHaveCount(1);
+      await expect(page.getByTestId('map-workspace-root')).toHaveAttribute(
+        'data-drawer-open',
+        'false',
+      );
 
-      // The Burger (☰) is visible and opens the Drawer.
       const burger = page.getByTestId('map-workspace-burger');
       await expect(burger).toBeVisible();
       await burger.click();
 
-      // Full-screen Drawer (role "dialog") titled "Capas y leyenda".
       const drawer = page.getByRole('dialog');
       await expect(drawer).toBeVisible();
 
-      // The SAME controls tree is reachable inside the Drawer.
+      // The SAME controls tree is reachable inside the overlay.
       const controls = drawer.getByRole('region', { name: 'Controles de capas del mapa' });
       await expect(controls).toBeVisible();
       await expect(drawer.getByLabel('Buscar capa')).toBeVisible();

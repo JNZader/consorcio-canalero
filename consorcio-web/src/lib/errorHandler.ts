@@ -9,18 +9,18 @@ import { logger } from './logger';
  * Standard error messages in Spanish for common HTTP status codes.
  */
 export const HTTP_ERROR_MESSAGES: Record<number, string> = {
-  400: 'Los datos enviados no son validos',
-  401: 'No estas autenticado. Por favor inicia sesion',
-  403: 'No tienes permisos para realizar esta accion',
+  400: 'Los datos enviados no son válidos',
+  401: 'No estás autenticado. Iniciá sesión',
+  403: 'No tenés permisos para esta acción',
   404: 'El recurso solicitado no existe',
   409: 'Hubo un conflicto con el estado actual del recurso',
   413: 'El archivo es demasiado grande',
   422: 'Los datos no pudieron ser procesados',
-  429: 'Demasiadas solicitudes. Por favor espera un momento',
-  500: 'Error interno del servidor. Intenta nuevamente',
-  502: 'El servidor no esta disponible temporalmente',
-  503: 'Servicio no disponible. Intenta mas tarde',
-  504: 'El servidor tardo demasiado en responder',
+  429: 'Demasiadas solicitudes. Esperá un momento',
+  500: 'Error interno del servidor. Intentá de nuevo',
+  502: 'El servidor no está disponible temporalmente',
+  503: 'Servicio no disponible. Intentá más tarde',
+  504: 'El servidor tardó demasiado en responder',
 };
 
 /**
@@ -64,7 +64,7 @@ export function getErrorMessage(error: unknown): string {
     }
   }
 
-  return 'Ocurrio un error inesperado';
+  return 'Ocurrió un error inesperado';
 }
 
 /**

@@ -194,24 +194,24 @@ describe('ProfilePanel', () => {
   describe('change password form', () => {
     it('should render change password section', () => {
       renderWithMantine(<ProfilePanel />);
-      expect(screen.getByRole('heading', { name: /Cambiar Contrasena/i, level: 3 })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Cambiar Contraseña/i, level: 3 })).toBeInTheDocument();
     });
 
     it('should have newPassword input field', () => {
       renderWithMantine(<ProfilePanel />);
-      const inputs = screen.getAllByPlaceholderText(/Minimo 6 caracteres/i);
+      const inputs = screen.getAllByPlaceholderText(/Mínimo 6 caracteres/i);
       expect(inputs.length).toBeGreaterThan(0);
     });
 
     it('should have confirmPassword input field', () => {
       renderWithMantine(<ProfilePanel />);
-      const inputs = screen.getAllByPlaceholderText(/Repite la nueva contrasena/i);
+      const inputs = screen.getAllByPlaceholderText(/Repetí la nueva contraseña/i);
       expect(inputs.length).toBeGreaterThan(0);
     });
 
-    it('should have Cambiar Contrasena button', () => {
+    it('should have Cambiar Contraseña button', () => {
       renderWithMantine(<ProfilePanel />);
-      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contraseña/i });
       expect(changeBtn).toBeInTheDocument();
     });
 
@@ -220,13 +220,13 @@ describe('ProfilePanel', () => {
       const { updatePassword } = await import('../../src/lib/auth');
       renderWithMantine(<ProfilePanel />);
 
-      const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
+      const inputs = screen.getAllByLabelText(/Nueva contraseña/i);
       await user.type(inputs[0], '123');
 
-      const confirmInputs = screen.getAllByLabelText(/Confirmar contrasena/i);
+      const confirmInputs = screen.getAllByLabelText(/Confirmar contraseña/i);
       await user.type(confirmInputs[0], '123');
 
-      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contraseña/i });
       await user.click(changeBtn);
 
       await waitFor(() => {
@@ -246,13 +246,13 @@ describe('ProfilePanel', () => {
       const user = userEvent.setup();
       renderWithMantine(<ProfilePanel />);
 
-      const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
+      const inputs = screen.getAllByLabelText(/Nueva contraseña/i);
       await user.type(inputs[0], password);
 
-      const confirmInputs = screen.getAllByLabelText(/Confirmar contrasena/i);
+      const confirmInputs = screen.getAllByLabelText(/Confirmar contraseña/i);
       await user.type(confirmInputs[0], password);
 
-      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contraseña/i });
       await user.click(changeBtn);
 
       if (shouldError) {
@@ -265,13 +265,13 @@ describe('ProfilePanel', () => {
       const { updatePassword } = await import('../../src/lib/auth');
       renderWithMantine(<ProfilePanel />);
 
-      const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
+      const inputs = screen.getAllByLabelText(/Nueva contraseña/i);
       await user.type(inputs[0], 'newPassword123');
 
-      const confirmInputs = screen.getAllByLabelText(/Confirmar contrasena/i);
+      const confirmInputs = screen.getAllByLabelText(/Confirmar contraseña/i);
       await user.type(confirmInputs[0], 'differentPassword123');
 
-      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contraseña/i });
       await user.click(changeBtn);
 
       await waitFor(() => {
@@ -292,13 +292,13 @@ describe('ProfilePanel', () => {
 
       renderWithMantine(<ProfilePanel />);
 
-      const inputs = screen.getAllByLabelText(/Nueva contrasena/i);
+      const inputs = screen.getAllByLabelText(/Nueva contraseña/i);
       await user.type(inputs[0], 'newPassword123');
 
-      const confirmInputs = screen.getAllByLabelText(/Confirmar contrasena/i);
+      const confirmInputs = screen.getAllByLabelText(/Confirmar contraseña/i);
       await user.type(confirmInputs[0], 'newPassword123');
 
-      const changeBtn = screen.getByRole('button', { name: /Cambiar Contrasena/i });
+      const changeBtn = screen.getByRole('button', { name: /Cambiar Contraseña/i });
       await user.click(changeBtn);
 
       // Give form time to process
@@ -358,7 +358,7 @@ describe('ProfilePanel', () => {
     it('should have descriptive button text', () => {
       renderWithMantine(<ProfilePanel />);
       expect(screen.getByRole('button', { name: /Guardar Cambios/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Cambiar Contrasena/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Cambiar Contraseña/i })).toBeInTheDocument();
     });
 
     it('should have form structure', () => {

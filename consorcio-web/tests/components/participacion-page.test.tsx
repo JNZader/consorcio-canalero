@@ -38,12 +38,12 @@ const renderPage = () => render(<ParticipacionContent />, { wrapper: Wrapper });
 describe('ParticipacionPage', () => {
   it('renderiza el wrapper de pagina', () => {
     render(<ParticipacionPage />, { wrapper: Wrapper });
-    expect(screen.getByText('Participacion')).toBeInTheDocument();
+    expect(screen.getByText('Participación')).toBeInTheDocument();
   });
 
   it('muestra el header unico que abarca las dos acciones', () => {
     renderPage();
-    expect(screen.getByRole('heading', { name: 'Participacion' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Participación' })).toBeInTheDocument();
     expect(screen.getByText(/reporta un problema/i)).toBeInTheDocument();
   });
 

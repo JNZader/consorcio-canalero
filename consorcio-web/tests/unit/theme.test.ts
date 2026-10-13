@@ -265,6 +265,12 @@ describe('theme', () => {
       });
     });
 
+    it('UI-05: blue filled [6] is lighter than hover [7]', () => {
+      const blue = mantineTheme.colors!.blue!;
+      expect(blue[6]).toBe('#1971c2');
+      expect(blue[7]).toBe('#1864ab');
+    });
+
     it('should have all color palettes with 10 colors', () => {
       const palettes = ['institucional', 'acento', 'agua', 'alerta', 'exito'] as const;
       palettes.forEach((pal) => {
