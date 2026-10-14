@@ -155,8 +155,8 @@ describe('<InfoPanel /> — Canal detection branch', () => {
     expect(screen.getAllByTestId('info-panel-feature-section')).toHaveLength(1);
   });
 
-  it('loads the elevation profile only for operators', async () => {
-    vi.mocked(useCanAccess).mockReturnValue(true);
+  it('shows the elevation profile to any visitor, not only operators', async () => {
+    vi.mocked(useCanAccess).mockReturnValue(false);
     renderWithMantine(
       <InfoPanel feature={buildCanalFeature()} onClose={() => {}} />,
     );

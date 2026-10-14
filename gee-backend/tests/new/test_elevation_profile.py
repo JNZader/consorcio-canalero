@@ -266,6 +266,48 @@ def test_aplicar_gee_dems_is_noop_when_sampler_raises() -> None:
     assert "aw3d30_disclaimer" not in out
 
 
+def test_public_elevation_route_is_anonymous_and_never_samples_gee(monkeypatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.db.session import get_db
+    from app.domains.geo import elevation_profile_service as svc
+    from app.domains.geo.public_elevation import router as public_elevation_router
+
+    captured: dict[str, object] = {}
+
+    def fake_perfil(_db, *, geometry, area_id=None, compare_dems=False):
+        captured.update(geometry=geometry, area_id=area_id, compare_dems=compare_dems)
+        return {
+            "puntos": [],
+            "length_m": 0.0,
+            "min_elevation_m": None,
+            "max_elevation_m": None,
+            "source": NOMBRE_DEM_FILLED,
+            "cell_m": float(PASO_DENSIFICADO_M),
+            "disclaimer": "GLO-30",
+        }
+
+    monkeypatch.setattr(svc, "perfil_de_geojson", fake_perfil)
+    app = FastAPI()
+    app.include_router(public_elevation_router, prefix="/api/v2/public")
+    app.dependency_overrides[get_db] = lambda: object()
+
+    geometry = {
+        "type": "LineString",
+        "coordinates": [[-62.7, -32.6], [-62.71, -32.61]],
+    }
+    with TestClient(app) as cliente:
+        resp = cliente.post(
+            "/api/v2/public/map/elevation-profile",
+            json={"geometry": geometry},
+        )
+
+    assert resp.status_code == 200
+    assert captured["geometry"] == geometry
+    assert captured["compare_dems"] is False
+
+
 def test_adjuntar_series_opcionales_skips_gee_unless_compare_dems(monkeypatch) -> None:
     from app.domains.geo import elevation_profile_service as svc
 
