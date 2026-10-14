@@ -60,6 +60,11 @@ describe('useImageComparison', () => {
     vi.clearAllMocks();
     store.clear();
     isValidImageComparisonMock.mockReturnValue(true);
+    mapImageApiMock.getImageParams.mockResolvedValue({
+      imagen_principal: null,
+      imagen_comparacion: null,
+    });
+    mapImageApiMock.regenerateTile.mockResolvedValue({});
 
     window.localStorage.getItem = vi.fn((key: string) => store.get(key) ?? null);
     window.localStorage.setItem = vi.fn((key: string, value: string) => {
@@ -79,6 +84,50 @@ describe('useImageComparison', () => {
 
     expect(result.current.comparison).toEqual(initialComparison);
     expect(result.current.isReady).toEqual(rightImage);
+  });
+
+  it('restores both comparison images from backend when localStorage is empty', async () => {
+    const leftParams = {
+      sensor: 'Sentinel-2',
+      target_date: '2026-01-10',
+      visualization: 'rgb',
+      max_cloud: 80,
+      days_buffer: 10,
+      mode: 'scene' as const,
+    };
+    const rightParams = { ...leftParams, target_date: '2026-02-10' };
+    mapImageApiMock.getImageParams.mockResolvedValue({
+      imagen_principal: null,
+      imagen_comparacion: { enabled: true, left: leftParams, right: rightParams },
+    });
+    mapImageApiMock.regenerateTile
+      .mockResolvedValueOnce({
+        tile_url: 'https://earthengine.googleapis.com/v1/maps/left/tiles/{z}/{x}/{y}',
+        target_date: '2026-01-10',
+        images_count: 2,
+        visualization: 'rgb',
+        visualization_description: 'RGB',
+        sensor: 'Sentinel-2',
+        collection: 'COPERNICUS/S2',
+      })
+      .mockResolvedValueOnce({
+        tile_url: 'https://earthengine.googleapis.com/v1/maps/right/tiles/{z}/{x}/{y}',
+        target_date: '2026-02-10',
+        images_count: 2,
+        visualization: 'rgb',
+        visualization_description: 'RGB',
+        sensor: 'Sentinel-2',
+        collection: 'COPERNICUS/S2',
+      });
+
+    const { result } = renderHook(() => useImageComparison());
+
+    await waitFor(() => {
+      expect(result.current.comparison?.left.target_date).toBe('2026-01-10');
+      expect(result.current.comparison?.right.target_date).toBe('2026-02-10');
+    });
+    expect(result.current.comparison?.enabled).toBe(true);
+    expect(mapImageApiMock.regenerateTile).toHaveBeenCalledTimes(2);
   });
 
   it('removes invalid or malformed stored payloads', async () => {
