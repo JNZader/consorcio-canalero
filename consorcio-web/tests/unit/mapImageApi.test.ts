@@ -25,6 +25,16 @@ describe('mapImageApi GEE boundary', () => {
     expect(apiFetchMock.mock.calls[0][0]).not.toContain('?');
   });
 
+  it('uses the fixed no-parameter public current-comparison URL', async () => {
+    await mapImageApi.getPublicCurrentComparison();
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/public/map/gee/current-comparison', {
+      skipAuth: true,
+      timeout: 300_000,
+    });
+    expect(apiFetchMock.mock.calls[0][0]).not.toContain('?');
+  });
+
   it('keeps legacy parameter reads authenticated', async () => {
     await mapImageApi.getImageParams();
 
