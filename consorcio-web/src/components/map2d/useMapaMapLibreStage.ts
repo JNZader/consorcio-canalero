@@ -224,6 +224,13 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
   // so the hook's `useEffect` re-runs once the map finishes loading (the
   // bare ref would never re-trigger React on its own).
   const measurementMap = mapReady ? mapRef.current : null;
+  const measurementSnapRoads = useMemo(() => {
+    const selected = selectedFeatures.filter((feature) => feature.geometry?.type === 'LineString');
+    if (selected.length > 0) {
+      return selected;
+    }
+    return caminos?.features ?? roadsCollection?.features ?? [];
+  }, [caminos?.features, roadsCollection?.features, selectedFeatures]);
   const {
     state: measurementState,
     liveLabel: measurementLiveLabel,
@@ -231,7 +238,7 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     startArea: startMeasureArea,
     clear: clearMeasurements,
     cancel: cancelMeasurement,
-  } = useMeasurement(measurementMap);
+  } = useMeasurement(measurementMap, measurementSnapRoads);
 
   // The ONE interaction-mode coordinator (design §6.1, JDB-012): it derives the
   // single mode from measurement + ficha-draw, enforces their mutual exclusion,
