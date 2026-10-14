@@ -45,11 +45,25 @@ def _resultados(db: Session, area_id: Optional[str]) -> list[dict[str, Any]]:
     return [row for row in rows if isinstance(row, dict)]
 
 
+def adjuntar_series_opcionales(
+    payload: dict[str, Any],
+    dem_path: str,
+    *,
+    compare_dems: bool = False,
+) -> dict[str, Any]:
+    """MDE-Ar is local. GEE DEMs stay off the critical path unless requested."""
+    sampled = aplicar_mde_ar(payload, dem_path)
+    if not compare_dems:
+        return sampled
+    return aplicar_gee_dems(sampled)
+
+
 def perfil_de_geojson(
     db: Session,
     *,
     geometry: dict[str, Any],
     area_id: Optional[str] = None,
+    compare_dems: bool = False,
 ) -> dict[str, Any]:
     from shapely.geometry import shape
     import geopandas as gpd
@@ -91,4 +105,4 @@ def perfil_de_geojson(
     for index, punto in enumerate(payload["puntos"]):
         punto["lon"] = float(serie.iloc[index].x)
         punto["lat"] = float(serie.iloc[index].y)
-    return aplicar_gee_dems(aplicar_mde_ar(payload, dem_path))
+    return adjuntar_series_opcionales(payload, dem_path, compare_dems=compare_dems)

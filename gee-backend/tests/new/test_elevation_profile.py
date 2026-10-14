@@ -264,3 +264,21 @@ def test_aplicar_gee_dems_is_noop_when_sampler_raises() -> None:
     out = aplicar_gee_dems(payload, sampler=boom)
     assert "elevation_aw3d30" not in out["puntos"][0]
     assert "aw3d30_disclaimer" not in out
+
+
+def test_adjuntar_series_opcionales_skips_gee_unless_compare_dems(monkeypatch) -> None:
+    from app.domains.geo import elevation_profile_service as svc
+
+    gee_calls = {"n": 0}
+    monkeypatch.setattr(svc, "aplicar_mde_ar", lambda payload, _path: payload)
+
+    def fake_gee(payload, **_kwargs):
+        gee_calls["n"] += 1
+        return payload
+
+    monkeypatch.setattr(svc, "aplicar_gee_dems", fake_gee)
+    payload = {"puntos": [{"distance_m": 0.0, "elevation_m": 120.0}]}
+    svc.adjuntar_series_opcionales(payload, "/tmp/dem_filled.tif", compare_dems=False)
+    assert gee_calls["n"] == 0
+    svc.adjuntar_series_opcionales(payload, "/tmp/dem_filled.tif", compare_dems=True)
+    assert gee_calls["n"] == 1
