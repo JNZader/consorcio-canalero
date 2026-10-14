@@ -92,8 +92,12 @@ export function SugerenciaGeometryMap({
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    bootMapLibreWorker();
-    const map = new maplibregl.Map({
+    let cancelled = false;
+    let created: maplibregl.Map | undefined;
+    void (async () => {
+      await bootMapLibreWorker();
+      if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
+      const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
         version: 8,
@@ -118,9 +122,12 @@ export function SugerenciaGeometryMap({
       addSuggestionGeometry(map, geometry as FeatureCollection | null);
     });
 
-    mapInstanceRef.current = map;
+      created = map;
+      mapInstanceRef.current = map;
+    })();
     return () => {
-      map.remove();
+      cancelled = true;
+      created?.remove();
       mapInstanceRef.current = null;
     };
   }, [canales, geometry]);

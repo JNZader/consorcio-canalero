@@ -34,4 +34,22 @@ describe('MapLibre GL JS v6', () => {
     bootMapLibreWorker();
     bootMapLibreWorker();
   });
+
+  it('every remaining Map boot awaits the worker (or loadMapLibre)', () => {
+    const files = [
+      'components/admin/CanalesPublicacionMap.tsx',
+      'components/admin/sugerencias/components/SugerenciaGeometryMap.tsx',
+      'components/terrain/TerrainViewer3D.tsx',
+      'components/admin/images/useImageExplorerMap.tsx',
+      'components/map2d/useMapInitialization.ts',
+      'components/report-form/LocationSection.tsx',
+      'components/suggestion-form/SuggestionGeometrySection.tsx',
+    ];
+    const fireAndForget = /bootMapLibreWorker\(\);\s*\n\s*(?:const|let) map = new /;
+    for (const rel of files) {
+      const src = readFileSync(join(here, '../../src', rel), 'utf8');
+      expect(src, rel).not.toMatch(fireAndForget);
+      expect(src, rel).toMatch(/await (?:bootMapLibreWorker|loadMapLibre)\(/);
+    }
+  });
 });
