@@ -42,7 +42,7 @@ opencv-python-headless>=4.9.0
 
 # Temporal analysis
 xarray>=2026.9.0
-rioxarray>=0.15.0
+rioxarray>=0.23.0
 xee>=0.0.16
 
 # Vector/geometry
