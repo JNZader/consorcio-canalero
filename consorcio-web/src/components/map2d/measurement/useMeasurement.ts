@@ -61,6 +61,7 @@ import {
   MEASUREMENT_IDENTIFY_GUARD_MS,
 } from './measurementIdentifyGuard';
 import { createMeasurementDraw } from './measurementDrawModes';
+import { snapDistanceToRoads } from './measurementSnap';
 import { liveMeasurementLabel } from './measurementPreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -196,7 +197,10 @@ function computePolygonLabelAnchor(poly: Feature<Polygon>): [number, number] {
 
 // ─── Hook ───────────────────────────────────────────────────────────────
 
-export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn {
+export function useMeasurement(
+  map: maplibregl.Map | null,
+  snapRoads: readonly Feature[] = [],
+): UseMeasurementReturn {
   const [state, setState] = useState<MeasurementState>({
     mode: 'idle',
     measurements: [],
@@ -204,6 +208,8 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
   const [liveLabel, setLiveLabel] = useState<string | null>(null);
   const modeRef = useRef<MeasurementMode>('idle');
   const drawRef = useRef<MapboxDraw | null>(null);
+  const snapRoadsRef = useRef(snapRoads);
+  snapRoadsRef.current = snapRoads;
 
   const setMeasurementState = useCallback((updater: MeasurementStateUpdater) => {
     setState((prev) => {
@@ -313,14 +319,19 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
 
         if (geom.type === 'LineString') {
           const line = feature as Feature<LineString>;
-          const meters = length(line, { units: 'meters' });
-          const labelPosition = computeLineLabelAnchor(line);
+          const snapped = snapDistanceToRoads(line.geometry, snapRoadsRef.current);
+          const measured: Feature<LineString> = {
+            ...line,
+            geometry: snapped.geometry,
+          };
+          const meters = snapped.meters;
+          const labelPosition = computeLineLabelAnchor(measured);
           entries.push({
             id: featureId,
             kind: 'distance',
             value: meters,
             labelPosition,
-            geometry: line.geometry,
+            geometry: snapped.geometry,
           });
         } else if (geom.type === 'Polygon') {
           const poly = feature as Feature<Polygon>;
