@@ -154,6 +154,7 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
             "/api/v2/public/map/gee/zona",
             "/api/v2/public/map/gee/caminos",
             "/api/v2/public/map/gee/current-image",
+            "/api/v2/public/map/gee/current-comparison",
             "/api/v2/public/settings/branding",
             "/api/v2/geo/canales/publico",
             "/api/v2/geo/layers/public",

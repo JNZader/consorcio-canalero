@@ -165,6 +165,7 @@ def test_public_gee_surface_contains_only_fixed_routes() -> None:
         "/map/gee/zona",
         "/map/gee/caminos",
         "/map/gee/current-image",
+        "/map/gee/current-comparison",
     }
     assert all("{" not in path for path in paths)
 
@@ -377,3 +378,83 @@ def test_public_current_image_rejects_unapproved_tile_host(app_client, monkeypat
     assert response.status_code == 200
     assert response.json()["status"] == "unavailable"
     assert response.json()["reason"] == "temporarily_unavailable"
+
+
+def _override_comparison_dependencies(app, raw_setting: object) -> None:
+    from app.db.session import get_db
+    from app.domains.geo import public_map
+
+    class FakeSettingsService:
+        def get_setting(self, _db, key: str):
+            assert key == "mapa/imagen_comparacion"
+            return raw_setting
+
+    app.dependency_overrides[get_db] = lambda: object()
+    app.dependency_overrides[public_map._get_settings_service] = FakeSettingsService
+
+
+def test_public_current_comparison_projects_both_operator_approved_sides(
+    app_client, monkeypatch
+) -> None:
+    from app.domains.geo import public_map
+
+    side = {
+        "sensor": "Sentinel-2",
+        "target_date": "2026-03-05",
+        "visualization": "rgb",
+        "max_cloud": 20,
+        "days_buffer": 10,
+        "mode": "scene",
+    }
+    raw_setting = {
+        "enabled": True,
+        "left": {**side, "target_date": "2026-01-10"},
+        "right": {**side, "target_date": "2026-02-10"},
+    }
+    dates: list[str] = []
+
+    async def fake_image(**kwargs):
+        dates.append(kwargs["target_date"].isoformat())
+        return {
+            "tile_url": (
+                "https://earthengine.googleapis.com/v1/projects/test/maps/"
+                f"{kwargs['target_date'].isoformat()}/tiles/{{z}}/{{x}}/{{y}}"
+            ),
+            "visualization_description": "RGB",
+            "images_count": 1,
+        }
+
+    monkeypatch.setattr(public_map, "get_satellite_image_impl", fake_image)
+    app, client = app_client
+    _override_comparison_dependencies(app, raw_setting)
+
+    response = client.get("/api/v2/public/map/gee/current-comparison")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "available"
+    assert body["left"]["target_date"] == "2026-01-10"
+    assert body["right"]["target_date"] == "2026-02-10"
+    assert "collection" not in body["left"]
+    assert dates == ["2026-01-10", "2026-02-10"]
+    assert "max-age=300" in response.headers["cache-control"]
+
+
+def test_public_current_comparison_disabled_is_not_configured(app_client, monkeypatch) -> None:
+    from app.domains.geo import public_map
+
+    async def must_not_run(**_kwargs):
+        raise AssertionError("disabled comparison reached GEE")
+
+    monkeypatch.setattr(public_map, "get_satellite_image_impl", must_not_run)
+    app, client = app_client
+    _override_comparison_dependencies(app, {"enabled": False, "left": {}, "right": {}})
+
+    response = client.get("/api/v2/public/map/gee/current-comparison")
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "unavailable",
+        "left": None,
+        "right": None,
+        "reason": "not_configured",
+    }
