@@ -25,7 +25,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, act } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import type { FeatureCollection } from 'geojson';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -204,15 +204,19 @@ function makeFeatureCollection(label: string): FeatureCollection {
   };
 }
 
-function renderViewer(ui: ReactNode) {
+async function renderViewer(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
+  await waitFor(() => {
+    expect(lastMapInstance).not.toBeNull();
+  });
+  return view;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +265,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(lastMapInstance).not.toBeNull();
     expect(syncBpaHistoricoLayerMock).toHaveBeenCalled();
@@ -292,7 +296,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     const initialCalls = syncBpaHistoricoLayerMock.mock.calls.length;
     expect(initialCalls).toBeGreaterThan(0);
@@ -334,7 +338,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(syncAgroAceptadaLayerMock).toHaveBeenCalled();
     const lastAceptada =
@@ -374,7 +378,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(syncAgroZonasLayerMock).toHaveBeenCalled();
     const lastZonas =
@@ -418,7 +422,7 @@ describe('TerrainViewer3D — Pilar Verde layer sync (Phase 1)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     // BPA ran (slot present). Others did NOT run (slot null).
     expect(syncBpaHistoricoLayerMock).toHaveBeenCalled();
