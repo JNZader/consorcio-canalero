@@ -572,6 +572,8 @@ def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
     purge = dockerfile.index("apt-get purge -y --auto-remove gcc python3-dev")
     final_cleanup = dockerfile.index("rm -rf /var/lib/apt/lists/* /var/cache/apt/*", purge)
     assert install_start < pip_install < whitebox_setup < purge < final_cleanup
+    assert "until python3 -c" in dockerfile
+    assert '[ "$n" -ge 5 ]' in dockerfile
     purge_end = purge + len("apt-get purge -y --auto-remove gcc python3-dev")
     assert dockerfile.find("python3-dev", purge_end) == -1
     assert "libc6-dev" not in dockerfile
