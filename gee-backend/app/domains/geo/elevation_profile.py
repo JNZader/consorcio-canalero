@@ -32,6 +32,38 @@ MAX_LENGTH_M = 200_000.0
 MAX_POINTS = 2_000
 
 
+RETRACE_COSINE = -0.85
+RETRACE_SNAP_M = 2.0
+
+
+def desplegar_retrazado(
+    coords: Sequence[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Keep the outbound vertices; skip samples that reverse along the last edge."""
+    if len(coords) < 3:
+        return [(float(x), float(y)) for x, y in coords]
+    out: list[tuple[float, float]] = [
+        (float(coords[0][0]), float(coords[0][1])),
+        (float(coords[1][0]), float(coords[1][1])),
+    ]
+    for raw in coords[2:]:
+        point = (float(raw[0]), float(raw[1]))
+        previous = out[-2]
+        tip = out[-1]
+        v1 = (tip[0] - previous[0], tip[1] - previous[1])
+        v2 = (point[0] - tip[0], point[1] - tip[1])
+        n1 = hypot(v1[0], v1[1])
+        n2 = hypot(v2[0], v2[1])
+        if n1 < 1e-9 or n2 < 1e-9:
+            continue
+        cosine = (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)
+        back = hypot(point[0] - previous[0], point[1] - previous[1])
+        if cosine <= RETRACE_COSINE and back <= n1 + RETRACE_SNAP_M:
+            continue
+        out.append(point)
+    return out if len(out) >= 2 else [(float(x), float(y)) for x, y in coords]
+
+
 def paso_muestreo(largo_m: float) -> float:
     """Keep ≤ MAX_POINTS vertices: 15 m until the trace no longer fits."""
     if largo_m <= 0:
@@ -151,6 +183,12 @@ def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, 
     """Sample ``linea`` (metric CRS matching the raster) against ``dem_path``."""
     if linea is None or linea.is_empty or len(getattr(linea, "coords", [])) < 2:
         raise ValueError("hace falta un LineString con al menos dos vértices")
+    from shapely.geometry import LineString as ShapelyLine
+
+    unfolded = desplegar_retrazado(list(linea.coords))
+    if len(unfolded) < 2:
+        raise ValueError("hace falta un LineString con al menos dos vértices")
+    linea = ShapelyLine(unfolded)
     largo = float(linea.length)
     if largo > MAX_LENGTH_M:
         raise ValueError(f"la traza supera {int(MAX_LENGTH_M)} m")

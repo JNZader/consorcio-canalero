@@ -45,6 +45,20 @@ def test_paso_muestreo_keeps_15m_until_the_point_budget() -> None:
     assert vertices[-1] == (40_000.0, 0.0)
 
 
+def test_desplegar_retrazado_keeps_outbound_and_drops_the_return() -> None:
+    from app.domains.geo.elevation_profile import desplegar_retrazado
+
+    coords = [(0.0, 0.0), (100.0, 0.0), (200.0, 0.0), (100.0, 0.0), (0.0, 0.0)]
+    assert desplegar_retrazado(coords) == [(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)]
+
+
+def test_desplegar_retrazado_keeps_a_right_angle() -> None:
+    from app.domains.geo.elevation_profile import desplegar_retrazado
+
+    coords = [(0.0, 0.0), (100.0, 0.0), (100.0, 80.0)]
+    assert desplegar_retrazado(coords) == coords
+
+
 def test_distancias_sobre_l_shape_is_true_chainage_not_index_uniform() -> None:
     from app.domains.geo.elevation_profile import distancias_sobre
 
