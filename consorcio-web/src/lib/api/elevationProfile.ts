@@ -36,9 +36,14 @@ export type ElevationProfileResponse = {
 export function fetchElevationProfile(
   geometry: LineString,
   areaId?: string,
+  compareDems = false,
 ): Promise<ElevationProfileResponse> {
   return apiFetch<ElevationProfileResponse>('/geo/elevation-profile', {
     method: 'POST',
-    body: JSON.stringify({ geometry, area_id: areaId ?? null }),
+    body: JSON.stringify({
+      geometry,
+      area_id: areaId ?? null,
+      compare_dems: compareDems,
+    }),
   });
 }
