@@ -440,9 +440,7 @@ def test_public_current_comparison_projects_both_operator_approved_sides(
     assert "max-age=300" in response.headers["cache-control"]
 
 
-def test_public_current_comparison_disabled_is_not_configured(
-    app_client, monkeypatch
-) -> None:
+def test_public_current_comparison_disabled_is_not_configured(app_client, monkeypatch) -> None:
     from app.domains.geo import public_map
 
     async def must_not_run(**_kwargs):
