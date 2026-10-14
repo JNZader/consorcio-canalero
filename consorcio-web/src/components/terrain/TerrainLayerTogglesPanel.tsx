@@ -111,9 +111,10 @@ export function TerrainLayerTogglesPanel({
     // capa operativa como para la de escenario — indistinguibles.
     label: layer.label ?? GEO_LAYER_LABELS[layer.tipo] ?? layer.nombre,
   }));
+  const noneOverlayOption = { value: '__none__', label: 'Sin overlay (solo relieve)' };
   const allRasterOptions = selectedImageOption
-    ? [selectedImageOption, ...rasterOptions]
-    : rasterOptions;
+    ? [noneOverlayOption, selectedImageOption, ...rasterOptions]
+    : [noneOverlayOption, ...rasterOptions];
 
   const relevadosMasterOn = !!vectorLayerVisibility.canales_relevados;
   const propuestosMasterOn = !!vectorLayerVisibility.canales_propuestos;
@@ -193,17 +194,15 @@ export function TerrainLayerTogglesPanel({
             </Text>
             <Select
               size="xs"
+              clearable
               data={allRasterOptions}
-              value={activeRasterLayerId ?? null}
+              value={activeRasterLayerId ?? '__none__'}
               onChange={(value) => {
-                if (value) onActiveRasterLayerChange(value);
+                onActiveRasterLayerChange(!value || value === '__none__' ? null : value);
               }}
-              placeholder="Seleccionar overlay"
+              placeholder="Sin overlay (solo relieve)"
               nothingFoundMessage="Sin capas raster"
             />
-            {/* We intentionally drop `null` from the Select's onChange — the
-                chrome accepts null but the UX here is "pick a layer", not
-                "clear to null". */}
           </Box>
 
           {/* pb reserves room for the Slider's mark labels — they render

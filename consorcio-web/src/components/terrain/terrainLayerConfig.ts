@@ -69,6 +69,37 @@ export function getSupported3DRasterLayers(layers: GeoLayerInfo[]): GeoLayerInfo
   return layers.filter((layer) => supportedRasterTypeSet.has(layer.tipo));
 }
 
+/** Overlay drape only. Null id means satellite + mesh, never a silent DEM fallback. */
+export function pickActiveTerrainRasterLayer(
+  activeRasterLayerId: string | null,
+  rasterLayers: readonly GeoLayerInfo[],
+): GeoLayerInfo | undefined {
+  if (!activeRasterLayerId) return undefined;
+  return rasterLayers.find((layer) => layer.id === activeRasterLayerId);
+}
+
+export type TerrainRasterAutofill = string | null | 'keep';
+
+export function nextAutofillTerrainRasterId(input: {
+  readonly userPicked: boolean;
+  readonly activeRasterLayerId: string | null;
+  readonly selectedImage: boolean;
+  readonly selectedImageLayerId: string;
+  readonly fallbackLayerId: string | null;
+}): TerrainRasterAutofill {
+  if (input.userPicked) return 'keep';
+  if (input.selectedImage && input.activeRasterLayerId !== input.selectedImageLayerId) {
+    return input.selectedImageLayerId;
+  }
+  if (!input.activeRasterLayerId && input.selectedImage) {
+    return input.selectedImageLayerId;
+  }
+  if (!input.activeRasterLayerId && input.fallbackLayerId) {
+    return input.fallbackLayerId;
+  }
+  return 'keep';
+}
+
 /**
  * Category map for the 3D vector rows, so the 3D badge can reuse the SAME
  * derivation as 2D (`buildFamilyActiveCounts`). The ids are 3D-panel rows; the

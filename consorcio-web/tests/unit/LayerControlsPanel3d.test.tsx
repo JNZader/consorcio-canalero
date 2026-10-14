@@ -52,6 +52,27 @@ describe('LayerControlsPanel variant 3d', () => {
     expect(screen.queryByTestId('layer-controls-ajustes')).not.toBeInTheDocument();
   });
 
+  it('lets the user turn off the 3D raster drape', async () => {
+    const user = userEvent.setup();
+    const onShowDemOverlayChange = vi.fn();
+    wrap(
+      <LayerControlsPanel
+        {...baseProps}
+        variant="3d"
+        demEnabled
+        showDemOverlay
+        onShowDemOverlayChange={onShowDemOverlayChange}
+        activeDemLayerId="drain-1"
+        demOptions={[
+          { value: 'dem-1', label: 'Elevación (DEM)', tipo: 'dem_raw' },
+          { value: 'drain-1', label: 'Necesidad de Drenaje', tipo: 'drainage_need' },
+        ]}
+      />,
+    );
+    await user.click(screen.getByRole('checkbox', { name: 'Capa raster 3D' }));
+    expect(onShowDemOverlayChange).toHaveBeenCalledWith(false);
+  });
+
   it('lists the 3D raster overlay in En el mapa (MAP-09)', () => {
     wrap(
       <LayerControlsPanel
