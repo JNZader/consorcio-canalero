@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from app.domains.geo.caminos_km import deduped_network_km_by_ccn
-from app.domains.geo.gee_service_analytics_support import build_colored_roads
+from app.domains.geo.gee_service_analytics_support import (
+    build_colored_roads,
+    build_consorcio_stats,
+    build_consorcios_camineros,
+)
 
 
 def _feat(ccn: str, lzn: float, coords: list[list[float]], *, ccc: str = "CC") -> dict:
@@ -45,3 +49,61 @@ def test_chain_sums_geometry_not_copied_route_lzn() -> None:
     payload = build_colored_roads(features, colors=["#0f0"], safe_float=float)
     assert payload["metadata"]["total_km"] != 48.0
     assert payload["consorcios"][0]["longitud_km"] == round(km["C.C. 269"], 2)
+
+
+def _bucket(stats, *, nombre, codigo):
+    if nombre not in stats:
+        stats[nombre] = {
+            "nombre": nombre,
+            "codigo": codigo,
+            "tramos": 0,
+            "longitud_km": 0.0,
+            "por_jerarquia": {},
+            "por_superficie": {},
+        }
+    return stats[nombre]
+
+
+def _breakdown(bucket, key, length_km):
+    row = bucket.setdefault(key, {"tramos": 0, "km": 0.0})
+    row["tramos"] += 1
+    row["km"] += length_km
+
+
+def test_consorcio_stats_ignore_copied_lzn() -> None:
+    coords = [[-62.50, -32.55], [-62.49, -32.55]]
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": {
+                "ccn": "C.C. 269",
+                "ccc": "CC269",
+                "lzn": 16.0,
+                "hct": "Terciario",
+                "rst": "Tierra",
+            },
+        },
+        {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": {
+                "ccn": "C.C. 269",
+                "ccc": "CC269",
+                "lzn": 16.0,
+                "hct": "Terciario",
+                "rst": "Tierra",
+            },
+        },
+    ]
+    km = deduped_network_km_by_ccn(features)
+    stats = build_consorcio_stats(
+        features,
+        ensure_bucket=_bucket,
+        update_breakdown=_breakdown,
+        safe_float=float,
+    )
+    listing = build_consorcios_camineros(features, float)
+    assert stats["totales"]["longitud_km"] == round(km["C.C. 269"], 2)
+    assert listing[0]["longitud_total_km"] == round(km["C.C. 269"], 2)
+    assert stats["totales"]["longitud_km"] < 2.0
