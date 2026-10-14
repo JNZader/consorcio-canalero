@@ -28,7 +28,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, act } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -266,15 +266,19 @@ function makeIndex(): IndexFile {
   };
 }
 
-function renderViewer(ui: ReactNode) {
+async function renderViewer(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
+  await waitFor(() => {
+    expect(lastMapInstance).not.toBeNull();
+  });
+  return view;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +344,7 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(lastMapInstance).not.toBeNull();
     expect(syncCanalesLayersMock).toHaveBeenCalled();
@@ -383,7 +387,7 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(syncCanalesLayersMock).toHaveBeenCalled();
 
@@ -432,7 +436,7 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     // Toggle ALL 5 etapas OFF.
     await act(async () => {
@@ -490,7 +494,7 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     const lastCall =
       syncCanalesLayersMock.mock.calls[syncCanalesLayersMock.mock.calls.length - 1];
@@ -511,7 +515,7 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(syncCanalesLayersMock).not.toHaveBeenCalled();
   });
