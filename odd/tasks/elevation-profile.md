@@ -24,11 +24,25 @@ operator-only.
 
 ## Tasks
 
-- [ ] T1 Public anonymous route + forced `compare_dems=False` — `S1`,`S2` — PR feat/public-elevation-profile
-- [ ] T2 Frontend uses the public route when GEE is not requested — `S1`,`S2`,`S5`
-- [ ] T3 Drop the `canSeeElevation` gate in `InfoPanel` — `S5`
-- [ ] T4 Tests: anonymous 200, GEE never called, POST spends the generic rate budget — `S1`–`S4`
-- [ ] T5 Docs: this file + `docs/ROADMAP.md` note - `S1`
+- [x] T1 Public anonymous route + forced `compare_dems=False` — `S1`,`S2` — b4acc605
+- [x] T2 Frontend uses the public route when GEE is not requested — `S1`,`S2`,`S5`
+- [x] T3 Drop the `canSeeElevation` gate in `InfoPanel` — `S5`
+- [x] T4 Tests: anonymous 200, GEE never called, POST spends the generic rate budget — `S1`–`S4`
+- [x] T5 Docs: this file (feature doc is the API surface note; no other doc lists public routes) - `S1`
+
+## Evidence
+
+- Commit `b4acc605` on `feat/public-elevation-profile`.
+- `npm run test:run -- tests/unit/elevationProfileApi.test.ts tests/unit/InfoPanelCanalBranch.test.tsx tests/unit/ElevationProfileChart.test.tsx` → 19 passed.
+- Full frontend suite: 4623 passed, 3 failed — `patchesApplied` (×2) and
+  `mantine-transition-cleanup`, reproduced identically on clean `main` with the
+  changes stashed (symlinked donor `node_modules` ships Mantine 9.7.2 patches).
+- Backend pytest runs on GitHub CI (local worktree has no `sqlalchemy`).
+
+## Residual risk
+
+Anonymous POST costs rasterio work per call. Guard: generic 100/60 per-IP
+budget (pinned by test) plus the 200 km / 2000-point caps. No GEE reachable.
 
 ## Log
 
