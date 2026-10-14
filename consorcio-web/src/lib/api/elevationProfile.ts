@@ -33,17 +33,31 @@ export type ElevationProfileResponse = {
   nasadem_disclaimer?: string;
 };
 
+const PUBLIC_ELEVATION_PATH = '/public/map/elevation-profile';
+const OPERATOR_ELEVATION_PATH = '/geo/elevation-profile';
+
 export function fetchElevationProfile(
   geometry: LineString,
   areaId?: string,
   compareDems = false,
 ): Promise<ElevationProfileResponse> {
-  return apiFetch<ElevationProfileResponse>('/geo/elevation-profile', {
+  if (!compareDems) {
+    // Anonymous route: local DEM only (GLO-30 + MDE-Ar). skipAuth keeps the
+    // public profile out of the auth-expiry flow for visitors with a stale
+    // token — the endpoint needs no session at all.
+    return apiFetch<ElevationProfileResponse>(PUBLIC_ELEVATION_PATH, {
+      method: 'POST',
+      skipAuth: true,
+      body: JSON.stringify({ geometry, area_id: areaId ?? null }),
+    });
+  }
+  // AW3D30/NASADEM cost GEE round-trips; that stays operator-only.
+  return apiFetch<ElevationProfileResponse>(OPERATOR_ELEVATION_PATH, {
     method: 'POST',
     body: JSON.stringify({
       geometry,
       area_id: areaId ?? null,
-      compare_dems: compareDems,
+      compare_dems: true,
     }),
   });
 }

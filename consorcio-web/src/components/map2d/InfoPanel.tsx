@@ -35,7 +35,6 @@ import type { Feature } from 'geojson';
 import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
-import { useCanAccess } from '../../stores/authStore';
 import styles from '../../styles/components/map.module.css';
 import type { CanalFeatureProperties } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
@@ -407,7 +406,6 @@ export const InfoPanel = memo(function InfoPanel({
     if (feature) return [feature];
     return [];
   }, [features, feature]);
-  const canSeeElevation = useCanAccess(['admin', 'operador']);
   const profileGeometry = useMemo(() => mergeLineStringTramos(resolved), [resolved]);
   const groupSummary = useMemo(
     () => (resolved.length > 1 ? groupSelectionSummary(resolved) : null),
@@ -527,7 +525,7 @@ export const InfoPanel = memo(function InfoPanel({
         </Stack>
       )}
       <Stack gap="sm">
-        {profileGeometry && canSeeElevation ? (
+        {profileGeometry ? (
           <>
             <Suspense fallback={null}>
             <ElevationProfileChart

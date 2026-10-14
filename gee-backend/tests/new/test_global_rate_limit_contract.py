@@ -159,6 +159,38 @@ def test_admin_gee_layers_get_spends_the_generic_budget(monkeypatch) -> None:
 
 
 @pytest.mark.rate_limited
+def test_public_elevation_post_spends_the_generic_budget(monkeypatch) -> None:
+    """The anonymous profile samples a raster per call, so it must be throttled.
+
+    ``PUBLIC_MAP_GET_EXACT`` only skips GETs. A public POST that costs rasterio
+    work has to keep spending the 100/60 per-IP budget — this pins that.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    limiter = get_rate_limiter()
+
+    async def endpoint(request: Request) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse({"ok": True})
+
+    public_path = "/api/v2/public/map/elevation-profile"
+    app = Starlette(routes=[Route(public_path, endpoint, methods=["POST"])])
+    app.add_middleware(DistributedRateLimitMiddleware, rate_limiter=limiter)
+
+    async def run() -> list[int]:
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.17", 12345))
+        async with httpx.AsyncClient(transport=transport, base_url="http://backend") as client:
+            return [
+                (await client.post(public_path, json={})).status_code
+                for _ in range(limiter.max_requests + 1)
+            ]
+
+    codes = asyncio.run(run())
+    assert all(code == 200 for code in codes[:-1])
+    assert codes[-1] == 429
+
+
+@pytest.mark.rate_limited
 def test_the_disabled_switch_is_what_the_suite_fixture_uses(monkeypatch) -> None:
     """With ``rate_limit_disabled`` on, the same overrun is never refused.
 
