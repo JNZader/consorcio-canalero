@@ -122,12 +122,26 @@ describe('canalesLayers · filter builders', () => {
     // first child = id filter
     expect(filter[1]).toEqual(['in', ['get', 'id'], ['literal', ['slug-x', 'slug-y']]]);
     // second child = etapa filter
-    expect(filter[2]).toEqual(['in', ['get', 'prioridad'], ['literal', ['Alta', 'Media']]]);
+    expect(filter[2]).toEqual([
+      'any',
+      ['==', ['get', 'prioridad'], null],
+      ['in', ['get', 'prioridad'], ['literal', ['Alta', 'Media']]],
+    ]);
+  });
+
+  it('keeps public propuestas whose catalog GeoJSON omitted prioridad', () => {
+    const filter = buildCanalesPropuestasFilter(['n6-extension'], ['Alta']);
+    expect(filter[2]?.[0]).toBe('any');
+    expect(filter[2]?.[1]).toEqual(['==', ['get', 'prioridad'], null]);
   });
 
   it('buildCanalesPropuestasFilter with empty etapa list still yields a valid expression', () => {
     const filter = buildCanalesPropuestasFilter(['slug-x'], []);
     expect(filter[0]).toBe('all');
-    expect(filter[2]).toEqual(['in', ['get', 'prioridad'], ['literal', []]]);
+    expect(filter[2]).toEqual([
+      'any',
+      ['==', ['get', 'prioridad'], null],
+      ['in', ['get', 'prioridad'], ['literal', []]],
+    ]);
   });
 });

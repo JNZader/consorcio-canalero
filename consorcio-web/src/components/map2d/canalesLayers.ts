@@ -198,12 +198,9 @@ export function buildCanalesRelevadosFilter(
  * Structure: `["all", idFilter, etapasFilter]` — MapLibre short-circuits on
  * the first false, which is typically the id filter (cheaper to evaluate).
  *
- * Null prioridad handling: if `activeEtapas` contains ANY prioridad string,
- * a feature with `prioridad === null` will fail the etapa match and be
- * excluded. The store-level `getVisiblePropuestaIds` already drops
- * null-prioridad propuestos from `visibleIds` when all etapas are off and
- * includes them otherwise — the MapLibre expression doesn't need to be
- * clever about null here, since the id filter already does the work.
+ * Missing/null `prioridad` must still paint. The public catalog GeoJSON only
+ * ships id/nombre/estado/longitud_m, so a strict etapa `in` hid every
+ * propuesto on `/mapa`. v1 policy: null prioridad stays visible.
  */
 export function buildCanalesPropuestasFilter(
   visibleIds: readonly string[],
@@ -215,9 +212,9 @@ export function buildCanalesPropuestasFilter(
     ['literal', [...visibleIds]],
   ] as ExpressionSpecification;
   const etapaFilter: ExpressionSpecification = [
-    'in',
-    ['get', 'prioridad'],
-    ['literal', [...activeEtapas]],
+    'any',
+    ['==', ['get', 'prioridad'], null],
+    ['in', ['get', 'prioridad'], ['literal', [...activeEtapas]]],
   ] as ExpressionSpecification;
   return ['all', idFilter, etapaFilter] as ExpressionSpecification;
 }
