@@ -74,15 +74,48 @@ export function ElevationProfileChart({
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
-  const inFlight = useRef(false);
+  const requestGen = useRef(0);
+  const loadedOnce = useRef(false);
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
   const rangeCb = useRef(onRangeCoordinates);
   rangeCb.current = onRangeCoordinates;
+  const hoverCb = useRef(onHoverLngLat);
+  hoverCb.current = onHoverLngLat;
 
   useEffect(() => {
     setRange(null);
     rangeCb.current?.(null);
+    hoverCb.current?.(null);
+    if (!isLineString(geometry) || !loadedOnce.current) {
+      if (!isLineString(geometry)) {
+        loadedOnce.current = false;
+      }
+      setProfile(null);
+      setError(null);
+      setStatus('idle');
+      return;
+    }
+    const gen = ++requestGen.current;
+    const line = geometry;
+    setStatus('loading');
+    setError(null);
+    void fetchElevationProfile(line).then(
+      (data) => {
+        if (gen !== requestGen.current) {
+          return;
+        }
+        setProfile(data);
+        setStatus('ready');
+      },
+      (cause: unknown) => {
+        if (gen !== requestGen.current) {
+          return;
+        }
+        setError(cause instanceof Error ? cause.message : 'No se pudo muestrear el DEM');
+        setStatus('error');
+      },
+    );
   }, [geometry]);
 
   if (!isLineString(geometry)) {
@@ -91,21 +124,23 @@ export function ElevationProfileChart({
   const line = geometry;
 
   async function load() {
-    if (inFlight.current) {
-      return;
-    }
-    inFlight.current = true;
+    loadedOnce.current = true;
+    const gen = ++requestGen.current;
     setStatus('loading');
     setError(null);
     try {
       const data = await fetchElevationProfile(line);
+      if (gen !== requestGen.current) {
+        return;
+      }
       setProfile(data);
       setStatus('ready');
     } catch (cause) {
+      if (gen !== requestGen.current) {
+        return;
+      }
       setError(cause instanceof Error ? cause.message : 'No se pudo muestrear el DEM');
       setStatus('error');
-    } finally {
-      inFlight.current = false;
     }
   }
 
@@ -144,24 +179,6 @@ export function ElevationProfileChart({
       ) : null}
       {status === 'ready' && profile ? (
         <>
-          <Text size="xs" c="dimmed" data-testid="elevation-profile-disclaimer">
-            {profile.disclaimer}
-          </Text>
-          {profile.mde_ar_disclaimer ? (
-            <Text size="xs" c="dimmed" data-testid="elevation-profile-mde-ar">
-              {profile.mde_ar_disclaimer}
-            </Text>
-          ) : null}
-          {profile.aw3d30_disclaimer ? (
-            <Text size="xs" c="dimmed" data-testid="elevation-profile-aw3d30">
-              {profile.aw3d30_disclaimer}
-            </Text>
-          ) : null}
-          {profile.nasadem_disclaimer ? (
-            <Text size="xs" c="dimmed" data-testid="elevation-profile-nasadem">
-              {profile.nasadem_disclaimer}
-            </Text>
-          ) : null}
           {profile.min_elevation_m != null && profile.max_elevation_m != null ? (
             <Text size="xs" data-testid="elevation-profile-extrema">
               {formatM(profile.min_elevation_m)} – {formatM(profile.max_elevation_m)} ·{' '}
@@ -311,6 +328,24 @@ export function ElevationProfileChart({
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          ) : null}
+          <Text size="xs" c="dimmed" data-testid="elevation-profile-disclaimer">
+            {profile.disclaimer}
+          </Text>
+          {profile.mde_ar_disclaimer ? (
+            <Text size="xs" c="dimmed" data-testid="elevation-profile-mde-ar">
+              {profile.mde_ar_disclaimer}
+            </Text>
+          ) : null}
+          {profile.aw3d30_disclaimer ? (
+            <Text size="xs" c="dimmed" data-testid="elevation-profile-aw3d30">
+              {profile.aw3d30_disclaimer}
+            </Text>
+          ) : null}
+          {profile.nasadem_disclaimer ? (
+            <Text size="xs" c="dimmed" data-testid="elevation-profile-nasadem">
+              {profile.nasadem_disclaimer}
+            </Text>
           ) : null}
         </>
       ) : null}

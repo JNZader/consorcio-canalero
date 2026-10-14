@@ -83,6 +83,9 @@ describe('<ElevationProfileChart />', () => {
     expect(await screen.findByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
     expect(screen.getByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
     expect(screen.getByTestId('elevation-profile-chart')).toBeInTheDocument();
+    const chart = screen.getByTestId('elevation-profile-chart');
+    const disclaimer = screen.getByTestId('elevation-profile-disclaimer');
+    expect(chart.compareDocumentPosition(disclaimer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('reports sample lon/lat for the map cursor', async () => {
@@ -211,6 +214,52 @@ describe('<ElevationProfileChart />', () => {
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
     expect(await screen.findByTestId('elevation-profile-aw3d30')).toHaveTextContent('JAXA');
     expect(screen.getByTestId('elevation-profile-nasadem')).toHaveTextContent('NASADEM');
+  });
+
+  it('reloads when the selected line changes', async () => {
+    const next: LineString = {
+      type: 'LineString',
+      coordinates: [
+        [-62.8, -32.7],
+        [-62.81, -32.71],
+      ],
+    };
+    vi.mocked(fetchElevationProfile)
+      .mockResolvedValueOnce({
+        puntos: [
+          { distance_m: 0, elevation_m: 120 },
+          { distance_m: 15, elevation_m: 118 },
+        ],
+        length_m: 15,
+        min_elevation_m: 118,
+        max_elevation_m: 120,
+        source: 'dem_filled.tif',
+        cell_m: 15,
+        disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+      })
+      .mockResolvedValueOnce({
+        puntos: [
+          { distance_m: 0, elevation_m: 90 },
+          { distance_m: 20, elevation_m: 80 },
+        ],
+        length_m: 20,
+        min_elevation_m: 80,
+        max_elevation_m: 90,
+        source: 'dem_filled.tif',
+        cell_m: 15,
+        disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+      });
+    const user = userEvent.setup();
+    const { rerender } = renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
+    rerender(
+      <MantineProvider env="test">
+        <ElevationProfileChart geometry={next} />
+      </MantineProvider>,
+    );
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('80.0 m');
+    expect(fetchElevationProfile).toHaveBeenCalledTimes(2);
   });
 
   it('renders nothing for a Point', () => {
