@@ -4,10 +4,10 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { mapImageApi } from '../lib/api/mapImage';
+import { type ImagenMapaParams, type MapImageResult, mapImageApi } from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
 import { isValidImageComparison } from '../lib/typeGuards';
-import type { SelectedImage } from './useSelectedImage';
+import type { SatelliteSensorLabel, SelectedImage } from './useSelectedImage';
 
 const STORAGE_KEY = 'consorcio_image_comparison';
 
@@ -29,7 +29,7 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
           target_date: comparison.left.target_date,
           visualization: comparison.left.visualization,
           max_cloud: comparison.left.max_cloud ?? null,
-          days_buffer: comparison.left.days_buffer ?? 10,
+          days_buffer: clampDaysBuffer(comparison.left.days_buffer),
           mode: comparison.left.mode ?? null,
         },
         right: {
@@ -37,7 +37,7 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
           target_date: comparison.right.target_date,
           visualization: comparison.right.visualization,
           max_cloud: comparison.right.max_cloud ?? null,
-          days_buffer: comparison.right.days_buffer ?? 10,
+          days_buffer: clampDaysBuffer(comparison.right.days_buffer),
           mode: comparison.right.mode ?? null,
         },
       }
@@ -48,6 +48,46 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
   });
 }
 
+function clampDaysBuffer(value: number | undefined): number {
+  if (typeof value !== 'number' || value < 1) return 10;
+  return Math.min(30, value);
+}
+
+function selectedFromRegeneratedTile(
+  params: ImagenMapaParams,
+  tile: MapImageResult,
+): SelectedImage {
+  return {
+    tile_url: tile.tile_url,
+    target_date: tile.target_date,
+    sensor: tile.sensor as SatelliteSensorLabel,
+    visualization: tile.visualization,
+    visualization_description: tile.visualization_description,
+    collection: tile.collection,
+    images_count: tile.images_count,
+    days_buffer: params.days_buffer,
+    max_cloud: params.max_cloud ?? null,
+    mode: params.mode ?? undefined,
+    selected_at: new Date().toISOString(),
+  };
+}
+
+async function restoreComparisonFromBackend(): Promise<ImageComparison | null> {
+  const saved = await mapImageApi.getImageParams();
+  const comparison = saved.imagen_comparacion;
+  if (!comparison?.enabled || !comparison.left || !comparison.right) return null;
+  const [leftTile, rightTile] = await Promise.all([
+    mapImageApi.regenerateTile(comparison.left),
+    mapImageApi.regenerateTile(comparison.right),
+  ]);
+  if (!leftTile.tile_url || !rightTile.tile_url) return null;
+  return {
+    left: selectedFromRegeneratedTile(comparison.left, leftTile),
+    right: selectedFromRegeneratedTile(comparison.right, rightTile),
+    enabled: true,
+  };
+}
+
 /**
  * Hook to manage image comparison state.
  * Stores left and right images for side-by-side comparison.
@@ -56,25 +96,41 @@ export function useImageComparison() {
   const [comparison, setComparisonState] = useState<ImageComparison | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load from localStorage on mount with validation
+  // Load from localStorage on mount; if empty/invalid, rebuild both tiles
+  // from the operator-saved backend params (same strategy as the principal image).
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Validate data structure before using
-        if (isValidImageComparison(parsed)) {
-          setComparisonState(parsed as ImageComparison);
-        } else {
-          // Invalid data, clean up
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (isValidImageComparison(parsed)) {
+            if (!cancelled) setComparisonState(parsed as ImageComparison);
+            return;
+          }
           localStorage.removeItem(STORAGE_KEY);
         }
+        const restored = await restoreComparisonFromBackend();
+        if (cancelled || !restored) return;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+        setComparisonState(restored);
+        window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: restored }));
+      } catch (err) {
+        logger.warn('Failed to restore comparison from backend:', err);
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setIsLoading(false);
-    }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Set left image
@@ -113,6 +169,7 @@ export function useImageComparison() {
       if (!prev) return null;
       const newComparison = { ...prev, enabled };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newComparison));
+      persistComparisonToBackend(newComparison);
       window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: newComparison }));
       return newComparison;
     });
