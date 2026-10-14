@@ -9,7 +9,7 @@
  * Zero dependencies: Node's fs plus a small unified-diff applier. Idempotent
  * — a second run sees the added lines already present and skips the file.
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -156,6 +156,19 @@ function applyFile(relativePath, hunks) {
   console.log(`aplicado: ${relativePath}`);
 }
 
+function restoreProjectTscBin() {
+  // `typescript-for-stryker` is the JS compiler (6.0.3) and also ships a `tsc`
+  // bin. npm links whichever package it sees last into `.bin/tsc`, which would
+  // make `npm run build` typecheck with TypeScript 6. The project compiler is
+  // the TypeScript 7 package; point the shim back at it after every install.
+  const tsc = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+  const link = join(root, 'node_modules', '.bin', 'tsc');
+  if (!existsSync(tsc) || !existsSync(join(root, 'node_modules', '.bin'))) return;
+  rmSync(link, { force: true });
+  symlinkSync(join('..', 'typescript', 'bin', 'tsc'), link);
+  console.log('bin tsc -> typescript');
+}
+
 function main() {
   if (!existsSync(patchesDir)) return;
   const patches = readdirSync(patchesDir)
@@ -177,6 +190,7 @@ function main() {
     }
     for (const file of parsed) applyFile(file.path, file.hunks);
   }
+  restoreProjectTscBin();
 }
 
 main();

@@ -123,7 +123,7 @@ La plataforma cubre cuatro áreas amplias:
 
 | Capa | Tecnologías |
 |------|-------------|
-| Backend | FastAPI, Python 3.11, SQLAlchemy 2.0, Alembic, Pydantic v2 |
+| Backend | FastAPI, Python 3.14, SQLAlchemy 2.0, Alembic, Pydantic v2 |
 | Frontend | React 19, TypeScript, Vite 7, Mantine v8, TanStack Router, TanStack Query, Zustand |
 | Base de datos | PostgreSQL, PostGIS, GeoAlchemy2 |
 | GIS e imágenes | Google Earth Engine, Rasterio, GDAL, WhiteboxTools, Shapely, PyVista |
@@ -134,7 +134,7 @@ La plataforma cubre cuatro áreas amplias:
 | Tooling | Ruff, Biome, Docker Compose, GitHub Actions |
 | Hosting | Cloudflare Pages, Hetzner, GHCR |
 
-Las versiones reflejan los manifiestos en `gee-backend/requirements.txt` y `consorcio-web/package.json`. Los contenedores del backend se construyen sobre `python:3.11-slim`; el geo worker se construye sobre la imagen GDAL de OSGeo para tener el tooling raster/vectorial nativo.
+Las versiones reflejan los manifiestos en `gee-backend/requirements.txt` y `consorcio-web/package.json`. Los contenedores del backend se construyen sobre `python:3.14.8-slim-trixie`; el geo worker se construye sobre la imagen GDAL de OSGeo para tener el tooling raster/vectorial nativo.
 
 ## Arquitectura
 

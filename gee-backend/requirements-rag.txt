@@ -26,7 +26,7 @@ transformers>=4.40.0
 # transformers directamente (CLS + normalizacion L2, que es la representacion
 # densa de BGE-M3), asi que FlagEmbedding queda como camino alternativo y para
 # las utilidades de tokenizacion del modelo.
-FlagEmbedding>=1.2.0
+FlagEmbedding>=1.4.2
 # El baseline local que reemplazo al proveedor hosted (Ops O.5, resuelto:
 # multilingual-e5-large, cero llamadas externas en V0). E5 NO es simetrico:
 # necesita los prefijos "query: " / "passage: ", al reves que BGE-M3.
