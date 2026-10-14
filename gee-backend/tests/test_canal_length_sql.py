@@ -16,3 +16,9 @@ FALLBACK = "COALESCE(c.longitud_m, ST_Length(c.geom::geography))"
 def test_public_and_list_sql_use_st_length_fallback() -> None:
     source = SERVICE.read_text(encoding="utf-8")
     assert source.count(FALLBACK) >= 3
+
+
+def test_public_sql_selects_prioridad_for_map_paint() -> None:
+    source = SERVICE.read_text(encoding="utf-8")
+    assert source.count("c.prioridad") >= 2
+    assert '"prioridad": row["prioridad"]' in source
