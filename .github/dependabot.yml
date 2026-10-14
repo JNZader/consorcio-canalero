@@ -194,6 +194,11 @@ updates:
       - "dependencies"
       - "docker"
       - "automated"
+    ignore:
+      # #525. 1.31.0-alpine is a semver-minor over 1.30.5. Stay on 1.30.x;
+      # Alpine 3.24 + apk upgrade covers the libxml2/libexpat debt.
+      - dependency-name: "nginx"
+        versions: [">= 1.31.a"]
     groups:
       docker-minor-patch:
         patterns:
