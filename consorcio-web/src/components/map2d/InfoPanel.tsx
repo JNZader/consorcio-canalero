@@ -46,7 +46,7 @@ const ElevationProfileChart = lazy(async () => {
   const mod = await import('./ElevationProfileChart');
   return { default: mod.ElevationProfileChart };
 });
-import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
+import { mergeLineStringTramos, profileAxisLengthM } from './mergeLineStringTramos';
 import { nearestLineStringIndex } from './tramoAtPoint';
 import type { ProfileRangeStats } from './profileRange';
 import { EscuelaCard } from './EscuelaCard';
@@ -163,7 +163,7 @@ export function groupSelectionSummary(features: readonly Feature[]): string {
   if (ruta.length > 0) {
     parts.unshift(ruta);
   }
-  const metres = dedupedLineStringLengthM(features);
+  const metres = profileAxisLengthM(features);
   if (metres > 0) {
     parts.push(`${(metres / 1000).toFixed(2)} km sin superposición`);
   }

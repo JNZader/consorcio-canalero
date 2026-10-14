@@ -7,6 +7,59 @@ function isLineString(geometry: Feature['geometry']): geometry is LineString {
   return geometry?.type === 'LineString' && geometry.coordinates.length >= 2;
 }
 
+function isRetrace(previous: Position, tip: Position, next: Position): boolean {
+  const outbound = distance(previous, tip, { units: 'meters' });
+  const inbound = distance(tip, next, { units: 'meters' });
+  if (outbound < 0.01 || inbound < 0.01) {
+    return true;
+  }
+  const v1x = tip[0] - previous[0];
+  const v1y = tip[1] - previous[1];
+  const v2x = next[0] - tip[0];
+  const v2y = next[1] - tip[1];
+  const denom = Math.hypot(v1x, v1y) * Math.hypot(v2x, v2y);
+  if (denom === 0) {
+    return true;
+  }
+  const cosine = (v1x * v2x + v1y * v2y) / denom;
+  const back = distance(next, previous, { units: 'meters' });
+  return cosine <= -0.85 && back <= outbound + SNAP_M;
+}
+
+/** Drop vertices that reverse along the previous edge (ida y vuelta). */
+export function unfoldRetracingCoordinates(coords: Position[]): Position[] {
+  if (coords.length < 3) {
+    return coords.map((point) => [...point]);
+  }
+  const first = coords[0];
+  const second = coords[1];
+  if (!first || !second) {
+    return coords.map((point) => [...point]);
+  }
+  const out: Position[] = [[...first], [...second]];
+  for (let index = 2; index < coords.length; index += 1) {
+    const point = coords[index];
+    const previous = out[out.length - 2];
+    const tip = out[out.length - 1];
+    if (!point || !previous || !tip) {
+      continue;
+    }
+    if (isRetrace(previous, tip, point)) {
+      continue;
+    }
+    out.push([...point]);
+  }
+  return out.length >= 2 ? out : coords.map((point) => [...point]);
+}
+
+function asLine(coords: Position[] | undefined): LineString | null {
+  if (!coords || coords.length < 2) {
+    return null;
+  }
+  const unfolded = unfoldRetracingCoordinates(coords);
+  return unfolded.length >= 2 ? { type: 'LineString', coordinates: unfolded } : null;
+}
+
 function pieceLengthM(coords: Position[]): number {
   let total = 0;
   for (let index = 1; index < coords.length; index += 1) {
@@ -206,22 +259,22 @@ export function mergeLineStringTramos(features: readonly Feature[]): LineString 
     return null;
   }
   if (pieces.length === 1) {
-    const only = pieces[0];
-    return only && only.length >= 2 ? { type: 'LineString', coordinates: only } : null;
+    return asLine(pieces[0]);
   }
   const { edges, clusterOf } = buildEdges(pieces);
   if (edges.length === 0) {
-    const only = pieces[0];
-    return only && only.length >= 2 ? { type: 'LineString', coordinates: only } : null;
+    return asLine(pieces[0]);
   }
   const adj = adjacency(edges);
   const seed = pieces[0] ? seedEdge(pieces[0], edges, clusterOf) : null;
   const through = seed ?? edges.reduce((best, edge) => (edge.length > best.length ? edge : best));
-  const coordinates = pathThroughEdge(through, adj);
-  if (coordinates.length < 2) {
-    return null;
-  }
-  return { type: 'LineString', coordinates };
+  return asLine(pathThroughEdge(through, adj));
+}
+
+/** Metres of the same LineString the elevation profile samples. */
+export function profileAxisLengthM(features: readonly Feature[]): number {
+  const axis = mergeLineStringTramos(features);
+  return axis ? pieceLengthM(axis.coordinates) : 0;
 }
 
 /** Unique-edge metres: overlapping copies count once; T-branches stay in. */
