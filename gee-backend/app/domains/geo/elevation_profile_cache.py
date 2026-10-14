@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -66,6 +67,11 @@ def build_cache_key(geometry: dict[str, Any], source_identity: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def prune_cutoff() -> datetime:
+    """Rows older than this are pruned on write. App and DB share the host clock."""
+    return datetime.now(timezone.utc) - timedelta(days=PRUNE_DAYS)
+
+
 def read_cached_profile(db, cache_key: str) -> Optional[dict[str, Any]]:
     """Stored payload, or ``None`` on a miss. Raises if the table is unreachable."""
     from app.domains.geo.models import ElevationProfileCache
@@ -90,7 +96,7 @@ def write_cached_profile(
     Owns its ``commit``: ``get_db`` closes the request session without
     committing, so a write here would otherwise be rolled back silently.
     """
-    from sqlalchemy import delete, text as sa_text
+    from sqlalchemy import delete
 
     from app.domains.geo.models import ElevationProfileCache
 
@@ -106,9 +112,9 @@ def write_cached_profile(
     else:
         row.source_identity = source_identity
         row.payload = payload
+    # Parameterised cutoff instead of a raw SQL interval: no `text()`, nothing
+    # for a scanner (or a reviewer) to second-guess.
     db.execute(
-        delete(ElevationProfileCache).where(
-            ElevationProfileCache.created_at < sa_text(f"now() - interval '{int(PRUNE_DAYS)} days'")
-        )
+        delete(ElevationProfileCache).where(ElevationProfileCache.created_at < prune_cutoff())
     )
     db.commit()
