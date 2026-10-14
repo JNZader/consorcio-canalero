@@ -67,6 +67,7 @@ _PUBLIC_SQL = text(
     """
     SELECT c.id, c.estado, COALESCE(p.nombre_publico, c.nombre) AS nombre,
            COALESCE(c.longitud_m, ST_Length(c.geom::geography)) AS longitud_m,
+           c.prioridad,
            ST_AsGeoJSON(c.geom) AS geom_json
     FROM canal_consorcio c
     JOIN canal_publicacion p ON p.canal_id = c.id
@@ -78,6 +79,7 @@ _PUBLIC_FALLBACK_SQL = text(
     """
     SELECT c.id, c.estado, c.nombre,
            COALESCE(c.longitud_m, ST_Length(c.geom::geography)) AS longitud_m,
+           c.prioridad,
            ST_AsGeoJSON(c.geom) AS geom_json
     FROM canal_consorcio c
     """
@@ -575,6 +577,7 @@ class CanalPublicacionService:
                     "nombre": row["nombre"],
                     "estado": row["estado"],
                     "longitud_m": row["longitud_m"],
+                    "prioridad": row["prioridad"],
                 },
             }
             if row["estado"] == "propuesto":
