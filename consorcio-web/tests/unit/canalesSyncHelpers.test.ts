@@ -131,7 +131,11 @@ describe('syncCanalesLayers · mount', () => {
     const filter = call?.[1] as unknown[];
     expect(filter?.[0]).toBe('all');
     expect(filter?.[1]).toEqual(['in', ['get', 'id'], ['literal', ['slug-x']]]);
-    expect(filter?.[2]).toEqual(['in', ['get', 'prioridad'], ['literal', ['Alta']]]);
+    expect(filter?.[2]).toEqual([
+      'any',
+      ['==', ['get', 'prioridad'], null],
+      ['in', ['get', 'prioridad'], ['literal', ['Alta']]],
+    ]);
   });
 });
 
