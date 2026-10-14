@@ -37,7 +37,11 @@ import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
 import { terrainCameraShortcutFromEvent } from './terrainCameraShortcuts';
 import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
 import { resolveTerrainStartPitch, TERRAIN_DEFAULT_EXAGGERATION } from './terrainExaggeration';
-import { getSupported3DRasterLayers } from './terrainLayerConfig';
+import {
+  getSupported3DRasterLayers,
+  nextAutofillTerrainRasterId,
+  pickActiveTerrainRasterLayer,
+} from './terrainLayerConfig';
 import { buildTerrainMapStyle } from './terrainMapStyle';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
@@ -334,13 +338,9 @@ export default function TerrainViewer3D({
   const sentinelTileUrl = selectedImage?.tile_url ?? bootstrapSentinelUrl;
   const selectedImageIsActive =
     activeRasterLayerId === SELECTED_IMAGE_LAYER_ID && !!sentinelTileUrl;
-  const activeRasterLayer =
-    (!selectedImageIsActive
-      ? rasterLayers.find((layer: GeoLayerInfo) => layer.id === activeRasterLayerId)
-      : undefined) ??
-    rasterLayers.find((layer: GeoLayerInfo) => layer.id === textureLayerId) ??
-    rasterLayers.find((layer: GeoLayerInfo) => layer.id === demLayerId) ??
-    rasterLayers[0];
+  const activeRasterLayer = selectedImageIsActive
+    ? undefined
+    : pickActiveTerrainRasterLayer(activeRasterLayerId, rasterLayers);
   const activeRasterType = selectedImageIsActive ? undefined : activeRasterLayer?.tipo;
   const activeRasterTileUrl = selectedImageIsActive
     ? (sentinelTileUrl as string)
@@ -355,7 +355,7 @@ export default function TerrainViewer3D({
               ? hiddenRanges[activeRasterLayer.tipo]
               : undefined,
         })
-      : `${API_URL}/api/v2/geo/layers/${textureLayerId ?? demLayerId}/tiles/{z}/{x}/{y}.png?v=${TERRAIN_TILE_CACHE_BUSTER}`;
+      : null;
 
   useEffect(() => {
     activeRasterTileUrlRef.current = activeRasterTileUrl;
@@ -366,27 +366,16 @@ export default function TerrainViewer3D({
   }, [overlayOpacity]);
 
   useEffect(() => {
-    // Preferred default: the user-selected Sentinel image. As soon as it's
-    // available, switch to it — but only if the user hasn't already picked
-    // a different raster manually from the chrome selector.
-    if (
-      !userPickedRasterRef.current &&
-      selectedImage &&
-      activeRasterLayerId !== SELECTED_IMAGE_LAYER_ID
-    ) {
-      setActiveRasterLayerId(SELECTED_IMAGE_LAYER_ID);
-      return;
-    }
-
-    if (!activeRasterLayerId && selectedImage) {
-      setActiveRasterLayerId(SELECTED_IMAGE_LAYER_ID);
-      return;
-    }
-
-    if (!activeRasterLayerId && activeRasterLayer) {
-      setActiveRasterLayerId(activeRasterLayer.id);
-    }
-  }, [activeRasterLayer, activeRasterLayerId, selectedImage]);
+    const next = nextAutofillTerrainRasterId({
+      userPicked: userPickedRasterRef.current,
+      activeRasterLayerId,
+      selectedImage: Boolean(selectedImage),
+      selectedImageLayerId: SELECTED_IMAGE_LAYER_ID,
+      fallbackLayerId: textureLayerId ?? demLayerId ?? rasterLayers[0]?.id ?? null,
+    });
+    if (next === 'keep' || next === activeRasterLayerId) return;
+    setActiveRasterLayerId(next);
+  }, [activeRasterLayerId, demLayerId, rasterLayers, selectedImage, textureLayerId]);
 
   useEffect(() => {
     // Don't revert while the bootstrap fallback is still in play —
@@ -418,6 +407,7 @@ export default function TerrainViewer3D({
   }, [canalesIndex]);
 
   useEffect(() => {
+    if (userPickedRasterRef.current) return;
     if (selectedImage && sharedActiveRasterType === null) return;
     if (sharedActiveRasterType === null) return;
     const matched = rasterLayers.find(
@@ -699,7 +689,13 @@ export default function TerrainViewer3D({
     // sources. The old `!map.isStyleLoaded()` guard would early-return on
     // first render and never re-trigger, leaving the overlay frozen on the
     // initial raster even after the user picked a different layer.
-    if (!map || !activeRasterTileUrl || !ready) return;
+    if (!map || !ready) return;
+    if (!activeRasterTileUrl) {
+      if (map.getLayer('dem-overlay')) {
+        map.setLayoutProperty('dem-overlay', 'visibility', 'none');
+      }
+      return;
+    }
 
     const source = map.getSource('terrain-texture') as maplibregl.RasterTileSource | undefined;
     if (source && typeof source.setTiles === 'function') {
@@ -707,6 +703,7 @@ export default function TerrainViewer3D({
       // anything else MapLibre has cached for this source.
       source.setTiles([activeRasterTileUrl]);
       if (map.getLayer('dem-overlay')) {
+        map.setLayoutProperty('dem-overlay', 'visibility', 'visible');
         map.setPaintProperty('dem-overlay', 'raster-opacity', overlayOpacity);
       }
       return;
