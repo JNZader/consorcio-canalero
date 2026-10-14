@@ -223,6 +223,7 @@ test.describe('Google Earth Engine', () => {
       '/api/v2/public/map/gee/zona',
       '/api/v2/public/map/gee/caminos',
       '/api/v2/public/map/gee/current-image',
+      '/api/v2/public/map/gee/current-comparison',
     ]) {
       const response = await expectOk(request.get(apiUrl(path)));
       expect(['available', 'unavailable']).toContain((await response.json()).status);

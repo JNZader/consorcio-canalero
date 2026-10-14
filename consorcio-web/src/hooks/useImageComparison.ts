@@ -4,7 +4,12 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { type ImagenMapaParams, type MapImageResult, mapImageApi } from '../lib/api/mapImage';
+import {
+  type ImagenMapaParams,
+  type MapImageResult,
+  type PublicCurrentMapImage,
+  mapImageApi,
+} from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
 import { isValidImageComparison } from '../lib/typeGuards';
 import type { SatelliteSensorLabel, SelectedImage } from './useSelectedImage';
@@ -69,6 +74,34 @@ function selectedFromRegeneratedTile(
     max_cloud: params.max_cloud ?? null,
     mode: params.mode ?? undefined,
     selected_at: new Date().toISOString(),
+  };
+}
+
+function selectedFromPublicImage(image: PublicCurrentMapImage): SelectedImage {
+  return {
+    tile_url: image.tile_url,
+    target_date: image.target_date,
+    sensor: image.sensor as SatelliteSensorLabel,
+    visualization: image.visualization,
+    visualization_description: image.visualization_description,
+    collection: 'server-approved',
+    images_count: image.images_count,
+    days_buffer: image.days_buffer,
+    max_cloud: image.max_cloud,
+    mode: image.mode,
+    selected_at: new Date().toISOString(),
+  };
+}
+
+async function restorePublicComparison(): Promise<ImageComparison | null> {
+  const response = await mapImageApi.getPublicCurrentComparison();
+  if (response.status !== 'available' || !response.left || !response.right) {
+    return null;
+  }
+  return {
+    left: selectedFromPublicImage(response.left),
+    right: selectedFromPublicImage(response.right),
+    enabled: true,
   };
 }
 
@@ -205,20 +238,29 @@ export function useImageComparisonListener() {
   const [comparison, setComparison] = useState<ImageComparison | null>(null);
 
   useEffect(() => {
-    // Load initial value with validation
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (isValidImageComparison(parsed)) {
-          setComparison(parsed as ImageComparison);
-        } else {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (isValidImageComparison(parsed)) {
+            if (!cancelled) setComparison(parsed as ImageComparison);
+            return;
+          }
           localStorage.removeItem(STORAGE_KEY);
         }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
       }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+      try {
+        const restored = await restorePublicComparison();
+        if (!cancelled && restored) setComparison(restored);
+      } catch (err) {
+        logger.warn('Failed to restore public comparison:', err);
+      }
+    };
+    void load();
 
     // Listen for custom events (same tab)
     const handleCustomEvent = (event: CustomEvent<ImageComparison | null>) => {
@@ -252,6 +294,7 @@ export function useImageComparisonListener() {
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('imageComparisonChange', handleCustomEvent as EventListener);
       window.removeEventListener('storage', handleStorageChange);
     };
