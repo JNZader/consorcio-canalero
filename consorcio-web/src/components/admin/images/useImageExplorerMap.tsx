@@ -26,6 +26,28 @@ const ZONA_FIT_BOUNDS: [[number, number], [number, number]] = [
   [MAP_BOUNDS.east, MAP_BOUNDS.north],
 ];
 
+function applyGeeRaster(map: maplibregl.Map, url: string, beforeId: string | null) {
+  if (map.getLayer('gee-water-mask')) map.removeLayer('gee-water-mask');
+  if (map.getSource('gee-water')) map.removeSource('gee-water');
+  if (map.getLayer('gee-image-layer')) map.removeLayer('gee-image-layer');
+  if (map.getSource('gee-image')) map.removeSource('gee-image');
+  map.addSource('gee-image', {
+    type: 'raster',
+    tiles: [url],
+    tileSize: 256,
+    attribution: 'Imagery &copy; Google Earth Engine',
+  });
+  map.addLayer(
+    {
+      id: 'gee-image-layer',
+      type: 'raster',
+      source: 'gee-image',
+      paint: { 'raster-opacity': 0.9 },
+    },
+    beforeId ?? undefined,
+  );
+}
+
 export function useImageExplorerMap() {
   const config = useConfigStore((state) => state.config);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -41,56 +63,77 @@ export function useImageExplorerMap() {
   const zoom = config?.map.zoom ?? MAP_DEFAULT_ZOOM;
 
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
-    bootMapLibreWorker();
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: {
-        version: 8,
-        sources: {
-          satellite: {
-            type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            ],
-            tileSize: 256,
-            attribution: 'Tiles &copy; Esri',
+    let cancelled = false;
+    let map: maplibregl.Map | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    void (async () => {
+      await bootMapLibreWorker();
+      if (cancelled || !mapRef.current || mapInstanceRef.current) return;
+      map = new maplibregl.Map({
+        container: mapRef.current,
+        style: {
+          version: 8,
+          sources: {
+            satellite: {
+              type: 'raster',
+              tiles: [
+                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+              ],
+              tileSize: 256,
+              attribution: 'Tiles &copy; Esri',
+            },
+            labels: {
+              type: 'raster',
+              tiles: [
+                'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+              ],
+              tileSize: 256,
+            },
           },
-          labels: {
-            type: 'raster',
-            tiles: [
-              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-            ],
-            tileSize: 256,
-          },
+          layers: [
+            { id: 'satellite', type: 'raster', source: 'satellite' },
+            { id: 'labels', type: 'raster', source: 'labels' },
+          ],
         },
-        layers: [
-          { id: 'satellite', type: 'raster', source: 'satellite' },
-          { id: 'labels', type: 'raster', source: 'labels' },
-        ],
-      },
-      center: [centerLng, centerLat],
-      zoom,
-      minZoom: EXPLORER_MIN_ZOOM,
-      maxBounds: EXPLORER_MAX_BOUNDS,
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
-    // Start with the WHOLE consorcio visible — the fixed center+zoom default
-    // cropped the zona vertically on short map heights.
-    map.fitBounds(ZONA_FIT_BOUNDS, { padding: 24, animate: false });
-    mapInstanceRef.current = map;
-    const container = mapRef.current;
-    const resizeObserver =
-      container && typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => {
-            map.resize();
-          })
-        : null;
-    resizeObserver?.observe(container);
+        center: [centerLng, centerLat],
+        zoom,
+        minZoom: EXPLORER_MIN_ZOOM,
+        maxBounds: EXPLORER_MAX_BOUNDS,
+      });
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+      map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+      map.fitBounds(ZONA_FIT_BOUNDS, { padding: 24, animate: false });
+      mapInstanceRef.current = map;
+      const container = mapRef.current;
+      resizeObserver =
+        container && typeof ResizeObserver !== 'undefined'
+          ? new ResizeObserver(() => {
+              map?.resize();
+            })
+          : null;
+      if (container) resizeObserver?.observe(container);
+      const pending = pendingTileUrlRef.current;
+      if (pending) {
+        if (map.isStyleLoaded()) {
+          applyGeeRaster(map, pending, zonaLayerIdRef.current);
+          tileLayerIdRef.current = 'gee-image-layer';
+        } else if (!idleWaitRef.current) {
+          idleWaitRef.current = true;
+          map.once('idle', () => {
+            idleWaitRef.current = false;
+            const url = pendingTileUrlRef.current;
+            const live = mapInstanceRef.current;
+            if (!url || !live) return;
+            applyGeeRaster(live, url, zonaLayerIdRef.current);
+            tileLayerIdRef.current = 'gee-image-layer';
+          });
+        }
+      }
+    })();
     return () => {
+      cancelled = true;
       resizeObserver?.disconnect();
-      map.remove();
+      map?.remove();
       mapInstanceRef.current = null;
     };
   }, [centerLat, centerLng, zoom]);
@@ -144,35 +187,16 @@ export function useImageExplorerMap() {
   }, []);
 
   const updateTileLayer = useCallback((tileUrl: string) => {
+    // Queue even if MapLibre is still booting the worker — otherwise a 200 from
+    // GEE is discarded and the explorer stays on the empty Esri basemap.
+    pendingTileUrlRef.current = tileUrl;
     const map = mapInstanceRef.current;
     if (!map) return;
-
-    // La URL más reciente gana: si llega una segunda mientras la primera
-    // espera, no tiene sentido aplicar la vieja y después la nueva.
-    pendingTileUrlRef.current = tileUrl;
 
     const apply = () => {
       const url = pendingTileUrlRef.current;
       if (!url) return;
-      if (map.getLayer('gee-water-mask')) map.removeLayer('gee-water-mask');
-      if (map.getSource('gee-water')) map.removeSource('gee-water');
-      if (map.getLayer('gee-image-layer')) map.removeLayer('gee-image-layer');
-      if (map.getSource('gee-image')) map.removeSource('gee-image');
-      map.addSource('gee-image', {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        attribution: 'Imagery &copy; Google Earth Engine',
-      });
-      map.addLayer(
-        {
-          id: 'gee-image-layer',
-          type: 'raster',
-          source: 'gee-image',
-          paint: { 'raster-opacity': 0.9 },
-        },
-        zonaLayerIdRef.current ?? undefined
-      );
+      applyGeeRaster(map, url, zonaLayerIdRef.current);
       tileLayerIdRef.current = 'gee-image-layer';
     };
 
