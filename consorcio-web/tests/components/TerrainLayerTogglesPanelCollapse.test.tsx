@@ -18,8 +18,33 @@ function renderWithMantine(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
+const rasterLayers = [
+  {
+    id: 'dem-1',
+    nombre: 'dem-1',
+    tipo: 'dem_raw',
+    fuente: 'dem_pipeline',
+    formato: 'cog',
+    area_id: null,
+    created_at: '2026-01-01',
+    variante: 'relevado' as const,
+    label: 'Elevación (DEM)',
+  },
+  {
+    id: 'drain-1',
+    nombre: 'drain-1',
+    tipo: 'drainage_need',
+    fuente: 'dem_pipeline',
+    formato: 'cog',
+    area_id: null,
+    created_at: '2026-01-01',
+    variante: 'relevado' as const,
+    label: 'Necesidad de Drenaje',
+  },
+];
+
 const baseProps = {
-  rasterLayers: [],
+  rasterLayers,
   selectedImageOption: null,
   activeRasterLayerId: undefined,
   onActiveRasterLayerChange: vi.fn(),
@@ -77,5 +102,21 @@ describe('<TerrainLayerTogglesPanel /> — collapsible body', () => {
 
     expect(screen.queryByText(/Capas vectoriales 3D/i)).not.toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('lets the user clear DEM / drainage overlay instead of forcing one', async () => {
+    const user = userEvent.setup();
+    const onActiveRasterLayerChange = vi.fn();
+    renderWithMantine(
+      <TerrainLayerTogglesPanel
+        {...baseProps}
+        activeRasterLayerId="drain-1"
+        onActiveRasterLayerChange={onActiveRasterLayerChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: /sin overlay/i }));
+    expect(onActiveRasterLayerChange).toHaveBeenCalledWith(null);
   });
 });
