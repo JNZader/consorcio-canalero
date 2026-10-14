@@ -6,7 +6,7 @@ import statistics as _statistics
 from datetime import datetime as _datetime
 from typing import Any, Dict, List
 
-from app.domains.geo.caminos_km import deduped_network_km_by_ccn
+from app.domains.geo.caminos_km import deduped_network_km_by_ccn, unique_network_edges
 
 
 def build_consorcios_camineros(features: list[dict[str, Any]], safe_float) -> List[Dict[str, Any]]:
@@ -25,7 +25,11 @@ def build_consorcios_camineros(features: list[dict[str, Any]], safe_float) -> Li
             }
 
         consorcios_map[ccn]["tramos"] += 1
-        consorcios_map[ccn]["longitud_total_km"] += safe_float(props.get("lzn", 0))
+
+    km_by_ccn = deduped_network_km_by_ccn(features)
+    for ccn, row in consorcios_map.items():
+        row["longitud_total_km"] = round(km_by_ccn.get(ccn, 0.0), 2)
+    _ = safe_float
 
     consorcios = list(consorcios_map.values())
     consorcios.sort(key=lambda x: x["nombre"])
@@ -102,10 +106,15 @@ def build_consorcio_stats(
         bucket = ensure_bucket(stats, nombre=ccn, codigo=ccc)
         bucket["tramos"] += 1
 
-        length_km = safe_float(props.get("lzn", 0))
+    _ = safe_float
+    for edge in unique_network_edges(features):
+        bucket = stats.get(edge.ccn)
+        if bucket is None:
+            continue
+        length_km = edge.length_m / 1000.0
         bucket["longitud_km"] += length_km
-        update_breakdown(bucket["por_jerarquia"], props.get("hct", "Desconocido"), length_km)
-        update_breakdown(bucket["por_superficie"], props.get("rst", "Desconocido"), length_km)
+        update_breakdown(bucket["por_jerarquia"], edge.hct, length_km)
+        update_breakdown(bucket["por_superficie"], edge.rst, length_km)
 
     for ccn in stats:
         stats[ccn]["longitud_km"] = round(stats[ccn]["longitud_km"], 2)
