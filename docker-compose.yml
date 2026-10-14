@@ -45,7 +45,7 @@ services:
   # En el servidor se activa con COMPOSE_PROFILES=pooler en el .env.
   pgbouncer:
     profiles: ["pooler"]
-    image: edoburu/pgbouncer:v1.23.1-p3
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
     container_name: consorcio-pgbouncer
     restart: unless-stopped
     environment:
@@ -402,7 +402,7 @@ services:
   # MARTIN - PostGIS Vector Tile Server
   # ============================================
   martin:
-    image: ghcr.io/maplibre/martin:1.16.1
+    image: ghcr.io/maplibre/martin:1.16.1@sha256:59902019bf9038926ff0c71174237d6852e64c457830a6349abe7090be8818ca
     container_name: consorcio-martin
     restart: unless-stopped
     # No host port published — Martin is reached via the consorcio-network

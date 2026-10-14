@@ -11,9 +11,9 @@
         "local/consorcio-backend",
         "ghcr.io/jnzader/consorcio-canalero/backend"
       ],
-      "base_image": "python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d",
+      "base_image": "python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170",
       "baseline_generated_from": {
-        "base_image": "python:3.14.7-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d",
+        "base_image": "python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170",
         "config_digest": "sha256:60b8023771e01089d60c5fa7b91e79fce55f7d09808d858a05001027427a3663",
         "image_id": "sha256:1a6e478d2222b5345bd7503bb6a1124ecee7d32ea8333d85c2352c8ab320108a",
         "image_ref": "local/consorcio-backend:c75343dd8d7d35fb309571f32b75f7d59b8cc3ca",

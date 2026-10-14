@@ -88,31 +88,23 @@ RUN npm prune --production
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c AS runtime
+FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
       org.opencontainers.image.description="React + Vite frontend for Consorcio Canalero" \
       org.opencontainers.image.vendor="Consorcio Canalero"
 
-# Digest-pinned nginx:1.30.4-alpine lags Alpine security updates. Surgical
-# apk upgrades keep the pin and pull only patched packages. REMOVE this RUN
-# when the digest is bumped to an image that already carries them.
-#   CVE-2026-14456 — libcrypto3/libssl3 3.5.8-r0 (caught 2026-08-26)
-#   CVE-2026-66046 / 76956 / 76957 — libexpat 2.8.4-r0 (base still ships this)
-#   CVE-2026-93990 — libexpat 2.8.5-r0 (Final Frontend Image Gate on main after
-#   #301, 2026-09-25; Trivy HIGH until apk pulls 2.8.5)
-#   CVE-2026-53612..76642 / 78408..78410 — libuuid 2.42.3-r* (Final Frontend
-#   Image Gate on #276, 2026-09-18)
-#   CVE-2026-103111 — pcre2 10.48-r0 (Final Frontend Image Gate on main after
-#   #363, 2026-10-05; Trivy HIGH until apk pulls 10.49-r0). Alpine 3.23-main
-#   ships the fix; keep the nginx 1.30.4 digest hold (libxml2 CVE-2026-6732).
-#   CVE-2026-4775 — tiff 4.7.1-r0 → 4.7.2-r0 (Final Frontend Image Gate on
-#   #382, 2026-10-08; Trivy HIGH until apk pulls 4.7.2).
-# Hold nginx >=1.31 tags: CVE-2026-6732 (libxml2) fails Final Frontend Image
-# Gate (Dependabot #308, #330). Unblock via new digest + apk upgrade when
-# Alpine ships fixed libxml2 (same pattern as libexpat #302). See ROADMAP
-# backlog + .github/dependabot.yml docker ignore for nginx.
+# nginx:1.30.5-alpine is Alpine 3.24.2. Trivy 0.70 (HIGH/CRITICAL, ignore-unfixed)
+# on that digest no longer reports CVE-2026-6732 (libxml2): the base ships the
+# fixed libxml2, so the 1.30.4 hold (#308, #330) is lifted. Three HIGH rows
+# remain and still need a surgical apk upgrade:
+#   CVE-2026-93990 — libexpat 2.8.4-r0 → 2.8.5-r0
+#   CVE-2026-103111 — pcre2 10.48-r0 → 10.49-r0
+#   CVE-2026-4775 — tiff 4.7.1-r0 → 4.7.2-r0
+# libcrypto3/libssl3/libuuid stay in the upgrade so a later digest that lags
+# those packages does not reopen the gate. REMOVE a package from this line
+# only after a Trivy scan of the pinned digest shows it clean.
 RUN apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.

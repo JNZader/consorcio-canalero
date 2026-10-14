@@ -7,36 +7,32 @@ module-path = [
   # 74 mutantes. Medido en LOS DOS interpretes, porque el numero depende del
   # interprete y el que manda es el de CI:
   #
-  #   Python 3.11 (EL DE CI, `python-version: '3.11'` en backend.yml):
-  #     72/74 = 97.30 % — 1 min 16 s, ~1.0 s por mutante.
-  #     Sobreviven 2, ambos sobre el marcador `*` de keyword-only de
-  #     list_gastos / list_ingresos (mutado a `/`, que deja las llamadas por
-  #     keyword funcionando igual). Cero sobrevivientes de comportamiento.
+  #   Python 3.14 (EL DE CI, `python-version: '3.14'` en backend.yml, y el
+  #   venv local): 61/74 = 82.43 % — 2 min 21 s.
+  #     Sobreviven 13: 2 sobre el marcador `*` de keyword-only de
+  #     list_gastos / list_ingresos (mutado a `/`, equivalente) MAS 11 sobre
+  #     el `|` de la anotacion `FinanzasRepository | None`. PEP 649 evalua
+  #     la anotacion diferida y la version mutada nunca corre.
   #
-  #   Python 3.14 (el venv local): 61/74 = 82.43 % — 2 min 21 s.
-  #     Sobreviven 13: los 2 de arriba MAS 11 sobre el `|` de la anotacion
-  #     `FinanzasRepository | None`. En 3.14 las anotaciones se evaluan en forma
-  #     diferida (PEP 649) y la anotacion mutada nunca corre; en 3.11 se evaluan
-  #     eager, `FinanzasRepository + None` explota al importar y los 11 mueren.
+  #   Python 3.11 (historico, ya no es el interprete de CI): 72/74 = 97.30 %.
+  #     Ahi las anotaciones se evaluan eager y esos 11 mueren al importar.
   #
-  # O sea: el numero local de 3.14 es el PESIMISTA. En CI el gate ve 97 %.
+  # O sea: desde que CI corre 3.14, el gate ve el numero pesimista (82 %).
   "app/domains/finanzas/service.py",
   # ── etapa 2 del plan escalonado, MEDIDA y habilitada (2026-08-04) ──
   # 191 mutantes. Medido en LOS DOS interpretes, igual que finanzas, porque el
   # numero depende del interprete y el que manda es el de CI:
   #
-  #   Python 3.11 (EL DE CI, `python-version: '3.11'` en backend.yml):
-  #     182/191 = 95.29 % — 2 min 33 s, 0.80 s por mutante con el test-command
-  #     reducido al archivo de padron.
+  #   Python 3.14 (EL DE CI, `python-version: '3.14'` en backend.yml):
+  #     171/191 = 89.53 % — 5 min 32 s.
   #
-  #   Python 3.14 (el venv local): 171/191 = 89.53 % — 5 min 32 s.
+  #   Python 3.11 (historico): 182/191 = 95.29 %.
   #
   # La diferencia son EXACTAMENTE los 11 mutantes del `|` de la anotacion
   # `PadronRepository | None`, el mismo caso que finanzas: con PEP 649 (3.14) la
   # anotacion se evalua diferida y la version mutada nunca corre; en 3.11 se
   # evalua eager, `PadronRepository + None` explota al importar y los 11 mueren.
-  # O sea: el numero local de 3.14 vuelve a ser el PESIMISTA, y aun asi queda
-  # 59 pp por encima del piso de 0.30 que pide `cosmic_gate.py`.
+  # CI ve el 89 %, todavia 59 pp por encima del piso de 0.30.
   #
   # Los 9 sobrevivientes de 3.11 son equivalentes, no huecos de test:
   #   linea 125  `exclude_unset=True` -> `False`. El unico consumidor del dump es
@@ -60,17 +56,17 @@ module-path = [
   # politica pura + service con sesion falsa + temporal puro), PERO estos tres
   # modulos NO estan medidos, y la regla del repo es no cablear lo no medido.
   # Medicion local bloqueada por DOS motivos, verificados en 2026-08-07:
-  #   1. El unico interprete local es Python 3.14 (venv), y cosmic-ray 8.4.6
-  #      revienta EN EL PROPIO WORKER al serializar el resultado de un solo
-  #      mutante ("TypeError: asdict() should be called on dataclass
-  #      instances") — no hay forma honesta de correr 1015 mutantes aca.
-  #   2. Aun en el interprete de CI (Python 3.11, el canonico), 1015 mutantes
+  #   1. cosmic-ray 8.4.6 reventaba en Python 3.14 al serializar el
+  #      resultado ("TypeError: asdict() should be called on dataclass
+  #      instances"). El pin ahora es 8.7.0, cuyo dump sigue exponiendo
+  #      test_outcome; no se cablean estos modulos hasta medirlos de nuevo.
+  #   2. 1015 mutantes
   #      (policy 195 + service 358 + temporal 462) a ~0.5-1.0 s c/u exceden el
   #      presupuesto de 10 min; el gate completo actual (541 mutantes) ya tarda
   #      19-22 min de punta a punta.
-  # Comando de medicion (cuando haya un 3.11 con cosmic-ray):
+  # Comando de medicion (Python 3.14, cosmic-ray 8.7):
   #   cosmic-ray init .cosmic-ray.rainfall.toml /tmp/cr.sqlite
-  #     (con test-command "python3.11 -m pytest tests/test_mutation_targets_rainfall.py -q")
+  #     (con test-command "python3.14 -m pytest tests/test_mutation_targets_rainfall.py -q")
   #   cosmic-ray exec /tmp/cr.sqlite  &&  scripts/cosmic_gate.py
   # y ahi decidir si entran al gate (el gate real suma timeout a la cola) o en
   # un job propio con su propio piso, como la etapa 3 (refresh_tokens).

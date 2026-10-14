@@ -39,8 +39,9 @@ CVE-2025-69720 (`ncurses`, 4 rows), CVE-2026-54369 (`libacl1`) and CVE-2026-9538
 postponed). Net: 18 → 56 rows. See the consolidated evidence block in
 `scripts/validate_image_security_policy.py`.
 
-Frontend Alpine `nginx`/`libxml2` debt is separate from this Debian baseline: hold
-`nginx:1.30.4-alpine` until Alpine apk remediates **CVE-2026-6732** (Dependabot
+Frontend Alpine `nginx`/`libxml2` debt is separate from this Debian baseline.
+`nginx:1.30.5-alpine` (Alpine 3.24) no longer reports **CVE-2026-6732**. The
+Dockerfile still `apk upgrade`s libexpat, pcre2 and tiff (Dependabot
 #308/#330; see `consorcio-web/Dockerfile` runtime stage and `docs/ROADMAP.md`
 backlog). Do not confuse trixie `libxml2` rows here with that frontend gate.
 

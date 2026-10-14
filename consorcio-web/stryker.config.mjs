@@ -24,6 +24,12 @@
  * decorative gate; one glued to it turns normal incremental noise into red
  * builds.
  *
+ * TypeScript 7 (el `tsc` del build) es el port nativo y no exporta
+ * `parseConfigFileTextToJson` ni `resolveProjectReferencePath`. Stryker 10
+ * las usa para reescribir el tsconfig del sandbox. El parche de postinstall
+ * apunta ese import a `typescript-for-stryker` (compilador JS 6.0.3). El
+ * sandbox, la concurrencia y el piso global de 75 no cambian.
+ *
  * @type {import('@stryker-mutator/api/core').PartialStrykerOptions}
  */
 const shard = process.env.STRYKER_SHARD;

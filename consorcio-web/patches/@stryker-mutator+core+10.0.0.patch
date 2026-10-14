@@ -1,0 +1,26 @@
+diff --git a/node_modules/@stryker-mutator/core/dist/src/sandbox/ts-config-preprocessor.js b/node_modules/@stryker-mutator/core/dist/src/sandbox/ts-config-preprocessor.js
+--- a/node_modules/@stryker-mutator/core/dist/src/sandbox/ts-config-preprocessor.js
++++ b/node_modules/@stryker-mutator/core/dist/src/sandbox/ts-config-preprocessor.js
+@@ -44,3 +44,3 @@
+                 this.log.debug('Rewriting file %s', tsconfigFile);
+-                const { default: ts } = await import('typescript');
++                const { default: ts } = await import('typescript-for-stryker');
+                 const { config } = ts.parseConfigFileTextToJson(tsconfigFileName, await tsconfigFile.readContent());
+@@ -84,3 +84,3 @@
+     async rewriteProjectReferences(project, config, originTSConfigFileName) {
+-        const { default: ts } = await import('typescript');
++        const { default: ts } = await import('typescript-for-stryker');
+         if (Array.isArray(config.references)) {
+diff --git a/node_modules/@stryker-mutator/core/src/sandbox/ts-config-preprocessor.ts b/node_modules/@stryker-mutator/core/src/sandbox/ts-config-preprocessor.ts
+--- a/node_modules/@stryker-mutator/core/src/sandbox/ts-config-preprocessor.ts
++++ b/node_modules/@stryker-mutator/core/src/sandbox/ts-config-preprocessor.ts
+@@ -68,3 +68,3 @@
+         this.log.debug('Rewriting file %s', tsconfigFile);
+-        const { default: ts } = await import('typescript');
++        const { default: ts } = await import('typescript-for-stryker');
+         const { config }: { config?: TSConfig } = ts.parseConfigFileTextToJson(
+@@ -131,3 +131,3 @@
+   ): Promise<void> {
+-    const { default: ts } = await import('typescript');
++    const { default: ts } = await import('typescript-for-stryker');
+     if (Array.isArray(config.references)) {

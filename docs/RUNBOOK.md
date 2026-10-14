@@ -310,7 +310,7 @@ The flag is opt-in so installs without PgBouncer don't pay the
 #### Ops-side checklist
 
 1. ``pgbouncer`` service in ``docker-compose.prod.yml`` (already
-   added). Image: ``edoburu/pgbouncer:v1.23.1-p3``. Pool mode
+   added). Image: ``edoburu/pgbouncer:v1.26.0-p0``. Pool mode
    ``transaction``, ``MAX_CLIENT_CONN=200``, ``DEFAULT_POOL_SIZE=25``,
    ``SERVER_RESET_QUERY=DISCARD ALL`` (mandatory per SA docs).
 

@@ -48,7 +48,16 @@ def _collect_summary(session_file: Path) -> MutationSummary:
         if result is None:
             pending += 1
             continue
-        outcomes[result.get("test_outcome", "other")] += 1
+        # cosmic-ray 8.7 serializes test_outcome as "killed" / "survived" /
+        # "incompetent", or null when the worker never produced a test result
+        # (exception, timeout, no-test). A missing or null field must land in
+        # "other": counting the key's absence only would drop nulls out of the
+        # named buckets while still inflating total, and a renamed field would
+        # zero the kill rate (fail closed).
+        outcome = result.get("test_outcome") or "other"
+        if not isinstance(outcome, str):
+            outcome = "other"
+        outcomes[outcome] += 1
 
     total = sum(outcomes.values())
     return MutationSummary(

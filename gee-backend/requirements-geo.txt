@@ -4,7 +4,9 @@
 # DELIBERATELY NOT LOCKED (unlike requirements.txt → requirements.lock).
 # The geo-worker image is built on ghcr.io/osgeo/gdal:ubuntu-small-3.13.3,
 # which ships its own system GDAL bindings and numpy compiled against them,
-# on a DIFFERENT interpreter than the backend image (py3.14 vs py3.11). A
+# on Ubuntu 24.04's Python 3.12, while the backend image and CI are Python 3.14.
+# The hashed lock is resolved for 3.14 with --universal so cp312 wheels of
+# numpy 2.5 / rasterio 1.5 / pyproj 3.8 are installable here too. A
 # hash-pinned closure resolved off-image would fight those system packages —
 # exactly the ABI class of breakage that forced the legacy numpy<2 pins that
 # the security arc removed. Reproducibility here comes from the digest-pinned
@@ -18,7 +20,7 @@
 # ningun codigo de runtime importa (verificado: el unico consumidor es
 # scripts/train_water_unet.py). opencv SI se queda: tile_service_support usa
 # cv2.medianBlur en runtime.
-rasterio>=1.4.0
+rasterio>=1.5.0
 # richdem removed — incompatible with Python 3.12 (pybind11 too old)
 
 # COG conversion + tile serving
@@ -32,7 +34,7 @@ whitebox>=2.3.0
 rasterstats>=0.20.0
 
 # ML water segmentation (CPU inference)
-scipy>=1.11.0
+scipy>=1.18.0
 # OpenCV — 5-10× faster than scipy for small-kernel median filters used in
 # `tile_service_support.smooth_elevation_tile`. Optional: the module falls
 # back to scipy if cv2 is missing, so the headless tile worker stays usable.
@@ -65,7 +67,7 @@ geoalchemy2>=0.17.0
 structlog>=24.1.0
 
 # Google Earth Engine (for DEM download in geo-worker)
-earthengine-api>=1.4.0
+earthengine-api>=1.7.48
 
 # HTTP client (for downloading DEM files from GEE URLs)
 requests>=2.31.0
