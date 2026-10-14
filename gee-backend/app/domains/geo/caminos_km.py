@@ -1,17 +1,28 @@
 """Unique-centerline kilometres for the coloured-roads legend.
 
 ``lzn`` is an IDECOR attribute and is sometimes the *whole route* copied onto
-every piece. Totals use projected geometry, with endpoints snapped at 2 m and
-one edge kept per node pair (the longest), matching the elevation-profile graph.
+every piece. Totals ignore ``lzn``. Endpoints snap at 2 m in UTM 32720; edge
+length is WGS84 haversine (same radius as Turf) along the original vertices.
 """
 
 from __future__ import annotations
 
-from math import hypot
+from dataclasses import dataclass
+from math import atan2, cos, hypot, radians, sin, sqrt
 from typing import Any, Iterable
 
 SNAP_M = 2.0
 _UTM = "EPSG:32720"
+# @turf/helpers earthRadius — Medir uses the same sphere.
+TURF_EARTH_RADIUS_M = 6_371_008.8
+
+
+@dataclass(frozen=True)
+class UniqueEdge:
+    ccn: str
+    hct: str
+    rst: str
+    length_m: float
 
 
 def _line_coords(geometry: dict[str, Any] | None) -> list[tuple[float, float]] | None:
@@ -23,13 +34,32 @@ def _line_coords(geometry: dict[str, Any] | None) -> list[tuple[float, float]] |
     return [(float(point[0]), float(point[1])) for point in raw]
 
 
-def _metric_line(coords_ll: list[tuple[float, float]]):
+def _haversine_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+    lon1, lat1 = radians(a[0]), radians(a[1])
+    lon2, lat2 = radians(b[0]), radians(b[1])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    chord = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return 2 * TURF_EARTH_RADIUS_M * atan2(sqrt(chord), sqrt(max(0.0, 1.0 - chord)))
+
+
+def _geodesic_length_m(coords_ll: list[tuple[float, float]]) -> float:
+    total = 0.0
+    for index in range(1, len(coords_ll)):
+        total += _haversine_m(coords_ll[index - 1], coords_ll[index])
+    return total
+
+
+def _metric_endpoints(coords_ll: list[tuple[float, float]]):
     import geopandas as gpd
     from shapely.geometry import LineString
 
     series = gpd.GeoSeries([LineString(coords_ll)], crs=4326).to_crs(_UTM)
     line = series.iloc[0]
-    return list(line.coords), float(line.length)
+    metric = list(line.coords)
+    start = (float(metric[0][0]), float(metric[0][1]))
+    end = (float(metric[-1][0]), float(metric[-1][1]))
+    return start, end
 
 
 def _cluster(points: list[tuple[float, float]]) -> list[int]:
@@ -58,37 +88,46 @@ def _cluster(points: list[tuple[float, float]]) -> list[int]:
     return labels
 
 
-def deduped_network_km_by_ccn(features: Iterable[dict[str, Any]]) -> dict[str, float]:
-    """Unique edge kilometres per consorcio, ignoring ``lzn``."""
-    pieces: list[tuple[str, list[tuple[float, float]], float]] = []
+def unique_network_edges(features: Iterable[dict[str, Any]]) -> list[UniqueEdge]:
+    """One edge per snapped node pair; longest geometry wins."""
+    pieces: list[tuple[str, str, str, float]] = []
     points: list[tuple[float, float]] = []
     for feature in features:
         props = feature.get("properties") or {}
         coords = _line_coords(feature.get("geometry"))
         if coords is None:
             continue
-        metric, length_m = _metric_line(coords)
-        if len(metric) < 2 or length_m <= 0:
+        length_m = _geodesic_length_m(coords)
+        if length_m <= 0:
+            continue
+        try:
+            start, end = _metric_endpoints(coords)
+        except Exception:
             continue
         ccn = str(props.get("ccn") or "Sin consorcio")
-        start = (float(metric[0][0]), float(metric[0][1]))
-        end = (float(metric[-1][0]), float(metric[-1][1]))
-        pieces.append((ccn, [start, end], length_m))
+        hct = str(props.get("hct") or "Desconocido")
+        rst = str(props.get("rst") or "Desconocido")
+        pieces.append((ccn, hct, rst, length_m))
         points.extend((start, end))
     if not pieces:
-        return {}
+        return []
     cluster = _cluster(points)
-    edges: dict[tuple[int, int], tuple[float, str]] = {}
-    for index, (ccn, _ends, length_m) in enumerate(pieces):
+    edges: dict[tuple[int, int], UniqueEdge] = {}
+    for index, (ccn, hct, rst, length_m) in enumerate(pieces):
         a = cluster[index * 2]
         b = cluster[index * 2 + 1]
         if a == b:
             continue
         key = (a, b) if a < b else (b, a)
         current = edges.get(key)
-        if current is None or length_m > current[0]:
-            edges[key] = (length_m, ccn)
+        if current is None or length_m > current.length_m:
+            edges[key] = UniqueEdge(ccn=ccn, hct=hct, rst=rst, length_m=length_m)
+    return list(edges.values())
+
+
+def deduped_network_km_by_ccn(features: Iterable[dict[str, Any]]) -> dict[str, float]:
+    """Unique edge kilometres per consorcio, ignoring ``lzn``."""
     km: dict[str, float] = {}
-    for length_m, ccn in edges.values():
-        km[ccn] = km.get(ccn, 0.0) + length_m / 1000.0
+    for edge in unique_network_edges(features):
+        km[edge.ccn] = km.get(edge.ccn, 0.0) + edge.length_m / 1000.0
     return km
