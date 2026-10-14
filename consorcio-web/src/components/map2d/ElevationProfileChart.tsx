@@ -5,7 +5,7 @@
  * the curve. Nodata holes are omitted from the line (recharts skips null y).
  */
 
-import { Alert, Button, Stack, Text } from '@mantine/core';
+import { Alert, Button, Checkbox, Stack, Text } from '@mantine/core';
 import type { Geometry, LineString } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -71,6 +71,7 @@ export function ElevationProfileChart({
   onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
 }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [compareDems, setCompareDems] = useState(false);
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
@@ -100,7 +101,7 @@ export function ElevationProfileChart({
     const line = geometry;
     setStatus('loading');
     setError(null);
-    void fetchElevationProfile(line).then(
+    void fetchElevationProfile(line, undefined, compareDems).then(
       (data) => {
         if (gen !== requestGen.current) {
           return;
@@ -116,7 +117,7 @@ export function ElevationProfileChart({
         setStatus('error');
       },
     );
-  }, [geometry]);
+  }, [compareDems, geometry]);
 
   if (!isLineString(geometry)) {
     return null;
@@ -129,7 +130,7 @@ export function ElevationProfileChart({
     setStatus('loading');
     setError(null);
     try {
-      const data = await fetchElevationProfile(line);
+      const data = await fetchElevationProfile(line, undefined, compareDems);
       if (gen !== requestGen.current) {
         return;
       }
@@ -179,6 +180,13 @@ export function ElevationProfileChart({
       ) : null}
       {status === 'ready' && profile ? (
         <>
+          <Checkbox
+            size="xs"
+            label="Comparar DEMs (GEE)"
+            checked={compareDems}
+            onChange={(event) => setCompareDems(event.currentTarget.checked)}
+            data-testid="elevation-profile-compare-dems"
+          />
           {profile.min_elevation_m != null && profile.max_elevation_m != null ? (
             <Text size="xs" data-testid="elevation-profile-extrema">
               {formatM(profile.min_elevation_m)} – {formatM(profile.max_elevation_m)} ·{' '}

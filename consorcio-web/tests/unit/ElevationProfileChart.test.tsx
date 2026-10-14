@@ -80,6 +80,7 @@ describe('<ElevationProfileChart />', () => {
     const user = userEvent.setup();
     renderWithMantine(<ElevationProfileChart geometry={line} />);
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(fetchElevationProfile).toHaveBeenCalledWith(line, undefined, false);
     expect(await screen.findByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
     expect(screen.getByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
     expect(screen.getByTestId('elevation-profile-chart')).toBeInTheDocument();
@@ -214,6 +215,43 @@ describe('<ElevationProfileChart />', () => {
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
     expect(await screen.findByTestId('elevation-profile-aw3d30')).toHaveTextContent('JAXA');
     expect(screen.getByTestId('elevation-profile-nasadem')).toHaveTextContent('NASADEM');
+  });
+
+  it('only asks GEE when the operator opts into DEM comparison', async () => {
+    const glo30 = {
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer:
+        'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    };
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce(glo30).mockResolvedValueOnce({
+      ...glo30,
+      puntos: [
+        {
+          distance_m: 0,
+          elevation_m: 120,
+          elevation_aw3d30: 121,
+          elevation_nasadem: 118,
+        },
+      ],
+      aw3d30_disclaimer: 'AW3D30 v4.1 (JAXA, DSM óptico). Algunas teselas se rellenan con GLO-30.',
+      nasadem_disclaimer: 'NASADEM (SRTM 2000, EGM96). No es cota de proyecto.',
+    });
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(await screen.findByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
+    expect(screen.queryByTestId('elevation-profile-aw3d30')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: /Comparar DEMs/i }));
+    expect(fetchElevationProfile).toHaveBeenLastCalledWith(line, undefined, true);
+    expect(await screen.findByTestId('elevation-profile-aw3d30')).toHaveTextContent('JAXA');
   });
 
   it('reloads when the selected line changes', async () => {

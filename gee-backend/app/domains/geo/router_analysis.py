@@ -27,6 +27,10 @@ class ElevationProfileRequest(BaseModel):
         default=None,
         description="DEM area; newest filled DEM across areas when omitted",
     )
+    compare_dems: bool = Field(
+        default=False,
+        description="Sample AW3D30 and NASADEM via GEE. Off by default so GLO-30 is not blocked.",
+    )
 
 
 @router.post("/elevation-profile")
@@ -38,7 +42,12 @@ def elevation_profile(
     """Distance vs elevation on Copernicus GLO-30. Not a project grade."""
     from app.domains.geo.elevation_profile_service import perfil_de_geojson
 
-    return perfil_de_geojson(db, geometry=body.geometry, area_id=body.area_id)
+    return perfil_de_geojson(
+        db,
+        geometry=body.geometry,
+        area_id=body.area_id,
+        compare_dems=body.compare_dems,
+    )
 
 
 # ── Zonal Statistics ──────────────────────────────────────────────
