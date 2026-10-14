@@ -58,6 +58,13 @@ export interface PublicCurrentMapImageResponse {
   reason: 'not_configured' | 'configuration_not_approved' | 'temporarily_unavailable' | null;
 }
 
+export interface PublicCurrentComparisonResponse {
+  status: 'available' | 'unavailable';
+  left: PublicCurrentMapImage | null;
+  right: PublicCurrentMapImage | null;
+  reason: 'not_configured' | 'configuration_not_approved' | 'temporarily_unavailable' | null;
+}
+
 interface RegenerateTileOptions {
   signal?: AbortSignal;
 }
@@ -76,6 +83,13 @@ export const mapImageApi = {
    */
   getPublicCurrentImage: () =>
     apiFetch<PublicCurrentMapImageResponse>('/public/map/gee/current-image', {
+      skipAuth: true,
+      timeout: GEE_TIMEOUT,
+    }),
+
+  /** Fixed no-parameter public projection of the operator-approved comparison pair. */
+  getPublicCurrentComparison: () =>
+    apiFetch<PublicCurrentComparisonResponse>('/public/map/gee/current-comparison', {
       skipAuth: true,
       timeout: GEE_TIMEOUT,
     }),

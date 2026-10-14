@@ -14,6 +14,12 @@ const { isValidImageComparisonMock, loggerMock, mapImageApiMock } = vi.hoisted((
     saveImagenPrincipal: vi.fn().mockResolvedValue({}),
     saveImagenComparacion: vi.fn().mockResolvedValue({}),
     regenerateTile: vi.fn().mockResolvedValue({}),
+    getPublicCurrentComparison: vi.fn().mockResolvedValue({
+      status: 'unavailable',
+      left: null,
+      right: null,
+      reason: 'not_configured',
+    }),
   },
 }));
 
@@ -349,5 +355,42 @@ describe('useImageComparisonListener', () => {
     expect(removeEventListenerSpy).toHaveBeenCalledWith('storage', expect.any(Function));
 
     removeEventListenerSpy.mockRestore();
+  });
+
+  it('hydrates incognito / public map from the server-approved comparison pair', async () => {
+    mapImageApiMock.getPublicCurrentComparison.mockResolvedValue({
+      status: 'available',
+      left: {
+        tile_url: 'https://earthengine.googleapis.com/v1/maps/left/tiles/{z}/{x}/{y}',
+        target_date: '2026-01-10',
+        sensor: 'Sentinel-2',
+        visualization: 'rgb',
+        visualization_description: 'RGB',
+        images_count: 1,
+        days_buffer: 10,
+        max_cloud: 80,
+        mode: 'scene',
+      },
+      right: {
+        tile_url: 'https://earthengine.googleapis.com/v1/maps/right/tiles/{z}/{x}/{y}',
+        target_date: '2026-02-10',
+        sensor: 'Sentinel-2',
+        visualization: 'rgb',
+        visualization_description: 'RGB',
+        images_count: 1,
+        days_buffer: 10,
+        max_cloud: 80,
+        mode: 'scene',
+      },
+      reason: null,
+    });
+
+    const { result } = renderHook(() => useImageComparisonListener());
+
+    await waitFor(() => {
+      expect(result.current?.left.target_date).toBe('2026-01-10');
+      expect(result.current?.right.target_date).toBe('2026-02-10');
+      expect(result.current?.enabled).toBe(true);
+    });
   });
 });

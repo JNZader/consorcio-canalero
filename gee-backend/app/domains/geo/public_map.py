@@ -94,6 +94,15 @@ class PublicCurrentMapImageResponse(BaseModel):
     reason: PublicMapReason | None = None
 
 
+class PublicCurrentComparisonResponse(BaseModel):
+    """Server-approved left/right comparison pair, or an explicit degraded state."""
+
+    status: PublicMapStatus
+    left: PublicCurrentMapImage | None = None
+    right: PublicCurrentMapImage | None = None
+    reason: PublicMapReason | None = None
+
+
 def _reject_query_params(request: Request) -> None:
     """Fail closed instead of silently ignoring arbitrary public GEE inputs."""
     if request.query_params:
@@ -305,3 +314,70 @@ async def get_public_current_image(
         )
     _set_cache(response, _PUBLIC_IMAGE_CACHE)
     return PublicCurrentMapImageResponse(status="available", image=image)
+
+
+async def _project_setting_image(raw: object) -> PublicCurrentMapImage | None:
+    validated = _validated_current_image(raw)
+    if validated is None:
+        return None
+    params, sensor_endpoint, target_date, mode = validated
+    result = await get_satellite_image_impl(
+        sensor=sensor_endpoint,
+        target_date=target_date,
+        days_buffer=params.days_buffer,
+        max_cloud=params.max_cloud if params.max_cloud is not None else 80,
+        visualization=params.visualization,
+        mode=mode,
+        ensure_gee=_ensure_public_gee,
+    )
+    return _project_current_image(result, params, mode)
+
+
+@router.get("/current-comparison", response_model=PublicCurrentComparisonResponse)
+async def get_public_current_comparison(
+    response: Response,
+    db: Session = Depends(get_db),
+    service: SettingsService = Depends(_get_settings_service),
+) -> PublicCurrentComparisonResponse:
+    """Regenerate the operator-approved comparison pair; accepts no caller inputs."""
+    _set_cache(response, _PUBLIC_DEGRADED_CACHE)
+    try:
+        raw = await run_in_threadpool(service.get_setting, db, "mapa/imagen_comparacion")
+    except Exception as exc:
+        logger.warning(
+            "Public comparison setting unavailable",
+            error_type=type(exc).__name__,
+        )
+        return PublicCurrentComparisonResponse(
+            status="unavailable",
+            reason="temporarily_unavailable",
+        )
+    if not isinstance(raw, dict) or raw.get("enabled") is not True:
+        return PublicCurrentComparisonResponse(status="unavailable", reason="not_configured")
+    left_raw = raw.get("left")
+    right_raw = raw.get("right")
+    if left_raw is None or right_raw is None:
+        return PublicCurrentComparisonResponse(
+            status="unavailable", reason="configuration_not_approved"
+        )
+
+    try:
+        left = await _project_setting_image(left_raw)
+        right = await _project_setting_image(right_raw)
+    except Exception as exc:
+        logger.warning(
+            "Public comparison images unavailable",
+            error_type=type(exc).__name__,
+        )
+        left = None
+        right = None
+
+    if left is None or right is None:
+        return PublicCurrentComparisonResponse(
+            status="unavailable",
+            reason="temporarily_unavailable"
+            if left is None and right is None
+            else "configuration_not_approved",
+        )
+    _set_cache(response, _PUBLIC_IMAGE_CACHE)
+    return PublicCurrentComparisonResponse(status="available", left=left, right=right)
