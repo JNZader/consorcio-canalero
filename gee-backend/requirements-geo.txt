@@ -42,7 +42,7 @@ opencv-python-headless>=4.9.0
 
 # Temporal analysis
 xarray>=2026.9.0
-rioxarray>=0.15.0
+rioxarray>=0.23.0
 xee>=0.0.16
 
 # Vector/geometry
@@ -74,7 +74,7 @@ requests>=2.31.0
 
 # Config
 python-dotenv>=1.0.0
-pydantic>=2.11.0
+pydantic>=2.14.0
 pydantic-settings>=2.15.0
 
 # 3D Terrain Visualization (headless, CPU-only via xvfb)
