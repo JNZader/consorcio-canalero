@@ -10,7 +10,8 @@
  *   - Second call with same args: only setFilter + setLayerVisibility, no
  *     duplicate addSource/addLayer (idempotency).
  *   - `map.moveLayer` is called for each layer after mount so the canales
- *     stack stays on top of waterways but BELOW Pilar Verde fills.
+ *     stack stays on top of waterways but BELOW Pilar Verde fills — and BELOW
+ *     the selected-line highlight, which is how a selected canal stays visible.
  *   - The filter expression is built via `buildCanalesRelevadosFilter` /
  *     `buildCanalesPropuestasFilter` — we assert the shape by reading back
  *     what was passed to `setFilter`.
@@ -22,6 +23,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CanalFeatureProperties } from '../../src/types/canales';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { syncCanalesLayers } from '../../src/components/map2d/mapLayerEffectHelpers';
+
+/** Layer that owns the orange "this is selected" stroke. */
+const HIGHLIGHT_CASING = 'map2d-selected-lines-casing';
 
 function emptyFC(): FeatureCollection<LineString, CanalFeatureProperties> {
   return { type: 'FeatureCollection', features: [] };
@@ -76,8 +80,7 @@ describe('syncCanalesLayers · mount', () => {
     expect(addedLayerIds).toContain(propuestosLayerId);
   });
 
-  it('sets visibility from masters', () => {
-    const { map } = createMapMock();
+  it('sets visibility from masters', () => {    const { map } = createMapMock();
     syncCanalesLayers(map as never, {
       relevados: emptyFC(),
       propuestas: emptyFC(),
@@ -190,5 +193,47 @@ describe('syncCanalesLayers · null tolerance', () => {
     // Source is always mounted (empty collection) so the visibility
     // toggle has something to act on.
     expect(map.addSource).toHaveBeenCalled();
+  });
+});
+
+describe('syncCanalesLayers · z-order vs the selection highlight', () => {
+  const params = {
+    relevados: emptyFC(),
+    propuestas: emptyFC(),
+    relevadosVisible: true,
+    propuestasVisible: true,
+    visibleRelevadoIds: [],
+    visiblePropuestaIds: [],
+    activeEtapas: ['Alta'] as const,
+  };
+
+  it('inserts the canales stack below the selected-line highlight', () => {
+    const { map } = createMapMock({ layers: [HIGHLIGHT_CASING] });
+
+    syncCanalesLayers(map as never, { ...params, activeEtapas: [...params.activeEtapas] });
+
+    // Raising the stack with no `beforeId` buries the orange highlight, so a
+    // selected canal looks unselected. Roads hoist with a beforeId, which is
+    // why a selected road does show.
+    expect(map.moveLayer).toHaveBeenCalledWith(
+      `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+      HIGHLIGHT_CASING,
+    );
+    expect(map.moveLayer).toHaveBeenCalledWith(
+      `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
+      HIGHLIGHT_CASING,
+    );
+  });
+
+  it('still passes the beforeId slot when no highlight is mounted', () => {
+    const { map } = createMapMock();
+
+    syncCanalesLayers(map as never, { ...params, activeEtapas: [...params.activeEtapas] });
+
+    // `undefined` = raise to the top, same as before the highlight existed.
+    expect(map.moveLayer).toHaveBeenCalledWith(
+      `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
+      undefined,
+    );
   });
 });
