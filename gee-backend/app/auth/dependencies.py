@@ -312,17 +312,15 @@ class RevocableJWTStrategy(JWTStrategy[User, uuid.UUID]):
         return user
 
 
+# Workday access token. Refresh cookie is still 30 days; logout-all still
+# bumps ``revocation_epoch`` so a stolen access JWT dies on the next request.
+ACCESS_TOKEN_LIFETIME_SECONDS = 8 * 60 * 60
+
+
 def get_jwt_strategy() -> JWTStrategy:
-    # Phase 2 / F2-K: access tokens are short-lived (15 min). The SPA
-    # refreshes them via the refresh-token cookie set on login. With
-    # ``access`` this short, a stolen token has a 15-min blast radius
-    # before the user can ``logout-all`` to revoke the whole token
-    # family. Phase 5 / F5-F additionally closes that residual window
-    # by checking the embedded ``epoch`` claim against the user's
-    # ``revocation_epoch`` on every request.
     return RevocableJWTStrategy(
         secret=settings.jwt_secret,
-        lifetime_seconds=900,
+        lifetime_seconds=ACCESS_TOKEN_LIFETIME_SECONDS,
     )
 
 
