@@ -1,6 +1,7 @@
 import type { Feature, LineString } from 'geojson';
 import { describe, expect, it } from 'vitest';
 
+import { groupSelectionSummary } from '../../src/components/map2d/InfoPanel';
 import {
   dedupedLineStringLengthM,
   mergeLineStringTramos,
@@ -120,6 +121,35 @@ describe('mergeLineStringTramos', () => {
     expect(lons?.[lons.length - 1]).toBe(0.04);
     expect(merged?.coordinates.every((c) => c[1] === 0)).toBe(true);
   });
+
+  it('drops an out-and-back so the map cursor cannot reverse while chainage increases', () => {
+    const merged = mergeLineStringTramos([
+      line([
+        [0, 0],
+        [0.01, 0],
+        [0.02, 0],
+        [0.01, 0],
+        [0, 0],
+      ]),
+    ]);
+    const lons = merged?.coordinates.map((c) => c[0]);
+    expect(lons).toEqual([0, 0.01, 0.02]);
+  });
+
+  it('keeps a right-angle bend (not a retrace)', () => {
+    const merged = mergeLineStringTramos([
+      line([
+        [0, 0],
+        [0.01, 0],
+        [0.01, 0.01],
+      ]),
+    ]);
+    expect(merged?.coordinates).toEqual([
+      [0, 0],
+      [0.01, 0],
+      [0.01, 0.01],
+    ]);
+  });
 });
 
 describe('dedupedLineStringLengthM', () => {
@@ -150,5 +180,30 @@ describe('dedupedLineStringLengthM', () => {
     const unique = dedupedLineStringLengthM([stemA, stemB, branch]);
     const stemOnly = dedupedLineStringLengthM([stemA, stemB]);
     expect(unique).toBeGreaterThan(stemOnly);
+  });
+});
+
+describe('groupSelectionSummary', () => {
+  it('reports the profile axis km, not T-branches', () => {
+    const stemA = line([
+      [0, 0],
+      [0.02, 0],
+    ]);
+    const stemB = line([
+      [0.02, 0],
+      [0.04, 0],
+    ]);
+    const branch = line([
+      [0.02, 0],
+      [0.02, 0.005],
+    ]);
+    const features = [stemA, stemB, branch];
+    const axis = mergeLineStringTramos(features);
+    expect(axis).not.toBeNull();
+    const summary = groupSelectionSummary(features);
+    expect(summary).toContain('3 tramos');
+    const uniqueKm = (dedupedLineStringLengthM(features) / 1000).toFixed(2);
+    const axisKm = summary.match(/([0-9.]+) km sin superposición/);
+    expect(axisKm?.[1]).not.toBe(uniqueKm);
   });
 });
