@@ -47,7 +47,14 @@ RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
 
 # Pre-download WhiteboxTools while the temporary Python headers are available,
 # then remove the complete build-only dependency closure from the final image.
-RUN python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())" \
+# WhiteboxTools.__init__ fetches WhiteboxTools_linux_amd64.zip from
+# whiteboxgeo.com; that host 500s (CI #529). Retry before failing the image.
+RUN n=0; \
+    until python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())"; do \
+      n=$((n+1)); \
+      if [ "$n" -ge 5 ]; then echo "WBT download failed after $n attempts" >&2; exit 1; fi; \
+      sleep $((n * 8)); \
+    done \
     && apt-get purge -y --auto-remove gcc python3-dev \
     && rm -f /usr/bin/pebble \
     && apt-get clean \
