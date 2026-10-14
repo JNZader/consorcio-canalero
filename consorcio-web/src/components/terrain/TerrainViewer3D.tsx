@@ -529,8 +529,12 @@ export default function TerrainViewer3D({
     setReady(false);
     setErrorMessage(null);
 
-    bootMapLibreWorker();
-    const map = new maplibregl.Map({
+    let cancelled = false;
+    let created: maplibregl.Map | undefined;
+    void (async () => {
+      await bootMapLibreWorker();
+      if (cancelled || !mapContainer.current) return;
+      const map = new maplibregl.Map({
       container: mapContainer.current,
       style: buildTerrainMapStyle({
         terrainRgbUrl,
@@ -615,10 +619,13 @@ export default function TerrainViewer3D({
       setErrorMessage(msg || 'Error desconocido cargando el terreno 3D');
     });
 
+    created = map;
     mapRef.current = map;
+    })();
 
     return () => {
-      map.remove();
+      cancelled = true;
+      created?.remove();
       mapRef.current = null;
       setReady(false);
     };

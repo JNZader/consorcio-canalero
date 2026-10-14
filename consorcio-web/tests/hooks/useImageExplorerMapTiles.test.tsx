@@ -15,7 +15,7 @@
  * visualización y no hace nada", con el pedido saliendo y respondiendo 200.
  */
 
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mapaSimulado = {
@@ -99,8 +99,9 @@ describe('updateTileLayer', () => {
     mapaSimulado.isStyleLoaded.mockReturnValue(true);
   });
 
-  it('aplica la imagen enseguida cuando el mapa está quieto', () => {
+  it('aplica la imagen enseguida cuando el mapa está quieto', async () => {
     const api = montar();
+    await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
 
     api.updateTileLayer(A);
 
@@ -108,8 +109,15 @@ describe('updateTileLayer', () => {
     expect(mapaSimulado.addLayer).toHaveBeenCalled();
   });
 
-  it('reemplaza la capa anterior en vez de apilarla', () => {
+  it('no descarta un 200 si GEE responde antes de que el worker arranque el mapa', async () => {
     const api = montar();
+    api.updateTileLayer(A);
+    await waitFor(() => expect(urlsAplicadas()).toEqual([A]));
+  });
+
+  it('reemplaza la capa anterior en vez de apilarla', async () => {
+    const api = montar();
+    await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
     mapaSimulado.getLayer.mockReturnValue({ id: 'gee-image-layer' } as never);
     mapaSimulado.getSource.mockReturnValue({ id: 'gee-image' } as never);
 
@@ -119,8 +127,9 @@ describe('updateTileLayer', () => {
     expect(mapaSimulado.removeSource).toHaveBeenCalledWith('gee-image');
   });
 
-  it('ADM-02: quita la máscara de agua al cambiar de escena', () => {
+  it('ADM-02: quita la máscara de agua al cambiar de escena', async () => {
     const api = montar();
+    await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
     mapaSimulado.getLayer.mockImplementation((id: string) =>
       id === 'gee-water-mask' ? ({ id } as never) : undefined
     );
@@ -139,8 +148,9 @@ describe('updateTileLayer', () => {
       mapaSimulado.isStyleLoaded.mockReturnValue(false);
     });
 
-    it('espera en `idle` y NO en `load`', () => {
+    it('espera en `idle` y NO en `load`', async () => {
       const api = montar();
+      await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
       // Se limpian los listeners del montaje: el efecto que carga la capa de
       // zona tambien usa `once('load')`, y ahi SI corresponde porque corre al
       // crear el mapa, antes de que ese evento haya disparado. Lo que se mide
@@ -156,8 +166,9 @@ describe('updateTileLayer', () => {
       expect(urlsAplicadas()).toEqual([]);
     });
 
-    it('aplica la imagen cuando el mapa se acomoda', () => {
+    it('aplica la imagen cuando el mapa se acomoda', async () => {
       const api = montar();
+      await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
 
       api.updateTileLayer(A);
       callbackDe('idle')?.();
@@ -165,10 +176,11 @@ describe('updateTileLayer', () => {
       expect(urlsAplicadas()).toEqual([A]);
     });
 
-    it('con dos cambios seguidos aplica el ÚLTIMO, no el primero', () => {
+    it('con dos cambios seguidos aplica el ÚLTIMO, no el primero', async () => {
       // Es lo que pasa al tocar el dropdown dos veces mientras carga: pintar
       // la imagen vieja sería peor que no pintar nada.
       const api = montar();
+      await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
 
       api.updateTileLayer(A);
       api.updateTileLayer(B);
@@ -177,8 +189,9 @@ describe('updateTileLayer', () => {
       expect(urlsAplicadas()).toEqual([B]);
     });
 
-    it('no apila un listener de `idle` por cada cambio', () => {
+    it('no apila un listener de `idle` por cada cambio', async () => {
       const api = montar();
+      await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
 
       api.updateTileLayer(A);
       api.updateTileLayer(B);
@@ -187,11 +200,12 @@ describe('updateTileLayer', () => {
       expect(enIdle).toHaveLength(1);
     });
 
-    it('vuelve a esperar en `idle` para el cambio siguiente', () => {
+    it('vuelve a esperar en `idle` para el cambio siguiente', async () => {
       // El flag de "ya hay uno en cola" tiene que liberarse al aplicar; si no,
       // el primer cambio funciona y todos los demás se pierden — el bug de
       // origen con otra forma.
       const api = montar();
+      await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
 
       api.updateTileLayer(A);
       callbackDe('idle')?.();

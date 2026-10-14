@@ -36,7 +36,7 @@
 
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
@@ -188,15 +188,19 @@ vi.mock('maplibre-gl', () => {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function renderViewer(ui: ReactNode) {
+async function renderViewer(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
+  await waitFor(() => {
+    expect(mapStubState.clickHandler).toBeTypeOf('function');
+  });
+  return view;
 }
 
 function resetMapStub() {
@@ -255,7 +259,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(mapStubState.clickHandler).toBeTypeOf('function');
 
@@ -319,7 +323,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     await act(async () => {
       mapStubState.clickHandler?.({
@@ -366,7 +370,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     await act(async () => {
       mapStubState.clickHandler?.({
@@ -403,7 +407,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     await act(async () => {
       mapStubState.clickHandler?.({
@@ -444,7 +448,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     await act(async () => {
       mapStubState.clickHandler?.({
@@ -480,7 +484,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     await act(async () => {
       mapStubState.clickHandler?.({
@@ -515,7 +519,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       '../../src/components/terrain/TerrainViewer3D'
     );
 
-    renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     await act(async () => {
       mapStubState.clickHandler?.({

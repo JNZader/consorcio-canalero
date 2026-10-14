@@ -321,8 +321,12 @@ export function CanalesPublicacionMap({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    bootMapLibreWorker();
-    const map = new maplibregl.Map({
+    let cancelled = false;
+    let created: maplibregl.Map | undefined;
+    void (async () => {
+      await bootMapLibreWorker();
+      if (cancelled || !containerRef.current || mapRef.current) return;
+      const map = new maplibregl.Map({
       container: containerRef.current,
       style: {
         version: 8,
@@ -344,6 +348,7 @@ export function CanalesPublicacionMap({
       minZoom: MAP_MIN_ZOOM,
       maxBounds: MAP_MAX_BOUNDS,
     });
+    created = map;
     mapRef.current = map;
 
     map.on('load', () => {
@@ -536,8 +541,10 @@ export function CanalesPublicacionMap({
         map.getCanvas().style.cursor = '';
       });
     });
+    })();
     return () => {
-      map.remove();
+      cancelled = true;
+      created?.remove();
       mapRef.current = null;
     };
   }, []);
