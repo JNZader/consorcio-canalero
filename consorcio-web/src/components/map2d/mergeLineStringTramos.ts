@@ -1,5 +1,5 @@
-import type { Feature, LineString, Position } from 'geojson';
 import distance from '@turf/distance';
+import type { Feature, LineString, MultiLineString, Position } from 'geojson';
 
 const SNAP_M = 2;
 
@@ -171,7 +171,7 @@ function longestExtension(
   node: number,
   adj: Map<number, Edge[]>,
   usedEdges: Set<number>,
-  usedNodes: Set<number>,
+  usedNodes: Set<number>
 ): Extension {
   let best: Extension = { coords: [], length: 0, edges: [], nodes: [] };
   for (const edge of adj.get(node) ?? []) {
@@ -282,6 +282,91 @@ export function mergeLineStringTramos(features: readonly Feature[]): LineString 
   const adj = adjacency(edges);
   const axis = longestAxis(edges, adj);
   return axis.length >= 2 ? asLine(axis) : asLine(pieces[0]);
+}
+
+function canonicalCoords(coords: Position[]): string {
+  const forward = coords.map((point) => `${point[0]},${point[1]}`).join(';');
+  const backward = [...coords]
+    .reverse()
+    .map((point) => `${point[0]},${point[1]}`)
+    .join(';');
+  // Ida y vuelta es el mismo tramo: la clave no depende del sentido.
+  return forward <= backward ? forward : backward;
+}
+
+/**
+ * The tramo's two ends, order-independent and rounded to about a metre.
+ *
+ * Two tramos that share both ends describe the same stretch of road, which is
+ * how the source repeats one: T391-09 carries the same 1.899 km twice (ids
+ * 10164 and 52583, eight and seven vertices) and T391-08 repeats a 1.96 km
+ * stretch. Deduping by coordinates alone missed both.
+ */
+function endpointKey(coords: Position[]): string {
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  if (!first || !last) {
+    return '';
+  }
+  const a = `${first[0]?.toFixed(5)},${first[1]?.toFixed(5)}`;
+  const b = `${last[0]?.toFixed(5)},${last[1]?.toFixed(5)}`;
+  return a <= b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function featureId(feature: Feature): string {
+  const properties = (feature.properties ?? {}) as Record<string, unknown>;
+  return String(feature.id ?? properties.id ?? properties.rtn ?? '');
+}
+
+/**
+ * Every tramo as its own part, deduped and in a deterministic order.
+ *
+ * The profile samples each part, so a branched or gapped road is covered whole
+ * instead of one chosen path. The order is by tramo id ascending because the
+ * part order is part of the cache key: the same selection must always produce
+ * the same bytes or the cache never hits.
+ */
+export function mergeLineStringParts(features: readonly Feature[]): MultiLineString | null {
+  const vistos = new Set<string>();
+  const porExtremos = new Map<string, Array<{ id: string; coords: Position[]; length: number }>>();
+  for (const feature of features) {
+    if (!isLineString(feature.geometry)) {
+      continue;
+    }
+    const linea = asLine([...(feature.geometry as LineString).coordinates]);
+    if (!linea) {
+      continue;
+    }
+    const clave = canonicalCoords(linea.coordinates);
+    if (vistos.has(clave)) {
+      continue;
+    }
+    vistos.add(clave);
+    const largo = pieceLengthM(linea.coordinates);
+    const candidatos = porExtremos.get(endpointKey(linea.coordinates)) ?? [];
+    // Mismo par de extremos y casi el mismo largo: la fuente trae el mismo tramo
+    // dos veces, se queda el mas detallado. Si el largo difiere mucho son dos
+    // recorridos distintos entre los mismos nodos y los dos cuentan.
+    const gemelo = candidatos.find(
+      (candidato) => Math.abs(candidato.length - largo) <= 0.25 * Math.max(candidato.length, largo)
+    );
+    if (gemelo) {
+      if (largo > gemelo.length) {
+        gemelo.id = featureId(feature);
+        gemelo.coords = linea.coordinates;
+        gemelo.length = largo;
+      }
+    } else {
+      candidatos.push({ id: featureId(feature), coords: linea.coordinates, length: largo });
+    }
+    porExtremos.set(endpointKey(linea.coordinates), candidatos);
+  }
+  const partes = [...porExtremos.values()].flat();
+  if (partes.length === 0) {
+    return null;
+  }
+  partes.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  return { type: 'MultiLineString', coordinates: partes.map((parte) => parte.coords) };
 }
 
 /** Metres of the same LineString the elevation profile samples. */
