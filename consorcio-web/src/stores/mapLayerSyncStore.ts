@@ -161,7 +161,11 @@ const defaultVisibleVectors: Record<string, boolean> = {
   road_flow: false,
   sentido_camino: false,
   puntos_interes: false,
-  red_vial_oficial: false,
+  // Catálogo IDECOR (the national AU9/RN1V09 tramos MISSING from our padron,
+  // 90.2 km) is a PUBLIC layer, ON by default: a visitor must see the official
+  // catalog next to our own road network. Deliberately NOT merged into
+  // `red_vial` — that table carries the cruces/relevamiento FKs.
+  red_vial_oficial: true,
   caminos_huecos: false,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
@@ -292,6 +296,28 @@ interface PilarAzulActions {
 }
 
 /**
+ * Force `ids` ON in the persisted map2d visibleVectors, preserving every other
+ * flag verbatim. For the migrations whose whole point is "this layer must start
+ * ON for every visitor": a persisted false is a stale pre-default, not a
+ * deliberate toggle, so it is overridden exactly once.
+ */
+function forceMap2dVectorsOn(
+  next: Partial<MapLayerSyncStoreState>,
+  ids: Record<string, boolean>
+): Partial<MapLayerSyncStoreState> {
+  if (!next.map2d) {
+    return next;
+  }
+  return {
+    ...next,
+    map2d: {
+      ...next.map2d,
+      visibleVectors: { ...next.map2d.visibleVectors, ...ids },
+    },
+  };
+}
+
+/**
  * Persist migration — patches a persisted state blob forward to the current
  * schema version. Exported (not inlined) so it can be unit-tested directly:
  * the store's test harness mocks the `persist` middleware to a pass-through,
@@ -323,6 +349,11 @@ interface PilarAzulActions {
  *   v11 → v12: startup layers = Hidrografía + Red Vial + Canales relevados.
  *     Force off catastro / sentido_camino / puntos_interes / red_vial_oficial /
  *     caminos_huecos (previous migrations had seeded those ON).
+ *   v13 → v14: force `canales_relevados = true` on map2d (GLO-30 longitudinal
+ *     profile needs a filled context).
+ *   v14 → v15 (2026-10-15): the Catálogo IDECOR overlay (`red_vial_oficial`)
+ *     became PUBLIC and ON by default, so force it back ON for map2d. map3d is
+ *     untouched: the overlay is 2D-only.
  */
 export function migrateMapLayerState(
   persistedState: unknown,
@@ -544,19 +575,14 @@ export function migrateMapLayerState(
   }
   if (fromVersion < 14) {
     // GLO-30 / audit UI: canales relevados must start ON for every visitor
-    // (a filled longitudinal-profile context). A persisted false is a stale
-    // pre-default, not a deliberate toggle, so we override it once. Every other
-    // flag — including deliberate user OFFs added after this migration — is
-    // preserved verbatim.
-    if (next.map2d) {
-      next = {
-        ...next,
-        map2d: {
-          ...next.map2d,
-          visibleVectors: { ...next.map2d.visibleVectors, canales_relevados: true },
-        },
-      };
-    }
+    // (a filled longitudinal-profile context).
+    next = forceMap2dVectorsOn(next, { canales_relevados: true });
+  }
+  if (fromVersion < 15) {
+    // The Catálogo IDECOR overlay became PUBLIC and ON by default
+    // (owner decision 2026-10-15). map3d is intentionally left alone: the
+    // overlay is 2D-only.
+    next = forceMap2dVectorsOn(next, { red_vial_oficial: true });
   }
   return next;
 }
@@ -845,9 +871,12 @@ export const useMapLayerSyncStore = create<
       //   v6 → v7: seed `puntos_interes = true` on map2d (staff notepad pins).
       //   v7 → v8: seed `labelSizeScale = 1` (Capas slider for road/POI text).
       //   v8 → v9: seed `lineWidthScale = 1` (Capas slider for canal/road width).
-      //   v9 → v10: seed `red_vial_oficial = true` on map2d (staff IDECOR overlay).
+      //   v9 → v10: seed `red_vial_oficial = true` on map2d (IDECOR overlay).
       //   v10 → v11: seed `caminos_huecos = true` on map2d (OSM/IGN gap overlay).
-      version: 14,
+      //   v13 → v14: force `canales_relevados = true` on map2d (GLO-30 profile).
+      //   v14 → v15 (2026-10-15): force `red_vial_oficial = true` on map2d — the
+      //   Catálogo IDECOR overlay is now PUBLIC and ON by default.
+      version: 15,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {

@@ -24,11 +24,22 @@ import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Uses the shared manual mock: `__mocks__/@tanstack/react-router.ts`.
 // No factory on purpose — that is what selects the `__mocks__` file.
 vi.mock('@tanstack/react-router');
+
+/**
+ * The comparison divider lives in the DESKTOP layout: `MapaMapLibreView`
+ * renders the canvas and its floating overlays inside `{isDesktop && …}`.
+ * happy-dom reports a mobile media query, so without this the assertion below
+ * would be vacuous — it would pass whether or not the view switched.
+ */
+vi.mock('../../src/components/map2d/MapWorkspace', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/components/map2d/MapWorkspace')>()),
+  useMapWorkspaceDesktop: () => true,
+}));
 
 /** Same MapLibre stub as `mapAnalysisToolsLoginGate.test.tsx`: happy-dom has no WebGL. */
 vi.mock('maplibre-gl', () => {
@@ -134,5 +145,66 @@ describe('shared router test harness (__mocks__/@tanstack/react-router)', () => 
     mockDashboardStats.mockReturnValue({ stats: null, isLoading: true });
     renderUnderHarness(<MapaContent />);
     expect(screen.getByRole('heading', { name: /Mapa Interactivo/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Entering the map shows the visitor's chosen image (or the base map), never a
+ * comparison they did not just ask for. A saved pair is RESTORED into state; it
+ * must not switch the view — the `Base | Imagen | Comparar` selector is one
+ * click away. Regression: the comparison auto-flip effect fired on the async
+ * backend restore and overrode the chosen image.
+ */
+describe('view mode when entering the map', () => {
+  const COMPARISON_KEY = 'consorcio_image_comparison';
+  const SELECTED_IMAGE_KEY = 'consorcio_selected_image';
+
+  // A fresh `selected_at` on purpose: a stale tile sends the listener to the
+  // backend to refresh it, which is not what these cases are about.
+  // The host is pinned to Earth Engine because `isValidSelectedImage` rejects
+  // any other one — a rejected fixture would make this suite vacuous.
+  const image = {
+    tile_url: 'https://earthengine.googleapis.com/v1/projects/test/tiles/{z}/{x}/{y}',
+    target_date: '2026-03-01',
+    sensor: 'Sentinel-2',
+    visualization: 'true_color',
+    visualization_description: 'Natural color',
+    collection: 'sentinel-2',
+    images_count: 3,
+    selected_at: new Date().toISOString(),
+  };
+
+  const savedPair = JSON.stringify({ enabled: true, left: image, right: image });
+
+  afterEach(() => {
+    vi.mocked(localStorage.getItem).mockReset();
+    vi.mocked(localStorage.setItem).mockReset();
+    vi.mocked(localStorage.removeItem).mockReset();
+  });
+
+  it('does not switch to comparison just because a saved pair was restored', () => {
+    // `tests/setup.ts` replaces `window.localStorage` with a vitest mock, so the
+    // restore has to be driven THROUGH the mock: a real `setItem` stores
+    // nothing, the listener finds no pair, and this assertion would pass
+    // whether or not the view switched.
+    vi.mocked(localStorage.getItem).mockImplementation((key) =>
+      key === COMPARISON_KEY ? savedPair : null
+    );
+
+    renderUnderHarness(<MapaMapLibre />);
+
+    expect(screen.queryByTestId('map-comparison-divider')).not.toBeInTheDocument();
+  });
+
+  it('keeps the chosen image when a saved pair is restored too', () => {
+    vi.mocked(localStorage.getItem).mockImplementation((key) => {
+      if (key === SELECTED_IMAGE_KEY) return JSON.stringify(image);
+      if (key === COMPARISON_KEY) return savedPair;
+      return null;
+    });
+
+    renderUnderHarness(<MapaMapLibre />);
+
+    expect(screen.queryByTestId('map-comparison-divider')).not.toBeInTheDocument();
   });
 });
