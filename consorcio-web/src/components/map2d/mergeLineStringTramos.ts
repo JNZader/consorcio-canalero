@@ -326,6 +326,110 @@ interface Parte {
 }
 
 /**
+ * 2-opt over the walk the greedy produced: reverse a slice of the order — which
+ * also flips every part inside it — whenever that shortens the total gap.
+ *
+ * The greedy exploits the geometry (two branch tips can be near each other) but
+ * commits early, and a planned topological walk measured worse, so this undoes a
+ * bad commitment without planning the whole route. The cost of a reversal touches
+ * only its two boundaries, so a move is scored with two distance calls instead of
+ * rebuilding the walk.
+ */
+function improveWithTwoOpt(ordered: readonly Parte[]): Parte[] {
+  const walk = [...ordered];
+  if (walk.length < 3) {
+    return walk;
+  }
+  const tailOf = (parte: Parte): Position => parte.coords[parte.coords.length - 1] as Position;
+  const headOf = (parte: Parte): Position => parte.coords[0] as Position;
+  const gapTo = (from: Position, to: Position): number => distance(from, to, { units: 'meters' });
+
+  for (let round = 0; round < 8; round += 1) {
+    let improved = false;
+    for (let i = 0; i < walk.length - 1; i += 1) {
+      for (let j = i + 1; j < walk.length; j += 1) {
+        const before =
+          (i > 0 ? gapTo(tailOf(walk[i - 1] as Parte), headOf(walk[i] as Parte)) : 0) +
+          (j + 1 < walk.length ? gapTo(tailOf(walk[j] as Parte), headOf(walk[j + 1] as Parte)) : 0);
+        const after =
+          (i > 0 ? gapTo(tailOf(walk[i - 1] as Parte), tailOf(walk[j] as Parte)) : 0) +
+          (j + 1 < walk.length ? gapTo(headOf(walk[i] as Parte), headOf(walk[j + 1] as Parte)) : 0);
+        if (after < before - 0.5) {
+          const reversed = walk
+            .slice(i, j + 1)
+            .reverse()
+            .map((parte) => ({ ...parte, coords: [...parte.coords].reverse() }));
+          walk.splice(i, j - i + 1, ...reversed);
+          improved = true;
+        }
+      }
+    }
+    if (!improved) {
+      break;
+    }
+  }
+  return walk;
+}
+
+/**
+ * Or-opt over the walk the 2-opt left: take a short run of parts out of the
+ * order and put it back somewhere else, in either direction, whenever that
+ * shortens the total gap.
+ *
+ * 2-opt can only reverse a slice, so it cannot fix a part that simply sits in the
+ * wrong place — S331 and T135-11 stayed far above their floor after it. Moving a
+ * run is the next local move, and it is still local: the walk stays a walk, no
+ * route is planned.
+ *
+ * Runs up to three parts, either orientation, full cost recomputed (the walks
+ * here are at most a few dozen parts). Deterministic, so the cache key holds.
+ */
+function improveWithOrOpt(ordered: readonly Parte[]): Parte[] {
+  const tailOf = (parte: Parte): Position => parte.coords[parte.coords.length - 1] as Position;
+  const headOf = (parte: Parte): Position => parte.coords[0] as Position;
+  const gapOf = (list: readonly Parte[]): number => {
+    let total = 0;
+    for (let i = 0; i + 1 < list.length; i += 1) {
+      total += distance(tailOf(list[i] as Parte), headOf(list[i + 1] as Parte), {
+        units: 'meters',
+      });
+    }
+    return total;
+  };
+
+  let best = [...ordered];
+  let bestGap = gapOf(best);
+  for (let round = 0; round < 6; round += 1) {
+    let improved = false;
+    for (let length = 1; length <= 3; length += 1) {
+      for (let start = 0; start + length <= best.length; start += 1) {
+        const run = best.slice(start, start + length);
+        const rest = [...best.slice(0, start), ...best.slice(start + length)];
+        const reversedRun = run
+          .slice()
+          .reverse()
+          .map((parte) => ({ ...parte, coords: [...parte.coords].reverse() }));
+        for (let at = 0; at <= rest.length; at += 1) {
+          for (const candidate of [run, reversedRun]) {
+            const trial = [...rest.slice(0, at), ...candidate, ...rest.slice(at)];
+            const gap = gapOf(trial);
+            if (gap < bestGap - 0.5) {
+              best = trial;
+              bestGap = gap;
+              improved = true;
+            }
+          }
+        }
+      }
+    }
+    if (!improved) {
+      break;
+    }
+  }
+  return best;
+}
+
+/**
  * Order the parts so the profile READS along the trace instead of jumping.
  *
  * One part per tramo means the catalog order (by tramo id) is NOT the order
@@ -403,7 +507,7 @@ function chainByContinuity(partes: readonly Parte[]): Parte[] {
     ordered.push({ ...partes[best], coords });
     cursor = coords[coords.length - 1];
   }
-  return ordered;
+  return improveWithOrOpt(improveWithTwoOpt(ordered));
 }
 
 /**
