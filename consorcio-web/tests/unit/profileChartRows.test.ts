@@ -36,4 +36,31 @@ describe('buildProfileChartRows', () => {
 
     expect(rows).toHaveLength(3);
   });
+
+  it('no corta la linea cuando la frontera entre partes es continua', () => {
+    // Las partes se encadenan a lo largo de la traza, asi que comparten extremo:
+    // un corte en cada frontera picaba el perfil en tantos pedazos como tramos.
+    const rows = buildProfileChartRows([
+      { distance_m: 0, elevation_m: 10, lon: -62.7, lat: -32.6, parte: 0 },
+      { distance_m: 100, elevation_m: 11, lon: -62.699, lat: -32.6, parte: 0 },
+      { distance_m: 100, elevation_m: 12, lon: -62.699, lat: -32.6, parte: 1 },
+      { distance_m: 200, elevation_m: 13, lon: -62.698, lat: -32.6, parte: 1 },
+    ]);
+
+    expect(rows.filter((row) => row.elevation_m === null)).toHaveLength(0);
+    expect(rows).toHaveLength(4);
+  });
+
+  it('sigue cortando cuando la frontera es un salto real (retorno de rama)', () => {
+    // Un ramal que vuelve a su cruce si deja un hueco: ahi el corte es correcto,
+    // para no dibujar una recta sobre terreno que el camino no recorre.
+    const rows = buildProfileChartRows([
+      { distance_m: 0, elevation_m: 10, lon: -62.7, lat: -32.6, parte: 0 },
+      { distance_m: 100, elevation_m: 11, lon: -62.699, lat: -32.6, parte: 0 },
+      { distance_m: 100, elevation_m: 12, lon: -62.6, lat: -32.6, parte: 1 },
+      { distance_m: 200, elevation_m: 13, lon: -62.599, lat: -32.6, parte: 1 },
+    ]);
+
+    expect(rows.filter((row) => row.elevation_m === null)).toHaveLength(1);
+  });
 });

@@ -205,8 +205,10 @@ describe('mergeLineStringTramos', () => {
 });
 
 describe('mergeLineStringParts', () => {
-  it('gives every tramo its own part, deduped and ordered by id', () => {
-    // El orden es determinista a proposito: es parte de la clave de cache.
+  it('gives every tramo its own part, deduped and chained along the trace', () => {
+    // El orden es determinista a proposito: es parte de la clave de cache. Lo
+    // que cambio es CUAL orden: el de la traza, no el del catalogo (ver el test
+    // de encadenado mas abajo).
     const segundo = withId(
       line([
         [0, 0],
@@ -234,13 +236,52 @@ describe('mergeLineStringParts', () => {
     expect(parts?.type).toBe('MultiLineString');
     expect(parts?.coordinates).toHaveLength(2);
     expect(parts?.coordinates[0]).toEqual([
-      [0.01, 0],
       [0.02, 0],
+      [0.01, 0],
     ]);
     expect(parts?.coordinates[1]).toEqual([
-      [0, 0],
       [0.01, 0],
+      [0, 0],
     ]);
+  });
+
+  it('encadena las partes a lo largo de la traza, no por id de tramo', () => {
+    // Traza lineal partida en tres tramos cuyos ids NO siguen el orden
+    // geografico — el caso real: el catalogo numera por rtn, no por traza. Con
+    // el orden por id el perfil saltaba: medido sobre los 380 tramos
+    // publicados, 243 de las 282 fronteras entre partes eran saltos de mas de
+    // 25 m, 1141 km de salto acumulado.
+    const ultimo = withId(
+      line([
+        [0.02, 0],
+        [0.03, 0],
+      ]),
+      'T200-01'
+    );
+    const primero = withId(
+      line([
+        [0, 0],
+        [0.01, 0],
+      ]),
+      'T200-02'
+    );
+    const medio = withId(
+      line([
+        [0.01, 0],
+        [0.02, 0],
+      ]),
+      'T200-03'
+    );
+
+    const parts = mergeLineStringParts([ultimo, primero, medio]);
+    const coords = parts?.coordinates ?? [];
+
+    expect(coords).toHaveLength(3);
+    // Cada parte arranca exactamente donde termino la anterior: la traza se lee
+    // de corrido, sin volver sobre sus pasos ni saltar a otro tramo.
+    for (let i = 0; i + 1 < coords.length; i += 1) {
+      expect(coords[i + 1][0]).toEqual(coords[i][coords[i].length - 1]);
+    }
   });
 
   it('treats a reversed duplicate as the same tramo', () => {
