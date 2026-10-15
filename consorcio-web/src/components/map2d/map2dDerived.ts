@@ -154,8 +154,11 @@ export function buildVectorLayerItems(params: {
    */
   showPuntosInteres?: boolean;
   /**
-   * Staff-only IDECOR official-road overlay. Same ROLE gate as `showRoadFlow`.
-   * Defaults to `false`: citizens never see the toggle and never mount the layer.
+   * IDECOR catalog overlay (the national AU9/RN1V09 tramos missing from our
+   * padron). PUBLIC and ON by default since 2026-10-15 (owner decision): a
+   * visitor must see the official catalog next to our own road network. The
+   * static GeoJSON it reads needs no auth. Defaults to `false` so callers that
+   * have not wired a session see no change.
    */
   showRedVialOficial?: boolean;
   /**
