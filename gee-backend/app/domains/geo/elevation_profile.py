@@ -27,6 +27,15 @@ MDE_AR_NOMBRE = "mde_ar.tif"
 MDE_AR_DISCLAIMER = "MDE-Ar (IGN, SRVN16). No comparar el delta con GLO-30 como cota verdadera."
 MDE_AR_NODATA = frozenset({-999999.0, -9999.0})
 
+# Holes that reach the profile as if they were heights. The filled DEM carries
+# them as 0.0 and does not always declare `nodata` in its GeoTIFF, so the value
+# has to be named here: a 0 m sample in this basin is a hole, not sea level.
+# Unmasked, ONE of these stretches the chart's Y axis to 0 and squashes the whole
+# profile into a sliver at the top — that is the live defect on S384 (2 points)
+# and T269-08 (29 points), where the sibling MDE-Ar has real data on the very
+# same vertices.
+NODATA_HOLES = frozenset({-999999.0, -9999.0, 0.0})
+
 # Abuse cap, not GLO-30 physics. Compute is bounded by MAX_POINTS via paso_muestreo.
 MAX_LENGTH_M = 200_000.0
 MAX_POINTS = 2_000
@@ -136,7 +145,7 @@ def muestrear_alineado(
     if not puntos:
         return []
 
-    extra = extra_nodata or frozenset()
+    extra = (extra_nodata or frozenset()) | NODATA_HOLES
     with rasterio.open(dem_path) as src:
         nodata = src.nodata
         crudos = [v[0] for v in src.sample(puntos)]
