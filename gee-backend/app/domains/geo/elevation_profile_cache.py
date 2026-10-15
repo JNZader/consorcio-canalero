@@ -24,7 +24,12 @@ from typing import Any, Optional
 
 #: Bump when the SAMPLING changes (densify step, retrace unfolding, caps).
 #: Adding a column to the payload alone does not require a bump.
-SERIES_VERSION = 1
+# Bumped 2026-10-15: the sampling started masking DEM holes (a 0.0 that the
+# GeoTIFF does not declare as nodata) as None, so every profile cached before
+# that change is wrong on 17 of the 83 published roads — S384 and T269-08 among
+# them. The version is part of the source identity, so bumping it retires those
+# rows at once instead of waiting for the 90-day prune.
+SERIES_VERSION = 2
 
 #: Rows older than this are pruned on write. Superseded DEM runs simply stop
 #: being requested, so their rows age out instead of being tracked.
