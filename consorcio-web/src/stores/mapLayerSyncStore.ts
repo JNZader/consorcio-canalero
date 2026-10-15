@@ -542,6 +542,22 @@ export function migrateMapLayerState(
       };
     }
   }
+  if (fromVersion < 14) {
+    // GLO-30 / audit UI: canales relevados must start ON for every visitor
+    // (a filled longitudinal-profile context). A persisted false is a stale
+    // pre-default, not a deliberate toggle, so we override it once. Every other
+    // flag — including deliberate user OFFs added after this migration — is
+    // preserved verbatim.
+    if (next.map2d) {
+      next = {
+        ...next,
+        map2d: {
+          ...next.map2d,
+          visibleVectors: { ...next.map2d.visibleVectors, canales_relevados: true },
+        },
+      };
+    }
+  }
   return next;
 }
 
@@ -831,7 +847,7 @@ export const useMapLayerSyncStore = create<
       //   v8 → v9: seed `lineWidthScale = 1` (Capas slider for canal/road width).
       //   v9 → v10: seed `red_vial_oficial = true` on map2d (staff IDECOR overlay).
       //   v10 → v11: seed `caminos_huecos = true` on map2d (OSM/IGN gap overlay).
-      version: 13,
+      version: 14,
       migrate: (persistedState, fromVersion) => migrateMapLayerState(persistedState, fromVersion),
       partialize: (state) => ({
         map2d: {
