@@ -28,6 +28,7 @@ import type { HazardBasinFilter } from './hazardBasinFilter';
 import { applyLayerMinZoom, CATASTRO_LAYER_MIN_ZOOM, SOIL_LAYER_MIN_ZOOM } from './layerMinZoom';
 import { casingLayerId, ensureLineCasing } from './lineCasing';
 import { buildWaterwayLayerConfigs, CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
+import { SELECTED_LINE_CASING } from './selectedLineHighlightLayers';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   buildAgroAceptadaFillPaint,
@@ -749,8 +750,15 @@ export interface SyncCanalesLayersParams {
  * Raise the canales stack to the top AFTER each sync pass so pilar-verde
  * fills (if mounted) still overlay them in click precedence — canales are
  * line features, fills "win" on pixel-overlap in MapLibre z-order.
+ *
+ * The stack goes BELOW the selection highlight: raising it with no `beforeId`
+ * buried the orange "selected" stroke, so a selected canal looked unselected
+ * while a selected road (hoisted with a `beforeId`) still showed.
  */
 function raiseCanalesStack(map: maplibregl.Map) {
+  const beforeHighlight = map.getLayer(SELECTED_LINE_CASING)
+    ? SELECTED_LINE_CASING
+    : undefined;
   const ids = [
     casingLayerId(`${SOURCE_IDS.CANALES_RELEVADOS}-line`),
     `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
@@ -762,7 +770,7 @@ function raiseCanalesStack(map: maplibregl.Map) {
   for (const id of ids) {
     if (map.getLayer(id)) {
       try {
-        map.moveLayer(id);
+        map.moveLayer(id, beforeHighlight);
       } catch {
         // moveLayer can race with concurrent style edits — safe to ignore,
         // next pass will retry.
