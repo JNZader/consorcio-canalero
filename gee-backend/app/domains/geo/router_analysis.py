@@ -20,9 +20,9 @@ router = APIRouter(tags=["Geo Processing"])
 
 
 class ElevationProfileRequest(BaseModel):
-    """A WGS84 LineString to sample on the real filled DEM."""
+    """A WGS84 LineString, or MultiLineString, to sample on the real filled DEM."""
 
-    geometry: dict = Field(..., description="GeoJSON LineString in EPSG:4326")
+    geometry: dict = Field(..., description="GeoJSON LineString or MultiLineString in EPSG:4326")
     area_id: str | None = Field(
         default=None,
         description="DEM area; newest filled DEM across areas when omitted",
