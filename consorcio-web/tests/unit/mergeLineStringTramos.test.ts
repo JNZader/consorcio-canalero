@@ -150,6 +150,53 @@ describe('mergeLineStringTramos', () => {
       [0.01, 0.01],
     ]);
   });
+
+  it('never walks the same stretch twice around a loop (A581/T028-19 inflation)', () => {
+    // A four-tramo ring: the longest extension from one end and from the other
+    // both reach for the same edge, so the axis used to walk it out and back.
+    const ring = [
+      line([
+        [0, 0],
+        [0.01, 0],
+      ]),
+      line([
+        [0.01, 0],
+        [0.01, 0.01],
+      ]),
+      line([
+        [0.01, 0.01],
+        [0, 0.01],
+      ]),
+      line([
+        [0, 0.01],
+        [0, 0],
+      ]),
+    ];
+    const merged = mergeLineStringTramos(ring);
+    const coords = merged?.coordinates ?? [];
+    const distinct = new Set(coords.map((c) => `${c[0]},${c[1]}`));
+    expect(coords.length).toBeGreaterThan(1);
+    expect(distinct.size).toBe(coords.length);
+  });
+
+  it('follows the road body when the first selected tramo is a stray piece (T027-01)', () => {
+    const stray = line([
+      [-0.02, -0.02],
+      [-0.0195, -0.0195],
+    ]);
+    const bodyA = line([
+      [0, 0],
+      [0.02, 0],
+    ]);
+    const bodyB = line([
+      [0.02, 0],
+      [0.04, 0],
+    ]);
+    const merged = mergeLineStringTramos([stray, bodyA, bodyB]);
+    const lons = merged?.coordinates.map((c) => c[0]) ?? [];
+    expect(lons[0]).toBe(0);
+    expect(lons[lons.length - 1]).toBe(0.04);
+  });
 });
 
 describe('dedupedLineStringLengthM', () => {
