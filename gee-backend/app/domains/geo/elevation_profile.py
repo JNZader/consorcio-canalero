@@ -179,8 +179,17 @@ def aplicar_mde_ar(payload: dict[str, Any], dem_filled_path: str) -> dict[str, A
     return payload
 
 
-def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, Any]:
-    """Sample ``linea`` (metric CRS matching the raster) against ``dem_path``."""
+def perfil_desde_linea_metrica(
+    linea: BaseGeometry,
+    dem_path: str,
+    *,
+    paso_m: float | None = None,
+) -> dict[str, Any]:
+    """Sample ``linea`` (metric CRS matching the raster) against ``dem_path``.
+
+    ``paso_m`` lets a multi-part trace share one step across its parts so the
+    total stays inside MAX_POINTS instead of each part spending the whole budget.
+    """
     if linea is None or linea.is_empty or len(getattr(linea, "coords", [])) < 2:
         raise ValueError("hace falta un LineString con al menos dos vértices")
     from shapely.geometry import LineString as ShapelyLine
@@ -192,7 +201,7 @@ def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, 
     largo = float(linea.length)
     if largo > MAX_LENGTH_M:
         raise ValueError(f"la traza supera {int(MAX_LENGTH_M)} m")
-    paso = paso_muestreo(largo)
+    paso = paso_muestreo(largo) if paso_m is None else max(PASO_DENSIFICADO_M, float(paso_m))
     vertices = densificar(linea, paso)
     if len(vertices) > MAX_POINTS:
         raise ValueError(f"el perfil superaría {MAX_POINTS} muestras")
@@ -206,3 +215,35 @@ def perfil_desde_linea_metrica(linea: BaseGeometry, dem_path: str) -> dict[str, 
     )
     payload["_vertices_xy"] = vertices
     return payload
+
+
+def unir_perfiles(parciales: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Concatenate per-part payloads into one multi-part profile.
+
+    Chainage accumulates across parts so the X axis stays monotonic, and every
+    point carries its ``parte`` so the chart can break the line where the trace
+    jumps instead of drawing a segment across the gap. The gap is a real break in
+    the road, never a straight line sampled across it.
+    """
+    if not parciales:
+        raise ValueError("hace falta al menos una parte")
+    puntos: list[dict[str, Any]] = []
+    offset = 0.0
+    for parte, parcial in enumerate(parciales):
+        for punto in parcial.get("puntos") or []:
+            puntos.append(
+                {**punto, "distance_m": float(punto["distance_m"]) + offset, "parte": parte}
+            )
+        offset += float(parcial.get("length_m") or 0.0)
+    validas = [p["elevation_m"] for p in puntos if p.get("elevation_m") is not None]
+    primero = parciales[0]
+    return {
+        "puntos": puntos,
+        "length_m": offset,
+        "min_elevation_m": min(validas) if validas else None,
+        "max_elevation_m": max(validas) if validas else None,
+        "source": primero.get("source"),
+        "cell_m": primero.get("cell_m"),
+        "disclaimer": primero.get("disclaimer", DISCLAIMER),
+        "partes": len(parciales),
+    }

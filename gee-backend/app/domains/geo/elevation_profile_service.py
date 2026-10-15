@@ -12,7 +12,9 @@ from app.core.logging import get_logger
 from app.domains.geo.elevation_profile import (
     MAX_LENGTH_M,
     aplicar_mde_ar,
+    paso_muestreo,
     perfil_desde_linea_metrica,
+    unir_perfiles,
 )
 from app.domains.geo.elevation_profile_cache import (
     build_cache_key,
@@ -100,6 +102,17 @@ def adjuntar_series_opcionales(
     return aplicar_gee_dems(sampled)
 
 
+def _adjuntar_lonlat(payload: dict[str, Any], vertices: list[Any], crs_dem: Any) -> None:
+    """Attach WGS84 lon/lat to every point of one part, in place."""
+    from shapely.geometry import Point
+    import geopandas as gpd
+
+    serie = gpd.GeoSeries([Point(xy) for xy in vertices], crs=crs_dem).to_crs(4326)
+    for index, punto in enumerate(payload["puntos"]):
+        punto["lon"] = float(serie.iloc[index].x)
+        punto["lat"] = float(serie.iloc[index].y)
+
+
 def perfil_de_geojson(
     db: Session,
     *,
@@ -114,9 +127,12 @@ def perfil_de_geojson(
         geom = shape(geometry)
     except (TypeError, ValueError) as exc:
         raise ValidationError(message="geometry GeoJSON inválida") from exc
-    if geom.geom_type != "LineString":
-        raise ValidationError(message="solo LineString (canal, camino o traza)")
-    if geom.is_empty or len(geom.coords) < 2:
+    if geom.geom_type not in ("LineString", "MultiLineString"):
+        raise ValidationError(message="solo LineString o MultiLineString (canal, camino o traza)")
+    if geom.is_empty:
+        raise ValidationError(message="hace falta una traza con al menos dos vértices")
+    crudas = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
+    if any(len(getattr(parte, "coords", ())) < 2 for parte in crudas):
         raise ValidationError(message="hace falta un LineString con al menos dos vértices")
 
     try:
@@ -124,12 +140,14 @@ def perfil_de_geojson(
     except DemFilledNoDisponible as exc:
         raise NotFoundError(message=str(exc), resource_type="dem_filled") from exc
 
-    linea_metric = (
-        gpd.GeoDataFrame({"geometry": [geom]}, geometry="geometry", crs=4326)
-        .to_crs(_raster_crs(dem_path))
-        .geometry.iloc[0]
+    crs_dem = _raster_crs(dem_path)
+    partes_metricas = list(
+        gpd.GeoDataFrame({"geometry": crudas}, geometry="geometry", crs=4326)
+        .to_crs(crs_dem)
+        .geometry
     )
-    if float(linea_metric.length) > MAX_LENGTH_M:
+    largo_total = sum(float(parte.length) for parte in partes_metricas)
+    if largo_total > MAX_LENGTH_M:
         raise ValidationError(message=f"la traza supera {int(MAX_LENGTH_M)} m")
 
     # Plain series only. The GEE comparison must never be served out of a stored
@@ -143,22 +161,27 @@ def perfil_de_geojson(
         if cached is not None:
             return {**cached, "cache": "hit"}
     try:
-        payload = perfil_desde_linea_metrica(linea_metric, dem_path)
+        # One step for the whole trace: MAX_POINTS is a total budget, not a
+        # per-part one, or a 27-tramo road would ask for 27x the samples.
+        paso = paso_muestreo(largo_total)
+        parciales: list[dict[str, Any]] = []
+        for parte in partes_metricas:
+            parcial = perfil_desde_linea_metrica(parte, dem_path, paso_m=paso)
+            vertices = parcial.pop("_vertices_xy", None)
+            if not isinstance(vertices, list) or not vertices:
+                continue
+            _adjuntar_lonlat(parcial, vertices, crs_dem)
+            parciales.append(parcial)
     except ValueError as exc:
         raise ValidationError(message=str(exc)) from exc
-    vertices = payload.pop("_vertices_xy", None)
-    if not isinstance(vertices, list) or not vertices:
+    if not parciales:
         # Degenerate trace: no lon/lat to hang on the map, not worth a row.
-        return payload
-    from shapely.geometry import Point
-
-    serie = gpd.GeoSeries(
-        [Point(xy) for xy in vertices],
-        crs=_raster_crs(dem_path),
-    ).to_crs(4326)
-    for index, punto in enumerate(payload["puntos"]):
-        punto["lon"] = float(serie.iloc[index].x)
-        punto["lat"] = float(serie.iloc[index].y)
+        degenerado = perfil_desde_linea_metrica(partes_metricas[0], dem_path, paso_m=paso)
+        degenerado.pop("_vertices_xy", None)
+        return degenerado
+    # A single part keeps today's exact payload: no parte/partes fields, so the
+    # existing consumers and cached rows stay valid.
+    payload = parciales[0] if len(parciales) == 1 else unir_perfiles(parciales)
     resultado = adjuntar_series_opcionales(payload, dem_path, compare_dems=compare_dems)
     if cache_key is not None and source_identity is not None:
         _write_cache(
