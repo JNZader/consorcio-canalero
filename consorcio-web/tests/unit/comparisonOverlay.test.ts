@@ -12,6 +12,7 @@ import {
   LAYER_RENDER_REGISTRY,
   RENDERABLE_UI_LAYER_IDS,
 } from '../../src/components/map2d/layerRenderRegistry';
+import { ROAD_FLOW_ALL_KINDS_VISIBLE } from '../../src/components/map2d/roadFlowLayers';
 import { WATERWAY_DEFS } from '../../src/hooks/useWaterways';
 import {
   SOIL_PMTILES_ARCHIVE_KEY,
@@ -36,30 +37,25 @@ const RASTER_ONLY_UI_LAYER_IDS = new Set(['precip_normal']);
  * Membership of this set is therefore decided by the rule, and a member that
  * does NOT satisfy it is an oversight, exactly as an unlisted layer would be.
  *
- *   - `road_flow` (flujo-caminos, design D6) — satisfies both halves: its route
+ *   - `road_flow` (flujo-caminos, design D6) — satisfies BOTH halves: its route
  *     is `require_admin_or_operator`, the selector entry is role-gated, and
  *     RFA-R4 requires the non-hydraulic disclaimer to accompany the ranking
  *     wherever it is read (`RoadFlowDisclaimer`, surfaces `lista`/`hoja`/`chip`).
  *     Rendering the points in the slider would show a ranking stripped of the
- *     statement of what it is not. D6 does not place this layer in the
- *     comparison view and no task wires its data into that view's inputs, so it
- *     is excluded rather than half-mounted.
- *   - `sentido_camino` — same GET (`require_admin_or_operator`), same staff
- *     selector gate. Chevrons of ditch direction, not a ranking, but still
- *     operator-only data. The comparator does not fetch that payload.
- *   - `puntos_interes` — staff-only unpublished pins. Same role gate, no
- *     comparison fetch, not painted in the slider.
- *   - `red_vial_oficial` — staff-only IDECOR catalog overlay. Same role gate,
- *     no comparison fetch, not painted in the slider.
- *   - `caminos_huecos` — staff-only OSM/IGN gap overlay. Same role gate.
+ *     statement of what it is not.
+ *
+ * Corrected 2026-10-15 (owner report: "el izquierdo oculta algunas capas
+ * mientras el derecho muestra todas las habilitadas"). The four layers that were
+ * listed here next to `road_flow` do NOT satisfy the rule's disclaimer half —
+ * they are operator-only data, not rankings — and they were absent only because
+ * the comparison view never fetched them. `red_vial_oficial` additionally
+ * stopped being staff-only the same day (published public and ON by default), so
+ * the "requires an authenticated panel" half no longer holds for it either. They
+ * are now synced like every other vector layer, behind the SAME role gate the
+ * base map uses, so a visitor who cannot see them on the right cannot see them
+ * on the left.
  */
-const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set([
-  'road_flow',
-  'sentido_camino',
-  'puntos_interes',
-  'red_vial_oficial',
-  'caminos_huecos',
-]);
+const NOT_IN_COMPARISON_UI_LAYER_IDS = new Set(['road_flow']);
 
 const COMPARISON_VECTOR_UI_LAYER_IDS = RENDERABLE_UI_LAYER_IDS.filter(
   (id) => !RASTER_ONLY_UI_LAYER_IDS.has(id) && !NOT_IN_COMPARISON_UI_LAYER_IDS.has(id)
@@ -123,6 +119,10 @@ function createFakeMap(initialStyleLoaded = true): FakeMapHarness {
     // clickable parcel fill gets a pointer cursor, which needs both.
     on: vi.fn(),
     getCanvas: vi.fn(() => ({ style: {} as Record<string, string> })),
+    // The overlay map has its OWN image registry: it never inherits the base
+    // map's, so `hasImage` is false until this map adds the flow arrow itself.
+    hasImage: vi.fn(() => false),
+    addImage: vi.fn(),
   } as unknown as maplibregl.Map;
 
   return {
@@ -175,6 +175,16 @@ function createInputs(
     escuelasCollection: null,
     opacityByLayer: {},
     orderByLayer: [],
+    redVialOficial: { shouldMount: true },
+    caminosHuecos: { shouldMount: true },
+    puntosInteres: { type: 'FeatureCollection', features: [] },
+    zona: { type: 'FeatureCollection', features: [] },
+    roadFlow: {
+      crossings: { type: 'FeatureCollection', features: [] },
+      totalFlujoNatural: 0,
+      kinds: ROAD_FLOW_ALL_KINDS_VISIBLE,
+      flechas: { type: 'FeatureCollection', features: [] },
+    },
     ...overrides,
   };
 }
@@ -219,6 +229,29 @@ describe('comparison overlay vector coverage', () => {
       'none'
     );
     expect(harness.setPaintProperty).toHaveBeenCalledWith('map2d-roads-line', 'line-opacity', 0.45);
+  });
+
+  it('hides the operator-only overlays when their flag is off, exactly like the base map', () => {
+    setSoilPmtilesArchiveKeyForTests(SOIL_PMTILES_ARCHIVE_KEY);
+    const harness = createFakeMap();
+    const inputs = createInputs({
+      vectorVisibility: {
+        ...createInputs().vectorVisibility,
+        red_vial_oficial: false,
+        caminos_huecos: false,
+        puntos_interes: false,
+      },
+    });
+
+    syncComparisonVectorLayers(harness.map, inputs);
+
+    // The panes cannot disagree on WHICH layers are shown: the same flags that
+    // hide a layer on the base map hide it here.
+    for (const id of ['red_vial_oficial', 'caminos_huecos', 'puntos_interes'] as const) {
+      for (const layer of LAYER_RENDER_REGISTRY[id].mlLayers) {
+        expect(harness.setLayoutProperty).toHaveBeenCalledWith(layer.id, 'visibility', 'none');
+      }
+    }
   });
 });
 
