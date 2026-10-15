@@ -3,10 +3,18 @@ import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
 import { mapColorTokens } from '../../lib/mapColorTokens';
 import { ensureGeoJsonSource } from './map2dUtils';
+import {
+  hoistSelectedLineHighlight,
+  SELECTED_LINE_CASING,
+  SELECTED_LINE_LAYER,
+  SELECTED_LINE_SOURCE,
+} from './selectedLineHighlightLayers';
 
-export const SELECTED_LINE_SOURCE = 'map2d-selected-lines';
-export const SELECTED_LINE_CASING = 'map2d-selected-lines-casing';
-export const SELECTED_LINE_LAYER = 'map2d-selected-lines-line';
+export {
+  SELECTED_LINE_CASING,
+  SELECTED_LINE_LAYER,
+  SELECTED_LINE_SOURCE,
+} from './selectedLineHighlightLayers';
 
 function isLineGeometry(geometry: Geometry | null | undefined): boolean {
   return geometry?.type === 'LineString' || geometry?.type === 'MultiLineString';
@@ -65,6 +73,10 @@ export function useSelectedLineHighlight({
         },
       });
     }
+    // Re-raise on every pass: a canales sync may have run after the highlight
+    // was created, and it inserts below this casing (see
+    // `selectedLineHighlightLayers.ts`).
+    hoistSelectedLineHighlight(map);
   }, [features, mapReady, mapRef]);
 
   useEffect(() => {
