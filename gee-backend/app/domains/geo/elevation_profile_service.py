@@ -40,34 +40,37 @@ SQL_DEM_RESULTADOS_RECIENTE = text(
 logger = get_logger(__name__)
 
 
-def _read_cache(db: Session, cache_key: str) -> Optional[dict[str, Any]]:
-    """A cache failure must never cost the caller the profile."""
+def _read_cache(cache_key: str) -> Optional[dict[str, Any]]:
+    """A cache failure must never cost the caller the profile.
+
+    No rollback: the cache owns its own session, so the caller's transaction is
+    untouched either way (review R3).
+    """
     try:
-        return read_cached_profile(db, cache_key)
+        return read_cached_profile(cache_key)
     except Exception as exc:  # noqa: BLE001 — degraded cache, not a failed request
         logger.warning("profile cache read failed", error_type=type(exc).__name__)
-        db.rollback()
         return None
 
 
 def _write_cache(
-    db: Session,
     *,
     cache_key: str,
     source_identity: str,
     payload: dict[str, Any],
 ) -> None:
-    """Best effort: the response is already computed and must still be served."""
+    """Best effort: the response is already computed and must still be served.
+
+    No rollback here for the same reason: the caller's session is never touched.
+    """
     try:
         write_cached_profile(
-            db,
             cache_key=cache_key,
             source_identity=source_identity,
             payload=payload,
         )
     except Exception as exc:  # noqa: BLE001 — degraded cache, not a failed request
         logger.warning("profile cache write failed", error_type=type(exc).__name__)
-        db.rollback()
 
 
 def _raster_crs(path: str):
@@ -136,7 +139,7 @@ def perfil_de_geojson(
     if not compare_dems:
         source_identity = build_source_identity(dem_path)
         cache_key = build_cache_key(geometry, source_identity)
-        cached = _read_cache(db, cache_key)
+        cached = _read_cache(cache_key)
         if cached is not None:
             return {**cached, "cache": "hit"}
     try:
@@ -159,7 +162,6 @@ def perfil_de_geojson(
     resultado = adjuntar_series_opcionales(payload, dem_path, compare_dems=compare_dems)
     if cache_key is not None and source_identity is not None:
         _write_cache(
-            db,
             cache_key=cache_key,
             source_identity=source_identity,
             payload=resultado,
