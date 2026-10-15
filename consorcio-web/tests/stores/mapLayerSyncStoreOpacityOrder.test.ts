@@ -9,7 +9,7 @@
  *     seeds the new slots without touching anything else.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Neutralise persist middleware — same workaround as the sibling store tests
 // (happy-dom `localStorage` is missing `setItem` when `createJSONStorage` runs).
@@ -21,7 +21,7 @@ vi.mock('zustand/middleware', async () => {
   };
 });
 
-import { useMapLayerSyncStore, migrateMapLayerState } from '../../src/stores/mapLayerSyncStore';
+import { migrateMapLayerState, useMapLayerSyncStore } from '../../src/stores/mapLayerSyncStore';
 
 describe('mapLayerSyncStore — opacity/order defaults', () => {
   it('both views start with empty opacityByLayer {} and orderByLayer []', () => {
@@ -124,14 +124,15 @@ describe('migrateMapLayerState — v3 → v4', () => {
     expect(migrated.map2d?.visibleVectors).toEqual({
       roads: true,
       soil: false,
+      caminos_huecos: false,
+      canales_relevados: true,
       catastro: false,
       escuelas: false,
-      sentido_camino: false,
       puntos_interes: false,
       red_vial_oficial: false,
-      caminos_huecos: false,
-      zona: true,
+      sentido_camino: false,
       ypf_estacion_bombeo: true,
+      zona: true,
     });
     expect(migrated.map3d?.visibleVectors).toEqual({
       roads: true,
@@ -153,12 +154,6 @@ describe('migrateMapLayerState — v3 → v4', () => {
       Alta: false,
       Media: true,
     });
-
-    // New slots seeded empty on BOTH views.
-    expect(migrated.map2d?.opacityByLayer).toEqual({});
-    expect(migrated.map2d?.orderByLayer).toEqual([]);
-    expect(migrated.map3d?.opacityByLayer).toEqual({});
-    expect(migrated.map3d?.orderByLayer).toEqual([]);
   });
 
   it('does NOT clobber opacity/order values already present (idempotent)', () => {
@@ -179,7 +174,6 @@ describe('migrateMapLayerState — v3 → v4', () => {
     expect(migrated.map3d?.opacityByLayer).toEqual({});
     expect(migrated.map3d?.orderByLayer).toEqual([]);
   });
-
   it('v3 migration still runs its own step when coming from v2', () => {
     const v2State = {
       map3d: { activeRasterType: null, visibleVectors: { roads: false } },
@@ -191,6 +185,82 @@ describe('migrateMapLayerState — v3 → v4', () => {
     // ... and v3→v4 seeds the new slots.
     expect(migrated.map3d?.opacityByLayer).toEqual({});
     expect(migrated.map3d?.orderByLayer).toEqual([]);
+  });
+});
+
+describe('migrateMapLayerState — v13 → v14', () => {
+  it('forces canales_relevados ON so a stale persisted false is overridden once', () => {
+    const stale: Partial<MapLayerSyncStoreState> = {
+      map2d: {
+        activeRasterType: 'dem',
+        visibleVectors: {
+          roads: true,
+          waterways: true,
+          canales_relevados: false,
+          canales_propuestos: false,
+          escuelas: false,
+          zona: true,
+          ypf_estacion_bombeo: true,
+        },
+        opacityByLayer: {},
+        orderByLayer: [],
+        labelSizeScale: 1,
+        lineWidthScale: 1,
+      },
+      initializedViews: { map2d: true, map3d: false },
+      propuestasEtapasVisibility: { Alta: true, Media: true },
+      terrainSmoothingEnabled: true,
+      terrainSmoothingThreshold: 'med',
+    };
+
+    const migrated = migrateMapLayerState(stale, 13);
+
+    expect(migrated.map2d?.visibleVectors.canales_relevados).toBe(true);
+    // deliberate user OFF on a sibling flag is preserved verbatim.
+    expect(migrated.map2d?.visibleVectors.canales_propuestos).toBe(false);
+    // other persisted fields untouched.
+    expect(migrated.map2d?.activeRasterType).toBe('dem');
+    expect(migrated.map2d?.visibleVectors.roads).toBe(true);
+  });
+
+  it('seeds canales_relevados:true when the persisted map2d has no such key yet', () => {
+    const noKey: Partial<MapLayerSyncStoreState> = {
+      map2d: {
+        activeRasterType: null,
+        visibleVectors: { roads: true, waterways: true },
+        opacityByLayer: {},
+        orderByLayer: [],
+        labelSizeScale: 1,
+        lineWidthScale: 1,
+      },
+      initializedViews: { map2d: false, map3d: false },
+      propuestasEtapasVisibility: {},
+      terrainSmoothingEnabled: true,
+      terrainSmoothingThreshold: 'med',
+    };
+
+    const migrated = migrateMapLayerState(noKey, 13);
+    expect(migrated.map2d?.visibleVectors.canales_relevados).toBe(true);
+  });
+
+  it('leaves a freshly persisted true untouched (no double-forcing)', () => {
+    const alreadyOn: Partial<MapLayerSyncStoreState> = {
+      map2d: {
+        activeRasterType: null,
+        visibleVectors: { roads: true, canales_relevados: true, escuelas: false },
+        opacityByLayer: {},
+        orderByLayer: [],
+        labelSizeScale: 1,
+        lineWidthScale: 1,
+      },
+      initializedViews: { map2d: false, map3d: false },
+      propuestasEtapasVisibility: {},
+      terrainSmoothingEnabled: true,
+      terrainSmoothingThreshold: 'med',
+    };
+
+    const migrated = migrateMapLayerState(alreadyOn, 13);
+    expect(migrated.map2d?.visibleVectors.canales_relevados).toBe(true);
   });
 });
 
@@ -255,17 +325,18 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
 
     // Deliberate user OFFs on other layers are NOT resurrected.
     expect(migrated.map2d?.visibleVectors).toEqual({
-      roads: false,
-      waterways: false,
-      soil: true,
-      escuelas: true,
+      caminos_huecos: false,
+      canales_relevados: true,
       catastro: false,
-      sentido_camino: false,
+      escuelas: true,
       puntos_interes: false,
       red_vial_oficial: false,
-      caminos_huecos: false,
-      zona: true,
+      roads: false,
+      sentido_camino: false,
+      soil: true,
+      waterways: false,
       ypf_estacion_bombeo: true,
+      zona: true,
     });
     expect(migrated.map2d?.activeRasterType).toBe('dem');
     expect(migrated.map2d?.opacityByLayer).toEqual({ soil: 0.4 });
