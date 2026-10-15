@@ -55,7 +55,6 @@ const INITIAL_OFF_VECTORS = [
   'catastro',
   'sentido_camino',
   'puntos_interes',
-  'red_vial_oficial',
   'caminos_huecos',
   'puntos_conflicto',
   // Pilar Azul — Escuelas rurales (v1 master toggle, opt-in per design §7).
@@ -100,8 +99,8 @@ describe('mapLayerSyncStore — startup defaults', () => {
       expect(initial['some_random_unregistered_layer']).toBeUndefined();
     });
 
-    it('red_vial_oficial starts OFF', () => {
-      expect(initial.red_vial_oficial).toBe(false);
+    it('red_vial_oficial starts ON (public IDECOR catalog overlay)', () => {
+      expect(initial.red_vial_oficial).toBe(true);
     });
 
     it('caminos_huecos starts OFF', () => {
