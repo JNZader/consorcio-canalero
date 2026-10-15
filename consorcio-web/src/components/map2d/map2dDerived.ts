@@ -2,6 +2,7 @@ import type { FeatureCollection } from 'geojson';
 import { getSoilColor } from '../../hooks/useSoilMap';
 import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import { isRoadFlowEnabled } from '../../lib/featureFlags';
 import { ROAD_LAYER_LABEL } from './mapLayerLabels';
 
 export type ActiveLegendItem = {
@@ -258,13 +259,13 @@ export function buildVectorLayerItems(params: {
       id: 'road_flow',
       label: 'Cruces de camino',
       category: LAYER_CATEGORY.TERRITORIO,
-      show: showRoadFlow,
+      show: showRoadFlow && isRoadFlowEnabled(),
     },
     {
       id: 'sentido_camino',
       label: 'Sentido en camino',
       category: LAYER_CATEGORY.TERRITORIO,
-      show: showRoadFlow,
+      show: showRoadFlow && isRoadFlowEnabled(),
     },
     {
       id: 'puntos_interes',
