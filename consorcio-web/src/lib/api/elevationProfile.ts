@@ -6,7 +6,7 @@
  * invert or a hydraulic section.
  */
 
-import type { LineString } from 'geojson';
+import type { LineString, MultiLineString } from 'geojson';
 
 import { apiFetch } from './core';
 
@@ -18,6 +18,9 @@ export type ElevationProfilePoint = {
   elevation_nasadem?: number | null;
   lon?: number;
   lat?: number;
+  /** Part index on a multi-part trace. Absent on a single LineString, so the
+   * chart draws one unbroken line exactly as before. */
+  parte?: number;
 };
 
 export type ElevationProfileResponse = {
@@ -34,15 +37,17 @@ export type ElevationProfileResponse = {
   /** `hit` when the row came from `elevation_profile_cache`; `miss` when it was
    * computed now. Additive: the series is identical either way. */
   cache?: 'hit' | 'miss';
+  /** Part count on a multi-part trace; absent for a single LineString. */
+  partes?: number;
 };
 
 const PUBLIC_ELEVATION_PATH = '/public/map/elevation-profile';
 const OPERATOR_ELEVATION_PATH = '/geo/elevation-profile';
 
 export function fetchElevationProfile(
-  geometry: LineString,
+  geometry: LineString | MultiLineString,
   areaId?: string,
-  compareDems = false,
+  compareDems = false
 ): Promise<ElevationProfileResponse> {
   if (!compareDems) {
     // Anonymous route: local DEM only (GLO-30 + MDE-Ar). skipAuth keeps the

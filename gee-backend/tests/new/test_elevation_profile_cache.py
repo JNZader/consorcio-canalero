@@ -16,6 +16,7 @@ from rasterio.transform import from_origin
 from sqlalchemy import event, update
 from sqlalchemy.orm import sessionmaker
 
+from app.domains.geo import elevation_profile as ep
 from app.domains.geo import elevation_profile_cache as cache_module
 from app.domains.geo import elevation_profile_service as svc
 from app.domains.geo.models import ElevationProfileCache
@@ -28,6 +29,15 @@ from app.domains.geo.elevation_profile_cache import (
 
 GEOM = {"type": "LineString", "coordinates": [[-62.7, -32.6], [-62.702, -32.6]]}
 PAYLOAD = {"puntos": [{"distance_m": 0.0, "elevation_m": 120.0}], "length_m": 0.0}
+GEOM_B = {"type": "LineString", "coordinates": [[-62.703, -32.6], [-62.705, -32.6]]}
+MULTI = {
+    "type": "MultiLineString",
+    "coordinates": [GEOM["coordinates"], GEOM_B["coordinates"]],
+}
+MULTI_REVERSED = {
+    "type": "MultiLineString",
+    "coordinates": [GEOM_B["coordinates"], GEOM["coordinates"]],
+}
 
 _factory = None
 
@@ -117,7 +127,7 @@ def test_second_identical_call_is_a_hit_and_does_not_resample(
     dem = _dem(tmp_path)
     calls = {"n": 0}
 
-    def fake_profile(_linea, _path):
+    def fake_profile(_linea, _path, *, paso_m=None):
         calls["n"] += 1
         return {
             "puntos": [{"distance_m": 0.0, "elevation_m": 120.0}],
@@ -146,7 +156,7 @@ def test_new_dem_run_invalidates_the_stored_profile(
     dem = _dem(tmp_path)
     calls = {"n": 0}
 
-    def fake_profile(_linea, _path):
+    def fake_profile(_linea, _path, *, paso_m=None):
         calls["n"] += 1
         return {
             "puntos": [{"distance_m": 0.0, "elevation_m": 120.0 + calls["n"]}],
@@ -175,7 +185,7 @@ def test_gee_comparison_is_never_served_from_the_cache(
     dem = _dem(tmp_path)
     calls = {"n": 0}
 
-    def fake_profile(_linea, _path):
+    def fake_profile(_linea, _path, *, paso_m=None):
         calls["n"] += 1
         return {
             "puntos": [{"distance_m": 0.0, "elevation_m": 120.0}],
@@ -219,7 +229,7 @@ def _stage_pending_row(db, cache_key: str) -> None:
 def _stub_sampling(monkeypatch, dem) -> None:
     """The cache contract is the subject here; rasterio sampling is covered elsewhere."""
 
-    def fake_profile(_linea, _path):
+    def fake_profile(_linea, _path, *, paso_m=None):
         return {
             "puntos": [{"distance_m": 0.0, "elevation_m": 120.0}],
             "_vertices_xy": [(-62.7, -32.6)],
@@ -301,3 +311,98 @@ def test_a_successful_cache_write_does_not_commit_the_callers_session(
     assert read_cached_profile(build_cache_key(GEOM, identity)) is not None, (
         "the write must have landed in the cache's own session"
     )
+
+
+def test_unir_perfiles_accumulates_chainage_and_tags_each_part() -> None:
+    """Chainage keeps growing across parts and every point knows its part."""
+    primera = {
+        "puntos": [
+            {"distance_m": 0.0, "elevation_m": 10.0},
+            {"distance_m": 100.0, "elevation_m": 11.0},
+        ],
+        "length_m": 100.0,
+        "source": "dem_filled.tif",
+        "cell_m": 15.0,
+        "disclaimer": "GLO-30",
+    }
+    segunda = {
+        "puntos": [{"distance_m": 0.0, "elevation_m": 12.0}],
+        "length_m": 50.0,
+        "source": "dem_filled.tif",
+        "cell_m": 15.0,
+        "disclaimer": "GLO-30",
+    }
+
+    unido = ep.unir_perfiles([primera, segunda])
+
+    assert unido["partes"] == 2
+    assert unido["length_m"] == 150.0
+    assert [punto["parte"] for punto in unido["puntos"]] == [0, 0, 1]
+    assert [punto["distance_m"] for punto in unido["puntos"]] == [0.0, 100.0, 100.0]
+    assert unido["min_elevation_m"] == 10.0
+    assert unido["max_elevation_m"] == 12.0
+    assert unido["disclaimer"] == "GLO-30"
+
+
+def test_unir_perfiles_rejects_an_empty_list() -> None:
+    with pytest.raises(ValueError):
+        ep.unir_perfiles([])
+
+
+def test_a_multipart_trace_samples_every_part(
+    cache_env, db_session_factory, monkeypatch, tmp_path
+) -> None:
+    """Mode 2: every tramo of the road is sampled, not one chosen path."""
+    dem = _dem(tmp_path)
+    muestreadas: list[float] = []
+
+    def fake_profile(_linea, _path, *, paso_m=None):
+        muestreadas.append(float(paso_m or 0.0))
+        return {
+            "puntos": [
+                {"distance_m": 0.0, "elevation_m": 120.0},
+                {"distance_m": 10.0, "elevation_m": 121.0},
+            ],
+            "length_m": 10.0,
+            "min_elevation_m": 120.0,
+            "max_elevation_m": 121.0,
+            "source": "dem_filled.tif",
+            "cell_m": float(paso_m or 15.0),
+            "disclaimer": "GLO-30",
+            "_vertices_xy": [(-62.7, -32.6), (-62.702, -32.6)],
+        }
+
+    monkeypatch.setattr(svc, "_resultados", lambda _db, _area_id: [{"filled_dem": str(dem)}])
+    monkeypatch.setattr(svc, "resolver_dem_filled", lambda _rows: str(dem))
+    monkeypatch.setattr(svc, "perfil_desde_linea_metrica", fake_profile)
+
+    db = db_session_factory()
+    payload = svc.perfil_de_geojson(db, geometry=MULTI)
+
+    assert len(muestreadas) == 2, "cada parte se muestrea"
+    assert len(set(muestreadas)) == 1, "un solo paso compartido para todo el presupuesto"
+    assert payload["partes"] == 2
+    assert [punto["parte"] for punto in payload["puntos"]] == [0, 0, 1, 1]
+    assert payload["length_m"] == 20.0
+    assert all("lon" in punto and "lat" in punto for punto in payload["puntos"])
+
+
+def test_a_single_line_keeps_todays_payload_shape(
+    cache_env, db_session_factory, monkeypatch, tmp_path
+) -> None:
+    """The single-part payload must not grow parte/partes: cached rows depend on it."""
+    dem = _dem(tmp_path)
+    _stub_sampling(monkeypatch, dem)
+
+    db = db_session_factory()
+    payload = svc.perfil_de_geojson(db, geometry=GEOM)
+
+    assert "parte" not in payload
+    assert "partes" not in payload
+    assert all("parte" not in punto for punto in payload["puntos"])
+
+
+def test_the_part_order_changes_the_cache_key() -> None:
+    """Two part orders are two different traces: different chainage, different key."""
+    identity = "series:v1|dem_filled:1:1|mde_ar:absent"
+    assert build_cache_key(MULTI, identity) != build_cache_key(MULTI_REVERSED, identity)

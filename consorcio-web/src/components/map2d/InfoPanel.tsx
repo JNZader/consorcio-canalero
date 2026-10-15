@@ -41,25 +41,23 @@ import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
 import { CanalCard } from './CanalCard';
+
 const ElevationProfileChart = lazy(async () => {
   const mod = await import('./ElevationProfileChart');
   return { default: mod.ElevationProfileChart };
 });
-import { mergeLineStringTramos, profileAxisLengthM } from './mergeLineStringTramos';
-import { nearestLineStringIndex } from './tramoAtPoint';
-import type { ProfileRangeStats } from './profileRange';
-import { EscuelaCard } from './EscuelaCard';
-import {
-  groupIdentifyChips,
-  identifyTramoRows,
-  shouldHideDuplicateChips,
-} from './identifyChips';
-import { MapPanelShell } from './MapPanelShell';
-import { PuntoInteresCard } from './PuntoInteresCard';
+
 import { normalizeBpaFlat } from './bpaPracticas';
+import { EscuelaCard } from './EscuelaCard';
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
+import { groupIdentifyChips, identifyTramoRows, shouldHideDuplicateChips } from './identifyChips';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
+import { MapPanelShell } from './MapPanelShell';
+import { dedupedLineStringLengthM, mergeLineStringParts } from './mergeLineStringTramos';
+import { PuntoInteresCard } from './PuntoInteresCard';
+import type { ProfileRangeStats } from './profileRange';
 import { isPuntoInteresLayerId } from './puntosInteresLayers';
+import { nearestLineStringIndex } from './tramoAtPoint';
 
 /**
  * MapLibre attaches a `layer.id` to every feature returned by
@@ -123,12 +121,8 @@ interface InfoPanelProps {
   /** Opaque selection marker — a change reopens the mobile sheet at `peek`. */
   readonly resetKey?: unknown;
   /** Google Earth analog: chart hover chainage on the selected LineString. */
-  readonly onElevationProfileHover?: (
-    hover: { lon: number; lat: number } | null,
-  ) => void;
-  readonly onElevationProfileRange?: (
-    range: ProfileRangeStats | null,
-  ) => void;
+  readonly onElevationProfileHover?: (hover: { lon: number; lat: number } | null) => void;
+  readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
 }
 
 /**
@@ -154,7 +148,13 @@ export function featureDisplayName(feature: Feature, fallback = 'Elemento'): str
 export function groupSelectionSummary(features: readonly Feature[]): string {
   const count = features.length;
   const allLines = features.every((feature) => feature.geometry?.type === 'LineString');
-  const noun = allLines ? (count === 1 ? 'tramo' : 'tramos') : count === 1 ? 'elemento' : 'elementos';
+  const noun = allLines
+    ? count === 1
+      ? 'tramo'
+      : 'tramos'
+    : count === 1
+      ? 'elemento'
+      : 'elementos';
   const parts: string[] = [`${count} ${noun}`];
   const firstProps = (features[0]?.properties ?? {}) as Record<string, unknown>;
   const rutaRaw = firstProps.ruta ?? firstProps.rtn;
@@ -162,7 +162,9 @@ export function groupSelectionSummary(features: readonly Feature[]): string {
   if (ruta.length > 0) {
     parts.unshift(ruta);
   }
-  const metres = profileAxisLengthM(features);
+  // El perfil muestrea cada parte, asi que el numero tiene que ser la traza
+  // completa (que es lo que dice la etiqueta), no un eje que deja ramas afuera.
+  const metres = dedupedLineStringLengthM(features);
   if (metres > 0) {
     parts.push(`${(metres / 1000).toFixed(2)} km sin superposición`);
   }
@@ -406,10 +408,10 @@ export const InfoPanel = memo(function InfoPanel({
     if (feature) return [feature];
     return [];
   }, [features, feature]);
-  const profileGeometry = useMemo(() => mergeLineStringTramos(resolved), [resolved]);
+  const profileGeometry = useMemo(() => mergeLineStringParts(resolved), [resolved]);
   const groupSummary = useMemo(
     () => (resolved.length > 1 ? groupSelectionSummary(resolved) : null),
-    [resolved],
+    [resolved]
   );
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -418,7 +420,7 @@ export const InfoPanel = memo(function InfoPanel({
   const hideDuplicateChips = shouldHideDuplicateChips(identifyChips, resolved.length);
   const tramoRows = useMemo(
     () => (hideDuplicateChips ? identifyTramoRows(resolved) : []),
-    [hideDuplicateChips, resolved],
+    [hideDuplicateChips, resolved]
   );
 
   useEffect(() => {
@@ -528,20 +530,20 @@ export const InfoPanel = memo(function InfoPanel({
         {profileGeometry ? (
           <>
             <Suspense fallback={null}>
-            <ElevationProfileChart
-              geometry={profileGeometry}
-              onHoverLngLat={(point) => {
-                onElevationProfileHover?.(point);
-                setHoverIdx(locateTramo(point));
-              }}
-              onPickLngLat={(point) => {
-                const index = locateTramo(point);
-                if (index != null) {
-                  setFocusedIdx(index);
-                }
-              }}
-              onRangeCoordinates={onElevationProfileRange}
-            />
+              <ElevationProfileChart
+                geometry={profileGeometry}
+                onHoverLngLat={(point) => {
+                  onElevationProfileHover?.(point);
+                  setHoverIdx(locateTramo(point));
+                }}
+                onPickLngLat={(point) => {
+                  const index = locateTramo(point);
+                  if (index != null) {
+                    setFocusedIdx(index);
+                  }
+                }}
+                onRangeCoordinates={onElevationProfileRange}
+              />
             </Suspense>
             {hoverTramo ? (
               <Text size="xs" data-testid="elevation-profile-tramo">

@@ -6,7 +6,7 @@
  */
 
 import { Alert, Button, Checkbox, Stack, Text } from '@mantine/core';
-import type { Geometry, LineString } from 'geojson';
+import type { Geometry, LineString, MultiLineString } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
 import {
   Line,
@@ -23,10 +23,20 @@ import {
   fetchElevationProfile,
 } from '../../lib/api/elevationProfile';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import { buildProfileChartRows } from './profileChartRows';
 import { type ProfileRangeStats, profileSliceStats, sliceProfile } from './profileRange';
 
-function isLineString(geometry: Geometry | null | undefined): geometry is LineString {
-  return geometry?.type === 'LineString' && geometry.coordinates.length >= 2;
+function hasProfileParts(
+  geometry: Geometry | null | undefined
+): geometry is LineString | MultiLineString {
+  if (geometry?.type === 'LineString') {
+    return geometry.coordinates.length >= 2;
+  }
+  if (geometry?.type === 'MultiLineString') {
+    // Cada tramo del camino es una parte: el perfil las muestrea todas.
+    return geometry.coordinates.some((parte) => parte.length >= 2);
+  }
+  return false;
 }
 
 function formatM(value: number): string {
@@ -88,8 +98,8 @@ export function ElevationProfileChart({
     setRange(null);
     rangeCb.current?.(null);
     hoverCb.current?.(null);
-    if (!isLineString(geometry) || !loadedOnce.current) {
-      if (!isLineString(geometry)) {
+    if (!hasProfileParts(geometry) || !loadedOnce.current) {
+      if (!hasProfileParts(geometry)) {
         loadedOnce.current = false;
       }
       setProfile(null);
@@ -115,11 +125,11 @@ export function ElevationProfileChart({
         }
         setError(cause instanceof Error ? cause.message : 'No se pudo muestrear el DEM');
         setStatus('error');
-      },
+      }
     );
   }, [compareDems, geometry]);
 
-  if (!isLineString(geometry)) {
+  if (!hasProfileParts(geometry)) {
     return null;
   }
   const line = geometry;
@@ -145,16 +155,7 @@ export function ElevationProfileChart({
     }
   }
 
-  const chartRows =
-    profile?.puntos.map((p) => ({
-      distance_m: p.distance_m,
-      elevation_m: p.elevation_m,
-      elevation_mde_ar: p.elevation_mde_ar,
-      elevation_aw3d30: p.elevation_aw3d30,
-      elevation_nasadem: p.elevation_nasadem,
-      lon: p.lon,
-      lat: p.lat,
-    })) ?? [];
+  const chartRows = buildProfileChartRows(profile?.puntos ?? []);
   const hasMdeAr = chartRows.some((row) => row.elevation_mde_ar != null);
   const hasAw3d30 = chartRows.some((row) => row.elevation_aw3d30 != null);
   const hasNasadem = chartRows.some((row) => row.elevation_nasadem != null);

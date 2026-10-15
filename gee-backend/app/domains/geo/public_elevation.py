@@ -20,9 +20,9 @@ router = APIRouter(prefix="/map", tags=["public-elevation"])
 
 
 class PublicElevationProfileRequest(BaseModel):
-    """WGS84 LineString a visitor picked (published canal/road, or drawn)."""
+    """WGS84 LineString (or MultiLineString) a visitor picked."""
 
-    geometry: dict = Field(..., description="GeoJSON LineString in EPSG:4326")
+    geometry: dict = Field(..., description="GeoJSON LineString or MultiLineString in EPSG:4326")
     area_id: str | None = Field(
         default=None,
         description="DEM area; newest filled DEM across areas when omitted",
