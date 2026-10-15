@@ -23,14 +23,21 @@ import {
   syncApprovedZoneLayers,
   syncBasinLayers,
   syncBpaHistoricoLayer,
+  syncCaminosHuecosLayers,
   syncCanalesLayers,
   syncCatastroLayers,
   syncEscuelasLayer,
   syncPorcentajeForestacionLayer,
+  syncPuntosInteresLayer,
+  syncRedVialOficialLayers,
+  syncRoadFlowLayers,
   syncRoadLayers,
   syncSoilLayers,
   syncWaterwayLayers,
+  syncYpfEstacionBombeoLayer,
+  syncZonaLayer,
 } from './mapLayerEffectHelpers';
+import type { RoadFlowKindVisibility } from './roadFlowLayers';
 import { syncMartinSuggestionLayers } from './mapRasterOverlayHelpers';
 
 const COMPARISON_SOURCE_ID = 'comparison-left';
@@ -42,6 +49,15 @@ const COMPARISON_LAYER_ID = 'comparison-left-layer';
  * Deliberately excludes raster-only UI ids (e.g. `precip_normal`): the
  * comparison view shows exactly ONE raster tile layer on the left
  * (`leftTileUrl`), not the normal map's collection of raster overlays.
+ *
+ * `road_flow` is the one vector layer deliberately absent, by the owner-ratified
+ * rule of 2026-08-23: any layer whose data needs an authenticated panel PLUS a
+ * disclaimer stays out of the comparator, because the slider renders map paint
+ * and nothing else. The operator-only overlays (`red_vial_oficial`,
+ * `caminos_huecos`, `puntos_interes`, `sentido_camino`) satisfy only the first
+ * half — they are not rankings and carry no disclaimer — so they belong here,
+ * behind the SAME role gate the base map uses: a visitor who cannot see them on
+ * the right cannot see them on the left.
  */
 export const COMPARISON_RENDERABLE_UI_LAYER_IDS = [
   'basins',
@@ -59,6 +75,10 @@ export const COMPARISON_RENDERABLE_UI_LAYER_IDS = [
   'canales_relevados',
   'canales_propuestos',
   'escuelas',
+  'red_vial_oficial',
+  'caminos_huecos',
+  'puntos_interes',
+  'sentido_camino',
 ] as const satisfies readonly RenderableUiLayerId[];
 
 export interface ComparisonCanalesSyncInputs {
@@ -82,6 +102,28 @@ export interface ComparisonOverlaySyncInputs {
   escuelasCollection: FeatureCollection<Point, EscuelaFeatureProperties> | null;
   opacityByLayer: Record<string, number> | undefined;
   orderByLayer: readonly string[] | undefined;
+  /**
+   * Operator-only overlays. Mounted behind the SAME role gate the base map uses,
+   * so a visitor who cannot see them on the right cannot see them on the left.
+   */
+  redVialOficial: { shouldMount: boolean };
+  caminosHuecos: { shouldMount: boolean };
+  puntosInteres: FeatureCollection<Point> | null;
+  /** The consorcio boundary: always painted, toggled by `vectorVisibility.zona`. */
+  zona: FeatureCollection | null;
+  /**
+   * The road-flow payload. The RANKING is never painted here — `road_flow` needs
+   * an authenticated panel plus the RFA-R4 disclaimer, and the owner-ratified
+   * rule of 2026-08-23 keeps such layers out of the comparator. The direction
+   * chevrons ARE painted, gated by `vectorVisibility.sentido_camino` exactly as
+   * on the base map: they are not a ranking and carry no disclaimer.
+   */
+  roadFlow: {
+    crossings: FeatureCollection<Point> | null | undefined;
+    totalFlujoNatural: number;
+    kinds: RoadFlowKindVisibility;
+    flechas?: FeatureCollection<Point> | null;
+  };
 }
 
 function findFirstRenderableLayer(map: maplibregl.Map): string | undefined {
@@ -177,6 +219,26 @@ export function syncComparisonVectorLayers(
     activeEtapas: inputs.canales.activeEtapas,
   });
   syncEscuelasLayer(map, inputs.escuelasCollection, !!visible.escuelas);
+  // Operator-only overlays, behind the SAME role gate as the base map: a visitor
+  // who cannot see them on the right cannot see them on the left.
+  syncRedVialOficialLayers(map, inputs.redVialOficial.shouldMount, !!visible.red_vial_oficial);
+  syncCaminosHuecosLayers(map, inputs.caminosHuecos.shouldMount, !!visible.caminos_huecos);
+  syncPuntosInteresLayer(map, inputs.puntosInteres, !!visible.puntos_interes);
+  syncZonaLayer(map, inputs.zona, visible.zona !== false);
+  syncYpfEstacionBombeoLayer(map, visible.ypf_estacion_bombeo !== false);
+  syncRoadFlowLayers(
+    map,
+    inputs.roadFlow.crossings,
+    inputs.roadFlow.totalFlujoNatural,
+    // `road_flow` stays OUT of the comparator: the owner-ratified rule of
+    // 2026-08-23 keeps out any layer whose data needs an authenticated panel
+    // PLUS a disclaimer, and the ranking carries the RFA-R4 statement in a panel
+    // this view does not render. The direction chevrons are not a ranking.
+    false,
+    inputs.roadFlow.kinds,
+    inputs.roadFlow.flechas,
+    !!visible.sentido_camino
+  );
 
   applyLayerOpacity(map as unknown as Parameters<typeof applyLayerOpacity>[0], inputs.opacityByLayer);
   applyLayerOrder(map as unknown as Parameters<typeof applyLayerOrder>[0], inputs.orderByLayer);
