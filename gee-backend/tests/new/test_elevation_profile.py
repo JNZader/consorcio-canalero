@@ -151,6 +151,43 @@ def test_aplicar_mde_ar_skips_when_sibling_missing(tmp_path) -> None:
     assert "mde_ar_disclaimer" not in out
 
 
+def test_muestrear_alineado_treats_a_zero_hole_as_nodata(tmp_path) -> None:
+    """The filled DEM carries its holes as 0.0 without declaring `nodata`.
+
+    Unmasked, that value reaches the chart and stretches its Y axis to 0, which
+    squashes the whole profile into a sliver at the top. That is the live defect
+    on S384 (2 points) and T269-08 (29 points).
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    from app.domains.geo.elevation_profile import muestrear_alineado
+
+    transform = from_origin(-62.71, -32.59, 0.01, 0.01)
+    data = np.array([[0.0, 120.0], [121.0, 122.0]], dtype=np.float32)
+    with rasterio.open(
+        tmp_path / "dem_filled.tif",
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
+    ) as dst:
+        dst.write(data, 1)
+
+    cotas = muestrear_alineado(
+        str(tmp_path / "dem_filled.tif"),
+        [(-62.705, -32.595), (-62.695, -32.595)],
+    )
+
+    assert cotas[0] is None
+    assert cotas[1] == pytest.approx(120.0)
+
+
 def test_aplicar_mde_ar_samples_wgs84_sibling_and_keeps_holes(tmp_path) -> None:
     import numpy as np
     import rasterio
