@@ -408,12 +408,13 @@ export default function MapaMapLibre() {
     demLayers,
   });
 
-  // Auto-activate comparison when comparison state changes
-  useEffect(() => {
-    if (comparison?.enabled && comparison.left && comparison.right) {
-      setViewMode('comparison');
-    }
-  }, [comparison]);
+  // The comparison view is NEVER auto-activated from the comparison state.
+  // A saved pair is restored (localStorage, or the public endpoint for
+  // incognito / cross-device) but restoring it must not switch the view:
+  // entering the map shows the chosen image, or the base map. The pair stays
+  // saved and the `Base | Imagen | Comparar` selector is one click away.
+  // Regression this pins: an effect here flipped the view to 'comparison' on
+  // the ASYNC backend restore, overriding the image the visitor had chosen.
 
   // Auto-activate single image view ONLY when an image transitions from
   // null → truthy (i.e. the user just selected one). Without the ref the
