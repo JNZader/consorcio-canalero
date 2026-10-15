@@ -129,7 +129,7 @@ describe('migrateMapLayerState — v3 → v4', () => {
       catastro: false,
       escuelas: false,
       puntos_interes: false,
-      red_vial_oficial: false,
+      red_vial_oficial: true,
       sentido_camino: false,
       ypf_estacion_bombeo: true,
       zona: true,
@@ -264,6 +264,57 @@ describe('migrateMapLayerState — v13 → v14', () => {
   });
 });
 
+describe('migrateMapLayerState — v14 → v15', () => {
+  it('forces red_vial_oficial ON so the public IDECOR catalog overlay shows by default', () => {
+    const stale: Partial<MapLayerSyncStoreState> = {
+      map2d: {
+        activeRasterType: null,
+        visibleVectors: {
+          roads: true,
+          waterways: true,
+          canales_relevados: true,
+          red_vial_oficial: false,
+        },
+        opacityByLayer: {},
+        orderByLayer: [],
+        labelSizeScale: 1,
+        lineWidthScale: 1,
+      },
+      initializedViews: { map2d: true, map3d: false },
+      propuestasEtapasVisibility: { Alta: true, Media: true },
+      terrainSmoothingEnabled: true,
+      terrainSmoothingThreshold: 'med',
+    };
+
+    const migrated = migrateMapLayerState(stale, 14);
+
+    expect(migrated.map2d?.visibleVectors.red_vial_oficial).toBe(true);
+    // every other persisted preference survives verbatim.
+    expect(migrated.map2d?.visibleVectors.roads).toBe(true);
+    expect(migrated.map2d?.activeRasterType).toBeNull();
+  });
+
+  it('seeds red_vial_oficial:true when the persisted map2d has no such key yet', () => {
+    const noKey: Partial<MapLayerSyncStoreState> = {
+      map2d: {
+        activeRasterType: null,
+        visibleVectors: { roads: true },
+        opacityByLayer: {},
+        orderByLayer: [],
+        labelSizeScale: 1,
+        lineWidthScale: 1,
+      },
+      initializedViews: { map2d: false, map3d: false },
+      propuestasEtapasVisibility: {},
+      terrainSmoothingEnabled: true,
+      terrainSmoothingThreshold: 'med',
+    };
+
+    const migrated = migrateMapLayerState(noKey, 14);
+    expect(migrated.map2d?.visibleVectors.red_vial_oficial).toBe(true);
+  });
+});
+
 /**
  * v4 → v5 (map-fluidity T1) — the `catastro` default flipped false → true.
  *
@@ -323,14 +374,15 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
 
     const migrated = migrateMapLayerState(v4State, 4);
 
-    // Deliberate user OFFs on other layers are NOT resurrected.
+    // Deliberate user OFFs on other layers are NOT resurrected. (The public
+    // IDECOR catalog overlay is the one exception: v15 forces it on by design.)
     expect(migrated.map2d?.visibleVectors).toEqual({
       caminos_huecos: false,
       canales_relevados: true,
       catastro: false,
       escuelas: true,
       puntos_interes: false,
-      red_vial_oficial: false,
+      red_vial_oficial: true,
       roads: false,
       sentido_camino: false,
       soil: true,
@@ -390,7 +442,9 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     expect(migrated.map2d?.visibleVectors?.catastro).toBe(false);
     expect(migrated.map2d?.visibleVectors?.sentido_camino).toBe(false);
     expect(migrated.map2d?.visibleVectors?.puntos_interes).toBe(false);
-    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(false);
+    // v15 forces the public IDECOR catalog overlay on, superseding the
+    // historical staff-only OFF default.
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
     expect(migrated.map2d?.visibleVectors?.caminos_huecos).toBe(false);
     expect(migrated.map3d?.visibleVectors?.catastro).toBe(false);
   });
@@ -445,14 +499,16 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
     expect(migrated.map3d?.lineWidthScale).toBe(1);
   });
 
-  it('v9 → v10 seeds red_vial_oficial on without flipping an explicit false', () => {
+  it('v9 → v10 seeds red_vial_oficial on; v15 then forces it on even from an explicit false', () => {
     const alreadyOff = {
       map2d: {
         visibleVectors: { catastro: true, red_vial_oficial: false },
       },
     };
     const migrated = migrateMapLayerState(alreadyOff, 9);
-    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(false);
+    // v10 preserved the explicit false, but v15 (public IDECOR overlay) forces
+    // it on, so the cumulative result is true.
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
   });
 
   it('v9 → v10 seeds red_vial_oficial on when the key is missing', () => {
@@ -462,7 +518,7 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       },
     };
     const migrated = migrateMapLayerState(missing, 9);
-    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(false);
+    expect(migrated.map2d?.visibleVectors?.red_vial_oficial).toBe(true);
   });
 
   it('v10 → v11 seeds caminos_huecos on without flipping an explicit false', () => {
@@ -504,7 +560,9 @@ describe('migrateMapLayerState — v4 → v5 (catastro default flip)', () => {
       catastro: false,
       sentido_camino: false,
       puntos_interes: false,
-      red_vial_oficial: false,
+      // v12 turned the staff extras off, but v15 re-enabled this one: the
+      // IDECOR catalog overlay is public and on by default.
+      red_vial_oficial: true,
       caminos_huecos: false,
     });
   });

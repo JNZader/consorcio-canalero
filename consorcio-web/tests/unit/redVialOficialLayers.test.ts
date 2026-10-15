@@ -85,7 +85,7 @@ describe('layerRenderRegistry · red_vial_oficial', () => {
   });
 });
 
-describe('syncRedVialOficialLayers · citizen never mounts', () => {
+describe('syncRedVialOficialLayers · shouldMount gate', () => {
   it('does not add source or layers when shouldMount is false', () => {
     const map = createMapMock();
     syncRedVialOficialLayers(map as never, false, true);
@@ -93,7 +93,7 @@ describe('syncRedVialOficialLayers · citizen never mounts', () => {
     expect(map.addLayer).not.toHaveBeenCalled();
   });
 
-  it('mounts only the falta layer for staff, not en_padron', () => {
+  it('mounts only the falta layer, not en_padron', () => {
     const map = createMapMock();
     syncRedVialOficialLayers(map as never, true, true);
 
@@ -109,7 +109,7 @@ describe('syncRedVialOficialLayers · citizen never mounts', () => {
     expect(layers[0].paint?.['line-color']).toBe('#ea580c');
   });
 
-  it('tears down source and layers when staff unmounts', () => {
+  it('tears down source and layers when shouldMount turns false', () => {
     const map = createMapMock();
     syncRedVialOficialLayers(map as never, true, true);
     syncRedVialOficialLayers(map as never, false, false);
