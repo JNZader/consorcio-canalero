@@ -72,49 +72,81 @@ def prune_cutoff() -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=PRUNE_DAYS)
 
 
-def read_cached_profile(db, cache_key: str) -> Optional[dict[str, Any]]:
-    """Stored payload, or ``None`` on a miss. Raises if the table is unreachable."""
+def _default_session():
+    from app.db.session import SessionLocal
+
+    return SessionLocal()
+
+
+#: Test seam: lets a test point the cache at its own engine. Production keeps
+#: the app session factory, and the cache still never touches the caller's session.
+_session_factory = _default_session
+
+
+def _session():
+    """A session of its own.
+
+    The cache must never commit or roll back the caller's request-scoped
+    session: committing it ends a transaction the caller still owns, and rolling
+    it back discards the caller's pending changes (review R3).
+    """
+    return _session_factory()
+
+
+def read_cached_profile(cache_key: str) -> Optional[dict[str, Any]]:
+    """Stored payload, or ``None`` on a miss.
+
+    Reads on its own session so a failure here cannot abort the caller's
+    transaction.
+    """
     from app.domains.geo.models import ElevationProfileCache
 
-    row = db.get(ElevationProfileCache, cache_key)
-    if row is None:
-        return None
-    payload = row.payload
-    # Fail safe: anything that is not a mapping is a miss, never a guess.
-    return payload if isinstance(payload, dict) else None
+    with _session() as session:
+        row = session.get(ElevationProfileCache, cache_key)
+        if row is None:
+            return None
+        payload = row.payload
+        # Fail safe: anything that is not a mapping is a miss, never a guess.
+        return payload if isinstance(payload, dict) else None
 
 
 def write_cached_profile(
-    db,
     *,
     cache_key: str,
     source_identity: str,
     payload: dict[str, Any],
 ) -> None:
-    """Upsert the payload and prune old rows.
+    """Upsert the payload and prune old rows, in one transaction of its own.
 
-    Owns its ``commit``: ``get_db`` closes the request session without
-    committing, so a write here would otherwise be rolled back silently.
+    ``ON CONFLICT DO UPDATE``, not get-then-add: two requests computing the same
+    key concurrently would both miss, and the loser's insert would raise a
+    unique violation that the caller swallows as a cache failure — a silently
+    lost write plus a repeated recomputation (review R2-001).
     """
-    from sqlalchemy import delete
+    from sqlalchemy import delete, func
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from app.domains.geo.models import ElevationProfileCache
 
-    row = db.get(ElevationProfileCache, cache_key)
-    if row is None:
-        db.add(
-            ElevationProfileCache(
-                cache_key=cache_key,
-                source_identity=source_identity,
-                payload=payload,
+    with _session() as session:
+        statement = pg_insert(ElevationProfileCache).values(
+            cache_key=cache_key,
+            source_identity=source_identity,
+            payload=payload,
+        )
+        session.execute(
+            statement.on_conflict_do_update(
+                index_elements=["cache_key"],
+                set_={
+                    "source_identity": statement.excluded.source_identity,
+                    "payload": statement.excluded.payload,
+                    "updated_at": func.now(),
+                },
             )
         )
-    else:
-        row.source_identity = source_identity
-        row.payload = payload
-    # Parameterised cutoff instead of a raw SQL interval: no `text()`, nothing
-    # for a scanner (or a reviewer) to second-guess.
-    db.execute(
-        delete(ElevationProfileCache).where(ElevationProfileCache.created_at < prune_cutoff())
-    )
-    db.commit()
+        # Parameterised cutoff instead of a raw SQL interval: no `text()`, nothing
+        # for a scanner (or a reviewer) to second-guess.
+        session.execute(
+            delete(ElevationProfileCache).where(ElevationProfileCache.created_at < prune_cutoff())
+        )
+        session.commit()
