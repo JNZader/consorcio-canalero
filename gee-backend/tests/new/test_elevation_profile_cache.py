@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import rasterio
 from rasterio.transform import from_origin
-from sqlalchemy import update
+from sqlalchemy import event, update
 from sqlalchemy.orm import sessionmaker
 
 from app.domains.geo import elevation_profile_cache as cache_module
@@ -200,3 +200,104 @@ def test_gee_comparison_is_never_served_from_the_cache(
     assert read_cached_profile(build_cache_key(GEOM, identity)) == {
         key: value for key, value in plain.items() if key != "cache"
     }
+
+
+def _spy_caller_transaction(db) -> list[str]:
+    """Record every commit or rollback the caller's own session performs."""
+    events: list[str] = []
+    event.listen(db, "before_commit", lambda _session: events.append("commit"))
+    event.listen(db, "after_rollback", lambda _session: events.append("rollback"))
+    return events
+
+
+def _stage_pending_row(db, cache_key: str) -> None:
+    """Work already pending in the caller's transaction, flushed but uncommitted."""
+    db.add(ElevationProfileCache(cache_key=cache_key, source_identity="pending", payload={}))
+    db.flush()
+
+
+def _stub_sampling(monkeypatch, dem) -> None:
+    """The cache contract is the subject here; rasterio sampling is covered elsewhere."""
+
+    def fake_profile(_linea, _path):
+        return {
+            "puntos": [{"distance_m": 0.0, "elevation_m": 120.0}],
+            "_vertices_xy": [(-62.7, -32.6)],
+        }
+
+    monkeypatch.setattr(svc, "_resultados", lambda _db, _area_id: [{"filled_dem": str(dem)}])
+    monkeypatch.setattr(svc, "resolver_dem_filled", lambda _rows: str(dem))
+    monkeypatch.setattr(svc, "perfil_desde_linea_metrica", fake_profile)
+
+
+def test_a_failing_cache_read_serves_the_profile_and_spares_the_caller(
+    cache_env, db_session_factory, monkeypatch, tmp_path
+) -> None:
+    """R3-TransactionManagement: a cache read error belongs to the cache, not the caller."""
+    dem = _dem(tmp_path)
+    _stub_sampling(monkeypatch, dem)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("cache read is down")
+
+    monkeypatch.setattr(svc, "read_cached_profile", boom)
+
+    db = db_session_factory()
+    _stage_pending_row(db, "pending-after-read-failure")
+    events = _spy_caller_transaction(db)
+
+    served = svc.perfil_de_geojson(db, geometry=GEOM)
+
+    assert served["puntos"], "a degraded cache must still serve the profile"
+    assert events == [], "the cache must not commit or roll back the caller's session"
+    assert db.get(ElevationProfileCache, "pending-after-read-failure") is not None, (
+        "the caller's pending work must survive a cache failure"
+    )
+
+
+def test_a_failing_cache_write_serves_the_profile_and_spares_the_caller(
+    cache_env, db_session_factory, monkeypatch, tmp_path
+) -> None:
+    """The response is already computed when the write fails; it must still be served."""
+    dem = _dem(tmp_path)
+    _stub_sampling(monkeypatch, dem)
+
+    def boom(**_kwargs):
+        raise RuntimeError("cache write is down")
+
+    monkeypatch.setattr(svc, "read_cached_profile", lambda _cache_key: None)
+    monkeypatch.setattr(svc, "write_cached_profile", boom)
+
+    db = db_session_factory()
+    _stage_pending_row(db, "pending-after-write-failure")
+    events = _spy_caller_transaction(db)
+
+    served = svc.perfil_de_geojson(db, geometry=GEOM)
+
+    assert served["cache"] == "miss"
+    assert served["puntos"]
+    assert events == []
+    assert db.get(ElevationProfileCache, "pending-after-write-failure") is not None
+
+
+def test_a_successful_cache_write_does_not_commit_the_callers_session(
+    cache_env, db_session_factory, monkeypatch, tmp_path
+) -> None:
+    """The cache commits in a session of its own; the caller's transaction stays its own."""
+    dem = _dem(tmp_path)
+    _stub_sampling(monkeypatch, dem)
+    monkeypatch.setattr(svc, "read_cached_profile", lambda _cache_key: None)
+
+    db = db_session_factory()
+    _stage_pending_row(db, "pending-after-successful-write")
+    events = _spy_caller_transaction(db)
+
+    served = svc.perfil_de_geojson(db, geometry=GEOM)
+
+    assert served["cache"] == "miss"
+    assert events == [], "the cache must never commit the caller's session"
+    assert db.get(ElevationProfileCache, "pending-after-successful-write") is not None
+    identity = build_source_identity(str(dem))
+    assert read_cached_profile(build_cache_key(GEOM, identity)) is not None, (
+        "the write must have landed in the cache's own session"
+    )
