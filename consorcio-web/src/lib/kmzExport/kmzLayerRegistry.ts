@@ -18,7 +18,8 @@
  *   - `approved_zones`   — draft/editorial zones with PII-shaped metadata
  *   - `basins`           — heavy MVT tiles, not meant for client export
  *   - `puntos_interes`   — staff-only unpublished pins; not a public layer
- *   - `red_vial_oficial` — staff-only IDECOR catalog overlay; not a public layer
+ *   - `red_vial_oficial` — IDECOR catalog overlay; PUBLIC and ON by default
+ *     since 2026-10-15, but never merged into `red_vial`
  *   - `caminos_huecos`   — staff-only OSM/IGN gap overlay; not a public layer
  *
  * Key alignment with the store
