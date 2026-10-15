@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { groupSelectionSummary } from '../../src/components/map2d/InfoPanel';
 import {
   dedupedLineStringLengthM,
+  mergeLineStringParts,
   mergeLineStringTramos,
 } from '../../src/components/map2d/mergeLineStringTramos';
 
@@ -15,12 +16,16 @@ function line(coordinates: LineString['coordinates']): Feature {
   };
 }
 
+function withId(feature: Feature, id: string): Feature {
+  return { ...feature, properties: { ...(feature.properties ?? {}), id } };
+}
+
 describe('mergeLineStringTramos', () => {
   it('returns null when there is no LineString', () => {
     expect(
       mergeLineStringTramos([
         { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} },
-      ]),
+      ])
     ).toBeNull();
   });
 
@@ -199,6 +204,116 @@ describe('mergeLineStringTramos', () => {
   });
 });
 
+describe('mergeLineStringParts', () => {
+  it('gives every tramo its own part, deduped and ordered by id', () => {
+    // El orden es determinista a proposito: es parte de la clave de cache.
+    const segundo = withId(
+      line([
+        [0, 0],
+        [0.01, 0],
+      ]),
+      'b'
+    );
+    const primero = withId(
+      line([
+        [0.01, 0],
+        [0.02, 0],
+      ]),
+      'a'
+    );
+    const repetido = withId(
+      line([
+        [0.01, 0],
+        [0.02, 0],
+      ]),
+      'c'
+    );
+
+    const parts = mergeLineStringParts([segundo, primero, repetido]);
+
+    expect(parts?.type).toBe('MultiLineString');
+    expect(parts?.coordinates).toHaveLength(2);
+    expect(parts?.coordinates[0]).toEqual([
+      [0.01, 0],
+      [0.02, 0],
+    ]);
+    expect(parts?.coordinates[1]).toEqual([
+      [0, 0],
+      [0.01, 0],
+    ]);
+  });
+
+  it('treats a reversed duplicate as the same tramo', () => {
+    const ida = withId(
+      line([
+        [0, 0],
+        [0.01, 0],
+      ]),
+      'a'
+    );
+    const vuelta = withId(
+      line([
+        [0.01, 0],
+        [0, 0],
+      ]),
+      'b'
+    );
+    expect(mergeLineStringParts([ida, vuelta])?.coordinates).toHaveLength(1);
+  });
+
+  it('drops a tramo the source repeats with the same ends and the same length (T391-09)', () => {
+    const detallado = withId(
+      line([
+        [0, 0],
+        [0.005, 0.001],
+        [0.01, 0],
+      ]),
+      'a'
+    );
+    const repetido = withId(
+      line([
+        [0, 0],
+        [0.01, 0],
+      ]),
+      'b'
+    );
+
+    const parts = mergeLineStringParts([detallado, repetido]);
+
+    expect(parts?.coordinates).toHaveLength(1);
+    expect(parts?.coordinates[0]).toHaveLength(3);
+  });
+
+  it('keeps both parts when two routes between the same ends measure very differently', () => {
+    const directo = withId(
+      line([
+        [0, 0],
+        [0.01, 0],
+      ]),
+      'a'
+    );
+    const desvio = withId(
+      line([
+        [0, 0],
+        [0.005, 0.01],
+        [0.01, 0],
+      ]),
+      'b'
+    );
+
+    expect(mergeLineStringParts([directo, desvio])?.coordinates).toHaveLength(2);
+  });
+
+  it('returns null when there is no LineString', () => {
+    expect(mergeLineStringParts([])).toBeNull();
+    expect(
+      mergeLineStringParts([
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} },
+      ])
+    ).toBeNull();
+  });
+});
+
 describe('dedupedLineStringLengthM', () => {
   it('counts a duplicated piece once', () => {
     const piece = line([
@@ -231,7 +346,7 @@ describe('dedupedLineStringLengthM', () => {
 });
 
 describe('groupSelectionSummary', () => {
-  it('reports the profile axis km, not T-branches', () => {
+  it('reports the whole trace km, branches included (multi-part profile)', () => {
     const stemA = line([
       [0, 0],
       [0.02, 0],
@@ -245,12 +360,12 @@ describe('groupSelectionSummary', () => {
       [0.02, 0.005],
     ]);
     const features = [stemA, stemB, branch];
-    const axis = mergeLineStringTramos(features);
-    expect(axis).not.toBeNull();
     const summary = groupSelectionSummary(features);
     expect(summary).toContain('3 tramos');
+    // El perfil muestrea cada parte, asi que el numero es la traza completa
+    // (que es lo que dice la etiqueta), no un eje que deja la rama afuera.
     const uniqueKm = (dedupedLineStringLengthM(features) / 1000).toFixed(2);
-    const axisKm = summary.match(/([0-9.]+) km sin superposición/);
-    expect(axisKm?.[1]).not.toBe(uniqueKm);
+    const km = summary.match(/([0-9.]+) km sin superposición/);
+    expect(km?.[1]).toBe(uniqueKm);
   });
 });
