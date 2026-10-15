@@ -117,10 +117,7 @@ type Edge = {
   readonly coords: Position[];
 };
 
-function buildEdges(pieces: Position[][]): {
-  edges: Edge[];
-  clusterOf: (point: Position) => number | null;
-} {
+function buildEdges(pieces: Position[][]): Edge[] {
   const points: Position[] = [];
   const ends: Array<{ start: number; end: number; coords: Position[] }> = [];
   for (const coords of pieces) {
@@ -152,16 +149,7 @@ function buildEdges(pieces: Position[][]): {
       }
     }
   }
-  const clusterOf = (point: Position): number | null => {
-    for (let index = 0; index < points.length; index += 1) {
-      const candidate = points[index];
-      if (candidate && distance(candidate, point, { units: 'meters' }) <= SNAP_M) {
-        return cluster[index] ?? null;
-      }
-    }
-    return null;
-  };
-  return { edges: [...byPair.values()], clusterOf };
+  return [...byPair.values()];
 }
 
 function otherNode(edge: Edge, node: number): number {
@@ -172,13 +160,20 @@ function coordsFrom(edge: Edge, node: number): Position[] {
   return edge.a === node ? edge.coords : [...edge.coords].reverse();
 }
 
+type Extension = {
+  coords: Position[];
+  length: number;
+  edges: number[];
+  nodes: number[];
+};
+
 function longestExtension(
   node: number,
   adj: Map<number, Edge[]>,
   usedEdges: Set<number>,
   usedNodes: Set<number>,
-): { coords: Position[]; length: number } {
-  let best = { coords: [] as Position[], length: 0 };
+): Extension {
+  let best: Extension = { coords: [], length: 0, edges: [], nodes: [] };
   for (const edge of adj.get(node) ?? []) {
     if (usedEdges.has(edge.id)) {
       continue;
@@ -196,19 +191,60 @@ function longestExtension(
     const coords = [...piece.slice(1), ...rest.coords];
     const length = edge.length + rest.length;
     if (length > best.length) {
-      best = { coords, length };
+      best = {
+        coords,
+        length,
+        edges: [edge.id, ...rest.edges],
+        nodes: [next, ...rest.nodes],
+      };
     }
   }
   return best;
 }
 
+/**
+ * Longest simple path through `edge`. Both extensions share one consumed-edge
+ * and consumed-node set, so the axis can never walk a stretch twice: on a loop
+ * the old code sent one side out and the other side back over the same edge,
+ * reporting 4.16 km for a 2.77 km road (A581) and 15.48 km for 9.36 km
+ * (T028-19).
+ */
 function pathThroughEdge(edge: Edge, adj: Map<number, Edge[]>): Position[] {
   const usedEdges = new Set<number>([edge.id]);
   const usedNodes = new Set<number>([edge.a, edge.b]);
   const left = longestExtension(edge.a, adj, usedEdges, usedNodes);
+  for (const id of left.edges) {
+    usedEdges.add(id);
+  }
+  for (const node of left.nodes) {
+    usedNodes.add(node);
+  }
   const right = longestExtension(edge.b, adj, usedEdges, usedNodes);
   const mid = coordsFrom(edge, edge.a);
   return [...left.coords].reverse().concat(mid, right.coords);
+}
+
+/**
+ * Longest axis over every edge, not the one through the first selected piece.
+ * Seeding at `pieces[0]` turned a stray 45.6 m tramo into the whole profile of a
+ * 7.32 km road (T027-01).
+ */
+function longestAxis(edges: Edge[], adj: Map<number, Edge[]>): Position[] {
+  const total = edges.reduce((sum, edge) => sum + edge.length, 0);
+  let best: Position[] = [];
+  let bestLength = 0;
+  for (const edge of edges) {
+    if (bestLength >= total) {
+      break;
+    }
+    const path = pathThroughEdge(edge, adj);
+    const length = pieceLengthM(path);
+    if (length > bestLength) {
+      best = path;
+      bestLength = length;
+    }
+  }
+  return best;
 }
 
 function adjacency(edges: Edge[]): Map<number, Edge[]> {
@@ -224,32 +260,10 @@ function adjacency(edges: Edge[]): Map<number, Edge[]> {
   return adj;
 }
 
-function seedEdge(
-  seed: Position[],
-  edges: Edge[],
-  clusterOf: (point: Position) => number | null,
-): Edge | null {
-  const start = seed[0];
-  const end = seed[seed.length - 1];
-  if (!start || !end) {
-    return null;
-  }
-  const a = clusterOf(start);
-  const b = clusterOf(end);
-  if (a === null || b === null || a === b) {
-    return null;
-  }
-  return (
-    edges.find(
-      (edge) => (edge.a === a && edge.b === b) || (edge.a === b && edge.b === a),
-    ) ?? null
-  );
-}
-
 /**
  * Build one longitudinal LineString: snap endpoints (~2 m), drop duplicate
- * edges, then the longest simple path through the first piece (the click).
- * T-branches and disconnected leftovers stay out so 10 km of road is not 45 km.
+ * edges, then the longest simple path in the graph. T-branches and disconnected
+ * leftovers stay out so 10 km of road is not 45 km.
  */
 export function mergeLineStringTramos(features: readonly Feature[]): LineString | null {
   const pieces = features
@@ -261,14 +275,13 @@ export function mergeLineStringTramos(features: readonly Feature[]): LineString 
   if (pieces.length === 1) {
     return asLine(pieces[0]);
   }
-  const { edges, clusterOf } = buildEdges(pieces);
+  const edges = buildEdges(pieces);
   if (edges.length === 0) {
     return asLine(pieces[0]);
   }
   const adj = adjacency(edges);
-  const seed = pieces[0] ? seedEdge(pieces[0], edges, clusterOf) : null;
-  const through = seed ?? edges.reduce((best, edge) => (edge.length > best.length ? edge : best));
-  return asLine(pathThroughEdge(through, adj));
+  const axis = longestAxis(edges, adj);
+  return axis.length >= 2 ? asLine(axis) : asLine(pieces[0]);
 }
 
 /** Metres of the same LineString the elevation profile samples. */
@@ -289,7 +302,7 @@ export function dedupedLineStringLengthM(features: readonly Feature[]): number {
     const only = pieces[0];
     return only && only.length >= 2 ? pieceLengthM(only) : 0;
   }
-  const { edges } = buildEdges(pieces);
+  const edges = buildEdges(pieces);
   if (edges.length === 0) {
     const only = pieces[0];
     return only && only.length >= 2 ? pieceLengthM(only) : 0;
