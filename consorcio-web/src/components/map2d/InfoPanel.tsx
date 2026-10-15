@@ -53,7 +53,7 @@ import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { groupIdentifyChips, identifyTramoRows, shouldHideDuplicateChips } from './identifyChips';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
 import { MapPanelShell } from './MapPanelShell';
-import { dedupedLineStringLengthM, mergeLineStringParts } from './mergeLineStringTramos';
+import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
 import { PuntoInteresCard } from './PuntoInteresCard';
 import type { ProfileRangeStats } from './profileRange';
 import { isPuntoInteresLayerId } from './puntosInteresLayers';
@@ -408,7 +408,7 @@ export const InfoPanel = memo(function InfoPanel({
     if (feature) return [feature];
     return [];
   }, [features, feature]);
-  const profileGeometry = useMemo(() => mergeLineStringParts(resolved), [resolved]);
+  const profileGeometry = useMemo(() => mergeLineStringTramos(resolved), [resolved]);
   const groupSummary = useMemo(
     () => (resolved.length > 1 ? groupSelectionSummary(resolved) : null),
     [resolved]
