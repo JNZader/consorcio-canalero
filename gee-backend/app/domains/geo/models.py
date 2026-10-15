@@ -22,7 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
@@ -570,3 +570,37 @@ class RedVial(TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<RedVial {self.id!r} source={self.source_id!r} activo={self.activo}>"
+
+
+class ElevationProfileCache(TimestampMixin, Base):
+    """Stored longitudinal profile, keyed by geometry + sampled-raster identity.
+
+    Keyed by ``sha256(geometry + source identity)`` instead of by canal id: the
+    same profile can be asked for a published canal, a road, or a hand-drawn
+    trace, and a canal can be re-traced. The identity covers every raster the
+    series sampled (``dem_filled`` + ``mde_ar``), so a new DEM run invalidates by
+    construction instead of by remembering to purge.
+
+    See ``docs/ALTIMETRIA-FUENTES.md`` for the new-source procedure.
+    """
+
+    __tablename__ = "elevation_profile_cache"
+
+    cache_key: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="sha256 of the canonical geometry plus the sampled-raster identity",
+    )
+    source_identity: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="series version + dem_filled/mde_ar size:mtime_ns; part of the key",
+    )
+    payload: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        comment="Full profile body as returned to the caller, minus the cache flag",
+    )
+
+    def __repr__(self) -> str:
+        return f"<ElevationProfileCache {self.cache_key[:12]!r} sources={self.source_identity!r}>"

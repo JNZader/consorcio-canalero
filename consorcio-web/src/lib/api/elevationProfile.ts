@@ -31,6 +31,9 @@ export type ElevationProfileResponse = {
   mde_ar_disclaimer?: string;
   aw3d30_disclaimer?: string;
   nasadem_disclaimer?: string;
+  /** `hit` when the row came from `elevation_profile_cache`; `miss` when it was
+   * computed now. Additive: the series is identical either way. */
+  cache?: 'hit' | 'miss';
 };
 
 const PUBLIC_ELEVATION_PATH = '/public/map/elevation-profile';
