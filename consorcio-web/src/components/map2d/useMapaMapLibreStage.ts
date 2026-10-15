@@ -618,6 +618,17 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     escuelasCollection,
     opacityByLayer,
     orderByLayer,
+    // Same expressions the base map uses, so the panes cannot drift apart.
+    redVialOficial: { shouldMount: isStaff },
+    caminosHuecos: { shouldMount: isStaff },
+    puntosInteres: puntosInteres.collection,
+    zona: zonaCollection,
+    roadFlow: {
+      crossings: roadFlow.mapCollection,
+      totalFlujoNatural: roadFlow.totalFlujoNatural,
+      kinds: roadFlow.kinds,
+      flechas: roadFlow.mapFlechas,
+    },
   };
   const comparisonSyncInputsRef = useRef(comparisonSyncInputs);
   comparisonSyncInputsRef.current = comparisonSyncInputs;
