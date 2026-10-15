@@ -387,7 +387,9 @@ export default function MapaMapLibre() {
     // toggle": useMapDerivedState runs before usePuntosInteresWiring, so the
     // POI hook's showPuntosInteres is not in scope here.
     showPuntosInteres: roadFlow.showRoadFlow,
-    showRedVialOficial: isStaff,
+    // Catálogo IDECOR: PUBLIC and ON by default since 2026-10-15 (owner
+    // decision). The OSM/IGN gap overlay (`caminos_huecos`) stays staff-only.
+    showRedVialOficial: true,
     showCaminosHuecos: isStaff,
   });
 

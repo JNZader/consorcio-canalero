@@ -347,7 +347,8 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     roadFlowKinds: roadFlow.kinds,
     puntosInteresCollection: puntosInteres.collection,
     catastroMembership: basinMembership.membership,
-    showRedVialOficial: isStaff,
+    // Catálogo IDECOR: public since 2026-10-15 (owner decision).
+    showRedVialOficial: true,
     showCaminosHuecos: isStaff,
   });
 
