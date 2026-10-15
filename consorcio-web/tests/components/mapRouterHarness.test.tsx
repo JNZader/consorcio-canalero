@@ -187,7 +187,9 @@ describe('view mode when entering the map', () => {
     // restore has to be driven THROUGH the mock: a real `setItem` stores
     // nothing, the listener finds no pair, and this assertion would pass
     // whether or not the view switched.
-    vi.mocked(localStorage.getItem).mockReturnValue(savedPair);
+    vi.mocked(localStorage.getItem).mockImplementation((key) =>
+      key === COMPARISON_KEY ? savedPair : null
+    );
 
     renderUnderHarness(<MapaMapLibre />);
 
@@ -195,9 +197,11 @@ describe('view mode when entering the map', () => {
   });
 
   it('keeps the chosen image when a saved pair is restored too', () => {
-    vi.mocked(localStorage.getItem).mockImplementation((key) =>
-      key === SELECTED_IMAGE_KEY ? JSON.stringify(image) : savedPair
-    );
+    vi.mocked(localStorage.getItem).mockImplementation((key) => {
+      if (key === SELECTED_IMAGE_KEY) return JSON.stringify(image);
+      if (key === COMPARISON_KEY) return savedPair;
+      return null;
+    });
 
     renderUnderHarness(<MapaMapLibre />);
 
