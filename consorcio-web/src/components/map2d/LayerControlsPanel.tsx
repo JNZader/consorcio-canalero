@@ -394,12 +394,13 @@ export function LayerControlsPanel({
   const firstDemLayerId = demOptions[0]?.value ?? null;
 
   useEffect(() => {
+    if (is3d) return;
     if (!showDemOverlay || !firstDemLayerId) return;
     const activeLayerExists = demOptions.some((option) => option.value === activeDemLayerId);
     if (!activeLayerExists) {
       onActiveDemLayerIdChange(firstDemLayerId);
     }
-  }, [activeDemLayerId, demOptions, firstDemLayerId, onActiveDemLayerIdChange, showDemOverlay]);
+  }, [activeDemLayerId, demOptions, firstDemLayerId, is3d, onActiveDemLayerIdChange, showDemOverlay]);
 
   const handleDemOverlayChange = (visible: boolean) => {
     if (visible && !activeDemLayerId && firstDemLayerId) {

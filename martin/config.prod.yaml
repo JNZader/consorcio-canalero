@@ -91,3 +91,19 @@ postgres:
         source: Topology source node
         target: Topology target node
         cost: Routing cost
+    vt_caminos_unificados:
+      schema: public
+      table: vt_caminos_unificados
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      properties:
+        id: Public identifier
+        ruta: Route code
+        nombre: Road name
+        tipo_generico: Generic type
+        red: Road hierarchy
+        consorcios: Consorcios camineros
+        longitud_declarada_km: Declared length in km
+        longitud_geodesica_km: Geodesic length in km
+        cantidad_tramos_fisicos: Physical segment count
