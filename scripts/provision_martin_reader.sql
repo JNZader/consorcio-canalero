@@ -52,6 +52,7 @@ BEGIN
       INTO missing_views
       FROM (
           VALUES
+              ('vt_caminos_unificados'),
               ('vt_zonas_operativas'),
               ('vt_puntos_conflicto'),
               ('vt_canal_network')
@@ -201,6 +202,7 @@ BEGIN
 
     EXECUTE format(
         'GRANT SELECT ON TABLE '
+        'public.vt_caminos_unificados, '
         'public.vt_zonas_operativas, '
         'public.vt_puntos_conflicto, '
         'public.vt_canal_network TO %I',
@@ -229,7 +231,7 @@ SELECT has_database_privilege(:'martin_role', current_database(), 'CONNECT') AS 
        has_schema_privilege(:'martin_role', 'public', 'USAGE') AS schema_usage,
        has_schema_privilege(:'martin_role', 'public', 'CREATE') AS schema_create;
 
-\echo 'Three allowlisted views (SELECT true; all write columns false)'
+\echo 'Four allowlisted views (SELECT true; all write columns false)'
 SELECT relation.relname,
        has_table_privilege(:'martin_role', relation.oid, 'SELECT') AS can_select,
        has_table_privilege(:'martin_role', relation.oid, 'INSERT') AS can_insert,
@@ -242,6 +244,7 @@ SELECT relation.relname,
   JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
  WHERE namespace.nspname = 'public'
    AND relation.relname IN (
+       'vt_caminos_unificados',
        'vt_zonas_operativas',
        'vt_puntos_conflicto',
        'vt_canal_network'
@@ -255,6 +258,7 @@ SELECT count(*) AS unexpected_relation_privileges
  WHERE namespace.nspname = 'public'
    AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
    AND relation.relname NOT IN (
+       'vt_caminos_unificados',
        'vt_zonas_operativas',
        'vt_puntos_conflicto',
        'vt_canal_network'

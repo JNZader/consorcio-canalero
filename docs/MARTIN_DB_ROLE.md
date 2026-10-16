@@ -9,10 +9,11 @@ mutaciones.
 | Componente | Rol | Alcance |
 |---|---|---|
 | Backend y migraciones | `consorcio` | Propietario de la aplicación |
-| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre tres vistas |
+| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre cuatro vistas |
 
 El rol `consorcio_martin` recibe `SELECT` exclusivamente sobre:
 
+- `public.vt_caminos_unificados`
 - `public.vt_zonas_operativas`
 - `public.vt_puntos_conflicto`
 - `public.vt_canal_network`
