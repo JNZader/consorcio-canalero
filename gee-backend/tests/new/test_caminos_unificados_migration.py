@@ -53,6 +53,16 @@ class TestCaminosUnificadosMaterializedView:
         ).scalar()
         assert relkind == "m"
 
+    def test_vt_view_exists(self, migrated):
+        relkind = migrated.execute(
+            text(
+                "SELECT c.relkind FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                f"WHERE n.nspname = '{SCHEMA}' AND c.relname = 'vt_caminos_unificados'"
+            )
+        ).scalar()
+        assert relkind == "v"
+
     def test_unique_indexes_exist(self, migrated):
         indexes = migrated.execute(
             text(
@@ -121,13 +131,21 @@ class TestCaminosUnificadosMaterializedView:
 
     def test_downgrade_removes_matview(self, migrated):
         _run(migrated, MIGRATION.DOWNGRADE_STATEMENTS)
-        rel = migrated.execute(
+        rel_mv = migrated.execute(
             text(
                 "SELECT 1 FROM pg_class c "
                 "JOIN pg_namespace n ON n.oid = c.relnamespace "
                 f"WHERE n.nspname = '{SCHEMA}' AND c.relname = 'mv_caminos_unificados'"
             )
         ).scalar()
-        assert rel is None
+        assert rel_mv is None
+        rel_vt = migrated.execute(
+            text(
+                "SELECT 1 FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                f"WHERE n.nspname = '{SCHEMA}' AND c.relname = 'vt_caminos_unificados'"
+            )
+        ).scalar()
+        assert rel_vt is None
         # Re-upgrade to leave fixture clean for teardown
         _run(migrated, MIGRATION.UPGRADE_STATEMENTS)
