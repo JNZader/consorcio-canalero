@@ -13,6 +13,7 @@ import type { Feature } from 'geojson';
 
 import * as maplibregl from 'maplibre-gl';
 import { bootMapLibreWorker } from '../lib/maplibreLoader';
+import { isRoadFlowEnabled } from '../lib/featureFlags';
 import { groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -269,8 +270,8 @@ export default function MapaMapLibre() {
   const roadFlow = useRoadFlowWiring({
     mapRef,
     mapReady,
-    active: !!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino,
-    panelActive: !!vectorVisibility.road_flow,
+    active: isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
+    panelActive: isRoadFlowEnabled() && !!vectorVisibility.road_flow,
     geoLayers: allGeoLayers,
     onDeactivate: deactivateRoadFlow,
   });
