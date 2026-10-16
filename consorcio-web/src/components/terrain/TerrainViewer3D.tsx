@@ -572,6 +572,7 @@ export default function TerrainViewer3D({
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
     map.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
     map.on('load', () => {
