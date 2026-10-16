@@ -14,6 +14,7 @@ from tests.route_contracts import EffectiveAPIRoute, iter_effective_api_routes
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MARTIN_VIEWS = {
+    "vt_caminos_unificados",
     "vt_canal_network",
     "vt_puntos_conflicto",
     "vt_zonas_operativas",
