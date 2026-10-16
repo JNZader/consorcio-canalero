@@ -118,4 +118,23 @@ describe('LayerControlsPanel variant 3d', () => {
       screen.getByRole('checkbox', { name: /YPF estación de bombeo/i, hidden: true })
     ).toBeDisabled();
   });
+
+  it('does not overwrite activeDemLayerId when variant is 3d and layer is not in demOptions', () => {
+    const onActiveDemLayerIdChange = vi.fn();
+    wrap(
+      <LayerControlsPanel
+        {...baseProps}
+        variant="3d"
+        demEnabled
+        showDemOverlay
+        activeDemLayerId="__selected_sentinel_image__"
+        onActiveDemLayerIdChange={onActiveDemLayerIdChange}
+        demOptions={[
+          { value: 'drainage_need', label: 'Necesidad de Drenaje', tipo: 'drainage_need' },
+          { value: 'dem_raw', label: 'Elevación (DEM)', tipo: 'dem_raw' },
+        ]}
+      />,
+    );
+    expect(onActiveDemLayerIdChange).not.toHaveBeenCalled();
+  });
 });

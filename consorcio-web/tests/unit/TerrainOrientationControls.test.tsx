@@ -54,4 +54,18 @@ describe('TerrainOrientationControls', () => {
     expect(screen.getByText('U')).toBeInTheDocument();
     expect(screen.getByText('R')).toBeInTheDocument();
   });
+
+  it('hides shortcuts instructions when showKeyboardShortcuts is false', () => {
+    wrap(
+      <TerrainOrientationControls
+        onNorth={() => {}}
+        onNadir={() => {}}
+        onOblique={() => {}}
+        onLookWest={() => {}}
+        onReset={() => {}}
+        showKeyboardShortcuts={false}
+      />,
+    );
+    expect(screen.queryByText(/Atajos con el mapa enfocado/)).not.toBeInTheDocument();
+  });
 });
