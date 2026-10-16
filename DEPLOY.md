@@ -131,7 +131,7 @@ API_BASE_URL=https://api.consorcio.TUDOMINIO
 > Ver [`docs/APP_DB_ROLE.md`](docs/APP_DB_ROLE.md). Usá URLs canónicas
 > `postgresql://`; la aplicación deriva internamente el driver async.
 
-Martin recibe `SELECT` solo sobre `vt_zonas_operativas`, `vt_puntos_conflicto` y
+Martin recibe `SELECT` solo sobre `vt_caminos_unificados`, `vt_zonas_operativas`, `vt_puntos_conflicto` y
 `vt_canal_network`. No recibe tablas base, escritura, secuencias
 ni funciones de aplicación. El procedimiento y sus chequeos están en
 [`docs/MARTIN_DB_ROLE.md`](docs/MARTIN_DB_ROLE.md).

@@ -31,6 +31,7 @@ import { logger } from '../../lib/logger';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
+import { isCoarsePointerDevice } from '../map2d/useMapInitialization';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
@@ -521,6 +522,7 @@ export default function TerrainViewer3D({
 
     let cancelled = false;
     let created: maplibregl.Map | undefined;
+    let cleanupCanvasListeners: (() => void) | undefined;
     void (async () => {
       await bootMapLibreWorker();
       if (cancelled || !mapContainer.current) return;
@@ -544,6 +546,8 @@ export default function TerrainViewer3D({
       maxPitch: 75,
       hash: 'v',
       locale: { ...MAP_LOCALE_ES },
+      cooperativeGestures: !isCoarsePointerDevice(),
+      attributionControl: false,
       // Bound the tile cache so panning around doesn't keep hundreds of
       // raster-dem + texture tiles in GPU memory. Default is unbounded;
       // 50 fits the typical viewport pyramid + a small history without
@@ -609,17 +613,53 @@ export default function TerrainViewer3D({
       setErrorMessage(msg || 'Error desconocido cargando el terreno 3D');
     });
 
+    try {
+      const canvas = map.getCanvas();
+      if (canvas && typeof canvas.addEventListener === 'function') {
+        const onContextLost = (event: Event) => {
+          event.preventDefault();
+          logger.warn('TerrainViewer3D: WebGL context lost, awaiting restoration');
+        };
+        const onContextRestored = () => {
+          logger.info('TerrainViewer3D: WebGL context restored');
+          setTerrainBootId((prev) => prev + 1);
+        };
+        canvas.addEventListener('webglcontextlost', onContextLost);
+        canvas.addEventListener('webglcontextrestored', onContextRestored);
+        cleanupCanvasListeners = () => {
+          canvas.removeEventListener('webglcontextlost', onContextLost);
+          canvas.removeEventListener('webglcontextrestored', onContextRestored);
+        };
+      }
+    } catch {
+      // Defensive: test environments / canvas stubs may not support DOM event listeners
+    }
+
     created = map;
     mapRef.current = map;
     })();
 
     return () => {
       cancelled = true;
+      cleanupCanvasListeners?.();
       created?.remove();
       mapRef.current = null;
       setReady(false);
     };
   }, [buildTerrainRgbUrl, center, demLayerId, zoom, terrainBootId]);
+
+  useEffect(() => {
+    const container = mapContainer.current;
+    const map = mapRef.current;
+    if (!ready || !container || !map || !globalThis.ResizeObserver) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.resize();
+    });
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, [ready]);
 
   // Smoothing toggle / threshold change — rebuild the ``terrain-rgb``
   // source so MapLibre fetches the new tiles immediately. ``setTiles()``
