@@ -944,13 +944,47 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _refresh_mv_caminos_unificados(db: Session) -> int | None:
+    """Refresca la vista materializada ``mv_caminos_unificados`` post-carga si existe.
+
+    PostgreSQL prohíbe ``REFRESH MATERIALIZED VIEW CONCURRENTLY`` dentro de un
+    bloque de transacción, por lo que debe correr con ``isolation_level='AUTOCOMMIT'``
+    después de que la transacción de carga commiteó.
+    """
+    engine = db.get_bind().engine
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        exists = conn.execute(
+            text(
+                "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND c.relname = 'mv_caminos_unificados' AND c.relkind = 'm'"
+            )
+        ).scalar()
+        if not exists:
+            return None
+
+        conn.execute(text("SET statement_timeout = '300s'"))
+        try:
+            conn.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_caminos_unificados"))
+        except Exception as exc:  # noqa: BLE001 — fallback to plain REFRESH
+            print(
+                f"refresco CONCURRENTLY de mv_caminos_unificados falló ({exc}); "
+                "reintentando con REFRESH común...",
+                file=sys.stderr,
+            )
+            conn.execute(text("REFRESH MATERIALIZED VIEW mv_caminos_unificados"))
+        return int(conn.execute(text("SELECT count(*) FROM mv_caminos_unificados")).scalar_one())
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     from app.db.session import SessionLocal  # noqa: PLC0415
 
     with SessionLocal() as db:
-        return run_load(db, dry_run=args.dry_run)
+        code = run_load(db, dry_run=args.dry_run)
+        if code == EXIT_OK and not args.dry_run:
+            _refresh_mv_caminos_unificados(db)
+        return code
 
 
 if __name__ == "__main__":  # pragma: no cover — module entry point
