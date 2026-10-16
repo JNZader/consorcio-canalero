@@ -57,11 +57,28 @@ CREATE_GIST_INDEX = (
     "CREATE INDEX ix_mv_caminos_unificados_geom ON mv_caminos_unificados USING GIST (geom);"
 )
 
+CREATE_VT_VIEW = """
+CREATE OR REPLACE VIEW vt_caminos_unificados AS
+SELECT 
+    id,
+    ruta,
+    nombre,
+    tipo_generico,
+    red,
+    consorcios,
+    longitud_declarada_km,
+    longitud_geodesica_km,
+    cantidad_tramos_fisicos,
+    geom
+FROM mv_caminos_unificados;
+"""
+
 OWNERSHIP_SQL = f"""
 DO $own$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
         ALTER MATERIALIZED VIEW public.mv_caminos_unificados OWNER TO {APP_ROLE};
+        ALTER VIEW public.vt_caminos_unificados OWNER TO {APP_ROLE};
         ALTER INDEX public.ux_mv_caminos_unificados_ruta OWNER TO {APP_ROLE};
         ALTER INDEX public.ux_mv_caminos_unificados_id OWNER TO {APP_ROLE};
         ALTER INDEX public.ix_mv_caminos_unificados_geom OWNER TO {APP_ROLE};
@@ -70,6 +87,7 @@ END
 $own$;
 """
 
+DROP_VT_VIEW = "DROP VIEW IF EXISTS vt_caminos_unificados CASCADE;"
 DROP_MV = "DROP MATERIALIZED VIEW IF EXISTS mv_caminos_unificados CASCADE;"
 
 UPGRADE_STATEMENTS: tuple[str, ...] = (
@@ -77,10 +95,14 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
     CREATE_UX_INDEX_RUTA,
     CREATE_UX_INDEX_ID,
     CREATE_GIST_INDEX,
+    CREATE_VT_VIEW,
     OWNERSHIP_SQL,
 )
 
-DOWNGRADE_STATEMENTS: tuple[str, ...] = (DROP_MV,)
+DOWNGRADE_STATEMENTS: tuple[str, ...] = (
+    DROP_VT_VIEW,
+    DROP_MV,
+)
 
 
 def upgrade() -> None:
