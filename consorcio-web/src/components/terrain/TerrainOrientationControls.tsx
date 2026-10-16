@@ -6,6 +6,7 @@ interface TerrainOrientationControlsProps {
   readonly onOblique: () => void;
   readonly onLookWest: () => void;
   readonly onReset: () => void;
+  readonly showKeyboardShortcuts?: boolean;
 }
 
 export function TerrainOrientationControls({
@@ -14,15 +15,18 @@ export function TerrainOrientationControls({
   onOblique,
   onLookWest,
   onReset,
+  showKeyboardShortcuts = true,
 }: TerrainOrientationControlsProps) {
   return (
     <Group gap="xs" align="center" wrap="wrap">
       <Text size="xs" c="dimmed">
         Cámara:
       </Text>
-      <Text size="xs" c="dimmed">
-        Atajos con el mapa enfocado: <kbd>N</kbd> norte · <kbd>U</kbd> cenital · <kbd>R</kbd> reset
-      </Text>
+      {showKeyboardShortcuts && (
+        <Text size="xs" c="dimmed">
+          Atajos con el mapa enfocado: <kbd>N</kbd> norte · <kbd>U</kbd> cenital · <kbd>R</kbd> reset
+        </Text>
+      )}
       <Tooltip label="Norte arriba (N)" withArrow>
         <Button size="xs" variant="default" onClick={onNorth}>
           Norte

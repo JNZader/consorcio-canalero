@@ -17,7 +17,7 @@ import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import { InfoPanel } from '../map2d/InfoPanel';
 import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
-import { MapWorkspace } from '../map2d/MapWorkspace';
+import { MapWorkspace, useMapWorkspaceDesktop } from '../map2d/MapWorkspace';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import {
   type CanalToggleEntry,
@@ -198,6 +198,7 @@ export function TerrainViewer3DChrome({
   bpaEnriched,
   bpaHistory,
 }: TerrainViewer3DChromeProps) {
+  const isDesktop = useMapWorkspaceDesktop();
   const heavyWarning = heavy3dWarning(vectorLayerVisibility);
   const loadLines = heavy3dLoadLines({
     catastroOn: !!vectorLayerVisibility.catastro,
@@ -207,49 +208,63 @@ export function TerrainViewer3DChrome({
     soilLoading,
     soilError,
   });
+
+  const allDemOptions = [
+    ...(selectedImageOption
+      ? [{ value: selectedImageOption.value, label: selectedImageOption.label, tipo: 'sentinel' }]
+      : []),
+    ...rasterLayers.map((layer) => ({
+      value: layer.id,
+      label: layer.label,
+      tipo: layer.tipo,
+    })),
+  ];
+
   return (
     <Box className={mapStyles.terrainChromeRoot}>
-      <Group className={mapStyles.terrainChromeHeader} justify="space-between" align="flex-end">
-        <Title order={5}>Vista 3D del Terreno</Title>
-        <Group gap="xs" align="center">
-          <Checkbox
-            size="xs"
-            checked={terrainSmoothingEnabled}
-            onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
-            label="Suavizar terreno"
-          />
-          <SegmentedControl
-            size="xs"
-            value={terrainSmoothingThreshold}
-            onChange={(value) => onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')}
-            disabled={!terrainSmoothingEnabled}
-            data={[
-              { value: 'low', label: 'Suave' },
-              { value: 'med', label: 'Medio' },
-              { value: 'high', label: 'Fuerte' },
-            ]}
-            aria-label="Intensidad del suavizado"
-            title={
-              terrainSmoothingEnabled
-                ? 'Cuán agresivo es el aplanado de árboles y construcciones'
-                : "Activá 'Suavizar terreno' para elegir la intensidad"
-            }
-          />
-          <TerrainExaggerationControls
-            value={exaggeration}
-            onChange={onExaggerationChange}
-            min={minExaggeration}
-            max={maxExaggeration}
-          />
-          <TerrainOrientationControls
-            onNorth={onNorth}
-            onNadir={onNadir}
-            onOblique={onOblique}
-            onLookWest={onLookWest}
-            onReset={onResetView}
-          />
+      {isDesktop && (
+        <Group className={mapStyles.terrainChromeHeader} justify="space-between" align="flex-end">
+          <Title order={5}>Vista 3D del Terreno</Title>
+          <Group gap="xs" align="center">
+            <Checkbox
+              size="xs"
+              checked={terrainSmoothingEnabled}
+              onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
+              label="Suavizar terreno"
+            />
+            <SegmentedControl
+              size="xs"
+              value={terrainSmoothingThreshold}
+              onChange={(value) => onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')}
+              disabled={!terrainSmoothingEnabled}
+              data={[
+                { value: 'low', label: 'Suave' },
+                { value: 'med', label: 'Medio' },
+                { value: 'high', label: 'Fuerte' },
+              ]}
+              aria-label="Intensidad del suavizado"
+              title={
+                terrainSmoothingEnabled
+                  ? 'Cuán agresivo es el aplanado de árboles y construcciones'
+                  : "Activá 'Suavizar terreno' para elegir la intensidad"
+              }
+            />
+            <TerrainExaggerationControls
+              value={exaggeration}
+              onChange={onExaggerationChange}
+              min={minExaggeration}
+              max={maxExaggeration}
+            />
+            <TerrainOrientationControls
+              onNorth={onNorth}
+              onNadir={onNadir}
+              onOblique={onOblique}
+              onLookWest={onLookWest}
+              onReset={onResetView}
+            />
+          </Group>
         </Group>
-      </Group>
+      )}
 
       {heavyWarning ? (
         <Alert color="yellow" py={6} data-testid="terrain-heavy-layers-warning">
@@ -366,7 +381,9 @@ export function TerrainViewer3DChrome({
                 </Text>
               )}
               <Text size="xs" c="gray.4">
-                Ctrl+arrastre para rotar
+                {isDesktop
+                  ? 'Ctrl+arrastre para rotar'
+                  : 'Arrastrá con 2 dedos para rotar e inclinar'}
               </Text>
             </Box>
           </Paper>
@@ -377,6 +394,51 @@ export function TerrainViewer3DChrome({
             aria-label="Capas y leyenda del visor 3D"
             data-testid="terrain-3d-bottom-bar"
           >
+            {!isDesktop && (
+              <Paper withBorder p="xs" radius="sm" data-testid="terrain-3d-mobile-controls">
+                <Stack gap="xs">
+                  <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                    Vista 3D
+                  </Text>
+                  <Group justify="space-between" align="center">
+                    <Checkbox
+                      size="xs"
+                      checked={terrainSmoothingEnabled}
+                      onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
+                      label="Suavizar terreno"
+                    />
+                    <SegmentedControl
+                      size="xs"
+                      value={terrainSmoothingThreshold}
+                      onChange={(value) =>
+                        onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
+                      }
+                      disabled={!terrainSmoothingEnabled}
+                      data={[
+                        { value: 'low', label: 'Suave' },
+                        { value: 'med', label: 'Medio' },
+                        { value: 'high', label: 'Fuerte' },
+                      ]}
+                      aria-label="Intensidad del suavizado"
+                    />
+                  </Group>
+                  <TerrainExaggerationControls
+                    value={exaggeration}
+                    onChange={onExaggerationChange}
+                    min={minExaggeration}
+                    max={maxExaggeration}
+                  />
+                  <TerrainOrientationControls
+                    onNorth={onNorth}
+                    onNadir={onNadir}
+                    onOblique={onOblique}
+                    onLookWest={onLookWest}
+                    onReset={onResetView}
+                    showKeyboardShortcuts={false}
+                  />
+                </Stack>
+              </Paper>
+            )}
             <Box data-testid="terrain-3d-bottom-bar-toggles">
               <TerrainLayerTogglesPanel
                 rasterLayers={rasterLayers}
@@ -409,11 +471,7 @@ export function TerrainViewer3DChrome({
                 }}
                 activeDemLayerId={activeRasterLayerId ?? null}
                 onActiveDemLayerIdChange={onActiveRasterLayerChange}
-                demOptions={rasterLayers.map((layer) => ({
-                  value: layer.id,
-                  label: layer.label,
-                  tipo: layer.tipo,
-                }))}
+                demOptions={allDemOptions}
                 canalesRelevadosItems={canalesRelevadosItems}
                 canalesPropuestosItems={canalesPropuestosItems}
                 etapaGate={etapaGate}
