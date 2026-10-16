@@ -13,7 +13,10 @@ import { MAP_GLYPHS_URL } from './roadLabelLayer';
 export { MAP_LOCALE_ES } from './mapLibreLocale';
 
 interface UseMapInitializationParams {
-  maplibre: typeof maplibregl;
+  maplibre: Pick<
+    typeof maplibregl,
+    'Map' | 'NavigationControl' | 'FullscreenControl' | 'ScaleControl'
+  >;
   containerRef: RefObject<HTMLDivElement | null>;
   centerLat: number;
   centerLng: number;
