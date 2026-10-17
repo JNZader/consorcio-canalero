@@ -16,6 +16,7 @@ LIVE_NAMES=(
 TARGET="${RESTORE_DRILL_DATABASE:-consorcio_restore_drill}"
 STACK_DIR="${STACK_DIR:-/home/javier/stacks/consorcio}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-shared-postgres}"
 
 refuse_live_target() {
   local name
@@ -65,15 +66,22 @@ if [[ "${CONFIRM_RESTORE_DRILL:-}" != "restore-drill" ]]; then
 fi
 
 cd "${STACK_DIR}"
-if ! docker compose config --services | grep -qx "${POSTGRES_SERVICE}"; then
-  echo "service ${POSTGRES_SERVICE} is not in this compose" >&2
+if docker compose config --services 2>/dev/null | grep -qx "${POSTGRES_SERVICE}"; then
+  # shellcheck disable=SC2016
+  docker compose exec -T "${POSTGRES_SERVICE}" \
+    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-consorcio}" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"${TARGET}\";" \
+    -c "CREATE DATABASE \"${TARGET}\";"
+elif docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${POSTGRES_CONTAINER}"; then
+  # shellcheck disable=SC2016
+  docker exec -i "${POSTGRES_CONTAINER}" \
+    psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-consorcio}" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"${TARGET}\";" \
+    -c "CREATE DATABASE \"${TARGET}\";"
+else
+  echo "service '${POSTGRES_SERVICE}' is not in this compose, and container '${POSTGRES_CONTAINER}' was not found" >&2
   echo "docker-compose.prod.yml keeps Postgres outside the stack (shared-postgres)." >&2
   echo "Create ${TARGET} with docker exec against that container. See docs/runbooks/infra-cicd-v6.md." >&2
   exit 2
 fi
-# shellcheck disable=SC2016
-docker compose exec -T "${POSTGRES_SERVICE}" \
-  psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-consorcio}" -d postgres \
-  -c "DROP DATABASE IF EXISTS \"${TARGET}\";" \
-  -c "CREATE DATABASE \"${TARGET}\";"
 echo "created ${TARGET}; continue with the decrypt/psql steps in docs/RUNBOOK.md §3.6 pointed at this database, then DROP it"
