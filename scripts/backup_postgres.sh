@@ -96,12 +96,17 @@ case "$BACKUP_BACKEND" in
       B2_ACCOUNT_INFO="${TMPDIR}/.b2_account_info" \
         b2 ls --recursive --json "$B2_BUCKET" "postgres/" \
         | python3 -c "
-import json, sys, subprocess, datetime
+import json, sys, subprocess, os
 cutoff = int(sys.argv[1])
+env = dict(os.environ)
+env['B2_ACCOUNT_INFO'] = '${TMPDIR}/.b2_account_info'
 for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
     obj = json.loads(line)
     if obj.get('uploadTimestamp', 0) // 1000 < cutoff and obj.get('fileName', '').startswith('postgres/${PREFIX}'):
-        subprocess.run(['b2', 'file', 'hide', '$B2_BUCKET', obj['fileName']], check=False)
+        subprocess.run(['b2', 'file', 'hide', '$B2_BUCKET', obj['fileName']], env=env, check=True)
 " "$CUTOFF_EPOCH"
     fi
     ;;
@@ -140,17 +145,50 @@ quit
 EOF
 
     if [ "$RETENTION_DAYS" -gt 0 ]; then
+      CUTOFF_EPOCH="$(date -u -d "-${RETENTION_DAYS} days" +%s 2>/dev/null \
+        || date -u -v "-${RETENTION_DAYS}d" +%s)"
       echo "[$(date -u +%FT%TZ)] purging Storage Box dumps older than ${RETENTION_DAYS}d"
-      # List, parse, delete via sftp. Storage Box doesn't honour `find`,
-      # so we walk the listing on the client side.
-      "${SSHPASS_CMD[@]:-}" sftp "${SCP_AUTH[@]}" \
-        "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
-ls -la ${REMOTE_DIR}
+      # List, parse UTC timestamp from filename, and delete via sftp.
+      FILES_TO_DELETE="$("${SSHPASS_CMD[@]:-}" sftp "${SCP_AUTH[@]}" \
+        "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF 2>/dev/null | python3 -c "
+import sys, re, datetime
+cutoff = int(sys.argv[1])
+pattern = re.compile(r'^${PREFIX}-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.sql\.zst\.enc(\.sha256)?$')
+for line in sys.stdin:
+    parts = line.strip().split()
+    if not parts:
+        continue
+    fname = parts[-1]
+    m = pattern.match(fname)
+    if m:
+        try:
+            dt = datetime.datetime(
+                int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                int(m.group(4)), int(m.group(5)), int(m.group(6)),
+                tzinfo=datetime.timezone.utc
+            )
+            if dt.timestamp() < cutoff:
+                print(fname)
+        except Exception:
+            pass
+" "$CUTOFF_EPOCH"
+ls -1 ${REMOTE_DIR}
 quit
 EOF
-      # The above only PRINTS; actual delete-by-age is a roadmap follow-
-      # up. For now operators are expected to set a sane lifecycle in
-      # the Hetzner Storage Box UI.
+)"
+      if [ -n "$FILES_TO_DELETE" ]; then
+        SFTP_BATCH=""
+        while IFS= read -r f; do
+          if [ -n "$f" ]; then
+            echo "[$(date -u +%FT%TZ)] deleting old remote dump: ${REMOTE_DIR}/${f}"
+            SFTP_BATCH="${SFTP_BATCH}rm ${REMOTE_DIR}/${f}"$'\n'
+          fi
+        done <<< "$FILES_TO_DELETE"
+        "${SSHPASS_CMD[@]:-}" sftp "${SCP_AUTH[@]}" \
+          "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
+${SFTP_BATCH}quit
+EOF
+      fi
     fi
     ;;
 
