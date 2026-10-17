@@ -196,7 +196,8 @@ class TestSerializeApprovedZoning:
         )
         db = MagicMock()
         result = _serialize_approved_zoning(db, zoning, display_names={uid: "Juan Pérez"})
-        assert result.approvedByName == "Juan Pérez"
+        assert result.approved_by_name == "Juan Pérez"
+        assert result.model_dump(by_alias=True)["approvedByName"] == "Juan Pérez"
         db.get.assert_not_called()
 
     def test_get_user_display_names_empty_set(self):

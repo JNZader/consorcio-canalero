@@ -240,9 +240,8 @@ def enforce_conocimiento_qa_enabled(
     enforce_conocimiento_flag()
 
     try:
-        terminos = await run_in_threadpool(cargar_terminos)
         verificar_terminos(
-            terminos,
+            cargar_terminos(),
             modelo=settings.conocimiento_modelo,
             pool=settings.conocimiento_pool,
         )
