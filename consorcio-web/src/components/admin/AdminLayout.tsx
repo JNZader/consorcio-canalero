@@ -159,7 +159,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
               <Menu shadow="lg" width={220} position="bottom-end">
                 <Menu.Target>
                   <UnstyledButton
-                    aria-label="Menú de cuenta de usuario"
+                    aria-label="Cuenta Admin"
                     style={{
                       padding: 'var(--mantine-spacing-xs) var(--mantine-spacing-sm)',
                       borderRadius: 'var(--mantine-radius-md)',
