@@ -17,3 +17,5 @@ coverage_html/
 .coverage
 .coverage.*
 htmlcov/
+artifacts/
+mutants/

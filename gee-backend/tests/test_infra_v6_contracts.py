@@ -459,6 +459,7 @@ def test_shell_scripts_and_units_parse() -> None:
         "deploy/notify-failure.sh",
         "deploy/promote-pages-ref.sh",
         "deploy/etl-refresh.sh",
+        "scripts/backup_postgres.sh",
     ]
     for script in scripts:
         result = subprocess.run(
@@ -545,3 +546,16 @@ def test_phase_reports_left_the_frontend_tree() -> None:
     archive = REPO_ROOT / "docs" / "archive"
     assert (archive / "MUTATION_TESTING.md").is_file()
     assert (archive / "PHASE_1_SUMMARY.md").is_file()
+
+
+def test_backup_postgres_retention_and_restore_drill_contracts() -> None:
+    backup_sh = (REPO_ROOT / "scripts" / "backup_postgres.sh").read_text(encoding="utf-8")
+    assert "B2_ACCOUNT_INFO" in backup_sh
+    assert "check=True" in backup_sh
+    assert "FILES_TO_DELETE=" in backup_sh
+    assert "rm ${REMOTE_DIR}/${f}" in backup_sh
+
+    drill_sh = (REPO_ROOT / "deploy" / "restore-drill.sh").read_text(encoding="utf-8")
+    assert "POSTGRES_CONTAINER" in drill_sh
+    assert "shared-postgres" in drill_sh
+    assert "docker exec -i" in drill_sh
