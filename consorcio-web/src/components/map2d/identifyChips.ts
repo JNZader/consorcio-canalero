@@ -48,7 +48,8 @@ export function shouldHideDuplicateChips(chips: readonly IdentifyChip[], feature
 }
 
 function lineKm(feature: Feature): number | null {
-  if (feature.geometry?.type !== 'LineString') return null;
+  const type = feature.geometry?.type;
+  if (type !== 'LineString' && type !== 'MultiLineString') return null;
   const metres = length(feature as Feature<LineString>, { units: 'meters' });
   if (!Number.isFinite(metres) || metres <= 0) return null;
   return metres / 1000;
