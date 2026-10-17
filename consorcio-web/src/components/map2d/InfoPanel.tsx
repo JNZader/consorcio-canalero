@@ -53,7 +53,7 @@ import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { groupIdentifyChips, identifyTramoRows, shouldHideDuplicateChips } from './identifyChips';
 import { getDisplayableProperties } from './layerPropertyWhitelists';
 import { MapPanelShell } from './MapPanelShell';
-import { dedupedLineStringLengthM, mergeLineStringTramos } from './mergeLineStringTramos';
+import { selectionLengthM, selectionProfileGeometry } from './mergeLineStringTramos';
 import { PuntoInteresCard } from './PuntoInteresCard';
 import type { ProfileRangeStats } from './profileRange';
 import { isPuntoInteresLayerId } from './puntosInteresLayers';
@@ -147,7 +147,10 @@ export function featureDisplayName(feature: Feature, fallback = 'Elemento'): str
 
 export function groupSelectionSummary(features: readonly Feature[]): string {
   const count = features.length;
-  const allLines = features.every((feature) => feature.geometry?.type === 'LineString');
+  const allLines = features.every((feature) => {
+    const type = feature.geometry?.type;
+    return type === 'LineString' || type === 'MultiLineString';
+  });
   const noun = allLines
     ? count === 1
       ? 'tramo'
@@ -164,7 +167,7 @@ export function groupSelectionSummary(features: readonly Feature[]): string {
   }
   // El perfil muestrea cada parte, asi que el numero tiene que ser la traza
   // completa (que es lo que dice la etiqueta), no un eje que deja ramas afuera.
-  const metres = dedupedLineStringLengthM(features);
+  const metres = selectionLengthM(features);
   if (metres > 0) {
     parts.push(`${(metres / 1000).toFixed(2)} km sin superposición`);
   }
@@ -408,7 +411,7 @@ export const InfoPanel = memo(function InfoPanel({
     if (feature) return [feature];
     return [];
   }, [features, feature]);
-  const profileGeometry = useMemo(() => mergeLineStringTramos(resolved), [resolved]);
+  const profileGeometry = useMemo(() => selectionProfileGeometry(resolved), [resolved]);
   const groupSummary = useMemo(
     () => (resolved.length > 1 ? groupSelectionSummary(resolved) : null),
     [resolved]

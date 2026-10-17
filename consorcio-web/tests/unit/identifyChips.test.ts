@@ -63,4 +63,17 @@ describe('identifyTramoRows', () => {
     expect(rows[0].index).toBe(0);
     expect(rows[1].index).toBe(1);
   });
+
+  it('measures a unified MultiLineString route', () => {
+    const route: Feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiLineString',
+        coordinates: [SEGMENT_A, SEGMENT_B],
+      },
+      properties: { rtn: 'T269-03' },
+    };
+    const rows = identifyTramoRows([route]);
+    expect(rows[0].label).toMatch(/^Tramo 1 · \d+\.\d{2} km$/);
+  });
 });

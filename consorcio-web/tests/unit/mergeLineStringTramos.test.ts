@@ -6,6 +6,7 @@ import {
   dedupedLineStringLengthM,
   mergeLineStringParts,
   mergeLineStringTramos,
+  selectionProfileGeometry,
 } from '../../src/components/map2d/mergeLineStringTramos';
 
 function line(coordinates: LineString['coordinates']): Feature {
@@ -408,5 +409,30 @@ describe('groupSelectionSummary', () => {
     const uniqueKm = (dedupedLineStringLengthM(features) / 1000).toFixed(2);
     const km = summary.match(/([0-9.]+) km sin superposición/);
     expect(km?.[1]).toBe(uniqueKm);
+  });
+
+  it('profiles a single unified MultiLineString instead of dropping it', () => {
+    const route: Feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiLineString',
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+          ],
+          [
+            [2, 0],
+            [3, 0],
+          ],
+        ],
+      },
+      properties: { ruta: 'T269-03' },
+    };
+    const profile = selectionProfileGeometry([route]);
+    expect(profile?.type).toBe('MultiLineString');
+    const summary = groupSelectionSummary([route]);
+    expect(summary).toContain('T269-03');
+    expect(summary).toContain('1 tramo');
   });
 });
