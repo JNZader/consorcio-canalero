@@ -13,7 +13,7 @@ from fastapi_users.authentication import (
     JWTStrategy,
 )
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import PreAuthorizedEmail, User, UserRole
@@ -196,7 +196,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
         result = await session.execute(
             select(PreAuthorizedEmail).where(
-                PreAuthorizedEmail.email == user.email,
+                func.lower(PreAuthorizedEmail.email) == func.lower(user.email),
                 PreAuthorizedEmail.claimed == False,  # noqa: E712
             )
         )

@@ -130,6 +130,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Error closing ficha rate limiter", error=str(e))
     try:
+        from app.domains.geo.router_common import get_map_pdf_rate_limiter
+
+        await get_map_pdf_rate_limiter().close()
+    except Exception as e:
+        logger.warning("Error closing map-pdf rate limiter", error=str(e))
+    try:
         from app.core.cache import get_cache
 
         await get_cache().close()

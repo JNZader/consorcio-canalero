@@ -670,8 +670,12 @@ async def export_qgis_project_impl():
             status_code=503,
         )
 
+    from starlette.concurrency import run_in_threadpool
+
     layers = await fetch_vt_layers(settings.martin_internal_url)
-    zip_bytes = QGISProjectGenerator.build(layers, settings.martin_public_url)
+    zip_bytes = await run_in_threadpool(
+        QGISProjectGenerator.build, layers, settings.martin_public_url
+    )
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",

@@ -367,6 +367,8 @@ class Settings(BaseSettings):
     # Deliberately NOT the ficha semaphore: two unrelated public surfaces must
     # not be able to starve each other.
     geo_map_pdf_max_concurrency: int = 2
+    geo_map_pdf_rate_limit_requests: int = 10
+    geo_map_pdf_rate_limit_window: int = 60
     # Hard bound on simultaneous raster memory: the handler is sync and runs on
     # Starlette's threadpool, and rasterio holds real memory per call. This is
     # independent of Redis availability.

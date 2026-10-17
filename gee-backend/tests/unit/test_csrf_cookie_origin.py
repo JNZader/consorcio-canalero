@@ -25,6 +25,7 @@ def _app() -> Starlette:
             Route("/api/v2/auth/jwt/refresh", _ok, methods=["POST"]),
             Route("/api/v2/auth/jwt/logout", _ok, methods=["POST"]),
             Route("/api/v2/auth/jwt/logout-all", _ok, methods=["POST"]),
+            Route("/api/v2/auth/jwt/exchange-cookie", _ok, methods=["POST"]),
         ]
     )
     app.add_middleware(CSRFProtectionMiddleware)
@@ -49,6 +50,7 @@ def _post(path: str, origin: str | None) -> httpx.Response:
         "/api/v2/auth/jwt/refresh",
         "/api/v2/auth/jwt/logout",
         "/api/v2/auth/jwt/logout-all",
+        "/api/v2/auth/jwt/exchange-cookie",
     ],
 )
 def test_cookie_session_mutations_reject_a_missing_or_foreign_origin(path: str):
