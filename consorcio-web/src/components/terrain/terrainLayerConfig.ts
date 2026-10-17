@@ -80,6 +80,25 @@ export function pickActiveTerrainRasterLayer(
 
 export type TerrainRasterAutofill = string | null | 'keep';
 
+/**
+ * Resolves the default raster layer id to use as fallback in 3D when no
+ * Sentinel image is selected. Prioritizes explicit textureLayerId / demLayerId,
+ * then 'dem_raw' (base elevation DEM), and only falls back to the first available
+ * layer if dem_raw is absent. Prevents arbitrary pipeline composites (like drainage_need)
+ * from hijacking the default view.
+ */
+export function resolveDefaultTerrainRasterId(params: {
+  readonly rasterLayers: readonly GeoLayerInfo[];
+  readonly textureLayerId?: string | null;
+  readonly demLayerId?: string | null;
+}): string | null {
+  if (params.textureLayerId) return params.textureLayerId;
+  if (params.demLayerId) return params.demLayerId;
+  const demRaw = params.rasterLayers.find((layer) => layer.tipo === 'dem_raw');
+  if (demRaw) return demRaw.id;
+  return params.rasterLayers[0]?.id ?? null;
+}
+
 export function nextAutofillTerrainRasterId(input: {
   readonly userPicked: boolean;
   readonly activeRasterLayerId: string | null;

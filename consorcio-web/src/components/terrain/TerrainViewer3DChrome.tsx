@@ -33,6 +33,7 @@ import { heavy3dLoadLines, heavy3dWarning } from './terrainHeavyLayers';
 import {
   buildTerrain3DLayerItems,
   buildTerrainLayerControlItems,
+  resolveDefaultTerrainRasterId,
   UNSUPPORTED_3D_VECTOR_LAYERS,
 } from './terrainLayerConfig';
 
@@ -462,11 +463,14 @@ export function TerrainViewer3DChrome({
                 onLayerVisibilityChange={onVectorLayerToggle}
                 showIGNOverlay={false}
                 onShowIGNOverlayChange={() => undefined}
-                demEnabled={rasterLayers.length > 0}
+                demEnabled={rasterLayers.length > 0 || Boolean(selectedImageOption)}
                 showDemOverlay={Boolean(activeRasterLayerId)}
                 onShowDemOverlayChange={(visible) => {
+                  const fallbackId =
+                    selectedImageOption?.value ??
+                    resolveDefaultTerrainRasterId({ rasterLayers });
                   onActiveRasterLayerChange(
-                    visible ? (activeRasterLayerId ?? rasterLayers[0]?.id ?? null) : null
+                    visible ? (activeRasterLayerId ?? fallbackId) : null
                   );
                 }}
                 activeDemLayerId={activeRasterLayerId ?? null}
