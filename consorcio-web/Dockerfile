@@ -112,8 +112,7 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 # fix. APK_REFRESH is the commit SHA, so the layer re-runs on every gate.
 ARG APK_REFRESH=local
 RUN echo "apk refresh ${APK_REFRESH}" \
-    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff \
-    && apk add --no-cache 'libexpat>=2.9.0-r0'
+    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.
 RUN apk --no-network del curl
