@@ -80,13 +80,13 @@ backend-install: ## Install backend Python dependencies
 	@echo "$(BLUE)Installing backend dependencies...$(NC)"
 	cd $(BACKEND_DIR) && \
 		python -m pip install --upgrade pip && \
-		pip install --require-hashes -r requirements-dev.lock && \
+		pip install --no-deps --require-hashes -r requirements-dev.lock && \
 		pip install ruff mypy pytest pytest-cov pytest-asyncio httpx bandit
 	@echo "$(GREEN)Backend dependencies installed!$(NC)"
 
 frontend-install: ## Install frontend npm dependencies
 	@echo "$(BLUE)Installing frontend dependencies...$(NC)"
-	cd $(FRONTEND_DIR) && npm ci --no-audit --no-fund --legacy-peer-deps
+	cd $(FRONTEND_DIR) && npm ci --no-audit --no-fund
 	@echo "$(GREEN)Frontend dependencies installed!$(NC)"
 
 # ==============================================
@@ -140,7 +140,7 @@ backend-test: ## Run backend tests with coverage
 
 frontend-test: ## Run frontend tests
 	@echo "$(BLUE)Running frontend tests...$(NC)"
-	cd $(FRONTEND_DIR) && npm run test 2>/dev/null || echo "$(YELLOW)No frontend tests configured$(NC)"
+	cd $(FRONTEND_DIR) && npm run test:run
 
 # ==============================================
 # LINTING & FORMATTING

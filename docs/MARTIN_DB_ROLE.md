@@ -9,7 +9,7 @@ mutaciones.
 | Componente | Rol | Alcance |
 |---|---|---|
 | Backend y migraciones | `consorcio` | Propietario de la aplicación |
-| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre cuatro vistas |
+| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre cinco vistas |
 
 El rol `consorcio_martin` recibe `SELECT` exclusivamente sobre:
 
@@ -17,6 +17,7 @@ El rol `consorcio_martin` recibe `SELECT` exclusivamente sobre:
 - `public.vt_zonas_operativas`
 - `public.vt_puntos_conflicto`
 - `public.vt_canal_network`
+- `public.vt_parcelas_catastro`
 
 No recibe escritura sobre esas vistas, acceso a otras relaciones, secuencias,
 funciones de aplicación, creación de objetos, tablas temporales ni membresías de
@@ -29,7 +30,7 @@ los `GRANT` y `REVOKE` verificados por
 
 ## Antes de aplicar
 
-1. Hacé un backup y confirmá que las migraciones vigentes están aplicadas y crean las tres vistas permitidas.
+1. Hacé un backup y confirmá que las migraciones vigentes están aplicadas y crean las cinco vistas permitidas.
 2. Auditá otros roles que usen privilegios heredados de `PUBLIC`. El script cierra
    `CONNECT`, `TEMPORARY`, relaciones y secuencias públicas en esta base. Otorgá
    permisos explícitos a cualquier integración legítima antes de ejecutarlo.

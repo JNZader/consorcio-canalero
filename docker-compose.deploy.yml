@@ -359,6 +359,7 @@ services:
     volumes:
       - geo-data:/data/geo
       - ./gee-backend/data/waterways:/app/data/waterways:ro
+      - ./consorcio-web/public/capas/canales:/app/data/canales:ro
       # Zona outline for clipping visual raster tiles to the consorcio —
       # parity with dev and prod composes. Missing file → docker creates a
       # DIRECTORY and the clip silently degrades to unclipped overlays.
@@ -419,7 +420,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
     logging:
       driver: "json-file"
       options:

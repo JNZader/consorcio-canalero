@@ -33,7 +33,7 @@ SELECT
     rtn AS ruta,
     min(fna) AS nombre,
     min(gna) AS tipo_generico,
-    red,
+    min(red) AS red,
     string_agg(DISTINCT ccn, ', ' ORDER BY ccn) 
         FILTER (WHERE ccn IS NOT NULL AND ccn NOT IN ('No aplica', 'No disponible')) AS consorcios,
     round(sum(lzn)::numeric, 2) AS longitud_declarada_km,
@@ -42,7 +42,7 @@ SELECT
     ST_Multi(ST_LineMerge(ST_Union(geom)))::geometry(MultiLineString, 4326) AS geom
 FROM red_vial
 WHERE activo = true
-GROUP BY rtn, red;
+GROUP BY rtn;
 """
 
 CREATE_UX_INDEX_RUTA = (
@@ -82,6 +82,12 @@ BEGIN
         ALTER INDEX public.ux_mv_caminos_unificados_ruta OWNER TO {APP_ROLE};
         ALTER INDEX public.ux_mv_caminos_unificados_id OWNER TO {APP_ROLE};
         ALTER INDEX public.ix_mv_caminos_unificados_geom OWNER TO {APP_ROLE};
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'martin_reader') THEN
+        GRANT SELECT ON public.vt_caminos_unificados TO martin_reader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'consorcio_martin') THEN
+        GRANT SELECT ON public.vt_caminos_unificados TO consorcio_martin;
     END IF;
 END
 $own$;
