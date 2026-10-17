@@ -97,15 +97,23 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 
 # nginx:1.30.5-alpine is Alpine 3.24.2. Trivy 0.70 (HIGH/CRITICAL, ignore-unfixed)
 # on that digest no longer reports CVE-2026-6732 (libxml2): the base ships the
-# fixed libxml2, so the 1.30.4 hold (#308, #330) is lifted. Three HIGH rows
-# remain and still need a surgical apk upgrade:
+# fixed libxml2, so the 1.30.4 hold (#308, #330) is lifted. These HIGH rows
+# still need a surgical apk upgrade:
 #   CVE-2026-93990 — libexpat 2.8.4-r0 → 2.8.5-r0
+#   CVE-2026-77214 — libexpat 2.8.5-r0 → 2.9.0-r0
 #   CVE-2026-103111 — pcre2 10.48-r0 → 10.49-r0
 #   CVE-2026-4775 — tiff 4.7.1-r0 → 4.7.2-r0
 # libcrypto3/libssl3/libuuid stay in the upgrade so a later digest that lags
 # those packages does not reopen the gate. REMOVE a package from this line
 # only after a Trivy scan of the pinned digest shows it clean.
-RUN apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff
+#
+# The image gate caches this final runtime layer (`mode=min`). An unchanged
+# `apk upgrade` then keeps the previous libexpat after Alpine publishes a
+# fix. APK_REFRESH is the commit SHA, so the layer re-runs on every gate.
+ARG APK_REFRESH=local
+RUN echo "apk refresh ${APK_REFRESH}" \
+    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff \
+    && apk add --no-cache 'libexpat>=2.9.0-r0'
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.
 RUN apk --no-network del curl
