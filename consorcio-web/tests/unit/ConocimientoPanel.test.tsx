@@ -218,6 +218,24 @@ describe('respuesta renders prose plus citation cards', () => {
       'https://example.test/ley8548'
     );
   });
+
+  it('omits the fuente link when fuente_url has an unsafe scheme', () => {
+    renderWithMantine(
+      <ConocimientoItemCard
+        item={item('respuesta', {
+          respuesta: 'Texto',
+          citas: [
+            cita({
+              fuente_url: 'javascript:alert(1)',
+            }),
+          ],
+        })}
+      />
+    );
+
+    const card = screen.getByTestId('cita-card');
+    expect(within(card).queryByRole('link', { name: /fuente/i })).toBeNull();
+  });
 });
 
 describe('the non-answer states', () => {
@@ -304,6 +322,22 @@ describe('redirects name the surface the SERVER chose', () => {
 
     expect(screen.getByTestId('estado-badge')).toHaveTextContent(/sin norma aplicable/i);
     expect(screen.getByTestId('redireccion-parcial-enlace')).toHaveAttribute('href', '/tramites');
+  });
+
+  it('does not render an anchor when redirect surface has an unsafe scheme', () => {
+    renderWithMantine(
+      <ConocimientoItemCard
+        item={item('redireccion', {
+          redireccion: {
+            motivo: 'Peligro',
+            superficie: 'javascript:alert(1)',
+          },
+        })}
+      />
+    );
+
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByTestId('redireccion-enlace')).toHaveTextContent('Ir a javascript:alert(1)');
   });
 });
 

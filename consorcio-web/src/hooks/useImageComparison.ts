@@ -12,7 +12,7 @@ import {
 } from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
 import { isValidImageComparison } from '../lib/typeGuards';
-import type { SatelliteSensorLabel, SelectedImage } from './useSelectedImage';
+import { isTileStale, type SatelliteSensorLabel, type SelectedImage } from './useSelectedImage';
 
 const STORAGE_KEY = 'consorcio_image_comparison';
 
@@ -20,6 +20,10 @@ export interface ImageComparison {
   left: SelectedImage;
   right: SelectedImage;
   enabled: boolean;
+}
+
+function isComparisonStale(comparison: ImageComparison): boolean {
+  return isTileStale(comparison.left) || isTileStale(comparison.right);
 }
 
 /**
@@ -135,26 +139,45 @@ export function useImageComparison() {
     let cancelled = false;
     const load = async () => {
       try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (isValidImageComparison(parsed)) {
-            if (!cancelled) setComparisonState(parsed as ImageComparison);
-            return;
+        let hasLocal = false;
+        let needsRefresh = false;
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (isValidImageComparison(parsed)) {
+              const comp = parsed as ImageComparison;
+              if (!cancelled) setComparisonState(comp);
+              hasLocal = true;
+              if (isComparisonStale(comp)) {
+                needsRefresh = true;
+              } else {
+                return;
+              }
+            } else {
+              localStorage.removeItem(STORAGE_KEY);
+            }
           }
+        } catch {
           localStorage.removeItem(STORAGE_KEY);
         }
-        const restored = await restoreComparisonFromBackend();
-        if (cancelled || !restored) return;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-        setComparisonState(restored);
-        window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: restored }));
-      } catch (err) {
-        logger.warn('Failed to restore comparison from backend:', err);
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          /* ignore */
+        if (!hasLocal || needsRefresh) {
+          try {
+            const restored = await restoreComparisonFromBackend();
+            if (cancelled || !restored) return;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+            setComparisonState(restored);
+            window.dispatchEvent(new CustomEvent('imageComparisonChange', { detail: restored }));
+          } catch (err) {
+            logger.warn('Failed to restore comparison from backend:', err);
+            if (!hasLocal) {
+              try {
+                localStorage.removeItem(STORAGE_KEY);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -240,24 +263,35 @@ export function useImageComparisonListener() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      let hasLocal = false;
+      let needsRefresh = false;
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
           if (isValidImageComparison(parsed)) {
-            if (!cancelled) setComparison(parsed as ImageComparison);
-            return;
+            const comp = parsed as ImageComparison;
+            if (!cancelled) setComparison(comp);
+            hasLocal = true;
+            if (isComparisonStale(comp)) {
+              needsRefresh = true;
+            } else {
+              return;
+            }
+          } else {
+            localStorage.removeItem(STORAGE_KEY);
           }
-          localStorage.removeItem(STORAGE_KEY);
         }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
-      try {
-        const restored = await restorePublicComparison();
-        if (!cancelled && restored) setComparison(restored);
-      } catch (err) {
-        logger.warn('Failed to restore public comparison:', err);
+      if (!hasLocal || needsRefresh) {
+        try {
+          const restored = await restorePublicComparison();
+          if (!cancelled && restored) setComparison(restored);
+        } catch (err) {
+          logger.warn('Failed to restore public comparison:', err);
+        }
       }
     };
     void load();

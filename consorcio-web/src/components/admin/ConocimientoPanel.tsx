@@ -187,6 +187,18 @@ export function colorDeVigencia(estadoVigencia: string): 'teal' | 'red' | 'gray'
 }
 
 /** One citation card. Every field here is server-authored and shown as given. */
+function isSafeUrl(rawUrl: string): boolean {
+  if (!rawUrl) return false;
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export function ConocimientoCitaCard({ cita }: Readonly<{ cita: ConocimientoCita }>) {
   return (
     <Card
@@ -250,7 +262,7 @@ export function ConocimientoCitaCard({ cita }: Readonly<{ cita: ConocimientoCita
           <Text size="xs" c="dimmed">
             {cita.tipo} · {cita.jurisdiccion}
           </Text>
-          {cita.fuente_url ? (
+          {cita.fuente_url && isSafeUrl(cita.fuente_url) ? (
             <Anchor
               href={cita.fuente_url}
               target="_blank"
@@ -275,15 +287,22 @@ function BloqueRedireccion({
   parcial,
 }: Readonly<{ redireccion: ConocimientoRedireccion; parcial: boolean }>) {
   const sufijo = parcial ? 'parcial-' : '';
+  const safe = isSafeUrl(redireccion.superficie);
   return (
     <Alert color="blue" variant="light" icon={<IconInfoCircle size={16} />}>
       <Stack gap={4}>
         <Text size="sm" data-testid={`redireccion-${sufijo}motivo`}>
           {redireccion.motivo}
         </Text>
-        <Anchor href={redireccion.superficie} data-testid={`redireccion-${sufijo}enlace`}>
-          Ir a {redireccion.superficie}
-        </Anchor>
+        {safe ? (
+          <Anchor href={redireccion.superficie} data-testid={`redireccion-${sufijo}enlace`}>
+            Ir a {redireccion.superficie}
+          </Anchor>
+        ) : (
+          <Text size="sm" fw={500} data-testid={`redireccion-${sufijo}enlace`}>
+            Ir a {redireccion.superficie}
+          </Text>
+        )}
       </Stack>
     </Alert>
   );

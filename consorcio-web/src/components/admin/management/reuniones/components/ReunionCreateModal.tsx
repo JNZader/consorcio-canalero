@@ -80,6 +80,7 @@ export function ReunionCreateModal({
                 value={newChecklistPoint}
                 onChange={(event) => setNewChecklistPoint(event.currentTarget.value)}
                 placeholder="Escribí un punto y pulsá Añadir"
+                aria-label="Nuevo punto de orden del día"
                 style={{ flex: 1 }}
               />
               <Button type="button" variant="light" onClick={onAddChecklistPoint}>
@@ -99,6 +100,7 @@ export function ReunionCreateModal({
                       form.setFieldValue(`orden_del_dia_items.${index}`, event.currentTarget.value)
                     }
                     placeholder={`Punto ${index + 1}`}
+                    aria-label={`Punto ${index + 1} del orden del día`}
                     style={{ flex: 1 }}
                   />
                   <ActionIcon
