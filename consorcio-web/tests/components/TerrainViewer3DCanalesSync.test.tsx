@@ -73,10 +73,14 @@ vi.mock('../../src/hooks/useCaminosColoreados', () => ({
 vi.mock('../../src/hooks/useCatastroMap', () => ({
   useCatastroMap: () => ({ catastroMap: null }),
 }));
-vi.mock('../../src/hooks/useSoilMap', () => ({
-  useSoilMap: () => ({ soilMap: null }),
-  getSoilColor: () => '#888',
-}));
+vi.mock('../../src/hooks/useSoilMap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/hooks/useSoilMap')>();
+  return {
+    ...actual,
+    useSoilMap: () => ({ soilMap: null, loading: false, error: null }),
+    getSoilColor: () => '#888',
+  };
+});
 vi.mock('../../src/hooks/useSelectedImage', () => ({
   useSelectedImageListener: () => null,
   getSelectedImageSync: () => null,
@@ -520,5 +524,43 @@ describe('TerrainViewer3D — Canales layer sync (Phase 2)', () => {
     await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
 
     expect(syncCanalesLayersMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT re-invoke syncCanalesLayers when an unrelated vector layer (like soil) toggles', async () => {
+    const relevados = makeCanalesCollection('relevados');
+    const propuestas = makeCanalesCollection('propuestas');
+    const index = makeIndex();
+
+    useCanalesMock.mockReturnValue({
+      relevados,
+      propuestas,
+      index,
+      isLoading: false,
+      isError: false,
+    });
+
+    const { default: TerrainViewer3D } = await import(
+      '../../src/components/terrain/TerrainViewer3D'
+    );
+    const { useMapLayerSyncStore } = await import('../../src/stores/mapLayerSyncStore');
+
+    await renderViewer(<TerrainViewer3D demLayerId="dem-uuid" />);
+
+    const callCountBefore = syncCanalesLayersMock.mock.calls.length;
+    expect(callCountBefore).toBeGreaterThanOrEqual(1);
+
+    act(() => {
+      useMapLayerSyncStore.setState((s) => ({
+        map2d: {
+          ...s.map2d,
+          visibleVectors: {
+            ...s.map2d.visibleVectors,
+            soil: !s.map2d.visibleVectors.soil,
+          },
+        },
+      }));
+    });
+
+    expect(syncCanalesLayersMock.mock.calls.length).toBe(callCountBefore);
   });
 });

@@ -319,6 +319,27 @@ describe('useImageExplorerController — historic flood suppression', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.selectedDay).toBeNull();
   });
+
+  it('reloads historic flood with updated visualization and suppresses day image fetch', async () => {
+    const { result } = await mountController();
+
+    await act(async () => {
+      await result.current.loadHistoricFlood('f1');
+    });
+
+    await waitFor(() => expect(result.current.selectedDay).toBe('2016-04-20'));
+    expect(calls.flood).toHaveLength(1);
+    expect(calls.dayImage).toHaveLength(0);
+
+    await act(async () => {
+      result.current.setVisualization('falso_color');
+    });
+
+    await waitFor(() => expect(calls.flood).toHaveLength(2));
+    expect(lastUrl('flood')).toContain('visualization=falso_color');
+    expect(calls.dayImage).toHaveLength(0);
+    expect(result.current.visualization).toBe('falso_color');
+  });
 });
 
 describe('useImageExplorerController — stale responses (AbortController)', () => {

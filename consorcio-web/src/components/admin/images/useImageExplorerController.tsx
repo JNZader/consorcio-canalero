@@ -156,6 +156,7 @@ export function useImageExplorerController() {
   // (where setSelectedDay is an Object.is no-op and the effect never runs)
   // cannot leave a dangling flag that would swallow a later day selection.
   const suppressDayFetchRef = useRef<string | null>(null);
+  const activeHistoricFloodRef = useRef<{ id: string; date: string } | null>(null);
 
   const availableDatesSet = useMemo(() => new Set(availableDates), [availableDates]);
   const visOptions = buildVisualizationOptions(sensor, visualizations);
@@ -201,21 +202,23 @@ export function useImageExplorerController() {
   );
 
   const loadHistoricFlood = useCallback(
-    async (floodId: string) => {
+    async (floodId: string, customVis?: string) => {
       imageRequestRef.current?.abort();
       const controller = new AbortController();
       imageRequestRef.current = controller;
       setLoading(true);
       setError(null);
+      const vis = customVis ?? visualization;
       try {
         const data = await apiFetch<ImageResultLike>(
-          `${API_BASE}/historic-floods/${floodId}?visualization=${visualization}`,
+          `${API_BASE}/historic-floods/${floodId}?visualization=${vis}`,
           { signal: controller.signal, timeout: GEE_TIMEOUT }
         );
         if (controller.signal.aborted) return;
         setResult(data);
         updateTileLayer(data.tile_url);
         if (data.flood_info) {
+          activeHistoricFloodRef.current = { id: floodId, date: data.flood_info.date };
           const floodDate = new Date(data.flood_info.date);
           setCalendarYear(floodDate.getFullYear());
           setCalendarMonth(floodDate.getMonth());
@@ -237,9 +240,14 @@ export function useImageExplorerController() {
   const loadShortlistScene = useCallback(
     async (row: ImageryShortlistRow) => {
       if (!isImageSensor(row.sensor)) return;
+      activeHistoricFloodRef.current = null;
       const nextSensor = row.sensor;
       const nextVis = explorerSceneVisualization(nextSensor, row.visualization);
       const isL7 = nextSensor === 'landsat7';
+      // Suppress day-fetch effect and set selected day SYNCHRONOUSLY before await apiFetch,
+      // preventing any re-renders from triggering fetchImageForDate and aborting this request.
+      suppressDayFetchRef.current = row.scene_date;
+      setSelectedDay(row.scene_date);
       setSensor(nextSensor);
       setVisualization(nextVis);
       setCompositionMode(isL7 ? 'composite' : 'scene');
@@ -269,8 +277,6 @@ export function useImageExplorerController() {
           setCalendarYear(year);
           setCalendarMonth(month - 1);
         }
-        suppressDayFetchRef.current = row.scene_date;
-        setSelectedDay(row.scene_date);
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Error desconocido');
@@ -297,6 +303,7 @@ export function useImageExplorerController() {
   }, [result, setRightImage]);
 
   const handleSelectDay = useCallback((dateStr: string) => {
+    activeHistoricFloodRef.current = null;
     // An explicit calendar click must always fetch, even if a historic-flood
     // suppression for this same day is still pending.
     suppressDayFetchRef.current = null;
@@ -318,6 +325,7 @@ export function useImageExplorerController() {
   // on Dec↔Jan crossings: StrictMode double-invokes updaters, firing the
   // nested year setter twice.
   const handlePrevMonth = useCallback(() => {
+    activeHistoricFloodRef.current = null;
     if (calendarMonth === 0) {
       setCalendarMonth(11);
       setCalendarYear(calendarYear - 1);
@@ -328,6 +336,7 @@ export function useImageExplorerController() {
   }, [calendarMonth, calendarYear]);
 
   const handleNextMonth = useCallback(() => {
+    activeHistoricFloodRef.current = null;
     const today = new Date();
     const nextMonth = calendarMonth === 11 ? 0 : calendarMonth + 1;
     const nextYear = calendarMonth === 11 ? calendarYear + 1 : calendarYear;
@@ -342,6 +351,7 @@ export function useImageExplorerController() {
   }, [calendarMonth, calendarYear]);
 
   const handleMonthYearChange = useCallback((year: number, month: number) => {
+    activeHistoricFloodRef.current = null;
     setCalendarYear(year);
     setCalendarMonth(month);
     setSelectedDay(null);
@@ -349,6 +359,17 @@ export function useImageExplorerController() {
     setScenes([]);
     setSelectedSceneId(null);
   }, []);
+
+  const handleSetVisualization = useCallback(
+    (nextVis: string) => {
+      setVisualization(nextVis);
+      if (activeHistoricFloodRef.current && selectedDay === activeHistoricFloodRef.current.date) {
+        suppressDayFetchRef.current = selectedDay;
+        void loadHistoricFlood(activeHistoricFloodRef.current.id, nextVis);
+      }
+    },
+    [loadHistoricFlood, selectedDay]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -428,8 +449,13 @@ export function useImageExplorerController() {
         suppressDayFetchRef.current = null;
         return;
       }
+      if (activeHistoricFloodRef.current && activeHistoricFloodRef.current.date === selectedDay) {
+        return;
+      }
+      activeHistoricFloodRef.current = null;
       fetchImageForDate(selectedDay);
     } else {
+      activeHistoricFloodRef.current = null;
       setScenes([]);
       setSelectedSceneId(null);
     }
@@ -490,7 +516,7 @@ export function useImageExplorerController() {
     visOptions,
     isCurrentImageSelected,
     setSensor,
-    setVisualization,
+    setVisualization: handleSetVisualization,
     setMaxCloud,
     setCompositionMode,
     setSelectedDay,

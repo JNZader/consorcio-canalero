@@ -65,10 +65,14 @@ vi.mock('../../src/hooks/useCaminosColoreados', () => ({
 vi.mock('../../src/hooks/useCatastroMap', () => ({
   useCatastroMap: () => ({ catastroMap: null }),
 }));
-vi.mock('../../src/hooks/useSoilMap', () => ({
-  useSoilMap: () => ({ soilMap: null }),
-  getSoilColor: () => '#888',
-}));
+vi.mock('../../src/hooks/useSoilMap', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/hooks/useSoilMap')>();
+  return {
+    ...actual,
+    useSoilMap: () => ({ soilMap: null, loading: false, error: null }),
+    getSoilColor: () => '#888',
+  };
+});
 vi.mock('../../src/hooks/useSelectedImage', () => ({
   useSelectedImageListener: () => null,
   getSelectedImageSync: () => null,

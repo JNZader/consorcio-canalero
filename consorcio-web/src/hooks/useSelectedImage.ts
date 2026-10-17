@@ -187,7 +187,7 @@ export function useSelectedImage() {
 // GEE map IDs expire after ~24–72 h. Regenerate if cached tile is older than this.
 const GEE_TILE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-function isTileStale(image: SelectedImage): boolean {
+export function isTileStale(image: SelectedImage): boolean {
   if (!image.selected_at) return true;
   const age = Date.now() - new Date(image.selected_at).getTime();
   return age > GEE_TILE_MAX_AGE_MS;
