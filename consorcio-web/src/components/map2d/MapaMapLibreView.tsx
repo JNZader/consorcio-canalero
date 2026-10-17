@@ -514,7 +514,16 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               header section INSIDE `FichaTerritorialPanel` (threaded below via
               the `fichaCanal*` props) so it can never be covered by the ficha
               card and stays reachable in loading/error states. */}
-            <MeasurementLabels map={measurementMap} measurements={measurementState.measurements} />
+            <MeasurementLabels
+              map={measurementMap}
+              measurements={measurementState.measurements}
+              onElevationProfileHover={(point) => {
+                setElevationProfileHover(point);
+              }}
+              onElevationProfileRange={(range) => {
+                setElevationProfileRange(range);
+              }}
+            />
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
 
             {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
