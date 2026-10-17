@@ -267,6 +267,26 @@ describe('useSelectedImageListener', () => {
     await waitFor(() => expect(first.result.current?.tile_url).toBe('https://tiles.test/shared'));
     await waitFor(() => expect(second.result.current?.tile_url).toBe('https://tiles.test/shared'));
   });
+
+  it('serves stale cached image immediately while refreshing and preserves it if refresh fails', async () => {
+    const staleImage = {
+      ...baseImage,
+      tile_url: 'https://tiles.test/stale',
+      selected_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    };
+    store.set(STORAGE_KEY, JSON.stringify(staleImage));
+    mapImageApiMock.getPublicCurrentImage.mockRejectedValue(new Error('Network error'));
+
+    const { result } = renderHook(() => useSelectedImageListener());
+
+    expect(result.current?.tile_url).toBe('https://tiles.test/stale');
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(result.current?.tile_url).toBe('https://tiles.test/stale');
+    expect(store.get(STORAGE_KEY)).toBeDefined();
+    expect(window.localStorage.removeItem).not.toHaveBeenCalledWith(STORAGE_KEY);
+  });
 });
 
 describe('getSelectedImageSync', () => {
