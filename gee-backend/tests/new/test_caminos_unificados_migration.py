@@ -148,7 +148,9 @@ class TestCaminosUnificadosMaterializedView:
         migrated.execute(text(f"REFRESH MATERIALIZED VIEW {SCHEMA}.mv_caminos_unificados"))
         payload = migrated.execute(text(PUBLIC_CAMINOS_SQL)).scalar_one()
         collection = assemble_public_caminos(payload, CONSORCIO_COLORS)
-        pub = next(feature for feature in collection["features"] if feature["properties"]["rtn"] == "PUB-1")
+        pub = next(
+            feature for feature in collection["features"] if feature["properties"]["rtn"] == "PUB-1"
+        )
         assert pub["geometry"]["type"] == "MultiLineString"
         assert pub["properties"]["cantidad_tramos_fisicos"] == 2
         assert pub["properties"]["ccn"] == "Consorcio Largo"

@@ -191,7 +191,7 @@ async def get_public_caminos(
 ) -> PublicMapProjectionResponse:
     """One colored geometry per route (``vt_caminos_unificados``)."""
     try:
-        data = load_public_caminos_unificados(db)
+        data = await run_in_threadpool(load_public_caminos_unificados, db)
         result = PublicMapProjectionResponse(
             status="available",
             projection="caminos",
