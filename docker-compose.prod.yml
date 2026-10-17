@@ -219,6 +219,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - geo-data:/data/geo
+      - ./gee-backend/data/waterways:/app/data/waterways:ro
       # User-uploaded denuncia photos live here. Without a named volume the
       # files vanish on every `docker compose up -d --pull` (image rebuild),
       # which is exactly what happened in past deploys.
@@ -399,6 +400,8 @@ services:
     volumes:
       - geo-data:/data/geo
       - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
+      - ./gee-backend/data/waterways:/app/data/waterways:ro
+      - ./consorcio-web/public/capas/canales:/app/data/canales:ro
       # Zona outline for clipping visual raster tiles to the consorcio —
       # same mount dev uses (single source of truth: the geojson the
       # frontend serves). Without it the tile service logs a warning and
@@ -455,7 +458,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
     logging:
       driver: "json-file"
       options:

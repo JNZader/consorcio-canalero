@@ -112,8 +112,15 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
             token,
             settings.jwt_secret,
             algorithms=["HS256"],
-            options={"verify_exp": True},
+            options={"verify_exp": True, "verify_aud": False},
         )
+        aud = payload.get("aud")
+        if aud is not None:
+            valid_aud = aud == "fastapi-users:auth" or (
+                isinstance(aud, list) and "fastapi-users:auth" in aud
+            )
+            if not valid_aud:
+                return None
         user_id = payload.get("sub")
         return user_id if isinstance(user_id, str) and user_id else None
     except PyJWTError:
@@ -311,6 +318,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
             "/api/v2/auth/jwt/refresh",
             "/api/v2/auth/jwt/logout",
             "/api/v2/auth/jwt/logout-all",
+            "/api/v2/auth/jwt/exchange-cookie",
         }
     )
     UPLOAD_PATHS: set[str] = {"/api/v2/public/upload-photo", "/api/v2/capas"}

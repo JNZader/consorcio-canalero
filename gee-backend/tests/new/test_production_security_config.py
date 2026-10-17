@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MARTIN_VIEWS = {
     "vt_caminos_unificados",
     "vt_canal_network",
+    "vt_parcelas_catastro",
     "vt_puntos_conflicto",
     "vt_zonas_operativas",
 }
@@ -81,7 +82,7 @@ def test_production_example_uses_canonical_sync_database_url() -> None:
 def test_martin_only_publishes_explicit_sanitized_views(config_path: str) -> None:
     config = _read_repo_file(config_path)
     configured_sources = set(
-        re.findall(r"^    (vt_[a-z0-9_]+):\n      schema:", config, re.MULTILINE)
+        re.findall(r"table:\s+(vt_[a-z0-9_]+)", config)
     )
 
     assert "auto_publish: false" in config

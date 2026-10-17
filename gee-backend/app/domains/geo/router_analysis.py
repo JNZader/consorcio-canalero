@@ -78,7 +78,7 @@ class ZonalStatsRequest(BaseModel):
 def compute_zonal_statistics(
     body: ZonalStatsRequest,
     db: Session = Depends(get_db),
-    _user: User = Depends(_require_operator),
+    _user: User = Depends(_require_operator()),
 ):
     """Compute raster statistics per zone geometry.
 
@@ -130,7 +130,7 @@ def compute_zonal_statistics(
                 ST_AsText(Denuncia.geom),
                 Denuncia.tipo,
             )
-            .filter(Denuncia.geom.isnot(None))
+            .filter(Denuncia.geom.isnot(None), Denuncia.deleted_at.is_(None))
             .all()
         )
     else:
@@ -164,7 +164,7 @@ def compute_zonal_statistics(
 def get_zona_flood_risk(
     zona_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(_require_operator),
+    _user: User = Depends(_require_operator()),
 ):
     """Compute comprehensive flood risk score for a zona operativa.
 

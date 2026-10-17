@@ -59,6 +59,8 @@ def _app_de_ficha(db: Any = None) -> Any:
 RUTAS_OPERADOR_MUESTRA = {
     ("GET", "/api/v2/geo/jobs"),
     ("GET", "/api/v2/geo/layers"),
+    ("POST", "/api/v2/geo/zonal-stats"),
+    ("GET", "/api/v2/geo/flood-risk/zona/00000000-0000-0000-0000-000000000001"),
 }
 
 # Publicas SIN parametros de path, chequeables directo (el tile proxy y los

@@ -183,7 +183,9 @@ def get_public_stats(
     db: Session = Depends(get_db),
 ):
     """Basic public statistics — safe to show without authentication."""
-    total_denuncias: int = db.execute(select(func.count()).select_from(Denuncia)).scalar_one()
+    total_denuncias: int = db.execute(
+        select(func.count()).select_from(Denuncia).where(Denuncia.deleted_at.is_(None))
+    ).scalar_one()
 
     total_sugerencias: int = db.execute(select(func.count()).select_from(Sugerencia)).scalar_one()
 
