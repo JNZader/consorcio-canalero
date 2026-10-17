@@ -133,7 +133,7 @@ def create_denuncia(
 
 def _load_denuncia_for_photo(db: Session, denuncia_id: uuid.UUID, user_id: uuid.UUID) -> Denuncia:
     denuncia = db.get(Denuncia, denuncia_id)
-    if denuncia is None or denuncia.deleted_at is not None:
+    if denuncia is None or getattr(denuncia, "deleted_at", None) is not None:
         raise HTTPException(status_code=404, detail="Denuncia no encontrada")
     # Legacy denuncias (pre-auth) may have ``user_id=None``. ``UUID(str(None))``
     # would raise ValueError → 500; explicit guard makes it a clean 403.

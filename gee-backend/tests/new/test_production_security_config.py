@@ -81,9 +81,7 @@ def test_production_example_uses_canonical_sync_database_url() -> None:
 )
 def test_martin_only_publishes_explicit_sanitized_views(config_path: str) -> None:
     config = _read_repo_file(config_path)
-    configured_sources = set(
-        re.findall(r"table:\s+(vt_[a-z0-9_]+)", config)
-    )
+    configured_sources = set(re.findall(r"table:\s+(vt_[a-z0-9_]+)", config))
 
     assert "auto_publish: false" in config
     assert configured_sources == MARTIN_VIEWS
