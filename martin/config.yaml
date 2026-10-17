@@ -2,6 +2,7 @@
 # Docs: https://maplibre.org/martin/
 
 listen_addresses: '0.0.0.0:3000'
+cache_size_mb: 64
 
 postgres:
   # Sourced from the env_file gee-backend/.env so credential rotations stay

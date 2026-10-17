@@ -55,7 +55,8 @@ BEGIN
               ('vt_caminos_unificados'),
               ('vt_zonas_operativas'),
               ('vt_puntos_conflicto'),
-              ('vt_canal_network')
+              ('vt_canal_network'),
+              ('vt_parcelas_catastro')
       ) AS expected(name)
      WHERE to_regclass(format('%I.%I', 'public', expected.name)) IS NULL;
 
@@ -205,7 +206,8 @@ BEGIN
         'public.vt_caminos_unificados, '
         'public.vt_zonas_operativas, '
         'public.vt_puntos_conflicto, '
-        'public.vt_canal_network TO %I',
+        'public.vt_canal_network, '
+        'public.vt_parcelas_catastro TO %I',
         reader_name
     );
 END
@@ -231,7 +233,7 @@ SELECT has_database_privilege(:'martin_role', current_database(), 'CONNECT') AS 
        has_schema_privilege(:'martin_role', 'public', 'USAGE') AS schema_usage,
        has_schema_privilege(:'martin_role', 'public', 'CREATE') AS schema_create;
 
-\echo 'Four allowlisted views (SELECT true; all write columns false)'
+\echo 'Five allowlisted views (SELECT true; all write columns false)'
 SELECT relation.relname,
        has_table_privilege(:'martin_role', relation.oid, 'SELECT') AS can_select,
        has_table_privilege(:'martin_role', relation.oid, 'INSERT') AS can_insert,
@@ -247,7 +249,8 @@ SELECT relation.relname,
        'vt_caminos_unificados',
        'vt_zonas_operativas',
        'vt_puntos_conflicto',
-       'vt_canal_network'
+       'vt_canal_network',
+       'vt_parcelas_catastro'
    )
  ORDER BY relation.relname;
 
@@ -261,7 +264,8 @@ SELECT count(*) AS unexpected_relation_privileges
        'vt_caminos_unificados',
        'vt_zonas_operativas',
        'vt_puntos_conflicto',
-       'vt_canal_network'
+       'vt_canal_network',
+       'vt_parcelas_catastro'
    )
    AND (
        has_table_privilege(:'martin_role', relation.oid, 'SELECT')

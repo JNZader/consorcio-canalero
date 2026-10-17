@@ -19,6 +19,7 @@
 #   }
 
 listen_addresses: '0.0.0.0:3000'
+cache_size_mb: 64
 
 postgres:
   connection_string: ${DATABASE_URL}

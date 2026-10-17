@@ -920,6 +920,8 @@ def run_load(db: Session, *, dry_run: bool = False) -> int:
         return _report_infra_failure(exc)
 
     print(result.render())
+    if not dry_run:
+        _refresh_mv_caminos_unificados(db)
     return EXIT_OK
 
 
@@ -981,10 +983,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from app.db.session import SessionLocal  # noqa: PLC0415
 
     with SessionLocal() as db:
-        code = run_load(db, dry_run=args.dry_run)
-        if code == EXIT_OK and not args.dry_run:
-            _refresh_mv_caminos_unificados(db)
-        return code
+        return run_load(db, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":  # pragma: no cover — module entry point

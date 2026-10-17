@@ -11,3 +11,9 @@ tests/
 *.md
 .git
 .github
+venv/
+venv-rag/
+coverage_html/
+.coverage
+.coverage.*
+htmlcov/

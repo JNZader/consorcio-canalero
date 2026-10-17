@@ -209,7 +209,12 @@ class IntelligenceRepositoryMetricsMixin:
 
     def refresh_materialized_views(self, db: Session) -> dict[str, str]:
         results: dict[str, str] = {}
-        for view in ["mv_dashboard_geo_stats", "mv_hci_por_zona", "mv_alertas_resumen"]:
+        for view in [
+            "mv_dashboard_geo_stats",
+            "mv_hci_por_zona",
+            "mv_alertas_resumen",
+            "mv_caminos_unificados",
+        ]:
             try:
                 db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}"))
                 results[view] = "ok"
