@@ -129,6 +129,31 @@ class TestCaminosUnificadosMaterializedView:
         assert t269[6] == "ST_MultiLineString"
         assert t269[7] is True
 
+    def test_public_sql_returns_one_feature_per_ruta(self, migrated):
+        from app.domains.geo.caminos_unificados_public import (
+            PUBLIC_CAMINOS_SQL,
+            assemble_public_caminos,
+        )
+        from app.domains.geo.gee_service_layers_support import CONSORCIO_COLORS
+
+        migrated.execute(
+            text(
+                f"INSERT INTO {SCHEMA}.red_vial (id, source_id, parte, fna, gna, rtn, red, ccn, ccc, lzn, geom, geom_hash) VALUES "
+                "('pub-1', 'pub-s1', 1, 'Camino Pub', 'Camino', 'PUB-1', 'Terciaria', 'Consorcio Largo', 'L', 1, "
+                "ST_GeomFromText('LINESTRING(-62.1 -32.1, -62.1 -32.2)', 4326), 'ph1'), "
+                "('pub-2', 'pub-s2', 1, 'Camino Pub', 'Camino', 'PUB-1', 'Terciaria', 'Consorcio Corto', 'C', 1, "
+                "ST_GeomFromText('LINESTRING(-62.1 -32.2, -62.1 -32.25)', 4326), 'ph2')"
+            )
+        )
+        migrated.execute(text(f"REFRESH MATERIALIZED VIEW {SCHEMA}.mv_caminos_unificados"))
+        payload = migrated.execute(text(PUBLIC_CAMINOS_SQL)).scalar_one()
+        collection = assemble_public_caminos(payload, CONSORCIO_COLORS)
+        pub = next(feature for feature in collection["features"] if feature["properties"]["rtn"] == "PUB-1")
+        assert pub["geometry"]["type"] == "MultiLineString"
+        assert pub["properties"]["cantidad_tramos_fisicos"] == 2
+        assert pub["properties"]["ccn"] == "Consorcio Largo"
+        assert pub["properties"]["color"]
+
     def test_downgrade_removes_matview(self, migrated):
         _run(migrated, MIGRATION.DOWNGRADE_STATEMENTS)
         rel_mv = migrated.execute(
