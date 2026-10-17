@@ -15,12 +15,20 @@ function isTramoLayer(layerId: string | undefined): boolean {
   return layerId !== undefined && (TRAMO_LAYER_PRIORITY as readonly string[]).includes(layerId);
 }
 
-function lineCoordinates(feature: Feature): number[][] {
+function lineParts(feature: Feature): number[][][] {
   const geometry = feature.geometry;
-  if (geometry?.type !== 'LineString') {
-    return [];
+  if (geometry?.type === 'LineString' && geometry.coordinates.length >= 2) {
+    return [geometry.coordinates];
   }
-  return geometry.coordinates;
+  if (geometry?.type === 'MultiLineString') {
+    return geometry.coordinates.filter((part) => part.length >= 2);
+  }
+  return [];
+}
+
+function isRoadAxis(feature: Feature): boolean {
+  const type = feature.geometry?.type;
+  return type === 'LineString' || type === 'MultiLineString';
 }
 
 function pointToSegmentDist2(
@@ -49,18 +57,20 @@ function pointToSegmentDist2(
 }
 
 function pointToLineDist2(point: readonly [number, number], feature: Feature): number {
-  const coords = lineCoordinates(feature);
-  if (coords.length < 2) {
+  const parts = lineParts(feature);
+  if (parts.length === 0) {
     return Number.POSITIVE_INFINITY;
   }
   let min = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < coords.length - 1; index += 1) {
-    const start = coords[index];
-    const end = coords[index + 1];
-    if (!start || !end) {
-      continue;
+  for (const coords of parts) {
+    for (let index = 0; index < coords.length - 1; index += 1) {
+      const start = coords[index];
+      const end = coords[index + 1];
+      if (!start || !end) {
+        continue;
+      }
+      min = Math.min(min, pointToSegmentDist2(point, start, end));
     }
-    min = Math.min(min, pointToSegmentDist2(point, start, end));
   }
   return min;
 }
@@ -92,15 +102,17 @@ export function pickPrimaryTramo(
 const ROAD_HIT_LAYER = `${SOURCE_IDS.ROADS}-hit`;
 
 function geometryFingerprint(feature: Feature): string {
-  const geometry = feature.geometry;
-  if (geometry?.type === 'LineString' && geometry.coordinates.length >= 2) {
-    const start = geometry.coordinates[0];
-    const end = geometry.coordinates[geometry.coordinates.length - 1];
-    if (start && end) {
-      return `${start[0]},${start[1]}->${end[0]},${end[1]}:${geometry.coordinates.length}`;
-    }
+  const parts = lineParts(feature);
+  const first = parts[0];
+  if (!first) {
+    return '';
   }
-  return '';
+  const start = first[0];
+  const end = first[first.length - 1];
+  if (!start || !end) {
+    return '';
+  }
+  return `${start[0]},${start[1]}->${end[0]},${end[1]}:${parts.length}:${first.length}`;
 }
 
 export function selectionKey(feature: Feature): string {
@@ -140,7 +152,7 @@ export function expandTramoGroup(
   }
   const group = roadsCatalog.filter((feature) => {
     const props = (feature.properties ?? {}) as Record<string, unknown>;
-    return roadRouteCode(props) === ruta && feature.geometry?.type === 'LineString';
+    return roadRouteCode(props) === ruta && isRoadAxis(feature);
   });
   if (group.length === 0) {
     return [hit];

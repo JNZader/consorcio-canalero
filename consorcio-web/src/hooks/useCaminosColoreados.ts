@@ -1,6 +1,6 @@
 /**
- * Hook para cargar la proyeccion publica fija de caminos coloreados.
- * Cada camino tiene un color asignado segun su consorcio caminero.
+ * Public colored-roads projection: one geometry per route (`rtn`).
+ * Each route is painted with its dominant consorcio color.
  */
 
 import { useQuery } from '@tanstack/react-query';

@@ -3,9 +3,8 @@
  *
  * Data sources:
  *   - Area: `CONSORCIO_AREA_HA` (zona polygon, geodesic).
- *   - Caminos: public GEE caminos projection (`metadata.total_km` + per-consorcio
- *     rows). Same unique-geometry kilometres as the map legend — not Σ `lzn`
- *     and not a haversine of `/capas/caminos.geojson`.
+ *   - Caminos: public route projection (`metadata.total_km` + per-consorcio
+ *     rows). Geodesic sum of the active padrón, one painted geometry per ruta.
  *   - Canales: `useCanales().relevados.features` — sum of `longitud_m`.
  */
 import { useMemo } from 'react';

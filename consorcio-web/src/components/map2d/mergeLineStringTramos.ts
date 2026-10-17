@@ -591,3 +591,43 @@ export function dedupedLineStringLengthM(features: readonly Feature[]): number {
   }
   return edges.reduce((sum, edge) => sum + edge.length, 0);
 }
+
+/** Metres shown on a selection. LineString groups stay deduped; a unified route sums its parts. */
+export function selectionLengthM(features: readonly Feature[]): number {
+  if (features.every((feature) => isLineString(feature.geometry))) {
+    return dedupedLineStringLengthM(features);
+  }
+  return features.reduce((sum, feature) => {
+    const geometry = feature.geometry;
+    if (geometry?.type === 'LineString') {
+      return sum + pieceLengthM(geometry.coordinates);
+    }
+    if (geometry?.type === 'MultiLineString') {
+      return (
+        sum + geometry.coordinates.reduce((partSum, part) => partSum + pieceLengthM(part), 0)
+      );
+    }
+    return sum;
+  }, 0);
+}
+
+/** Profile geometry for the ficha. A single MultiLineString route is already one trace. */
+export function selectionProfileGeometry(
+  features: readonly Feature[],
+): LineString | MultiLineString | null {
+  const merged = mergeLineStringTramos(features);
+  if (merged) {
+    return merged;
+  }
+  if (features.length !== 1) {
+    return null;
+  }
+  const geometry = features[0]?.geometry;
+  if (
+    geometry?.type === 'MultiLineString' &&
+    geometry.coordinates.some((part) => part.length >= 2)
+  ) {
+    return geometry;
+  }
+  return null;
+}
