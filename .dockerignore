@@ -46,6 +46,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+venv-rag/
+coverage_html/
+artifacts/
+mutants/
 .mypy_cache/
 .ruff_cache/
 

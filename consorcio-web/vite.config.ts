@@ -254,6 +254,7 @@ export default defineConfig({
           '**/vendor-charts-*.js',
           '**/vendor-mantine-charts-*.js',
           '**/vendor-mantine-dropzone-*.js',
+          '**/vendor-mantine-dates-*.js',
         ],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/, /^\/version\.json$/],
@@ -328,7 +329,7 @@ export default defineConfig({
           // Heavy lazy vendor chunks — do not precache on install; cache after first use.
           {
             urlPattern:
-              /\/assets\/(vendor-(maplibre|map-draw|pmtiles|charts|mantine-(extras|dates))|MapaMapLibre|MapaPage|TerrainViewer3D)-.*\.js$/i,
+              /\/assets\/(vendor-(maplibre|map-draw|pmtiles|charts|mantine-(charts|dropzone|dates))|MapaMapLibre|MapaPage|TerrainViewer3D)-.*\.js$/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'lazy-vendor-chunks',
