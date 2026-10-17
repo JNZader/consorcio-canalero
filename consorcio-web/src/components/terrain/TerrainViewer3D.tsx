@@ -18,16 +18,15 @@ import { useApprovedZones } from '../../hooks/useApprovedZones';
 import { useBasins } from '../../hooks/useBasins';
 import { useCaminosColoreados } from '../../hooks/useCaminosColoreados';
 import { useCanales } from '../../hooks/useCanales';
-import { useCatastroMap } from '../../hooks/useCatastroMap';
 import { useConflictos } from '../../hooks/useConflictos';
 import { useGEELayers } from '../../hooks/useGEELayers';
 import { buildTileUrl, type GeoLayerInfo, useGeoLayers } from '../../hooks/useGeoLayers';
 import { usePilarVerde } from '../../hooks/usePilarVerde';
 import { getSelectedImageSync, useSelectedImageListener } from '../../hooks/useSelectedImage';
-import { useSoilMap } from '../../hooks/useSoilMap';
 import { useWaterways } from '../../hooks/useWaterways';
 import { API_URL } from '../../lib/api';
 import { logger } from '../../lib/logger';
+import { ensureSoilPmtilesArchive, getSoilPmtilesArchiveKey } from '../../lib/soilPmtiles';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
@@ -48,7 +47,6 @@ import { buildTerrainMapStyle } from './terrainMapStyle';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   buildCuencasCollection,
-  buildSoilCollection,
   buildWaterwaysCollection,
   TERRAIN_DEFAULT_VECTOR_LAYER_VISIBILITY,
   type TerrainVectorLayerVisibility,
@@ -237,18 +235,37 @@ export default function TerrainViewer3D({
     sharedMap3dVectors.pilar_verde_agro_zonas ||
     sharedMap3dVectors.pilar_verde_porcentaje_forestacion
   );
-  const {
-    catastroMap,
-    loading: catastroLoading,
-    error: catastroError,
-  } = useCatastroMap({
-    enabled: !!sharedMap3dVectors.catastro,
-  });
-  const {
-    soilMap,
-    loading: soilLoading,
-    error: soilError,
-  } = useSoilMap({ enabled: !!sharedMap3dVectors.soil });
+  const catastroLoading = false;
+  const catastroError = null;
+
+  const [soilArchiveKey, setSoilArchiveKey] = useState<string | null>(() =>
+    getSoilPmtilesArchiveKey()
+  );
+  const [soilLoading, setSoilLoading] = useState(false);
+  const [soilError, setSoilError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sharedMap3dVectors.soil) return;
+    if (soilArchiveKey) return;
+    let cancelled = false;
+    setSoilLoading(true);
+    void ensureSoilPmtilesArchive()
+      .then((key) => {
+        if (!cancelled) {
+          setSoilArchiveKey(key);
+          setSoilLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setSoilError(err instanceof Error ? err.message : String(err));
+          setSoilLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedMap3dVectors.soil, soilArchiveKey]);
   // Conflictos points (canal/road intersections). The hook returns null when
   // the user isn't authenticated, so the panel toggle hides itself for
   // anonymous visitors. Counting features here drives the panel's "show"
@@ -469,9 +486,7 @@ export default function TerrainViewer3D({
   const approvedZonesCollection = approvedZones;
   const cuencasCollection = useMemo(() => buildCuencasCollection(geeLayers), [geeLayers]);
   const roadsCollection = caminos;
-  const soilCollection = useMemo(() => buildSoilCollection(soilMap), [soilMap]);
   const waterwaysCollection = useMemo(() => buildWaterwaysCollection(waterways), [waterways]);
-  const catastroCollection = catastroMap;
 
   const handleClassToggle = (layerType: string, classIndex: number, visible: boolean) => {
     setHiddenClasses((prev) => {
@@ -802,19 +817,19 @@ export default function TerrainViewer3D({
         basins,
         roadsCollection,
         waterwaysCollection,
-        soilCollection,
-        catastroCollection,
+        soilCollection: null,
+        catastroCollection: null,
+        soilArchiveKey,
       },
       vectorLayerVisibility as TerrainVectorLayerVisibility
     );
   }, [
     approvedZonesCollection,
     basins,
-    catastroCollection,
     cuencasCollection,
     roadsCollection,
     ready,
-    soilCollection,
+    soilArchiveKey,
     vectorLayerVisibility,
     waterwaysCollection,
   ]);

@@ -93,8 +93,13 @@ export function LoginFormContent() {
             color: 'green',
             icon: <IconCheck size={16} />,
           });
-          // Redirigir al admin
-          globalThis.location.href = withBasePath('/admin');
+          // Redirigir al destino guardado (si existe y es seguro) o al admin
+          const rawRedirect = sessionStorage.getItem('redirectAfterLogin');
+          sessionStorage.removeItem('redirectAfterLogin');
+          const isSafeRelative =
+            rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//');
+          const destination = isSafeRelative ? rawRedirect : '/admin';
+          globalThis.location.href = withBasePath(destination);
         } else {
           notifications.show({
             title: erroresUi.iniciarSesion.titulo,
