@@ -118,3 +118,11 @@ def test_pyjwt_is_direct_and_python_jose_stack_is_absent_from_manifests() -> Non
     assert "ecdsa" not in manifests
     assert "from jose import" not in middleware_source
     assert "from jwt import PyJWTError" in middleware_source
+
+
+def test_csrf_protection_requires_origin_for_sensitive_auth_mutations() -> None:
+    required = middleware.CSRFProtectionMiddleware.AUTH_ORIGIN_REQUIRED_PATHS
+    assert "/api/v2/auth/jwt/exchange-cookie" in required
+    assert "/api/v2/auth/jwt/refresh" in required
+    assert "/api/v2/auth/jwt/logout" in required
+    assert "/api/v2/auth/jwt/logout-all" in required
