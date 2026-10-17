@@ -216,12 +216,11 @@ export function useSelectedImageListener() {
         const parsed = JSON.parse(stored);
         if (isValidSelectedImage(parsed)) {
           const image = parsed as SelectedImage;
+          setSelectedImage(image);
+          hasLocal = true;
           if (isTileStale(image)) {
-            // Tile URL may be expired — use params for display label but trigger refresh
+            // Tile URL may be expired — trigger background refresh for fresh GEE token
             needsRefresh = true;
-          } else {
-            setSelectedImage(image);
-            hasLocal = true;
           }
         } else {
           localStorage.removeItem(STORAGE_KEY);
@@ -241,14 +240,10 @@ export function useSelectedImageListener() {
             // Also cache in localStorage for fast future loads
             localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
             window.dispatchEvent(new CustomEvent('selectedImageChange', { detail: restored }));
-          } else if (needsRefresh) {
-            // Backend couldn't regenerate — remove stale entry
-            localStorage.removeItem(STORAGE_KEY);
           }
         })
         .catch((err) => {
           logger.warn('Failed to restore image from backend:', err);
-          if (needsRefresh) localStorage.removeItem(STORAGE_KEY);
         });
     }
 

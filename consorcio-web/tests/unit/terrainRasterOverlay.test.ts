@@ -4,6 +4,7 @@ import type { GeoLayerInfo } from '../../src/hooks/useGeoLayers';
 import {
   nextAutofillTerrainRasterId,
   pickActiveTerrainRasterLayer,
+  resolveDefaultTerrainRasterId,
 } from '../../src/components/terrain/terrainLayerConfig';
 
 function layer(id: string, tipo: string): GeoLayerInfo {
@@ -57,5 +58,53 @@ describe('nextAutofillTerrainRasterId', () => {
         fallbackLayerId: 'dem-1',
       }),
     ).toBe('__selected_sentinel_image__');
+  });
+});
+
+describe('resolveDefaultTerrainRasterId', () => {
+  it('prioritizes textureLayerId when provided', () => {
+    expect(
+      resolveDefaultTerrainRasterId({
+        rasterLayers: layers,
+        textureLayerId: 'custom-texture',
+        demLayerId: 'dem-1',
+      })
+    ).toBe('custom-texture');
+  });
+
+  it('prioritizes demLayerId when textureLayerId is absent', () => {
+    expect(
+      resolveDefaultTerrainRasterId({
+        rasterLayers: layers,
+        demLayerId: 'custom-dem',
+      })
+    ).toBe('custom-dem');
+  });
+
+  it('prioritizes dem_raw layer even when pipeline layers like drainage_need come first in the array', () => {
+    // Array where drainage_need is first (e.g. backend ordered by created_at DESC)
+    const reversedLayers = [drainage, dem];
+    expect(
+      resolveDefaultTerrainRasterId({
+        rasterLayers: reversedLayers,
+      })
+    ).toBe('dem-1');
+  });
+
+  it('falls back to the first available layer if dem_raw is not present', () => {
+    const onlyDrainage = [drainage];
+    expect(
+      resolveDefaultTerrainRasterId({
+        rasterLayers: onlyDrainage,
+      })
+    ).toBe('drain-1');
+  });
+
+  it('returns null if rasterLayers is empty and no explicit id was given', () => {
+    expect(
+      resolveDefaultTerrainRasterId({
+        rasterLayers: [],
+      })
+    ).toBeNull();
   });
 });
