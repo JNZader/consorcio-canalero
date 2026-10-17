@@ -206,13 +206,15 @@ def test_public_zona_and_caminos_are_fixed_cached_projections(app_client, monkey
         assert callable(ensure_gee)
         return JSONResponse(content=_feature_collection("zona"))
 
-    async def fake_caminos(*, ensure_gee):
-        assert callable(ensure_gee)
-        return JSONResponse(content=_feature_collection("caminos"))
+    def fake_caminos(_db):
+        return _feature_collection("caminos")
 
     monkeypatch.setattr(public_map, "get_gee_layer_impl", fake_layer)
-    monkeypatch.setattr(public_map, "get_caminos_coloreados_impl", fake_caminos)
+    monkeypatch.setattr(public_map, "load_public_caminos_unificados", fake_caminos)
     _app, client = app_client
+    from app.db.session import get_db
+
+    _app.dependency_overrides[get_db] = lambda: object()
 
     zona = client.get("/api/v2/public/map/gee/zona")
     caminos = client.get("/api/v2/public/map/gee/caminos")
@@ -227,6 +229,30 @@ def test_public_zona_and_caminos_are_fixed_cached_projections(app_client, monkey
     assert caminos.json()["data"] == _feature_collection("caminos")
     assert "max-age=3600" in zona.headers["cache-control"]
     assert "stale-while-revalidate=86400" in caminos.headers["cache-control"]
+
+
+def test_public_caminos_unavailable_hides_the_database_error(app_client, monkeypatch) -> None:
+    from app.db.session import get_db
+    from app.domains.geo import public_map
+
+    def broken(_db):
+        raise RuntimeError("relation vt_caminos_unificados does not exist")
+
+    monkeypatch.setattr(public_map, "load_public_caminos_unificados", broken)
+    app, client = app_client
+    app.dependency_overrides[get_db] = lambda: object()
+
+    response = client.get("/api/v2/public/map/gee/caminos")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "unavailable",
+        "projection": "caminos",
+        "data": None,
+        "reason": "temporarily_unavailable",
+    }
+    assert "vt_caminos_unificados" not in response.text
+    assert response.headers["cache-control"] == "public, max-age=60"
 
 
 def test_public_projection_returns_explicit_unavailable_contract(app_client, monkeypatch) -> None:
