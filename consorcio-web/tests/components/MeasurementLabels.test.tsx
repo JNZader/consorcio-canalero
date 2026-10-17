@@ -18,11 +18,25 @@
  * - Re-computes positions when `measurements` changes.
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MeasurementLabels } from '@/components/map2d/measurement/MeasurementLabels';
 import type { MeasurementEntry } from '@/components/map2d/measurement/useMeasurement';
+
+vi.mock('@/components/map2d/ElevationProfileChart', () => ({
+  ElevationProfileChart: ({
+    geometry,
+    autoLoad,
+  }: {
+    geometry: { type: string };
+    autoLoad?: boolean;
+  }) => (
+    <div data-testid="measurement-profile-chart" data-autoload={String(Boolean(autoLoad))}>
+      {geometry.type}
+    </div>
+  ),
+}));
 
 type Handler = (payload?: unknown) => void;
 
@@ -233,5 +247,34 @@ describe('<MeasurementLabels />', () => {
     });
 
     expect(mock.map.project.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it('opens the elevation profile of the drawn distance', async () => {
+    const mock = createMapMock();
+    const line = {
+      type: 'LineString' as const,
+      coordinates: [
+        [-62.5, -32.5],
+        [-62.4, -32.4],
+      ],
+    };
+    render(
+      <MeasurementLabels
+        map={mock.map as unknown as maplibregl.Map}
+        measurements={[
+          { ...buildDistance('m1', 1500, [-62.5, -32.5]), geometry: line },
+          {
+            ...buildArea('m2', 50_000, [-62.6, -32.6]),
+            geometry: { type: 'Polygon', coordinates: [] },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: 'Perfil de elevación' })).toHaveLength(1);
+    expect(screen.queryByTestId('measurement-profile-chart')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(await screen.findByTestId('measurement-profile-chart')).toHaveTextContent('LineString');
+    expect(screen.getByTestId('measurement-profile-chart')).toHaveAttribute('data-autoload', 'true');
   });
 });

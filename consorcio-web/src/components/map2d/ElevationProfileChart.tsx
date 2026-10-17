@@ -1,8 +1,10 @@
 /**
  * Google Earth-style elevation profile: distance (m) vs elevation (m).
  *
- * Loads only after the operator asks. GLO-30 disclaimer is always shown with
- * the curve. Nodata holes are omitted from the line (recharts skips null y).
+ * The ficha stays idle until the operator asks. A marked measurement passes
+ * `autoLoad` because that click already is the ask. GLO-30 disclaimer is
+ * always shown with the curve. Nodata holes are omitted from the line
+ * (recharts skips null y).
  */
 
 import { Alert, Button, Checkbox, Stack, Text } from '@mantine/core';
@@ -74,19 +76,25 @@ export function ElevationProfileChart({
   onHoverLngLat,
   onPickLngLat,
   onRangeCoordinates,
+  autoLoad = false,
 }: {
   geometry: Geometry | null | undefined;
   onHoverLngLat?: (point: { lon: number; lat: number } | null) => void;
   onPickLngLat?: (point: { lon: number; lat: number }) => void;
   onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
+  /** Sample on mount. The ficha leaves this false and keeps its own button. */
+  autoLoad?: boolean;
 }) {
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const startLoaded = autoLoad && hasProfileParts(geometry);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(
+    startLoaded ? 'loading' : 'idle'
+  );
   const [compareDems, setCompareDems] = useState(false);
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
   const requestGen = useRef(0);
-  const loadedOnce = useRef(false);
+  const loadedOnce = useRef(startLoaded);
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
   const rangeCb = useRef(onRangeCoordinates);
@@ -98,6 +106,9 @@ export function ElevationProfileChart({
     setRange(null);
     rangeCb.current?.(null);
     hoverCb.current?.(null);
+    if (autoLoad && hasProfileParts(geometry)) {
+      loadedOnce.current = true;
+    }
     if (!hasProfileParts(geometry) || !loadedOnce.current) {
       if (!hasProfileParts(geometry)) {
         loadedOnce.current = false;
@@ -127,7 +138,7 @@ export function ElevationProfileChart({
         setStatus('error');
       }
     );
-  }, [compareDems, geometry]);
+  }, [autoLoad, compareDems, geometry]);
 
   if (!hasProfileParts(geometry)) {
     return null;
@@ -164,7 +175,7 @@ export function ElevationProfileChart({
 
   return (
     <Stack gap={6} data-testid="elevation-profile">
-      {status === 'idle' ? (
+      {status === 'idle' && !autoLoad ? (
         <Button size="xs" variant="light" onClick={() => void load()}>
           Perfil de elevación
         </Button>

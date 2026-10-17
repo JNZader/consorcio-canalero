@@ -17,6 +17,15 @@ describe('PERF-01 first-paint chunks', () => {
     expect(info).toMatch(/lazy\(async/);
   });
 
+  it('does not statically import ElevationProfileChart from MeasurementLabels', () => {
+    const labels = readFileSync(
+      join(here, '../../src/components/map2d/measurement/MeasurementLabels.tsx'),
+      'utf8'
+    );
+    expect(labels).not.toMatch(/import \{ ElevationProfileChart \}/);
+    expect(labels).toMatch(/lazy\(async/);
+  });
+
   it('does not statically import MapboxDraw in measurementDrawModes', () => {
     const modes = readFileSync(
       join(here, '../../src/components/map2d/measurement/measurementDrawModes.ts'),

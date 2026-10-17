@@ -66,7 +66,7 @@ describe('liveMeasurementLabel', () => {
 });
 
 describe('drawnLineMeters', () => {
-  it('measures the drawn line when a road lies next to it', () => {
+  it('returns the geodesic length of the drawn line', () => {
     const drawn: LineString = {
       type: 'LineString',
       coordinates: [
