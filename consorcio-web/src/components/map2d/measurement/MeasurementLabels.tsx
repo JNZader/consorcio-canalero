@@ -15,7 +15,8 @@
  *     map container exactly.
  *   - `pointerEvents: 'none'` lets map drag/click pass through untouched
  *     (critical — otherwise the label would eat clicks near polygon
- *     centroids and break the draw UX).
+ *     centroids and break the draw UX). The distance-profile button and
+ *     the docked chart are the only children that opt back in.
  *   - Each label is absolutely-positioned using the pixel coords from
  *     `map.project(labelPosition)`, then `translate(-50%, -50%)` centres
  *     the label on the anchor point.
@@ -28,11 +29,18 @@
  *     elsewhere in the measurement subdirectory.
  */
 
+import type { LineString } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
+import type { ProfileRangeStats } from '../profileRange';
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
+
+const ElevationProfileChart = lazy(async () => {
+  const mod = await import('../ElevationProfileChart');
+  return { default: mod.ElevationProfileChart };
+});
 
 const COLLISION_THRESHOLD_PX = 40;
 const MIN_ZOOM_TO_SHOW_ALL = 14;
@@ -40,6 +48,20 @@ const MIN_ZOOM_TO_SHOW_ALL = 14;
 export interface MeasurementLabelsProps {
   readonly map: maplibregl.Map | null;
   readonly measurements: readonly MeasurementEntry[];
+  readonly onElevationProfileHover?: (point: { lon: number; lat: number } | null) => void;
+  readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
+}
+
+/** The line the operator drew. An area, or a line with one vertex, has no profile. */
+function distanceLine(entry: MeasurementEntry): LineString | null {
+  const geometry = entry.geometry;
+  if (entry.kind !== 'distance' || geometry == null || geometry.type !== 'LineString') {
+    return null;
+  }
+  if (geometry.coordinates.length < 2) {
+    return null;
+  }
+  return geometry;
 }
 
 interface PixelPosition {
@@ -87,8 +109,42 @@ function getVisibleMeasurements(
   return visible;
 }
 
-export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps) {
+export function MeasurementLabels({
+  map,
+  measurements,
+  onElevationProfileHover,
+  onElevationProfileRange,
+}: MeasurementLabelsProps) {
   const [positions, setPositions] = useState<Record<string, PixelPosition>>({});
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const openEntry = measurements.find((entry) => entry.id === profileId) ?? null;
+  const openLine = openEntry ? distanceLine(openEntry) : null;
+
+  useEffect(() => {
+    if (profileId != null && openLine == null) {
+      setProfileId(null);
+      onElevationProfileHover?.(null);
+      onElevationProfileRange?.(null);
+    }
+  }, [onElevationProfileHover, onElevationProfileRange, openLine, profileId]);
+
+  function closeProfile() {
+    setProfileId(null);
+    onElevationProfileHover?.(null);
+    onElevationProfileRange?.(null);
+  }
+
+  function toggleProfile(id: string) {
+    if (profileId === id) {
+      closeProfile();
+      return;
+    }
+    if (profileId != null) {
+      onElevationProfileHover?.(null);
+      onElevationProfileRange?.(null);
+    }
+    setProfileId(id);
+  }
 
   useEffect(() => {
     if (!map) return;
@@ -124,13 +180,14 @@ export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps)
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 15,
+        zIndex: 17,
       }}
     >
       {visible.map((m) => {
         const pos = positions[m.id];
         if (!pos) return null;
         const text = m.kind === 'distance' ? formatDistance(m.value) : formatArea(m.value);
+        const line = distanceLine(m);
         return (
           <div
             key={m.id}
@@ -152,9 +209,85 @@ export function MeasurementLabels({ map, measurements }: MeasurementLabelsProps)
             }}
           >
             {text}
+            {line ? (
+              <button
+                type="button"
+                aria-pressed={profileId === m.id}
+                onClick={() => toggleProfile(m.id)}
+                style={{
+                  pointerEvents: 'auto',
+                  display: 'block',
+                  marginTop: 2,
+                  padding: 0,
+                  border: 0,
+                  background: 'transparent',
+                  color: '#1c7ed6',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Perfil de elevación
+              </button>
+            ) : null}
           </div>
         );
       })}
+      {openLine ? (
+        <div
+          data-testid="measurement-profile-panel"
+          style={{
+            position: 'absolute',
+            right: 12,
+            bottom: 12,
+            width: 340,
+            maxWidth: 'calc(100% - 24px)',
+            pointerEvents: 'auto',
+            background: 'white',
+            border: '1px solid #fd7e14',
+            borderRadius: 6,
+            padding: 8,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 4,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, color: mapColorTokens.h333 }}>
+              Perfil de la medición
+            </span>
+            <button
+              type="button"
+              onClick={closeProfile}
+              style={{
+                pointerEvents: 'auto',
+                border: 0,
+                background: 'transparent',
+                color: mapColorTokens.h333,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Cerrar
+            </button>
+          </div>
+          <Suspense fallback={null}>
+            <ElevationProfileChart
+              geometry={openLine}
+              autoLoad
+              onHoverLngLat={onElevationProfileHover}
+              onRangeCoordinates={onElevationProfileRange}
+            />
+          </Suspense>
+        </div>
+      ) : null}
     </div>
   );
 }
