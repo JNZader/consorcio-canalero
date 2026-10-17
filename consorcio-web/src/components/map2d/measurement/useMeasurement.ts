@@ -43,26 +43,24 @@
  */
 
 import type MapboxDraw from '@mapbox/mapbox-gl-draw';
-import type { Feature, LineString, Point, Polygon } from 'geojson';
-import type * as maplibregl from 'maplibre-gl';
-import { listenMapEvent, unlistenMapEvent } from '../../../lib/maplibreListen';
-import { useCallback, useEffect, useRef, useState } from 'react';
-
 import area from '@turf/area';
 import centerOfMass from '@turf/center-of-mass';
 import distance from '@turf/distance';
 import length from '@turf/length';
 import midpoint from '@turf/midpoint';
+import type { Feature, LineString, Point, Polygon } from 'geojson';
+import type * as maplibregl from 'maplibre-gl';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { listenMapEvent, unlistenMapEvent } from '../../../lib/maplibreListen';
 
 import { useMapboxDrawSlot } from '../../../stores/mapboxDrawSlot';
 import { removeMapboxDrawArtifacts } from '../../map/mapboxDrawShared';
+import { createMeasurementDraw } from './measurementDrawModes';
 import {
   armMeasurementIdentifyGuard,
   MEASUREMENT_IDENTIFY_GUARD_MS,
 } from './measurementIdentifyGuard';
-import { createMeasurementDraw } from './measurementDrawModes';
-import { snapDistanceToRoads } from './measurementSnap';
-import { liveMeasurementLabel } from './measurementPreview';
+import { drawnLineMeters, liveMeasurementLabel } from './measurementPreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -197,10 +195,7 @@ function computePolygonLabelAnchor(poly: Feature<Polygon>): [number, number] {
 
 // ─── Hook ───────────────────────────────────────────────────────────────
 
-export function useMeasurement(
-  map: maplibregl.Map | null,
-  snapRoads: readonly Feature[] = [],
-): UseMeasurementReturn {
+export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn {
   const [state, setState] = useState<MeasurementState>({
     mode: 'idle',
     measurements: [],
@@ -208,8 +203,6 @@ export function useMeasurement(
   const [liveLabel, setLiveLabel] = useState<string | null>(null);
   const modeRef = useRef<MeasurementMode>('idle');
   const drawRef = useRef<MapboxDraw | null>(null);
-  const snapRoadsRef = useRef(snapRoads);
-  snapRoadsRef.current = snapRoads;
 
   const setMeasurementState = useCallback((updater: MeasurementStateUpdater) => {
     setState((prev) => {
@@ -319,19 +312,14 @@ export function useMeasurement(
 
         if (geom.type === 'LineString') {
           const line = feature as Feature<LineString>;
-          const snapped = snapDistanceToRoads(line.geometry, snapRoadsRef.current);
-          const measured: Feature<LineString> = {
-            ...line,
-            geometry: snapped.geometry,
-          };
-          const meters = snapped.meters;
-          const labelPosition = computeLineLabelAnchor(measured);
+          const meters = drawnLineMeters(line.geometry);
+          const labelPosition = computeLineLabelAnchor(line);
           entries.push({
             id: featureId,
             kind: 'distance',
             value: meters,
             labelPosition,
-            geometry: snapped.geometry,
+            geometry: line.geometry,
           });
         } else if (geom.type === 'Polygon') {
           const poly = feature as Feature<Polygon>;
