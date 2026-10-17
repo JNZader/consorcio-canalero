@@ -18,6 +18,7 @@ from app.domains.geo.router_common import (
     GeoJsonImportResponse,
     _get_repo,
     _get_user_display_name,
+    _get_user_display_names,
     _import_approved_zoning_payload,
     _import_zonas_operativas_payload,
     _read_geojson_upload,
@@ -26,6 +27,7 @@ from app.domains.geo.router_common import (
     _serialize_approved_zoning,
     _validate_geojson_filename,
     enforce_map_pdf_body_limit,
+    enforce_map_pdf_rate_limit,
     parse_map_pdf_body,
     slot_de_pdf,
     MAP_PDF_OPENAPI_EXTRA,
@@ -240,7 +242,9 @@ def list_approved_basin_zone_history(
 ):
     """Return approved zoning history including the current baseline/current active versions."""
     items = repo.list_approved_zonings(db, cuenca=cuenca, limit=limit)
-    return [_serialize_approved_zoning(db, item) for item in items]
+    user_ids = {item.approved_by_id for item in items if item.approved_by_id is not None}
+    display_names = _get_user_display_names(db, user_ids)
+    return [_serialize_approved_zoning(db, item, display_names=display_names) for item in items]
 
 
 @router.get("/basins/approved-zones/current/export-pdf")
@@ -274,7 +278,7 @@ def export_current_approved_basin_zones_pdf(
 
 @router.post(
     "/basins/approved-zones/current/export-map-pdf",
-    dependencies=[Depends(enforce_map_pdf_body_limit)],
+    dependencies=[Depends(enforce_map_pdf_body_limit), Depends(enforce_map_pdf_rate_limit)],
     openapi_extra=MAP_PDF_OPENAPI_EXTRA,
 )
 def export_current_map_approved_basin_zones_pdf(

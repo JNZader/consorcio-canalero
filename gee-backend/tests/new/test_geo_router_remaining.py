@@ -178,6 +178,34 @@ class TestSerializeApprovedZoning:
         assert result.nombre == "Test Zoning"
         assert result.version == 1
 
+    def test_serializes_zoning_with_display_names(self):
+        from app.domains.geo.router_common import _serialize_approved_zoning
+
+        uid = uuid.uuid4()
+        zoning = SimpleNamespace(
+            id=uuid.uuid4(),
+            nombre="Test Zoning",
+            version=1,
+            cuenca="norte",
+            feature_collection={"type": "FeatureCollection", "features": []},
+            assignments={"z1": "zone_a"},
+            zone_names={"z1": "Zone A"},
+            notes="Test notes",
+            approved_at=datetime(2025, 1, 15, 10, 0),
+            approved_by_id=uid,
+        )
+        db = MagicMock()
+        result = _serialize_approved_zoning(db, zoning, display_names={uid: "Juan Pérez"})
+        assert result.approvedByName == "Juan Pérez"
+        db.get.assert_not_called()
+
+    def test_get_user_display_names_empty_set(self):
+        from app.domains.geo.router_common import _get_user_display_names
+
+        db = MagicMock()
+        assert _get_user_display_names(db, set()) == {}
+        db.execute.assert_not_called()
+
 
 class TestNormalizePolygonWkt:
     def test_polygon(self):

@@ -197,6 +197,26 @@ class TestInvitationQueries:
         assert new_user.role == UserRole.OPERADOR
         assert pre_auth.claimed is True
 
+    def test_case_insensitive_matching(self, db: Session):
+        """Pre-authorized email matching is case-insensitive."""
+        from sqlalchemy import func
+
+        admin = _make_admin(db)
+        _make_invitation(
+            db, email="User.Special@Test.COM", role=UserRole.ADMIN, invited_by=admin.id
+        )
+
+        user_email = "user.special@test.com"
+        result = db.execute(
+            select(PreAuthorizedEmail).where(
+                func.lower(PreAuthorizedEmail.email) == func.lower(user_email),
+                PreAuthorizedEmail.claimed == False,  # noqa: E712
+            )
+        )
+        pre_auth = result.scalar_one_or_none()
+        assert pre_auth is not None
+        assert pre_auth.role == UserRole.ADMIN
+
     def test_no_auto_assign_without_preauth(self, db: Session):
         """User without pre-auth keeps default ciudadano role."""
         new_user = User(

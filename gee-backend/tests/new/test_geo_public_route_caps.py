@@ -283,6 +283,24 @@ def test_export_map_pdf_keeps_its_request_schema_in_openapi(cliente) -> None:
     assert not colgadas, f"dangling refs in the map-pdf requestBody: {colgadas}"
 
 
+def test_export_map_pdf_rate_limit_throttles_after_budget_exhausted(cliente, monkeypatch) -> None:
+    """A dedicated rate limiter bounds requests per IP before reaching slot_de_pdf."""
+    from app.config import settings
+    from app.domains.geo.router_common import get_map_pdf_rate_limiter
+
+    monkeypatch.setattr(settings, "rate_limit_disabled", False)
+    limiter = get_map_pdf_rate_limiter()
+    monkeypatch.setattr(limiter, "check", AsyncMock(return_value=(False, 0, 45.0)))
+
+    payload = {
+        "title": "Rate Limit Test",
+        "mapImageDataUrl": f"data:image/png;base64,{base64.b64encode(_png_bytes(10, 10)).decode()}",
+    }
+    response = cliente.post(EXPORT_PATH, json=payload)
+    assert response.status_code == 429
+    assert response.headers.get("Retry-After") == "45"
+
+
 def test_export_map_pdf_sheds_load_when_every_slot_is_taken(cliente, monkeypatch) -> None:
     """The pixel cap bounds ONE request; the semaphore bounds how many of those
     are resident at once."""

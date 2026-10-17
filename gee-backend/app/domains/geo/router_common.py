@@ -11,12 +11,13 @@ from typing import Iterator, Optional
 import httpx
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from starlette.requests import ClientDisconnect
 
 from app.auth.models import User
 from app.config import settings
+from app.core.rate_limit import DistributedRateLimiter
 from app.domains.geo.intelligence.models import ZonaOperativa
 from app.domains.geo.intelligence.repository import IntelligenceRepository
 from app.domains.geo.models import GeoLayer
@@ -229,6 +230,38 @@ async def enforce_map_pdf_body_limit(request: Request) -> None:
     )
 
 
+_map_pdf_limiter: DistributedRateLimiter | None = None
+
+
+def get_map_pdf_rate_limiter() -> DistributedRateLimiter:
+    """Own limiter instance, own Redis key namespace for public map-PDF generation."""
+    global _map_pdf_limiter
+    if _map_pdf_limiter is None:
+        _map_pdf_limiter = DistributedRateLimiter(
+            redis_url=settings.redis_url,
+            max_requests=settings.geo_map_pdf_rate_limit_requests,
+            window_seconds=settings.geo_map_pdf_rate_limit_window,
+            key_prefix="ratelimit:map_pdf:",
+        )
+    return _map_pdf_limiter
+
+
+async def enforce_map_pdf_rate_limit(request: Request) -> None:
+    """429 per IP on public map PDF generation."""
+    if settings.rate_limit_disabled:
+        return
+
+    client_ip = request.client.host if request.client else "unknown"
+    permitido, _restantes, reset = await get_map_pdf_rate_limiter().check(client_ip)
+    if not permitido:
+        reset_secs = max(1, int(reset))
+        raise HTTPException(
+            status_code=429,
+            detail="Límite de generación de PDF alcanzado. Reintentá en unos momentos.",
+            headers={"Retry-After": str(reset_secs)},
+        )
+
+
 # Hand-written request schema for the map-PDF route. Because the body is parsed
 # through a dependency (see ``enforce_map_pdf_body_limit``), FastAPI cannot infer
 # it. Pydantic's default ``$defs`` refs are valid JSON Schema 2020-12, which is
@@ -357,7 +390,27 @@ def _get_user_display_name(db: Session, user_id: uuid.UUID | None) -> str | None
     return full_name or user.email
 
 
-def _serialize_approved_zoning(db: Session, zoning) -> ApprovedZonesResponse:
+def _get_user_display_names(db: Session, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not user_ids:
+        return {}
+    users = db.execute(select(User).where(User.id.in_(user_ids))).scalars().all()
+    result: dict[uuid.UUID, str] = {}
+    for user in users:
+        full_name = " ".join(part for part in [user.nombre, user.apellido] if part).strip()
+        result[user.id] = full_name or user.email
+    return result
+
+
+def _serialize_approved_zoning(
+    db: Session,
+    zoning,
+    display_names: dict[uuid.UUID, str] | None = None,
+) -> ApprovedZonesResponse:
+    if display_names is not None and zoning.approved_by_id:
+        approved_by_name = display_names.get(zoning.approved_by_id)
+    else:
+        approved_by_name = _get_user_display_name(db, zoning.approved_by_id)
+
     return ApprovedZonesResponse(
         id=str(zoning.id),
         nombre=zoning.nombre,
@@ -369,7 +422,7 @@ def _serialize_approved_zoning(db: Session, zoning) -> ApprovedZonesResponse:
         notes=zoning.notes,
         approvedAt=zoning.approved_at.isoformat(),
         approvedById=str(zoning.approved_by_id) if zoning.approved_by_id else None,
-        approvedByName=_get_user_display_name(db, zoning.approved_by_id),
+        approvedByName=approved_by_name,
     )
 
 

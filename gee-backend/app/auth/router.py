@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +55,7 @@ def _is_secure_request(request: Request) -> bool:
     return forwarded.lower().split(",", 1)[0].strip() == "https"
 
 
-def _set_refresh_cookie(response: JSONResponse, request: Request, raw: str) -> None:
+def _set_refresh_cookie(response: Response, request: Request, raw: str) -> None:
     secure = _is_secure_request(request)
     response.set_cookie(
         key=_REFRESH_COOKIE,
@@ -68,7 +68,7 @@ def _set_refresh_cookie(response: JSONResponse, request: Request, raw: str) -> N
     )
 
 
-def _clear_refresh_cookie(response: JSONResponse) -> None:
+def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
 
 
@@ -379,9 +379,9 @@ if settings.google_oauth_client_id:
     # We don't use fastapi-users' get_oauth_router because BearerTransport
     # returns JSON on callback — but the browser needs a redirect to the frontend.
     from app.auth.dependencies import get_jwt_strategy
-    from app.auth.models import User, UserRole
+    from app.auth.models import PreAuthorizedEmail, User, UserRole
     from app.db.session import get_async_db
-    from sqlalchemy import select as sa_select
+    from sqlalchemy import func as sa_func, select as sa_select
     from sqlalchemy.ext.asyncio import AsyncSession
 
     def _is_secure_request(request: Request) -> bool:
@@ -525,14 +525,28 @@ if settings.google_oauth_client_id:
                 _clear_state_cookie(response)
                 return response
 
-            # Find existing user by email
-            result = await session.execute(sa_select(User).where(User.email == account_email))
+            normalized_email = account_email.strip().lower()
+
+            # Find existing user by case-insensitive email
+            result = await session.execute(
+                sa_select(User).where(sa_func.lower(User.email) == normalized_email)
+            )
             user = result.scalar_one_or_none()
+
+            # Check for unclaimed pre-authorized role for this email
+            pre_auth_result = await session.execute(
+                sa_select(PreAuthorizedEmail).where(
+                    sa_func.lower(PreAuthorizedEmail.email) == normalized_email,
+                    PreAuthorizedEmail.claimed == False,  # noqa: E712
+                )
+            )
+            pre_auth = pre_auth_result.scalar_one_or_none()
 
             if user is None:
                 # Create new user (auto-registered via Google)
                 import uuid as _uuid
 
+                assigned_role = pre_auth.role if pre_auth is not None else UserRole.CIUDADANO
                 user = User(
                     id=_uuid.uuid4(),
                     email=account_email,
@@ -543,12 +557,30 @@ if settings.google_oauth_client_id:
                     nombre="",
                     apellido="",
                     telefono="",
-                    role=UserRole.CIUDADANO,
+                    role=assigned_role,
                 )
+                if pre_auth is not None:
+                    pre_auth.claimed = True
                 session.add(user)
                 await session.commit()
                 await session.refresh(user)
-                _oauth_logger.info("Created new user via Google OAuth: %s", account_email)
+                _oauth_logger.info(
+                    "Created new user via Google OAuth: %s (role: %s)",
+                    account_email,
+                    assigned_role,
+                )
+            else:
+                if pre_auth is not None:
+                    user.role = pre_auth.role
+                    pre_auth.claimed = True
+                    session.add(user)
+                    await session.commit()
+                    await session.refresh(user)
+                    _oauth_logger.info(
+                        "Applied pre-authorized role %s to existing user: %s",
+                        pre_auth.role,
+                        account_email,
+                    )
 
             if not user.is_active:
                 response = RedirectResponse(
@@ -561,6 +593,14 @@ if settings.google_oauth_client_id:
             strategy = get_jwt_strategy()
             token = await strategy.write_token(user)
 
+            # Mint refresh token and stamp cookie on the redirect response
+            raw_refresh, _ = await issue_token(
+                session,
+                user=user,
+                user_agent=request.headers.get("user-agent", ""),
+                client_ip=request.client.host if request.client else None,
+            )
+
             _oauth_logger.info("Google OAuth login successful for %s", account_email)
             response = RedirectResponse(
                 # No more URL-fragment token — the SPA reads the JWT
@@ -568,6 +608,7 @@ if settings.google_oauth_client_id:
                 # ``POST /auth/jwt/exchange-cookie`` after this redirect.
                 url=f"{frontend_callback}?via=cookie"
             )
+            _set_refresh_cookie(response, request, raw_refresh)
             secure_cookie = _is_secure_request(request)
             response.set_cookie(
                 key=_OAUTH_EXCHANGE_COOKIE,
