@@ -1,9 +1,13 @@
-"""Narrow unauthenticated GEE projections used by the public map.
+"""Narrow unauthenticated projections used by the public map.
 
 The protected ``/geo/gee/*`` API intentionally remains the complete operator
 surface.  This router exposes only fixed, server-chosen projections: callers
 cannot supply an Earth Engine asset, expression, collection, date, sensor, or
 analysis parameter.
+
+``/caminos`` is the PostGIS route view (one geometry per ``rtn``), not the
+Earth Engine asset. The path stays under ``/map/gee`` so the map client does
+not change URL.
 """
 
 from __future__ import annotations
@@ -21,8 +25,8 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.db.session import get_db
+from app.domains.geo.caminos_unificados_public import load_public_caminos_unificados
 from app.domains.geo.router_gee_support import (
-    get_caminos_coloreados_impl,
     get_gee_layer_impl,
     get_satellite_image_impl,
 )
@@ -149,33 +153,30 @@ def _unavailable_projection(projection: PublicProjectionName) -> PublicMapProjec
     )
 
 
-async def _load_projection(projection: PublicProjectionName) -> PublicMapProjectionResponse:
+async def _load_zona() -> PublicMapProjectionResponse:
     try:
-        if projection == "zona":
-            raw = await get_gee_layer_impl(
-                layer_name="zona",
-                ensure_gee=_ensure_public_gee,
-            )
-        else:
-            raw = await get_caminos_coloreados_impl(ensure_gee=_ensure_public_gee)
+        raw = await get_gee_layer_impl(
+            layer_name="zona",
+            ensure_gee=_ensure_public_gee,
+        )
         return PublicMapProjectionResponse(
             status="available",
-            projection=projection,
+            projection="zona",
             data=_response_body(raw),
         )
     except Exception as exc:  # Public viewers receive a stable degraded contract.
         logger.warning(
             "Public GEE projection unavailable",
-            projection=projection,
+            projection="zona",
             error_type=type(exc).__name__,
         )
-        return _unavailable_projection(projection)
+        return _unavailable_projection("zona")
 
 
 @router.get("/zona", response_model=PublicMapProjectionResponse)
 async def get_public_zona(response: Response) -> PublicMapProjectionResponse:
     """Return the single vetted jurisdiction boundary projection."""
-    result = await _load_projection("zona")
+    result = await _load_zona()
     _set_cache(
         response,
         _PUBLIC_PROJECTION_CACHE if result.status == "available" else _PUBLIC_DEGRADED_CACHE,
@@ -184,9 +185,24 @@ async def get_public_zona(response: Response) -> PublicMapProjectionResponse:
 
 
 @router.get("/caminos", response_model=PublicMapProjectionResponse)
-async def get_public_caminos(response: Response) -> PublicMapProjectionResponse:
-    """Return the single vetted colored-road projection."""
-    result = await _load_projection("caminos")
+async def get_public_caminos(
+    response: Response,
+    db: Session = Depends(get_db),
+) -> PublicMapProjectionResponse:
+    """One colored geometry per route (``vt_caminos_unificados``)."""
+    try:
+        data = load_public_caminos_unificados(db)
+        result = PublicMapProjectionResponse(
+            status="available",
+            projection="caminos",
+            data=data,
+        )
+    except Exception as exc:  # Missing view or database: same degraded contract as zona.
+        logger.warning(
+            "Public caminos unificados unavailable",
+            error_type=type(exc).__name__,
+        )
+        result = _unavailable_projection("caminos")
     _set_cache(
         response,
         _PUBLIC_PROJECTION_CACHE if result.status == "available" else _PUBLIC_DEGRADED_CACHE,
