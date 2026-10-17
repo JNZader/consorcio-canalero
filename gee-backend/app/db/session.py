@@ -78,10 +78,13 @@ def relax_statement_timeout(db: Session, timeout: str) -> None:
 # returns to the pool the moment the work is done.
 
 if settings.use_pgbouncer:
+    # With psycopg 3 and PgBouncer transaction pooling, server-side prepared statements
+    # cause duplicate statement errors across multiplexed connections unless prepare_threshold is None.
     engine = create_engine(
         settings.database_sync_url,
         echo=settings.database_echo,
         poolclass=NullPool,
+        connect_args={"prepare_threshold": None},
     )
 else:
     engine = create_engine(

@@ -44,6 +44,16 @@ def test_extract_user_id_accepts_valid_hs256_token() -> None:
     assert middleware._extract_user_id_from_token(_authorization(token)) == USER_ID
 
 
+def test_extract_user_id_accepts_fastapi_users_audience() -> None:
+    token = jwt.encode(
+        {**_claims(), "aud": ["fastapi-users:auth"]},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+
+    assert middleware._extract_user_id_from_token(_authorization(token)) == USER_ID
+
+
 def test_extract_user_id_rejects_invalid_signature_without_raising() -> None:
     token = jwt.encode(
         _claims(),

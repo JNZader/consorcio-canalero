@@ -56,6 +56,8 @@ env/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+coverage_html/
+venv-rag/
 .coverage
 .coverage.*
 coverage.xml
