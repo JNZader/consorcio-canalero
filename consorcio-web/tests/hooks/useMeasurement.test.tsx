@@ -70,6 +70,7 @@ vi.mock('@turf/center-of-mass', () => ({
 }));
 
 // Import the hook AFTER all mocks.
+import length from '@turf/length';
 import {
   isMeasurementIdentifyBlocked,
   resetMeasurementIdentifyGuard,
@@ -152,6 +153,8 @@ describe('useMeasurement', () => {
     drawGetAll.mockReturnValue({ type: 'FeatureCollection', features: [] });
     drawInstances.length = 0;
     resetMeasurementIdentifyGuard();
+    vi.mocked(length).mockReset();
+    vi.mocked(length).mockImplementation(() => 123.4);
   });
 
   it('starts in the idle state with no measurements', () => {
@@ -224,6 +227,7 @@ describe('useMeasurement', () => {
     const [entry] = result.current.state.measurements;
     expect(entry.kind).toBe('distance');
     expect(entry.value).toBe(123.4);
+    expect(entry.geometry).toEqual(buildLineFeature().geometry);
     // labelPosition path for 3+ vertices uses real turf/distance walk-along
     // (NOT @turf/midpoint), so we assert the shape and rough range, not the
     // exact (-62.5, -32.5) — that mock only fires for 2-vertex lines.
@@ -239,6 +243,58 @@ describe('useMeasurement', () => {
     // that reentrancy was the source of the "too much recursion" prod crash.
     expect(drawChangeMode).not.toHaveBeenCalled();
     expect(isMeasurementIdentifyBlocked()).toBe(true);
+  });
+
+  it('stores the drawn zigzag when a road axis lies beside it', async () => {
+    // Same fixture as the deleted snap test: both ends sit ~5 m off the axis,
+    // inside the old 25 m snap radius. The hook has no road argument, so the
+    // axis is only the length the stored measure must beat.
+    const drawn: Feature<LineString> = {
+      type: 'Feature',
+      id: 'zigzag',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [0, 0.00005],
+          [0.01, -0.00004],
+          [0.02, 0.00005],
+        ],
+      },
+    };
+    const axis: Feature<LineString> = {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [0.02, 0],
+        ],
+      },
+    };
+    const { default: geodesicLength } = await vi.importActual<typeof import('@turf/length')>(
+      '@turf/length',
+    );
+    vi.mocked(length).mockImplementation((feature) =>
+      geodesicLength(feature as Feature<LineString>, { units: 'meters' }),
+    );
+
+    const { map, handlers } = createMapMock();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
+    const { result } = renderHook(() => useMeasurement(map as any));
+
+    act(() => result.current.startDistance());
+    await waitFor(() => expect(handlers.get('draw.create')?.[0]).toBeTruthy());
+    act(() => handlers.get('draw.create')?.[0]?.({ features: [drawn] }));
+
+    const [entry] = result.current.state.measurements;
+    const drawnMeters = geodesicLength(drawn, { units: 'meters' });
+    const axisMeters = geodesicLength(axis, { units: 'meters' });
+    expect(entry.kind).toBe('distance');
+    expect(entry.geometry).toEqual(drawn.geometry);
+    expect(entry.value).toBeCloseTo(drawnMeters, 5);
+    expect(entry.value).toBeGreaterThan(axisMeters);
   });
 
   it('records an area entry and returns to idle (no auto-restart of next shape)', async () => {
