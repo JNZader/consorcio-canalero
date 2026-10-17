@@ -42,6 +42,7 @@ import {
   getSupported3DRasterLayers,
   nextAutofillTerrainRasterId,
   pickActiveTerrainRasterLayer,
+  resolveDefaultTerrainRasterId,
 } from './terrainLayerConfig';
 import { buildTerrainMapStyle } from './terrainMapStyle';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
@@ -367,12 +368,17 @@ export default function TerrainViewer3D({
   }, [overlayOpacity]);
 
   useEffect(() => {
+    const fallbackLayerId = resolveDefaultTerrainRasterId({
+      rasterLayers,
+      textureLayerId,
+      demLayerId,
+    });
     const next = nextAutofillTerrainRasterId({
       userPicked: userPickedRasterRef.current,
       activeRasterLayerId,
       selectedImage: Boolean(selectedImage),
       selectedImageLayerId: SELECTED_IMAGE_LAYER_ID,
-      fallbackLayerId: textureLayerId ?? demLayerId ?? rasterLayers[0]?.id ?? null,
+      fallbackLayerId,
     });
     if (next === 'keep' || next === activeRasterLayerId) return;
     setActiveRasterLayerId(next);
@@ -387,13 +393,19 @@ export default function TerrainViewer3D({
       !selectedImage &&
       !bootstrapSentinelUrl
     ) {
-      setActiveRasterLayerId(activeRasterLayer?.id ?? textureLayerId ?? demLayerId ?? null);
+      const fallbackLayerId = resolveDefaultTerrainRasterId({
+        rasterLayers,
+        textureLayerId,
+        demLayerId,
+      });
+      setActiveRasterLayerId(activeRasterLayer?.id ?? fallbackLayerId);
     }
   }, [
     activeRasterLayer?.id,
     activeRasterLayerId,
     bootstrapSentinelUrl,
     demLayerId,
+    rasterLayers,
     selectedImage,
     textureLayerId,
   ]);
@@ -409,7 +421,8 @@ export default function TerrainViewer3D({
 
   useEffect(() => {
     if (userPickedRasterRef.current) return;
-    if (selectedImage && sharedActiveRasterType === null) return;
+    // When a satellite image is available or active, do not overwrite it with sharedActiveRasterType
+    if (selectedImage || activeRasterLayerIdRef.current === SELECTED_IMAGE_LAYER_ID) return;
     if (sharedActiveRasterType === null) return;
     const matched = rasterLayers.find(
       (layer: GeoLayerInfo) => layer.tipo === sharedActiveRasterType

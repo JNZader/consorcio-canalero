@@ -391,20 +391,23 @@ export function LayerControlsPanel({
     ...(satelliteLayer ? [{ id: '__satellite', label: satelliteLayer.label }] : []),
   ];
 
-  const firstDemLayerId = demOptions[0]?.value ?? null;
+  const defaultDemLayerId =
+    demOptions.find((option) => option.tipo === 'dem_raw')?.value ??
+    demOptions[0]?.value ??
+    null;
 
   useEffect(() => {
     if (is3d) return;
-    if (!showDemOverlay || !firstDemLayerId) return;
+    if (!showDemOverlay || !defaultDemLayerId) return;
     const activeLayerExists = demOptions.some((option) => option.value === activeDemLayerId);
     if (!activeLayerExists) {
-      onActiveDemLayerIdChange(firstDemLayerId);
+      onActiveDemLayerIdChange(defaultDemLayerId);
     }
-  }, [activeDemLayerId, demOptions, firstDemLayerId, is3d, onActiveDemLayerIdChange, showDemOverlay]);
+  }, [activeDemLayerId, demOptions, defaultDemLayerId, is3d, onActiveDemLayerIdChange, showDemOverlay]);
 
   const handleDemOverlayChange = (visible: boolean) => {
-    if (visible && !activeDemLayerId && firstDemLayerId) {
-      onActiveDemLayerIdChange(firstDemLayerId);
+    if (visible && !activeDemLayerId && defaultDemLayerId) {
+      onActiveDemLayerIdChange(defaultDemLayerId);
     }
     onShowDemOverlayChange(visible);
   };
