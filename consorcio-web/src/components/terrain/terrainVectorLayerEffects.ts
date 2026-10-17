@@ -1,6 +1,14 @@
 import type { FeatureCollection } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
+import { getMartinTileUrl } from '../../hooks/useMartinLayers';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import { getSoilPmtilesArchiveKey } from '../../lib/soilPmtiles';
+import { CATASTRO_LAYER_MIN_ZOOM, SOIL_LAYER_MIN_ZOOM } from '../map2d/layerMinZoom';
+import {
+  SOIL_PMTILES_LAYER,
+  soilFillColorExpression,
+  soilPmtilesUrl,
+} from '../map2d/mapLayerEffectHelpers';
 import { buildRoadHitLayer, buildRoadLabelLayer } from '../map2d/roadLabelLayer';
 import { asFeatureCollection, type TerrainVectorLayerVisibility } from './terrainViewer3DUtils';
 
@@ -27,6 +35,7 @@ interface TerrainVectorCollections {
   waterwaysCollection: FeatureCollection | null;
   soilCollection: FeatureCollection | null;
   catastroCollection: FeatureCollection | null | undefined;
+  soilArchiveKey?: string | null;
 }
 
 function ensureGeoJsonSource(
@@ -159,25 +168,63 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
     });
   }
 
-  ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.soil, collections.soilCollection);
-  if (!map.getLayer(`${TERRAIN_SOURCE_IDS.soil}-fill`)) {
-    map.addLayer({
-      id: `${TERRAIN_SOURCE_IDS.soil}-fill`,
-      type: 'fill',
-      source: TERRAIN_SOURCE_IDS.soil,
-      paint: {
-        'fill-color': ['coalesce', ['get', '__color'], mapColorTokens.h8d6e63],
-        'fill-opacity': 0.3,
-      },
-    });
-  }
-  if (!map.getLayer(`${TERRAIN_SOURCE_IDS.soil}-line`)) {
-    map.addLayer({
-      id: `${TERRAIN_SOURCE_IDS.soil}-line`,
-      type: 'line',
-      source: TERRAIN_SOURCE_IDS.soil,
-      paint: { 'line-color': mapColorTokens.h6d4c41, 'line-width': 1.2, 'line-opacity': 0.85 },
-    });
+  if (
+    collections.soilCollection &&
+    collections.soilCollection.features &&
+    collections.soilCollection.features.length > 0
+  ) {
+    ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.soil, collections.soilCollection);
+    if (!map.getLayer(`${TERRAIN_SOURCE_IDS.soil}-fill`)) {
+      map.addLayer({
+        id: `${TERRAIN_SOURCE_IDS.soil}-fill`,
+        type: 'fill',
+        source: TERRAIN_SOURCE_IDS.soil,
+        paint: {
+          'fill-color': ['coalesce', ['get', '__color'], mapColorTokens.h8d6e63],
+          'fill-opacity': 0.3,
+        },
+      });
+    }
+    if (!map.getLayer(`${TERRAIN_SOURCE_IDS.soil}-line`)) {
+      map.addLayer({
+        id: `${TERRAIN_SOURCE_IDS.soil}-line`,
+        type: 'line',
+        source: TERRAIN_SOURCE_IDS.soil,
+        paint: { 'line-color': mapColorTokens.h6d4c41, 'line-width': 1.2, 'line-opacity': 0.85 },
+      });
+    }
+  } else {
+    const archiveKey =
+      collections.soilArchiveKey ?? getSoilPmtilesArchiveKey() ?? 'suelos_cu.pmtiles';
+    if (!map.getSource(TERRAIN_SOURCE_IDS.soil)) {
+      map.addSource(TERRAIN_SOURCE_IDS.soil, {
+        type: 'vector',
+        url: soilPmtilesUrl(archiveKey),
+      });
+    }
+    if (!map.getLayer(`${TERRAIN_SOURCE_IDS.soil}-fill`)) {
+      map.addLayer({
+        id: `${TERRAIN_SOURCE_IDS.soil}-fill`,
+        type: 'fill',
+        source: TERRAIN_SOURCE_IDS.soil,
+        'source-layer': SOIL_PMTILES_LAYER,
+        minzoom: SOIL_LAYER_MIN_ZOOM,
+        paint: {
+          'fill-color': soilFillColorExpression() as never,
+          'fill-opacity': 0.3,
+        },
+      });
+    }
+    if (!map.getLayer(`${TERRAIN_SOURCE_IDS.soil}-line`)) {
+      map.addLayer({
+        id: `${TERRAIN_SOURCE_IDS.soil}-line`,
+        type: 'line',
+        source: TERRAIN_SOURCE_IDS.soil,
+        'source-layer': SOIL_PMTILES_LAYER,
+        minzoom: SOIL_LAYER_MIN_ZOOM,
+        paint: { 'line-color': mapColorTokens.h6d4c41, 'line-width': 1.2, 'line-opacity': 0.85 },
+      });
+    }
   }
 
   // NOTE (layer-visibility audit): catastro is declared AFTER soil on purpose.
@@ -185,14 +232,39 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
   // top. Keeping catastro as the final vector layer guarantees parcela outlines
   // are never obscured by the soil fill, without needing an explicit moveLayer
   // pass on every sync.
-  ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.catastro, collections.catastroCollection);
-  if (!map.getLayer(`${TERRAIN_SOURCE_IDS.catastro}-line`)) {
-    map.addLayer({
-      id: `${TERRAIN_SOURCE_IDS.catastro}-line`,
-      type: 'line',
-      source: TERRAIN_SOURCE_IDS.catastro,
-      paint: { 'line-color': mapColorTokens.hFFFFFF, 'line-width': 1.5, 'line-opacity': 0.85 },
-    });
+  if (
+    collections.catastroCollection &&
+    collections.catastroCollection.features &&
+    collections.catastroCollection.features.length > 0
+  ) {
+    ensureGeoJsonSource(map, TERRAIN_SOURCE_IDS.catastro, collections.catastroCollection);
+    if (!map.getLayer(`${TERRAIN_SOURCE_IDS.catastro}-line`)) {
+      map.addLayer({
+        id: `${TERRAIN_SOURCE_IDS.catastro}-line`,
+        type: 'line',
+        source: TERRAIN_SOURCE_IDS.catastro,
+        paint: { 'line-color': mapColorTokens.hFFFFFF, 'line-width': 1.5, 'line-opacity': 0.85 },
+      });
+    }
+  } else {
+    if (!map.getSource(TERRAIN_SOURCE_IDS.catastro)) {
+      map.addSource(TERRAIN_SOURCE_IDS.catastro, {
+        type: 'vector',
+        tiles: [getMartinTileUrl('parcelas_catastro')],
+        minzoom: 8,
+        maxzoom: 19,
+      });
+    }
+    if (!map.getLayer(`${TERRAIN_SOURCE_IDS.catastro}-line`)) {
+      map.addLayer({
+        id: `${TERRAIN_SOURCE_IDS.catastro}-line`,
+        type: 'line',
+        source: TERRAIN_SOURCE_IDS.catastro,
+        'source-layer': 'parcelas_catastro',
+        minzoom: CATASTRO_LAYER_MIN_ZOOM,
+        paint: { 'line-color': mapColorTokens.hFFFFFF, 'line-width': 1.5, 'line-opacity': 0.85 },
+      });
+    }
   }
 }
 
@@ -245,19 +317,7 @@ export function syncTerrainVectorLayers(
     `${TERRAIN_SOURCE_IDS.waterways}-line`,
     visibility.waterways && !!collections.waterwaysCollection
   );
-  ensureLayerVisibility(
-    map,
-    `${TERRAIN_SOURCE_IDS.soil}-fill`,
-    visibility.soil && !!collections.soilCollection
-  );
-  ensureLayerVisibility(
-    map,
-    `${TERRAIN_SOURCE_IDS.soil}-line`,
-    visibility.soil && !!collections.soilCollection
-  );
-  ensureLayerVisibility(
-    map,
-    `${TERRAIN_SOURCE_IDS.catastro}-line`,
-    visibility.catastro && !!collections.catastroCollection
-  );
+  ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.soil}-fill`, !!visibility.soil);
+  ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.soil}-line`, !!visibility.soil);
+  ensureLayerVisibility(map, `${TERRAIN_SOURCE_IDS.catastro}-line`, !!visibility.catastro);
 }

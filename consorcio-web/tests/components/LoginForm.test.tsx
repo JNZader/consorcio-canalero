@@ -214,6 +214,20 @@ describe('LoginForm', () => {
     expect(mockLocation.href).toBe('/admin');
   });
 
+  it('honors and clears redirectAfterLogin on successful login', async () => {
+    sessionStorage.setItem('redirectAfterLogin', '/admin/dem');
+    const user = userEvent.setup();
+    vi.mocked(signInWithEmail).mockResolvedValue({ success: true });
+    renderForm();
+
+    await submitLogin(user, 'test@example.com', 'password123');
+
+    await waitFor(() => {
+      expect(mockLocation.href).toBe('/admin/dem');
+    });
+    expect(sessionStorage.getItem('redirectAfterLogin')).toBeNull();
+  });
+
   it('shows auth errors on failed login', async () => {
     const user = userEvent.setup();
     vi.mocked(signInWithEmail).mockResolvedValue({

@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from '../../lib/auth';
 import { consumeLocalLogoutWarning } from '../../lib/auth/storage';
 import ThemeToggle from '../ThemeToggle';
@@ -80,6 +80,10 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
   const [opened, setOpened] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    setOpened(false);
+  }, [currentPath]);
+
   const handleLogout = async (): Promise<void> => {
     try {
       const result = await signOut();
@@ -129,7 +133,8 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                 onClick={() => setOpened(!opened)}
                 hiddenFrom="sm"
                 size="sm"
-                aria-label="Abrir menú de navegación"
+                aria-label={opened ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}
+                aria-expanded={opened}
               />
               <UnstyledButton component={Link} to="/admin">
                 <Group gap="xs">
@@ -154,6 +159,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
               <Menu shadow="lg" width={220} position="bottom-end">
                 <Menu.Target>
                   <UnstyledButton
+                    aria-label="Cuenta Admin"
                     style={{
                       padding: 'var(--mantine-spacing-xs) var(--mantine-spacing-sm)',
                       borderRadius: 'var(--mantine-radius-md)',

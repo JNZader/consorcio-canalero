@@ -89,12 +89,24 @@ export function useTerrainCanalesEffects({
   );
   // Etapas filter slice — shared between 2D + 3D.
   const propuestasEtapasVisibility = useMapLayerSyncStore((s) => s.propuestasEtapasVisibility);
-  // Broad slice — triggers re-sync when any per-canal flag changes. We read
-  // per-canal flags via `getState()` inside the effect body (avoids
-  // subscribing to 43 individual selectors).
-  const visibleVectors = useMapLayerSyncStore((s) => s.map2d.visibleVectors);
+  // Targeted signature — triggers re-sync ONLY when a canales-relevant flag changes
+  // (soil, roads, etc. changes do not trigger expensive re-sync).
+  const canalesVisibilitySignature = useMapLayerSyncStore((s) =>
+    Object.entries(s.map2d.visibleVectors)
+      .filter(
+        ([key]) =>
+          key === 'canales_relevados' ||
+          key === 'canales_propuestos' ||
+          key.startsWith('canal_relevado_') ||
+          key.startsWith('canal_propuesto_')
+      )
+      .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+      .sort()
+      .join('|')
+  );
 
   useEffect(() => {
+    void canalesVisibilitySignature;
     const map = mapRef.current;
     if (!map || !ready) return;
     // Graceful degradation: if both slots are null (e.g. fetch still in
@@ -105,6 +117,7 @@ export function useTerrainCanalesEffects({
     if (!canales.relevados && !canales.propuestas) return;
 
     const state = useMapLayerSyncStore.getState();
+    const visibleVectors = state.map2d.visibleVectors;
 
     // Per-canal relevados list: every relevado id whose per-canal slug
     // is NOT flagged false. Derives the store key from the raw slug the
@@ -152,8 +165,6 @@ export function useTerrainCanalesEffects({
     relevadosVisible,
     propuestasVisible,
     propuestasEtapasVisibility,
-    // `visibleVectors` is a broad dep — any per-canal toggle change
-    // triggers a re-sync so the filter stays in sync with the store.
-    visibleVectors,
+    canalesVisibilitySignature,
   ]);
 }

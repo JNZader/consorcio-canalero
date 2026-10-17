@@ -188,22 +188,24 @@ export default function DemPipelinePanel() {
                 </Badge>
               </Group>
 
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Capa</Table.Th>
-                    <Table.Th>Tipo</Table.Th>
-                    <Table.Th>Formato</Table.Th>
-                    <Table.Th>Fecha</Table.Th>
-                    <Table.Th>Acciones</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {layers.map((layer) => (
-                    <LayerRow key={layer.id} layer={layer} />
-                  ))}
-                </Table.Tbody>
-              </Table>
+              <Table.ScrollContainer minWidth={500}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Capa</Table.Th>
+                      <Table.Th>Tipo</Table.Th>
+                      <Table.Th>Formato</Table.Th>
+                      <Table.Th>Fecha</Table.Th>
+                      <Table.Th>Acciones</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {layers.map((layer) => (
+                      <LayerRow key={layer.id} layer={layer} />
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             </Paper>
           )}
 
