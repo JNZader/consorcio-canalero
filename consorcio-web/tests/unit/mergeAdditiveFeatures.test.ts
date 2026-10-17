@@ -187,4 +187,28 @@ describe('expandTramoGroup', () => {
     const hit = { ...a, layer: { id: layer } };
     expect(expandTramoGroup(hit, [a, b])).toHaveLength(2);
   });
+
+  it('keeps a unified MultiLineString route as the whole group', () => {
+    const layer = `${SOURCE_IDS.ROADS}-hit`;
+    const route: Feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiLineString',
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+          ],
+          [
+            [1, 0],
+            [2, 0],
+          ],
+        ],
+      },
+      properties: { ruta: 'T269-03' },
+    };
+    const hit = { ...route, layer: { id: layer } };
+    expect(expandTramoGroup(hit, [route])).toHaveLength(1);
+    expect(pickPrimaryTramo([hit], [0.5, 0])).toBe(hit);
+  });
 });

@@ -40,7 +40,18 @@ export const LAYER_PROPERTY_WHITELISTS: Record<string, readonly string[]> = {
    * The 13+ remaining KML fields (altitudeMo, begin, end, extrude,
    * tessellate, etc.) are plumbing and intentionally hidden.
    */
-  caminos: ['ccn', 'fna', 'gna', 'hct', 'red', 'rst', 'rtn'],
+  caminos: [
+    'ccn',
+    'fna',
+    'gna',
+    'hct',
+    'red',
+    'rst',
+    'rtn',
+    'longitud_geodesica_km',
+    'cantidad_tramos_fisicos',
+    'consorcios',
+  ],
 
   /**
    * Catastro rural — IDECor. Hides internal DB plumbing (created_at, id,
@@ -102,6 +113,9 @@ export const LAYER_PROPERTY_LABELS: Record<string, Record<string, string>> = {
     red: 'Red',
     rst: 'Superficie',
     rtn: 'Ruta',
+    longitud_geodesica_km: 'Longitud',
+    cantidad_tramos_fisicos: 'Tramos físicos',
+    consorcios: 'Consorcios',
   },
   catastro: {
     nro_cuenta: 'Cuenta catastral',
@@ -168,7 +182,16 @@ function formatStringList(value: unknown): FormatResult {
   return String(value);
 }
 
+function formatKilometres(value: unknown): string {
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  return `${number.toFixed(2)} km`;
+}
+
 export const LAYER_PROPERTY_FORMATTERS: Record<string, Record<string, LayerValueFormatter>> = {
+  caminos: {
+    longitud_geodesica_km: formatKilometres,
+  },
   basins: {
     superficie_ha: formatHectares,
   },

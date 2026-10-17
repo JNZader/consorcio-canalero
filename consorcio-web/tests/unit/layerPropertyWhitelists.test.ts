@@ -24,7 +24,7 @@ import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { ROAD_FLOW_LAYER_IDS } from '../../src/components/map2d/roadFlowLayers';
 
 describe('LAYER_PROPERTY_WHITELISTS', () => {
-  it('defines the 7 caminos keys in the documented order', () => {
+  it('defines the caminos keys in the documented order', () => {
     expect(LAYER_PROPERTY_WHITELISTS.caminos).toEqual([
       'ccn',
       'fna',
@@ -33,6 +33,9 @@ describe('LAYER_PROPERTY_WHITELISTS', () => {
       'red',
       'rst',
       'rtn',
+      'longitud_geodesica_km',
+      'cantidad_tramos_fisicos',
+      'consorcios',
     ]);
   });
 });
