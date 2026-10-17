@@ -64,6 +64,25 @@ describe('<ElevationProfileChart />', () => {
     expect(fetchElevationProfile).not.toHaveBeenCalled();
   });
 
+  it('samples the drawn line when the measurement opens the profile', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    renderWithMantine(<ElevationProfileChart geometry={line} autoLoad />);
+    expect(screen.queryByRole('button', { name: 'Perfil de elevación' })).not.toBeInTheDocument();
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
+    expect(fetchElevationProfile).toHaveBeenCalledWith(line, undefined, false);
+  });
+
   it('renders disclaimer and extrema after a successful sample', async () => {
     vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
       puntos: [
