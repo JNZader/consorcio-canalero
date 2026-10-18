@@ -10,7 +10,7 @@ Never open a burned or hydro-filled raster. ``resolver_dem_filled`` is the gate.
 
 from __future__ import annotations
 
-from math import hypot
+from math import cos, hypot, radians
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -50,6 +50,12 @@ RETRACE_SNAP_M = 2.0
 #: part array is only reordered, so the sampler cannot teleport.
 _VERTICE_COMPARTIDO_GRADOS = 1e-8
 
+#: A reverse is an entrance only when the chosen end meets the cursor.
+#: Wider than this, the piece keeps the direction it was drawn. Same 8 m
+#: as the weld, but in metres: ``8/111320`` degrees is shorter east-west.
+_ENTRADA_MAX_M = 8.0
+_METROS_POR_GRADO = 111_320.0
+
 
 def desplegar_retrazado(
     coords: Sequence[tuple[float, float]],
@@ -87,6 +93,15 @@ def _distancia_grados(a: tuple[float, float], b: tuple[float, float]) -> float:
     return hypot(a[0] - b[0], a[1] - b[1])
 
 
+def _distancia_metros(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Equirectangular metres. A raw degree length overstates longitude here."""
+    medio = radians((a[1] + b[1]) / 2.0)
+    return hypot(
+        (a[0] - b[0]) * _METROS_POR_GRADO * cos(medio),
+        (a[1] - b[1]) * _METROS_POR_GRADO,
+    )
+
+
 def _copia_linea(linea: LineString) -> LineString:
     return LineString([(float(x), float(y)) for x, y in linea.coords])
 
@@ -96,7 +111,11 @@ def _reversa_linea(linea: LineString) -> LineString:
 
 
 def _ordenar_partes(partes: Sequence[LineString]) -> list[LineString]:
-    """Same walk as ``caminos_soldar_ruta``: free end, then nearest end."""
+    """Same walk as ``caminos_soldar_ruta`` after migration 0032.
+
+    Free end first. The nearer end wins the next part, and a reverse
+    happens only when that end is within 8 m of the cursor.
+    """
     piezas = [_copia_linea(parte) for parte in partes if len(parte.coords) >= 2]
     cantidad = len(piezas)
     if cantidad <= 1:
@@ -142,6 +161,8 @@ def _ordenar_partes(partes: Sequence[LineString]) -> list[LineString]:
                 elegido, voltear, distancia = inicio, False, d0
             else:
                 elegido, voltear, distancia = fin, True, d1
+            if _distancia_metros(cursor, elegido) > _ENTRADA_MAX_M:
+                voltear = False
             clave = (distancia, elegido[0], elegido[1], j, voltear)
             if mejor is None or clave[:4] < mejor[:4]:
                 mejor = clave
@@ -159,15 +180,16 @@ def geometria_ordenada(geom: BaseGeometry) -> BaseGeometry:
     """Walk a MultiLineString from its westernmost free end.
 
     A free end meets no other part endpoint. The next part is the unused one
-    whose nearer end is closest to the cursor, reversed when the far end is
-    closer. A gap is not filled. A single LineString keeps the orientation it
-    arrived with, so a drawn measurement does not flip.
+    whose nearer end is closest to the cursor. That part is reversed only
+    when the far end is the nearer one and that end is within 8 m of the
+    cursor. A separated piece keeps the direction it was drawn. A gap is
+    not filled. A single LineString keeps the orientation it arrived with,
+    so a drawn measurement does not flip.
 
-    Migration ``0030_weld_order_caminos`` uses this same walk on the stored
-    route. Closing endpoints that almost touch is that migration's job.
-    Migration ``0031_drop_covered_caminos`` drops a part covered by one
-    other part before that snap, then drops whatever the merge still leaves
-    inside the 8 m buffer of the surviving parts. A real gap stays.
+    Migration ``0030_weld_order_caminos`` welds endpoints within 8 m.
+    Migration ``0031_drop_covered_caminos`` drops a covered copy before that
+    snap, then drops what the merge still leaves inside the buffer.
+    Migration ``0032_keep_gap_direction`` is this 8 m entrance gate.
     """
     if geom.geom_type == "LineString":
         return geom

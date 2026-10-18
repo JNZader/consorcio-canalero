@@ -422,7 +422,11 @@ def test_storage_order_does_not_change_the_cache_key() -> None:
 def test_reversed_part_storage_reuses_the_ordered_profile(
     cache_env, db_session_factory, monkeypatch, tmp_path
 ) -> None:
-    """The sampler walks west to east even when the eastern part was stored first."""
+    """Storage order does not change the sampled trace.
+
+    The seed still starts at the western free end. The other piece is about
+    94 m away, so the walk does not turn it around to face the cursor.
+    """
     dem = _dem(tmp_path)
     primeras: list[tuple[float, float]] = []
 
@@ -458,4 +462,4 @@ def test_reversed_part_storage_reuses_the_ordered_profile(
     assert second["cache"] == "hit"
     assert len(primeras) == 2, "the cached call must not resample"
     assert primeras[0] == pytest.approx((-62.705, -32.6))
-    assert primeras[1] == pytest.approx((-62.702, -32.6))
+    assert primeras[1] == pytest.approx((-62.7, -32.6))
