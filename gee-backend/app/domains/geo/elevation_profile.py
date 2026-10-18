@@ -165,6 +165,9 @@ def geometria_ordenada(geom: BaseGeometry) -> BaseGeometry:
 
     Migration ``0030_weld_order_caminos`` uses this same walk on the stored
     route. Closing endpoints that almost touch is that migration's job.
+    Migration ``0031_drop_covered_caminos`` drops a part covered by one
+    other part before that snap, then drops whatever the merge still leaves
+    inside the 8 m buffer of the surviving parts. A real gap stays.
     """
     if geom.geom_type == "LineString":
         return geom
