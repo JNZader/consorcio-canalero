@@ -10,7 +10,7 @@ Never open a burned or hydro-filled raster. ``resolver_dem_filled`` is the gate.
 
 from __future__ import annotations
 
-from math import cos, hypot, radians
+from math import hypot
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -50,12 +50,6 @@ RETRACE_SNAP_M = 2.0
 #: part array is only reordered, so the sampler cannot teleport.
 _VERTICE_COMPARTIDO_GRADOS = 1e-8
 
-#: A reverse is an entrance only when the chosen end meets the cursor.
-#: Wider than this, the piece keeps the direction it was drawn. Same 8 m
-#: as the weld, but in metres: ``8/111320`` degrees is shorter east-west.
-_ENTRADA_MAX_M = 8.0
-_METROS_POR_GRADO = 111_320.0
-
 
 def desplegar_retrazado(
     coords: Sequence[tuple[float, float]],
@@ -93,15 +87,6 @@ def _distancia_grados(a: tuple[float, float], b: tuple[float, float]) -> float:
     return hypot(a[0] - b[0], a[1] - b[1])
 
 
-def _distancia_metros(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Equirectangular metres. A raw degree length overstates longitude here."""
-    medio = radians((a[1] + b[1]) / 2.0)
-    return hypot(
-        (a[0] - b[0]) * _METROS_POR_GRADO * cos(medio),
-        (a[1] - b[1]) * _METROS_POR_GRADO,
-    )
-
-
 def _copia_linea(linea: LineString) -> LineString:
     return LineString([(float(x), float(y)) for x, y in linea.coords])
 
@@ -110,17 +95,15 @@ def _reversa_linea(linea: LineString) -> LineString:
     return LineString([(float(x), float(y)) for x, y in list(linea.coords)[::-1]])
 
 
-def _ordenar_partes(partes: Sequence[LineString]) -> list[LineString]:
-    """Same walk as ``caminos_soldar_ruta`` after migration 0032.
+def _extremos(
+    piezas: Sequence[LineString],
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    return [(_xy(pieza.coords[0]), _xy(pieza.coords[-1])) for pieza in piezas]
 
-    Free end first. The nearer end wins the next part, and a reverse
-    happens only when that end is within 8 m of the cursor.
-    """
-    piezas = [_copia_linea(parte) for parte in partes if len(parte.coords) >= 2]
-    cantidad = len(piezas)
-    if cantidad <= 1:
-        return piezas
-    extremos = [(_xy(pieza.coords[0]), _xy(pieza.coords[-1])) for pieza in piezas]
+
+def _elegir_semilla(piezas: Sequence[LineString]) -> tuple[int, bool] | None:
+    """Westernmost free end. Same tie-break as ``caminos_soldar_ruta``."""
+    extremos = _extremos(piezas)
 
     def grado(punto: tuple[float, float]) -> int:
         cuenta = 0
@@ -143,53 +126,85 @@ def _ordenar_partes(partes: Sequence[LineString]) -> list[LineString]:
                 if semilla is None or clave < semilla[:3]:
                     semilla = (clave[0], clave[1], clave[2], al_final)
     if semilla is None:
-        return piezas
+        return None
+    return (semilla[2], semilla[3])
 
-    indice = semilla[2]
-    primera = _reversa_linea(piezas[indice]) if semilla[3] else piezas[indice]
-    orden = [primera]
+
+def _caminar(piezas: list[LineString], semilla: tuple[int, bool]) -> tuple[list[LineString], int]:
+    """Enter each next part at its nearer end. Mutates ``piezas`` in place."""
+    indice, al_final = semilla
+    if al_final:
+        piezas[indice] = _reversa_linea(piezas[indice])
+    orden = [piezas[indice]]
     usadas = {indice}
-    cursor = _xy(primera.coords[-1])
-    while len(usadas) < cantidad:
-        mejor: tuple[float, float, float, int, bool] | None = None
-        for j, (inicio, fin) in enumerate(extremos):
+    cursor = _xy(piezas[indice].coords[-1])
+    punta = indice
+    while len(usadas) < len(piezas):
+        mejor: tuple[tuple[float, float, float, float, float, int], int, bool] | None = None
+        for j, pieza in enumerate(piezas):
             if j in usadas:
                 continue
+            inicio = _xy(pieza.coords[0])
+            fin = _xy(pieza.coords[-1])
             d0 = _distancia_grados(cursor, inicio)
             d1 = _distancia_grados(cursor, fin)
             if d0 <= d1:
-                elegido, voltear, distancia = inicio, False, d0
+                elegido, voltear, distancia, lejos = inicio, False, d0, fin
             else:
-                elegido, voltear, distancia = fin, True, d1
-            if _distancia_metros(cursor, elegido) > _ENTRADA_MAX_M:
-                voltear = False
-            clave = (distancia, elegido[0], elegido[1], j, voltear)
-            if mejor is None or clave[:4] < mejor[:4]:
-                mejor = clave
+                elegido, voltear, distancia, lejos = fin, True, d1, inicio
+            # The exit point breaks a junction tie. Index is only for two
+            # copies of the same geometry, so storage order cannot turn a spur.
+            clave = (distancia, elegido[0], elegido[1], lejos[0], lejos[1], j)
+            if mejor is None or clave < mejor[0]:
+                mejor = (clave, j, voltear)
         if mejor is None:
             break
-        _distancia, _x, _y, elegido_j, voltear = mejor
-        pieza = _reversa_linea(piezas[elegido_j]) if voltear else piezas[elegido_j]
-        orden.append(pieza)
+        _clave, elegido_j, voltear = mejor
+        if voltear:
+            piezas[elegido_j] = _reversa_linea(piezas[elegido_j])
+        orden.append(piezas[elegido_j])
         usadas.add(elegido_j)
-        cursor = _xy(pieza.coords[-1])
+        cursor = _xy(piezas[elegido_j].coords[-1])
+        punta = elegido_j
+    return orden, punta
+
+
+def _ordenar_partes(partes: Sequence[LineString]) -> list[LineString]:
+    """Same walk as ``caminos_soldar_ruta`` after migration 0033.
+
+    The first walk starts at the westernmost free end and always enters
+    the next part at its nearer end. The second walk starts at that far
+    end. Kilometer zero is the more western of the two extremities.
+    """
+    piezas = [_copia_linea(parte) for parte in partes if len(parte.coords) >= 2]
+    if len(piezas) <= 1:
+        return piezas
+    semilla = _elegir_semilla(piezas)
+    if semilla is None:
+        return piezas
+    _primera, punta = _caminar(piezas, semilla)
+    orden, _punta = _caminar(piezas, (punta, True))
+    arranque = _xy(orden[0].coords[0])
+    final = _xy(orden[-1].coords[-1])
+    if (final[0], final[1]) < (arranque[0], arranque[1]):
+        orden = [_reversa_linea(parte) for parte in reversed(orden)]
     return orden
 
 
 def geometria_ordenada(geom: BaseGeometry) -> BaseGeometry:
-    """Walk a MultiLineString from its westernmost free end.
+    """Station a MultiLineString in one direction.
 
-    A free end meets no other part endpoint. The next part is the unused one
-    whose nearer end is closest to the cursor. That part is reversed only
-    when the far end is the nearer one and that end is within 8 m of the
-    cursor. A separated piece keeps the direction it was drawn. A gap is
-    not filled. A single LineString keeps the orientation it arrived with,
-    so a drawn measurement does not flip.
+    Each part is entered at the end where the cursor arrives and left by
+    the other end. A gap is not filled. Kilometer zero is the more western
+    of the two extremities of that chain, not the westernmost vertex.
+    A single LineString keeps the orientation it arrived with, so a drawn
+    measurement does not flip.
 
     Migration ``0030_weld_order_caminos`` welds endpoints within 8 m.
     Migration ``0031_drop_covered_caminos`` drops a covered copy before that
     snap, then drops what the merge still leaves inside the buffer.
-    Migration ``0032_keep_gap_direction`` is this 8 m entrance gate.
+    Migration ``0033_one_way_profile`` is this stationing. A branch still
+    returns once to the junction.
     """
     if geom.geom_type == "LineString":
         return geom
