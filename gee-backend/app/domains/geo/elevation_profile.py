@@ -14,6 +14,7 @@ from math import hypot
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
+from shapely.geometry import LineString, MultiLineString
 from shapely.geometry.base import BaseGeometry
 
 from app.domains.geo.relevamiento.clasificador import (
@@ -44,6 +45,11 @@ MAX_POINTS = 2_000
 RETRACE_COSINE = -0.85
 RETRACE_SNAP_M = 2.0
 
+#: Two endpoints closer than this are the same vertex. This is NOT the weld
+#: tolerance: closing a digitizing gap is migration 0030. Here a scrambled
+#: part array is only reordered, so the sampler cannot teleport.
+_VERTICE_COMPARTIDO_GRADOS = 1e-8
+
 
 def desplegar_retrazado(
     coords: Sequence[tuple[float, float]],
@@ -71,6 +77,106 @@ def desplegar_retrazado(
             continue
         out.append(point)
     return out if len(out) >= 2 else [(float(x), float(y)) for x, y in coords]
+
+
+def _xy(coord: Sequence[float]) -> tuple[float, float]:
+    return (float(coord[0]), float(coord[1]))
+
+
+def _distancia_grados(a: tuple[float, float], b: tuple[float, float]) -> float:
+    return hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _copia_linea(linea: LineString) -> LineString:
+    return LineString([(float(x), float(y)) for x, y in linea.coords])
+
+
+def _reversa_linea(linea: LineString) -> LineString:
+    return LineString([(float(x), float(y)) for x, y in list(linea.coords)[::-1]])
+
+
+def _ordenar_partes(partes: Sequence[LineString]) -> list[LineString]:
+    """Same walk as ``caminos_soldar_ruta``: free end, then nearest end."""
+    piezas = [_copia_linea(parte) for parte in partes if len(parte.coords) >= 2]
+    cantidad = len(piezas)
+    if cantidad <= 1:
+        return piezas
+    extremos = [(_xy(pieza.coords[0]), _xy(pieza.coords[-1])) for pieza in piezas]
+
+    def grado(punto: tuple[float, float]) -> int:
+        cuenta = 0
+        for inicio, fin in extremos:
+            if _distancia_grados(punto, inicio) <= _VERTICE_COMPARTIDO_GRADOS:
+                cuenta += 1
+            if _distancia_grados(punto, fin) <= _VERTICE_COMPARTIDO_GRADOS:
+                cuenta += 1
+        return cuenta
+
+    semilla: tuple[float, float, int, bool] | None = None
+    for solo_libres in (True, False):
+        if semilla is not None:
+            break
+        for indice, (inicio, fin) in enumerate(extremos):
+            for al_final, punto in ((False, inicio), (True, fin)):
+                if solo_libres and grado(punto) > 1:
+                    continue
+                clave = (punto[0], punto[1], indice)
+                if semilla is None or clave < semilla[:3]:
+                    semilla = (clave[0], clave[1], clave[2], al_final)
+    if semilla is None:
+        return piezas
+
+    indice = semilla[2]
+    primera = _reversa_linea(piezas[indice]) if semilla[3] else piezas[indice]
+    orden = [primera]
+    usadas = {indice}
+    cursor = _xy(primera.coords[-1])
+    while len(usadas) < cantidad:
+        mejor: tuple[float, float, float, int, bool] | None = None
+        for j, (inicio, fin) in enumerate(extremos):
+            if j in usadas:
+                continue
+            d0 = _distancia_grados(cursor, inicio)
+            d1 = _distancia_grados(cursor, fin)
+            if d0 <= d1:
+                elegido, voltear, distancia = inicio, False, d0
+            else:
+                elegido, voltear, distancia = fin, True, d1
+            clave = (distancia, elegido[0], elegido[1], j, voltear)
+            if mejor is None or clave[:4] < mejor[:4]:
+                mejor = clave
+        if mejor is None:
+            break
+        _distancia, _x, _y, elegido_j, voltear = mejor
+        pieza = _reversa_linea(piezas[elegido_j]) if voltear else piezas[elegido_j]
+        orden.append(pieza)
+        usadas.add(elegido_j)
+        cursor = _xy(pieza.coords[-1])
+    return orden
+
+
+def geometria_ordenada(geom: BaseGeometry) -> BaseGeometry:
+    """Walk a MultiLineString from its westernmost free end.
+
+    A free end meets no other part endpoint. The next part is the unused one
+    whose nearer end is closest to the cursor, reversed when the far end is
+    closer. A gap is not filled. A single LineString keeps the orientation it
+    arrived with, so a drawn measurement does not flip.
+
+    Migration ``0030_weld_order_caminos`` uses this same walk on the stored
+    route. Closing endpoints that almost touch is that migration's job.
+    """
+    if geom.geom_type == "LineString":
+        return geom
+    if geom.geom_type != "MultiLineString":
+        return geom
+    partes = [parte for parte in geom.geoms if not parte.is_empty]
+    if len(partes) <= 1:
+        return partes[0] if partes else geom
+    ordenadas = _ordenar_partes(partes)
+    if len(ordenadas) == 1:
+        return ordenadas[0]
+    return MultiLineString(ordenadas)
 
 
 def paso_muestreo(largo_m: float) -> float:

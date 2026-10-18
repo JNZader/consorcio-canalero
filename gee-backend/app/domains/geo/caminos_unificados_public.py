@@ -2,9 +2,14 @@
 
 ``red_vial`` stays one physical segment per row (cruces and relevamientos
 reference those rows). The map reads ``vt_caminos_unificados``, which is
-``mv_caminos_unificados`` grouped by ``rtn``. A route that crosses more than
-one consorcio is painted with the color of the consorcio that owns the longer
-share. Legend kilometres are the geodesic sum of the active padrón rows.
+``mv_caminos_unificados`` grouped by ``rtn``. Where the pieces of a route
+meet, or their endpoints fall within 8 m, the view stores one LineString.
+A real gap or a branch stays another part, ordered from a free end so the
+elevation profile walks the road instead of jumping. A route that crosses
+more than one consorcio is painted with the color of the consorcio that owns
+the longer share of the padrón. ``longitud_geodesica_km`` is the length of
+that welded geometry. Legend kilometres stay the geodesic sum of the active
+padrón rows.
 """
 
 from __future__ import annotations
