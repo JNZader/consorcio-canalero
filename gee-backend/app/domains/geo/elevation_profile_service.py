@@ -12,6 +12,7 @@ from app.core.logging import get_logger
 from app.domains.geo.elevation_profile import (
     MAX_LENGTH_M,
     aplicar_mde_ar,
+    geometria_ordenada,
     paso_muestreo,
     perfil_desde_linea_metrica,
     unir_perfiles,
@@ -120,7 +121,7 @@ def perfil_de_geojson(
     area_id: Optional[str] = None,
     compare_dems: bool = False,
 ) -> dict[str, Any]:
-    from shapely.geometry import shape
+    from shapely.geometry import mapping, shape
     import geopandas as gpd
 
     try:
@@ -134,6 +135,11 @@ def perfil_de_geojson(
     crudas = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
     if any(len(getattr(parte, "coords", ())) < 2 for parte in crudas):
         raise ValidationError(message="hace falta un LineString con al menos dos vértices")
+    # Part order is the trace the cursor walks. Order before the cache key:
+    # two storage orders of the same road must hit one row, and a scrambled
+    # MultiLineString must not teleport the circle between samples.
+    geom = geometria_ordenada(geom)
+    crudas = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
 
     try:
         dem_path = resolver_dem_filled(_resultados(db, area_id))
@@ -156,7 +162,10 @@ def perfil_de_geojson(
     source_identity: Optional[str] = None
     if not compare_dems:
         source_identity = build_source_identity(dem_path)
-        cache_key = build_cache_key(geometry, source_identity)
+        # A LineString keeps the caller's dict, so an already-cached single
+        # trace still hits. A MultiLineString is keyed by the ordered shape.
+        clave = mapping(geom) if geometry.get("type") == "MultiLineString" else geometry
+        cache_key = build_cache_key(clave, source_identity)
         cached = _read_cache(cache_key)
         if cached is not None:
             return {**cached, "cache": "hit"}

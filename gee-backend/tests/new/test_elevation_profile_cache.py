@@ -402,7 +402,60 @@ def test_a_single_line_keeps_todays_payload_shape(
     assert all("parte" not in punto for punto in payload["puntos"])
 
 
-def test_the_part_order_changes_the_cache_key() -> None:
-    """Two part orders are two different traces: different chainage, different key."""
+def test_storage_order_does_not_change_the_cache_key() -> None:
+    """Two part orders of one road are one trace. A moved trace is another key."""
+    from shapely.geometry import mapping, shape
+
+    from app.domains.geo.elevation_profile import geometria_ordenada
+
     identity = "series:v1|dem_filled:1:1|mde_ar:absent"
-    assert build_cache_key(MULTI, identity) != build_cache_key(MULTI_REVERSED, identity)
+    ordered = mapping(geometria_ordenada(shape(MULTI)))
+    reversed_order = mapping(geometria_ordenada(shape(MULTI_REVERSED)))
+    assert build_cache_key(ordered, identity) == build_cache_key(reversed_order, identity)
+    moved = {
+        "type": "LineString",
+        "coordinates": [[-62.7, -32.61], [-62.702, -32.61]],
+    }
+    assert build_cache_key(ordered, identity) != build_cache_key(moved, identity)
+
+
+def test_reversed_part_storage_reuses_the_ordered_profile(
+    cache_env, db_session_factory, monkeypatch, tmp_path
+) -> None:
+    """The sampler walks west to east even when the eastern part was stored first."""
+    dem = _dem(tmp_path)
+    primeras: list[tuple[float, float]] = []
+
+    def fake_profile(linea, _path, *, paso_m=None):
+        coords = list(linea.coords)
+        primeras.append((float(coords[0][0]), float(coords[0][1])))
+        return {
+            "puntos": [
+                {"distance_m": 0.0, "elevation_m": 120.0},
+                {"distance_m": 10.0, "elevation_m": 121.0},
+            ],
+            "length_m": 10.0,
+            "min_elevation_m": 120.0,
+            "max_elevation_m": 121.0,
+            "source": "dem_filled.tif",
+            "cell_m": 15.0,
+            "disclaimer": "GLO-30",
+            "_vertices_xy": [
+                (float(coords[0][0]), float(coords[0][1])),
+                (float(coords[1][0]), float(coords[1][1])),
+            ],
+        }
+
+    monkeypatch.setattr(svc, "_resultados", lambda _db, _area_id: [{"filled_dem": str(dem)}])
+    monkeypatch.setattr(svc, "resolver_dem_filled", lambda _rows: str(dem))
+    monkeypatch.setattr(svc, "perfil_desde_linea_metrica", fake_profile)
+
+    db = db_session_factory()
+    first = svc.perfil_de_geojson(db, geometry=MULTI_REVERSED)
+    second = svc.perfil_de_geojson(db, geometry=MULTI)
+
+    assert first["cache"] == "miss"
+    assert second["cache"] == "hit"
+    assert len(primeras) == 2, "the cached call must not resample"
+    assert primeras[0] == pytest.approx((-62.705, -32.6))
+    assert primeras[1] == pytest.approx((-62.702, -32.6))
