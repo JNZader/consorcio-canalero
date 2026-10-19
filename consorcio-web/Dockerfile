@@ -103,6 +103,7 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 #   CVE-2026-77214 — libexpat 2.8.5-r0 → 2.9.0-r0
 #   CVE-2026-103111 — pcre2 10.48-r0 → 10.49-r0
 #   CVE-2026-4775 — tiff 4.7.1-r0 → 4.7.2-r0
+#   CVE-2026-88806 — libx11 1.8.13-r0 → 1.8.14-r0
 # libcrypto3/libssl3/libuuid stay in the upgrade so a later digest that lags
 # those packages does not reopen the gate. REMOVE a package from this line
 # only after a Trivy scan of the pinned digest shows it clean.
@@ -112,7 +113,7 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 # fix. APK_REFRESH is the commit SHA, so the layer re-runs on every gate.
 ARG APK_REFRESH=local
 RUN echo "apk refresh ${APK_REFRESH}" \
-    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff
+    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff libx11
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.
 RUN apk --no-network del curl
