@@ -1,5 +1,3 @@
-import type * as maplibregl from 'maplibre-gl';
-
 /**
  * The selection highlight owns the top of the line stack.
  *
@@ -19,7 +17,10 @@ export const SELECTED_LINE_LAYER = 'map2d-selected-lines-line';
  * stroke ends above its own casing. Idempotent and safe to call after every
  * sync pass.
  */
-export function hoistSelectedLineHighlight(map: maplibregl.Map): void {
+export function hoistSelectedLineHighlight(map: {
+  getLayer: (id: string) => unknown;
+  moveLayer: (id: string, beforeId?: string) => void;
+}): void {
   for (const id of [SELECTED_LINE_CASING, SELECTED_LINE_LAYER]) {
     if (!map.getLayer(id)) {
       continue;

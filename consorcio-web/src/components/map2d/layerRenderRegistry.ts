@@ -29,15 +29,14 @@
  * applied — the untouched default MUST stay byte-identical to today.
  */
 
+import { CAMINOS_HUECOS_LAYER_IDS, CAMINOS_HUECOS_PAINT } from './caminosHuecosLayers';
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
-import { buildWaterwayLayerConfigs } from './map2dConfig';
-import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
+import { buildWaterwayLayerConfigs, CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
   PUNTOS_INTERES_LABEL_LAYER_ID,
   PUNTOS_INTERES_LAYER_ID,
 } from './puntosInteresLayers';
-import { CAMINOS_HUECOS_LAYER_IDS, CAMINOS_HUECOS_PAINT } from './caminosHuecosLayers';
 import { RED_VIAL_OFICIAL_LAYER_IDS, RED_VIAL_OFICIAL_PAINT } from './redVialOficialLayers';
 import {
   ROAD_FLOW_CANAL_FILL_OPACITY,
@@ -45,6 +44,7 @@ import {
   ROAD_FLOW_FLUJO_FILL_OPACITY,
   ROAD_FLOW_LAYER_IDS,
 } from './roadFlowLayers';
+import { hoistSelectedLineHighlight } from './selectedLineHighlightLayers';
 
 /** MapLibre opacity paint property, keyed by layer geometry type. */
 export const OPACITY_PROP = {
@@ -516,4 +516,7 @@ export function applyLayerOrder(
       }
     }
   }
+  // Custom order hoists canal lines with no beforeId, which covers the orange
+  // stroke. The selection has to end on top or a selected canal looks untouched.
+  hoistSelectedLineHighlight(map);
 }
