@@ -19,10 +19,9 @@
 
 import type { FeatureCollection, LineString } from 'geojson';
 import { describe, expect, it, vi } from 'vitest';
-
-import type { CanalFeatureProperties } from '../../src/types/canales';
 import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { syncCanalesLayers } from '../../src/components/map2d/mapLayerEffectHelpers';
+import type { CanalFeatureProperties } from '../../src/types/canales';
 
 /** Layer that owns the orange "this is selected" stroke. */
 const HIGHLIGHT_CASING = 'map2d-selected-lines-casing';
@@ -39,9 +38,7 @@ function createMapMock(options?: { layers?: string[]; sources?: string[] }) {
     sources,
     map: {
       getLayer: vi.fn((id: string) => (layers.has(id) ? { id } : undefined)),
-      getSource: vi.fn((id: string) =>
-        sources.has(id) ? { id, setData: vi.fn() } : undefined,
-      ),
+      getSource: vi.fn((id: string) => (sources.has(id) ? { id, setData: vi.fn() } : undefined)),
       addSource: vi.fn((id: string) => {
         sources.add(id);
       }),
@@ -80,7 +77,8 @@ describe('syncCanalesLayers · mount', () => {
     expect(addedLayerIds).toContain(propuestosLayerId);
   });
 
-  it('sets visibility from masters', () => {    const { map } = createMapMock();
+  it('sets visibility from masters', () => {
+    const { map } = createMapMock();
     syncCanalesLayers(map as never, {
       relevados: emptyFC(),
       propuestas: emptyFC(),
@@ -106,9 +104,7 @@ describe('syncCanalesLayers · mount', () => {
       activeEtapas: [],
     });
 
-    const relevadosFilterCall = map.setFilter.mock.calls.find(
-      (c) => c[0] === relevadosLayerId,
-    );
+    const relevadosFilterCall = map.setFilter.mock.calls.find((c) => c[0] === relevadosLayerId);
     expect(relevadosFilterCall).toBeTruthy();
     expect(relevadosFilterCall?.[1]).toEqual([
       'in',
@@ -188,7 +184,7 @@ describe('syncCanalesLayers · null tolerance', () => {
         visibleRelevadoIds: [],
         visiblePropuestaIds: [],
         activeEtapas: [],
-      }),
+      })
     ).not.toThrow();
     // Source is always mounted (empty collection) so the visibility
     // toggle has something to act on.
@@ -217,11 +213,11 @@ describe('syncCanalesLayers · z-order vs the selection highlight', () => {
     // why a selected road does show.
     expect(map.moveLayer).toHaveBeenCalledWith(
       `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
-      HIGHLIGHT_CASING,
+      HIGHLIGHT_CASING
     );
     expect(map.moveLayer).toHaveBeenCalledWith(
       `${SOURCE_IDS.CANALES_PROPUESTOS}-line`,
-      HIGHLIGHT_CASING,
+      HIGHLIGHT_CASING
     );
   });
 
@@ -231,9 +227,18 @@ describe('syncCanalesLayers · z-order vs the selection highlight', () => {
     syncCanalesLayers(map as never, { ...params, activeEtapas: [...params.activeEtapas] });
 
     // `undefined` = raise to the top, same as before the highlight existed.
-    expect(map.moveLayer).toHaveBeenCalledWith(
-      `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
-      undefined,
-    );
+    expect(map.moveLayer).toHaveBeenCalledWith(`${SOURCE_IDS.CANALES_RELEVADOS}-line`, undefined);
+  });
+
+  it('puts the orange stroke back on top after the canales stack moves', () => {
+    const { map } = createMapMock({
+      layers: [HIGHLIGHT_CASING, 'map2d-selected-lines-line'],
+    });
+
+    syncCanalesLayers(map as never, { ...params, activeEtapas: [...params.activeEtapas] });
+
+    const calls = map.moveLayer.mock.calls as unknown[][];
+    expect(calls.at(-2)).toEqual([HIGHLIGHT_CASING]);
+    expect(calls.at(-1)).toEqual(['map2d-selected-lines-line']);
   });
 });
