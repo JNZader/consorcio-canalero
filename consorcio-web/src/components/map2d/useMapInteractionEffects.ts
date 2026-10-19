@@ -1,15 +1,16 @@
 import type { Feature } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
+import { identifyHitBbox, identifyHitRadiusPx, pointerIsCoarse } from './identifyHit';
 import { SOURCE_IDS } from './map2dConfig';
+import { isMeasurementIdentifyBlocked } from './measurement/measurementIdentifyGuard';
+import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
+  expandCanalGroup,
   expandTramoGroup,
   mergeAdditiveFeatures,
   pickPrimaryTramo,
 } from './mergeAdditiveFeatures';
-import { isMeasurementIdentifyBlocked } from './measurement/measurementIdentifyGuard';
-import { identifyHitBbox, identifyHitRadiusPx, pointerIsCoarse } from './identifyHit';
-import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
 import {
   PUNTOS_INTERES_HIT_LAYER_ID,
   PUNTOS_INTERES_LABEL_LAYER_ID,
@@ -55,6 +56,10 @@ interface UseMapInteractionEffectsParams {
   selectedFeatures?: readonly Feature[];
   /** Public roads catalog — expands a `ruta` like T269-03 to every piece. */
   roadsFeatures?: readonly Feature[];
+  /** Full relevados lines. A click must highlight this geometry, not the tile clip. */
+  canalRelevados?: readonly Feature[];
+  /** Full propuestas lines. Same contract as `canalRelevados`. */
+  canalPropuestas?: readonly Feature[];
   /**
    * Ficha territorial (A4). In the default `'idle'` mode a click that resolves
    * a `parcelas_catastro` feature ADDITIONALLY reports the parcel here so the
@@ -260,6 +265,8 @@ export function useMapInteractionEffects({
   onPoiPlace,
   selectedFeatures = [],
   roadsFeatures = [],
+  canalRelevados = [],
+  canalPropuestas = [],
 }: UseMapInteractionEffectsParams) {
   useEffect(() => {
     const map = mapRef.current;
@@ -342,13 +349,14 @@ export function useMapInteractionEffects({
       const tramo = pickPrimaryTramo(incoming, at);
       if (tramo) {
         // Nearest canal/road to the click, not z-order (waterway/canal used to
-        // steal T269-03). A road `ruta` expands to every catalog piece.
-        const group = expandTramoGroup(tramo, roadsFeatures);
-        setSelectedFeatures(
-          additive
-            ? mergeAdditiveFeatures([...selectedFeatures], group)
-            : group,
-        );
+        // steal T269-03). A road `ruta` expands to every catalog piece. A canal
+        // hit is only the tile clip, so the highlight uses the catalog line.
+        const roadGroup = expandTramoGroup(tramo, roadsFeatures);
+        const group =
+          roadGroup.length > 1
+            ? roadGroup
+            : expandCanalGroup(roadGroup[0] ?? tramo, canalRelevados, canalPropuestas);
+        setSelectedFeatures(additive ? mergeAdditiveFeatures([...selectedFeatures], group) : group);
       } else if (additive) {
         setSelectedFeatures([...selectedFeatures]);
       } else {
@@ -382,6 +390,8 @@ export function useMapInteractionEffects({
     setSelectedFeatures,
     selectedFeatures,
     roadsFeatures,
+    canalRelevados,
+    canalPropuestas,
     onParcelaResolved,
     onClearParcelas,
     onCanalResolved,
