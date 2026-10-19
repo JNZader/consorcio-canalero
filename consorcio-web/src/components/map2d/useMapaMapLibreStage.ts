@@ -352,6 +352,8 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     setSelectedFeatures,
     selectedFeatures,
     roadsFeatures: caminos?.features ?? [],
+    canalRelevados: canalesRelevados?.features ?? [],
+    canalPropuestas: canalesPropuestas?.features ?? [],
     onParcelaResolved: fichaInteraction.resolveParcela,
     // Mode transitions ALWAYS discard the selection, including with the sticky
     // touch mode on (where a null resolve means "you missed", not "clear").

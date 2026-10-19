@@ -214,6 +214,51 @@ describe('useMapInteractionEffects — ficha parcel resolution', () => {
     expect(setSelectedFeatures).toHaveBeenCalledWith([canal]);
   });
 
+  it('highlights the catalog canal line, not the tile clip under the click', () => {
+    const clip = {
+      type: 'Feature',
+      id: 99,
+      layer: { id: `${SOURCE_IDS.CANALES_RELEVADOS}-line` },
+      properties: { id: 'canal-ne-sin-intervencion' },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.5, -32.5],
+          [-62.5001, -32.5001],
+        ],
+      },
+    };
+    const catalog = {
+      type: 'Feature',
+      properties: { id: 'canal-ne-sin-intervencion', nombre: 'Canal NE' },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.4, -32.4],
+          [-62.5, -32.5],
+          [-62.6, -32.6],
+        ],
+      },
+    };
+    const { map, handlers } = createMapMock([clip]);
+    const setSelectedFeatures = vi.fn();
+    renderHook(() =>
+      useMapInteractionEffects({
+        mapRef: { current: map } as never,
+        mapReady: true,
+        measurementMode: 'idle',
+        setSelectedFeatures,
+        canalRelevados: [catalog],
+      })
+    );
+
+    handlers.get('click')?.[0]?.(clickEvent);
+
+    expect(setSelectedFeatures).toHaveBeenCalledWith([
+      expect.objectContaining({ geometry: catalog.geometry }),
+    ]);
+  });
+
   it('clears the ficha when the click hits no catastro parcel', () => {
     const other = {
       type: 'Feature',
