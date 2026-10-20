@@ -34,7 +34,7 @@ function isRoadAxis(feature: Feature): boolean {
 function pointToSegmentDist2(
   point: readonly [number, number],
   start: number[],
-  end: number[],
+  end: number[]
 ): number {
   const vx = end[0] - start[0];
   const vy = end[1] - start[1];
@@ -77,17 +77,17 @@ function pointToLineDist2(point: readonly [number, number], feature: Feature): n
 
 export function pickPrimaryTramo(
   features: readonly Feature[],
-  at?: readonly [number, number],
+  at?: readonly [number, number]
 ): Feature | null {
   const candidates = features.filter((feature) =>
-    isTramoLayer((feature as FeatureWithLayer).layer?.id),
+    isTramoLayer((feature as FeatureWithLayer).layer?.id)
   );
   if (candidates.length === 0) {
     return null;
   }
   if (at) {
     return candidates.reduce((best, feature) =>
-      pointToLineDist2(at, feature) < pointToLineDist2(at, best) ? feature : best,
+      pointToLineDist2(at, feature) < pointToLineDist2(at, best) ? feature : best
     );
   }
   for (const layerId of TRAMO_LAYER_PRIORITY) {
@@ -100,6 +100,8 @@ export function pickPrimaryTramo(
 }
 
 const ROAD_HIT_LAYER = `${SOURCE_IDS.ROADS}-hit`;
+const CANAL_RELEVADOS_LINE = `${SOURCE_IDS.CANALES_RELEVADOS}-line`;
+const CANAL_PROPUESTOS_LINE = `${SOURCE_IDS.CANALES_PROPUESTOS}-line`;
 
 function geometryFingerprint(feature: Feature): string {
   const parts = lineParts(feature);
@@ -127,7 +129,9 @@ export function selectionKey(feature: Feature): string {
 }
 
 /** Live GEE caminos use `rtn`; the static geojson used `ruta`. */
-export function roadRouteCode(properties: Record<string, unknown> | null | undefined): string | null {
+export function roadRouteCode(
+  properties: Record<string, unknown> | null | undefined
+): string | null {
   if (!properties) {
     return null;
   }
@@ -141,10 +145,7 @@ export function roadRouteCode(properties: Record<string, unknown> | null | undef
 }
 
 /** All LineStrings in the roads catalog that share this hit's route code. */
-export function expandTramoGroup(
-  hit: Feature,
-  roadsCatalog: readonly Feature[] = [],
-): Feature[] {
+export function expandTramoGroup(hit: Feature, roadsCatalog: readonly Feature[] = []): Feature[] {
   const layerId = (hit as FeatureWithLayer).layer?.id;
   const ruta = roadRouteCode(hit.properties as Record<string, unknown> | null);
   if (layerId !== ROAD_HIT_LAYER || ruta === null) {
@@ -171,6 +172,52 @@ export function expandTramoGroup(
     return [seed, ...stamped.filter((_, index) => index !== hitIndex)];
   }
   return stamped;
+}
+
+function canalSlug(feature: Feature): string | null {
+  const props = (feature.properties ?? {}) as Record<string, unknown>;
+  const value = props.id;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
+  }
+  return null;
+}
+
+function cloneGeometry(geometry: Feature['geometry']): Feature['geometry'] {
+  return JSON.parse(JSON.stringify(geometry)) as Feature['geometry'];
+}
+
+/**
+ * A canal hit from `queryRenderedFeatures` is the piece of the line that
+ * falls in the current tile. Painting that clip is why a selected canal does
+ * not read as selected, while a road does: the road swaps the hit for the
+ * full catalog geometry. Do the same for `properties.id`.
+ */
+export function expandCanalGroup(
+  hit: Feature,
+  relevados: readonly Feature[] = [],
+  propuestas: readonly Feature[] = []
+): Feature[] {
+  const layerId = (hit as FeatureWithLayer).layer?.id;
+  if (layerId !== CANAL_RELEVADOS_LINE && layerId !== CANAL_PROPUESTOS_LINE) {
+    return [hit];
+  }
+  const slug = canalSlug(hit);
+  if (!slug) {
+    return [hit];
+  }
+  const catalog = layerId === CANAL_RELEVADOS_LINE ? relevados : propuestas;
+  const match = catalog.find((feature) => canalSlug(feature) === slug && isRoadAxis(feature));
+  if (!match?.geometry) {
+    return [hit];
+  }
+  const stamped: FeatureWithLayer = {
+    type: 'Feature',
+    geometry: cloneGeometry(match.geometry),
+    properties: match.properties ?? {},
+    layer: { id: layerId },
+  };
+  return [stamped];
 }
 
 /** Ctrl/⌘-click: append unseen features, toggle off ones already selected. */
