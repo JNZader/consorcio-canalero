@@ -224,13 +224,13 @@ class TestCitationPrecisionAndSeparation:
         assert separacion_norma_secundaria(sin_flag) == 0.0
 
     def test_citation_precision_is_none_when_the_mode_cannot_reach_the_citation(self):
-        """The D-8 case: `8560#5` is over the 8192-token embedding ceiling.
+        """Synthetic stand-in of the pre-F1 D-8 shape.
 
-        It is ingested whole and stays FTS-retrievable, and by ratified design it
-        is never embedded — so a single-leg `vector` run has nothing to rank for
-        it. Scoring 0.0 would put a permanent floor under the vector arm's hard
-        `= 1.00` bar: the bar could then never be cleared no matter how good
-        retrieval got, which is the RAG4-004 defect with the sign flipped.
+        The id and the key `8560#5` here are fixture data, not the live gold
+        parent. The flag says this mode cannot reach that citation. Scoring 0.0
+        would put a permanent floor under the vector arm's hard `= 1.00` bar:
+        the bar could then never be cleared no matter how good retrieval got,
+        which is the RAG4-004 defect with the sign flipped.
         """
         exenta = PreguntaEvaluada(
             id="D-8",

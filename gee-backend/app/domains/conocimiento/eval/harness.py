@@ -497,18 +497,20 @@ class ExencionOverCeiling:
     The units over the embedder's token ceiling are ingested whole, stay
     FTS-retrievable and are never embedded — a ratified design decision, not a
     defect (design.md D3). WHICH units those are is a property of the model that
-    produced the batch, not a constant: BGE-M3's window is 8192 tokens and leaves
-    three, multilingual-e5-large's is 512 and leaves many more. That is why the
-    set is read from the database (`embedding IS NULL`) instead of recomputed,
-    and why the report names the ceiling rather than printing a number nothing
-    durable records (ledger RJDB-101). But gold D-8's ONLY expected citation is
-    one of them
-    (`8560#5`), so in a single-leg `vector` run its citation-precision is 0 by
-    construction, and citation-precision feeds a hard `== 1.00` bar. Left in the
-    denominator that item alone made the vector arm's bar unreachable while the
-    report said nothing about why; taken out silently, the report would show a
-    denominator shrinking for no stated reason. So it leaves the denominator AND
-    this block travels with the number.
+    produced the batch, not a constant: BGE-M3's window is 8192 tokens.
+    multilingual-e5-large's is 512 and leaves many more. That is why the set is
+    read from the database (`embedding IS NULL`) instead of recomputed, and why
+    the report names the ceiling rather than printing a number nothing durable
+    records (ledger RJDB-101). Before F1, gold D-8's only expected citation was
+    parent `8560#5`, one of the units that estimate left without a vector, so a
+    single-leg `vector` run scored its citation-precision 0 by construction.
+    F1 replaced that parent with parts, and the live item cites three of them.
+    The exemption is still data-driven: any gold item whose expected citations
+    are ALL in this set leaves the denominator, because citation-precision feeds
+    a hard `== 1.00` bar. Left in, one unreachable item makes the vector arm's
+    bar unreachable while the report says nothing about why; taken out silently,
+    the report would show a denominator shrinking for no stated reason. So it
+    leaves the denominator AND this block travels with the number.
 
     `aplica` is False for `fts` and `hybrid`: there the lexical leg reaches the
     unit, so the score is a real measurement and nothing is exempt.
