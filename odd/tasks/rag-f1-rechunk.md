@@ -28,7 +28,7 @@ S10. After the split, `10593#1` and `8560#5` are not single units and must not b
 ## Tasks
 
 - [x] T1 Splitter, parse hook, ingest loads the real tokenizer or raises, gates count identities. Route: inline. Tests: `tests/test_rag_f1_rechunk.py` — 17 passed, 2026-10-19, working-tree corpus. Openspec F1 stays open until T3. A re-ingest that changes keys clears embedding provenance in the same transaction.
-- [x] T2 Remap D-8, T-1 and T-2 to the part keys the splitter actually emits. Route: inline. Commit: pending the ask-on-risk answer. `tests/new` canary updated; that file was not executed here (its conftest exits without a database).
+- [x] T2 Remap D-8, T-1 and T-2 to the part keys the splitter actually emits. Route: inline. Commit: `57ce9c5a` (with T1, one work unit, one future PR). `tests/new` canary updated; that file was not executed here (its conftest exits without a database).
 - [ ] T3 Re-measure hit@5 on the same 29. Blocked: `venv-rag` has no Python. Do not claim a number.
 
 ## Log
@@ -43,4 +43,4 @@ L4. 2026-10-19. Pin `12043582bf8016288a7e8084e85a4b713a97af2f` via `git show` (w
 
 L5. 2026-10-19. Gold remap, same question texts. D-8 `subclase: compuesta`, keys `8560#5#parte-5` (franja existente), `#parte-9` (titular de la vía), `#parte-10` (propiedades frentistas). T-1 vigencia `10679#vigencia-de-los-fondos#parte-1` (keeps `10679#17` and `9750#39`). T-2 vigencia `#parte-2` (keeps `10679#20`). `#parte-8` is a recap and is not a second key. `#parte-3` holds the 0.42% figure and is not an expected key. Parent keys are absent. Corpus test on the working tree found those spans. hit@5 not re-measured.
 
-L6. 2026-10-19. Owner: "un solo pr". Delivery is one PR, `size:exception`, not a chain and not a stack onto main. Pre-commit lenses: readability found nothing; resilience found that a re-ingest which replaces keys deletes parent vectors and left `embedding_modelo` set, so vector/hybrid would skip the new NULL parts and still claim the snapshot was embedded. Fix: the same transaction clears that provenance and the CLI prints `embeddings: CLEARED`. Unchanged keys do not clear it. `bm25_ce` does not read the vector columns. risk and reliability lenses refused to read the worktree (no review binding); they are not a clean bill.
+L6. 2026-10-19. Owner: "un solo pr". Delivery is one PR, `size:exception`, not a chain and not a stack onto main. Work-unit commit `57ce9c5a`. Not pushed. PR not opened. Pre-commit lenses: readability found nothing; resilience found that a re-ingest which replaces keys deletes parent vectors and left `embedding_modelo` set, so vector/hybrid would skip the new NULL parts and still claim the snapshot was embedded. Fix: the same transaction clears that provenance and the CLI prints `embeddings: CLEARED`. Unchanged keys do not clear it. `bm25_ce` does not read the vector columns. risk and reliability lenses refused to read the worktree (no review binding); they are not a clean bill.
