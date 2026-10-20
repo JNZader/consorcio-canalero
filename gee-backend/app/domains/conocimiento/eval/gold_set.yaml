@@ -146,22 +146,27 @@ items:
     # Canary of the ingester, not of the model: Ley 8803 declares `tipo: ley`
     # (D-22). A filter on `tipo == 'ley-provincial'` makes this unanswerable.
 
+  # =========================================================================
+  # B. RESPONDIBLES — compuestas (2-3 unidades)
+  # =========================================================================
   - id: D-8
     pregunta: "La cuneta del camino que corre al lado del canal, ¿es nuestra? ¿La tenemos que limpiar nosotros?"
     clase: answerable
-    subclase: directa
-    citas_esperadas: ["8560#5"]
+    subclase: compuesta
+    citas_esperadas:
+      ["8560#5#parte-5", "8560#5#parte-9", "8560#5#parte-10"]
     fuente: ley-8560-transito-cordoba.md
     validado_por: owner
     dificultad: media
     origen: publico
-    # `8560#5` is one of the three units over the 8192-token embedding ceiling,
-    # so it is FTS-retrievable and has no vector. The ablation should show that
-    # as a mode difference rather than as noise.
+    # F1 replaced parent `8560#5` (11 parts at corpus sha 12043582). The three
+    # definitions this answer quotes land in different parts, source order:
+    # cuneta ("franja existente") parte-5, titular de la vía parte-9,
+    # propiedades frentistas parte-10. Parent-key credit is rejected.
+    # The unsplit parent was over the char/3 embedding estimate and had no
+    # vector; each part is under that ceiling and is embedded. subclase
+    # follows this file's own compuesta label (2-3 unidades).
 
-  # =========================================================================
-  # B. RESPONDIBLES — compuestas (2-3 unidades)
-  # =========================================================================
   - id: C-1
     pregunta: "La ley dice que la Comisión Directiva es de nueve. La nuestra tiene trece. ¿Está mal?"
     clase: answerable
@@ -268,28 +273,33 @@ items:
     pregunta: "El financiamiento nuestro sale del FDA. ¿Hasta cuándo está vigente?"
     clase: trampa-vigencia
     subclase: trampa-superada
-    citas_esperadas: ["10679#17", "10679#vigencia-de-los-fondos", "9750#39"]
-    citas_vigencia: ["10679#vigencia-de-los-fondos"]
+    citas_esperadas: ["10679#17", "10679#vigencia-de-los-fondos#parte-1", "9750#39"]
+    citas_vigencia: ["10679#vigencia-de-los-fondos#parte-1"]
     fuente: ley-10679-modificatoria-ctp-fda.md + ley-9750-consorcios-canaleros.md
     validado_por: owner
     dificultad: dificil
     origen: publico
     # T-1 CANARY (ingester, not model). The captured article says "hasta el 31 de
-    # diciembre de 2023"; the truth is 2032. Without the nota-vigencia unit the
+    # diciembre de 2023"; the statute that extends the fund to 2032 is Ley 11089
+    # art. 61, in parte-1. parte-8 restates the same date and is not a second
+    # key. parte-5 is FODEP's 2023 date, a different fund. Without parte-1 the
     # system answers "venció en 2023" with a byte-exact citation.
 
   - id: T-2
     pregunta: "Lo que se recauda del FDA, ¿va entero a las obras o se lo reparten antes?"
     clase: trampa-vigencia
     subclase: trampa-superada
-    citas_esperadas: ["10679#20", "10679#vigencia-de-los-fondos"]
-    citas_vigencia: ["10679#vigencia-de-los-fondos"]
+    citas_esperadas: ["10679#20", "10679#vigencia-de-los-fondos#parte-2"]
+    citas_vigencia: ["10679#vigencia-de-los-fondos#parte-2"]
     fuente: ley-10679-modificatoria-ctp-fda.md
     validado_por: owner
     dificultad: dificil
     origen: publico
-    # T-2 CANARY. The MANIFEST calls art. 20 "el caso peor": the captured body
-    # asserts the opposite of what is in force.
+    # T-2 CANARY. parte-2 is where Ley 10853, art. 4º, pto. 2 substitutes art. 20.
+    # The 0.42% figure is parte-3 and is not an expected key. parte-8 restates
+    # that the whole no longer goes to works, and is not a second key. The
+    # MANIFEST calls art. 20 "el caso peor": the captured body asserts the
+    # opposite of what is in force.
 
   - id: T-3
     pregunta: "El ejercicio nos cierra el 31 de diciembre. ¿Hasta cuándo tenemos para hacer la asamblea ordinaria?"

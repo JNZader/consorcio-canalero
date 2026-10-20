@@ -17,7 +17,7 @@ import hashlib
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import yaml
 from sqlalchemy import text
@@ -145,8 +145,17 @@ def split_frontmatter(text: str, archivo: str) -> dict[str, Any]:
 def load_corpus(
     corpus_path: Path,
     expectations: CorpusExpectations | None = None,
+    token_counter: Callable[[str], int] | None = None,
 ) -> LoadedCorpus:
-    """Read + parse every declared document. No DB, no gates yet."""
+    """Read + parse every declared document. No DB, no gates yet.
+
+    Once a declared file is read, the reranker tokenizer counts
+    ``texto_indexado`` and replaces units over 1024 tokens. A missing
+    ``tokenizers`` install or a missing pinned snapshot raises
+    ``TokenizerRerankerAusente``. ``estimate_tokens`` is not a fallback.
+    Pass ``token_counter`` only to inject the counter. A checkout that fails
+    before any file is read does not touch the tokenizer.
+    """
     expectations = expectations or load_expectations()
     documentos: list[LoadedDocument] = []
 
@@ -156,13 +165,19 @@ def load_corpus(
             raise IngestionAbort(f"{policy.archivo} declared in expectations but missing")
         text = path.read_text(encoding="utf-8")
         frontmatter = split_frontmatter(text, policy.archivo)
+        if token_counter is None:
+            from app.domains.conocimiento.rechunk import contar_tokens_reranker
+
+            token_counter = contar_tokens_reranker
         documentos.append(
             LoadedDocument(
                 documento_id=documento_id,
                 archivo=policy.archivo,
                 text=text,
                 frontmatter=frontmatter,
-                unidades=tuple(parse_document(text, frontmatter, policy)),
+                unidades=tuple(
+                    parse_document(text, frontmatter, policy, token_counter=token_counter)
+                ),
             )
         )
 

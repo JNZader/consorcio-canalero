@@ -320,8 +320,9 @@ def _bloque_cobertura(corrida: ResultadoModo) -> list[str]:
 
 #: Bounded rendering of a key set in the markdown block, per the RAG3-003
 #: convention already used by `rag_load_vectors._muestra`. The exempt set is
-#: "every unit of the snapshot with no vector", which is three units under
-#: BGE-M3's window and can be an order of magnitude more under E5's 512 — an
+#: "every unit of the snapshot with no vector". Before F1, BGE-M3's window
+#: left three unsplit parents; a fresh split batch exempts none of those.
+#: E5's 512 can still exempt an order of magnitude more, and an
 #: unbounded bullet list would bury the two numbers the block exists to state.
 #: Only the MARKDOWN is capped: the JSON twin keeps the complete list, because
 #: truncating a machine-readable field is data loss rather than legibility.

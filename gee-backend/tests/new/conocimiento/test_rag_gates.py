@@ -489,13 +489,22 @@ class TestAgainstRealCorpus:
         assert report.no_articulos_total == EXPECTATIONS.no_articulos_declarados
 
     def test_vigencia_canary_ingested_and_under_ceiling(self, corpus):
-        """T-1/T-2 canary: the section exists, is `nota-vigencia`, and is one
-        chunk that fits — exactly what design.md D2 predicted."""
-        unidades = {u.citation_key: u for doc in corpus.documentos for u in doc.unidades}
-        canary = unidades["10679#vigencia-de-los-fondos"]
-        assert canary.tipo_chunk == "nota-vigencia"
-        assert estimate_tokens(canary.texto_indexado) <= TOKEN_CEILING
-        assert "31 de diciembre de 2032" in canary.texto
+        """T-1/T-2 canary: the 2032 sentence survives in a `nota-vigencia` part.
+
+        F1 replaces the parent key. The part that holds the sentence is the
+        canary, and every part stays under the embedding ceiling.
+        """
+        from app.domains.conocimiento.rechunk import clave_identidad
+
+        unidades = [u for doc in corpus.documentos for u in doc.unidades]
+        partes = [
+            u for u in unidades if clave_identidad(u.citation_key) == "10679#vigencia-de-los-fondos"
+        ]
+        assert partes
+        assert "10679#vigencia-de-los-fondos" not in {u.citation_key for u in partes}
+        assert all(u.tipo_chunk == "nota-vigencia" for u in partes)
+        assert all(estimate_tokens(u.texto_indexado) <= TOKEN_CEILING for u in partes)
+        assert any("31 de diciembre de 2032" in u.texto for u in partes)
 
     def test_real_corpus_citation_keys_are_unique(self, corpus):
         keys = [u.citation_key for doc in corpus.documentos for u in doc.unidades]
@@ -538,13 +547,25 @@ class TestAgainstRealCorpus:
         the cajetín of the plano. Neither was in any inventory, so neither was
         retrievable, while every count gate reported success.
         """
-        unidades = {u.citation_key: u for doc in corpus.documentos for u in doc.unidades}
+        from app.domains.conocimiento.rechunk import clave_identidad
 
-        anexo_i = unidades["res-aprhi-3-2026#anexo-i-planilla-de-individualizacion-de-terrenos"]
-        assert anexo_i.tipo_chunk == "anexo-normativo"
-        assert "25" in anexo_i.texto and "SISTEMATIZACION DE CUENCA TRES COLONIAS" in anexo_i.texto
+        unidades = [u for doc in corpus.documentos for u in doc.unidades]
+        anexo_i = [
+            u
+            for u in unidades
+            if clave_identidad(u.citation_key)
+            == "res-aprhi-3-2026#anexo-i-planilla-de-individualizacion-de-terrenos"
+        ]
+        assert anexo_i
+        assert all(u.tipo_chunk == "anexo-normativo" for u in anexo_i)
+        assert any("SISTEMATIZACION DE CUENCA TRES COLONIAS" in u.texto for u in anexo_i)
+        assert any("25" in u.texto for u in anexo_i)
 
-        anexo_ii = unidades["res-aprhi-3-2026#anexo-ii-planos-de-afectacion-parcelaria-cajetin"]
+        anexo_ii = next(
+            u
+            for u in unidades
+            if u.citation_key == "res-aprhi-3-2026#anexo-ii-planos-de-afectacion-parcelaria-cajetin"
+        )
         assert anexo_ii.tipo_chunk == "anexo-normativo"
 
     def test_every_corpus_md_file_is_declared(self, corpus):
@@ -553,15 +574,18 @@ class TestAgainstRealCorpus:
         corpus_file_inventory_gate(real_corpus_path(), corpus.expectations, report)
         assert report.ok, report.failures
 
-    def test_run_all_gates_reports_the_known_over_ceiling_units(self, corpus):
-        """Three real units genuinely exceed the embedding ceiling.
+    def test_split_parts_are_under_the_embedding_ceiling(self, corpus):
+        """F1 removes the three units the char estimate used to flag.
 
-        Recorded rather than truncated, and not folded into `failures` — see
-        `GateReport.over_ceiling`.
+        `10593#1` and `8560#5` are no longer single rows. Nothing in the
+        pinned corpus is over 8192 by `estimate_tokens` after the split, and
+        the ceiling is still a record, not a truncation.
         """
         report = run_all_gates(corpus.parsed, corpus.sources, corpus.expectations)
         assert report.ok
-        keys = {key for key, _ in report.over_ceiling}
-        assert "10593#1" in keys
-        assert "8560#5" in keys
-        assert "10679#vigencia-de-los-fondos" not in keys
+        assert report.over_ceiling == []
+        keys = {u.citation_key for doc in corpus.documentos for u in doc.unidades}
+        assert "10593#1" not in keys
+        assert "8560#5" not in keys
+        assert any(key.startswith("10593#1#parte-") for key in keys)
+        assert any(key.startswith("8560#5#parte-") for key in keys)

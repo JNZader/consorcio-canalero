@@ -27,16 +27,17 @@ every count gate green (ledger RAG2-001); and a corpus `.md` never listed under
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from app.domains.conocimiento.expectations import CorpusExpectations, DocumentPolicy
 from app.domains.conocimiento.parser import H1_RE, H2_RE, Unidad, body_offset
+from app.domains.conocimiento.rechunk import clave_identidad, parent_conservado
 
-#: BGE-M3 (XLM-R) context ceiling. The MANIFEST forbids splitting long articles,
-#: so silent truncation is the only failure mode that could survive review.
+#: BGE-M3 (XLM-R) context ceiling. F1 may part a unit for the reranker window.
+#: This ceiling still does not truncate: an over-ceiling part is recorded.
 TOKEN_CEILING = 8192
 
 #: Bytes-per-token for Spanish legal prose under XLM-R, calibrated on the
@@ -90,19 +91,50 @@ def estimate_tokens(text: str) -> int:
     return int(len(text) / CONSERVATIVE_BYTES_PER_TOKEN) + 1
 
 
+def _identidades(unidades: Sequence[Unidad], *, articulos: bool) -> dict[str, list[Unidad]]:
+    """Group rows that are one citation after a `#parte-N` split."""
+    grupos: dict[str, list[Unidad]] = defaultdict(list)
+    for unidad in unidades:
+        if (unidad.tipo_chunk == "articulo") != articulos:
+            continue
+        grupos[clave_identidad(unidad.citation_key)].append(unidad)
+    return grupos
+
+
+def _rechazar_particion_rota(
+    documento_id: str,
+    grupos: Mapping[str, Sequence[Unidad]],
+    report: GateReport,
+) -> None:
+    for identidad, partes in grupos.items():
+        if parent_conservado(partes, identidad):
+            report.failures.append(
+                f"{documento_id}: parent {identidad!r} is stored beside its parts"
+            )
+        if len({parte.tipo_chunk for parte in partes}) > 1:
+            report.failures.append(f"{documento_id}: {identidad!r} parts have mixed tipo_chunk")
+
+
 def article_count_gate(
     parsed: Mapping[str, Sequence[Unidad]],
     expectations: CorpusExpectations,
     report: GateReport,
 ) -> None:
-    """Assert per-document AND total `tipo_chunk='articulo'` counts."""
+    """Assert per-document AND total article identities, not stored rows.
+
+    A `#parte-N` split of one article still counts as one toward 1383.
+    The parent key stored next to those parts is a failure: the giant unit
+    would stay in the index and the reranker would truncate it again.
+    """
     total = 0
     for documento_id, policy in expectations.documentos.items():
         unidades = parsed.get(documento_id)
         if unidades is None:
             report.failures.append(f"{documento_id}: declared in expectations but never parsed")
             continue
-        actual = sum(1 for u in unidades if u.tipo_chunk == "articulo")
+        grupos = _identidades(unidades, articulos=True)
+        _rechazar_particion_rota(documento_id, grupos, report)
+        actual = len(grupos)
         total += actual
         if actual != policy.articulos:
             report.failures.append(
@@ -122,13 +154,23 @@ def non_article_inventory_gate(
     expectations: CorpusExpectations,
     report: GateReport,
 ) -> None:
-    """Assert the non-article inventory per document, never folded into 1383."""
+    """Assert the non-article inventory per document, never folded into 1383.
+
+    Parts of one declared section satisfy that section's key and count once.
+    Two parts do not inflate `no_articulos_declarados`.
+    """
     total = 0
     for documento_id, policy in expectations.documentos.items():
         unidades = parsed.get(documento_id, ())
-        actual = {u.citation_key: u.tipo_chunk for u in unidades if u.tipo_chunk != "articulo"}
+        grupos = _identidades(unidades, articulos=False)
+        _rechazar_particion_rota(documento_id, grupos, report)
+        actual = {
+            identidad: partes[0].tipo_chunk
+            for identidad, partes in grupos.items()
+            if len({parte.tipo_chunk for parte in partes}) == 1
+        }
         expected = {item.citation_key: item.tipo_chunk for item in policy.no_articulos}
-        total += len(actual)
+        total += len(grupos)
 
         for key, tipo_chunk in expected.items():
             if key not in actual:
@@ -297,10 +339,10 @@ def token_ceiling_gate(
 ) -> None:
     """Record every unit whose indexed text exceeds the model's context ceiling.
 
-    Nothing is ever truncated here — that is the whole point. The MANIFEST
-    forbids splitting long articles, so an over-ceiling unit is a decision to
-    surface (embed it degraded, or leave it FTS-only), never something to quietly
-    cut to fit. With `strict=True` the run aborts instead.
+    Nothing is ever truncated here — that is the whole point. F1 parts a unit
+    whose indexed text exceeds the reranker window before this gate runs. This
+    gate still must not cut a unit to fit the embedding ceiling: an over-ceiling
+    part is recorded (and aborts under `strict=True`), never quietly shortened.
     """
     for documento_id, unidades in parsed.items():
         for unidad in unidades:

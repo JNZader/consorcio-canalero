@@ -79,6 +79,9 @@ class IngestionSummary(BaseModel):
     #: class invisible, so `--verify-unchanged` deleted rows it never examined
     #: and still reported "divergencias: []" (RAG2-003).
     claves_eliminadas: list[str] = Field(default_factory=list)
+    #: The key set changed while `embedding_modelo` was set. The same transaction
+    #: NULLs that provenance. Vector and hybrid must refuse until a new batch.
+    procedencia_olvidada: bool = False
     committed: bool = False
 
     @property
