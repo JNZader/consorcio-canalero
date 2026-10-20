@@ -28,7 +28,6 @@ import type { HazardBasinFilter } from './hazardBasinFilter';
 import { applyLayerMinZoom, CATASTRO_LAYER_MIN_ZOOM, SOIL_LAYER_MIN_ZOOM } from './layerMinZoom';
 import { casingLayerId, ensureLineCasing } from './lineCasing';
 import { buildWaterwayLayerConfigs, CATASTRO_FILL_OPACITY, SOURCE_IDS } from './map2dConfig';
-import { SELECTED_LINE_CASING } from './selectedLineHighlightLayers';
 import { asFeatureCollection, ensureGeoJsonSource, setLayerVisibility } from './map2dUtils';
 import {
   buildAgroAceptadaFillPaint,
@@ -71,6 +70,7 @@ import {
   type RoadFlowKindVisibility,
 } from './roadFlowLayers';
 import { buildRoadHitLayer, buildRoadLabelLayer } from './roadLabelLayer';
+import { hoistSelectedLineHighlight, SELECTED_LINE_CASING } from './selectedLineHighlightLayers';
 import {
   buildYpfEstacionBombeoPaint,
   YPF_ESTACION_BOMBEO_GEOJSON,
@@ -756,9 +756,7 @@ export interface SyncCanalesLayersParams {
  * while a selected road (hoisted with a `beforeId`) still showed.
  */
 function raiseCanalesStack(map: maplibregl.Map) {
-  const beforeHighlight = map.getLayer(SELECTED_LINE_CASING)
-    ? SELECTED_LINE_CASING
-    : undefined;
+  const beforeHighlight = map.getLayer(SELECTED_LINE_CASING) ? SELECTED_LINE_CASING : undefined;
   const ids = [
     casingLayerId(`${SOURCE_IDS.CANALES_RELEVADOS}-line`),
     `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
@@ -777,6 +775,9 @@ function raiseCanalesStack(map: maplibregl.Map) {
       }
     }
   }
+  // The stack was inserted below the casing. Put the orange stroke back at
+  // the top so a canal label or a later hoist cannot cover it.
+  hoistSelectedLineHighlight(map);
 }
 
 export function syncCanalesLayers(map: maplibregl.Map, params: SyncCanalesLayersParams): void {

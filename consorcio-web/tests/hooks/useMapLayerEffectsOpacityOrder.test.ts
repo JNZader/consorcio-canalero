@@ -158,9 +158,12 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
     }));
     const { map, moveLayer } = makeMapMock();
     renderWithMap(map);
-    // waterways (5 lines + 5 labels) + roads (line + hit + label) = 13 hoists.
-    expect(moveLayer).toHaveBeenCalledTimes(13);
-    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
+    // waterways (5 lines + 5 labels) + roads (line + hit + label) = 13,
+    // then the selection casing and stroke so a custom order cannot cover them.
+    expect(moveLayer).toHaveBeenCalledTimes(15);
+    expect(moveLayer.mock.calls.at(-3)?.[0]).toBe('map2d-roads-label');
+    expect(moveLayer.mock.calls.at(-2)?.[0]).toBe('map2d-selected-lines-casing');
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-selected-lines-line');
   });
 
   it('FF-A3 async mount: opacity override lands once the layer mounts on a later re-render', () => {
@@ -207,15 +210,18 @@ describe('useMapLayerEffects · opacity/order regression guard', () => {
     const { rerender } = renderHook((props: HookParams) => useMapLayerEffects(props), {
       initialProps: baseParams(map, { mapRef, vectorVisibility: { roads: true } }),
     });
-    expect(moveLayer).toHaveBeenCalledTimes(13);
+    expect(moveLayer).toHaveBeenCalledTimes(15);
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-selected-lines-line');
 
     moveLayer.mockClear();
     // A canales/visibility change re-runs sibling sync effects (which call
     // raise*Stack); the mount signal changes so the order effect re-asserts.
+    // The selection stroke still ends the stack.
     rerender(
       baseParams(map, { mapRef, vectorVisibility: { roads: true, canales_relevados: true } })
     );
-    expect(moveLayer).toHaveBeenCalledTimes(13);
-    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
+    expect(moveLayer).toHaveBeenCalledTimes(15);
+    expect(moveLayer.mock.calls.at(-3)?.[0]).toBe('map2d-roads-label');
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-selected-lines-line');
   });
 });

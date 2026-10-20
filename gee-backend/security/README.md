@@ -41,7 +41,7 @@ postponed). Net: 18 → 56 rows. See the consolidated evidence block in
 
 Frontend Alpine `nginx`/`libxml2` debt is separate from this Debian baseline.
 `nginx:1.30.5-alpine` (Alpine 3.24) no longer reports **CVE-2026-6732**. The
-Dockerfile still `apk upgrade`s libexpat, pcre2 and tiff (Dependabot
+Dockerfile still `apk upgrade`s libexpat, pcre2, tiff and libx11 (Dependabot
 #308/#330; see `consorcio-web/Dockerfile` runtime stage and `docs/ROADMAP.md`
 backlog). Do not confuse trixie `libxml2` rows here with that frontend gate.
 

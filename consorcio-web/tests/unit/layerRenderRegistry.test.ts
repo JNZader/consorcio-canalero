@@ -15,13 +15,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  applyLayerOpacity,
+  applyLayerOrder,
   DEFAULT_LAYER_ORDER,
   LAYER_RENDER_REGISTRY,
   type MapLayerImperativeApi,
   OPACITY_PROP,
   RENDERABLE_UI_LAYER_IDS,
-  applyLayerOpacity,
-  applyLayerOrder,
 } from '../../src/components/map2d/layerRenderRegistry';
 import { CATASTRO_FILL_OPACITY, SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import { CATASTRO_FILL_OPACITY as CATASTRO_FILL_OPACITY_FROM_PAINT } from '../../src/components/map2d/mapLayerEffectHelpers';
@@ -221,10 +221,15 @@ describe('applyLayerOrder', () => {
   it('hoists each UI id ml-layer group in list order', () => {
     const { map, moveLayer } = makeMap();
     applyLayerOrder(map, ['waterways', 'roads']);
-    // waterways = 5 lines + 5 labels, roads = line + hit + label → 13
-    expect(moveLayer).toHaveBeenCalledTimes(13);
-    // roads (last in list) is hoisted last → label ends on top of the group
-    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-roads-label');
+    // waterways = 5 lines + 5 labels, roads = line + hit + label, then the
+    // selection casing and stroke → 15
+    expect(moveLayer).toHaveBeenCalledTimes(15);
+    // roads finish the UI stack, then the selection stroke is put back on top.
+    // A canal line left above that stroke is what makes a selected canal look
+    // unselected while a selected road (never hoisted over the stroke) shows.
+    expect(moveLayer.mock.calls.at(-3)?.[0]).toBe('map2d-roads-label');
+    expect(moveLayer.mock.calls.at(-2)?.[0]).toBe('map2d-selected-lines-casing');
+    expect(moveLayer.mock.calls.at(-1)?.[0]).toBe('map2d-selected-lines-line');
   });
 
   it('swallows moveLayer throws (racing style edits)', () => {
@@ -286,10 +291,7 @@ describe('layerRenderRegistry — caminos_huecos', () => {
 
   it('owns the two fuente line layers and sits above the IDECOR overlay', () => {
     const ids = LAYER_RENDER_REGISTRY.caminos_huecos.mlLayers.map((ml) => ml.id);
-    expect(ids).toEqual([
-      `${SOURCE_IDS.CAMINOS_HUECOS}-osm`,
-      `${SOURCE_IDS.CAMINOS_HUECOS}-ign`,
-    ]);
+    expect(ids).toEqual([`${SOURCE_IDS.CAMINOS_HUECOS}-osm`, `${SOURCE_IDS.CAMINOS_HUECOS}-ign`]);
     expect(DEFAULT_LAYER_ORDER.indexOf('red_vial_oficial')).toBeLessThan(
       DEFAULT_LAYER_ORDER.indexOf('caminos_huecos')
     );

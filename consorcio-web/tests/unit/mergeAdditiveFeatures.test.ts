@@ -1,13 +1,13 @@
 import type { Feature, LineString } from 'geojson';
 import { describe, expect, it } from 'vitest';
-
+import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 import {
+  expandCanalGroup,
   expandTramoGroup,
   mergeAdditiveFeatures,
   pickPrimaryTramo,
   selectionKey,
 } from '../../src/components/map2d/mergeAdditiveFeatures';
-import { SOURCE_IDS } from '../../src/components/map2d/map2dConfig';
 
 function line(id: string, layer: string): Feature<LineString> & { layer: { id: string } } {
   return {
@@ -210,5 +210,98 @@ describe('expandTramoGroup', () => {
     const hit = { ...route, layer: { id: layer } };
     expect(expandTramoGroup(hit, [route])).toHaveLength(1);
     expect(pickPrimaryTramo([hit], [0.5, 0])).toBe(hit);
+  });
+});
+
+describe('expandCanalGroup', () => {
+  const layer = `${SOURCE_IDS.CANALES_RELEVADOS}-line`;
+
+  it('replaces the tile clip with the full catalog line of that canal', () => {
+    const catalog: Feature<LineString> = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.4, -32.4],
+          [-62.5, -32.5],
+          [-62.6, -32.6],
+        ],
+      },
+      properties: { id: 'canal-ne-sin-intervencion', nombre: 'Canal NE' },
+    };
+    const clip = line('canal-ne-sin-intervencion', layer);
+    clip.id = 99;
+    clip.geometry = {
+      type: 'LineString',
+      coordinates: [
+        [-62.5, -32.5],
+        [-62.5001, -32.5001],
+      ],
+    };
+
+    const [selected] = expandCanalGroup(clip, [catalog], []);
+
+    expect(selected?.geometry).toEqual(catalog.geometry);
+    expect(selected).not.toBe(clip);
+    expect(selectionKey(selected as Feature)).toBe(`${layer}::canal-ne-sin-intervencion`);
+  });
+
+  it('uses the same key when a later click hits another tile of the same canal', () => {
+    const catalog: Feature<LineString> = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.4, -32.4],
+          [-62.6, -32.6],
+        ],
+      },
+      properties: { id: 'cgic-canal_10_de_mayo' },
+    };
+    const first = line('cgic-canal_10_de_mayo', layer);
+    first.id = 1;
+    const second = line('cgic-canal_10_de_mayo', layer);
+    second.id = 2;
+
+    const [a] = expandCanalGroup(first, [catalog], []);
+    const [b] = expandCanalGroup(second, [catalog], []);
+
+    expect(selectionKey(a as Feature)).toBe(selectionKey(b as Feature));
+  });
+
+  it('keeps the clicked feature when the catalog has no matching id', () => {
+    const hit = line('canal-sin-catalogo', layer);
+    expect(expandCanalGroup(hit, [], [])).toEqual([hit]);
+  });
+
+  it('reads a propuesto from the propuestas catalog only', () => {
+    const propuestoLayer = `${SOURCE_IDS.CANALES_PROPUESTOS}-line`;
+    const propuesto: Feature<LineString> = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [-62.39, -32.45],
+          [-62.4, -32.46],
+        ],
+      },
+      properties: { id: 'n3-tramo-faltante-de-interconexion' },
+    };
+    const relevado: Feature<LineString> = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+      properties: { id: 'n3-tramo-faltante-de-interconexion' },
+    };
+    const hit = line('n3-tramo-faltante-de-interconexion', propuestoLayer);
+
+    const [selected] = expandCanalGroup(hit, [relevado], [propuesto]);
+
+    expect(selected?.geometry).toEqual(propuesto.geometry);
   });
 });
