@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from app.domains.conocimiento.expectations import DocumentPolicy
 
@@ -344,6 +344,7 @@ def parse_document(
     markdown_text: str,
     frontmatter: Mapping[str, Any],
     policy: DocumentPolicy,
+    token_counter: Callable[[str], int] | None = None,
 ) -> list[Unidad]:
     """Parse one corpus document into its retrievable units. Pure, zero DB.
 
@@ -353,8 +354,16 @@ def parse_document(
     recoverable from the metadata: `numero` is free text
     (`3780 Serie C (1965) — aprueba Resolución DPH N° 1225 (1954)`), and four
     documents have no `numero` at all.
+
+    Heading closure still does not split an article. `token_counter` is the
+    reranker-window split, and it runs only when the caller passes one: ingest
+    does, a parser fixture does not. Omitting it returns the closed units.
     """
     unidades, consumed = _parse_articles(markdown_text, frontmatter, policy)
     unidades.extend(_parse_non_articles(markdown_text, frontmatter, policy, consumed))
     unidades.sort(key=lambda unidad: unidad.source_offset)
-    return unidades
+    if token_counter is None:
+        return unidades
+    from app.domains.conocimiento.rechunk import partir_documento
+
+    return partir_documento(unidades, token_counter)

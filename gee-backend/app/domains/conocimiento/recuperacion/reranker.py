@@ -39,10 +39,10 @@ from typing import Protocol, Sequence, runtime_checkable
 MODELO_RERANKER = "BAAI/bge-reranker-v2-m3"
 REVISION_RERANKER = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
 
-#: Token ceiling per (question, unit) pair, as measured. Ten of the corpus's
-#: units exceed it (max 58,619 chars) and are TRUNCATED rather than skipped —
-#: a known, recorded cost, scheduled as follow-up F1 (re-chunking), not as a
-#: silent behaviour of this module.
+#: Pair ceiling. ``puntuar`` encodes ``(pregunta, texto_indexado)`` and
+#: truncates at this length. F1 packs indexed text over it down to
+#: ``MAX_LENGTH - 64``. Units at or under 1024 are not split, so a long
+#: question can still clip one of them. That residual is recorded, not hidden.
 MAX_LENGTH = 1024
 
 #: Pairs per forward pass. Configurable because it is a memory/throughput knob of

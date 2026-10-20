@@ -160,13 +160,15 @@ def citation_precision(pregunta: PreguntaEvaluada) -> float | None:
 
     **`precision_no_evaluable` leaves the denominator**, the same rule
     `separacion_norma_secundaria` and `vigencia_correctness` already follow. The
-    case is gold D-8, whose single expected citation `8560#5` is one of the three
-    units over the 8192-token embedding ceiling: by ratified design it is
-    ingested whole, stays FTS-retrievable and is never embedded. A single-leg
-    `vector` run therefore CANNOT return it — not because the ranking is bad but
-    because the vector leg has nothing to rank — and this metric feeds a hard
-    `== 1.00` bar. Scoring the item 0.0 would put a permanent, unreachable floor
-    under the vector arm of the ablation and make its citation-precision bar
+    historical shape was gold D-8 citing parent `8560#5`, which the char/3
+    estimate treated as over the 8192-token embedding ceiling: ingested whole,
+    FTS-retrievable, never embedded. F1 replaced that parent with parts under
+    the ceiling, so the live item is no longer exempt for that reason. The rule
+    stays for any question whose expected citations this mode cannot reach. A
+    single-leg `vector` run then CANNOT return them — not because the ranking
+    is bad but because the vector leg has nothing to rank — and this metric
+    feeds a hard `== 1.00` bar. Scoring the item 0.0 would put a permanent,
+    unreachable floor under the vector arm and make its citation-precision bar
     unfalsifiable in the failing direction, which is the mirror image of the
     RAG4-004 defect (a bar passed BY failing). `hybrid` and `fts` are unaffected:
     the lexical leg reaches the unit, so there the score is a real measurement.

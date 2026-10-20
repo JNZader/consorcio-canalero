@@ -611,6 +611,51 @@ def prune_unidades(db: Session, corpus_sha: str, keep: Sequence[str]) -> int:
     return getattr(result, "rowcount", 0) or 0
 
 
+def citation_keys(db: Session, corpus_sha: str) -> set[str]:
+    """Citation keys already stored for this snapshot. Empty when it is new."""
+    rows = db.execute(
+        text("SELECT citation_key FROM rag_unidad WHERE corpus_sha = :corpus_sha"),
+        {"corpus_sha": corpus_sha},
+    ).scalars()
+    return set(rows)
+
+
+def procedencia_queda_falsa(
+    claves_previas: set[str],
+    claves_nuevas: set[str],
+    *,
+    cargado: bool,
+) -> bool:
+    """True when a loaded vector index would survive a key-set change as a lie.
+
+    New parts insert with `embedding` NULL, and `prune_unidades` deletes the
+    parent rows that held the vectors. `verificar_embedder` only looks at
+    `embedding_modelo`, and `vector_search` drops NULL rows without an error.
+    Same keys keep the provenance: `ON CONFLICT` does not touch `embedding`.
+    """
+    if not cargado:
+        return False
+    return set(claves_previas) != set(claves_nuevas)
+
+
+OLVIDAR_PROCEDENCIA_SQL = text(
+    """
+    UPDATE rag_corpus
+    SET embedding_modelo = NULL,
+        embedding_revision_hf = NULL,
+        embedding_sintetico = NULL,
+        embedding_artifact_sha256 = NULL,
+        embeddings_loaded_at = NULL
+    WHERE corpus_sha = :corpus_sha
+    """
+)
+
+
+def olvidar_procedencia(db: Session, corpus_sha: str) -> None:
+    """Mark this snapshot as not embedded. The rows stay; the claim does not."""
+    db.execute(OLVIDAR_PROCEDENCIA_SQL, {"corpus_sha": corpus_sha})
+
+
 def existing_text_hashes(db: Session, corpus_sha: str) -> dict[str, str]:
     """`{citation_key: sha256(texto)}` for an already-present snapshot.
 
