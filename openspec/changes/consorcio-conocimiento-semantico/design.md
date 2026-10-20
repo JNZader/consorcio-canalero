@@ -1232,9 +1232,10 @@ wherever this document assumes them:
 
 **Honesty rider**: the gold set is 29 answerable questions and 116 configurations were tried against it;
 one question is worth 0.034 hit@5. The B50 family reads as ≈0.72–0.76. Growing the gold set is the next
-measurement step; re-chunking the 10 oversized units (max 58,619 chars; the reranker truncates at 1024
-tokens) is the principled lever for the remaining knife-edge miss and may be scheduled as follow-up work,
-not as an apply gate.
+measurement step. Re-chunking is F1: every unit whose indexed text exceeds 1024 real reranker tokens
+(measured 2026-10-19: 49 units; the earlier "10 units / max 58,619 chars" used the wrong ceiling). Parts
+are packed to 960 tokens. It is follow-up work, not an apply gate. hit@5 after the split is not yet
+re-measured. Decision 0.1 stays open.
 
 ---
 

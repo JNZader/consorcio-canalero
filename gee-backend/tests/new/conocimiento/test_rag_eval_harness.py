@@ -861,8 +861,10 @@ def _literal(embedder, texto: str) -> str:
 # The over-ceiling exemption (RJDA-003 / RJDB-006)
 # ---------------------------------------------------------------------------
 
-#: `8548#1` stands in for gold D-8's `8560#5`: the item's ONLY expected citation
-#: is a unit that, by ratified design, has no vector. Everything else is embedded.
+#: `8548#1` stands in for an item whose only expected citation has no vector.
+#: Live gold D-8 no longer has that shape: F1 split `8560#5` and the item cites
+#: three parts. The fixture keeps a key that is absent from the embedded set.
+#: Everything else in the fixture is embedded.
 SIN_VECTOR = "8548#1"
 
 GOLD_D8 = gold_set(
@@ -903,11 +905,12 @@ class TestExencionOverCeilingEnModoLexico:
 class TestExencionOverCeiling:
     """The vector arm cannot rank a unit that has no vector — and says so.
 
-    Gold D-8's only expected citation `8560#5` is one of the three units over
-    the 8192-token ceiling: ingested whole, FTS-retrievable, never embedded
-    (design.md D3). Left in the denominator it pinned the vector arm's
+    The fixture's unreachable item cites `8548#1`, which this snapshot never
+    embeds (design.md D3). Live gold D-8 used to be that shape via parent
+    `8560#5`; F1 split the parent and the item now cites three parts. Left in
+    the denominator, an unreachable citation pins the vector arm's
     citation-precision below the hard `= 1.00` bar permanently, and the report
-    explained nothing — a bar that can never be cleared is as unfalsifiable as
+    explains nothing — a bar that can never be cleared is as unfalsifiable as
     one that can never be failed (the RAG4-004 defect, sign flipped).
     """
 
@@ -1058,9 +1061,25 @@ class TestElGoldSetRatificado:
         assert item.subclase == "trampa-superada"
 
     def test_the_two_ingester_canaries_are_present_and_keyed_exactly(self):
+        """F1 replaced the two parents the reranker could not score whole.
+
+        Parent-key credit is rejected. T-1's 2032 statute is parte-1; T-2's
+        Ley 10853 substitution of art. 20 is parte-2. D-8's three definitions
+        inside the old `8560#5` land in three parts, so the item is compuesta.
+        """
         por_id = {item.id: item for item in cargar_gold_set().items}
-        assert "10679#vigencia-de-los-fondos" in por_id["T-1"].citas_esperadas
-        assert "10679#vigencia-de-los-fondos" in por_id["T-2"].citas_esperadas
+        vigencia_t1 = "10679#vigencia-de-los-fondos#parte-1"
+        vigencia_t2 = "10679#vigencia-de-los-fondos#parte-2"
+        assert por_id["T-1"].citas_esperadas == ("10679#17", vigencia_t1, "9750#39")
+        assert por_id["T-1"].citas_vigencia == (vigencia_t1,)
+        assert por_id["T-2"].citas_esperadas == ("10679#20", vigencia_t2)
+        assert por_id["T-2"].citas_vigencia == (vigencia_t2,)
+        assert por_id["D-8"].subclase == "compuesta"
+        assert por_id["D-8"].citas_esperadas == (
+            "8560#5#parte-5",
+            "8560#5#parte-9",
+            "8560#5#parte-10",
+        )
         assert por_id["D-7"].citas_esperadas == ("8803#6",)
 
     def test_unanswerable_items_declare_no_expected_citation(self):

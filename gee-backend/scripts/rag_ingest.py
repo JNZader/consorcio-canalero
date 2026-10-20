@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.domains.conocimiento import repository  # noqa: E402
 from app.domains.conocimiento.gates import TOKEN_CEILING, GateFailure  # noqa: E402
+from app.domains.conocimiento.rechunk import clave_identidad  # noqa: E402
 from app.domains.conocimiento.schemas import (  # noqa: E402
     DocumentoIngestado,
     GateOutcome,
@@ -126,8 +127,20 @@ def ingest(
                 archivo=doc.archivo,
                 tipo=repository.normalize_tipo(str(doc.frontmatter["tipo"])),
                 es_secundaria=repository.es_secundaria_for(str(doc.frontmatter["tipo"])),
-                articulos=sum(1 for u in doc.unidades if u.tipo_chunk == "articulo"),
-                no_articulos=sum(1 for u in doc.unidades if u.tipo_chunk != "articulo"),
+                articulos=len(
+                    {
+                        clave_identidad(u.citation_key)
+                        for u in doc.unidades
+                        if u.tipo_chunk == "articulo"
+                    }
+                ),
+                no_articulos=len(
+                    {
+                        clave_identidad(u.citation_key)
+                        for u in doc.unidades
+                        if u.tipo_chunk != "articulo"
+                    }
+                ),
             )
             for doc in corpus.documentos
         ],
@@ -167,6 +180,15 @@ def ingest(
     if dry_run:
         return summary
 
+    claves_nuevas = [unidad.citation_key for doc in corpus.documentos for unidad in doc.unidades]
+    previas = repository.citation_keys(session, corpus_sha)
+    procedencia = repository.leer_procedencia(session, corpus_sha)
+    summary.procedencia_olvidada = repository.procedencia_queda_falsa(
+        previas,
+        claves_nuevas,
+        cargado=procedencia is not None and procedencia.cargado,
+    )
+
     # 4. One transaction. Nothing commits unless every write succeeds.
     repository.upsert_corpus(
         session,
@@ -178,7 +200,6 @@ def ingest(
     )
 
     written = 0
-    keys: list[str] = []
     for doc in corpus.documentos:
         row = repository.documento_row_from_frontmatter(
             corpus_sha, doc.documento_id, doc.frontmatter
@@ -187,11 +208,14 @@ def ingest(
         written += repository.upsert_unidades(
             session, corpus_sha, doc.documento_id, doc.archivo, doc.unidades
         )
-        keys.extend(unidad.citation_key for unidad in doc.unidades)
 
     # Pruning is what makes "same SHA in, byte-identical state out" literal
-    # rather than "a superset of it".
-    summary.unidades_eliminadas = repository.prune_unidades(session, corpus_sha, keys)
+    # rather than "a superset of it". The keep-list is the same set the
+    # provenance check compared, so a split cannot prune a parent and still
+    # claim the old vectors.
+    summary.unidades_eliminadas = repository.prune_unidades(session, corpus_sha, claves_nuevas)
+    if summary.procedencia_olvidada:
+        repository.olvidar_procedencia(session, corpus_sha)
     summary.unidades_escritas = written
     summary.committed = True
     return summary
@@ -246,6 +270,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"unidades escritas    : {summary.unidades_escritas}")
     print(f"unidades eliminadas  : {summary.unidades_eliminadas}")
     print(f"committed            : {summary.committed}")
+    if summary.procedencia_olvidada:
+        print(
+            "embeddings           : CLEARED — citation keys changed under a loaded "
+            "index. Re-run rag_embed_batch.py and rag_load_vectors.py before "
+            "vector or hybrid. bm25_ce does not read those columns."
+        )
 
     _print_over_ceiling(summary)
 
@@ -276,12 +306,11 @@ def _print_keys(label: str, keys: list[str], limit: int = 20) -> None:
 
 
 def _print_over_ceiling(summary: IngestionSummary) -> None:
-    """Surface the over-ceiling units. Never silent, never truncated.
+    """Surface units over the embedding ceiling. Never silent, never truncated.
 
-    `GateReport.over_ceiling` documented itself as "always reported — never
-    silently dropped", and then nothing carried it: not the schema, not the
-    summary, not this printout. Three real units exceed the ceiling at the
-    pinned SHA and no operator had any way to know (RAG2-004).
+    An empty list prints nothing. After F1 the pinned corpus has no such unit:
+    the old three (`10593#1`, `8560#5`, and the char-estimate false positive)
+    are parts under 8192. A unit that is still over the ceiling still prints.
     """
     if not summary.gates.over_ceiling:
         return

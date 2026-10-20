@@ -1002,8 +1002,11 @@ re-estimated before the chain strategy is picked.)*
 
 ## Follow-ups (explicitly OUT of the apply gate)
 
-- [ ] F1 **Re-chunk the 10 oversized units** (max 58,619 chars; the reranker truncates at 1024 tokens). The
-      amendment schedules this as follow-up work, **not** an apply gate (`design.md:1150-1155`).
+- [ ] F1 **Re-chunk every unit whose `texto_indexado` exceeds 1024 real reranker tokens.** Measured
+      2026-10-19: 49 units, not 10. The old "max 58,619 chars" note used the wrong ceiling. Each part is
+      packed to 960 tokens (window 1024 minus a 64-token question reserve). The parent key is replaced by
+      `{parent}#parte-n`. The flag stays off. hit@5 on the same 29 is not re-measured yet, so this box
+      stays open (honesty rider in `design.md`, amended 2026-10-19). Follow-up, **not** an apply gate.
 - [ ] F2 Grow the gold set beyond 29 answerable questions — one question is worth 0.034 hit@5, and the B50
       family reads as ≈ 0.72–0.76 (`design.md:1150-1153`,
       `docs/rag/candidate-recall-campaign-2026-08-23.md:423-458`).

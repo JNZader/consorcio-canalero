@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy import text
 
 from app.domains.conocimiento.expectations import load_expectations
+from app.domains.conocimiento.rechunk import clave_identidad
 from app.domains.conocimiento.repository import count_unidades
 from app.domains.conocimiento.service import CorpusPinMismatch, verify_corpus_pin
 
@@ -288,6 +289,23 @@ class _NullEngine:
         return None
 
 
+def test_over_ceiling_header_prints_when_a_unit_is_over(capsys):
+    """RAG2-004: a populated over-ceiling list has to leave the process.
+
+    The pinned corpus no longer has such a unit. This fixture is what keeps
+    the print path honest.
+    """
+    summary = SimpleNamespace(
+        gates=SimpleNamespace(over_ceiling=[SimpleNamespace(citation_key="doc#huge", tokens=9001)])
+    )
+    rag_ingest._print_over_ceiling(summary)
+    out = capsys.readouterr().out
+    assert "SOBRE EL CEILING DE EMBEDDING" in out
+    assert "doc#huge" in out
+    assert "FTS" in out
+    assert "nunca truncadas" in out
+
+
 @requires_real_corpus
 class TestMainAgainstRealCorpus:
     """`main()` over the pinned corpus, `--dry-run` so no database is needed."""
@@ -307,14 +325,13 @@ class TestMainAgainstRealCorpus:
         assert "articulo units       : 1383" in out
         assert "committed            : False" in out
 
-    def test_over_ceiling_units_reach_the_printed_report(self, capsys):
-        """RAG2-004: `over_ceiling` was populated and then reached no output.
+    def test_pinned_corpus_prints_no_embedding_ceiling_units(self, capsys):
+        """F1 packed the old over-ceiling parents into parts under 8192.
 
-        Its own docstring promised "always reported — never silently dropped",
-        while nothing carried it out of the dataclass: not `GateOutcome`, not
-        `IngestionSummary`, not this printout.
+        The header stays for a unit that is still over. The print path is
+        `test_over_ceiling_header_prints_when_a_unit_is_over`.
         """
-        rag_ingest.main(
+        code = rag_ingest.main(
             [
                 "--corpus-path",
                 str(real_corpus_path()),
@@ -323,14 +340,18 @@ class TestMainAgainstRealCorpus:
                 "--dry-run",
             ]
         )
+        assert code == 0
         out = capsys.readouterr().out
-        assert "SOBRE EL CEILING DE EMBEDDING" in out
-        assert "10593#1" in out and "8560#5" in out
-        assert "FTS" in out, "the report must say these units stay retrievable"
-        assert "nunca truncadas" in out
+        assert "SOBRE EL CEILING DE EMBEDDING" not in out
+        assert "10593#1" not in out
+        assert "8560#5" not in out
 
-    def test_strict_token_ceiling_turns_them_into_a_hard_abort(self, capsys):
-        """The opt-in flag is the only thing that promotes reporting to failing."""
+    def test_strict_token_ceiling_passes_once_every_part_fits(self, capsys):
+        """The flag still aborts a synthetic over-ceiling unit in the gate tests.
+
+        On the pinned corpus every part is under the estimate, so the flag
+        does not abort.
+        """
         code = rag_ingest.main(
             [
                 "--corpus-path",
@@ -341,10 +362,10 @@ class TestMainAgainstRealCorpus:
                 "--strict-token-ceiling",
             ]
         )
-        assert code == 1
-        err = capsys.readouterr().err
-        assert "INGESTION ABORTED — nothing was written." in err
-        assert "truncate" in err
+        assert code == 0
+        captured = capsys.readouterr()
+        assert "INGESTION ABORTED — nothing was written." not in captured.err
+        assert "SOBRE EL CEILING DE EMBEDDING" not in captured.out
 
 
 @requires_real_corpus
@@ -354,21 +375,36 @@ class TestFullCorpusIngestion:
         assert summary.committed
         assert summary.gates.ok
         assert summary.gates.articulos_total == 1383
-        assert summary.unidades_escritas == 1383 + summary.gates.no_articulos_total
-        assert count_unidades(db, PINNED_CORPUS_SHA, "articulo") == 1383
+        assert summary.unidades_escritas == count_unidades(db, PINNED_CORPUS_SHA)
+        assert summary.unidades_escritas > 1383 + summary.gates.no_articulos_total
+        filas = db.execute(
+            text("SELECT citation_key, tipo_chunk FROM rag_unidad WHERE corpus_sha = :sha"),
+            {"sha": PINNED_CORPUS_SHA},
+        ).all()
+        articulos = {clave_identidad(clave) for clave, tipo in filas if tipo == "articulo"}
+        assert len(articulos) == 1383
 
     def test_vigencia_canary_row_exists_after_ingestion(self, db):
-        """The gold set's T-1/T-2 canaries require this row to exist."""
+        """The 2032 sentence lives in a part. The parent key is gone."""
         rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
-        row = db.execute(
+        filas = db.execute(
             text(
-                "SELECT tipo_chunk, documento_id FROM rag_unidad "
-                "WHERE corpus_sha = :sha AND citation_key = :key"
+                "SELECT citation_key, tipo_chunk, texto FROM rag_unidad "
+                "WHERE corpus_sha = :sha AND citation_key LIKE :prefijo"
             ),
+            {
+                "sha": PINNED_CORPUS_SHA,
+                "prefijo": "10679#vigencia-de-los-fondos#parte-%",
+            },
+        ).all()
+        assert filas
+        assert all(tipo == "nota-vigencia" for _, tipo, _ in filas)
+        assert any("31 de diciembre de 2032" in texto for _, _, texto in filas)
+        padre = db.execute(
+            text("SELECT 1 FROM rag_unidad WHERE corpus_sha = :sha AND citation_key = :key"),
             {"sha": PINNED_CORPUS_SHA, "key": "10679#vigencia-de-los-fondos"},
         ).first()
-        assert row is not None, "10679#vigencia-de-los-fondos must exist after ingestion"
-        assert row[0] == "nota-vigencia"
+        assert padre is None
 
     def test_idempotent_rerun_same_sha(self, db):
         """Same SHA in, byte-identical DB state out.
@@ -395,7 +431,10 @@ class TestFullCorpusIngestion:
         assert second.unidades_escritas == first.unidades_escritas
         assert second.unidades_eliminadas == 0
         assert after == before
-        assert len(after) == 1383 + second.gates.no_articulos_total == 1448
+        assert len(after) == first.unidades_escritas
+        assert len(after) > 1448
+        identidades = {clave_identidad(row[1]) for row in after}
+        assert len(identidades) == 1383 + second.gates.no_articulos_total == 1448
         citation_keys = [row[1] for row in after]
         assert len(citation_keys) == len(set(citation_keys))
 
