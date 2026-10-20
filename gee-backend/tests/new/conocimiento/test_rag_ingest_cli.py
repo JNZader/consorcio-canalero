@@ -254,6 +254,7 @@ class TestMainEntryPoint:
             unidades_escritas=0,
             unidades_eliminadas=0,
             committed=False,
+            procedencia_olvidada=False,
             divergencias=["d#1"],
             claves_agregadas=["d#2"],
             claves_eliminadas=["d#3"],
@@ -275,7 +276,9 @@ class TestMainEntryPoint:
         )
 
         assert code == 1
-        err = capsys.readouterr().err
+        captured = capsys.readouterr()
+        err = captured.err
+        assert "CLEARED" not in captured.out
         assert "VERIFICACIÓN FALLIDA" in err
         assert "contenido modificado" in err and "d#1" in err
         assert "claves agregadas" in err and "d#2" in err
