@@ -28,6 +28,25 @@ Composition of the 52:
 | huecos del corpus (X-1..X-5) | 5 | drafted against the declared corpus gaps |
 | preguntas para la comisión | 18 | `auditoria-obras-zona-10-de-mayo.md` §5 |
 
+That table is the 2026-08-10 set and it stays the record of that ratification.
+On 2026-10-20 the owner ratified five more public direct questions. They are
+not in the August draft. Each expects one statute article that the pinned
+parser emits:
+
+| id | citation | statute |
+|---|---|---|
+| D-9 | `8803#7` | Ley 8803, plazo de diez días hábiles, prorrogable por otros diez |
+| D-10 | `8803#8` | Ley 8803, silencio como negativa y amparo por mora |
+| D-11 | `9750#17` | Ley 9750, firma del acta de asamblea |
+| D-12 | `9750#25` | Ley 9750, representación del presidente |
+| D-13 | `5350#66` | Ley 5350, plazo supletorio de cinco días |
+
+D-10's chat wording was anaphoric ("ese plazo"). The committed question names
+Ley 8803 so the item stands alone. The answerable count is 34. Unanswerable
+stays 23. The total is 57. Public items are 31. Private items stay 26.
+Measured 2026-10-20, local `bm25_ce`, pin `12043582`: all five hit at rank 1.
+Aggregate hit@5 on the 34 is 27/34 = 0.7941. The report stayed outside the repo.
+
 ## Why the draft itself is not committed here
 
 This repository is **public**; `consorcio-corpus-legal` is **private**, and every
@@ -42,7 +61,8 @@ that `assert_public_domain` already refuses by default.
 
 So:
 
-* the 26 public items carry their text inline in `gold_set.yaml`;
+* the public items carry their text inline in `gold_set.yaml` (26 from the
+  2026-08-10 set, plus D-9..D-13);
 * the 26 private items carry a `pregunta_ref` source anchor and no text, and are
   resolved at run time from the YAML at `RAG_GOLD_PRIVADO_PATH`;
 * `test_rag_eval_harness.py::test_no_private_question_text_is_committed_to_this_public_repo`
@@ -89,7 +109,8 @@ is what would have caught it had it reached `citas_esperadas`.
 
 | check | where |
 |---|---|
-| 52 items, 29 answerable, 23 unanswerable | `test_loads_with_the_ratified_denominators` |
+| 57 items, 34 answerable, 23 unanswerable | `test_loads_with_the_ratified_denominators` |
+| D-9..D-13 keep the ratified keys | `test_the_2026_10_20_batch_is_five_public_direct_questions` |
 | every item `validado_por: owner` | `test_every_item_is_owner_validated` |
 | ids unique | `test_ids_are_unique` |
 | every expected citation key exists in the pinned corpus | `test_every_expected_citation_key_exists_in_the_pinned_corpus` (`corpus`-marked) |

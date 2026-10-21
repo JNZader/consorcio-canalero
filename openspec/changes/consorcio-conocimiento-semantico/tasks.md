@@ -1002,14 +1002,25 @@ re-estimated before the chain strategy is picked.)*
 
 ## Follow-ups (explicitly OUT of the apply gate)
 
-- [ ] F1 **Re-chunk every unit whose `texto_indexado` exceeds 1024 real reranker tokens.** Measured
+- [x] F1 **Re-chunk every unit whose `texto_indexado` exceeds 1024 real reranker tokens.** Measured
       2026-10-19: 49 units, not 10. The old "max 58,619 chars" note used the wrong ceiling. Each part is
       packed to 960 tokens (window 1024 minus a 64-token question reserve). The parent key is replaced by
-      `{parent}#parte-n`. The flag stays off. hit@5 on the same 29 is not re-measured yet, so this box
-      stays open (honesty rider in `design.md`, amended 2026-10-19). Follow-up, **not** an apply gate.
-- [ ] F2 Grow the gold set beyond 29 answerable questions — one question is worth 0.034 hit@5, and the B50
-      family reads as ≈ 0.72–0.76 (`design.md:1150-1153`,
-      `docs/rag/candidate-recall-campaign-2026-08-23.md:423-458`).
+      `{parent}#parte-n`. The flag stays off. Re-measured 2026-10-20, local only, arm `bm25_ce`, real
+      `bge-reranker-v2-m3`, pin `12043582`, same 29 answerable questions: hit@5 22/29 = 0.7586 (bar 0.72,
+      passes). hit@10 0.8276, MRR 0.5556, citation-precision 0.368, norma-vs-secundaria 1.0,
+      vigencia-correctness 1.0. D-8, T-1 and T-2 hit. Misses: D-7, C-6, C-9, T-4, T-5, V-3, Q-2.
+      Enablement stays not-evaluable because decision 0.1 is open. Not deployed; the production index was
+      not re-ingested. Follow-up, **not** an apply gate.
+- [x] F2 **Grow the gold set beyond 29 answerable questions.** Owner ratified five public direct
+      questions on 2026-10-20: D-9 `8803#7`, D-10 `8803#8`, D-11 `9750#17`, D-12 `9750#25`,
+      D-13 `5350#66`. D-10's committed wording names Ley 8803; the chat wording was anaphoric.
+      Unanswerable stays 23. Total 57. One question is now worth 0.029 hit@5. The bars stayed at the
+      values fixed when one question was worth 0.034 (B50 family ≈ 0.72–0.76). Re-measured 2026-10-20,
+      local only, arm `bm25_ce`, real `bge-reranker-v2-m3`, pin `12043582`: hit@5 27/34 = 0.7941
+      (bar 0.72, passes). hit@10 0.8529, MRR 0.6209, citation-precision 0.461, norma-vs-secundaria 1.0,
+      vigencia-correctness 1.0. D-9..D-13 hit at rank 1. Misses unchanged: D-7, C-6, C-9, T-4, T-5, V-3,
+      Q-2. Enablement stays not-evaluable because decision 0.1 is open. Not deployed. Follow-up, **not**
+      an apply gate.
 - [ ] F3 A real Comisión Directiva role instead of the `require_admin` approximation (`proposal.md:78`).
 - [ ] F4 Operational/geospatial data joins (`tramites`, `finanzas`, `padron`, `reuniones`) — V1 only redirects.
 - [ ] F5 Revisit LLM-as-judge only when the answer set outgrows manual grading (`design.md:814-817`).

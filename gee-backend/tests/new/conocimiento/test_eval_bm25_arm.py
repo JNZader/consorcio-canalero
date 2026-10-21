@@ -230,6 +230,10 @@ class TestElMargenSePublica:
         assert "0.138" in bloque and "0.091" in bloque and "0.040" in bloque
         assert "bm25_ce" in bloque
         # The honesty rider the spec requires next to the margin.
+        # 0.029 is the committed 34-question weight. 0.034 is the weight the
+        # bars were fixed against, and the sentence has to keep both.
+        assert "n = 34" in bloque
+        assert "0.029" in bloque
         assert "0.034" in bloque
 
     def test_sin_el_arm_el_bloque_lo_dice(self, db):

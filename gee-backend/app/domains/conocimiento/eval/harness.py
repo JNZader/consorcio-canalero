@@ -116,10 +116,11 @@ FUENTE_NO_RATIFICADA = "sin señal ratificada (decisión 0.1 del owner, ABIERTA)
 #: from being served as live law. The per-document cap was rejected for breaking
 #: exactly the second of them (0.793 hit@5 against 0.333 vigencia).
 #:
-#: The honesty rider travels with these numbers: the gold set is 29 answerable
-#: questions, so ONE question is worth 0.034 hit@5, and the B50 family reads as
-#: ≈0.72–0.76. Growing the gold set (follow-up F2) is what would make these bars
-#: sharper; lowering them again is not.
+#: The honesty rider travels with these numbers. The bars were fixed when the
+#: gold set was 29 answerable questions, so ONE question was worth 0.034 hit@5,
+#: and the B50 family reads as ≈0.72–0.76. On 2026-10-20 the owner ratified
+#: D-9..D-13; the committed answerable set is 34 and one question is worth
+#: 0.029. Lowering the bars is not the follow-up.
 BARRA_HIT_RATE = 0.72
 BARRA_HIT_RATE_10 = 0.80
 BARRA_MRR = 0.55
