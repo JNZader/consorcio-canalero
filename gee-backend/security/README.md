@@ -5,10 +5,16 @@ This directory contains the active, temporary, fail-closed image policy tracked 
 
 Stage 2B2 generated the baseline from the preserved final images built at
 `96cf15d0f36577c2500d2708dc5c1b899035177f` and their raw, unsuppressed Trivy 0.70.0 reports.
-The backend exception is the exact normalized 57-row multiset (56 HIGH, 1 CRITICAL; 21 distinct
-CVEs; no `FixedVersion` on any row) after the 2026-09-24 honest rescan plus CVE-2026-77214
-(`libexpat1`). The former 44-row PR17 set is invalid for this package closure. The Geo worker
-has an empty exception set, so any HIGH or CRITICAL Geo finding fails.
+The backend exception is the exact normalized 52-row multiset (51 HIGH, 1 CRITICAL; 16 distinct
+CVEs; no `FixedVersion` on any row). The 2026-09-24 rescan froze 57 rows. On 2026-10-21 the
+production-image Trivy 0.70.0 report dropped five `libexpat1@2.8.3-1~deb13u1` rows
+(CVE-2026-66046, CVE-2026-76956, CVE-2026-76957, CVE-2026-77214, CVE-2026-93990) and added
+none. That report has no VulnerabilityDB block, so `snapshot` cannot refresh
+`baseline_generated_from`; the September provenance stays and only the multiset changes.
+The former 44-row PR17 set is invalid for this package closure. The Geo worker
+has an empty exception set, so any HIGH or CRITICAL Geo finding fails. CVE-2026-92392
+(`libcurl` 8.18.0-1ubuntu2.3, fix 8.18.0-1ubuntu2.8) is not frozen: `Dockerfile.geo`
+upgrades the two affected packages.
 
 The policy has no *automated* renewal mechanism — every extension is a one-line edit of a
 hard-coded constant in a reviewed commit (it has happened five times; see below). Its ceilings are:
@@ -34,7 +40,7 @@ revealed debt the August baseline did not know about and that has no apt candida
 trixie (Debian tracker: `vulnerable` in trixie, fixed only in forky/sid): four util-linux CVEs
 (CVE-2026-76642/-78408/-78409/-78410, 9 rows each), CVE-2026-16742 (`libsystemd0`/`libudev1`),
 seven more `libxml2` HIGH rows and three more `libexpat1` HIGH rows. Still present from before:
-CVE-2026-66046 (`libexpat1`), CVE-2026-6653 (`libxml2`, pulled in by `libosmesa6`),
+CVE-2026-6653 (`libxml2`, pulled in by `libosmesa6`),
 CVE-2025-69720 (`ncurses`, 4 rows), CVE-2026-54369 (`libacl1`) and CVE-2026-9538 (`perl-base`,
 postponed). Net: 18 → 56 rows. See the consolidated evidence block in
 `scripts/validate_image_security_policy.py`.
