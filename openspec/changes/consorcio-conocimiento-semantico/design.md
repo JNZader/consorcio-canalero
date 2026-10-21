@@ -1230,12 +1230,17 @@ wherever this document assumes them:
   recall to ≥0.90 or a different signal (none-of-the-above candidate / entailment check). Tasks must carry
   this as a named open question, not silently pick one.
 
-**Honesty rider**: the gold set is 29 answerable questions and 116 configurations were tried against it;
-one question is worth 0.034 hit@5. The B50 family reads as ≈0.72–0.76. Growing the gold set is the next
-measurement step. Re-chunking is F1: every unit whose indexed text exceeds 1024 real reranker tokens
+**Honesty rider**: the bars were fixed against 29 answerable questions and 116 configurations;
+one question was worth 0.034 hit@5. The B50 family reads as ≈0.72–0.76. On 2026-10-20 the owner
+ratified five public direct questions (D-9..D-13). The committed answerable set is 34, so one
+question is worth 0.029 hit@5. The bars did not move. Re-measured the same day, local only, arm
+`bm25_ce`: hit@5 27/34 = 0.7941. D-9..D-13 hit at rank 1. The seven misses stay D-7, C-6, C-9, T-4,
+T-5, V-3, Q-2. Retrieval bars pass. Enablement stays not-evaluable. Re-chunking is F1: every unit whose indexed text exceeds 1024 real reranker tokens
 (measured 2026-10-19: 49 units; the earlier "10 units / max 58,619 chars" used the wrong ceiling). Parts
-are packed to 960 tokens. It is follow-up work, not an apply gate. hit@5 after the split is not yet
-re-measured. Decision 0.1 stays open.
+are packed to 960 tokens. It is follow-up work, not an apply gate. hit@5 after the split was
+re-measured 2026-10-20 on the same 29, local only, arm `bm25_ce`: 22/29 = 0.7586, and the
+re-ratified retrieval bars pass. Decision 0.1 stays open, so the flag stays off. The production
+index was not re-ingested.
 
 ---
 

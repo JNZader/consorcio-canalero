@@ -7,7 +7,7 @@ Branch: `feat/rag-f1-rechunk`. Delivery: `single-pr` with `size:exception`. Owne
 
 S1. Owner: "sisi arranca por f1". Scope is F1 only. `conocimiento_qa_enabled` stays false. No SSH, no F2–F5, no decision 0.1, no quota re-derivation.
 
-S2. The accepted close of this slice is the sentence he answered by starting: "¿Arranco por F1, bandera apagada, y al terminar re-medimos el hit@5 sobre las mismas 29?" Re-measure stays pending until a real reranker eval can run. Do not invent the new hit@5. Do not check the F1 box on unit tests alone.
+S2. The accepted close of this slice is the sentence he answered by starting: "¿Arranco por F1, bandera apagada, y al terminar re-medimos el hit@5 sobre las mismas 29?" Re-measured 2026-10-20: 22/29 = 0.7586. The F1 box is checked from that measurement, not from unit tests. Do not invent a hit@5.
 
 S3. Owner, choosing the set: "Las 49 (Recommended)". Membership is `token_count(texto_indexado) > 1024` with the pinned reranker tokenizer (`BAAI/bge-reranker-v2-m3`, revision `953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e`). Not a hardcoded list. Not `estimate_tokens` (that splits a different set). At corpus sha `12043582bf8016288a7e8084e85a4b713a97af2f` that count is 49.
 
@@ -29,7 +29,7 @@ S10. After the split, `10593#1` and `8560#5` are not single units and must not b
 
 - [x] T1 Splitter, parse hook, ingest loads the real tokenizer or raises, gates count identities. Route: inline. Tests: `tests/test_rag_f1_rechunk.py` — 17 passed, 2026-10-19, working-tree corpus. Openspec F1 stays open until T3. A re-ingest that changes keys clears embedding provenance in the same transaction.
 - [x] T2 Remap D-8, T-1 and T-2 to the part keys the splitter actually emits. Route: inline. Commit: `57ce9c5a` (with T1, one work unit, one future PR). `tests/new` canary updated; that file was not executed here (its conftest exits without a database).
-- [ ] T3 Re-measure hit@5 on the same 29. Blocked: `venv-rag` has no Python. Do not claim a number.
+- [x] T3 Re-measure hit@5 on the same 29. 2026-10-20, local only. `bm25_ce`, reranker `bge` on CUDA, corpus pin `12043582`, 22/29 = 0.7586. Retrieval bars pass. Enablement verdict stays NO EVALUABLE because decision 0.1 is open. Openspec F1 checkbox checked from this measurement on 2026-10-20.
 
 ## Log
 
@@ -46,3 +46,9 @@ L5. 2026-10-19. Gold remap, same question texts. D-8 `subclase: compuesta`, keys
 L6. 2026-10-19. Owner: "un solo pr". Delivery is one PR, `size:exception`, not a chain and not a stack onto main. Work-unit commit `57ce9c5a`. At this log line the branch was still local. Pre-commit lenses: readability found nothing; resilience found that a re-ingest which replaces keys deletes parent vectors and left `embedding_modelo` set, so vector/hybrid would skip the new NULL parts and still claim the snapshot was embedded. Fix: the same transaction clears that provenance and the CLI prints `embeddings: CLEARED`. Unchanged keys do not clear it. `bm25_ce` does not read the vector columns. risk and reliability lenses refused to read the worktree (no review binding); they are not a clean bill.
 
 L7. 2026-10-20. Owner: "dale pushea y abri el pr". Pushed `feat/rag-f1-rechunk`. PR 575 against `main`: https://github.com/JNZader/consorcio-canalero/pull/575. Not auto-merged. hit@5 still not re-measured. Openspec F1 stays open.
+
+L8. 2026-10-20. Owner: "dale" on measuring hit@5 locally. Ingest of pin `12043582` into a new local database `consorcio_rag_eval` on 127.0.0.1:15432 (not the app database, not the host in `.env`). 1578 rows, 179 `#parte-` rows, parents `8560#5`, `10593#1` and `10679#vigencia-de-los-fondos` absent, provenance empty. Eval `bm25_ce` + real `bge-reranker-v2-m3` on the RTX 5060 Ti (torch 2.11.0+cu128, capability 12.0). hit@5 22/29 = 0.7586 (bar 0.72, pasa). hit@10 0.8276, MRR 0.5556, citation-precision 0.368, norma-vs-secundaria 1.0, vigencia 1.0. D-8, T-1 and T-2 hit. Misses by id: D-7, C-6, C-9, T-4, T-5, V-3, Q-2. Go/no-go is NO EVALUABLE only because abstention recall/precision have no ratified signal (decision 0.1). Report left under `/tmp/f1-rag-eval/`, not committed. Openspec F1 checkbox not edited.
+
+L9. 2026-10-20. Owner: "Asentar F1 y después F2". Checked the F1 box in `tasks.md` and replaced the design rider sentence that said hit@5 was not re-measured. Numbers are the L8 measurement. Decision 0.1 stays open. Flag stays off. Production index not re-ingested. F2 not started. L5 and L7 still say "not re-measured" because that was true on those dates.
+
+L10. 2026-10-20. Owner: "sí a las cinco". D-9..D-13 are in `gold_set.yaml`, public, `validado_por: owner`. D-10 names Ley 8803 because the chat wording was anaphoric. Unanswerable stays 23. Local `bm25_ce` on the same pin and the same lab database: hit@5 27/34 = 0.7941. All five new items hit at rank 1. Miss ids unchanged. Retrieval bars pass. Enablement stays NO EVALUABLE. Flag off. F2 checkbox checked from this measurement. Not committed.

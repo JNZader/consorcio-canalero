@@ -413,10 +413,12 @@ BASELINE_FTS: dict[str, float] = {
 #: The gated arm. `bm25_ce` and not `hybrid` since the 2026-08-23 amendment.
 MODO_GATEADO = "bm25_ce"
 
-#: One question out of the answerable 29 is worth this much hit-rate@5. The spec
-#: requires the rider to travel WITH the margin, so it is a constant here rather
-#: than a sentence somebody may drop while editing prose.
-PESO_DE_UNA_PREGUNTA = 0.034
+#: One question out of the committed answerable set is worth this much
+#: hit-rate@5. 0.029 is 1/34 rounded to three decimals, the same rounding the
+#: old 0.034 applied to 1/29. The bars were fixed at that older weight. The spec
+#: requires the rider to travel WITH the margin, so the current weight is a
+#: constant here rather than a sentence somebody may drop while editing prose.
+PESO_DE_UNA_PREGUNTA = 0.029
 
 #: The three metric names, and how to read each one off `MetricasRecuperacion`.
 _ATRIBUTO_BASELINE = {
@@ -467,10 +469,11 @@ def bloque_margen_baseline(resultado: ResultadoEval | None) -> list[str]:
         "que se recalcula en cada corrida no es un margen.",
         "",
         f"> **Rider de honestidad (obligatorio, spec:88)** — el subconjunto "
-        f"respondible del gold set es `n = 29`, así que **una sola pregunta vale "
+        f"respondible del gold set es `n = 34`, así que **una sola pregunta vale "
         f"{PESO_DE_UNA_PREGUNTA:.3f} de hit-rate@5**. Un margen de dos o tres "
-        "centésimas es una pregunta, no una mejora. Ensanchar el gold set es el "
-        "follow-up F2; bajar la barra no lo es.",
+        "centésimas es una pregunta, no una mejora. La barra se fijó cuando el "
+        "gold respondible era 29 y una pregunta valía 0.034. Bajar la barra no "
+        "es el follow-up.",
         "",
         "> La fila de abstención de este arm queda `not-evaluable` mientras la "
         "decisión 0.1 del owner siga abierta (spec:90): `bm25_ce` no lleva score "
