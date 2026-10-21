@@ -21,7 +21,7 @@
 # HuggingFace. Fijar --model y la revision HF en el manifiesto del artefacto es
 # lo que hace reproducible la corrida; ver el sidecar vectors-{sha8}.json.
 torch>=2.0.0
-transformers>=4.40.0
+transformers>=5.20.1
 # FlagEmbedding es el paquete de referencia de BAAI para BGE-M3. El batch usa
 # transformers directamente (CLS + normalizacion L2, que es la representacion
 # densa de BGE-M3), asi que FlagEmbedding queda como camino alternativo y para
