@@ -51,7 +51,7 @@ google-auth>=2.37.0
 # [asyncio] pulls greenlet into the hashed lock — required because CI/Docker
 # install with --no-deps (fastapi-users override); without it, import of
 # sqlalchemy.ext.asyncio fails on a clean lock install.
-sqlalchemy[asyncio]>=2.1.3,<2.2.0
+sqlalchemy[asyncio]>=2.1.5,<2.2.0
 # Explicit: hashed --no-deps installs do not pull extras at install time.
 # greenlet must be a first-class lock entry (also via sqlalchemy[asyncio]).
 greenlet>=3.0.0
@@ -87,7 +87,9 @@ openpyxl>=3.1.5
 xlrd>=2.0.2
 # Pillow comes in transitively today (pyvista), but we use it directly
 # for denuncia-photo validation + EXIF GPS strip — declare explicitly.
-Pillow>=10.0.0
+# 13.0.0 is the pip-audit fix for 12.3.0. Image.open, Image.new, and
+# fromarray on uint8 RGB/RGBA stay valid. Saving mode I as PNG does not.
+Pillow>=13.0.0
 
 # Async SMTP — used only when SMTP_HOST is set (see app/shared/email.py).
 # Wraps the stdlib smtplib in asyncio so the FastAPI event loop isn't
@@ -119,3 +121,7 @@ defusedxml>=0.7.1
 # fixed in 50.0.0. Not a direct dependency — pinned here so the lock
 # resolver picks the patched version.
 cryptography>=50.0.0
+# Transitive pin: pip-audit gate. PYSEC-2026-4320 in certifi 2026.7.22,
+# fixed in 2026.10.19. Not a direct dependency — pinned here so the lock
+# resolver picks the patched version.
+certifi>=2026.10.19
