@@ -12,7 +12,7 @@
 # greenlet becomes ImportError on sqlalchemy.ext.asyncio.
 #
 # Supported combination (BE-12), pinned exactly and tested:
-#   sqlalchemy==2.1.4
+#   sqlalchemy==2.1.5
 #   fastapi-users==15.0.5
 #   fastapi-users-db-sqlalchemy==7.0.0
 # Upstream still declares sqlalchemy<2.1. The only 2.1 break we tracked
@@ -20,4 +20,4 @@
 # Do not bump one of the three without updating the other two and
 # tests/new/test_sqlalchemy_supported_combination.py.
 # Drop the override when fastapi-users-db-sqlalchemy allows sqlalchemy>=2.1.
-sqlalchemy[asyncio]==2.1.4
+sqlalchemy[asyncio]==2.1.5
