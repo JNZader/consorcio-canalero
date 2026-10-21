@@ -23,6 +23,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (CVE-2026-92392): the pinned gdal ubuntu-small digest still
+# carries libcurl 8.18.0-1ubuntu2.3. Trivy reports libcurl4t64 and
+# libcurl3t64-gnutls HIGH with Status=fixed at 8.18.0-1ubuntu2.8, and the
+# geo-worker policy rejects any finding that already has a fix. --only-upgrade
+# stays on packages the base already installed. The base digest stays pinned.
+# REMOVE this block when the pinned digest carries curl >= 8.18.0-1ubuntu2.8.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libcurl3t64-gnutls \
+    libcurl4t64; \
+    fixed_version="8.18.0-1ubuntu2.8"; \
+    for package in \
+        libcurl3t64-gnutls \
+        libcurl4t64; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 

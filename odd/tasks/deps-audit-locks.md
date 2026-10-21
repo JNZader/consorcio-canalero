@@ -14,11 +14,14 @@ S4. PR 578: the vendored Mantine patch file is named `@mantine+core+9.7.3.patch`
 
 S5. Do not merge any PR. Push the branches and watch CI. Do not put the lock bump inside PR 579 or PR 580.
 
+S6. The lock rebuild trips the image gates. The backend Trivy report from run 39677401343 is a strict subset of the frozen debt: the only missing rows are the five `libexpat1@2.8.3-1~deb13u1` findings (CVE-2026-66046, CVE-2026-76956, CVE-2026-76957, CVE-2026-77214, CVE-2026-93990), and `unexpected` is empty. Drop those rows. Leave `baseline_generated_from` on the 2026-09-24 snapshot, because that report has no VulnerabilityDB block and `snapshot` cannot refresh provenance. The geo-worker report has two HIGH rows for CVE-2026-92392 (`libcurl3t64-gnutls` and `libcurl4t64` 8.18.0-1ubuntu2.3, fixed in 8.18.0-1ubuntu2.8, status `fixed`). Do not freeze them. Upgrade both packages in `Dockerfile.geo` with the existing `--only-upgrade` plus installed-version gate.
+
 ## Tasks
 
 - T1. S1, S2. inline. Backend manifests, override, test, and both locks. Commit `ce6fc0e2` on `feat/deps-audit-locks`. Pre-commit `javi-forge ci --quick` passed. The installed-version SQLAlchemy assertion is still CI-only.
 - T2. S4. inline. Rename and re-check the Mantine patch on the PR 578 branch. Commit `eeb44ad7`, pushed onto `dependabot/npm_and_yarn/consorcio-web/npm-minor-patch-8a88e95c72`.
-- T3. S3, S5. inline. Open or update the PRs, watch CI, leave 577, 579, and 580's diffs alone.
+- T3. S3, S5. inline. Open or update the PRs, watch CI, leave 577, 579, and 580's diffs alone. PR 578 is mergeable at `eeb44ad7`. Not merged.
+- T4. S6. inline. Pay down the image-gate failure on PR 581. Backend multiset 57 to 52. Geo curl hotfix in `Dockerfile.geo`.
 
 ## Log
 
@@ -29,3 +32,5 @@ L2. The necessary changes are the ones named in the review of PRs 576-580: an ow
 L3. 2026-10-21. Both locks were regenerated with the documented `uv pip compile` commands (`--python-version 3.14 --universal --generate-hashes --overrides overrides.txt`). The only version changes versus `3dd9297c` are `certifi` 2026.7.22 to 2026.10.19, `pillow` 12.3.0 to 13.0.0, and `sqlalchemy` 2.1.4 to 2.1.5, in both locks. `./gee-backend/venv/bin/pytest tests/new/test_sqlalchemy_supported_combination.py tests/test_requirements_lock_sync.py -k 'not test_installed_versions_match_the_supported_combination'` reported 7 passed and 1 deselected in 0.81s. The deselected test reads the installed distribution; the active venv is still SQLAlchemy 2.1.4, so that assertion is left to CI, which installs from the lock. Work-unit commit: `ce6fc0e2`. Pre-commit quick CI passed, including backend ruff and frontend typecheck. Frontend biome warnings in that run are pre-existing and were not introduced by this commit.
 
 L4. 2026-10-21. PR 578 patch rename. `git mv` of `@mantine+core+9.7.2.patch` to `@mantine+core+9.7.3.patch` (0 line changes). `node scripts/apply-patches.mjs` on a fresh `npm ci` of that branch printed `aplicado` for get-env, both Transition builds, and the two Stryker patches. `npx vitest run tests/unit/patchesApplied.test.ts` then passed 3/3, including CI-03 against installed `@mantine/core` 9.7.3. The first vitest failed the "are applied" case because this machine has `npm config ignore-scripts=true`, so `npm ci` did not run postinstall. CI does run it. Commit `eeb44ad7` pushed. The other 18 Dependabot bumps were not edited.
+
+L5. 2026-10-21. PR 581 head `fbf0b80f` failed Final Backend Image Gate and Final Geo Worker Image Gate. Backend: `validate` on the uploaded Trivy report returned missing the five `libexpat1@2.8.3-1~deb13u1` rows and unexpected empty. Re-running `validate` against the edited policy returned 52. Geo: the same run's report has exactly two HIGH rows, both CVE-2026-92392 with FixedVersion `8.18.0-1ubuntu2.8`, which the policy rejects instead of freezing. `tests/test_image_security_policy.py` was red on the 57-vs-52 assert and on the missing geo marker, then 80 passed in 4.37s. No local Docker build. The curl upgrade is proven only when CI rebuilds the geo image.
