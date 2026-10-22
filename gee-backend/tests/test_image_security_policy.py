@@ -454,13 +454,21 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # La DB del dia REVELA deuda sin fix en trixie que agosto no conocia:
     # util-linux 4 CVE x 9 paquetes (36), libxml2 +7, libexpat1 +3, systemd 2.
     # 14 HIGH + 4 CRITICAL -> 55 HIGH + 1 CRITICAL; affected 55, fix_deferred 1.
-    assert len(backend_findings) == 57
-    assert sum(finding["count"] for finding in backend_findings) == 57
+    # 57 -> 52 el 2026-10-21. El reporte Trivy 0.70.0 de la imagen de
+    # produccion (artifact image-security-backend del run 39677401343) trae
+    # unexpected vacio y le faltan exactamente las cinco filas
+    # libexpat1@2.8.3-1~deb13u1. El stage de build del mismo job instalo
+    # libexpat1-dev 2.9.0-1~deb13u1. Ese reporte no trae VulnerabilityDB,
+    # asi que snapshot no puede reescribir la procedencia:
+    # baseline_generated_from sigue siendo el de 2026-09-24. validate compara
+    # el multiset, y ese es el que baja.
+    assert len(backend_findings) == 52
+    assert sum(finding["count"] for finding in backend_findings) == 52
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 56
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 51
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 56
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 51
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -481,6 +489,11 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2026-86145",
         "CVE-2026-89157",
         "CVE-2026-89161",
+        "CVE-2026-66046",
+        "CVE-2026-76956",
+        "CVE-2026-76957",
+        "CVE-2026-77214",
+        "CVE-2026-93990",
     }
     assert [finding for finding in backend_findings if finding["cve"] in remediated_cves] == []
     assert [finding for finding in backend_findings if finding["pkg_id"].startswith("gzip@")] == []
@@ -509,13 +522,9 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2025-69720": ncurses,
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
-        "CVE-2026-66046": ["libexpat1"],
-        "CVE-2026-77214": ["libexpat1"],
         "CVE-2026-6653": ["libxml2"],
         "CVE-2026-74860": ["libxml2"],
         "CVE-2026-76642": util_linux,
-        "CVE-2026-76956": ["libexpat1"],
-        "CVE-2026-76957": ["libexpat1"],
         "CVE-2026-78408": util_linux,
         "CVE-2026-78409": util_linux,
         "CVE-2026-78410": util_linux,
@@ -525,7 +534,6 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2026-86142": ["libxml2"],
         "CVE-2026-86143": ["libxml2"],
         "CVE-2026-86144": ["libxml2"],
-        "CVE-2026-93990": ["libexpat1"],
         "CVE-2026-9538": ["perl-base"],
     }
     critical = [finding for finding in backend_findings if finding["severity"] == "CRITICAL"]
@@ -536,14 +544,9 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert [(finding["cve"], finding["pkg_id"]) for finding in deferred] == [
         ("CVE-2026-9538", "perl-base@5.40.1-6+deb13u1")
     ]
-    expat_findings = [finding for finding in backend_findings if finding["cve"] == "CVE-2026-66046"]
-    assert len(expat_findings) == 1
-    assert (
-        expat_findings[0]["pkg_id"],
-        expat_findings[0]["severity"],
-        expat_findings[0]["status"],
-        expat_findings[0]["fixed"],
-    ) == ("libexpat1@2.8.3-1~deb13u1", "HIGH", "affected", "")
+    assert [
+        finding for finding in backend_findings if finding["pkg_id"].startswith("libexpat1@")
+    ] == []
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
         "sha256:0ba6983d0bceb084726d88971a7bd78ab31a848f313fac59fa58edf8aa94977a"
@@ -648,6 +651,48 @@ def test_backend_dockerfile_enforces_fixed_debian_13_7_source_versions(
     }
     assert package in install_lines
     assert package in gate_lines
+
+
+GEO_CURL_PACKAGES = (
+    "libcurl3t64-gnutls",
+    "libcurl4t64",
+)
+
+
+def _geo_hotfix_body(start_marker: str) -> str:
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile.geo").read_text(encoding="utf-8")
+    after_start = dockerfile.split(start_marker, 1)[1]
+    end = len(after_start)
+    for terminator in ("\n# Install ALL", "\nENV PYTHONUNBUFFERED"):
+        index = after_start.find(terminator)
+        if index != -1:
+            end = min(end, index)
+    return after_start[:end].split("RUN ", 1)[1].strip()
+
+
+def test_geo_dockerfile_upgrades_libcurl_past_cve_2026_92392() -> None:
+    hotfix = _geo_hotfix_body("# Security hotfix (CVE-2026-92392")
+
+    assert hotfix.count('fixed_version="8.18.0-1ubuntu2.8"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("--only-upgrade") < hotfix.index("dpkg-query --show")
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="8.18.0-1ubuntu2.8"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    for package in GEO_CURL_PACKAGES:
+        assert package in install_lines
+        assert package in gate_lines
 
 
 def test_backend_dockerfile_hotfix_blocks_are_ordered_before_site_packages_copy() -> None:
