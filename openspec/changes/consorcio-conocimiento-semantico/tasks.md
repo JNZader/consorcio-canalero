@@ -1018,9 +1018,13 @@ re-estimated before the chain strategy is picked.)*
       values fixed when one question was worth 0.034 (B50 family ≈ 0.72–0.76). Re-measured 2026-10-20,
       local only, arm `bm25_ce`, real `bge-reranker-v2-m3`, pin `12043582`: hit@5 27/34 = 0.7941
       (bar 0.72, passes). hit@10 0.8529, MRR 0.6209, citation-precision 0.461, norma-vs-secundaria 1.0,
-      vigencia-correctness 1.0. D-9..D-13 hit at rank 1. Misses unchanged: D-7, C-6, C-9, T-4, T-5, V-3,
-      Q-2. Enablement stays not-evaluable because decision 0.1 is open. Not deployed. Follow-up, **not**
-      an apply gate.
+      vigencia-correctness 1.0. D-9..D-13 hit at rank 1. Misses on that page: D-7, C-6, C-9, T-4, T-5,
+      V-3, Q-2. Re-measured 2026-10-22 on main `575cc16a` after the four query bridges, same pin, same
+      lab database, same arm, real reranker, `transformers` 5.20.2: hit@5 31/34 = 0.9118 (bar 0.72,
+      passes). hit@10 33/34 = 0.9706, MRR 0.7190, citation-precision 0.5294, norma-vs-secundaria 1.0,
+      vigencia-correctness 1.0. Entered hit@5: D-7 rank 1, Q-2 rank 1, V-3 rank 1, C-6 rank 3. No
+      previous hit fell. Still out: C-9 rank 6, T-5 rank 9, T-4 outside the top 10. Enablement stays
+      not-evaluable because decision 0.1 is open. Not deployed. Follow-up, **not** an apply gate.
 - [ ] F3 A real Comisión Directiva role instead of the `require_admin` approximation (`proposal.md:78`).
 - [ ] F4 Operational/geospatial data joins (`tramites`, `finanzas`, `padron`, `reuniones`) — V1 only redirects.
 - [ ] F5 Revisit LLM-as-judge only when the answer set outgrows manual grading (`design.md:814-817`).
