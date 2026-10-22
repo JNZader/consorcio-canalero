@@ -58,6 +58,7 @@ env/
 htmlcov/
 coverage_html/
 venv-rag/
+venv-mcp/
 .coverage
 .coverage.*
 coverage.xml
