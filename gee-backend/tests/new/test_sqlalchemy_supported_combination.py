@@ -23,15 +23,15 @@ def test_override_and_lock_pin_the_same_sqlalchemy() -> None:
     lock = (BACKEND / "requirements.lock").read_text(encoding="utf-8")
     dev_lock = (BACKEND / "requirements-dev.lock").read_text(encoding="utf-8")
 
-    assert "sqlalchemy[asyncio]==2.1.4" in override
-    assert "sqlalchemy==2.1.4" in lock
-    assert "sqlalchemy==2.1.4" in dev_lock
+    assert "sqlalchemy[asyncio]==2.1.5" in override
+    assert "sqlalchemy==2.1.5" in lock
+    assert "sqlalchemy==2.1.5" in dev_lock
     assert "fastapi-users==15.0.5" in lock
     assert "fastapi-users-db-sqlalchemy==7.0.0" in lock
 
 
 def test_installed_versions_match_the_supported_combination() -> None:
-    assert version("sqlalchemy") == "2.1.4"
+    assert version("sqlalchemy") == "2.1.5"
     assert version("fastapi-users") == "15.0.5"
     assert version("fastapi-users-db-sqlalchemy") == "7.0.0"
 
