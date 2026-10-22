@@ -50,7 +50,11 @@ from pathlib import Path
 from typing import Any
 
 from app.domains.conocimiento.embedding import runtime_versions
+from app.domains.conocimiento.eval import barra_sin_gpu
 from app.domains.conocimiento.eval.harness import (
+    BARRA_HIT_RATE,
+    BARRA_SEPARACION,
+    BARRA_VIGENCIA,
     MINIMO_RESPONDIBLES,
     ResultadoEval,
     ResultadoModo,
@@ -73,7 +77,12 @@ from app.domains.conocimiento.eval.router import (
     json_para as json_router_para,
 )
 from app.domains.conocimiento.fusion import RRF_K
-from app.domains.conocimiento.service import FTS_OPERADOR, LEG_LIMIT, ProcedenciaEmbeddings
+from app.domains.conocimiento.service import (
+    FTS_OPERADOR,
+    LEG_LIMIT,
+    MODO_SIN_GPU,
+    ProcedenciaEmbeddings,
+)
 
 NO_REGISTRADO = "no registrado en la base"
 ETIQUETA_SMOKE = "SMOKE RUN — NOT AN EVAL"
@@ -513,6 +522,129 @@ def _json_margen_baseline(resultado: ResultadoEval | None) -> dict[str, Any]:
     }
 
 
+#: Rows of the no-GPU bar block, as (label, `MetricasRecuperacion` attribute, the
+#: harness constant that is the bar, comparator, attribute holding that row's `n`).
+_FILAS_BARRA_SIN_GPU = (
+    ("hit@5", "hit_rate_at_5", BARRA_HIT_RATE, "≥", "n_respondibles"),
+    (
+        "norma-vs-secundaria",
+        "separacion_norma_secundaria",
+        BARRA_SEPARACION,
+        "=",
+        "n_separacion",
+    ),
+    ("vigencia-correctness", "vigencia_correctness", BARRA_VIGENCIA, "=", "n_vigencia"),
+)
+
+
+def bloque_barra_sin_gpu(
+    resultado: ResultadoEval | None,
+    procedencia: ProcedenciaEmbeddings | None,
+    *,
+    permitir_sintetico: bool = False,
+) -> list[str]:
+    """The no-GPU arm's bar, its derived state, and the YAML to record if decided.
+
+    Separate from `bloque_margen_baseline` on purpose. That block is the CUDA arm's
+    margin against the FTS-only baseline and carries the 34-question honesty rider;
+    this one is a different arm with a different ranker, and every figure row names
+    the arm that produced it so a reader cannot take one arm's number for the
+    other's. `MODO_GATEADO` is untouched.
+
+    Always present, scored or saying in words that it was not: an absent section
+    reads as a section that was fine.
+    """
+    cabecera = [f"## Barra del brazo `{MODO_SIN_GPU}`", ""]
+    corrida = None if resultado is None else resultado.por_modo.get(MODO_SIN_GPU)
+    if resultado is None or corrida is None:
+        return cabecera + [
+            f"**`not-evaluable`** — el brazo `{MODO_SIN_GPU}` **no se corrió** en esta "
+            "corrida, así que no hay barra que publicar.",
+            "",
+            f"Para correrlo: `scripts/rag_eval.py --modo {MODO_SIN_GPU}`. No necesita "
+            "GPU, torch ni embebedor.",
+        ]
+
+    barra = barra_sin_gpu.derivar_desde(
+        corrida, procedencia, resultado.gold, permitir_sintetico=permitir_sintetico
+    )
+    lineas = cabecera + [
+        "| métrica | valor | barra | n |",
+        "|---|---:|---:|---:|",
+    ]
+    for etiqueta, atributo, minimo, comparador, atributo_n in _FILAS_BARRA_SIN_GPU:
+        valor = getattr(corrida.metricas, atributo)
+        n = getattr(corrida.metricas, atributo_n)
+        lineas.append(
+            f"| `{MODO_SIN_GPU}` {etiqueta} | {_fmt(valor)} | {comparador} {minimo:.2f} | {n} |"
+        )
+    lineas += [
+        "",
+        f"- pérdidas de migración (claves del gold ausentes del snapshot): "
+        f"{corrida.n_perdidas_de_migracion}",
+        f"- fallas de recuperación (claves presentes, ninguna en el top-5): "
+        f"{len(corrida.fallas_de_recuperacion)}",
+        "",
+        f"**Estado derivado: `{barra.estado}`**",
+        "",
+    ]
+    if barra.estado == barra_sin_gpu.ESTADO_NO_MEDIDO:
+        lineas += [
+            f"La barra queda `{barra.estado}` y `barra_sin_gpu.yaml` no cambia: {barra.motivo}",
+        ]
+    else:
+        lineas += [
+            "Para registrarla, copiá este bloque a `barra_sin_gpu.yaml` "
+            "(`derivar_desde` lo arma; no se escribe a mano):",
+            "",
+            "```yaml",
+            barra_sin_gpu.a_yaml(barra).rstrip(),
+            "```",
+        ]
+    return lineas
+
+
+def _json_barra_sin_gpu(
+    resultado: ResultadoEval | None,
+    procedencia: ProcedenciaEmbeddings | None,
+    *,
+    permitir_sintetico: bool = False,
+) -> dict[str, Any]:
+    """Same figures, same refusal, no Spanish to parse. Always a key, `evaluado` always a bool."""
+    corrida = None if resultado is None else resultado.por_modo.get(MODO_SIN_GPU)
+    if resultado is None or corrida is None:
+        return {
+            "evaluado": False,
+            "modo": MODO_SIN_GPU,
+            "motivo": f"el brazo {MODO_SIN_GPU} no se corrió en esta corrida",
+        }
+    barra = barra_sin_gpu.derivar_desde(
+        corrida, procedencia, resultado.gold, permitir_sintetico=permitir_sintetico
+    )
+    return {
+        "evaluado": True,
+        "modo": MODO_SIN_GPU,
+        "estado": barra.estado,
+        "motivo": barra.motivo,
+        "n_respondibles": corrida.metricas.n_respondibles,
+        "medido": {
+            "hit_rate_at_5": corrida.metricas.hit_rate_at_5,
+            "separacion_norma_secundaria": corrida.metricas.separacion_norma_secundaria,
+            "vigencia_correcta": corrida.metricas.vigencia_correctness,
+        },
+        "barra": {
+            "hit_rate_at_5": BARRA_HIT_RATE,
+            "separacion_norma_secundaria": BARRA_SEPARACION,
+            "vigencia_correcta": BARRA_VIGENCIA,
+        },
+        "perdidas_de_migracion": [
+            {"id": identificador, "claves_ausentes": list(claves)}
+            for identificador, claves in corrida.perdidas_de_migracion
+        ],
+        "fallas_de_recuperacion": list(corrida.fallas_de_recuperacion),
+    }
+
+
 def _tabla_preguntas(corrida: ResultadoModo) -> list[str]:
     lineas = [
         "| id | clase | esperadas | devueltas (top-5) | score top-1 | fts | vec |",
@@ -739,6 +871,10 @@ def renderizar_markdown(
     # section at all: the code existed, the report did not carry it, and the two
     # facts were impossible to tell apart from the artifact.
     lineas += [*bloque_margen_baseline(resultado), ""]
+    lineas += [
+        *bloque_barra_sin_gpu(resultado, procedencia, permitir_sintetico=sintetico),
+        "",
+    ]
     lineas += [*bloque_router_para(router), ""]
     lineas += [*bloque_respuestas_para(respuestas), ""]
     lineas += [*bloque_bench_para(bench, motivo_bench), ""]
@@ -896,6 +1032,10 @@ def _a_json(
         # The machine-readable twin of `bloque_margen_baseline`. Always a key, and
         # `evaluado` is always a boolean, for the same reason the router block is.
         "margen_baseline": _json_margen_baseline(resultado),
+        # The no-GPU arm's own bar, never folded into the block above: different
+        # arm, different ranker, and its state is derived (`derivar_desde`), not
+        # hand-typed. Always a key, `evaluado` always a boolean.
+        "barra_sin_gpu": _json_barra_sin_gpu(resultado, procedencia, permitir_sintetico=sintetico),
         # Always a key, and `evaluado` is always a boolean: a machine reader must
         # not have to infer "the router was not scored" from an absent field.
         "router": json_router_para(router),

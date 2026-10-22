@@ -1,0 +1,37 @@
+# The recorded bar of the no-GPU arm `bm25_sin_ce` (see `barra_sin_gpu.py`).
+#
+# ── WHY THIS FILE SHIPS `no_medido` ─────────────────────────────────────────
+#
+# The arm has not been scored on the 57-item gold set against a pushed, clean
+# corpus SHA. Until it is, the norms surface returns its units sorted by
+# citation key and presents no rank order, no score and no relevance-implying
+# position. Marking this `superada` by hand would unlock rank order for a figure
+# nobody measured.
+#
+# ── HOW IT BECOMES `superada` ───────────────────────────────────────────────
+#
+#   1. Ingest the pushed corpus SHA into a LAB database (never the serving one).
+#   2. Re-validate the gold's expected citation keys at that SHA. The bar is not
+#      decided while any item is a migration-induced miss.
+#   3. Run `scripts/rag_eval.py --modo bm25_sin_ce` against the lab database.
+#   4. Copy the figures the report prints for the no-GPU arm into this file.
+#      `derivar_desde` refuses a synthetic snapshot and an --allow-synthetic run.
+#
+# The loader re-checks the figures on every load (hit@5 >= 0.72, norma-vs-
+# secundaria = 1.00, vigencia-correctness = 1.00), so a `superada` word over a
+# failing figure is refused rather than believed.
+
+estado: no_medido
+
+modo: bm25_sin_ce
+
+corpus_sha: null
+n_respondibles: null
+hit_rate_at_5: null
+separacion_norma_secundaria: null
+vigencia_correcta: null
+metodologia: ""
+
+motivo: >-
+  el brazo bm25_sin_ce no se midió sobre el gold de 57 ítems contra un SHA de
+  corpus publicado y limpio. Sin esa medición la superficie no presenta orden.
