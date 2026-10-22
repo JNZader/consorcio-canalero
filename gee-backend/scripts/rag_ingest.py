@@ -29,6 +29,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.domains.conocimiento import repository  # noqa: E402
+from app.domains.conocimiento.eval import barra_sin_gpu  # noqa: E402
 from app.domains.conocimiento.gates import TOKEN_CEILING, GateFailure  # noqa: E402
 from app.domains.conocimiento.rechunk import clave_identidad  # noqa: E402
 from app.domains.conocimiento.schemas import (  # noqa: E402
@@ -75,6 +76,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="parse and gate, then stop without writing",
+    )
+    parser.add_argument(
+        "--entorno",
+        choices=("laboratorio", "produccion"),
+        default="laboratorio",
+        help=(
+            "laboratorio may ingest without the bar (measurement happens there). "
+            "produccion refuses unless --exigir-barra is also set. The database URL "
+            "does not decide this."
+        ),
+    )
+    parser.add_argument(
+        "--exigir-barra",
+        action="store_true",
+        help=(
+            "refuse to ingest unless eval/barra_sin_gpu.yaml shows the no-GPU arm's "
+            "bar as `superada` for this exact --corpus-sha. Off by default; checked "
+            "before the database, the corpus or the pin are touched, so it also "
+            "applies to --dry-run."
+        ),
     )
     return parser
 
@@ -223,6 +244,36 @@ def ingest(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    # Production is a choice, not a URL. A lab database can be pointed at with
+    # the same flag shape; forgetting the bar on a production run must refuse
+    # before any file or connection is touched.
+    if args.entorno == "produccion" and not args.exigir_barra:
+        print(
+            "\nINGESTION ABORTED — nothing was written.\n"
+            "--entorno produccion exige --exigir-barra. "
+            "Laboratorio es el único entorno que puede ingerir sin la barra.\n",
+            file=sys.stderr,
+        )
+        return 1
+
+    # First, and before anything that can open a connection: the bar is a file
+    # read, and a refusal here must cost nothing. The artifact is re-checked by
+    # its figures (`exigir_superada`), not by its state word.
+    if args.exigir_barra:
+        try:
+            barra_sin_gpu.exigir_superada(barra_sin_gpu.cargar_barra(), args.corpus_sha)
+        except (barra_sin_gpu.BarraInvalida, barra_sin_gpu.BarraNoSuperada) as abort:
+            print(
+                "\nINGESTION ABORTED — nothing was written.\n"
+                f"--exigir-barra: {abort}\n"
+                "La barra del brazo bm25_sin_ce se deriva con scripts/rag_eval.py "
+                "--modo bm25_sin_ce sobre una base de laboratorio; ver "
+                "docs/rag/runbook-encendido.md.",
+                file=sys.stderr,
+            )
+            return 1
+
     if not args.database_url and not args.dry_run:
         print("error: --database-url or $DATABASE_URL is required", file=sys.stderr)
         return 2
