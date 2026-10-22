@@ -1,4 +1,5 @@
 schema: spec-driven
+strict_tdd: true
 context: |
   Monorepo: React 19 + Vite frontend (`consorcio-web`) and FastAPI backend (`gee-backend`).
   Testing: Vitest/Playwright (frontend), Pytest (backend), pre-commit enforced.
