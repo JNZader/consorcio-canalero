@@ -48,9 +48,7 @@ def _fila(**cambios: object) -> dict[str, object]:
 
 def _parchear_lectura(monkeypatch: pytest.MonkeyPatch, fila: dict[str, object] | None) -> None:
     monkeypatch.setattr(normas.repository, "leer_corpus_activo", lambda _db: _activo())
-    monkeypatch.setattr(
-        normas.repository, "leer_unidad", lambda _db, _sha, _clave: fila
-    )
+    monkeypatch.setattr(normas.repository, "leer_unidad", lambda _db, _sha, _clave: fila)
 
 
 def _chequear(span: str = "TODA persona", vigencia: str | None = "VIGENTE", sha: str = SHA):
@@ -132,9 +130,7 @@ def _buscar(monkeypatch: pytest.MonkeyPatch, hits: list[CitaRecuperada], *, modo
     monkeypatch.setattr(normas.barra_sin_gpu, "superada_para", lambda _sha, ruta=None: barra)
 
     def recuperar(*_a, **_k):
-        return ResultadoRecuperacion(
-            corpus_sha=SHA, pregunta="q", modo=modo, k=10, hits=hits
-        )
+        return ResultadoRecuperacion(corpus_sha=SHA, pregunta="q", modo=modo, k=10, hits=hits)
 
     monkeypatch.setattr(normas.service, "recuperar", recuperar)
     return normas.buscar(MagicMock(), "q", modo=modo)
@@ -180,9 +176,7 @@ class TestBuscar:
         assert resultado.sin_unidades is True
 
     def test_otro_modo_no_se_ordena_aunque_la_barra_diga_que_si(self, monkeypatch) -> None:
-        resultado = _buscar(
-            monkeypatch, [_hit("b", 1), _hit("a", 2)], modo="bm25_ce", barra=True
-        )
+        resultado = _buscar(monkeypatch, [_hit("b", 1), _hit("a", 2)], modo="bm25_ce", barra=True)
         assert [u.citation_key for u in resultado.unidades] == ["a", "b"]
         assert "rango" not in str(resultado.model_dump())
 
@@ -250,7 +244,9 @@ class TestBarra:
             vigencia_correctness=1.0,
             n_respondibles=10,
         )
-        corrida = SimpleNamespace(modo=service.MODO_SIN_GPU, perdidas_de_migracion=[], metricas=metricas)
+        corrida = SimpleNamespace(
+            modo=service.MODO_SIN_GPU, perdidas_de_migracion=[], metricas=metricas
+        )
 
         assert barra_sin_gpu.derivar_desde(corrida, None, gold).estado == "no_medido"
         assert (
