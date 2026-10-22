@@ -259,7 +259,7 @@ def test_recharts_react_is_is_a_direct_dependency() -> None:
     """recharts' peer stays direct so `npm ci` resolves without `--legacy-peer-deps`."""
     package = json.loads(_read("consorcio-web/package.json"))
     lock = json.loads(_read("consorcio-web/package-lock.json"))
-    assert package["dependencies"]["react-is"] == "^19.3.0"
+    assert package["dependencies"]["react-is"] == "^19.3.1"
     assert "react-is" in lock["packages"][""]["dependencies"]
     react = lock["packages"]["node_modules/react"]["version"]
     installed = lock["packages"]["node_modules/react-is"]
@@ -278,8 +278,8 @@ def test_mantine_patch_matches_the_installed_version() -> None:
     lock = json.loads(_read("consorcio-web/package-lock.json"))
     version = lock["packages"]["node_modules/@mantine/core"]["version"]
     patches = list((REPO_ROOT / "consorcio-web" / "patches").glob("@mantine+core+*.patch"))
-    assert version == "9.7.2"
-    assert [path.name for path in patches] == ["@mantine+core+9.7.2.patch"]
+    assert version == "9.7.3"
+    assert [path.name for path in patches] == ["@mantine+core+9.7.3.patch"]
     body = patches[0].read_text(encoding="utf-8")
     assert "Transition.mjs" in body
     assert "get-env.mjs" in body

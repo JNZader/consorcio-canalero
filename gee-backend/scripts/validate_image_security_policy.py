@@ -183,6 +183,18 @@ PLATFORM = "linux/amd64"
 #                  forky/sid 2.42.4-1 fixed; [trixie] no-dsa
 # Sin docker/Trivy: no hay Candidate en apt para bajar filas. El ratchet de
 # 57 filas no se toca. Revisar antes del 2026-12-12.
+#
+# Baja 57 -> 52 el 2026-10-21. El reporte Trivy 0.70.0 de la imagen de
+# produccion (run 39677401343) tiene unexpected vacio y missing exactamente
+# estas cinco filas, todas libexpat1@2.8.3-1~deb13u1 HIGH affected:
+#   CVE-2026-66046, CVE-2026-76956, CVE-2026-76957, CVE-2026-77214,
+#   CVE-2026-93990
+# El stage de build del mismo job instalo libexpat1-dev 2.9.0-1~deb13u1.
+# Ese JSON no trae VulnerabilityDB, asi que snapshot no puede reescribir la
+# procedencia: baseline_generated_from queda en el escaneo del 2026-09-24.
+# validate compara el multiset, y esas cinco filas salen. El geo-worker no
+# entra en este baseline: CVE-2026-92392 tiene FixedVersion y se remedia en
+# Dockerfile.geo, no se congela.
 DEADLINE_CEILINGS = {
     "CRITICAL": "2026-12-12T00:00:00Z",
     "HIGH": "2026-12-12T00:00:00Z",
