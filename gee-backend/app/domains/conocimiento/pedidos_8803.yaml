@@ -1,0 +1,594 @@
+# The eight Ley 8803 access-to-information drafts, as slots.
+#
+# Read `editor.py` first: it explains the three slot classes and why the export is
+# fail-closed. In short:
+#
+#   {{legal:<id>}}   a legal citation. It renders the slot's `cita` and is pinned to
+#                    (citation_key, span, vigencia, sha) in `legales` below. Export
+#                    re-checks every one of them with `normas.chequear`.
+#   {{id:<slot>}}    document-identification data, typed by a human and confirmed by
+#                    a human (`identificacion_confirmada: true`). Never retrieval
+#                    output, never verified against the corpus.
+#   {{bloque:<id>}}  a paragraph shared verbatim by several drafts (`bloques`).
+#   [PLACEHOLDER]    the human-only block. Written literally, never substituted.
+#
+# Legal text may enter a template ONLY through `{{legal:...}}`: the loader refuses a
+# template that names an `art. N` or a `Ley N` anywhere else.
+#
+# THE SHA BELOW IS A PIN, NOT A DEFAULT. When the corpus snapshot moves, every
+# export refuses with cause `sha` until a human re-checks these slots against the new
+# snapshot and bumps this value on purpose. The editor never re-pins by itself.
+
+version: 1
+
+corpus:
+  # Same snapshot `corpus_expectations.yaml` pins.
+  sha: "12043582bf8016288a7e8084e85a4b713a97af2f"
+  documentos:
+    ley-8803:
+      # Copied verbatim from the `estado_vigencia` frontmatter of
+      # ley-8803-acceso-informacion-cordoba.md: `chequear` compares it for equality
+      # against what ingestion stored.
+      vigencia: "VIGENTE al 2026-08-05, sin modificatorias registradas por ninguna de las dos fuentes. SAIJ marca la norma como \"Vigente, de alcance general\". La ficha de la Fiscalía de Estado no consigna nota alguna de modificación, derogación ni reglamentación (su bloque \"NOTICIAS ACCESORIAS\" sólo trae fecha de sanción, publicación y cantidad de artículos) — y esa misma base SÍ consigna esas notas cuando existen, como se comprobó en las fichas de las leyes 8835 y 10618. SE DESCARTÓ EXPRESAMENTE, por verificación directa, que la Ley 10618 (2019, \"Simplificación y Modernización de la Administración\") haya modificado esta ley: 10618 reforma la Ley 5350 (t.o. 6658) de procedimiento administrativo, no menciona el número 8803 ni una vez, y no contiene la expresión \"acceso a la información\". También se descartó que la Ley 8835 (Carta del Ciudadano, 2000) contenga previsiones de acceso a la información que la desplacen. LÍMITE HONESTO DE ESTA VERIFICACIÓN: no fue posible correr una búsqueda exhaustiva de legislación posterior (el buscador de texto completo de SAIJ devuelve cero incluso para consultas de control, y la Fiscalía de Estado no expone buscador). Que no se haya hallado una ley provincial de transparencia posterior, o una adhesión de Córdoba a la Ley nacional 27275, NO equivale a haber probado que no exista. Conviene reconfirmarlo antes de litigar."
+
+legales:
+  ley:
+    documento: ley-8803
+    citation_key: "8803#1"
+    span: "TODA persona tiene derecho"
+    cita: "Ley 8803"
+  art3:
+    documento: ley-8803
+    citation_key: "8803#3"
+    span: "NO se suministra información"
+    cita: "art. 3"
+  art4:
+    documento: ley-8803
+    citation_key: "8803#4"
+    span: "debe suministrarse el resto de la información solicitada"
+    cita: "art. 4"
+  art5:
+    documento: ley-8803
+    citation_key: "8803#5"
+    span: "acceso a la información es gratuito"
+    cita: "art. 5"
+  art6_formalidad:
+    documento: ley-8803
+    citation_key: "8803#6"
+    span: "sin estar sujeta a ninguna otra formalidad"
+    cita: "art. 6"
+  art6_constancia:
+    documento: ley-8803
+    citation_key: "8803#6"
+    span: "Debe entregarse al solicitante de la información una constancia del requerimiento"
+    cita: "art. 6"
+  art7:
+    documento: ley-8803
+    citation_key: "8803#7"
+    span: "no mayor de diez (10) días hábiles"
+    cita: "art. 7"
+
+bloques:
+  apertura: |
+    > **[REQUERENTE]**, D.N.I. **[DNI]**, con domicilio **[DOMICILIO / CORREO]**, en
+    > ejercicio del derecho de acceso a la información pública reconocido por la
+    > **{{legal:ley}}** de la Provincia de Córdoba, solicita se le entregue copia
+    > {{id:objeto_intro}}
+  limites_documento: |
+    > **Aclaración sobre eventuales límites.** Si alguna parte del documento
+    > estuviera alcanzada por las restricciones del {{legal:art3}}, solicito se entregue el
+    > **resto** del documento, conforme al {{legal:art4}} de la {{legal:ley}}. La invocación de
+    > una cláusula restringida no habilita la negativa total.
+  costo_gratuito: |
+    > **Costo.** El {{legal:art5}} establece que el acceso es gratuito, salvo el cargo por
+    > reproducción. Renuncio a reproducción y solicito la respuesta por correo
+    > electrónico, sin cargo.
+  cierre: |
+    > Solicito se entregue **constancia** del presente requerimiento, conforme al
+    > {{legal:art6_constancia}} de la {{legal:ley}}, con indicación de la fecha de presentación, que fija el
+    > inicio del plazo del {{legal:art7}}.
+    >
+    > Sin otro particular, agradezco.
+
+    **Lugar y fecha:** ______________________, ______ de ______________.
+
+    **Firma del requerente:**
+
+    _________________________________
+
+    **[REQUERENTE]** — D.N.I. **[DNI]**
+  correo_formalidad_gratis: |
+    El {{legal:art6_formalidad}} de la {{legal:ley}} no exige otra formalidad que la identificación del
+    requirente y del documento buscado, y no puede exigirse que explique el fin de
+    la solicitud. Renuncio a reproducción física: solicito la respuesta por este
+    correo, sin cargo.
+  correo_limites: |
+    Si alguna parte estuviera alcanzada por el {{legal:art3}}, solicito se entregue el
+    resto conforme al {{legal:art4}}.
+  correo_cierre: |
+    Solicito constancia de este requerimiento con la fecha de presentación, que fija
+    el plazo del {{legal:art7}} (diez días hábiles).
+
+    Quedo a la espera.
+
+    Atentamente,
+
+    [REQUERENTE] - D.N.I. [DNI]
+    [DOMICILIO / CORREO]
+
+pedidos:
+  "1":
+    titulo: "Acta Acuerdo del FDA (F-2)"
+    identificacion_confirmada: true
+    identificacion:
+      art62_ley11089: "art. 62 de la Ley 11089"
+      art17_ley10679: "art. 17 de la Ley 10679"
+      art62_ley11089_asunto: "art. 62 Ley 11089"
+    cuerpo: |
+      > Señor
+      > MINISTRO DE BIOAGROINDUSTRIA
+      > Provincia de Córdoba
+      >
+      > **[REQUERENTE]**, D.N.I. **[DNI]**, con domicilio **[DOMICILIO / CORREO]**, en
+      > ejercicio del derecho de acceso a la información pública reconocido por la
+      > **{{legal:ley}}** de la Provincia de Córdoba, solicita se le entregue copia del
+      > siguiente documento en poder de ese Ministerio:
+      >
+      > **El acta acuerdo celebrada con las entidades rurales —o el instrumento que
+      > haga sus veces— que ratifica el {{id:art62_ley11089}} y en la cual se fija el
+      > destino del 0,90 % de la Contribución Especial FDA entre los doce incisos del
+      > {{id:art17_ley10679}}, correspondiente a la anualidad 2026.**
+      >
+      > Se identifica el documento por su naturaleza y por la norma que lo aprueba,
+      > conforme al {{legal:art6_formalidad}} de la {{legal:ley}}, que no exige otra formalidad que la
+      > identificación del documento buscado.
+      >
+      > **Fundamento de la solicitud.** El {{id:art17_ley10679}} abre doce incisos
+      > de destino y **la ley no asigna porcentaje a ninguno**. Sin el acta acuerdo no
+      > hay forma de saber cuánto de lo recaudado corresponde al inc. g) —canales de
+      > desagüe y red de drenaje—, que es justamente el interés de quien suscribe. El
+      > acta no es anexo de la ley ni está en ninguna fuente abierta: su existencia
+      > está confirmada por el propio {{id:art62_ley11089}}, que la ratifica.
+      >
+      > **Aclaración sobre eventuales límites.** Si alguna cláusula del acta estuviera
+      > alcanzada por las restricciones del {{legal:art3}} —por ejemplo, información de un
+      > tercero o de carácter confidencial—, solicito se me entregue el **resto del
+      > documento**, conforme al {{legal:art4}} de la {{legal:ley}}, que obliga a suministrar la
+      > información no limitada cuando sólo una parte lo está. La invocación de una
+      > cláusula restringida no habilita la negativa total del acta.
+      >
+      > **Costo.** El {{legal:art5}} establece que el acceso es gratuito, salvo el cargo por
+      > reproducción, que se aplica sólo si yo solicito copias físicas. Renuncio a
+      > reproducción y solicito la respuesta por correo electrónico, sin costo.
+      >
+      > Solicito se entregue **constancia** del presente requerimiento, conforme al
+      > {{legal:art6_constancia}} de la {{legal:ley}}, con indicación de la fecha de presentación, que es la
+      > que fija el inicio del plazo del {{legal:art7}}.
+      >
+      > Sin otro particular, agradezco.
+
+      **Lugar y fecha:** ______________________, ______ de ______________.
+
+      **Firma del requerente:**
+
+      _________________________________
+
+      **[REQUERENTE]** — D.N.I. **[DNI]**
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Acta Acuerdo FDA ({{id:art62_ley11089_asunto}})
+
+      Señores del Ministerio de Bioagroindustria:
+
+      Por medio del presente ejerzo el derecho de acceso a la información pública
+      ({{legal:ley}}, Provincia de Córdoba) y solicito copia del acta acuerdo con las
+      entidades rurales que ratifica el {{id:art62_ley11089}} y fija el destino del
+      0,90 % de la Contribución Especial FDA entre los doce incisos del {{id:art17_ley10679}}, correspondiente a la anualidad 2026.
+
+      {{bloque:correo_formalidad_gratis}}
+
+      Si alguna cláusula del acta estuviera alcanzada por el {{legal:art3}}, solicito se
+      entregue el resto del documento conforme al {{legal:art4}}.
+
+      {{bloque:correo_cierre}}
+
+  "2":
+    titulo: "Res. SRH 25/2015 (F-9)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "del siguiente documento en poder de esa Autoridad:"
+    cuerpo: |
+      > Señores
+      > AUTORIDAD PROVINCIAL DE RECURSOS HÍDRICOS (APRHI)
+      > [a la atención de quien corresponda]
+      >
+      {{bloque:apertura}}
+      >
+      > **La Resolución SRH N° 25/2015, en la redacción originaria con que fue
+      > dictada, y en particular el texto completo de su parte dispositiva y de los
+      > anexos que apruebe.**
+      >
+      > Se identifica el documento por su número, año y organismo emisor, conforme al
+      > {{legal:art6_formalidad}} de la {{legal:ley}}, que no exige otra formalidad que la identificación del
+      > documento buscado. Se solicita expresamente la **redacción originaria** de la
+      > resolución, toda vez que su eventual incorporación posterior en un cuerpo
+      > normativo consolidado no sustituye el texto del acto dictado.
+      >
+      > **Fundamento de la solicitud.** Esa resolución figura en el sitio oficial de
+      > esa Autoridad (`aprhi.gob.ar/normativas/`, serie DiPAS/DAS de proyectos y
+      > factibilidad) como la candidata a acto aprobatorio de las **Normas SRH 2013**.
+      > Su texto no está publicado en fuente abierta: el enlace remite a un dominio
+      > desactualizado. Se pide el acto mismo, no su interpretación.
+      >
+      {{bloque:limites_documento}}
+      >
+      {{bloque:costo_gratuito}}
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Resolución SRH 25/2015
+
+      Señores de la APRHI:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia de la Resolución SRH N° 25/2015, en la redacción
+      originaria con que fue dictada, en particular su parte dispositiva y los anexos
+      que apruebe.
+
+      {{bloque:correo_formalidad_gratis}}
+
+      Si alguna parte del documento estuviera alcanzada por el {{legal:art3}}, solicito se
+      entregue el resto conforme al {{legal:art4}}.
+
+      {{bloque:correo_cierre}}
+
+  "3":
+    titulo: "Expediente 0733-003317/2021, Cuenca Sur Cintra (F-33)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "de los siguientes documentos en poder de esa Autoridad:"
+    cuerpo: |
+      > Señores
+      > AUTORIDAD PROVINCIAL DE RECURSOS HÍDRICOS (APRHI)
+      > [a la atención de quien corresponda]
+      >
+      {{bloque:apertura}}
+      >
+      > **El expediente administrativo 0733-003317/2021, carátula «Proyecto obra:
+      > Sistematización Cuenca Sur Cintra – Dpto. Unión», con todos sus documentos. En
+      > particular: la memoria técnica completa del proyecto, los planos del canal
+      > principal y del bordo de guarda del Canal Desviador al Río Tercero, el acto de
+      > adjudicación, el contrato y su pliego de condiciones.**
+      >
+      > Se identifica el documento por su número de expediente y su carátula, conforme
+      > al {{legal:art6_formalidad}} de la {{legal:ley}}, que no exige otra formalidad que la identificación
+      > del documento buscado. No se solicita la interpretación del acto, sino su
+      > texto.
+      >
+      > **Fundamento de la solicitud.** La obra está finalizada y su descripción
+      > pública indica que el canal principal vuelve al canal Litín Tortugas en su
+      > intersección con el camino que une Chilibroste con Monte Leña, y que readecúa
+      > el bordo de guarda del Canal Desviador al Río Tercero. Ambos son límites del
+      > consorcio de riego 10 de Mayo. Sin el legajo no hay forma de saber qué se
+      > construyó del lado de afuera de esos límites, y eso condiciona el drenaje y la
+      > operación del consorcio.
+      >
+      > **Aclaración sobre eventuales límites.** Si alguna parte del expediente
+      > estuviera alcanzada por las restricciones del {{legal:art3}} —por ejemplo, información
+      > de terceros o estrategia empresarial de la contratista—, solicito se entregue
+      > el **resto** del expediente, conforme al {{legal:art4}} de la {{legal:ley}}. La invocación
+      > de una cláusula restringida no habilita la negativa total del legajo.
+      >
+      {{bloque:costo_gratuito}}
+      >
+      > **Alcance.** Si el expediente es muy extenso, se acepta la entrega por etapas
+      > (memoria y planos primero), conforme al espíritu del {{legal:art4}}: la parte no
+      > limitada debe entregarse aunque otra lo esté.
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Expediente 0733-003317/2021
+
+      Señores de la APRHI:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia del expediente administrativo 0733-003317/2021,
+      carátula «Proyecto obra: Sistematización Cuenca Sur Cintra - Dpto. Unión». En
+      particular: la memoria técnica completa, los planos del canal principal y del
+      bordo de guarda del Canal Desviador al Río Tercero, el acto de adjudicación y
+      el contrato.
+
+      El {{legal:art6_formalidad}} de la {{legal:ley}} no exige otra formalidad que la identificación del
+      requirente y del documento buscado, y no puede exigirse que explique el fin de
+      la solicitud. Renuncio a reproducción física: solicito la respuesta por este
+      correo, sin cargo. Si el expediente es extenso, acepto la entrega por etapas
+      (memoria y planos primero).
+
+      {{bloque:correo_limites}}
+
+      {{bloque:correo_cierre}}
+
+  "4":
+    titulo: "Reglamento de ocupación/uso de zona de camino (F-4)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "del siguiente documento en poder de esa Dirección:"
+      ley8555: "Ley 8555"
+    cuerpo: |
+      > Señores
+      > DIRECCIÓN PROVINCIAL DE VIALIDAD
+      > [DIRECCIÓN DEL DESTINATARIO]
+      >
+      {{bloque:apertura}}
+      >
+      > **El reglamento de ocupación y/o uso de la zona de camino de la red vial
+      > provincial, en la redacción vigente al momento de la presentación. En su caso,
+      > también se solicita el índice de resoluciones vigentes de esa Dirección que
+      > contengan disposiciones sobre ocupación, uso y cruzamientos en la zona de
+      > camino.**
+      >
+      > **Y, en particular, la Resolución N° 0133/01 de esa Dirección, del 30 de marzo
+      > de 2001** —la que las autorizaciones de uso de zona de camino invocan como
+      > «previsiones» generales junto con la {{id:ley8555}}—, **en su texto original, con
+      > sus anexos si los tuviere, y con su estado de vigencia actual.** Si dicha
+      > resolución no constituye el reglamento sino una norma que lo integra o lo
+      > modifica, solicito **también el reglamento** en que se enmarca.
+      >
+      > Se identifica el documento por su materia y por el organismo emisor, y a la
+      > resolución citada por **número, órgano emisor y fecha**, conforme al {{legal:art6_formalidad}} de
+      > la {{legal:ley}}, que no exige otra formalidad que la identificación del documento
+      > buscado. Si existen varias versiones, se solicita la vigente.
+      >
+      > **Fundamento de la solicitud.** El reglamento gobierna los cruces y los
+      > paralelismos de canales sobre caminos provinciales. Su texto no está publicado
+      > en fuente abierta: ni el sitio de esa Dirección ni las bases de legislación
+      > consultadas lo traen. Se pide el reglamento mismo, no su interpretación.
+      >
+      {{bloque:limites_documento}}
+      >
+      {{bloque:costo_gratuito}}
+      >
+      > **Canal de respuesta.** Se solicita la respuesta al correo
+      > **[CORREO]**, sin perjuicio de lo que esta Dirección entienda conveniente.
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Reglamento de ocupación de zona de camino
+
+      Señores de la Dirección Provincial de Vialidad:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia del reglamento de ocupación y/o uso de la zona de
+      camino de la red vial provincial, en la redacción vigente, y del índice de
+      resoluciones vigentes que contengan disposiciones sobre ocupación, uso y
+      cruzamientos en la zona de camino.
+
+      En particular, solicito la **Resolución N° 0133/01 de esa Dirección, del 30 de
+      marzo de 2001** —citada por las autorizaciones de uso de zona de camino como
+      «previsiones» generales—, con sus anexos si los tuviere y con su estado de
+      vigencia actual.
+
+      {{bloque:correo_formalidad_gratis}}
+
+      {{bloque:correo_limites}}
+
+      {{bloque:correo_cierre}}
+
+  "5":
+    titulo: "Resolución 2/2024 de la Autoridad de Cuencas (NL-3)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "del siguiente documento en poder de esa Autoridad:"
+      art6_ley10941: "art. 6 de la Ley 10941"
+    cuerpo: |
+      > Señores
+      > AUTORIDAD DE CUENCAS
+      > Provincia de Córdoba
+      >
+      {{bloque:apertura}}
+      >
+      > **La Resolución 2/2024 de la Autoridad de Cuencas, que crea las Unidades de
+      > Gestión previstas en el {{id:art6_ley10941}}, en la redacción vigente al
+      > momento de la presentación, con todos sus anexos.**
+      >
+      > Se identifica el documento por su número, año, organismo emisor y materia,
+      > conforme al {{legal:art6_formalidad}} de la {{legal:ley}}, que no exige otra formalidad que la
+      > identificación del documento buscado. Si existen versiones o modificaciones
+      > posteriores, se solicita la vigente.
+      >
+      > **Fundamento de la solicitud.** Esa resolución figura mencionada en el sitio
+      > oficial de esa Autoridad como el acto que crea las Unidades de Gestión del
+      > {{id:art6_ley10941}}. Su texto no está publicado en fuente abierta. Se pide
+      > el acto mismo, no su interpretación.
+      >
+      {{bloque:limites_documento}}
+      >
+      {{bloque:costo_gratuito}}
+      >
+      > **Canal de respuesta.** Se solicita la respuesta al correo **[CORREO]**.
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Resolución 2/2024 de la Autoridad de Cuencas
+
+      Señores de la Autoridad de Cuencas:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia de la Resolución 2/2024 de esa Autoridad, que crea
+      las Unidades de Gestión previstas en el {{id:art6_ley10941}}, en la redacción
+      vigente, con todos sus anexos.
+
+      {{bloque:correo_formalidad_gratis}}
+
+      {{bloque:correo_limites}}
+
+      {{bloque:correo_cierre}}
+
+  "6":
+    titulo: "Copia certificada del expediente 0660-002107/2013 (F-17)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "del siguiente documento en poder de esa Autoridad:"
+    cuerpo: |
+      > Señores
+      > AUTORIDAD PROVINCIAL DE RECURSOS HÍDRICOS (APRHI)
+      > [a la atención de quien corresponda]
+      >
+      {{bloque:apertura}}
+      >
+      > **Copia certificada del expediente administrativo 0660-002107/2013, que contiene
+      > la Resolución SRH N° 157/2013 y la Resolución General APRHI N° 004/2026, ambas
+      > relativas al consorcio Leones – Villa Elisa.**
+      >
+      > Se identifica el documento por su número de expediente y por las resoluciones
+      > que lo componen, conforme al {{legal:art6_formalidad}} de la {{legal:ley}}, que no exige otra
+      > formalidad que la identificación del documento buscado. Se solicita
+      > expresamente **copia certificada**, en los términos del {{legal:art5}} de la {{legal:ley}}
+      > —cuyo acceso es gratuito salvo el cargo por reproducción—, por tratarse de
+      > actos cuya autenticidad interesa acreditar frente a terceros.
+      >
+      > **Fundamento de la solicitud.** Las dos resoluciones son la única fuente de su
+      > propio texto en formato consultable: la **Resolución General APRHI N°
+      > 004/2026** no se encuentra en el Boletín Oficial ni en ninguna base abierta, y
+      > la **Resolución SRH N° 157/2013**, aunque está publicada en el Boletín Oficial
+      > del 25 de junio de 2013, sólo circula fuera de él como escaneo sin capa de
+      > texto. Se pide el acto mismo, no su interpretación.
+      >
+      > **Aclaración sobre eventuales límites.** Si alguna parte del expediente
+      > estuviera alcanzada por las restricciones del {{legal:art3}}, solicito se entregue el
+      > **resto** del expediente, conforme al {{legal:art4}} de la {{legal:ley}}. La invocación de
+      > una cláusula restringida no habilita la negativa total del legajo.
+      >
+      > **Costo.** [CONSENTIMIENTO DE COSTO]
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Copia certificada expte. 0660-002107/2013
+
+      Señores de la APRHI:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia certificada del expediente administrativo
+      0660-002107/2013, que contiene la Resolución SRH N° 157/2013 y la Resolución
+      General APRHI N° 004/2026, relativas al consorcio Leones - Villa Elisa.
+
+      El {{legal:art6_formalidad}} de la {{legal:ley}} no exige otra formalidad que la identificación del
+      requirente y del documento buscado, y no puede exigirse que explique el fin de
+      la solicitud. [CONSENTIMIENTO DE COSTO]
+
+      {{bloque:correo_limites}}
+
+      {{bloque:correo_cierre}}
+
+  "7":
+    titulo: "Copia certificada del expediente 0416-000697/2014 (F-22 + F-27)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "del siguiente documento en poder de esa Autoridad:"
+    cuerpo: |
+      > Señores
+      > AUTORIDAD PROVINCIAL DE RECURSOS HÍDRICOS (APRHI)
+      > [a la atención de quien corresponda]
+      >
+      {{bloque:apertura}}
+      >
+      > **Copia certificada del expediente administrativo 0416-000697/2014, que contiene
+      > la Resolución SRHyC N° 189/2014 (constitutiva del Consorcio de Gestión Integrado
+      > de Cuencas 10 de Mayo). En particular: (i) la carátula completa del expediente y
+      > el índice de sus documentos; (ii) la Resolución 189/2014 con sus anexos, en
+      > particular los sellos de fecha y firma; y (iii) si el expediente contiene
+      > legajos técnicos de obra de ese consorcio, esos legajos con sus planos y
+      > memorias.**
+      >
+      > Se identifica el documento por su número de expediente y por la resolución que
+      > lo componen, conforme al {{legal:art6_formalidad}} de la {{legal:ley}}, que no exige otra formalidad
+      > que la identificación del documento buscado. Se solicita expresamente **copia
+      > certificada** en los términos del {{legal:art5}} —acceso gratuito salvo cargo por
+      > reproducción—, por tratarse de actos cuya autenticidad interesa acreditar
+      > frente a terceros.
+      >
+      > **Fundamento de la solicitud.** (i) El sello de año y el de firma de la Res.
+      > 189/2014 son ilegibles en el escaneo disponible; se pide el acto mismo para
+      > poder leerlos. (ii) Tras revisar tres resúmenes normativos semanales de esa
+      > Autoridad no aparece ninguna resolución de aprobación de legajo técnico de obra
+      > de ese consorcio. Se pide la carátula y sus alcances para verificar si existe
+      > y, en su caso, obtener el legajo. No se pide la interpretación del acto.
+      >
+      > **Aclaración sobre eventuales límites.** Si alguna parte del expediente
+      > estuviera alcanzada por las restricciones del {{legal:art3}} —por ejemplo, información
+      > de la contratista en carácter confidencial o de estrategia empresarial—,
+      > solicito se entregue el **resto** del expediente, conforme al {{legal:art4}} de la {{legal:ley}}. La invocación de una cláusula restringida no habilita la negativa total
+      > del legajo.
+      >
+      > **Costo.** [CONSENTIMIENTO DE COSTO]
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Copia certificada expte. 0416-000697/2014
+
+      Señores de la APRHI:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia certificada del expediente administrativo
+      0416-000697/2014, que contiene la Resolución SRHyC N° 189/2014 (constitutiva del
+      Consorcio 10 de Mayo). En particular: la carátula y el índice de sus documentos;
+      la resolución con sus anexos, en particular los sellos de fecha y firma; y, si
+      el expediente contiene legajos técnicos de obra de ese consorcio, esos legajos
+      con sus planos y memorias.
+
+      El {{legal:art6_formalidad}} de la {{legal:ley}} no exige otra formalidad que la identificación del
+      requirente y del documento buscado, y no puede exigirse que explique el fin de
+      la solicitud. [CONSENTIMIENTO DE COSTO]
+
+      {{bloque:correo_limites}}
+
+      {{bloque:correo_cierre}}
+
+  "9":
+    titulo: "Anexo Único de la Res. 4/2026 (F-30)"
+    identificacion_confirmada: true
+    identificacion:
+      objeto_intro: "del siguiente documento en poder de ese Ministerio:"
+    cuerpo: |
+      > Señores
+      > MINISTERIO DE BIOAGROINDUSTRIA
+      > Provincia de Córdoba
+      >
+      {{bloque:apertura}}
+      >
+      > **El Anexo Único de la Resolución N° 4/2026 de ese Ministerio, en la redacción
+      > con que fue publicado y aprobado, con todos sus artículos y anexos que la
+      > resolución apruebe.**
+      >
+      > Se identifica el documento por su número de resolución, año y organismo emisor,
+      > y por su parte accesoria (el Anexo Único), conforme al {{legal:art6_formalidad}} de la {{legal:ley}},
+      > que no exige otra formalidad que la identificación del documento buscado. Se
+      > solicita el **texto del Anexo**, no su interpretación.
+      >
+      > **Fundamento de la solicitud.** El cuerpo resolutivo de la Res. 4/2026 ya está
+      > disponible por doble fuente (Fiscalía de Estado y B.O. 08-01-2026). El Anexo
+      > Único, en cambio, sólo se obtuvo de una fuente: el PDF adjunto a la ficha de
+      > Fiscalía de Estado. El B.O. del 08-01-2026 no lo transcribe. Se pide el Anexo
+      > por segunda fuente para confirmar su texto.
+      >
+      {{bloque:limites_documento}}
+      >
+      {{bloque:costo_gratuito}}
+      >
+      > **Canal de respuesta.** Se solicita la respuesta al correo **[CORREO]**.
+      >
+      {{bloque:cierre}}
+    correo: |
+      Asunto: Acceso a la información pública - {{legal:ley}} - Anexo Único de la Res. 4/2026
+
+      Señores del Ministerio de Bioagroindustria:
+
+      Ejercicio el derecho de acceso a la información pública ({{legal:ley}}, Provincia de
+      Córdoba) y solicito copia del Anexo Único de la Resolución N° 4/2026 de ese
+      Ministerio, en la redacción con que fue publicado y aprobado, con todos sus
+      artículos y anexos que la resolución apruebe.
+
+      {{bloque:correo_formalidad_gratis}}
+
+      {{bloque:correo_limites}}
+
+      {{bloque:correo_cierre}}
