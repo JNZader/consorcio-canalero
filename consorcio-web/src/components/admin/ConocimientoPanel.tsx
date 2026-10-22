@@ -35,30 +35,38 @@ import {
   Code,
   Group,
   Loader,
+  NativeSelect,
   Paper,
   Stack,
   Text,
   Textarea,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { useState } from 'react';
 
+import { useConocimientoNormas } from '../../hooks/useConocimientoNormas';
 import { useConocimientoQA } from '../../hooks/useConocimientoQA';
 import {
+  CONOCIMIENTO_ESTADOS,
+  CONOCIMIENTO_PREGUNTA_MAX_CHARS,
+  ConocimientoApiError,
+  type ConocimientoBorradorExportado,
   type ConocimientoCita,
   type ConocimientoEstado,
   type ConocimientoItem,
   type ConocimientoRedireccion,
-  CONOCIMIENTO_ESTADOS,
-  CONOCIMIENTO_PREGUNTA_MAX_CHARS,
-  ConocimientoApiError,
+  type ConocimientoResultadoNormas,
+  PEDIDOS_8803,
 } from '../../lib/api/conocimiento';
 import {
   IconAlertTriangle,
   IconClock,
+  IconDownload,
   IconExternalLink,
   IconInfoCircle,
   IconRefresh,
+  IconSearch,
   IconSend,
 } from '../ui/icons';
 import ProtectedRoute from './ProtectedRoute';
@@ -413,6 +421,10 @@ const CAUSA_LEGIBLE: Record<string, string> = {
   // default state of a deployment with no flag set is OFF — so leaking the raw
   // setting name here would make the commonest case the least readable one.
   conocimiento_qa_enabled: 'el buzón de consultas no está habilitado en este entorno',
+  // The norms surface's own switch and its corpus precondition. Same reasoning:
+  // OFF is the default state, so it is the commonest refusal and must read well.
+  conocimiento_normas_enabled: 'la búsqueda de normas no está habilitada en este entorno',
+  sin_corpus_activo: 'no hay ningún corpus normativo activo para consultar',
   // The quota/ceiling refusals. The server sends `type(exc).__name__`, so the
   // wire value is the Python CLASS name, not the snake_case `causa` attribute.
   CuotaAgotada: 'se agotó tu cuota diaria de consultas',
@@ -436,15 +448,19 @@ export function causaLegible(causa: string | null): string | null {
   return `una dependencia del servicio reportó «${causa}»`;
 }
 
-export function EstadoDelServicio({ error }: Readonly<{ error: ConocimientoApiError }>) {
+export function EstadoDelServicio({
+  error,
+  titulo = 'El buzón de consultas no está operativo',
+  testId = 'estado-servicio',
+}: Readonly<{ error: ConocimientoApiError; titulo?: string; testId?: string }>) {
   const causa = causaLegible(error.causa);
   return (
     <Alert
       color="orange"
       variant="light"
       icon={<IconAlertTriangle size={16} />}
-      title="El buzón de consultas no está operativo"
-      data-testid="estado-servicio"
+      title={titulo}
+      data-testid={testId}
       data-causa={error.causa ?? ''}
     >
       <Stack gap={4}>
@@ -629,6 +645,292 @@ export function ConocimientoBandeja() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Norms search + Ley 8803 draft export
+// ---------------------------------------------------------------------------
+
+/** `YYYY-MM-DD HH:MM` in the viewer's locale; an unparsable stamp is shown as sent. */
+function fechaDeIngesta(iso: string): string {
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return iso;
+  return fecha.toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/**
+ * What the panel says about the units the server returned.
+ *
+ * The panel renders the SERVER's decision and re-decides nothing: `rango` is
+ * shown only when the server sent it (the response shape itself says whether an
+ * order is presented), the `nota_orden` is shown verbatim, and an empty result is
+ * "no units recovered" — NOT an abstention. The surface returns units, not
+ * answers, so it has no standing to say that no norm applies, and a blank list
+ * must not be read as if it did.
+ *
+ * There is no score anywhere: the server sends none, and a number invented here
+ * would be a relevance claim the recorded bar does not back.
+ */
+export function ResultadoNormasVista({
+  resultado,
+}: Readonly<{ resultado: ConocimientoResultadoNormas }>) {
+  const ordenado = resultado.orden_presentado === true;
+  return (
+    <Stack gap="sm" data-testid="normas-resultado">
+      <Group gap="xs" wrap="wrap">
+        <Badge
+          size="sm"
+          variant="light"
+          color="gray"
+          title={resultado.corpus_sha}
+          data-testid="normas-sha"
+          data-corpus-sha={resultado.corpus_sha}
+        >
+          corpus {resultado.corpus_sha.slice(0, 8)}
+        </Badge>
+        <Text size="xs" c="dimmed" data-testid="normas-ingesta">
+          ingestado el {fechaDeIngesta(resultado.ingested_at)}
+        </Text>
+        <Badge
+          size="sm"
+          variant="light"
+          color={ordenado ? 'teal' : 'yellow'}
+          data-testid="normas-orden-estado"
+        >
+          {ordenado
+            ? `orden por relevancia (${resultado.orden_modo ?? resultado.modo})`
+            : 'sin orden de relevancia'}
+        </Badge>
+      </Group>
+
+      <Text size="sm" c="dimmed" data-testid="normas-nota-orden">
+        {resultado.nota_orden}
+      </Text>
+
+      {resultado.sin_unidades ? (
+        <Alert color="gray" variant="light" data-testid="normas-sin-unidades">
+          No se recuperó ninguna unidad para esta consulta. Probá con otras palabras: este resultado
+          no dice nada sobre si existe o no una norma aplicable.
+        </Alert>
+      ) : null}
+
+      <Stack gap="xs">
+        {resultado.unidades.map((unidad) => (
+          <Box
+            key={unidad.citation_key}
+            data-testid="norma-unidad"
+            data-citation-key={unidad.citation_key}
+          >
+            <Group gap="xs" align="flex-start" wrap="nowrap">
+              {typeof unidad.rango === 'number' ? (
+                <Badge size="lg" variant="outline" data-testid="norma-rango">
+                  #{unidad.rango}
+                </Badge>
+              ) : null}
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <ConocimientoCitaCard cita={{ ...unidad, fuente_url: null }} />
+              </Box>
+            </Group>
+          </Box>
+        ))}
+      </Stack>
+    </Stack>
+  );
+}
+
+/** The conditions `normas.chequear` can fail on, plus the classification block. */
+const CAUSA_EXPORTACION: Record<string, string> = {
+  privado: 'la unidad citada está clasificada como privada o sin clasificar',
+  sha: 'el corpus activo ya no es el que el borrador fijó',
+  clave: 'la unidad citada no existe en el corpus activo',
+  span: 'el texto citado cambió respecto del fijado en el borrador',
+  vigencia: 'la vigencia de la norma cambió respecto de la fijada en el borrador',
+};
+
+/**
+ * Why a draft was NOT exported, naming the slot and the cause.
+ *
+ * The export is all-or-nothing, so a refusal has no partial text to show: this
+ * says which citation slot failed and why, and the operator fixes the template or
+ * re-pins the corpus. A 422 (`pedido_no_soportado`) and a 503 are different
+ * states and are rendered by the caller, not here.
+ */
+function RechazoDeExportacion({ error }: Readonly<{ error: ConocimientoApiError }>) {
+  const fallas = Array.isArray(error.extra.fallas)
+    ? (error.extra.fallas as { slot?: unknown; causa?: unknown }[])
+    : [];
+  const lista = fallas.length > 0 ? fallas : [{ slot: error.extra.slot, causa: error.causa }];
+
+  return (
+    <Alert
+      color="red"
+      variant="light"
+      icon={<IconAlertTriangle size={16} />}
+      title="El borrador no se exportó"
+      data-testid="pedido-rechazo"
+    >
+      <Stack gap={4}>
+        {lista.map((falla) => (
+          <Text size="sm" key={`${String(falla.slot)}-${String(falla.causa)}`}>
+            Cita <Code>{String(falla.slot ?? '?')}</Code>: causa{' '}
+            <Code>{String(falla.causa ?? '?')}</Code>
+            {typeof falla.causa === 'string' && CAUSA_EXPORTACION[falla.causa]
+              ? ` — ${CAUSA_EXPORTACION[falla.causa]}`
+              : ''}
+            .
+          </Text>
+        ))}
+        <Text size="sm" c="dimmed">
+          No se generó ningún archivo.
+        </Text>
+      </Stack>
+    </Alert>
+  );
+}
+
+/** Hand text to the browser as a file. Revoked right away: nothing is kept around. */
+function descargarMarkdown({ nombre, contenido }: ConocimientoBorradorExportado) {
+  const url = URL.createObjectURL(new Blob([contenido], { type: 'text/markdown;charset=utf-8' }));
+  const ancla = document.createElement('a');
+  ancla.href = url;
+  ancla.download = nombre;
+  ancla.click();
+  URL.revokeObjectURL(url);
+}
+
+export function NormasBusqueda() {
+  const {
+    resultado,
+    isBuscando,
+    errorBusqueda,
+    buscar,
+    exportar,
+    isExportando,
+    errorExportacion,
+    limpiarErrorExportacion,
+  } = useConocimientoNormas();
+  const [consulta, setConsulta] = useState('');
+  const [pedido, setPedido] = useState('');
+
+  const buscarAhora = () => {
+    const limpia = consulta.trim();
+    if (limpia.length > 0) buscar(limpia);
+  };
+
+  const exportarAhora = () => {
+    if (pedido === '') return;
+    exportar(pedido, { onSuccess: descargarMarkdown });
+  };
+
+  const errores = [errorBusqueda, errorExportacion];
+  const errorDeServicio = errores.find(esRefusalDeServicio);
+  const sesionExpirada = errores.some(esSesionExpirada);
+  const rechazo =
+    errorExportacion instanceof ConocimientoApiError && errorExportacion.status === 409
+      ? errorExportacion
+      : null;
+  const yaMostrado = (candidato: unknown) =>
+    esRefusalDeServicio(candidato) || esSesionExpirada(candidato) || candidato === rechazo;
+  const otroErrorBusqueda = errorBusqueda && !yaMostrado(errorBusqueda) ? errorBusqueda : null;
+  const otroErrorExportacion =
+    errorExportacion && !yaMostrado(errorExportacion) ? errorExportacion : null;
+
+  return (
+    <Stack gap="lg" p="md" data-testid="normas-panel">
+      <Box>
+        <Title order={2}>Búsqueda en el corpus normativo</Title>
+        <Text size="sm" c="dimmed">
+          Devuelve unidades del corpus tal como están ingestadas, no respuestas. Cada resultado
+          indica de qué versión del corpus sale.
+        </Text>
+      </Box>
+
+      {sesionExpirada ? <SesionExpirada /> : null}
+      {errorDeServicio ? (
+        <EstadoDelServicio
+          error={errorDeServicio}
+          titulo="La búsqueda de normas no está operativa"
+          testId="normas-estado-servicio"
+        />
+      ) : null}
+
+      <Paper withBorder radius="md" p="md">
+        <Stack gap="sm">
+          <Group align="flex-end" wrap="nowrap">
+            <TextInput
+              style={{ flex: 1 }}
+              label="Consulta"
+              placeholder="canal de riego, acceso a la información pública…"
+              maxLength={CONOCIMIENTO_PREGUNTA_MAX_CHARS}
+              value={consulta}
+              onChange={(event) => setConsulta(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') buscarAhora();
+              }}
+              data-testid="normas-input"
+            />
+            <Button
+              leftSection={<IconSearch size={16} />}
+              onClick={buscarAhora}
+              loading={isBuscando}
+              disabled={consulta.trim().length === 0}
+              data-testid="normas-buscar"
+            >
+              Buscar
+            </Button>
+          </Group>
+          {otroErrorBusqueda ? (
+            <Alert color="red" variant="light" data-testid="normas-error">
+              {otroErrorBusqueda.message}
+            </Alert>
+          ) : null}
+        </Stack>
+      </Paper>
+
+      {resultado ? <ResultadoNormasVista resultado={resultado} /> : null}
+
+      <Paper withBorder radius="md" p="md">
+        <Stack gap="sm">
+          <Title order={3}>Borradores de pedidos (Ley 8803)</Title>
+          <Text size="xs" c="dimmed">
+            Cada cita del borrador se verifica contra el corpus activo antes de exportar. Si una
+            falla, no se genera nada.
+          </Text>
+          <Group align="flex-end" wrap="nowrap">
+            <NativeSelect
+              style={{ flex: 1 }}
+              label="Pedido"
+              value={pedido}
+              onChange={(event) => {
+                setPedido(event.currentTarget.value);
+                limpiarErrorExportacion();
+              }}
+              data={[
+                { value: '', label: 'Elegí un pedido…' },
+                ...PEDIDOS_8803.map((p) => ({ value: p.id, label: p.titulo })),
+              ]}
+              data-testid="pedido-select"
+            />
+            <Button
+              leftSection={<IconDownload size={16} />}
+              onClick={exportarAhora}
+              loading={isExportando}
+              disabled={pedido === ''}
+              data-testid="pedido-exportar"
+            >
+              Exportar borrador
+            </Button>
+          </Group>
+          {rechazo ? <RechazoDeExportacion error={rechazo} /> : null}
+          {otroErrorExportacion ? (
+            <Alert color="red" variant="light" data-testid="pedido-error">
+              {otroErrorExportacion.message}
+            </Alert>
+          ) : null}
+        </Stack>
+      </Paper>
+    </Stack>
+  );
+}
+
 /**
  * `require_admin` on the server is the real boundary (retrieval delta:37-41).
  * This gate is the IN-PAGE state: without it an operador who reaches the route
@@ -638,6 +940,7 @@ export default function ConocimientoPanel() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <ConocimientoBandeja />
+      <NormasBusqueda />
     </ProtectedRoute>
   );
 }

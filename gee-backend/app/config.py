@@ -181,6 +181,13 @@ class Settings(BaseSettings):
     # (U6 bounded correction, task 7.2).
     conocimiento_qa_enabled: bool = False
 
+    # The norms surface's OWN kill switch, independent of the one above. Default
+    # False and env-backed, for the same reason. `POST /conocimiento/normas/buscar`
+    # answers nothing: it searches and shows verbatim legal units, so it needs no
+    # provider terms record, no credential and no embedder sidecar, and it must be
+    # switchable without turning the Q&A mailbox on (or off) with it.
+    conocimiento_normas_enabled: bool = False
+
     # Cached `/ready` probe TTL. Short on purpose: the gate must cost nothing per
     # request and still flip within seconds of the sidecar container dying.
     conocimiento_ready_ttl_s: float = 5.0
