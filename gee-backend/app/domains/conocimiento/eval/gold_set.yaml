@@ -4,6 +4,11 @@
 # unanswerable = 52. Source: `eval-preguntas-oro-DRAFT-2026-08-10.md`, whose
 # provenance record is `docs/rag/gold-set-provenance.md`.
 #
+# 2026-10-20 the owner ratified five more public direct questions, D-9..D-13.
+# Answerable is 34. Unanswerable stays 23. Total is 57. The 2026-08-10 wording
+# of the original 52 is unchanged. D-10's chat wording was anaphoric
+# ("ese plazo"); the committed question names Ley 8803 so the item stands alone.
+#
 # ---------------------------------------------------------------------------
 # WHY SOME QUESTIONS HAVE NO TEXT HERE (`origen: privado`)
 # ---------------------------------------------------------------------------
@@ -56,7 +61,7 @@
 #   clase            answerable | unanswerable | trampa-vigencia
 #                    `trampa-vigencia` IS answerable — it is the subset whose
 #                    correct answer depends on a caveat unit, and it counts
-#                    toward the 29. Only `unanswerable` is excluded.
+#                    toward the answerable subset. Only `unanswerable` is excluded.
 #   subclase         the draft's own taxonomy, carried for traceability
 #   citas_esperadas  expected citation keys, verbatim per the MANIFEST convention
 #   citas_vigencia   the subset of citas_esperadas carrying the vigencia caveat
@@ -145,6 +150,59 @@ items:
     origen: publico
     # Canary of the ingester, not of the model: Ley 8803 declares `tipo: ley`
     # (D-22). A filter on `tipo == 'ley-provincial'` makes this unanswerable.
+
+  # Ratified 2026-10-20. Public statute questions. The operational guide
+  # `8803#el-reloj` restates D-9 and D-10; expected credit stays on the article,
+  # the same rule D-7 uses for `8803#6`.
+  - id: D-9
+    pregunta: "Según la Ley 8803, ¿en cuántos días hábiles tiene que contestarse un pedido de acceso a la información, y se puede prorrogar?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["8803#7"]
+    fuente: ley-8803-acceso-informacion-cordoba.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-10
+    pregunta: "Si venció el plazo de la Ley 8803 y el pedido de información no se contestó, ¿qué se entiende y qué acción queda habilitada?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["8803#8"]
+    fuente: ley-8803-acceso-informacion-cordoba.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-11
+    pregunta: "¿Quiénes firman el acta de una asamblea general de un consorcio canalero?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9750#17"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-12
+    pregunta: "¿Quién representa al consorcio canalero y con quién firma la documentación?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["9750#25"]
+    fuente: ley-9750-consorcios-canaleros.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
+
+  - id: D-13
+    pregunta: "Si la Ley 5350 no fija un plazo especial para una citación, intimación, emplazamiento, traslado o vista, ¿de cuántos días es?"
+    clase: answerable
+    subclase: directa
+    citas_esperadas: ["5350#66"]
+    fuente: ley-procedimiento-administrativo-cordoba.md
+    validado_por: owner
+    dificultad: facil
+    origen: publico
 
   # =========================================================================
   # B. RESPONDIBLES — compuestas (2-3 unidades)

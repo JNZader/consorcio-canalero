@@ -1029,8 +1029,8 @@ class TestExencionOverCeiling:
 class TestElGoldSetRatificado:
     def test_loads_with_the_ratified_denominators(self):
         conjunto = cargar_gold_set()
-        assert len(conjunto.items) == 52
-        assert conjunto.n_respondibles == 29
+        assert len(conjunto.items) == 57
+        assert conjunto.n_respondibles == 34
         assert conjunto.n_unanswerable == 23
 
     def test_every_item_is_owner_validated(self):
@@ -1081,6 +1081,25 @@ class TestElGoldSetRatificado:
             "8560#5#parte-10",
         )
         assert por_id["D-7"].citas_esperadas == ("8803#6",)
+
+    def test_the_2026_10_20_batch_is_five_public_direct_questions(self):
+        """Owner ratified these five on 2026-10-20. Each expects one statute key."""
+        por_id = {item.id: item for item in cargar_gold_set().items}
+        esperadas = {
+            "D-9": ("8803#7",),
+            "D-10": ("8803#8",),
+            "D-11": ("9750#17",),
+            "D-12": ("9750#25",),
+            "D-13": ("5350#66",),
+        }
+        for item_id, citas in esperadas.items():
+            item = por_id[item_id]
+            assert item.citas_esperadas == citas
+            assert item.clase == "answerable"
+            assert item.subclase == "directa"
+            assert item.origen == "publico"
+            assert item.validado_por == "owner"
+            assert item.pregunta
 
     def test_unanswerable_items_declare_no_expected_citation(self):
         for item in cargar_gold_set().items:
@@ -1206,7 +1225,7 @@ class TestElGoldSetRatificado:
         conjunto = cargar_gold_set()
         assert conjunto.no_resueltas == ()
         assert conjunto.precondicion().evaluable is True
-        assert conjunto.precondicion().n_respondibles == 29
+        assert conjunto.precondicion().n_respondibles == 34
 
     def test_a_private_file_missing_one_id_leaves_that_item_unresolved(self, tmp_path, monkeypatch):
         privado = tmp_path / "parcial.yaml"
