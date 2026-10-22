@@ -1234,8 +1234,14 @@ wherever this document assumes them:
 one question was worth 0.034 hit@5. The B50 family reads as ≈0.72–0.76. On 2026-10-20 the owner
 ratified five public direct questions (D-9..D-13). The committed answerable set is 34, so one
 question is worth 0.029 hit@5. The bars did not move. Re-measured the same day, local only, arm
-`bm25_ce`: hit@5 27/34 = 0.7941. D-9..D-13 hit at rank 1. The seven misses stay D-7, C-6, C-9, T-4,
-T-5, V-3, Q-2. Retrieval bars pass. Enablement stays not-evaluable. Re-chunking is F1: every unit whose indexed text exceeds 1024 real reranker tokens
+`bm25_ce`: hit@5 27/34 = 0.7941. D-9..D-13 hit at rank 1. The seven misses on that page were
+D-7, C-6, C-9, T-4, T-5, V-3, Q-2. Re-measured 2026-10-22 on main `575cc16a`, after the four
+query bridges, same pin and the same lab database, arm `bm25_ce`, real reranker,
+`transformers` 5.20.2: hit@5 31/34 = 0.9118. hit@10 33/34 = 0.9706, MRR 0.7190,
+citation-precision 0.5294, norma-vs-secundaria 1.0, vigencia-correctness 1.0. Entered hit@5:
+D-7 rank 1, Q-2 rank 1, V-3 rank 1, C-6 rank 3. No previous hit fell. Still out: C-9 rank 6,
+T-5 rank 9, T-4 outside the top 10. Retrieval bars pass. Enablement stays not-evaluable.
+Re-chunking is F1: every unit whose indexed text exceeds 1024 real reranker tokens
 (measured 2026-10-19: 49 units; the earlier "10 units / max 58,619 chars" used the wrong ceiling). Parts
 are packed to 960 tokens. It is follow-up work, not an apply gate. hit@5 after the split was
 re-measured 2026-10-20 on the same 29, local only, arm `bm25_ce`: 22/29 = 0.7586, and the
