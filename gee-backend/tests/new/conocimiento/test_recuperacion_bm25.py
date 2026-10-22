@@ -515,6 +515,251 @@ class TestExpansionAprhiEsAutoridadDeAplicacion:
         assert "expandir_consulta_recuperacion" not in cuerpo_fusionado
 
 
+class TestExpansionFormalidadDelProposito:
+    """D-7: the question asks whether the purpose of an access request must be
+    explained. Ley 8803 art. 6 says it cannot. The measured append is that
+    sentence, on the retrieval query only, after the APRHI expansion.
+
+    The trigger is the shape (purpose-formality AND an access object), not the
+    gold id. `fundamentar` is not part of it: that is the vocabulary of an
+    administrative appeal, and it matched nobody in the gold set.
+    """
+
+    FRASE = "no puede exigirse la manifestación del propósito de la requisitoria"
+    D7 = (
+        "Si le pedimos a la APRHI el expediente de una obra, "
+        "¿tenemos que explicarles para qué lo queremos?"
+    )
+    D9 = (
+        "Según la Ley 8803, ¿en cuántos días hábiles tiene que contestarse "
+        "un pedido de acceso a la información, y se puede prorrogar?"
+    )
+    D10 = (
+        "Si venció el plazo de la Ley 8803 y el pedido de información no se "
+        "contestó, ¿qué se entiende y qué acción queda habilitada?"
+    )
+    C6 = "La APRHI nos rechazó el legajo. ¿Qué presentamos, ante quién y en qué plazo?"
+
+    def test_d7_agrega_la_frase_del_articulo_despues_de_aprhi(self):
+        expandida = expandir_consulta_recuperacion(self.D7)
+        assert expandida == f"{self.D7} Autoridad de Aplicación {self.FRASE}"
+
+    def test_d7_no_apila_la_frase_en_una_segunda_pasada(self):
+        una = expandir_consulta_recuperacion(self.D7)
+        assert expandir_consulta_recuperacion(una) == una
+
+    def test_d9_no_dispara(self):
+        assert expandir_consulta_recuperacion(self.D9) == self.D9
+        assert self.FRASE not in expandir_consulta_recuperacion(self.D9)
+
+    def test_d10_no_dispara(self):
+        assert expandir_consulta_recuperacion(self.D10) == self.D10
+
+    def test_c6_no_recibe_la_frase_de_la_8803(self):
+        """The appeal append lives in the next class. This one only keeps 8803 off C-6."""
+        assert self.FRASE not in expandir_consulta_recuperacion(self.C6)
+
+
+class TestExpansionRecursoContraRechazoDeLegajo:
+    """C-6: APRHI rejected a legajo and the question asks what to file and the
+    deadline. Ley 5350 art. 80 is the reconsideración and art. 84 is the
+    alzada. Neither stem is in the question. The measured append is both
+    phrases, after the APRHI expansion, and only when a legajo was rejected
+    AND the question asks what to file or the deadline.
+
+    Plazo alone is not enough: D-10 and D-13 say plazo and must stay
+    unchanged. D-7 keeps the 8803 sentence and must not gain these phrases.
+    """
+
+    FRASE = "recurso de reconsideración recurso de alzada"
+    FRASE_8803 = "no puede exigirse la manifestación del propósito de la requisitoria"
+    C6 = "La APRHI nos rechazó el legajo. ¿Qué presentamos, ante quién y en qué plazo?"
+    D7 = (
+        "Si le pedimos a la APRHI el expediente de una obra, "
+        "¿tenemos que explicarles para qué lo queremos?"
+    )
+    D10 = (
+        "Si venció el plazo de la Ley 8803 y el pedido de información no se "
+        "contestó, ¿qué se entiende y qué acción queda habilitada?"
+    )
+    D13 = (
+        "Si la Ley 5350 no fija un plazo especial para una citación, "
+        "intimación, emplazamiento, traslado o vista, ¿de cuántos días es?"
+    )
+
+    def test_c6_agrega_los_dos_recursos_despues_de_aprhi(self):
+        assert expandir_consulta_recuperacion(self.C6) == (
+            f"{self.C6} Autoridad de Aplicación {self.FRASE}"
+        )
+        assert self.FRASE_8803 not in expandir_consulta_recuperacion(self.C6)
+
+    def test_c6_no_apila_en_una_segunda_pasada(self):
+        una = expandir_consulta_recuperacion(self.C6)
+        assert self.FRASE in una
+        assert una.count(self.FRASE) == 1
+        assert expandir_consulta_recuperacion(una) == una
+
+    def test_d7_no_recibe_los_recursos(self):
+        expandida = expandir_consulta_recuperacion(self.D7)
+        assert expandida == f"{self.D7} Autoridad de Aplicación {self.FRASE_8803}"
+        assert self.FRASE not in expandida
+
+    def test_d10_no_recibe_los_recursos(self):
+        assert expandir_consulta_recuperacion(self.D10) == self.D10
+        assert self.FRASE not in expandir_consulta_recuperacion(self.D10)
+
+    def test_d13_no_recibe_los_recursos(self):
+        assert expandir_consulta_recuperacion(self.D13) == self.D13
+        assert self.FRASE not in expandir_consulta_recuperacion(self.D13)
+
+
+class TestExpansionServidumbreDePaso:
+    """Going onto land to clean or maintain a canal is Ley 5589 art. 256.
+
+    The measured append is "servidumbre de acueducto derecho de paso", after
+    the earlier rewrites, and only when the original question has all three:
+    entry, maintenance, and a watercourse. The positive case is a stand-in
+    sentence. The private gold wording stays out of this file.
+
+    Cleaning a canal without entry (D-8) and naming a canal without either
+    of the other halves (T-5) must stay unchanged. D-7 keeps the 8803
+    sentence and C-6 keeps the two appeal phrases.
+    """
+
+    FRASE = "servidumbre de acueducto derecho de paso"
+    FRASE_8803 = "no puede exigirse la manifestación del propósito de la requisitoria"
+    FRASE_RECURSO = "recurso de reconsideración recurso de alzada"
+    STAND_IN = "¿Podemos ingresar al predio a limpiar el canal?"
+    D8 = (
+        "La cuneta del camino que corre al lado del canal, ¿es nuestra? "
+        "¿La tenemos que limpiar nosotros?"
+    )
+    T5 = "Un consorcista tapó el canal / rompió el bordo. ¿Qué sanción le pueden aplicar?"
+    D7 = (
+        "Si le pedimos a la APRHI el expediente de una obra, "
+        "¿tenemos que explicarles para qué lo queremos?"
+    )
+    C6 = "La APRHI nos rechazó el legajo. ¿Qué presentamos, ante quién y en qué plazo?"
+
+    def test_el_stand_in_agrega_la_servidumbre_de_paso(self):
+        assert expandir_consulta_recuperacion(self.STAND_IN) == f"{self.STAND_IN} {self.FRASE}"
+
+    def test_el_stand_in_no_apila_en_una_segunda_pasada(self):
+        una = expandir_consulta_recuperacion(self.STAND_IN)
+        assert self.FRASE in una
+        assert una.count(self.FRASE) == 1
+        assert expandir_consulta_recuperacion(una) == una
+
+    def test_d8_no_recibe_la_servidumbre(self):
+        assert expandir_consulta_recuperacion(self.D8) == self.D8
+        assert self.FRASE not in expandir_consulta_recuperacion(self.D8)
+
+    def test_t5_no_recibe_la_servidumbre(self):
+        assert expandir_consulta_recuperacion(self.T5) == self.T5
+        assert self.FRASE not in expandir_consulta_recuperacion(self.T5)
+
+    def test_d7_conserva_la_8803_y_no_recibe_la_servidumbre(self):
+        expandida = expandir_consulta_recuperacion(self.D7)
+        assert expandida == f"{self.D7} Autoridad de Aplicación {self.FRASE_8803}"
+        assert self.FRASE not in expandida
+
+    def test_c6_conserva_los_recursos_y_no_recibe_la_servidumbre(self):
+        expandida = expandir_consulta_recuperacion(self.C6)
+        assert expandida == f"{self.C6} Autoridad de Aplicación {self.FRASE_RECURSO}"
+        assert self.FRASE not in expandida
+
+
+class TestExpansionProyectoEjecutivo:
+    """APRHI approval of a canal project or plan is Decreto 1315/2012 art. 2.
+
+    The measured append is "proyecto ejecutivo legajo técnico", after the
+    earlier rewrites, and only when the original question has all four:
+    APRHI, approval, a project or a plan, and a canal. The positive cases
+    are stand-in sentences. The private gold wording stays out of this file.
+
+    Dropping any half must not append the phrase. A zanja is not a canal.
+    D-7 keeps the 8803 sentence, C-6 keeps the two appeal phrases, and the
+    servidumbre stand-in keeps only that phrase.
+    """
+
+    FRASE = "proyecto ejecutivo legajo técnico"
+    FRASE_8803 = "no puede exigirse la manifestación del propósito de la requisitoria"
+    FRASE_RECURSO = "recurso de reconsideración recurso de alzada"
+    FRASE_SERVIDUMBRE = "servidumbre de acueducto derecho de paso"
+    STAND_IN = "¿La APRHI da la aprobación del proyecto del canal?"
+    PLANO = "¿La APRHI da la aprobación del plano del canal?"
+    SIN_APRHI = "¿Hace falta la aprobación del proyecto del canal?"
+    SIN_APROBACION = "¿La APRHI revisa el proyecto del canal?"
+    SIN_PROYECTO = "¿La APRHI da la aprobación del canal?"
+    SIN_CANAL = "¿La APRHI da la aprobación del proyecto?"
+    ZANJA = "¿La APRHI da la aprobación del proyecto de la zanja?"
+    D7 = (
+        "Si le pedimos a la APRHI el expediente de una obra, "
+        "¿tenemos que explicarles para qué lo queremos?"
+    )
+    C6 = "La APRHI nos rechazó el legajo. ¿Qué presentamos, ante quién y en qué plazo?"
+    SERVIDUMBRE = "¿Podemos ingresar al predio a limpiar el canal?"
+
+    def test_el_stand_in_agrega_el_proyecto_ejecutivo_despues_de_aprhi(self):
+        assert expandir_consulta_recuperacion(self.STAND_IN) == (
+            f"{self.STAND_IN} Autoridad de Aplicación {self.FRASE}"
+        )
+
+    def test_el_plano_tambien_agrega_el_proyecto_ejecutivo(self):
+        assert expandir_consulta_recuperacion(self.PLANO) == (
+            f"{self.PLANO} Autoridad de Aplicación {self.FRASE}"
+        )
+
+    def test_el_stand_in_no_apila_en_una_segunda_pasada(self):
+        una = expandir_consulta_recuperacion(self.STAND_IN)
+        assert self.FRASE in una
+        assert una.count(self.FRASE) == 1
+        assert expandir_consulta_recuperacion(una) == una
+
+    def test_sin_aprhi_queda_igual(self):
+        assert expandir_consulta_recuperacion(self.SIN_APRHI) == self.SIN_APRHI
+        assert self.FRASE not in expandir_consulta_recuperacion(self.SIN_APRHI)
+
+    def test_sin_aprobacion_solo_recibe_aprhi(self):
+        assert expandir_consulta_recuperacion(self.SIN_APROBACION) == (
+            f"{self.SIN_APROBACION} Autoridad de Aplicación"
+        )
+        assert self.FRASE not in expandir_consulta_recuperacion(self.SIN_APROBACION)
+
+    def test_sin_proyecto_ni_plano_solo_recibe_aprhi(self):
+        assert expandir_consulta_recuperacion(self.SIN_PROYECTO) == (
+            f"{self.SIN_PROYECTO} Autoridad de Aplicación"
+        )
+        assert self.FRASE not in expandir_consulta_recuperacion(self.SIN_PROYECTO)
+
+    def test_sin_canal_solo_recibe_aprhi(self):
+        assert expandir_consulta_recuperacion(self.SIN_CANAL) == (
+            f"{self.SIN_CANAL} Autoridad de Aplicación"
+        )
+        assert self.FRASE not in expandir_consulta_recuperacion(self.SIN_CANAL)
+
+    def test_la_zanja_no_es_un_canal(self):
+        assert expandir_consulta_recuperacion(self.ZANJA) == (
+            f"{self.ZANJA} Autoridad de Aplicación"
+        )
+        assert self.FRASE not in expandir_consulta_recuperacion(self.ZANJA)
+
+    def test_d7_conserva_la_8803_y_no_recibe_el_proyecto_ejecutivo(self):
+        expandida = expandir_consulta_recuperacion(self.D7)
+        assert expandida == f"{self.D7} Autoridad de Aplicación {self.FRASE_8803}"
+        assert self.FRASE not in expandida
+
+    def test_c6_conserva_los_recursos_y_no_recibe_el_proyecto_ejecutivo(self):
+        expandida = expandir_consulta_recuperacion(self.C6)
+        assert expandida == f"{self.C6} Autoridad de Aplicación {self.FRASE_RECURSO}"
+        assert self.FRASE not in expandida
+
+    def test_la_servidumbre_no_recibe_el_proyecto_ejecutivo(self):
+        expandida = expandir_consulta_recuperacion(self.SERVIDUMBRE)
+        assert expandida == f"{self.SERVIDUMBRE} {self.FRASE_SERVIDUMBRE}"
+        assert self.FRASE not in expandida
+
+
 class TestModoBm25CeEnElServicio:
     """2.6 — wired into `service.recuperar`; the legacy fused path is untouched."""
 
