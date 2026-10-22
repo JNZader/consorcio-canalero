@@ -260,8 +260,11 @@ class TestElCuerpo:
         assert respuesta.json()["modo"] == "bm25_sin_ce"
 
     def test_el_esquema_publicado_no_tiene_modo(self, app_client):
-        _app, cliente = app_client
-        esquema = cliente.get("/openapi.json").json()
+        # GET /openapi.json is gated by ENABLE_DOCS, which is off in CI. The
+        # HTTP fetch 404s there and the body has no "paths" key, while a dev
+        # box with the flag on goes green. The method always builds the schema.
+        app, _cliente = app_client
+        esquema = app.openapi()
         operacion = esquema["paths"]["/api/v2/conocimiento/normas/buscar"]["post"]
         propiedades = operacion["requestBody"]["content"]["application/json"]["schema"][
             "properties"

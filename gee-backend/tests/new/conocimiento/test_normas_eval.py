@@ -565,9 +565,7 @@ class TestExigirBarra:
     def test_produccion_sin_exigir_barra_no_abre_nada(self, monkeypatch, capsys):
         """Production is not a database URL. Forgetting the bar must refuse before ingest."""
         llamadas = self._espia(monkeypatch)
-        codigo = rag_ingest.main(
-            [*self.ARGS, "--corpus-sha", SHA, "--entorno", "produccion"]
-        )
+        codigo = rag_ingest.main([*self.ARGS, "--corpus-sha", SHA, "--entorno", "produccion"])
         assert codigo == 1
         assert llamadas == []
         error = capsys.readouterr().err
@@ -610,8 +608,6 @@ class TestExigirBarra:
         monkeypatch.setattr(rag_ingest, "create_engine", lambda url: _NullEngine())
         monkeypatch.setattr(rag_ingest, "ingest", ingest_falso)
         monkeypatch.setattr(rag_ingest, "Session", _Sesion)
-        codigo = rag_ingest.main(
-            [*self.ARGS, "--corpus-sha", SHA, "--entorno", "laboratorio"]
-        )
+        codigo = rag_ingest.main([*self.ARGS, "--corpus-sha", SHA, "--entorno", "laboratorio"])
         assert codigo == 0
         assert llamadas == ["ingest"]
