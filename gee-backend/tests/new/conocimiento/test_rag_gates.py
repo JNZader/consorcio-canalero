@@ -69,7 +69,7 @@ class TestArticleCountGate:
         report = GateReport()
         article_count_gate(parsed_from_expectations(EXPECTATIONS), EXPECTATIONS, report)
         assert report.ok, report.failures
-        assert report.articulos_total == EXPECTATIONS.articulos_declarados == 1383
+        assert report.articulos_total == EXPECTATIONS.articulos_declarados == 1806
 
     def test_per_document_and_total_articulo_count_gate(self):
         """A total-only check is how a compensating over/under pair passes.
@@ -99,7 +99,7 @@ class TestArticleCountGate:
         report = GateReport()
         article_count_gate(parsed, EXPECTATIONS, report)
         assert not report.ok
-        assert report.articulos_total == 1382
+        assert report.articulos_total == 1805
 
 
 class TestNonArticleInventoryGate:
@@ -131,7 +131,7 @@ class TestNonArticleInventoryGate:
         parsed = parsed_from_expectations(EXPECTATIONS)
         article_count_gate(parsed, EXPECTATIONS, report)
         non_article_inventory_gate(parsed, EXPECTATIONS, report)
-        assert report.articulos_total == 1383
+        assert report.articulos_total == 1806
         assert report.no_articulos_total == EXPECTATIONS.no_articulos_declarados
         assert report.no_articulos_total > 0
 
@@ -159,11 +159,11 @@ class TestNonArticleInventoryGate:
 
     def test_class_subtotals_sum_to_the_declared_total(self):
         subtotals = EXPECTATIONS.subtotales_articulo
-        assert subtotals["normas-generales"] == 1358
+        assert subtotals["normas-generales"] == 1778
         assert subtotals["guia-tecnica"] == 6
-        assert subtotals["actos-particulares"] == 19
+        assert subtotals["actos-particulares"] == 22
         assert subtotals["secundarios"] == 0
-        assert sum(subtotals.values()) == EXPECTATIONS.articulos_declarados == 1383
+        assert sum(subtotals.values()) == EXPECTATIONS.articulos_declarados == 1806
 
 
 def make_expectations(policy: DocumentPolicy, **overrides) -> CorpusExpectations:
@@ -484,8 +484,8 @@ class TestAgainstRealCorpus:
 
     def test_real_corpus_matches_manifest_declared_counts(self, corpus):
         report = gate_corpus(corpus)
-        assert report.documentos == 35
-        assert report.articulos_total == 1383
+        assert report.documentos == 49
+        assert report.articulos_total == 1806
         assert report.no_articulos_total == EXPECTATIONS.no_articulos_declarados
 
     def test_vigencia_canary_ingested_and_under_ceiling(self, corpus):

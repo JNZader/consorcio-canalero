@@ -129,7 +129,7 @@ class TestGatesCountIdentities:
         report = GateReport()
         article_count_gate(parsed, EXPECTATIONS, report)
         assert report.ok, report.failures
-        assert report.articulos_total == 1383
+        assert report.articulos_total == 1806
 
     def test_parent_kept_beside_its_parts_fails_the_article_gate(self):
         parsed = _parsed_sintetico()
@@ -267,7 +267,7 @@ class TestRealCorpusWindow:
         antes = run_all_gates(sin_partir, fuentes, EXPECTATIONS)
         report = run_all_gates(cargado.parsed, cargado.sources, cargado.expectations)
         assert report.failures == antes.failures
-        assert report.articulos_total == antes.articulos_total == 1383
+        assert report.articulos_total == antes.articulos_total == 1806
         assert report.no_articulos_total == EXPECTATIONS.no_articulos_declarados
         assert report.over_ceiling == []
         assert any(key == "10593#1" for key, _ in antes.over_ceiling)

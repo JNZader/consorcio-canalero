@@ -71,7 +71,7 @@
 #   origen           publico | privado
 
 version: 1
-corpus_sha: 12043582bf8016288a7e8084e85a4b713a97af2f
+corpus_sha: ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e
 ratificado: "2026-08-10"
 fuente_draft: eval-preguntas-oro-DRAFT-2026-08-10.md
 

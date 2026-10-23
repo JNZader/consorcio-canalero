@@ -5,12 +5,12 @@
         --corpus-path /path/to/consorcio-corpus-legal \\
         --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f
 
-**Why a generator and not a hand-written table.** Only 7 of the 35 documents are
+**Why a generator and not a hand-written table.** Only 7 of the 49 documents are
 derivable from THIS repository — the 6 `es_secundaria` ones and the single
 `registro-administrativo` — because `corpus_expectations.yaml` records every
-document's `tipo` but no `fuente_url`. The other 28 are decided by the host rule
+document's `tipo` but no `fuente_url`. The other 42 are decided by the host rule
 and can only be settled against the private checkout. A hand-written expectation
-for those 28 would be a guess wearing the costume of a fixture.
+for those 42 would be a guess wearing the costume of a fixture.
 
 **What it emits, and what it deliberately does not.** Per document: the id, the
 normalized `tipo`, derived `es_secundaria`, the derived class and the evidence
@@ -23,7 +23,7 @@ just decided must not travel.
 
 The output is a checked-in expectation from the moment it is committed: CI diffs
 the 11 fixture documents against it without a database, and runbook step 8 diffs
-all 35 reclassified `rag_documento` rows against it row by row rather than
+all 49 reclassified `rag_documento` rows against it row by row rather than
 comparing a single count. Regenerating it is a change-controlled act — the same
 owner sign-off `FUENTES_PUBLICAS` and `TIPOS_INSTITUCIONALES` require — because
 a regenerated artifact makes any rule change self-consistent and therefore
@@ -51,7 +51,7 @@ CABECERA = """\
 #
 # The expected `clasificacion` of every document at the pinned corpus revision,
 # with the evidence string the ingest rule derived it from. Diffed by the unit
-# suite (the 11 checked-in fixtures, no database) and by runbook step 8 (all 35
+# suite (the 11 checked-in fixtures, no database) and by runbook step 8 (all 49
 # reclassified rows).
 #
 # CHANGE CONTROL: editing this file, `FUENTES_PUBLICAS`, `TIPOS_INSTITUCIONALES`,
@@ -65,7 +65,7 @@ CABECERA = """\
 # listed values alone is blind to a rewritten comparison that moves documents
 # between classes without touching a single listed value. A rule change that does
 # not regenerate this file fails the unit diff — which is exactly the widening
-# the 11 fixtures alone cannot see, since 24 documents have no fixture here.
+# the 11 fixtures alone cannot see, since 38 documents have no fixture here.
 """
 
 

@@ -13,6 +13,8 @@ from app.domains.conocimiento import service
 from app.domains.conocimiento.recuperacion.bm25 import limpiar_cache_indices
 from app.domains.conocimiento.recuperacion.reranker import RerankerDeterministico
 
+from .conftest import PINNED_CORPUS_SHA
+
 SHA = "a" * 40
 OTRO_SHA = "b" * 40
 
@@ -217,13 +219,18 @@ def _barra(**cambios):
 
 
 class TestCargadorDeLaBarra:
-    def test_el_artefacto_enviado_es_no_medido(self):
+    def test_el_artefacto_enviado_registra_la_medicion_no_superada(self):
         from app.domains.conocimiento.eval import barra_sin_gpu
 
         artefacto = barra_sin_gpu.cargar_barra()
-        assert artefacto.estado == "no_medido"
-        assert artefacto.corpus_sha is None
-        assert artefacto.hit_rate_at_5 is None
+        assert artefacto.estado == "no_superada"
+        assert artefacto.modo == "bm25_sin_ce"
+        assert artefacto.corpus_sha == PINNED_CORPUS_SHA
+        assert artefacto.n_respondibles == 34
+        assert artefacto.hit_rate_at_5 == pytest.approx(22 / 34)
+        assert artefacto.separacion_norma_secundaria == 1.0
+        assert artefacto.vigencia_correcta == pytest.approx(2 / 3)
+        assert barra_sin_gpu.superada_para(PINNED_CORPUS_SHA) is False
 
     def test_el_artefacto_enviado_no_se_puede_exigir(self):
         from app.domains.conocimiento.eval import barra_sin_gpu
