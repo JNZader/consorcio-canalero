@@ -889,7 +889,9 @@ Order (the design's rollout, in the order the operator runs it):
    Seed `barra_sin_gpu.yaml` from that report (`barra_sin_gpu.derivar_desde`
    refuses a synthetic snapshot or an `--allow-synthetic` run, so a synthetic run
    can never unlock rank order) and commit it. The eval command never writes the
-   file itself.
+   file itself. Paste the block whole: its last line is `integridad_sha256`, the
+   seal the loader re-verifies on every load, so a later hand edit to any
+   load-bearing field refuses to load instead of silently passing.
 5a. **Production ingest with the gate on**, and only if step 4 produced a
    `superada` artifact for this SHA:
 

@@ -154,7 +154,7 @@ describe('useFinanzasController — gastos', () => {
     );
   });
 
-  it('keeps the modal open and does not notify success when creating a gasto fails', async () => {
+  it('keeps the modal open and shows an error toast when creating a gasto fails', async () => {
     const { result } = await mountController();
     act(() => result.current.gastoModal.open());
     stubApi({ 'POST /finanzas/gastos': () => Promise.reject(new Error('422')) });
@@ -169,8 +169,46 @@ describe('useFinanzasController — gastos', () => {
     });
 
     expect(result.current.gastoOpened).toBe(true);
-    expect(notifications.show).not.toHaveBeenCalled();
+    expect(notifications.show).not.toHaveBeenCalledWith(
+      expect.objectContaining({ color: 'green' })
+    );
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'No se pudo registrar el gasto', color: 'red' })
+    );
     expect(loggerMock.error).toHaveBeenCalledWith('Error creating gasto:', expect.anything());
+    expect(result.current.submitting).toBe(false);
+  });
+
+  it('flags submitting while the gasto POST is in flight and releases it after', async () => {
+    const { result } = await mountController();
+    act(() => result.current.gastoModal.open());
+    let resolvePost: (value: unknown) => void = () => {};
+    stubApi({
+      'POST /finanzas/gastos': () =>
+        new Promise((resolve) => {
+          resolvePost = resolve;
+        }),
+    });
+
+    let settle: Promise<void> | undefined;
+    act(() => {
+      settle = result.current.handleCreateGasto({
+        descripcion: 'Cambio de bomba',
+        monto: 5000,
+        categoria: 'obras',
+        fecha: '2026-03-05',
+      });
+    });
+
+    expect(result.current.submitting).toBe(true);
+
+    resolvePost({ id: 'g2' });
+    await act(async () => {
+      await settle;
+    });
+
+    expect(result.current.submitting).toBe(false);
+    expect(result.current.gastoOpened).toBe(false);
   });
 
   it('handleOpenEditCategory preloads the category and opens the edit modal', async () => {
@@ -205,6 +243,7 @@ describe('useFinanzasController — gastos', () => {
       await result.current.handleUpdateCategory({ categoria: 'obras' });
     });
     expect(apiFetchMock).not.toHaveBeenCalled();
+    expect(result.current.submitting).toBe(false);
 
     stubApi({ 'PATCH /finanzas/gastos/g1': () => Promise.reject(new Error('409')) });
     act(() => result.current.handleOpenEditCategory(gasto));
@@ -214,6 +253,10 @@ describe('useFinanzasController — gastos', () => {
 
     expect(result.current.editGastoOpened).toBe(true);
     expect(loggerMock.error).toHaveBeenCalledWith('Error updating category:', expect.anything());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'No se pudo actualizar la categoría', color: 'red' })
+    );
+    expect(result.current.submitting).toBe(false);
   });
 });
 
@@ -242,7 +285,7 @@ describe('useFinanzasController — ingresos', () => {
     );
   });
 
-  it('keeps the ingreso modal open when creation fails', async () => {
+  it('keeps the ingreso modal open and shows an error toast when creation fails', async () => {
     const { result } = await mountController();
     act(() => result.current.ingresoModal.open());
     stubApi({ 'POST /finanzas/ingresos': () => Promise.reject(new Error('422')) });
@@ -252,8 +295,14 @@ describe('useFinanzasController — ingresos', () => {
     });
 
     expect(result.current.ingresoOpened).toBe(true);
-    expect(notifications.show).not.toHaveBeenCalled();
+    expect(notifications.show).not.toHaveBeenCalledWith(
+      expect.objectContaining({ color: 'green' })
+    );
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'No se pudo registrar el ingreso', color: 'red' })
+    );
     expect(loggerMock.error).toHaveBeenCalledWith('Error creating ingreso:', expect.anything());
+    expect(result.current.submitting).toBe(false);
   });
 
   it('handleOpenEditIngreso preloads every field of the edit form', async () => {
@@ -297,6 +346,7 @@ describe('useFinanzasController — ingresos', () => {
       await result.current.handleUpdateIngreso(values);
     });
     expect(apiFetchMock).not.toHaveBeenCalled();
+    expect(result.current.submitting).toBe(false);
 
     stubApi({ 'PATCH /finanzas/ingresos/i1': () => Promise.reject(new Error('409')) });
     act(() => result.current.handleOpenEditIngreso(ingreso));
@@ -307,6 +357,10 @@ describe('useFinanzasController — ingresos', () => {
     expect(result.current.editIngresoOpened).toBe(true);
     expect(result.current.editingIngreso).toEqual(ingreso);
     expect(loggerMock.error).toHaveBeenCalledWith('Error updating ingreso:', expect.anything());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'No se pudo actualizar el ingreso', color: 'red' })
+    );
+    expect(result.current.submitting).toBe(false);
   });
 });
 

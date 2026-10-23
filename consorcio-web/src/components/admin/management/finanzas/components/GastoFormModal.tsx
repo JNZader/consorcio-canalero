@@ -26,12 +26,14 @@ export function GastoFormModal({
   form,
   categoryData,
   onSubmit,
+  submitting,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
   form: UseFormReturnType<GastoFormValues>;
   categoryData: Array<{ value: string; label: string }>;
   onSubmit: (values: GastoFormValues) => void | Promise<void>;
+  submitting: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Registrar Gasto de Caja">
@@ -60,7 +62,7 @@ export function GastoFormModal({
             />
           </SimpleGrid>
           <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
-          <Button type="submit" fullWidth mt="md" color="red">
+          <Button type="submit" fullWidth mt="md" color="red" loading={submitting}>
             Guardar Gasto
           </Button>
         </Stack>

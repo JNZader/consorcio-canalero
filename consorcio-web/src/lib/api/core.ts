@@ -198,6 +198,19 @@ function getApiErrorMessage(error: unknown, status: number): string {
   };
 
   if (typeof payload.detail === 'string') return payload.detail;
+  // FastAPI 422: detail is a ValidationError[] (loc/msg/type) — surface each msg.
+  if (Array.isArray(payload.detail)) {
+    const fieldErrors = payload.detail
+      .map((item) =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as { msg?: unknown }).msg === 'string'
+          ? (item as { msg: string }).msg
+          : null
+      )
+      .filter((msg): msg is string => msg !== null);
+    if (fieldErrors.length > 0) return fieldErrors.join('; ');
+  }
   if (typeof payload.message === 'string') return payload.message;
   if (typeof payload.error?.message === 'string') return payload.error.message;
 

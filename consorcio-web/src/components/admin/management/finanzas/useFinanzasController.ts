@@ -29,6 +29,7 @@ export function useFinanzasController() {
   const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
   const [exportingSummaryPdf, setExportingSummaryPdf] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>('balance');
   const [editingGasto, setEditingGasto] = useState<Gasto | null>(null);
   const [editingIngreso, setEditingIngreso] = useState<Ingreso | null>(null);
@@ -94,6 +95,7 @@ export function useFinanzasController() {
   }, [fetchFinanzas]);
 
   const handleCreateGasto = async (values: typeof form.values) => {
+    setSubmitting(true);
     try {
       await apiFetch('/finanzas/gastos', { method: 'POST', body: JSON.stringify(values) });
       gastoModal.close();
@@ -106,6 +108,13 @@ export function useFinanzasController() {
       });
     } catch (error) {
       logger.error('Error creating gasto:', error);
+      notifications.show({
+        title: 'No se pudo registrar el gasto',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -117,6 +126,7 @@ export function useFinanzasController() {
 
   const handleUpdateCategory = async (values: typeof editCategoryForm.values) => {
     if (!editingGasto) return;
+    setSubmitting(true);
     try {
       await apiFetch(`/finanzas/gastos/${editingGasto.id}`, {
         method: 'PATCH',
@@ -132,10 +142,18 @@ export function useFinanzasController() {
       });
     } catch (error) {
       logger.error('Error updating category:', error);
+      notifications.show({
+        title: 'No se pudo actualizar la categoría',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleCreateIngreso = async (values: typeof ingresoForm.values) => {
+    setSubmitting(true);
     try {
       await apiFetch('/finanzas/ingresos', { method: 'POST', body: JSON.stringify(values) });
       ingresoModal.close();
@@ -148,6 +166,13 @@ export function useFinanzasController() {
       });
     } catch (error) {
       logger.error('Error creating ingreso:', error);
+      notifications.show({
+        title: 'No se pudo registrar el ingreso',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -164,6 +189,7 @@ export function useFinanzasController() {
 
   const handleUpdateIngreso = async (values: typeof editIngresoForm.values) => {
     if (!editingIngreso) return;
+    setSubmitting(true);
     try {
       await apiFetch(`/finanzas/ingresos/${editingIngreso.id}`, {
         method: 'PATCH',
@@ -179,6 +205,13 @@ export function useFinanzasController() {
       });
     } catch (error) {
       logger.error('Error updating ingreso:', error);
+      notifications.show({
+        title: 'No se pudo actualizar el ingreso',
+        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -233,6 +266,7 @@ export function useFinanzasController() {
     ingresoCategoryData: buildOptionData([...INGRESO_CATEGORIES]),
     currentYear,
     exportingSummaryPdf,
+    submitting,
     gastoOpened,
     editGastoOpened,
     ingresoOpened,

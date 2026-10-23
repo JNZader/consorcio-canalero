@@ -1092,6 +1092,7 @@ def _cita_sin_rrf():
         tipo="ley-provincial",
         es_secundaria=False,
         jurisdiccion="provincial",
+        clasificacion="publico",
         source_file="f.md",
         source_offset=0,
         score_ce=1.0,
