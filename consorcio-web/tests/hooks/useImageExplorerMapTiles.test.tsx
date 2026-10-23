@@ -151,10 +151,11 @@ describe('updateTileLayer', () => {
     it('espera en `idle` y NO en `load`', async () => {
       const api = montar();
       await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
-      // Se limpian los listeners del montaje: el efecto que carga la capa de
-      // zona tambien usa `once('load')`, y ahi SI corresponde porque corre al
-      // crear el mapa, antes de que ese evento haya disparado. Lo que se mide
-      // aca es solo lo que registra `updateTileLayer`.
+      // Se limpian los listeners del montaje: la carga de la capa de zona
+      // (dentro del IIFE de init desde el fix C4) tambien usa `once('load')`,
+      // y ahi SI corresponde porque corre al crear el mapa, antes de que ese
+      // evento haya disparado. Lo que se mide aca es solo lo que registra
+      // `updateTileLayer`.
       mapaSimulado.once.mockClear();
 
       api.updateTileLayer(A);

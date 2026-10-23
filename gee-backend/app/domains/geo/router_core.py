@@ -85,7 +85,7 @@ PUBLIC_PRODUCTION_LAYER_TYPES = {
 }
 
 
-# Throttle for the "rescale layer lookup unavailable" warning.
+# Throttle for the "publicity layer lookup unavailable" warning.
 #
 # The tile route is deliberately EXEMPT from the global rate limiter (see the
 # ``proxy_tile`` docstring), and logs ship off-box to BetterStack whenever a
@@ -99,37 +99,41 @@ PUBLIC_PRODUCTION_LAYER_TYPES = {
 # with several workers each keeps its own latch, which is the intended blast
 # radius (one line per minute per worker). A benign race would at worst emit a
 # second line.
-_RESCALE_LOOKUP_WARN_INTERVAL_S = 60.0
-_rescale_lookup_warn_last: Optional[float] = None
-_rescale_lookup_warn_suppressed = 0
+#
+# Renamed with the C1 fix: the lookup being warned about stopped being
+# rescale-only when the publicity gate became unconditional — the latch and the
+# budget logic are unchanged.
+_PUBLICITY_LOOKUP_WARN_INTERVAL_S = 60.0
+_publicity_lookup_warn_last: Optional[float] = None
+_publicity_lookup_warn_suppressed = 0
 
 
-def _rescale_lookup_warn_budget(now: float) -> Optional[int]:
+def _publicity_lookup_warn_budget(now: float) -> Optional[int]:
     """Claim permission to emit the lookup-failure warning.
 
     Returns the number of occurrences suppressed since the previous emission
     (``0`` on the first failure, so the first one is always logged), or ``None``
     when the caller must stay silent because an identical warning was emitted
-    less than ``_RESCALE_LOOKUP_WARN_INTERVAL_S`` ago.
+    less than ``_PUBLICITY_LOOKUP_WARN_INTERVAL_S`` ago.
     """
-    global _rescale_lookup_warn_last, _rescale_lookup_warn_suppressed
+    global _publicity_lookup_warn_last, _publicity_lookup_warn_suppressed
 
-    last = _rescale_lookup_warn_last
-    if last is not None and (now - last) < _RESCALE_LOOKUP_WARN_INTERVAL_S:
-        _rescale_lookup_warn_suppressed += 1
+    last = _publicity_lookup_warn_last
+    if last is not None and (now - last) < _PUBLICITY_LOOKUP_WARN_INTERVAL_S:
+        _publicity_lookup_warn_suppressed += 1
         return None
 
-    suppressed = _rescale_lookup_warn_suppressed
-    _rescale_lookup_warn_last = now
-    _rescale_lookup_warn_suppressed = 0
+    suppressed = _publicity_lookup_warn_suppressed
+    _publicity_lookup_warn_last = now
+    _publicity_lookup_warn_suppressed = 0
     return suppressed
 
 
-def _reset_rescale_lookup_warn_throttle() -> None:
+def _reset_publicity_lookup_warn_throttle() -> None:
     """Clear the warning latch. Test hook — the state is module-global."""
-    global _rescale_lookup_warn_last, _rescale_lookup_warn_suppressed
-    _rescale_lookup_warn_last = None
-    _rescale_lookup_warn_suppressed = 0
+    global _publicity_lookup_warn_last, _publicity_lookup_warn_suppressed
+    _publicity_lookup_warn_last = None
+    _publicity_lookup_warn_suppressed = 0
 
 
 def _parse_rescale_query_value(name: str, value: Optional[str]) -> Optional[float]:
@@ -419,8 +423,17 @@ def trigger_dem_pipeline(
 # ──────────────────────────────────────────────
 
 
-def _public_layer_for_rescale(db: Session, layer_id: uuid.UUID):
-    """Sync lookup so the async tile proxy does not block the event loop."""
+def _public_layer_for_tile(db: Session, layer_id: uuid.UUID):
+    """Sync publicity lookup so the async tile proxy does not block the event loop.
+
+    Returns the layer ONLY when it is in the public publication set
+    (``_public_layer_types`` + source filter); ``None`` means "not forwardable
+    to an anonymous tile client", whether the id is missing, the tipo is
+    private, or the fuente is unpublished. Formerly
+    ``_public_layer_for_rescale``: the same query used to run only on the
+    rescale path to resolve the canonical override (audit C1/GEO-1 moved it to
+    the gate, so the name follows its new role).
+    """
     return (
         db.query(GeoLayer)
         .filter(
@@ -430,6 +443,88 @@ def _public_layer_for_rescale(db: Session, layer_id: uuid.UUID):
         )
         .one_or_none()
     )
+
+
+# Per-process TTL cache of the publicity verdict (review RES-001, audit
+# 2026-10-23 follow-up). The unconditional gate costs one DB round-trip per
+# tile; a viewport bursts ~256 tiles in parallel, and under a Postgres
+# brownout each of those holds a threadpool token up to statement_timeout —
+# starving unrelated sync API traffic that shares the same 40-token pool.
+# Caching the verdict per layer collapses that to one query per layer per
+# TTL window.
+#
+# Security stance: the TTL (60 s) is two orders of magnitude tighter than
+# the ``Cache-Control: public, max-age=3600`` the tile responses themselves
+# already carry — an unpublished layer stops being forwarded by this proxy
+# within 60 s while CDN/browser copies of its bytes persist up to an hour
+# regardless. Negative verdicts (404) are cached too: a layer published
+# becomes visible within 60 s, publication being a rare staff action.
+# Failures are NEVER cached — ``_public_layer_for_tile`` raising
+# ``SQLAlchemyError`` bypasses the cache entirely and fails closed (503).
+#
+# Process-local on purpose (same blast-radius reasoning as the warn latch
+# above). The route is public and rate-limit exempt, and a negative verdict
+# is cached per caller-chosen UUID, so the key space is NOT the ~10 public
+# rows. A full cache drops expired rows first, then the single oldest
+# negative verdict. A flood of unknown ids churns that negative set and does
+# not wipe a cached public layer. Concurrent misses may race and
+# double-query — harmless, both store the same idempotent verdict.
+_PUBLICITY_CACHE_TTL_S = 60.0
+_PUBLICITY_CACHE_MAX_ENTRIES = 512
+_publicity_cache: dict[uuid.UUID, tuple[float, Optional[str]]] = {}
+
+
+def _evict_one_publicity_entry(now: float) -> None:
+    """Make room for one new key without flushing cached public layers.
+
+    Expired rows go first. A still-full cache then drops the oldest negative
+    (``tipo is None`` — a missing or private id, which is what an anonymous
+    caller can mint). A positive verdict is evicted only when the cache holds
+    nothing else.
+    """
+    expired = [key for key, (deadline, _tipo) in _publicity_cache.items() if deadline <= now]
+    for key in expired:
+        del _publicity_cache[key]
+    if len(_publicity_cache) < _PUBLICITY_CACHE_MAX_ENTRIES:
+        return
+
+    negatives = [
+        (key, deadline) for key, (deadline, tipo) in _publicity_cache.items() if tipo is None
+    ]
+    if negatives:
+        oldest = min(negatives, key=lambda item: item[1])[0]
+        del _publicity_cache[oldest]
+        return
+
+    if _publicity_cache:
+        oldest = min(_publicity_cache, key=lambda key: _publicity_cache[key][0])
+        del _publicity_cache[oldest]
+
+
+def _remember_publicity(
+    layer_id: uuid.UUID, deadline: float, tipo: Optional[str], now: float
+) -> None:
+    """Store one verdict. Refreshing a key never evicts its neighbors."""
+    if layer_id in _publicity_cache:
+        _publicity_cache[layer_id] = (deadline, tipo)
+        return
+    if len(_publicity_cache) >= _PUBLICITY_CACHE_MAX_ENTRIES:
+        _evict_one_publicity_entry(now)
+    _publicity_cache[layer_id] = (deadline, tipo)
+
+
+async def _cached_public_layer_tipo(db: Session, layer_id: uuid.UUID) -> Optional[str]:
+    """Publicity verdict for ``layer_id``, cached: the layer's ``tipo`` value
+    when forwardable, ``None`` when not. See the cache block above."""
+    now = time.monotonic()
+    hit = _publicity_cache.get(layer_id)
+    if hit is not None and hit[0] > now:
+        return hit[1]
+
+    layer = await run_in_threadpool(_public_layer_for_tile, db, layer_id)
+    tipo: Optional[str] = None if layer is None else getattr(layer.tipo, "value", layer.tipo)
+    _remember_publicity(layer_id, now + _PUBLICITY_CACHE_TTL_S, tipo, now)
+    return tipo
 
 
 @router.get("/layers/{layer_id}/tiles/{z}/{x}/{y}.png")
@@ -454,7 +549,12 @@ async def proxy_tile(
     geo-worker container and streams the response back to the client.
 
     Public endpoint — Leaflet TileLayer cannot set custom auth headers
-    on tile requests, and DEM tiles are not sensitive data.
+    on tile requests, and the published tile products (the public set
+    gated below) carry no privileged information.
+
+    Only layers in the public publication set are forwarded: the publicity
+    gate below runs on EVERY request, with or without rescale params (audit
+    C1/GEO-1 — previously the check only ran on the rescale path).
 
     z/x/y are BOUNDED here. This route is public AND exempt from the global
     rate limiter (only the exact ``/tiles/{id}/{z}/{x}/{y}.png`` and
@@ -473,53 +573,67 @@ async def proxy_tile(
     parsed_rescale_max = _parse_rescale_query_value("rescale_max", rescale_max)
     # Reject globally unsupported public ranges before any layer existence check.
     validate_rescale("precip_normal", parsed_rescale_min, parsed_rescale_max)
+
+    # PUBLICITY GATE — runs for EVERY tile request (audit C1/GEO-1,
+    # docs/auditorias/AUDITORIA_CONSORCIO_CANALERO_2026-10-23). Before the fix
+    # the only publicity check lived inside the ``if parsed_rescale_min ...``
+    # branch below, so the DEFAULT request shape — no rescale params, which is
+    # what every base-map tile fetch uses — forwarded ANY GeoLayer UUID to the
+    # geo-worker, whose ``get_tile`` (tile_service.py) selects by id with no
+    # tipo/publicity filter. Anonymous + rate-limit-exempt access to the
+    # deliberately private DEM layer types (slope, aspect, twi, flow_dir,
+    # flow_acc, drainage, profile_curvature, tpi) and manual sources.
+    #
+    # Ordering contract: rescale globals → publicity gate → pyramid 204 →
+    # forward. The gate deliberately runs BEFORE the pyramid fast path: with
+    # the old order, an out-of-pyramid request would answer 204 without ever
+    # loading the layer, and the gate would only fire for in-pyramid tiles —
+    # here no layer bytes or existence signals leak for unforwardable layers.
+    try:
+        layer_tipo = await _cached_public_layer_tipo(db, layer_id)
+    except SQLAlchemyError as exc:
+        # FAIL CLOSED. If the lookup raises we cannot verify publicity, so we
+        # do NOT forward — 503, not a tile.
+        #
+        # The pre-existing degrade-on-SQLAlchemyError block (forward without
+        # the rescale override, preserving the worker's byte cache during an
+        # outage) applied to the rescale OVERRIDE decision, never to
+        # authorization. This one lookup now serves BOTH roles for every
+        # request, so the degrade rationale is retired wholesale: an outage
+        # costs the proxy the worker-cached no-override tiles it used to serve
+        # (the worker's own cache lookup in ``get_tile`` returns before
+        # ``_get_layer`` touches the same Postgres), and that is the accepted
+        # price of never forwarding a layer we cannot prove is public. The
+        # geo-worker itself is unchanged and still answers direct internal
+        # callers.
+        #
+        # 503 (not 404): an unreachable DB is a transient server problem, and
+        # 404 would invite Leaflet and CDNs to cache "layer missing" for a
+        # layer that may be perfectly public once the database recovers.
+        #
+        # Only SQLAlchemyError fails closed — a programmer error must still
+        # surface as a 500 rather than be masked as an outage.
+        suppressed = _publicity_lookup_warn_budget(time.monotonic())
+        if suppressed is not None:
+            logger.warning(
+                "Tile publicity lookup unavailable; failing closed",
+                # A sample, not the only affected layer: the warning is
+                # throttled and covers every failure in the window.
+                layer_id=str(layer_id),
+                error_type=type(exc).__name__,
+                suppressed_since_last=suppressed,
+            )
+        raise HTTPException(status_code=503, detail="Capa no disponible temporalmente") from exc
+
+    if layer_tipo is None:
+        # Non-public layer (or plain missing) → 404 ALWAYS, not only when
+        # rescale params are present. 404 over 403 so an anonymous caller
+        # cannot use the proxy to confirm that a private layer id exists.
+        raise HTTPException(status_code=404, detail="Geo layer no encontrado")
+
     canonical_rescale = None
     if parsed_rescale_min is not None:
-        try:
-            layer = await run_in_threadpool(_public_layer_for_rescale, db, layer_id)
-        except SQLAlchemyError as exc:
-            # The layer-tipo lookup hit a database failure. It exists only to
-            # resolve the CANONICAL rescale override for the layer's type, so
-            # forward the tile without an override rather than fail it.
-            #
-            # Be honest about how much this buys during a real outage. The
-            # geo-worker is NOT independent of this database: ``_get_layer``
-            # (tile_service.py) opens its own ``SessionLocal`` against the SAME
-            # Postgres and raises 404 when it cannot read the row, which the
-            # blanket ``>= 400 -> 204`` mapping at the end of this function
-            # turns into a blank tile. So this does NOT mean "the worker
-            # re-renders with its defaults".
-            #
-            # What it actually preserves is the worker's BYTE CACHE: the cache
-            # lookup in ``get_tile`` returns before ``_get_layer`` is ever
-            # called, so an already-cached tile is still served during the
-            # outage. Note the cache key embeds the rescale token, so the hit
-            # has to be on the no-override (``r=-``) variant of that tile —
-            # dropping the override changes which cached entry we ask for.
-            # Everything else (cold miss, uncached variant) degrades from a
-            # 500 to a 204, which is strictly no worse for the caller and keeps
-            # the failure inside the tile instead of the whole response.
-            #
-            # The 404 "is this layer public?" check degrades with the lookup;
-            # the worker cannot serve an unknown layer from cache anyway.
-            #
-            # Only SQLAlchemyError degrades — a programmer error must still
-            # surface as a 500 rather than be masked as a blank tile.
-            suppressed = _rescale_lookup_warn_budget(time.monotonic())
-            if suppressed is not None:
-                logger.warning(
-                    "Tile rescale layer lookup unavailable; forwarding without override",
-                    # A sample, not the only affected layer: the warning is
-                    # throttled and covers every failure in the window.
-                    layer_id=str(layer_id),
-                    error_type=type(exc).__name__,
-                    suppressed_since_last=suppressed,
-                )
-        else:
-            if layer is None:
-                raise HTTPException(status_code=404, detail="Geo layer no encontrado")
-            layer_tipo = getattr(layer.tipo, "value", layer.tipo)
-            canonical_rescale = validate_rescale(layer_tipo, parsed_rescale_min, parsed_rescale_max)
+        canonical_rescale = validate_rescale(layer_tipo, parsed_rescale_min, parsed_rescale_max)
 
     # x/y must be inside the pyramid for this zoom; outside is "no tile here",
     # which is exactly what the upstream answers for an out-of-bounds tile.

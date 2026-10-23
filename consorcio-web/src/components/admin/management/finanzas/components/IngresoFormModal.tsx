@@ -26,12 +26,14 @@ export function IngresoFormModal({
   form,
   categoryData,
   onSubmit,
+  submitting,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
   form: UseFormReturnType<IngresoFormValues>;
   categoryData: Array<{ value: string; label: string }>;
   onSubmit: (values: IngresoFormValues) => void | Promise<void>;
+  submitting: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Registrar Ingreso">
@@ -68,7 +70,7 @@ export function IngresoFormModal({
             />
           </SimpleGrid>
           <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
-          <Button type="submit" fullWidth mt="md" color="green">
+          <Button type="submit" fullWidth mt="md" color="green" loading={submitting}>
             Guardar Ingreso
           </Button>
         </Stack>

@@ -1,32 +1,28 @@
-"""``proxy_tile`` degrades gracefully when the layer-tipo DB lookup fails.
+"""``proxy_tile`` FAILS CLOSED when the publicity DB lookup fails (audit C1).
 
-The tile proxy resolves the layer's ``tipo`` from the database only to pick the
-CANONICAL rescale override for that type. Before this fix a transient
-``SQLAlchemyError`` during that lookup bubbled out as a 500.
+The tile proxy loads the layer to decide whether it may be forwarded to an
+anonymous client at all (publicity gate, audit C1/GEO-1). When that lookup
+raises ``SQLAlchemyError`` the router cannot verify publicity, so it must NOT
+forward: it answers 503 and logs a THROTTLED warning instead.
 
-SCOPE — this suite proves a ROUTER-LEVEL contract, not end-to-end survival of a
-database outage. The upstream tile client is stubbed to a fixed 200, so a
-"200 + png" assertion here means "the router forwarded the request without the
-rescale override", nothing more about what a real geo-worker would answer.
-
-That distinction matters because the worker is NOT independent of this
-database: ``tile_service._get_layer`` opens its own ``SessionLocal`` against the
-SAME Postgres and 404s when it cannot read the row, and ``proxy_tile`` maps any
-upstream ``>= 400`` to a 204. During a real outage the only requests that still
-produce pixels are the ones the worker can answer from its byte cache before it
-touches the database — and, since the cache key embeds the rescale token, only
-the no-override (``r=-``) variant of a tile. Everything else degrades from a
-500 to a blank 204: strictly no worse, but not "default rendering".
+History — this suite used to pin the opposite contract ("degrade gracefully:
+forward without the rescale override"), which was correct while the lookup
+existed only to resolve the canonical rescale override for the layer's tipo.
+C1 hoisted the same lookup into an unconditional authorization gate, and
+authorization does not degrade: during a DB outage the proxy gives up the
+worker's byte-cached no-override tiles (the worker's cache lookup in
+``get_tile`` returns before ``_get_layer`` touches the same Postgres) rather
+than forward a layer it cannot prove is public. That trade is deliberate and
+documented in ``router_core.proxy_tile``.
 
 What these tests actually pin:
 
-  * the router forwards instead of raising when the lookup fails;
-  * the forwarded params OMIT the rescale override, but keep every other
-    caller-supplied rendering param;
-  * the degradation is LOGGED (silent degradation is forbidden) and the warning
-    is THROTTLED — this route is exempt from the rate limiter, so one emit per
+  * the router answers 503 — never forwards, never 500s — when the publicity
+    lookup raises ``SQLAlchemyError`` (OperationalError included);
+  * the refusal is LOGGED (silent refusal is forbidden) and the warning is
+    THROTTLED — this route is exempt from the rate limiter, so one emit per
     tile would be a log flood;
-  * degradation is not sticky — the next request re-attempts the lookup and
+  * the refusal is not sticky — the next request re-attempts the lookup and
     forwards the canonical pair once the database is healthy again;
   * a healthy lookup still enforces the 404 (unpublished layer) and the 400
     (unsupported range) paths;
@@ -111,9 +107,9 @@ def _reset_warn_throttle():
     """The warning latch is module-global — isolate every test from the others."""
     from app.domains.geo import router_core
 
-    router_core._reset_rescale_lookup_warn_throttle()
+    router_core._reset_publicity_lookup_warn_throttle()
     yield
-    router_core._reset_rescale_lookup_warn_throttle()
+    router_core._reset_publicity_lookup_warn_throttle()
 
 
 @pytest.fixture
@@ -152,7 +148,7 @@ def _forwarded_params(tile_client) -> dict:
     return tile_client.get.await_args.kwargs["params"]
 
 
-# ── 1. DB failure degrades to a default-rendered tile, never a 500 ───────────
+# ── 1. DB failure fails closed: 503, no forward, never a 500 ──────────────────
 
 
 @pytest.mark.parametrize(
@@ -163,41 +159,30 @@ def _forwarded_params(tile_client) -> dict:
     ],
     ids=["operational_error", "generic_sqlalchemy_error"],
 )
-def test_db_failure_forwards_tile_without_rescale_override(
-    make_cliente, tile_client, db, exc: Exception
+@pytest.mark.parametrize("params", [{}, MONTHLY_RESCALE], ids=["no_rescale", "rescale"])
+def test_db_failure_fails_closed_503(
+    make_cliente, tile_client, db, exc: Exception, params: dict
 ) -> None:
+    """Unverifiable publicity → do NOT forward, whatever the query shape.
+
+    The no-rescale variant is the C1 regression: before the gate existed the
+    default request shape never ran the lookup at all.
+    """
     layer_id = _seed_tile_layer(db, "precip_normal")
     session = _FailingQuerySession(db, exc)
 
-    response = make_cliente(session).get(_tile_url(layer_id), params=MONTHLY_RESCALE)
+    response = make_cliente(session).get(_tile_url(layer_id), params=params)
 
-    assert response.status_code == 200, response.text
-    assert response.content == b"png"
-    assert _forwarded_params(tile_client) == {}
-
-
-def test_db_failure_keeps_other_rendering_params(make_cliente, tile_client, db) -> None:
-    """Only the rescale override is dropped — the rest of the render is intact."""
-    layer_id = _seed_tile_layer(db, "precip_normal")
-    session = _FailingQuerySession(db, OperationalError("blip", None, Exception("boom")))
-
-    response = make_cliente(session).get(
-        _tile_url(layer_id),
-        params={**ANNUAL_RESCALE, "colormap": "viridis", "terrain_smoothing": "on"},
-    )
-
-    assert response.status_code == 200, response.text
-    assert _forwarded_params(tile_client) == {
-        "colormap": "viridis",
-        "terrain_smoothing": "on",
-    }
+    assert response.status_code == 503, response.text
+    assert response.json() == {"detail": "Capa no disponible temporalmente"}
+    tile_client.get.assert_not_awaited()
 
 
-# ── 2. Degradation is observable — silent degradation is forbidden ───────────
+# ── 2. The refusal is observable — silent fail-closed is forbidden ───────────
 
 
-def _degraded_records(caplog) -> list:
-    """The structlog event dicts emitted by the degradation branch.
+def _refusal_records(caplog) -> list:
+    """The structlog event dicts emitted by the fail-closed branch.
 
     ``get_logger`` wraps the stdlib logger with structlog's
     ``ProcessorFormatter``, so ``record.msg`` is the event dict itself and the
@@ -206,7 +191,9 @@ def _degraded_records(caplog) -> list:
     out = []
     for record in caplog.records:
         event = record.msg
-        if isinstance(event, dict) and event.get("event", "").startswith("Tile rescale layer"):
+        if isinstance(event, dict) and event.get("event", "").startswith(
+            "Tile publicity lookup unavailable"
+        ):
             out.append(event)
     return out
 
@@ -218,13 +205,13 @@ def test_db_failure_is_logged_as_a_warning(make_cliente, tile_client, db, caplog
     with caplog.at_level(logging.WARNING, logger="app.domains.geo.router_core"):
         response = make_cliente(session).get(_tile_url(layer_id), params=MONTHLY_RESCALE)
 
-    assert response.status_code == 200, response.text
-    degraded = _degraded_records(caplog)
-    assert len(degraded) == 1, caplog.text
-    assert degraded[0]["layer_id"] == str(layer_id)
-    assert degraded[0]["error_type"] == "OperationalError"
+    assert response.status_code == 503, response.text
+    refusals = _refusal_records(caplog)
+    assert len(refusals) == 1, caplog.text
+    assert refusals[0]["layer_id"] == str(layer_id)
+    assert refusals[0]["error_type"] == "OperationalError"
     # First failure after the latch reset: nothing was suppressed before it.
-    assert degraded[0]["suppressed_since_last"] == 0
+    assert refusals[0]["suppressed_since_last"] == 0
 
 
 def test_repeated_db_failures_emit_at_most_one_warning_per_interval(
@@ -239,11 +226,11 @@ def test_repeated_db_failures_emit_at_most_one_warning_per_interval(
 
     with caplog.at_level(logging.WARNING, logger="app.domains.geo.router_core"):
         for _ in range(5):
-            assert cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE).status_code == 200
+            assert cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE).status_code == 503
 
-    # Every tile degraded, but only the first one was logged.
+    # Every tile was refused, but only the first one was logged.
     assert session.query_calls == 5
-    assert len(_degraded_records(caplog)) == 1, caplog.text
+    assert len(_refusal_records(caplog)) == 1, caplog.text
 
 
 def test_warning_resumes_after_the_throttle_interval(
@@ -262,16 +249,16 @@ def test_warning_resumes_after_the_throttle_interval(
         cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE)  # logged
         cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE)  # suppressed
         # Collapse the window instead of sleeping through a real minute.
-        monkeypatch.setattr(router_core, "_RESCALE_LOOKUP_WARN_INTERVAL_S", 0.0)
+        monkeypatch.setattr(router_core, "_PUBLICITY_LOOKUP_WARN_INTERVAL_S", 0.0)
         cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE)  # logged again
 
-    degraded = _degraded_records(caplog)
-    assert len(degraded) == 2, caplog.text
-    assert degraded[0]["suppressed_since_last"] == 0
-    assert degraded[1]["suppressed_since_last"] == 1
+    refusals = _refusal_records(caplog)
+    assert len(refusals) == 2, caplog.text
+    assert refusals[0]["suppressed_since_last"] == 0
+    assert refusals[1]["suppressed_since_last"] == 1
 
 
-# ── 3. Degradation is not sticky ─────────────────────────────────────────────
+# ── 3. The refusal is not sticky ──────────────────────────────────────────────
 
 
 def test_recovered_db_forwards_the_canonical_rescale(make_cliente, tile_client, db) -> None:
@@ -279,9 +266,9 @@ def test_recovered_db_forwards_the_canonical_rescale(make_cliente, tile_client, 
     session = _FailingQuerySession(db, OperationalError("transient blip", None, None))
     cliente = make_cliente(session)
 
-    degraded = cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE)
-    assert degraded.status_code == 200, degraded.text
-    assert _forwarded_params(tile_client) == {}
+    refused = cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE)
+    assert refused.status_code == 503, refused.text
+    tile_client.get.assert_not_awaited()
 
     session.heal()
     recovered = cliente.get(_tile_url(layer_id), params=MONTHLY_RESCALE)
@@ -291,7 +278,7 @@ def test_recovered_db_forwards_the_canonical_rescale(make_cliente, tile_client, 
     assert session.query_calls == 2
 
 
-# ── 4. The healthy paths are untouched by the degradation branch ─────────────
+# ── 4. The healthy paths never enter the fail-closed branch ─────────────────
 
 
 def test_healthy_lookup_still_forwards_the_canonical_rescale(make_cliente, tile_client, db) -> None:
@@ -325,7 +312,7 @@ def test_healthy_lookup_still_rejects_an_unsupported_range(make_cliente, tile_cl
     tile_client.get.assert_not_awaited()
 
 
-# ── 5. Programmer errors are NOT masked as default-rendered tiles ────────────
+# ── 5. Programmer errors are NOT masked as outages ────────────────────────────
 
 
 async def test_non_sqlalchemy_exception_is_not_swallowed(tile_client, db) -> None:

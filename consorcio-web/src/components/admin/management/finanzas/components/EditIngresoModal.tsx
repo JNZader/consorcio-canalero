@@ -20,12 +20,14 @@ export function EditIngresoModal({
   form,
   categoryData,
   onSubmit,
+  submitting,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
   form: UseFormReturnType<IngresoFormValues>;
   categoryData: Array<{ value: string; label: string }>;
   onSubmit: (values: IngresoFormValues) => void | Promise<void>;
+  submitting: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Editar ingreso">
@@ -66,7 +68,7 @@ export function EditIngresoModal({
             />
           </SimpleGrid>
           <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
-          <Button type="submit" fullWidth mt="md">
+          <Button type="submit" fullWidth mt="md" loading={submitting}>
             Actualizar ingreso
           </Button>
         </Stack>

@@ -14,7 +14,11 @@
 #
 # The loader re-checks the figures on every load (hit@5 >= 0.72, norma-vs-
 # secundaria = 1.00, vigencia-correctness = 1.00), so a `superada` word over a
-# failing figure is refused rather than believed.
+# failing figure is refused rather than believed. Since audit RAG-2 it also
+# re-verifies `integridad_sha256`, a seal over the load-bearing fields stamped
+# by the generation path (`derivar_desde` -> `volcar`): unkeyed, so not proof
+# a figure was measured, but a hand edit must also forge the digest, and both
+# lines then show in the review diff.
 
 estado: no_superada
 modo: bm25_sin_ce
@@ -27,3 +31,4 @@ metodologia: 'bm25_sin_ce: candidatos BM25 en orden BM25, sin cross-encoder. Med
   sobre 34 ítems respondibles del gold, claves del gold re-validadas contra el snapshot,
   snapshot no sintético. Derivado por derivar_desde desde scripts/rag_eval.py.'
 motivo: ''
+integridad_sha256: db83af2a699f0a03633fc00c433250713eff1f15860e3f4b9dfbff6a05e25fe9
