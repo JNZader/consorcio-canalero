@@ -38,7 +38,7 @@ import uuid
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -47,7 +47,7 @@ from starlette.requests import ClientDisconnect
 from app.config import settings
 from app.core.rate_limit import DistributedRateLimiter
 from app.db.session import get_db
-from app.domains.conocimiento import buzon, repository
+from app.domains.conocimiento import buzon, editor, normas, repository, service
 from app.domains.conocimiento.costos import AlmacenEnMemoria, CuotaDiaria
 from app.domains.conocimiento.embed_sidecar import SidecarNoDisponible, conectar_sidecar
 from app.domains.conocimiento.generacion import GeneracionNoDisponible
@@ -57,11 +57,14 @@ from app.domains.conocimiento.proveedores import (
     verificar_terminos,
 )
 from app.domains.conocimiento.schemas import (
+    BusquedaNormasEntrada,
     ConsultaEncolada,
     EstadoBuzon,
     ItemBuzon,
     PreguntaEntrada,
     RespuestaConocimiento,
+    ResultadoNormas,
+    ResultadoNormasOrdenado,
 )
 
 router = APIRouter(prefix="/conocimiento", tags=["conocimiento"])
@@ -636,4 +639,177 @@ def estado_del_buzon(
         mas_antiguo_pendiente=mas_antiguo,
         ultima_corrida_worker=buzon.ultima_corrida(db),
         worker_demorado=demorado,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The norms surface — search over the active corpus, no generation
+# ---------------------------------------------------------------------------
+
+CAUSA_SIN_CORPUS = "sin_corpus_activo"
+
+
+def enforce_conocimiento_normas_flag() -> None:
+    """The norms kill switch, and ONLY it. FIRST in the norms gate.
+
+    Separate from `enforce_conocimiento_flag` on purpose: the two surfaces are
+    switched independently, and this one has none of the mailbox's availability
+    facts. No terms record, no provider credential, no sidecar probe — the route
+    sends nothing off the box and embeds nothing, so asking for them would turn a
+    working search into a 503 whenever a Q&A dependency is down.
+    """
+    if not settings.conocimiento_normas_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": ERROR_APAGADA,
+                "causa": "conocimiento_normas_enabled",
+                "detalle": (
+                    "the conocimiento norms surface is switched off. The default "
+                    "state of a deployment with no flag set is OFF."
+                ),
+            },
+        )
+
+
+def enforce_corpus_activo(db: Session = Depends(get_db)) -> None:
+    """LAST in the norms gate: there must be an active snapshot to search.
+
+    After the role check, so a caller below admin never learns whether a corpus
+    has been ingested. Never falls back to "the newest snapshot": answering from
+    a revision nobody activated is how a citation gets certified against the
+    wrong corpus.
+    """
+    if repository.corpus_activo(db) is None:
+        raise _no_lista(
+            CAUSA_SIN_CORPUS,
+            "rag_corpus has no row with activo=true, so there is no snapshot to search.",
+        )
+
+
+def _buscar_normas(db: Session, consulta: str, k: int):
+    try:
+        return normas.buscar(db, consulta, modo=service.MODO_SIN_GPU, k=k)
+    except normas.SinCorpusActivo as exc:
+        # The gate checked a moment ago; this is the race where it was deactivated
+        # in between. Same answer, same cause.
+        raise _no_lista(CAUSA_SIN_CORPUS, str(exc)) from exc
+
+
+@router.post(
+    "/normas/buscar",
+    # Both shapes, ranked FIRST: the response is validated against this union and
+    # the ranked class is the one that carries `rango`, so a ranked body can never
+    # be narrowed to the unranked class and lose it. The reverse cannot happen
+    # either: the unranked class has no `rango` to leak.
+    response_model=ResultadoNormasOrdenado | ResultadoNormas,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": BusquedaNormasEntrada.model_json_schema()}},
+        }
+    },
+    dependencies=[
+        # Flag, then role, then corpus. This order is the contract: an anonymous
+        # caller on a deployment that is off must learn nothing, and a caller
+        # below admin must not learn whether a corpus exists.
+        Depends(enforce_conocimiento_normas_flag),
+        Depends(_require_admin()),
+        Depends(enforce_corpus_activo),
+        Depends(enforce_body_limit),
+    ],
+)
+async def buscar_normas(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Search the active corpus with the no-GPU arm and return verbatim units.
+
+    **The arm is not a parameter.** The route is pinned to `bm25_sin_ce` and the
+    body is `extra="forbid"`, so there is no way to ask for the CUDA arm over HTTP
+    — and no way to believe you did. `?modo=` in the query string is not declared
+    and therefore not read.
+
+    **Whether the response is ordered is decided below the route**, in
+    `normas.buscar`: ranked only when the recorded bar for the no-GPU arm is
+    `superada` for the active SHA, otherwise sorted by citation key with no rank
+    field at all. The route, the CLI and the MCP mirror return identical units
+    because none of them makes that decision.
+
+    Body parsed by hand, after `enforce_body_limit`, for the reason documented on
+    `encolar_pregunta`: a declared body is read before dependencies run.
+    """
+    try:
+        cuerpo = BusquedaNormasEntrada.model_validate_json(await request.body() or b"null")
+    except (ValidationError, ValueError) as exc:
+        # Summarized, never echoed: pydantic's errors carry the offending input.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "cuerpo_invalido",
+                "detalle": (
+                    "the body must be a JSON object with `consulta` (a non-empty "
+                    "string) and optionally `k`, and nothing else"
+                ),
+            },
+        ) from exc
+
+    return await run_in_threadpool(_buscar_normas, db, cuerpo.consulta, cuerpo.k)
+
+
+def _exportar_pedido(db: Session, pedido_id: str) -> str:
+    try:
+        return editor.exportar(db, pedido_id)
+    except editor.PedidoNoSoportado as exc:
+        # The reason is ours, not the caller's input, so it is safe to return.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "pedido_no_soportado", "detalle": exc.motivo},
+        ) from exc
+    except editor.ExportacionRechazada as exc:
+        # Slot ids and causes only: never text from a unit, because the refusal may
+        # be about a unit that is not allowed to leave the system.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "exportacion_rechazada",
+                "slot": exc.slot,
+                "causa": exc.causa,
+                "fallas": [{"slot": slot, "causa": causa} for slot, causa in exc.fallas],
+                "detalle": (
+                    "the draft was not exported: a legal citation failed its check or cites "
+                    "a unit that may not leave the system. Nothing was produced."
+                ),
+            },
+        ) from exc
+
+
+@router.post(
+    "/normas/pedidos/{pedido_id}/exportar",
+    response_class=Response,
+    responses={
+        200: {"content": {"text/markdown": {}}, "description": "The verified draft."},
+        409: {"description": "A citation failed its check; names the slot and the cause."},
+        422: {"description": "Not one of the eight Ley 8803 drafts."},
+    },
+    dependencies=[
+        # The same gate as the search, in the same order.
+        Depends(enforce_conocimiento_normas_flag),
+        Depends(_require_admin()),
+        Depends(enforce_corpus_activo),
+    ],
+)
+async def exportar_pedido(pedido_id: str, db: Session = Depends(get_db)) -> Response:
+    """Export one of the eight Ley 8803 drafts as Markdown, only if every citation passes.
+
+    Re-runs `normas.chequear` on each legal slot at the slot's pinned SHA, and refuses
+    the whole document (409, naming the slot and the cause) when any check fails or a
+    cited unit is not enviable. Takes no mode and no body. Nothing is sent anywhere:
+    the response is a document for a human to read and send.
+    """
+    documento = await run_in_threadpool(_exportar_pedido, db, pedido_id)
+    return Response(
+        content=documento,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="pedido-{pedido_id}.md"'},
     )

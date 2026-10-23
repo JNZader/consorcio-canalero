@@ -1,0 +1,21 @@
+# MCP SDK — only for the workstation that runs scripts/rag_normas_mcp.py, never
+# for the server image.
+#
+# Same pattern as requirements-rag.txt: a separate venv, outside the app image and
+# outside the requirements lock-sync (tests/test_requirements_lock_sync.py reads the
+# lock files, not this manifest). The application imports nothing from here.
+#
+# Use it in a virtualenv APART from the app's:
+#   python -m venv venv-mcp
+#   venv-mcp/bin/pip install -r requirements-mcp.txt
+#   venv-mcp/bin/python scripts/rag_normas_mcp.py --database-url "$DATABASE_URL"
+#
+# The pin is EXACT on purpose: this is the protocol layer, and the tool surface
+# (three read-only tools) is tested against this version. Bump it by hand, after
+# re-running tests/new/conocimiento/test_normas_mcp.py inside that venv.
+#
+# Supply-chain check done before pinning (2026-10-22): package `mcp` on PyPI is the
+# official modelcontextprotocol/python-sdk, version 2.3.0 published 2026-10-02,
+# not yanked; wheel sha256
+# dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377.
+mcp==2.3.0

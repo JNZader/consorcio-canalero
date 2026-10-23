@@ -178,7 +178,11 @@ interface ErrorEnvelope {
   detail?: unknown;
 }
 
-function toConocimientoApiError(status: number, body: ErrorEnvelope | null): ConocimientoApiError {
+function toConocimientoApiError(
+  status: number,
+  body: ErrorEnvelope | null,
+  superficie = 'el buzón de consultas'
+): ConocimientoApiError {
   const detail = body?.detail;
 
   // FastAPI's own validation errors and the house string errors both arrive as a
@@ -190,7 +194,7 @@ function toConocimientoApiError(status: number, body: ErrorEnvelope | null): Con
     return new ConocimientoApiError(
       status,
       'error_desconocido',
-      `No se pudo contactar el buzón de consultas (error ${status})`
+      `No se pudo contactar ${superficie} (error ${status})`
     );
   }
 
@@ -200,7 +204,7 @@ function toConocimientoApiError(status: number, body: ErrorEnvelope | null): Con
   const mensaje =
     typeof campos.detalle === 'string' && campos.detalle.length > 0
       ? campos.detalle
-      : `No se pudo contactar el buzón de consultas (error ${status})`;
+      : `No se pudo contactar ${superficie} (error ${status})`;
 
   const extra: Record<string, unknown> = {};
   for (const [clave, valor] of Object.entries(campos)) {
@@ -210,7 +214,16 @@ function toConocimientoApiError(status: number, body: ErrorEnvelope | null): Con
   return new ConocimientoApiError(status, codigo, mensaje, causa, extra);
 }
 
-async function conocimientoFetch<T>(ruta: string, init: RequestInit = {}): Promise<T> {
+/**
+ * The shared request: auth, the JSON content type and the object-shaped error
+ * mapping. The content type is sent on EVERY call, including the export POST that
+ * has no body, because the global middleware answers 415 to a POST without one.
+ */
+async function conocimientoRequest(
+  ruta: string,
+  init: RequestInit = {},
+  superficie?: string
+): Promise<Response> {
   const token = await getAuthToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -222,9 +235,14 @@ async function conocimientoFetch<T>(ruta: string, init: RequestInit = {}): Promi
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as ErrorEnvelope | null;
-    throw toConocimientoApiError(response.status, body);
+    throw toConocimientoApiError(response.status, body, superficie);
   }
 
+  return response;
+}
+
+async function conocimientoFetch<T>(ruta: string, init: RequestInit = {}): Promise<T> {
+  const response = await conocimientoRequest(ruta, init);
   return (await response.json()) as T;
 }
 
@@ -269,4 +287,131 @@ export async function listarPreguntas(
 ): Promise<ConocimientoItem[]> {
   const query = limite === undefined ? '' : `?limite=${limite}`;
   return conocimientoFetch<ConocimientoItem[]>(`/preguntas${query}`, { method: 'GET', signal });
+}
+
+// ---------------------------------------------------------------------------
+// Norms surface (`POST /conocimiento/normas/buscar`, `.../pedidos/{id}/exportar`)
+// ---------------------------------------------------------------------------
+
+/**
+ * One legal unit as the norms search shows it. `rango` exists ONLY on a ranked
+ * response; there is no score field because the server sends none, and this
+ * type must not grow one.
+ */
+export interface ConocimientoUnidadNorma {
+  citation_key: string;
+  documento_id: string;
+  tipo_chunk: string;
+  epigrafe: string | null;
+  texto: string;
+  tipo: string;
+  es_secundaria: boolean;
+  jurisdiccion: string;
+  estado_vigencia: string | null;
+  relevancia_consorcio: string | null;
+  rango?: number;
+}
+
+export interface ConocimientoResultadoNormas {
+  modo: string;
+  corpus_sha: string;
+  ingested_at: string;
+  unidades: ConocimientoUnidadNorma[];
+  /** "No units recovered". Not an abstention: the surface claims nothing about the law. */
+  sin_unidades: boolean;
+  orden_presentado: boolean;
+  nota_orden: string;
+  /** Present only when `orden_presentado` is true: the arm that ordered the units. */
+  orden_modo?: string;
+}
+
+/** Mirrors the server's `BUSQUEDA_NORMAS_K_MAX`-bounded default; the server stays the authority. */
+export const CONOCIMIENTO_NORMAS_K_DEFECTO = 10;
+
+/**
+ * The eight Ley 8803 drafts the editor covers. The labels are display-only: the
+ * server decides what is exportable (it answers 422 `pedido_no_soportado` for
+ * anything else, including pedido 8 / Ley 27.275), so a drift here costs a wrong
+ * label, never a wrong export.
+ */
+export const PEDIDOS_8803: readonly { id: string; titulo: string }[] = [
+  { id: '1', titulo: 'Pedido 1' },
+  { id: '2', titulo: 'Pedido 2' },
+  { id: '3', titulo: 'Pedido 3' },
+  { id: '4', titulo: 'Pedido 4' },
+  { id: '5', titulo: 'Pedido 5' },
+  { id: '6', titulo: 'Pedido 6' },
+  { id: '7', titulo: 'Pedido 7' },
+  { id: '9', titulo: 'Pedido 9' },
+];
+
+const NORMAS_SUPERFICIE = 'la búsqueda de normas';
+
+/**
+ * Search the active corpus snapshot. The body carries a query and a page size and
+ * NOTHING else: the server forbids a `modo` key, so the arm is never the caller's
+ * choice.
+ *
+ * @throws {ConocimientoApiError} on any non-2xx, status + codigo + causa preserved.
+ */
+export async function buscarNormas(
+  consulta: string,
+  k: number = CONOCIMIENTO_NORMAS_K_DEFECTO,
+  signal?: AbortSignal
+): Promise<ConocimientoResultadoNormas> {
+  const limpia = consulta.trim();
+  if (limpia.length === 0) {
+    throw new ConocimientoApiError(0, 'consulta_invalida', 'Escribí una consulta antes de buscar.');
+  }
+  if (limpia.length > CONOCIMIENTO_PREGUNTA_MAX_CHARS) {
+    throw new ConocimientoApiError(
+      0,
+      'consulta_invalida',
+      `La consulta tiene ${limpia.length} caracteres y el máximo es ${CONOCIMIENTO_PREGUNTA_MAX_CHARS}.`
+    );
+  }
+
+  const response = await conocimientoRequest(
+    '/normas/buscar',
+    { method: 'POST', body: JSON.stringify({ consulta: limpia, k }), signal },
+    NORMAS_SUPERFICIE
+  );
+  return (await response.json()) as ConocimientoResultadoNormas;
+}
+
+export interface ConocimientoBorradorExportado {
+  /** The file name the server proposed, e.g. `pedido-2.md`. */
+  nombre: string;
+  contenido: string;
+}
+
+function nombreDeAdjunto(cabecera: string | null | undefined, porDefecto: string): string {
+  const coincidencia = /filename="?([^";]+)"?/i.exec(cabecera ?? '');
+  return coincidencia?.[1] ?? porDefecto;
+}
+
+/**
+ * Export one Ley 8803 draft as Markdown text. On a refusal the server answers 409
+ * with the slot and the cause (kept on `extra`) and produced NOTHING, so there is
+ * no partial text to show.
+ *
+ * @throws {ConocimientoApiError} 409 `exportacion_rechazada` (`extra.slot`,
+ *   `extra.fallas`, `causa`), 422 `pedido_no_soportado`, or a 503 service state.
+ */
+export async function exportarPedido(
+  pedidoId: string,
+  signal?: AbortSignal
+): Promise<ConocimientoBorradorExportado> {
+  const response = await conocimientoRequest(
+    `/normas/pedidos/${encodeURIComponent(pedidoId)}/exportar`,
+    { method: 'POST', signal },
+    'la exportación de pedidos'
+  );
+  return {
+    nombre: nombreDeAdjunto(
+      response.headers?.get?.('Content-Disposition'),
+      `pedido-${pedidoId}.md`
+    ),
+    contenido: await response.text(),
+  };
 }

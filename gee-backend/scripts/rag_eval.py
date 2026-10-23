@@ -153,7 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=MODOS,
         help=(
             "repeatable; defaults to the three-mode ablation. `bm25_ce` is the "
-            "GATED arm (task 9.1b) and needs a reranker — see --reranker."
+            "GATED arm (task 9.1b) and needs a reranker — see --reranker. "
+            "`bm25_sin_ce` is the no-GPU arm: BM25 order, no cross-encoder, no "
+            "torch and no embedder. Its bar is derived into the report; the "
+            "checked-in barra_sin_gpu.yaml is never written by this command."
         ),
     )
     parser.add_argument(

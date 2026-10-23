@@ -169,6 +169,26 @@ module-path = [
   # "app/domains/conocimiento/generacion.py",
   # "app/domains/conocimiento/eval/answers.py",
   # "app/domains/conocimiento/recuperacion/bm25.py",
+  # ── conocimiento-normas-editor (task 6.4): MEDIDO, 2026-10-22, Python 3.14.
+  #    Siguen comentadas en ESTE archivo. El `test-command` de abajo no importa
+  #    `tests/test_mutation_targets_normas.py`; descomentarlas acá haría sobrevivir
+  #    cada mutante, que es el 0.00 % que ya le pasó a finanzas. CI no lee este
+  #    `module-path`: lee `scripts/cosmic_mutation_targets.json` (un módulo por
+  #    job, con su propio test). Ahí están `normas-kernel`, `normas-editor` y
+  #    `normas-barra`, piso 0.30, el mismo de siempre.
+  #
+  #    Medición local (venv, cosmic-ray, sin Postgres), 508 mutantes, 14 min:
+  #      normas.py             48/93  = 51.61 %
+  #      editor.py            106/240 = 44.17 %
+  #      eval/barra_sin_gpu.py 97/175 = 55.43 %
+  #      juntos               251/508 = 49.41 %
+  #    Comando: PATH="venv/bin:$PATH" venv/bin/python scripts/cosmic_gate.py \
+  #      --config .cosmic-ray.normas.toml --session /tmp/cr-normas.sqlite \
+  #      --min-kill-rate 0.30
+  # issue: measured
+  # "app/domains/conocimiento/normas.py",
+  # "app/domains/conocimiento/editor.py",
+  # "app/domains/conocimiento/eval/barra_sin_gpu.py",
   # TODO(mutation-coverage): falta la etapa 3 -- auth/refresh_tokens.py (300
   # mutantes, el de mayor valor y el mas caro). La receta ya esta probada dos
   # veces y NO es "correr los tests con DB mas rapido": el service no toca la

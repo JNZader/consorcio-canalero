@@ -1,0 +1,24 @@
+# MEASUREMENT ONLY. Not read by CI.
+#
+# The shared `.cosmic-ray.toml` test-command is the DB-free suite, and its
+# module-path must not gain normas/editor/barra until a run of THIS file on
+# Python 3.14 shows a kill rate >= 0.30. `scripts/cosmic_gate.py` deletes the
+# session and reruns init+exec; point it here, not at the shared config:
+#
+#   PATH="venv/bin:$PATH" venv/bin/python scripts/cosmic_gate.py \
+#     --config .cosmic-ray.normas.toml \
+#     --session /tmp/cr-normas.sqlite \
+#     --min-kill-rate 0.30
+
+[cosmic-ray]
+module-path = [
+  "app/domains/conocimiento/normas.py",
+  "app/domains/conocimiento/editor.py",
+  "app/domains/conocimiento/eval/barra_sin_gpu.py",
+]
+timeout = 120.0
+excluded-modules = []
+test-command = "/home/javier/programacion/consorcio-canalero/gee-backend/venv/bin/python -m pytest tests/test_mutation_targets_normas.py -q -p no:logging"
+
+[cosmic-ray.distributor]
+name = "local"

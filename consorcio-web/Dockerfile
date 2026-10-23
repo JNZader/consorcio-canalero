@@ -88,24 +88,28 @@ RUN npm prune --production
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS runtime
+FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951 AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
       org.opencontainers.image.description="React + Vite frontend for Consorcio Canalero" \
       org.opencontainers.image.vendor="Consorcio Canalero"
 
-# nginx:1.30.5-alpine is Alpine 3.24.2. Trivy 0.70 (HIGH/CRITICAL, ignore-unfixed)
-# on that digest no longer reports CVE-2026-6732 (libxml2): the base ships the
-# fixed libxml2, so the 1.30.4 hold (#308, #330) is lifted. These HIGH rows
-# still need a surgical apk upgrade:
+# nginx:1.30.6-alpine is Alpine 3.24. The nginx binary comes from
+# nginx.org's Alpine repo, not from Alpine's own nginx package. Trivy on
+# 1.30.5-alpine reported CVE-2026-15176, CVE-2026-93479 and CVE-2026-97205
+# (nginx 1.30.5-r1, fixed in 1.30.6-r0). `apk upgrade nginx` against Alpine
+# v3.24 did not move it: that index still serves 1.30.5-r1. The pin is the fix.
+# CVE-2026-6732 (libxml2) stays closed on this line, same as the 1.30.5 pin.
+# These HIGH rows still need a surgical apk upgrade:
 #   CVE-2026-93990 — libexpat 2.8.4-r0 → 2.8.5-r0
 #   CVE-2026-77214 — libexpat 2.8.5-r0 → 2.9.0-r0
 #   CVE-2026-103111 — pcre2 10.48-r0 → 10.49-r0
 #   CVE-2026-4775 — tiff 4.7.1-r0 → 4.7.2-r0
 #   CVE-2026-88806 — libx11 1.8.13-r0 → 1.8.14-r0
 # libcrypto3/libssl3/libuuid stay in the upgrade so a later digest that lags
-# those packages does not reopen the gate. REMOVE a package from this line
+# those packages does not reopen the gate. Do not add Alpine's nginx package
+# here: it would replace the nginx.org build. REMOVE a package from this line
 # only after a Trivy scan of the pinned digest shows it clean.
 #
 # The image gate caches this final runtime layer (`mode=min`). An unchanged
