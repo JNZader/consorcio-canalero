@@ -613,6 +613,25 @@ def _enforce_production_secrets(s: Settings) -> None:
             "clients. Set ENABLE_DOCS=false unless intentionally public."
         )
 
+    # Healthcheck host resolution: in production the container healthcheck
+    # (app/healthcheck.py) refuses to guess — without HEALTHCHECK_HOST or a
+    # parseable API_BASE_URL it returns exit 1 forever, and Docker
+    # restart-loops a perfectly healthy app (2026-10-23 audit, NUC-4).
+    # Reuse the healthcheck's URL parser so "parseable" means the same thing
+    # here and there. HEALTHCHECK_HOST has no Settings field — healthcheck.py
+    # reads it straight from the environment, so the gate does too.
+    import os
+
+    from app.healthcheck import _api_base_url_hostname
+
+    explicit_healthcheck_host = os.environ.get("HEALTHCHECK_HOST", "").strip()
+    if not explicit_healthcheck_host and not _api_base_url_hostname(s.api_base_url):
+        problems.append(
+            "Neither HEALTHCHECK_HOST nor a parseable API_BASE_URL is set in "
+            "production; the Docker healthcheck would exit 1 forever and "
+            "crash-loop the container. Set API_BASE_URL (or HEALTHCHECK_HOST)."
+        )
+
     # SMTP TLS: if email is configured at all in production, refuse to
     # ship password-reset / verification tokens over plaintext SMTP.
     # ``both False`` would otherwise silently send tokens in the clear.
