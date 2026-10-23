@@ -180,6 +180,66 @@ def exigir_superada(artefacto: BarraSinGpu, corpus_sha: str) -> None:
         )
 
 
+class BarraSinOrdenRechazada(RuntimeError):
+    """The artifact is not an honest failed bar, so the unranked path refuses it.
+
+    Not `BarraNoSuperada`: that one means "the bar is not cleared", which is the
+    opposite of what this refusal says when the artifact claims `superada`.
+    """
+
+
+def exigir_no_superada_honesta(artefacto: BarraSinGpu, corpus_sha: str) -> None:
+    """Refuse unless this artifact is an honest FAILED bar for `corpus_sha`.
+
+    This is the unranked production path: it accepts only a measurement that
+    failed, and it never reports one as cleared. A passing bar goes through
+    `exigir_superada`. A `no_superada` word over figures that all clear their
+    constants is refused as inconsistent, because the figures are the evidence
+    and the state word is only a claim.
+    """
+    if artefacto.estado == ESTADO_SUPERADA:
+        raise BarraSinOrdenRechazada(
+            f"estado {artefacto.estado!r}: the bar is recorded as cleared, so this "
+            "artifact belongs to the ranked path. Use --exigir-barra."
+        )
+    if artefacto.estado != ESTADO_NO_SUPERADA:
+        raise BarraSinOrdenRechazada(
+            f"estado {artefacto.estado!r}: no failed measurement is recorded for the "
+            f"{MODO_SIN_GPU} arm."
+        )
+    if artefacto.modo != MODO_SIN_GPU:
+        raise BarraSinOrdenRechazada(
+            f"modo {artefacto.modo!r}: the bar can only be recorded for {MODO_SIN_GPU!r}, "
+            "never for another arm."
+        )
+    if artefacto.corpus_sha != corpus_sha:
+        raise BarraSinOrdenRechazada(
+            f"corpus_sha: the bar was measured against {artefacto.corpus_sha!r} and the "
+            f"snapshot being ingested is {corpus_sha!r}."
+        )
+    hit = artefacto.hit_rate_at_5
+    separacion = artefacto.separacion_norma_secundaria
+    vigencia = artefacto.vigencia_correcta
+    if hit is None or separacion is None or vigencia is None:
+        ausentes = [
+            nombre
+            for nombre, valor in (
+                ("hit_rate_at_5", hit),
+                ("separacion_norma_secundaria", separacion),
+                ("vigencia_correcta", vigencia),
+            )
+            if valor is None
+        ]
+        raise BarraSinOrdenRechazada(
+            f"{', '.join(ausentes)}: a missing figure is not evidence of a failed bar."
+        )
+    if not (hit < BARRA_HIT_RATE or separacion < BARRA_SEPARACION or vigencia < BARRA_VIGENCIA):
+        raise BarraSinOrdenRechazada(
+            f"estado {artefacto.estado!r} is inconsistent with its figures: every figure "
+            "meets its constant, so nothing in the artifact shows a failed bar."
+        )
+
+
 def _sin_medir(motivo: str) -> BarraSinGpu:
     """An artifact that decides nothing, and says why.
 

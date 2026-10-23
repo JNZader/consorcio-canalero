@@ -47,6 +47,13 @@ from app.domains.conocimiento.service import (  # noqa: E402
 
 DEFAULT_REPO_URL = "https://github.com/JNZader/consorcio-corpus-legal"
 
+# Printed on stderr by `--produccion-sin-orden`. It must never claim a cleared bar
+# and never contain the state word of one.
+BANNER_SIN_ORDEN = (
+    "PRODUCTION INGEST UNDER A FAILED LAB BAR: the norms surface stays unranked "
+    "(orden_presentado=false); this is not a cleared bar."
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -83,11 +90,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="laboratorio",
         help=(
             "laboratorio may ingest without the bar (measurement happens there). "
-            "produccion refuses unless --exigir-barra is also set. The database URL "
-            "does not decide this."
+            "produccion refuses unless exactly one of --exigir-barra or "
+            "--produccion-sin-orden is also set. The database URL does not decide this."
         ),
     )
-    parser.add_argument(
+    # Mutually exclusive: the ranked and the unranked path read the same artifact
+    # and expect opposite outcomes, so naming both can only be a mistake.
+    gate = parser.add_mutually_exclusive_group()
+    gate.add_argument(
         "--exigir-barra",
         action="store_true",
         help=(
@@ -95,6 +105,18 @@ def build_parser() -> argparse.ArgumentParser:
             "bar as `superada` for this exact --corpus-sha. Off by default; checked "
             "before the database, the corpus or the pin are touched, so it also "
             "applies to --dry-run."
+        ),
+    )
+    gate.add_argument(
+        "--produccion-sin-orden",
+        action="store_true",
+        help=(
+            "only with --entorno produccion: ingest under an honest FAILED bar. "
+            "Proceeds only if eval/barra_sin_gpu.yaml is `no_superada` for this exact "
+            "--corpus-sha with at least one figure under its constant. This is NOT a "
+            "cleared bar: the norms surface stays unranked. Checked before the "
+            "database, the corpus or the pin are touched, so it also applies to "
+            "--dry-run."
         ),
     )
     return parser
@@ -243,15 +265,21 @@ def ingest(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # A usage error, not a gate refusal: argparse owns invalid flag combinations,
+    # so this exits 2 and never prints the ingest-abort banner.
+    if args.produccion_sin_orden and args.entorno != "produccion":
+        parser.error("--produccion-sin-orden solo es válido con --entorno produccion.")
 
     # Production is a choice, not a URL. A lab database can be pointed at with
     # the same flag shape; forgetting the bar on a production run must refuse
     # before any file or connection is touched.
-    if args.entorno == "produccion" and not args.exigir_barra:
+    if args.entorno == "produccion" and not (args.exigir_barra or args.produccion_sin_orden):
         print(
             "\nINGESTION ABORTED — nothing was written.\n"
-            "--entorno produccion exige --exigir-barra. "
+            "--entorno produccion exige --exigir-barra o --produccion-sin-orden. "
             "Laboratorio es el único entorno que puede ingerir sin la barra.\n",
             file=sys.stderr,
         )
@@ -273,6 +301,30 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    # The unranked path accepts a FAILED bar and nothing else. It never unlocks
+    # rank order: `superada_para` still reads the same artifact and still says no.
+    if args.produccion_sin_orden:
+        try:
+            barra = barra_sin_gpu.cargar_barra()
+            barra_sin_gpu.exigir_no_superada_honesta(barra, args.corpus_sha)
+        except (barra_sin_gpu.BarraInvalida, barra_sin_gpu.BarraSinOrdenRechazada) as abort:
+            print(
+                "\nINGESTION ABORTED — nothing was written.\n"
+                f"--produccion-sin-orden: {abort}\n"
+                "La barra del brazo bm25_sin_ce se deriva con scripts/rag_eval.py "
+                "--modo bm25_sin_ce sobre una base de laboratorio; ver "
+                "docs/rag/runbook-encendido.md.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"\n{BANNER_SIN_ORDEN}", file=sys.stderr)
+        print(
+            f"hit@5 {barra.hit_rate_at_5}, norma-vs-secundaria "
+            f"{barra.separacion_norma_secundaria}, vigencia {barra.vigencia_correcta}, "
+            f"corpus_sha {barra.corpus_sha}\n",
+            file=sys.stderr,
+        )
 
     if not args.database_url and not args.dry_run:
         print("error: --database-url or $DATABASE_URL is required", file=sys.stderr)
@@ -321,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"unidades escritas    : {summary.unidades_escritas}")
     print(f"unidades eliminadas  : {summary.unidades_eliminadas}")
     print(f"committed            : {summary.committed}")
+    if args.produccion_sin_orden:
+        print("barra                : failed lab bar, served unranked")
     if summary.procedencia_olvidada:
         print(
             "embeddings           : CLEARED — citation keys changed under a loaded "

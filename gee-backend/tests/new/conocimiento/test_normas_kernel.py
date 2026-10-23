@@ -229,7 +229,7 @@ class TestCargadorDeLaBarra:
         assert artefacto.n_respondibles == 34
         assert artefacto.hit_rate_at_5 == pytest.approx(22 / 34)
         assert artefacto.separacion_norma_secundaria == 1.0
-        assert artefacto.vigencia_correcta == pytest.approx(2 / 3)
+        assert artefacto.vigencia_correcta == 1.0
         assert barra_sin_gpu.superada_para(PINNED_CORPUS_SHA) is False
 
     def test_el_artefacto_enviado_no_se_puede_exigir(self):
@@ -350,6 +350,89 @@ class TestCargadorDeLaBarra:
         ruta.write_text(yaml.safe_dump({"estado": "aprobada"}))
         with pytest.raises(barra_sin_gpu.BarraInvalida, match="aprobada"):
             barra_sin_gpu.cargar_barra(ruta)
+
+
+def _no_superada(**cambios):
+    """An honest failed bar for `SHA`: hit@5 at 22/34, both other figures at 1.00."""
+    base = {"estado": "no_superada", "hit_rate_at_5": 22 / 34}
+    base.update(cambios)
+    return _barra(**base)
+
+
+class TestExigirNoSuperadaHonesta:
+    """The unranked production path accepts a failed bar and nothing else."""
+
+    def test_una_no_superada_honesta_pasa(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        assert barra_sin_gpu.exigir_no_superada_honesta(_no_superada(), SHA) is None
+
+    @pytest.mark.parametrize(
+        "cambios",
+        [
+            {"hit_rate_at_5": 0.71},
+            {"separacion_norma_secundaria": 0.99},
+            {"vigencia_correcta": 0.99},
+        ],
+    )
+    def test_alcanza_con_que_una_sola_cifra_falle(self, cambios):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        # `_barra` keeps the other two figures on the bar, so exactly one fails.
+        artefacto = _barra(estado="no_superada", **cambios)
+        assert barra_sin_gpu.exigir_no_superada_honesta(artefacto, SHA) is None
+
+    def test_superada_se_rechaza_y_nombra_el_camino_ranqueado(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="--exigir-barra"):
+            barra_sin_gpu.exigir_no_superada_honesta(_barra(), SHA)
+
+    def test_superada_con_otro_modo_sigue_nombrando_el_camino_ranqueado(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="--exigir-barra"):
+            barra_sin_gpu.exigir_no_superada_honesta(_barra(modo="bm25_ce"), SHA)
+
+    def test_no_medido_se_rechaza(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="no_medido"):
+            barra_sin_gpu.exigir_no_superada_honesta(_no_superada(estado="no_medido"), SHA)
+
+    def test_otro_modo_se_rechaza(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="bm25_ce"):
+            barra_sin_gpu.exigir_no_superada_honesta(_no_superada(modo="bm25_ce"), SHA)
+
+    def test_otro_sha_se_rechaza(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="corpus_sha"):
+            barra_sin_gpu.exigir_no_superada_honesta(_no_superada(), OTRO_SHA)
+
+    @pytest.mark.parametrize(
+        "campo",
+        ["hit_rate_at_5", "separacion_norma_secundaria", "vigencia_correcta"],
+    )
+    def test_una_cifra_ausente_no_es_evidencia_de_fallo(self, campo):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match=campo):
+            barra_sin_gpu.exigir_no_superada_honesta(_no_superada(**{campo: None}), SHA)
+
+    def test_no_superada_con_todas_las_cifras_en_la_barra_es_inconsistente(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="inconsistent"):
+            barra_sin_gpu.exigir_no_superada_honesta(_barra(estado="no_superada"), SHA)
+
+    def test_la_excepcion_no_es_la_de_la_barra_no_superada(self):
+        from app.domains.conocimiento.eval import barra_sin_gpu
+
+        assert issubclass(barra_sin_gpu.BarraSinOrdenRechazada, RuntimeError)
+        assert not issubclass(barra_sin_gpu.BarraSinOrdenRechazada, barra_sin_gpu.BarraNoSuperada)
 
 
 # ---------------------------------------------------------------------------
