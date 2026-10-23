@@ -1,0 +1,1580 @@
+{
+  "barra_sin_gpu": {
+    "barra": {
+      "hit_rate_at_5": 0.72,
+      "separacion_norma_secundaria": 1.0,
+      "vigencia_correcta": 1.0
+    },
+    "estado": "no_superada",
+    "evaluado": true,
+    "fallas_de_recuperacion": [
+      "D-2",
+      "D-3",
+      "D-4",
+      "D-6",
+      "D-8",
+      "C-1",
+      "C-2",
+      "C-3",
+      "C-5",
+      "T-4",
+      "T-5",
+      "V-1"
+    ],
+    "medido": {
+      "hit_rate_at_5": 0.6470588235294118,
+      "separacion_norma_secundaria": 1.0,
+      "vigencia_correcta": 0.6666666666666666
+    },
+    "modo": "bm25_sin_ce",
+    "motivo": "",
+    "n_respondibles": 34,
+    "perdidas_de_migracion": []
+  },
+  "corpus_sha": "ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e",
+  "generado_en": "2026-10-23T01:50:24.281137+00:00",
+  "gold_corpus_sha": "ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e",
+  "gold_set": {
+    "evaluable": true,
+    "n": 57,
+    "n_respondibles": 34,
+    "n_unanswerable": 23,
+    "no_resueltas": [],
+    "ratificado": "2026-08-10"
+  },
+  "latencia": null,
+  "leg_limit": 50,
+  "margen_baseline": {
+    "baseline_fts": {
+      "MRR": 0.091,
+      "citation-precision": 0.04,
+      "hit-rate@5": 0.138
+    },
+    "evaluado": false,
+    "modo": "bm25_ce",
+    "motivo": "el arm bm25_ce no se corrió en esta corrida"
+  },
+  "minimo_respondibles": 20,
+  "modos": {
+    "bm25_sin_ce": {
+      "cobertura": {
+        "hibrido_degenerado": false,
+        "leg_bm25_degradada": false,
+        "leg_fts_degradada": false,
+        "leg_vector_degradada": false,
+        "legs_corridas": [
+          "bm25"
+        ],
+        "n_preguntas": 57,
+        "operador_fts": "OR — disyunción de los lexemas que parsea websearch_to_tsquery",
+        "sin_candidatos_bm25": 1,
+        "sin_candidatos_fts": 57,
+        "sin_candidatos_vector": 57
+      },
+      "exencion_over_ceiling": {
+        "aplica": false,
+        "claves_sin_vector": [],
+        "metrica_afectada": "citation-precision",
+        "motivo": "unidades sobre el techo de tokens del modelo del batch (propiedad del embedder, no una constante del sistema): ingeridas enteras, recuperables por FTS, nunca embebidas (FTS-only by design, design.md D3)",
+        "n_preguntas_exentas": 0,
+        "preguntas_exentas": []
+      },
+      "go_no_go": {
+        "barras": [
+          {
+            "comparador": ">=",
+            "fuente": "answerable subset",
+            "minimo": 0.72,
+            "no_evaluable": false,
+            "nombre": "hit-rate@5",
+            "pasa": false,
+            "valor": 0.6470588235294118
+          },
+          {
+            "comparador": ">=",
+            "fuente": "answerable subset",
+            "minimo": 0.8,
+            "no_evaluable": false,
+            "nombre": "hit-rate@10",
+            "pasa": false,
+            "valor": 0.7647058823529411
+          },
+          {
+            "comparador": ">=",
+            "fuente": "answerable subset",
+            "minimo": 0.55,
+            "no_evaluable": false,
+            "nombre": "MRR",
+            "pasa": true,
+            "valor": 0.5627450980392157
+          },
+          {
+            "comparador": ">=",
+            "fuente": "answerable subset",
+            "minimo": 0.33,
+            "no_evaluable": false,
+            "nombre": "citation-precision",
+            "pasa": true,
+            "valor": 0.4068627450980392
+          },
+          {
+            "comparador": "==",
+            "fuente": "answerable subset",
+            "minimo": 1.0,
+            "no_evaluable": false,
+            "nombre": "norma-vs-secundaria",
+            "pasa": true,
+            "valor": 1.0
+          },
+          {
+            "comparador": "==",
+            "fuente": "answerable subset",
+            "minimo": 1.0,
+            "no_evaluable": false,
+            "nombre": "vigencia-correctness",
+            "pasa": false,
+            "valor": 0.6666666666666666
+          },
+          {
+            "comparador": "==",
+            "fuente": "sin señal ratificada (decisión 0.1 del owner, ABIERTA)",
+            "minimo": 1.0,
+            "no_evaluable": true,
+            "nombre": "abstention recall",
+            "pasa": false,
+            "valor": null
+          },
+          {
+            "comparador": ">=",
+            "fuente": "sin señal ratificada (decisión 0.1 del owner, ABIERTA)",
+            "minimo": 0.8,
+            "no_evaluable": true,
+            "nombre": "abstention precision",
+            "pasa": false,
+            "valor": null
+          }
+        ],
+        "evaluable": true,
+        "legs_degradadas": [],
+        "motivos_no_evaluable": [
+          "modo 'bm25_sin_ce': el par de abstención es `not-evaluable` — no hay señal ratificada para este arm y la decisión 0.1 del owner sigue ABIERTA. Las métricas de recuperación de arriba SÍ están medidas; lo que no puede emitirse es el veredicto de habilitación (task 9.5)."
+        ],
+        "veredicto": "NO EVALUABLE",
+        "veredicto_calificado": false,
+        "veredicto_con_alcance": "NO EVALUABLE"
+      },
+      "k": 10,
+      "metodologia": {
+        "etiqueta_same_sample": "upper bound (fit on the scoring sample)",
+        "folds_con_fallback": 0,
+        "fraccion_fallback": 0.0,
+        "held_out_precision": 0.0,
+        "held_out_recall": null,
+        "modo": "bm25_sin_ce",
+        "n": 0,
+        "regla_de_seleccion": "highest precision among thresholds reaching abstention recall 1.00; ties broken by the lower threshold. Grid = the observed values of the signal named above, with nothing appended.",
+        "same_sample_precision": 0.0,
+        "same_sample_recall": null,
+        "senal": "sin señal ratificada (decisión 0.1 del owner, ABIERTA)",
+        "senal_constante": false,
+        "umbral_shipped": 0.0,
+        "umbral_shipped_fallback": true,
+        "validacion": "leave-one-out cross-validation, one fold per gold item"
+      },
+      "metricas": {
+        "citation_precision": 0.4068627450980392,
+        "hit_rate_at_10": 0.7647058823529411,
+        "hit_rate_at_5": 0.6470588235294118,
+        "mrr": 0.5627450980392157,
+        "n_citation_precision": 34,
+        "n_respondibles": 34,
+        "n_separacion": 34,
+        "n_vigencia": 3,
+        "separacion_norma_secundaria": 1.0,
+        "vigencia_correctness": 0.6666666666666666
+      },
+      "preguntas": [
+        {
+          "citas_esperadas": [
+            "9750#14"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9750#14",
+            "11059#27",
+            "11059#25",
+            "6604#24",
+            "9750#31",
+            "11059#26",
+            "9750#13",
+            "9750#21",
+            "6394#31",
+            "res4-2026#anexo#art42"
+          ],
+          "id": "D-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#15"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "11059#24",
+            "6604#11",
+            "11059#27",
+            "9750#13",
+            "9750#14",
+            "6604#30",
+            "11059#26",
+            "6604#10",
+            "6604#28",
+            "6604#12"
+          ],
+          "id": "D-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#24"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "11059#28",
+            "6604#17",
+            "11059#31",
+            "res4-2026#anexo#art28",
+            "9750#28",
+            "6604#11",
+            "9750#27",
+            "11059#26",
+            "11059#51",
+            "9750#26"
+          ],
+          "id": "D-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "1315-2012#4"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "8555#4",
+            "8548#5",
+            "8614#68",
+            "8614-consolidada#68",
+            "8614#63",
+            "8614-consolidada#63",
+            "8614#45",
+            "8614-consolidada#45",
+            "8614#69",
+            "8614-consolidada#69"
+          ],
+          "id": "D-4",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#42"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "11059#44",
+            "5350#74",
+            "11059#43",
+            "11059#42",
+            "9750#42",
+            "6604#41",
+            "9867#9",
+            "11059#52",
+            "8560#81",
+            "6604#34"
+          ],
+          "id": "D-5",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9867#24"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9867#23",
+            "res-aprhi-3-2026#art1",
+            "6394#20bis",
+            "6394#22",
+            "res-bioagro-147-2026#art4",
+            "6394#35",
+            "res-aprhi-3-2026#art4",
+            "6394#34",
+            "6394#33",
+            "6394#58"
+          ],
+          "id": "D-6",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "8803#6"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "8803#6",
+            "8803#contra-quien-se-puede-usar-en-este-expediente",
+            "10417#10",
+            "5589#88",
+            "8803#el-pedido-que-cumple-la-ley",
+            "10417#19",
+            "10demayo#ficha-registral-aprhi",
+            "8614-consolidada#10",
+            "8560#49",
+            "3780-C-65#punto-3"
+          ],
+          "id": "D-7",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "8803#7"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "8803#7",
+            "10208#61",
+            "8803#el-reloj",
+            "8803#el-pedido-que-cumple-la-ley",
+            "8803#1",
+            "8803#6",
+            "8803#los-tres-frentes-de-pelea-previsibles",
+            "8803#contra-quien-se-puede-usar-en-este-expediente",
+            "8803#5",
+            "198-2025#anexo-i#art17#parte-3"
+          ],
+          "id": "D-9",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "8803#8"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "8803#8",
+            "8803#el-pedido-que-cumple-la-ley",
+            "198-2025#anexo-i#art17#parte-3",
+            "5350#68",
+            "8803#los-tres-frentes-de-pelea-previsibles",
+            "8803#el-reloj",
+            "6394#39",
+            "8803#7",
+            "10679#4#parte-4",
+            "5350#120"
+          ],
+          "id": "D-10",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#17"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9750#17",
+            "9750#8",
+            "res-aprhi-025-2022#art1",
+            "res-aprhi-004-2026#encabezado-visto",
+            "res-aprhi-004-2026#art3",
+            "9750#36",
+            "6604#14",
+            "res-aprhi-004-2026#art2",
+            "9750#12",
+            "10demayo#res005-2026#art1"
+          ],
+          "id": "D-11",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#25"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9750#25",
+            "25506#6",
+            "9750#8",
+            "9750#33",
+            "9750#20",
+            "9750#23",
+            "9750#38",
+            "9750#46",
+            "10417#15",
+            "res-srh-157-2013#considerandos-pasajes-verificables"
+          ],
+          "id": "D-12",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5350#66"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5350#66",
+            "5350#56",
+            "5350#19",
+            "5350#11",
+            "6394#15",
+            "5350#67",
+            "10593#1#parte-5",
+            "198-2025#anexo-i#art20",
+            "198-2025#anexo-i#art17#parte-1",
+            "5350#48"
+          ],
+          "id": "D-13",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "8560#5#parte-5",
+            "8560#5#parte-9",
+            "8560#5#parte-10"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "res-dnv-908-2026#anexo-ii#norma10",
+            "res-bioagro-147-2026#art1",
+            "res-srh-157-2013#art1",
+            "5589#220",
+            "318-2007#anexo#art27",
+            "5589#151",
+            "8560#5#parte-3",
+            "res4-2026#anexo#art24",
+            "11059#60",
+            "8560#5#parte-5"
+          ],
+          "id": "D-8",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#20",
+            "9750#6",
+            "10demayo#res005-2026#art1"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9750#11",
+            "res4-2026#anexo#art28",
+            "9750#43",
+            "6604#40",
+            "res4-2026#anexo#art50",
+            "9750#20",
+            "11059#28",
+            "6604#17",
+            "res4-2026#anexo#art48",
+            "res4-2026#anexo#art24"
+          ],
+          "id": "C-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#11",
+            "9750#22"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "6604#17",
+            "11059#28",
+            "9750#20",
+            "res4-2026#anexo#art28",
+            "11059#26",
+            "res4-2026#anexo#art24",
+            "11059#34",
+            "11059#31",
+            "11059#51",
+            "6604#11"
+          ],
+          "id": "C-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#16",
+            "9750#33"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "10417#13",
+            "8614#20",
+            "10417#14",
+            "8614-consolidada#20",
+            "6604#26",
+            "8614#21",
+            "8614-consolidada#21",
+            "9750#16",
+            "9750#33",
+            "res4-2026#anexo#art24"
+          ],
+          "id": "C-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#21",
+            "9750#15",
+            "9750#12"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9750#15",
+            "6604#11",
+            "6604#37",
+            "6604#18",
+            "res4-2026#anexo#art27",
+            "9750#35",
+            "11059#41",
+            "11027#16",
+            "6604#10",
+            "8548#5"
+          ],
+          "id": "C-4",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#3",
+            "9750#21",
+            "9750#39"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#96",
+            "8614#61",
+            "8614-consolidada#61",
+            "5589#239",
+            "25506#32",
+            "5589#197",
+            "8614#7",
+            "10417#6",
+            "8614-consolidada#7",
+            "5350#53"
+          ],
+          "id": "C-5",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5350#80",
+            "5350#84",
+            "9867#1"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5350#84",
+            "5350#81",
+            "5350#80",
+            "8803#contra-quien-se-puede-usar-en-este-expediente",
+            "198-2025#anexo-i#art21",
+            "11027#21",
+            "5350#83",
+            "5350#82",
+            "9867#30",
+            "srh-2013#punto-2"
+          ],
+          "id": "C-6",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#207",
+            "8560#28",
+            "5589#221"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#221",
+            "res-dnv-1898-2025#art5",
+            "res-dnv-1898-2025#art1",
+            "5589#116",
+            "5589#219",
+            "11059#35",
+            "res-dnv-1898-2025#art4",
+            "res-dnv-1898-2025#art3",
+            "res-dnv-1898-2025#art7",
+            "5589#222"
+          ],
+          "id": "C-7",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "res-dipas-395-2004#art1",
+            "res-dipas-395-2004#art3",
+            "10demayo#res189-2014#art1"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "res-dipas-395-2004#art5",
+            "res-dph-11821-1985#art1",
+            "res-dipas-395-2004#art1",
+            "res-srh-157-2013#art1",
+            "res-dph-11821-1985#art4",
+            "res-dph-11821-1985#art7",
+            "res-dph-11821-1985#art2",
+            "res-dipas-395-2004#art6",
+            "res-dph-11821-1985#art3",
+            "res-dipas-395-2004#art3"
+          ],
+          "id": "C-8",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#18",
+            "25506#3",
+            "25506#6"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "9750#18",
+            "6604#15",
+            "25506#anexo",
+            "9750#25",
+            "25506#52",
+            "6604#23",
+            "25506#53",
+            "25506#2",
+            "25506#26",
+            "25506#49"
+          ],
+          "id": "C-9",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "10679#17",
+            "10679#vigencia-de-los-fondos#parte-1",
+            "9750#39"
+          ],
+          "clase": "trampa-vigencia",
+          "claves_devueltas": [
+            "10679#20",
+            "10679#vigencia-de-los-fondos#parte-1",
+            "10679#vigencia-de-los-fondos#parte-2",
+            "10679#17",
+            "10679#vigencia-de-los-fondos#parte-3",
+            "10679#51",
+            "10679#21",
+            "10679#22",
+            "10679#23",
+            "10679#42"
+          ],
+          "id": "T-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "10679#20",
+            "10679#vigencia-de-los-fondos#parte-2"
+          ],
+          "clase": "trampa-vigencia",
+          "claves_devueltas": [
+            "10679#20",
+            "10679#vigencia-de-los-fondos#parte-3",
+            "10679#vigencia-de-los-fondos#parte-2",
+            "11059#61",
+            "10679#50",
+            "10679#36",
+            "10679#28",
+            "10679#49",
+            "10593#25",
+            "8803#los-tres-frentes-de-pelea-previsibles"
+          ],
+          "id": "T-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#19",
+            "9750#12",
+            "9750#47"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "11059#25",
+            "6604#16",
+            "9750#19",
+            "res-aprhi-025-2022#art2",
+            "9750#12",
+            "res-aprhi-004-2026#art2",
+            "res-aprhi-004-2026#considerandos-pasajes-verificables",
+            "6604#10",
+            "res-aprhi-004-2026#encabezado-visto",
+            "8614#14"
+          ],
+          "id": "T-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "11059#1",
+            "11059#3",
+            "10936#12"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "res-aprhi-004-2026#considerandos-pasajes-verificables",
+            "8560#69",
+            "10demayo#res189-2014#art1",
+            "8560#61",
+            "8555#1",
+            "5589#109",
+            "8548#1",
+            "8560#60",
+            "10demayo#ficha-registral-aprhi",
+            "res4-2026#anexo#art50"
+          ],
+          "id": "T-4",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#244",
+            "5589#275",
+            "5589#276"
+          ],
+          "clase": "trampa-vigencia",
+          "claves_devueltas": [
+            "6604#11",
+            "11059#16",
+            "8560#41bis",
+            "5589#180",
+            "srh-2013#punto-3#parte-4",
+            "5589#187",
+            "9750#21",
+            "5589#220",
+            "10417#17",
+            "10417#21"
+          ],
+          "id": "T-5",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "9750#3",
+            "5589#202"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#193sextus",
+            "5589#53",
+            "5589#36",
+            "198-2025#anexo-i#art18",
+            "res-srh-157-2013#considerandos-pasajes-verificables",
+            "1315-2012#5",
+            "9750#17",
+            "9750#3",
+            "res-aprhi-004-2026#considerandos-pasajes-verificables",
+            "9750#7"
+          ],
+          "id": "V-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#260",
+            "5589#235",
+            "5589#239"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#239",
+            "5589#236",
+            "5589#240",
+            "5589#256",
+            "5589#263",
+            "5589#258",
+            "5589#254",
+            "5589#261",
+            "5589#242",
+            "5589#155"
+          ],
+          "id": "V-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#241",
+            "5589#256",
+            "5589#261"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#256",
+            "5589#254",
+            "5589#253",
+            "5589#251",
+            "5589#252",
+            "5350#119",
+            "5589#261",
+            "8560#5#parte-3",
+            "10679#vigencia-de-los-fondos#parte-8",
+            "res-dnv-908-2026#anexo-ii#norma22"
+          ],
+          "id": "V-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#238",
+            "5589#239",
+            "5589#202"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#202",
+            "5589#239",
+            "5589#238",
+            "9750#25",
+            "8555#4",
+            "6604#23",
+            "10593#1#parte-13",
+            "5589#97",
+            "5589#222",
+            "8560#45"
+          ],
+          "id": "Q-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#207",
+            "5589#208",
+            "1315-2012#2"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "3780-C-65#punto-3",
+            "res-dnv-908-2026#anexo-xi-modelo-de-resolucion-aprobatoria-particular-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-1",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-6",
+            "1315-2012#2",
+            "res-dnv-908-2026#anexo-xi-modelo-de-resolucion-aprobatoria-particular-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-4",
+            "res4-2026#anexo#art5",
+            "10demayo#res189-2014#art1",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-2",
+            "10936#10",
+            "3780-C-65#punto-2#parte-1"
+          ],
+          "id": "Q-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#254",
+            "5589#260"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#254",
+            "5589#260",
+            "5589#253",
+            "5589#256",
+            "5589#240",
+            "5589#266",
+            "5589#235",
+            "5589#264",
+            "5589#257",
+            "5589#236"
+          ],
+          "id": "Q-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [
+            "5589#235"
+          ],
+          "clase": "answerable",
+          "claves_devueltas": [
+            "5589#235",
+            "10417#13",
+            "8614#20",
+            "8614-consolidada#20",
+            "10679#vigencia-de-los-fondos#parte-7",
+            "5589#240",
+            "res4-2026#anexo#art60",
+            "318-2007#anexo#art112",
+            "318-2007#anexo#art111",
+            "11059#4#parte-2"
+          ],
+          "id": "Q-4",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "318-2007#anexo#art27",
+            "res-dnv-908-2026#anexo-ii#norma25",
+            "8560#5#parte-10",
+            "res-dnv-908-2026#anexo-ii#norma10",
+            "res-bioagro-147-2026#art4",
+            "318-2007#anexo#art99",
+            "res-bioagro-147-2026#art5",
+            "res-dnv-908-2026#anexo-ii#norma21",
+            "res-bioagro-147-2026#art3",
+            "8560#66"
+          ],
+          "id": "X-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "5589#220",
+            "8560#44",
+            "8560#5#parte-3",
+            "8560#77",
+            "res-srh-157-2013#art1",
+            "318-2007#anexo#art96",
+            "11059#4#parte-2",
+            "res4-2026#anexo#art24",
+            "318-2007#anexo#art90",
+            "8560#5#parte-10"
+          ],
+          "id": "X-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10679#vigencia-de-los-fondos#parte-8",
+            "10679#20",
+            "10679#vigencia-de-los-fondos#parte-5",
+            "10679#17",
+            "11059#61",
+            "10679#33",
+            "9750#3",
+            "10679#vigencia-de-los-fondos#parte-2",
+            "5589#220",
+            "10679#vigencia-de-los-fondos#parte-3"
+          ],
+          "id": "X-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "3780-C-65#punto-3",
+            "1315-2012#6",
+            "10demayo#ficha-registral-aprhi",
+            "1315-2012#2",
+            "10demayo#res189-2014#art2",
+            "10936#8",
+            "6604#1",
+            "10demayo#res005-2026#art1",
+            "10demayo#res189-2014#art4",
+            "10demayo#res005-2026#art3"
+          ],
+          "id": "X-4",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "5589#219",
+            "5589#226",
+            "8614#71",
+            "8614-consolidada#71",
+            "9867#23",
+            "8614#9",
+            "10417#13",
+            "8614#4",
+            "10417#12",
+            "8614#20"
+          ],
+          "id": "X-5",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10679#vigencia-de-los-fondos#parte-3",
+            "10demayo#res189-2014#art1",
+            "res-srh-157-2013#art1",
+            "10demayo#ficha-registral-aprhi",
+            "8560#32",
+            "8560#74",
+            "res-aprhi-3-2026#anexo-ii-planos-de-afectacion-parcelaria-cajetin",
+            "9750#12",
+            "8560#53",
+            "10679#vigencia-de-los-fondos#parte-8"
+          ],
+          "id": "A-1",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10demayo#res189-2014#art1",
+            "10demayo#ficha-registral-aprhi",
+            "8614#9",
+            "res-dnv-908-2026#art5",
+            "8614#7",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-2",
+            "10417#16",
+            "res-dnv-908-2026#anexo-xi-modelo-de-resolucion-aprobatoria-particular-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-3",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-6",
+            "10417#12"
+          ],
+          "id": "A-2",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10demayo#ficha-registral-aprhi",
+            "res-dnv-908-2026#anexo-xi-modelo-de-resolucion-aprobatoria-particular-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-3",
+            "res-srh-157-2013#art1",
+            "10demayo#res189-2014#art1",
+            "8614#9",
+            "10417#6",
+            "8614-consolidada#7",
+            "8614#31",
+            "5350#23",
+            "8614-consolidada#31"
+          ],
+          "id": "A-3",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10demayo#res189-2014#art1",
+            "10demayo#ficha-registral-aprhi",
+            "10demayo#res005-2026#art3",
+            "10demayo#res005-2026#art2",
+            "10demayo#res189-2014#art2",
+            "10demayo#res189-2014#art4",
+            "8803#contra-quien-se-puede-usar-en-este-expediente",
+            "res-aprhi-3-2026#anexo-ii-planos-de-afectacion-parcelaria-cajetin",
+            "10demayo#res189-2014#art3",
+            "10demayo#res005-2026#art1"
+          ],
+          "id": "A-4",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [],
+          "id": "A-5",
+          "margen": 0.0,
+          "n_bm25": 0,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "11059#41",
+            "6604#36",
+            "9750#39",
+            "10593#23",
+            "10679#26",
+            "11059#25",
+            "10593#16",
+            "res4-2026#anexo#art27",
+            "10593#42",
+            "10593#34"
+          ],
+          "id": "A-6",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "9750#39",
+            "11059#41",
+            "9750#41",
+            "10679#28",
+            "8614#41",
+            "8614-consolidada#41",
+            "6604#36",
+            "10679#36",
+            "8614#9",
+            "10417#13"
+          ],
+          "id": "A-7",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10demayo#ficha-registral-aprhi",
+            "10demayo#res189-2014#art1",
+            "10demayo#res005-2026#art1",
+            "res-srh-157-2013#encabezado-visto",
+            "25506#37",
+            "res-srh-157-2013#art1",
+            "res-aprhi-3-2026#anexo-i-planilla-de-individualizacion-de-terrenos#parte-3",
+            "res-aprhi-3-2026#anexo-i-planilla-de-individualizacion-de-terrenos#parte-2",
+            "res-aprhi-004-2026#art1",
+            "5589#102"
+          ],
+          "id": "A-8",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "srh-2013#punto-2",
+            "8555#23",
+            "srh-2013#punto-3#parte-1",
+            "10936#10",
+            "5589#215",
+            "srh-2013#punto-4",
+            "res-dph-11821-1985#art3",
+            "10208#43",
+            "10208#17",
+            "res-dph-11821-1985#art2"
+          ],
+          "id": "A-9",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10demayo#res189-2014#art1",
+            "10demayo#ficha-registral-aprhi",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-2",
+            "res-aprhi-004-2026#encabezado-visto",
+            "10679#vigencia-de-los-fondos#parte-3",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-3",
+            "res-srh-157-2013#art1",
+            "8614#48",
+            "8614-consolidada#48",
+            "10679#vigencia-de-los-fondos#parte-8"
+          ],
+          "id": "A-10",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "8560#71",
+            "8560#70",
+            "3780-C-65#punto-3",
+            "1315-2012#3",
+            "8555#27",
+            "5589#222",
+            "5589#223",
+            "8560#91",
+            "318-2007#anexo#art12#parte-1",
+            "10593#39"
+          ],
+          "id": "A-11",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "8803#contra-quien-se-puede-usar-en-este-expediente",
+            "5350#38",
+            "res-dnv-908-2026#anexo-xi-modelo-de-resolucion-aprobatoria-particular-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-3",
+            "10demayo#ficha-registral-aprhi",
+            "9750#33",
+            "6604#27",
+            "6604#31",
+            "10417#10",
+            "8614#10",
+            "8803#los-tres-frentes-de-pelea-previsibles"
+          ],
+          "id": "A-12",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "9750#3",
+            "5589#116",
+            "9750#21",
+            "8614#28",
+            "8614-consolidada#28",
+            "8614#30",
+            "8614-consolidada#30",
+            "10679#33",
+            "res-bioagro-147-2026#art4",
+            "8614#32"
+          ],
+          "id": "A-13",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "8803#los-tres-frentes-de-pelea-previsibles",
+            "8560#73",
+            "res-aprhi-025-2022#art2",
+            "6604#14",
+            "5350#22",
+            "res4-2026#anexo#art48",
+            "6604#6",
+            "res-aprhi-025-2022#art1",
+            "res-aprhi-004-2026#art3",
+            "res-dnv-908-2026#anexo-i-nuevo-procedimiento-para-la-tramitacion-de-permisos-precarios-de-uso-de-la-zona-de-camino#parte-3"
+          ],
+          "id": "A-14",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "5589#248",
+            "5589#17",
+            "5589#131",
+            "5589#19",
+            "5589#227",
+            "5589#225",
+            "5589#226",
+            "5589#153",
+            "5589#236",
+            "5589#115"
+          ],
+          "id": "A-15",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "8803#los-tres-frentes-de-pelea-previsibles",
+            "5350#57",
+            "5589#223",
+            "5350#32",
+            "5589#169",
+            "5350#120",
+            "5350#82",
+            "8803#el-reloj",
+            "6394#34",
+            "5350#6"
+          ],
+          "id": "A-16",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "10demayo#res005-2026#art1",
+            "10demayo#res005-2026#art3",
+            "res4-2026#anexo#art48",
+            "10demayo#res189-2014#art3",
+            "10demayo#res189-2014#art2",
+            "res4-2026#anexo#art50",
+            "res-aprhi-004-2026#art1",
+            "9867#6",
+            "res-aprhi-004-2026#encabezado-visto",
+            "10demayo#res189-2014#art4"
+          ],
+          "id": "A-17",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        },
+        {
+          "citas_esperadas": [],
+          "clase": "unanswerable",
+          "claves_devueltas": [
+            "res-srh-157-2013#encabezado-visto",
+            "res-srh-157-2013#art2",
+            "res-aprhi-004-2026#art3",
+            "res-aprhi-004-2026#art2",
+            "res-aprhi-004-2026#encabezado-visto",
+            "res-srh-157-2013#considerandos-pasajes-verificables",
+            "res-srh-157-2013#art4",
+            "res-srh-157-2013#art1",
+            "res-srh-157-2013#art3",
+            "res-aprhi-004-2026#art1"
+          ],
+          "id": "A-18",
+          "margen": 0.0,
+          "n_bm25": 50,
+          "n_fts": 0,
+          "n_vector": 0,
+          "score_top1": 0.0
+        }
+      ],
+      "ranker": {
+        "modelo": null,
+        "sintetico": null
+      }
+    }
+  },
+  "operador_fts": "OR — disyunción de los lexemas que parsea websearch_to_tsquery",
+  "procedencia": {
+    "artifact_sha256": null,
+    "device_consulta": "cpu",
+    "device_corpus": null,
+    "embeddings_loaded_at": null,
+    "modelo": null,
+    "revision_hf": null,
+    "sintetico": null,
+    "torch_consulta": null,
+    "torch_corpus": null,
+    "transformers_consulta": null
+  },
+  "respuestas": {
+    "evaluado": false,
+    "motivo": "El bloque de métricas por respuesta no se puntuó: esta corrida no recibió `--answer-set`. Las respuestas las produce el worker con GPU (runbook G9) contra el pin real, y el owner las gradúa; recién entonces hay artefacto que pasarle a este comando."
+  },
+  "router": {
+    "evaluado": false,
+    "motivo": "El bloque del router no se puntuó: esta corrida no construyó un embebedor (`--modo fts` no necesita uno). Para puntuarlo: `make rag-eval RAG_EVAL_PYTHON=venv-rag/bin/python`."
+  },
+  "rrf_k": 60,
+  "sintetico": false,
+  "slm_bench": {
+    "evaluado": false,
+    "motivo": "El bench de SLM no se corrió en esta corrida: no se pasó `--slm-bench`. Los dos brazos son corridas REALES — el pin de referencia y el candidato embebido, mismo prompt, mismos payloads, mismos graders — y las produce el worker con GPU (runbook G9).",
+    "regla_escalera": "Si el SLM despeja las MISMAS barras que la referencia, el pin del proveedor PUEDE mudarse al SLM embebido — lo que mata la dependencia de verificación de términos (task 6.7) y la superficie de proveedor externo por completo. Recién entonces se banca un peldaño MÁS CHICO (≤2B) sobre este mismo artefacto, y sólo si ESE aguanta, un ≤1B afinado pasa a ser un proyecto (destilación desde el corpus — cambio aparte, no éste). La escalera nunca saltea un peldaño, y cada peldaño lo decide este mismo artefacto graduado, nunca una impresión."
+  }
+}

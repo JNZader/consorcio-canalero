@@ -5,8 +5,8 @@ Three distinct jobs, and they are not the same job:
 1. **The fixture diff (1.4).** The 11 checked-in fixtures are re-derived by the
    live rule and compared against their rows in the artifact. This runs with no
    database and no corpus checkout, so a rule regression fails in CI.
-2. **The rule-change guard (1.5).** The fixtures cover 11 of 35 documents. An
-   allowlist entry that only promotes one of the other 24 lands with every
+2. **The rule-change guard (1.5).** The fixtures cover 11 of 49 documents. An
+   allowlist entry that only promotes one of the other 38 lands with every
    fixture green — a silent widening of the shippable set. The artifact's
    `regla_sha256` closes that: change the rule without regenerating the artifact
    and this file fails.
@@ -54,15 +54,17 @@ class TestArtefactoDeClasificacion:
             verificar_corpus_sha_clasificacion(esperado, "f" * 40)
 
     def test_it_covers_the_whole_corpus_not_just_the_fixtures(self, esperado):
-        """35 rows, and the ratified class counts (amendment A1).
+        """49 rows. 41 publico, 1 institucional, 7 privado.
 
-        26/1/8 is not decoration: it is the number the owner ratified, and it is
-        the thing that moves when someone widens the boundary.
+        The fourteen documents added at this pin are publico. The forty-first
+        publico is resolucion-srh-157: its fuente_url now includes the Boletín
+        Oficial edition, and the host rule promotes that URL. The owner
+        ratified that promotion on 2026-10-22.
         """
-        assert len(esperado.documentos) == 35
-        assert len(esperado.por_clase("publico")) == 26
+        assert len(esperado.documentos) == 49
+        assert len(esperado.por_clase("publico")) == 41
         assert len(esperado.por_clase("institucional")) == 1
-        assert len(esperado.por_clase("privado")) == 8
+        assert len(esperado.por_clase("privado")) == 7
 
     def test_the_single_institucional_document_is_the_consorcio_registro(self, esperado):
         assert esperado.por_clase("institucional") == ("consorcio-10-de-mayo-registro-aprhi",)
@@ -216,13 +218,18 @@ class TestResidualC8:
     def test_it_is_publico_by_the_host_rule_and_not_by_its_tipo(self, esperado):
         """`resolucion-administrativa` is deliberately NOT institucional.
 
-        Two documents of that same `tipo` stay `privado` (Drive/ArcGIS hosts
-        only), which is what proves the promotion came from this document's own
-        evidence rather than from a category name.
+        APRHI 004 stays `privado` (Drive/ArcGIS hosts only). SRH 157 is the
+        same `tipo` and is `publico` only because its `fuente_url` now includes
+        the Boletín Oficial edition. The owner ratified that promotion on
+        2026-10-22. Same category, opposite class: the promotion comes from
+        the URL, not from the type name.
         """
         from app.domains.conocimiento.repository import TIPOS_INSTITUCIONALES
 
         assert "resolucion-administrativa" not in TIPOS_INSTITUCIONALES
-        privados = esperado.por_clase("privado")
-        assert "resolucion-general-aprhi-004-2026-leones-villa-elisa" in privados
-        assert "resolucion-srh-157-2013-constitucion-leones-villa-elisa" in privados
+        assert "resolucion-general-aprhi-004-2026-leones-villa-elisa" in esperado.por_clase(
+            "privado"
+        )
+        fila = esperado.documentos["resolucion-srh-157-2013-constitucion-leones-villa-elisa"]
+        assert fila.clasificacion == "publico"
+        assert "boletinoficial.cba.gov.ar" in fila.evidencia
