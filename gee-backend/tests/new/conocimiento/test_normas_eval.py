@@ -20,6 +20,7 @@ from app.domains.conocimiento.recuperacion.reranker import RerankerDeterministic
 from app.domains.conocimiento.service import ProcedenciaEmbeddings
 from scripts import rag_eval, rag_ingest
 
+from .conftest import PINNED_CORPUS_SHA
 from .test_normas_kernel import OTRO_SHA, SHA, seed
 from .test_rag_eval_cli import MOMENTO, _NullEngine, cli, marcar  # noqa: F401 (cli is a fixture)
 from .test_rag_eval_harness import SHA as SHA_HARNESS
@@ -611,3 +612,220 @@ class TestExigirBarra:
         codigo = rag_ingest.main([*self.ARGS, "--corpus-sha", SHA, "--entorno", "laboratorio"])
         assert codigo == 0
         assert llamadas == ["ingest"]
+
+
+BANNER_SIN_ORDEN = (
+    "PRODUCTION INGEST UNDER A FAILED LAB BAR: the norms surface stays unranked "
+    "(orden_presentado=false); this is not a cleared bar."
+)
+
+
+class _SesionFalsa:
+    def __init__(self, *_):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def begin(self):
+        return self
+
+    def rollback(self):
+        pass
+
+
+def _resumen_falso():
+    return SimpleNamespace(
+        corpus_sha=SHA,
+        gates=SimpleNamespace(
+            documentos=0, articulos_total=0, no_articulos_total=0, over_ceiling=[]
+        ),
+        unidades_escritas=0,
+        unidades_eliminadas=0,
+        committed=True,
+        procedencia_olvidada=False,
+        verificacion_fallida=False,
+    )
+
+
+class TestProduccionSinOrden:
+    """`rag_ingest --produccion-sin-orden`: an honest failed bar may ingest, served unranked."""
+
+    ARGS = ["--corpus-path", "/nonexistent", "--database-url", "postgresql://unused/unused"]
+    PRODUCCION = ["--corpus-sha", SHA, "--entorno", "produccion"]
+
+    def _barra(self, monkeypatch, tmp_path, *, hit: float = 22 / 34, **cambios):
+        """Write a derived artifact for `SHA` (hit@5 below the bar by default) and point at it."""
+        datos = barra_sin_gpu.volcar(
+            barra_sin_gpu.derivar_desde(_corrida(hit=hit), _procedencia(), _gold_evaluable())
+        )
+        datos.update(cambios)
+        ruta = tmp_path / "barra.yaml"
+        ruta.write_text(yaml.safe_dump(datos), encoding="utf-8")
+        monkeypatch.setattr(barra_sin_gpu, "RUTA_BARRA", ruta)
+        return datos
+
+    def _prohibir(self, monkeypatch):
+        """Every refusal must happen before an engine opens or ingest runs."""
+        llamadas: list[str] = []
+
+        def prohibido(nombre):
+            def _(*a, **k):
+                llamadas.append(nombre)
+                raise AssertionError(f"{nombre} ran although the command had to refuse")
+
+            return _
+
+        monkeypatch.setattr(rag_ingest, "ingest", prohibido("ingest"))
+        monkeypatch.setattr(rag_ingest, "create_engine", prohibido("create_engine"))
+        return llamadas
+
+    def _permitir(self, monkeypatch):
+        llamadas: list[str] = []
+
+        def ingest_falso(*_a, **_k):
+            llamadas.append("ingest")
+            return _resumen_falso()
+
+        monkeypatch.setattr(rag_ingest, "create_engine", lambda url: _NullEngine())
+        monkeypatch.setattr(rag_ingest, "ingest", ingest_falso)
+        monkeypatch.setattr(rag_ingest, "Session", _SesionFalsa)
+        return llamadas
+
+    def test_el_flag_existe_y_no_es_el_default(self):
+        parser = rag_ingest.build_parser()
+        assert parser.parse_args([*self.ARGS, "--corpus-sha", SHA]).produccion_sin_orden is False
+        assert (
+            parser.parse_args(
+                [*self.ARGS, "--corpus-sha", SHA, "--produccion-sin-orden"]
+            ).produccion_sin_orden
+            is True
+        )
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            ["--entorno", "produccion", "--exigir-barra", "--produccion-sin-orden"],
+            ["--entorno", "laboratorio", "--produccion-sin-orden"],
+            ["--entorno", "laboratorio", "--exigir-barra", "--produccion-sin-orden"],
+            ["--produccion-sin-orden"],
+        ],
+        ids=["ambos-en-produccion", "laboratorio", "laboratorio-con-ambos", "entorno-por-defecto"],
+    )
+    @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]], ids=["real", "dry-run"])
+    def test_un_error_de_uso_sale_con_2_sin_el_banner_del_ingest(
+        self, monkeypatch, capsys, extra, dry_run
+    ):
+        llamadas = self._prohibir(monkeypatch)
+        monkeypatch.setattr(
+            barra_sin_gpu,
+            "cargar_barra",
+            lambda *a, **k: llamadas.append("cargar_barra"),
+        )
+        with pytest.raises(SystemExit) as salida:
+            rag_ingest.main([*self.ARGS, "--corpus-sha", SHA, *extra, *dry_run])
+        assert salida.value.code == 2
+        assert llamadas == []
+        assert "INGESTION ABORTED" not in capsys.readouterr().err
+
+    def test_produccion_sin_ningun_flag_nombra_los_dos(self, monkeypatch, capsys):
+        llamadas = self._prohibir(monkeypatch)
+        codigo = rag_ingest.main([*self.ARGS, *self.PRODUCCION])
+        assert codigo == 1
+        assert llamadas == []
+        error = capsys.readouterr().err
+        assert "produccion" in error
+        assert "--exigir-barra" in error
+        assert "--produccion-sin-orden" in error
+
+    @pytest.mark.parametrize(
+        ("cambios", "causa"),
+        [
+            ({"estado": "superada", "hit_rate_at_5": 0.75}, "--exigir-barra"),
+            (
+                {
+                    "estado": "no_medido",
+                    "corpus_sha": None,
+                    "n_respondibles": None,
+                    "hit_rate_at_5": None,
+                    "separacion_norma_secundaria": None,
+                    "vigencia_correcta": None,
+                    "metodologia": "",
+                },
+                "no_medido",
+            ),
+            ({"estado": "aprobada"}, "aprobada"),
+            ({"corpus_sha": "b" * 40}, "corpus_sha"),
+            ({"modo": "bm25_ce"}, "bm25_ce"),
+            ({"hit_rate_at_5": 0.75}, "inconsistent"),
+        ],
+        ids=["superada", "no-medido", "invalida", "otro-sha", "otro-modo", "inconsistente"],
+    )
+    @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]], ids=["real", "dry-run"])
+    def test_rechaza_lo_que_no_es_una_falla_honesta(
+        self, monkeypatch, tmp_path, capsys, cambios, causa, dry_run
+    ):
+        self._barra(monkeypatch, tmp_path, **cambios)
+        llamadas = self._prohibir(monkeypatch)
+        codigo = rag_ingest.main([*self.ARGS, *self.PRODUCCION, "--produccion-sin-orden", *dry_run])
+        assert codigo == 1
+        assert llamadas == []
+        error = capsys.readouterr().err
+        assert "INGESTION ABORTED — nothing was written." in error
+        assert "--produccion-sin-orden:" in error
+        assert causa in error
+
+    @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]], ids=["real", "dry-run"])
+    def test_una_falla_honesta_ingesta_y_no_se_presenta_como_barra_superada(
+        self, monkeypatch, tmp_path, capsys, dry_run
+    ):
+        datos = self._barra(monkeypatch, tmp_path)
+        assert datos["estado"] == "no_superada"
+        llamadas = self._permitir(monkeypatch)
+        codigo = rag_ingest.main([*self.ARGS, *self.PRODUCCION, "--produccion-sin-orden", *dry_run])
+        assert codigo == 0
+        assert llamadas == ["ingest"]
+        salida = capsys.readouterr()
+        assert BANNER_SIN_ORDEN in salida.err
+        assert (
+            f"hit@5 {22 / 34}, norma-vs-secundaria 1.0, vigencia 1.0, corpus_sha {SHA}"
+            in salida.err
+        )
+        assert "barra                : failed lab bar, served unranked" in salida.out
+        assert "superada" not in (salida.out + salida.err).lower()
+
+    def test_el_artefacto_enviado_lo_rechaza_el_camino_ranqueado_y_lo_acepta_el_otro(self):
+        enviado = barra_sin_gpu.cargar_barra()
+        with pytest.raises(barra_sin_gpu.BarraNoSuperada, match="no_superada"):
+            barra_sin_gpu.exigir_superada(enviado, PINNED_CORPUS_SHA)
+        assert barra_sin_gpu.exigir_no_superada_honesta(enviado, PINNED_CORPUS_SHA) is None
+        assert barra_sin_gpu.superada_para(PINNED_CORPUS_SHA) is False
+
+    def test_el_artefacto_enviado_deja_ingerir_sin_orden_pero_no_con_exigir_barra(
+        self, monkeypatch, capsys
+    ):
+        llamadas = self._permitir(monkeypatch)
+        args = [*self.ARGS, "--corpus-sha", PINNED_CORPUS_SHA, "--entorno", "produccion"]
+        assert rag_ingest.main([*args, "--exigir-barra"]) == 1
+        assert llamadas == []
+        capsys.readouterr()
+        assert rag_ingest.main([*args, "--produccion-sin-orden"]) == 0
+        assert llamadas == ["ingest"]
+        salida = capsys.readouterr()
+        assert BANNER_SIN_ORDEN in salida.err
+        assert f"corpus_sha {PINNED_CORPUS_SHA}" in salida.err
+        assert "superada" not in (salida.out + salida.err).lower()
+
+    def test_el_camino_ranqueado_no_dice_que_la_barra_fallo(self, monkeypatch, tmp_path, capsys):
+        datos = self._barra(monkeypatch, tmp_path, hit=0.75)
+        assert datos["estado"] == "superada"
+        llamadas = self._permitir(monkeypatch)
+        codigo = rag_ingest.main([*self.ARGS, *self.PRODUCCION, "--exigir-barra"])
+        assert codigo == 0
+        assert llamadas == ["ingest"]
+        salida = capsys.readouterr()
+        assert "failed lab bar" not in salida.out
+        assert BANNER_SIN_ORDEN not in salida.err

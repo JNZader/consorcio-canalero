@@ -1,10 +1,13 @@
 # The recorded bar of the no-GPU arm `bm25_sin_ce` (see `barra_sin_gpu.py`).
 #
 # Measured 2026-10-23 against corpus ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e
-# on a lab database. `derivar_desde` returned `no_superada`: hit@5 0.647
-# (bar 0.72, n=34), norma-vs-secundaria 1.00, vigencia-correctness 0.667.
+# on a lab database; report: docs/rag/retrieval-eval-ecab0a0e-2026-10-23-seguimiento-citas.md.
+# `derivar_desde` returned `no_superada`: hit@5 0.647 (bar 0.72, n=34),
+# norma-vs-secundaria 1.00, vigencia-correctness 1.00.
 # Rank order stays off. Production ingest with `--exigir-barra` refuses this
-# file. The figures below are the report block; do not edit them by hand.
+# file; `--produccion-sin-orden` accepts it as an honest failed bar, which is
+# not a cleared bar. The figures below are the report block; do not edit them
+# by hand.
 #
 # A later corpus SHA needs its own lab ingest and its own measurement. Copying
 # these figures onto another SHA is refused by the loader.
@@ -19,7 +22,7 @@ corpus_sha: ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e
 n_respondibles: 34
 hit_rate_at_5: 0.6470588235294118
 separacion_norma_secundaria: 1.0
-vigencia_correcta: 0.6666666666666666
+vigencia_correcta: 1.0
 metodologia: 'bm25_sin_ce: candidatos BM25 en orden BM25, sin cross-encoder. Medido
   sobre 34 ítems respondibles del gold, claves del gold re-validadas contra el snapshot,
   snapshot no sintético. Derivado por derivar_desde desde scripts/rag_eval.py.'
