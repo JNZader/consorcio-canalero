@@ -57,6 +57,4 @@ def test_development_environment_never_enforces_the_gate(monkeypatch):
     monkeypatch.delenv("HEALTHCHECK_HOST", raising=False)
     monkeypatch.delenv("API_BASE_URL", raising=False)
 
-    _enforce_production_secrets(
-        Settings(**{**VALID_PRODUCTION, "environment": "development"})
-    )
+    _enforce_production_secrets(Settings(**{**VALID_PRODUCTION, "environment": "development"}))
