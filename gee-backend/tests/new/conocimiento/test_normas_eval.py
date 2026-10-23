@@ -513,6 +513,11 @@ class TestExigirBarra:
             def rollback(self):
                 pass
 
+            def execute(self, *_a, **_k):
+                # main() reads the served sha after a committed ingest
+                # (repository.corpus_activo, audit RAG-3).
+                return _ResultadoFalso()
+
         def ingest_falso(*a, **k):
             llamadas.append("ingest")
             return SimpleNamespace(
@@ -592,6 +597,11 @@ class TestExigirBarra:
             def rollback(self):
                 pass
 
+            def execute(self, *_a, **_k):
+                # main() reads the served sha after a committed ingest
+                # (repository.corpus_activo, audit RAG-3).
+                return _ResultadoFalso()
+
         def ingest_falso(*_a, **_k):
             llamadas.append("ingest")
             return SimpleNamespace(
@@ -620,6 +630,14 @@ BANNER_SIN_ORDEN = (
 )
 
 
+class _ResultadoFalso:
+    """Answers the one SELECT `main` makes after a committed ingest: the
+    served-sha read (`repository.corpus_activo`, audit RAG-3)."""
+
+    def scalar_one_or_none(self):
+        return SHA
+
+
 class _SesionFalsa:
     def __init__(self, *_):
         pass
@@ -635,6 +653,9 @@ class _SesionFalsa:
 
     def rollback(self):
         pass
+
+    def execute(self, *_a, **_k):
+        return _ResultadoFalso()
 
 
 def _resumen_falso():
@@ -658,11 +679,18 @@ class TestProduccionSinOrden:
     PRODUCCION = ["--corpus-sha", SHA, "--entorno", "produccion"]
 
     def _barra(self, monkeypatch, tmp_path, *, hit: float = 22 / 34, **cambios):
-        """Write a derived artifact for `SHA` (hit@5 below the bar by default) and point at it."""
+        """Write a derived artifact for `SHA` (hit@5 below the bar by default) and point at it.
+
+        `cambios` are re-sealed with `sellar` on purpose: these cases exercise
+        `exigir_no_superada_honesta`'s OWN field logic, so the artifact must
+        first get past `cargar_barra` — with a forged digest, which is exactly
+        the post-RAG-2 bar the per-field checks still have to hold on their own.
+        """
         datos = barra_sin_gpu.volcar(
             barra_sin_gpu.derivar_desde(_corrida(hit=hit), _procedencia(), _gold_evaluable())
         )
         datos.update(cambios)
+        datos = barra_sin_gpu.sellar(datos)
         ruta = tmp_path / "barra.yaml"
         ruta.write_text(yaml.safe_dump(datos), encoding="utf-8")
         monkeypatch.setattr(barra_sin_gpu, "RUTA_BARRA", ruta)
