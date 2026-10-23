@@ -26,6 +26,7 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import text
 
 from app.domains.conocimiento import repository
@@ -47,9 +48,7 @@ def _load_script():
 
 def _ingest_corpus(db, sha: str) -> None:
     """The one write `rag_ingest.ingest` makes to `rag_corpus`, in its transaction."""
-    repository.upsert_corpus(
-        db, sha, repo_url="u", manifest_version="2", articulos_declarados=1
-    )
+    repository.upsert_corpus(db, sha, repo_url="u", manifest_version="2", articulos_declarados=1)
 
 
 def _seed_corpus(db, sha: str, *, activo: bool, ingested_at: datetime.datetime) -> None:
@@ -66,8 +65,7 @@ def _seed_corpus(db, sha: str, *, activo: bool, ingested_at: datetime.datetime) 
 
 def _activos(db) -> set[str]:
     return {
-        row[0]
-        for row in db.execute(text("SELECT corpus_sha FROM rag_corpus WHERE activo IS TRUE"))
+        row[0] for row in db.execute(text("SELECT corpus_sha FROM rag_corpus WHERE activo IS TRUE"))
     }
 
 
@@ -98,9 +96,7 @@ class TestCorpusRotation:
         exited 0 printing `committed:true`.
         """
         _seed_corpus(db, SHA_A, activo=True, ingested_at=T_OLD)
-        _seed_corpus(
-            db, SHA_B, activo=True, ingested_at=T_OLD + datetime.timedelta(days=1)
-        )
+        _seed_corpus(db, SHA_B, activo=True, ingested_at=T_OLD + datetime.timedelta(days=1))
         assert repository.corpus_activo(db) == SHA_B  # the unfixed serving pick
 
         _ingest_corpus(db, SHA_A)
@@ -136,6 +132,33 @@ class TestCorpusRotation:
             {"sha": SHA_A},
         ).scalar_one()
         assert ingested_at > T_OLD
+
+    def test_abort_after_write_rolls_activation_back_with_the_upsert(self, db):
+        """The upsert and the deactivate share the caller's transaction.
+
+        Aborting after both writes must restore the previous active snapshot
+        and drop the new row. A deactivate that committed on its own would
+        leave zero active corpora while the new sha disappeared.
+        """
+        _seed_corpus(db, SHA_A, activo=True, ingested_at=T_OLD)
+        db.flush()
+
+        with pytest.raises(RuntimeError, match="abort after write"):
+            with db.begin_nested():
+                _ingest_corpus(db, SHA_B)
+                db.flush()
+                assert _activos(db) == {SHA_B}
+                raise RuntimeError("abort after write")
+
+        assert _activos(db) == {SHA_A}
+        assert repository.corpus_activo(db) == SHA_A
+        assert (
+            db.execute(
+                text("SELECT 1 FROM rag_corpus WHERE corpus_sha = :sha"),
+                {"sha": SHA_B},
+            ).first()
+            is None
+        )
 
 
 class _NullEngine:
