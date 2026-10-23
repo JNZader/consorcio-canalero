@@ -149,6 +149,12 @@ class CitaRecuperada(BaseModel):
     #: not what ranked it.
     rango_bm25: int | None = None
     valor_bm25: float | None = None
+    #: `citation_key` of the page unit whose text cited this one, on a same-statute
+    #: citation follow (`bm25_sin_ce` only). A followed unit was not placed by BM25
+    #: on this page: `rango_bm25` is `None` and `valor_bm25` is the pool value if
+    #: the unit happens to be in the pool, otherwise `None`. Never copied to
+    #: `UnidadNorma`: the norms surface exposes membership, not provenance of rank.
+    seguida_desde: str | None = None
 
 
 class ResultadoRecuperacion(BaseModel):
