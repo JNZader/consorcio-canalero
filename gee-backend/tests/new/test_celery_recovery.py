@@ -62,6 +62,33 @@ def test_delivery_policy_is_scoped_and_timeouts_are_compatible() -> None:
     )
 
 
+def test_recoverable_long_tasks_route_to_the_geo_queue() -> None:
+    """All long geo/GEE tasks must resolve to the "geo" worker queue.
+
+    2026-10-23 audit: task_routes only matched "geo.*" (Celery applies
+    these patterns with re.match), so the three user-facing gee.* tasks
+    fell to the default "celery" queue, whose maintenance worker (no
+    GDAL, 512MB, concurrency=2) cannot run them. Resolving names through
+    Celery's own router catches a routing-table regression here instead
+    of as a production failure on the wrong worker.
+    """
+    from app.core.celery_app import RECOVERABLE_LONG_TASKS
+
+    router = celery_app.amqp.router
+
+    def resolved_queue(task_name: str) -> str:
+        route = router.route({}, task_name)
+        queue = route.get("queue")
+        return getattr(queue, "name", queue)
+
+    long_tasks = RECOVERABLE_LONG_TASKS | {"geo.warm_gee_layers"}
+    for task_name in sorted(long_tasks):
+        assert resolved_queue(task_name) == "geo", (
+            f"Task {task_name!r} must run on the 'geo' queue (GDAL worker), "
+            f"got {resolved_queue(task_name)!r}"
+        )
+
+
 def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
     from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
     from app.shared.celery_outbox import CeleryTaskKey, enqueue_celery_task
