@@ -284,6 +284,81 @@ class TestBarra:
         assert barra_sin_gpu.derivar_desde(corta, proc, gold).estado == "no_superada"
 
 
+class TestBarraSinOrden:
+    """`exigir_no_superada_honesta`: one assertion per refusal branch, plus the boundaries."""
+
+    def test_la_falla_honesta_pasa(self) -> None:
+        honesta = _barra(estado="no_superada", hit_rate_at_5=0.6470588235294118)
+        assert barra_sin_gpu.exigir_no_superada_honesta(honesta, SHA) is None
+
+    def test_cada_rechazo_nombra_su_causa(self) -> None:
+        rechazada = barra_sin_gpu.BarraSinOrdenRechazada
+        with pytest.raises(rechazada, match="--exigir-barra"):
+            barra_sin_gpu.exigir_no_superada_honesta(_barra(), SHA)
+        with pytest.raises(rechazada, match="no failed measurement"):
+            barra_sin_gpu.exigir_no_superada_honesta(_barra(estado="no_medido"), SHA)
+        with pytest.raises(rechazada, match="never for another arm"):
+            barra_sin_gpu.exigir_no_superada_honesta(
+                _barra(estado="no_superada", hit_rate_at_5=0.5, modo="bm25_ce"), SHA
+            )
+        with pytest.raises(rechazada, match="snapshot being ingested"):
+            barra_sin_gpu.exigir_no_superada_honesta(
+                _barra(estado="no_superada", hit_rate_at_5=0.5), OTRO
+            )
+        with pytest.raises(rechazada, match="missing figure"):
+            barra_sin_gpu.exigir_no_superada_honesta(
+                _barra(estado="no_superada", hit_rate_at_5=None), SHA
+            )
+        with pytest.raises(rechazada, match="inconsistent"):
+            barra_sin_gpu.exigir_no_superada_honesta(_barra(estado="no_superada"), SHA)
+
+    @pytest.mark.parametrize(
+        "campo",
+        ["hit_rate_at_5", "separacion_norma_secundaria", "vigencia_correcta"],
+    )
+    def test_una_cifra_ausente_rechaza_aunque_las_otras_fallen(self, campo: str) -> None:
+        # Every figure fails (0.1) except the one under test, which is absent.
+        cifras = {
+            "hit_rate_at_5": 0.1,
+            "separacion_norma_secundaria": 0.1,
+            "vigencia_correcta": 0.1,
+            campo: None,
+        }
+        artefacto = _barra(estado="no_superada", **cifras)
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="missing figure"):
+            barra_sin_gpu.exigir_no_superada_honesta(artefacto, SHA)
+
+    @pytest.mark.parametrize(
+        ("campo", "debajo"),
+        [
+            ("hit_rate_at_5", 0.719),
+            ("separacion_norma_secundaria", 0.999),
+            ("vigencia_correcta", 0.999),
+        ],
+    )
+    def test_justo_debajo_de_su_constante_cuenta_como_falla(
+        self, campo: str, debajo: float
+    ) -> None:
+        artefacto = _barra(estado="no_superada", **{campo: debajo})
+        assert barra_sin_gpu.exigir_no_superada_honesta(artefacto, SHA) is None
+
+    def test_exactamente_en_las_constantes_no_cuenta_como_falla(self) -> None:
+        # 0.72, 1.0 and 1.0 sit exactly on the constants: none of them is failing.
+        en_la_barra = _barra(
+            estado="no_superada",
+            hit_rate_at_5=0.72,
+            separacion_norma_secundaria=1.0,
+            vigencia_correcta=1.0,
+        )
+        with pytest.raises(barra_sin_gpu.BarraSinOrdenRechazada, match="inconsistent"):
+            barra_sin_gpu.exigir_no_superada_honesta(en_la_barra, SHA)
+
+    def test_el_camino_sin_orden_no_desbloquea_el_orden(self, monkeypatch) -> None:
+        honesta = _barra(estado="no_superada", hit_rate_at_5=0.6470588235294118)
+        monkeypatch.setattr(barra_sin_gpu, "cargar_barra", lambda ruta=None: honesta)
+        assert barra_sin_gpu.superada_para(SHA) is False
+
+
 def _catalogo() -> editor.Catalogo:
     slot = editor.SlotLegal("ley", "8803#1", "TODA persona", "VIGENTE", SHA, "art. 1")
     pedido = editor.Pedido("1", "titulo", {}, "texto {{legal:ley}}", "")
