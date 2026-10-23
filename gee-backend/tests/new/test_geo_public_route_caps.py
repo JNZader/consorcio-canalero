@@ -478,6 +478,130 @@ def test_tile_proxy_forwards_a_valid_canonical_rescale(
     assert params == {"rescale_min": 0.0, "rescale_max": 200.0}
 
 
+def test_tile_proxy_hides_private_layers_without_rescale_params(cliente, db) -> None:
+    """C1 regression (audit 2026-10-23): the publicity gate must run on the
+    DEFAULT request shape.
+
+    The only publication check used to live inside the rescale branch, so a
+    tile request with NO rescale params — what every base-map fetch sends —
+    forwarded any GeoLayer id to the worker, whose ``get_tile`` selects by id
+    with no tipo/publicity filter: anonymous, rate-limit-exempt access to the
+    private DEM types and manual sources. The sibling test above (which always
+    sends rescale) never covered this path.
+    """
+    hidden_ids = [
+        uuid.uuid4(),  # plain missing id
+        _seed_tile_layer(db, "twi"),  # private DEM tipo
+        _seed_tile_layer(db, "slope"),  # private DEM tipo
+        _seed_tile_layer(db, "precip_normal", "manual"),  # public tipo, unpublished fuente
+    ]
+    for layer_id in hidden_ids:
+        response = cliente.get(_tile_url(10, 0, 0, layer_id))
+
+        assert response.status_code == 404, response.text
+        assert response.json() == {"detail": "Geo layer no encontrado"}
+
+
+def test_tile_proxy_caches_the_publicity_verdict_per_layer(
+    cliente, precip_layer_id: uuid.UUID, monkeypatch
+) -> None:
+    """RES-001 regression (review of the C1 fix): the unconditional gate's DB
+    lookup must be amortized — one query per layer per TTL window, not one per
+    tile. A viewport bursts ~256 tiles in parallel; under a Postgres brownout
+    per-tile lookups hold threadpool tokens and starve unrelated sync traffic.
+    """
+    from app.domains.geo import router_core
+
+    router_core._publicity_cache.clear()
+    monkeypatch.setattr(router_core, "_PUBLICITY_CACHE_TTL_S", 60.0)
+
+    tile_client = type("RecordingTileClient", (), {})()
+    tile_client.get = AsyncMock(
+        return_value=type("TileResponse", (), {"status_code": 200, "content": b"png"})()
+    )
+    monkeypatch.setattr(router_core, "_get_tile_client", lambda: tile_client)
+
+    calls = []
+    real_lookup = router_core._public_layer_for_tile
+
+    def counting_lookup(db, layer_id):
+        calls.append(layer_id)
+        return real_lookup(db, layer_id)
+
+    monkeypatch.setattr(router_core, "_public_layer_for_tile", counting_lookup)
+
+    for _ in range(3):
+        response = cliente.get(_tile_url(10, 0, 0, precip_layer_id))
+        assert response.status_code == 200, response.text
+
+    assert calls == [precip_layer_id], "verdict must be served from the TTL cache"
+
+    # Expired verdict → the lookup runs again.
+    deadline, tipo = router_core._publicity_cache[precip_layer_id]
+    router_core._publicity_cache[precip_layer_id] = (
+        deadline - router_core._PUBLICITY_CACHE_TTL_S - 1.0,
+        tipo,
+    )
+    response = cliente.get(_tile_url(10, 0, 0, precip_layer_id))
+    assert response.status_code == 200, response.text
+    assert calls == [precip_layer_id, precip_layer_id]
+
+    router_core._publicity_cache.clear()
+
+
+def test_tile_proxy_forwards_a_public_layer_without_rescale_params(
+    cliente, db, monkeypatch
+) -> None:
+    """The hoisted gate must not narrow the default rendering path."""
+    from app.domains.geo import router_core
+
+    tile_client = type("RecordingTileClient", (), {})()
+    tile_client.get = AsyncMock(
+        return_value=type("TileResponse", (), {"status_code": 200, "content": b"png"})()
+    )
+    monkeypatch.setattr(router_core, "_get_tile_client", lambda: tile_client)
+
+    layer_id = _seed_tile_layer(db, "dem_raw")
+    response = cliente.get(_tile_url(10, 0, 0, layer_id))
+
+    assert response.status_code == 200, response.text
+    assert response.content == b"png"
+    # No rescale requested -> no rescale forwarded.
+    assert tile_client.get.await_args.kwargs["params"] == {}
+
+
+def test_tile_proxy_fails_closed_when_the_publicity_lookup_fails(
+    cliente, db, monkeypatch
+) -> None:
+    """C1 fail-closed contract: if publicity cannot be verified, do NOT forward.
+
+    A DB failure on the gate lookup is an outage, not a tile: 503 (retryable),
+    never a forward of a layer we cannot prove is public.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.domains.geo import router_core
+
+    layer_id = _seed_tile_layer(db, "precip_normal")
+
+    tile_client = type("RecordingTileClient", (), {})()
+    tile_client.get = AsyncMock(
+        return_value=type("TileResponse", (), {"status_code": 200, "content": b"png"})()
+    )
+    monkeypatch.setattr(router_core, "_get_tile_client", lambda: tile_client)
+
+    def _unreachable(*_args, **_kwargs):
+        raise SQLAlchemyError("db down")
+
+    monkeypatch.setattr(router_core, "_public_layer_for_tile", _unreachable)
+
+    response = cliente.get(_tile_url(10, 0, 0, layer_id))
+
+    assert response.status_code == 503, response.text
+    assert response.json() == {"detail": "Capa no disponible temporalmente"}
+    tile_client.get.assert_not_awaited()
+
+
 def test_tile_proxy_rejects_an_absurd_zoom(cliente) -> None:
     """``z`` feeds ``2 ** z`` downstream — it can never be caller-chosen."""
     rs = cliente.get(_tile_url(1_000_000_000, 0, 0))
@@ -489,18 +613,28 @@ def test_tile_proxy_rejects_negative_coordinates(cliente) -> None:
     assert cliente.get(_tile_url(10, -1, 0)).status_code == 422
 
 
-def test_tile_proxy_answers_204_outside_the_pyramid(cliente) -> None:
-    """x/y past ``2 ** z`` is "no tile here", the same answer the upstream gives."""
-    rs = cliente.get(_tile_url(2, 4, 0))
+def test_tile_proxy_answers_204_outside_the_pyramid(cliente, db) -> None:
+    """x/y past ``2 ** z`` is "no tile here", the same answer the upstream gives.
+
+    Seeded public layer: since the C1 gate hoist, a random id would 404 at the
+    publicity check before the pyramid fast path ever runs.
+    """
+    layer_id = _seed_tile_layer(db, "dem_raw")
+    rs = cliente.get(_tile_url(2, 4, 0, layer_id))
 
     assert rs.status_code == 204
 
 
-def test_tile_proxy_accepts_the_deepest_supported_zoom(cliente) -> None:
-    """z22 must stay reachable — the bound is a ceiling, not a narrowing."""
+def test_tile_proxy_accepts_the_deepest_supported_zoom(cliente, db) -> None:
+    """z22 must stay reachable — the bound is a ceiling, not a narrowing.
+
+    Seeded public layer: the publicity gate runs before the pyramid check, so a
+    random id would 404 before proving anything about ``z``.
+    """
     from app.domains.geo.router_core import MAX_TILE_ZOOM
 
-    rs = cliente.get(_tile_url(MAX_TILE_ZOOM, 0, 0))
+    layer_id = _seed_tile_layer(db, "dem_raw")
+    rs = cliente.get(_tile_url(MAX_TILE_ZOOM, 0, 0, layer_id))
 
     # No tile service is running in tests: the proxy degrades to 204, which
     # proves the request passed validation instead of being rejected as 422.
