@@ -458,7 +458,7 @@ class TestExigirBarra:
             is True
         )
 
-    def test_el_artefacto_enviado_no_medido_rechaza_antes_de_ingerir(self, monkeypatch, capsys):
+    def test_el_artefacto_enviado_no_superada_rechaza_antes_de_ingerir(self, monkeypatch, capsys):
         llamadas = self._espia(monkeypatch)
         codigo = rag_ingest.main([*self.ARGS, "--corpus-sha", SHA, "--exigir-barra"])
         assert codigo == 1

@@ -12,7 +12,26 @@ archivos_no_documento:
 - fuentes-crudas/_swarm-t2/resultado_caza_segunda_tanda.md
 - fuentes-crudas/_tail_srh2013.md
 - fuentes-crudas/audit2010/_pre-audit-backup-ley-5589.md
-articulos_declarados: 1383
+- fuentes-crudas/bloqueos-3-2026-10-15/reporte-3-bloqueos.md
+- fuentes-crudas/bo-srh-25-2015-2026-10-15/reporte-bo-srh25.md
+- fuentes-crudas/dpv-0133-2026-10-15/reporte-dpv-0133.md
+- fuentes-crudas/grupo-a-2026-10-15/reporte-grupo-a.md
+- fuentes-crudas/hemeroteca-legislatura-2026-10-15/reporte-hemeroteca.md
+- fuentes-crudas/ronda4-2026-10-15/reporte-ronda4.md
+- fuentes-crudas/vigencia-025-2026-10-15/README.md
+- odd/tasks/corpus-legal-fases-1-2.md
+- pedidos-8803/01-fda-acta-acuerdo.md
+- pedidos-8803/02-aprhi-res-srh-25-2015.md
+- pedidos-8803/03-aprhi-expte-cintra.md
+- pedidos-8803/04-dpv-zona-camino.md
+- pedidos-8803/05-cuencas-res-2-2024.md
+- pedidos-8803/06-aprhi-expte-leones.md
+- pedidos-8803/07-aprhi-expte-10-de-mayo.md
+- pedidos-8803/08-dnv-tabla-aranceles.md
+- pedidos-8803/09-bioagro-anexo-res-4-2026.md
+- pedidos-8803/README.md
+- pedidos-grok/01-tres-bloqueos-busqueda-web.md
+articulos_declarados: 1806
 clases_excluidas:
   comentario-del-corpus: 'Comentario del corpus SOBRE la norma (relevancia, advertencias, notas de vigencia,
     discrepancias, índices, «qué prueba y qué no»). Excluido a propósito: citarlo devolvería la opinión
@@ -30,7 +49,7 @@ clases_excluidas:
     Es metadato de procedencia, no texto de la norma.
   titulo-documento: 'Título raíz del documento. No es una unidad: su contenido son las secciones hijas,
     que se indexan por separado.'
-corpus_sha: 12043582bf8016288a7e8084e85a4b713a97af2f
+corpus_sha: ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e
 documentos:
   auditoria-obras-zona-10-de-mayo:
     archivo: auditoria-obras-zona-10-de-mayo.md
@@ -209,6 +228,8 @@ documentos:
     articulos: 132
     es_secundaria: false
     excluidos:
+    - clase: comentario-del-corpus
+      heading: Discrepancia con la copia de Fiscalía — ADJUDICADA por el B.O. (integraciones 11 y 12, 2026-10-15)
     - clase: contenedor-estructural
       heading: Anexo Único — Reglamentación de la Ley 8560 (T.O. 2004)
     - clase: contenedor-estructural
@@ -955,6 +976,8 @@ documentos:
     es_secundaria: false
     excluidos:
     - clase: comentario-del-corpus
+      heading: Anexos III a X — modelos de formulario, no transcritos
+    - clase: comentario-del-corpus
       heading: Qué deroga y qué lo reemplaza
     - clase: contenedor-estructural
       heading: Anexo II — Normas Técnicas aplicables a los Permisos Precarios de Uso de la Zona de Camino
@@ -1037,6 +1060,8 @@ documentos:
       heading: Firmante
     - clase: procedencia-y-verificacion
       heading: Procedencia del texto y verificación
+    - clase: procedencia-y-verificacion
+      heading: Segundo testigo — B.O. del 25-06-2013
     - clase: titulo-documento
       heading: Resolución SRH Nº 157 (17-jun-2013) — constitución del Consorcio Canalero Leones – Villa
         Elisa
@@ -1050,11 +1075,247 @@ documentos:
       heading: Considerandos — pasajes verificables
       tipo_chunk: considerando
     tipo: resolucion-administrativa
+  decreto-119-2024-reglamentacion-10941:
+    archivo: decreto-119-2024-reglamentacion-10941.md
+    articulos: 13
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué hace y por qué importa
+    - clase: comentario-del-corpus
+      heading: Qué prueba y qué no prueba este anexo
+    - clase: contenedor-estructural
+      heading: Anexo Único — Reglamentación de la Ley N° 10.941 (Autoridad de Cuencas)
+    - clase: contenedor-estructural
+      heading: Decreto
+    - clase: encabezado-y-preambulo
+      heading: Anexo — Cabecera
+    - clase: encabezado-y-preambulo
+      heading: Considerandos
+    - clase: encabezado-y-preambulo
+      heading: Visto
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto — y su límite honesto
+    - clase: titulo-documento
+      heading: Decreto N° 119/2024 (Córdoba) — reglamentación de la Ley 10.941 (Autoridad de Cuencas)
+    key_prefix: 119-2024
+    key_style: numero
+    no_articulos: []
+    tipo: decreto
+  decreto-198-2025-anexo-1-reglamentacion-11027:
+    archivo: decreto-198-2025-anexo-1-reglamentacion-11027.md
+    articulos: 46
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué hace y por qué importa
+    - clase: contenedor-estructural
+      heading: Anexo I — Reglamentación de la Ley N° 11.027
+    - clase: contenedor-estructural
+      heading: Capítulo I — Disposiciones Generales
+    - clase: contenedor-estructural
+      heading: Capítulo II — Definiciones
+    - clase: contenedor-estructural
+      heading: Capítulo III — Sanciones y Responsabilidad por Infracciones Ambientales
+    - clase: contenedor-estructural
+      heading: Capítulo IV — Procedimiento Sancionatorio Ambiental
+    - clase: contenedor-estructural
+      heading: Capítulo V — Tribunal Administrativo Ambiental
+    - clase: contenedor-estructural
+      heading: Capítulo VI — Disposiciones Complementarias
+    - clase: contenedor-estructural
+      heading: Capítulo VII — Disposiciones Finales
+    - clase: contenedor-estructural
+      heading: Decreto
+    - clase: encabezado-y-preambulo
+      heading: Considerandos
+    - clase: encabezado-y-preambulo
+      heading: Visto
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto — y su límite honesto
+    - clase: titulo-documento
+      heading: 'Decreto N° 198/2025 (Córdoba) — Anexo I: Reglamentación de la Ley 11.027'
+    key_prefix: 198-2025
+    key_style: numero
+    no_articulos: []
+    tipo: decreto
+  ley-10208-politica-ambiental-cordoba:
+    archivo: ley-10208-politica-ambiental-cordoba.md
+    articulos: 98
+    es_secundaria: false
+    key_prefix: "10208"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-10417-modificatoria-ley-8614:
+    archivo: ley-10417-modificatoria-ley-8614.md
+    articulos: 27
+    es_secundaria: false
+    excluidos:
+    - clase: firma-y-promulgacion
+      heading: Cierre legislativo
+    - clase: firma-y-promulgacion
+      heading: Promulgación
+    key_prefix: "10417"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-10928-reformas-tributarias-2023:
+    archivo: ley-10928-reformas-tributarias-2023.md
+    articulos: 4
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Artículos no pertinentes
+    - clase: titulo-documento
+      heading: Ley 10928 — Modificaciones al Código Tributario Provincial y a otras leyes
+    key_prefix: "10928"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-10941-autoridad-de-cuencas:
+    archivo: ley-10941-autoridad-de-cuencas.md
+    articulos: 13
+    es_secundaria: false
+    key_prefix: "10941"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-11015-reformas-tributarias-2024:
+    archivo: ley-11015-reformas-tributarias-2024.md
+    articulos: 3
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Artículos no pertinentes
+    - clase: titulo-documento
+      heading: Ley 11015 — Modificaciones al Código Tributario Provincial y a otras leyes
+    key_prefix: "11015"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-11027-tribunal-administrativo-ambiental:
+    archivo: ley-11027-tribunal-administrativo-ambiental.md
+    articulos: 43
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Decreto 198/2025 — reglamentación
+    - clase: comentario-del-corpus
+      heading: Nota de derogación — verificación del art. 32 sobre el Código de Aguas
+    key_prefix: "11027"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-8614-obras-publicas-cordoba:
+    archivo: ley-8614-obras-publicas-cordoba.md
+    articulos: 77
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Nota de vigencia — contradicción Ley 10417 (2016)
+    key_prefix: "8614"
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  ley-8614-obras-publicas-cordoba-consolidada:
+    archivo: ley-8614-obras-publicas-cordoba-consolidada.md
+    articulos: 81
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Disposiciones complementarias de la Ley 10417 que afectan esta ley
+    key_prefix: 8614-consolidada
+    key_style: numero
+    no_articulos: []
+    tipo: ley-provincial
+  resolucion-bioagroindustria-102-2026-estatuto-consorcios-camineros:
+    archivo: resolucion-bioagroindustria-102-2026-estatuto-consorcios-camineros.md
+    articulos: 4
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Anomalía de F-28 — RESUELTA
+    - clase: comentario-del-corpus
+      heading: 'Los anexos: qué se ordenó y qué no se publicó'
+    - clase: comentario-del-corpus
+      heading: Qué resuelve, en una línea
+    - clase: encabezado-y-preambulo
+      heading: Visto y Considerando
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución N° 102/2026 — Estatuto Modelo de los Consorcios Camineros
+    key_prefix: res-bioagro-102-2026
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-ministerial
+  resolucion-bioagroindustria-147-2026-zona-camino-caminos-rurales:
+    archivo: resolucion-bioagroindustria-147-2026-zona-camino-caminos-rurales.md
+    articulos: 7
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué resuelve, en una línea
+    - clase: comentario-del-corpus
+      heading: Relevancia para el corpus
+    - clase: encabezado-y-preambulo
+      heading: Visto y Considerando
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución N° 147/2026 — Zona de Camino y Zona de Seguridad de los Caminos Rurales No Pavimentados
+    key_prefix: res-bioagro-147-2026
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-ministerial
+  resolucion-bioagroindustria-184-2026-estatuto-consorcios-gestion-caminos-suelos:
+    archivo: resolucion-bioagroindustria-184-2026-estatuto-consorcios-gestion-caminos-suelos.md
+    articulos: 4
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Anomalía de F-28 — RESUELTA
+    - clase: comentario-del-corpus
+      heading: 'Los anexos: qué se ordenó y qué no se publicó'
+    - clase: comentario-del-corpus
+      heading: Qué resuelve, en una línea
+    - clase: encabezado-y-preambulo
+      heading: Visto y Considerando
+    - clase: procedencia-y-verificacion
+      heading: Procedencia del texto y verificación
+    - clase: titulo-documento
+      heading: Resolución N° 184/2026 — Estatuto Modelo de los Consorcios de Gestión de Caminos y Suelos
+    key_prefix: res-bioagro-184-2026
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-ministerial
+  resolucion-gral-aprhi-025-2022-asamblea-consorcio-ruta-2:
+    archivo: resolucion-gral-aprhi-025-2022-asamblea-consorcio-ruta-2.md
+    articulos: 3
+    es_secundaria: false
+    excluidos:
+    - clase: comentario-del-corpus
+      heading: Qué resuelve, en una línea
+    - clase: comentario-del-corpus
+      heading: Relación con otros documentos del corpus
+    - clase: comentario-del-corpus
+      heading: Relevancia para el corpus
+    - clase: encabezado-y-preambulo
+      heading: Visto y Considerando
+    - clase: procedencia-y-verificacion
+      heading: Trazabilidad
+    - clase: titulo-documento
+      heading: Resolución General N° 25/2022 de la APRHI
+    key_prefix: res-aprhi-025-2022
+    key_style: articulo
+    no_articulos: []
+    tipo: resolucion-administrativa
 manifest_integracion: 5
 manifest_version: 2
 no_articulos_declarados: 65
 subtotales_articulo:
-  actos-particulares: 19
+  actos-particulares: 22
   guia-tecnica: 6
-  normas-generales: 1358
+  normas-generales: 1778
   secundarios: 0

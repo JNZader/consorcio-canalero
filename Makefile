@@ -350,7 +350,7 @@ test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinne
 #   DATABASE_URL           target database
 #   RAG_GOLD_PRIVADO_PATH  owner-side YAML with the private gold questions
 #   RAG_EVAL_PYTHON        interpreter for rag-eval (see below)
-RAG_CORPUS_SHA ?= 12043582bf8016288a7e8084e85a4b713a97af2f
+RAG_CORPUS_SHA ?= ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e
 RAG_DATABASE_URL ?= $(or $(DATABASE_URL),postgresql://consorcio:consorcio_dev@localhost:5432/consorcio)
 RAG_ARTIFACTS ?= artifacts/rag
 
