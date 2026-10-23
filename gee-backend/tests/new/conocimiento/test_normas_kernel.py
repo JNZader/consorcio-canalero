@@ -302,16 +302,20 @@ class TestCargadorDeLaBarra:
         ruta = tmp_path / "barra.yaml"
         ruta.write_text(
             yaml.safe_dump(
-                {
-                    "estado": "superada",
-                    "modo": "bm25_sin_ce",
-                    "corpus_sha": SHA,
-                    "n_respondibles": 34,
-                    "hit_rate_at_5": 0.75,
-                    "separacion_norma_secundaria": 1.0,
-                    "vigencia_correcta": 1.0,
-                    "metodologia": "x",
-                }
+                # `sellar` stamps the integrity digest, as the generation path
+                # (`volcar`) does; a complete artifact without it no longer loads.
+                barra_sin_gpu.sellar(
+                    {
+                        "estado": "superada",
+                        "modo": "bm25_sin_ce",
+                        "corpus_sha": SHA,
+                        "n_respondibles": 34,
+                        "hit_rate_at_5": 0.75,
+                        "separacion_norma_secundaria": 1.0,
+                        "vigencia_correcta": 1.0,
+                        "metodologia": "x",
+                    }
+                )
             ),
             encoding="utf-8",
         )
@@ -629,6 +633,10 @@ def barra_superada(tmp_path, monkeypatch):
             "metodologia": "test",
         }
         datos.update(cambios)
+        # `sellar` stamps the integrity digest over the mutated fields, so these
+        # artifacts load and the figure checks below are what refuses them —
+        # the per-field checks must hold even against a forged digest.
+        datos = barra_sin_gpu.sellar(datos)
         ruta = tmp_path / "barra.yaml"
         ruta.write_text(yaml.safe_dump(datos), encoding="utf-8")
         monkeypatch.setattr(barra_sin_gpu, "RUTA_BARRA", ruta)

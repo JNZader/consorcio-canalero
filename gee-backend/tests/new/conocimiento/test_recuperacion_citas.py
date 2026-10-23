@@ -783,16 +783,19 @@ def barra_superada(tmp_path, monkeypatch):
     ruta = tmp_path / "barra.yaml"
     ruta.write_text(
         yaml.safe_dump(
-            {
-                "estado": "superada",
-                "modo": "bm25_sin_ce",
-                "corpus_sha": SHA,
-                "n_respondibles": 34,
-                "hit_rate_at_5": 0.75,
-                "separacion_norma_secundaria": 1.0,
-                "vigencia_correcta": 1.0,
-                "metodologia": "test",
-            }
+            # `sellar` stamps the integrity digest; without it the loader refuses.
+            barra_sin_gpu.sellar(
+                {
+                    "estado": "superada",
+                    "modo": "bm25_sin_ce",
+                    "corpus_sha": SHA,
+                    "n_respondibles": 34,
+                    "hit_rate_at_5": 0.75,
+                    "separacion_norma_secundaria": 1.0,
+                    "vigencia_correcta": 1.0,
+                    "metodologia": "test",
+                }
+            )
         ),
         encoding="utf-8",
     )
