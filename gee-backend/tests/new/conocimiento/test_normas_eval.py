@@ -513,6 +513,11 @@ class TestExigirBarra:
             def rollback(self):
                 pass
 
+            def execute(self, *_a, **_k):
+                # main() reads the served sha after a committed ingest
+                # (repository.corpus_activo, audit RAG-3).
+                return _ResultadoFalso()
+
         def ingest_falso(*a, **k):
             llamadas.append("ingest")
             return SimpleNamespace(
@@ -592,6 +597,11 @@ class TestExigirBarra:
             def rollback(self):
                 pass
 
+            def execute(self, *_a, **_k):
+                # main() reads the served sha after a committed ingest
+                # (repository.corpus_activo, audit RAG-3).
+                return _ResultadoFalso()
+
         def ingest_falso(*_a, **_k):
             llamadas.append("ingest")
             return SimpleNamespace(
@@ -620,6 +630,14 @@ BANNER_SIN_ORDEN = (
 )
 
 
+class _ResultadoFalso:
+    """Answers the one SELECT `main` makes after a committed ingest: the
+    served-sha read (`repository.corpus_activo`, audit RAG-3)."""
+
+    def scalar_one_or_none(self):
+        return SHA
+
+
 class _SesionFalsa:
     def __init__(self, *_):
         pass
@@ -635,6 +653,9 @@ class _SesionFalsa:
 
     def rollback(self):
         pass
+
+    def execute(self, *_a, **_k):
+        return _ResultadoFalso()
 
 
 def _resumen_falso():

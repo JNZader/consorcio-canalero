@@ -484,7 +484,29 @@ UPSERT_CORPUS_SQL = text(
         repo_url = EXCLUDED.repo_url,
         manifest_version = EXCLUDED.manifest_version,
         articulos_declarados = EXCLUDED.articulos_declarados,
-        activo = EXCLUDED.activo
+        activo = EXCLUDED.activo,
+        -- Deliberate (audit RAG-3): `ingested_at` is NOT left at first landing.
+        -- Serving resolves ties with ORDER BY ingested_at DESC (CORPUS_ACTIVO_SQL)
+        -- precisely because `activo` is not unique in the schema, so re-ingesting
+        -- a snapshot must also make it the most-recently-ingested one — otherwise
+        -- "roll back by re-ingesting A" reactivates A while the defensive ordering
+        -- still prefers B, and the norms badge reports a landing time no run of
+        -- this code ever produced. With rotation below there is normally exactly
+        -- one activo row and the tie-break never fires; this keeps the fallback
+        -- ordering from contradicting it.
+        ingested_at = now()
+    """
+)
+
+# The other half of activation (audit RAG-3): making a corpus activo is what
+# retires every other one. Without this, ingest A then B leaves BOTH activo
+# forever, and the runbook's only rollback is hand-written SQL
+# (docs/rag/runbook-encendido.md, "Rollback").
+DEACTIVATE_OTHER_CORPUS_SQL = text(
+    """
+    UPDATE rag_corpus
+    SET activo = false
+    WHERE activo IS TRUE AND corpus_sha != :corpus_sha
     """
 )
 
@@ -544,6 +566,14 @@ def upsert_corpus(
     articulos_declarados: int,
     activo: bool = True,
 ) -> None:
+    """Upsert one `rag_corpus` row and, when it is activo, retire every other.
+
+    `rag_ingest.ingest` runs this inside its single transaction, so activation
+    and rotation commit or roll back together — a snapshot can never land
+    activo while the previous one also stays activo (audit RAG-3). Re-ingesting
+    the sha that is already active is a no-op rotation-wise: the UPDATE below
+    excludes `corpus_sha`, so the row never fights itself.
+    """
     db.execute(
         UPSERT_CORPUS_SQL,
         {
@@ -554,6 +584,8 @@ def upsert_corpus(
             "activo": activo,
         },
     )
+    if activo:
+        db.execute(DEACTIVATE_OTHER_CORPUS_SQL, {"corpus_sha": corpus_sha})
 
 
 def upsert_documento(db: Session, corpus_sha: str, row: Mapping[str, Any]) -> None:

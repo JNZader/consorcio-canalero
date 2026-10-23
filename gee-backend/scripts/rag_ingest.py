@@ -331,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     engine = create_engine(args.database_url) if args.database_url else None
+    sha_servido: str | None = None
     try:
         if engine is None:  # noqa: SIM108 — the two branches differ in more than the value
             summary = ingest(
@@ -357,6 +358,15 @@ def main(argv: list[str] | None = None) -> int:
                 if summary.verificacion_fallida:
                     # Roll back rather than overwrite a divergent snapshot.
                     session.rollback()
+                elif summary.committed:
+                    # Read in the SAME transaction that wrote the row, so the
+                    # printed sha is what serving answers from the instant this
+                    # commit lands — not what a later query would resolve. This
+                    # is what makes a no-op rollback visible: before rotation
+                    # (audit RAG-3), re-ingesting an older sha exited 0 with
+                    # committed:true while serving kept answering from the
+                    # newer snapshot; here the two lines disagree out loud.
+                    sha_servido = repository.corpus_activo(session)
     except (repository.IngestionAbort, GateFailure) as abort:
         # Every one of these is a deliberate refusal to write, not a crash.
         # Report it as such instead of a traceback.
@@ -373,6 +383,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"unidades escritas    : {summary.unidades_escritas}")
     print(f"unidades eliminadas  : {summary.unidades_eliminadas}")
     print(f"committed            : {summary.committed}")
+    if summary.committed:
+        # The sha the serving path (ORDER BY ingested_at DESC over activo rows)
+        # resolves to after this commit. Diverging from corpus_sha above means
+        # serving is NOT answering from what this run just wrote.
+        print(f"served sha           : {sha_servido}")
     if args.produccion_sin_orden:
         print("barra                : failed lab bar, served unranked")
     if summary.procedencia_olvidada:
