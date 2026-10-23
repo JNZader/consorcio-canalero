@@ -3,7 +3,7 @@
 The YAML carries **three** inventories (design.md D2, "Gates"):
 
 1. the article one — per-document expected `tipo_chunk='articulo'` counts plus
-   the per-class subtotals (1358 + 6 + 19 + 0 = 1383);
+   the per-class subtotals (1778 + 6 + 22 + 0 = 1806);
 2. the non-article one — the per-document expected `tipo_chunk` + citation key
    of every section the MANIFEST marks as *content but not articulado*;
 3. the **exclusion** one — every remaining `#`/`##` heading, each tagged with a

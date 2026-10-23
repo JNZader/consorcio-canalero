@@ -18,7 +18,7 @@ import yaml
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 # The corpus revision every expectation in this suite is pinned to.
-PINNED_CORPUS_SHA = "12043582bf8016288a7e8084e85a4b713a97af2f"
+PINNED_CORPUS_SHA = "ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e"
 
 
 def load_fixture(name: str) -> tuple[str, dict[str, Any]]:

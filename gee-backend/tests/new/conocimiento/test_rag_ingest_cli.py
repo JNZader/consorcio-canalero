@@ -325,7 +325,7 @@ class TestMainAgainstRealCorpus:
         )
         assert code == 0
         out = capsys.readouterr().out
-        assert "articulo units       : 1383" in out
+        assert "articulo units       : 1806" in out
         assert "committed            : False" in out
 
     def test_pinned_corpus_prints_no_embedding_ceiling_units(self, capsys):
@@ -377,15 +377,15 @@ class TestFullCorpusIngestion:
         summary = rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
         assert summary.committed
         assert summary.gates.ok
-        assert summary.gates.articulos_total == 1383
+        assert summary.gates.articulos_total == 1806
         assert summary.unidades_escritas == count_unidades(db, PINNED_CORPUS_SHA)
-        assert summary.unidades_escritas > 1383 + summary.gates.no_articulos_total
+        assert summary.unidades_escritas > 1806 + summary.gates.no_articulos_total
         filas = db.execute(
             text("SELECT citation_key, tipo_chunk FROM rag_unidad WHERE corpus_sha = :sha"),
             {"sha": PINNED_CORPUS_SHA},
         ).all()
         articulos = {clave_identidad(clave) for clave, tipo in filas if tipo == "articulo"}
-        assert len(articulos) == 1383
+        assert len(articulos) == 1806
 
     def test_vigencia_canary_row_exists_after_ingestion(self, db):
         """The 2032 sentence lives in a part. The parent key is gone."""
@@ -437,7 +437,7 @@ class TestFullCorpusIngestion:
         assert len(after) == first.unidades_escritas
         assert len(after) > 1448
         identidades = {clave_identidad(row[1]) for row in after}
-        assert len(identidades) == 1383 + second.gates.no_articulos_total == 1448
+        assert len(identidades) == 1806 + second.gates.no_articulos_total == 1871
         citation_keys = [row[1] for row in after]
         assert len(citation_keys) == len(set(citation_keys))
 
