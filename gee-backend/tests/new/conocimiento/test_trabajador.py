@@ -611,6 +611,7 @@ def _resultado_con_un_hit():
                 es_secundaria=False,
                 jurisdiccion="provincial",
                 estado_vigencia="vigente",
+                clasificacion="publico",
                 source_file="f.md",
                 source_offset=0,
             )
@@ -639,6 +640,7 @@ def _resultado_solo_privado():
                 es_secundaria=True,
                 jurisdiccion="consorcio",
                 estado_vigencia="vigente",
+                clasificacion="privado",
                 source_file="a.md",
                 source_offset=0,
             )

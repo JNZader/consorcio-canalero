@@ -36,7 +36,7 @@ Expose cited legal units, with vigencia, norma-vs-secundaria status and the serv
 
 ### Requirement: Norms Response Schema
 
-Every returned unit MUST carry its verbatim `texto`, citation key, `tipo`, `es_secundaria`, `estado_vigencia`, `jurisdiccion` and `relevancia_consorcio` as ingested. The response MUST carry `modo`, `corpus_sha` and `ingested_at` of the active corpus row. `es_secundaria` units MUST remain distinguishable from norma units.
+Every returned unit MUST carry its verbatim `texto`, citation key, `tipo`, `es_secundaria`, `estado_vigencia`, `jurisdiccion` and `relevancia_consorcio` as ingested, and MUST carry the unit's document `clasificacion` (`publico`/`institucional`/`privado`). The response MUST carry `modo`, `corpus_sha` and `ingested_at` of the active corpus row. `es_secundaria` units MUST remain distinguishable from norma units. The route serves `privado`-classified units labeled, never filtered; filtering by surface is an owner decision outside this spec.
 
 #### Scenario: Unit and response provenance
 

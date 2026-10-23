@@ -52,6 +52,7 @@ def _cita(clave: str = "ley-9750#art1") -> CitaRecuperada:
         estado_vigencia="vigente",
         es_secundaria=False,
         jurisdiccion="cordoba",
+        clasificacion="publico",
         source_file="ley-9750.md",
         source_offset=0,
     )
