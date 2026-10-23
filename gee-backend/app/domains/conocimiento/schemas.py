@@ -103,6 +103,11 @@ class CitaRecuperada(BaseModel):
     being read as live law; and `relevancia_consorcio` covers the case the other
     two cannot — a document that IS derecho aplicable by `tipo` and still must
     not be cited as grounds for a canalero obligation (design.md D1/D4).
+    `clasificacion` is the privacy label of the hit's document: the retrieval
+    stack serves `privado` units too, so every reader of a hit can tell a
+    private unit from a public one (audit RAG-1, 2026-10). It is a LABEL, not a
+    gate — the generation boundary stays DB-authoritative in
+    `service.assert_unidades_publicas`, which never reads this copy.
 
     `texto` is the verbatim, byte-exact unit text. It is the ONLY field ever
     shown as a citation: `texto_indexado` (title + structural path + text) is
@@ -122,6 +127,10 @@ class CitaRecuperada(BaseModel):
     jurisdiccion: str
     estado_vigencia: str | None = None
     relevancia_consorcio: str | None = None
+    #: The document's privacy class (`publico`/`institucional`/`privado`),
+    #: hydrated from `rag_documento` with the rest of the provenance. Required:
+    #: the column is NOT NULL, so a hit without it means hydration was bypassed.
+    clasificacion: str
     verificacion: str | None = None
     fuente_url: str | None = None
     source_file: str
@@ -438,6 +447,11 @@ class UnidadNorma(BaseModel):
     ranked shape is a SUBCLASS (`UnidadNormaOrdenada`), so an unranked response is
     unable to carry a rank — not merely told not to — and the OpenAPI schema says
     which of the two a caller is holding.
+
+    Every unit carries its document's `clasificacion`. The kernel serves
+    `privado` units (the admin route and the CLI legitimately read them), but it
+    never serves one UNLABELED — a consumer must be able to tell a private unit
+    from a public one before its text is piped anywhere (audit RAG-1, 2026-10).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -452,6 +466,10 @@ class UnidadNorma(BaseModel):
     jurisdiccion: str
     estado_vigencia: str | None = None
     relevancia_consorcio: str | None = None
+    #: The unit's privacy label, inherited from the retrieval hit. Required by
+    #: the same rule as on `CitaRecuperada`: an unlabeled unit is exactly the
+    #: defect the audit named, not a state to represent.
+    clasificacion: str
 
 
 class UnidadNormaOrdenada(UnidadNorma):
@@ -491,11 +509,14 @@ class ResultadoNormasOrdenado(ResultadoNormas):
 
 
 class UnidadLeida(UnidadNorma):
-    """`leer`: the byte-exact unit with its full provenance, including `clasificacion`."""
+    """`leer`: the byte-exact unit with its full provenance.
+
+    `clasificacion` is inherited from `UnidadNorma` (and was required here long
+    before it moved up): `leer` has always labeled what it returns.
+    """
 
     corpus_sha: str
     ingested_at: datetime.datetime
-    clasificacion: str
     verificacion: str | None = None
     fuente_url: str | None = None
     source_file: str

@@ -19,6 +19,13 @@ once, below all of them:
 
 An empty retrieval sets `sin_unidades`. It is not an abstention and carries no
 abstention field.
+
+Every unit the kernel returns carries its document's `clasificacion`
+(`publico`/`institucional`/`privado`). The kernel SERVES `privado` units — the
+admin route and the CLI legitimately read them — but never unlabeled: a consumer
+must be able to tell a private unit from a public one before the text goes
+anywhere (audit RAG-1, 2026-10). Filtering by surface is a separate decision and
+stays with the owner.
 """
 
 from __future__ import annotations

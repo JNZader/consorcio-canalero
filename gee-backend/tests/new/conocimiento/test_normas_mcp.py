@@ -59,6 +59,28 @@ class TestSinElSDK:
         assert rag_normas_mcp.TOOLS == ("buscar", "leer", "chequear")
         assert rag_normas_mcp.TOOLS == rag_normas.SUBCOMANDOS
 
+    def test_las_instrucciones_advierten_del_contenido_privado(self):
+        """Audit RAG-1: the mirror serves `privado` units; the client must be told."""
+        texto = rag_normas_mcp.INSTRUCCIONES
+        assert "privado" in texto
+        assert "clasificacion" in texto
+        assert "external provider" in texto
+        assert "operator is responsible" in texto
+
+    def test_buscar_y_leer_advierten_en_su_descripcion(self):
+        """Only the tools that return unit TEXT carry the disclosure warning."""
+        for texto in (rag_normas_mcp.DESCRIPCION_BUSCAR, rag_normas_mcp.DESCRIPCION_LEER):
+            assert "privado" in texto
+            assert "clasificacion" in texto
+            assert "external disclosure" in texto
+
+    def test_chequear_declara_la_etiqueta_sin_advertencia_de_texto(self):
+        """`chequear` returns a verdict, no corpus text: the label, not the warning."""
+        texto = rag_normas_mcp.DESCRIPCION_CHEQUEAR
+        assert "clasificacion" in texto
+        assert "no corpus text" in texto
+        assert "privado" not in texto
+
     def test_el_modulo_se_importa_sin_el_sdk(self, monkeypatch):
         """Importing must not require `mcp`: only RUNNING the server does."""
         monkeypatch.setitem(sys.modules, "mcp", None)

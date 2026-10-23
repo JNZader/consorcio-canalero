@@ -186,6 +186,7 @@ def _cita(**cambios):
         "tipo": "ley-provincial",
         "es_secundaria": False,
         "jurisdiccion": "provincial",
+        "clasificacion": "publico",
         "source_file": "f.md",
         "source_offset": 0,
     }
