@@ -484,7 +484,29 @@ UPSERT_CORPUS_SQL = text(
         repo_url = EXCLUDED.repo_url,
         manifest_version = EXCLUDED.manifest_version,
         articulos_declarados = EXCLUDED.articulos_declarados,
-        activo = EXCLUDED.activo
+        activo = EXCLUDED.activo,
+        -- Deliberate (audit RAG-3): `ingested_at` is NOT left at first landing.
+        -- Serving resolves ties with ORDER BY ingested_at DESC (CORPUS_ACTIVO_SQL)
+        -- precisely because `activo` is not unique in the schema, so re-ingesting
+        -- a snapshot must also make it the most-recently-ingested one — otherwise
+        -- "roll back by re-ingesting A" reactivates A while the defensive ordering
+        -- still prefers B, and the norms badge reports a landing time no run of
+        -- this code ever produced. With rotation below there is normally exactly
+        -- one activo row and the tie-break never fires; this keeps the fallback
+        -- ordering from contradicting it.
+        ingested_at = now()
+    """
+)
+
+# The other half of activation (audit RAG-3): making a corpus activo is what
+# retires every other one. Without this, ingest A then B leaves BOTH activo
+# forever, and the runbook's only rollback is hand-written SQL
+# (docs/rag/runbook-encendido.md, "Rollback").
+DEACTIVATE_OTHER_CORPUS_SQL = text(
+    """
+    UPDATE rag_corpus
+    SET activo = false
+    WHERE activo IS TRUE AND corpus_sha != :corpus_sha
     """
 )
 
@@ -544,6 +566,14 @@ def upsert_corpus(
     articulos_declarados: int,
     activo: bool = True,
 ) -> None:
+    """Upsert one `rag_corpus` row and, when it is activo, retire every other.
+
+    `rag_ingest.ingest` runs this inside its single transaction, so activation
+    and rotation commit or roll back together — a snapshot can never land
+    activo while the previous one also stays activo (audit RAG-3). Re-ingesting
+    the sha that is already active is a no-op rotation-wise: the UPDATE below
+    excludes `corpus_sha`, so the row never fights itself.
+    """
     db.execute(
         UPSERT_CORPUS_SQL,
         {
@@ -554,6 +584,8 @@ def upsert_corpus(
             "activo": activo,
         },
     )
+    if activo:
+        db.execute(DEACTIVATE_OTHER_CORPUS_SQL, {"corpus_sha": corpus_sha})
 
 
 def upsert_documento(db: Session, corpus_sha: str, row: Mapping[str, Any]) -> None:
@@ -1021,9 +1053,12 @@ def leer_corpus_activo(db: Session) -> CorpusActivo | None:
     return CorpusActivo(corpus_sha=fila[0], ingested_at=fila[1])
 
 
-#: One unit with its document's provenance AND `clasificacion`. `HYDRATE_SQL`
-#: stays untouched on purpose: it feeds the generation payload, and adding a
-#: column there would change what every hit carries.
+#: One unit with its document's provenance AND `clasificacion` (audit RAG-1,
+#: 2026-10: `HYDRATE_SQL` exposes it too, so every retrieval hit carries its
+#: privacy label). The generation boundary does not move with it:
+#: `service.assert_unidades_publicas` re-reads the classification from the
+#: database and never trusts the hit's copy, and the provider prompt renders
+#: named fields only — a label riding on the hit cannot leak into a payload.
 LEER_UNIDAD_SQL = text(
     """
     SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,
@@ -1188,7 +1223,7 @@ HYDRATE_SQL = text(
     SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,
            u.source_file, u.source_offset,
            d.tipo, d.es_secundaria, d.jurisdiccion, d.estado_vigencia,
-           d.relevancia_consorcio, d.verificacion, d.fuente_url
+           d.relevancia_consorcio, d.verificacion, d.fuente_url, d.clasificacion
     FROM rag_unidad u
     JOIN rag_documento d
       ON d.corpus_sha = u.corpus_sha AND d.documento_id = u.documento_id
@@ -1206,7 +1241,9 @@ def hydrate_citations(
 
     One query for the whole page rather than one per hit, and an INNER JOIN on
     `(corpus_sha, documento_id)` so a hit can only ever carry the metadata of a
-    document from its OWN snapshot.
+    document from its OWN snapshot. The row includes the document's
+    `clasificacion`: the retrieval stack serves `privado` units too, and a hit
+    without its privacy label is what audit RAG-1 (2026-10) flagged.
     """
     if not claves:
         return {}

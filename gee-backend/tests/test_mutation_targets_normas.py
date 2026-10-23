@@ -116,6 +116,7 @@ def _hit(clave: str, rango: int) -> CitaRecuperada:
         tipo="ley",
         es_secundaria=False,
         jurisdiccion="cordoba",
+        clasificacion="publico",
         source_file="ley.md",
         source_offset=0,
         rango_bm25=rango,
