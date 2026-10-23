@@ -128,9 +128,12 @@ export function useImageExplorerMap() {
       // use to slot rasters UNDER the boundary line. Fetching here, after map
       // creation (mirroring the `pendingTileUrlRef` wiring below), guarantees
       // the map exists and re-runs naturally when a config change re-creates
-      // the map. It must run BEFORE the pending-raster block so a raster
-      // arriving in the same synchronous pass already finds the zona layer as
-      // its `beforeId`.
+      // the map. `fetchZona` only starts the request: `addZonaLayer` runs in
+      // the promise callback, so `zonaLayerIdRef` is still null in this same
+      // turn. A pending raster applied below therefore gets no `beforeId`.
+      // The line is added afterwards, on top of that raster, which is the
+      // z-order we want. Later `updateTileLayer` calls use the ref once the
+      // layer exists and insert the raster under the line.
       const addZonaLayer = (geojson: unknown) => {
         const live = mapInstanceRef.current;
         if (cancelled || live === null || live !== map) return;

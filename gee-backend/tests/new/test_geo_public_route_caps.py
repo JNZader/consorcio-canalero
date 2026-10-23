@@ -549,6 +549,62 @@ def test_tile_proxy_caches_the_publicity_verdict_per_layer(
     router_core._publicity_cache.clear()
 
 
+def test_unknown_ids_do_not_flush_a_cached_public_layer(
+    cliente, precip_layer_id: uuid.UUID, monkeypatch
+) -> None:
+    """A flood of caller-chosen UUIDs must not wipe a cached public verdict.
+
+    Negative verdicts are cached, and the route is public and rate-limit
+    exempt, so the key space is whatever the caller mints. Evicting the whole
+    map at the cap (the previous backstop) dropped the ~10 real layers on
+    every 512th unknown id.
+    """
+    from app.domains.geo import router_core
+
+    router_core._publicity_cache.clear()
+    monkeypatch.setattr(router_core, "_PUBLICITY_CACHE_MAX_ENTRIES", 4)
+
+    tile_client = type("RecordingTileClient", (), {})()
+    tile_client.get = AsyncMock(
+        return_value=type("TileResponse", (), {"status_code": 200, "content": b"png"})()
+    )
+    monkeypatch.setattr(router_core, "_get_tile_client", lambda: tile_client)
+
+    calls: list[uuid.UUID] = []
+    real_lookup = router_core._public_layer_for_tile
+
+    def counting_lookup(db, layer_id):
+        calls.append(layer_id)
+        return real_lookup(db, layer_id)
+
+    monkeypatch.setattr(router_core, "_public_layer_for_tile", counting_lookup)
+
+    response = cliente.get(_tile_url(10, 0, 0, precip_layer_id))
+    assert response.status_code == 200, response.text
+    assert calls == [precip_layer_id]
+
+    for _ in range(8):
+        missing = uuid.uuid4()
+        response = cliente.get(_tile_url(10, 0, 0, missing))
+        assert response.status_code == 404, response.text
+
+    assert precip_layer_id in router_core._publicity_cache
+    assert router_core._publicity_cache[precip_layer_id][1] is not None
+    assert len(router_core._publicity_cache) <= 4
+
+    response = cliente.get(_tile_url(10, 0, 0, precip_layer_id))
+    assert response.status_code == 200, response.text
+    assert calls.count(precip_layer_id) == 1
+
+    repeated = uuid.uuid4()
+    assert cliente.get(_tile_url(10, 0, 0, repeated)).status_code == 404
+    assert cliente.get(_tile_url(10, 0, 0, repeated)).status_code == 404
+    assert calls.count(repeated) == 1
+    assert precip_layer_id in router_core._publicity_cache
+
+    router_core._publicity_cache.clear()
+
+
 def test_tile_proxy_forwards_a_public_layer_without_rescale_params(
     cliente, db, monkeypatch
 ) -> None:
@@ -570,9 +626,7 @@ def test_tile_proxy_forwards_a_public_layer_without_rescale_params(
     assert tile_client.get.await_args.kwargs["params"] == {}
 
 
-def test_tile_proxy_fails_closed_when_the_publicity_lookup_fails(
-    cliente, db, monkeypatch
-) -> None:
+def test_tile_proxy_fails_closed_when_the_publicity_lookup_fails(cliente, db, monkeypatch) -> None:
     """C1 fail-closed contract: if publicity cannot be verified, do NOT forward.
 
     A DB failure on the gate lookup is an outage, not a tile: 503 (retryable),
@@ -611,6 +665,26 @@ def test_tile_proxy_rejects_an_absurd_zoom(cliente) -> None:
 
 def test_tile_proxy_rejects_negative_coordinates(cliente) -> None:
     assert cliente.get(_tile_url(10, -1, 0)).status_code == 422
+
+
+def test_tile_proxy_hides_a_private_layer_outside_the_pyramid(cliente, db) -> None:
+    """The publicity gate runs BEFORE the pyramid 204.
+
+    ``(z=2, x=4)`` is outside the pyramid. A private or missing layer there
+    must be 404, not 204. 204 is the public "no tile here" answer; returning
+    it for an unforwardable id confirms the proxy reached the pyramid check.
+    The in-pyramid private-layer test stays green if the gate is moved back
+    below that fast path, so this coordinate is what pins the order.
+    """
+    hidden_ids = [
+        uuid.uuid4(),
+        _seed_tile_layer(db, "twi"),
+    ]
+    for layer_id in hidden_ids:
+        response = cliente.get(_tile_url(2, 4, 0, layer_id))
+
+        assert response.status_code == 404, response.text
+        assert response.json() == {"detail": "Geo layer no encontrado"}
 
 
 def test_tile_proxy_answers_204_outside_the_pyramid(cliente, db) -> None:

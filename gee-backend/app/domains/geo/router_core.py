@@ -463,13 +463,54 @@ def _public_layer_for_tile(db: Session, layer_id: uuid.UUID):
 # ``SQLAlchemyError`` bypasses the cache entirely and fails closed (503).
 #
 # Process-local on purpose (same blast-radius reasoning as the warn latch
-# above). Unbounded growth is impossible in practice (the public layer set
-# is ~10 rows); the size cap is a backstop that trades a cold cache for a
-# memory guarantee. Concurrent misses may race and double-query — harmless,
-# both store the same idempotent verdict.
+# above). The route is public and rate-limit exempt, and a negative verdict
+# is cached per caller-chosen UUID, so the key space is NOT the ~10 public
+# rows. A full cache drops expired rows first, then the single oldest
+# negative verdict. A flood of unknown ids churns that negative set and does
+# not wipe a cached public layer. Concurrent misses may race and
+# double-query — harmless, both store the same idempotent verdict.
 _PUBLICITY_CACHE_TTL_S = 60.0
 _PUBLICITY_CACHE_MAX_ENTRIES = 512
 _publicity_cache: dict[uuid.UUID, tuple[float, Optional[str]]] = {}
+
+
+def _evict_one_publicity_entry(now: float) -> None:
+    """Make room for one new key without flushing cached public layers.
+
+    Expired rows go first. A still-full cache then drops the oldest negative
+    (``tipo is None`` — a missing or private id, which is what an anonymous
+    caller can mint). A positive verdict is evicted only when the cache holds
+    nothing else.
+    """
+    expired = [key for key, (deadline, _tipo) in _publicity_cache.items() if deadline <= now]
+    for key in expired:
+        del _publicity_cache[key]
+    if len(_publicity_cache) < _PUBLICITY_CACHE_MAX_ENTRIES:
+        return
+
+    negatives = [
+        (key, deadline) for key, (deadline, tipo) in _publicity_cache.items() if tipo is None
+    ]
+    if negatives:
+        oldest = min(negatives, key=lambda item: item[1])[0]
+        del _publicity_cache[oldest]
+        return
+
+    if _publicity_cache:
+        oldest = min(_publicity_cache, key=lambda key: _publicity_cache[key][0])
+        del _publicity_cache[oldest]
+
+
+def _remember_publicity(
+    layer_id: uuid.UUID, deadline: float, tipo: Optional[str], now: float
+) -> None:
+    """Store one verdict. Refreshing a key never evicts its neighbors."""
+    if layer_id in _publicity_cache:
+        _publicity_cache[layer_id] = (deadline, tipo)
+        return
+    if len(_publicity_cache) >= _PUBLICITY_CACHE_MAX_ENTRIES:
+        _evict_one_publicity_entry(now)
+    _publicity_cache[layer_id] = (deadline, tipo)
 
 
 async def _cached_public_layer_tipo(db: Session, layer_id: uuid.UUID) -> Optional[str]:
@@ -482,9 +523,7 @@ async def _cached_public_layer_tipo(db: Session, layer_id: uuid.UUID) -> Optiona
 
     layer = await run_in_threadpool(_public_layer_for_tile, db, layer_id)
     tipo: Optional[str] = None if layer is None else getattr(layer.tipo, "value", layer.tipo)
-    if len(_publicity_cache) >= _PUBLICITY_CACHE_MAX_ENTRIES:
-        _publicity_cache.clear()
-    _publicity_cache[layer_id] = (now + _PUBLICITY_CACHE_TTL_S, tipo)
+    _remember_publicity(layer_id, now + _PUBLICITY_CACHE_TTL_S, tipo, now)
     return tipo
 
 
@@ -584,9 +623,7 @@ async def proxy_tile(
                 error_type=type(exc).__name__,
                 suppressed_since_last=suppressed,
             )
-        raise HTTPException(
-            status_code=503, detail="Capa no disponible temporalmente"
-        ) from exc
+        raise HTTPException(status_code=503, detail="Capa no disponible temporalmente") from exc
 
     if layer_tipo is None:
         # Non-public layer (or plain missing) → 404 ALWAYS, not only when

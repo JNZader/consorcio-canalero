@@ -127,4 +127,20 @@ describe('zona boundary layer', () => {
     expect(raster?.[0]).toMatchObject({ source: 'gee-image' });
     expect(raster?.[1]).toBe('zona-boundary-line');
   });
+
+  it('applies a raster queued before the map exists without a zona beforeId', async () => {
+    let api!: Api;
+    function Probe() {
+      api = useImageExplorerMap();
+      api.updateTileLayer(TILE_A);
+      return <div ref={api.mapRef} />;
+    }
+    render(<Probe />);
+
+    await waitFor(() => expect(layerCall('gee-image-layer')).toBeDefined());
+    expect(layerCall('gee-image-layer')?.[1]).toBeUndefined();
+
+    await waitFor(() => expect(layerCall('zona-boundary-line')).toBeDefined());
+    expect(layerCall('zona-boundary-line')?.[1]).toBeUndefined();
+  });
 });
