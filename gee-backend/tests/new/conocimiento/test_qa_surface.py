@@ -293,9 +293,15 @@ class TestLaHabilitacionEsUnAND:
         _como(app, "admin")
         monkeypatch.setattr(settings, "conocimiento_qa_enabled", True)
         monkeypatch.setattr(settings, "conocimiento_proveedor_api_key", "clave")
+        # The machine's env may set a daily quota. This test is about the
+        # checked-in terms record, and the refusal it still expects is the
+        # fail-closed default of zero. Leaving the env value in place lets the
+        # request through to the insert, which 500s because `_como` does not
+        # seed `users`.
+        monkeypatch.setattr(settings, "conocimiento_quota_diaria_usuario", 0)
         codigo, detalle = self._causa(cliente)
         assert codigo == 503
-        assert detalle["causa"] != "terminos_no_verificados"
+        assert detalle["causa"] == "CuotaNoConfigurada"
 
     def test_la_credencial_ausente_refusa_con_su_causa_y_no_con_un_500(
         self, app_client, habilitado, monkeypatch

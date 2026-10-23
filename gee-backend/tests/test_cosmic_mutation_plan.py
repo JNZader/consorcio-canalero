@@ -64,7 +64,7 @@ def test_tests_config_workflow_and_unknown_backend_paths_fail_closed(tmp_path: P
     ):
         result, payload = _plan(tmp_path / str(index), f"M\t{path}\n")
         assert result.returncode == 0, result.stderr
-        assert len(_targets(payload)) == 5
+        assert len(_targets(payload)) == 8
 
 
 def test_renamed_or_deleted_path_fails_closed(tmp_path: Path) -> None:
@@ -73,7 +73,7 @@ def test_renamed_or_deleted_path_fails_closed(tmp_path: Path) -> None:
         "R100\tgee-backend/app/domains/padron/service.py\tgee-backend/app/domains/padron/renamed.py\n",
     )
     assert result.returncode == 0, result.stderr
-    assert len(_targets(payload)) == 5
+    assert len(_targets(payload)) == 8
 
 
 def test_default_manifest_is_script_relative_when_run_from_the_repo_root(

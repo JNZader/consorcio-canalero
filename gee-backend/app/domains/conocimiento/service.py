@@ -51,6 +51,10 @@ from app.domains.conocimiento.repository import (
     IngestionAbort,
     LegHit,
     ProcedenciaEmbeddings,
+    # Same deliberate re-export, for the same boundary: the eval package may not
+    # import `repository`, and re-validating the gold keys against a snapshot
+    # needs the key set of that snapshot.
+    citation_keys as citation_keys,
     claves_sin_embedding,
     fts_search,
     hydrate_citations,
@@ -213,10 +217,17 @@ def texto_sha256(texto: str) -> str:
 #: comparison. `bm25_ce` is the ratified serving configuration `B50`
 #: (`design.md:1125-1139`): real BM25 candidates, cross-encoder ranking, no
 #: vector leg anywhere in it.
-MODOS = ("fts", "vector", "hybrid", "bm25_ce")
+#: The no-GPU arm served over HTTP: the same BM25 candidate pool as `bm25_ce`,
+#: kept in BM25 order, with no cross-encoder. The id says what is missing. It is
+#: NOT `bm25`, which is already a LEG id in `eval.harness.LEGS_POR_MODO`, and it
+#: is never `bm25_ce`: the CUDA arm's 31/34 was measured with a ranker this arm
+#: does not have.
+MODO_SIN_GPU = "bm25_sin_ce"
 
-#: The modes that fuse two legs by RRF. `bm25_ce` is deliberately not one of
-#: them: it has a single candidate leg and a ranker, and there is nothing to
+MODOS = ("fts", "vector", "hybrid", "bm25_ce", MODO_SIN_GPU)
+
+#: The modes that fuse two legs by RRF. `bm25_ce` and `bm25_sin_ce` are
+#: deliberately not among them: each has a single candidate leg and nothing to
 #: fuse.
 MODOS_RRF = ("fts", "vector", "hybrid")
 
@@ -513,6 +524,66 @@ def verificar_umbral_abstencion(db: Session, corpus_sha: str) -> None:
         raise UmbralAbstencionNoCorresponde(str(exc)) from exc
 
 
+def _candidatos_bm25(
+    db: Session, corpus_sha: str, pregunta_recuperacion: str, *, profundidad: int
+) -> list[LegHit]:
+    """The BM25 candidate pool both `bm25_ce` and `bm25_sin_ce` start from.
+
+    One function rather than two copies so the arms cannot drift apart: they
+    differ only in what happens AFTER this pool exists. The caller expands the
+    question (`expandir_consulta_recuperacion`) and hands the expanded copy in;
+    the expansion stays visible in each arm because it is a per-arm contract
+    (`test_solo_bm25_ce_expande` pins it by source).
+    """
+    indice = obtener_indice(db, corpus_sha)
+    lexemas = lexemas_de_consulta(db, pregunta_recuperacion)
+    return indice.buscar(lexemas, limite=profundidad)
+
+
+def _recuperar_bm25_sin_ce(
+    db: Session,
+    corpus_sha: str,
+    pregunta: str,
+    *,
+    k: int,
+    profundidad: int,
+) -> ResultadoRecuperacion:
+    """The no-GPU arm: BM25 top-`profundidad`, BM25 order, no ranker.
+
+    Three properties are contracts:
+
+    * **no reranker and no vector column** — nothing here can need a GPU;
+    * **the order is BM25's alone** — and it is a candidate-generation order, not
+      a measured ranking, which is why the norms surface hides it until the bar
+      artifact says otherwise (`eval/barra_sin_gpu.py`);
+    * **no `score_ce`** — a cross-encoder figure on this arm would name a
+      computation that never ran.
+    """
+    pregunta_recuperacion = expandir_consulta_recuperacion(pregunta)
+    candidatos = _candidatos_bm25(db, corpus_sha, pregunta_recuperacion, profundidad=profundidad)
+    elegidos = candidatos[:k]
+    provenance = hydrate_citations(db, corpus_sha, [hit.citation_key for hit in elegidos])
+
+    hits: list[CitaRecuperada] = []
+    for en_bm25 in elegidos:
+        fila = provenance.get(en_bm25.citation_key)
+        if fila is None:
+            raise IngestionAbort(
+                f"{en_bm25.citation_key} is in the BM25 index of snapshot {corpus_sha} "
+                "but has no row. The snapshot changed mid-query."
+            )
+        hits.append(CitaRecuperada(**fila, rango_bm25=en_bm25.rango, valor_bm25=en_bm25.valor))
+
+    return ResultadoRecuperacion(
+        corpus_sha=corpus_sha,
+        pregunta=pregunta,
+        modo=MODO_SIN_GPU,
+        k=k,
+        hits=hits,
+        n_bm25=len(candidatos),
+    )
+
+
 def _recuperar_bm25_ce(
     db: Session,
     corpus_sha: str,
@@ -540,9 +611,7 @@ def _recuperar_bm25_ce(
     generator sees. The fused ablation arms never take this path.
     """
     pregunta_recuperacion = expandir_consulta_recuperacion(pregunta)
-    indice = obtener_indice(db, corpus_sha)
-    lexemas = lexemas_de_consulta(db, pregunta_recuperacion)
-    candidatos = indice.buscar(lexemas, limite=profundidad)
+    candidatos = _candidatos_bm25(db, corpus_sha, pregunta_recuperacion, profundidad=profundidad)
 
     textos = textos_indexados(db, corpus_sha, [hit.citation_key for hit in candidatos])
     faltantes = [hit.citation_key for hit in candidatos if hit.citation_key not in textos]
@@ -644,6 +713,26 @@ def recuperar(
     """
     if modo not in MODOS:
         raise ValueError(f"unknown modo {modo!r} (expected one of {MODOS})")
+
+    if modo == MODO_SIN_GPU:
+        # Both refusals are the same shape as `bm25_ce`'s qvec refusal, and for a
+        # stronger reason. A reranker handed to this arm would make the caller
+        # (and anyone reading the result) believe a cross-encoder produced the
+        # order; a qvec would be discarded because the arm reads no vector column.
+        if reranker is not None:
+            raise ValueError(
+                f"modo={MODO_SIN_GPU!r} runs with no reranker. Passing one would "
+                "let a caller believe the cross-encoder ordered the result; use "
+                "modo='bm25_ce' for the ranked arm."
+            )
+        if qvec is not None:
+            raise ValueError(
+                f"modo={MODO_SIN_GPU!r} has no vector leg, so a caller-supplied "
+                "qvec would be silently discarded."
+            )
+        return _recuperar_bm25_sin_ce(
+            db, corpus_sha, pregunta, k=k, profundidad=profundidad_candidatos
+        )
 
     if modo == "bm25_ce":
         if qvec is not None:

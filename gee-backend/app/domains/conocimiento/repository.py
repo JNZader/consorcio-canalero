@@ -989,6 +989,67 @@ def corpus_activo(db: Session) -> str | None:
     return db.execute(CORPUS_ACTIVO_SQL).scalar_one_or_none()
 
 
+CORPUS_ACTIVO_FILA_SQL = text(
+    """
+    SELECT corpus_sha, ingested_at
+    FROM rag_corpus
+    WHERE activo IS TRUE
+    ORDER BY ingested_at DESC, corpus_sha
+    LIMIT 1
+    """
+)
+
+
+@dataclass(frozen=True)
+class CorpusActivo:
+    """The active snapshot AND when it was ingested, for the norms response badge."""
+
+    corpus_sha: str
+    ingested_at: datetime.datetime
+
+
+def leer_corpus_activo(db: Session) -> CorpusActivo | None:
+    """The same row `corpus_activo` resolves, with its `ingested_at`.
+
+    A separate function rather than a wider `corpus_activo`: that one returns a
+    plain SHA to a dozen callers and is not changed. Both ORDER BY the same way,
+    so they can never name two different snapshots as "the active one".
+    """
+    fila = db.execute(CORPUS_ACTIVO_FILA_SQL).first()
+    if fila is None:
+        return None
+    return CorpusActivo(corpus_sha=fila[0], ingested_at=fila[1])
+
+
+#: One unit with its document's provenance AND `clasificacion`. `HYDRATE_SQL`
+#: stays untouched on purpose: it feeds the generation payload, and adding a
+#: column there would change what every hit carries.
+LEER_UNIDAD_SQL = text(
+    """
+    SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,
+           u.source_file, u.source_offset,
+           d.tipo, d.es_secundaria, d.jurisdiccion, d.estado_vigencia,
+           d.relevancia_consorcio, d.verificacion, d.fuente_url, d.clasificacion
+    FROM rag_unidad u
+    JOIN rag_documento d
+      ON d.corpus_sha = u.corpus_sha AND d.documento_id = u.documento_id
+    WHERE u.corpus_sha = :corpus_sha AND u.citation_key = :citation_key
+    """
+)
+
+
+def leer_unidad(db: Session, corpus_sha: str, citation_key: str) -> dict[str, Any] | None:
+    """One unit of one snapshot, byte-exact, or `None` when the key is not there.
+
+    Scoped by `corpus_sha` in the WHERE clause, so a key that exists only in
+    another snapshot is "not found" here and cannot be read by accident.
+    """
+    fila = db.execute(
+        LEER_UNIDAD_SQL, {"corpus_sha": corpus_sha, "citation_key": citation_key}
+    ).first()
+    return None if fila is None else dict(fila._mapping)
+
+
 LEER_PROCEDENCIA_SQL = text(
     """
     SELECT corpus_sha, embedding_modelo, embedding_revision_hf, embedding_sintetico,

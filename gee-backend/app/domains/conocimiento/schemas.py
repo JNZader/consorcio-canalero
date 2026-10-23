@@ -11,7 +11,7 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DocumentoIngestado(BaseModel):
@@ -317,6 +317,32 @@ class PreguntaEntrada(BaseModel):
     pregunta: str
 
 
+#: The most units one norms search returns. A search is a page a person reads, not
+#: an export, and the BM25 pool behind it is bounded anyway.
+BUSQUEDA_NORMAS_K_MAX = 50
+
+
+class BusquedaNormasEntrada(BaseModel):
+    """The norms search body: a query and a page size, and NOTHING that picks a mode.
+
+    `extra="forbid"` is what makes "the route accepts no mode parameter" true
+    rather than conventional: a `modo` key is a 422, not a silently ignored field
+    that a caller believes selected the CUDA arm.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consulta: str = Field(min_length=1, max_length=2000)
+    k: int = Field(default=10, ge=1, le=BUSQUEDA_NORMAS_K_MAX)
+
+    @field_validator("consulta")
+    @classmethod
+    def _consulta_no_vacia(cls, valor: str) -> str:
+        if not valor.strip():
+            raise ValueError("la consulta no puede ser solo espacios")
+        return valor
+
+
 class ConsultaEncolada(BaseModel):
     """What `POST /preguntas` returns: an identifier and `pendiente`.
 
@@ -392,3 +418,97 @@ class EstadoBuzon(BaseModel):
     #: True when the oldest pending item has been waiting past the window. The
     #: operational fault A3 moved OFF the per-question path lands here.
     worker_demorado: bool = False
+
+
+# ---------------------------------------------------------------------------
+# The norms surface and its mute kernel (`normas.py`)
+# ---------------------------------------------------------------------------
+
+
+class UnidadNorma(BaseModel):
+    """One legal unit as the norms surface shows it: verbatim text plus provenance.
+
+    There is deliberately NO rank, score or distance field on this class. The
+    ranked shape is a SUBCLASS (`UnidadNormaOrdenada`), so an unranked response is
+    unable to carry a rank — not merely told not to — and the OpenAPI schema says
+    which of the two a caller is holding.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    citation_key: str
+    documento_id: str
+    tipo_chunk: str
+    epigrafe: str | None = None
+    texto: str
+    tipo: str
+    es_secundaria: bool
+    jurisdiccion: str
+    estado_vigencia: str | None = None
+    relevancia_consorcio: str | None = None
+
+
+class UnidadNormaOrdenada(UnidadNorma):
+    """A unit in BM25 order. Only built once the bar artifact is `superada`.
+
+    `rango` is a 1-based position and nothing else: no BM25 value, no score.
+    """
+
+    rango: int
+
+
+class ResultadoNormas(BaseModel):
+    """What `normas.buscar` returns when no rank order is presented.
+
+    `sin_unidades` is the "no units recovered" statement. It is NOT an abstention:
+    there is no abstention field, no threshold and no claim that no norm applies.
+    Abstention retuning is out of scope and owner decision 0.1 stays open.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    modo: str
+    corpus_sha: str
+    ingested_at: datetime.datetime
+    unidades: list[UnidadNorma] = Field(default_factory=list)
+    sin_unidades: bool
+    orden_presentado: Literal[False] = False
+    nota_orden: str
+
+
+class ResultadoNormasOrdenado(ResultadoNormas):
+    """The ranked shape: the same fields, `rango` per unit and the arm that ordered them."""
+
+    unidades: list[UnidadNormaOrdenada] = Field(default_factory=list)  # type: ignore[assignment]
+    orden_presentado: Literal[True] = True  # type: ignore[assignment]
+    orden_modo: str
+
+
+class UnidadLeida(UnidadNorma):
+    """`leer`: the byte-exact unit with its full provenance, including `clasificacion`."""
+
+    corpus_sha: str
+    ingested_at: datetime.datetime
+    clasificacion: str
+    verificacion: str | None = None
+    fuente_url: str | None = None
+    source_file: str
+    source_offset: int
+
+
+CondicionChequeo = Literal["sha", "clave", "span", "vigencia"]
+
+
+class VeredictoChequeo(BaseModel):
+    """`chequear`: pass, or a refusal that names the FIRST failed condition.
+
+    `clasificacion` is carried whenever the unit was found, pass or refusal, so the
+    editor can tell a `privado` unit from a missing one without a second read.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    pasa: bool
+    condicion_fallida: CondicionChequeo | None = None
+    clasificacion: str | None = None
+    detalle: str

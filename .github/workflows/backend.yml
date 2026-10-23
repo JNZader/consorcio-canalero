@@ -179,6 +179,13 @@ jobs:
           pytest tests/ -v --ignore=tests/new/test_geo_visualization_renderer.py
           --cov=app --cov-append --cov-report=json:coverage.json --cov-fail-under=80
       - run: python3 scripts/critical_coverage_gate.py coverage.json
+      - name: Norms MCP tools against the pinned SDK
+        run: |
+          python3 -m pip download "mcp==2.3.0" --no-deps -d "${RUNNER_TEMP}/mcp-wheel"
+          python3 -c 'import hashlib, os, pathlib; wheels=list((pathlib.Path(os.environ["RUNNER_TEMP"])/"mcp-wheel").glob("mcp-*.whl")); assert len(wheels)==1, [p.name for p in wheels]; digest=hashlib.sha256(wheels[0].read_bytes()).hexdigest(); expected="dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377"; assert digest==expected, digest'
+          python3 -m pip install --target "${RUNNER_TEMP}/mcp-pkgs" -r requirements-mcp.txt
+          PYTHONPATH="${RUNNER_TEMP}/mcp-pkgs${PYTHONPATH:+:$PYTHONPATH}" \
+            pytest tests/new/conocimiento/test_normas_mcp.py -q -p no:logging
 
   mutation:
     name: Mutation tests (cosmic-ray — ${{ matrix.target }})

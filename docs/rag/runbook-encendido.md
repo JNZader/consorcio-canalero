@@ -848,6 +848,98 @@ policy: reranker confidence is a measurably worse signal than cosine, and the tw
 options — relaxing recall to ≥ 0.90, or building a different signal — are a
 decision no task may make on the owner's behalf.
 
+### 4.4 The norms surface — publish gate, operator read, gold re-validation
+
+`conocimiento_normas_enabled` is a **separate** flag from `conocimiento_qa_enabled`
+and ships `false`. It needs no sidecar, no worker, no provider credential and no
+GPU: the `bm25_sin_ce` arm is BM25 candidates in BM25 order with no reranker. Its
+gate is flag, then `require_admin`, then an active `rag_corpus` row, in that
+order. The enablement facts in §4.3 do **not** apply to it, and flipping it does
+not flip the Q&A surface.
+
+**What the surface shows depends on one checked-in file.**
+`app/domains/conocimiento/eval/barra_sin_gpu.yaml` ships `estado: no_medido`. While
+it is not `superada` **for the exact active `corpus_sha`**, every response is
+*unranked*: units sorted by citation key, no `rango`, `orden_presentado: false`.
+Nobody can unlock rank order by configuration; only a committed measurement does.
+A bar that fails is not an outage: units are still served, unranked.
+
+Order (the design's rollout, in the order the operator runs it):
+
+1. **Merge with the flag off.** Nothing changes for any user.
+2. **Precondition (owner work):** a pushed, clean corpus SHA exists. Nothing here
+   assumes the box already holds the August pin (`12043582…`).
+3. **If the pin moves, re-validate the expected-citation keys in the public AND
+   the private gold at the new SHA** before measuring. The bar is **not** decided
+   while any item is a migration miss (a key that no longer exists at the new
+   SHA), because a miss scores as a retrieval failure and would fail a bar the
+   arm may have cleared — or, worse, be read around. The private gold stays
+   outside the repo (`RAG_GOLD_PRIVADO_PATH`); its question text never goes into a
+   fixture or a log.
+4. **Lab ingest, then measure, then commit the artifact.** On a lab database,
+   never on the box's production one:
+
+   ```
+   venv-rag/bin/python scripts/rag_eval.py --modo bm25_sin_ce \
+       --corpus-sha <SHA> --database-url <LAB URL>
+   ```
+
+   Seed `barra_sin_gpu.yaml` from that report (`barra_sin_gpu.derivar_desde`
+   refuses a synthetic snapshot or an `--allow-synthetic` run, so a synthetic run
+   can never unlock rank order) and commit it. The eval command never writes the
+   file itself.
+5. **Production ingest with the gate on**, and only if step 4 produced a
+   `superada` artifact for this SHA:
+
+   ```
+   venv-rag/bin/python scripts/rag_ingest.py --corpus-sha <SHA> \
+       --entorno produccion --exigir-barra …
+   ```
+
+   `--entorno` defaults to `laboratorio`, which may ingest without the bar so the
+   measurement in step 4 can happen. `produccion` refuses, before any file or
+   connection, unless `--exigir-barra` is also present. The database URL does
+   not make that choice. `--exigir-barra` is checked **before** the database, the
+   corpus or the pin are touched, so it also refuses `--dry-run`, and it exits 1
+   with `nothing was written` unless the artifact is `superada` for that SHA.
+   Production cannot be selected by the database URL alone.
+6. **The operator reads `rag_corpus` on the box before calling the index current.**
+   Do not infer it from the repo:
+
+   ```
+   docker compose exec postgres psql -U consorcio -d consorcio -c \
+     "SELECT corpus_sha, activo, ingested_at, embedding_sintetico FROM rag_corpus ORDER BY ingested_at DESC;"
+   ```
+
+   Exactly one row must be `activo`, its `corpus_sha` must be the SHA the bar was
+   measured on, and `embedding_sintetico` must not be true (the column is nullable). The response itself
+   repeats `corpus_sha` and `ingested_at` on every call, so after the flip the
+   operator can compare what the screen says with this row.
+7. **Flip `conocimiento_normas_enabled`** in the box's `.env` and recreate the
+   backend, then call `POST /api/v2/conocimiento/normas/buscar` as an admin once.
+
+**Rollback:** set the flag to `false`, or set `activo=false` on the bad row
+(`sin_corpus_activo` 503 from then on). No migration is involved.
+
+**The Ley 8803 drafts pin a SHA of their own.** `app/domains/conocimiento/pedidos_8803.yaml`
+records `corpus.sha` and each slot's `(citation_key, span, vigencia)`. The export
+never re-pins automatically: when the active corpus moves, every export is
+refused with cause `sha` until someone re-validates the slots against the new
+snapshot and updates the file by hand. A refusal names the slot and the cause
+(`privado`, `sha`, `clave`, `span`, `vigencia`) and writes nothing — expect it
+after step 5, and treat it as the editor working, not as an incident.
+
+**The local MCP server is not part of the app image.** `requirements-mcp.txt` pins
+one exact `mcp` version and is deliberately outside the image and the lock-sync:
+
+```
+python -m venv venv-mcp && venv-mcp/bin/pip install -r requirements-mcp.txt
+venv-mcp/bin/python scripts/rag_normas_mcp.py
+```
+
+A missing install exits `2` and names this file. `scripts/rag_normas.py` is the
+same three tools (`buscar`, `leer`, `chequear`) without the SDK.
+
 ---
 
 ## Section 5 — what this runbook does not do

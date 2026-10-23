@@ -41,6 +41,7 @@ from app.domains.conocimiento.eval.metrics import (
     HitEvaluado,
     MetricasRecuperacion,
     PreguntaEvaluada,
+    hit_rate_at_k,
     metricas_recuperacion,
 )
 from app.domains.conocimiento.recuperacion.reranker import Reranker
@@ -73,6 +74,11 @@ LEGS_POR_MODO: dict[str, tuple[str, ...]] = {
     # report an empty lexical leg for an arm that never asked for one, and would
     # annotate the leg that DOES run as "not run in this mode" (task 9.1b).
     "bm25_ce": ("bm25",),
+    # The no-GPU arm shares `bm25_ce`'s candidate leg and drops the cross-encoder.
+    # It reads the same BM25 pool, so the coverage block has to name `bm25` for it
+    # too — and it must never be filed under `bm25_ce`, whose 31/34 was measured
+    # with a ranker this arm does not have.
+    "bm25_sin_ce": ("bm25",),
 }
 
 #: Modes whose ONLY leg is the vector one, and therefore the only modes in which
@@ -91,7 +97,7 @@ MODOS_SIN_ALCANCE_LEXICO = ("vector",)
 #: the amended serving gate requires. The two are separable and are now separated
 #: — the arm is scored, its abstention row says `not-evaluable`, and no threshold
 #: is selected from a signal nobody ratified (owner decision 0.1, OPEN).
-MODOS_SIN_SENAL_RATIFICADA = ("bm25_ce",)
+MODOS_SIN_SENAL_RATIFICADA = ("bm25_ce", service.MODO_SIN_GPU)
 
 #: What `fuente_senal` says for those modes. NOT `FUENTE_RRF`, which is what the
 #: empty-signals fallback used to return: naming a fusion that never ran, on the
@@ -550,6 +556,16 @@ class ResultadoModo:
     #: refuses on it exactly as it refuses on synthetic embeddings.
     ranker_modelo: str | None = None
     ranker_sintetico: bool | None = None
+    #: Gold items whose expected citation keys are not all in the snapshot that was
+    #: scored, as `(item id, absent keys)`. These are migration-induced misses: the
+    #: corpus moved and the gold did not, which says nothing about retrieval. They
+    #: are counted apart from `fallas_de_recuperacion` so a re-pinned corpus cannot
+    #: make the ranker look worse, and `barra_sin_gpu.derivar_desde` refuses to
+    #: decide the bar while any exist.
+    perdidas_de_migracion: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: Answerable items whose keys all exist but none landed in the top five.
+    #: The real retrieval failures, with the migration misses taken out.
+    fallas_de_recuperacion: tuple[str, ...] = ()
     #: Computed from `senales`/`detalles` at construction time so a caller cannot
     #: pass a LOOCV result or a coverage count that does not belong to this run.
     loocv: ResultadoLOOCV = field(init=False)
@@ -568,6 +584,10 @@ class ResultadoModo:
                 legs_corridas=LEGS_POR_MODO.get(self.modo, ()),
             ),
         )
+
+    @property
+    def n_perdidas_de_migracion(self) -> int:
+        return len(self.perdidas_de_migracion)
 
     @property
     def fuente_senal(self) -> str:
@@ -819,6 +839,20 @@ def correr_modo(
     rankers: set[str] = set()
     ranker_sintetico: bool | None = None
 
+    # `evaluar` threads ONE reranker to every mode it runs, and the no-GPU arm is
+    # the mode that must never see it: `service.recuperar` refuses a reranker for
+    # that arm precisely so nobody believes a cross-encoder ordered its pages.
+    # Dropping it here, rather than making callers branch, keeps the two-arm run
+    # (`--modo bm25_ce --modo bm25_sin_ce`) a single call.
+    reranker_del_modo = None if modo == service.MODO_SIN_GPU else reranker
+
+    # The gold's expected keys are re-validated against the snapshot BEFORE any
+    # hit is read. A key the snapshot does not hold cannot be retrieved by any
+    # ranker, so counting it as a miss would charge the ranker for a corpus move.
+    claves_snapshot = service.citation_keys(db, corpus_sha)
+    perdidas: list[tuple[str, tuple[str, ...]]] = []
+    fallas: list[str] = []
+
     for item in gold.resueltas:
         assert item.pregunta is not None  # guarded by `resueltas`; keeps mypy honest
         resultado = service.recuperar(
@@ -828,8 +862,11 @@ def correr_modo(
             modo=modo,
             k=k,
             embedder=embedder,
-            reranker=reranker,
+            reranker=reranker_del_modo,
         )
+        ausentes = tuple(clave for clave in item.citas_esperadas if clave not in claves_snapshot)
+        if ausentes:
+            perdidas.append((item.id, ausentes))
         if resultado.reranker_modelo is not None:
             rankers.add(resultado.reranker_modelo)
         if resultado.reranker_sintetico is not None:
@@ -841,9 +878,10 @@ def correr_modo(
         # that also takes its retrieval metrics down with it. The two concerns
         # were entangled and are now not: see `MODOS_SIN_SENAL_RATIFICADA`.
         senal = senales_desde(item, resultado) if modo not in MODOS_SIN_SENAL_RATIFICADA else None
-        preguntas.append(
-            _pregunta_evaluada(item, resultado, precision_no_evaluable=fuera_de_alcance)
-        )
+        evaluada = _pregunta_evaluada(item, resultado, precision_no_evaluable=fuera_de_alcance)
+        preguntas.append(evaluada)
+        if not ausentes and evaluada.es_respondible and hit_rate_at_k(evaluada, HIT_RATE_K) == 0.0:
+            fallas.append(item.id)
         if senal is not None:
             senales.append(senal)
         detalles.append(
@@ -881,6 +919,8 @@ def correr_modo(
         # instead of naming whichever one came last.
         ranker_modelo=" + ".join(sorted(rankers)) or None,
         ranker_sintetico=ranker_sintetico,
+        perdidas_de_migracion=tuple(perdidas),
+        fallas_de_recuperacion=tuple(fallas),
     )
 
 
