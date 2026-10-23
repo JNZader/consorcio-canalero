@@ -207,17 +207,6 @@ docker-clean: ## Remove all Docker containers, images, and volumes
 		$(DOCKER_COMPOSE) down -v --rmi all --remove-orphans || \
 		echo "$(BLUE)Cancelled$(NC)"
 
-docker-monitoring: ## Start services with monitoring (Flower)
-	@echo "$(BLUE)Starting services with monitoring...$(NC)"
-	$(DOCKER_COMPOSE) --profile monitoring up -d
-	@echo "$(GREEN)Services started with monitoring!$(NC)"
-	@echo "  Flower: http://localhost:5555"
-
-docker-scheduler: ## Start services with Celery Beat scheduler
-	@echo "$(BLUE)Starting services with scheduler...$(NC)"
-	$(DOCKER_COMPOSE) --profile with-scheduler up -d
-	@echo "$(GREEN)Services started with scheduler!$(NC)"
-
 # ==============================================
 # DATABASE & MIGRATIONS
 # ==============================================
@@ -225,15 +214,11 @@ migrate: db-upgrade ## Run database migrations (alias for db-upgrade)
 
 db-upgrade: ## Apply database migrations
 	@echo "$(BLUE)Running database migrations...$(NC)"
-	cd $(BACKEND_DIR) && \
-		alembic upgrade head 2>/dev/null || \
-		echo "$(YELLOW)Alembic not configured or no migrations to run$(NC)"
+	cd $(BACKEND_DIR) && alembic upgrade head
 
 db-downgrade: ## Rollback last database migration
 	@echo "$(BLUE)Rolling back last migration...$(NC)"
-	cd $(BACKEND_DIR) && \
-		alembic downgrade -1 2>/dev/null || \
-		echo "$(YELLOW)Alembic not configured$(NC)"
+	cd $(BACKEND_DIR) && alembic downgrade -1
 
 db-revision: ## Create a new migration revision
 	@read -p "Migration message: " msg && \

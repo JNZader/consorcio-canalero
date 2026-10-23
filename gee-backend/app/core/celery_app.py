@@ -105,9 +105,20 @@ celery_app.conf.update(
     ),
     task_default_queue="celery",
     task_default_routing_key="celery",
-    # Route geo.* tasks to the geo queue
+    # Route geo.* tasks to the geo queue.
+    # The three gee.* user-facing tasks are enumerated by exact name:
+    # the 2026-10-23 audit found that the "geo.*"-only table (Celery
+    # matches these patterns with re.match) let them fall through to the
+    # default "celery" queue, whose maintenance worker has no GDAL and
+    # cannot run them. Exact names instead of a "gee.*" pattern so a
+    # future gee.* task cannot silently land on the geo worker — the
+    # single-concurrency GDAL worker — without an explicit opt-in here,
+    # mirroring how RECOVERABLE_LONG_TASKS is an explicit allowlist.
     task_routes={
         "geo.*": {"queue": "geo", "routing_key": "geo"},
+        "gee.analyze_flood": {"queue": "geo", "routing_key": "geo"},
+        "gee.supervised_classification": {"queue": "geo", "routing_key": "geo"},
+        "gee.sar_temporal": {"queue": "geo", "routing_key": "geo"},
     },
     # Periodic task schedule (Celery Beat)
     beat_schedule={

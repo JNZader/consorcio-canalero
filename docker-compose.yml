@@ -197,13 +197,15 @@ services:
     image: redis:7-alpine
     container_name: consorcio-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    # Dev default keeps `docker compose up` working on a fresh clone; prod
+    # overrides REDIS_PASSWORD via the root .env (see .env.example).
+    command: redis-server --requirepass ${REDIS_PASSWORD:-consorcio_dev_redis}
     ports:
       - "127.0.0.1:6379:6379"
     networks:
       - consorcio-network
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:?REDIS_PASSWORD is required} ping | grep PONG"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a ${REDIS_PASSWORD:-consorcio_dev_redis} ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
