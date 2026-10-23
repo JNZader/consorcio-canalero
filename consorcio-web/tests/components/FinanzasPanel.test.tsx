@@ -69,6 +69,25 @@ function mockFinanceApi() {
   });
 }
 
+/** Same contract as mockFinanceApi but the gasto POST never settles until told to. */
+function mockFinanceApiWithHangingGastoPost() {
+  let resolvePost: (value: unknown) => void = () => {};
+  vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+    if (path === '/finanzas/gastos' && options?.method === 'POST') {
+      return new Promise((resolve) => {
+        resolvePost = resolve;
+      });
+    }
+    if (path === '/finanzas/gastos' && !options) return [gasto];
+    if (path === '/finanzas/ingresos' && !options) return [ingreso];
+    if (path.startsWith('/finanzas/resumen/')) {
+      return { total_ingresos: 50000, total_gastos: 20000, balance: 30000 };
+    }
+    return {};
+  });
+  return () => resolvePost({ id: 'new-gasto' });
+}
+
 async function chooseOption(input: HTMLElement, name: string) {
   const user = userEvent.setup();
   await user.selectOptions(input, name);
@@ -145,6 +164,45 @@ describe('FinanzasPanel', () => {
     );
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Gasto registrado', color: 'green' })
+    );
+  });
+
+  it('disables the submit button while a gasto creation is in flight (no double submit)', async () => {
+    const user = userEvent.setup();
+    const settlePost = mockFinanceApiWithHangingGastoPost();
+    renderPanel();
+    await screen.findByText('Administración Financiera');
+
+    await user.click(screen.getByRole('button', { name: /registrar gasto/i }));
+    const dialog = await screen.findByRole('dialog', { name: /registrar gasto de caja/i });
+
+    await user.type(
+      within(dialog).getByLabelText(/descripción del gasto/i),
+      contracts.finanzas.gasto_create.descripcion
+    );
+    await user.type(
+      within(dialog).getByLabelText(/monto \(\$\)/i),
+      String(contracts.finanzas.gasto_create.monto)
+    );
+    await chooseOption(within(dialog).getByLabelText(/categor[ií]a/i), 'obras');
+    fireEvent.change(within(dialog).getByLabelText(/^fecha/i), {
+      target: { value: contracts.finanzas.gasto_create.fecha },
+    });
+
+    const submit = within(dialog).getByRole('button', { name: /guardar gasto/i });
+    await user.click(submit);
+
+    await waitFor(() => expect(submit).toBeDisabled());
+    settlePost();
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Gasto registrado', color: 'green' })
+      );
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: /registrar gasto de caja/i })
+      ).not.toBeInTheDocument()
     );
   });
 
