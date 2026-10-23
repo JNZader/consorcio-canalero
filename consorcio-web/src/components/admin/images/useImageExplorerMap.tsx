@@ -44,7 +44,7 @@ function applyGeeRaster(map: maplibregl.Map, url: string, beforeId: string | nul
       source: 'gee-image',
       paint: { 'raster-opacity': 0.9 },
     },
-    beforeId ?? undefined,
+    beforeId ?? undefined
   );
 }
 
@@ -66,6 +66,9 @@ export function useImageExplorerMap() {
     let cancelled = false;
     let map: maplibregl.Map | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    // Lets cleanup drop a still-pending `once('load', fetchZona)` listener.
+    let offZonaLoadListener: (() => void) | null = null;
+    const zonaController = new AbortController();
     void (async () => {
       await bootMapLibreWorker();
       if (cancelled || !mapRef.current || mapInstanceRef.current) return;
@@ -112,6 +115,61 @@ export function useImageExplorerMap() {
             })
           : null;
       if (container) resizeObserver?.observe(container);
+
+      // Zona boundary — audit 2026-10 finding C4 (regression from 84c0a9c4):
+      // this fetch/add used to live in a SEPARATE effect with deps `[]`. That
+      // effect ran in the same passive-effects flush as this one, but
+      // `mapInstanceRef.current` is only assigned AFTER `await
+      // bootMapLibreWorker()` — i.e. in a later microtask. The zona effect
+      // therefore read `null`, early-returned, and nothing ever re-ran it
+      // (deps `[]`, no state/timeout retrigger, cleanup nulls the ref), so the
+      // red consorcio boundary NEVER rendered and `zonaLayerIdRef` stayed
+      // null — dropping the `beforeId` slot `applyGeeRaster`/`updateWaterMask`
+      // use to slot rasters UNDER the boundary line. Fetching here, after map
+      // creation (mirroring the `pendingTileUrlRef` wiring below), guarantees
+      // the map exists and re-runs naturally when a config change re-creates
+      // the map. It must run BEFORE the pending-raster block so a raster
+      // arriving in the same synchronous pass already finds the zona layer as
+      // its `beforeId`.
+      const addZonaLayer = (geojson: unknown) => {
+        const live = mapInstanceRef.current;
+        if (cancelled || live === null || live !== map) return;
+        const sourceId = 'zona-boundary';
+        const layerId = 'zona-boundary-line';
+        if (live.getLayer(layerId)) live.removeLayer(layerId);
+        if (live.getSource(sourceId)) live.removeSource(sourceId);
+        live.addSource(sourceId, {
+          type: 'geojson',
+          data: geojson as GeoJSON.FeatureCollection,
+        });
+        live.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': mapColorTokens.hFF0000, 'line-width': 3, 'line-opacity': 1 },
+        });
+        zonaLayerIdRef.current = layerId;
+      };
+      const fetchZona = () => {
+        apiFetch<unknown>('/geo/gee/layers/zona', {
+          signal: zonaController.signal,
+          timeout: GEE_TIMEOUT,
+        })
+          .then(addZonaLayer)
+          .catch((err) => {
+            if (!zonaController.signal.aborted) logger.warn('Error cargando capa zona:', err);
+          });
+      };
+      // Same gate the old effect used: MapLibre needs the style live before
+      // sources/layers can be added. `once` (not `on`) — this must fire a
+      // single time per map instance; cleanup aborts the fetch if it never
+      // got to run.
+      if (map.isStyleLoaded()) fetchZona();
+      else {
+        map.once('load', fetchZona);
+        offZonaLoadListener = () => map?.off('load', fetchZona);
+      }
+
       const pending = pendingTileUrlRef.current;
       if (pending) {
         if (map.isStyleLoaded()) {
@@ -132,58 +190,21 @@ export function useImageExplorerMap() {
     })();
     return () => {
       cancelled = true;
+      zonaController.abort();
+      offZonaLoadListener?.();
       resizeObserver?.disconnect();
+      // `map.remove()` destroys all layers/sources (zona included); the ref
+      // MUST be nulled separately so `applyGeeRaster` never receives a
+      // `beforeId` that no longer exists on the next map instance — MapLibre
+      // throws on `addLayer` with a non-existent `beforeId`.
       map?.remove();
       mapInstanceRef.current = null;
+      zonaLayerIdRef.current = null;
     };
   }, [centerLat, centerLng, zoom]);
 
   const fitZona = useCallback(() => {
     mapInstanceRef.current?.fitBounds(ZONA_FIT_BOUNDS, { padding: 24 });
-  }, []);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-    const controller = new AbortController();
-    const addZona = (geojson: unknown) => {
-      const sourceId = 'zona-boundary';
-      const layerId = 'zona-boundary-line';
-      if (zonaLayerIdRef.current) {
-        if (map.getLayer(zonaLayerIdRef.current)) map.removeLayer(zonaLayerIdRef.current);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
-      }
-      map.addSource(sourceId, { type: 'geojson', data: geojson as GeoJSON.FeatureCollection });
-      map.addLayer({
-        id: layerId,
-        type: 'line',
-        source: sourceId,
-        paint: { 'line-color': mapColorTokens.hFF0000, 'line-width': 3, 'line-opacity': 1 },
-      });
-      zonaLayerIdRef.current = layerId;
-    };
-    const doFetch = () => {
-      apiFetch<unknown>('/geo/gee/layers/zona', {
-        signal: controller.signal,
-        timeout: GEE_TIMEOUT,
-      })
-        .then(addZona)
-        .catch((err) => {
-          if (!controller.signal.aborted) logger.warn('Error cargando capa zona:', err);
-        });
-    };
-    if (map.isStyleLoaded()) doFetch();
-    else map.once('load', doFetch);
-    return () => {
-      controller.abort();
-      map.off('load', doFetch);
-      const current = mapInstanceRef.current;
-      if (current && zonaLayerIdRef.current) {
-        if (current.getLayer(zonaLayerIdRef.current)) current.removeLayer(zonaLayerIdRef.current);
-        if (current.getSource('zona-boundary')) current.removeSource('zona-boundary');
-        zonaLayerIdRef.current = null;
-      }
-    };
   }, []);
 
   const updateTileLayer = useCallback((tileUrl: string) => {
