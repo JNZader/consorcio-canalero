@@ -25,12 +25,23 @@ or gold keys that moved with the corpus pin).
 A file that says `superada` while carrying a figure under the bar is refused, not
 believed: the state word is a claim and the figures are the evidence.
 
+Since audit finding RAG-2 the file also carries `integridad_sha256`: a digest
+over its load-bearing fields, stamped by the generation path (`volcar`, from
+`derivar_desde`) and re-verified by `cargar_barra` on every load. The per-field
+checks below catch sloppy inconsistency; the digest catches the edit that keeps
+every field consistent with every constant — the fabricated measurement. Same
+stance as `regla_sha256` in the classification artifact: the hash is unkeyed,
+so it is not proof a figure was measured, but a hand edit must now also forge
+the digest, and both lines sit in the review diff.
+
 This module sits on the SERVING side of the eval boundary. It imports the bar
 constants from the harness and nothing from `repository`.
 """
 
 from __future__ import annotations
 
+import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,6 +63,20 @@ ESTADO_NO_SUPERADA = "no_superada"
 ESTADOS = (ESTADO_NO_MEDIDO, ESTADO_SUPERADA, ESTADO_NO_SUPERADA)
 
 _CAMPOS_MEDIDOS = (
+    "corpus_sha",
+    "n_respondibles",
+    "hit_rate_at_5",
+    "separacion_norma_secundaria",
+    "vigencia_correcta",
+)
+
+#: The load-bearing fields the integrity digest covers (audit finding RAG-2):
+#: exactly what the three predicates read to decide serving. `metodologia` and
+#: `motivo` are prose no predicate reads, so they stay out — rewording prose
+#: must not require re-deriving a measurement.
+CAMPOS_INTEGRIDAD: tuple[str, ...] = (
+    "estado",
+    "modo",
     "corpus_sha",
     "n_respondibles",
     "hit_rate_at_5",
@@ -92,23 +117,14 @@ def _opcional(datos: dict[str, Any], campo: str, tipo: type) -> Any:
     return None if valor is None else tipo(valor)
 
 
-def cargar_barra(ruta: Path | None = None) -> BarraSinGpu:
-    """Parse the artifact and check its header contract.
+def _desde_datos(datos: dict[str, Any]) -> BarraSinGpu:
+    """Build the artifact from a raw mapping, with the loader's coercions.
 
-    `no_medido` carries no measurement at all: a figure stored under it is the
-    worst of both worlds, because nobody ratified it and it sits there to be
-    read. `superada` and `no_superada` carry the whole measurement header.
+    Shared by `cargar_barra` and `sellar`, so a digest is never computed over a
+    different spelling than the one the loader will read back.
     """
-    ruta = ruta or RUTA_BARRA
-    datos = yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}
-    estado = str(datos.get("estado", ESTADO_NO_MEDIDO))
-    if estado not in ESTADOS:
-        raise BarraInvalida(
-            f"{ruta.name}: estado {estado!r} desconocido (esperado uno de {ESTADOS})"
-        )
-
-    artefacto = BarraSinGpu(
-        estado=estado,
+    return BarraSinGpu(
+        estado=str(datos.get("estado", ESTADO_NO_MEDIDO)),
         modo=str(datos.get("modo", MODO_SIN_GPU)),
         corpus_sha=_opcional(datos, "corpus_sha", str),
         n_respondibles=_opcional(datos, "n_respondibles", int),
@@ -119,6 +135,74 @@ def cargar_barra(ruta: Path | None = None) -> BarraSinGpu:
         motivo=str(datos.get("motivo", "")),
     )
 
+
+def _canonico(valor: Any) -> str:
+    """One deterministic spelling per value: floats by shortest round-trip repr."""
+    return repr(valor)
+
+
+def _digesto_integridad(campos: Mapping[str, Any]) -> str:
+    payload = "\n".join(f"{campo}={_canonico(campos[campo])}" for campo in CAMPOS_INTEGRIDAD)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def integridad_sha256(artefacto: BarraSinGpu) -> str:
+    """The seal over the artifact's load-bearing fields (`CAMPOS_INTEGRIDAD`).
+
+    Honesty stance, copied from `regla_clasificacion_sha256` in `repository.py`:
+    sha256 is unkeyed, so this is NOT cryptographic proof that a figure was
+    measured. What it does raise is the cost of the RAG-2 edit — an
+    internally-consistent hand edit must now also forge this digest, and both
+    the field and the digest line then sit in the review diff of the commit
+    that flips serving.
+    """
+    return _digesto_integridad({campo: getattr(artefacto, campo) for campo in CAMPOS_INTEGRIDAD})
+
+
+def _verificar_integridad(ruta: Path, datos: dict[str, Any], artefacto: BarraSinGpu) -> None:
+    """Refuse an artifact whose stored seal does not cover its own fields.
+
+    Runs AFTER the per-field shape checks, on purpose: a missing pin or a
+    figure under `no_medido` is reported with the field's name, while the seal
+    is the last gate — what it catches (consistent fabrication, silent field
+    drift after generation) is invisible to per-field checks by construction.
+    """
+    declarado = datos.get("integridad_sha256")
+    if not isinstance(declarado, str) or not declarado:
+        raise BarraInvalida(
+            f"{ruta.name}: falta integridad_sha256. El artefacto se sella en su camino "
+            "de generación (scripts/rag_eval.py -> derivar_desde -> a_yaml); un "
+            "archivo sin sello no se deriva de ninguna corrida."
+        )
+    calculado = integridad_sha256(artefacto)
+    if declarado != calculado:
+        raise BarraInvalida(
+            f"{ruta.name}: integridad_sha256 {declarado!r} no coincide con los campos "
+            f"del archivo ({', '.join(CAMPOS_INTEGRIDAD)}): al menos uno cambió a "
+            "mano después de que el artefacto se derivó. Regenerá el bloque con "
+            "scripts/rag_eval.py --modo bm25_sin_ce; no se edita a mano."
+        )
+
+
+def cargar_barra(ruta: Path | None = None) -> BarraSinGpu:
+    """Parse the artifact, check its header contract, and verify its seal.
+
+    `no_medido` carries no measurement at all: a figure stored under it is the
+    worst of both worlds, because nobody ratified it and it sits there to be
+    read. `superada` and `no_superada` carry the whole measurement header.
+    Every state ends at `_verificar_integridad`: the per-field checks above it
+    catch sloppy inconsistency, the seal catches the consistent fabrication.
+    """
+    ruta = ruta or RUTA_BARRA
+    datos = yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}
+    estado = str(datos.get("estado", ESTADO_NO_MEDIDO))
+    if estado not in ESTADOS:
+        raise BarraInvalida(
+            f"{ruta.name}: estado {estado!r} desconocido (esperado uno de {ESTADOS})"
+        )
+
+    artefacto = _desde_datos(datos)
+
     if estado == ESTADO_NO_MEDIDO:
         presentes = [campo for campo in _CAMPOS_MEDIDOS if getattr(artefacto, campo) is not None]
         if presentes:
@@ -127,6 +211,7 @@ def cargar_barra(ruta: Path | None = None) -> BarraSinGpu:
                 f"({', '.join(presentes)}). Un número bajo 'no medido' es un número que "
                 "nadie ratificó y que está ahí para que alguien lo lea."
             )
+        _verificar_integridad(ruta, datos, artefacto)
         return artefacto
 
     faltantes = [campo for campo in _CAMPOS_MEDIDOS if getattr(artefacto, campo) is None]
@@ -138,6 +223,7 @@ def cargar_barra(ruta: Path | None = None) -> BarraSinGpu:
             f"({', '.join(faltantes)}). Una medición sin sus pines no dice contra qué "
             "corpus se midió."
         )
+    _verificar_integridad(ruta, datos, artefacto)
     return artefacto
 
 
@@ -362,7 +448,12 @@ def derivar_desde(
 
 
 def volcar(barra: BarraSinGpu) -> dict[str, Any]:
-    """The artifact as a plain mapping, in the order a reader expects to find it."""
+    """The artifact as a plain mapping, in the order a reader expects to find it.
+
+    Ends with the integrity seal, stamped by the same function `cargar_barra`
+    verifies with: the block `scripts/rag_eval.py` prints is born sealed, so
+    pasting it into `barra_sin_gpu.yaml` needs no hand-computed anything.
+    """
     return {
         "estado": barra.estado,
         "modo": barra.modo,
@@ -373,7 +464,22 @@ def volcar(barra: BarraSinGpu) -> dict[str, Any]:
         "vigencia_correcta": barra.vigencia_correcta,
         "metodologia": barra.metodologia,
         "motivo": barra.motivo,
+        "integridad_sha256": integridad_sha256(barra),
     }
+
+
+def sellar(datos: dict[str, Any]) -> dict[str, Any]:
+    """Stamp `integridad_sha256` onto a dumped mapping, the way `volcar` does.
+
+    The inverse end of `cargar_barra`'s verification: the digest is computed
+    through `_desde_datos`, the same coercions the loader applies, so a mapping
+    that was edited after `volcar` can be re-sealed without a second
+    canonicalization drifting from the loader's.
+    """
+    sellado = dict(datos)
+    sellado.pop("integridad_sha256", None)
+    sellado["integridad_sha256"] = integridad_sha256(_desde_datos(sellado))
+    return sellado
 
 
 def a_yaml(barra: BarraSinGpu) -> str:

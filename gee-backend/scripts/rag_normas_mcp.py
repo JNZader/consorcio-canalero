@@ -8,6 +8,13 @@ The tools are `buscar`, `leer` and `chequear` — the three functions of
 call, so all three surfaces return identical units. There is no `redactar`: this
 server never writes prose, and no tool takes a mode, a reranker or a vector.
 
+The corpus this mirror serves is NOT all public: units classified `privado`
+(internal/institutional documents) are returned too, labeled per unit with
+`clasificacion`. The server instructions and the `buscar`/`leer` descriptions
+(`INSTRUCCIONES`, `DESCRIPCION_*` module constants) say so: whoever pipes this
+output into a third-party or cloud LLM is sending that content to an external
+provider (audit finding RAG-1, 2026-10).
+
 The protocol is spoken by the OFFICIAL SDK (`requirements-mcp.txt`, exact pin), not
 by hand. That dependency lives in its own venv (`venv-mcp/`) outside the app image
 and the lock-sync, the way `requirements-rag.txt` does. Importing this module does
@@ -44,6 +51,43 @@ from app.domains.conocimiento.service import MODO_SIN_GPU  # noqa: E402
 #: `rag_normas.SUBCOMANDOS`, so a fourth capability cannot land on one surface only.
 TOOLS = ("buscar", "leer", "chequear")
 
+#: Server instructions and tool descriptions, module-level so the SDK-free tests
+#: can assert them without importing `mcp`. The private-content warning is the
+#: MCP half of audit finding RAG-1 (2026-10): this mirror serves `privado`-
+#: classified units, and possession of DATABASE_URL is its only authentication —
+#: the client (and whoever operates it) must be told what it is holding before
+#: the output is piped anywhere.
+INSTRUCCIONES = (
+    "Read-only access to the active legal corpus. `buscar` returns candidate "
+    "units (ordered by relevance ONLY when the response says orden_presentado "
+    "is true), `leer` returns one unit's exact text, `chequear` verifies a "
+    "citation. None of them writes text. "
+    "WARNING: results may include units whose `clasificacion` is `privado` "
+    "(institutional/internal documents); every unit carries its `clasificacion`. "
+    "Sending this output to a third-party or cloud LLM sends that content to an "
+    "external provider — the operator is responsible for what leaves the machine."
+)
+
+#: `buscar` and `leer` return unit TEXT, so both carry the warning. `chequear`
+#: returns a verdict only, no corpus text, so it states the label it carries.
+DESCRIPCION_BUSCAR = (
+    "Search the active corpus. Returns units, byte-exact, with their procedencia "
+    "and `clasificacion`. Results may include `privado`-classified units: sending "
+    "their text to a third-party/cloud LLM is an external disclosure the operator "
+    "is responsible for."
+)
+DESCRIPCION_LEER = (
+    "Read one unit of the active corpus by its citation key, byte-exact. The "
+    "response carries `clasificacion`; a `privado` unit's text sent to a "
+    "third-party/cloud LLM is an external disclosure the operator is responsible "
+    "for."
+)
+DESCRIPCION_CHEQUEAR = (
+    "Check a citation: sha, key, span, vigencia, in that order. A refusal is an "
+    "answer. The verdict carries the unit's `clasificacion`; no corpus text is "
+    "returned."
+)
+
 SALIDA_OK = 0
 #: Same bucket and meaning as `rag_eval.SALIDA_SIN_DEPENDENCIA`: nothing ran, and
 #: the fix is to invoke the script differently.
@@ -74,15 +118,7 @@ def build_server(abrir_sesion: AbrirSesion):
     from mcp.server.mcpserver.exceptions import ToolError
     from mcp.types import ToolAnnotations
 
-    servidor = MCPServer(
-        "normas",
-        instructions=(
-            "Read-only access to the active legal corpus. `buscar` returns candidate "
-            "units (ordered by relevance ONLY when the response says orden_presentado "
-            "is true), `leer` returns one unit's exact text, `chequear` verifies a "
-            "citation. None of them writes text."
-        ),
-    )
+    servidor = MCPServer("normas", instructions=INSTRUCCIONES)
     solo_lectura = ToolAnnotations(
         read_only_hint=True,
         destructive_hint=False,
@@ -95,9 +131,9 @@ def build_server(abrir_sesion: AbrirSesion):
         # generic crash message. The kernel's messages carry no corpus text.
         return ToolError(str(error))
 
-    @servidor.tool(annotations=solo_lectura)
+    @servidor.tool(annotations=solo_lectura, description=DESCRIPCION_BUSCAR)
     def buscar(consulta: str, k: int = 10) -> dict[str, Any]:
-        """Search the active corpus. Returns units, byte-exact, with their procedencia."""
+        """The client-facing description is the module constant `DESCRIPCION_BUSCAR`."""
         try:
             # The route's own body model, so this surface refuses exactly what
             # the route refuses.
@@ -112,9 +148,9 @@ def build_server(abrir_sesion: AbrirSesion):
             raise _rechazo(error) from None
         return resultado.model_dump(mode="json")
 
-    @servidor.tool(annotations=solo_lectura)
+    @servidor.tool(annotations=solo_lectura, description=DESCRIPCION_LEER)
     def leer(citation_key: str) -> dict[str, Any]:
-        """Read one unit of the active corpus by its citation key, byte-exact."""
+        """The client-facing description is the module constant `DESCRIPCION_LEER`."""
         try:
             with abrir_sesion() as db:
                 unidad = normas.leer(db, citation_key)
@@ -122,11 +158,11 @@ def build_server(abrir_sesion: AbrirSesion):
             raise _rechazo(error) from None
         return unidad.model_dump(mode="json")
 
-    @servidor.tool(annotations=solo_lectura)
+    @servidor.tool(annotations=solo_lectura, description=DESCRIPCION_CHEQUEAR)
     def chequear(
         citation_key: str, span: str, sha: str, vigencia: str | None = None
     ) -> dict[str, Any]:
-        """Check a citation: sha, key, span, vigencia, in that order. A refusal is an answer."""
+        """The client-facing description is the module constant `DESCRIPCION_CHEQUEAR`."""
         try:
             with abrir_sesion() as db:
                 veredicto = normas.chequear(db, citation_key, span, vigencia, sha)
