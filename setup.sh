@@ -12,6 +12,13 @@ command -v docker >/dev/null 2>&1 || { echo "Error: Docker is required"; exit 1;
 command -v docker compose >/dev/null 2>&1 || { echo "Error: Docker Compose is required"; exit 1; }
 
 # 2. Create .env if not exists
+if [ ! -f .env ]; then
+  # Same value as the compose fallback so REDIS_URL (no password, dev default)
+  # keeps working; loopback-only port makes the shared dev default acceptable.
+  echo "Creating root .env with the dev REDIS_PASSWORD..."
+  printf 'REDIS_PASSWORD=consorcio_dev_redis\n' > .env
+fi
+
 if [ ! -f gee-backend/.env ]; then
   echo "Creating gee-backend/.env from template..."
   cp gee-backend/.env.example gee-backend/.env
