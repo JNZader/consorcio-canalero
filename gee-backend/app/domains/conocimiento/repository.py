@@ -1021,9 +1021,12 @@ def leer_corpus_activo(db: Session) -> CorpusActivo | None:
     return CorpusActivo(corpus_sha=fila[0], ingested_at=fila[1])
 
 
-#: One unit with its document's provenance AND `clasificacion`. `HYDRATE_SQL`
-#: stays untouched on purpose: it feeds the generation payload, and adding a
-#: column there would change what every hit carries.
+#: One unit with its document's provenance AND `clasificacion` (audit RAG-1,
+#: 2026-10: `HYDRATE_SQL` exposes it too, so every retrieval hit carries its
+#: privacy label). The generation boundary does not move with it:
+#: `service.assert_unidades_publicas` re-reads the classification from the
+#: database and never trusts the hit's copy, and the provider prompt renders
+#: named fields only — a label riding on the hit cannot leak into a payload.
 LEER_UNIDAD_SQL = text(
     """
     SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,
@@ -1188,7 +1191,7 @@ HYDRATE_SQL = text(
     SELECT u.citation_key, u.documento_id, u.tipo_chunk, u.epigrafe, u.texto,
            u.source_file, u.source_offset,
            d.tipo, d.es_secundaria, d.jurisdiccion, d.estado_vigencia,
-           d.relevancia_consorcio, d.verificacion, d.fuente_url
+           d.relevancia_consorcio, d.verificacion, d.fuente_url, d.clasificacion
     FROM rag_unidad u
     JOIN rag_documento d
       ON d.corpus_sha = u.corpus_sha AND d.documento_id = u.documento_id
@@ -1206,7 +1209,9 @@ def hydrate_citations(
 
     One query for the whole page rather than one per hit, and an INNER JOIN on
     `(corpus_sha, documento_id)` so a hit can only ever carry the metadata of a
-    document from its OWN snapshot.
+    document from its OWN snapshot. The row includes the document's
+    `clasificacion`: the retrieval stack serves `privado` units too, and a hit
+    without its privacy label is what audit RAG-1 (2026-10) flagged.
     """
     if not claves:
         return {}
