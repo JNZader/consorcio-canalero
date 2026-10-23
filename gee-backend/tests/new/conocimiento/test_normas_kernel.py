@@ -505,6 +505,17 @@ class TestLeer:
         assert publica.es_secundaria is False
         assert normas.leer(db, "INF#1").es_secundaria is True
 
+    def test_leer_sigue_exigiendo_clasificacion(self):
+        """Guard for the RAG-1 refactor: the field moved UP to `UnidadNorma`.
+
+        `leer` must keep REQUIRING it — inheriting an optional would be a silent
+        loosening of the only surface that was already labeled.
+        """
+        from app.domains.conocimiento.schemas import UnidadLeida, UnidadNorma
+
+        assert UnidadNorma.model_fields["clasificacion"].is_required()
+        assert UnidadLeida.model_fields["clasificacion"].is_required()
+
     def test_clave_desconocida_se_rechaza_sin_devolver_texto(self, db, normas):
         seed(db)
         with pytest.raises(normas.UnidadNoEncontrada) as error:
@@ -756,6 +767,39 @@ class TestPoliticaDeOrden:
     def test_k_acota_las_unidades(self, db, normas):
         seed(db)
         assert len(normas.buscar(db, CONSULTA, modo=service.MODO_SIN_GPU, k=2).unidades) == 2
+
+
+class TestEtiquetadoDeClasificacion:
+    """Audit RAG-1 (2026-10): every `buscar` unit is labeled with its classification.
+
+    The kernel serves whatever the active snapshot holds, `privado` included —
+    that is legitimate on the admin surfaces. What was NOT legitimate was serving
+    it unlabeled: before this, a consumer of `buscar` could not tell a private
+    unit from a public one at all.
+    """
+
+    def test_cada_unidad_lleva_la_clasificacion_de_su_documento(self, db, normas):
+        seed(db)
+        resultado = normas.buscar(db, CONSULTA, modo=service.MODO_SIN_GPU)
+        esperado = {
+            "9750#1": "publico",
+            "9750#2": "publico",
+            "INF#1": "publico",
+            "VIEJA#1": "publico",
+            "MEMO#1": "privado",
+        }
+        por_clave = {u.citation_key: u.clasificacion for u in resultado.unidades}
+        # Whatever BM25 actually returns, each unit must match its document.
+        assert por_clave == {clave: esperado[clave] for clave in por_clave}
+        # And the page really holds a private unit, so the label has something to do.
+        assert por_clave["MEMO#1"] == "privado"
+
+    def test_la_forma_ordenada_tambien_lleva_clasificacion(self, db, normas, barra_superada):
+        seed(db)
+        resultado = normas.buscar(db, CONSULTA, modo=service.MODO_SIN_GPU)
+        por_clave = {u.citation_key: u.clasificacion for u in resultado.unidades}
+        assert por_clave["MEMO#1"] == "privado"
+        assert set(por_clave) == set(_orden_bm25(db))
 
 
 class TestNoHayRedactar:
