@@ -125,6 +125,7 @@ def hit(documento_id: str, **kwargs) -> CitaRecuperada:
         es_secundaria=False,
         jurisdiccion="provincial",
         estado_vigencia="vigente",
+        clasificacion="publico",
         source_file="f.md",
         source_offset=0,
     )
