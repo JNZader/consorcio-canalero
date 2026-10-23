@@ -37,6 +37,11 @@ from app.domains.conocimiento.recuperacion.bm25 import (
     lexemas_de_consulta,
     obtener_indice,
 )
+from app.domains.conocimiento.recuperacion.citas import (
+    clave_destino,
+    componer_pagina,
+    extraer_citas,
+)
 from app.domains.conocimiento.recuperacion.expansion import expandir_consulta_recuperacion
 from app.domains.conocimiento.recuperacion.reranker import Candidato, Reranker, ordenar_por_ce
 from app.domains.conocimiento.repository import (
@@ -540,6 +545,15 @@ def _candidatos_bm25(
     return indice.buscar(lexemas, limite=profundidad)
 
 
+def _exigir_filas(corpus_sha: str, faltantes: Sequence[str]) -> None:
+    """A BM25-page key with no row means the snapshot moved under the query."""
+    if faltantes:
+        raise IngestionAbort(
+            f"{', '.join(faltantes)} are in the BM25 index of snapshot {corpus_sha} "
+            "but have no row. The snapshot changed mid-query."
+        )
+
+
 def _recuperar_bm25_sin_ce(
     db: Session,
     corpus_sha: str,
@@ -553,26 +567,62 @@ def _recuperar_bm25_sin_ce(
     Three properties are contracts:
 
     * **no reranker and no vector column** — nothing here can need a GPU;
-    * **the order is BM25's alone** — and it is a candidate-generation order, not
-      a measured ranking, which is why the norms surface hides it until the bar
-      artifact says otherwise (`eval/barra_sin_gpu.py`);
+    * **the prefix order is BM25's alone; the displaced tail holds same-statute
+      follows in selection order and is not a ranking** — it is a
+      candidate-generation order, not a measured ranking, which is why the norms
+      surface hides it until the bar artifact says otherwise
+      (`eval/barra_sin_gpu.py`);
     * **no `score_ce`** — a cross-encoder figure on this arm would name a
       computation that never ran.
     """
     pregunta_recuperacion = expandir_consulta_recuperacion(pregunta)
     candidatos = _candidatos_bm25(db, corpus_sha, pregunta_recuperacion, profundidad=profundidad)
-    elegidos = candidatos[:k]
-    provenance = hydrate_citations(db, corpus_sha, [hit.citation_key for hit in elegidos])
+    pagina = [hit.citation_key for hit in candidatos[:k]]
 
-    hits: list[CitaRecuperada] = []
-    for en_bm25 in elegidos:
-        fila = provenance.get(en_bm25.citation_key)
-        if fila is None:
-            raise IngestionAbort(
-                f"{en_bm25.citation_key} is in the BM25 index of snapshot {corpus_sha} "
-                "but has no row. The snapshot changed mid-query."
-            )
-        hits.append(CitaRecuperada(**fila, rango_bm25=en_bm25.rango, valor_bm25=en_bm25.valor))
+    textos = textos_indexados(db, corpus_sha, pagina)
+    _exigir_filas(corpus_sha, [clave for clave in pagina if clave not in textos])
+
+    citadas = [
+        (posicion, destino)
+        for posicion, clave in enumerate(pagina)
+        for token in extraer_citas(textos[clave])
+        if (destino := clave_destino(clave, token)) is not None
+    ]
+    # One read for the page and every target: same-statute identity comes from
+    # the snapshot's `documento_id`, and a target BM25 never pooled still resolves.
+    provenance = hydrate_citations(
+        db, corpus_sha, [*pagina, *dict.fromkeys(destino for _, destino in citadas)]
+    )
+    _exigir_filas(corpus_sha, [clave for clave in pagina if clave not in provenance])
+
+    resolubles = [
+        (posicion, destino)
+        for posicion, destino in citadas
+        if destino in provenance
+        and provenance[destino]["documento_id"] == provenance[pagina[posicion]]["documento_id"]
+    ]
+    prefijo, seguidas = componer_pagina(pagina, resolubles, k)
+
+    por_bm25 = _leg_map(candidatos)
+    hits = [
+        CitaRecuperada(
+            **provenance[clave],
+            rango_bm25=por_bm25[clave].rango,
+            valor_bm25=por_bm25[clave].valor,
+        )
+        for clave in prefijo
+    ]
+    # A follow was not placed by BM25 on this page: no rank, no invented score.
+    # `valor_bm25` is the pool's real value when the unit happens to be pooled.
+    hits.extend(
+        CitaRecuperada(
+            **provenance[destino],
+            rango_bm25=None,
+            valor_bm25=por_bm25[destino].valor if destino in por_bm25 else None,
+            seguida_desde=pagina[posicion],
+        )
+        for destino, posicion in seguidas
+    )
 
     return ResultadoRecuperacion(
         corpus_sha=corpus_sha,
