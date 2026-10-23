@@ -83,8 +83,8 @@ rio-tiler>=7.0.0
 
 # Transitive pin: pip-audit gate. Dev-side only.
 # gitpython 3.1.58 is PYSEC-2026-3982/3983/3984 (+ 3785–3788, 3837); 3.1.60
-# is the first release that closes that batch.
-gitpython>=3.1.60
+# closed that batch. 3.2.0 is CVE-2026-114145; 3.2.1 is the fix.
+gitpython>=3.2.1
 # rio-tiler pulls httpx2, which pulled httpcore2 2.9.1 (PYSEC-2026-3844) and
 # httpx2 2.9.1 (PYSEC-2026-3845–3849). Pin the patched floor.
 httpx2>=2.12.0
