@@ -227,12 +227,9 @@ class TestResidualC8:
         from app.domains.conocimiento.repository import TIPOS_INSTITUCIONALES
 
         assert "resolucion-administrativa" not in TIPOS_INSTITUCIONALES
-        assert (
-            "resolucion-general-aprhi-004-2026-leones-villa-elisa"
-            in esperado.por_clase("privado")
+        assert "resolucion-general-aprhi-004-2026-leones-villa-elisa" in esperado.por_clase(
+            "privado"
         )
-        fila = esperado.documentos[
-            "resolucion-srh-157-2013-constitucion-leones-villa-elisa"
-        ]
+        fila = esperado.documentos["resolucion-srh-157-2013-constitucion-leones-villa-elisa"]
         assert fila.clasificacion == "publico"
         assert "boletinoficial.cba.gov.ar" in fila.evidencia
