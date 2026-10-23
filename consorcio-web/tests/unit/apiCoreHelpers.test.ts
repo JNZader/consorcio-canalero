@@ -197,6 +197,32 @@ describe('api core — helpers', () => {
       await expect(pedirYCapturar({ detail: 123 }, 503)).resolves.toBe('API Error: 503');
     });
 
+    it('une los msg de un detail FastAPI 422 (arreglo de ValidationError)', async () => {
+      await expect(
+        pedirYCapturar(
+          {
+            detail: [
+              {
+                loc: ['body', 'monto'],
+                msg: 'Input should be greater than 0',
+                type: 'greater_than',
+              },
+              {
+                loc: ['body', 'fecha'],
+                msg: 'Input should be a valid date',
+                type: 'date_from_date',
+              },
+            ],
+          },
+          422
+        )
+      ).resolves.toBe('Input should be greater than 0; Input should be a valid date');
+    });
+
+    it('ignora un detail-arreglo sin msgs usables y cae al status', async () => {
+      await expect(pedirYCapturar({ detail: [1, 'x', null] }, 422)).resolves.toBe('API Error: 422');
+    });
+
     it('cae al status cuando el cuerpo no es un objeto', async () => {
       await expect(pedirYCapturar('vaya lio', 500)).resolves.toBe('API Error: 500');
     });

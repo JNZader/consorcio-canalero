@@ -71,6 +71,7 @@ export default function FinanzasPanel() {
         form={controller.form}
         categoryData={controller.categoryData}
         onSubmit={controller.handleCreateGasto}
+        submitting={controller.submitting}
       />
       <EditGastoModal
         opened={controller.editGastoOpened}
@@ -78,6 +79,7 @@ export default function FinanzasPanel() {
         form={controller.editCategoryForm}
         categoryData={controller.categoryData}
         onSubmit={controller.handleUpdateCategory}
+        submitting={controller.submitting}
       />
       <IngresoFormModal
         opened={controller.ingresoOpened}
@@ -85,6 +87,7 @@ export default function FinanzasPanel() {
         form={controller.ingresoForm}
         categoryData={controller.ingresoCategoryData}
         onSubmit={controller.handleCreateIngreso}
+        submitting={controller.submitting}
       />
       <EditIngresoModal
         opened={controller.editIngresoOpened}
@@ -92,6 +95,7 @@ export default function FinanzasPanel() {
         form={controller.editIngresoForm}
         categoryData={controller.ingresoCategoryData}
         onSubmit={controller.handleUpdateIngreso}
+        submitting={controller.submitting}
       />
     </Container>
   );

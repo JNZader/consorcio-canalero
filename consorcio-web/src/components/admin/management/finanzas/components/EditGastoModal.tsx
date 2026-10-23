@@ -12,12 +12,14 @@ export function EditGastoModal({
   form,
   categoryData,
   onSubmit,
+  submitting,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
   form: UseFormReturnType<EditGastoFormValues>;
   categoryData: Array<{ value: string; label: string }>;
   onSubmit: (values: EditGastoFormValues) => void | Promise<void>;
+  submitting: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Editar categoría de gasto">
@@ -34,7 +36,7 @@ export function EditGastoModal({
               'aria-live': 'assertive',
             }}
           />
-          <Button type="submit" fullWidth mt="md">
+          <Button type="submit" fullWidth mt="md" loading={submitting}>
             Actualizar categoría
           </Button>
         </Stack>
