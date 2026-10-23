@@ -858,7 +858,9 @@ order. The enablement facts in §4.3 do **not** apply to it, and flipping it doe
 not flip the Q&A surface.
 
 **What the surface shows depends on one checked-in file.**
-`app/domains/conocimiento/eval/barra_sin_gpu.yaml` ships `estado: no_medido`. While
+`app/domains/conocimiento/eval/barra_sin_gpu.yaml` ships `estado: no_superada` for
+corpus `ecab0a0e…`, measured 2026-10-23 (hit@5 0.647 against the 0.72 bar, n=34;
+norma-vs-secundaria 1.00; vigencia-correctness 1.00). While
 it is not `superada` **for the exact active `corpus_sha`**, every response is
 *unranked*: units sorted by citation key, no `rango`, `orden_presentado: false`.
 Nobody can unlock rank order by configuration; only a committed measurement does.
@@ -888,7 +890,7 @@ Order (the design's rollout, in the order the operator runs it):
    refuses a synthetic snapshot or an `--allow-synthetic` run, so a synthetic run
    can never unlock rank order) and commit it. The eval command never writes the
    file itself.
-5. **Production ingest with the gate on**, and only if step 4 produced a
+5a. **Production ingest with the gate on**, and only if step 4 produced a
    `superada` artifact for this SHA:
 
    ```
@@ -903,6 +905,39 @@ Order (the design's rollout, in the order the operator runs it):
    corpus or the pin are touched, so it also refuses `--dry-run`, and it exits 1
    with `nothing was written` unless the artifact is `superada` for that SHA.
    Production cannot be selected by the database URL alone.
+
+5b. **Production ingest under a failed bar, served unranked.** Use this when step 4
+   produced an honest `no_superada` artifact for this SHA and the owner still wants
+   the corpus in production:
+
+   ```
+   venv-rag/bin/python scripts/rag_ingest.py --corpus-sha <SHA> \
+       --entorno produccion --produccion-sin-orden …
+   ```
+
+   **This is not a cleared bar.** The artifact stays `no_superada`, `superada_para`
+   stays false, and the norms surface keeps serving units sorted by citation key
+   with `orden_presentado: false`. The flag only lets a failed measurement stop
+   blocking the ingest; it never unlocks rank order.
+
+   - It is valid only with `--entorno produccion`, and it is mutually exclusive with
+     `--exigir-barra`. Production must name exactly one of the two.
+   - Like `--exigir-barra`, it is checked **before** the database, the corpus or the
+     pin are touched, so `--dry-run` gets the same answer.
+   - It proceeds only if the artifact is `no_superada`, its `modo` is `bm25_sin_ce`,
+     its `corpus_sha` is the one passed, and at least one figure is under its
+     constant. It refuses `superada` (that SHA belongs to 5a, and the message says
+     `--exigir-barra`), an unmeasured artifact, an invalid file, another SHA,
+     another arm, and a `no_superada` whose figures all meet the bar (inconsistent).
+   - **Exit 1** is a gate refusal: it prints `INGESTION ABORTED — nothing was
+     written.` and writes nothing. **Exit 2** is a usage error (both flags together,
+     or `--produccion-sin-orden` with `--entorno laboratorio`): argparse prints the
+     usage line, reads no artifact and does not print the abort banner.
+   - On success it prints `PRODUCTION INGEST UNDER A FAILED LAB BAR` on stderr and
+     `barra                : failed lab bar, served unranked` in the summary.
+   - The gate reads the YAML in the checkout that runs the script, while the running
+     backend reads the YAML baked into the deployed image. A newer checkout does not
+     change what the image serves: the image must carry the same artifact.
 6. **The operator reads `rag_corpus` on the box before calling the index current.**
    Do not infer it from the repo:
 
