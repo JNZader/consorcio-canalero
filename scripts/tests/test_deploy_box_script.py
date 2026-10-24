@@ -33,6 +33,13 @@ def test_a_non_consorcio_container_name_aborts():
     assert "hay containers biogas-*" in TEXT
 
 
+def test_checkout_umask_keeps_the_bind_mount_readable():
+    reset = TEXT.split("reset_tree_and_restore_compose() {", 1)[1].split("build_services() {", 1)[0]
+    assert reset.index("umask 022") < reset.index("git reset --hard origin/main")
+    assert reset.index("git reset --hard origin/main") < reset.index("umask 077")
+    assert "umask 077" in TEXT.split("reset_tree_and_restore_compose() {", 1)[0]
+
+
 def test_health_uses_the_container_probe_not_localhost():
     assert "python -m app.healthcheck" in TEXT
     assert "127.0.0.1:8000/health" not in TEXT.split("wait_for_health()", 1)[1]
