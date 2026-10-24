@@ -18,6 +18,10 @@
 #   5. pg_dump of the running Postgres, before git or docker change anything.
 #   6. Tag the four running images as :pre-<sha> so a bad boot has a name.
 #   7. git reset --hard origin/main, then put the saved compose back.
+#      The checkout itself runs under umask 022. umask 077 stays for the
+#      dump and the compose copy: geo-worker bind-mounts gee-backend/app
+#      and runs as uid 100, so a 600 tree makes every terrain tile 500,
+#      and the public proxy turns that into a 204. The map goes flat.
 #   8. docker compose up -d --build of backend, worker, celery-beat, geo-worker.
 #   9. Wait until `python -m app.healthcheck` inside consorcio-backend exits 0.
 #      A curl to 127.0.0.1:8000/health is the wrong probe: production rejects
@@ -184,7 +188,11 @@ tag_running_images() {
 reset_tree_and_restore_compose() {
   local before after
   before="$(sha256sum "$COMPOSE_SAVED" | awk 'NR==1 {print $1}')"
+  # 022 solo para el checkout. 077 en un archivo reescrito lo deja en 600,
+  # y geo-worker (uid 100, bind mount de gee-backend/app) no lo puede leer.
+  umask 022
   git reset --hard origin/main
+  umask 077
   cp -p "$COMPOSE_SAVED" "$COMPOSE_FILE"
   after="$(sha256sum "$COMPOSE_FILE" | awk 'NR==1 {print $1}')"
   [ "$before" = "$after" ] || die "el compose restaurado no coincide con la copia ${COMPOSE_SAVED}"
