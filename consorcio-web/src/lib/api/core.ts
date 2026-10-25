@@ -5,6 +5,7 @@
 import { authAdapter } from '../auth/index';
 import { hasLocalLogoutTombstone } from '../auth/storage';
 import { logger } from '../logger';
+import { QueryError } from '../queryError';
 
 // Backend URL (configure in .env)
 // Supports VITE_ and PUBLIC_ prefixes for backwards compatibility
@@ -82,22 +83,57 @@ export interface ApiFetchOptions extends RequestInit {
 }
 
 /**
+ * Outcome of a single silent-refresh attempt (RES2-001).
+ *
+ * - ``refreshed``: a fresh access token is in storage; retry the request.
+ * - ``session-dead``: the refresh endpoint REALLY rejected the cookie
+ *   (401/403, logout tombstone, or a 200 without a token) — the session is
+ *   gone; run the logout flow.
+ * - ``transient``: 5xx/429/network blip on /auth/jwt/refresh. The session
+ *   state is untouched; the triggering request fails with a QueryError and
+ *   the next request retries the refresh naturally.
+ */
+type RefreshOutcome =
+  | { readonly kind: 'refreshed' }
+  | { readonly kind: 'session-dead' }
+  | { readonly kind: 'transient'; readonly status?: number };
+
+const SESSION_DEAD: RefreshOutcome = { kind: 'session-dead' };
+
+/** User-facing message when the refresh fails transiently (voseo, house style). */
+const REFRESH_TRANSIENT_MESSAGE =
+  'No se pudo renovar la sesión (servidor ocupado). Volvé a intentar en unos segundos.';
+
+/**
+ * Anti-spam guard: after a transient refresh failure, fail fast (same
+ * QueryError, no network) instead of re-hitting /auth/jwt/refresh on every
+ * in-flight retry/poll for the next 2 seconds.
+ */
+const REFRESH_TRANSIENT_BACKOFF_MS = 2000;
+let _lastTransientRefreshAt = 0;
+
+/**
  * Try to refresh the access token via the HttpOnly cookie set on
- * login (Phase 2 / F2-K). Returns ``true`` when a fresh token is now
- * in storage and the caller can retry the original request.
+ * login (Phase 2 / F2-K). Returns ``{ kind: 'refreshed' }`` when a fresh
+ * token is now in storage and the caller can retry the original request.
  *
  * Multiple concurrent 401s share a single in-flight refresh promise
- * to avoid hammering the backend.
+ * to avoid hammering the backend; every awaiter observes the same outcome.
  */
-let _refreshInFlight: Promise<boolean> | null = null;
+let _refreshInFlight: Promise<RefreshOutcome> | null = null;
 
-async function attemptTokenRefresh(signal: AbortSignal): Promise<boolean> {
-  if (hasLocalLogoutTombstone()) return false;
+async function attemptTokenRefresh(signal: AbortSignal): Promise<RefreshOutcome> {
+  if (hasLocalLogoutTombstone()) return SESSION_DEAD;
 
   if (_refreshInFlight) {
-    const refreshed = await _refreshInFlight;
-    return !hasLocalLogoutTombstone() && refreshed;
+    const outcome = await _refreshInFlight;
+    return hasLocalLogoutTombstone() ? SESSION_DEAD : outcome;
   }
+
+  if (Date.now() - _lastTransientRefreshAt < REFRESH_TRANSIENT_BACKOFF_MS) {
+    return { kind: 'transient' };
+  }
+
   _refreshInFlight = (async () => {
     try {
       const response = await fetch(`${API_URL}${API_PREFIX}/auth/jwt/refresh`, {
@@ -105,27 +141,37 @@ async function attemptTokenRefresh(signal: AbortSignal): Promise<boolean> {
         credentials: 'include', // sends the HttpOnly refresh_token cookie
         signal,
       });
+      if (response.status === 401 || response.status === 403) {
+        // The cookie was really rejected/rotated away: session is dead.
+        return SESSION_DEAD;
+      }
       if (!response.ok) {
-        return false;
+        // 5xx, 429 (limiter) or any other non-ok: a blip, not a dead session.
+        return { kind: 'transient', status: response.status };
       }
       const body = await response.json();
       const token = body?.access_token as string | undefined;
       if (!token || hasLocalLogoutTombstone()) {
-        return false;
+        return SESSION_DEAD;
       }
       // Persist the new access token via the auth adapter so the next
       // ``getAuthToken()`` returns it.
       await authAdapter.replaceAccessToken(token);
-      if (hasLocalLogoutTombstone()) return false;
+      if (hasLocalLogoutTombstone()) return SESSION_DEAD;
       clearAuthTokenCache();
-      return true;
+      return { kind: 'refreshed' };
     } catch {
-      return false;
+      // Network error / aborted fetch: transient — the session may be fine.
+      return { kind: 'transient' };
     } finally {
       _refreshInFlight = null;
     }
   })();
-  return _refreshInFlight;
+  const outcome = await _refreshInFlight;
+  if (outcome.kind === 'transient') {
+    _lastTransientRefreshAt = Date.now();
+  }
+  return outcome;
 }
 
 interface RequestAbortScope {
@@ -218,6 +264,58 @@ function getApiErrorMessage(error: unknown, status: number): string {
 }
 
 /**
+ * Handle a 401 on an authenticated request (single boundary, RES2-001):
+ * try one silent refresh, then either retry the original request once,
+ * fail it transiently, or run the logout flow.
+ *
+ * - refreshed → the retried response (``__alreadyRetried`` prevents loops).
+ * - transient (5xx/429/network on the refresh) → throws ``QueryError``;
+ *   session state (tokens + cookie) is preserved so the next request
+ *   retries the refresh naturally.
+ * - session-dead (401/403 on the refresh) → clears tokens, dispatches
+ *   ``auth:expired`` (deduped for 10s) and throws the expiry error.
+ */
+async function retryAfterRefresh<T>(
+  url: string,
+  options: ApiFetchOptions,
+  consumeResponse: (response: Response) => Promise<T>,
+  abortScope: RequestAbortScope
+): Promise<T> {
+  const refreshOutcome = await waitForWithSignal(
+    attemptTokenRefresh(abortScope.signal),
+    abortScope.signal
+  );
+  if (refreshOutcome.kind === 'refreshed') {
+    return await authenticatedFetchResponse(
+      url,
+      { ...options, __alreadyRetried: true },
+      consumeResponse,
+      abortScope
+    );
+  }
+  if (refreshOutcome.kind === 'transient') {
+    logger.warn(
+      `No se pudo renovar la sesión (fallo transitorio${
+        refreshOutcome.status ? ` ${refreshOutcome.status}` : ''
+      }); se conserva la sesión`
+    );
+    throw new QueryError(REFRESH_TRANSIENT_MESSAGE, refreshOutcome.status, '/auth/jwt/refresh');
+  }
+
+  if (!_handlingAuthExpiry) {
+    _handlingAuthExpiry = true;
+    logger.warn('Sesión expirada — redirigiendo a login');
+    clearAuthTokenCache();
+    authAdapter.clearTokens();
+    window.dispatchEvent(new CustomEvent('auth:expired'));
+    setTimeout(() => {
+      _handlingAuthExpiry = false;
+    }, 10_000);
+  }
+  throw new Error('Tu sesión ha expirado. Por favor iniciá sesión nuevamente.');
+}
+
+/**
  * Fetch wrapper con manejo de errores, timeout y autenticacion automatica.
  */
 async function authenticatedFetchResponse<T>(
@@ -278,33 +376,15 @@ async function authenticatedFetchResponse<T>(
       );
 
       if (response.status === 401 && !skipAuth && !__alreadyRetried) {
-        const refreshed = await waitForWithSignal(
-          attemptTokenRefresh(abortScope.signal),
-          abortScope.signal
-        );
-        if (refreshed) {
-          return await authenticatedFetchResponse(
-            url,
-            { ...options, __alreadyRetried: true },
-            consumeResponse,
-            abortScope
-          );
-        }
-
-        if (!_handlingAuthExpiry) {
-          _handlingAuthExpiry = true;
-          logger.warn('Sesión expirada — redirigiendo a login');
-          clearAuthTokenCache();
-          authAdapter.clearTokens();
-          window.dispatchEvent(new CustomEvent('auth:expired'));
-          setTimeout(() => {
-            _handlingAuthExpiry = false;
-          }, 10_000);
-        }
-        throw new Error('Tu sesión ha expirado. Por favor iniciá sesión nuevamente.');
+        return await retryAfterRefresh(url, options, consumeResponse, abortScope);
       }
 
-      throw new Error(getApiErrorMessage(error, response.status));
+      // FE-3: the status must travel WITH the error. A plain Error whose
+      // message is the backend's string `detail` (FastAPI HTTPException)
+      // carries no parseable status, so the query retry policy could not
+      // tell a permanent 4xx from a transient network failure and retried
+      // 403/404/409 three times with backoff.
+      throw new QueryError(getApiErrorMessage(error, response.status), response.status);
     }
 
     return await waitForWithSignal(consumeResponse(response), abortScope.signal);

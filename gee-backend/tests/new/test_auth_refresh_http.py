@@ -161,6 +161,50 @@ def test_login_sets_refresh_cookie_and_refresh_rotates_it(client: TestClient, se
     assert me.json()["email"] == seeded_user.email
 
 
+def test_login_access_token_expires_within_sixty_minutes(client: TestClient, seeded_user: User):
+    """Audit SEG-2 (owner decision 2026-10-24): the access JWT minted by
+    ``/auth/jwt/login`` must expire within 60 minutes.
+
+    The pre-fix token lived 8 hours ("workday token") while being
+    practically irrevocable — ordinary logout, password reset, and
+    token theft never touch outstanding JWTs; only logout-all / admin
+    force-revoke (``revocation_epoch``) kill them early. With the
+    rotating refresh cookie carrying session continuity transparently,
+    the exposure window for a stolen Authorization header equals this
+    lifetime, so it is pinned at 60 minutes. The lower bound (> now +
+    55 min) guards against a fat-fingered regression to a lifetime so
+    short it would churn tokens every request.
+    """
+    import time
+
+    from app.auth.dependencies import get_jwt_strategy
+    from fastapi_users.jwt import decode_jwt
+
+    login = client.post(
+        "/api/v2/auth/jwt/login",
+        data={"username": seeded_user.email, "password": PASSWORD},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login.status_code == 200, f"login failed: {login.text}"
+    token = login.json()["access_token"]
+
+    # Decode through the app's real strategy so the secret/audience
+    # wiring is the one production uses, not a test-forged twin.
+    strategy = get_jwt_strategy()
+    payload = decode_jwt(
+        token,
+        strategy.decode_key,
+        strategy.token_audience,
+        algorithms=[strategy.algorithm],
+    )
+    now = time.time()
+    exp = payload["exp"]
+    assert now + 55 * 60 < exp <= now + 60 * 60, (
+        f"access token exp must be within (now+55min, now+60min] — "
+        f"got exp=+{(exp - now) / 60:.1f}min"
+    )
+
+
 def test_refresh_works_again_with_rotated_cookie(client: TestClient, seeded_user: User):
     """The rotated cookie is itself refreshable — the chain doesn't
     dead-end after one rotation (family chaining works over HTTP)."""

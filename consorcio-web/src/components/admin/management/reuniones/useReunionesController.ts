@@ -19,6 +19,7 @@ export function useReunionesController() {
   const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [deletingAgendaItemId, setDeletingAgendaItemId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [newChecklistPoint, setNewChecklistPoint] = useState('');
   const [availableEntities, setAvailableEntities] = useState<EntityOption[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
@@ -131,6 +132,8 @@ export function useReunionesController() {
   };
 
   const handleCreateReunion = async (values: typeof reunionForm.values) => {
+    // FE-5: mismo guard anti doble-submit que el fix C5/#589 de finanzas.
+    setSubmitting(true);
     try {
       const ordenDelDiaItems = values.orden_del_dia_items
         .map((item) => item.trim())
@@ -162,6 +165,8 @@ export function useReunionesController() {
         message: 'Revisá los datos e intentá nuevamente',
         color: 'red',
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -244,6 +249,7 @@ export function useReunionesController() {
     selectedReunion,
     agenda,
     deletingAgendaItemId,
+    submitting,
     newChecklistPoint,
     setNewChecklistPoint,
     availableEntities,
