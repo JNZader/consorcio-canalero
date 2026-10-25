@@ -128,11 +128,11 @@ Ingestion MUST carry `estado_vigencia` per document, MUST keep any dual-redactio
 
 ### Requirement: Per-Document and Total Unit Count Gate
 
-Ingestion MUST assert both the corpus total AND each document's individual unit count against the MANIFEST's declared counts; any single-document mismatch MUST abort ingestion. The declared total (1383) counts article-shaped units only, so the gate MUST scope it to `tipo_chunk = articulo`, and non-article units MUST be asserted against their own separate per-document inventory with the same strictness — neither inflating the normative total nor escaping the gate entirely.
+Ingestion MUST assert both the corpus total AND each document's individual unit count against the MANIFEST's declared counts; any single-document mismatch MUST abort ingestion. The declared total counts article-shaped units only, so the gate MUST scope it to `tipo_chunk = articulo`, and non-article units MUST be asserted against their own separate per-document inventory with the same strictness — neither inflating the normative total nor escaping the gate entirely. The live declared figures live in `corpus_expectations.yaml` (at pin `ecab0a0e`: 49 documents, 1806 article units, 65 non-article) — the spec deliberately does not hard-code counts, because the corpus pin moves and a number frozen here rots (it described 35 documents / 1383 units before the 2026-10 pin bump).
 
 #### Scenario: Total matches but one document is short
 
-- GIVEN a run where the total equals 1383 but one document under-captured
+- GIVEN a run where the total equals the declared total but one document under-captured
 - WHEN the per-document gate runs
 - THEN ingestion fails loudly, even though a total-only check would pass
 
@@ -140,7 +140,7 @@ Ingestion MUST assert both the corpus total AND each document's individual unit 
 
 - GIVEN a run where every article count matches but an expected non-article unit (e.g. Ley 10679's vigencia section) was not produced
 - WHEN the gate runs
-- THEN ingestion fails on the non-article inventory, and no non-article unit is ever counted toward the 1383 article total
+- THEN ingestion fails on the non-article inventory, and no non-article unit is ever counted toward the declared article total
 
 #### Scenario: All counts match
 

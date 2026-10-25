@@ -291,10 +291,13 @@ test-rag: ## Run the pgvector-marked test suite against consorcio-postgres:16-ve
 		echo "$(GREEN)test-rag: all pgvector tests ran for real against consorcio-postgres:16-vector, zero skipped.$(NC)"
 
 test-rag-corpus: ## Run the RAG corpus-contract tests against the real SHA-pinned checkout (LOCAL ONLY — CI cannot hold the private corpus)
-# CI covers the STRUCTURAL tests only. Every content assertion — the 35-document
-# check, the 1383/65 counts, the vigencia canary, verbatim fidelity, determinism,
+# CI covers the STRUCTURAL tests only. Every content assertion — the 49-document
+# check, the 1806/65 counts, the vigencia canary, verbatim fidelity, determinism,
 # pruning, idempotency — hides behind RAG_CORPUS_PATH, which CI never sets
 # because the corpus repository is private and V0 is all-local by owner rule.
+# (Counts follow the pinned corpus_expectations.yaml; update this comment only
+# when the pin moves — the numbers are illustrative of what CI skips, not a
+# second source of truth.)
 # Those tests therefore report SKIPPED and the CI run is green (ledger RAG2-005).
 # This target is where that contract actually gets exercised, and like `test-rag`
 # it treats a SKIP as a failure: "the corpus suite passed" must never be able to
