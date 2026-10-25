@@ -127,6 +127,7 @@ def procesar_uno(
     item_deadline_s: float = 60.0,
     ahora: datetime.datetime | None = None,
     verificar_terminos_fn: Callable[[], None] = verificar_terminos_vigentes,
+    al_reclamar: Callable[[Any], None] | None = None,
 ) -> Any | None:
     """Process the oldest waiting item, or return `None` when none is waiting.
 
@@ -138,6 +139,14 @@ def procesar_uno(
     `ProveedorMalConfigurado` BEFORE claiming anything — see the module
     docstring's pre-claim guard. None of the three is an item state and none of
     them may consume an item.
+
+    `al_reclamar`, when given, is called with the item immediately after the
+    claim and before anything can raise on it. It exists because the crash
+    accountant (`rag_worker.ContadorDeCaidas`) must know WHICH item the dying
+    transaction had claimed, and every in-database way of learning that dies
+    with the rollback — the callback is in-memory, which is the only place
+    that survives. Pure observation: it must not write, and its return value
+    is ignored.
     """
     _exigir_cableado_publicable(reranker, crear_generador, verificar_terminos_fn, item_deadline_s)
 
@@ -146,6 +155,8 @@ def procesar_uno(
     item = buzon.reclamar_pendiente(db, deadline_s=item_deadline_s)
     if item is None:
         return None
+    if al_reclamar is not None:
+        al_reclamar(item)
 
     # The budget starts when the item is picked up, monotonic. Everything below
     # is inside it, including retrieval — an item that spends its whole budget in

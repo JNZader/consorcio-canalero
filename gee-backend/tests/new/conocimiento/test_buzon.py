@@ -58,6 +58,82 @@ def _cita(clave: str = "ley-9750#art1") -> CitaRecuperada:
     )
 
 
+class TestCaidasWorker:
+    """The bounded crash counter (audit RAG-5): what a crash is allowed to leave.
+
+    The claim writes no intermediate state, so without this count a poison item
+    sends the worker into a `Restart=always` loop on the SAME oldest row —
+    crash, rollback, reclaim, crash — with `worker_demorado` as the only
+    symptom. These tests pin the data operation; the loop-level wedge scenario
+    lives in `test_rag_worker.py`.
+    """
+
+    def test_un_item_nace_con_cero_caidas(self, db):
+        item = buzon.encolar(db, usuario_id=None, pregunta="p")
+        db.flush()
+        db.refresh(item)
+        assert item.caidas_worker == 0
+
+    def test_una_caida_cuenta_y_el_item_sigue_pendiente(self, db):
+        item = buzon.encolar(db, usuario_id=None, pregunta="p")
+        contado = buzon.registrar_caida(db, item.id, causa=KeyError("bug"))
+        db.refresh(item)
+        assert contado is not None
+        assert item.caidas_worker == 1
+        assert item.estado == "pendiente"
+        assert item.respuesta is None, "a count is not a processing result"
+
+    def test_a_la_tercera_caida_el_item_se_aparta_con_motivo_honesto(self, db):
+        """`MAX_CAIDAS_WORKER` crashes terminalize the item as `generacion_fallida`,
+        and the `motivo` states the count and the last cause — an operator reading
+        the card must see "the worker fell on this three times", not a bare
+        "failed" (the same honesty rule `generacion.py`'s motivos follow)."""
+        item = buzon.encolar(db, usuario_id=None, pregunta="p")
+        for _ in range(buzon.MAX_CAIDAS_WORKER):
+            contado = buzon.registrar_caida(db, item.id, causa=KeyError("bug"))
+        db.refresh(item)
+        assert contado is not None
+        assert item.estado == "generacion_fallida"
+        assert item.procesada_en is not None, "a dead-lettered item is a normal terminal item"
+        motivo = item.respuesta["motivo"]
+        assert "caidas_worker" in motivo
+        assert f"{buzon.MAX_CAIDAS_WORKER} caídas" in motivo
+        assert "KeyError" in motivo and "bug" in motivo
+        assert item.caidas_worker == buzon.MAX_CAIDAS_WORKER
+
+    def test_un_item_terminal_no_recibe_caidas(self, db):
+        """Another worker finished the item while this one was dying: counting
+        crashes on a finished item would be writing history nobody can act on."""
+        item = buzon.encolar(db, usuario_id=None, pregunta="p")
+        buzon.persistir_resultado(db, item, RespuestaConocimiento(estado="abstencion"))
+        assert buzon.registrar_caida(db, item.id, causa=KeyError("bug")) is None
+        db.refresh(item)
+        assert item.caidas_worker == 0
+
+    def test_un_id_inexistente_no_explota(self, db):
+        """The item can be purged between the crash and the count; the dying
+        process must not trade its bug for a DoesNotExist."""
+        assert buzon.registrar_caida(db, uuid.uuid4(), causa=KeyError("bug")) is None
+
+    def test_el_claim_salta_al_apartado_y_toma_al_siguiente_mas_viejo(self, db):
+        """The dead-lettered item is terminal, so the oldest-first claim moves on
+        WITHOUT a special case: the `pendiente` filter and the ordering already
+        say everything there is to say."""
+        veneno = buzon.encolar(db, usuario_id=None, pregunta="veneno")
+        sana = buzon.encolar(db, usuario_id=None, pregunta="sana")
+        db.execute(
+            text("UPDATE rag_consulta SET creada_en = now() - interval '1 hour' WHERE id = :id"),
+            {"id": veneno.id},
+        )
+        db.expire_all()
+        assert buzon.reclamar_pendiente(db).pregunta == "veneno"
+        for _ in range(buzon.MAX_CAIDAS_WORKER):
+            buzon.registrar_caida(db, veneno.id, causa=KeyError("bug"))
+        db.expire_all()
+        siguiente = buzon.reclamar_pendiente(db)
+        assert siguiente is not None and siguiente.id == sana.id
+
+
 class TestEncolar:
     def test_un_item_nace_pendiente_sin_respuesta_y_sin_procesada_en(self, db):
         item = buzon.encolar(db, usuario_id=None, pregunta="  ¿Qué dice la ley 9750?  ")
@@ -452,3 +528,85 @@ class TestMigracionBuzon:
         # The routing record SURVIVES: the two tables are joined by a nullable FK
         # and dropping the mailbox must not take the decision log with it.
         assert "rag_decision_ruta" in inspect(engine).get_table_names()
+
+
+# `conocimiento_008` chains onto `0033_one_way_profile` — the tree's single head,
+# verified with `alembic heads` — not onto `conocimiento_007`, which stopped
+# being the tip when `lluvia_ext_001` chained onto it. Replaying 0024–0033 on the
+# throwaway database is neither possible (the pgrouting/road prerequisites the
+# fixture deliberately stamps past) nor relevant to a migration that touches one
+# column of one table this arc owns. So these tests build the 007 shape for
+# real, STAMP to 008's parent (the same stamp-don't-replay discipline the
+# fixture itself documents), and then exercise exactly the one step under test.
+_HEAD_008 = "conocimiento_008"
+_PADRE_008 = "0033_one_way_profile"
+
+
+class TestMigracionCaidasWorker:
+    def _a_la_forma_008(self, throwaway_db):  # noqa: F811
+        from alembic import command
+
+        cfg, _engine = throwaway_db
+        command.upgrade(cfg, _HEAD_U7)
+        command.stamp(cfg, _PADRE_008)
+        command.upgrade(cfg, _HEAD_008)
+
+    def test_la_columna_existe_con_default_cero_y_el_check_esta(self, throwaway_db):  # noqa: F811
+        from sqlalchemy import inspect, text
+
+        cfg, engine = throwaway_db
+        self._a_la_forma_008(throwaway_db)
+
+        columnas = {col["name"]: col for col in inspect(engine).get_columns("rag_consulta")}
+        assert "caidas_worker" in columnas
+        # NOT NULL with default 0: existing rows are items the crash counter
+        # never saw crash, and 0 is their TRUE count, not a placeholder.
+        assert columnas["caidas_worker"]["nullable"] is False
+        with engine.begin() as conn:
+            assert (
+                conn.execute(
+                    text(
+                        "INSERT INTO rag_consulta (id, pregunta) "
+                        "VALUES (gen_random_uuid(), 'p') RETURNING caidas_worker"
+                    )
+                ).scalar_one()
+                == 0
+            )
+
+        with pytest.raises(Exception) as fallo:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO rag_consulta (id, pregunta, caidas_worker) "
+                        "VALUES (gen_random_uuid(), 'p', -1)"
+                    )
+                )
+        assert "ck_rag_consulta_caidas_worker_no_negativas" in str(fallo.value)
+
+    def test_el_downgrade_quita_columna_y_check_y_no_toca_nada_mas(self, throwaway_db):  # noqa: F811
+        from alembic import command
+        from sqlalchemy import inspect, text
+
+        cfg, engine = throwaway_db
+        self._a_la_forma_008(throwaway_db)
+        with engine.begin() as conn:
+            id_item = conn.execute(
+                text(
+                    "INSERT INTO rag_consulta (id, pregunta) VALUES (gen_random_uuid(), 'p') RETURNING id"
+                )
+            ).scalar_one()
+
+        command.downgrade(cfg, _PADRE_008)  # must not raise
+
+        columnas = {col["name"] for col in inspect(engine).get_columns("rag_consulta")}
+        assert "caidas_worker" not in columnas
+        checks = {c["name"] for c in inspect(engine).get_check_constraints("rag_consulta")}
+        assert "ck_rag_consulta_caidas_worker_no_negativas" not in checks
+        # The table and its rows survive: the downgrade drops a counter, not a mailbox.
+        with engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text("SELECT count(*) FROM rag_consulta WHERE id = :id"), {"id": id_item}
+                ).scalar_one()
+                == 1
+            )

@@ -31,6 +31,17 @@ tried. The loop logs the cause and keeps polling: the items stay `pendiente`,
 `GET /estado` shows them ageing, and flipping the terms record back or fixing the
 credential resumes processing with nothing lost.
 
+**A crash still kills the process — but it no longer wedges the queue (audit
+RAG-5).** An unnamed exception propagates, `systemd` restarts the worker, and
+the claim re-takes the SAME oldest item. Unbounded, that is a crash-loop every
+~10 s with zero progress, and the only signal is `worker_demorado`. The
+`ContadorDeCaidas` below caps the blast radius without softening anything: each
+crash is counted against its item in a committed transaction AFTER the rollback,
+and at `buzon.MAX_CAIDAS_WORKER` the item is terminalized to
+`generacion_fallida` with a `motivo` naming the count. The traceback, the exit
+code and the restart all still happen — a dead-lettered item is a capped blast
+radius around a bug that is still live.
+
 **Which interpreter.** The reranker is `bge-reranker-v2-m3` on CUDA, which needs
 `requirements-rag.txt` — deliberately outside the app venv (D8). So this runs
 under `venv-rag`:
@@ -55,6 +66,7 @@ import os
 import signal
 import sys
 import threading
+import uuid
 from pathlib import Path
 from typing import Any, Callable, ContextManager
 
@@ -67,11 +79,12 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 # raises NoReferencedTableError on flush in the worker process.
 from app.auth.models import User as _User  # noqa: E402, F401
 from app.config import settings  # noqa: E402
-from app.domains.conocimiento import routing, trabajador  # noqa: E402
+from app.domains.conocimiento import buzon, routing, trabajador  # noqa: E402
 from app.domains.conocimiento.embed_sidecar import (  # noqa: E402
     SidecarNoDisponible,
     conectar_sidecar,
 )
+from app.domains.conocimiento.models import ESTADO_PENDIENTE  # noqa: E402
 from app.domains.conocimiento.eval.router import cargar_router_set  # noqa: E402
 from app.domains.conocimiento.proveedores import (  # noqa: E402
     PresupuestoDeItem,
@@ -132,6 +145,103 @@ def instalar_senales(parada: Parada) -> None:
         signal.signal(senal, lambda numero, _marco: parada.pedir(numero))
 
 
+class ContadorDeCaidas:
+    """The dead-letter accountant: one integer per item that survives the crash.
+
+    Why it exists (audit RAG-5): the claim deliberately writes no intermediate
+    state, so a crash rolls back EVERYTHING — including any count kept in the
+    crashed transaction — and `Restart=always` walks the worker straight back
+    into the SAME oldest item, forever, with `worker_demorado` as the only
+    symptom. This object breaks that loop without softening the crash: the bug
+    still propagates, the process still dies, and what survives is
+    `rag_consulta.caidas_worker`, incremented from a transaction COMMITTED
+    after the rollback.
+
+    Two hooks, one seam. `al_reclamar` records WHICH item the dying transaction
+    claimed — in memory, the only place that survives the rollback, which is
+    why `procesar_uno` exposes it. `al_caer` spends the record: one committed
+    transaction that counts the crash or, at `buzon.MAX_CAIDAS_WORKER`,
+    terminalizes the item to `generacion_fallida` through the normal
+    `persistir_resultado`. Every crash logs the item id and the cause; the
+    terminalization logs CRITICAL, because a dead-lettered item means a bug is
+    STILL live and only its blast radius was capped.
+
+    Never raises: an accountant that masked the bug it counts would be worse
+    than no accountant. Its own failures are logged CRITICAL and swallowed —
+    the original exception is the one that must reach journald.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session], *, max_caidas: int | None = None):
+        self._session_factory = session_factory
+        self._max_caidas = buzon.MAX_CAIDAS_WORKER if max_caidas is None else max_caidas
+        self._reclamado: list[uuid.UUID] = []
+
+    def nueva_vuelta(self) -> None:
+        """Called at the top of each `procesar`: the previous iteration's claim
+        is spent history. A crash with an empty record is a crash that happened
+        BEFORE any claim (a bug in the claim itself) and has no item to blame."""
+        self._reclamado.clear()
+
+    def al_reclamar(self, item: Any) -> None:
+        self._reclamado.append(item.id)
+
+    def al_caer(self, causa: BaseException) -> None:
+        if not self._reclamado:
+            return
+        item_id = self._reclamado.pop()
+        sesion = self._session_factory()
+        try:
+            item = buzon.registrar_caida(sesion, item_id, causa=causa, max_caidas=self._max_caidas)
+            # Read BEFORE the commit: the factory expires instances on commit,
+            # and this object must not depend on the caller's sessionmaker
+            # configuration to be able to say what it just wrote.
+            resumen = None if item is None else (item.estado, item.caidas_worker)
+            sesion.commit()
+        except Exception:
+            sesion.rollback()
+            logger.critical(
+                "conocimiento.worker.contador_de_caidas_fallo item=%s — no se pudo "
+                "registrar la caída; el bug original se mantiene alto",
+                item_id,
+                exc_info=True,
+            )
+            return
+        finally:
+            sesion.close()
+        if resumen is None:
+            logger.error(
+                "conocimiento.worker.caida_no_contabilizada item=%s causa=%s: %s — el "
+                "ítem ya no es un pendiente libre (otro worker lo tomó o terminó); "
+                "no hay nada que contar",
+                item_id,
+                type(causa).__name__,
+                causa,
+            )
+        elif resumen[0] != ESTADO_PENDIENTE:
+            logger.critical(
+                "conocimiento.worker.item_envenenado id=%s estado=%s caidas=%d/%d "
+                "causa=%s: %s — el ítem se aparta de la cola como generacion_fallida; "
+                "EL BUG SIGUE VIVO, el traceback de esta caída es la pista",
+                item_id,
+                resumen[0],
+                resumen[1],
+                self._max_caidas,
+                type(causa).__name__,
+                causa,
+            )
+        else:
+            logger.error(
+                "conocimiento.worker.caida id=%s caidas=%d/%d causa=%s: %s — el "
+                "worker muere igual (los bugs son ruidosos); el ítem vuelve a "
+                "pendiente",
+                item_id,
+                resumen[1],
+                self._max_caidas,
+                type(causa).__name__,
+                causa,
+            )
+
+
 def bucle(
     session_factory: Callable[[], Session],
     procesar: Callable[[Session], Any],
@@ -140,6 +250,7 @@ def bucle(
     intervalo_s: float,
     max_items: int = 0,
     registrar: Callable[[str, Any], None] | None = None,
+    al_caer: Callable[[BaseException], None] | None = None,
 ) -> int:
     """Poll, process, commit, repeat until asked to stop. Returns items processed.
 
@@ -162,6 +273,16 @@ def bucle(
 
     In both cases the transaction is rolled back first, so the claimed item goes
     back to `pendiente` rather than being held by a poisoned session.
+
+    The propagation path carries ONE extra step before the `raise` (audit
+    RAG-5): `al_caer`, when given, is called with the exception so the crash
+    accountant can spend a committed transaction counting the crash against
+    the item the dying run had claimed — and, at `buzon.MAX_CAIDAS_WORKER`,
+    dead-lettering it. Without that count, `Restart=always` reclaims the SAME
+    oldest item every ~10 s forever and the queue never moves again. The
+    propagation itself is untouched: the traceback still hits journald, the
+    process still exits non-zero, and the accountant failing must never mask
+    the bug it is counting.
     """
     procesados = 0
     while not parada.pedida():
@@ -194,9 +315,18 @@ def bucle(
             )
             parada.dormir(intervalo_s)
             continue
-        except BaseException:
+        except BaseException as exc:  # noqa: BLE001 — the point is to die loudly
             sesion.rollback()
             sesion.close()
+            if al_caer is not None:
+                try:
+                    al_caer(exc)
+                except Exception:  # noqa: BLE001 — never mask the bug being counted
+                    logger.critical(
+                        "conocimiento.worker.contador_de_caidas_fallo — el bug "
+                        "original se mantiene alto",
+                        exc_info=True,
+                    )
             raise
         sesion.close()
     return procesados
@@ -341,6 +471,12 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
             crear_generador = fabrica_de_generador(settings.conocimiento_proveedor_url)
+            # The dead-letter accountant (audit RAG-5): sees the claim through
+            # `al_reclamar`, counts the crash through `al_caer`, and at
+            # `buzon.MAX_CAIDAS_WORKER` terminalizes the poison item so the
+            # restart loop the systemd unit below implies cannot wedge the
+            # queue on one item forever.
+            contador = ContadorDeCaidas(session_factory)
             logger.info(
                 "conocimiento.worker.arranque corpus_sha=%s embedder=%s reranker=%s intervalo=%.1fs",
                 corpus_sha,
@@ -350,6 +486,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
             def _procesar(sesion: Session) -> Any:
+                contador.nueva_vuelta()
                 return trabajador.procesar_uno(
                     sesion,
                     corpus_sha=corpus_sha,
@@ -359,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                     reranker=reranker,
                     crear_generador=crear_generador,
                     item_deadline_s=settings.conocimiento_item_deadline_s,
+                    al_reclamar=contador.al_reclamar,
                 )
 
             def _registrar(evento: str, dato: Any) -> None:
@@ -372,6 +510,7 @@ def main(argv: list[str] | None = None) -> int:
                 intervalo_s=intervalo,
                 max_items=args.max_items,
                 registrar=_registrar,
+                al_caer=contador.al_caer,
             )
     except (SidecarNoDisponible, *REFUSALES_DE_ARRANQUE) as refusal:
         print(f"\nWORKER NOT STARTED — {type(refusal).__name__}.\n{refusal}", file=sys.stderr)
@@ -392,6 +531,7 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "ContadorDeCaidas",
     "Parada",
     "bucle",
     "construir_reranker",
