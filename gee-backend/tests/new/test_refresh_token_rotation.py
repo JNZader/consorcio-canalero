@@ -27,8 +27,10 @@ from sqlalchemy.orm import sessionmaker
 from app.auth.models import RefreshToken, User, UserRole
 from app.auth.refresh_tokens import (
     RACE_WINDOW,
+    RotateFailure,
     find_active,
     issue_token,
+    revoke_all_for_user,
     revoke_family,
     rotate,
 )
@@ -202,8 +204,9 @@ async def test_rotate_valid_token_revokes_old_and_issues_new(test_engine):
 
 
 @pytest.mark.asyncio
-async def test_rotate_unknown_token_returns_none_without_side_effects(test_engine):
-    """A token that never existed → None, and nothing gets revoked."""
+async def test_rotate_unknown_token_fails_invalid_without_side_effects(test_engine):
+    """A token that never existed → typed INVALID failure, and nothing gets
+    revoked (the raw failure mode the router clears the cookie on)."""
     _ = test_engine
     engine, SessionLocal = _make_session_factory()
     user = await _seed_user(SessionLocal)
@@ -214,7 +217,7 @@ async def test_rotate_unknown_token_returns_none_without_side_effects(test_engin
 
         async with SessionLocal() as session:
             result = await rotate(session, raw_token="never-issued-token", user=user)
-        assert result is None
+        assert result is RotateFailure.INVALID
 
         # The legit token is untouched.
         fresh = await _get_row(SessionLocal, row1.id)
@@ -233,9 +236,10 @@ async def test_rotate_unknown_token_returns_none_without_side_effects(test_engin
 @pytest.mark.asyncio
 async def test_replay_after_race_window_burns_family_siblings(test_engine):
     """(b) Presenting a token that was ALREADY rotated, past the
-    RACE_WINDOW, is a replay (stolen cookie) → rotate() returns None
-    and the family-burn sweep revokes EVERY still-active token in the
-    family — pre-rotation siblings AND the rotation successor.
+    RACE_WINDOW, is a replay (stolen cookie) → rotate() returns
+    RotateFailure.REPLAY and the family-burn sweep revokes EVERY
+    still-active token in the family — pre-rotation siblings AND the
+    rotation successor.
 
     Security posture (fixed): a confirmed replay means the family is
     compromised and we cannot tell attacker from victim, so we nuke the
@@ -281,7 +285,10 @@ async def test_replay_after_race_window_burns_family_siblings(test_engine):
         # Attacker replays the OLD raw token.
         async with SessionLocal() as session:
             replay = await rotate(session, raw_token=raw1, user=user)
-        assert replay is None, "replayed token must never mint a new one"
+        assert replay is RotateFailure.REPLAY, (
+            "replayed token must never mint a new one (typed REPLAY — the "
+            "failure the router clears the cookie on)"
+        )
 
         # The active sibling that existed before the rotation is burnt.
         swept = await _get_row(SessionLocal, sibling.id)
@@ -342,7 +349,7 @@ async def test_replay_burns_attacker_active_token_linear_chain(test_engine):
         # Victim presents the still-held T0 → replay.
         async with SessionLocal() as session:
             replay = await rotate(session, raw_token=raw1, user=user)
-        assert replay is None, "replayed token must never mint a new one"
+        assert replay is RotateFailure.REPLAY, "replayed token must never mint a new one"
 
         # SECURITY ASSERTION: the attacker's live token must be revoked.
         attacker_token = await _get_row(SessionLocal, row2.id)
@@ -364,8 +371,9 @@ async def test_replay_burns_attacker_active_token_linear_chain(test_engine):
 async def test_second_presentation_within_race_window_does_not_burn(test_engine):
     """(c) Two-tab race: the SAME raw token presented again immediately
     after a successful rotation (revoked_at within RACE_WINDOW) loses
-    auth (None) but must NOT burn the family — the tab that won keeps
-    its fresh token."""
+    auth — typed ``RACE_LOST``, NOT ``REPLAY`` (RES2-002: the router
+    spares the shared browser cookie on exactly this failure mode) — and
+    must NOT burn the family; the tab that won keeps its fresh token."""
     _ = test_engine
     engine, SessionLocal = _make_session_factory()
     user = await _seed_user(SessionLocal)
@@ -384,7 +392,10 @@ async def test_second_presentation_within_race_window_does_not_burn(test_engine)
         # revoked_at is fresh, well inside the 5 s RACE_WINDOW.
         async with SessionLocal() as session:
             loser = await rotate(session, raw_token=raw1, user=user)
-        assert loser is None, "race loser must not get a token"
+        assert loser is RotateFailure.RACE_LOST, (
+            "race loser must not get a token, and must be typed RACE_LOST "
+            "(not REPLAY/INVALID) so the router keeps the shared cookie"
+        )
 
         # The family survived: tab A's token is still active and
         # still authenticates.
@@ -653,15 +664,16 @@ async def test_revoke_family_revokes_every_active_row(test_engine):
 
 
 @pytest.mark.asyncio
-async def test_rotate_returns_none_on_lock_timeout(test_engine, monkeypatch):
+async def test_rotate_fails_invalid_on_lock_timeout(test_engine, monkeypatch):
     """T1: when the per-family advisory lock cannot be taken within
     ``_LOCK_TIMEOUT_MS`` (a concurrent holder sits on it), ``rotate`` must
-    time out (SQLSTATE 55P03), roll back, and return None (fail-secure → 401
-    → re-login) rather than hang. The presented token stays untouched.
+    time out (SQLSTATE 55P03), roll back, and return a typed INVALID failure
+    (fail-secure → 401 + cookie clear → re-login) rather than hang. The
+    presented token stays untouched.
 
     Session A takes the family's advisory xact lock and holds it (open tx).
     Session B rotates the same family with a short lock_timeout → must return
-    None WITHOUT burning or revoking anything.
+    INVALID WITHOUT burning or revoking anything.
     """
     from app.auth import refresh_tokens as rt
 
@@ -685,7 +697,10 @@ async def test_rotate_returns_none_on_lock_timeout(test_engine, monkeypatch):
         # Session B rotates → blocks on the lock → times out after 400 ms.
         async with SessionLocal() as session_b:
             result = await rt.rotate(session_b, raw_token=raw0, user=user)
-        assert result is None, "lock_timeout must make rotate fail-secure (None)"
+        assert result is rt.RotateFailure.INVALID, (
+            "lock_timeout must make rotate fail-secure (typed INVALID — a "
+            "genuine failure the router clears the cookie on)"
+        )
 
         # The presented token was NOT revoked — rotate rolled back cleanly.
         fresh = await _get_row(SessionLocal, row0.id)
@@ -840,6 +855,82 @@ async def test_revoke_all_loop_locks_family_born_after_first_select(test_engine,
         assert (await _get_row(SessionLocal, f1.id)).revoked is True
         assert (await _get_row(SessionLocal, row0.id)).revoked is True
         assert revoked >= 2
+    finally:
+        await _cleanup_users(SessionLocal, [user.id])
+        await engine.dispose()
+
+
+async def test_race_window_boundary_epsilon_pair(test_engine):
+    """RELC-001 (review): the window boundary is pinned at BOTH sides of
+    5 s — a regression flipping the strict comparison (> to >=) or
+    shrinking the effective window anywhere inside (0 s, 30 s] previously
+    passed the whole suite, which only pinned age≈0 and RACE_WINDOW+30 s.
+    """
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+
+    async def _classify(delta: timedelta) -> RotateFailure:
+        user = await _seed_user(SessionLocal)
+        try:
+            async with SessionLocal() as session:
+                raw, row = await issue_token(session, user=user)
+            async with SessionLocal() as session:
+                rotated = await rotate(session, raw_token=raw, user=user)
+            assert rotated is not None
+            raw2, row2 = rotated
+            await _backdate(SessionLocal, revoked_row_id=row.id, active_row_id=row2.id, delta=delta)
+            async with SessionLocal() as session:
+                return await rotate(session, raw_token=raw, user=user)
+        finally:
+            await _cleanup_users(SessionLocal, [user.id])
+
+    inside = await _classify(RACE_WINDOW - timedelta(seconds=0.5))
+    assert inside is RotateFailure.RACE_LOST, (
+        "0.5 s before the window edge must stay a race loss (cookie kept)"
+    )
+    outside = await _classify(RACE_WINDOW + timedelta(seconds=0.5))
+    assert outside is RotateFailure.REPLAY, (
+        "0.5 s past the window edge must be a replay (family burned)"
+    )
+    await engine.dispose()
+
+
+async def test_refresh_racing_logout_all_classifies_race_lost(test_engine):
+    """RELC-002 (review): a refresh presented <RACE_WINDOW after a
+    logout-all sweep loses the CAS against a freshly-stamped revoked_at
+    and classifies RACE_LOST — NOT because the family is alive, but
+    because the sweep's revoked_at is fresh. Benign by construction (the
+    family is already fully revoked; the 401 is correct; logout's own
+    response cleared the jar), but the classification is part of the
+    wire contract now (no delete-cookie), so it is pinned here and named
+    in the enum docstring.
+    """
+    _ = test_engine
+    engine, SessionLocal = _make_session_factory()
+    user = await _seed_user(SessionLocal)
+
+    try:
+        async with SessionLocal() as session:
+            raw, row = await issue_token(session, user=user)
+        async with SessionLocal() as session:
+            rotated = await rotate(session, raw_token=raw, user=user)
+        assert rotated is not None
+        raw2, _row2 = rotated
+
+        # logout-all sweeps the family — revoked_at stamped NOW (inside
+        # RACE_WINDOW by construction: no sleep needed).
+        async with SessionLocal() as session:
+            n = await revoke_all_for_user(session, user.id)
+            await session.commit()
+        assert n >= 1, "logout-all must have swept at least the rotated successor"
+
+        async with SessionLocal() as session:
+            outcome = await rotate(session, raw_token=raw2, user=user)
+        assert outcome is RotateFailure.RACE_LOST, (
+            "a CAS loss against a <5s-old sweep stamp classifies RACE_LOST "
+            "(no cookie delete) even though the family is revoked — the "
+            "documented benign residual of the fresh-stamp rule"
+        )
     finally:
         await _cleanup_users(SessionLocal, [user.id])
         await engine.dispose()
