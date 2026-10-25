@@ -85,10 +85,10 @@ export interface ReportFilters {
 // CUSTOM ERROR CLASS
 // ===========================================
 
-// QueryError now lives in `queryError.ts` so the API core can throw it
-// without importing this module (core → query → api/index → core cycle).
-// Re-exported here to keep the historical `import { QueryError } from './query'`
-// working for callers and tests.
+// QueryError lives in `queryError.ts` (leaf) so `api/core.ts` can throw it
+// without importing this module (core → query → api/index → core cycle;
+// FE-3 wiring + RES2-001 transient refresh failures). Re-exported here to
+// keep the historical `import { QueryError } from './query'` working.
 export { QueryError } from './queryError';
 
 // ===========================================
