@@ -591,4 +591,191 @@ describe('api core', () => {
 
     await expect(apiFetch('/geo/dem-pipeline')).rejects.toThrow('Error interno del servidor');
   });
+
+  // ----------------------------------------------------------------------- //
+  // RES2-001 (SEG-2 4R): refresh failures must discriminate session-death
+  // (401/403 from /auth/jwt/refresh) from transient failures (5xx, 429,
+  // network). With 60-minute tokens every active user hits the refresh
+  // endpoint ~8x/workday; a backend blip must NOT force-logout users.
+  // ----------------------------------------------------------------------- //
+  describe('refresh failure discrimination (RES2-001)', () => {
+    /** Mirrors REFRESH_TRANSIENT_BACKOFF_MS in core.ts (anti-spam guard). */
+    const REFRESH_BACKOFF_MS = 2000;
+
+    let expiredListener: ReturnType<typeof vi.fn>;
+    let nowSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+    beforeEach(() => {
+      expiredListener = vi.fn();
+      window.addEventListener('auth:expired', expiredListener);
+    });
+
+    afterEach(() => {
+      window.removeEventListener('auth:expired', expiredListener);
+      nowSpy?.mockRestore();
+      nowSpy = undefined;
+    });
+
+    function respuesta(status: number, cuerpo: unknown = { detail: 'Expired' }) {
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: new Headers(),
+        json: async () => cuerpo,
+      };
+    }
+
+    function refreshCalls() {
+      return (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) =>
+        String(url).includes('/auth/jwt/refresh')
+      );
+    }
+
+    async function capturar<T>(promesa: Promise<T>): Promise<unknown> {
+      return promesa.then(
+        () => null,
+        (error: unknown) => error
+      );
+    }
+
+    it('a 5xx refresh answer is transient: QueryError, session intact, refresh retried on the next request', async () => {
+      const realNow = Date.now();
+      let now = realNow;
+      nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+
+      mockGetAccessToken
+        .mockResolvedValueOnce('expired-token')
+        .mockResolvedValue('recovered-token');
+      (global.fetch as ReturnType<typeof vi.fn>)
+        // Request 1: bearer expired.
+        .mockResolvedValueOnce(respuesta(401))
+        // Refresh 1: backend blip.
+        .mockResolvedValueOnce(respuesta(503, { detail: 'unavailable' }))
+        // Request 2 (immediate, inside the anti-spam window): still 401.
+        .mockResolvedValueOnce(respuesta(401))
+        // Request 3 (after the backoff window): 401, then the refresh recovers.
+        .mockResolvedValueOnce(respuesta(401))
+        .mockResolvedValueOnce(respuesta(200, { access_token: 'recovered-token' }))
+        .mockResolvedValueOnce(respuesta(200, { ok: true }));
+
+      const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+      clearAuthTokenCache();
+
+      // (a) The triggering request fails with the transient QueryError...
+      const first = await capturar(apiFetch('/reports'));
+      expect(first).toMatchObject({ name: 'QueryError', statusCode: 503 });
+      expect((first as Error).message).toMatch(/No se pudo renovar la sesión/);
+      // ...but the session is NOT torn down.
+      expect(mockClearTokens).not.toHaveBeenCalled();
+      expect(mockReplaceAccessToken).not.toHaveBeenCalled();
+      expect(expiredListener).not.toHaveBeenCalled();
+
+      // Anti-spam guard: an immediate retry fails fast without re-hitting
+      // the refresh endpoint (2 originals + 1 refresh = 3 fetches).
+      const second = await capturar(apiFetch('/reports'));
+      expect(second).toMatchObject({ name: 'QueryError' });
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+
+      // After the 2s window the next request attempts the refresh again and
+      // the session recovers transparently.
+      now += REFRESH_BACKOFF_MS + 1;
+      await expect(apiFetch('/reports')).resolves.toEqual({ ok: true });
+      expect(refreshCalls()).toHaveLength(2);
+      expect(expiredListener).not.toHaveBeenCalled();
+      expect(mockClearTokens).not.toHaveBeenCalled();
+    });
+
+    it('a network failure during refresh is transient (no status), session intact', async () => {
+      mockGetAccessToken.mockResolvedValue('expired-token');
+      (global.fetch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(respuesta(401))
+        .mockRejectedValueOnce(new TypeError('network down'));
+
+      const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+      clearAuthTokenCache();
+
+      const error = await capturar(apiFetch('/reports'));
+      expect(error).toMatchObject({ name: 'QueryError' });
+      expect((error as { statusCode?: number }).statusCode).toBeUndefined();
+      expect((error as Error).message).toMatch(/No se pudo renovar la sesión/);
+      expect(mockClearTokens).not.toHaveBeenCalled();
+      expect(mockReplaceAccessToken).not.toHaveBeenCalled();
+      expect(expiredListener).not.toHaveBeenCalled();
+    });
+
+    it('two concurrent 401s share one transient-failed refresh: both get the QueryError, session intact', async () => {
+      mockGetAccessToken.mockResolvedValue('expired-token');
+      let resolveRefresh: ((response: Response) => void) | undefined;
+      let markRefreshStarted: (() => void) | undefined;
+      const refreshStarted = new Promise<void>((resolve) => {
+        markRefreshStarted = resolve;
+      });
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (url: string | URL | Request) =>
+          String(url).includes('/auth/jwt/refresh')
+            ? new Promise<Response>((resolve) => {
+                resolveRefresh = resolve;
+                markRefreshStarted?.();
+              })
+            : Promise.resolve(respuesta(401))
+      );
+
+      const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+      clearAuthTokenCache();
+
+      const first = apiFetch('/a');
+      const second = apiFetch('/b');
+      await refreshStarted;
+      // Let the second request's 401 handler join the in-flight refresh
+      // before it settles (its remaining path is resolved microtasks).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      resolveRefresh?.(new Response(null, { status: 503 }));
+
+      const errors = await Promise.all([first, second].map((p) => capturar(p)));
+      for (const error of errors) {
+        expect(error).toMatchObject({ name: 'QueryError', statusCode: 503 });
+        expect((error as Error).message).toMatch(/No se pudo renovar la sesión/);
+      }
+      // Single-flight held: exactly ONE refresh call for both 401s.
+      expect(refreshCalls()).toHaveLength(1);
+      expect(mockClearTokens).not.toHaveBeenCalled();
+      expect(expiredListener).not.toHaveBeenCalled();
+    });
+
+    it('a 401 from the refresh endpoint keeps the exact logout semantics', async () => {
+      mockGetAccessToken.mockResolvedValue('expired-token');
+      (global.fetch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(respuesta(401))
+        .mockResolvedValueOnce(respuesta(401, { detail: 'Refresh token revoked' }));
+
+      const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+      clearAuthTokenCache();
+
+      await expect(apiFetch('/reports')).rejects.toThrow(
+        'Tu sesión ha expirado. Por favor iniciá sesión nuevamente.'
+      );
+      expect(mockClearTokens).toHaveBeenCalledOnce();
+      expect(expiredListener).toHaveBeenCalledOnce();
+      expect(mockReplaceAccessToken).not.toHaveBeenCalled();
+      // No retry of the original request: original + refresh only.
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('a 429 from the refresh endpoint is transient (rate limiter), not session-death', async () => {
+      mockGetAccessToken.mockResolvedValue('expired-token');
+      (global.fetch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(respuesta(401))
+        .mockResolvedValueOnce(respuesta(429, { detail: 'Too many requests' }));
+
+      const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+      clearAuthTokenCache();
+
+      const error = await capturar(apiFetch('/reports'));
+      expect(error).toMatchObject({ name: 'QueryError', statusCode: 429 });
+      expect((error as Error).message).toMatch(/No se pudo renovar la sesión/);
+      expect(mockClearTokens).not.toHaveBeenCalled();
+      expect(expiredListener).not.toHaveBeenCalled();
+    });
+  });
 });
