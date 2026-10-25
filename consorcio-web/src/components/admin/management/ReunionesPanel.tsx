@@ -37,6 +37,7 @@ export default function ReunionesPanel() {
         setNewChecklistPoint={controller.setNewChecklistPoint}
         onAddChecklistPoint={controller.handleAddChecklistPoint}
         onSubmit={controller.handleCreateReunion}
+        submitting={controller.submitting}
       />
 
       <ReunionesGrid reuniones={controller.reuniones} onViewAgenda={controller.handleViewAgenda} />
