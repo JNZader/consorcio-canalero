@@ -27,6 +27,7 @@ from app.domains.geo.burn_support import (
     burn_canals_impl,
     load_propuesta_geojsons,
 )
+from app.domains.geo.processing_wbt_support import sweep_stale_dem_tmp_impl
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.tasks_io_support import (
     delineate_basins_task_impl,
@@ -539,6 +540,23 @@ def run_full_dem_pipeline(
                     error="Another full DEM pipeline is already running for this area",
                 )
             return {"job_id": job_id, "status": "skipped", "outputs": {}}
+
+        # Geo audit 2026-10 (GEO-5): sweep orphaned *.tmp.tif files at pipeline
+        # start. download_dem_impl only unlinks its temp file on the success
+        # path, so a worker OOM/SIGKILL mid-download leaves a full-size temp
+        # DEM behind and nothing else ever removed them — repeated crashes
+        # exhaust the geo-worker disk. Inside the advisory lock above, the
+        # sweep is race-free by construction: a second pipeline for this area
+        # cannot start until this one finishes, and the 1 h mtime threshold
+        # (see sweep_stale_dem_tmp_impl) keeps any live download safe.
+        deleted_tmp = sweep_stale_dem_tmp_impl(Path(f"/data/geo/{area_id}"))
+        if deleted_tmp:
+            logger.info(
+                "full_dem_pipeline.tmp_sweep",
+                area_id=area_id,
+                count=len(deleted_tmp),
+                files=deleted_tmp,
+            )
 
         return run_full_dem_pipeline_impl(
             area_id=area_id,
