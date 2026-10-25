@@ -688,19 +688,44 @@ def olvidar_procedencia(db: Session, corpus_sha: str) -> None:
     db.execute(OLVIDAR_PROCEDENCIA_SQL, {"corpus_sha": corpus_sha})
 
 
-def existing_text_hashes(db: Session, corpus_sha: str) -> dict[str, str]:
-    """`{citation_key: sha256(texto)}` for an already-present snapshot.
+def existing_surface_hashes(db: Session, corpus_sha: str) -> dict[str, tuple[str, str]]:
+    """`{citation_key: (sha256(texto), sha256(texto_indexado))}` for a snapshot.
 
-    Backs `--verify-unchanged`: it turns a silent rewrite into a diff. Hashed in
-    Python rather than with `digest()` so it does not depend on `pgcrypto` being
-    installed — at ~1.4 k rows the transfer cost is irrelevant, and an optional
-    extension is not worth a hard dependency.
+    Backs `--verify-unchanged`: it turns a silent rewrite into a diff. TWO
+    surfaces, hashed separately rather than as one combined digest, because the
+    report must name which surface moved — a `texto` divergence means the
+    citation bytes changed; a `texto_indexado`-only divergence means the
+    enrichment did, while every citation the reader sees stayed byte-identical
+    (audit RAG-4: a parser change under a reused corpus_sha used to rewrite the
+    search surface with `divergencias: []` and exit 0).
+
+    `texto_indexado` IS the search surface: the FTS `tsv` column is generated
+    from it (plus `epigrafe`, itself a joined component of `texto_indexado`,
+    so its drift is covered transitively) and `rag_embed_batch` embeds exactly
+    it. `tipo_chunk` and `source_offset` are deliberately NOT hashed — the
+    "full identity tuple" option: no retrieval leg reads either, offsets are
+    re-derived and span-gate-validated on every parse, and folding them into
+    this hash would report their drift as a search-surface change it is not.
+    The label names a surface; the hash must stay true to the label.
+
+    Hashed in Python rather than with `digest()` so it does not depend on
+    `pgcrypto` being installed — at ~1.4 k rows the transfer cost is
+    irrelevant, and an optional extension is not worth a hard dependency.
     """
     rows = db.execute(
-        text("SELECT citation_key, texto FROM rag_unidad WHERE corpus_sha = :corpus_sha"),
+        text(
+            "SELECT citation_key, texto, texto_indexado FROM rag_unidad "
+            "WHERE corpus_sha = :corpus_sha"
+        ),
         {"corpus_sha": corpus_sha},
     ).all()
-    return {row[0]: hashlib.sha256(row[1].encode("utf-8")).hexdigest() for row in rows}
+    return {
+        row[0]: (
+            hashlib.sha256(row[1].encode("utf-8")).hexdigest(),
+            hashlib.sha256(row[2].encode("utf-8")).hexdigest(),
+        )
+        for row in rows
+    }
 
 
 def count_unidades(db: Session, corpus_sha: str, tipo_chunk: str | None = None) -> int:
