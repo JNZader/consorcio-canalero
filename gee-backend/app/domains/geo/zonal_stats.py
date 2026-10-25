@@ -33,6 +33,31 @@ def _reproject_geom(geom_shape, src_crs: str, dst_crs: str):
     return shapely_transform(transformer.transform, geom_shape)
 
 
+def _resolve_nodata(raster_nodata, raster_dtype: str):
+    """Honor the raster's own nodata tag instead of a global -32768 override.
+
+    Geo audit 2026-10 (GEO-3): the hardcoded ``nodata=-32768`` was applied to
+    EVERY raster, but ``classify_terrain`` writes uint8 with nodata=255
+    (processing.py) and composites are written with nodata=None. On a
+    terrain_class raster the 255 fill was counted as a legitimate maximum; on
+    composites the override matched nothing. The rule now:
+
+    - the file declares nodata → pass it through (rasterstats' ``nodata``
+      param overrides file metadata, so an explicit passthrough is required);
+    - no tag AND float16/float32 → keep -32768: historical float terrain
+      products (slope/twi/hand/flow_acc) use -32768 as their fill value
+      without declaring it in metadata, and this preserves their stats;
+    - anything else (e.g. uint8 composites with no tag) → None: rasterstats
+      then falls back to the file's own (absent) metadata and masks nothing,
+      which is exactly what a fill-free composite means.
+    """
+    if raster_nodata is not None:
+        return raster_nodata
+    if raster_dtype in ("float16", "float32"):
+        return -32768
+    return None
+
+
 def compute_zonal_stats(
     geometries: list[dict[str, Any]],
     raster_path: str,
@@ -64,9 +89,12 @@ def compute_zonal_stats(
 
     stats = stats or SUPPORTED_STATS
 
-    # Read raster CRS for reprojection
+    # Read raster CRS for reprojection, plus the nodata tag/dtype that decide
+    # which fill value the stats must exclude (see _resolve_nodata).
     with rasterio.open(raster_path) as src:
         raster_crs = str(src.crs)
+        raster_nodata = src.nodata
+        raster_dtype = src.dtypes[0]
 
     # Normalize geometries to shapely, reproject if needed, then to GeoJSON
     geojson_geoms = []
@@ -86,7 +114,7 @@ def compute_zonal_stats(
         raster_path,
         stats=stats,
         all_touched=all_touched,
-        nodata=-32768,
+        nodata=_resolve_nodata(raster_nodata, raster_dtype),
     )
 
     # Merge stats with original metadata
