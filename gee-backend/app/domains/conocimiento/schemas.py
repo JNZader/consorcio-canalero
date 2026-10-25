@@ -69,15 +69,23 @@ class IngestionSummary(BaseModel):
     unidades_eliminadas: int = 0
     documentos: list[DocumentoIngestado] = Field(default_factory=list)
     gates: GateOutcome
-    #: `--verify-unchanged`, class 1 of 3: keys present in BOTH the snapshot and
-    #: the new parse whose `texto` changed while the corpus_sha did not.
+    #: `--verify-unchanged`, class 1 of 4: keys present in BOTH the snapshot and
+    #: the new parse whose `texto` changed while the corpus_sha did not. The
+    #: CITATION surface: `texto` is the only field ever shown as a citation.
     divergencias: list[str] = Field(default_factory=list)
-    #: Class 2: keys the new parse produces that the stored snapshot lacks.
+    #: Class 2 of 4, disjoint from the above: keys whose SEARCH surface
+    #: (`texto_indexado` — what tsv/BM25/embeddings consume) changed while
+    #: `texto` stayed byte-identical. An enrichment/parser change under a
+    #: reused corpus_sha used to rewrite that surface with `divergencias: []`
+    #: and exit 0 (audit RAG-4). A key lands here OR in `divergencias`, never
+    #: both: a `texto` change is classified once, as a content change.
+    divergencias_indexado: list[str] = Field(default_factory=list)
+    #: Class 3 of 4: keys the new parse produces that the stored snapshot lacks.
     claves_agregadas: list[str] = Field(default_factory=list)
-    #: Class 3: keys the stored snapshot has that the new parse does not produce
-    #: — the ones a normal run PRUNES. Comparing only the intersection made this
-    #: class invisible, so `--verify-unchanged` deleted rows it never examined
-    #: and still reported "divergencias: []" (RAG2-003).
+    #: Class 4 of 4: keys the stored snapshot has that the new parse does not
+    #: produce — the ones a normal run PRUNES. Comparing only the intersection
+    #: made this class invisible, so `--verify-unchanged` deleted rows it never
+    #: examined and still reported "divergencias: []" (RAG2-003).
     claves_eliminadas: list[str] = Field(default_factory=list)
     #: The key set changed while `embedding_modelo` was set. The same transaction
     #: NULLs that provenance. Vector and hybrid must refuse until a new batch.
@@ -86,13 +94,18 @@ class IngestionSummary(BaseModel):
 
     @property
     def verificacion_fallida(self) -> bool:
-        """True when `--verify-unchanged` found ANY of the three differences.
+        """True when `--verify-unchanged` found ANY of the four differences.
 
-        The three classes stay separate in the report because they mean
-        different things — content rewritten, unit added, unit dropped — but any
-        one of them must stop the run before it writes.
+        The classes stay separate in the report because they mean different
+        things — citation bytes rewritten, search surface rewritten, unit added,
+        unit dropped — but any one of them must stop the run before it writes.
         """
-        return bool(self.divergencias or self.claves_agregadas or self.claves_eliminadas)
+        return bool(
+            self.divergencias
+            or self.divergencias_indexado
+            or self.claves_agregadas
+            or self.claves_eliminadas
+        )
 
 
 class CitaRecuperada(BaseModel):
