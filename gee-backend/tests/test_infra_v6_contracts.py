@@ -56,7 +56,9 @@ def _load(path: str, name: str):
 
 def _service_blocks(path: str) -> dict[str, str]:
     text = _read(path)
-    body = text.split("\nservices:\n", 1)[1]
+    # `services:` may be the first line (docker-compose.yml) or follow a
+    # header (prod/deploy) — anchor at line start either way.
+    body = re.split(r"(?m)^services:\s*\n", text, maxsplit=1)[1]
     body = re.split(r"\n(?=[A-Za-z])", body, maxsplit=1)[0]
     parts = SERVICE_HEAD.split(body)
     names = parts[1::2]
@@ -156,6 +158,28 @@ def test_known_image_digests_are_the_ones_resolved_for_this_change() -> None:
     )
     assert "alpine:3.20" not in backup
     assert "postgresql16-client" in backup
+
+
+def test_pgvector_overlay_base_matches_compose_postgres_image() -> None:
+    """INF-2: the pgvector overlay builds FROM the exact pinned postgres image.
+
+    ``docker/postgres/Dockerfile`` swaps the server binaries over the SAME
+    ``consorcio-postgres-data`` volume the default compose image initialized,
+    so a base that differs by anything (repository, tag, or digest) is an
+    unsupported PostGIS/PostgreSQL minor upgrade or downgrade. The FROM string
+    must equal the compose ``postgres`` image string verbatim; bumping one
+    without the other in the same PR fails here.
+    """
+    compose_image = re.search(
+        r"(?m)^\s{4}image:\s*(\S+)$", _service_blocks("docker-compose.yml")["postgres"]
+    )
+    assert compose_image, "docker-compose.yml: postgres service has no image: line"
+    froms = re.findall(r"(?m)^FROM\s+(\S+)", _read("docker/postgres/Dockerfile"))
+    assert froms == [compose_image.group(1)], (
+        "pgvector overlay base must equal the compose postgres image verbatim"
+        f" (docker/postgres/Dockerfile FROM {froms} vs docker-compose.yml"
+        f" postgres image {compose_image.group(1)!r}) — bump BOTH in the same PR"
+    )
 
 
 def test_pages_promoter_does_not_force_push_or_check_out_the_trigger_sha() -> None:
