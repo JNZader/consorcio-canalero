@@ -2,11 +2,12 @@
 
 > Fuente de verdad del estado de los arcos de trabajo. Actualizar en cada PR que
 > cierre o abra un frente. Complementa (no reemplaza) los artefactos SDD de
-> `openspec/changes/` — que hoy son **untracked por convención** y viven solo en
-> los checkouts locales — y la memoria persistente de sesión (engram, proyecto
-> `consorcio-canalero`).
+> `openspec/changes/` — hoy **trackeados en git** (la vieja convención de
+> mantenerlos untracked se abandonó con las olas de auditoría de 2026-10; solo
+> carpetas de exploración puntuales pueden quedar sin commitear) — y la memoria
+> persistente de sesión (engram, proyecto `consorcio-canalero`).
 >
-> Última actualización: **2026-09-25** · Mantiene: @javier
+> Última actualización: **2026-10-24** · Mantiene: @javier
 >
 > Estrategia de producto (canalero · caminero · ficha nacional · MBAgro crop-ops):
 > `docs/strategy/exploracion-productos-2026-09.md`. Incluye GeoCuenca INTA (visor GEE Salado). No fusionar MBAgro. No pelear el visor gratis de Salado.

@@ -466,7 +466,7 @@ git -C /srv/consorcio-corpus-legal rev-parse HEAD    # must equal the pinned cor
 git -C /srv/consorcio-corpus-legal status --porcelain # must be empty
 ```
 
-The pinned SHA is `12043582bf8016288a7e8084e85a4b713a97af2f` (`Makefile`,
+The pinned SHA is `ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e` (`Makefile`,
 `RAG_CORPUS_SHA`; also the `corpus_sha` header of
 `app/domains/conocimiento/eval/expected_clasificacion.yaml`).
 
@@ -481,7 +481,7 @@ The pinned SHA is `12043582bf8016288a7e8084e85a4b713a97af2f` (`Makefile`,
 ```
 venv/bin/python scripts/rag_ingest.py \
     --corpus-path /srv/consorcio-corpus-legal \
-    --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f \
+    --corpus-sha ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e \
     --database-url "$DATABASE_URL"
 ```
 
@@ -539,7 +539,7 @@ curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 ```
 venv/bin/python scripts/rag_verificar_clasificacion.py \
-    --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f \
+    --corpus-sha ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e \
     --database-url "$DATABASE_URL"
 echo "exit=$?"
 ```
@@ -564,7 +564,7 @@ exactly the silent privacy failure this step exists to catch.
 
 ```
 venv/bin/python scripts/rag_load_vectors.py \
-    --vectors artifacts/rag/vectors-12043582.copy \
+    --vectors artifacts/rag/vectors-ecab0a0e.copy \
     --database-url "$DATABASE_URL"
 ```
 
@@ -760,7 +760,7 @@ baselines:**
 
 ```
 venv-rag/bin/python scripts/rag_eval.py \
-    --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f \
+    --corpus-sha ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e \
     --database-url "$DATABASE_URL" \
     --modo fts --modo bm25_ce \
     --reranker bge --reranker-device cuda \
@@ -781,7 +781,7 @@ starts with `RATIFICADO`:
 
 ```
 venv-rag/bin/python scripts/rag_eval.py \
-    --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f \
+    --corpus-sha ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e \
     --database-url "$DATABASE_URL" \
     --modo bm25_ce --reranker bge \
     --answer-set app/domains/conocimiento/eval/answer_set.yaml \
@@ -799,7 +799,7 @@ pin is the owner's call.
 
 ```
 venv-rag/bin/python scripts/rag_eval.py \
-    --corpus-sha 12043582bf8016288a7e8084e85a4b713a97af2f \
+    --corpus-sha ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e \
     --database-url "$DATABASE_URL" \
     --modo bm25_ce --reranker bge \
     --slm-bench app/domains/conocimiento/eval/slm_bench.yaml
@@ -850,7 +850,7 @@ Read both operands before flipping the flag:
 docker compose exec backend python -c \
   "from app.domains.conocimiento.eval.umbral_abstencion import cargar_umbral as c; u=c(); print(u.estado, u.corpus_sha, u.embedding_modelo, u.embedding_revision_hf, u.umbral)"
 docker compose exec postgres psql -U consorcio -d consorcio -c \
-  "SELECT embedding_modelo, embedding_revision_hf, embedding_sintetico FROM rag_corpus WHERE corpus_sha = '12043582bf8016288a7e8084e85a4b713a97af2f';"
+  "SELECT embedding_modelo, embedding_revision_hf, embedding_sintetico FROM rag_corpus WHERE corpus_sha = 'ecab0a0ed9cfbfb7bca0f7673f0283bc75bb406e';"
 ```
 
 **What passes:** `estado: no_derivado` — the shipped state today, while owner
