@@ -4,7 +4,11 @@ Quick reference for the Consorcio Canalero platform rewrite.
 
 ## Project Overview
 
-**Consorcio Canalero 10 de Mayo** - Sistema integral de gestion para consorcios canaleros. Self-hosted, clone-and-deploy ready.
+**Consorcio Canalero 10 de Mayo** - Sistema integral de gestion para consorcios canaleros. Self-hosted.
+
+The Hetzner box is not updated by `./setup.sh` or `docker compose up` from
+`main`. The box contract is `AGENTS.md`. The command is `scripts/deploy-box.sh`,
+run on the box. It does not run Alembic.
 
 ### Stack
 
@@ -98,8 +102,9 @@ uvicorn app.main:app --reload
 pytest tests/new/ -v                    # New architecture tests
 pytest tests/new/ -v --cov=app          # With coverage
 
-# Database
-alembic upgrade head                    # Run migrations
+# Database (local only — never part of the box deploy; see AGENTS.md)
+alembic heads                           # Confirm a single head before upgrading
+alembic upgrade head                    # Local database. On 2026-10-24 the box stamp was 0033_one_way_profile
 alembic revision --autogenerate -m "description"  # New migration
 
 # Lint
@@ -114,9 +119,9 @@ npm run test                            # Unit tests
 npm run build                           # Production build
 ```
 
-**Docker**:
+**Docker** (local development compose; the box override is preserved by `scripts/deploy-box.sh`):
 ```bash
-docker compose up -d                    # All services
+docker compose up -d                    # All services, local
 docker compose up -d postgres redis     # Just DB + cache
 docker compose logs -f backend          # Follow logs
 ```
@@ -205,5 +210,5 @@ Pattern: real database, transaction-per-test, no mocking for data access.
 
 ---
 
-Last updated: 2026-07-25
+Last updated: 2026-10-24
 Maintained by: @javier
