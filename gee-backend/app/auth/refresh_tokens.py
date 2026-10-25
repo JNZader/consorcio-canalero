@@ -14,6 +14,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 
 from sqlalchemy import false, func, text, true, update
 from sqlalchemy.exc import DBAPIError
@@ -222,6 +223,56 @@ async def revoke_family(session: AsyncSession, family_id: uuid.UUID) -> int:
 # pathologically slow concurrent click.
 RACE_WINDOW = timedelta(seconds=5)
 
+# LOAD-BEARING COUPLING (review RESC-002): a loser queued behind the
+# winner measures the age of the winner's revoked_at from ITS OWN
+# post-lock `now` — so the measured age is the winner's lock-held
+# critical section, which is bounded by the loser's lock_timeout above.
+# RACE_LOST classification is therefore guaranteed only while
+# _LOCK_TIMEOUT_MS stays ≤ RACE_WINDOW: raising the lock timeout (the
+# tempting brownout mitigation) silently converts brownout race-losses
+# into REPLAY — burning the family including the winner's LIVE successor.
+# Same exposure via cross-host clock skew if the backend ever scales
+# horizontally. The assert makes the coupling impossible to break
+# silently; change one, change both, on purpose.
+assert timedelta(milliseconds=_LOCK_TIMEOUT_MS) <= RACE_WINDOW, (
+    "_LOCK_TIMEOUT_MS must stay <= RACE_WINDOW (see RESC-002 coupling note)"
+)
+
+
+class RotateFailure(Enum):
+    """Typed reason ``rotate`` refused to mint a successor.
+
+    RES2-002: the router needs to tell a two-tab race LOSS apart from the
+    genuine failures, because the HTTP consequences differ. All three are
+    still a 401 with an identical body (the client must not learn which
+    alarm it tripped) — only the cookie directive on the response differs.
+
+    The wire-shape note: the ``Set-Cookie`` header now differs between
+    ``RACE_LOST`` (no delete) and the genuine failures (delete). The
+    classification is a fresh-stamp rule — ANY ``revoked_at`` younger than
+    RACE_WINDOW classifies RACE_LOST — so the header reveals "the row I
+    presented was revoked ≤5 s ago", whether by a winning rotation OR by a
+    logout-all/force-revoke sweep racing the refresh (the latter family is
+    already dead; the no-delete is a harmless no-op there and self-heals to
+    REPLAY past the window). A presenter with a just-revoked cookie already
+    has the 401 itself; the family-alive grace window is the pre-existing,
+    reviewed design. Accepted (review RSKC-001/RELC-002).
+    """
+
+    # Unknown/expired/wrong-user token, or the per-family lock timed out
+    # (fail-secure): the presented cookie is worthless — plain 401, drop it.
+    INVALID = "invalid"
+
+    # Confirmed replay (revoked_at older than RACE_WINDOW): the family has
+    # been burned — plain 401, drop the dead cookie.
+    REPLAY = "replay"
+
+    # Another concurrent refresh in the SAME family won the CAS within
+    # RACE_WINDOW. The family is intentionally ALIVE: the winner's rotated
+    # token is valid and (same browser) already sits in the shared cookie
+    # jar — the loser's 401 must NOT delete it.
+    RACE_LOST = "race_lost"
+
 
 async def rotate(
     session: AsyncSession,
@@ -230,22 +281,25 @@ async def rotate(
     user: User,
     user_agent: str | None = None,
     client_ip: str | None = None,
-) -> tuple[str, RefreshToken] | None:
+) -> tuple[str, RefreshToken] | RotateFailure:
     """Rotate a presented refresh token.
 
-    Returns ``(new_raw_token, new_row)`` on success, ``None`` on auth
-    failure (unknown / expired / replay).
+    Returns ``(new_raw_token, new_row)`` on success, or a typed
+    ``RotateFailure`` on auth failure — the router needs the failure
+    MODE because a race loss must not clear the browser cookie while
+    every genuine failure must (RES2-002).
 
     Concurrency model:
       - First call wins the CAS UPDATE, stamps ``revoked_at = now()``,
         and mints a new token in the same family.
       - Second call within ``RACE_WINDOW`` (two-tab race) loses the
         CAS, sees the row already revoked but with ``revoked_at`` very
-        recent, and returns ``None`` WITHOUT burning the family.
+        recent, and returns ``RotateFailure.RACE_LOST`` WITHOUT burning
+        the family.
       - Third call past ``RACE_WINDOW`` (real replay — attacker stole
         the cookie after the legit user rotated) loses the CAS, sees
         the row revoked with ``revoked_at`` old, and DOES burn the
-        family.
+        family (returns ``RotateFailure.REPLAY``).
 
     Atomicity (post-3vr concurrency fix): the ENTIRE rotate runs in ONE
     transaction serialized by a per-family PostgreSQL advisory lock
@@ -279,7 +333,7 @@ async def rotate(
         )
     ).first()
     if presented is None:
-        return None
+        return RotateFailure.INVALID
     family_id = presented.family_id
 
     # Serialize every rotate() on this family, and against revoke_family /
@@ -298,12 +352,12 @@ async def rotate(
         if _is_lock_timeout(exc):
             # T1: could not take the family lock within _LOCK_TIMEOUT_MS (a
             # slow logout-all / force-revoke likely holds it). Fail SAFE:
-            # roll back the now-aborted transaction and return None so the
+            # roll back the now-aborted transaction and return INVALID so the
             # caller emits 401 and the client re-authenticates. Forcing a
             # re-login under contention is the correct fail-secure posture —
             # far better than hanging the request on an unbounded lock wait.
             await session.rollback()
-            return None
+            return RotateFailure.INVALID
         raise
 
     # Stamp ``now`` AFTER acquiring the advisory lock so ``revoked_at``
@@ -403,7 +457,7 @@ async def rotate(
         # information about an EXISTING family. Commit to release the
         # per-family advisory lock taken above.
         await session.commit()
-        return None
+        return RotateFailure.INVALID
 
     # Decide burn vs no-op based on revoked_at age. ``None`` legacy
     # rows from the pre-2.2 era are treated as replay (conservative).
@@ -447,7 +501,9 @@ async def rotate(
         .values(revoked=True, revoked_at=now)
     )
     await session.commit()
-    return None
+    # Typed so the router can spare the shared browser cookie on a
+    # race loss (RES2-002) while still clearing it on a replay.
+    return RotateFailure.REPLAY if should_burn else RotateFailure.RACE_LOST
 
 
 async def revoke_all_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
