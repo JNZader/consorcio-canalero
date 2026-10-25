@@ -173,9 +173,11 @@ export function getStoredAccessToken(): string | null {
  * SEC-04, accepted risk: the access token is stored in sessionStorage so a
  * reload can restore the session. Any script running on this origin can read
  * it. That stays acceptable while script-src is 'self' (no inline script, no
- * eval), the access token lives eight hours, and the refresh token stays
- * in an HttpOnly cookie. Keeping the access token in memory only would drop
- * the session on every reload; that behavior change is a separate auth change.
+ * eval), the access token lives 60 minutes (SEG-2, 2026-10-24 — was eight
+ * hours; the silent 401 refresh keeps sessions alive), and the refresh token
+ * stays in an HttpOnly cookie. Keeping the access token in memory only would
+ * drop the session on every reload; that behavior change is a separate auth
+ * change.
  */
 export function persistAuthSession(session: AuthSession): void {
   if (hasLocalLogoutTombstone()) return;

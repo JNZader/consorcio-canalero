@@ -96,10 +96,14 @@ En el VPS, después de tener el compose nuevo: `docker compose pull martin` y
 `docker compose up -d martin`. Si `/health` no pasa, el rollback es volver el
 pin anterior `v0.14.2@sha256:2326005041…` en una ventana con backup.
 
-El Dockerfile de pgvector de desarrollo (`docker/postgres/Dockerfile`) sigue en
-`pgrouting/pgrouting:16-3.4-3.6.1` porque el paquete
-`postgresql-16-pgvector=0.8.6-1.pgdg11+1` es un pin de Debian 11. No es la
-imagen de producción.
+El Dockerfile de pgvector de desarrollo (`docker/postgres/Dockerfile`) FROMs
+exactamente la misma imagen pineada que el compose
+(`pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f…`); el paquete
+`postgresql-16-pgvector=0.8.6-1.pgdg11+1` se sirve desde
+`apt-archive.postgresql.org` (PGDG retiró `bullseye-pgdg` del repositorio
+normal al terminar el LTS de Debian 11, 2026-08-31). La igualdad
+overlay↔compose la pinnea `tests/test_infra_v6_contracts.py`. Sigue sin
+ser la imagen de producción (solo `make rag-db` / `test-rag`).
 
 ### Upgrade de Postgres / pgRouting (DB-05)
 
@@ -141,8 +145,9 @@ no arranca con un binario 17. En desarrollo el volumen nombrado del compose
 es el mismo caso; en CI los tests usan `postgis/postgis:16-3.4` vacío, pero
 el gate de migraciones de `deploy.yml` y el Postgres embebido del server
 comparten el pin de producción. El Dockerfile de pgvector
-(`docker/postgres/Dockerfile`) sigue en `16-3.4-3.6.1` porque
-`postgresql-16-pgvector=0.8.6-1.pgdg11+1` es un paquete de Debian 11.
+(`docker/postgres/Dockerfile`) FROMs ese mismo pin (ver arriba); el
+paquete `postgresql-16-pgvector=0.8.6-1.pgdg11+1` llega desde el archivo
+congelado de PGDG.
 
 Hay también `pgrouting/pgrouting:16-3.5-4.0` (mismo major de Postgres,
 pgRouting 4.0). Eso tampoco se aplica acá: `ALTER EXTENSION pgrouting UPDATE`

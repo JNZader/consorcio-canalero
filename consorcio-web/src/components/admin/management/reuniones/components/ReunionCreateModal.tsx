@@ -23,6 +23,7 @@ export function ReunionCreateModal({
   setNewChecklistPoint,
   onAddChecklistPoint,
   onSubmit,
+  submitting,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
@@ -31,6 +32,7 @@ export function ReunionCreateModal({
   setNewChecklistPoint: (value: string) => void;
   onAddChecklistPoint: () => void;
   onSubmit: (values: ReunionCreateFormValues) => void | Promise<void>;
+  submitting: boolean;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Nueva Reunión" size="lg">
@@ -128,7 +130,7 @@ export function ReunionCreateModal({
               </Text>
             ) : null}
           </Stack>
-          <Button type="submit" mt="xs">
+          <Button type="submit" mt="xs" loading={submitting}>
             Crear Reunión
           </Button>
         </Stack>

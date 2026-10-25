@@ -290,6 +290,65 @@ describe('ReunionesPanel', () => {
     });
   });
 
+  it('FE-5: disables the create button while the POST is in flight and keeps the modal open on failure', async () => {
+    const user = userEvent.setup();
+    let rejectPost: ((reason?: unknown) => void) | undefined;
+
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/reuniones' && !options) return [];
+      if (path === '/denuncias?limit=50') return { items: [] };
+      if (path === '/tramites') return { data: [] };
+      if (path === '/infraestructura/assets') return { results: [] };
+      if (path === '/reuniones' && options?.method === 'POST') {
+        return new Promise((_resolve, reject) => {
+          rejectPost = reject;
+        });
+      }
+      return {};
+    });
+
+    renderPanel();
+    await screen.findByText('Reuniones de Comisión');
+
+    await user.click(screen.getByRole('button', { name: /nueva reunión/i }));
+    const dialog = await screen.findByRole('dialog', { name: /nueva reunión/i });
+
+    await user.type(within(dialog).getByLabelText(/t[ií]tulo/i), 'Reunion urgente');
+    fireEvent.change(within(dialog).getByLabelText(/fecha y hora/i), {
+      target: { value: '2026-05-12T09:00' },
+    });
+    await user.type(within(dialog).getByPlaceholderText(/escribí un punto/i), 'Revisar presupuesto');
+    await user.click(within(dialog).getByRole('button', { name: /añadir punto/i }));
+
+    const submit = within(dialog).getByRole('button', { name: /crear reuni[oó]n/i });
+    await user.click(submit);
+
+    // Mientras el POST está en vuelo el botón queda bloqueado: un segundo
+    // click no puede duplicar la reunión.
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(
+        ([path, options]) => path === '/reuniones' && options?.method === 'POST'
+      )
+    ).toHaveLength(1);
+
+    await act(async () => {
+      rejectPost?.(new Error('backend unavailable'));
+    });
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo crear la reunión',
+          color: 'red',
+        })
+      );
+    });
+    // El modal sigue abierto para corregir y reintentar.
+    expect(screen.getByRole('dialog', { name: /nueva reunión/i })).toBeInTheDocument();
+    await waitFor(() => expect(submit).toBeEnabled());
+  });
+
   it('confirms and deletes the exact agenda item through the 204 endpoint', async () => {
     const user = userEvent.setup();
     let deleted = false;

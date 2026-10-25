@@ -68,7 +68,11 @@ jobs:
           # skip tests, mutation, and security. Split both fields into separate
           # lines so each path is matched on its own.
           CHANGED="$(cut -f2- "$RUNNER_TEMP/backend-changes.txt" | tr '\t' '\n')"
-          if printf '%s\n' "$CHANGED" | grep -qE '^(gee-backend/|\.github/workflows/)'; then
+          # docker/ and docker-compose* are included because
+          # tests/test_infra_v6_contracts.py pins the pgvector overlay base
+          # to the compose postgres image — a PR bumping both must run that
+          # test, not wait for the weekly cron (review RSKI-001).
+          if printf '%s\n' "$CHANGED" | grep -qE '^(gee-backend/|\.github/workflows/|docker/|docker-compose)'; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
             python3 gee-backend/scripts/cosmic_mutation_plan.py --status-file "$RUNNER_TEMP/backend-changes.txt" --github-output "$GITHUB_OUTPUT"
           else
