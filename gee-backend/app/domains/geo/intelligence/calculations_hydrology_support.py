@@ -1214,12 +1214,22 @@ def simular_escorrentia_impl(
                 "properties": {
                     "punto_inicio": list(punto_inicio),
                     "lluvia_mm": lluvia_mm,
-                    "longitud_m": len(coords),
+                    # Geo audit 2026-10 (GEO-2): this used to be len(coords) —
+                    # one vertex per D8 step (~one 30 m GLO-30 cell) — so a 150 km
+                    # trace reported longitud_m=5000. The true length is the
+                    # LineString's own length, in the flow-direction raster's CRS
+                    # units: the DEM pipeline reprojects to UTM before deriving
+                    # flow directions, so these are metres. A geographic-CRS
+                    # raster would yield degrees; this pipeline never produces one.
+                    "longitud_m": round(line.length, 2),
                     "acumulacion_max": max(accumulations) if accumulations else 0.0,
                     "acumulacion_media": sum(accumulations) / len(accumulations)
                     if accumulations
                     else 0.0,
-                    "pasos": len(coords),
+                    # D8 moves taken. The first coord is the starting point, not a
+                    # step, so this is vertices - 1 — genuinely different from
+                    # longitud_m now that the latter is a real length.
+                    "pasos": len(coords) - 1,
                 },
             }
         ],
