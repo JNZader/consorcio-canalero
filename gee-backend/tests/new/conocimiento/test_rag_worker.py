@@ -278,3 +278,221 @@ class _SidecarNulo:
 
     def __exit__(self, *_exc):
         return None
+
+
+# ---------------------------------------------------------------------------
+# The wedge scenario (audit RAG-5), against real Postgres and the real loop
+# ---------------------------------------------------------------------------
+
+
+class TestElItemVenenosoNoWedgeaLaCola:
+    """RED→GREEN for RAG-5: an unnamed exception on the OLDEST item used to
+    crash-loop the worker on that same item forever (`Restart=always` + a claim
+    that writes no intermediate state). With the accountant wired into `bucle`,
+    the third crash terminalizes the item and the NEXT claim moves the queue.
+
+    Committed rows and explicit cleanup, like `test_buzon`'s SKIP LOCKED test:
+    the accountant writes from a SEPARATE committed transaction, which the
+    shared `db` fixture's never-committed outer transaction can never show it.
+    """
+
+    def _sembrar(self, test_engine, monkeypatch):
+        """A unique snapshot + a poison item (oldest) + a healthy one."""
+        import uuid as _uuid
+
+        from sqlalchemy import text
+        from sqlalchemy.orm import Session
+
+        from app.domains.conocimiento import service
+        from tests.new.conocimiento.test_trabajador import _resultado_con_un_hit
+
+        marca = f"rag5-{_uuid.uuid4().hex[:8]}"
+        sha = (_uuid.uuid4().hex + _uuid.uuid4().hex)[:40]
+        sembrador = Session(bind=test_engine)
+        try:
+            sembrador.execute(
+                text(
+                    "INSERT INTO rag_corpus (corpus_sha, repo_url, manifest_version, "
+                    "articulos_declarados, activo) VALUES (:sha, 'u', '2', 1, true)"
+                ),
+                {"sha": sha},
+            )
+            sembrador.execute(
+                text(
+                    "INSERT INTO rag_documento (corpus_sha, documento_id, tipo, es_secundaria, "
+                    "jurisdiccion, estado_vigencia, clasificacion) VALUES "
+                    "(:sha, 'ley-9750', 'ley-provincial', false, 'provincial', 'vigente', 'publico')"
+                ),
+                {"sha": sha},
+            )
+            sembrador.execute(
+                text(
+                    "INSERT INTO rag_unidad (corpus_sha, citation_key, documento_id, tipo_chunk, "
+                    "texto, texto_indexado, source_file, source_offset) VALUES "
+                    "(:sha, 'ley-9750#art1', 'ley-9750', 'articulo', :t, :t, 'f.md', 0)"
+                ),
+                {"sha": sha, "t": "El consorcio administra la red de canales."},
+            )
+            veneno, sana = f"{marca}-veneno", f"{marca}-sana"
+            for pregunta in (veneno, sana):
+                sembrador.execute(
+                    text("INSERT INTO rag_consulta (id, pregunta) VALUES (gen_random_uuid(), :p)"),
+                    {"p": pregunta},
+                )
+            sembrador.execute(
+                text(
+                    "UPDATE rag_consulta SET creada_en = now() - interval '1 hour' "
+                    "WHERE pregunta = :p"
+                ),
+                {"p": veneno},
+            )
+            sembrador.commit()
+        finally:
+            sembrador.close()
+
+        def _recuperar(_db, _sha, pregunta, **_kw):
+            if "veneno" in pregunta:
+                raise KeyError("bug")
+            return _resultado_con_un_hit()
+
+        monkeypatch.setattr(service, "recuperar", _recuperar)
+        return marca, sha, veneno, sana
+
+    def _limpiar(self, test_engine, marca: str, sha: str) -> None:
+        from sqlalchemy import text
+        from sqlalchemy.orm import Session
+
+        sesion = Session(bind=test_engine)
+        try:
+            sesion.execute(
+                text("DELETE FROM rag_consulta WHERE pregunta LIKE :patron"),
+                {"patron": f"{marca}-%"},
+            )
+            sesion.execute(
+                text("DELETE FROM rag_decision_ruta WHERE pregunta LIKE :patron"),
+                {"patron": f"{marca}-%"},
+            )
+            sesion.execute(text("DELETE FROM rag_unidad WHERE corpus_sha = :sha"), {"sha": sha})
+            sesion.execute(text("DELETE FROM rag_documento WHERE corpus_sha = :sha"), {"sha": sha})
+            sesion.execute(text("DELETE FROM rag_corpus WHERE corpus_sha = :sha"), {"sha": sha})
+            sesion.commit()
+        finally:
+            sesion.close()
+
+    def test_la_tercera_caida_aparta_al_veneno_y_la_cola_avanza(
+        self, test_engine, monkeypatch, caplog
+    ):
+        from sqlalchemy import text
+        from sqlalchemy.orm import Session, sessionmaker
+
+        from app.domains.conocimiento import buzon, routing, trabajador
+        from app.domains.conocimiento.generacion import SalidaProveedor
+        from tests.new.conocimiento.test_trabajador import (
+            EmbedderFalso,
+            GeneradorFalso,
+            PARAMETROS,
+            RerankerFalso,
+            centroides_hacia,
+            terminos_ok,
+        )
+
+        marca, sha, veneno, sana = self._sembrar(test_engine, monkeypatch)
+        try:
+            fabrica = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+            contador = rag_worker.ContadorDeCaidas(fabrica)
+            parada = rag_worker.Parada()
+            parada.dormir = lambda _s: None  # type: ignore[method-assign] — no sleeping
+            generador = GeneradorFalso(
+                SalidaProveedor(texto="Corresponde [ley-9750#art1].", truncado=False)
+            )
+
+            def _procesar(sesion):
+                contador.nueva_vuelta()
+                return trabajador.procesar_uno(
+                    sesion,
+                    corpus_sha=sha,
+                    embedder=EmbedderFalso(),
+                    centroides=centroides_hacia(routing.CLASE_LEGAL),
+                    parametros=PARAMETROS,
+                    reranker=RerankerFalso(),
+                    crear_generador=lambda _p: generador,
+                    verificar_terminos_fn=terminos_ok,
+                    al_reclamar=contador.al_reclamar,
+                )
+
+            import logging
+
+            with caplog.at_level(logging.ERROR, logger="conocimiento.worker"):
+                # N crash/restart cycles: the bug propagates EVERY time — the
+                # accountant caps the blast radius, it does not soften the crash.
+                for ciclo in range(buzon.MAX_CAIDAS_WORKER):
+                    with pytest.raises(KeyError, match="bug") as caida:
+                        rag_worker.bucle(
+                            fabrica,
+                            _procesar,
+                            parada=parada,
+                            intervalo_s=0.01,
+                            al_caer=contador.al_caer,
+                        )
+                    assert type(caida.value) is KeyError, (
+                        f"ciclo {ciclo}: la caída dejó de propagar — los bugs son ruidosos"
+                    )
+
+                lector = Session(bind=test_engine)
+                try:
+                    fila = lector.execute(
+                        text(
+                            "SELECT estado, caidas_worker, respuesta FROM rag_consulta "
+                            "WHERE pregunta = :p"
+                        ),
+                        {"p": veneno},
+                    ).one()
+                finally:
+                    lector.close()
+                assert fila.estado == "generacion_fallida", (
+                    f"tras {buzon.MAX_CAIDAS_WORKER} caídas el veneno sigue "
+                    f"{fila.estado!r}: el worker seguiría reclamándolo para siempre"
+                )
+                assert fila.caidas_worker == buzon.MAX_CAIDAS_WORKER
+                motivo = fila.respuesta["motivo"]
+                assert f"{buzon.MAX_CAIDAS_WORKER} caídas" in motivo
+                assert "KeyError" in motivo
+
+                # The terminalization itself is loud and names the item.
+                assert "item_envenenado" in caplog.text
+
+            # The restart systemd would perform: the queue must MOVE now.
+            procesados = rag_worker.bucle(
+                fabrica,
+                _procesar,
+                parada=parada,
+                intervalo_s=0.01,
+                max_items=1,
+                al_caer=contador.al_caer,
+            )
+            assert procesados == 1, "el worker siguió reclamando al veneno apartado"
+
+            lector = Session(bind=test_engine)
+            try:
+                sana_fila = lector.execute(
+                    text("SELECT estado, caidas_worker FROM rag_consulta WHERE pregunta = :p"),
+                    {"p": sana},
+                ).one()
+                pendientes = lector.execute(
+                    text(
+                        "SELECT count(*) FROM rag_consulta WHERE pregunta LIKE :patron "
+                        "AND estado = 'pendiente'"
+                    ),
+                    {"patron": f"{marca}-%"},
+                ).scalar_one()
+                pendiente_libre = buzon.reclamar_pendiente(lector)
+            finally:
+                lector.rollback()
+                lector.close()
+            assert sana_fila.estado == "respuesta"
+            assert sana_fila.caidas_worker == 0
+            assert pendientes == 0 and pendiente_libre is None, (
+                "quedó algo reclamable del lote: la cola no terminó de avanzar"
+            )
+        finally:
+            self._limpiar(test_engine, marca, sha)

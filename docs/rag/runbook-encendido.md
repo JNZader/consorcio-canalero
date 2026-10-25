@@ -274,6 +274,18 @@ fixing the record or the credential resumes processing with nothing lost. An
 unnamed exception propagates instead — a loop that swallows bugs is a worker that
 reports itself alive while processing nothing.
 
+**A crash no longer wedges the queue (odd packet, audit RAG-5).** `Restart=always`
+above plus a claim that never writes an intermediate state used to mean: one
+poison item crashes the worker, systemd restarts it into the SAME oldest item
+every ~10 s, and the queue stops moving with `worker_demorado` as the only
+symptom. The worker now keeps a per-item crash count (`rag_consulta.caidas_worker`,
+migration `conocimiento_008`) written from a committed transaction after each
+crash; at three crashes the item is terminalized to `generacion_fallida` with a
+`motivo` naming the count and the last cause, and the queue moves on. The crash
+itself still propagates every time — traceback, non-zero exit, restart — and the
+terminalization logs CRITICAL: a dead-lettered item is a capped blast radius
+around a bug that is still live, not a resolution of it.
+
 Exit codes: `0` clean stop on SIGTERM/SIGINT · `1` refused to start (unverified
 terms, unbuildable provider, no CUDA reranker) · `2` usage, including "this
 interpreter has no torch".
@@ -381,12 +393,20 @@ docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q postgres)"
 
 ### Step 6 — `alembic upgrade head`
 
-The box is on **`conocimiento_004`**. Head is **`conocimiento_007`**, and the
-path between them is **six revisions, not three**: `conocimiento_005`'s
-`down_revision` is `0023_add_relevamiento_tramo`, so the `flujo-caminos`
-revisions sit *inside* this arc's own upgrade path. That is not an accident of
-enumeration — it is the structural reason the ceremony is joint and the upgrade
-runs exactly once.
+The box is on **`conocimiento_004`**. When this runbook was written the head was
+**`conocimiento_007`** and the path between them was six revisions. The tree has
+grown above `conocimiento_007` since — the `lluvia_ext` arc, the canal-publicación
+chain and the caminos-welding chain all chained onto it, and the RAG-5 odd packet
+adds `conocimiento_008` on the current tip — so **the count is now 25 and the
+enumeration below is a MAP, not a census**: rows 1–6 are this arc's own, row 7
+groups the other arcs that the shared upgrade carries (exactly the situation
+rows 1–3 already documented for `flujo-caminos`), and row 8 is the odd packet's.
+`conocimiento_005`'s `down_revision` is `0023_add_relevamiento_tramo`, so other
+arcs' revisions sit *inside* this arc's own upgrade path. That is not an accident
+of enumeration — it is the structural reason the ceremony is joint and the
+upgrade runs exactly once. **`alembic history -r conocimiento_004:head` (the
+first command below) is the authoritative list; read it, don't count on this
+table.**
 
 | # | Revision | What it creates |
 |---|---|---|
@@ -396,21 +416,20 @@ runs exactly once.
 | 4 | `conocimiento_005` | widens the `clasificacion` CHECK to admit `institucional`; adds the nullable `clasificacion_evidencia` column |
 | 5 | `conocimiento_006` | `decision_ruta` |
 | 6 | `conocimiento_007` | `buzon_consultas` |
+| 7 | `lluvia_ext_001`…`006`, `0024`…`0028`, `zz_audit_v6_db`, `zz_elevation_profile_cache`, `0029`…`0033` | the rainfall-extreme, canal-publicación and caminos-welding arcs that chained above `conocimiento_007` after this runbook was written — not this arc's objects, carried by the single shared upgrade for the same reason as rows 1–3 |
+| 8 | `conocimiento_008` | `rag_consulta.caidas_worker` — the mailbox's bounded crash counter (odd packet, audit finding RAG-5: `odd/tasks/audit-2026-10-rag-mailbox-deadletter.md`) |
 
-**Four road tables appearing during this step — `red_vial`, `cruce_camino`,
-`relevamiento_tramo`, `tramo_clasificacion_candidata` — is EXPECTED and is not
-this arc running more than it was asked to.** They are `flujo-caminos` O.1's
-objects, carried by the single shared upgrade the interleaving rule at the top
-of this file (point 3) already committed to. An operator who sees them and stops
-the migration halfway is creating the one failure state this step calls
-dangerous.
+**Tables from row 7 appearing during this step is EXPECTED and is not this arc
+running more than it was asked to** — the same rule the four road tables of
+rows 1–3 already established. An operator who sees them and stops the migration
+halfway is creating the one failure state this step calls dangerous.
 
-Print the plan before running it, so the six are seen before they are applied:
+Print the plan before running it, so every revision is seen before it is applied:
 
 ```
 docker compose run --rm backend alembic history -r conocimiento_004:head
 docker compose run --rm backend alembic upgrade head
-docker compose run --rm backend alembic heads   # expect: conocimiento_007 (head)
+docker compose run --rm backend alembic heads   # expect: conocimiento_008 (head)
 ```
 
 **`conocimiento_005` MUST precede step 7.** Re-ingesting before it means the
@@ -807,7 +826,7 @@ enforces them but this list.
 
 | # | Fact | Evidence |
 |---|---|---|
-| 4 | Migrations at head and objects present | step 6's probes; `alembic heads` = `conocimiento_007` |
+| 4 | Migrations at head and objects present | step 6's probes; `alembic heads` = `conocimiento_008` |
 | 5 | Step 8 exits **0** — all 35 rows match in class and evidence | `scripts/rag_verificar_clasificacion.py` |
 | 6 | Retrieval bars cleared on the ratified arm, published beside the recorded FTS-only baselines `0.138` / `0.091` / `0.040` | the `rag_eval.py` report |
 | 7 | The answer set is `RATIFICADO` and scored — invented-citation `0.00`, uncited-claim `0.00`, contradicted-claim `0.00` | the answer-level block of the report |

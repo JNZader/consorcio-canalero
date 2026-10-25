@@ -42,6 +42,21 @@ not sit `pendiente` forever with no explanation. The signal is the item's own
 age: a `pendiente` older than the configured window IS a worker that has not
 picked it up. A separate "last heartbeat" row would be a second thing to keep
 true, and one that reports a healthy worker while a poison item sits unclaimed.
+
+**The one number a crash is allowed to leave behind (audit RAG-5).** The claim
+design above has a blast radius the design did not name: an unnamed exception
+on the OLDEST item kills the worker, `Restart=always` brings it back in 10 s,
+and it claims the SAME oldest item again — a crash-loop with zero queue
+progress whose only signal is `worker_demorado`. The crash must keep
+propagating (that stance is not negotiable), so what breaks the loop is
+`registrar_caida`: after the rollback, the worker spends one extra committed
+transaction incrementing `caidas_worker`, and at `MAX_CAIDAS_WORKER`
+terminalizes the item to `generacion_fallida` — an existing state, reached
+through the existing `persistir_resultado`, so no seventh state and no new
+coupling. The count is written from OUTSIDE the crashed transaction because
+anything written inside it is rolled back with the crash; that is also why it
+is a column on the item and not a sidecar — the row is the only place whose
+lifetime matches the item's.
 """
 
 from __future__ import annotations
@@ -53,6 +68,7 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from app.domains.conocimiento.generacion import ESTADO_GENERACION_FALLIDA
 from app.domains.conocimiento.models import ESTADO_PENDIENTE, RagConsulta
 from app.domains.conocimiento.schemas import RespuestaConocimiento
 
@@ -61,6 +77,20 @@ from app.domains.conocimiento.schemas import RespuestaConocimiento
 #: stored verbatim, embedded, and put in a prompt. They are different limits and
 #: a deployment needs both: a 1 MB body of valid UTF-8 is one question.
 PREGUNTA_MAX_CHARS = 2000
+
+#: How many worker crashes on the SAME `pendiente` item before it is
+#: terminalized to `generacion_fallida` (audit RAG-5's dead-letter bound).
+#:
+#: Three, because the count is evidence, not therapy: one crash can be a
+#: transient (an OOM at the worst moment), two is a pattern, and three is a
+#: pattern with a witness — by then the bug has propagated loudly three times
+#: and the item has cost the queue three restart cycles. Making it larger
+#: multiplies the wedge's blast radius for no extra diagnostic value; making it
+#: smaller lets a single transient kill a question a second attempt would have
+#: answered. A constant and not a knob because its value is a claim about how
+#: many crashes are signal, and a knob would let an operator tune the signal
+#: away under load instead of fixing the bug the crashes are naming.
+MAX_CAIDAS_WORKER = 3
 
 
 class PreguntaInvalida(ValueError):
@@ -217,6 +247,62 @@ def persistir_resultado(
     item.respuesta = carga
     item.decision_ruta_id = decision_ruta_id
     item.procesada_en = ahora or datetime.datetime.now(datetime.timezone.utc)
+    db.flush()
+    return item
+
+
+def registrar_caida(
+    db: Session,
+    item_id: uuid.UUID,
+    *,
+    causa: BaseException,
+    max_caidas: int = MAX_CAIDAS_WORKER,
+) -> RagConsulta | None:
+    """Count one worker crash on a `pendiente` item; at the limit, dead-letter it.
+
+    Called ONLY from the crash path (`rag_worker`'s accountant), ONLY after the
+    crashed transaction was rolled back, and ONLY from a transaction the CALLER
+    commits — the count exists precisely because everything written inside the
+    crashed transaction died with it. A clean run, whatever it terminalizes,
+    never passes through here.
+
+    Returns the item with the count applied (terminalized when the count reached
+    `max_caidas`), or `None` when there was nothing to count:
+
+    * the item no longer exists (purged between the crash and this write);
+    * the item is no longer `pendiente` — another worker finished it while this
+      one was dying, and counting crashes on a finished item would be writing
+      history nobody can act on;
+    * the row is locked by another worker (`SKIP LOCKED`): this function runs
+      inside a dying process and must never WAIT behind a live one — if that
+      worker also crashes on the item, ITS accountant does the counting.
+
+    The terminal write goes through `persistir_resultado`, so the dead-lettered
+    item is a normal terminal item: payload, `procesada_en`, the coupling
+    CHECKs. The `motivo` follows `generacion.py`'s convention (a snake_case
+    token plus the honest detail) and names the count and the last cause — an
+    operator reading the card must see "the worker fell on this three times",
+    not a bare "failed".
+    """
+    item = db.execute(
+        select(RagConsulta).where(RagConsulta.id == item_id).with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+    if item is None or item.estado != ESTADO_PENDIENTE:
+        return None
+    item.caidas_worker = (item.caidas_worker or 0) + 1
+    if item.caidas_worker >= max_caidas:
+        return persistir_resultado(
+            db,
+            item,
+            RespuestaConocimiento(
+                estado=ESTADO_GENERACION_FALLIDA,
+                motivo=(
+                    f"caidas_worker: {item.caidas_worker} caídas del worker al procesar "
+                    f"este ítem (límite {max_caidas}); última causa "
+                    f"{type(causa).__name__}: {causa}"
+                ),
+            ),
+        )
     db.flush()
     return item
 
