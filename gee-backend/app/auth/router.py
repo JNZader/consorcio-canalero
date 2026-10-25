@@ -17,6 +17,7 @@ from app.auth.dependencies import (
 from app.auth.models import User
 from app.auth.refresh_tokens import (
     REFRESH_TOKEN_LIFETIME,
+    RotateFailure,
     find_active,
     issue_token,
     revoke_all_for_user,
@@ -25,9 +26,11 @@ from app.auth.refresh_tokens import (
 )
 from app.auth.schemas import UserCreate, UserRead, UserUpdate
 from app.config import settings
+from app.core.logging import get_logger
 from app.db.session import get_async_db
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -130,7 +133,13 @@ async def refresh_access_token(
     (already revoked), or belongs to a deleted user. On replay we
     revoke the whole family before returning the 401 — same response
     body to the client either way, so an attacker doesn't learn that
-    they tripped the alarm.
+    they tripped the alarm. Every genuine-failure 401 also deletes the
+    refresh cookie.
+
+    ONE exception (RES2-002): the two-tab race LOSS. Another tab won
+    the CAS rotation seconds ago; its rotated cookie is alive in the
+    shared browser jar, so the loser's 401 must NOT delete the cookie —
+    see the ``RotateFailure.RACE_LOST`` branch below.
     """
     raw = request.cookies.get(_REFRESH_COOKIE)
     if not raw:
@@ -169,19 +178,56 @@ async def refresh_access_token(
         _clear_refresh_cookie(response)
         return response
 
-    rotated = await rotate(
+    outcome = await rotate(
         session,
         raw_token=raw,
         user=user,
         user_agent=request.headers.get("user-agent", ""),
         client_ip=request.client.host if request.client else None,
     )
-    if rotated is None:
+    if isinstance(outcome, RotateFailure):
         response = JSONResponse({"detail": "invalid refresh token"}, status_code=401)
-        _clear_refresh_cookie(response)
+        if outcome is RotateFailure.RACE_LOST:
+            # A concurrent revocation beat this request to the CAS — usually
+            # another tab winning the rotation (serialized ahead of us by
+            # the per-family advisory xact lock, so its Set-Cookie already
+            # landed; the winner's ROTATED token is valid and sits in the
+            # shared browser jar this response would write to). The
+            # fresh-stamp rule ALSO fires when a logout-all sweep races the
+            # refresh — family dead, no winner — harmless: no delete is a
+            # no-op there and it self-heals to REPLAY past the window (see
+            # RotateFailure). The common case is the race: delete_cookie
+            # here empties the shared jar and kills the session up to an
+            # hour later (60-min access tokens), in a DIFFERENT tab than
+            # the race. The 401 stands — a loser may not mint an access
+            # token — but the cookie must survive so the NEXT refresh
+            # succeeds against the winner's token. The response body is
+            # identical on every failure path; only the delete directive
+            # differs.
+            #
+            # Ordering caveat (review RESC-001): "serialized ahead of us"
+            # holds only while the winner's lock-held critical section stays
+            # under our lock_timeout. Under a DB brownout a loser can TIME
+            # OUT on the lock instead — classified INVALID, cookie cleared
+            # below — while the family is still alive: the ordering claim
+            # above is then falsified by same-browser connection jitter.
+            # Recoverable by construction (a genuinely dead family clears on
+            # the next refresh) but the delayed-logout race can still fire
+            # through that path under degradation. Accepted residual, pinned
+            # by the _LOCK_TIMEOUT_MS/RACE_WINDOW coupling note in
+            # refresh_tokens.py.
+            logger.info(
+                "refresh CAS lost to a fresh revocation stamp (tab race or "
+                "logout sweep): cookie preserved",
+                extra={"user_id": str(user.id)},
+            )
+        else:
+            # Genuine failure (unknown/expired/lock-timeout/replay with the
+            # family burned): the cookie is worthless or dead — drop it.
+            _clear_refresh_cookie(response)
         return response
 
-    new_raw, _row = rotated
+    new_raw, _row = outcome
     strategy = get_jwt_strategy()
     access_token = await strategy.write_token(user)
     response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
