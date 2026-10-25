@@ -79,6 +79,10 @@ export const erroresUi = {
     'No pudimos cargar tus sugerencias',
     'Actualizá la página. Si sigue igual, volvé a entrar más tarde.'
   ),
+  cargarTramites: mensajeError(
+    'No pudimos cargar los trámites',
+    'Tocá Reintentar. Si sigue igual, esperá un momento y volvé a entrar.'
+  ),
   cargarMapa: mensajeError(
     'No pudimos cargar el mapa',
     'Recargá la página. Si sigue igual, probá de nuevo en unos minutos.'

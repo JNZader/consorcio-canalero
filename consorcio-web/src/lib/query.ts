@@ -85,16 +85,11 @@ export interface ReportFilters {
 // CUSTOM ERROR CLASS
 // ===========================================
 
-export class QueryError extends Error {
-  constructor(
-    message: string,
-    public readonly statusCode?: number,
-    public readonly endpoint?: string
-  ) {
-    super(message);
-    this.name = 'QueryError';
-  }
-}
+// QueryError lives in `queryError.ts` (leaf) so `api/core.ts` can throw it
+// without importing this module (core → query → api/index → core cycle;
+// FE-3 wiring + RES2-001 transient refresh failures). Re-exported here to
+// keep the historical `import { QueryError } from './query'` working.
+export { QueryError } from './queryError';
 
 // ===========================================
 // DASHBOARD STATS HOOK
