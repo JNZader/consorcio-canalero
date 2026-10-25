@@ -457,6 +457,20 @@ class Settings(BaseSettings):
     # when persisting; `app.mount("/uploads", StaticFiles(...))` serves it.
     uploads_root: str = "/app/uploads"
     uploads_public_base: str = "/uploads"
+    # SEG-1 (audit 2026-10-23): decoded-pixel cap for denuncia photo uploads.
+    # MAX_PHOTO_BYTES bounds only the COMPRESSED bytes — a 10 MB JPEG can
+    # still declare ~100-150 Mpx, and Pillow decodes it twice (verify +
+    # re-encode) for ~300-450 MB of RGB per request. Mirrors
+    # geo_map_pdf_max_image_px (the same fix already shipped for the map-PDF
+    # surface): 40 Mpx ≈ 120 MB of RGB per decode and sits above every
+    # mainstream phone camera output (12-24 Mpx; high-res sensor modes top
+    # out around 50 Mpx, and those JPEGs rarely fit the 10 MB byte cap).
+    denuncia_photo_max_image_px: int = 40_000_000
+
+    # Concurrent photo validate/strip/re-encode pipelines (SEG-1 review
+    # RSK1-001). Each pipeline peaks ~230 MB of RSS at the pixel cap; this
+    # is the in-flight ceiling, mirroring geo_map_pdf_max_concurrency.
+    denuncia_photo_max_concurrency: int = 2
 
     @property
     def database_sync_url(self) -> str:
