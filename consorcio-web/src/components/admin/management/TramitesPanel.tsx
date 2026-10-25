@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Container,
@@ -76,6 +77,8 @@ function formatDate(value: string) {
 export default function TramitesPanel() {
   const [tramites, setTramites] = useState<TramiteListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [selectedTramite, setSelectedTramite] = useState<TramiteDetail | null>(null);
   const [newSeguimiento, setNewSeguimiento] = useState('');
   const [addingSeguimiento, setAddingSeguimiento] = useState(false);
@@ -88,8 +91,13 @@ export default function TramitesPanel() {
     try {
       const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
       setTramites(response.items ?? []);
+      setLoadError(false);
     } catch (err) {
       logger.error('Error fetching trámites:', err);
+      // FE-6: sin este estado, un fallo de carga se renderiza igual que una
+      // tabla vacía ("no hay trámites") y el operador no distingue un backend
+      // caído de un padrón sin expedientes.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -103,6 +111,11 @@ export default function TramitesPanel() {
       openHistory();
     } catch (err) {
       logger.error('Error fetching trámite detail:', err);
+      notifications.show({
+        title: 'No se pudo cargar el seguimiento',
+        message: err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.',
+        color: 'red',
+      });
     }
   };
 
@@ -131,6 +144,9 @@ export default function TramitesPanel() {
   });
 
   const handleCreate = async (values: TramiteFormValues) => {
+    // FE-5: mismo guard anti doble-submit que el fix C5/#589 de finanzas —
+    // sin `submitting`, cada click dispara un POST y duplica el expediente.
+    setSubmitting(true);
     try {
       await apiFetch('/tramites', {
         method: 'POST',
@@ -146,8 +162,20 @@ export default function TramitesPanel() {
       close();
       form.reset();
       await fetchTramites();
+      notifications.show({
+        title: 'Trámite registrado',
+        message: 'El trámite fue guardado correctamente',
+        color: 'green',
+      });
     } catch (err) {
       logger.error('Error creating trámite:', err);
+      notifications.show({
+        title: 'No se pudo registrar el trámite',
+        message: err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.',
+        color: 'red',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -242,56 +270,68 @@ export default function TramitesPanel() {
         </Button>
       </Group>
 
-      <Paper withBorder radius="md">
-        <Table.ScrollContainer minWidth={680} type="native">
-          <Table verticalSpacing="sm" aria-label="Tabla de trámites">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Trámite</Table.Th>
-                <Table.Th>Estado</Table.Th>
-                <Table.Th>Prioridad</Table.Th>
-                <Table.Th>Fecha de ingreso</Table.Th>
-                <Table.Th>Acciones</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {tramites.map((tramite) => (
-                <Table.Tr key={tramite.id}>
-                  <Table.Td>
-                    <Stack gap={0}>
-                      <Text fw={500} size="sm">
-                        {tramite.titulo}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {tramite.tipo} · {tramite.solicitante}
-                      </Text>
-                    </Stack>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light">{formatTramiteEstado(tramite.estado)}</Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{tramite.prioridad}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{formatDate(tramite.fecha_ingreso)}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <ActionIcon
-                      variant="light"
-                      color="blue"
-                      onClick={() => fetchDetalle(tramite.id)}
-                      aria-label={`Ver seguimiento de ${tramite.titulo}`}
-                    >
-                      <IconHistory size={16} />
-                    </ActionIcon>
-                  </Table.Td>
+      {loadError ? (
+        // FE-6: mismo cartel persistente con Reintentar que AdminDashboard usa
+        // para `cargarDashboard`. Un fallo de carga NO se muestra como tabla
+        // vacía: el operador ve que falló y puede reintentar sin recargar.
+        <Alert color="red" title={erroresUi.cargarTramites.titulo}>
+          {erroresUi.cargarTramites.detalle}
+          <Button mt="sm" size="xs" onClick={fetchTramites}>
+            Reintentar
+          </Button>
+        </Alert>
+      ) : (
+        <Paper withBorder radius="md">
+          <Table.ScrollContainer minWidth={680} type="native">
+            <Table verticalSpacing="sm" aria-label="Tabla de trámites">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Trámite</Table.Th>
+                  <Table.Th>Estado</Table.Th>
+                  <Table.Th>Prioridad</Table.Th>
+                  <Table.Th>Fecha de ingreso</Table.Th>
+                  <Table.Th>Acciones</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Paper>
+              </Table.Thead>
+              <Table.Tbody>
+                {tramites.map((tramite) => (
+                  <Table.Tr key={tramite.id}>
+                    <Table.Td>
+                      <Stack gap={0}>
+                        <Text fw={500} size="sm">
+                          {tramite.titulo}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {tramite.tipo} · {tramite.solicitante}
+                        </Text>
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light">{formatTramiteEstado(tramite.estado)}</Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{tramite.prioridad}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{formatDate(tramite.fecha_ingreso)}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <ActionIcon
+                        variant="light"
+                        color="blue"
+                        onClick={() => fetchDetalle(tramite.id)}
+                        aria-label={`Ver seguimiento de ${tramite.titulo}`}
+                      >
+                        <IconHistory size={16} />
+                      </ActionIcon>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
 
       <Modal opened={opened} onClose={close} title="Registrar Nuevo Trámite">
         <form onSubmit={form.onSubmit(handleCreate)} noValidate>
@@ -316,7 +356,7 @@ export default function TramitesPanel() {
               label="Fecha de ingreso"
               {...form.getInputProps('fecha_ingreso')}
             />
-            <Button type="submit" fullWidth mt="md">
+            <Button type="submit" fullWidth mt="md" loading={submitting}>
               Crear Trámite
             </Button>
           </Stack>

@@ -231,6 +231,60 @@ describe('api core — helpers', () => {
       await expect(pedirYCapturar(null, 500)).resolves.toBe('API Error: 500');
     });
   });
+
+  describe('FE-3 — errores no-2xx llevan el status (QueryError)', () => {
+    // FastAPI HTTPException(detail="..."): el mensaje NO contiene
+    // "API Error: NNN", así que la politica de retry solo puede ver el
+    // status si viaja en el error. Antes de FE-3 estos 4xx se reintentaban
+    // 3 veces con backoff.
+    async function pedirYCapturarError(cuerpo: unknown, status: number) {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status,
+        headers: new Headers(),
+        json: async () => cuerpo,
+      });
+      const { apiFetch, clearAuthTokenCache } = await import('../../src/lib/api/core');
+      clearAuthTokenCache();
+      return apiFetch('/x').then(
+        () => {
+          throw new Error('debía rechazar');
+        },
+        (error: unknown) => error
+      );
+    }
+
+    it.each([
+      [404, 'Trámite no encontrado'],
+      [403, 'No tenés permisos para ver esto'],
+      [409, 'Ya existe un expediente con ese título'],
+    ])('lanza QueryError con statusCode %i y mensaje detail', async (status, detail) => {
+      const error = (await pedirYCapturarError({ detail }, status)) as Error & {
+        statusCode?: number;
+      };
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe('QueryError');
+      expect(error.message).toBe(detail);
+      expect(error.statusCode).toBe(status);
+    });
+
+    it('un 404 con detail string NO se reintenta (integración core + retry)', async () => {
+      const { shouldRetryQuery } = await import('../../src/lib/queryRetry');
+      const error = await pedirYCapturarError({ detail: 'Trámite no encontrado' }, 404);
+
+      expect(shouldRetryQuery(0, error)).toBe(false);
+      expect(shouldRetryQuery(2, error)).toBe(false);
+    });
+
+    it('un 503 con detail string SI se reintenta (no matamos el retry de 5xx)', async () => {
+      const { shouldRetryQuery } = await import('../../src/lib/queryRetry');
+      const error = await pedirYCapturarError({ detail: 'Backend saturado' }, 503);
+
+      expect(shouldRetryQuery(0, error)).toBe(true);
+      expect(shouldRetryQuery(3, error)).toBe(false);
+    });
+  });
 });
 
 describe('fetchAuthenticatedBlob — guard de URLs protegidas', () => {
