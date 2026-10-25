@@ -211,6 +211,7 @@ def correr(
     recuperar_falla: Exception | None = None,
     crear_generador=None,
     verificar_terminos_fn=terminos_ok,
+    al_reclamar=None,
 ):
     if recuperar_falla is not None:
 
@@ -234,6 +235,7 @@ def correr(
         crear_generador=crear_generador or (lambda _presupuesto: gen),
         item_deadline_s=item_deadline_s,
         verificar_terminos_fn=verificar_terminos_fn,
+        al_reclamar=al_reclamar,
     )
 
 
@@ -574,7 +576,7 @@ class TestElDeadlineAcotaLaTransaccion:
 class TestElItemNoSeOrfana:
     def test_una_excepcion_SIN_NOMBRE_no_se_traga_y_deja_el_item_pendiente(self, db, monkeypatch):
         """A `KeyError` here is a bug. Swallowing it into `no_disponible` would
-        report an outage the operator would go looking for in a healthy
+        report an outage the operator would then go looking for in a healthy
         dependency. It propagates, the transaction rolls back, and the item is
         still `pendiente` — the state it never left.
         """
@@ -591,6 +593,56 @@ class TestElItemNoSeOrfana:
         assert item.estado == "pendiente"
         assert item.respuesta is None
         assert item.procesada_en is None
+
+
+class TestCaidasWorkerSeam:
+    """What `caidas_worker` may and may not count (audit RAG-5).
+
+    The counter is written ONLY by the worker's crash accountant, never by the
+    processing path — so from `procesar_uno`'s side the obligations are two:
+    a clean terminal failure (even `generacion_fallida`) must leave it at 0,
+    and the claim must be REPORTED (`al_reclamar`) so a crash can be attributed
+    to the item that caused it.
+    """
+
+    def test_una_fallida_limpia_NO_gasta_caidas(self, db, monkeypatch):
+        """The state machine's own `generacion_fallida` is an honest terminal
+        state; conflating it with a crash count would let clean provider-side
+        failures eat the dead-letter budget."""
+        seed(db)
+        item = buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+        monkeypatch.setattr(service, "recuperar", lambda *a, **k: _resultado_con_un_hit())
+        terminado = correr(db, generador=GeneradorFalso(PresupuestoAgotado("60.0s spent")))
+        db.refresh(item)
+        assert terminado.estado == "generacion_fallida"
+        assert "presupuesto_item_agotado" in item.respuesta["motivo"]
+        assert item.caidas_worker == 0
+
+    def test_una_respuesta_limpia_tampoco_gasta_caidas(self, db, monkeypatch):
+        seed(db)
+        buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+        monkeypatch.setattr(service, "recuperar", lambda *a, **k: _resultado_con_un_hit())
+        item = correr(db)
+        db.refresh(item)
+        assert item.estado == "respuesta"
+        assert item.caidas_worker == 0
+
+    def test_al_reclamar_recibe_EXACTAMENTE_el_item_reclamado(self, db):
+        """The crash accountant's only way of knowing which item the dying
+        transaction held. In memory, because every database record of the claim
+        dies with the rollback."""
+        seed(db)
+        creada = buzon.encolar(db, usuario_id=None, pregunta="¿qué dice la ley 9750?")
+        reclamados: list = []
+        item = correr(db, al_reclamar=reclamados.append)
+        assert len(reclamados) == 1
+        assert reclamados[0].id == creada.id == item.id
+
+    def test_al_reclamar_NO_se_llama_con_la_cola_vacia(self, db):
+        seed(db)
+        llamadas: list = []
+        assert correr(db, al_reclamar=lambda _item: llamadas.append(1)) is None
+        assert llamadas == []
 
 
 def _resultado_con_un_hit():

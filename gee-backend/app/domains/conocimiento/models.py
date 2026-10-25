@@ -388,6 +388,10 @@ class RagConsulta(Base, UUIDMixin):
             "(estado = 'pendiente') = (procesada_en IS NULL)",
             name="ck_rag_consulta_procesada_iff_terminal",
         ),
+        CheckConstraint(
+            "caidas_worker >= 0",
+            name="ck_rag_consulta_caidas_worker_no_negativas",
+        ),
         Index(
             "ix_rag_consulta_pendientes",
             "creada_en",
@@ -414,6 +418,17 @@ class RagConsulta(Base, UUIDMixin):
         nullable=True,
     )
     respuesta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: How many times a worker DIED (unnamed exception) while processing this
+    #: item. Written ONLY by the crash path (`rag_worker`'s accountant, after
+    #: the rollback, in its own committed transaction) — a clean attempt, even
+    #: one that ends in `generacion_fallida` through the state machine, never
+    #: touches it. It exists because the claim deliberately writes no
+    #: intermediate state, so the crash that rolls everything back also rolls
+    #: back any count kept in the same transaction, and the restarted worker
+    #: would reclaim the same poison item forever (audit RAG-5). At
+    #: `buzon.MAX_CAIDAS_WORKER` the accountant terminalizes the item to
+    #: `generacion_fallida` — the item's `respuesta.motivo` names the count.
+    caidas_worker: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     creada_en: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
