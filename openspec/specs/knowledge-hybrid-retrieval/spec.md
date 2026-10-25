@@ -114,7 +114,9 @@ The eval harness MUST run FTS-only, vector-only, and hybrid-RRF modes over the i
 
 ### Requirement: Go/No-Go Thresholds and Gold-Set Precondition
 
-The report MUST NOT score any go/no-go threshold until the answerable gold set reaches n≥20. Once evaluable, the report MUST compute hit-rate@5 ≥ 0.85, MRR ≥ 0.70 (answerable set), citation-precision = 1.00, norma-vs-secundaria separation = 1.00, vigencia-correctness = 1.00, abstention recall = 1.00 (strict — a single false-confident answer fails go/no-go), and abstention precision ≥ 0.80.
+The report MUST NOT score any go/no-go threshold until the answerable gold set reaches n≥20. Once evaluable, the report MUST compute hit-rate@5 ≥ 0.72, hit-rate@10 ≥ 0.80, MRR ≥ 0.55 (answerable set), citation-precision ≥ 0.33, norma-vs-secundaria separation = 1.00, vigencia-correctness = 1.00, abstention recall = 1.00 (strict — a single false-confident answer fails go/no-go), and abstention precision ≥ 0.80.
+
+These are the owner's re-ratified 2026-08-23 bars (the live constants are `BARRA_*` in `eval/harness.py`, the single source of truth). They moved DOWN from the V0 aspirations that first occupied this paragraph (hit@5 0.85, MRR 0.70, citation-precision 1.00): the V0 numbers were set before a single real run had been measured, and citation-precision = 1.00 is unreachable by construction on a gold set whose items cite multiple units. The normative thresholds live in the harness; this paragraph is restated here so the spec and the executable bar cannot silently disagree again.
 
 The abstention threshold MUST be selected by leave-one-out cross-validation over the gold set, per ablation mode, and the abstention pair MUST be scored on the held-out predictions. A figure produced by selecting and scoring on the same sample MUST NOT decide go/no-go and MUST be labeled an upper bound wherever reported. The report MUST disclose the selection methodology, `n`, and which figures were fitted.
 

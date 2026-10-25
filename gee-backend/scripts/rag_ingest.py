@@ -70,8 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-unchanged",
         action="store_true",
         help=(
-            "on a repeated corpus_sha, compare sha256(texto) per citation key "
-            "and REPORT the divergence instead of overwriting it"
+            "on a repeated corpus_sha, compare sha256 of texto AND "
+            "texto_indexado per citation key and REPORT the divergence "
+            "instead of overwriting it"
         ),
     )
     parser.add_argument(
@@ -201,20 +202,38 @@ def ingest(
     #    "divergencias: []", committed and exited 0 (RAG2-003). The flag's
     #    contract is to report instead of overwriting; deleting is the strongest
     #    form of overwriting there is.
+    #
+    #    TWO surfaces are hashed, separately (RAG-4): `texto` is what a citation
+    #    quotes; `texto_indexado` is what tsv/BM25/embeddings actually search.
+    #    A parser or enrichment change under the same SHA rewrites the second
+    #    with the first byte-identical, and a texto-only diff called that
+    #    "unchanged", committed and exited 0 — the silent rewrite this flag
+    #    exists to report, performed on the one surface retrieval reads.
+    #    Separate hashes rather than one combined digest, because the report
+    #    must say WHICH surface moved: `divergencias` = citation bytes changed,
+    #    `divergencias_indexado` = enrichment changed with the citation bytes
+    #    intact. A key is classified once — texto first — never into both.
     if verify_unchanged:
-        previous = repository.existing_text_hashes(session, corpus_sha)
+        previous = repository.existing_surface_hashes(session, corpus_sha)
         if previous:
             actuales = {
-                unidad.citation_key: texto_sha256(unidad.texto)
+                unidad.citation_key: (
+                    texto_sha256(unidad.texto),
+                    texto_sha256(unidad.texto_indexado),
+                )
                 for doc in corpus.documentos
                 for unidad in doc.unidades
             }
             summary.claves_agregadas = sorted(set(actuales) - set(previous))
             summary.claves_eliminadas = sorted(set(previous) - set(actuales))
+            comunes = set(actuales) & set(previous)
             summary.divergencias = sorted(
+                key for key in comunes if previous[key][0] != actuales[key][0]
+            )
+            summary.divergencias_indexado = sorted(
                 key
-                for key, digest in actuales.items()
-                if key in previous and previous[key] != digest
+                for key in comunes
+                if previous[key][0] == actuales[key][0] and previous[key][1] != actuales[key][1]
             )
             if summary.verificacion_fallida:
                 # Return BEFORE any write, including the prune.
@@ -406,6 +425,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         _print_keys("contenido modificado", summary.divergencias)
+        _print_keys(
+            "superficie de búsqueda modificada (texto_indexado; el texto citado quedó igual)",
+            summary.divergencias_indexado,
+        )
         _print_keys("claves agregadas (en el parse, no en el snapshot)", summary.claves_agregadas)
         _print_keys(
             "claves eliminadas (en el snapshot, no en el parse — un run normal las PODARÍA)",
