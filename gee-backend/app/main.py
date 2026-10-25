@@ -206,7 +206,6 @@ async def generic_exception_handler(request: Request, exc: Exception):
 # MIDDLEWARE (last added = first executed)
 # ===========================================
 
-app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
@@ -238,6 +237,26 @@ app.add_middleware(
     # preflights that cost 800 ms (warm) to 8 s (cold) each.
     max_age=86400,
 )
+# NUC-2: the request-id binding must wrap EVERY middleware that logs.
+# Starlette reverses add order (last added = outermost), and
+# ``RequestIdMiddleware`` binds the ``request_id`` structlog contextvar in
+# its own ASGI frame. Adding it FIRST made it the INNERMOST wrapper, so
+# every ``BaseHTTPMiddleware`` further out — RequestLoggingMiddleware,
+# CSRFProtectionMiddleware, DistributedRateLimitMiddleware — logged from
+# the PARENT context while ``call_next`` ran the inner stack in a spawned
+# child task. Contextvar writes inside that child never propagate back up,
+# so "Request started/completed/failed", "Rate limit exceeded" and
+# "CSRF: Invalid origin" carried NO request_id: exactly the lines needed
+# to investigate a user-reported 429/403 could not be joined to the
+# X-Request-Id header the client received. Second-outermost (only metrics
+# outside) fixes both directions: every logging middleware below inherits
+# the binding, and rejection responses minted by the rate limiter / CSRF
+# still travel out through RequestIdMiddleware's ``send_wrapper``, so the
+# 429/403 the client sees carries the same id its rejection log line
+# does. Metrics stays outermost per OBS-02 — it must keep timing
+# everything the inner stack, rate limiter included, turns into a status
+# code.
+app.add_middleware(RequestIdMiddleware)
 # Outermost: times every request that the inner middleware, including the
 # rate limiter, already turned into a status code (OBS-02).
 app.add_middleware(RequestMetricsMiddleware)
@@ -399,6 +418,35 @@ def _read_denuncia_photo_bytes(uploads_root: str, canonical_filename: str) -> by
             os.close(directory_fd)
 
 
+def _fetch_denuncia_row(denuncia_id: uuid.UUID):
+    """Fetch one Denuncia row through a short-lived session.
+
+    NUC-5: this is synchronous DB I/O (``db.get`` + session close block on
+    the PostgreSQL round-trip), so callers MUST run it through
+    ``asyncio.to_thread`` — running it on the event loop stalls every
+    concurrent request, the same failure class that produced the 21-161 s
+    tail-latency incident documented on ``_run_blocking`` in
+    ``router_gee_support.py``, and gallery pages hit this endpoint once per
+    photo. The session is opened and closed INSIDE the thread so no
+    blocking bit leaks back to the loop. Column attributes are fully
+    loaded by ``db.get``, so they stay readable on the detached row after
+    the session closes.
+
+    A manual short-lived session (not ``Depends``) is intentional: this
+    endpoint is hit once per photo render, no need for the full
+    request-scoped dependency machinery.
+    """
+    from app.db.session import get_db as _get_db
+    from app.domains.denuncias.models import Denuncia
+
+    db_gen = _get_db()
+    try:
+        db = next(db_gen)
+        return db.get(Denuncia, denuncia_id)
+    finally:
+        db_gen.close()
+
+
 @app.get(
     f"{settings.uploads_public_base}/denuncias/{{filename}}",
     response_class=Response,
@@ -414,10 +462,6 @@ async def get_denuncia_photo(
     Returns 404 (not 403) when the caller isn't authorised, so the
     endpoint doesn't leak whether the file exists.
     """
-    from sqlalchemy.orm import Session as _Session
-
-    from app.db.session import get_db as _get_db
-    from app.domains.denuncias.models import Denuncia
     from app.auth.models import UserRole
 
     parsed_filename = _parse_denuncia_photo_filename(filename)
@@ -427,31 +471,23 @@ async def get_denuncia_photo(
         return Response(status_code=404)
     denuncia_id, canonical_suffix, extension = parsed_filename
 
-    # We need a DB session here but the dependency tree above didn't
-    # give us one. Open a short-lived session manually rather than
-    # leaning on a request-scoped one — this endpoint is hit once per
-    # photo render, no need for the full Depends machinery.
-    db_gen = _get_db()
-    db: _Session = next(db_gen)
-    try:
-        denuncia = db.get(Denuncia, denuncia_id)
-        if denuncia is None or denuncia.deleted_at is not None:
-            return Response(status_code=404)
-        is_operator = getattr(user, "role", None) in {UserRole.ADMIN, UserRole.OPERADOR}
-        is_owner = denuncia.user_id is not None and str(denuncia.user_id) == str(
-            getattr(user, "id", None)
-        )
-        if not (is_operator or is_owner):
-            return Response(status_code=404)
+    # Off the event loop — see _fetch_denuncia_row (NUC-5).
+    denuncia = await asyncio.to_thread(_fetch_denuncia_row, denuncia_id)
+    if denuncia is None or denuncia.deleted_at is not None:
+        return Response(status_code=404)
+    is_operator = getattr(user, "role", None) in {UserRole.ADMIN, UserRole.OPERADOR}
+    is_owner = denuncia.user_id is not None and str(denuncia.user_id) == str(
+        getattr(user, "id", None)
+    )
+    if not (is_operator or is_owner):
+        return Response(status_code=404)
 
-        # Derive the storage filename only from the trusted row UUID and the
-        # parser's canonical suffix/extension. Neither the request string nor
-        # foto_url is ever passed to the filesystem reader.
-        canonical_filename = f"{uuid.UUID(str(denuncia.id))}{canonical_suffix}.{extension}"
-        if not _is_current_live_denuncia_photo(denuncia, canonical_filename):
-            return Response(status_code=404)
-    finally:
-        db_gen.close()
+    # Derive the storage filename only from the trusted row UUID and the
+    # parser's canonical suffix/extension. Neither the request string nor
+    # foto_url is ever passed to the filesystem reader.
+    canonical_filename = f"{uuid.UUID(str(denuncia.id))}{canonical_suffix}.{extension}"
+    if not _is_current_live_denuncia_photo(denuncia, canonical_filename):
+        return Response(status_code=404)
 
     content = await asyncio.to_thread(
         _read_denuncia_photo_bytes,
