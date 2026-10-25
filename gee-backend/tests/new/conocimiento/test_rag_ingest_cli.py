@@ -236,10 +236,11 @@ class TestMainEntryPoint:
         assert "INGESTION ABORTED — nothing was written." in err
         assert "declared in expectations but missing" in err
 
-    def test_verify_unchanged_difference_exits_1_and_names_all_three_classes(
+    def test_verify_unchanged_difference_exits_1_and_names_all_four_classes(
         self, tmp_path, monkeypatch, capsys
     ):
-        """The report must distinguish modified, added and removed keys.
+        """The report must distinguish the four classes: citation bytes
+        modified, search surface modified, added keys, removed keys.
 
         `ingest` is stubbed here on purpose: the no-write guarantee itself is
         asserted against a real database in `TestFullCorpusIngestion`, while what
@@ -256,6 +257,7 @@ class TestMainEntryPoint:
             committed=False,
             procedencia_olvidada=False,
             divergencias=["d#1"],
+            divergencias_indexado=["d#4"],
             claves_agregadas=["d#2"],
             claves_eliminadas=["d#3"],
             verificacion_fallida=True,
@@ -281,6 +283,7 @@ class TestMainEntryPoint:
         assert "CLEARED" not in captured.out
         assert "VERIFICACIÓN FALLIDA" in err
         assert "contenido modificado" in err and "d#1" in err
+        assert "superficie de búsqueda modificada" in err and "d#4" in err
         assert "claves agregadas" in err and "d#2" in err
         assert "claves eliminadas" in err and "d#3" in err
 
@@ -478,6 +481,10 @@ class TestFullCorpusIngestion:
             db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
         )
         assert summary.divergencias == ["9750#3"]
+        # A texto change is classified ONCE, as a content change: it implies the
+        # indexed surface moved too, but reporting the key in both classes
+        # would blur "citations changed" with "only enrichment changed".
+        assert summary.divergencias_indexado == []
         assert not summary.committed
         # Reported, NOT overwritten.
         texto = db.execute(
@@ -516,6 +523,7 @@ class TestFullCorpusIngestion:
 
         assert summary.claves_eliminadas == ["ghost#1"]
         assert summary.divergencias == []
+        assert summary.divergencias_indexado == []
         assert summary.claves_agregadas == []
         assert summary.verificacion_fallida
         assert not summary.committed
@@ -538,6 +546,7 @@ class TestFullCorpusIngestion:
         assert summary.claves_agregadas == ["9750#3"]
         assert summary.claves_eliminadas == []
         assert summary.divergencias == []
+        assert summary.divergencias_indexado == []
         assert not summary.committed
         assert _key_set(db) == before
 
@@ -573,7 +582,50 @@ class TestFullCorpusIngestion:
         assert summary.claves_eliminadas == ["ghost#1"]
         assert summary.claves_agregadas == ["9750#3"]
         assert summary.divergencias == ["9750#4"]
+        assert summary.divergencias_indexado == []
         assert _key_set(db) == before
+
+    def test_verify_unchanged_reports_indexed_surface_divergence(self, db):
+        """RAG-4: a parser/enrichment change under the SAME corpus_sha rewrites
+        `texto_indexado` — the surface tsv/BM25/embeddings actually consume —
+        while the citation bytes stay byte-identical. The texto-only diff called
+        that "unchanged", fell through to the upserts, committed and exited 0:
+        exactly the silent rewrite the flag exists to report.
+
+        The stored side of the drift is made the way every drift here is made —
+        a direct DB update emulating the row an OLDER parser would have written
+        (same texto, different enrichment prefix).
+        """
+        rag_ingest.ingest(db, real_corpus_path(), PINNED_CORPUS_SHA)
+        db.execute(
+            text(
+                "UPDATE rag_unidad SET texto_indexado = texto_indexado "
+                "|| ' ENRIQUECIMIENTO VIEJO' "
+                "WHERE corpus_sha = :sha AND citation_key = '9750#3'"
+            ),
+            {"sha": PINNED_CORPUS_SHA},
+        )
+        before = _key_set(db)
+
+        summary = rag_ingest.ingest(
+            db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
+        )
+
+        assert summary.verificacion_fallida
+        assert summary.divergencias == [], "the citation bytes did NOT change"
+        assert summary.divergencias_indexado == ["9750#3"]
+        assert not summary.committed
+        assert summary.unidades_eliminadas == 0, "nothing may be pruned under the flag"
+        assert _key_set(db) == before, "the row set must be untouched"
+        # Reported, NOT overwritten.
+        texto_indexado = db.execute(
+            text(
+                "SELECT texto_indexado FROM rag_unidad "
+                "WHERE corpus_sha = :sha AND citation_key = '9750#3'"
+            ),
+            {"sha": PINNED_CORPUS_SHA},
+        ).scalar_one()
+        assert "ENRIQUECIMIENTO VIEJO" in texto_indexado
 
     def test_verify_unchanged_on_an_identical_snapshot_still_commits(self, db):
         """The flag must not turn a genuinely unchanged re-run into a failure."""
@@ -582,6 +634,8 @@ class TestFullCorpusIngestion:
             db, real_corpus_path(), PINNED_CORPUS_SHA, verify_unchanged=True
         )
         assert not summary.verificacion_fallida
+        assert summary.divergencias == []
+        assert summary.divergencias_indexado == []
         assert summary.committed
 
     def test_verify_unchanged_is_off_by_default(self, db):
