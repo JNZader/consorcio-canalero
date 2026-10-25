@@ -1,6 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TramitesPanel from '../../src/components/admin/management/TramitesPanel';
@@ -270,5 +270,110 @@ describe('TramitesPanel', () => {
       );
     });
     expect(window.URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('FE-6: shows a persistent error state, not an empty table, when the load fails', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation(async (path: string) => {
+      if (path === '/tramites') throw new Error('backend caído');
+      return [];
+    });
+
+    renderPanel();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('No pudimos cargar los trámites');
+    // El fallo de carga NO se renderiza como tabla vacía de "sin trámites".
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    // Reintentar recupera la lista cuando el backend vuelve.
+    mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
+      return [];
+    });
+    await user.click(screen.getByRole('button', { name: /reintentar/i }));
+
+    expect(await screen.findByText(tramite.titulo)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('FE-6: reports a failed follow-up detail load with a visible error toast', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
+      if (path === `/tramites/${tramite.id}` && !options) {
+        throw new Error('Trámite no encontrado');
+      }
+      return [];
+    });
+
+    renderPanel();
+    const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
+    await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo cargar el seguimiento',
+          message: 'Trámite no encontrado',
+          color: 'red',
+        })
+      );
+    });
+    // Sin detail no se abre un modal de seguimiento vacío.
+    expect(screen.queryByRole('dialog', { name: /seguimiento del trámite/i })).not.toBeInTheDocument();
+  });
+
+  it('FE-5: guards against double submit and reports create failures without closing the modal', async () => {
+    const user = userEvent.setup();
+    let rejectPost: ((reason?: unknown) => void) | undefined;
+    mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
+      if (path === '/tramites' && options?.method === 'POST') {
+        return new Promise((_resolve, reject) => {
+          rejectPost = reject;
+        });
+      }
+      return [];
+    });
+
+    renderPanel();
+    await user.click(await screen.findByRole('button', { name: /nuevo trámite/i }));
+    const modal = await screen.findByRole('dialog', { name: /registrar nuevo trámite/i });
+
+    await chooseOption(within(modal).getByLabelText(/^tipo/i), 'obra');
+    await user.type(within(modal).getByLabelText(/título del trámite/i), 'Expediente con error');
+    await user.type(
+      within(modal).getByLabelText(/descripci[oó]n/i),
+      'Descripción suficientemente larga para validar'
+    );
+    await user.type(within(modal).getByLabelText(/solicitante/i), 'Consorcio Canalero');
+
+    const submit = within(modal).getByRole('button', { name: /crear trámite/i });
+    await user.click(submit);
+
+    // Mientras el POST está en vuelo el botón queda bloqueado: un segundo
+    // click no puede disparar un segundo expediente.
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(
+      mockApiFetch.mock.calls.filter(([path, options]) => path === '/tramites' && options?.method === 'POST')
+    ).toHaveLength(1);
+
+    await act(async () => {
+      rejectPost?.(new Error('Ya existe un expediente con ese título'));
+    });
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo registrar el trámite',
+          message: 'Ya existe un expediente con ese título',
+          color: 'red',
+        })
+      );
+    });
+    // El modal sigue abierto para corregir y reintentar.
+    expect(screen.getByRole('dialog', { name: /registrar nuevo trámite/i })).toBeInTheDocument();
+    await waitFor(() => expect(submit).toBeEnabled());
   });
 });

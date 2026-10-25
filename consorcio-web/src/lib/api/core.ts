@@ -5,6 +5,7 @@
 import { authAdapter } from '../auth/index';
 import { hasLocalLogoutTombstone } from '../auth/storage';
 import { logger } from '../logger';
+import { QueryError } from '../queryError';
 
 // Backend URL (configure in .env)
 // Supports VITE_ and PUBLIC_ prefixes for backwards compatibility
@@ -301,10 +302,18 @@ async function authenticatedFetchResponse<T>(
             _handlingAuthExpiry = false;
           }, 10_000);
         }
-        throw new Error('Tu sesión ha expirado. Por favor iniciá sesión nuevamente.');
+        throw new QueryError(
+          'Tu sesión ha expirado. Por favor iniciá sesión nuevamente.',
+          response.status
+        );
       }
 
-      throw new Error(getApiErrorMessage(error, response.status));
+      // FE-3: the status must travel WITH the error. A plain Error whose
+      // message is the backend's string `detail` (FastAPI HTTPException)
+      // carries no parseable status, so the query retry policy could not
+      // tell a permanent 4xx from a transient network failure and retried
+      // 403/404/409 three times with backoff.
+      throw new QueryError(getApiErrorMessage(error, response.status), response.status);
     }
 
     return await waitForWithSignal(consumeResponse(response), abortScope.signal);
