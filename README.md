@@ -373,7 +373,6 @@ consorcio-canalero/
 |- scripts/                    # ETLs (canales, escuelas, pilar_verde) and support scripts
 |- gee/                        # Google Earth Engine scripts
 |- martin/                     # Tile-server configuration
-|- nginx/                      # Reverse proxy config
 |- .github/workflows/          # CI/CD pipelines
 |- docker-compose.yml          # Local/dev stack
 |- docker-compose.prod.yml     # Production stack
