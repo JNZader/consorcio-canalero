@@ -2,11 +2,51 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from shapely.geometry import mapping, shape
+
+# Geo audit 2026-10 (GEO-5): staleness threshold for orphaned DEM temp
+# downloads. The download itself is bounded by the 300 s GEE fetch timeout, so
+# one hour covers clock skew, worker restarts and stalled-but-alive downloads
+# with a 12x margin, while never touching a live in-flight *.tmp.tif.
+DEM_TMP_MAX_AGE_SECONDS = 3600.0
+
+
+def sweep_stale_dem_tmp_impl(
+    directory,
+    *,
+    max_age_seconds: float = DEM_TMP_MAX_AGE_SECONDS,
+    now_fn=time.time,
+) -> list[str]:
+    """Delete orphaned ``*.tmp.tif`` DEM downloads older than ``max_age_seconds``.
+
+    ``download_dem_impl`` streams the GEE GeoTIFF to ``<output>.tmp.tif`` and
+    only unlinks it on the success path — a worker OOM/SIGKILL mid-download
+    orphans a full-size temp DEM, and before this sweep nothing anywhere
+    removed them, so repeated crashes exhausted the geo-worker disk (GEO-5).
+    Only files matching the exact ``*.tmp.tif`` pattern this module creates
+    are eligible; the sweep is single-level and best-effort.
+    """
+    deleted: list[str] = []
+    if not directory.exists():
+        return deleted
+    for candidate in sorted(directory.glob("*.tmp.tif")):
+        try:
+            age_seconds = now_fn() - candidate.stat().st_mtime
+        except OSError:
+            continue  # vanished between glob and stat — nothing left to sweep
+        if age_seconds < max_age_seconds:
+            continue
+        try:
+            candidate.unlink()
+            deleted.append(str(candidate))
+        except OSError:
+            continue  # busy/unwritable file is not worth failing the pipeline over
+    return deleted
 
 
 def run_wbt_tool_impl(*, output_path: str, ensure_parent_dir, get_wbt, runner) -> str:
