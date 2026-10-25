@@ -312,9 +312,17 @@ class RevocableJWTStrategy(JWTStrategy[User, uuid.UUID]):
         return user
 
 
-# Workday access token. Refresh cookie is still 30 days; logout-all still
-# bumps ``revocation_epoch`` so a stolen access JWT dies on the next request.
-ACCESS_TOKEN_LIFETIME_SECONDS = 8 * 60 * 60
+# Access token lifetime — 60 minutes (audit SEG-2, owner decision
+# 2026-10-24; previously an 8-hour "workday token"). A leaked
+# Authorization header is only killable via ``revocation_epoch``
+# (logout-all / admin force-revoke) — ordinary logout, password reset,
+# and token theft never touch outstanding JWTs — so a stolen bearer
+# token stays valid against padrón/finanzas/denuncias for exactly this
+# lifetime. 60 minutes is safe here because the refresh machinery
+# carries session continuity transparently: 30-day rotating HttpOnly
+# cookie with family replay-burn (``refresh_tokens.py`` — its lifetime
+# is intentionally NOT changed) and the SPA silently refreshes on 401.
+ACCESS_TOKEN_LIFETIME_SECONDS = 60 * 60
 
 
 def get_jwt_strategy() -> JWTStrategy:

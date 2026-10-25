@@ -192,3 +192,58 @@ async def test_stale_or_deleted_photo_is_rejected_before_filesystem_io(
 
     assert response.status_code == 404
     assert filesystem_called is False
+
+
+@pytest.mark.asyncio
+async def test_db_lookup_runs_off_the_event_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """NUC-5: the Denuncia row fetch is sync DB I/O and must leave the loop.
+
+    The endpoint used to call ``db.get`` directly on the event loop; gallery
+    pages hit it once per photo, so every slow query stalled all concurrent
+    requests. The fetch (session open + get + close) now runs inside
+    ``asyncio.to_thread``, so the thread that executes ``db.get`` cannot be
+    the caller's (event-loop) thread. RED on the unfixed code: the recorded
+    ident equals the caller's.
+    """
+    import threading
+
+    caller_thread = threading.get_ident()
+    seen_thread: int | None = None
+    owner_id = uuid.uuid4()
+    denuncia = SimpleNamespace(
+        id=PHOTO_ID,
+        user_id=owner_id,
+        foto_url=f"/uploads/denuncias/{PHOTO_ID}.jpg",
+        deleted_at=None,
+    )
+
+    class RecordingDb:
+        def get(self, _model, denuncia_id):
+            nonlocal seen_thread
+            seen_thread = threading.get_ident()
+            assert denuncia_id == denuncia.id
+            return denuncia
+
+    def fake_get_db():
+        yield RecordingDb()
+
+    monkeypatch.setattr("app.db.session.get_db", fake_get_db)
+    monkeypatch.setattr(main, "_read_denuncia_photo_bytes", lambda *_: b"photo")
+    monkeypatch.setattr(main.settings, "uploads_root", str(tmp_path))
+    user = SimpleNamespace(id=owner_id, role=UserRole.CIUDADANO)
+
+    response = await main.get_denuncia_photo(
+        f"{PHOTO_ID}.jpg",
+        request=None,
+        user=user,
+    )
+
+    assert response.status_code == 200
+    assert response.body == b"photo"
+    assert seen_thread is not None, "the DB layer must have been exercised"
+    assert seen_thread != caller_thread, (
+        "db.get ran on the caller's (event-loop) thread — the NUC-5 offload is gone"
+    )
