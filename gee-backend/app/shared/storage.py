@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import io
 import os
+import threading
 import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -31,6 +32,8 @@ from typing import Protocol
 
 from fastapi import HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
+from PIL.Image import DecompressionBombError
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 
@@ -41,6 +44,28 @@ from app.config import settings
 # holding (we already record the denuncia's reported coordinates on
 # the row itself).
 _EXIF_GPS_INFO_TAG = 0x8825
+
+# In-flight bound for photo pipelines (SEG-1 review RSK1-001), built on
+# first use like the map-PDF slots. Module-level because `save` is async:
+# acquire non-blocking in the coroutine, release after the threadpool
+# work settles — the semaphore itself never blocks the event loop.
+_photo_slots: "threading.BoundedSemaphore | None" = None
+
+
+def get_photo_slots() -> "threading.BoundedSemaphore":
+    """The in-flight bound for photo validate/strip/re-encode pipelines."""
+    global _photo_slots  # noqa: PLW0603
+    if _photo_slots is None:
+        _photo_slots = threading.BoundedSemaphore(settings.denuncia_photo_max_concurrency)
+    return _photo_slots
+
+
+def reset_photo_slots() -> None:
+    """Drop the cached semaphore so the next call re-reads the setting (tests)."""
+    global _photo_slots  # noqa: PLW0603
+    _photo_slots = None
+
+
 # Tags that some camera apps stash GPS data under as a fallback.
 _GPS_RELATED_TAGS = {
     _EXIF_GPS_INFO_TAG,
@@ -68,7 +93,9 @@ def _validate_and_strip_exif(content: bytes, declared_mime: str) -> bytes:
     ``HTTPException(400)`` when the file isn't a real image of the
     declared type — protects against the polyglot/disguise vector
     where a client sets ``Content-Type: image/jpeg`` on a PHP script
-    or a zip bomb.
+    or a zip bomb — and when the header declares more pixels than
+    ``settings.denuncia_photo_max_image_px`` (SEG-1: the compressed
+    size says nothing about the decoded size).
 
     EXIF cleanup keeps non-GPS metadata (camera model, capture date,
     orientation) so the photo still renders correctly. We only remove
@@ -92,6 +119,14 @@ def _validate_and_strip_exif(content: bytes, declared_mime: str) -> bytes:
             status_code=400,
             detail="El archivo no es una imagen válida.",
         ) from exc
+    except DecompressionBombError as exc:
+        # Pillow hard-rejects headers declaring more than its own ~179 Mpx
+        # default at open() time. Map it to the pixel-cap 400 instead of
+        # letting it escape as a 500.
+        raise HTTPException(
+            status_code=400,
+            detail=(f"La foto supera el límite de {settings.denuncia_photo_max_image_px} píxeles."),
+        ) from exc
 
     if image.format != expected_format:
         raise HTTPException(
@@ -99,6 +134,24 @@ def _validate_and_strip_exif(content: bytes, declared_mime: str) -> bytes:
             detail=(
                 f"El archivo declara MIME {declared_mime} pero el contenido "
                 f"es {image.format or 'desconocido'}."
+            ),
+        )
+
+    # SEG-1 (audit 2026-10-23): bound the DECODED size from the header,
+    # BEFORE any decode work. ``Image.open`` is lazy — ``size`` comes
+    # straight from the header — while ``verify()`` and the re-encode
+    # below walk the full raster (twice). MAX_PHOTO_BYTES bounds only the
+    # compressed bytes: a 10 MB JPEG can declare enough pixels to decode
+    # to hundreds of MB of RGB. Mirrors the geo_map_pdf_max_image_px fix
+    # already shipped for the map-PDF surface.
+    max_pixels = settings.denuncia_photo_max_image_px
+    width, height = image.size
+    if width * height > max_pixels:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La foto supera el límite de {max_pixels} píxeles "
+                f"({width}x{height} = {width * height})."
             ),
         )
 
@@ -272,7 +325,32 @@ class LocalPhotoStorage:
         # Validate magic bytes match declared MIME + strip EXIF GPS.
         # Raises HTTPException(400) on disguised payloads or malformed
         # images. Returns the re-encoded bytes ready to write to disk.
-        sanitized_bytes = _validate_and_strip_exif(bytes(buffer), content_type)
+        # The decode/re-encode is CPU- and memory-bound work sized by the
+        # pixel cap (up to ~120 MB of RGB per image): run it on the
+        # threadpool so concurrent uploads can't stall the event loop
+        # (SEG-1) — the same offload idiom the rest of the app uses.
+        #
+        # Concurrency bound (SEG-1 review RSK1-001): the pixel cap bounds
+        # ONE request, but N concurrent uploads materialize N pipelines
+        # (~230 MB peak each measured at the cap) AND hold the shared
+        # threadpool tokens every run_in_threadpool DB call needs. The
+        # map-PDF surface bounds this exact class with a BoundedSemaphore
+        # + 503 on timeout; here the caller is async, so a blocking
+        # acquire-with-timeout would stall the loop — we acquire
+        # non-blocking and answer 503 immediately instead of waiting.
+        slots = get_photo_slots()
+        if not slots.acquire(blocking=False):
+            raise HTTPException(
+                status_code=503,
+                detail="Subida de fotos saturada, reintente en unos segundos",
+                headers={"Retry-After": "2"},
+            )
+        try:
+            sanitized_bytes = await run_in_threadpool(
+                _validate_and_strip_exif, bytes(buffer), content_type
+            )
+        finally:
+            slots.release()
 
         # Write beside the destination so os.replace is atomic on the mounted
         # filesystem. fsync the file and parent directory before publishing the URL.
