@@ -135,7 +135,7 @@ def _mutation_source(target: str) -> str:
 
 def _assert_fail_closed_trivy(job: str) -> None:
     upload = (
-        "uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3"
+        "uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0"
     )
 
     assert f"uses: {TRIVY_ACTION}" in job
@@ -227,7 +227,7 @@ def _assert_frozen_image_policy(
     assert sarif in artifact_tail
 
     upload_sarif = job.index(
-        "uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3"
+        "uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0"
     )
     upload_tail = job[upload_sarif:]
     assert "if: always()" in upload_tail
