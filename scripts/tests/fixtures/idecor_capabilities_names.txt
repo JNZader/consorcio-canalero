@@ -1,0 +1,10 @@
+# Names observed in GetCapabilities on 2026-11-02
+# https://gn-idecor.mapascordoba.gob.ar/geoserver/idecor/ows?service=WFS&request=GetCapabilities
+idecor:consorcios_canaleros
+idecor:cursos_de_agua_aprhi
+idecor:lc_cursos_de_agua_aprhi
+idecor:lg_cursos_de_agua_aprhi
+idecor:nono_cursos_de_agua_aprhi
+idecor:cuencas_hidrograficas
+idecor:canales_riego
+idecor:parcelas_bv
