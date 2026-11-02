@@ -227,6 +227,7 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
   const {
     state: measurementState,
     liveLabel: measurementLiveLabel,
+    draftLine: measurementDraftLine,
     startDistance: startMeasureDistance,
     startArea: startMeasureArea,
     clear: clearMeasurements,
@@ -765,6 +766,7 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     isFichaCanal,
     isFichaDrawSession,
     mapDragSignal,
+    measurementDraftLine,
     measurementLiveLabel,
     measurementMap,
     measurementState,

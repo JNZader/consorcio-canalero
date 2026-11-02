@@ -22,9 +22,13 @@ const { isValidSelectedImageMock, loggerMock, mapImageApiMock } = vi.hoisted(() 
   },
 }));
 
-vi.mock('../../src/lib/typeGuards', () => ({
-  isValidSelectedImage: isValidSelectedImageMock,
-}));
+vi.mock('../../src/lib/typeGuards', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/lib/typeGuards')>();
+  return {
+    ...actual,
+    isValidSelectedImage: isValidSelectedImageMock,
+  };
+});
 
 vi.mock('../../src/lib/logger', () => ({
   logger: loggerMock,

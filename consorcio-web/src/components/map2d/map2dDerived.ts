@@ -215,6 +215,30 @@ export function buildVectorLayerItems(params: {
       show: true,
     },
     {
+      id: 'idecor_consorcios',
+      label: 'Consorcios canaleros (IDECOR)',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
+      show: true,
+    },
+    {
+      id: 'idecor_cursos',
+      label: 'Cursos de agua APRHI',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
+      show: true,
+    },
+    {
+      id: 'idecor_cuencas',
+      label: 'Cuencas hidrográficas (IDECOR)',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
+      show: true,
+    },
+    {
+      id: 'idecor_canales_riego',
+      label: 'Canales de riego (IDECOR)',
+      category: LAYER_CATEGORY.HIDROGRAFIA,
+      show: true,
+    },
+    {
       id: 'roads',
       // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
       label: ROAD_LAYER_LABEL,

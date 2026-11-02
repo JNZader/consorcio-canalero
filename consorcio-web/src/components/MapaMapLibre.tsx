@@ -756,6 +756,7 @@ export default function MapaMapLibre() {
       selectedFeatures={selectedFeatures}
       setActiveDemLayerId={setActiveDemLayerId}
       setBaseLayer={setBaseLayer}
+      elevationProfileHover={elevationProfileHover}
       setElevationProfileHover={setElevationProfileHover}
       setElevationProfileRange={setElevationProfileRange}
       setEtapaVisible={setEtapaVisible}

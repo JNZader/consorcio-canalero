@@ -36,6 +36,54 @@ export interface MartinSource {
 }
 
 export const MARTIN_SOURCES: Record<string, MartinSource> = {
+  vt_idecor_consorcios: {
+    table: 'vt_idecor_consorcios',
+    label: 'Consorcios canaleros (IDECOR)',
+    defaultVisible: false,
+    style: {
+      color: mapColorTokens.h1c7ed6,
+      fillColor: mapColorTokens.h1c7ed6,
+      fillOpacity: 0.12,
+      weight: 2,
+      opacity: 0.9,
+    },
+  },
+  vt_idecor_cursos: {
+    table: 'vt_idecor_cursos',
+    label: 'Cursos de agua APRHI',
+    defaultVisible: false,
+    style: {
+      color: mapColorTokens.h1c7ed6,
+      fillColor: mapColorTokens.h1c7ed6,
+      fillOpacity: 0,
+      weight: 1.5,
+      opacity: 0.9,
+    },
+  },
+  vt_idecor_cuencas: {
+    table: 'vt_idecor_cuencas',
+    label: 'Cuencas hidrográficas',
+    defaultVisible: false,
+    style: {
+      color: mapColorTokens.hf97316,
+      fillColor: mapColorTokens.hf97316,
+      fillOpacity: 0.08,
+      weight: 1.5,
+      opacity: 0.8,
+    },
+  },
+  vt_idecor_canales_riego: {
+    table: 'vt_idecor_canales_riego',
+    label: 'Canales de riego',
+    defaultVisible: false,
+    style: {
+      color: mapColorTokens.h2563eb,
+      fillColor: mapColorTokens.h2563eb,
+      fillOpacity: 0,
+      weight: 1.5,
+      opacity: 0.9,
+    },
+  },
   puntos_conflicto: {
     // La VISTA saneada, no la tabla cruda. Martin corre con
     // `auto_publish: false` y una lista explicita de proyecciones

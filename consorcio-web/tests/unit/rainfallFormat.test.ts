@@ -22,6 +22,7 @@ import {
   formatMetricValue,
   hoistProvenance,
   metricEvidenceLine,
+  formatRainfallChartValue,
   percentileGloss,
   shortSource,
   metricLabel,
@@ -892,5 +893,22 @@ describe('percentileGloss', () => {
     expect(percentileGloss(metric({ value: 72.4, state: 'available' }))).toBe(
       'De cada 100 años, 72 fueron más secos que este.',
     );
+  });
+});
+
+describe('formatRainfallChartValue — null is unknown, a served zero is data', () => {
+  it.each([null, undefined, ''])('prints the unknown marker for %s', (value) => {
+    expect(formatRainfallChartValue(value, 'mm')).toBe('—');
+  });
+
+  it('does not coerce a non-numeric string into a measured zero', () => {
+    expect(formatRainfallChartValue('sin dato', 'mm')).toBe('—');
+    expect(formatRainfallChartValue(Number.NaN, 'mm')).toBe('—');
+  });
+
+  it('formats a served number, including a numeric string and a real zero', () => {
+    expect(formatRainfallChartValue(0, 'mm')).toBe('0.0 mm');
+    expect(formatRainfallChartValue(12.34, 'mm')).toBe('12.3 mm');
+    expect(formatRainfallChartValue('12.34', 'mm')).toBe('12.3 mm');
   });
 });
