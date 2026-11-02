@@ -751,6 +751,7 @@ export default function MapaMapLibre() {
       rasterLoading={rasterLoading}
       reloadGeoLayers={reloadGeoLayers}
       roadFlow={roadFlow}
+      parcelFeatures={catastroMap?.features ?? null}
       roadsCollection={roadsCollection}
       satelliteLayer={satelliteLayer}
       selectedFeatures={selectedFeatures}

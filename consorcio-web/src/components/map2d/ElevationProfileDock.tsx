@@ -6,7 +6,7 @@
 
 import { ActionIcon, Group, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import type { LineString, MultiLineString } from 'geojson';
+import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
 import { lazy, type PointerEvent as ReactPointerEvent, Suspense, useRef, useState } from 'react';
 import type { ProfileChartRow } from './profileChartRows';
 import {
@@ -34,6 +34,8 @@ export function ElevationProfileDock({
   onActivated,
   flowDirection = null,
   crossings = [],
+  parcelFeatures = null,
+  culverts = null,
 }: {
   readonly geometry: LineString | MultiLineString;
   readonly title: string;
@@ -46,6 +48,8 @@ export function ElevationProfileDock({
   readonly onActivated?: () => void;
   readonly flowDirection?: 'digitizado' | 'inverso' | null;
   readonly crossings?: readonly { lon: number; lat: number; label: string }[];
+  readonly parcelFeatures?: readonly Feature<Geometry, GeoJsonProperties>[] | null;
+  readonly culverts?: readonly { lon: number; lat: number; label: string }[] | null;
 }) {
   const narrow = useMediaQuery('(max-width: 62em)', false, { getInitialValueInEffect: false });
   const [height, setHeight] = useState(PROFILE_DOCK_DEFAULT_PX);
@@ -167,6 +171,8 @@ export function ElevationProfileDock({
               onActivated={onActivated}
               flowDirection={flowDirection}
               crossings={crossings}
+              parcelFeatures={parcelFeatures}
+              culverts={culverts}
             />
           </Suspense>
         </div>

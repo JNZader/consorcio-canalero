@@ -8,7 +8,7 @@
  */
 
 import { Alert, Button, Checkbox, Group, Skeleton, Stack, Text } from '@mantine/core';
-import type { Geometry, LineString, MultiLineString } from 'geojson';
+import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
 import {
   Line,
@@ -25,6 +25,7 @@ import {
   fetchElevationProfile,
 } from '../../lib/api/elevationProfile';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import { culvertMarks, parcelBoundaryMarks } from './profileBoundaryCrossings';
 import {
   canalSlopeNotes,
   crossingsOnProfile,
@@ -133,6 +134,8 @@ export function ElevationProfileChart({
   externalDistanceM = null,
   flowDirection = null,
   crossings = [],
+  parcelFeatures = null,
+  culverts = null,
   onActivated,
   autoLoad = false,
 }: {
@@ -147,6 +150,8 @@ export function ElevationProfileChart({
   /** Set for a canal. Measurements leave this null and skip the drainage notes. */
   flowDirection?: FlowSense | null;
   readonly crossings?: readonly ProfileCrossing[];
+  readonly parcelFeatures?: readonly Feature<Geometry, GeoJsonProperties>[] | null;
+  readonly culverts?: readonly { lon: number; lat: number; label: string }[] | null;
   /** The operator asked for the curve, or a permalink already did. */
   onActivated?: () => void;
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
@@ -285,7 +290,11 @@ export function ElevationProfileChart({
   const slopeNotes = flowDirection
     ? canalSlopeNotes(chartRows, flowDirection, { sedimentPct, adversePct })
     : [];
-  const profileCrossings = crossingsOnProfile(chartRows, crossings);
+  const profileCrossings = crossingsOnProfile(chartRows, [
+    ...crossings,
+    ...parcelBoundaryMarks(chartRows, parcelFeatures),
+    ...culvertMarks(culverts),
+  ]);
   const spanM =
     chartRows.length >= 2
       ? chartRows[chartRows.length - 1]!.distance_m - chartRows[0]!.distance_m
@@ -423,6 +432,11 @@ export function ElevationProfileChart({
                 ))
               )}
             </Stack>
+          ) : null}
+          {parcelFeatures && culverts && profileCrossings.length === 0 ? (
+            <Text size="xs" c="dimmed" data-testid="profile-crossings-empty">
+              Sin límites de parcela ni alcantarillas sobre este tramo.
+            </Text>
           ) : null}
           {profileCrossings.length > 0 ? (
             <Text size="xs" data-testid="profile-crossings">
@@ -642,6 +656,7 @@ export function ElevationProfileChart({
                         stroke={mapColorTokens.h868e96}
                         strokeDasharray="2 2"
                         ifOverflow="hidden"
+                        label={{ value: hit.label, position: 'insideTop', fontSize: 10 }}
                       />
                     ))}
                     {hoverRow ? (

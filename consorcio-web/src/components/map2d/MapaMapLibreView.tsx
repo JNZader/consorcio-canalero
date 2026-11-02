@@ -42,6 +42,7 @@ import {
 } from '../shared/canalesGrouping';
 import { VisuallyHidden } from '../ui/accessibility/primitives';
 import { marksFromRoadFlow } from './canalProfile';
+import { culvertPoints } from './profileBoundaryCrossings';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
 import { InfoPanel } from './InfoPanel';
@@ -209,6 +210,7 @@ export interface MapaMapLibreViewProps {
     options?: RefetchOptions
   ) => Promise<QueryObserverResult<GeoLayerInfo[], Error>>;
   readonly roadFlow: RoadFlowWiring;
+  readonly parcelFeatures?: readonly Feature<Geometry, GeoJsonProperties>[] | null;
   readonly roadsCollection: FeatureCollection<Geometry, GeoJsonProperties> | null | undefined;
   readonly satelliteLayer: { label: string } | null;
   readonly selectedFeatures: Feature<Geometry, GeoJsonProperties>[];
@@ -329,6 +331,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     rasterLoading,
     reloadGeoLayers,
     roadFlow,
+    parcelFeatures = null,
     roadsCollection,
     satelliteLayer,
     selectedFeatures,
@@ -650,6 +653,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 onClose={closeProfileDock}
                 flowDirection={pinnedProfile?.flowDirection ?? null}
                 crossings={marksFromRoadFlow(roadFlow.crossings.data)}
+                parcelFeatures={parcelFeatures}
+                culverts={culvertPoints(puntosInteres.collection)}
               />
             ) : null}
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
