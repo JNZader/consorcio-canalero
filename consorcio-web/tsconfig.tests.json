@@ -47,6 +47,9 @@
     // `./icons`. The errors point at `icons.tsx`, which is nowhere near the
     // code under test, so the trail is worth writing down once.
     "src/types/tabler-icons.d.ts",
+    // Ambient `qrcode` module. Nothing imports the declaration file, so this
+    // project drops it and `MapShareLink` becomes a TS7016.
+    "src/types/qrcode.d.ts",
     // The vitest setup file: it is what imports `@testing-library/jest-dom`,
     // whose module augmentation adds `toBeInTheDocument` and friends to
     // vitest's `Assertion`. Outside the program, every DOM matcher below is a
