@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertValid,
   getStyleColor,
+  imageParamsFitSettings,
   isValidDashboardData,
   isValidFeatureCollection,
   isValidGeometry,
@@ -27,6 +28,7 @@ import {
   isValidLayerStyle,
   isValidSelectedImage,
   isValidUserRole,
+  maxDaysBuffer,
   parseFeatureCollection,
   parseLayerStyle,
   safeJsonParseValidated,
@@ -327,7 +329,7 @@ describe('isValidSelectedImage — campos requeridos', () => {
     expect(isValidSelectedImage(imagenValida({ tile_url: '' }))).toBe(false);
   });
 
-  it.each(['Sentinel-1', 'Sentinel-2', 'Landsat 9', 'Landsat 8', 'Landsat 7', 'Landsat 5'])(
+  it.each(['Sentinel-1', 'Sentinel-2', 'Landsat 9', 'Landsat 8', 'Landsat 7', 'Landsat 5', 'JRC'])(
     'acepta el sensor %s',
     (sensor) => {
       expect(isValidSelectedImage(imagenValida({ sensor }))).toBe(true);
@@ -393,6 +395,41 @@ describe('isValidSelectedImage — campos opcionales', () => {
     const imagen = imagenValida();
     if (days_buffer !== undefined) Object.assign(imagen, { days_buffer });
     expect(isValidSelectedImage(imagen)).toBe(esperado);
+  });
+
+  it.each([
+    ['compuesto de 182 días', { days_buffer: 182, mode: 'composite' }, true],
+    ['compuesto en el tope 200', { days_buffer: 200, mode: 'composite' }, true],
+    ['compuesto de 201 se rechaza', { days_buffer: 201, mode: 'composite' }, false],
+    ['escena de 182 se rechaza', { days_buffer: 182, mode: 'scene' }, false],
+    ['escena de 31 se rechaza', { days_buffer: 31, mode: 'scene' }, false],
+    ['sin modo, 99 se rechaza', { days_buffer: 99 }, false],
+    ['compuesto de 1 día', { days_buffer: 1, mode: 'composite' }, true],
+    ['compuesto de 0 se rechaza', { days_buffer: 0, mode: 'composite' }, false],
+  ])('days_buffer compuesto: %s', (_n, cambios, esperado) => {
+    expect(isValidSelectedImage(imagenValida(cambios))).toBe(esperado);
+  });
+
+  it('el tope de una escena es 30 y el de un compuesto es 200', () => {
+    expect(maxDaysBuffer('scene')).toBe(30);
+    expect(maxDaysBuffer(undefined)).toBe(30);
+    expect(maxDaysBuffer('composite')).toBe(200);
+  });
+
+  it('no persiste JRC ni un buffer que el esquema de settings rechaza', () => {
+    expect(imageParamsFitSettings({ sensor: 'Sentinel-2', days_buffer: 30, mode: 'scene' })).toBe(
+      true
+    );
+    expect(imageParamsFitSettings({ sensor: 'Sentinel-2', days_buffer: 31, mode: 'scene' })).toBe(
+      false
+    );
+    expect(
+      imageParamsFitSettings({ sensor: 'Sentinel-2', days_buffer: 182, mode: 'composite' })
+    ).toBe(false);
+    expect(imageParamsFitSettings({ sensor: 'JRC', days_buffer: 1, mode: 'composite' })).toBe(
+      false
+    );
+    expect(imageParamsFitSettings({ sensor: 'Sentinel-2' })).toBe(true);
   });
 
   it.each([

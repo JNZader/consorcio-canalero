@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type ImagenMapaParams, mapImageApi } from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
-import { isValidSelectedImage } from '../lib/typeGuards';
+import { imageParamsFitSettings, isValidSelectedImage } from '../lib/typeGuards';
 
 const STORAGE_KEY = 'consorcio_selected_image';
 
@@ -23,7 +23,8 @@ export type SatelliteSensorLabel =
   | 'Landsat 9'
   | 'Landsat 8'
   | 'Landsat 7'
-  | 'Landsat 5';
+  | 'Landsat 5'
+  | 'JRC';
 
 export interface SelectedImage {
   tile_url: string;
@@ -68,6 +69,7 @@ function toBackendParams(image: SelectedImage): ImagenMapaParams {
  */
 function persistToBackend(image: SelectedImage | null): void {
   if (image) {
+    if (!imageParamsFitSettings(image)) return;
     mapImageApi.saveImagenPrincipal(toBackendParams(image)).catch((err) => {
       logger.warn('Failed to persist image params to backend:', err);
     });

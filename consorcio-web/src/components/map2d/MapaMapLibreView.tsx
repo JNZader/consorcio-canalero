@@ -48,6 +48,7 @@ import type { MeasurementState } from './measurement/useMeasurement';
 import { PuntoInteresPlaceModal } from './PuntoInteresPlaceModal';
 import type { PrecipitationRange } from './precipRanges';
 import type { ProfileRangeStats } from './profileRange';
+import { TimeCompareBar } from './TimeCompareBar';
 import type { AnalysisToolProps } from './useAnalysisToolsGate';
 import type { UseFichaInteractionResult } from './useFichaInteraction';
 import type { FichaOverlayTabsState } from './useFichaOverlayTabs';
@@ -481,6 +482,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 mapReady={mapReady}
                 onSliderPointerDown={handleSliderPointerDown}
               />
+              <TimeCompareBar onViewModeChange={(mode) => setViewMode(mode)} />
             </div>
 
             {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
