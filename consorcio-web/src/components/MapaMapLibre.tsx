@@ -12,8 +12,8 @@
 import type { Feature } from 'geojson';
 
 import * as maplibregl from 'maplibre-gl';
-import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { isRoadFlowEnabled } from '../lib/featureFlags';
+import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -56,7 +56,12 @@ import {
   useMapLayerSyncStore,
 } from '../stores/mapLayerSyncStore';
 import type { DrawControlHandle } from './map/DrawControl';
-import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
+import {
+  bboxFromGeometry,
+  canalCollections,
+  findCanalFeature,
+  fitMapToCanal,
+} from './map2d/canalFocus';
 import { buildLayerProvenance } from './map2d/layerProvenance';
 import { MapaMapLibreView } from './map2d/MapaMapLibreView';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
@@ -115,6 +120,9 @@ export default function MapaMapLibre() {
   // Phase 8 — array instead of single feature so InfoPanel can stack all
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
+  const [permalinkProfileSlug, setPermalinkProfileSlug] = useState<string | null>(null);
+  const [sharedProfileSlug, setSharedProfileSlug] = useState<string | null>(null);
+  const openedPermalinkProfile = useRef<string | null>(null);
   const [elevationProfileHover, setElevationProfileHover] = useState<{
     lon: number;
     lat: number;
@@ -270,7 +278,8 @@ export default function MapaMapLibre() {
   const roadFlow = useRoadFlowWiring({
     mapRef,
     mapReady,
-    active: isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
+    active:
+      isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
     panelActive: isRoadFlowEnabled() && !!vectorVisibility.road_flow,
     geoLayers: allGeoLayers,
     onDeactivate: deactivateRoadFlow,
@@ -399,6 +408,15 @@ export default function MapaMapLibre() {
       ? { label: `Imagen ${singleImageInfo.sensor} · ${singleImageInfo.date}` }
       : null;
 
+  const selectedFeature = selectedFeatures.length === 1 ? selectedFeatures[0] : null;
+  const selectedId = selectedFeature?.properties?.id;
+  const selectedCanalSlug = typeof selectedId === 'string' ? selectedId : '';
+  const profileSlug =
+    sharedProfileSlug ??
+    (permalinkProfileSlug && permalinkProfileSlug === selectedCanalSlug
+      ? permalinkProfileSlug
+      : null);
+
   useMapPermalink({
     mapRef,
     mapReady,
@@ -407,7 +425,38 @@ export default function MapaMapLibre() {
     setShowDemOverlay,
     setActiveDemLayerId,
     demLayers,
+    profileSlug,
+    onParsedProfile: setPermalinkProfileSlug,
   });
+
+  useEffect(() => {
+    if (
+      !permalinkProfileSlug ||
+      !mapReady ||
+      openedPermalinkProfile.current === permalinkProfileSlug
+    ) {
+      return;
+    }
+    const collections = [canalesRelevados, canalesPropuestas].filter(
+      (collection): collection is NonNullable<typeof collection> => collection != null
+    );
+    if (collections.length === 0) return;
+    const feature = findCanalFeature(collections, permalinkProfileSlug);
+    if (!feature) return;
+    openedPermalinkProfile.current = permalinkProfileSlug;
+    setSelectedFeatures([feature]);
+    const box = bboxFromGeometry(feature.geometry);
+    const map = mapRef.current;
+    if (box && map) {
+      map.fitBounds(
+        [
+          [box[0], box[1]],
+          [box[2], box[3]],
+        ],
+        { padding: 48, maxZoom: 15 }
+      );
+    }
+  }, [canalesPropuestas, canalesRelevados, mapReady, permalinkProfileSlug]);
 
   // The comparison view is NEVER auto-activated from the comparison state.
   // A saved pair is restored (localStorage, or the public endpoint for
@@ -608,6 +657,17 @@ export default function MapaMapLibre() {
   return (
     <MapaMapLibreView
       {...stage}
+      handleCloseInfoPanel={() => {
+        stage.handleCloseInfoPanel();
+        setPermalinkProfileSlug(null);
+        setSharedProfileSlug(null);
+      }}
+      elevationProfileAutoLoad={
+        permalinkProfileSlug != null && permalinkProfileSlug === selectedCanalSlug
+      }
+      onElevationProfileShare={() => {
+        if (selectedCanalSlug) setSharedProfileSlug(selectedCanalSlug);
+      }}
       activeDemLayerId={activeDemLayerId}
       activeLegendItems={activeLegendItems}
       baseLayer={baseLayer}
@@ -656,6 +716,7 @@ export default function MapaMapLibre() {
       selectedFeatures={selectedFeatures}
       setActiveDemLayerId={setActiveDemLayerId}
       setBaseLayer={setBaseLayer}
+      elevationProfileHover={elevationProfileHover}
       setElevationProfileHover={setElevationProfileHover}
       setElevationProfileRange={setElevationProfileRange}
       setEtapaVisible={setEtapaVisible}

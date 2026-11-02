@@ -13,8 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 describe('PERF-01 first-paint chunks', () => {
   it('does not statically import ElevationProfileChart from InfoPanel', () => {
     const info = readFileSync(join(here, '../../src/components/map2d/InfoPanel.tsx'), 'utf8');
-    expect(info).not.toMatch(/import \{ ElevationProfileChart \}/);
-    expect(info).toMatch(/lazy\(async/);
+    expect(info).not.toMatch(/ElevationProfileChart/);
   });
 
   it('does not statically import ElevationProfileChart from MeasurementLabels', () => {
@@ -22,8 +21,16 @@ describe('PERF-01 first-paint chunks', () => {
       join(here, '../../src/components/map2d/measurement/MeasurementLabels.tsx'),
       'utf8'
     );
-    expect(labels).not.toMatch(/import \{ ElevationProfileChart \}/);
-    expect(labels).toMatch(/lazy\(async/);
+    expect(labels).not.toMatch(/ElevationProfileChart/);
+  });
+
+  it('lazy-loads the elevation chart from the bottom dock', () => {
+    const dock = readFileSync(
+      join(here, '../../src/components/map2d/ElevationProfileDock.tsx'),
+      'utf8'
+    );
+    expect(dock).not.toMatch(/import \{ ElevationProfileChart \}/);
+    expect(dock).toMatch(/lazy\(async/);
   });
 
   it('does not statically import MapboxDraw in measurementDrawModes', () => {

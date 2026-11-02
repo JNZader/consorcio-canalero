@@ -98,7 +98,8 @@ export function useReportHighlight({ mapRef, mapReady }: UseReportHighlightParam
     const popup = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: false,
-      offset: 24,
+      anchor: 'bottom',
+      offset: 28,
     }).setDOMContent(popupContent);
 
     const marker = new maplibregl.Marker({ color: mapColorTokens.hdc2626 })

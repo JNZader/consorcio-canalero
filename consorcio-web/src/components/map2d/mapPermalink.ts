@@ -8,6 +8,8 @@ export interface MapPermalink {
   /** Catalog ids to turn on. `[]` means all off (`l=none`). Omit = do not apply. */
   layers?: string[];
   rasterTipo?: string;
+  /** Canal slug whose elevation profile should open. Omit = do not change. */
+  perfil?: string;
 }
 
 const PRESET_SET = new Set<string>(MAP_PRESET_IDS);
@@ -38,6 +40,9 @@ export function parseMapPermalink(search: string): MapPermalink {
 
   const rasterTipo = params.get('r');
   if (rasterTipo) out.rasterTipo = rasterTipo;
+
+  const perfil = params.get('perfil');
+  if (perfil && /^[a-z0-9-]{1,80}$/.test(perfil)) out.perfil = perfil;
 
   return out;
 }
@@ -71,6 +76,7 @@ export function serializeMapPermalink(
   }
 
   setOrDelete('r', next.rasterTipo);
+  setOrDelete('perfil', next.perfil);
 
   const qs = params.toString();
   return qs ? `?${qs}` : '';

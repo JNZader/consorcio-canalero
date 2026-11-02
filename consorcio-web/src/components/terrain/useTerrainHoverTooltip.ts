@@ -1,22 +1,22 @@
 import type { Feature } from 'geojson';
-import * as maplibregl from 'maplibre-gl';
+import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import { type RefObject, useEffect, useState } from 'react';
-
-import { prefersFineHover, subscribePrefersFineHover } from '../map2d/prefersFineHover';
-
 import { featureDisplayName } from '../map2d/InfoPanel';
+import { publishMapFeatureReadout } from '../map2d/mapFeatureReadout';
+import { prefersFineHover, subscribePrefersFineHover } from '../map2d/prefersFineHover';
 import { buildClickableLayers3D, filterExistingLayers } from './terrainViewer3DUtils';
 
 const THROTTLE_MS = 80;
 
 /**
- * UX PDF T5 — same desktop hover tooltip as 2D R6. Mobile has no hover.
+ * UX PDF T5 — same desktop hover name as 2D, docked in the status bar so the
+ * card does not cover the feature. Mobile has no hover.
  */
 export function useTerrainHoverTooltip({
   mapRef,
   ready,
 }: {
-  readonly mapRef: RefObject<maplibregl.Map | null>;
+  readonly mapRef: RefObject<MapLibreMap | null>;
   readonly ready: boolean;
 }): void {
   const [fineHover, setFineHover] = useState(prefersFineHover);
@@ -24,16 +24,10 @@ export function useTerrainHoverTooltip({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !fineHover) return;
-    if (typeof maplibregl.Popup !== 'function') return;
 
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 12,
-    });
     let last = 0;
 
-    const onMove = (event: maplibregl.MapMouseEvent) => {
+    const onMove = (event: MapMouseEvent) => {
       const now = Date.now();
       if (now - last < THROTTLE_MS) return;
       last = now;
@@ -42,19 +36,16 @@ export function useTerrainHoverTooltip({
       const hits = map.queryRenderedFeatures(event.point, { layers });
       const feature = hits[0];
       if (!feature) {
-        popup.remove();
+        publishMapFeatureReadout('3d', null);
         map.getCanvas().style.cursor = '';
         return;
       }
       map.getCanvas().style.cursor = 'pointer';
-      popup
-        .setLngLat(event.lngLat)
-        .setText(featureDisplayName(feature as unknown as Feature))
-        .addTo(map);
+      publishMapFeatureReadout('3d', featureDisplayName(feature as Feature));
     };
 
     const onLeave = () => {
-      popup.remove();
+      publishMapFeatureReadout('3d', null);
       map.getCanvas().style.cursor = '';
     };
 
@@ -63,7 +54,7 @@ export function useTerrainHoverTooltip({
     return () => {
       map.off('mousemove', onMove);
       map.off('mouseout', onLeave);
-      popup.remove();
+      publishMapFeatureReadout('3d', null);
     };
   }, [fineHover, mapRef, ready]);
 }

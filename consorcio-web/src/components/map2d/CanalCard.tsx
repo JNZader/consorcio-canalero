@@ -27,7 +27,7 @@
  * @see design `sdd/canales-relevados-y-propuestas/design` §4 Frontend Architecture
  */
 
-import { Badge, Divider, Stack, Text, Title } from '@mantine/core';
+import { Badge, Button, Divider, Stack, Text, Title } from '@mantine/core';
 import { memo } from 'react';
 import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
@@ -74,13 +74,15 @@ export interface CanalCardProps {
    * the ETL). Never mutated — the card extracts what it needs and renders.
    */
   readonly properties: CanalFeatureProperties;
+  /** One click opens the bottom profile for this canal. */
+  readonly onVerPerfil?: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export const CanalCard = memo(function CanalCard({ properties }: CanalCardProps) {
+export const CanalCard = memo(function CanalCard({ properties, onVerPerfil }: CanalCardProps) {
   const {
     codigo,
     nombre,
@@ -144,6 +146,12 @@ export const CanalCard = memo(function CanalCard({ properties }: CanalCardProps)
           </Text>
         </>
       )}
+
+      {onVerPerfil ? (
+        <Button size="xs" variant="light" onClick={onVerPerfil} data-testid="canal-ver-perfil">
+          Ver perfil
+        </Button>
+      ) : null}
     </Stack>
   );
 });

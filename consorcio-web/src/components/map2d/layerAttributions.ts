@@ -24,10 +24,21 @@ export interface LayerAttribution {
   readonly text: string;
 }
 
+export const IDECOR_HYDRO_LAYER_IDS = [
+  'idecor_consorcios',
+  'idecor_cursos',
+  'idecor_cuencas',
+  'idecor_canales_riego',
+] as const;
+
 export const LAYER_ATTRIBUTIONS: readonly LayerAttribution[] = [
   {
     layerIds: PILAR_VERDE_LAYER_IDS,
     text: 'Datos: IDECor — Gobierno de Córdoba',
+  },
+  {
+    layerIds: IDECOR_HYDRO_LAYER_IDS,
+    text: 'Fuente: IDECOR — Infraestructura de Datos Espaciales de la Provincia de Córdoba',
   },
 ];
 

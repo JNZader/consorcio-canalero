@@ -4,10 +4,24 @@
  */
 import { Alert, Box, Stack, Text } from '@mantine/core';
 import type { QueryObserverResult, RefetchOptions } from '@tanstack/react-query';
-import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from 'geojson';
+import type {
+  Feature,
+  FeatureCollection,
+  GeoJsonProperties,
+  Geometry,
+  LineString,
+  MultiLineString,
+} from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
-import type { PointerEvent as ReactPointerEvent, RefObject, SetStateAction } from 'react';
-import { lazy, Suspense } from 'react';
+import {
+  lazy,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  type SetStateAction,
+  Suspense,
+  useCallback,
+  useState,
+} from 'react';
 import { MAP_BOUNDS, MAP_HOME_FIT_PADDING, MAP_QUICK_PLACES } from '../../constants';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import type { UseFichaOverlayResult } from '../../hooks/useFichaOverlay';
@@ -27,6 +41,8 @@ import {
   type EtapaGate,
 } from '../shared/canalesGrouping';
 import { VisuallyHidden } from '../ui/accessibility/primitives';
+import { marksFromRoadFlow } from './canalProfile';
+import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
 import type { HazardBasinOption } from './hazardControls.types';
 import type { HazardLegendView } from './hazardLegend';
@@ -47,11 +63,13 @@ import { MeasurementToolbar } from './measurement/MeasurementToolbar';
 import type { MeasurementState } from './measurement/useMeasurement';
 import { PuntoInteresPlaceModal } from './PuntoInteresPlaceModal';
 import type { PrecipitationRange } from './precipRanges';
+import type { ProfileCursorSample } from './profileCursorSync';
 import type { ProfileRangeStats } from './profileRange';
 import { TimeCompareBar } from './TimeCompareBar';
 import type { AnalysisToolProps } from './useAnalysisToolsGate';
 import type { UseFichaInteractionResult } from './useFichaInteraction';
 import type { FichaOverlayTabsState } from './useFichaOverlayTabs';
+import { useMapProfileCursor } from './useMapProfileCursor';
 import type { PuntosInteresWiring } from './usePuntosInteresWiring';
 import type { QuickPlacePin } from './useQuickPlaceMarker';
 import type { RoadFlowWiring } from './useRoadFlowWiring';
@@ -165,6 +183,8 @@ export interface MapaMapLibreViewProps {
   readonly mapLoadError: string | null;
   readonly mapReady: boolean;
   readonly mapRef: RefObject<maplibregl.Map | null>;
+  readonly elevationProfileHover: { lon: number; lat: number } | null;
+  readonly measurementDraftLine: LineString | null;
   readonly measurementLiveLabel: string | null;
   readonly measurementMap: maplibregl.Map | null;
   readonly measurementState: MeasurementState;
@@ -195,6 +215,8 @@ export interface MapaMapLibreViewProps {
     value: SetStateAction<{ lon: number; lat: number } | null>
   ) => void;
   readonly setElevationProfileRange: (value: SetStateAction<ProfileRangeStats | null>) => void;
+  readonly elevationProfileAutoLoad?: boolean;
+  readonly onElevationProfileShare?: () => void;
   readonly setEtapaVisible: (etapa: Etapa, visible: boolean) => void;
   readonly setExportIncludeLegend: (value: SetStateAction<boolean>) => void;
   readonly setExportIncludeMetadata: (value: SetStateAction<boolean>) => void;
@@ -286,8 +308,10 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     layerProvenance,
     mapDragSignal,
     mapLoadError,
+    elevationProfileHover,
     mapReady,
     mapRef,
+    measurementDraftLine,
     measurementLiveLabel,
     measurementMap,
     measurementState,
@@ -308,6 +332,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     setBaseLayer,
     setElevationProfileHover,
     setElevationProfileRange,
+    elevationProfileAutoLoad = false,
+    onElevationProfileShare,
     setEtapaVisible,
     setExportIncludeLegend,
     setExportIncludeMetadata,
@@ -344,6 +370,49 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   // Same hook `MapWorkspace` uses for the sidebar-vs-Drawer decision, so the
   // floating top bar and the Drawer can never both own the base-layer control.
   const isDesktop = useMapWorkspaceDesktop();
+  const [pinnedProfile, setPinnedProfile] = useState<{
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso' | null;
+  } | null>(null);
+  const [dismissedDraftKey, setDismissedDraftKey] = useState<string | null>(null);
+  const [profileSamples, setProfileSamples] = useState<readonly ProfileCursorSample[]>([]);
+  const [mapCursorDistance, setMapCursorDistance] = useState<number | null>(null);
+  const draftKey = measurementDraftLine
+    ? `${measurementDraftLine.coordinates.length}:${measurementDraftLine.coordinates.at(-1)?.join(',') ?? ''}`
+    : '';
+  const liveDraft =
+    measurementDraftLine != null && dismissedDraftKey !== draftKey ? measurementDraftLine : null;
+  const dockGeometry = pinnedProfile?.geometry ?? liveDraft;
+  const dockTitle = pinnedProfile?.title ?? 'Perfil de elevación';
+  const dockEstimate = pinnedProfile == null && dockGeometry != null;
+  const onProfileSamples = useCallback((rows: readonly ProfileCursorSample[]) => {
+    setProfileSamples(rows);
+  }, []);
+  useMapProfileCursor({
+    map: measurementMap,
+    mapReady,
+    samples: profileSamples,
+    enabled: dockGeometry != null,
+    onDistance: setMapCursorDistance,
+  });
+  function openProfile(
+    geometry: LineString | MultiLineString,
+    title: string,
+    flowDirection: 'digitizado' | 'inverso' | null = null
+  ) {
+    setPinnedProfile({ geometry, title, flowDirection });
+  }
+  function closeProfileDock() {
+    setMapCursorDistance(null);
+    setElevationProfileHover(null);
+    setElevationProfileRange(null);
+    if (pinnedProfile) {
+      setPinnedProfile(null);
+      return;
+    }
+    setDismissedDraftKey(draftKey);
+  }
 
   // "N capas activas" indicator. It counts EXACTLY what the control panel shows
   // as rows — same derivation as the per-family badges (`buildFamilyActiveCounts`,
@@ -519,13 +588,29 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
             <MeasurementLabels
               map={measurementMap}
               measurements={measurementState.measurements}
-              onElevationProfileHover={(point) => {
-                setElevationProfileHover(point);
-              }}
-              onElevationProfileRange={(range) => {
-                setElevationProfileRange(range);
+              onProfileLine={(line) => {
+                if (line) {
+                  openProfile(line, 'Perfil de la medición');
+                } else {
+                  closeProfileDock();
+                }
               }}
             />
+            {dockGeometry ? (
+              <ElevationProfileDock
+                geometry={dockGeometry}
+                title={dockTitle}
+                estimate={dockEstimate}
+                externalDistanceM={mapCursorDistance}
+                onSamples={onProfileSamples}
+                onActivated={onElevationProfileShare}
+                onHoverLngLat={setElevationProfileHover}
+                onRangeCoordinates={setElevationProfileRange}
+                onClose={closeProfileDock}
+                flowDirection={pinnedProfile?.flowDirection ?? null}
+                crossings={marksFromRoadFlow(roadFlow.crossings.data)}
+              />
+            ) : null}
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
 
             {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
@@ -644,6 +729,13 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onCloseInfoPanel={handleCloseInfoPanel}
               onElevationProfileHover={setElevationProfileHover}
               onElevationProfileRange={setElevationProfileRange}
+              onOpenElevationProfile={(geometry) => openProfile(geometry, 'Perfil de elevación')}
+              onOpenCanalProfile={(request) =>
+                openProfile(request.geometry, `Perfil de ${request.title}`, request.flowDirection)
+              }
+              profileHover={elevationProfileHover}
+              elevationProfileAutoLoad={elevationProfileAutoLoad}
+              onElevationProfileShare={onElevationProfileShare}
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}
@@ -821,35 +913,31 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   : undefined
               }
             />
-            {showLegend && (
-              <>
-                {visibleRasterLayers.length > 0 && (
-                  <RasterLegend
-                    layers={visibleRasterLayers}
-                    hiddenClasses={hiddenClasses}
-                    hiddenRanges={hiddenRanges}
-                    floating={false}
-                    onClassToggle={(layerType, classIndex, visible) =>
-                      setHiddenClasses((prev) => {
-                        const curr = prev[layerType] ?? [];
-                        const next = visible
-                          ? curr.filter((i) => i !== classIndex)
-                          : [...curr, classIndex];
-                        return { ...prev, [layerType]: next };
-                      })
-                    }
-                    onRangeToggle={(layerType, rangeIndex, visible) =>
-                      setHiddenRanges((prev) => {
-                        const curr = prev[layerType] ?? [];
-                        const next = visible
-                          ? curr.filter((i) => i !== rangeIndex)
-                          : [...curr, rangeIndex];
-                        return { ...prev, [layerType]: next };
-                      })
-                    }
-                  />
-                )}
-              </>
+            {showLegend && visibleRasterLayers.length > 0 && (
+              <RasterLegend
+                layers={visibleRasterLayers}
+                hiddenClasses={hiddenClasses}
+                hiddenRanges={hiddenRanges}
+                floating={false}
+                onClassToggle={(layerType, classIndex, visible) =>
+                  setHiddenClasses((prev) => {
+                    const curr = prev[layerType] ?? [];
+                    const next = visible
+                      ? curr.filter((i) => i !== classIndex)
+                      : [...curr, classIndex];
+                    return { ...prev, [layerType]: next };
+                  })
+                }
+                onRangeToggle={(layerType, rangeIndex, visible) =>
+                  setHiddenRanges((prev) => {
+                    const curr = prev[layerType] ?? [];
+                    const next = visible
+                      ? curr.filter((i) => i !== rangeIndex)
+                      : [...curr, rangeIndex];
+                    return { ...prev, [layerType]: next };
+                  })
+                }
+              />
             )}
           </Stack>
         }

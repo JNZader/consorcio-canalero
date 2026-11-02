@@ -166,6 +166,10 @@ const defaultVisibleVectors: Record<string, boolean> = {
   // catalog next to our own road network. Deliberately NOT merged into
   // `red_vial` — that table carries the cruces/relevamiento FKs.
   red_vial_oficial: true,
+  idecor_consorcios: false,
+  idecor_cursos: false,
+  idecor_cuencas: false,
+  idecor_canales_riego: false,
   caminos_huecos: false,
   ...PILAR_VERDE_DEFAULT_VISIBILITY,
   ...PILAR_AZUL_DEFAULT_VISIBILITY,
