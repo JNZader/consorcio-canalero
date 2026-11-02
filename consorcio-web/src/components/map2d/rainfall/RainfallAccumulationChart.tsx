@@ -51,14 +51,13 @@
 
 import { Alert, Box, Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
+import { useState } from 'react';
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -71,7 +70,13 @@ import {
 } from '../../../lib/api/rainfall';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
 import { CAMPAIGN_PRESET, CAMPAIGN_START_MONTH_DAY, type CampaignPreset } from './rainfallCampaign';
-import { evidenceFooter, formatAccumulated, isoDay, lastEvidenceDay } from './rainfallFormat';
+import {
+  evidenceFooter,
+  formatAccumulated,
+  formatRainfallChartValue,
+  isoDay,
+  lastEvidenceDay,
+} from './rainfallFormat';
 
 export { CAMPAIGN_PRESET, type CampaignPreset } from './rainfallCampaign';
 
@@ -149,21 +154,6 @@ function normalCurveNotice(
   return known === undefined
     ? { title: 'Sin línea normal', body: state }
     : { title: known.title, body: known.body(normalPhrase(baseline)) };
-}
-
-/**
- * A tooltip value — with the null guard BEFORE the numeric coercion.
- *
- * recharts hands the formatter the raw datum, `null` included, and
- * `Number(null)` is `0`: coercing first turns "no evidence" into a measured
- * 0.0 mm. Two real shapes carry `null` here — February 29, which the backend
- * omits from the normal curve by construction, and any day before the first
- * published one — so this is the same rule `formatAccumulated` exists to
- * enforce, applied one step earlier than the coercion that would defeat it.
- */
-function tooltipValue(value: unknown, unit: string): string {
-  if (value === null || value === undefined) return formatAccumulated(null, unit);
-  return formatAccumulated(Number(value), unit);
 }
 
 /** The last point that actually carries a value for `key`, or undefined. */
@@ -303,6 +293,8 @@ export function RainfallAccumulationChart({
     series.data && hasEvidence ? lastEvidenceDay(series.data.available_through) : null;
   const lagging = evidenceDay !== null && evidenceDay < comparisonEndDay;
 
+  const [hover, setHover] = useState<RainfallSeriesPoint | null>(null);
+
   const chartLabel = describePlottedWindow(visible, {
     year: snapshot.year,
     baseline: snapshot.baseline,
@@ -373,64 +365,87 @@ export function RainfallAccumulationChart({
           Sin días publicados en esta ventana; no hay serie para dibujar.
         </Text>
       ) : (
-        <Box h={180} role="img" aria-label={chartLabel} data-testid="rainfall-accumulation-chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={visible} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="2 4" vertical={false} opacity={0.25} />
-              <XAxis dataKey="date" fontSize={9} tickLine={false} minTickGap={28} />
-              <YAxis fontSize={9} width={36} tickLine={false} axisLine={false} />
-              <Tooltip
-                formatter={(value: unknown) => tooltipValue(value, unit)}
-                isAnimationActive={false}
-              />
-              <Legend
-                verticalAlign="bottom"
-                height={18}
-                iconSize={8}
-                wrapperStyle={{ fontSize: 10 }}
-              />
-              {/* Where the analysis says the comparison ends. Under provider
+        <Stack gap={4}>
+          <Text size="xs" data-testid="rainfall-accumulation-readout" mih={18}>
+            {hover
+              ? `${hover.date} · año ${formatRainfallChartValue(hover.accumulated, unit)}${
+                  curveAvailable
+                    ? ` · normal ${formatRainfallChartValue(hover.normal_accumulated, unit)}`
+                    : ''
+                }`
+              : 'Señalá el gráfico para leer un día'}
+          </Text>
+          <Box h={168} role="img" aria-label={chartLabel} data-testid="rainfall-accumulation-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={visible}
+                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+                onMouseMove={(event) => {
+                  const index =
+                    typeof event.activeIndex === 'number'
+                      ? event.activeIndex
+                      : Number(event.activeIndex);
+                  const point = Number.isInteger(index) ? visible[index] : undefined;
+                  setHover(point ?? null);
+                }}
+                onMouseLeave={() => setHover(null)}
+              >
+                <CartesianGrid strokeDasharray="2 4" vertical={false} opacity={0.25} />
+                <XAxis dataKey="date" fontSize={9} tickLine={false} minTickGap={28} />
+                <YAxis fontSize={9} width={36} tickLine={false} axisLine={false} />
+                {/* Where the analysis says the comparison ends. Under provider
                   lag this day is outside the plotted window, so it draws
                   nothing — which is why the footer states both dates in text
                   and never relies on this mark alone. */}
-              <ReferenceLine
-                x={comparisonEndDay}
-                stroke={mapColorTokens.h868e96}
-                strokeDasharray="4 4"
-                ifOverflow="hidden"
-              />
-              {/* SOLID vs DASHED, not just two colours: the two lines have to
+                <ReferenceLine
+                  x={comparisonEndDay}
+                  stroke={mapColorTokens.h868e96}
+                  strokeDasharray="4 4"
+                  ifOverflow="hidden"
+                />
+                {/* SOLID vs DASHED, not just two colours: the two lines have to
                   stay distinguishable in greyscale and for a colour-blind
                   reader. */}
-              <Line
-                type="monotone"
-                dataKey="accumulated"
-                name={`Año ${snapshot.year}`}
-                stroke={mapColorTokens.h1c7ed6}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-              {curveAvailable && (
-                // `connectNulls` is load-bearing here and nowhere else: Feb 29
-                // carries NO curve key by construction (the backend keys the
-                // normal by month/day and omits it), so without this the normal
-                // line breaks in two every leap year.
                 <Line
                   type="monotone"
-                  dataKey="normal_accumulated"
-                  name={`Normal ${snapshot.baseline}`}
-                  stroke={mapColorTokens.hf08c00}
+                  dataKey="accumulated"
+                  name={`Año ${snapshot.year}`}
+                  stroke={mapColorTokens.h1c7ed6}
                   strokeWidth={2}
-                  strokeDasharray="6 4"
                   dot={false}
-                  connectNulls
                   isAnimationActive={false}
                 />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
+                {curveAvailable && (
+                  // `connectNulls` is load-bearing here and nowhere else: Feb 29
+                  // carries NO curve key by construction (the backend keys the
+                  // normal by month/day and omits it), so without this the normal
+                  // line breaks in two every leap year.
+                  <Line
+                    type="monotone"
+                    dataKey="normal_accumulated"
+                    name={`Normal ${snapshot.baseline}`}
+                    stroke={mapColorTokens.hf08c00}
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    dot={false}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </Box>
+          <Group gap="sm" data-testid="rainfall-accumulation-legend">
+            <Text size="xs" c="blue.6">
+              Año {snapshot.year}
+            </Text>
+            {curveAvailable ? (
+              <Text size="xs" c="orange.6">
+                Normal {snapshot.baseline}
+              </Text>
+            ) : null}
+          </Group>
+        </Stack>
       )}
 
       {preset === CAMPAIGN_PRESET.CAMPAIGN && (

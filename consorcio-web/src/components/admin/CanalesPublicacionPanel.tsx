@@ -313,27 +313,24 @@ export default function CanalesPublicacionPanel() {
 
       <Grid gap="md">
         <Grid.Col span={{ base: 12, md: 8 }}>
-          <Paper withBorder style={{ position: 'relative', minHeight: 560, overflow: 'hidden' }}>
-            <Box style={{ height: 560 }}>
-              <CanalesPublicacionMap
-                consorcio={geojson}
-                existentes={aprhi}
-                srPa={srPa}
-                showRelevados={showRelevados}
-                showPropuestas={showPropuestas}
-                showAprhi={showAprhi}
-                showExistentes={showExistentes}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onOverlapHits={setOverlapHits}
-              />
-            </Box>
-            <Paper
-              shadow="sm"
-              p="xs"
-              withBorder
-              style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 1 }}
-            >
+          <Stack gap="xs">
+            <Paper withBorder style={{ position: 'relative', minHeight: 560, overflow: 'hidden' }}>
+              <Box style={{ height: 560 }}>
+                <CanalesPublicacionMap
+                  consorcio={geojson}
+                  existentes={aprhi}
+                  srPa={srPa}
+                  showRelevados={showRelevados}
+                  showPropuestas={showPropuestas}
+                  showAprhi={showAprhi}
+                  showExistentes={showExistentes}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  onOverlapHits={setOverlapHits}
+                />
+              </Box>
+            </Paper>
+            <Paper shadow="sm" p="xs" withBorder data-testid="canales-publicacion-leyenda">
               <Stack gap={4}>
                 <Text size="xs">
                   <Text span c="green" fw={700}>
@@ -376,7 +373,7 @@ export default function CanalesPublicacionPanel() {
                 </Text>
               </Stack>
             </Paper>
-          </Paper>
+          </Stack>
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, md: 4 }}>
