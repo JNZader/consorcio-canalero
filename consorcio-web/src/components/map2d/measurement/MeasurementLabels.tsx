@@ -18,8 +18,8 @@
  *     centroids and break the draw UX). The distance-profile button and
  *     the docked chart are the only children that opt back in.
  *   - Each label is absolutely-positioned using the pixel coords from
- *     `map.project(labelPosition)`, then `translate(-50%, -50%)` centres
- *     the label on the anchor point.
+ *     `map.project(labelPosition)`, then shifted ABOVE the anchor so the
+ *     chip does not cover the vertex or the segment it describes.
  *
  * Styling:
  *   - `#fd7e14` border matches the orange measurement draw line color
@@ -196,7 +196,7 @@ export function MeasurementLabels({
               position: 'absolute',
               left: pos.x,
               top: pos.y,
-              transform: 'translate(-50%, -50%)',
+              transform: 'translate(-50%, calc(-100% - 8px))',
               background: 'white',
               border: '1px solid #fd7e14',
               borderRadius: 4,
@@ -239,10 +239,11 @@ export function MeasurementLabels({
           data-testid="measurement-profile-panel"
           style={{
             position: 'absolute',
-            right: 12,
-            bottom: 12,
-            width: 340,
-            maxWidth: 'calc(100% - 24px)',
+            left: 8,
+            right: 8,
+            bottom: 8,
+            maxHeight: 'min(280px, 52%)',
+            overflow: 'auto',
             pointerEvents: 'auto',
             background: 'white',
             border: '1px solid #fd7e14',

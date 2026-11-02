@@ -308,6 +308,15 @@ export function formatAccumulated(value: number | null | undefined, unit: string
 }
 
 /**
+ * Chart readout. `null` stays unknown: `Number(null)` is `0`, and coercing
+ * first would invent a dry day (JDA-002).
+ */
+export function formatRainfallChartValue(value: unknown, unit: string): string {
+  if (value === null || value === undefined) return formatAccumulated(null, unit);
+  return formatAccumulated(Number(value), unit);
+}
+
+/**
  * The percentile as a PHRASE, for the annual textual equivalent.
  *
  * Not `formatMetricValue`: the server sends `unit: "percentil"` (deliberately

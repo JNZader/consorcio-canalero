@@ -37,7 +37,8 @@ export function useQuickPlaceMarker({ mapRef, mapReady, place }: UseQuickPlaceMa
     const popup = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: false,
-      offset: 24,
+      anchor: 'bottom',
+      offset: 28,
     }).setDOMContent(popupContent);
 
     const marker = new maplibregl.Marker({ color: mapColorTokens.h2563eb })

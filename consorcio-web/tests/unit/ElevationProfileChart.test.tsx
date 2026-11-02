@@ -79,7 +79,7 @@ describe('<ElevationProfileChart />', () => {
     });
     renderWithMantine(<ElevationProfileChart geometry={line} autoLoad />);
     expect(screen.queryByRole('button', { name: 'Perfil de elevación' })).not.toBeInTheDocument();
-    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118,0');
     expect(fetchElevationProfile).toHaveBeenCalledWith(line, undefined, false);
   });
 
@@ -101,7 +101,7 @@ describe('<ElevationProfileChart />', () => {
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
     expect(fetchElevationProfile).toHaveBeenCalledWith(line, undefined, false);
     expect(await screen.findByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
-    expect(screen.getByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
+    expect(screen.getByTestId('elevation-profile-extrema')).toHaveTextContent('118,0');
     expect(screen.getByTestId('elevation-profile-chart')).toBeInTheDocument();
     const chart = screen.getByTestId('elevation-profile-chart');
     const disclaimer = screen.getByTestId('elevation-profile-disclaimer');
@@ -309,14 +309,102 @@ describe('<ElevationProfileChart />', () => {
     const user = userEvent.setup();
     const { rerender } = renderWithMantine(<ElevationProfileChart geometry={line} />);
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
-    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118.0 m');
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118,0');
     rerender(
       <MantineProvider env="test">
         <ElevationProfileChart geometry={next} />
       </MantineProvider>,
     );
-    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('80.0 m');
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('80,0');
     expect(fetchElevationProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it('pins a cursor readout and clears a dragged range', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120, lon: -62.7, lat: -32.6 },
+        { distance_m: 1000, elevation_m: 118, lon: -62.71, lat: -32.61 },
+        { distance_m: 2000, elevation_m: 116, lon: -62.72, lat: -32.62 },
+      ],
+      length_m: 2000,
+      min_elevation_m: 116,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    const chart = await screen.findByTestId('elevation-line-chart');
+    expect(screen.getByTestId('elevation-profile-chart')).toHaveAttribute('data-axis', 'km');
+    expect(screen.getByTestId('elevation-profile-extrema')).toHaveTextContent('med');
+    expect(screen.getByTestId('elevation-profile-tramo-stats')).toHaveTextContent('pend.');
+    fireEvent.mouseMove(chart);
+    expect(screen.getByTestId('elevation-profile-cursor')).toBeInTheDocument();
+    expect(screen.getByTestId('elevation-profile-legend')).toHaveTextContent('118,0 m');
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    fireEvent.mouseDown(chart);
+    fireEvent.mouseMove(chart);
+    fireEvent.mouseUp(chart);
+    expect(await screen.findByTestId('elevation-profile-selection')).toHaveTextContent('Selección');
+    await user.click(screen.getByRole('button', { name: 'Limpiar' }));
+    expect(screen.queryByTestId('elevation-profile-selection')).not.toBeInTheDocument();
+  });
+
+  it('shows a skeleton while sampling and a retry after an error', async () => {
+    let rejectSample: (cause: Error) => void = () => {};
+    vi.mocked(fetchElevationProfile).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSample = reject;
+        }),
+    );
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(await screen.findByTestId('elevation-profile-loading')).toBeInTheDocument();
+    rejectSample(new Error('DEM fuera de línea'));
+    expect(await screen.findByTestId('elevation-profile-error')).toHaveTextContent('DEM fuera de línea');
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByTestId('elevation-profile-extrema')).toHaveTextContent('118,0');
+  });
+
+  it('keeps disclaimers folded until Sobre los datos', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} />);
+    await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    const toggle = await screen.findByTestId('elevation-profile-about-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const disclaimer = screen.getByTestId('elevation-profile-disclaimer');
+    expect(disclaimer.closest('[hidden]')).not.toBeNull();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(disclaimer.closest('[hidden]')).toBeNull();
   });
 
   it('renders nothing for a Point', () => {

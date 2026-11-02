@@ -19,6 +19,7 @@ import { InfoPanel } from '../map2d/InfoPanel';
 import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
 import { MapWorkspace, useMapWorkspaceDesktop } from '../map2d/MapWorkspace';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
+import { useMapFeatureReadout } from '../map2d/mapFeatureReadout';
 import {
   type CanalToggleEntry,
   collectCanalChildIds,
@@ -199,6 +200,7 @@ export function TerrainViewer3DChrome({
   bpaEnriched,
   bpaHistory,
 }: TerrainViewer3DChromeProps) {
+  const hoveredFeature = useMapFeatureReadout('3d');
   const isDesktop = useMapWorkspaceDesktop();
   const heavyWarning = heavy3dWarning(vectorLayerVisibility);
   const loadLines = heavy3dLoadLines({
@@ -355,36 +357,35 @@ export function TerrainViewer3DChrome({
             )}
 
             <Box
+              data-testid="terrain-status-dock"
               style={{
                 position: 'absolute',
-                bottom: 12,
-                right: 12,
-                background: 'rgba(0,0,0,0.7)',
-                borderRadius: 8,
-                padding: '8px 12px',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0,0,0,0.72)',
+                padding: '4px 10px',
                 zIndex: 10,
+                pointerEvents: 'none',
               }}
             >
-              <Text size="xs" c="white" fw={600} mb={4}>
-                Terreno 3D
-              </Text>
-              <Text size="xs" c="white" data-testid="terrain-exaggeration-label">
-                {exaggerationCanvasLabel(exaggeration)}
-              </Text>
-              {terrainSmoothingEnabled && (
-                <Text size="xs" c="gray.4">
-                  Terreno suavizado: reduce picos de árboles/construcciones
+              <Text size="xs" c="white">
+                <Text span fw={600}>
+                  Terreno 3D
                 </Text>
-              )}
-              {selectedImage && (
-                <Text size="xs" c="gray.4">
-                  Imagen seleccionada: {selectedImage.sensor} {selectedImage.target_date}
+                {' · '}
+                <Text span data-testid="terrain-exaggeration-label">
+                  {exaggerationCanvasLabel(exaggeration)}
                 </Text>
-              )}
-              <Text size="xs" c="gray.4">
-                {isDesktop
-                  ? 'Ctrl+arrastre para rotar'
-                  : 'Arrastrá con 2 dedos para rotar e inclinar'}
+                {terrainSmoothingEnabled ? ' · suavizado' : ''}
+                {selectedImage
+                  ? ` · ${selectedImage.sensor} ${selectedImage.target_date}`
+                  : ''}
+                {hoveredFeature ? (
+                  <Text span data-testid="terrain-feature-readout">{` · ${hoveredFeature}`}</Text>
+                ) : (
+                  ` · ${isDesktop ? 'Ctrl+arrastre para rotar' : '2 dedos para rotar'}`
+                )}
               </Text>
             </Box>
           </Paper>
