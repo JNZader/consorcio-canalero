@@ -44,6 +44,7 @@ import {
   syncImageOverlays,
   syncMartinSuggestionLayers,
 } from './mapRasterOverlayHelpers';
+import { syncIdecorHydroLayers } from './idecorHydroLayers';
 import { ROAD_FLOW_ALL_KINDS_VISIBLE, type RoadFlowKindVisibility } from './roadFlowLayers';
 import { runWhenMapStyleReady } from './map2dUtils';
 
@@ -320,6 +321,19 @@ export function useMapLayerEffects({
     });
     });
   }, [mapReady, mapRef, vectorVisibility.puntos_conflicto]);
+
+  useEffect(() => {
+    runWhenMapStyleReady(mapRef.current, mapReady, (map) => {
+      syncIdecorHydroLayers(map, vectorVisibility);
+    });
+  }, [
+    mapReady,
+    mapRef,
+    vectorVisibility.idecor_consorcios,
+    vectorVisibility.idecor_cursos,
+    vectorVisibility.idecor_cuencas,
+    vectorVisibility.idecor_canales_riego,
+  ]);
 
   // ── Pilar Verde (Phase 2) ───────────────────────────────────────────────
   // Each layer has a dedicated effect so a change to one collection doesn't

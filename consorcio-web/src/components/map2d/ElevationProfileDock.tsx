@@ -31,6 +31,7 @@ export function ElevationProfileDock({
   onRangeCoordinates,
   externalDistanceM = null,
   onSamples,
+  onActivated,
   flowDirection = null,
   crossings = [],
 }: {
@@ -42,6 +43,7 @@ export function ElevationProfileDock({
   readonly onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
   readonly externalDistanceM?: number | null;
   readonly onSamples?: (rows: readonly ProfileChartRow[]) => void;
+  readonly onActivated?: () => void;
   readonly flowDirection?: 'digitizado' | 'inverso' | null;
   readonly crossings?: readonly { lon: number; lat: number; label: string }[];
 }) {
@@ -162,6 +164,7 @@ export function ElevationProfileDock({
               onRangeCoordinates={onRangeCoordinates}
               externalDistanceM={externalDistanceM}
               onSamples={onSamples}
+              onActivated={onActivated}
               flowDirection={flowDirection}
               crossings={crossings}
             />

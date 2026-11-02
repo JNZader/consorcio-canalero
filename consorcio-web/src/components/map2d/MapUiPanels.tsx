@@ -151,6 +151,8 @@ export interface MapUiPanelsProps {
     flowDirection: 'digitizado' | 'inverso';
   }) => void;
   readonly profileHover?: { lon: number; lat: number } | null;
+  readonly elevationProfileAutoLoad?: boolean;
+  readonly onElevationProfileShare?: () => void;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
    * and threads its state down here; `InfoPanel` stays pure. When
@@ -365,6 +367,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   onOpenElevationProfile,
   onOpenCanalProfile,
   profileHover = null,
+  elevationProfileAutoLoad = false,
+  onElevationProfileShare,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -685,6 +689,8 @@ export const MapUiPanels = memo(function MapUiPanels({
           onOpenElevationProfile={onOpenElevationProfile}
           onOpenCanalProfile={onOpenCanalProfile}
           profileHover={profileHover}
+          elevationProfileAutoLoad={elevationProfileAutoLoad}
+          onElevationProfileShare={onElevationProfileShare}
         />
       )}
 

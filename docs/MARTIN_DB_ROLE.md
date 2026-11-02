@@ -9,7 +9,7 @@ mutaciones.
 | Componente | Rol | Alcance |
 |---|---|---|
 | Backend y migraciones | `consorcio` | Propietario de la aplicación |
-| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre cinco vistas |
+| Martin | `consorcio_martin` | `CONNECT`, `USAGE` y `SELECT` sobre nueve vistas |
 
 El rol `consorcio_martin` recibe `SELECT` exclusivamente sobre:
 
@@ -18,6 +18,10 @@ El rol `consorcio_martin` recibe `SELECT` exclusivamente sobre:
 - `public.vt_puntos_conflicto`
 - `public.vt_canal_network`
 - `public.vt_parcelas_catastro`
+- `public.vt_idecor_consorcios`
+- `public.vt_idecor_cursos`
+- `public.vt_idecor_cuencas`
+- `public.vt_idecor_canales_riego`
 
 No recibe escritura sobre esas vistas, acceso a otras relaciones, secuencias,
 funciones de aplicación, creación de objetos, tablas temporales ni membresías de
@@ -30,7 +34,7 @@ los `GRANT` y `REVOKE` verificados por
 
 ## Antes de aplicar
 
-1. Hacé un backup y confirmá que las migraciones vigentes están aplicadas y crean las cinco vistas permitidas.
+1. Hacé un backup y confirmá que las migraciones vigentes están aplicadas y crean las vistas permitidas. Las cuatro `vt_idecor_*` salen de `scripts/sql/idecor_hidrografia.sql`, que el deploy no corre solo.
 2. Auditá otros roles que usen privilegios heredados de `PUBLIC`. El script cierra
    `CONNECT`, `TEMPORARY`, relaciones y secuencias públicas en esta base. Otorgá
    permisos explícitos a cualquier integración legítima antes de ejecutarlo.

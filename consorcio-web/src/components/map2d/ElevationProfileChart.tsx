@@ -133,6 +133,7 @@ export function ElevationProfileChart({
   externalDistanceM = null,
   flowDirection = null,
   crossings = [],
+  onActivated,
   autoLoad = false,
 }: {
   geometry: Geometry | null | undefined;
@@ -146,6 +147,8 @@ export function ElevationProfileChart({
   /** Set for a canal. Measurements leave this null and skip the drainage notes. */
   flowDirection?: FlowSense | null;
   readonly crossings?: readonly ProfileCrossing[];
+  /** The operator asked for the curve, or a permalink already did. */
+  onActivated?: () => void;
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
   autoLoad?: boolean;
 }) {
@@ -172,6 +175,8 @@ export function ElevationProfileChart({
   const samplesCb = useRef(onSamples);
   samplesCb.current = onSamples;
   const rowsRef = useRef<ProfileChartRow[]>([]);
+  const activatedCb = useRef(onActivated);
+  activatedCb.current = onActivated;
 
   useEffect(() => {
     setRange(null);
@@ -194,6 +199,7 @@ export function ElevationProfileChart({
     const line = geometry;
     setStatus('loading');
     setError(null);
+    activatedCb.current?.();
     void fetchElevationProfile(line, undefined, compareDems).then(
       (data) => {
         if (gen !== requestGen.current) {
@@ -240,6 +246,7 @@ export function ElevationProfileChart({
     const gen = ++requestGen.current;
     setStatus('loading');
     setError(null);
+    activatedCb.current?.();
     try {
       const data = await fetchElevationProfile(line, undefined, compareDems);
       if (gen !== requestGen.current) {

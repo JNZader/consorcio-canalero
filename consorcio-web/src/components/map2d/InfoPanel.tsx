@@ -127,6 +127,10 @@ interface InfoPanelProps {
   }) => void;
   /** Cursor coming back from the dock, so the tramo label still tracks it. */
   readonly profileHover?: { lon: number; lat: number } | null;
+  /** Permalink already asked for this canal's curve. */
+  readonly elevationProfileAutoLoad?: boolean;
+  /** Record the canal slug in the shareable URL once the curve is requested. */
+  readonly onElevationProfileShare?: () => void;
 }
 
 /**
@@ -429,6 +433,8 @@ export const InfoPanel = memo(function InfoPanel({
   onOpenElevationProfile,
   onOpenCanalProfile,
   profileHover = null,
+  elevationProfileAutoLoad = false,
+  onElevationProfileShare,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -467,6 +473,11 @@ export const InfoPanel = memo(function InfoPanel({
     }
     setHoverIdx(nearestLineStringIndex(resolved, profileHover.lon, profileHover.lat));
   }, [profileHover, resolved]);
+
+  useEffect(() => {
+    if (!elevationProfileAutoLoad || !profileGeometry) return;
+    onOpenElevationProfile?.(profileGeometry);
+  }, [elevationProfileAutoLoad, onOpenElevationProfile, profileGeometry]);
 
   if (resolved.length === 0) return null;
 
@@ -561,7 +572,10 @@ export const InfoPanel = memo(function InfoPanel({
             <UnstyledButton
               type="button"
               data-testid="elevation-profile"
-              onClick={() => onOpenElevationProfile?.(profileGeometry)}
+              onClick={() => {
+                onOpenElevationProfile?.(profileGeometry);
+                onElevationProfileShare?.();
+              }}
             >
               <Text size="xs" c="blue">
                 Perfil de elevación

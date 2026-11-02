@@ -57,6 +57,10 @@ const INITIAL_OFF_VECTORS = [
   'puntos_interes',
   'caminos_huecos',
   'puntos_conflicto',
+  'idecor_consorcios',
+  'idecor_cursos',
+  'idecor_cuencas',
+  'idecor_canales_riego',
   // Pilar Azul — Escuelas rurales (v1 master toggle, opt-in per design §7).
   'escuelas',
 ] as const;

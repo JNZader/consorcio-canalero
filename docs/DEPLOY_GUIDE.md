@@ -74,7 +74,8 @@ MARTIN_PUBLIC_URL=https://tiles.consorcio.DOMINIO
 
 El backend usa `consorcio`; Martin usa siempre el rol independiente
 `consorcio_martin`. Este último solo puede leer `vt_caminos_unificados`,
-`vt_zonas_operativas`, `vt_puntos_conflicto`, `vt_canal_network` y `vt_parcelas_catastro`; no puede consultar
+`vt_zonas_operativas`, `vt_puntos_conflicto`, `vt_canal_network`, `vt_parcelas_catastro`,
+`vt_idecor_consorcios`, `vt_idecor_cursos`, `vt_idecor_cuencas` y `vt_idecor_canales_riego`; no puede consultar
 tablas base, escribir, usar secuencias ni ejecutar funciones de aplicación.
 
 Migrar, provisionar y recién después iniciar:
