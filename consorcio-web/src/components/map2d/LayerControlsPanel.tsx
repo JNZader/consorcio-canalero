@@ -2,6 +2,7 @@ import {
   Accordion,
   Box,
   Button,
+  Checkbox,
   CloseButton,
   Divider,
   Group,
@@ -414,9 +415,13 @@ export function LayerControlsPanel({
 
   // Vector items after applying the search filter (React Compiler memoizes this
   // — no manual `useMemo`).
-  const filteredLayerItems = isSearching
+  const [onlyActive, setOnlyActive] = useState(false);
+  const searchedLayerItems = isSearching
     ? layerItems.filter((item) => normalizeSearchText(item.label).includes(normalizedQuery))
     : layerItems;
+  const filteredLayerItems = onlyActive
+    ? searchedLayerItems.filter((item) => Boolean(vectorVisibility[item.id]))
+    : searchedLayerItems;
 
   // FF-T3c: raster/DEM options (riesgo hídrico, drenaje, terreno…) live in
   // Análisis raster. Search still has to find them — they were invisible when
@@ -589,6 +594,13 @@ export function LayerControlsPanel({
               )}
             </Group>
           )}
+          <Checkbox
+            size="xs"
+            label="Solo activas"
+            checked={onlyActive}
+            onChange={(event) => setOnlyActive(event.currentTarget.checked)}
+            data-testid="layer-only-active"
+          />
           <TextInput
             size="xs"
             aria-label="Buscar capa"

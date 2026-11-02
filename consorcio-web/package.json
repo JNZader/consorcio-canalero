@@ -60,6 +60,7 @@
     "jszip": "^3.10.2",
     "maplibre-gl": "6.15.0",
     "pmtiles": "^4.5.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-helmet-async": "^3.0.0",

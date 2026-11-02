@@ -33,10 +33,11 @@ def test_densificar_keeps_half_cell_step_on_a_metric_line() -> None:
     assert max(gaps) <= PASO_DENSIFICADO_M + 1e-6
 
 
-def test_paso_muestreo_keeps_15m_until_the_point_budget() -> None:
-    from app.domains.geo.elevation_profile import MAX_POINTS, paso_muestreo
+def test_paso_muestreo_follows_glo30_and_keeps_the_point_budget() -> None:
+    from app.domains.geo.elevation_profile import GLO30_PASO_M, MAX_POINTS, paso_muestreo
 
-    assert paso_muestreo(10_000) == PASO_DENSIFICADO_M
+    assert paso_muestreo(10_000) == GLO30_PASO_M
+    assert GLO30_PASO_M == 30.0
     paso = paso_muestreo(40_000)
     assert paso > PASO_DENSIFICADO_M
     linea = LineString([(0.0, 0.0), (40_000.0, 0.0)])

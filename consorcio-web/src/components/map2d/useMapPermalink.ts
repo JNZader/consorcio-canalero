@@ -20,6 +20,9 @@ interface UseMapPermalinkParams {
   /** Canal slug currently shared as an open profile. Null clears `perfil`. */
   readonly profileSlug: string | null;
   readonly onParsedProfile: (slug: string) => void;
+  /** `canal:` / `cuenta:` token for the open feature. Null clears `sel`. */
+  readonly selection?: string | null;
+  readonly onParsedSelection?: (token: string) => void;
 }
 
 const WRITE_DEBOUNCE_MS = 400;
@@ -52,10 +55,14 @@ export function useMapPermalink({
   demLayers,
   profileSlug,
   onParsedProfile,
+  selection = null,
+  onParsedSelection,
 }: UseMapPermalinkParams): void {
   const appliedRef = useRef(false);
   const onParsedProfileRef = useRef(onParsedProfile);
   onParsedProfileRef.current = onParsedProfile;
+  const onParsedSelectionRef = useRef(onParsedSelection);
+  onParsedSelectionRef.current = onParsedSelection;
   const rasterAppliedRef = useRef(false);
   const cameraAppliedRef = useRef(false);
 
@@ -68,6 +75,7 @@ export function useMapPermalink({
       const parsed = parseMapPermalink(window.location.search);
       applyPermalinkLayers(parsed.layers, parsed.preset);
       if (parsed.perfil) onParsedProfileRef.current(parsed.perfil);
+      if (parsed.sel) onParsedSelectionRef.current?.(parsed.sel);
     };
 
     const persist = useMapLayerSyncStore.persist;
@@ -126,6 +134,7 @@ export function useMapPermalink({
           layers: preset && preset !== 'custom' ? undefined : layers,
           rasterTipo,
           perfil: profileSlug ?? undefined,
+          sel: selection ?? undefined,
         },
         MAP2D_CATALOG_VECTOR_IDS
       );
@@ -146,5 +155,5 @@ export function useMapPermalink({
       map.off('moveend', schedule);
       unsub();
     };
-  }, [activeDemLayerId, demLayers, mapReady, mapRef, profileSlug, showDemOverlay]);
+  }, [activeDemLayerId, demLayers, mapReady, mapRef, profileSlug, selection, showDemOverlay]);
 }
