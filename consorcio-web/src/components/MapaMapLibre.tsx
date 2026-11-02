@@ -131,6 +131,7 @@ export default function MapaMapLibre() {
     null
   );
   const [quickPlace, setQuickPlace] = useState<QuickPlacePin | null>(null);
+  const [mapQuery, setMapQuery] = useState('');
   useEffect(() => {
     setElevationProfileHover(null);
     setElevationProfileRange(null);
@@ -327,6 +328,35 @@ export default function MapaMapLibre() {
   const flyToCanal = (toggleId: string) => {
     fitMapToCanal(mapRef.current, canalCollections(canalesRelevados, canalesPropuestas), toggleId);
   };
+  const openSearchCanal = (id: string) => {
+    const collections = canalCollections(canalesRelevados, canalesPropuestas);
+    const toggles = [
+      `canal_relevado_${id.replace(/-/g, '_')}`,
+      `canal_propuesto_${id.replace(/-/g, '_')}`,
+    ];
+    for (const toggle of toggles) {
+      const feature = findCanalFeature(collections, toggle);
+      if (!feature) continue;
+      setSelectedFeatures([feature]);
+      fitMapToCanal(mapRef.current, collections, toggle);
+      setMapQuery('');
+      return;
+    }
+  };
+  const openSearchParcel = (feature: Feature) => {
+    setSelectedFeatures([feature]);
+    const box = bboxFromGeometry(feature.geometry);
+    if (box && mapRef.current) {
+      mapRef.current.fitBounds(
+        [
+          [box[0], box[1]],
+          [box[2], box[3]],
+        ],
+        { padding: 48, maxZoom: 16, duration: 600 }
+      );
+    }
+    setMapQuery('');
+  };
   const canalesPropuestosItems = useMemo(
     () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
     [canalesIndex]
@@ -351,9 +381,10 @@ export default function MapaMapLibre() {
   // already applies to any missing slot.
   const {
     catastroMap,
+    loading: catastroLoading,
     error: catastroError,
     reload: reloadCatastro,
-  } = useCatastroMap({ enabled: exportIntent });
+  } = useCatastroMap({ enabled: exportIntent || mapQuery.trim().length >= 3 });
   // Stable identity: `MapActionsPanel` is memoized, so an inline arrow here
   // would re-render it on every parent render.
   const handleExportIntent = useCallback(() => setExportIntent(true), []);
@@ -702,6 +733,15 @@ export default function MapaMapLibre() {
       mapLoadError={mapLoadError}
       mapReady={mapReady}
       mapRef={mapRef}
+      mapSearch={{
+        query: mapQuery,
+        onQueryChange: setMapQuery,
+        canalIndex: canalesIndex,
+        parcels: catastroMap?.features ?? null,
+        parcelsLoading: mapQuery.trim().length >= 3 && catastroLoading,
+        onPickCanal: openSearchCanal,
+        onPickParcel: openSearchParcel,
+      }}
       pilarVerde={pilarVerde}
       pilarVerdeLayersError={pilarVerdeLayersError}
       pilarVerdeLayersLoading={pilarVerdeLayersLoading}

@@ -51,6 +51,7 @@ import type { LayerHealth } from './layerHealth';
 import { MapBaseSelectorPanel } from './MapBaseSelectorPanel';
 import { MapCursorReadout } from './MapCursorReadout';
 import { MapPlacesControl } from './MapPlacesControl';
+import { MapSearchBox, type MapSearchModel } from './MapSearchBox';
 import { MapUiPanels } from './MapUiPanels';
 import { MapViewportOverlay } from './MapViewportOverlay';
 import { MapWorkspace, useMapWorkspaceDesktop } from './MapWorkspace';
@@ -183,6 +184,7 @@ export interface MapaMapLibreViewProps {
   readonly mapLoadError: string | null;
   readonly mapReady: boolean;
   readonly mapRef: RefObject<maplibregl.Map | null>;
+  readonly mapSearch: MapSearchModel;
   readonly elevationProfileHover: { lon: number; lat: number } | null;
   readonly measurementDraftLine: LineString | null;
   readonly measurementLiveLabel: string | null;
@@ -308,6 +310,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     layerProvenance,
     mapDragSignal,
     mapLoadError,
+    mapSearch,
     elevationProfileHover,
     mapReady,
     mapRef,
@@ -504,6 +507,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               style={{ width: '100%', height: '100%', position: 'relative' }}
             >
               <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+              <MapSearchBox {...mapSearch} />
               {mapLoadError ? (
                 <Box
                   style={{
