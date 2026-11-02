@@ -343,7 +343,31 @@ const VALID_SENSORS = [
   'Landsat 8',
   'Landsat 7',
   'Landsat 5',
+  'JRC',
 ] as const;
+
+/** A single scene search stays inside a month. An annual median needs ~182 days. */
+export const SCENE_DAYS_BUFFER_MAX = 30;
+export const COMPOSITE_DAYS_BUFFER_MAX = 200;
+
+export function maxDaysBuffer(mode: unknown): number {
+  return mode === 'composite' ? COMPOSITE_DAYS_BUFFER_MAX : SCENE_DAYS_BUFFER_MAX;
+}
+
+/**
+ * Saved map settings still reject a buffer above 30. Annual composites and
+ * JRC tiles stay in the browser session instead of being written back.
+ */
+export function imageParamsFitSettings(image: {
+  sensor?: unknown;
+  days_buffer?: unknown;
+  mode?: unknown;
+}): boolean {
+  if (image.sensor === 'JRC') return false;
+  if (image.days_buffer === undefined) return true;
+  if (typeof image.days_buffer !== 'number') return false;
+  return image.days_buffer >= 1 && image.days_buffer <= SCENE_DAYS_BUFFER_MAX;
+}
 
 /**
  * Validates if a value is a valid SelectedImage from localStorage.
@@ -369,8 +393,12 @@ export interface SelectedImageShape {
   };
 }
 
+function isSelectedImageRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
 export function isValidSelectedImage(value: unknown): value is SelectedImageShape {
-  if (value === null || typeof value !== 'object') {
+  if (!isSelectedImageRecord(value)) {
     return false;
   }
 
@@ -410,11 +438,11 @@ export function isValidSelectedImage(value: unknown): value is SelectedImageShap
   }
 
   // Optional persisted search params (used to regenerate the exact tile)
-  if (
-    obj.days_buffer !== undefined &&
-    (typeof obj.days_buffer !== 'number' || obj.days_buffer < 1 || obj.days_buffer > 30)
-  ) {
-    return false;
+  if (obj.days_buffer !== undefined) {
+    const buffer = obj.days_buffer;
+    if (typeof buffer !== 'number' || buffer < 1 || buffer > maxDaysBuffer(obj.mode)) {
+      return false;
+    }
   }
   if (
     obj.max_cloud !== undefined &&

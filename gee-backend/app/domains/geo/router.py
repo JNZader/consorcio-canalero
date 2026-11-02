@@ -49,6 +49,9 @@ from app.domains.geo.router_gee_support import (
     get_image_scenes_impl,
     get_sentinel1_image_impl,
     get_sentinel2_image_impl,
+    get_sentinel2_annual_impl,
+    get_jrc_occurrence_impl,
+    get_jrc_year_impl,
     get_satellite_image_impl,
     get_sentinel2_tiles_impl,
     list_consorcios_camineros_impl,
@@ -179,6 +182,9 @@ get_estadisticas_caminos = _gee_async(get_estadisticas_caminos_impl)
 get_gee_layer = _gee_async(get_gee_layer_impl)
 get_available_image_dates = _gee_async(get_available_image_dates_impl)
 get_sentinel2_image = _gee_async(get_sentinel2_image_impl)
+get_sentinel2_annual = _gee_async(get_sentinel2_annual_impl)
+get_jrc_occurrence = _gee_async(get_jrc_occurrence_impl)
+get_jrc_year = _gee_async(get_jrc_year_impl)
 get_sentinel1_image = _gee_async(get_sentinel1_image_impl)
 get_satellite_image = _gee_async(get_satellite_image_impl)
 get_image_scenes = _gee_async(get_image_scenes_impl)
@@ -202,8 +208,11 @@ gee_router.get("/layers/caminos/consorcio/{codigo}")(get_caminos_consorcio)
 gee_router.get("/layers/caminos/por-nombre")(get_caminos_por_nombre_consorcio)
 gee_router.get("/layers/caminos/coloreados")(get_caminos_coloreados)
 gee_router.get("/layers/caminos/estadisticas")(get_estadisticas_caminos)
+gee_router.get("/layers/jrc-surface-water")(get_jrc_occurrence)
+gee_router.get("/layers/jrc-surface-water/year")(get_jrc_year)
 gee_router.get("/layers/{layer_name}")(get_gee_layer)
 gee_router.get("/images/available-dates")(get_available_image_dates)
+gee_router.get("/images/sentinel2/annual")(get_sentinel2_annual)
 gee_router.get("/images/sentinel2")(get_sentinel2_image)
 gee_router.get("/images/sentinel1")(get_sentinel1_image)
 gee_router.get("/images/compare")(compare_flood_dates)

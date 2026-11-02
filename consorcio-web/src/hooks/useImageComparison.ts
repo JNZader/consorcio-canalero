@@ -7,11 +7,11 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   type ImagenMapaParams,
   type MapImageResult,
-  type PublicCurrentMapImage,
   mapImageApi,
+  type PublicCurrentMapImage,
 } from '../lib/api/mapImage';
 import { logger } from '../lib/logger';
-import { isValidImageComparison } from '../lib/typeGuards';
+import { imageParamsFitSettings, isValidImageComparison, maxDaysBuffer } from '../lib/typeGuards';
 import { isTileStale, type SatelliteSensorLabel, type SelectedImage } from './useSelectedImage';
 
 const STORAGE_KEY = 'consorcio_image_comparison';
@@ -30,6 +30,12 @@ function isComparisonStale(comparison: ImageComparison): boolean {
  * Persist comparison params to backend (fire-and-forget).
  */
 function persistComparisonToBackend(comparison: ImageComparison | null): void {
+  if (
+    comparison &&
+    (!imageParamsFitSettings(comparison.left) || !imageParamsFitSettings(comparison.right))
+  ) {
+    return;
+  }
   const payload = comparison
     ? {
         enabled: comparison.enabled,
@@ -38,7 +44,7 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
           target_date: comparison.left.target_date,
           visualization: comparison.left.visualization,
           max_cloud: comparison.left.max_cloud ?? null,
-          days_buffer: clampDaysBuffer(comparison.left.days_buffer),
+          days_buffer: clampDaysBuffer(comparison.left.days_buffer, comparison.left.mode),
           mode: comparison.left.mode ?? null,
         },
         right: {
@@ -46,7 +52,7 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
           target_date: comparison.right.target_date,
           visualization: comparison.right.visualization,
           max_cloud: comparison.right.max_cloud ?? null,
-          days_buffer: clampDaysBuffer(comparison.right.days_buffer),
+          days_buffer: clampDaysBuffer(comparison.right.days_buffer, comparison.right.mode),
           mode: comparison.right.mode ?? null,
         },
       }
@@ -57,14 +63,14 @@ function persistComparisonToBackend(comparison: ImageComparison | null): void {
   });
 }
 
-function clampDaysBuffer(value: number | undefined): number {
+function clampDaysBuffer(value: number | undefined, mode?: string | null): number {
   if (typeof value !== 'number' || value < 1) return 10;
-  return Math.min(30, value);
+  return Math.min(maxDaysBuffer(mode), value);
 }
 
 function selectedFromRegeneratedTile(
   params: ImagenMapaParams,
-  tile: MapImageResult,
+  tile: MapImageResult
 ): SelectedImage {
   return {
     tile_url: tile.tile_url,
