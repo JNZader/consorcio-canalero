@@ -16,6 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MARTIN_VIEWS = {
     "vt_caminos_unificados",
     "vt_canal_network",
+    "vt_idecor_canales_riego",
+    "vt_idecor_consorcios",
+    "vt_idecor_cuencas",
+    "vt_idecor_cursos",
     "vt_parcelas_catastro",
     "vt_puntos_conflicto",
     "vt_zonas_operativas",

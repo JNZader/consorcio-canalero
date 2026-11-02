@@ -393,7 +393,12 @@ jobs:
     name: Accessibility matrix (Playwright)
     if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 -> 40. En el run 41487009227 (ubuntu-26.04) `playwright install
+    # --with-deps` de chromium, firefox y webkit tardó 17 min. La matriz
+    # terminó en 3.1 min con 92 passed y el techo de 20 min canceló el step
+    # en ese instante, así que Frontend CI vio `cancelled` y no un fallo de
+    # axe. El margen cubre una instalación en frío más la matriz.
+    timeout-minutes: 40
     needs: [changes, typecheck, smoke]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
