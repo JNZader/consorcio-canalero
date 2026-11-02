@@ -179,7 +179,7 @@ async def test_annual_endpoint_asks_for_a_median_composite(monkeypatch):
     explorer = _Explorer()
     monkeypatch.setattr(support, "get_cache", lambda: cache)
 
-    async def ensure():
+    def ensure():
         return {"get_image_explorer": lambda: explorer}
 
     payload = await support.get_sentinel2_annual_impl(year=2023, ensure_gee=ensure)
