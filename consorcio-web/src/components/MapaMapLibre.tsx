@@ -12,8 +12,8 @@
 import type { Feature } from 'geojson';
 
 import * as maplibregl from 'maplibre-gl';
-import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { isRoadFlowEnabled } from '../lib/featureFlags';
+import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -56,7 +56,12 @@ import {
   useMapLayerSyncStore,
 } from '../stores/mapLayerSyncStore';
 import type { DrawControlHandle } from './map/DrawControl';
-import { canalCollections, fitMapToCanal } from './map2d/canalFocus';
+import {
+  bboxFromGeometry,
+  canalCollections,
+  findCanalFeature,
+  fitMapToCanal,
+} from './map2d/canalFocus';
 import { buildLayerProvenance } from './map2d/layerProvenance';
 import { MapaMapLibreView } from './map2d/MapaMapLibreView';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
@@ -123,6 +128,7 @@ export default function MapaMapLibre() {
     null
   );
   const [quickPlace, setQuickPlace] = useState<QuickPlacePin | null>(null);
+  const [mapQuery, setMapQuery] = useState('');
   useEffect(() => {
     setElevationProfileHover(null);
     setElevationProfileRange(null);
@@ -270,7 +276,8 @@ export default function MapaMapLibre() {
   const roadFlow = useRoadFlowWiring({
     mapRef,
     mapReady,
-    active: isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
+    active:
+      isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
     panelActive: isRoadFlowEnabled() && !!vectorVisibility.road_flow,
     geoLayers: allGeoLayers,
     onDeactivate: deactivateRoadFlow,
@@ -318,6 +325,35 @@ export default function MapaMapLibre() {
   const flyToCanal = (toggleId: string) => {
     fitMapToCanal(mapRef.current, canalCollections(canalesRelevados, canalesPropuestas), toggleId);
   };
+  const openSearchCanal = (id: string) => {
+    const collections = canalCollections(canalesRelevados, canalesPropuestas);
+    const toggles = [
+      `canal_relevado_${id.replace(/-/g, '_')}`,
+      `canal_propuesto_${id.replace(/-/g, '_')}`,
+    ];
+    for (const toggle of toggles) {
+      const feature = findCanalFeature(collections, toggle);
+      if (!feature) continue;
+      setSelectedFeatures([feature]);
+      fitMapToCanal(mapRef.current, collections, toggle);
+      setMapQuery('');
+      return;
+    }
+  };
+  const openSearchParcel = (feature: Feature) => {
+    setSelectedFeatures([feature]);
+    const box = bboxFromGeometry(feature.geometry);
+    if (box && mapRef.current) {
+      mapRef.current.fitBounds(
+        [
+          [box[0], box[1]],
+          [box[2], box[3]],
+        ],
+        { padding: 48, maxZoom: 16, duration: 600 }
+      );
+    }
+    setMapQuery('');
+  };
   const canalesPropuestosItems = useMemo(
     () => groupCanalesByFolder(canalesIndex?.propuestas ?? [], 'propuesto'),
     [canalesIndex]
@@ -342,9 +378,10 @@ export default function MapaMapLibre() {
   // already applies to any missing slot.
   const {
     catastroMap,
+    loading: catastroLoading,
     error: catastroError,
     reload: reloadCatastro,
-  } = useCatastroMap({ enabled: exportIntent });
+  } = useCatastroMap({ enabled: exportIntent || mapQuery.trim().length >= 3 });
   // Stable identity: `MapActionsPanel` is memoized, so an inline arrow here
   // would re-render it on every parent render.
   const handleExportIntent = useCallback(() => setExportIntent(true), []);
@@ -642,6 +679,15 @@ export default function MapaMapLibre() {
       mapLoadError={mapLoadError}
       mapReady={mapReady}
       mapRef={mapRef}
+      mapSearch={{
+        query: mapQuery,
+        onQueryChange: setMapQuery,
+        canalIndex: canalesIndex,
+        parcels: catastroMap?.features ?? null,
+        parcelsLoading: mapQuery.trim().length >= 3 && catastroLoading,
+        onPickCanal: openSearchCanal,
+        onPickParcel: openSearchParcel,
+      }}
       pilarVerde={pilarVerde}
       pilarVerdeLayersError={pilarVerdeLayersError}
       pilarVerdeLayersLoading={pilarVerdeLayersLoading}
