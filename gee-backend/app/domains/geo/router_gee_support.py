@@ -310,6 +310,91 @@ async def get_sentinel2_image_impl(
         )
 
 
+async def get_sentinel2_annual_impl(*, year: int, ensure_gee=None):
+    """Median composite of one Sentinel-2 calendar year (approx.)."""
+    from app.domains.geo.time_layers import TimeLayerError, annual_composite_request
+
+    try:
+        target, buffer, max_cloud = annual_composite_request(year, date.today())
+    except TimeLayerError as exc:
+        raise AppException(message=str(exc), code="TIME_LAYER_YEAR", status_code=422) from exc
+
+    cache = get_cache()
+    cache_key = f"gee:s2-annual:{target.isoformat()}:{buffer}:{max_cloud}"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
+    svc = ensure_gee()
+    try:
+        explorer = svc["get_image_explorer"]()
+        result = await _run_blocking(
+            explorer.get_sentinel2_image,
+            target_date=target,
+            days_buffer=buffer,
+            max_cloud=max_cloud,
+            visualization="rgb",
+            use_median=True,
+        )
+        if "error" in result:
+            raise NotFoundError(
+                message=result.get("error", "Imagen no encontrada"),
+                code="SENTINEL2_ANNUAL_NOT_FOUND",
+            )
+        payload = {**result, "mode": "composite"}
+        await cache.set(cache_key, payload, ttl_seconds=GEE_SENTINEL2_TTL)
+        return payload
+    except AppException:
+        raise
+    except Exception as e:
+        raise AppException(
+            message=get_safe_error_detail(e, "compuesto anual Sentinel-2"),
+            code="IMAGE_EXPLORER_ERROR",
+            status_code=500,
+        )
+
+
+async def _jrc_surface_water_impl(*, kind: str, year: int | None, ensure_gee=None):
+    from app.domains.geo.time_layers import TimeLayerError, jrc_tile_payload
+
+    cache = get_cache()
+    cache_key = f"gee:jrc:{kind}:{year if year is not None else 'occurrence'}"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
+    svc = ensure_gee()
+    try:
+        import ee
+
+        explorer = svc["get_image_explorer"]()
+        result = await _run_blocking(
+            jrc_tile_payload,
+            ee,
+            explorer.zona,
+            kind=kind,
+            year=year,
+        )
+        await cache.set(cache_key, result, ttl_seconds=GEE_SENTINEL2_TTL)
+        return result
+    except TimeLayerError as exc:
+        raise AppException(message=str(exc), code="TIME_LAYER_YEAR", status_code=422) from exc
+    except AppException:
+        raise
+    except Exception as e:
+        raise AppException(
+            message=get_safe_error_detail(e, "agua superficial JRC"),
+            code="JRC_LAYER_ERROR",
+            status_code=500,
+        )
+
+
+async def get_jrc_occurrence_impl(*, ensure_gee=None):
+    return await _jrc_surface_water_impl(kind="occurrence", year=None, ensure_gee=ensure_gee)
+
+
+async def get_jrc_year_impl(*, year: int, ensure_gee=None):
+    return await _jrc_surface_water_impl(kind="year", year=year, ensure_gee=ensure_gee)
+
+
 async def get_sentinel1_image_impl(
     *,
     target_date: date,
