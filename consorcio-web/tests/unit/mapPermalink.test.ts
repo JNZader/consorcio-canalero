@@ -15,6 +15,14 @@ describe('parseMapPermalink', () => {
     expect(parsed.preset).toBe('agua');
     expect(parsed.layers).toEqual(['waterways', 'canales_relevados']);
     expect(parsed.rasterTipo).toBe('flood_risk');
+    expect(parseMapPermalink('?perfil=canal-ne-sin-intervencion').perfil).toBe(
+      'canal-ne-sin-intervencion',
+    );
+  });
+
+  it('rejects a profile slug that is not a canal id', () => {
+    expect(parseMapPermalink('?perfil=../etc').perfil).toBeUndefined();
+    expect(parseMapPermalink('?perfil=Canal%20NE').perfil).toBeUndefined();
   });
 
   it('treats l=none as empty layer list', () => {
@@ -43,6 +51,11 @@ describe('serializeMapPermalink', () => {
     expect(params.get('preset')).toBe('caminos');
     expect(params.get('l')).toBe('roads');
     expect(params.get('r')).toBe('hand');
+    expect(
+      new URLSearchParams(
+        serializeMapPermalink('', { perfil: 'canal-viejo-sin-intervencion' }, CATALOG),
+      ).get('perfil'),
+    ).toBe('canal-viejo-sin-intervencion');
     expect(params.get('lat')).toBeNull();
     expect(params.get('lng')).toBeNull();
     expect(params.get('zoom')).toBeNull();
