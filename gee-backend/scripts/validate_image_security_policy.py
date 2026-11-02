@@ -195,6 +195,13 @@ PLATFORM = "linux/amd64"
 # validate compara el multiset, y esas cinco filas salen. El geo-worker no
 # entra en este baseline: CVE-2026-92392 tiene FixedVersion y se remedia en
 # Dockerfile.geo, no se congela.
+#
+# Sube 52 -> 53 el 2026-11-02. El digest oficial nuevo de
+# python:3.14.8-slim-trixie trae libsqlite3-0 3.46.1-7+deb13u2, y Trivy
+# 0.70.0 marca CVE-2026-119373 HIGH affected, sin FixedVersion. El tracker
+# Debian deja trixie y sid unfixed. No hay paquete mas nuevo en trixie, asi
+# que la fila se congela. CVE-2026-111497 (libbrotli1) si tiene fix y se
+# remedia en Dockerfile.geo.
 DEADLINE_CEILINGS = {
     "CRITICAL": "2026-12-12T00:00:00Z",
     "HIGH": "2026-12-12T00:00:00Z",
@@ -205,7 +212,7 @@ ROLE_BINDINGS = {
         "dockerfile": "gee-backend/Dockerfile",
         "base_image": (
             "python:3.14.8-slim-trixie@"
-            "sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170"
+            "sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a"
         ),
         "allowed_repositories": [
             "local/consorcio-backend",

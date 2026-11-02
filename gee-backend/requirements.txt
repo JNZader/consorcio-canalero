@@ -121,6 +121,11 @@ defusedxml>=0.7.1
 # fixed in 50.0.0. Not a direct dependency — pinned here so the lock
 # resolver picks the patched version.
 cryptography>=50.0.0
+
+# Transitive pin: pip-audit gate. CVE-2026-119194, CVE-2026-119195,
+# CVE-2026-119196 and CVE-2026-119197 in pyasn1 0.6.4, fixed in 0.6.5.
+# Pulled in by pyasn1-modules / google-auth.
+pyasn1>=0.6.5
 # Transitive pin: pip-audit gate. PYSEC-2026-4320 in certifi 2026.7.22,
 # fixed in 2026.10.19. Not a direct dependency — pinned here so the lock
 # resolver picks the patched version.
