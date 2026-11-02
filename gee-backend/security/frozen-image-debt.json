@@ -91,6 +91,19 @@
         {
           "class": "os-pkgs",
           "count": 1,
+          "cve": "CVE-2026-119373",
+          "fixed": "",
+          "installed": "3.46.1-7+deb13u2",
+          "pkg_id": "libsqlite3-0@3.46.1-7+deb13u2",
+          "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2?arch=amd64&distro=debian-13.7",
+          "severity": "HIGH",
+          "status": "affected",
+          "target": "<image> (debian 13.7)",
+          "type": "debian"
+        },
+        {
+          "class": "os-pkgs",
+          "count": 1,
           "cve": "CVE-2026-16742",
           "fixed": "",
           "installed": "257.13-1~deb13u1",

@@ -462,13 +462,16 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # asi que snapshot no puede reescribir la procedencia:
     # baseline_generated_from sigue siendo el de 2026-09-24. validate compara
     # el multiset, y ese es el que baja.
-    assert len(backend_findings) == 52
-    assert sum(finding["count"] for finding in backend_findings) == 52
+    # 52 -> 53 el 2026-11-02: CVE-2026-119373 sobre libsqlite3-0
+    # 3.46.1-7+deb13u2, HIGH affected, sin FixedVersion. Debian trixie y sid
+    # siguen unfixed; no hay hotfix de paquete.
+    assert len(backend_findings) == 53
+    assert sum(finding["count"] for finding in backend_findings) == 53
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 51
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 52
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 51
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 52
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -497,9 +500,13 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     }
     assert [finding for finding in backend_findings if finding["cve"] in remediated_cves] == []
     assert [finding for finding in backend_findings if finding["pkg_id"].startswith("gzip@")] == []
-    assert [
+    sqlite = [
         finding for finding in backend_findings if finding["pkg_id"].startswith("libsqlite3-0@")
-    ] == []
+    ]
+    assert [finding["cve"] for finding in sqlite] == ["CVE-2026-119373"]
+    assert sqlite[0]["installed"] == "3.46.1-7+deb13u2"
+    assert sqlite[0]["fixed"] == ""
+    assert sqlite[0]["status"] == "affected"
     assert [
         finding for finding in backend_findings if finding["pkg_id"].startswith("libpcre2-8-0@")
     ] == []
@@ -520,6 +527,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     util_linux = sorted(UTIL_LINUX_PACKAGES)
     assert rows_by_cve == {
         "CVE-2025-69720": ncurses,
+        "CVE-2026-119373": ["libsqlite3-0"],
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
         "CVE-2026-6653": ["libxml2"],
@@ -663,7 +671,7 @@ def _geo_hotfix_body(start_marker: str) -> str:
     dockerfile = (REPO_ROOT / "gee-backend/Dockerfile.geo").read_text(encoding="utf-8")
     after_start = dockerfile.split(start_marker, 1)[1]
     end = len(after_start)
-    for terminator in ("\n# Install ALL", "\nENV PYTHONUNBUFFERED"):
+    for terminator in ("\n# Security hotfix", "\n# Install ALL", "\nENV PYTHONUNBUFFERED"):
         index = after_start.find(terminator)
         if index != -1:
             end = min(end, index)
@@ -693,6 +701,30 @@ def test_geo_dockerfile_upgrades_libcurl_past_cve_2026_92392() -> None:
     for package in GEO_CURL_PACKAGES:
         assert package in install_lines
         assert package in gate_lines
+
+
+def test_geo_dockerfile_upgrades_libbrotli_past_cve_2026_111497() -> None:
+    hotfix = _geo_hotfix_body("# Security hotfix (CVE-2026-111497")
+
+    assert hotfix.count('fixed_version="1.2.0-3ubuntu0.1"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("--only-upgrade") < hotfix.index("dpkg-query --show")
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="1.2.0-3ubuntu0.1"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    assert "libbrotli1" in install_lines
+    assert "libbrotli1" in gate_lines
 
 
 def test_backend_dockerfile_hotfix_blocks_are_ordered_before_site_packages_copy() -> None:
