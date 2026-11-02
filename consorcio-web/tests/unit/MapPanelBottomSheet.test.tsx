@@ -124,7 +124,9 @@ describe("map panels — mobile bottom sheet", () => {
 		});
 
 		it("renders the InfoPanel as a bottom sheet, not a floating card", () => {
-			renderWithMantine(<MapUiPanels {...panelProps()} />);
+			renderWithMantine(
+				<InfoPanel features={[feature]} sheet onClose={() => {}} />,
+			);
 
 			const panel = screen.getByTestId("map-2d-info-panel");
 			expect(panel.className).toContain("panelSheet");
@@ -151,7 +153,9 @@ describe("map panels — mobile bottom sheet", () => {
 		// 45 ⇄ 85 toggle. It now opens at `peek` (~25%) and one handle tap CYCLES
 		// peek → medio (45%) → alto (85%) → peek.
 		it("the handle cycles the sheet peek → medio → alto → peek", () => {
-			renderWithMantine(<MapUiPanels {...panelProps()} />);
+			renderWithMantine(
+				<InfoPanel features={[feature]} sheet onClose={() => {}} />,
+			);
 
 			const panel = screen.getByTestId("map-2d-info-panel");
 			const handle = screen.getByTestId("map-2d-info-panel-sheet-handle");
@@ -186,7 +190,14 @@ describe("map panels — mobile bottom sheet", () => {
 		});
 
 		it("a NEW selection reopens the sheet at peek", () => {
-			const { rerender } = renderWithMantine(<MapUiPanels {...panelProps()} />);
+			const { rerender } = renderWithMantine(
+				<InfoPanel
+					features={[feature]}
+					sheet
+					onClose={() => {}}
+					resetKey="canal-este"
+				/>,
+			);
 
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-handle"));
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-handle"));
@@ -195,18 +206,13 @@ describe("map panels — mobile bottom sheet", () => {
 				"alto",
 			);
 
-			// A fresh click on the map hands down a NEW `selectedFeatures` array.
 			rerender(
 				<MantineProvider env="test">
-					<MapUiPanels
-						{...panelProps({
-							selectedFeatures: [
-								{
-									...feature,
-									properties: { nombre: "Canal Oeste" },
-								},
-							],
-						})}
+					<InfoPanel
+						features={[{ ...feature, properties: { nombre: "Canal Oeste" } }]}
+						sheet
+						onClose={() => {}}
+						resetKey="canal-oeste"
 					/>
 				</MantineProvider>,
 			);
@@ -225,15 +231,14 @@ describe("map panels — mobile bottom sheet", () => {
 			expect(screen.getByTestId("ficha-territorial-panel")).toBeInTheDocument();
 			expect(screen.queryByTestId("map-2d-info-panel")).toBeNull();
 
-			// Closing the ficha surfaces the InfoPanel for the SAME click — the
-			// selected features were never discarded.
+			// The readout no longer floats. Closing the ficha leaves the map clear.
 			rerender(
 				<MantineProvider env="test">
 					<MapUiPanels {...panelProps({ fichaActive: false })} />
 				</MantineProvider>,
 			);
 			expect(screen.queryByTestId("ficha-territorial-panel")).toBeNull();
-			expect(screen.getByTestId("map-2d-info-panel")).toBeInTheDocument();
+			expect(screen.queryByTestId("map-2d-info-panel")).toBeNull();
 		});
 
 		// R3-005: the panels' own `Title + CloseButton` row sits inside the
@@ -241,7 +246,9 @@ describe("map panels — mobile bottom sheet", () => {
 		// mode the close control moves to the shell's pinned header instead —
 		// exactly one close affordance, always reachable without scrolling.
 		it("pins the close control OUTSIDE the scrollable body", () => {
-			renderWithMantine(<MapUiPanels {...panelProps()} />);
+			renderWithMantine(
+				<InfoPanel features={[feature]} sheet onClose={() => {}} />,
+			);
 
 			const close = screen.getByTestId("map-2d-info-panel-sheet-close");
 			const header = close.closest('[class*="panelSheetHeader"]');
@@ -265,11 +272,13 @@ describe("map panels — mobile bottom sheet", () => {
 		});
 
 		it("the pinned close button calls onClose", () => {
-			const onCloseInfoPanel = vi.fn();
-			renderWithMantine(<MapUiPanels {...panelProps({ onCloseInfoPanel })} />);
+			const onClose = vi.fn();
+			renderWithMantine(
+				<InfoPanel features={[feature]} sheet onClose={onClose} />,
+			);
 
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-sheet-close"));
-			expect(onCloseInfoPanel).toHaveBeenCalledTimes(1);
+			expect(onClose).toHaveBeenCalledTimes(1);
 		});
 
 		it("never applies the desktop 45/55 compact split in sheet mode", () => {
@@ -284,29 +293,19 @@ describe("map panels — mobile bottom sheet", () => {
 			mockViewport(false);
 		});
 
-		it("keeps the floating cards and renders NO sheet handle", () => {
+		it("does not float an info card over the map", () => {
 			renderWithMantine(<MapUiPanels {...panelProps()} />);
 
-			const panel = screen.getByTestId("map-2d-info-panel");
-			expect(panel.className).toContain("infoPanel");
-			expect(panel.className).not.toContain("panelSheet");
-			expect(panel).not.toHaveAttribute("data-sheet");
+			expect(screen.queryByTestId("map-2d-info-panel")).toBeNull();
 			expect(screen.queryByTestId("map-2d-info-panel-sheet-handle")).toBeNull();
-			// UX-16: the shell owns the floating close in a pinned header.
-			expect(screen.queryByTestId("map-2d-info-panel-sheet-close")).toBeNull();
-			expect(screen.getByTestId("map-2d-info-panel-close")).toBeInTheDocument();
-			expect(
-				screen.getAllByRole("button", { name: "Cerrar panel de información" }),
-			).toHaveLength(1);
+			expect(screen.queryByTestId("map-2d-info-panel-close")).toBeNull();
 		});
 
-		it("BOTH OPEN: both panels render with the 45/55 compact modifiers", () => {
+		it("does not shrink the ficha when a feature is also selected", () => {
 			renderWithMantine(<MapUiPanels {...panelProps({ fichaActive: true })} />);
 
-			expect(screen.getByTestId("map-2d-info-panel").className).toContain(
-				"infoPanelCompact",
-			);
-			expect(screen.getByTestId("ficha-territorial-panel").className).toContain(
+			expect(screen.queryByTestId("map-2d-info-panel")).toBeNull();
+			expect(screen.getByTestId("ficha-territorial-panel").className).not.toContain(
 				"fichaPanelCompact",
 			);
 		});

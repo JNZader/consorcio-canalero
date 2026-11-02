@@ -311,7 +311,7 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
   // 5.3 — InfoPanel renders when selectedFeatures is non-empty
   // -------------------------------------------------------------------------
 
-  it('renders <InfoPanel> overlay with z-index ≥ 1000 when selectedFeatures is non-empty', async () => {
+  it('shows the readout in the sidebar, not as a floating card, when a feature is selected', async () => {
     const bpaFeature: Feature = {
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [0, 0] },
@@ -338,21 +338,12 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       });
     });
 
-    // The shared 2D `<InfoPanel>` renders one `[data-testid="info-panel-feature-section"]`
-    // per feature, under the title "Información".
-    expect(screen.getByText('Información')).toBeTruthy();
+    expect(screen.getByTestId('map-workspace-tabs')).toBeTruthy();
+    expect(screen.getByTestId('map-workspace-sidebar')).toHaveAttribute('data-tab', 'info');
     expect(
       screen.getAllByTestId('info-panel-feature-section').length,
     ).toBeGreaterThan(0);
-
-    // The panel uses the shared CSS module class `.infoPanel` which carries
-    // `position: absolute; z-index: 1000; ...`. We cannot probe computed
-    // styles under JSDOM reliably, but we CAN assert the element carries the
-    // module-hashed class that encodes those rules. The class name starts
-    // with `_infoPanel_` in CSS Modules hash output; that prefix is the
-    // stable marker CSS Modules always emits.
-    const panel = screen.getByText('Información').closest('[class*="infoPanel"]');
-    expect(panel).not.toBeNull();
+    expect(screen.getByTestId('map-2d-info-panel').closest('[class*="infoPanel"]')).toBeNull();
   });
 
   // -------------------------------------------------------------------------
@@ -499,14 +490,15 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
       });
     });
 
-    expect(screen.getByText('Información')).toBeTruthy();
+    expect(screen.getByTestId('map-workspace-tabs')).toBeTruthy();
 
     const closeBtn = screen.getByRole('button', {
       name: /Cerrar panel de información/i,
     });
     await userEvent.click(closeBtn);
 
-    expect(screen.queryByText('Información')).toBeNull();
+    expect(screen.queryByTestId('map-2d-info-panel')).toBeNull();
+    expect(screen.queryByTestId('map-workspace-tabs')).toBeNull();
   });
 
   // -------------------------------------------------------------------------
@@ -535,13 +527,10 @@ describe('TerrainViewer3D — click handler + InfoPanel overlay (Phase 5)', () =
     });
 
     expect(screen.getByTestId('canal-card')).toBeTruthy();
-    // The panels now live inside MapWorkspace (same shell as the 2D map). In
-    // jsdom the media query resolves MOBILE, so the controls sit inside a
-    // Drawer that must be opened via the burger — same interaction a phone
-    // user performs. InfoPanel coexisting with the opened Drawer is exactly
-    // the regression this test guards.
+    // The readout shares the sidebar with Capas. Switching back must keep the
+    // layer toggles mounted.
     await act(async () => {
-      screen.getByTestId('map-workspace-burger').click();
+      screen.getByRole('radio', { name: 'Capas' }).click();
     });
     expect(screen.getByTestId('terrain-3d-bottom-bar-toggles')).toBeTruthy();
   });

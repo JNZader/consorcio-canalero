@@ -280,6 +280,76 @@ describe('<MapWorkspace />', () => {
     expect(back).not.toHaveBeenCalled();
   });
 
+  it('desktop: a selection opens Información, expands a collapsed sidebar, and Escape asks to close', async () => {
+    mockViewport(true);
+    useMapWorkspaceStore.setState({ sidebarCollapsed: true });
+    const onClose = vi.fn();
+    renderWithMantine(
+      <MapWorkspace
+        canvas={canvas}
+        controls={controls}
+        selection={<div data-testid="selection-body">Camino Provincial</div>}
+        selectionKey="road-1"
+        onCloseSelection={onClose}
+      />
+    );
+
+    const sidebar = screen.getByTestId('map-workspace-sidebar');
+    expect(sidebar).toHaveAttribute('data-tab', 'info');
+    expect(screen.getByTestId('selection-body')).toBeInTheDocument();
+    await waitFor(() => expect(sidebar).toHaveFocus());
+    expect(useMapWorkspaceStore.getState().sidebarCollapsed).toBe(false);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Capas' }));
+    expect(screen.getByTestId('controls-marker')).toBeInTheDocument();
+    expect(screen.queryByTestId('selection-body')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Información' }));
+    expect(screen.getByTestId('selection-body')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('mobile: a selection opens the drawer, and Escape closes the readout before the drawer', async () => {
+    mockViewport(false);
+    const onClose = vi.fn();
+    const { rerender } = renderWithMantine(
+      <MapWorkspace
+        canvas={canvas}
+        controls={controls}
+        selection={<div data-testid="selection-body">Parcela</div>}
+        selectionKey="parcela-1"
+        onCloseSelection={onClose}
+      />
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'true');
+    expect(screen.getByTestId('selection-body')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    rerender(
+      <MantineProvider env="test">
+        <MapWorkspace
+          canvas={canvas}
+          controls={controls}
+          selection={null}
+          selectionKey={null}
+          onCloseSelection={onClose}
+        />
+      </MantineProvider>
+    );
+    expect(screen.getByTestId('controls-marker')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false')
+    );
+  });
+
   it('desktop: never touches the history stack (no Drawer to dismiss)', () => {
     mockViewport(true);
     const push = vi.spyOn(window.history, 'pushState');
