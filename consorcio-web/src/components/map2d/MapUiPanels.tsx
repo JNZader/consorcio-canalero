@@ -20,7 +20,6 @@ import { RasterLegend } from '../RasterLegend';
 import type { EtapaGate } from '../shared/canalesGrouping';
 import { ExportPngModal } from './ExportPngModal';
 import { type FichaPanelTab, FichaTerritorialPanel } from './FichaTerritorialPanel';
-import { InfoPanel } from './InfoPanel';
 import {
   type CanalToggleEntry,
   LayerControlsPanel,
@@ -360,15 +359,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   hiddenRanges,
   onClassToggle,
   onRangeToggle,
-  selectedFeatures,
-  onCloseInfoPanel,
-  onElevationProfileHover,
-  onElevationProfileRange,
-  onOpenElevationProfile,
-  onOpenCanalProfile,
-  profileHover = null,
-  elevationProfileAutoLoad = false,
-  onElevationProfileShare,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -400,8 +390,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   bpaEnriched,
   bpaLoading,
   bpaError,
-  bpaHistory,
-  onDeletePuntoInteres,
   exportPngModalOpen,
   onCloseExportPngModal,
   exportTitle,
@@ -430,57 +418,30 @@ export const MapUiPanels = memo(function MapUiPanels({
   onCloseTramoSurvey,
 }: MapUiPanelsProps) {
   const mapZoom = useMapCameraStore((state) => state.camera?.zoom) ?? MAP_DEFAULT_ZOOM;
-  // A catastro click can open BOTH panels at once (ficha for the parcel +
-  // InfoPanel for whatever canal / escuela / BPA / suelo feature sat under the
-  // same click). Their solo max-heights overlap, so the InfoPanel would end up
-  // buried under the ficha. The compact modifiers split the right-hand column
-  // between them (InfoPanel top, ficha bottom) — see `map.module.css`.
-  const bothPanelsOpen = selectedFeatures.length > 0 && fichaActive;
 
   // Narrow viewports (map-fluidity T2, fix 1). Same 62em breakpoint the CSS
   // module already uses, resolved synchronously on first render like
-  // `MapWorkspace` does, so the panels never flash as floating cards on a phone.
+  // `MapWorkspace` does, so the ficha never flashes as a floating card on a phone.
+  // The feature readout lives in the left sidebar, so it no longer shares this
+  // column and the ficha keeps its full height.
   const isNarrow = useMediaQuery('(max-width: 62em)', false, {
     getInitialValueInEffect: false,
   });
-
-  // BOTH-OPEN MODEL ON MOBILE — "the ficha wins, the InfoPanel queues".
-  // Two stacked sheets would eat the whole canvas again, and merging both bodies
-  // into one sheet would need a second header/scroll region inside a 45%-tall
-  // box. So on a narrow viewport only ONE sheet renders: the ficha (the richer,
-  // deliberately-requested analysis). The InfoPanel is NOT discarded — it is
-  // driven by `selectedFeatures`, which the container keeps — so closing the
-  // ficha immediately surfaces the InfoPanel sheet for the same click.
-  const showInfoPanel = selectedFeatures.length > 0 && !(isNarrow && fichaActive);
-
-  // The 45/55 desktop split is meaningless when only one sheet can be open.
-  const compactPanels = bothPanelsOpen && !isNarrow;
 
   /* ── Minimize-to-pill state (T3a, fix 2) ────────────────────────────────── */
   // The state lives HERE, not inside `MapPanelShell`, because two different
   // actors drive it: the user (the minimize button / the pill) and the map (a
   // drag auto-minimizes). The panels stay presentational.
-  const [infoMinimized, setInfoMinimized] = useState(false);
   const [fichaMinimized, setFichaMinimized] = useState(false);
   const [roadFlowMinimized, setRoadFlowMinimized] = useState(false);
 
-  // A NEW selection always shows its content: minimizing is a statement about
+  // A NEW ficha target always shows its content: minimizing is a statement about
   // the thing you were looking at, not a preference that should survive into the
-  // next parcel you click. `selectedFeatures` is a fresh array per click and
-  // `fichaSelectionKey` is the request's identity, so both are honest reset
-  // signals. Re-selecting the SAME target keeps the key — and keeps the panel
+  // next parcel you click. `fichaSelectionKey` is the request's identity.
+  // Re-selecting the SAME target keeps the key — and keeps the panel
   // minimized — which is the correct behavior: nothing new to show.
-  // All three transitions below are state ADJUSTED DURING RENDER (React's
-  // documented "resetting state when a prop changes" pattern) rather than in an
-  // effect: the panel must never paint one frame minimized-from-the-last-click
-  // before an effect corrects it, and the trigger values are compared by
-  // identity, never read.
-  const [lastInfoSelection, setLastInfoSelection] = useState<unknown>(selectedFeatures);
-  if (lastInfoSelection !== selectedFeatures) {
-    setLastInfoSelection(selectedFeatures);
-    setInfoMinimized(false);
-  }
-
+  // Adjusted DURING RENDER (React's documented "resetting state when a prop
+  // changes" pattern) rather than in an effect.
   const [lastFichaSelection, setLastFichaSelection] = useState(fichaSelectionKey);
   if (lastFichaSelection !== fichaSelectionKey) {
     setLastFichaSelection(fichaSelectionKey);
@@ -492,14 +453,10 @@ export const MapUiPanels = memo(function MapUiPanels({
   const [lastDragSignal, setLastDragSignal] = useState(mapDragSignal);
   if (lastDragSignal !== mapDragSignal) {
     setLastDragSignal(mapDragSignal);
-    setInfoMinimized(true);
     setFichaMinimized(true);
     setRoadFlowMinimized(true);
   }
 
-  const toggleInfoMinimized = useCallback(() => {
-    setInfoMinimized((value) => !value);
-  }, []);
   const toggleFichaMinimized = useCallback(() => {
     setFichaMinimized((value) => !value);
   }, []);
@@ -539,10 +496,7 @@ export const MapUiPanels = memo(function MapUiPanels({
     roadFlowPanelRendered && !roadFlowMinimized && !!roadFlowCrossings?.data;
   const showRoadFlowDisclaimerChip = roadFlowActive && !roadFlowListVisible && !surveyOpen;
 
-  // A pill occupies almost nothing, so the moment either panel is minimized the
-  // other one gets the whole column back — capping it at 45/55 would waste half
-  // the height against a neighbour that is no longer there.
-  const compactPanelsResolved = compactPanels && !infoMinimized && !fichaMinimized;
+  const compactPanelsResolved = false;
 
   return (
     <>
@@ -565,8 +519,8 @@ export const MapUiPanels = memo(function MapUiPanels({
         panel keeps its own bounded `maxHeight` so neither overflows the
         viewport.
 
-        RasterLegend (bottom-right) and InfoPanel (top-right) remain
-        unchanged.
+        RasterLegend stays at the bottom-right. The feature readout is not
+        painted here: it lives in the left sidebar.
       */}
       {showEmbeddedMapControls && (
         <Box
@@ -669,28 +623,6 @@ export const MapUiPanels = memo(function MapUiPanels({
           hiddenRanges={hiddenRanges}
           onClassToggle={onClassToggle}
           onRangeToggle={onRangeToggle}
-        />
-      )}
-
-      {showInfoPanel && (
-        <InfoPanel
-          features={selectedFeatures}
-          compact={compactPanelsResolved}
-          sheet={isNarrow}
-          onClose={onCloseInfoPanel}
-          bpaEnriched={bpaEnriched}
-          bpaHistory={bpaHistory}
-          onDeletePuntoInteres={onDeletePuntoInteres}
-          minimized={infoMinimized}
-          onToggleMinimize={toggleInfoMinimized}
-          resetKey={selectedFeatures}
-          onElevationProfileHover={onElevationProfileHover}
-          onElevationProfileRange={onElevationProfileRange}
-          onOpenElevationProfile={onOpenElevationProfile}
-          onOpenCanalProfile={onOpenCanalProfile}
-          profileHover={profileHover}
-          elevationProfileAutoLoad={elevationProfileAutoLoad}
-          onElevationProfileShare={onElevationProfileShare}
         />
       )}
 

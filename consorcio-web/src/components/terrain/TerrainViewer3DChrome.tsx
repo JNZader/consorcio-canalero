@@ -295,6 +295,21 @@ export function TerrainViewer3DChrome({
           the same `buildFamilyActiveCounts` derivation over the rows the 3D
           panel actually renders (`buildTerrain3DLayerItems`). */}
       <MapWorkspace
+        selection={
+          selectedFeatures && selectedFeatures.length > 0 && onCloseInfoPanel ? (
+            <InfoPanel
+              embedded
+              features={selectedFeatures}
+              onClose={onCloseInfoPanel}
+              bpaEnriched={bpaEnriched}
+              bpaHistory={bpaHistory}
+            />
+          ) : null
+        }
+        selectionKey={
+          selectedFeatures && selectedFeatures.length > 0 ? selectedFeatures : null
+        }
+        onCloseSelection={onCloseInfoPanel}
         activeLayerCount={sumFamilyActiveCounts(
           buildFamilyActiveCounts({
             layerItems: buildTerrain3DLayerItems({ intersectionsLength }),
@@ -337,23 +352,6 @@ export function TerrainViewer3DChrome({
                   <Text c="white">Cargando terreno 3D...</Text>
                 </Stack>
               </Box>
-            )}
-
-            {/*
-          Phase 5 (Batch F) — click-driven InfoPanel overlay. Rendered INSIDE
-          the relative Paper so the shared `.infoPanel` CSS module class
-          (position: absolute, top: calc(spacing.md + 108px), right:
-          spacing.md, z-index: 1000) is scoped to the 3D canvas. `z-index:
-          1000` sits above the toggles button (`zIndex: 16`) and the chrome
-          panels (`zIndex: 16`), so the panel always wins on overlap.
-        */}
-            {selectedFeatures && selectedFeatures.length > 0 && onCloseInfoPanel && (
-              <InfoPanel
-                features={selectedFeatures}
-                onClose={onCloseInfoPanel}
-                bpaEnriched={bpaEnriched}
-                bpaHistory={bpaHistory}
-              />
             )}
 
             <Box
