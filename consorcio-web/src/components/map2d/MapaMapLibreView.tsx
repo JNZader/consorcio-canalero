@@ -194,6 +194,8 @@ export interface MapaMapLibreViewProps {
     value: SetStateAction<{ lon: number; lat: number } | null>
   ) => void;
   readonly setElevationProfileRange: (value: SetStateAction<ProfileRangeStats | null>) => void;
+  readonly elevationProfileAutoLoad?: boolean;
+  readonly onElevationProfileShare?: () => void;
   readonly setEtapaVisible: (etapa: Etapa, visible: boolean) => void;
   readonly setExportIncludeLegend: (value: SetStateAction<boolean>) => void;
   readonly setExportIncludeMetadata: (value: SetStateAction<boolean>) => void;
@@ -307,6 +309,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     setBaseLayer,
     setElevationProfileHover,
     setElevationProfileRange,
+    elevationProfileAutoLoad = false,
+    onElevationProfileShare,
     setEtapaVisible,
     setExportIncludeLegend,
     setExportIncludeMetadata,
@@ -642,6 +646,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onCloseInfoPanel={handleCloseInfoPanel}
               onElevationProfileHover={setElevationProfileHover}
               onElevationProfileRange={setElevationProfileRange}
+              elevationProfileAutoLoad={elevationProfileAutoLoad}
+              onElevationProfileShare={onElevationProfileShare}
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}

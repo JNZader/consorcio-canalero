@@ -149,6 +149,8 @@ export interface MapUiPanelsProps {
   readonly onElevationProfileRange?: (
     range: ProfileRangeStats | null,
   ) => void;
+  readonly elevationProfileAutoLoad?: boolean;
+  readonly onElevationProfileShare?: () => void;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
    * and threads its state down here; `InfoPanel` stays pure. When
@@ -360,6 +362,8 @@ export const MapUiPanels = memo(function MapUiPanels({
   onCloseInfoPanel,
   onElevationProfileHover,
   onElevationProfileRange,
+  elevationProfileAutoLoad = false,
+  onElevationProfileShare,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -677,6 +681,8 @@ export const MapUiPanels = memo(function MapUiPanels({
           resetKey={selectedFeatures}
           onElevationProfileHover={onElevationProfileHover}
           onElevationProfileRange={onElevationProfileRange}
+          elevationProfileAutoLoad={elevationProfileAutoLoad}
+          onElevationProfileShare={onElevationProfileShare}
         />
       )}
 

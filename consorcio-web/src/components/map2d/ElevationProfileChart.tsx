@@ -76,12 +76,15 @@ export function ElevationProfileChart({
   onHoverLngLat,
   onPickLngLat,
   onRangeCoordinates,
+  onActivated,
   autoLoad = false,
 }: {
   geometry: Geometry | null | undefined;
   onHoverLngLat?: (point: { lon: number; lat: number } | null) => void;
   onPickLngLat?: (point: { lon: number; lat: number }) => void;
   onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
+  /** The operator asked for the curve, or a permalink already did. */
+  onActivated?: () => void;
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
   autoLoad?: boolean;
 }) {
@@ -101,6 +104,8 @@ export function ElevationProfileChart({
   rangeCb.current = onRangeCoordinates;
   const hoverCb = useRef(onHoverLngLat);
   hoverCb.current = onHoverLngLat;
+  const activatedCb = useRef(onActivated);
+  activatedCb.current = onActivated;
 
   useEffect(() => {
     setRange(null);
@@ -122,6 +127,7 @@ export function ElevationProfileChart({
     const line = geometry;
     setStatus('loading');
     setError(null);
+    activatedCb.current?.();
     void fetchElevationProfile(line, undefined, compareDems).then(
       (data) => {
         if (gen !== requestGen.current) {
@@ -150,6 +156,7 @@ export function ElevationProfileChart({
     const gen = ++requestGen.current;
     setStatus('loading');
     setError(null);
+    activatedCb.current?.();
     try {
       const data = await fetchElevationProfile(line, undefined, compareDems);
       if (gen !== requestGen.current) {

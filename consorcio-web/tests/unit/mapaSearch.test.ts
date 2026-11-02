@@ -14,6 +14,7 @@ describe('parseMapaRouteSearch', () => {
         preset: 'agua',
         l: 'roads',
         r: 'flood_risk',
+        perfil: 'canal-ne-sin-intervencion',
         report: '1',
         junk: 'drop',
       })
@@ -26,6 +27,7 @@ describe('parseMapaRouteSearch', () => {
       preset: 'agua',
       l: 'roads',
       r: 'flood_risk',
+      perfil: 'canal-ne-sin-intervencion',
       report: '1',
     });
   });
