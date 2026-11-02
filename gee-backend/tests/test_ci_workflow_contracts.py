@@ -71,7 +71,7 @@ def _line_range(target: str) -> tuple[str, int, int]:
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951"
 )
-PYTHON_RUNTIME_IMAGE = "python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170"
+PYTHON_RUNTIME_IMAGE = "python:3.14.8-slim-trixie@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a"
 SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
 WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
@@ -135,7 +135,7 @@ def _mutation_source(target: str) -> str:
 
 def _assert_fail_closed_trivy(job: str) -> None:
     upload = (
-        "uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0"
+        "uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1"
     )
 
     assert f"uses: {TRIVY_ACTION}" in job
@@ -227,7 +227,7 @@ def _assert_frozen_image_policy(
     assert sarif in artifact_tail
 
     upload_sarif = job.index(
-        "uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0"
+        "uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1"
     )
     upload_tail = job[upload_sarif:]
     assert "if: always()" in upload_tail
@@ -359,7 +359,7 @@ def _assert_scanned_manifest_is_published(
 ) -> None:
     build = "uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0"
     scan = f"uses: {TRIVY_ACTION}"
-    login = "uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0"
+    login = "uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0"
     push_candidate = 'docker push "$CANDIDATE_IMAGE"'
     inspect_remote = (
         "docker buildx imagetools inspect \"$CANDIDATE_IMAGE\" --format '{{json .Manifest}}'"

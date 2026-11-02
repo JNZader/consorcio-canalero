@@ -53,6 +53,33 @@ RUN set -eu; \
     done; \
     rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (CVE-2026-111497): the pinned gdal ubuntu-small digest still
+# carries libbrotli1 1.2.0-3build1. Trivy reports it HIGH with Status=fixed at
+# 1.2.0-3ubuntu0.1, and the geo-worker policy rejects any finding that already
+# has a fix. --only-upgrade stays on the package the base already installed.
+# REMOVE this block when the pinned digest carries libbrotli1 >= 1.2.0-3ubuntu0.1.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libbrotli1; \
+    fixed_version="1.2.0-3ubuntu0.1"; \
+    for package in \
+        libbrotli1; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
