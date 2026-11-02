@@ -1,43 +1,42 @@
 import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import type { Feature } from 'geojson';
-import { memo, useCallback, useState, type ReactNode } from 'react';
-import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
+import type { Feature, LineString, MultiLineString } from 'geojson';
+import { memo, type ReactNode, useCallback, useState } from 'react';
+import { MAP_DEFAULT_ZOOM } from '../../constants';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
-import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
-import type { FichaResponse, FichaTipo } from '../../lib/api/ficha';
-import type { FichaApiError } from '../../lib/api/ficha';
-import styles from '../../styles/components/map.module.css';
-import { RasterLegend } from '../RasterLegend';
-import { ExportPngModal } from './ExportPngModal';
-import type { EtapaGate } from '../shared/canalesGrouping';
-import type { CanalAnalysisMode } from './useFichaInteraction';
-import { FichaTerritorialPanel, type FichaPanelTab } from './FichaTerritorialPanel';
-import { InfoPanel } from './InfoPanel';
-import type { ProfileRangeStats } from './profileRange';
-import {
-  type CanalToggleEntry,
-  LayerControlsPanel,
-  type LayerFineControl,
-} from './LayerControlsPanel';
-import { MapActionsPanel } from './MapActionsPanel';
-import { RoadFlowDisclaimerChip } from './RoadFlowDisclaimer';
-import { RoadFlowPanel } from './RoadFlowPanel';
-import { TramoSurveySheet } from './TramoSurveySheet';
-import type { RoadFlowKindVisibility } from './roadFlowLayers';
+import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { UseRoadFlowCrossingsResult } from '../../hooks/useRoadFlowCrossings';
-import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
+import type { FichaApiError, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import type {
   CoberturaResponse,
   RelevamientoTramoCreate,
   TramoRelevamientoDetalle,
 } from '../../lib/api/relevamiento';
-import { MAP_DEFAULT_ZOOM } from '../../constants';
+import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
-import { type ViewMode, ViewModePanel } from './ViewModePanel';
+import styles from '../../styles/components/map.module.css';
+import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import { RasterLegend } from '../RasterLegend';
+import type { EtapaGate } from '../shared/canalesGrouping';
+import { ExportPngModal } from './ExportPngModal';
+import { type FichaPanelTab, FichaTerritorialPanel } from './FichaTerritorialPanel';
+import { InfoPanel } from './InfoPanel';
+import {
+  type CanalToggleEntry,
+  LayerControlsPanel,
+  type LayerFineControl,
+} from './LayerControlsPanel';
 import type { LayerHealth } from './layerHealth';
+import { MapActionsPanel } from './MapActionsPanel';
 import type { LayerCategory } from './map2dDerived';
+import type { ProfileRangeStats } from './profileRange';
+import { RoadFlowDisclaimerChip } from './RoadFlowDisclaimer';
+import { RoadFlowPanel } from './RoadFlowPanel';
+import type { RoadFlowKindVisibility } from './roadFlowLayers';
+import { TramoSurveySheet } from './TramoSurveySheet';
+import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
+import { type ViewMode, ViewModePanel } from './ViewModePanel';
 
 /**
  * Fallbacks for the optional cruces handlers. They exist so the panel can stay
@@ -143,12 +142,15 @@ export interface MapUiPanelsProps {
    */
   readonly selectedFeatures: readonly Feature[];
   readonly onCloseInfoPanel: () => void;
-  readonly onElevationProfileHover?: (
-    hover: { lon: number; lat: number } | null,
-  ) => void;
-  readonly onElevationProfileRange?: (
-    range: ProfileRangeStats | null,
-  ) => void;
+  readonly onElevationProfileHover?: (hover: { lon: number; lat: number } | null) => void;
+  readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
+  readonly onOpenElevationProfile?: (geometry: LineString | MultiLineString) => void;
+  readonly onOpenCanalProfile?: (request: {
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso';
+  }) => void;
+  readonly profileHover?: { lon: number; lat: number } | null;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
    * and threads its state down here; `InfoPanel` stays pure. When
@@ -360,6 +362,9 @@ export const MapUiPanels = memo(function MapUiPanels({
   onCloseInfoPanel,
   onElevationProfileHover,
   onElevationProfileRange,
+  onOpenElevationProfile,
+  onOpenCanalProfile,
+  profileHover = null,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -677,6 +682,9 @@ export const MapUiPanels = memo(function MapUiPanels({
           resetKey={selectedFeatures}
           onElevationProfileHover={onElevationProfileHover}
           onElevationProfileRange={onElevationProfileRange}
+          onOpenElevationProfile={onOpenElevationProfile}
+          onOpenCanalProfile={onOpenCanalProfile}
+          profileHover={profileHover}
         />
       )}
 

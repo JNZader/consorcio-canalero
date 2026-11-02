@@ -249,8 +249,9 @@ describe('<MeasurementLabels />', () => {
     expect(mock.map.project.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 
-  it('opens the elevation profile of the drawn distance', async () => {
+  it('asks the dock to open the drawn distance', () => {
     const mock = createMapMock();
+    const onProfileLine = vi.fn();
     const line = {
       type: 'LineString' as const,
       coordinates: [
@@ -261,20 +262,13 @@ describe('<MeasurementLabels />', () => {
     render(
       <MeasurementLabels
         map={mock.map as unknown as maplibregl.Map}
-        measurements={[
-          { ...buildDistance('m1', 1500, [-62.5, -32.5]), geometry: line },
-          {
-            ...buildArea('m2', 50_000, [-62.6, -32.6]),
-            geometry: { type: 'Polygon', coordinates: [] },
-          },
-        ]}
+        measurements={[{ ...buildDistance('m1', 1500, [-62.5, -32.5]), geometry: line }]}
+        onProfileLine={onProfileLine}
       />,
     );
-
-    expect(screen.getAllByRole('button', { name: 'Perfil de elevación' })).toHaveLength(1);
-    expect(screen.queryByTestId('measurement-profile-chart')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
-    expect(await screen.findByTestId('measurement-profile-chart')).toHaveTextContent('LineString');
-    expect(screen.getByTestId('measurement-profile-chart')).toHaveAttribute('data-autoload', 'true');
+    expect(onProfileLine).toHaveBeenCalledWith(line);
+    fireEvent.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
+    expect(onProfileLine).toHaveBeenLastCalledWith(null);
   });
 });

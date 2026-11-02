@@ -430,5 +430,7 @@ describe('useMeasurement', () => {
     });
     act(() => handlers.get('draw.render')?.[0]?.({}));
     expect(result.current.liveLabel).toBe('123 m');
+    expect(result.current.draftLine).toBeNull();
+    await waitFor(() => expect(result.current.draftLine?.type).toBe('LineString'));
   });
 });

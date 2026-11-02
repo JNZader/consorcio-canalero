@@ -133,7 +133,6 @@ describe('<InfoPanel /> — Canal detection branch', () => {
     expect(screen.queryByTestId('canal-card')).not.toBeInTheDocument();
     expect(screen.getByTestId('info-feature-chips')).toBeInTheDocument();
     expect(screen.getByTestId('info-panel-group-summary')).toBeInTheDocument();
-    expect(screen.queryByTestId('elevation-profile')).not.toBeInTheDocument();
     await user.click(screen.getByText('Canal A'));
     expect(screen.getAllByTestId('canal-card')).toHaveLength(1);
     expect(screen.getByRole('heading', { name: 'Canal A' })).toBeInTheDocument();

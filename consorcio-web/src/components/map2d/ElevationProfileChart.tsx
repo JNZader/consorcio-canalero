@@ -25,7 +25,15 @@ import {
   fetchElevationProfile,
 } from '../../lib/api/elevationProfile';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import {
+  canalSlopeNotes,
+  crossingsOnProfile,
+  DEFAULT_SLOPE_THRESHOLDS,
+  type FlowSense,
+  type ProfileCrossing,
+} from './canalProfile';
 import { buildProfileChartRows, type ProfileChartRow } from './profileChartRows';
+import { indexFromPlotX, nearestIndexByDistance } from './profileCursorSync';
 import {
   formatAxisDistance,
   formatCursorReadout,
@@ -121,12 +129,23 @@ export function ElevationProfileChart({
   onHoverLngLat,
   onPickLngLat,
   onRangeCoordinates,
+  onSamples,
+  externalDistanceM = null,
+  flowDirection = null,
+  crossings = [],
   autoLoad = false,
 }: {
   geometry: Geometry | null | undefined;
   onHoverLngLat?: (point: { lon: number; lat: number } | null) => void;
   onPickLngLat?: (point: { lon: number; lat: number }) => void;
   onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
+  /** Samples once a profile is ready, so the map can move the cursor. */
+  onSamples?: (rows: readonly ProfileChartRow[]) => void;
+  /** Cursor driven from the map, a touch, or the keyboard. The pointer on the chart wins. */
+  externalDistanceM?: number | null;
+  /** Set for a canal. Measurements leave this null and skip the drainage notes. */
+  flowDirection?: FlowSense | null;
+  readonly crossings?: readonly ProfileCrossing[];
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
   autoLoad?: boolean;
 }) {
@@ -140,6 +159,8 @@ export function ElevationProfileChart({
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [sedimentPct, setSedimentPct] = useState(DEFAULT_SLOPE_THRESHOLDS.sedimentPct);
+  const [adversePct, setAdversePct] = useState(DEFAULT_SLOPE_THRESHOLDS.adversePct);
   const requestGen = useRef(0);
   const loadedOnce = useRef(startLoaded);
   const dragStart = useRef<number | null>(null);
@@ -148,6 +169,9 @@ export function ElevationProfileChart({
   rangeCb.current = onRangeCoordinates;
   const hoverCb = useRef(onHoverLngLat);
   hoverCb.current = onHoverLngLat;
+  const samplesCb = useRef(onSamples);
+  samplesCb.current = onSamples;
+  const rowsRef = useRef<ProfileChartRow[]>([]);
 
   useEffect(() => {
     setRange(null);
@@ -188,6 +212,24 @@ export function ElevationProfileChart({
     );
   }, [autoLoad, compareDems, geometry]);
 
+  const chartRows = buildProfileChartRows(profile?.puntos ?? []);
+  rowsRef.current = chartRows;
+  useEffect(() => {
+    if (status !== 'ready' || !profile) {
+      samplesCb.current?.([]);
+      return;
+    }
+    samplesCb.current?.(buildProfileChartRows(profile.puntos));
+  }, [profile, status]);
+  useEffect(() => {
+    if (hoverIndex != null || externalDistanceM == null) {
+      return;
+    }
+    const rows = rowsRef.current;
+    const index = nearestIndexByDistance(rows, externalDistanceM);
+    hoverCb.current?.(index == null ? null : lngLatAtIndex(rows, index));
+  }, [externalDistanceM, hoverIndex, profile, status]);
+
   if (!hasProfileParts(geometry)) {
     return null;
   }
@@ -219,7 +261,11 @@ export function ElevationProfileChart({
     onRangeCoordinates?.(null);
   }
 
-  const chartRows = buildProfileChartRows(profile?.puntos ?? []);
+  const externalIndex =
+    hoverIndex == null && externalDistanceM != null
+      ? nearestIndexByDistance(chartRows, externalDistanceM)
+      : null;
+  const shownIndex = hoverIndex ?? externalIndex;
   const visibleSeries = SERIES.filter((series) => chartRows.some((row) => row[series.key] != null));
   const grade = profileGrade(chartRows);
   const elevations = chartRows
@@ -229,16 +275,20 @@ export function ElevationProfileChart({
   const maxZ = elevations.length > 0 ? Math.max(...elevations) : null;
   const selection =
     range != null ? profileSliceStats(sliceProfile(chartRows, range.a, range.b)) : null;
+  const slopeNotes = flowDirection
+    ? canalSlopeNotes(chartRows, flowDirection, { sedimentPct, adversePct })
+    : [];
+  const profileCrossings = crossingsOnProfile(chartRows, crossings);
   const spanM =
     chartRows.length >= 2
       ? chartRows[chartRows.length - 1]!.distance_m - chartRows[0]!.distance_m
       : (profile?.length_m ?? 0);
-  const hoverRow = hoverIndex != null ? chartRows[hoverIndex] : undefined;
+  const hoverRow = shownIndex != null ? chartRows[shownIndex] : undefined;
   const cursorLabel = hoverRow
     ? formatCursorReadout(
         hoverRow.distance_m,
         hoverRow.elevation_m,
-        localSlopePct(chartRows, hoverIndex ?? -1)
+        localSlopePct(chartRows, shownIndex ?? -1)
       )
     : null;
   const cursorFrac =
@@ -313,6 +363,68 @@ export function ElevationProfileChart({
           <Text size="xs" data-testid="elevation-profile-tramo-stats">
             {tramoHeader}
           </Text>
+          {flowDirection ? (
+            <Stack gap={4} data-testid="canal-slope-notes">
+              <Group gap="xs">
+                <Text size="xs" c="dimmed">
+                  Sedimento si |pend.| &lt;
+                </Text>
+                <Text
+                  size="xs"
+                  component="input"
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  aria-label="Umbral de sedimento"
+                  value={sedimentPct}
+                  onChange={(event) => setSedimentPct(Number(event.currentTarget.value))}
+                  style={{ width: 64 }}
+                />
+                <Text size="xs" c="dimmed">
+                  % · contra el drenaje si sube más de
+                </Text>
+                <Text
+                  size="xs"
+                  component="input"
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  aria-label="Umbral contra el drenaje"
+                  value={adversePct}
+                  onChange={(event) => setAdversePct(Number(event.currentTarget.value))}
+                  style={{ width: 64 }}
+                />
+                <Text size="xs" c="dimmed">
+                  %
+                </Text>
+              </Group>
+              {slopeNotes.length === 0 ? (
+                <Text size="xs">
+                  Sin tramos contra el drenaje ni de sedimento con estos umbrales.
+                </Text>
+              ) : (
+                slopeNotes.map((note) => (
+                  <Text
+                    key={`${note.kind}-${note.from_m}`}
+                    size="xs"
+                    c={note.kind === 'adverse' ? 'red' : 'orange'}
+                  >
+                    {note.kind === 'adverse' ? '▲ Contra el drenaje' : '— Riesgo de sedimento'}{' '}
+                    {formatProfileDistance(note.from_m)}–{formatProfileDistance(note.to_m)} ·{' '}
+                    {formatSlopePct(note.slope_pct)}
+                  </Text>
+                ))
+              )}
+            </Stack>
+          ) : null}
+          {profileCrossings.length > 0 ? (
+            <Text size="xs" data-testid="profile-crossings">
+              Cruces:{' '}
+              {profileCrossings
+                .map((hit) => `${hit.label} ${formatProfileDistance(hit.distance_m)}`)
+                .join(' · ')}
+            </Text>
+          ) : null}
           {selection && range ? (
             <Group gap={6} wrap="nowrap" align="flex-start">
               <Text size="xs" data-testid="elevation-profile-selection" style={{ flex: 1 }}>
@@ -337,7 +449,103 @@ export function ElevationProfileChart({
               <div
                 data-testid="elevation-profile-chart"
                 data-axis={usesKilometreAxis(spanM) ? 'km' : 'm'}
-                style={{ position: 'relative', flex: '1 1 180px', minWidth: 0, height: 168 }}
+                role="slider"
+                tabIndex={0}
+                aria-label="Perfil de elevación. Flechas para mover el cursor. Inicio y fin van a los extremos."
+                aria-valuemin={0}
+                aria-valuemax={Math.max(0, chartRows.length - 1)}
+                aria-valuenow={shownIndex ?? 0}
+                aria-valuetext={cursorLabel ?? 'Sin cursor'}
+                onKeyDown={(event) => {
+                  if (chartRows.length === 0) {
+                    return;
+                  }
+                  const current = shownIndex ?? 0;
+                  let next = current;
+                  if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+                    next = Math.min(chartRows.length - 1, current + 1);
+                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                    next = Math.max(0, current - 1);
+                  } else if (event.key === 'Home') {
+                    next = 0;
+                  } else if (event.key === 'End') {
+                    next = chartRows.length - 1;
+                  } else {
+                    return;
+                  }
+                  event.preventDefault();
+                  setHoverIndex(next);
+                  onHoverLngLat?.(lngLatAtIndex(chartRows, next));
+                }}
+                onPointerDown={(event) => {
+                  if (event.pointerType === 'mouse') {
+                    return;
+                  }
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const index = indexFromPlotX(
+                    event.clientX,
+                    rect.left + 40,
+                    rect.width - 48,
+                    chartRows
+                  );
+                  dragStart.current = index == null ? null : (chartRows[index]?.distance_m ?? null);
+                  dragged.current = false;
+                  if (index != null) {
+                    setHoverIndex(index);
+                    onHoverLngLat?.(lngLatAtIndex(chartRows, index));
+                  }
+                }}
+                onPointerMove={(event) => {
+                  if (event.pointerType === 'mouse' || dragStart.current == null) {
+                    return;
+                  }
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const index = indexFromPlotX(
+                    event.clientX,
+                    rect.left + 40,
+                    rect.width - 48,
+                    chartRows
+                  );
+                  const distance = index == null ? null : (chartRows[index]?.distance_m ?? null);
+                  if (index != null) {
+                    setHoverIndex(index);
+                    onHoverLngLat?.(lngLatAtIndex(chartRows, index));
+                  }
+                  if (distance != null && distance !== dragStart.current) {
+                    dragged.current = true;
+                    setRange({ a: dragStart.current, b: distance });
+                  }
+                }}
+                onPointerUp={(event) => {
+                  if (event.pointerType === 'mouse') {
+                    return;
+                  }
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const index = indexFromPlotX(
+                    event.clientX,
+                    rect.left + 40,
+                    rect.width - 48,
+                    chartRows
+                  );
+                  const distance = index == null ? null : (chartRows[index]?.distance_m ?? null);
+                  if (dragged.current && dragStart.current != null && distance != null) {
+                    const next = { a: dragStart.current, b: distance };
+                    setRange(next);
+                    onRangeCoordinates?.(
+                      profileSliceStats(sliceProfile(chartRows, next.a, next.b))
+                    );
+                  }
+                  dragStart.current = null;
+                  dragged.current = false;
+                }}
+                style={{
+                  position: 'relative',
+                  flex: '1 1 180px',
+                  minWidth: 0,
+                  height: 168,
+                  touchAction: 'none',
+                }}
               >
                 {cursorLabel && cursorFrac != null ? (
                   <div
@@ -420,6 +628,15 @@ export function ElevationProfileChart({
                       width={40}
                       fontSize={10}
                     />
+                    {profileCrossings.map((hit) => (
+                      <ReferenceLine
+                        key={`${hit.label}-${hit.distance_m}`}
+                        x={hit.distance_m}
+                        stroke={mapColorTokens.h868e96}
+                        strokeDasharray="2 2"
+                        ifOverflow="hidden"
+                      />
+                    ))}
                     {hoverRow ? (
                       <ReferenceLine
                         x={hoverRow.distance_m}

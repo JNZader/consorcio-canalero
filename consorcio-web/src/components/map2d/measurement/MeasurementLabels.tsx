@@ -31,16 +31,10 @@
 
 import type { LineString } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
-import type { ProfileRangeStats } from '../profileRange';
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
-
-const ElevationProfileChart = lazy(async () => {
-  const mod = await import('../ElevationProfileChart');
-  return { default: mod.ElevationProfileChart };
-});
 
 const COLLISION_THRESHOLD_PX = 40;
 const MIN_ZOOM_TO_SHOW_ALL = 14;
@@ -48,8 +42,8 @@ const MIN_ZOOM_TO_SHOW_ALL = 14;
 export interface MeasurementLabelsProps {
   readonly map: maplibregl.Map | null;
   readonly measurements: readonly MeasurementEntry[];
-  readonly onElevationProfileHover?: (point: { lon: number; lat: number } | null) => void;
-  readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
+  /** The dock owns the chart. `null` closes it. */
+  readonly onProfileLine?: (line: LineString | null) => void;
 }
 
 /** The line the operator drew. An area, or a line with one vertex, has no profile. */
@@ -109,12 +103,7 @@ function getVisibleMeasurements(
   return visible;
 }
 
-export function MeasurementLabels({
-  map,
-  measurements,
-  onElevationProfileHover,
-  onElevationProfileRange,
-}: MeasurementLabelsProps) {
+export function MeasurementLabels({ map, measurements, onProfileLine }: MeasurementLabelsProps) {
   const [positions, setPositions] = useState<Record<string, PixelPosition>>({});
   const [profileId, setProfileId] = useState<string | null>(null);
   const openEntry = measurements.find((entry) => entry.id === profileId) ?? null;
@@ -123,15 +112,13 @@ export function MeasurementLabels({
   useEffect(() => {
     if (profileId != null && openLine == null) {
       setProfileId(null);
-      onElevationProfileHover?.(null);
-      onElevationProfileRange?.(null);
+      onProfileLine?.(null);
     }
-  }, [onElevationProfileHover, onElevationProfileRange, openLine, profileId]);
+  }, [onProfileLine, openLine, profileId]);
 
   function closeProfile() {
     setProfileId(null);
-    onElevationProfileHover?.(null);
-    onElevationProfileRange?.(null);
+    onProfileLine?.(null);
   }
 
   function toggleProfile(id: string) {
@@ -139,11 +126,10 @@ export function MeasurementLabels({
       closeProfile();
       return;
     }
-    if (profileId != null) {
-      onElevationProfileHover?.(null);
-      onElevationProfileRange?.(null);
-    }
+    const entry = measurements.find((item) => item.id === id);
+    const line = entry ? distanceLine(entry) : null;
     setProfileId(id);
+    onProfileLine?.(line);
   }
 
   useEffect(() => {
@@ -234,61 +220,6 @@ export function MeasurementLabels({
           </div>
         );
       })}
-      {openLine ? (
-        <div
-          data-testid="measurement-profile-panel"
-          style={{
-            position: 'absolute',
-            left: 8,
-            right: 8,
-            bottom: 8,
-            maxHeight: 'min(280px, 52%)',
-            overflow: 'auto',
-            pointerEvents: 'auto',
-            background: 'white',
-            border: '1px solid #fd7e14',
-            borderRadius: 6,
-            padding: 8,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 4,
-            }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 700, color: mapColorTokens.h333 }}>
-              Perfil de la medición
-            </span>
-            <button
-              type="button"
-              onClick={closeProfile}
-              style={{
-                pointerEvents: 'auto',
-                border: 0,
-                background: 'transparent',
-                color: mapColorTokens.h333,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Cerrar
-            </button>
-          </div>
-          <Suspense fallback={null}>
-            <ElevationProfileChart
-              geometry={openLine}
-              autoLoad
-              onHoverLngLat={onElevationProfileHover}
-              onRangeCoordinates={onElevationProfileRange}
-            />
-          </Suspense>
-        </div>
-      ) : null}
     </div>
   );
 }
