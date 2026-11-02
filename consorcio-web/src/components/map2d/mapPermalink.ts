@@ -1,4 +1,23 @@
+import type { Feature } from 'geojson';
 import { MAP_PRESET_IDS, type MapPresetId } from './mapPresets';
+
+/** Stable token for the feature the operator is reading, when one exists. */
+export function selectionPermalinkToken(feature: Feature | null | undefined): string | undefined {
+  if (!feature) return undefined;
+  const props = (feature.properties ?? {}) as Record<string, unknown>;
+  const cuenta = props.nro_cuenta ?? props.Nro_Cuenta ?? props.cuenta;
+  if (typeof cuenta === 'string' && /^[\w./-]{1,40}$/.test(cuenta.trim())) {
+    return `cuenta:${cuenta.trim()}`;
+  }
+  if (typeof cuenta === 'number' && Number.isFinite(cuenta)) return `cuenta:${cuenta}`;
+  const id = props.id;
+  const layer = (feature as Feature & { layer?: { id?: string } }).layer?.id ?? '';
+  if (typeof id === 'string' && /^[a-z0-9-]{1,80}$/.test(id) && layer.includes('canal')) {
+    return `canal:${id}`;
+  }
+  if (typeof id === 'string' && /^[a-z0-9-]{1,80}$/.test(id)) return `canal:${id}`;
+  return undefined;
+}
 
 export interface MapPermalink {
   lat?: number;
@@ -10,6 +29,8 @@ export interface MapPermalink {
   rasterTipo?: string;
   /** Canal slug whose elevation profile should open. Omit = do not change. */
   perfil?: string;
+  /** `canal:<slug>` or `cuenta:<nro>`. Omit = do not change the selection. */
+  sel?: string;
 }
 
 const PRESET_SET = new Set<string>(MAP_PRESET_IDS);
@@ -44,6 +65,9 @@ export function parseMapPermalink(search: string): MapPermalink {
   const perfil = params.get('perfil');
   if (perfil && /^[a-z0-9-]{1,80}$/.test(perfil)) out.perfil = perfil;
 
+  const sel = params.get('sel');
+  if (sel && /^(canal:[a-z0-9-]{1,80}|cuenta:[\w./-]{1,40})$/.test(sel)) out.sel = sel;
+
   return out;
 }
 
@@ -77,6 +101,7 @@ export function serializeMapPermalink(
 
   setOrDelete('r', next.rasterTipo);
   setOrDelete('perfil', next.perfil);
+  setOrDelete('sel', next.sel);
 
   const qs = params.toString();
   return qs ? `?${qs}` : '';
