@@ -123,6 +123,10 @@ interface InfoPanelProps {
   /** Google Earth analog: chart hover chainage on the selected LineString. */
   readonly onElevationProfileHover?: (hover: { lon: number; lat: number } | null) => void;
   readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
+  /** Permalink already asked for this canal's curve. */
+  readonly elevationProfileAutoLoad?: boolean;
+  /** Record the canal slug in the shareable URL once the curve is requested. */
+  readonly onElevationProfileShare?: () => void;
 }
 
 /**
@@ -403,6 +407,8 @@ export const InfoPanel = memo(function InfoPanel({
   onDeletePuntoInteres,
   onElevationProfileHover,
   onElevationProfileRange,
+  elevationProfileAutoLoad = false,
+  onElevationProfileShare,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -546,6 +552,8 @@ export const InfoPanel = memo(function InfoPanel({
                   }
                 }}
                 onRangeCoordinates={onElevationProfileRange}
+                autoLoad={elevationProfileAutoLoad}
+                onActivated={onElevationProfileShare}
               />
             </Suspense>
             {hoverTramo ? (
