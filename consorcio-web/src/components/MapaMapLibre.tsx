@@ -120,6 +120,9 @@ export default function MapaMapLibre() {
   // Phase 8 — array instead of single feature so InfoPanel can stack all
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
+  const [permalinkProfileSlug, setPermalinkProfileSlug] = useState<string | null>(null);
+  const [sharedProfileSlug, setSharedProfileSlug] = useState<string | null>(null);
+  const openedPermalinkProfile = useRef<string | null>(null);
   const [elevationProfileHover, setElevationProfileHover] = useState<{
     lon: number;
     lat: number;
@@ -436,6 +439,15 @@ export default function MapaMapLibre() {
       ? { label: `Imagen ${singleImageInfo.sensor} · ${singleImageInfo.date}` }
       : null;
 
+  const selectedFeature = selectedFeatures.length === 1 ? selectedFeatures[0] : null;
+  const selectedId = selectedFeature?.properties?.id;
+  const selectedCanalSlug = typeof selectedId === 'string' ? selectedId : '';
+  const profileSlug =
+    sharedProfileSlug ??
+    (permalinkProfileSlug && permalinkProfileSlug === selectedCanalSlug
+      ? permalinkProfileSlug
+      : null);
+
   useMapPermalink({
     mapRef,
     mapReady,
@@ -444,7 +456,38 @@ export default function MapaMapLibre() {
     setShowDemOverlay,
     setActiveDemLayerId,
     demLayers,
+    profileSlug,
+    onParsedProfile: setPermalinkProfileSlug,
   });
+
+  useEffect(() => {
+    if (
+      !permalinkProfileSlug ||
+      !mapReady ||
+      openedPermalinkProfile.current === permalinkProfileSlug
+    ) {
+      return;
+    }
+    const collections = [canalesRelevados, canalesPropuestas].filter(
+      (collection): collection is NonNullable<typeof collection> => collection != null
+    );
+    if (collections.length === 0) return;
+    const feature = findCanalFeature(collections, permalinkProfileSlug);
+    if (!feature) return;
+    openedPermalinkProfile.current = permalinkProfileSlug;
+    setSelectedFeatures([feature]);
+    const box = bboxFromGeometry(feature.geometry);
+    const map = mapRef.current;
+    if (box && map) {
+      map.fitBounds(
+        [
+          [box[0], box[1]],
+          [box[2], box[3]],
+        ],
+        { padding: 48, maxZoom: 15 }
+      );
+    }
+  }, [canalesPropuestas, canalesRelevados, mapReady, permalinkProfileSlug]);
 
   // The comparison view is NEVER auto-activated from the comparison state.
   // A saved pair is restored (localStorage, or the public endpoint for
@@ -645,6 +688,17 @@ export default function MapaMapLibre() {
   return (
     <MapaMapLibreView
       {...stage}
+      handleCloseInfoPanel={() => {
+        stage.handleCloseInfoPanel();
+        setPermalinkProfileSlug(null);
+        setSharedProfileSlug(null);
+      }}
+      elevationProfileAutoLoad={
+        permalinkProfileSlug != null && permalinkProfileSlug === selectedCanalSlug
+      }
+      onElevationProfileShare={() => {
+        if (selectedCanalSlug) setSharedProfileSlug(selectedCanalSlug);
+      }}
       activeDemLayerId={activeDemLayerId}
       activeLegendItems={activeLegendItems}
       baseLayer={baseLayer}
