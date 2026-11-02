@@ -12,8 +12,8 @@
 import type { Feature } from 'geojson';
 
 import * as maplibregl from 'maplibre-gl';
-import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { isRoadFlowEnabled } from '../lib/featureFlags';
+import { bootMapLibreWorker } from '../lib/maplibreLoader';
 import { groupCanalesByFolder } from './shared/canalesGrouping';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -270,7 +270,8 @@ export default function MapaMapLibre() {
   const roadFlow = useRoadFlowWiring({
     mapRef,
     mapReady,
-    active: isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
+    active:
+      isRoadFlowEnabled() && (!!vectorVisibility.road_flow || !!vectorVisibility.sentido_camino),
     panelActive: isRoadFlowEnabled() && !!vectorVisibility.road_flow,
     geoLayers: allGeoLayers,
     onDeactivate: deactivateRoadFlow,
@@ -656,6 +657,7 @@ export default function MapaMapLibre() {
       selectedFeatures={selectedFeatures}
       setActiveDemLayerId={setActiveDemLayerId}
       setBaseLayer={setBaseLayer}
+      elevationProfileHover={elevationProfileHover}
       setElevationProfileHover={setElevationProfileHover}
       setElevationProfileRange={setElevationProfileRange}
       setEtapaVisible={setEtapaVisible}

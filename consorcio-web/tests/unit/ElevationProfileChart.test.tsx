@@ -407,6 +407,31 @@ describe('<ElevationProfileChart />', () => {
     expect(disclaimer.closest('[hidden]')).toBeNull();
   });
 
+  it('follows an external distance and the arrow keys', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValue({
+      puntos: [
+        { distance_m: 0, elevation_m: 120, lon: -62.7, lat: -32.6 },
+        { distance_m: 1000, elevation_m: 110, lon: -62.71, lat: -32.61 },
+      ],
+      length_m: 1000,
+      min_elevation_m: 110,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 30,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    const onHoverLngLat = vi.fn();
+    renderWithMantine(
+      <ElevationProfileChart geometry={line} autoLoad externalDistanceM={1000} onHoverLngLat={onHoverLngLat} />,
+    );
+    expect(await screen.findByTestId('elevation-profile-cursor')).toHaveTextContent('110,0 m');
+    expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.71, lat: -32.61 });
+    const chart = screen.getByTestId('elevation-profile-chart');
+    chart.focus();
+    fireEvent.keyDown(chart, { key: 'ArrowLeft' });
+    expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.7, lat: -32.6 });
+  });
+
   it('renders nothing for a Point', () => {
     renderWithMantine(
       <ElevationProfileChart geometry={{ type: 'Point', coordinates: [-62.7, -32.6] }} />,

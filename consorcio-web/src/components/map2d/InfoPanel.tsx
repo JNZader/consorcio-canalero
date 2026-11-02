@@ -31,8 +31,8 @@
  */
 
 import { Badge, Collapse, Divider, Group, Stack, Text, Title, UnstyledButton } from '@mantine/core';
-import type { Feature } from 'geojson';
-import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
+import type { Feature, LineString, MultiLineString } from 'geojson';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
 import styles from '../../styles/components/map.module.css';
@@ -40,14 +40,8 @@ import type { CanalFeatureProperties } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
 import { BpaCard } from './BpaCard';
-import { CanalCard } from './CanalCard';
-
-const ElevationProfileChart = lazy(async () => {
-  const mod = await import('./ElevationProfileChart');
-  return { default: mod.ElevationProfileChart };
-});
-
 import { normalizeBpaFlat } from './bpaPracticas';
+import { CanalCard } from './CanalCard';
 import { EscuelaCard } from './EscuelaCard';
 import { ESCUELAS_LAYER_ID } from './escuelasLayers';
 import { groupIdentifyChips, identifyTramoRows, shouldHideDuplicateChips } from './identifyChips';
@@ -123,6 +117,10 @@ interface InfoPanelProps {
   /** Google Earth analog: chart hover chainage on the selected LineString. */
   readonly onElevationProfileHover?: (hover: { lon: number; lat: number } | null) => void;
   readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
+  /** Opens the bottom dock. The chart no longer lives inside this card. */
+  readonly onOpenElevationProfile?: (geometry: LineString | MultiLineString) => void;
+  /** Cursor coming back from the dock, so the tramo label still tracks it. */
+  readonly profileHover?: { lon: number; lat: number } | null;
 }
 
 /**
@@ -401,8 +399,8 @@ export const InfoPanel = memo(function InfoPanel({
   onToggleMinimize,
   resetKey,
   onDeletePuntoInteres,
-  onElevationProfileHover,
-  onElevationProfileRange,
+  onOpenElevationProfile,
+  profileHover = null,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -435,12 +433,12 @@ export const InfoPanel = memo(function InfoPanel({
   const hoverTramo =
     hoverIdx != null && resolved[hoverIdx] ? featureDisplayName(resolved[hoverIdx]) : null;
 
-  function locateTramo(point: { lon: number; lat: number } | null): number | null {
-    if (!point || resolved.length < 2) {
-      return null;
+  useEffect(() => {
+    if (!profileHover || resolved.length < 2) {
+      return;
     }
-    return nearestLineStringIndex(resolved, point.lon, point.lat);
-  }
+    setHoverIdx(nearestLineStringIndex(resolved, profileHover.lon, profileHover.lat));
+  }, [profileHover, resolved]);
 
   if (resolved.length === 0) return null;
 
@@ -532,22 +530,15 @@ export const InfoPanel = memo(function InfoPanel({
       <Stack gap="sm">
         {profileGeometry ? (
           <>
-            <Suspense fallback={null}>
-              <ElevationProfileChart
-                geometry={profileGeometry}
-                onHoverLngLat={(point) => {
-                  onElevationProfileHover?.(point);
-                  setHoverIdx(locateTramo(point));
-                }}
-                onPickLngLat={(point) => {
-                  const index = locateTramo(point);
-                  if (index != null) {
-                    setFocusedIdx(index);
-                  }
-                }}
-                onRangeCoordinates={onElevationProfileRange}
-              />
-            </Suspense>
+            <UnstyledButton
+              type="button"
+              data-testid="elevation-profile"
+              onClick={() => onOpenElevationProfile?.(profileGeometry)}
+            >
+              <Text size="xs" c="blue">
+                Perfil de elevación
+              </Text>
+            </UnstyledButton>
             {hoverTramo ? (
               <Text size="xs" data-testid="elevation-profile-tramo">
                 Tramo: {hoverTramo}
