@@ -402,11 +402,9 @@ export default function MapaMapLibre() {
       ? { label: `Imagen ${singleImageInfo.sensor} · ${singleImageInfo.date}` }
       : null;
 
-  const selectedCanalSlug =
-    selectedFeatures.length === 1 &&
-    typeof (selectedFeatures[0]?.properties as { id?: unknown } | null)?.id === 'string'
-      ? String((selectedFeatures[0]?.properties as { id: string }).id)
-      : '';
+  const selectedFeature = selectedFeatures.length === 1 ? selectedFeatures[0] : null;
+  const selectedId = selectedFeature?.properties?.id;
+  const selectedCanalSlug = typeof selectedId === 'string' ? selectedId : '';
   const profileSlug =
     sharedProfileSlug ??
     (permalinkProfileSlug && permalinkProfileSlug === selectedCanalSlug ? permalinkProfileSlug : null);
