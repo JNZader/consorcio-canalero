@@ -13,6 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MARTIN_VIEWS = (
     "vt_caminos_unificados",
     "vt_canal_network",
+    "vt_idecor_canales_riego",
+    "vt_idecor_consorcios",
+    "vt_idecor_cuencas",
+    "vt_idecor_cursos",
     "vt_parcelas_catastro",
     "vt_puntos_conflicto",
     "vt_zonas_operativas",
@@ -233,7 +237,9 @@ def test_martin_reader_script_repairs_drift_and_keeps_exact_view_access(
                     "AND relation.relkind IN ('r', 'p', 'v', 'm', 'f') "
                     "AND relation.relname NOT IN "
                     "('vt_caminos_unificados', 'vt_zonas_operativas', "
-                    "'vt_puntos_conflicto', 'vt_canal_network', 'vt_parcelas_catastro') "
+                    "'vt_puntos_conflicto', 'vt_canal_network', 'vt_parcelas_catastro', "
+                    "'vt_idecor_consorcios', 'vt_idecor_cursos', 'vt_idecor_cuencas', "
+                    "'vt_idecor_canales_riego') "
                     "AND ("
                     "has_table_privilege(:reader, relation.oid, 'SELECT') OR "
                     "has_table_privilege(:reader, relation.oid, 'INSERT') OR "
