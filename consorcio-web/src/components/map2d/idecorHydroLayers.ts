@@ -4,7 +4,7 @@
  */
 
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { MARTIN_SOURCES, getMartinTileUrl } from '../../hooks/useMartinLayers';
+import { getMartinTileUrl, MARTIN_SOURCES } from '../../hooks/useMartinLayers';
 import { setLayerVisibility } from './map2dUtils';
 
 export const IDECOR_HYDRO_LAYERS = [
@@ -30,10 +30,23 @@ export const IDECOR_HYDRO_LAYERS = [
   },
 ] as const;
 
+/** Other layer effects pass partial map stubs. This sync runs on every ready
+ *  map, so a stub without the style API must be a no-op instead of throwing. */
+function hasStyleApi(map: MapLibreMap): boolean {
+  return (
+    typeof map.getSource === 'function' &&
+    typeof map.addSource === 'function' &&
+    typeof map.getLayer === 'function' &&
+    typeof map.addLayer === 'function' &&
+    typeof map.setLayoutProperty === 'function'
+  );
+}
+
 export function syncIdecorHydroLayers(
   map: MapLibreMap,
-  visible: Readonly<Record<string, boolean | undefined>>,
+  visible: Readonly<Record<string, boolean | undefined>>
 ): void {
+  if (!hasStyleApi(map)) return;
   for (const layer of IDECOR_HYDRO_LAYERS) {
     const style = MARTIN_SOURCES[layer.table]?.style;
     if (!style) continue;
