@@ -44,6 +44,7 @@ import { VisuallyHidden } from '../ui/accessibility/primitives';
 import { marksFromRoadFlow } from './canalProfile';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
+import { InfoPanel } from './InfoPanel';
 import type { HazardBasinOption } from './hazardControls.types';
 import type { HazardLegendView } from './hazardLegend';
 import { LayerControlsPanel } from './LayerControlsPanel';
@@ -416,6 +417,20 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     }
     setDismissedDraftKey(draftKey);
   }
+  async function deleteSelectedPunto(id: string) {
+    try {
+      await puntosInteres.deletePunto(id);
+    } finally {
+      setSelectedFeatures((current) =>
+        current.filter((feature) => {
+          const featureId = feature.id == null ? '' : String(feature.id);
+          const propertyId =
+            feature.properties && 'id' in feature.properties ? String(feature.properties.id) : '';
+          return featureId !== id && propertyId !== id;
+        })
+      );
+    }
+  }
 
   // "N capas activas" indicator. It counts EXACTLY what the control panel shows
   // as rows — same derivation as the per-family badges (`buildFamilyActiveCounts`,
@@ -490,6 +505,28 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
       <MapWorkspace
         activeLayerCount={activeLayerCount}
         liveMessage={waterwaysError ?? geoLayersError ?? undefined}
+        selection={
+          selectedFeatures.length > 0 ? (
+            <InfoPanel
+              embedded
+              features={selectedFeatures}
+              onClose={handleCloseInfoPanel}
+              bpaEnriched={pilarVerde?.bpaEnriched}
+              bpaHistory={pilarVerde?.bpaHistory}
+              onDeletePuntoInteres={deleteSelectedPunto}
+              resetKey={selectedFeatures}
+              onOpenElevationProfile={(geometry) => openProfile(geometry, 'Perfil de elevación')}
+              onOpenCanalProfile={(request) =>
+                openProfile(request.geometry, `Perfil de ${request.title}`, request.flowDirection)
+              }
+              profileHover={elevationProfileHover}
+              elevationProfileAutoLoad={elevationProfileAutoLoad}
+              onElevationProfileShare={onElevationProfileShare}
+            />
+          ) : null
+        }
+        selectionKey={selectedFeatures.length > 0 ? selectedFeatures : null}
+        onCloseSelection={handleCloseInfoPanel}
         canvas={
           <Box
             className={styles.mapCanvasWrapper}
@@ -772,22 +809,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               bpaLoading={bpaJoinLoading}
               bpaError={bpaJoinError}
               bpaHistory={pilarVerde?.bpaHistory}
-              onDeletePuntoInteres={async (id) => {
-                try {
-                  await puntosInteres.deletePunto(id);
-                } finally {
-                  setSelectedFeatures((current) =>
-                    current.filter((feature) => {
-                      const featureId = feature.id == null ? '' : String(feature.id);
-                      const propertyId =
-                        feature.properties && 'id' in feature.properties
-                          ? String(feature.properties.id)
-                          : '';
-                      return featureId !== id && propertyId !== id;
-                    })
-                  );
-                }
-              }}
+              onDeletePuntoInteres={deleteSelectedPunto}
               exportPngModalOpen={exportPngModalOpen}
               onCloseExportPngModal={() => setExportPngModalOpen(false)}
               exportTitle={exportTitle}

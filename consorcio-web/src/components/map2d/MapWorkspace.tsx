@@ -1,6 +1,6 @@
-import { ActionIcon, Badge, Box, Burger, Group, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Burger, Group, SegmentedControl, Text, Tooltip } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useDrawerHistoryClose } from '../../hooks/useDrawerHistoryClose';
@@ -69,10 +69,30 @@ interface MapWorkspaceProps {
   canvas: ReactNode;
   /** The controls tree (layer toggles + legend). ONE tree feeds both modes. */
   controls: ReactNode;
+  /**
+   * Feature readout. When set, the sidebar offers Capas | Información and
+   * shows this node on the Información tab, instead of a card over the map.
+   */
+  selection?: ReactNode;
+  /**
+   * Identity of the current selection. A new value opens the sidebar on
+   * Información and moves focus there.
+   */
+  selectionKey?: unknown;
+  /** Dismiss the readout and return the sidebar to Capas. */
+  onCloseSelection?: () => void;
   /** "N capas activas" indicator. Optional — omitted hides the badge. */
   activeLayerCount?: number;
   /** UX-06: polite status for layer load failures. */
   liveMessage?: string;
+}
+
+type SidebarTab = 'capas' | 'info';
+
+function isFromTextEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 }
 
 /**
@@ -86,28 +106,68 @@ interface MapWorkspaceProps {
  *
  * React Compiler is active → no manual `useMemo`/`useCallback`.
  */
-export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }: MapWorkspaceProps) {
+export function MapWorkspace({
+  canvas,
+  controls,
+  selection = null,
+  selectionKey = null,
+  onCloseSelection,
+  activeLayerCount,
+  liveMessage,
+}: MapWorkspaceProps) {
   const isDesktop = useMapWorkspaceDesktop();
   const sidebarCollapsed = useMapWorkspaceStore((state) => state.sidebarCollapsed);
+  const setSidebarCollapsed = useMapWorkspaceStore((state) => state.setSidebarCollapsed);
   const toggleSidebar = useMapWorkspaceStore((state) => state.toggleSidebar);
   const [drawerOpened, drawer] = useDisclosure(false);
+  const { open: openDrawer, close: closeDrawer } = drawer;
   const overlayOpen = !isDesktop && drawerOpened;
   const headerCollapsed = isDesktop && sidebarCollapsed;
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const hasSelection = selection != null && selectionKey != null;
+  const [tab, setTab] = useState<SidebarTab>(hasSelection ? 'info' : 'capas');
+  const [seenKey, setSeenKey] = useState<unknown>(selectionKey);
+  if (seenKey !== selectionKey) {
+    setSeenKey(selectionKey);
+    setTab(hasSelection ? 'info' : 'capas');
+  }
+  const showInfo = hasSelection && tab === 'info';
 
   useEffect(() => {
     if (isDesktop) {
-      drawer.close();
+      closeDrawer();
     }
-  }, [isDesktop, drawer]);
+  }, [isDesktop, closeDrawer]);
 
   useEffect(() => {
-    if (!overlayOpen) return;
+    if (!hasSelection) return;
+    if (isDesktop) {
+      if (useMapWorkspaceStore.getState().sidebarCollapsed) setSidebarCollapsed(false);
+    } else if (!drawerOpened) {
+      openDrawer();
+    }
+  }, [hasSelection, selectionKey, isDesktop, drawerOpened, openDrawer, setSidebarCollapsed]);
+
+  useEffect(() => {
+    if (!showInfo) return;
+    if (!isDesktop && !overlayOpen) return;
+    sidebarRef.current?.focus({ preventScroll: true });
+  }, [showInfo, selectionKey, isDesktop, overlayOpen]);
+
+  useEffect(() => {
+    if (!overlayOpen && !hasSelection) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') drawer.close();
+      if (event.key !== 'Escape') return;
+      if (isFromTextEntry(event.target)) return;
+      if (hasSelection) {
+        onCloseSelection?.();
+        return;
+      }
+      if (overlayOpen) closeDrawer();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [overlayOpen, drawer]);
+  }, [overlayOpen, hasSelection, onCloseSelection, closeDrawer]);
 
   useDrawerHistoryClose({
     opened: overlayOpen,
@@ -163,10 +223,13 @@ export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }
       )}
 
       <Box
+        ref={sidebarRef}
         className={styles.workspaceSidebar}
         data-collapsed={headerCollapsed ? 'true' : 'false'}
+        data-tab={showInfo ? 'info' : 'capas'}
         data-testid="map-workspace-sidebar"
-        aria-label="Panel de capas y leyenda"
+        tabIndex={-1}
+        aria-label={showInfo ? 'Información del elemento' : 'Panel de capas y leyenda'}
         aria-hidden={!isDesktop && !overlayOpen ? true : undefined}
         role={overlayOpen ? 'dialog' : undefined}
         aria-modal={overlayOpen ? true : undefined}
@@ -177,7 +240,31 @@ export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }
             headerCollapsed ? styles.workspaceSidebarHeaderCollapsed : ''
           }`}
         >
-          {!headerCollapsed && (
+          {!headerCollapsed && hasSelection && (
+            <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <SegmentedControl
+                size="xs"
+                value={tab}
+                onChange={(value) => setTab(value as SidebarTab)}
+                data={[
+                  { label: 'Capas', value: 'capas' },
+                  { label: 'Información', value: 'info' },
+                ]}
+                aria-label="Sección del panel"
+                data-testid="map-workspace-tabs"
+              />
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                onClick={onCloseSelection}
+                aria-label="Cerrar panel de información"
+                data-testid="map-workspace-selection-close"
+              >
+                <IconX size={18} />
+              </ActionIcon>
+            </Group>
+          )}
+          {!headerCollapsed && !hasSelection && (
             <Group gap="xs" wrap="nowrap">
               <IconLayers size={18} />
               <Text fw={600} size="sm">
@@ -217,7 +304,10 @@ export function MapWorkspace({ canvas, controls, activeLayerCount, liveMessage }
             </ActionIcon>
           )}
         </Box>
-        <Box className={styles.workspaceSidebarBody}>{controls}</Box>
+        <Box className={styles.workspaceSidebarBody}>
+          <div hidden={showInfo}>{controls}</div>
+          {showInfo ? selection : null}
+        </Box>
       </Box>
     </Box>
   );

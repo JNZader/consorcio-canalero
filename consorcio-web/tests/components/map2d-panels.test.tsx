@@ -253,13 +253,11 @@ describe('map2d extracted panels', () => {
     expect(screen.getByRole('button', { name: /^base/i, expanded: false })).toBeInTheDocument();
     expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
 
     await expandNamed(user, /^base/i);
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
-
-    await user.click(screen.getByRole('button', { name: /cerrar panel de información/i }));
-    expect(onCloseInfoPanel).toHaveBeenCalledTimes(1);
+    expect(onCloseInfoPanel).not.toHaveBeenCalled();
   });
 });

@@ -85,7 +85,7 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
   });
 
-  it('renders InfoPanel and En el mapa simultaneously without crashing', () => {
+  it('does not float the info readout over En el mapa', () => {
     const feat: Feature = {
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [0, 0] },
@@ -95,7 +95,7 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
       <MapUiPanels {...buildProps({ selectedFeatures: [feat] })} />,
     );
     expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /información/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
   });
 
   it('skips inline layer legends when showLegend is false', () => {
@@ -113,24 +113,21 @@ describe('<MapUiPanels /> — InfoPanel + ficha coexistence', () => {
     properties: { nombre: 'Canal Este' },
   };
 
-  it('applies the compact modifier to BOTH panels when both are open', () => {
-    // A catastro click opens the ficha AND (now that only the catastro card is
-    // filtered) the InfoPanel for the canal/escuela/BPA feature under it. Their
-    // solo max-heights overlap, so both must switch to the split budget.
+  it('does not shrink the ficha when a feature is also selected', () => {
     renderWithMantine(
       <MapUiPanels {...buildProps({ selectedFeatures: [feat], fichaActive: true })} />
     );
 
-    expect(screen.getByTestId('map-2d-info-panel').className).toContain('infoPanelCompact');
-    expect(screen.getByTestId('ficha-territorial-panel').className).toContain('fichaPanelCompact');
+    expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ficha-territorial-panel').className).not.toContain('fichaPanelCompact');
   });
 
-  it('keeps the full max-height when ONLY the InfoPanel is open', () => {
+  it('does not paint a floating info card when only a feature is selected', () => {
     renderWithMantine(
       <MapUiPanels {...buildProps({ selectedFeatures: [feat], fichaActive: false })} />
     );
 
-    expect(screen.getByTestId('map-2d-info-panel').className).not.toContain('infoPanelCompact');
+    expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ficha-territorial-panel')).not.toBeInTheDocument();
   });
 

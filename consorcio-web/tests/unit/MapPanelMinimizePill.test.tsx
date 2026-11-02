@@ -12,7 +12,7 @@
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { Feature } from "geojson";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -21,7 +21,7 @@ import {
 } from "../../src/components/map2d/MapUiPanels";
 import { MAP_VIEW_MODE } from "../../src/components/map2d/ViewModePanel";
 import { fichaPillLabel } from "../../src/components/map2d/FichaTerritorialPanel";
-import { infoPillLabel } from "../../src/components/map2d/InfoPanel";
+import { InfoPanel, infoPillLabel } from "../../src/components/map2d/InfoPanel";
 import type {
 	FichaPoligonoRequest,
 	FichaRequest,
@@ -165,6 +165,19 @@ function panelProps(
 	};
 }
 
+function MinimizableInfo({ sheet = false }: { sheet?: boolean }) {
+	const [minimized, setMinimized] = useState(false);
+	return (
+		<InfoPanel
+			features={FEATURES}
+			sheet={sheet}
+			onClose={() => {}}
+			minimized={minimized}
+			onToggleMinimize={() => setMinimized((value) => !value)}
+		/>
+	);
+}
+
 afterEach(() => {
 	vi.restoreAllMocks();
 });
@@ -175,7 +188,7 @@ describe("minimize-to-pill · desktop card", () => {
 	});
 
 	it("minimize → pill → restore round-trips the InfoPanel", () => {
-		renderWithMantine(<MapUiPanels {...panelProps()} />);
+		renderWithMantine(<MinimizableInfo />);
 
 		expect(screen.getByTestId("map-2d-info-panel")).toBeInTheDocument();
 		expect(screen.queryByTestId("map-2d-info-panel-pill")).toBeNull();
@@ -224,7 +237,7 @@ describe("minimize-to-pill · mobile sheet", () => {
 	});
 
 	it("minimizes the sheet into a slim bottom bar and restores it", () => {
-		renderWithMantine(<MapUiPanels {...panelProps()} />);
+		renderWithMantine(<MinimizableInfo sheet />);
 
 		fireEvent.click(screen.getByTestId("map-2d-info-panel-minimize"));
 
@@ -256,7 +269,7 @@ describe("minimize-to-pill · mobile sheet", () => {
 		document.body.appendChild(canvas);
 
 		try {
-			renderWithMantine(<MapUiPanels {...panelProps()} />);
+			renderWithMantine(<MinimizableInfo sheet />);
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-minimize"));
 			fireEvent.click(screen.getByTestId("map-2d-info-panel-pill"));
 
@@ -272,12 +285,12 @@ describe("auto-minimize on map drag", () => {
 		mockViewport(false);
 	});
 
-	it("a drag signal bump minimizes BOTH open panels", () => {
+	it("a drag signal bump minimizes the ficha and does not float info", () => {
 		const { rerender } = renderWithMantine(
 			<MapUiPanels {...panelProps({ fichaActive: true, mapDragSignal: 0 })} />,
 		);
 
-		expect(screen.getByTestId("map-2d-info-panel")).toBeInTheDocument();
+		expect(screen.queryByTestId("map-2d-info-panel")).toBeNull();
 		expect(screen.getByTestId("ficha-territorial-panel")).toBeInTheDocument();
 
 		rerender(
@@ -286,7 +299,7 @@ describe("auto-minimize on map drag", () => {
 			</MantineProvider>,
 		);
 
-		expect(screen.getByTestId("map-2d-info-panel-pill")).toBeInTheDocument();
+		expect(screen.queryByTestId("map-2d-info-panel-pill")).toBeNull();
 		expect(
 			screen.getByTestId("ficha-territorial-panel-pill"),
 		).toBeInTheDocument();
@@ -294,52 +307,45 @@ describe("auto-minimize on map drag", () => {
 
 	it("does NOT auto-restore when the drag ends (the signal stops changing)", () => {
 		const { rerender } = renderWithMantine(
-			<MapUiPanels {...panelProps({ mapDragSignal: 1 })} />,
+			<MapUiPanels
+				{...panelProps({
+					selectedFeatures: NO_FEATURES,
+					fichaActive: true,
+					fichaData,
+					mapDragSignal: 1,
+				})}
+			/>,
 		);
 		// Mounting at 1 must not minimize — only a CHANGE does.
-		expect(screen.getByTestId("map-2d-info-panel")).toBeInTheDocument();
-
-		rerender(
-			<MantineProvider env="test">
-				<MapUiPanels {...panelProps({ mapDragSignal: 2 })} />
-			</MantineProvider>,
-		);
-		expect(screen.getByTestId("map-2d-info-panel-pill")).toBeInTheDocument();
-
-		// Same signal on a later render (drag over, nothing new) → still a pill.
-		rerender(
-			<MantineProvider env="test">
-				<MapUiPanels {...panelProps({ mapDragSignal: 2 })} />
-			</MantineProvider>,
-		);
-		expect(screen.getByTestId("map-2d-info-panel-pill")).toBeInTheDocument();
-	});
-
-	it("a NEW selection un-minimizes the panel (fresh content must show)", () => {
-		const { rerender } = renderWithMantine(
-			<MapUiPanels {...panelProps({ mapDragSignal: 1 })} />,
-		);
-
-		rerender(
-			<MantineProvider env="test">
-				<MapUiPanels {...panelProps({ mapDragSignal: 2 })} />
-			</MantineProvider>,
-		);
-		expect(screen.getByTestId("map-2d-info-panel-pill")).toBeInTheDocument();
+		expect(screen.getByTestId("ficha-territorial-panel")).toBeInTheDocument();
 
 		rerender(
 			<MantineProvider env="test">
 				<MapUiPanels
 					{...panelProps({
+						selectedFeatures: NO_FEATURES,
+						fichaActive: true,
+						fichaData,
 						mapDragSignal: 2,
-						selectedFeatures: OTHER_FEATURES,
 					})}
 				/>
 			</MantineProvider>,
 		);
+		expect(screen.getByTestId("ficha-territorial-panel-pill")).toBeInTheDocument();
 
-		expect(screen.getByTestId("map-2d-info-panel")).toBeInTheDocument();
-		expect(screen.queryByTestId("map-2d-info-panel-pill")).toBeNull();
+		rerender(
+			<MantineProvider env="test">
+				<MapUiPanels
+					{...panelProps({
+						selectedFeatures: NO_FEATURES,
+						fichaActive: true,
+						fichaData,
+						mapDragSignal: 2,
+					})}
+				/>
+			</MantineProvider>,
+		);
+		expect(screen.getByTestId("ficha-territorial-panel-pill")).toBeInTheDocument();
 	});
 
 	it("a NEW ficha target un-minimizes the ficha", () => {

@@ -131,6 +131,11 @@ interface InfoPanelProps {
   readonly elevationProfileAutoLoad?: boolean;
   /** Record the canal slug in the shareable URL once the curve is requested. */
   readonly onElevationProfileShare?: () => void;
+  /**
+   * Render inside the left sidebar instead of a floating card or bottom sheet.
+   * The sidebar owns the close button and the Capas | Información switch.
+   */
+  readonly embedded?: boolean;
 }
 
 /**
@@ -151,6 +156,33 @@ export function featureDisplayName(feature: Feature, fallback = 'Elemento'): str
     null;
   const title = raw === null || raw === undefined ? '' : String(raw).trim();
   return title.length > 0 ? title : fallback;
+}
+
+/**
+ * Short kind shown under the feature name in the sidebar header.
+ * A road's `gna` ("Camino Provincial") wins; otherwise the layer id decides.
+ */
+export function featureKindLabel(
+  layerId: string | undefined,
+  properties: Record<string, unknown>
+): string {
+  const raw = properties.gna ?? properties.tipo_parcela;
+  if (typeof raw === 'string' && raw.trim().length > 0) return raw.trim();
+  const id = layerId ?? '';
+  if (id.includes('idecor_consorcios')) return 'Consorcio';
+  if (id.includes('idecor_cursos')) return 'Curso de agua';
+  if (id.includes('idecor_cuencas')) return 'Cuenca';
+  if (id.includes('idecor_canales_riego')) return 'Canal de riego';
+  if (id.includes('canal')) return 'Canal';
+  if (id.includes('road') || id.includes('camino') || id.includes('red_vial')) return 'Camino';
+  if (id.includes('catastro') || id.includes('parcela')) return 'Parcela';
+  if (id.includes('escuela')) return 'Escuela';
+  if (id.includes('waterway') || id.includes('rio-') || id.includes('arroyo')) return 'Curso de agua';
+  if (id.includes('basin') || id.includes('cuenca') || id.includes('approved-zone')) return 'Cuenca';
+  if (id.includes('soil') || id.includes('suelo')) return 'Suelo';
+  if (id.includes('bpa') || id.includes('pilar_verde') || id.includes('agro')) return 'Pilar Verde';
+  if (id.includes('punto')) return 'Punto de interés';
+  return 'Elemento';
 }
 
 export function groupSelectionSummary(features: readonly Feature[]): string {
@@ -435,6 +467,7 @@ export const InfoPanel = memo(function InfoPanel({
   profileHover = null,
   elevationProfileAutoLoad = false,
   onElevationProfileShare,
+  embedded = false,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
   // provided; otherwise fall back to the legacy singular prop.
@@ -481,29 +514,17 @@ export const InfoPanel = memo(function InfoPanel({
 
   if (resolved.length === 0) return null;
 
-  return (
-    <MapPanelShell
-      sheet={sheet}
-      floatingClassName={
-        compact ? `${styles.infoPanel} ${styles.infoPanelCompact}` : styles.infoPanel
-      }
-      testId="map-2d-info-panel"
-      sheetLabel="panel de información"
-      onClose={onClose}
-      closeLabel="Cerrar panel de información"
-      minimized={minimized}
-      onToggleMinimize={onToggleMinimize}
-      pillLabel={infoPillLabel(resolved)}
-      pillClassName={styles.infoPanelPill}
-      resetKey={resetKey}
-    >
-      {/* In sheet mode the close button lives in the shell's PINNED header, so
-          it stays reachable on a long feature list; rendering it here too would
-          duplicate the affordance. */}
-      <Group justify="space-between" mb="xs">
-        <Title order={5}>Información</Title>
-      </Group>
-      <Divider mb="xs" />
+  const primary = resolved[0];
+  const primaryProps = (primary.properties as Record<string, unknown> | null) ?? {};
+  const headerName =
+    resolved.length > 1 ? groupSelectionSummary(resolved) : featureDisplayName(primary);
+  const headerKind =
+    resolved.length > 1
+      ? 'Varios elementos'
+      : featureKindLabel((primary as FeatureWithLayer).layer?.id, primaryProps);
+
+  const readout = (
+    <>
       {resolved.length > 1 && (
         <Stack gap={6} mb="xs">
           {groupSummary ? (
@@ -599,6 +620,49 @@ export const InfoPanel = memo(function InfoPanel({
           </div>
         ) : null}
       </Stack>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div role="region" aria-label="Información del elemento" data-testid="map-2d-info-panel">
+        <Stack gap={2} mb="sm">
+          <Text fw={700} size="sm" data-testid="info-panel-heading">
+            {headerName}
+          </Text>
+          <Text size="xs" c="dimmed" data-testid="info-panel-kind">
+            {headerKind}
+          </Text>
+        </Stack>
+        {readout}
+      </div>
+    );
+  }
+
+  return (
+    <MapPanelShell
+      sheet={sheet}
+      floatingClassName={
+        compact ? `${styles.infoPanel} ${styles.infoPanelCompact}` : styles.infoPanel
+      }
+      testId="map-2d-info-panel"
+      sheetLabel="panel de información"
+      onClose={onClose}
+      closeLabel="Cerrar panel de información"
+      minimized={minimized}
+      onToggleMinimize={onToggleMinimize}
+      pillLabel={infoPillLabel(resolved)}
+      pillClassName={styles.infoPanelPill}
+      resetKey={resetKey}
+    >
+      {/* In sheet mode the close button lives in the shell's PINNED header, so
+          it stays reachable on a long feature list; rendering it here too would
+          duplicate the affordance. */}
+      <Group justify="space-between" mb="xs">
+        <Title order={5}>Información</Title>
+      </Group>
+      <Divider mb="xs" />
+      {readout}
     </MapPanelShell>
   );
 });
