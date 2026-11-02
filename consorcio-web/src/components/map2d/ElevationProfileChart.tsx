@@ -39,11 +39,13 @@ import {
   formatAxisDistance,
   formatCursorReadout,
   formatElevationM,
+  elevationAxisDomain,
   formatEs,
   formatProfileDistance,
   formatRelief,
   formatSignedDeltaM,
   formatSlopePct,
+  profileToCsv,
   usesKilometreAxis,
 } from './profileFormat';
 import {
@@ -53,6 +55,28 @@ import {
   profileSliceStats,
   sliceProfile,
 } from './profileRange';
+
+function downloadProfileCsv(csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'perfil-elevacion.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function triangleMarker(direction: 'up' | 'down') {
+  return function drawTriangle(props: { cx?: number; cy?: number; fill?: string }) {
+    const cx = props.cx ?? 0;
+    const cy = props.cy ?? 0;
+    const path =
+      direction === 'up'
+        ? `M ${cx} ${cy - 7} L ${cx - 5.5} ${cy + 5} L ${cx + 5.5} ${cy + 5} Z`
+        : `M ${cx} ${cy + 7} L ${cx - 5.5} ${cy - 5} L ${cx + 5.5} ${cy - 5} Z`;
+    return <path d={path} fill={props.fill ?? 'currentColor'} data-marker={direction} />;
+  };
+}
 
 function hasProfileParts(
   geometry: Geometry | null | undefined
@@ -167,6 +191,7 @@ export function ElevationProfileChart({
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
   const [sedimentPct, setSedimentPct] = useState(DEFAULT_SLOPE_THRESHOLDS.sedimentPct);
   const [adversePct, setAdversePct] = useState(DEFAULT_SLOPE_THRESHOLDS.adversePct);
   const requestGen = useRef(0);
@@ -240,6 +265,25 @@ export function ElevationProfileChart({
     const index = nearestIndexByDistance(rows, externalDistanceM);
     hoverCb.current?.(index == null ? null : lngLatAtIndex(rows, index));
   }, [externalDistanceM, hoverIndex, profile, status]);
+  useEffect(() => {
+    if (!range) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+          return;
+        }
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setRange(null);
+      onRangeCoordinates?.(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onRangeCoordinates, range]);
 
   if (!hasProfileParts(geometry)) {
     return null;
@@ -312,12 +356,15 @@ export function ElevationProfileChart({
       ? Math.min(1, Math.max(0, (hoverRow.distance_m - (chartRows[0]?.distance_m ?? 0)) / spanM))
       : null;
 
+  const yDomain: [number, number] | ['auto', 'auto'] =
+    minZ != null && maxZ != null ? elevationAxisDomain(minZ, maxZ) : ['auto', 'auto'];
+  const extrema = selection ?? (chartRows.length >= 2 ? profileSliceStats(chartRows) : null);
   const graphHeader =
     minZ != null &&
     maxZ != null &&
     grade.mean_elevation_m != null &&
     grade.median_elevation_m != null
-      ? `Gráfico mín ${formatEs(minZ, 1)} · prom ${formatEs(grade.mean_elevation_m, 1)} · med ${formatEs(grade.median_elevation_m, 1)} · máx ${formatEs(maxZ, 1)} m`
+      ? `Gráfico mín ▼ ${formatEs(minZ, 1)} · prom ${formatEs(grade.mean_elevation_m, 1)} · med ${formatEs(grade.median_elevation_m, 1)} · máx ▲ ${formatEs(maxZ, 1)} m`
       : null;
 
   const tramoHeader =
@@ -449,7 +496,7 @@ export function ElevationProfileChart({
           {selection && range ? (
             <Group gap={6} wrap="nowrap" align="flex-start">
               <Text size="xs" data-testid="elevation-profile-selection" style={{ flex: 1 }}>
-                {`Selección (${formatProfileDistance(Math.min(range.a, range.b))}–${formatProfileDistance(Math.max(range.a, range.b))}) ${formatProfileDistance(selection.length_m)}`}
+                {`Selección (${formatProfileDistance(Math.min(range.a, range.b))}–${formatProfileDistance(Math.max(range.a, range.b))}) ${formatProfileDistance(selection.length_m)} · ${formatRelief(selection.ascent_m, selection.descent_m)}`}
                 {selection.delta_m != null ? ` · Δ ${formatSignedDeltaM(selection.delta_m)}` : ''}
                 {selection.mean_slope_pct != null
                   ? ` · pend. prom ${formatSlopePct(selection.mean_slope_pct)}`
@@ -644,7 +691,7 @@ export function ElevationProfileChart({
                       minTickGap={28}
                     />
                     <YAxis
-                      domain={['auto', 'auto']}
+                      domain={yDomain}
                       tickFormatter={(value) => formatEs(Number(value), 0)}
                       width={40}
                       fontSize={10}
@@ -676,22 +723,24 @@ export function ElevationProfileChart({
                         ifOverflow="visible"
                       />
                     ) : null}
-                    {selection?.min_point ? (
+                    {extrema?.min_point ? (
                       <ReferenceDot
-                        x={selection.min_point.distance_m}
-                        y={selection.min_point.elevation_m}
-                        r={5}
+                        x={extrema.min_point.distance_m}
+                        y={extrema.min_point.elevation_m}
+                        r={6}
                         fill={mapColorTokens.h2563eb}
                         stroke={mapColorTokens.hffffff}
+                        shape={triangleMarker('down')}
                       />
                     ) : null}
-                    {selection?.max_point ? (
+                    {extrema?.max_point ? (
                       <ReferenceDot
-                        x={selection.max_point.distance_m}
-                        y={selection.max_point.elevation_m}
-                        r={5}
+                        x={extrema.max_point.distance_m}
+                        y={extrema.max_point.elevation_m}
+                        r={6}
                         fill={mapColorTokens.hdc2626}
                         stroke={mapColorTokens.hffffff}
+                        shape={triangleMarker('up')}
                       />
                     ) : null}
                     <Line
@@ -761,6 +810,44 @@ export function ElevationProfileChart({
               ) : null}
             </div>
           ) : null}
+          <Group gap={6}>
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              aria-expanded={tableOpen}
+              onClick={() => setTableOpen((open) => !open)}
+              data-testid="elevation-profile-table-toggle"
+            >
+              Tabla de datos
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              data-testid="elevation-profile-csv"
+              onClick={() => downloadProfileCsv(profileToCsv(chartRows))}
+            >
+              Descargar CSV
+            </Button>
+          </Group>
+          <div hidden={!tableOpen} data-testid="elevation-profile-table">
+            <table>
+              <caption>Cotas del perfil, distancia y elevación</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Distancia (m)</th>
+                  <th scope="col">Cota (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chartRows.map((row) => (
+                  <tr key={row.distance_m}>
+                    <td>{formatEs(row.distance_m, 1)}</td>
+                    <td>{row.elevation_m == null ? '—' : formatEs(row.elevation_m, 1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div>
             <Button
               size="compact-xs"

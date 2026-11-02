@@ -40,6 +40,9 @@ NODATA_HOLES = frozenset({-999999.0, -9999.0, 0.0})
 # Abuse cap, not GLO-30 physics. Compute is bounded by MAX_POINTS via paso_muestreo.
 MAX_LENGTH_M = 200_000.0
 MAX_POINTS = 2_000
+# Copernicus GLO-30 posts about every 30 m. Sampling finer than that invents
+# detail the raster does not have. The classifier still densifies roads at 15 m.
+GLO30_PASO_M = 30.0
 
 
 RETRACE_COSINE = -0.85
@@ -220,11 +223,11 @@ def geometria_ordenada(geom: BaseGeometry) -> BaseGeometry:
 
 
 def paso_muestreo(largo_m: float) -> float:
-    """Keep ≤ MAX_POINTS vertices: 15 m until the trace no longer fits."""
+    """Keep ≤ MAX_POINTS vertices. Floor is the GLO-30 cell, not 15 m."""
     if largo_m <= 0:
-        return PASO_DENSIFICADO_M
+        return GLO30_PASO_M
     intervalos = max(1, MAX_POINTS - 1)
-    return max(PASO_DENSIFICADO_M, largo_m / intervalos)
+    return max(GLO30_PASO_M, largo_m / intervalos)
 
 
 def distancias_sobre(linea: BaseGeometry, vertices: Sequence[tuple[float, float]]) -> list[float]:

@@ -67,6 +67,7 @@ import { MapaMapLibreView } from './map2d/MapaMapLibreView';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
 import type { ClassifiedMapError } from './map2d/mapErrorClassify';
 import { MAP2D_HILLSHADE_Z_FACTOR, reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
+import { selectionPermalinkToken } from './map2d/mapPermalink';
 import type { ProfileRangeStats } from './map2d/profileRange';
 import { useLayerHealth } from './map2d/useLayerHealth';
 import { useMapaMapLibreStage } from './map2d/useMapaMapLibreStage';
@@ -121,6 +122,7 @@ export default function MapaMapLibre() {
   // overlapping features at the click point (one section per layer).
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
   const [permalinkProfileSlug, setPermalinkProfileSlug] = useState<string | null>(null);
+  const [permalinkSelection, setPermalinkSelection] = useState<string | null>(null);
   const [sharedProfileSlug, setSharedProfileSlug] = useState<string | null>(null);
   const openedPermalinkProfile = useRef<string | null>(null);
   const [elevationProfileHover, setElevationProfileHover] = useState<{
@@ -384,7 +386,12 @@ export default function MapaMapLibre() {
     loading: catastroLoading,
     error: catastroError,
     reload: reloadCatastro,
-  } = useCatastroMap({ enabled: exportIntent || mapQuery.trim().length >= 3 });
+  } = useCatastroMap({
+    enabled:
+      exportIntent ||
+      mapQuery.trim().length >= 3 ||
+      (permalinkSelection?.startsWith('cuenta:') ?? false),
+  });
   // Stable identity: `MapActionsPanel` is memoized, so an inline arrow here
   // would re-render it on every parent render.
   const handleExportIntent = useCallback(() => setExportIntent(true), []);
@@ -458,6 +465,8 @@ export default function MapaMapLibre() {
     demLayers,
     profileSlug,
     onParsedProfile: setPermalinkProfileSlug,
+    selection: selectionPermalinkToken(selectedFeature),
+    onParsedSelection: setPermalinkSelection,
   });
 
   useEffect(() => {
@@ -488,6 +497,23 @@ export default function MapaMapLibre() {
       );
     }
   }, [canalesPropuestas, canalesRelevados, mapReady, permalinkProfileSlug]);
+
+  useEffect(() => {
+    if (!permalinkSelection?.startsWith('cuenta:') || !catastroMap) return;
+    const cuenta = permalinkSelection.slice('cuenta:'.length);
+    const feature = catastroMap.features.find((item) => {
+      const props = (item.properties ?? {}) as Record<string, unknown>;
+      const value = props.Nro_Cuenta ?? props.nro_cuenta ?? props.cuenta;
+      return value != null && String(value) === cuenta;
+    });
+    if (feature) setSelectedFeatures([feature]);
+  }, [catastroMap, permalinkSelection]);
+
+  useEffect(() => {
+    if (!permalinkSelection?.startsWith('canal:')) return;
+    const slug = permalinkSelection.slice('canal:'.length);
+    setPermalinkProfileSlug((current) => current ?? slug);
+  }, [permalinkSelection]);
 
   // The comparison view is NEVER auto-activated from the comparison state.
   // A saved pair is restored (localStorage, or the public endpoint for
@@ -741,6 +767,9 @@ export default function MapaMapLibre() {
         parcelsLoading: mapQuery.trim().length >= 3 && catastroLoading,
         onPickCanal: openSearchCanal,
         onPickParcel: openSearchParcel,
+        onPickCoordinate: (lat, lon) => {
+          mapRef.current?.flyTo({ center: [lon, lat], zoom: 16, duration: 800 });
+        },
       }}
       pilarVerde={pilarVerde}
       pilarVerdeLayersError={pilarVerdeLayersError}

@@ -59,6 +59,30 @@ export function formatRelief(ascentM: number, descentM: number): string {
   return `+${formatEs(ascentM, 1)} / −${formatEs(descentM, 1)} m`;
 }
 
+/**
+ * Y domain that refuses to stretch a couple of metres across the whole plot.
+ * A 2 m trace keeps a span of at least 12 m, with a little air around it.
+ */
+export function elevationAxisDomain(minZ: number, maxZ: number): [number, number] {
+  const lo = Math.min(minZ, maxZ);
+  const hi = Math.max(minZ, maxZ);
+  const relief = hi - lo;
+  const span = Math.max(relief, 12);
+  const pad = (span - relief) / 2 + Math.max(1, relief * 0.08);
+  return [lo - pad, hi + pad];
+}
+
+export function profileToCsv(
+  rows: readonly { distance_m: number; elevation_m: number | null }[]
+): string {
+  const lines = ['distancia_m,cota_m'];
+  for (const row of rows) {
+    const cota = row.elevation_m == null || !Number.isFinite(row.elevation_m) ? '' : String(row.elevation_m);
+    lines.push(`${row.distance_m},${cota}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 export function formatCursorReadout(
   distanceM: number,
   elevationM: number | null,
