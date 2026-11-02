@@ -119,6 +119,12 @@ interface InfoPanelProps {
   readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
   /** Opens the bottom dock. The chart no longer lives inside this card. */
   readonly onOpenElevationProfile?: (geometry: LineString | MultiLineString) => void;
+  /** One click from a canal card. The sense is the digitized order unless inverted. */
+  readonly onOpenCanalProfile?: (request: {
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso';
+  }) => void;
   /** Cursor coming back from the dock, so the tramo label still tracks it. */
   readonly profileHover?: { lon: number; lat: number } | null;
 }
@@ -276,10 +282,16 @@ function FeatureSection({
   feature,
   bpaEnriched,
   onDeletePuntoInteres,
+  onOpenCanalProfile,
 }: {
   readonly feature: Feature;
   readonly bpaEnriched: BpaEnrichedFile | null | undefined;
   readonly onDeletePuntoInteres?: (id: string) => void;
+  readonly onOpenCanalProfile?: (request: {
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso';
+  }) => void;
 }) {
   const withLayer = feature as FeatureWithLayer;
   const properties: Record<string, unknown> =
@@ -317,7 +329,22 @@ function FeatureSection({
   if (canalEstado === 'relevado' || canalEstado === 'propuesto') {
     return (
       <div data-testid="info-panel-feature-section">
-        <CanalCard properties={properties as unknown as CanalFeatureProperties} />
+        <CanalCard
+          properties={properties as unknown as CanalFeatureProperties}
+          onVerPerfil={
+            onOpenCanalProfile &&
+            (feature.geometry?.type === 'LineString' ||
+              feature.geometry?.type === 'MultiLineString')
+              ? () =>
+                  onOpenCanalProfile({
+                    geometry: feature.geometry as LineString | MultiLineString,
+                    title: String(properties.nombre ?? 'canal'),
+                    flowDirection:
+                      properties.sentido_flujo === 'inverso' ? 'inverso' : 'digitizado',
+                  })
+              : undefined
+          }
+        />
       </div>
     );
   }
@@ -400,6 +427,7 @@ export const InfoPanel = memo(function InfoPanel({
   resetKey,
   onDeletePuntoInteres,
   onOpenElevationProfile,
+  onOpenCanalProfile,
   profileHover = null,
 }: InfoPanelProps) {
   // Normalize the two props into a single array. `features` wins when
@@ -552,6 +580,7 @@ export const InfoPanel = memo(function InfoPanel({
               feature={resolved[detailIdx]}
               bpaEnriched={bpaEnriched}
               onDeletePuntoInteres={onDeletePuntoInteres}
+              onOpenCanalProfile={onOpenCanalProfile}
             />
           </div>
         ) : null}

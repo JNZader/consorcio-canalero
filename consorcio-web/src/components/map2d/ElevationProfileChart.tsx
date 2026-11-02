@@ -25,6 +25,13 @@ import {
   fetchElevationProfile,
 } from '../../lib/api/elevationProfile';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import {
+  canalSlopeNotes,
+  crossingsOnProfile,
+  DEFAULT_SLOPE_THRESHOLDS,
+  type FlowSense,
+  type ProfileCrossing,
+} from './canalProfile';
 import { buildProfileChartRows, type ProfileChartRow } from './profileChartRows';
 import { indexFromPlotX, nearestIndexByDistance } from './profileCursorSync';
 import {
@@ -124,6 +131,8 @@ export function ElevationProfileChart({
   onRangeCoordinates,
   onSamples,
   externalDistanceM = null,
+  flowDirection = null,
+  crossings = [],
   autoLoad = false,
 }: {
   geometry: Geometry | null | undefined;
@@ -134,6 +143,9 @@ export function ElevationProfileChart({
   onSamples?: (rows: readonly ProfileChartRow[]) => void;
   /** Cursor driven from the map, a touch, or the keyboard. The pointer on the chart wins. */
   externalDistanceM?: number | null;
+  /** Set for a canal. Measurements leave this null and skip the drainage notes. */
+  flowDirection?: FlowSense | null;
+  readonly crossings?: readonly ProfileCrossing[];
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
   autoLoad?: boolean;
 }) {
@@ -147,6 +159,8 @@ export function ElevationProfileChart({
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [sedimentPct, setSedimentPct] = useState(DEFAULT_SLOPE_THRESHOLDS.sedimentPct);
+  const [adversePct, setAdversePct] = useState(DEFAULT_SLOPE_THRESHOLDS.adversePct);
   const requestGen = useRef(0);
   const loadedOnce = useRef(startLoaded);
   const dragStart = useRef<number | null>(null);
@@ -261,6 +275,10 @@ export function ElevationProfileChart({
   const maxZ = elevations.length > 0 ? Math.max(...elevations) : null;
   const selection =
     range != null ? profileSliceStats(sliceProfile(chartRows, range.a, range.b)) : null;
+  const slopeNotes = flowDirection
+    ? canalSlopeNotes(chartRows, flowDirection, { sedimentPct, adversePct })
+    : [];
+  const profileCrossings = crossingsOnProfile(chartRows, crossings);
   const spanM =
     chartRows.length >= 2
       ? chartRows[chartRows.length - 1]!.distance_m - chartRows[0]!.distance_m
@@ -345,6 +363,68 @@ export function ElevationProfileChart({
           <Text size="xs" data-testid="elevation-profile-tramo-stats">
             {tramoHeader}
           </Text>
+          {flowDirection ? (
+            <Stack gap={4} data-testid="canal-slope-notes">
+              <Group gap="xs">
+                <Text size="xs" c="dimmed">
+                  Sedimento si |pend.| &lt;
+                </Text>
+                <Text
+                  size="xs"
+                  component="input"
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  aria-label="Umbral de sedimento"
+                  value={sedimentPct}
+                  onChange={(event) => setSedimentPct(Number(event.currentTarget.value))}
+                  style={{ width: 64 }}
+                />
+                <Text size="xs" c="dimmed">
+                  % · contra el drenaje si sube más de
+                </Text>
+                <Text
+                  size="xs"
+                  component="input"
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  aria-label="Umbral contra el drenaje"
+                  value={adversePct}
+                  onChange={(event) => setAdversePct(Number(event.currentTarget.value))}
+                  style={{ width: 64 }}
+                />
+                <Text size="xs" c="dimmed">
+                  %
+                </Text>
+              </Group>
+              {slopeNotes.length === 0 ? (
+                <Text size="xs">
+                  Sin tramos contra el drenaje ni de sedimento con estos umbrales.
+                </Text>
+              ) : (
+                slopeNotes.map((note) => (
+                  <Text
+                    key={`${note.kind}-${note.from_m}`}
+                    size="xs"
+                    c={note.kind === 'adverse' ? 'red' : 'orange'}
+                  >
+                    {note.kind === 'adverse' ? '▲ Contra el drenaje' : '— Riesgo de sedimento'}{' '}
+                    {formatProfileDistance(note.from_m)}–{formatProfileDistance(note.to_m)} ·{' '}
+                    {formatSlopePct(note.slope_pct)}
+                  </Text>
+                ))
+              )}
+            </Stack>
+          ) : null}
+          {profileCrossings.length > 0 ? (
+            <Text size="xs" data-testid="profile-crossings">
+              Cruces:{' '}
+              {profileCrossings
+                .map((hit) => `${hit.label} ${formatProfileDistance(hit.distance_m)}`)
+                .join(' · ')}
+            </Text>
+          ) : null}
           {selection && range ? (
             <Group gap={6} wrap="nowrap" align="flex-start">
               <Text size="xs" data-testid="elevation-profile-selection" style={{ flex: 1 }}>
@@ -548,6 +628,15 @@ export function ElevationProfileChart({
                       width={40}
                       fontSize={10}
                     />
+                    {profileCrossings.map((hit) => (
+                      <ReferenceLine
+                        key={`${hit.label}-${hit.distance_m}`}
+                        x={hit.distance_m}
+                        stroke={mapColorTokens.h868e96}
+                        strokeDasharray="2 2"
+                        ifOverflow="hidden"
+                      />
+                    ))}
                     {hoverRow ? (
                       <ReferenceLine
                         x={hoverRow.distance_m}

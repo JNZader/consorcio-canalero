@@ -41,6 +41,7 @@ import {
   type EtapaGate,
 } from '../shared/canalesGrouping';
 import { VisuallyHidden } from '../ui/accessibility/primitives';
+import { marksFromRoadFlow } from './canalProfile';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
 import type { HazardBasinOption } from './hazardControls.types';
@@ -367,6 +368,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   const [pinnedProfile, setPinnedProfile] = useState<{
     geometry: LineString | MultiLineString;
     title: string;
+    flowDirection: 'digitizado' | 'inverso' | null;
   } | null>(null);
   const [dismissedDraftKey, setDismissedDraftKey] = useState<string | null>(null);
   const [profileSamples, setProfileSamples] = useState<readonly ProfileCursorSample[]>([]);
@@ -389,8 +391,12 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     enabled: dockGeometry != null,
     onDistance: setMapCursorDistance,
   });
-  function openProfile(geometry: LineString | MultiLineString, title: string) {
-    setPinnedProfile({ geometry, title });
+  function openProfile(
+    geometry: LineString | MultiLineString,
+    title: string,
+    flowDirection: 'digitizado' | 'inverso' | null = null
+  ) {
+    setPinnedProfile({ geometry, title, flowDirection });
   }
   function closeProfileDock() {
     setMapCursorDistance(null);
@@ -594,6 +600,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 onHoverLngLat={setElevationProfileHover}
                 onRangeCoordinates={setElevationProfileRange}
                 onClose={closeProfileDock}
+                flowDirection={pinnedProfile?.flowDirection ?? null}
+                crossings={marksFromRoadFlow(roadFlow.crossings.data)}
               />
             ) : null}
             <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
@@ -715,6 +723,9 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onElevationProfileHover={setElevationProfileHover}
               onElevationProfileRange={setElevationProfileRange}
               onOpenElevationProfile={(geometry) => openProfile(geometry, 'Perfil de elevación')}
+              onOpenCanalProfile={(request) =>
+                openProfile(request.geometry, `Perfil de ${request.title}`, request.flowDirection)
+              }
               profileHover={elevationProfileHover}
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}

@@ -31,6 +31,8 @@ export function ElevationProfileDock({
   onRangeCoordinates,
   externalDistanceM = null,
   onSamples,
+  flowDirection = null,
+  crossings = [],
 }: {
   readonly geometry: LineString | MultiLineString;
   readonly title: string;
@@ -40,6 +42,8 @@ export function ElevationProfileDock({
   readonly onRangeCoordinates?: (range: ProfileRangeStats | null) => void;
   readonly externalDistanceM?: number | null;
   readonly onSamples?: (rows: readonly ProfileChartRow[]) => void;
+  readonly flowDirection?: 'digitizado' | 'inverso' | null;
+  readonly crossings?: readonly { lon: number; lat: number; label: string }[];
 }) {
   const narrow = useMediaQuery('(max-width: 62em)', false, { getInitialValueInEffect: false });
   const [height, setHeight] = useState(PROFILE_DOCK_DEFAULT_PX);
@@ -158,6 +162,8 @@ export function ElevationProfileDock({
               onRangeCoordinates={onRangeCoordinates}
               externalDistanceM={externalDistanceM}
               onSamples={onSamples}
+              flowDirection={flowDirection}
+              crossings={crossings}
             />
           </Suspense>
         </div>

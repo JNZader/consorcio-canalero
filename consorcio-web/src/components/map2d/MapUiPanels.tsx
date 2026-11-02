@@ -145,6 +145,11 @@ export interface MapUiPanelsProps {
   readonly onElevationProfileHover?: (hover: { lon: number; lat: number } | null) => void;
   readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
   readonly onOpenElevationProfile?: (geometry: LineString | MultiLineString) => void;
+  readonly onOpenCanalProfile?: (request: {
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso';
+  }) => void;
   readonly profileHover?: { lon: number; lat: number } | null;
   /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
@@ -358,6 +363,7 @@ export const MapUiPanels = memo(function MapUiPanels({
   onElevationProfileHover,
   onElevationProfileRange,
   onOpenElevationProfile,
+  onOpenCanalProfile,
   profileHover = null,
   fichaActive,
   fichaTipo,
@@ -677,6 +683,7 @@ export const MapUiPanels = memo(function MapUiPanels({
           onElevationProfileHover={onElevationProfileHover}
           onElevationProfileRange={onElevationProfileRange}
           onOpenElevationProfile={onOpenElevationProfile}
+          onOpenCanalProfile={onOpenCanalProfile}
           profileHover={profileHover}
         />
       )}
