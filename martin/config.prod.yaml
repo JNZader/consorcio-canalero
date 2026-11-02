@@ -108,3 +108,35 @@ postgres:
         longitud_declarada_km: Declared length in km
         longitud_geodesica_km: Geodesic length in km
         cantidad_tramos_fisicos: Physical segment count
+    vt_idecor_consorcios:
+      schema: public
+      table: vt_idecor_consorcios
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        nombre: Nombre
+    vt_idecor_cursos:
+      schema: public
+      table: vt_idecor_cursos
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        nombre: Nombre
+    vt_idecor_cuencas:
+      schema: public
+      table: vt_idecor_cuencas
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        nombre: Nombre
+    vt_idecor_canales_riego:
+      schema: public
+      table: vt_idecor_canales_riego
+      srid: 4326
+      geometry_column: geometria
+      id_column: id
+      properties:
+        nombre: Nombre
