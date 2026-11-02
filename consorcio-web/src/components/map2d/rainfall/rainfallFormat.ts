@@ -312,8 +312,10 @@ export function formatAccumulated(value: number | null | undefined, unit: string
  * first would invent a dry day (JDA-002).
  */
 export function formatRainfallChartValue(value: unknown, unit: string): string {
-  if (value === null || value === undefined) return formatAccumulated(null, unit);
-  return formatAccumulated(Number(value), unit);
+  if (value === null || value === undefined || value === '') return formatAccumulated(null, unit);
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return formatAccumulated(null, unit);
+  return formatAccumulated(numeric, unit);
 }
 
 /**

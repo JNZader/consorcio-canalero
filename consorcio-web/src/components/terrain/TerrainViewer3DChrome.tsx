@@ -384,7 +384,11 @@ export function TerrainViewer3DChrome({
                 {hoveredFeature ? (
                   <Text span data-testid="terrain-feature-readout">{` · ${hoveredFeature}`}</Text>
                 ) : (
-                  ` · ${isDesktop ? 'Ctrl+arrastre para rotar' : '2 dedos para rotar'}`
+                  <Text span>
+                    {isDesktop
+                      ? 'Ctrl+arrastre para rotar'
+                      : 'Arrastrá con 2 dedos para rotar e inclinar'}
+                  </Text>
                 )}
               </Text>
             </Box>
