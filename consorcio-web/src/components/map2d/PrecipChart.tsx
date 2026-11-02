@@ -46,8 +46,8 @@
  */
 
 import { Box, Group, Stack, Text } from '@mantine/core';
-import { memo } from 'react';
-import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { memo, useState } from 'react';
+import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 
 import type { FichaPrecipitacion } from '../../lib/api/ficha';
 import { mapColorTokens } from '../../lib/mapColorTokens';
@@ -113,13 +113,13 @@ function mesLabel(mes: number): string {
  *
  * Twelve bars inside a ~330px-wide panel leave about 25px per label: "126.7"
  * does not fit, and the tenth of a millimetre in a thirty-year mean is noise
- * anyway. The one decimal survives in the hover tooltip, where there is room.
+ * anyway. The one decimal survives in the docked readout above the plot.
  */
 function fmtMmEntero(value: number): string {
   return String(Math.round(value));
 }
 
-/** Millimetres at full precision — tooltip and the annual headline. */
+/** Millimetres at full precision — docked readout and the annual headline. */
 function fmtMm(value: number): string {
   return `${value.toFixed(1)} mm`;
 }
@@ -136,6 +136,7 @@ export const PrecipChart = memo(function PrecipChart({
     mes: mesLabel(punto.mes),
     mm: punto.mm,
   }));
+  const [hover, setHover] = useState<{ mes: string; mm: number } | null>(null);
 
   return (
     <Stack gap={6} data-testid="ficha-precipitacion">
@@ -184,6 +185,9 @@ export const PrecipChart = memo(function PrecipChart({
 
           {/* 132px, down from 160: the axis/grid furniture below went away, so
               the bars themselves keep their old drawing height. */}
+          <Text size="xs" data-testid="precip-readout" mih={18}>
+            {hover ? `${hover.mes}: ${fmtMm(hover.mm)}` : 'Señalá una barra para leer el mes'}
+          </Text>
           <Box h={132} data-testid="precip-chart">
             <ResponsiveContainer width="100%" height="100%">
               {/* No `YAxis` and no `CartesianGrid`: with the value printed on
@@ -191,9 +195,20 @@ export const PrecipChart = memo(function PrecipChart({
                   and dropping it buys back the width the labels need. `top: 16`
                   reserves the row those labels are drawn into — without it the
                   tallest bar's label is clipped by the container. */}
-              <BarChart data={chartData} margin={{ top: 16, right: 4, bottom: 0, left: 4 }}>
+              <BarChart
+                data={chartData}
+                margin={{ top: 16, right: 4, bottom: 0, left: 4 }}
+                onMouseMove={(event) => {
+                  const index =
+                    typeof event.activeIndex === 'number'
+                      ? event.activeIndex
+                      : Number(event.activeIndex);
+                  const point = Number.isInteger(index) ? chartData[index] : undefined;
+                  setHover(point ?? null);
+                }}
+                onMouseLeave={() => setHover(null)}
+              >
                 <XAxis dataKey="mes" fontSize={10} tickLine={false} axisLine={false} interval={0} />
-                <Tooltip formatter={(value) => fmtMm(Number(value))} />
                 {/* `minPointSize` is LOAD-BEARING, not cosmetic. recharts skips
                     a zero-height rectangle entirely, and `LabelList` labels
                     rectangles — so a month served as `0 mm` rendered NO bar and

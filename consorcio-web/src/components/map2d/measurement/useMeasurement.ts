@@ -125,11 +125,15 @@ export interface UseMeasurementReturn {
   state: MeasurementState;
   /** Live distance/area while the vertex rubber-band is in progress. */
   liveLabel: string | null;
+  /** Line being drawn, debounced, so the profile can estimate without a fetch per pixel. */
+  draftLine: LineString | null;
   startDistance: () => void;
   startArea: () => void;
   clear: () => void;
   cancel: () => void;
 }
+
+const DRAFT_LINE_DEBOUNCE_MS = 400;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -201,6 +205,9 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     measurements: [],
   });
   const [liveLabel, setLiveLabel] = useState<string | null>(null);
+  const [draftLine, setDraftLine] = useState<LineString | null>(null);
+  const draftTimer = useRef<number | null>(null);
+  const draftKey = useRef<string | null>(null);
   const modeRef = useRef<MeasurementMode>('idle');
   const drawRef = useRef<MapboxDraw | null>(null);
 
@@ -290,6 +297,12 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
 
     drawRef.current = null;
     setLiveLabel(null);
+    setDraftLine(null);
+    draftKey.current = null;
+    if (draftTimer.current != null) {
+      window.clearTimeout(draftTimer.current);
+      draftTimer.current = null;
+    }
     setMeasurementCursor(false);
     useMapboxDrawSlot.getState().release('measurement');
   }, [map, setMeasurementCursor]);
@@ -364,6 +377,31 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
       }
       const features = draw.getAll()?.features ?? [];
       setLiveLabel(liveMeasurementLabel(modeRef.current, features));
+      if (modeRef.current !== 'measuring-distance') {
+        return;
+      }
+      const line = features.find((feature) => feature.geometry?.type === 'LineString');
+      const coords = line?.geometry?.type === 'LineString' ? line.geometry.coordinates : null;
+      if (!coords || coords.length < 2) {
+        return;
+      }
+      const key = coords
+        .map((pair) => `${Number(pair[0]).toFixed(5)},${Number(pair[1]).toFixed(5)}`)
+        .join(';');
+      if (key === draftKey.current) {
+        return;
+      }
+      draftKey.current = key;
+      if (draftTimer.current != null) {
+        window.clearTimeout(draftTimer.current);
+      }
+      const snapshot: LineString = {
+        type: 'LineString',
+        coordinates: coords.map((pair) => [Number(pair[0]), Number(pair[1])]),
+      };
+      draftTimer.current = window.setTimeout(() => {
+        setDraftLine(snapshot);
+      }, DRAFT_LINE_DEBOUNCE_MS);
     };
 
     handleContextLostRef.current = () => {
@@ -437,5 +475,5 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     setMeasurementState((prev) => ({ ...prev, mode: 'idle' }));
   };
 
-  return { state, liveLabel, startDistance, startArea, clear, cancel };
+  return { state, liveLabel, draftLine, startDistance, startArea, clear, cancel };
 }

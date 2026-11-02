@@ -1,16 +1,12 @@
 import type { Feature } from 'geojson';
-import * as maplibregl from 'maplibre-gl';
+import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import { type RefObject, useEffect, useState } from 'react';
-
-import { prefersFineHover, subscribePrefersFineHover } from './prefersFineHover';
-
 import { featureDisplayName } from './InfoPanel';
 import { SOURCE_IDS } from './map2dConfig';
-import {
-  PUNTOS_INTERES_HIT_LAYER_ID,
-  PUNTOS_INTERES_LAYER_ID,
-} from './puntosInteresLayers';
+import { publishMapFeatureReadout } from './mapFeatureReadout';
 import type { MapInteractionMode } from './measurement/useMeasurement';
+import { prefersFineHover, subscribePrefersFineHover } from './prefersFineHover';
+import { PUNTOS_INTERES_HIT_LAYER_ID, PUNTOS_INTERES_LAYER_ID } from './puntosInteresLayers';
 
 const HOVER_LAYER_IDS = [
   `${SOURCE_IDS.CANALES_RELEVADOS}-line`,
@@ -29,14 +25,16 @@ const HOVER_LAYER_IDS = [
 const THROTTLE_MS = 80;
 
 /**
- * Desktop hover tooltip (UX PDF R6). Mobile has no hover — click opens the sheet.
+ * Desktop hover name (UX PDF R6). The name is published to the cursor dock
+ * instead of a popup on the feature, which used to cover the line it named.
+ * Mobile has no hover — click opens the sheet.
  */
 export function useMapHoverTooltip({
   mapRef,
   mapReady,
   mode = 'idle',
 }: {
-  readonly mapRef: RefObject<maplibregl.Map | null>;
+  readonly mapRef: RefObject<MapLibreMap | null>;
   readonly mapReady: boolean;
   readonly mode?: MapInteractionMode;
 }): void {
@@ -46,14 +44,9 @@ export function useMapHoverTooltip({
     const map = mapRef.current;
     if (!map || !mapReady || mode !== 'idle' || !fineHover) return;
 
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 12,
-    });
     let last = 0;
 
-    const onMove = (event: maplibregl.MapMouseEvent) => {
+    const onMove = (event: MapMouseEvent) => {
       const now = Date.now();
       if (now - last < THROTTLE_MS) return;
       last = now;
@@ -62,19 +55,16 @@ export function useMapHoverTooltip({
       const hits = map.queryRenderedFeatures(event.point, { layers });
       const feature = hits[0];
       if (!feature) {
-        popup.remove();
+        publishMapFeatureReadout('2d', null);
         map.getCanvas().style.cursor = '';
         return;
       }
       map.getCanvas().style.cursor = 'pointer';
-      popup
-        .setLngLat(event.lngLat)
-        .setText(featureDisplayName(feature as unknown as Feature))
-        .addTo(map);
+      publishMapFeatureReadout('2d', featureDisplayName(feature as Feature));
     };
 
     const onLeave = () => {
-      popup.remove();
+      publishMapFeatureReadout('2d', null);
       map.getCanvas().style.cursor = '';
     };
 
@@ -83,7 +73,7 @@ export function useMapHoverTooltip({
     return () => {
       map.off('mousemove', onMove);
       map.off('mouseout', onLeave);
-      popup.remove();
+      publishMapFeatureReadout('2d', null);
       map.getCanvas().style.cursor = '';
     };
   }, [fineHover, mapReady, mapRef, mode]);

@@ -98,6 +98,12 @@ export interface CanalFeatureProperties {
    * `"asociada"`). For propuestos it mirrors the etapa (`"prio_Alta"`, ...).
    */
   source_style: string | null;
+  /**
+   * Digitized order is the drainage unless this says the survey ran upstream.
+   * Absent on the KMZ extract: the profile then assumes the line was drawn
+   * in the direction the water should go.
+   */
+  sentido_flujo?: 'digitizado' | 'inverso';
 }
 
 export type CanalFeature = Feature<LineString, CanalFeatureProperties>;

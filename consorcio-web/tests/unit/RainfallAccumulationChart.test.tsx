@@ -109,6 +109,7 @@ import {
   type CampaignPreset,
   RainfallAccumulationChart,
 } from '../../src/components/map2d/rainfall/RainfallAccumulationChart';
+import { formatRainfallChartValue } from '../../src/components/map2d/rainfall/rainfallFormat';
 
 const ZONE = { kind: 'zone' as const, id: 'zona-ne', version: '3' };
 const YEAR = 2025;
@@ -658,15 +659,14 @@ describe('RainfallAccumulationChart — no fake remedy (4.3)', () => {
   });
 });
 
-describe('RainfallAccumulationChart — the tooltip never invents a zero (4.4)', () => {
-  // JDA-002. recharts hands the formatter the raw datum value, `null`
-  // included, and `Number(null)` is `0` — so coercing first turns "no
-  // evidence" into a measured 0.0 mm. Two real shapes carry `null` here:
-  // February 29, which the backend omits from the normal curve by
-  // construction, and any day before the first published one.
+describe('RainfallAccumulationChart — the readout never invents a zero (4.4)', () => {
+  // JDA-002. A docked readout used to be a recharts Tooltip formatter. The
+  // raw datum can be `null`, and `Number(null)` is `0` — coercing first turns
+  // "no evidence" into a measured 0.0 mm. Two real shapes carry `null`:
+  // February 29, which the backend omits from the normal curve, and any day
+  // before the first published one.
   beforeEach(() => {
     vi.clearAllMocks();
-    tooltip.formatter = null;
     vi.mocked(fetchRainfallSeries).mockResolvedValue(series());
   });
 
@@ -675,19 +675,21 @@ describe('RainfallAccumulationChart — the tooltip never invents a zero (4.4)',
     ['a day before the first published evidence', undefined],
   ])('renders the unknown marker for %s', async (_case, value) => {
     renderChart();
-    await screen.findByTestId('rainfall-accumulation-chart');
-
-    expect(tooltip.formatter).not.toBeNull();
-    expect(tooltip.formatter?.(value)).toBe('—');
+    const chart = await screen.findByTestId('rainfall-accumulation-chart');
+    const readout = screen.getByTestId('rainfall-accumulation-readout');
+    expect(chart.compareDocumentPosition(readout) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(chart.querySelector('.recharts-tooltip-wrapper')).toBeNull();
+    expect(formatRainfallChartValue(value, 'mm')).toBe('—');
   });
 
   it('still formats a served value, zero included', async () => {
     renderChart();
     await screen.findByTestId('rainfall-accumulation-chart');
+    expect(screen.getByTestId('rainfall-accumulation-legend')).toBeInTheDocument();
 
     // A served 0 IS data — the rule `rainfallFormat` states for every surface.
-    expect(tooltip.formatter?.(0)).toBe('0.0 mm');
-    expect(tooltip.formatter?.(12.34)).toBe('12.3 mm');
+    expect(formatRainfallChartValue(0, 'mm')).toBe('0.0 mm');
+    expect(formatRainfallChartValue(12.34, 'mm')).toBe('12.3 mm');
   });
 });
 
