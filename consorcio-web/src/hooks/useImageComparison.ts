@@ -263,7 +263,8 @@ export function useImageComparison() {
  * Hook to listen for comparison changes without ability to modify.
  * Useful for map components that just need to display the comparison.
  */
-export function useImageComparisonListener() {
+export function useImageComparisonListener(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const [comparison, setComparison] = useState<ImageComparison | null>(null);
 
   useEffect(() => {
@@ -291,7 +292,7 @@ export function useImageComparisonListener() {
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
-      if (!hasLocal || needsRefresh) {
+      if (enabled && (!hasLocal || needsRefresh)) {
         try {
           const restored = await restorePublicComparison();
           if (!cancelled && restored) setComparison(restored);

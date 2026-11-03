@@ -55,6 +55,7 @@ export function useComparisonSlider({
           0,
           Math.min(100, ((moveEvent.clientX - rect.left) / rect.width) * 100)
         );
+        sliderContainerRef.current.style?.setProperty?.('--slider-pos', `${pct}%`);
         setSliderPosition(pct);
       };
 

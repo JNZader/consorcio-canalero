@@ -39,7 +39,7 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
           style={{
             position: 'absolute',
             top: 0,
-            left: `${sliderPosition}%`,
+            left: `var(--slider-pos, ${sliderPosition}%)`,
             width: SLIDER_HIT_AREA_PX,
             height: '100%',
             background: 'transparent',

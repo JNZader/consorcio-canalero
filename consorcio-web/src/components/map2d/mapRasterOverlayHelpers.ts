@@ -197,19 +197,19 @@ export function syncDemRasterLayer(
   const existingTiles = getRasterTiles(existing);
   const sourceHasCurrentTiles = existingTiles?.[0] === params.demTileUrl;
 
-  if (existing && sourceHasCurrentTiles) {
-    (
-      existing as maplibregl.RasterTileSource & {
-        setTiles?: (tiles: string[]) => void;
+  if (existing) {
+    if (!sourceHasCurrentTiles) {
+      if (typeof (existing as { setTiles?: (tiles: string[]) => void }).setTiles === 'function') {
+        (existing as { setTiles: (tiles: string[]) => void }).setTiles([params.demTileUrl]);
+      } else {
+        removeRasterOverlay(map, SOURCE_IDS.DEM_RASTER);
+        map.addSource(SOURCE_IDS.DEM_RASTER, {
+          type: 'raster',
+          tiles: [params.demTileUrl],
+          tileSize: 256,
+        });
       }
-    ).setTiles?.([params.demTileUrl]);
-  } else if (existing) {
-    removeRasterOverlay(map, SOURCE_IDS.DEM_RASTER);
-    map.addSource(SOURCE_IDS.DEM_RASTER, {
-      type: 'raster',
-      tiles: [params.demTileUrl],
-      tileSize: 256,
-    });
+    }
   } else {
     map.addSource(SOURCE_IDS.DEM_RASTER, {
       type: 'raster',

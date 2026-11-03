@@ -47,7 +47,7 @@ export const FooterContent = memo(function FooterContent() {
                     Participación
                   </Text>
                   {showAdmin ? (
-                    <Text component={Link} to="/admin" c="gray.3" size="sm">
+                    <Text component={Link} to="/admin" preload={false} c="gray.3" size="sm">
                       Admin
                     </Text>
                   ) : null}

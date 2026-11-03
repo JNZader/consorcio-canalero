@@ -667,13 +667,36 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     };
   }, [comparisonActive]);
 
-  // Idempotent synchronization intentionally runs after every render. This
-  // keeps the existing overlay instance current for data, visibility,
-  // sub-filter, opacity and order changes, while the controller retains the
-  // latest inputs until the style load event wins any startup race.
+  // Synchronization runs when comparison inputs change. This avoids running
+  // expensive vector layer sync on every render (e.g. mouse move, slider drag).
   useEffect(() => {
     comparisonControllerRef.current?.update(comparisonSyncInputs);
-  });
+  }, [
+    comparisonActive,
+    comparisonSyncInputs.leftTileUrl,
+    comparisonSyncInputs.vectorVisibility,
+    comparisonSyncInputs.soilCollection,
+    comparisonSyncInputs.roadsCollection,
+    comparisonSyncInputs.basins,
+    comparisonSyncInputs.approvedZonesCollection,
+    comparisonSyncInputs.pilarVerde,
+    comparisonSyncInputs.canales.relevados,
+    comparisonSyncInputs.canales.propuestas,
+    comparisonSyncInputs.canales.visibleRelevadoIds,
+    comparisonSyncInputs.canales.visiblePropuestaIds,
+    comparisonSyncInputs.canales.activeEtapas,
+    comparisonSyncInputs.escuelasCollection,
+    comparisonSyncInputs.opacityByLayer,
+    comparisonSyncInputs.orderByLayer,
+    comparisonSyncInputs.redVialOficial.shouldMount,
+    comparisonSyncInputs.caminosHuecos.shouldMount,
+    comparisonSyncInputs.puntosInteres,
+    comparisonSyncInputs.zona,
+    comparisonSyncInputs.roadFlow.crossings,
+    comparisonSyncInputs.roadFlow.totalFlujoNatural,
+    comparisonSyncInputs.roadFlow.kinds,
+    comparisonSyncInputs.roadFlow.flechas,
+  ]);
 
   /* ---------------------------------------------------------------------- */
   /*  Comparison slider — Task 2.11 (CSS clip-path on right image layer)    */

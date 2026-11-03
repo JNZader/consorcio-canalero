@@ -376,6 +376,22 @@ export default defineConfig({
               },
             },
           },
+          // Public geo vector endpoints — StaleWhileRevalidate for instant render on recurrent visits.
+          {
+            urlPattern:
+              /\/api\/v2\/geo\/(basins(\/approved-zones\/current)?|canales\/publico|layers\/public)/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'geo-public-vectors',
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 60 * 60 * 24, // 24 hours
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
           // Anything else under /api/v2/* not covered above also goes
           // NetworkOnly. Better to ship a 503 on offline than risk
           // leaking PII via a stale cached response.
@@ -454,6 +470,10 @@ export default defineConfig({
             {
               name: 'vendor-mantine-dropzone',
               test: /node_modules\/@mantine\/dropzone(\/|$)/,
+            },
+            {
+              name: 'vendor-icons',
+              test: /node_modules\/@tabler\/icons-react(\/|$)|src\/components\/ui\/icons/,
             },
             {
               name: 'vendor-charts',

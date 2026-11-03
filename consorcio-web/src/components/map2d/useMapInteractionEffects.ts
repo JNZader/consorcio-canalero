@@ -1,6 +1,6 @@
 import type { Feature } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { identifyHitBbox, identifyHitRadiusPx, pointerIsCoarse } from './identifyHit';
 import { SOURCE_IDS } from './map2dConfig';
 import { isMeasurementIdentifyBlocked } from './measurement/measurementIdentifyGuard';
@@ -272,6 +272,23 @@ export function useMapInteractionEffects({
   canalRelevados = [],
   canalPropuestas = [],
 }: UseMapInteractionEffectsParams) {
+  const selectedFeaturesRef = useRef(selectedFeatures);
+  selectedFeaturesRef.current = selectedFeatures;
+  const roadsFeaturesRef = useRef(roadsFeatures);
+  roadsFeaturesRef.current = roadsFeatures;
+  const canalRelevadosRef = useRef(canalRelevados);
+  canalRelevadosRef.current = canalRelevados;
+  const canalPropuestasRef = useRef(canalPropuestas);
+  canalPropuestasRef.current = canalPropuestas;
+  const onParcelaResolvedRef = useRef(onParcelaResolved);
+  onParcelaResolvedRef.current = onParcelaResolved;
+  const onClearParcelasRef = useRef(onClearParcelas);
+  onClearParcelasRef.current = onClearParcelas;
+  const onCanalResolvedRef = useRef(onCanalResolved);
+  onCanalResolvedRef.current = onCanalResolved;
+  const onPoiPlaceRef = useRef(onPoiPlace);
+  onPoiPlaceRef.current = onPoiPlace;
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -286,7 +303,7 @@ export function useMapInteractionEffects({
         return;
       }
       if (measurementMode === 'placing-poi') {
-        onPoiPlace?.({ lng: event.lngLat.lng, lat: event.lngLat.lat });
+        onPoiPlaceRef.current?.({ lng: event.lngLat.lng, lat: event.lngLat.lat });
         return;
       }
 
@@ -299,8 +316,8 @@ export function useMapInteractionEffects({
           layers: clickableLayers.filter((id) => map.getLayer(id)),
         });
         setSelectedFeatures([]);
-        onParcelaResolved?.(null);
-        onCanalResolved?.(resolveCanalRef(canalFeatures as unknown as FeatureWithLayer[]));
+        onParcelaResolvedRef.current?.(null);
+        onCanalResolvedRef.current?.(resolveCanalRef(canalFeatures as unknown as FeatureWithLayer[]));
         return;
       }
 
@@ -310,17 +327,25 @@ export function useMapInteractionEffects({
         // touch mode is on (which is exactly the case `onParcelaResolved(null)`
         // keeps). `onParcelaResolved(null)` stays for callers that never wired
         // the explicit clear.
-        onParcelaResolved?.(null);
-        onClearParcelas?.();
-        onCanalResolved?.(null);
+        onParcelaResolvedRef.current?.(null);
+        onClearParcelasRef.current?.();
+        onCanalResolvedRef.current?.(null);
         return;
       }
 
       // Fine ±6 px; coarse ±10 px (UX-24). Same idea as 3D (`useTerrainInteractionEffects`).
       const { x, y } = event.point;
       const bbox = identifyHitBbox(x, y, identifyHitRadiusPx(pointerIsCoarse()));
+      const activeClickableLayers = clickableLayers.filter((id) => {
+        const layer = map.getLayer(id);
+        if (!layer) return false;
+        if (typeof map.getLayoutProperty === 'function') {
+          return map.getLayoutProperty(id, 'visibility') !== 'none';
+        }
+        return true;
+      });
       const features = map.queryRenderedFeatures(bbox, {
-        layers: clickableLayers.filter((id) => map.getLayer(id)),
+        layers: activeClickableLayers,
       });
 
       const featuresWithLayer = features as unknown as FeatureWithLayer[];
@@ -355,14 +380,20 @@ export function useMapInteractionEffects({
         // Nearest canal/road to the click, not z-order (waterway/canal used to
         // steal T269-03). A road `ruta` expands to every catalog piece. A canal
         // hit is only the tile clip, so the highlight uses the catalog line.
-        const roadGroup = expandTramoGroup(tramo, roadsFeatures);
+        const roadGroup = expandTramoGroup(tramo, roadsFeaturesRef.current);
         const group =
           roadGroup.length > 1
             ? roadGroup
-            : expandCanalGroup(roadGroup[0] ?? tramo, canalRelevados, canalPropuestas);
-        setSelectedFeatures(additive ? mergeAdditiveFeatures([...selectedFeatures], group) : group);
+            : expandCanalGroup(
+                roadGroup[0] ?? tramo,
+                canalRelevadosRef.current,
+                canalPropuestasRef.current,
+              );
+        setSelectedFeatures(
+          additive ? mergeAdditiveFeatures([...selectedFeaturesRef.current], group) : group,
+        );
       } else if (additive) {
-        setSelectedFeatures([...selectedFeatures]);
+        setSelectedFeatures([...selectedFeaturesRef.current]);
       } else {
         setSelectedFeatures(incoming);
       }
@@ -380,7 +411,7 @@ export function useMapInteractionEffects({
       // a discoverable shortcut for THIS gesture — the owner's rule is "se
       // esconde el botón, NO la capacidad". The modifier is read straight off the
       // DOM event and never consults the auth store; keep it that way.
-      onParcelaResolved?.(parcela, additive);
+      onParcelaResolvedRef.current?.(parcela, additive);
     };
 
     map.on('click', handleClick);
@@ -392,13 +423,5 @@ export function useMapInteractionEffects({
     mapRef,
     measurementMode,
     setSelectedFeatures,
-    selectedFeatures,
-    roadsFeatures,
-    canalRelevados,
-    canalPropuestas,
-    onParcelaResolved,
-    onClearParcelas,
-    onCanalResolved,
-    onPoiPlace,
   ]);
 }

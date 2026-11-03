@@ -326,7 +326,10 @@ export default function TerrainViewer3D({
   const selectedImage = useSelectedImageListener();
   const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
-  const sharedMap3dState = useMapLayerSyncStore((state) => state.map3d);
+  const sharedOpacityByLayer = useMapLayerSyncStore((state) => state.map3d.opacityByLayer);
+  const sharedOrderByLayer = useMapLayerSyncStore((state) => state.map3d.orderByLayer);
+  const sharedLabelSizeScale = useMapLayerSyncStore((state) => state.map3d.labelSizeScale);
+  const sharedLineWidthScale = useMapLayerSyncStore((state) => state.map3d.lineWidthScale);
   const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
   const setLayerOpacity = useMapLayerSyncStore((state) => state.setLayerOpacity);
@@ -853,11 +856,11 @@ export default function TerrainViewer3D({
     );
     applyLayerOpacity(
       map as unknown as Parameters<typeof applyLayerOpacity>[0],
-      sharedMap3dState.opacityByLayer
+      sharedOpacityByLayer
     );
     applyLayerOrder(
       map as unknown as Parameters<typeof applyLayerOrder>[0],
-      sharedMap3dState.orderByLayer
+      sharedOrderByLayer
     );
   }, [
     approvedZonesCollection,
@@ -865,8 +868,8 @@ export default function TerrainViewer3D({
     cuencasCollection,
     roadsCollection,
     ready,
-    sharedMap3dState.opacityByLayer,
-    sharedMap3dState.orderByLayer,
+    sharedOpacityByLayer,
+    sharedOrderByLayer,
     soilArchiveKey,
     vectorLayerVisibility,
     waterwaysCollection,
@@ -1057,7 +1060,7 @@ export default function TerrainViewer3D({
         bpaHistory={pilarVerde?.bpaHistory ?? null}
         layerFineControl={{
           opacityByLayer: {
-            ...sharedMap3dState.opacityByLayer,
+            ...sharedOpacityByLayer,
             __dem: overlayOpacity,
           },
           onLayerOpacityChange: (layerId, multiplier) => {
@@ -1067,11 +1070,11 @@ export default function TerrainViewer3D({
             }
             setLayerOpacity('map3d', layerId, multiplier);
           },
-          orderByLayer: sharedMap3dState.orderByLayer,
+          orderByLayer: sharedOrderByLayer,
           onLayerOrderChange: (orderedIds) => setLayerOrder('map3d', orderedIds),
-          labelSizeScale: sharedMap3dState.labelSizeScale,
+          labelSizeScale: sharedLabelSizeScale,
           onLabelSizeScaleChange: (scale) => setLabelSizeScale('map3d', scale),
-          lineWidthScale: sharedMap3dState.lineWidthScale,
+          lineWidthScale: sharedLineWidthScale,
           onLineWidthScaleChange: (scale) => setLineWidthScale('map3d', scale),
         }}
         profileRequest={

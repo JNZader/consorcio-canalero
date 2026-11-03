@@ -600,7 +600,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                     inset: 0,
                     pointerEvents: 'none',
                     zIndex: MAP_Z.comparison,
-                    clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
+                    clipPath: `inset(0 calc(100% - var(--slider-pos, ${sliderPosition}%)) 0 0)`,
                   }}
                 />
               )}

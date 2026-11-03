@@ -249,12 +249,14 @@ export default function MapaMapLibre() {
     enabled: exportIntent,
   });
   const { basins, error: basinsError, loading: basinsLoading, reload: reloadBasins } = useBasins();
+  // 2D paint loads waterways directly in MapLibre. The GeoJSON in React
+  // memory is only for KMZ export — same latch as catastro and soil (`exportIntent`).
   const {
     waterways,
     error: waterwaysError,
     reload: reloadWaterways,
   } = useWaterways({
-    enabled: mapVectorIdle,
+    enabled: exportIntent,
   });
   const {
     layers: allGeoLayers,
@@ -289,7 +291,7 @@ export default function MapaMapLibre() {
   });
 
   const selectedImage = useSelectedImageListener();
-  const comparison = useImageComparisonListener();
+  const comparison = useImageComparisonListener({ enabled: viewMode === 'comparison' });
   // Lazy fetch (~1.6MB across 10 static assets). Split by consumer:
   //  - `meta` (aggregates.json, 4KB) stays EAGER because `showPilarVerde`
   //    (useMapDerivedState) gates the Pilar Verde toggles on it — deferring it

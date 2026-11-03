@@ -84,6 +84,7 @@ function StaffMenuItems() {
         leftSection={<IconChartBar size={14} />}
         component={Link}
         to="/admin"
+        preload={false}
       >
         Panel de Control
       </Menu.Item>

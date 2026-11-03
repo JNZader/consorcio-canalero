@@ -24,6 +24,6 @@ describe('comparison curtain dates', () => {
     expect(right).toHaveTextContent('2024-07-02');
     expect(left.className).toMatch(/comparisonDateLeft/);
     expect(right.className).toMatch(/comparisonDateRight/);
-    expect(screen.getByTestId('map-comparison-divider').getAttribute('style')).toContain('left: 20%');
+    expect(screen.getByTestId('map-comparison-divider').getAttribute('style')).toMatch(/left:\s*(?:var\(--slider-pos,\s*)?20%/);
   });
 });
