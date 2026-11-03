@@ -32,6 +32,27 @@ def test_leap_annual_window_starts_on_january_2():
     assert end == date(2025, 1, 1)
 
 
+def test_monthly_window_is_centered_on_the_fifteenth():
+    from app.domains.geo.time_layers import monthly_composite_request
+
+    target, buffer, cloud = monthly_composite_request(2024, 3, date(2026, 11, 2))
+    start, end = annual_search_window(target, buffer)
+    assert target == date(2024, 3, 15)
+    assert buffer == 14
+    assert cloud == 40
+    assert start == date(2024, 3, 1)
+    assert end == date(2024, 3, 30)
+
+
+def test_monthly_rejects_a_future_month_and_a_bad_month_number():
+    from app.domains.geo.time_layers import TimeLayerError, monthly_composite_request
+
+    with pytest.raises(TimeLayerError):
+        monthly_composite_request(2026, 12, date(2026, 11, 2))
+    with pytest.raises(TimeLayerError):
+        monthly_composite_request(2024, 0, date(2026, 11, 2))
+
+
 def test_annual_year_must_be_inside_sentinel2_and_not_in_the_future():
     with pytest.raises(TimeLayerError):
         annual_composite_request(2016, date(2026, 11, 2))

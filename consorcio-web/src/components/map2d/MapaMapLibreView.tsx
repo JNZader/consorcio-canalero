@@ -594,6 +594,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 sliderPosition={sliderPosition}
                 mapReady={mapReady}
                 onSliderPointerDown={handleSliderPointerDown}
+                leftDate={comparisonInfo?.leftDate ?? null}
+                rightDate={comparisonInfo?.rightDate ?? null}
               />
               <TimeCompareBar onViewModeChange={(mode) => setViewMode(mode)} />
             </div>
