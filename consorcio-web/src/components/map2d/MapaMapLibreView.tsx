@@ -11,6 +11,7 @@ import type {
   Geometry,
   LineString,
   MultiLineString,
+  Polygon,
 } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import {
@@ -20,6 +21,7 @@ import {
   type SetStateAction,
   Suspense,
   useCallback,
+  useEffect,
   useState,
 } from 'react';
 import { MAP_BOUNDS, MAP_HOME_FIT_PADDING, MAP_QUICK_PLACES } from '../../constants';
@@ -43,6 +45,8 @@ import {
 import { VisuallyHidden } from '../ui/accessibility/primitives';
 import { marksFromRoadFlow } from './canalProfile';
 import { culvertPoints } from './profileBoundaryCrossings';
+import { savePersonalMeasurement } from './measurement/personalMeasurements';
+import { usePersonalMeasurementsLayer } from './measurement/usePersonalMeasurementsLayer';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
 import { InfoPanel } from './InfoPanel';
@@ -66,12 +70,14 @@ import { MeasurementToolbar } from './measurement/MeasurementToolbar';
 import type { MeasurementState } from './measurement/useMeasurement';
 import { PuntoInteresPlaceModal } from './PuntoInteresPlaceModal';
 import type { PrecipitationRange } from './precipRanges';
-import type { ProfileCursorSample } from './profileCursorSync';
 import type { ProfileRangeStats } from './profileRange';
 import { TimeCompareBar } from './TimeCompareBar';
 import type { AnalysisToolProps } from './useAnalysisToolsGate';
 import type { UseFichaInteractionResult } from './useFichaInteraction';
 import type { FichaOverlayTabsState } from './useFichaOverlayTabs';
+import { coarseProfile, terrainTileReader } from './coarseDem';
+import type { ProfileChartRow } from './profileChartRows';
+import { useSlopeColoredLine } from './useSlopeColoredLine';
 import { useMapProfileCursor } from './useMapProfileCursor';
 import type { PuntosInteresWiring } from './usePuntosInteresWiring';
 import type { QuickPlacePin } from './useQuickPlaceMarker';
@@ -130,6 +136,8 @@ export interface MapaMapLibreViewProps {
   readonly handleSliderPointerDown: (event: ReactPointerEvent) => void;
   readonly handleStartMeasureArea: () => void;
   readonly handleStartMeasureDistance: () => void;
+  readonly undoMeasurement?: () => void;
+  readonly updateMeasurement?: (id: string, geometry: LineString | Polygon) => void;
   readonly hasApprovedZones: boolean;
   readonly hasComparison: boolean;
   readonly hasSingleImage: boolean;
@@ -297,6 +305,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     handleSliderPointerDown,
     handleStartMeasureArea,
     handleStartMeasureDistance,
+    undoMeasurement,
+    updateMeasurement,
     hasApprovedZones,
     hasComparison,
     hasSingleImage,
@@ -383,8 +393,11 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     flowDirection: 'digitizado' | 'inverso' | null;
   } | null>(null);
   const [dismissedDraftKey, setDismissedDraftKey] = useState<string | null>(null);
-  const [profileSamples, setProfileSamples] = useState<readonly ProfileCursorSample[]>([]);
+  const [profileSamples, setProfileSamples] = useState<readonly ProfileChartRow[]>([]);
+  const [coarseSamples, setCoarseSamples] = useState<readonly ProfileChartRow[] | null>(null);
   const [mapCursorDistance, setMapCursorDistance] = useState<number | null>(null);
+  const [personalRevision, setPersonalRevision] = useState(0);
+  usePersonalMeasurementsLayer(mapRef, mapReady, personalRevision);
   const draftKey = measurementDraftLine
     ? `${measurementDraftLine.coordinates.length}:${measurementDraftLine.coordinates.at(-1)?.join(',') ?? ''}`
     : '';
@@ -393,9 +406,23 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   const dockGeometry = pinnedProfile?.geometry ?? liveDraft;
   const dockTitle = pinnedProfile?.title ?? 'Perfil de elevación';
   const dockEstimate = pinnedProfile == null && dockGeometry != null;
-  const onProfileSamples = useCallback((rows: readonly ProfileCursorSample[]) => {
+  const onProfileSamples = useCallback((rows: readonly ProfileChartRow[]) => {
     setProfileSamples(rows);
   }, []);
+  useEffect(() => {
+    if (!liveDraft || !dockEstimate || !hillshadeTileUrl?.includes('{z}')) {
+      setCoarseSamples(null);
+      return;
+    }
+    let cancel = false;
+    void coarseProfile(liveDraft, terrainTileReader(hillshadeTileUrl)).then((rows) => {
+      if (!cancel) setCoarseSamples(rows as ProfileChartRow[]);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [dockEstimate, hillshadeTileUrl, liveDraft]);
+  useSlopeColoredLine({ mapRef, mapReady, samples: profileSamples });
   useMapProfileCursor({
     map: measurementMap,
     mapReady,
@@ -594,6 +621,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 sliderPosition={sliderPosition}
                 mapReady={mapReady}
                 onSliderPointerDown={handleSliderPointerDown}
+                leftDate={comparisonInfo?.leftDate ?? null}
+                rightDate={comparisonInfo?.rightDate ?? null}
               />
               <TimeCompareBar onViewModeChange={(mode) => setViewMode(mode)} />
             </div>
@@ -607,6 +636,13 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}
               onCancel={cancelMeasurement}
+              onUndo={undoMeasurement}
+              onSavePersonal={() => {
+                const last = measurementState.measurements.at(-1);
+                if (!last) return;
+                savePersonalMeasurement({ id: last.id, kind: last.kind, geometry: last.geometry });
+                setPersonalRevision((value) => value + 1);
+              }}
               fichaDrawActive={isFichaDrawSession}
               fichaCanalActive={isFichaCanal}
               fichaMultiSelectActive={fichaInteraction.state.multiSelect}
@@ -655,9 +691,14 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 crossings={marksFromRoadFlow(roadFlow.crossings.data)}
                 parcelFeatures={parcelFeatures}
                 culverts={culvertPoints(puntosInteres.collection)}
+                coarseSamples={coarseSamples}
               />
             ) : null}
-            <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
+            <MeasurementShapes
+              map={measurementMap}
+              measurements={measurementState.measurements}
+              onMoveVertex={updateMeasurement}
+            />
 
             {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
               never coexists with the measurement MapboxDraw (shared-slot bug). A
