@@ -68,6 +68,9 @@ export const STATUS_CONFIG = {
   en_revision: { color: 'blue', label: 'En revisión' },
   resuelto: { color: 'green', label: 'Resuelto' },
   descartado: { color: 'red', label: 'Descartado' },
+  revisada: { color: 'blue', label: 'Revisada' },
+  implementada: { color: 'green', label: 'Implementada' },
+  descartada: { color: 'gray', label: 'Descartada' },
 } as const;
 
 /**

@@ -16,6 +16,7 @@ interface LiveRegionContextType {
 const LiveRegionContext = createContext<LiveRegionContextType | null>(null);
 
 export function LiveRegionProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const parentContext = useContext(LiveRegionContext);
   const [politeMessage, setPoliteMessage] = useState('');
   const [assertiveMessage, setAssertiveMessage] = useState('');
   const politeTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -30,6 +31,8 @@ export function LiveRegionProvider({ children }: Readonly<{ children: ReactNode 
 
   const announce = useCallback((message: string, priority: 'polite' | 'assertive' = 'polite') => {
     if (priority === 'assertive') {
+      assertiveTimeoutsRef.current.forEach(clearTimeout);
+      assertiveTimeoutsRef.current = [];
       setAssertiveMessage('');
       const timeout1 = setTimeout(() => setAssertiveMessage(message), 50);
       const timeout2 = setTimeout(() => setAssertiveMessage(''), 1000);
@@ -37,19 +40,32 @@ export function LiveRegionProvider({ children }: Readonly<{ children: ReactNode 
       return;
     }
 
+    politeTimeoutsRef.current.forEach(clearTimeout);
+    politeTimeoutsRef.current = [];
     setPoliteMessage('');
     const timeout1 = setTimeout(() => setPoliteMessage(message), 50);
     const timeout2 = setTimeout(() => setPoliteMessage(''), 1000);
     politeTimeoutsRef.current.push(timeout1, timeout2);
   }, []);
 
+  if (parentContext) {
+    return <>{children}</>;
+  }
+
   return (
     <LiveRegionContext.Provider value={{ announce }}>
       {children}
-      <div aria-live="polite" aria-atomic="true" className="sr-only" style={visuallyHiddenStyle}>
+      <div
+        data-testid="live-region-polite"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        style={visuallyHiddenStyle}
+      >
         {politeMessage}
       </div>
       <div
+        data-testid="live-region-assertive"
         role="alert"
         aria-live="assertive"
         aria-atomic="true"

@@ -13,11 +13,32 @@ function mix(from: string, to: string, t: number): string {
   return `#${[0, 1, 2].map((index) => channel(index).toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** Green when flat, yellow around 2 %, red from 5 % up. Sign does not matter. */
+export const SLOPE_COLOR_STOPS = {
+  LOW: '#0072b2',
+  MEDIUM: '#e69f00',
+  HIGH: '#d55e00',
+} as const;
+
+export const SLOPE_SEVERITY_LABELS = {
+  LOW: 'Baja',
+  MEDIUM: 'Media',
+  HIGH: 'Alta',
+} as const;
+
+export type SlopeSeverityLabel = (typeof SLOPE_SEVERITY_LABELS)[keyof typeof SLOPE_SEVERITY_LABELS];
+
+export function slopeSeverityLabel(pct: number): SlopeSeverityLabel {
+  const abs = Math.abs(pct);
+  if (abs < 2) return SLOPE_SEVERITY_LABELS.LOW;
+  if (abs < 5) return SLOPE_SEVERITY_LABELS.MEDIUM;
+  return SLOPE_SEVERITY_LABELS.HIGH;
+}
+
+/** Okabe-Ito colorblind-safe ramp: blue (#0072b2) when flat, amber (#e69f00) around 2 %, vermilion (#d55e00) from 5 % up. Sign does not matter. */
 export function slopeColor(pct: number): string {
   const t = Math.min(1, Math.abs(pct) / 5);
-  if (t < 0.4) return mix('#16a34a', '#eab308', t / 0.4);
-  return mix('#eab308', '#dc2626', (t - 0.4) / 0.6);
+  if (t < 0.4) return mix(SLOPE_COLOR_STOPS.LOW, SLOPE_COLOR_STOPS.MEDIUM, t / 0.4);
+  return mix(SLOPE_COLOR_STOPS.MEDIUM, SLOPE_COLOR_STOPS.HIGH, (t - 0.4) / 0.6);
 }
 
 export interface SlopeSegment {

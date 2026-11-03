@@ -11,13 +11,14 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import type { Feature } from 'geojson';
+import type { Feature, LineString, MultiLineString } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import mapStyles from '../../styles/components/map.module.css';
 import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import { ElevationProfileDock } from '../map2d/ElevationProfileDock';
 import { InfoPanel } from '../map2d/InfoPanel';
-import { LayerControlsPanel } from '../map2d/LayerControlsPanel';
+import { LayerControlsPanel, type LayerFineControl } from '../map2d/LayerControlsPanel';
 import { MapWorkspace, useMapWorkspaceDesktop } from '../map2d/MapWorkspace';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from '../map2d/map2dDerived';
 import { useMapFeatureReadout } from '../map2d/mapFeatureReadout';
@@ -147,6 +148,20 @@ interface TerrainViewer3DChromeProps {
   bpaEnriched?: BpaEnrichedFile | null;
   /** Pilar Verde histórico lookup — forwarded to `<InfoPanel>`. */
   bpaHistory?: BpaHistoryFile | null;
+  readonly layerFineControl?: LayerFineControl;
+  readonly profileRequest?: {
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso' | null;
+    externalDistanceM?: number | null;
+  } | null;
+  readonly onOpenElevationProfile?: (geometry: LineString | MultiLineString) => void;
+  readonly onOpenCanalProfile?: (request: {
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso';
+  }) => void;
+  readonly onCloseElevationProfile?: () => void;
 }
 
 export function TerrainViewer3DChrome({
@@ -204,6 +219,11 @@ export function TerrainViewer3DChrome({
   onFlythrough,
   bpaEnriched,
   bpaHistory,
+  layerFineControl,
+  profileRequest = null,
+  onOpenElevationProfile,
+  onOpenCanalProfile,
+  onCloseElevationProfile,
 }: TerrainViewer3DChromeProps) {
   const hoveredFeature = useMapFeatureReadout('3d');
   const isDesktop = useMapWorkspaceDesktop();
@@ -308,6 +328,9 @@ export function TerrainViewer3DChrome({
               onClose={onCloseInfoPanel}
               bpaEnriched={bpaEnriched}
               bpaHistory={bpaHistory}
+              onOpenElevationProfile={onOpenElevationProfile}
+              onOpenCanalProfile={onOpenCanalProfile}
+              elevationProfileActive={profileRequest != null}
             />
           ) : null
         }
@@ -408,6 +431,15 @@ export function TerrainViewer3DChrome({
                 )}
               </Text>
             </Box>
+            {profileRequest && onCloseElevationProfile ? (
+              <ElevationProfileDock
+                geometry={profileRequest.geometry}
+                title={profileRequest.title}
+                flowDirection={profileRequest.flowDirection}
+                externalDistanceM={profileRequest.externalDistanceM ?? null}
+                onClose={onCloseElevationProfile}
+              />
+            ) : null}
           </Paper>
         }
         controls={
@@ -469,12 +501,9 @@ export function TerrainViewer3DChrome({
                 onActiveRasterLayerChange={onActiveRasterLayerChange}
                 overlayOpacity={overlayOpacity}
                 onOverlayOpacityChange={onOverlayOpacityChange}
-                vectorLayerVisibility={vectorLayerVisibility}
-                onVectorLayerToggle={onVectorLayerToggle}
                 hasApprovedZones={hasApprovedZones}
-                intersectionsLength={intersectionsLength}
                 embedded
-                showVectorSections={false}
+                showOpacitySlider={false}
               />
               <LayerControlsPanel
                 variant="3d"
@@ -500,6 +529,7 @@ export function TerrainViewer3DChrome({
                 canalesRelevadosItems={canalesRelevadosItems}
                 canalesPropuestosItems={canalesPropuestosItems}
                 etapaGate={etapaGate}
+                layerFineControl={layerFineControl}
                 insideScrollContainer
               />
             </Box>

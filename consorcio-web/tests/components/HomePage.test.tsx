@@ -3,12 +3,22 @@
  * Cubre renderizado, navegacion, y componentes visuales.
  */
 
+import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HomePage, HomeContent } from '../../src/components/HomePage';
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: forwardRef<
+    HTMLAnchorElement,
+    ComponentPropsWithoutRef<'a'> & { to: string }
+  >(function MockLink({ to, ...props }, ref) {
+    return <a ref={ref} href={to} {...props} />;
+  }),
+}));
 
 // Mock basePath
 vi.mock('../../src/lib/basePath', () => ({

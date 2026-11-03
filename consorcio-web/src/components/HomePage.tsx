@@ -13,10 +13,10 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
+import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { isConfiguredSupportPhone, SUPPORT_PHONE } from '../constants';
 import { useLandingStats } from '../hooks/useLandingStats';
-import { withBasePath } from '../lib/basePath';
 import styles from '../styles/components/home.module.css';
 import {
   IconChartBar,
@@ -216,8 +216,8 @@ export function HomeContent() {
             <Group mt="md">
               <Button
                 size="lg"
-                component="a"
-                href={withBasePath('/mapa')}
+                component={Link}
+                to="/mapa"
                 variant="filled"
                 color="acento"
                 c="dark.9"
@@ -226,8 +226,8 @@ export function HomeContent() {
               </Button>
               <Button
                 size="lg"
-                component="a"
-                href={withBasePath('/participacion')}
+                component={Link}
+                to="/participacion"
                 variant="outline"
                 color="white"
               >
@@ -309,8 +309,8 @@ export function HomeContent() {
                 padding="lg"
                 radius="md"
                 shadow="sm"
-                component="a"
-                href={withBasePath(feature.href)}
+                component={Link}
+                to={feature.href}
                 className={`${styles.featureCard} ${styles.featureCardSurface}`}
               >
                 <ThemeIcon size="xl" radius="md" variant="light" color="institucional" mb="md">
@@ -452,8 +452,8 @@ export function HomeContent() {
             </Text>
             <Button
               size="lg"
-              component="a"
-              href={withBasePath('/participacion')}
+              component={Link}
+              to="/participacion"
               variant="filled"
               color="acento"
               c="dark.9"
