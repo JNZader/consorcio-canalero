@@ -12,6 +12,9 @@ interface MapViewportOverlayProps {
   readonly viewMode: string;
   readonly sliderPosition: number;
   readonly mapReady: boolean;
+  /** Dates stay on the map edges. They do not ride the moving curtain. */
+  readonly leftDate?: string | null;
+  readonly rightDate?: string | null;
   /**
    * Pointer-down on the comparison divider. POINTER, not mouse: the same
    * handler has to serve mouse, touch and pen (see `useComparisonSlider`).
@@ -24,6 +27,8 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
   sliderPosition,
   mapReady,
   onSliderPointerDown,
+  leftDate = null,
+  rightDate = null,
 }: MapViewportOverlayProps) {
   return (
     <>
@@ -84,6 +89,44 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
           </div>
         </div>
       )}
+      {viewMode === 'comparison' && leftDate ? (
+        <div
+          data-testid="comparison-date-left"
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            zIndex: 14,
+            pointerEvents: 'none',
+            background: 'rgba(0,0,0,0.55)',
+            color: 'white',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontSize: 12,
+          }}
+        >
+          {leftDate}
+        </div>
+      ) : null}
+      {viewMode === 'comparison' && rightDate ? (
+        <div
+          data-testid="comparison-date-right"
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 56,
+            zIndex: 14,
+            pointerEvents: 'none',
+            background: 'rgba(0,0,0,0.55)',
+            color: 'white',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontSize: 12,
+          }}
+        >
+          {rightDate}
+        </div>
+      ) : null}
 
       {!mapReady && (
         <Box

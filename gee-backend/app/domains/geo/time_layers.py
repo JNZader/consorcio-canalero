@@ -53,6 +53,28 @@ def annual_composite_request(year: int, today: date) -> tuple[date, int, int]:
     return date(year, month, day), ANNUAL_BUFFER_DAYS, ANNUAL_MAX_CLOUD
 
 
+MONTHLY_BUFFER_DAYS = 14
+MONTHLY_MAX_CLOUD = 40
+
+
+def monthly_composite_request(year: int, month: int, today: date) -> tuple[date, int, int]:
+    """Center a calendar month on the 15th with a 14-day buffer.
+
+    The search window is the month, plus a day on each side when the month
+    is shorter or longer than 29 days. A future month is rejected.
+    """
+    if month < 1 or month > 12:
+        raise TimeLayerError(f"El mes {month} no existe.")
+    if year < S2_YEAR_MIN or year > today.year:
+        raise TimeLayerError(
+            f"El año {year} está fuera de Sentinel-2 ({S2_YEAR_MIN}–{today.year})."
+        )
+    target = date(year, month, 15)
+    if target > today:
+        raise TimeLayerError("Ese mes todavía no tiene imágenes Sentinel-2.")
+    return target, MONTHLY_BUFFER_DAYS, MONTHLY_MAX_CLOUD
+
+
 def annual_search_window(target: date, buffer_days: int = ANNUAL_BUFFER_DAYS) -> tuple[date, date]:
     """Inclusive start and exclusive end used by the Sentinel-2 payload."""
     start = target - timedelta(days=buffer_days)

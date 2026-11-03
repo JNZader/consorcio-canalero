@@ -26,6 +26,7 @@ import {
 } from '../../lib/api/elevationProfile';
 import { mapColorTokens } from '../../lib/mapColorTokens';
 import { culvertMarks, parcelBoundaryMarks } from './profileBoundaryCrossings';
+import { slopeSegments } from './slopeColor';
 import {
   canalSlopeNotes,
   crossingsOnProfile,
@@ -160,6 +161,7 @@ export function ElevationProfileChart({
   crossings = [],
   parcelFeatures = null,
   culverts = null,
+  coarseSamples = null,
   onActivated,
   autoLoad = false,
 }: {
@@ -176,6 +178,7 @@ export function ElevationProfileChart({
   readonly crossings?: readonly ProfileCrossing[];
   readonly parcelFeatures?: readonly Feature<Geometry, GeoJsonProperties>[] | null;
   readonly culverts?: readonly { lon: number; lat: number; label: string }[] | null;
+  readonly coarseSamples?: readonly ProfileChartRow[] | null;
   /** The operator asked for the curve, or a permalink already did. */
   onActivated?: () => void;
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
@@ -248,8 +251,10 @@ export function ElevationProfileChart({
     );
   }, [autoLoad, compareDems, geometry]);
 
-  const chartRows = buildProfileChartRows(profile?.puntos ?? []);
-  rowsRef.current = chartRows;
+  const serverRows = buildProfileChartRows(profile?.puntos ?? []);
+  const chartRows = serverRows.length >= 2 ? serverRows : (coarseSamples ?? []);
+  const slopePieces = slopeSegments(chartRows);
+  rowsRef.current = [...chartRows];
   useEffect(() => {
     if (status !== 'ready' || !profile) {
       samplesCb.current?.([]);
@@ -381,7 +386,7 @@ export function ElevationProfileChart({
           Perfil de elevación
         </Button>
       ) : null}
-      {status === 'loading' ? (
+      {status === 'loading' && chartRows.length < 2 ? (
         <Stack gap={6} data-testid="elevation-profile-loading" aria-busy="true" aria-live="polite">
           <Text size="xs" c="dimmed">
             Muestreando el modelo de elevación…
@@ -405,7 +410,7 @@ export function ElevationProfileChart({
           </Stack>
         </Alert>
       ) : null}
-      {status === 'ready' && profile ? (
+      {(status === 'ready' && profile) || chartRows.length >= 2 ? (
         <>
           <Checkbox
             size="xs"
@@ -748,10 +753,24 @@ export function ElevationProfileChart({
                       dataKey="elevation_m"
                       name="GLO-30"
                       stroke="var(--mantine-color-blue-6)"
+                      strokeWidth={slopePieces.length > 0 ? 0 : 2}
                       dot={false}
                       connectNulls={false}
                       isAnimationActive={false}
+                      legendType={slopePieces.length > 0 ? 'none' : 'line'}
                     />
+                    {slopePieces.map((piece, index) => (
+                      <Line
+                        key={`slope-${index}`}
+                        data={piece.points}
+                        dataKey="elevation_m"
+                        stroke={piece.color}
+                        strokeWidth={2}
+                        dot={false}
+                        isAnimationActive={false}
+                        legendType="none"
+                      />
+                    ))}
                     {visibleSeries.some((series) => series.key === 'elevation_mde_ar') ? (
                       <Line
                         type="linear"
@@ -860,19 +879,20 @@ export function ElevationProfileChart({
             </Button>
             <Stack gap={2} hidden={!aboutOpen} style={aboutOpen ? undefined : { display: 'none' }}>
               <Text size="xs" c="dimmed" data-testid="elevation-profile-disclaimer">
-                {profile.disclaimer}
+                {profile?.disclaimer ??
+                  'Estimación gruesa con la tesela DEM del mapa. Al soltar el trazo se afina.'}
               </Text>
-              {profile.mde_ar_disclaimer ? (
+              {profile?.mde_ar_disclaimer ? (
                 <Text size="xs" c="dimmed" data-testid="elevation-profile-mde-ar">
                   {profile.mde_ar_disclaimer}
                 </Text>
               ) : null}
-              {profile.aw3d30_disclaimer ? (
+              {profile?.aw3d30_disclaimer ? (
                 <Text size="xs" c="dimmed" data-testid="elevation-profile-aw3d30">
                   {profile.aw3d30_disclaimer}
                 </Text>
               ) : null}
-              {profile.nasadem_disclaimer ? (
+              {profile?.nasadem_disclaimer ? (
                 <Text size="xs" c="dimmed" data-testid="elevation-profile-nasadem">
                   {profile.nasadem_disclaimer}
                 </Text>
