@@ -77,7 +77,7 @@ pyvista>=0.43.0
 
 # Auth
 fastapi-users[sqlalchemy]>=13.0.0
-httpx-oauth>=0.16.0
+httpx-oauth>=0.17.0
 PyJWT[crypto]>=2.11.0,<3.0.0
 
 # Utils
