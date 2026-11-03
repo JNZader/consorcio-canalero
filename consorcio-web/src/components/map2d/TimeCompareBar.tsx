@@ -7,6 +7,10 @@ import {
   fetchAnnualSentinel,
   fetchJrcOccurrence,
   fetchJrcYear,
+  fetchMonthlySentinel,
+  MONTHS_ES,
+  monthOptions,
+  tileThumbnailUrl,
   type TimeProduct,
   yearOptions,
 } from '../../lib/api/timeLayers';
@@ -38,6 +42,8 @@ export function TimeCompareBar({ onViewModeChange }: TimeCompareBarProps) {
   const [product, setProduct] = useState<TimeProduct>('s2');
   const [beforeYear, setBeforeYear] = useState('2018');
   const [afterYear, setAfterYear] = useState(String(new Date().getFullYear()));
+  const [month, setMonth] = useState(1);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +63,25 @@ export function TimeCompareBar({ onViewModeChange }: TimeCompareBarProps) {
       setLeftImage(before);
       setRightImage(after);
       onViewModeChange('comparison');
+    } catch (err) {
+      setError(timeLayerErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showMonth(nextMonth: number) {
+    setMonth(nextMonth);
+    setBusy(true);
+    setError(null);
+    try {
+      const image = await fetchMonthlySentinel(Number(afterValue), nextMonth);
+      setSelectedImage(image);
+      onViewModeChange('single');
+      const preview = tileThumbnailUrl(image.tile_url);
+      if (preview) {
+        setThumbs((current) => ({ ...current, [`${afterValue}-${nextMonth}`]: preview }));
+      }
     } catch (err) {
       setError(timeLayerErrorMessage(err));
     } finally {
@@ -127,6 +152,57 @@ export function TimeCompareBar({ onViewModeChange }: TimeCompareBarProps) {
           </Button>
         ) : null}
       </Group>
+      {product === 's2' ? (
+        <div style={{ marginTop: 8 }}>
+          <Text size="xs" component="label" htmlFor="s2-month-slider">
+            Mes {MONTHS_ES[month - 1]} {afterValue}
+          </Text>
+          <input
+            id="s2-month-slider"
+            data-testid="s2-month-slider"
+            type="range"
+            min={1}
+            max={monthOptions(Number(afterValue)).length}
+            value={month}
+            disabled={busy}
+            onChange={(event) => {
+              void showMonth(Number(event.currentTarget.value));
+            }}
+            aria-valuetext={`${MONTHS_ES[month - 1]} ${afterValue}`}
+            style={{ width: '100%' }}
+          />
+          <Group gap={4} wrap="wrap" aria-label="Miniaturas del año">
+            {monthOptions(Number(afterValue)).map((item) => {
+              const src = thumbs[`${afterValue}-${item}`];
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  data-testid={`s2-month-${item}`}
+                  aria-pressed={item === month}
+                  onClick={() => void showMonth(item)}
+                  disabled={busy}
+                  style={{
+                    width: 44,
+                    border: item === month ? '2px solid #2563eb' : '1px solid #ccc',
+                    background: 'transparent',
+                    padding: 0,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {src ? (
+                    <img src={src} alt="" width={40} height={28} />
+                  ) : (
+                    <span style={{ display: 'block', fontSize: 10, padding: '6px 0' }}>
+                      {MONTHS_ES[item - 1]}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </Group>
+        </div>
+      ) : null}
       {error ? (
         <Text size="xs" c="red" mt={6} role="alert">
           {error}
