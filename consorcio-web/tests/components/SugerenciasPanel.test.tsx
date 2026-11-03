@@ -144,16 +144,8 @@ describe('SugerenciasPanel', () => {
     const modal = await screen.findByRole('dialog', { name: /detalle de sugerencia/i });
     expect(within(modal).getByText('Solicitamos limpieza por acumulacion de barro')).toBeInTheDocument();
 
-    const historyToggle = within(modal).getByRole('button', { name: /mostrar/i });
-    expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
-    expect(historyToggle).toHaveAttribute('aria-controls', 'suggestion-history-region');
-
-    await user.click(historyToggle);
-
-    expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
-    expect(
-      within(modal).getByRole('region', { name: /historial de gestión de la sugerencia/i })
-    ).toHaveAttribute('id', 'suggestion-history-region');
+    expect(within(modal).queryByText(/historial de gestión/i)).not.toBeInTheDocument();
+    expect(within(modal).queryByRole('button', { name: /mostrar/i })).not.toBeInTheDocument();
     expect(within(modal).queryByRole('button', { name: /eliminar/i })).not.toBeInTheDocument();
   });
 

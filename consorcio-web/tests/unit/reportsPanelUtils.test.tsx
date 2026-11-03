@@ -26,6 +26,15 @@ describe('reportsPanelUtils', () => {
     expect(result.filteredReports).toHaveLength(1);
     expect(result.pendingCount).toBe(1);
     expect(result.inReviewCount).toBe(1);
+
+    const withGlobalStats = filterReports(
+      [{ ...baseReport, estado: 'resuelto' }],
+      null,
+      '',
+      { pendiente: 12, en_revision: 8 }
+    );
+    expect(withGlobalStats.pendingCount).toBe(12);
+    expect(withGlobalStats.inReviewCount).toBe(8);
   });
 
   it('returns a friendly category label', () => {

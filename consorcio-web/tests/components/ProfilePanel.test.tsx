@@ -149,30 +149,30 @@ describe('ProfilePanel', () => {
       expect(saveBtn.length).toBeGreaterThan(0);
     });
 
-    it('should allow editing nombre field', async () => {
+    it('should allow editing nombre field and keep it empty when cleared', async () => {
       const user = userEvent.setup();
       renderWithMantine(<ProfilePanel />);
 
       const nombreInput = screen.getByLabelText(/Nombre completo/i) as HTMLInputElement;
-      const initialValue = nombreInput.value;
+      expect(nombreInput.value).toBe('Juan Perez');
       await user.clear(nombreInput);
-      await user.type(nombreInput, 'Carlos');
+      expect(nombreInput.value).toBe('');
 
-      // Input should have changed
-      expect(nombreInput.value).not.toBe(initialValue);
+      await user.type(nombreInput, 'Carlos');
+      expect(nombreInput.value).toBe('Carlos');
     });
 
-    it('should allow editing telefono field', async () => {
+    it('should allow editing telefono field and keep it empty when cleared', async () => {
       const user = userEvent.setup();
       renderWithMantine(<ProfilePanel />);
 
       const telefonoInput = screen.getByLabelText(/Tel[eé]fono/i) as HTMLInputElement;
-      const initialValue = telefonoInput.value;
+      expect(telefonoInput.value).toBe('5491112345678');
       await user.clear(telefonoInput);
-      await user.type(telefonoInput, '+549223334444');
+      expect(telefonoInput.value).toBe('');
 
-      // Input should have changed
-      expect(telefonoInput.value).not.toBe(initialValue);
+      await user.type(telefonoInput, '+549223334444');
+      expect(telefonoInput.value).toBe('+549223334444');
     });
 
     it('should submit profile form', async () => {

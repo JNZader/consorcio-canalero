@@ -37,15 +37,9 @@ import { logger } from '../../lib/logger';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import type { Report, ReportHistory } from '../../types';
 import { AuthenticatedImage } from '../shared/AuthenticatedImage';
+import { getStatusConfig, StatusBadge } from '../ui/StatusBadge';
 
 const PAGE_SIZE = 5;
-
-const STATUS_BADGE: Record<string, { color: string; label: string }> = {
-  pendiente: { color: 'yellow', label: 'Pendiente' },
-  en_revision: { color: 'blue', label: 'En revisión' },
-  resuelto: { color: 'green', label: 'Resuelto' },
-  descartado: { color: 'red', label: 'Descartado' },
-};
 
 const TIPO_LABEL: Record<string, string> = {
   alcantarilla_tapada: 'Alcantarilla tapada',
@@ -149,13 +143,7 @@ export function MyReportsSection() {
                         <Text fw={600} size="sm" truncate>
                           {TIPO_LABEL[report.tipo] || report.tipo}
                         </Text>
-                        <Badge
-                          color={STATUS_BADGE[report.estado]?.color || 'gray'}
-                          size="sm"
-                          variant="light"
-                        >
-                          {STATUS_BADGE[report.estado]?.label || report.estado}
-                        </Badge>
+                        <StatusBadge status={report.estado} size="sm" />
                       </Group>
                       <Text size="xs" c="dimmed">
                         Enviada el {formatDate(report.created_at, { includeTime: true })}
@@ -195,7 +183,6 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
     return <Modal opened={false} onClose={onClose} title="" />;
   }
   const historial: ReportHistory[] = report.historial ?? [];
-  const status = STATUS_BADGE[report.estado];
 
   return (
     <Modal
@@ -207,9 +194,7 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
     >
       <Stack gap="md">
         <Group gap="xs">
-          <Badge color={status?.color || 'gray'} variant="light" size="lg">
-            {status?.label || report.estado}
-          </Badge>
+          <StatusBadge status={report.estado} size="lg" />
           <Text size="xs" c="dimmed">
             Enviada el {formatDate(report.created_at, { includeTime: true })}
           </Text>
@@ -291,7 +276,7 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
             <Timeline active={historial.length - 1} bulletSize={18} lineWidth={2}>
               {historial.map((entry) => {
                 const stateLabel = entry.estado_nuevo
-                  ? STATUS_BADGE[entry.estado_nuevo]?.label || entry.estado_nuevo
+                  ? getStatusConfig(entry.estado_nuevo).label
                   : entry.accion;
                 return (
                   <Timeline.Item

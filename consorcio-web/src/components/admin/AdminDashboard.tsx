@@ -345,6 +345,8 @@ export default function AdminDashboard() {
                 onChange={setBasinsFile}
                 accept=".geojson,.json,application/geo+json,application/json"
                 placeholder="Seleccionar GeoJSON"
+                aria-label="Archivo GeoJSON de subcuencas a importar"
+                styles={{ placeholder: { color: '#495057' } }}
                 clearable
               />
               <Button onClick={handleImportBasins} loading={importingBasins} disabled={!basinsFile}>
@@ -366,6 +368,8 @@ export default function AdminDashboard() {
                 onChange={setApprovedZonesFile}
                 accept=".geojson,.json,application/geo+json,application/json"
                 placeholder="Seleccionar GeoJSON"
+                aria-label="Archivo GeoJSON de zonificación a importar"
+                styles={{ placeholder: { color: '#495057' } }}
                 clearable
               />
               <Button
@@ -394,7 +398,7 @@ export default function AdminDashboard() {
           <Group align="flex-end">
             <Button
               variant="filled"
-              color="indigo"
+              color="indigo.9"
               leftSection={<IconDownload size={18} />}
               onClick={handleExportBundle}
               loading={exportingBundle}
@@ -407,7 +411,9 @@ export default function AdminDashboard() {
               onChange={setBundleFile}
               accept=".zip,application/zip"
               placeholder="Seleccionar bundle ZIP"
+              aria-label="Seleccionar bundle ZIP a importar"
               clearable
+              styles={{ placeholder: { color: '#495057' } }}
               style={{ flex: 1, minWidth: 260 }}
             />
 

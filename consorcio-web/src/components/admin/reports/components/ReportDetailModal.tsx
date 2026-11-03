@@ -63,7 +63,7 @@ function gatherPhotoUrls(report: Report): ReportPhoto[] {
   return photos;
 }
 
-import { IconHistory } from '../../../ui/icons';
+import { IconHistory, IconMap } from '../../../ui/icons';
 import type { SeguimientoEntry } from '../reportsPanelTypes';
 
 export function ReportDetailModal({
@@ -101,7 +101,6 @@ export function ReportDetailModal({
       onClose={onClose}
       title="Detalle de Denuncia"
       size="lg"
-      aria-labelledby="modal-title-detail"
     >
       {selectedReport && (
         <Stack gap="md">
@@ -153,9 +152,25 @@ export function ReportDetailModal({
                 </Text>
               )}
               {selectedReport.latitud != null && selectedReport.longitud != null && (
-                <Text size="xs" c="gray.6">
-                  Coordenadas: {selectedReport.latitud}, {selectedReport.longitud}
-                </Text>
+                <Group gap="xs" align="center" mt={4}>
+                  <Text size="xs" c="gray.6">
+                    Coordenadas: {selectedReport.latitud}, {selectedReport.longitud}
+                  </Text>
+                  <Button
+                    component="a"
+                    variant="light"
+                    size="xs"
+                    leftSection={<IconMap size={14} aria-hidden="true" />}
+                    href={`/mapa?${new URLSearchParams({
+                      report: '1',
+                      lat: String(selectedReport.latitud),
+                      lng: String(selectedReport.longitud),
+                      zoom: '15',
+                    })}`}
+                  >
+                    Ver en el mapa
+                  </Button>
+                </Group>
               )}
             </div>
           )}

@@ -1,13 +1,13 @@
 import { Container, Paper, SimpleGrid } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCanales } from '../../../hooks/useCanales';
 import { apiFetch, type Sugerencia, type SugerenciasStats, sugerenciasApi } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
-import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
+import { useLiveRegion } from '../../ui/accessibility';
 import { IconBuilding, IconCalendar, IconCheck, IconClock, IconUsers } from '../../ui/icons';
 import { ProximaReunionSection } from './components/ProximaReunionSection';
 import { StatsCard } from './components/StatsCard';
@@ -15,7 +15,6 @@ import { SugerenciasFilters } from './components/SugerenciasFilters';
 import { SugerenciasTableContent } from './components/SugerenciasTableContent';
 import { SuggestionDetailModal } from './components/SuggestionDetailModal';
 import { ITEMS_PER_PAGE } from './constants';
-import type { SeguimientoEntry } from './sugerenciasPanelTypes';
 import { filterSugerenciasByQuery, getStatusBadge } from './sugerenciasPanelUtils';
 
 export default function SugerenciasPanel() {
@@ -40,7 +39,18 @@ export default function SugerenciasPanel() {
 
   const debouncedSetSearch = useDebouncedCallback((value: string) => {
     setSearchQuery(value);
+    setPage(1);
   }, 300);
+
+  const handleFilterEstadoChange = useCallback((value: string | null) => {
+    setFilterEstado(value);
+    setPage(1);
+  }, []);
+
+  const handleFilterTipoChange = useCallback((value: string | null) => {
+    setFilterTipo(value);
+    setPage(1);
+  }, []);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -56,10 +66,6 @@ export default function SugerenciasPanel() {
   const [agendarFecha, setAgendarFecha] = useState<Date | null>(null);
   const [agendando, setAgendando] = useState(false);
 
-  // Historial state
-  const [historial, setHistorial] = useState<SeguimientoEntry[]>([]);
-  const [loadingHistorial, setLoadingHistorial] = useState(false);
-  const [showHistorial, setShowHistorial] = useState(false);
   // Batch 5 (2026-04-20): migrated from `useWaterways` to `useCanales`. The
   // reference-map backdrop in `SuggestionDetailModal` now renders the 23
   // relevados from the Pilar Azul static dataset instead of the retired
@@ -83,7 +89,9 @@ export default function SugerenciasPanel() {
     [relevadosFC]
   );
 
-  useLiveRegion();
+  const { announce } = useLiveRegion();
+  const announceRef = useRef(announce);
+  announceRef.current = announce;
 
   // Load stats
   const loadStats = useCallback(async () => {
@@ -113,15 +121,18 @@ export default function SugerenciasPanel() {
 
   const loadSugerencias = useCallback(async () => {
     setLoading(true);
+    announceRef.current('Cargando sugerencias...');
     try {
       const data = await sugerenciasApi.getAll({
         page,
         limit: ITEMS_PER_PAGE,
         estado: filterEstado || undefined,
         tipo: filterTipo || undefined,
+        ...(searchQuery ? { search: searchQuery } : {}),
       });
       setSugerencias(data.items);
-      setTotalPages(Math.ceil(data.total / ITEMS_PER_PAGE));
+      setTotalPages(Math.max(1, Math.ceil(data.total / ITEMS_PER_PAGE)));
+      announceRef.current(`${data.items.length} sugerencias cargadas`);
     } catch (error) {
       logger.error('Error loading sugerencias:', error);
       notifications.show({
@@ -129,10 +140,11 @@ export default function SugerenciasPanel() {
         message: 'No se pudieron cargar las sugerencias',
         color: 'red',
       });
+      announceRef.current('No se pudieron cargar las sugerencias');
     } finally {
       setLoading(false);
     }
-  }, [page, filterEstado, filterTipo]);
+  }, [page, filterEstado, filterTipo, searchQuery]);
 
   // Load all data on mount
   useEffect(() => {
@@ -150,20 +162,6 @@ export default function SugerenciasPanel() {
     loadProximaReunion();
   }, [loadSugerencias, loadStats, loadProximaReunion]);
 
-  const loadHistory = async (_id: string) => {
-    // NOTE: the v2 backend does NOT expose a `/sugerencias/{id}/historial`
-    // endpoint and the `Sugerencia` model has no `historial` relationship
-    // either. The audit-log feature was retired from the schema; the
-    // operator's actions are tracked indirectly via `respuesta` and
-    // `fecha_reunion`. This stub keeps the modal's section in a stable
-    // empty state instead of firing a 404 every time a sugerencia opens.
-    // To restore: add a `SugerenciaHistorial` model + relationship +
-    // include it inside `GET /sugerencias/{id}` (the same shape we use
-    // for denuncias).
-    setLoadingHistorial(false);
-    setHistorial([]);
-  };
-
   const handleViewDetail = async (sug: Sugerencia) => {
     try {
       const full = await sugerenciasApi.get(sug.id).catch(() => sug);
@@ -177,9 +175,6 @@ export default function SugerenciasPanel() {
       setAdminNotes(merged.notas_internas ?? '');
       setPublicComment(merged.respuesta ?? '');
       setAgendarFecha(merged.fecha_reunion ? new Date(merged.fecha_reunion) : null);
-      setHistorial([]);
-      setShowHistorial(false);
-      loadHistory(merged.id);
       openDetail();
     } catch (error) {
       logger.error('Error loading sugerencia detail:', error);
@@ -213,10 +208,11 @@ export default function SugerenciasPanel() {
 
       notifications.show({
         title: 'Sugerencia actualizada',
-        message: 'El historial de gestión ha sido registrado',
+        message: 'Los cambios de la sugerencia fueron guardados correctamente',
         color: 'green',
         icon: <IconCheck size={16} />,
       });
+      announceRef.current('Sugerencia actualizada correctamente');
       closeDetail();
       refreshAll();
     } catch (error) {
@@ -226,6 +222,7 @@ export default function SugerenciasPanel() {
         message: 'No se pudo actualizar la sugerencia',
         color: 'red',
       });
+      announceRef.current('No se pudo actualizar la sugerencia');
     } finally {
       setUpdating(false);
     }
@@ -244,6 +241,7 @@ export default function SugerenciasPanel() {
         color: 'blue',
         icon: <IconCalendar size={16} />,
       });
+      announceRef.current(`Sugerencia agendada para el ${formatDate(fechaStr)}`);
       closeDetail();
       refreshAll();
     } catch (error) {
@@ -253,6 +251,7 @@ export default function SugerenciasPanel() {
         message: 'No se pudo agendar la sugerencia',
         color: 'red',
       });
+      announceRef.current('No se pudo agendar la sugerencia');
     } finally {
       setAgendando(false);
     }
@@ -270,87 +269,81 @@ export default function SugerenciasPanel() {
   }, [sugerencias, searchQuery]);
 
   return (
-    <LiveRegionProvider>
-      <Container size="xl" py="md">
-        {/* Stats Cards */}
-        <SimpleGrid cols={{ base: 2, sm: 4 }} mb="xl">
-          <StatsCard
-            label="Pendientes"
-            value={stats?.pendiente ?? 0}
-            color="yellow"
-            icon={IconClock}
-          />
-          <StatsCard
-            label="En Agenda"
-            value={stats?.en_agenda ?? 0}
-            color="blue"
-            icon={IconCalendar}
-          />
-          <StatsCard
-            label="Ciudadanas"
-            value={stats?.ciudadanas ?? 0}
-            color="cyan"
-            icon={IconUsers}
-          />
-          <StatsCard
-            label="Internas"
-            value={stats?.internas ?? 0}
-            color="violet"
-            icon={IconBuilding}
-          />
-        </SimpleGrid>
-
-        <ProximaReunionSection proximaReunion={proximaReunion} onViewDetail={handleViewDetail} />
-
-        <SugerenciasFilters
-          searchInputValue={searchInputValue}
-          onSearchInputChange={(value) => {
-            setSearchInputValue(value);
-            debouncedSetSearch(value);
-          }}
-          filterEstado={filterEstado}
-          setFilterEstado={setFilterEstado}
-          filterTipo={filterTipo}
-          setFilterTipo={setFilterTipo}
-          onRefresh={refreshAll}
+    <Container size="xl" py="md">
+      {/* Stats Cards */}
+      <SimpleGrid cols={{ base: 2, sm: 4 }} mb="xl">
+        <StatsCard
+          label="Pendientes"
+          value={stats?.pendiente ?? 0}
+          color="yellow"
+          icon={IconClock}
         />
-
-        {/* Table */}
-        <Paper shadow="sm" p="lg" radius="md">
-          <SugerenciasTableContent
-            loading={loading}
-            sugerencias={filteredSugerencias}
-            totalPages={totalPages}
-            page={page}
-            onPageChange={setPage}
-            onViewDetail={handleViewDetail}
-            getStatusBadge={getStatusBadge}
-          />
-        </Paper>
-
-        <SuggestionDetailModal
-          opened={detailOpened}
-          onClose={closeDetail}
-          selectedSugerencia={selectedSugerencia}
-          canales={canales}
-          historial={historial}
-          loadingHistorial={loadingHistorial}
-          showHistorial={showHistorial}
-          setShowHistorial={setShowHistorial}
-          newEstado={newEstado}
-          setNewEstado={setNewEstado}
-          publicComment={publicComment}
-          setPublicComment={setPublicComment}
-          adminNotes={adminNotes}
-          setAdminNotes={setAdminNotes}
-          agendarFecha={agendarFecha}
-          setAgendarFecha={setAgendarFecha}
-          onAgendar={handleAgendar}
-          agendando={agendando}
-          onUpdate={handleUpdate}
-          updating={updating}
+        <StatsCard
+          label="En Agenda"
+          value={stats?.en_agenda ?? 0}
+          color="blue"
+          icon={IconCalendar}
         />
-      </Container>
-    </LiveRegionProvider>
+        <StatsCard
+          label="Ciudadanas"
+          value={stats?.ciudadanas ?? 0}
+          color="cyan"
+          icon={IconUsers}
+        />
+        <StatsCard
+          label="Internas"
+          value={stats?.internas ?? 0}
+          color="violet"
+          icon={IconBuilding}
+        />
+      </SimpleGrid>
+
+      <ProximaReunionSection proximaReunion={proximaReunion} onViewDetail={handleViewDetail} />
+
+      <SugerenciasFilters
+        searchInputValue={searchInputValue}
+        onSearchInputChange={(value) => {
+          setSearchInputValue(value);
+          debouncedSetSearch(value);
+        }}
+        filterEstado={filterEstado}
+        setFilterEstado={handleFilterEstadoChange}
+        filterTipo={filterTipo}
+        setFilterTipo={handleFilterTipoChange}
+        onRefresh={refreshAll}
+      />
+
+      {/* Table */}
+      <Paper shadow="sm" p="lg" radius="md">
+        <SugerenciasTableContent
+          loading={loading}
+          sugerencias={filteredSugerencias}
+          totalPages={totalPages}
+          page={page}
+          onPageChange={setPage}
+          onViewDetail={handleViewDetail}
+          getStatusBadge={getStatusBadge}
+        />
+      </Paper>
+
+      <SuggestionDetailModal
+        opened={detailOpened}
+        onClose={closeDetail}
+        selectedSugerencia={selectedSugerencia}
+        canales={canales}
+        newEstado={newEstado}
+        setNewEstado={setNewEstado}
+        publicComment={publicComment}
+        setPublicComment={setPublicComment}
+        adminNotes={adminNotes}
+        setAdminNotes={setAdminNotes}
+        agendarFecha={agendarFecha}
+        setAgendarFecha={setAgendarFecha}
+        onAgendar={handleAgendar}
+        agendando={agendando}
+        onUpdate={handleUpdate}
+        updating={updating}
+      />
+    </Container>
   );
 }

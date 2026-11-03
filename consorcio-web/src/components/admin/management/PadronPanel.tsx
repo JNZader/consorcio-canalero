@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Button,
   Container,
   FileInput,
@@ -21,7 +22,7 @@ import { handleError } from '../../../lib/errorHandler';
 import { erroresUi } from '../../../lib/userFacingError';
 import { isValidCUIT } from '../../../lib/validators';
 import { useUserRole } from '../../../stores/authStore';
-import { IconPlus, IconSearch, IconUser } from '../../ui/icons';
+import { IconEdit, IconPlus, IconSearch, IconTrash, IconUser } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
 
 const PADRON_NOMBRE_ERROR_ID = 'padron-nombre-error';
@@ -54,6 +55,7 @@ export default function PadronPanel() {
   const [search, setSearch] = useState('');
 
   const [opened, { open, close }] = useDisclosure(false);
+  const [editingConsorcista, setEditingConsorcista] = useState<Consorcista | null>(null);
   const [importOpened, { open: openImport, close: closeImport }] = useDisclosure(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
@@ -98,25 +100,82 @@ export default function PadronPanel() {
     },
   });
 
-  const handleCreate = async (values: typeof form.values) => {
+  const handleOpenCreate = () => {
+    setEditingConsorcista(null);
+    form.reset();
+    open();
+  };
+
+  const handleOpenEdit = (consorcista: Consorcista) => {
+    setEditingConsorcista(consorcista);
+    form.setValues({
+      nombre: consorcista.nombre,
+      apellido: consorcista.apellido,
+      cuit: consorcista.cuit,
+      email: consorcista.email ?? '',
+      telefono: consorcista.telefono ?? '',
+    });
+    open();
+  };
+
+  const handleSave = async (values: typeof form.values) => {
     try {
-      await apiFetch('/padron', {
-        method: 'POST',
-        body: JSON.stringify(values),
-      });
-      notifications.show({
-        title: 'Consorcista registrado',
-        message: `${values.apellido}, ${values.nombre} fue agregado al padrón`,
-        color: 'green',
-      });
+      if (editingConsorcista) {
+        await apiFetch(`/padron/${editingConsorcista.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(values),
+        });
+        notifications.show({
+          title: 'Consorcista actualizado',
+          message: `${values.apellido}, ${values.nombre} fue actualizado en el padrón`,
+          color: 'green',
+        });
+      } else {
+        await apiFetch('/padron', {
+          method: 'POST',
+          body: JSON.stringify(values),
+        });
+        notifications.show({
+          title: 'Consorcista registrado',
+          message: `${values.apellido}, ${values.nombre} fue agregado al padrón`,
+          color: 'green',
+        });
+      }
       close();
+      setEditingConsorcista(null);
       fetchConsorcistas();
       form.reset();
     } catch (err) {
       handleError(err, {
         title: erroresUi.crearConsorcista.titulo,
         fallbackMessage: erroresUi.crearConsorcista.detalle,
-        context: 'PadronPanel.handleCreate',
+        context: 'PadronPanel.handleSave',
+      });
+    }
+  };
+
+  const handleDelete = async (consorcista: Consorcista) => {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      const confirmed = window.confirm(
+        `¿Eliminar al consorcista "${consorcista.apellido}, ${consorcista.nombre}"? Esta acción no se puede deshacer.`
+      );
+      if (!confirmed) return;
+    }
+    try {
+      await apiFetch(`/padron/${consorcista.id}`, {
+        method: 'DELETE',
+      });
+      notifications.show({
+        title: 'Consorcista eliminado',
+        message: `${consorcista.apellido}, ${consorcista.nombre} fue eliminado del padrón`,
+        color: 'green',
+      });
+      fetchConsorcistas();
+    } catch (err) {
+      handleError(err, {
+        title: erroresUi.cargarPadron.titulo,
+        fallbackMessage: erroresUi.cargarPadron.detalle,
+        context: 'PadronPanel.handleDelete',
       });
     }
   };
@@ -170,7 +229,7 @@ export default function PadronPanel() {
           <Title order={2}>Padrón de Consorcistas</Title>
           <Text c="dimmed">Administración de socios y datos del padrón</Text>
         </div>
-        <Button leftSection={<IconPlus size={18} />} onClick={open} color="blue">
+        <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate} color="blue">
           Nuevo Consorcista
         </Button>
         {canImportPadron && (
@@ -203,6 +262,9 @@ export default function PadronPanel() {
               <Table.Tr>
                 <Table.Th>Consorcista</Table.Th>
                 <Table.Th>CUIT</Table.Th>
+                <Table.Th>Email</Table.Th>
+                <Table.Th>Teléfono</Table.Th>
+                <Table.Th>Acciones</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -219,6 +281,36 @@ export default function PadronPanel() {
                   <Table.Td>
                     <Text size="sm">{c.cuit}</Text>
                   </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c={c.email ? undefined : 'dimmed'}>
+                      {c.email || '—'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c={c.telefono ? undefined : 'dimmed'}>
+                      {c.telefono || '—'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs" wrap="nowrap">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        aria-label={`Editar consorcista ${c.apellido}, ${c.nombre}`}
+                        onClick={() => handleOpenEdit(c)}
+                      >
+                        <IconEdit size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        aria-label={`Eliminar consorcista ${c.apellido}, ${c.nombre}`}
+                        onClick={() => void handleDelete(c)}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -226,9 +318,17 @@ export default function PadronPanel() {
         </Table.ScrollContainer>
       </Paper>
 
-      {/* Modal Nuevo Consorcista */}
-      <Modal opened={opened} onClose={close} title="Registrar Nuevo Consorcista" size="lg">
-        <form onSubmit={form.onSubmit(handleCreate)} noValidate>
+      {/* Modal Nuevo / Editar Consorcista */}
+      <Modal
+        opened={opened}
+        onClose={() => {
+          close();
+          setEditingConsorcista(null);
+        }}
+        title={editingConsorcista ? 'Editar Consorcista' : 'Registrar Nuevo Consorcista'}
+        size="lg"
+      >
+        <form onSubmit={form.onSubmit(handleSave)} noValidate>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <TextInput
               label="Nombre"

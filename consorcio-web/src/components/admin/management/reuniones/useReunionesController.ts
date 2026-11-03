@@ -85,9 +85,10 @@ export function useReunionesController() {
   const fetchReferrables = useCallback(async () => {
     setLoadingEntities(true);
     try {
-      const [reportsRaw, tramitesRaw] = await Promise.all([
+      const [reportsRaw, tramitesRaw, sugerenciasRaw] = await Promise.all([
         apiFetch<unknown>('/denuncias?limit=50'),
         apiFetch<unknown>('/tramites'),
+        apiFetch<unknown>('/sugerencias?limit=50').catch(() => []),
       ]);
 
       const reports = normalizeArrayResponse<{
@@ -100,8 +101,20 @@ export function useReunionesController() {
         titulo: string;
         numero_expediente?: string;
       }>(tramitesRaw);
+      const sugerencias = normalizeArrayResponse<{
+        id: string;
+        titulo: string;
+        estado?: string;
+        fecha_reunion?: string;
+      }>(sugerenciasRaw).filter(
+        (sugerencia) =>
+          !sugerencia.estado ||
+          sugerencia.estado === 'pendiente' ||
+          sugerencia.estado === 'revisada' ||
+          Boolean(sugerencia.fecha_reunion)
+      );
 
-      setAvailableEntities(buildReferrableOptions(reports, tramites));
+      setAvailableEntities(buildReferrableOptions(reports, tramites, sugerencias));
     } catch (err) {
       logger.error('Error fetching referrables:', err);
     } finally {

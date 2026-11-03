@@ -7,6 +7,7 @@ import {
   ADMIN_ACCOUNT_MENU_ITEMS,
   AdminLayoutContent,
 } from '../../src/components/admin/AdminLayout';
+import { useAuthStore } from '../../src/stores/authStore';
 
 const { navigateMock, notificationsShowMock, signOutMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
@@ -49,6 +50,7 @@ async function clickLogout() {
 
 describe('AdminLayout account navigation', () => {
   beforeEach(() => {
+    useAuthStore.setState({ user: null, profile: null });
     navigateMock.mockReset().mockResolvedValue(undefined);
     signOutMock.mockReset().mockResolvedValue({ success: true });
   });
@@ -109,5 +111,18 @@ describe('AdminLayout account navigation', () => {
       );
     });
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('hides Consultas normativas and displays Operador badge when user role is operador', () => {
+    useAuthStore.setState({
+      user: { id: 'op-1', email: 'op@example.com' },
+      profile: { id: 'op-1', email: 'op@example.com', nombre: 'Carlos Operador', rol: 'operador' },
+    });
+
+    renderLayout();
+
+    expect(screen.queryByRole('link', { name: /consultas normativas/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cuenta operador/i })).toBeInTheDocument();
+    expect(screen.getByText('Carlos Operador')).toBeInTheDocument();
   });
 });

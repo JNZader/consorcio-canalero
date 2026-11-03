@@ -19,7 +19,8 @@ export function normalizeArrayResponse<T>(payload: unknown): T[] {
 
 export function buildReferrableOptions(
   reports: Array<{ id: string; tipo: string; ubicacion_texto?: string }>,
-  tramites: Array<{ id: string; titulo: string; numero_expediente?: string }>
+  tramites: Array<{ id: string; titulo: string; numero_expediente?: string }>,
+  sugerencias: Array<{ id: string; titulo: string; estado?: string; fecha_reunion?: string }> = []
 ): EntityOption[] {
   return [
     ...reports.map((report) => ({
@@ -33,6 +34,12 @@ export function buildReferrableOptions(
       label: `${tramite.titulo} (${tramite.numero_expediente || 'S/N'})`,
       group: 'Trámites',
       type: 'tramite',
+    })),
+    ...sugerencias.map((sugerencia) => ({
+      value: sugerencia.id,
+      label: `${sugerencia.titulo}${sugerencia.fecha_reunion ? ` (${sugerencia.fecha_reunion})` : ''}`,
+      group: 'Sugerencias',
+      type: 'sugerencia',
     })),
   ];
 }
@@ -51,6 +58,7 @@ export function buildAgendaReferences(referencias: string[], availableEntities: 
 export function getAgendaReferenceColor(entidadTipo: string) {
   if (entidadTipo === 'reporte') return 'red';
   if (entidadTipo === 'tramite') return 'blue';
+  if (entidadTipo === 'sugerencia') return 'violet';
   if (entidadTipo === 'infraestructura') return 'green';
   return 'gray';
 }

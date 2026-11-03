@@ -1,15 +1,10 @@
-import { Badge } from '@mantine/core';
 import type { ReactNode } from 'react';
 import type { Sugerencia } from '../../../lib/api';
-import { CATEGORIA_OPTIONS, ESTADO_OPTIONS } from './constants';
+import { StatusBadge } from '../../ui/StatusBadge';
+import { CATEGORIA_OPTIONS } from './constants';
 
 export function getStatusBadge(status: string): ReactNode {
-  const option = ESTADO_OPTIONS.find((o) => o.value === status);
-  return (
-    <Badge color={option?.color || 'gray'} variant="light">
-      {option?.label || status}
-    </Badge>
-  );
+  return <StatusBadge status={status} />;
 }
 
 export function getCategoriaLabel(categoria?: string | null): string {

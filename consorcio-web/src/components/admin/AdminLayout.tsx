@@ -16,6 +16,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { signOut } from '../../lib/auth';
 import { consumeLocalLogoutWarning } from '../../lib/auth/storage';
+import { type UserRole, useAuthStore, useUserRole } from '../../stores/authStore';
 import ThemeToggle from '../ThemeToggle';
 import {
   IconArrowLeft,
@@ -33,8 +34,20 @@ import {
   IconUsers,
 } from '../ui/icons';
 
+interface NavItem {
+  label: string;
+  to: string;
+  icon: typeof IconChartBar;
+  roles?: ReadonlyArray<UserRole>;
+}
+
+interface NavSection {
+  label: string;
+  items: ReadonlyArray<NavItem>;
+}
+
 // Navigation sections
-const NAV_SECTIONS = [
+const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   {
     label: 'Análisis Técnico',
     items: [
@@ -52,11 +65,13 @@ const NAV_SECTIONS = [
       { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
       { label: 'Padrón', to: '/admin/padron', icon: IconUser },
       { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
-      // U8: the mailbox of legal consultations. Listed here because a route with
-      // no entry point is a page nobody reaches — the hidden page was never the
-      // access boundary anyway (the server's `require_admin` is), so hiding the
-      // link would buy no security and cost the only way in.
-      { label: 'Consultas normativas', to: '/admin/conocimiento', icon: IconInbox },
+      // U8: the mailbox of legal consultations. Restricted to admin role matching ConocimientoPanel.
+      {
+        label: 'Consultas normativas',
+        to: '/admin/conocimiento',
+        icon: IconInbox,
+        roles: ['admin'],
+      },
     ],
   },
 ];
@@ -79,6 +94,26 @@ interface AdminLayoutProps {
 export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLayoutProps) {
   const [opened, setOpened] = useState(false);
   const navigate = useNavigate();
+  const profile = useAuthStore((s) => s.profile);
+  const userRole = useUserRole();
+  const effectiveRole: UserRole = userRole ?? 'operador';
+  const roleLabel =
+    userRole === 'operador'
+      ? 'Operador'
+      : userRole === 'admin'
+        ? 'Administrador'
+        : 'Admin';
+  const displayName = profile?.nombre || roleLabel;
+  const avatarInitials = profile?.nombre
+    ? profile.nombre
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : userRole === 'operador'
+      ? 'O'
+      : 'A';
 
   useEffect(() => {
     setOpened(false);
@@ -147,7 +182,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                     Consorcio Canalero
                   </Text>
                   <Text size="xs" c="gray.6" visibleFrom="sm">
-                    Admin
+                    {roleLabel}
                   </Text>
                 </Group>
               </UnstyledButton>
@@ -159,7 +194,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
               <Menu shadow="lg" width={220} position="bottom-end">
                 <Menu.Target>
                   <UnstyledButton
-                    aria-label="Cuenta Admin"
+                    aria-label={`Cuenta ${roleLabel}`}
                     style={{
                       padding: 'var(--mantine-spacing-xs) var(--mantine-spacing-sm)',
                       borderRadius: 'var(--mantine-radius-md)',
@@ -173,11 +208,11 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                         variant="gradient"
                         gradient={{ from: 'blue.6', to: 'cyan.5', deg: 135 }}
                       >
-                        A
+                        {avatarInitials}
                       </Avatar>
                       <Box visibleFrom="sm">
                         <Text size="sm" fw={500}>
-                          Admin
+                          {displayName}
                         </Text>
                       </Box>
                     </Group>
@@ -226,26 +261,28 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
               <Text size="xs" fw={700} c="dimmed" tt="uppercase" px="sm" mb={4}>
                 {section.label}
               </Text>
-              {section.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  component={Link}
-                  to={item.to}
-                  label={
-                    <Text size="sm" fw={currentPath === item.to ? 600 : 400}>
-                      {item.label}
-                    </Text>
-                  }
-                  leftSection={<item.icon size={20} />}
-                  active={currentPath === item.to}
-                  mb="xs"
-                  style={{
-                    borderRadius: 'var(--mantine-radius-md)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  variant={currentPath === item.to ? 'light' : 'subtle'}
-                />
-              ))}
+              {section.items
+                .filter((item) => !item.roles || item.roles.includes(effectiveRole))
+                .map((item) => (
+                  <NavLink
+                    key={item.to}
+                    component={Link}
+                    to={item.to}
+                    label={
+                      <Text size="sm" fw={currentPath === item.to ? 600 : 400}>
+                        {item.label}
+                      </Text>
+                    }
+                    leftSection={<item.icon size={20} />}
+                    active={currentPath === item.to}
+                    mb="xs"
+                    style={{
+                      borderRadius: 'var(--mantine-radius-md)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    variant={currentPath === item.to ? 'light' : 'subtle'}
+                  />
+                ))}
             </Box>
           ))}
         </AppShell.Section>

@@ -132,6 +132,8 @@ export const sugerenciasApi = {
       limit?: number;
       tipo?: string;
       estado?: string;
+      categoria?: string;
+      search?: string;
       prioridad?: string;
     } = {}
   ): Promise<{ items: Sugerencia[]; total: number; page: number; limit: number }> => {
@@ -140,6 +142,8 @@ export const sugerenciasApi = {
     if (params.limit) searchParams.set('limit', params.limit.toString());
     if (params.tipo) searchParams.set('tipo', params.tipo);
     if (params.estado) searchParams.set('estado', params.estado);
+    if (params.categoria) searchParams.set('categoria', params.categoria);
+    if (params.search) searchParams.set('search', params.search);
     if (params.prioridad) searchParams.set('prioridad', params.prioridad);
 
     return apiFetch(`/sugerencias?${searchParams.toString()}`);

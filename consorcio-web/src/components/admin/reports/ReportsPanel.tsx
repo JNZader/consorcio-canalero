@@ -5,13 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
-import { LiveRegionProvider, useLiveRegion } from '../../ui/accessibility';
+import { useLiveRegion } from '../../ui/accessibility';
 import { ReportDetailModal } from './components/ReportDetailModal';
 import { ReportsFilters } from './components/ReportsFilters';
 import { ReportsTableContent } from './components/ReportsTableContent';
 import { ITEMS_PER_PAGE } from './constants';
 import type { SeguimientoEntry } from './reportsPanelTypes';
-import { filterReports, getStatusBadge } from './reportsPanelUtils';
+import {
+  filterReports,
+  getStatusBadge,
+  type ReportStatusCounts,
+} from './reportsPanelUtils';
 
 export default function ReportsPanel() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -26,10 +30,12 @@ export default function ReportsPanel() {
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInputValue, setSearchInputValue] = useState('');
+  const [globalStats, setGlobalStats] = useState<ReportStatusCounts | null>(null);
 
-  // Debounced search to avoid excessive API calls
+  // Debounced search to avoid excessive API calls; resets pagination to page 1
   const debouncedSetSearch = useDebouncedCallback((value: string) => {
     setSearchQuery(value);
+    setPage(1);
   }, 300);
 
   // Pagination
@@ -48,13 +54,49 @@ export default function ReportsPanel() {
   const announceRef = useRef(announce);
   announceRef.current = announce;
 
+  const handleFilterStatusChange = useCallback((value: string | null) => {
+    setFilterStatus(value);
+    setPage(1);
+  }, []);
+
+  const handleFilterCategoryChange = useCallback((value: string | null) => {
+    setFilterCategory(value);
+    setPage(1);
+  }, []);
+
   const loadReports = useCallback(async () => {
     setLoading(true);
     announceRef.current('Cargando reportes...');
     try {
-      const data = await reportsApi.getAll(page, ITEMS_PER_PAGE, filterStatus || undefined);
+      const getStatsFn = (reportsApi as { getStats?: () => Promise<ReportStatusCounts> }).getStats;
+      const [data, statsResponse] = await Promise.all([
+        reportsApi.getAll(
+          page,
+          ITEMS_PER_PAGE,
+          filterStatus || undefined,
+          filterCategory || undefined,
+          searchQuery || undefined
+        ),
+        typeof getStatsFn === 'function' ? getStatsFn().catch(() => null) : Promise.resolve(null),
+      ]);
       setReports(data.items);
-      setTotalPages(Math.ceil(data.total / ITEMS_PER_PAGE));
+      setTotalPages(Math.max(1, Math.ceil(data.total / ITEMS_PER_PAGE)));
+      if (
+        statsResponse &&
+        typeof statsResponse.pendiente === 'number' &&
+        typeof statsResponse.en_revision === 'number'
+      ) {
+        setGlobalStats({
+          pendiente: statsResponse.pendiente,
+          en_revision: statsResponse.en_revision,
+        });
+      } else if (!filterStatus && !filterCategory && !searchQuery) {
+        const unfilteredCounts = filterReports(data.items, null, '');
+        setGlobalStats({
+          pendiente: unfilteredCounts.pendingCount,
+          en_revision: unfilteredCounts.inReviewCount,
+        });
+      }
       announceRef.current(`${data.items.length} reportes cargados`);
     } catch (error) {
       logger.error('Error loading reports:', error);
@@ -67,7 +109,7 @@ export default function ReportsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [page, filterStatus]);
+  }, [page, filterStatus, filterCategory, searchQuery]);
 
   useEffect(() => {
     loadReports();
@@ -156,65 +198,63 @@ export default function ReportsPanel() {
 
   // Memoized filtering and stats calculation (single pass)
   const { filteredReports, pendingCount, inReviewCount } = useMemo(() => {
-    return filterReports(reports, filterCategory, searchQuery);
-  }, [reports, filterCategory, searchQuery]);
+    return filterReports(reports, filterCategory, searchQuery, globalStats);
+  }, [reports, filterCategory, searchQuery, globalStats]);
 
   return (
-    <LiveRegionProvider>
-      <Container size="xl" py="md">
-        {/* El titulo vive en el contenedor (`ParticipacionPanel`); aca solo
-            quedan los contadores propios de la bandeja de denuncias. */}
-        <Group justify="flex-end" mb="md">
-          <Badge size="lg" color="yellow" variant="light">
-            {pendingCount} pendientes
-          </Badge>
-          <Badge size="lg" color="blue" variant="light">
-            {inReviewCount} en revision
-          </Badge>
-        </Group>
+    <Container size="xl" py="md">
+      {/* El titulo vive en el contenedor (`ParticipacionPanel`); aca solo
+          quedan los contadores propios de la bandeja de denuncias. */}
+      <Group justify="flex-end" mb="md">
+        <Badge size="lg" color="yellow" variant="light" styles={{ label: { color: '#7a4100' } }}>
+          {pendingCount} pendientes
+        </Badge>
+        <Badge size="lg" color="blue" variant="light">
+          {inReviewCount} en revision
+        </Badge>
+      </Group>
 
-        <ReportsFilters
-          searchInputValue={searchInputValue}
-          onSearchInputChange={(value) => {
-            setSearchInputValue(value);
-            debouncedSetSearch(value);
-          }}
-          filterStatus={filterStatus}
-          setFilterStatus={setFilterStatus}
-          filterCategory={filterCategory}
-          setFilterCategory={setFilterCategory}
-          onRefresh={loadReports}
+      <ReportsFilters
+        searchInputValue={searchInputValue}
+        onSearchInputChange={(value) => {
+          setSearchInputValue(value);
+          debouncedSetSearch(value);
+        }}
+        filterStatus={filterStatus}
+        setFilterStatus={handleFilterStatusChange}
+        filterCategory={filterCategory}
+        setFilterCategory={handleFilterCategoryChange}
+        onRefresh={loadReports}
+      />
+
+      {/* Reports Table */}
+      <Paper shadow="sm" p="lg" radius="md">
+        <ReportsTableContent
+          loading={loading}
+          filteredReports={filteredReports}
+          totalPages={totalPages}
+          page={page}
+          onPageChange={setPage}
+          onViewDetail={handleViewDetail}
+          getStatusBadge={getStatusBadge}
         />
+      </Paper>
 
-        {/* Reports Table */}
-        <Paper shadow="sm" p="lg" radius="md">
-          <ReportsTableContent
-            loading={loading}
-            filteredReports={filteredReports}
-            totalPages={totalPages}
-            page={page}
-            onPageChange={setPage}
-            onViewDetail={handleViewDetail}
-            getStatusBadge={getStatusBadge}
-          />
-        </Paper>
-
-        <ReportDetailModal
-          opened={detailOpened}
-          onClose={closeDetail}
-          selectedReport={selectedReport}
-          history={history}
-          loadingHistory={loadingHistory}
-          newStatus={newStatus}
-          setNewStatus={setNewStatus}
-          publicComment={publicComment}
-          setPublicComment={setPublicComment}
-          adminNotes={adminNotes}
-          setAdminNotes={setAdminNotes}
-          onUpdate={handleUpdateStatus}
-          updating={updating}
-        />
-      </Container>
-    </LiveRegionProvider>
+      <ReportDetailModal
+        opened={detailOpened}
+        onClose={closeDetail}
+        selectedReport={selectedReport}
+        history={history}
+        loadingHistory={loadingHistory}
+        newStatus={newStatus}
+        setNewStatus={setNewStatus}
+        publicComment={publicComment}
+        setPublicComment={setPublicComment}
+        adminNotes={adminNotes}
+        setAdminNotes={setAdminNotes}
+        onUpdate={handleUpdateStatus}
+        updating={updating}
+      />
+    </Container>
   );
 }

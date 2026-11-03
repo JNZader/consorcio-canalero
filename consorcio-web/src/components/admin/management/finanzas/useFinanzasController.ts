@@ -49,9 +49,18 @@ export function useFinanzasController() {
     },
   });
 
-  const editCategoryForm = useForm({
-    initialValues: { categoria: '' },
-    validate: { categoria: validateCategoria },
+  const editCategoryForm = useForm<{
+    categoria: string;
+    descripcion?: string;
+    monto?: number;
+    fecha?: string;
+  }>({
+    initialValues: { categoria: '', descripcion: '', monto: 0, fecha: '' },
+    validate: {
+      categoria: validateCategoria,
+      descripcion: (val) => (!val ? 'Descripción requerida' : validateDescripcion(val)),
+      monto: (val) => (val === undefined || val <= 0 ? 'El monto debe ser mayor a 0' : validateMonto(val)),
+    },
   });
 
   const ingresoForm = useForm({
@@ -120,7 +129,12 @@ export function useFinanzasController() {
 
   const handleOpenEditCategory = (gasto: Gasto) => {
     setEditingGasto(gasto);
-    editCategoryForm.setFieldValue('categoria', gasto.categoria);
+    editCategoryForm.setValues({
+      categoria: gasto.categoria,
+      descripcion: gasto.descripcion,
+      monto: gasto.monto,
+      fecha: gasto.fecha,
+    });
     editGastoModal.open();
   };
 
@@ -128,9 +142,20 @@ export function useFinanzasController() {
     if (!editingGasto) return;
     setSubmitting(true);
     try {
+      const payload: Record<string, unknown> = { categoria: values.categoria };
+      if (values.descripcion !== undefined && values.descripcion !== editingGasto.descripcion) {
+        payload.descripcion = values.descripcion;
+      }
+      if (values.monto !== undefined && values.monto !== editingGasto.monto) {
+        payload.monto = values.monto;
+      }
+      if (values.fecha !== undefined && values.fecha !== editingGasto.fecha) {
+        payload.fecha = values.fecha;
+      }
+
       await apiFetch(`/finanzas/gastos/${editingGasto.id}`, {
         method: 'PATCH',
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
       });
       editGastoModal.close();
       setEditingGasto(null);
