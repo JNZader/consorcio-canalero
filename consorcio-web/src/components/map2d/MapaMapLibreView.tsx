@@ -11,6 +11,7 @@ import type {
   Geometry,
   LineString,
   MultiLineString,
+  Polygon,
 } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import {
@@ -44,6 +45,8 @@ import {
 import { VisuallyHidden } from '../ui/accessibility/primitives';
 import { marksFromRoadFlow } from './canalProfile';
 import { culvertPoints } from './profileBoundaryCrossings';
+import { savePersonalMeasurement } from './measurement/personalMeasurements';
+import { usePersonalMeasurementsLayer } from './measurement/usePersonalMeasurementsLayer';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
 import { InfoPanel } from './InfoPanel';
@@ -133,6 +136,8 @@ export interface MapaMapLibreViewProps {
   readonly handleSliderPointerDown: (event: ReactPointerEvent) => void;
   readonly handleStartMeasureArea: () => void;
   readonly handleStartMeasureDistance: () => void;
+  readonly undoMeasurement?: () => void;
+  readonly updateMeasurement?: (id: string, geometry: LineString | Polygon) => void;
   readonly hasApprovedZones: boolean;
   readonly hasComparison: boolean;
   readonly hasSingleImage: boolean;
@@ -300,6 +305,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     handleSliderPointerDown,
     handleStartMeasureArea,
     handleStartMeasureDistance,
+    undoMeasurement,
+    updateMeasurement,
     hasApprovedZones,
     hasComparison,
     hasSingleImage,
@@ -389,6 +396,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   const [profileSamples, setProfileSamples] = useState<readonly ProfileChartRow[]>([]);
   const [coarseSamples, setCoarseSamples] = useState<readonly ProfileChartRow[] | null>(null);
   const [mapCursorDistance, setMapCursorDistance] = useState<number | null>(null);
+  const [personalRevision, setPersonalRevision] = useState(0);
+  usePersonalMeasurementsLayer(mapRef, mapReady, personalRevision);
   const draftKey = measurementDraftLine
     ? `${measurementDraftLine.coordinates.length}:${measurementDraftLine.coordinates.at(-1)?.join(',') ?? ''}`
     : '';
@@ -627,6 +636,13 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onStartArea={handleStartMeasureArea}
               onClear={clearMeasurements}
               onCancel={cancelMeasurement}
+              onUndo={undoMeasurement}
+              onSavePersonal={() => {
+                const last = measurementState.measurements.at(-1);
+                if (!last) return;
+                savePersonalMeasurement({ id: last.id, kind: last.kind, geometry: last.geometry });
+                setPersonalRevision((value) => value + 1);
+              }}
               fichaDrawActive={isFichaDrawSession}
               fichaCanalActive={isFichaCanal}
               fichaMultiSelectActive={fichaInteraction.state.multiSelect}
@@ -678,7 +694,11 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 coarseSamples={coarseSamples}
               />
             ) : null}
-            <MeasurementShapes map={measurementMap} measurements={measurementState.measurements} />
+            <MeasurementShapes
+              map={measurementMap}
+              measurements={measurementState.measurements}
+              onMoveVertex={updateMeasurement}
+            />
 
             {/* Ficha free-draw (A5): DrawControl is mounted ONLY while drawing so it
               never coexists with the measurement MapboxDraw (shared-slot bug). A

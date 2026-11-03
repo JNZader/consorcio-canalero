@@ -429,7 +429,7 @@ describe('useMeasurement', () => {
       features: [buildLineFeature()],
     });
     act(() => handlers.get('draw.render')?.[0]?.({}));
-    expect(result.current.liveLabel).toBe('123 m');
+    expect(result.current.liveLabel).toMatch(/^123 m · rumbo \d+°$/);
     expect(result.current.draftLine).toBeNull();
     await waitFor(() => expect(result.current.draftLine?.type).toBe('LineString'));
   });
