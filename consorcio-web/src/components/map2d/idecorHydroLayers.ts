@@ -1,31 +1,34 @@
 /**
- * IDECOR hydro overlays served by Martin once `scripts/sql/idecor_hidrografia.sql`
- * has been applied and the ETL has loaded rows. Empty views draw nothing.
+ * IDECOR hydro overlays served as static GeoJSON assets.
  */
 
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { getMartinTileUrl, MARTIN_SOURCES } from '../../hooks/useMartinLayers';
+import { MARTIN_SOURCES } from '../../hooks/useMartinLayers';
 import { setLayerVisibility } from './map2dUtils';
 
 export const IDECOR_HYDRO_LAYERS = [
   {
     id: 'idecor_consorcios',
     table: 'vt_idecor_consorcios',
+    geojsonUrl: '/capas/idecor/consorcios.geojson',
     kind: 'fill',
   },
   {
     id: 'idecor_cursos',
     table: 'vt_idecor_cursos',
+    geojsonUrl: '/capas/idecor/cursos.geojson',
     kind: 'line',
   },
   {
     id: 'idecor_cuencas',
     table: 'vt_idecor_cuencas',
+    geojsonUrl: '/capas/idecor/cuencas.geojson',
     kind: 'fill',
   },
   {
     id: 'idecor_canales_riego',
     table: 'vt_idecor_canales_riego',
+    geojsonUrl: '/capas/idecor/canales_riego.geojson',
     kind: 'line',
   },
 ] as const;
@@ -52,10 +55,8 @@ export function syncIdecorHydroLayers(
     if (!style) continue;
     if (!map.getSource(layer.id)) {
       map.addSource(layer.id, {
-        type: 'vector',
-        tiles: [getMartinTileUrl(layer.table)],
-        minzoom: 0,
-        maxzoom: 16,
+        type: 'geojson',
+        data: layer.geojsonUrl,
       });
     }
     const lineId = `${layer.id}-line`;
@@ -65,7 +66,6 @@ export function syncIdecorHydroLayers(
         id: fillId,
         type: 'fill',
         source: layer.id,
-        'source-layer': layer.table,
         paint: {
           'fill-color': style.fillColor,
           'fill-opacity': style.fillOpacity,
@@ -77,7 +77,6 @@ export function syncIdecorHydroLayers(
         id: lineId,
         type: 'line',
         source: layer.id,
-        'source-layer': layer.table,
         paint: {
           'line-color': style.color,
           'line-width': style.weight,

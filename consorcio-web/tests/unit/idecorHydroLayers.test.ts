@@ -5,24 +5,29 @@ import {
   IDECOR_HYDRO_LAYERS,
   syncIdecorHydroLayers,
 } from '../../src/components/map2d/idecorHydroLayers';
-import { getMartinTileUrl } from '../../src/hooks/useMartinLayers';
+
+interface FakeSource {
+  type: string;
+  data?: string;
+  tiles?: string[];
+}
 
 interface FakeLayer {
   id: string;
   type: string;
   source: string;
-  'source-layer': string;
+  'source-layer'?: string;
   paint: Record<string, unknown>;
   visibility: 'visible' | 'none';
 }
 
 function fakeMap() {
-  const sources = new Map<string, { tiles: string[] }>();
+  const sources = new Map<string, FakeSource>();
   const layers = new Map<string, FakeLayer>();
   let sourceAdds = 0;
   const map = {
     getSource: (id: string) => sources.get(id),
-    addSource: (id: string, spec: { tiles: string[] }) => {
+    addSource: (id: string, spec: FakeSource) => {
       sourceAdds += 1;
       sources.set(id, spec);
     },
@@ -58,13 +63,14 @@ describe('syncIdecorHydroLayers', () => {
     ).not.toThrow();
   });
 
-  it('adds Martin sources and keeps every overlay hidden until its toggle is on', () => {
+  it('adds GeoJSON sources and keeps every overlay hidden until its toggle is on', () => {
     const { map, sources, layers } = fakeMap();
     syncIdecorHydroLayers(map, {});
 
     for (const layer of IDECOR_HYDRO_LAYERS) {
-      expect(sources.get(layer.id)?.tiles).toEqual([getMartinTileUrl(layer.table)]);
-      expect(layers.get(`${layer.id}-line`)?.['source-layer']).toBe(layer.table);
+      expect(sources.get(layer.id)?.type).toBe('geojson');
+      expect(sources.get(layer.id)?.data).toBe(layer.geojsonUrl);
+      expect(layers.get(`${layer.id}-line`)?.source).toBe(layer.id);
       expect(layers.get(`${layer.id}-line`)?.visibility).toBe('none');
       if (layer.kind === 'fill') {
         expect(layers.get(`${layer.id}-fill`)?.visibility).toBe('none');

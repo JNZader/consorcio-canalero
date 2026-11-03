@@ -21,7 +21,6 @@ import {
   type SetStateAction,
   Suspense,
   useCallback,
-  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -46,7 +45,6 @@ import {
 } from '../shared/canalesGrouping';
 import { VisuallyHidden } from '../ui/accessibility/primitives';
 import { marksFromRoadFlow } from './canalProfile';
-import { coarseProfile, terrainTileReader } from './coarseDem';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
 import type { HazardBasinOption } from './hazardControls.types';
@@ -332,7 +330,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     elevationProfileHover,
     mapReady,
     mapRef,
-    measurementDraftLine,
     measurementLiveLabel,
     measurementMap,
     measurementState,
@@ -399,39 +396,21 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     title: string;
     flowDirection: 'digitizado' | 'inverso' | null;
   } | null>(null);
-  const [dismissedDraftKey, setDismissedDraftKey] = useState<string | null>(null);
   const [profileSamples, setProfileSamples] = useState<readonly ProfileChartRow[]>([]);
-  const [coarseSamples, setCoarseSamples] = useState<readonly ProfileChartRow[] | null>(null);
   const [mapCursorDistance, setMapCursorDistance] = useState<number | null>(null);
   const [personalRevision, setPersonalRevision] = useState(0);
   const [personalVisible, setPersonalVisible] = useState(true);
   const savedPersonalMeasurementsCount =
     personalRevision >= 0 ? readPersonalMeasurements().length : 0;
   usePersonalMeasurementsLayer(mapRef, mapReady, personalRevision, personalVisible);
-  const draftKey = measurementDraftLine
-    ? `${measurementDraftLine.coordinates.length}:${measurementDraftLine.coordinates.at(-1)?.join(',') ?? ''}`
-    : '';
-  const liveDraft =
-    measurementDraftLine != null && dismissedDraftKey !== draftKey ? measurementDraftLine : null;
-  const dockGeometry = pinnedProfile?.geometry ?? liveDraft;
+
+  const dockGeometry = pinnedProfile?.geometry ?? null;
   const dockTitle = pinnedProfile?.title ?? 'Perfil de elevación';
-  const dockEstimate = pinnedProfile == null && dockGeometry != null;
+  const dockEstimate = false;
   const onProfileSamples = useCallback((rows: readonly ProfileChartRow[]) => {
     setProfileSamples(rows);
   }, []);
-  useEffect(() => {
-    if (!liveDraft || !dockEstimate || !hillshadeTileUrl?.includes('{z}')) {
-      setCoarseSamples(null);
-      return;
-    }
-    let cancel = false;
-    void coarseProfile(liveDraft, terrainTileReader(hillshadeTileUrl)).then((rows) => {
-      if (!cancel) setCoarseSamples(rows as ProfileChartRow[]);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [dockEstimate, hillshadeTileUrl, liveDraft]);
+
   useSlopeColoredLine({ mapRef, mapReady, samples: profileSamples });
   useMapProfileCursor({
     map: measurementMap,
@@ -451,11 +430,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     setMapCursorDistance(null);
     setElevationProfileHover(null);
     setElevationProfileRange(null);
-    if (pinnedProfile) {
-      setPinnedProfile(null);
-      return;
-    }
-    setDismissedDraftKey(draftKey);
+    setPinnedProfile(null);
   }
   async function deleteSelectedPunto(id: string) {
     try {
@@ -679,7 +654,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 crossings={marksFromRoadFlow(roadFlow.crossings.data)}
                 parcelFeatures={parcelFeatures}
                 culverts={culvertPoints(puntosInteres.collection)}
-                coarseSamples={coarseSamples}
               />
             ) : null}
             <MeasurementShapes

@@ -251,6 +251,10 @@ export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[
     `${SOURCE_IDS.BASINS}-fill`,
     `${SOURCE_IDS.APPROVED_ZONES}-fill`,
     `${SOURCE_IDS.MARTIN_PUNTOS}-circle`,
+    'idecor_consorcios-fill',
+    'idecor_cursos-line',
+    'idecor_cuencas-fill',
+    'idecor_canales_riego-line',
   ];
 }
 
