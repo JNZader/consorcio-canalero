@@ -8,13 +8,14 @@ import {
   Paper,
   Progress,
   SimpleGrid,
+  Skeleton,
   Stack,
   Table,
   Text,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
 import { API_URL, getAuthToken } from '../../lib/api';
 import { withBasePath } from '../../lib/basePath';
@@ -27,8 +28,11 @@ import { IconDownload } from '../ui/icons';
 import { LoadingState } from '../ui/LoadingState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { createDashboardJsonExport } from './adminDashboardExport';
-import { DashboardEstadisticas } from './management/DashboardEstadisticas';
 import { PilarVerdeWidgetConnected } from './pilarVerdeWidget/PilarVerdeWidget';
+
+const DashboardEstadisticas = lazy(() =>
+  import('./management/DashboardEstadisticas').then((m) => ({ default: m.DashboardEstadisticas }))
+);
 
 // Nombres legibles de cuencas (fallback)
 const DEFAULT_CUENCA_NAMES: Record<string, string> = {
@@ -316,7 +320,9 @@ export default function AdminDashboard() {
       </Group>
 
       {/* Componente de Visualizacion Avanzada */}
-      <DashboardEstadisticas />
+      <Suspense fallback={<Skeleton height={200} radius="md" />}>
+        <DashboardEstadisticas />
+      </Suspense>
 
       <Divider my="xl" label="Detalle de Operaciones" labelPosition="center" />
 

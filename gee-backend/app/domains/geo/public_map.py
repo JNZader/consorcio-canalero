@@ -12,6 +12,7 @@ not change URL.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date
 from typing import Any, Literal
@@ -378,8 +379,10 @@ async def get_public_current_comparison(
         )
 
     try:
-        left = await _project_setting_image(left_raw)
-        right = await _project_setting_image(right_raw)
+        left, right = await asyncio.gather(
+            _project_setting_image(left_raw),
+            _project_setting_image(right_raw),
+        )
     except Exception as exc:
         logger.warning(
             "Public comparison images unavailable",

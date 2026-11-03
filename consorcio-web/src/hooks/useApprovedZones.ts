@@ -91,7 +91,16 @@ async function restoreApprovedZonesRequest(id: string) {
   return (await response.json()) as ApprovedZonesPayload;
 }
 
-export function useApprovedZones() {
+export function useApprovedZonesHistory(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.approvedZonesHistory(),
+    queryFn: fetchApprovedZonesHistory,
+    enabled: options.enabled ?? true,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useApprovedZones(options: { includeHistory?: boolean } = {}) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
@@ -103,11 +112,7 @@ export function useApprovedZones() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const historyQuery = useQuery({
-    queryKey: queryKeys.approvedZonesHistory(),
-    queryFn: fetchApprovedZonesHistory,
-    staleTime: 1000 * 60 * 5,
-  });
+  const historyQuery = useApprovedZonesHistory({ enabled: options.includeHistory === true });
 
   const saveMutation = useMutation({
     mutationFn: ({

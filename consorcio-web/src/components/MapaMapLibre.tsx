@@ -289,7 +289,7 @@ export default function MapaMapLibre() {
   });
 
   const selectedImage = useSelectedImageListener();
-  const comparison = useImageComparisonListener();
+  const comparison = useImageComparisonListener({ enabled: viewMode === 'comparison' });
   // Lazy fetch (~1.6MB across 10 static assets). Split by consumer:
   //  - `meta` (aggregates.json, 4KB) stays EAGER because `showPilarVerde`
   //    (useMapDerivedState) gates the Pilar Verde toggles on it — deferring it

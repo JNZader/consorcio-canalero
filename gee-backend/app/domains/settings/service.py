@@ -1,5 +1,6 @@
 """Business-logic layer for settings domain."""
 
+import time
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -193,6 +194,11 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
 ]
 
 
+_BRANDING_CACHE: dict[str, Any] | None = None
+_BRANDING_CACHE_TIME: float = 0.0
+_BRANDING_CACHE_TTL: float = 600.0  # 10 minutes
+
+
 class SettingsService:
     """Orchestrates repository calls with business rules."""
 
@@ -218,6 +224,7 @@ class SettingsService:
         descripcion: Optional[str] = None,
     ) -> Optional[SystemSettings]:
         """Update an existing setting. Returns None if key not found."""
+        global _BRANDING_CACHE
         existing = self.repo.get_by_key(db, key)
         if existing is None:
             return None
@@ -227,6 +234,8 @@ class SettingsService:
         db.flush()
         db.commit()
         db.refresh(existing)
+        if key.startswith("branding/") or key.startswith("general/"):
+            _BRANDING_CACHE = None
         return existing
 
     def upsert_setting(
@@ -238,6 +247,7 @@ class SettingsService:
         descripcion: Optional[str] = None,
     ) -> SystemSettings:
         """Insert or update a setting by key."""
+        global _BRANDING_CACHE
         setting = self.repo.upsert(
             db,
             clave=key,
@@ -247,7 +257,25 @@ class SettingsService:
         )
         db.commit()
         db.refresh(setting)
+        if key.startswith("branding/") or key.startswith("general/"):
+            _BRANDING_CACHE = None
         return setting
+
+    def get_branding(self, db: Session) -> dict[str, Any]:
+        """Return public branding dictionary with in-memory TTL caching."""
+        global _BRANDING_CACHE, _BRANDING_CACHE_TIME
+        now = time.time()
+        if _BRANDING_CACHE is not None and (now - _BRANDING_CACHE_TIME) < _BRANDING_CACHE_TTL:
+            return _BRANDING_CACHE
+        data = {
+            "nombre_organizacion": self.get_setting(db, "general/nombre_organizacion"),
+            "logo_url": self.get_setting(db, "branding/logo_url"),
+            "color_primario": self.get_setting(db, "branding/color_primario"),
+            "color_secundario": self.get_setting(db, "branding/color_secundario"),
+        }
+        _BRANDING_CACHE = data
+        _BRANDING_CACHE_TIME = now
+        return data
 
     def get_all_settings(self, db: Session) -> list[SystemSettings]:
         """Return all settings."""

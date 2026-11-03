@@ -261,6 +261,7 @@ const mapaRoute = createRoute({
   component: () => (
     <RootLayout
       title="Mapa Interactivo"
+      hideFooter={true}
       description="Explora el mapa interactivo de las cuencas hídricas del Consorcio Canalero 10 de Mayo."
     >
       <Suspense fallback={<PageLoader />}>
