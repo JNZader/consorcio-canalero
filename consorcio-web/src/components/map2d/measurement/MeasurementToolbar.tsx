@@ -75,6 +75,8 @@ export interface MeasurementToolbarProps {
   readonly onStartDistance: () => void;
   readonly onStartArea: () => void;
   readonly onClear: () => void;
+  readonly onUndo?: () => void;
+  readonly onSavePersonal?: () => void;
   /**
    * Cancel the ACTIVE measurement without saving (map-fluidity T1). When
    * provided, the Medir trigger turns into a toggle-OFF while measuring instead
@@ -141,6 +143,8 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onStartArea,
   onClear,
   onCancel,
+  onUndo,
+  onSavePersonal,
   fichaDrawActive = false,
   onToggleFichaDraw,
   onRedrawPolygon,
@@ -217,6 +221,21 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             </Menu.Dropdown>
           </Menu>
         )}
+        {onUndo && mode !== 'idle' ? (
+          <UnstyledButton type="button" aria-label="Deshacer vértice" onClick={onUndo} className={styles.mapCtrlButton}>
+            <span className={styles.mapCtrlButtonLabel}>Deshacer</span>
+          </UnstyledButton>
+        ) : null}
+        {onSavePersonal && hasMeasurements ? (
+          <UnstyledButton
+            type="button"
+            aria-label="Guardar medición"
+            onClick={onSavePersonal}
+            className={styles.mapCtrlButton}
+          >
+            <span className={styles.mapCtrlButtonLabel}>Guardar</span>
+          </UnstyledButton>
+        ) : null}
 
         {onToggleFichaDraw && (
           <Tooltip label="Dibujar polígono (ficha territorial)" position="left" withArrow>

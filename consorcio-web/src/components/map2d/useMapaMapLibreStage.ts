@@ -232,6 +232,8 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     startArea: startMeasureArea,
     clear: clearMeasurements,
     cancel: cancelMeasurement,
+    undo: undoMeasurement,
+    updateMeasurement,
   } = useMeasurement(measurementMap);
 
   // The ONE interaction-mode coordinator (design §6.1, JDB-012): it derives the
@@ -747,6 +749,8 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
     analysisToolProps,
     cancelMeasurement,
     clearMeasurements,
+    undoMeasurement,
+    updateMeasurement,
     comparisonActive,
     ficha,
     fichaInteraction,

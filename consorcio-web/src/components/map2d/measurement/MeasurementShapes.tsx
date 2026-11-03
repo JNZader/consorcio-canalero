@@ -20,9 +20,10 @@
  */
 
 import type { Feature, FeatureCollection, LineString, Polygon } from 'geojson';
-import type * as maplibregl from 'maplibre-gl';
+import { Marker, type Map as MapLibreMap, type GeoJSONSource } from 'maplibre-gl';
 import { useEffect } from 'react';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
+import { moveLineVertex } from './measurementEdit';
 import type { MeasurementEntry } from './useMeasurement';
 
 const SOURCE_ID = 'measurement-shapes';
@@ -58,7 +59,7 @@ export function scheduleMeasurementShapePaint(map: StylePaintHost, paint: () => 
   map.once('idle', paint);
 }
 
-function ensureSourceAndLayers(map: maplibregl.Map): void {
+function ensureSourceAndLayers(map: MapLibreMap): void {
   if (!map.getSource(SOURCE_ID)) {
     map.addSource(SOURCE_ID, { type: 'geojson', data: EMPTY_COLLECTION });
   }
@@ -103,17 +104,18 @@ function ensureSourceAndLayers(map: maplibregl.Map): void {
 }
 
 export interface MeasurementShapesProps {
-  readonly map: maplibregl.Map | null;
+  readonly map: MapLibreMap | null;
   readonly measurements: readonly MeasurementEntry[];
+  readonly onMoveVertex?: (id: string, geometry: LineString) => void;
 }
 
-export function MeasurementShapes({ map, measurements }: MeasurementShapesProps): null {
+export function MeasurementShapes({ map, measurements, onMoveVertex }: MeasurementShapesProps): null {
   useEffect(() => {
     if (!map) return;
 
     const updateData = () => {
       ensureSourceAndLayers(map);
-      const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      const src = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
       if (src) src.setData(buildFeatureCollection(measurements));
     };
 
@@ -135,6 +137,28 @@ export function MeasurementShapes({ map, measurements }: MeasurementShapesProps)
       // remounts (e.g. WebGL context restore) avoids a flash of nothing.
     };
   }, [map, measurements]);
+
+  useEffect(() => {
+    if (!map || !onMoveVertex) return;
+    const markers: Marker[] = [];
+    for (const entry of measurements) {
+      if (entry.geometry.type !== 'LineString') continue;
+      entry.geometry.coordinates.forEach((coord, index) => {
+        if (coord.length < 2) return;
+        const marker = new Marker({ draggable: true, color: '#7c3aed' })
+          .setLngLat([coord[0]!, coord[1]!])
+          .addTo(map);
+        marker.on('dragend', () => {
+          const lngLat = marker.getLngLat();
+          onMoveVertex(entry.id, moveLineVertex(entry.geometry as LineString, index, [lngLat.lng, lngLat.lat]));
+        });
+        markers.push(marker);
+      });
+    }
+    return () => {
+      for (const marker of markers) marker.remove();
+    };
+  }, [map, measurements, onMoveVertex]);
 
   return null;
 }
