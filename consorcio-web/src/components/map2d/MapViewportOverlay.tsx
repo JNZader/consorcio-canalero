@@ -1,6 +1,8 @@
 import { Box, Loader, Stack, Text } from '@mantine/core';
-import { type PointerEventHandler, memo } from 'react';
+import { memo, type PointerEventHandler } from 'react';
+import styles from '../../styles/components/map.module.css';
 import { IconGitCompare } from '../ui/icons';
+import { MAP_Z } from './mapZIndex';
 
 /** Interactive width of the comparison divider (map-fluidity T2, fix 3). The
  * visible bar stays 3px; the extra width is transparent padding so the target
@@ -42,7 +44,7 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
             height: '100%',
             background: 'transparent',
             cursor: 'col-resize',
-            zIndex: 15,
+            zIndex: MAP_Z.divider,
             transform: 'translateX(-50%)',
             // Without this the browser claims the gesture for panning and
             // never delivers `pointermove` to the divider.
@@ -90,40 +92,12 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
         </div>
       )}
       {viewMode === 'comparison' && leftDate ? (
-        <div
-          data-testid="comparison-date-left"
-          style={{
-            position: 'absolute',
-            top: 12,
-            left: 12,
-            zIndex: 14,
-            pointerEvents: 'none',
-            background: 'rgba(0,0,0,0.55)',
-            color: 'white',
-            padding: '2px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-          }}
-        >
+        <div data-testid="comparison-date-left" className={styles.comparisonDateLeft}>
           {leftDate}
         </div>
       ) : null}
       {viewMode === 'comparison' && rightDate ? (
-        <div
-          data-testid="comparison-date-right"
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 56,
-            zIndex: 14,
-            pointerEvents: 'none',
-            background: 'rgba(0,0,0,0.55)',
-            color: 'white',
-            padding: '2px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-          }}
-        >
+        <div data-testid="comparison-date-right" className={styles.comparisonDateRight}>
           {rightDate}
         </div>
       ) : null}
@@ -137,7 +111,7 @@ export const MapViewportOverlay = memo(function MapViewportOverlay({
             alignItems: 'center',
             justifyContent: 'center',
             background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
-            zIndex: 20,
+            zIndex: MAP_Z.blocking,
           }}
         >
           <Stack align="center" gap="md">

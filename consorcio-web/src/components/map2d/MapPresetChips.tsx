@@ -36,7 +36,9 @@ export function MapPresetChips({ onApplyRaster }: MapPresetChipsProps) {
               onClick={() => {
                 applyPreset('map2d', preset.id);
                 onApplyRaster?.(preset.id);
-                showInfo('Vista aplicada', 'Se reemplazó la selección de capas.');
+                showInfo('Vista aplicada', 'Se reemplazó la selección de capas.', {
+                  belowHeader: true,
+                });
               }}
             >
               {preset.label}

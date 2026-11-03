@@ -276,6 +276,7 @@ describe('MeasurementToolbar — multi-select toggle (T4)', () => {
       />
     );
 
+    await userEvent.click(screen.getByRole('button', { name: 'Herramientas' }));
     const boton = screen.getByTestId('ficha-multi-select-toggle');
     expect(boton.getAttribute('aria-pressed')).toBe('false');
     await userEvent.click(boton);

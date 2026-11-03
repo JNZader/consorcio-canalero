@@ -36,7 +36,7 @@ function renderWithMantine(ui: ReactNode) {
 }
 
 describe("<MeasurementToolbar />", () => {
-	it("shows a finish hint while measuring", () => {
+	it("shows only the measuring bar while measuring", () => {
 		renderWithMantine(
 			<MeasurementToolbar
 				mode="measuring-distance"
@@ -45,9 +45,13 @@ describe("<MeasurementToolbar />", () => {
 				onStartArea={() => {}}
 				onClear={() => {}}
 				onCancel={() => {}}
+				onUndo={() => {}}
 			/>,
 		);
-		expect(screen.getByTestId("measurement-hint")).toHaveTextContent(/doble clic termina/i);
+		expect(screen.getByTestId("measurement-action-bar")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Herramientas" })).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Deshacer vértice" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Cancelar medición" })).toBeInTheDocument();
 	});
 
 	it("shows the live distance while measuring", () => {
@@ -77,7 +81,7 @@ describe("<MeasurementToolbar />", () => {
 		);
 
 		// Medir trigger is present.
-		expect(screen.getByRole("button", { name: /medir/i })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Herramientas" })).toBeInTheDocument();
 
 		// Limpiar is NOT rendered when there's nothing to clear.
 		expect(
@@ -88,7 +92,8 @@ describe("<MeasurementToolbar />", () => {
 		expect(screen.getAllByRole("button")).toHaveLength(1);
 	});
 
-	it("renders the Limpiar button ALONGSIDE Medir when hasMeasurements is true", () => {
+	it("keeps Limpiar inside Herramientas when hasMeasurements is true", async () => {
+		const user = userEvent.setup();
 		renderWithMantine(
 			<MeasurementToolbar
 				mode="idle"
@@ -99,11 +104,9 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		expect(screen.getByRole("button", { name: /medir/i })).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /limpiar/i }),
-		).toBeInTheDocument();
-		expect(screen.getAllByRole("button")).toHaveLength(2);
+		expect(screen.getAllByRole("button")).toHaveLength(1);
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
+		expect(screen.getByRole("menuitem", { name: /limpiar mediciones/i })).toBeInTheDocument();
 	});
 
 	it('opens a dropdown with "Medir distancia" and "Medir área" when Medir is clicked', async () => {
@@ -119,7 +122,7 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		await user.click(screen.getByRole("button", { name: /medir/i }));
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
 
 		expect(screen.getByText("Medir distancia")).toBeInTheDocument();
 		expect(screen.getByText("Medir área")).toBeInTheDocument();
@@ -139,7 +142,7 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		await user.click(screen.getByRole("button", { name: /medir/i }));
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
 		await user.click(screen.getByText("Medir distancia"));
 
 		expect(onStartDistance).toHaveBeenCalledTimes(1);
@@ -159,7 +162,7 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		await user.click(screen.getByRole("button", { name: /medir/i }));
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
 		await user.click(screen.getByText("Medir área"));
 
 		expect(onStartArea).toHaveBeenCalledTimes(1);
@@ -179,11 +182,12 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		await user.click(screen.getByRole("button", { name: /limpiar/i }));
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
+		await user.click(screen.getByRole("menuitem", { name: /limpiar mediciones/i }));
 		expect(onClear).toHaveBeenCalledTimes(1);
 	});
 
-	it('marks the Medir trigger as active (variant="filled") when mode is measuring-distance', () => {
+	it("replaces Herramientas with the Deshacer/Cancelar bar while measuring distance", () => {
 		renderWithMantine(
 			<MeasurementToolbar
 				mode="measuring-distance"
@@ -191,42 +195,33 @@ describe("<MeasurementToolbar />", () => {
 				onStartDistance={() => {}}
 				onStartArea={() => {}}
 				onClear={() => {}}
+				onUndo={() => {}}
 			/>,
 		);
 
-		const medirBtn = screen.getByRole("button", { name: /medir/i });
-		// El componente migró de Mantine ActionIcon (`data-variant="filled"`)
-		// a un UnstyledButton con `style.background` directo. La señal de
-		// "activo" hoy es el color de fondo naranja `#fb923c` en vez del
-		// data-attribute. Verificamos el style — el contrato externo (chip
-		// de naranja al medir) es el mismo.
-		// El componente setea `style.background` inline; JSDOM expone el
-		// valor crudo via `getAttribute('style')`. No usamos `toHaveStyle`
-		// porque su normalización con shorthand `background` vs longhand
-		// `backgroundColor` es inconsistente entre Mantine y JSDOM.
-		expect(medirBtn.getAttribute("style") ?? "").toContain("#fb923c");
+		expect(screen.queryByRole("button", { name: "Herramientas" })).not.toBeInTheDocument();
+		expect(screen.getByTestId("measurement-action-bar")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Deshacer vértice" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /cancelar medición/i })).toBeInTheDocument();
 	});
 
-	it("marks the Medir trigger as active (orange background) when mode is measuring-area", () => {
+	it("shows Guardar on the bar once a measurement exists", () => {
 		renderWithMantine(
 			<MeasurementToolbar
 				mode="measuring-area"
-				hasMeasurements={false}
+				hasMeasurements
 				onStartDistance={() => {}}
 				onStartArea={() => {}}
 				onClear={() => {}}
+				onSavePersonal={() => {}}
 			/>,
 		);
 
-		const medirBtn = screen.getByRole("button", { name: /medir/i });
-		// El componente setea `style.background` inline; JSDOM expone el
-		// valor crudo via `getAttribute('style')`. No usamos `toHaveStyle`
-		// porque su normalización con shorthand `background` vs longhand
-		// `backgroundColor` es inconsistente entre Mantine y JSDOM.
-		expect(medirBtn.getAttribute("style") ?? "").toContain("#fb923c");
+		expect(screen.getByRole("button", { name: "Guardar medición" })).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Herramientas" })).not.toBeInTheDocument();
 	});
 
-	it("does NOT mark the Medir trigger as filled when mode is idle", () => {
+	it("does NOT mark Herramientas as a filled action while idle", () => {
 		renderWithMantine(
 			<MeasurementToolbar
 				mode="idle"
@@ -237,8 +232,8 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		const medirBtn = screen.getByRole("button", { name: /medir/i });
-		expect(medirBtn).not.toHaveAttribute("data-variant", "filled");
+		const tools = screen.getByRole("button", { name: "Herramientas" });
+		expect(tools).toHaveAttribute("aria-pressed", "false");
 	});
 
 	// ── A5.3 — ficha free-draw toggle beside the measurement buttons ──────────
@@ -271,8 +266,9 @@ describe("<MeasurementToolbar />", () => {
 				onToggleFichaDraw={onToggleFichaDraw}
 			/>,
 		);
-		const drawBtn = screen.getByRole("button", { name: /dibujar polígono/i });
-		expect(drawBtn).toHaveAttribute("aria-pressed", "false");
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
+		const drawBtn = screen.getByRole("menuitem", { name: /dibujar polígono/i });
+		expect(drawBtn).not.toHaveAttribute("aria-pressed", "true");
 		await user.click(drawBtn);
 		expect(onToggleFichaDraw).toHaveBeenCalledTimes(1);
 	});
@@ -293,8 +289,8 @@ describe("<MeasurementToolbar />", () => {
 		expect(drawBtn).toHaveAttribute("aria-pressed", "true");
 		expect(drawBtn.getAttribute("style") ?? "").toContain("#fb923c");
 		// The "Medir" cue must NOT light while drawing (single machine, distinct cues).
-		const medirBtn = screen.getByRole("button", { name: /^medir$/i });
-		expect(medirBtn.getAttribute("style") ?? "").not.toContain("#fb923c");
+		const tools = screen.getByRole("button", { name: "Herramientas" });
+		expect(tools.getAttribute("style") ?? "").not.toContain("#fb923c");
 	});
 
 	// ── A6 — ficha canal-select toggle beside the draw button ────────────────
@@ -327,8 +323,9 @@ describe("<MeasurementToolbar />", () => {
 				onToggleFichaCanal={onToggleFichaCanal}
 			/>,
 		);
-		const canalBtn = screen.getByRole("button", { name: /seleccionar canal/i });
-		expect(canalBtn).toHaveAttribute("aria-pressed", "false");
+		await user.click(screen.getByRole("button", { name: "Herramientas" }));
+		const canalBtn = screen.getByRole("menuitem", { name: /seleccionar canal/i });
+		expect(canalBtn).not.toHaveAttribute("aria-pressed", "true");
 		await user.click(canalBtn);
 		expect(onToggleFichaCanal).toHaveBeenCalledTimes(1);
 	});
@@ -349,8 +346,8 @@ describe("<MeasurementToolbar />", () => {
 		expect(canalBtn).toHaveAttribute("aria-pressed", "true");
 		expect(canalBtn.getAttribute("style") ?? "").toContain("#06b6d4");
 		// The "Medir" cue must NOT light while selecting a canal.
-		const medirBtn = screen.getByRole("button", { name: /^medir$/i });
-		expect(medirBtn.getAttribute("style") ?? "").not.toContain("#fb923c");
+		const tools = screen.getByRole("button", { name: "Herramientas" });
+		expect(tools.getAttribute("style") ?? "").not.toContain("#fb923c");
 	});
 
 	// ── map-fluidity T1 — measuring mode must always offer a way OUT ──────────
@@ -401,7 +398,7 @@ describe("<MeasurementToolbar />", () => {
 		expect(onClear).not.toHaveBeenCalled();
 	});
 
-	it('keeps "Limpiar mediciones" (onClear) once there IS something to wipe', async () => {
+	it("Cancelar exits the mode and keeps saved measurements", async () => {
 		const user = userEvent.setup();
 		const onCancel = vi.fn();
 		const onClear = vi.fn();
@@ -417,15 +414,13 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		await user.click(
-			screen.getByRole("button", { name: /limpiar mediciones/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /cancelar medición/i }));
 
-		expect(onClear).toHaveBeenCalledTimes(1);
-		expect(onCancel).not.toHaveBeenCalled();
+		expect(onCancel).toHaveBeenCalledTimes(1);
+		expect(onClear).not.toHaveBeenCalled();
 	});
 
-	it("exposes the Medir trigger as a toggle: aria-pressed + cancels on click while measuring", async () => {
+	it("Cancelar ends measuring instead of reopening the menu", async () => {
 		const user = userEvent.setup();
 		const onCancel = vi.fn();
 
@@ -440,12 +435,8 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		const medirBtn = screen.getByRole("button", { name: /^medir$/i });
-		expect(medirBtn).toHaveAttribute("aria-pressed", "true");
+		await user.click(screen.getByRole("button", { name: /cancelar medición/i }));
 
-		await user.click(medirBtn);
-
-		// Toggling off ends the mode instead of re-opening the mode menu.
 		expect(onCancel).toHaveBeenCalledTimes(1);
 		expect(screen.queryByText("Medir distancia")).not.toBeInTheDocument();
 	});
@@ -465,7 +456,7 @@ describe("<MeasurementToolbar />", () => {
 			/>,
 		);
 
-		const medirBtn = screen.getByRole("button", { name: /^medir$/i });
+		const medirBtn = screen.getByRole("button", { name: "Herramientas" });
 		expect(medirBtn).toHaveAttribute("aria-pressed", "false");
 
 		await user.click(medirBtn);

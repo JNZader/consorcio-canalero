@@ -79,9 +79,9 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
 }
 
 describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
-  it('renders En el mapa instead of a floating Leyenda heading', () => {
+  it('does not float En el mapa or a Leyenda heading over the canvas', () => {
     renderWithMantine(<MapUiPanels {...buildProps()} />);
-    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-active-layers')).not.toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
     renderWithMantine(
       <MapUiPanels {...buildProps({ selectedFeatures: [feat] })} />,
     );
-    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-active-layers')).not.toBeInTheDocument();
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
   });
 

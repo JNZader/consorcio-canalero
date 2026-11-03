@@ -199,6 +199,9 @@ export function useMapInitialization({
           // UX PDF R9: arrows and +/- when the canvas is focused (MapLibre default,
           // set explicitly so a later "optimization" cannot disable it).
           keyboard: true,
+          /* Collapsed behind the info button so the credit line does not
+             cover the scale or the cursor readout. */
+          attributionControl: { compact: true },
           hash: 'v',
           locale: { ...MAP_LOCALE_ES },
         });

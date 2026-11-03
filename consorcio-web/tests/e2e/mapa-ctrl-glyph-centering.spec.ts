@@ -183,8 +183,8 @@ async function gotoMapWithControls(page: Page) {
   await expect(page.locator('button.maplibregl-ctrl-fullscreen')).toBeVisible();
   // Custom: nuestros docks. Sin login sólo se pintan estos dos (dibujar / canal
   // / multi-selección están gateados por sesión y no se renderizan).
-  await expect(page.getByRole('button', { name: 'Exportar' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Medir' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Herramientas' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Volver al consorcio' })).toBeVisible();
 }
 
 /** Las tres afirmaciones, contra el viewport que el `describe` haya fijado. */

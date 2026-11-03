@@ -15,6 +15,9 @@ interface MapWorkspaceState {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
+  /** Cursor coordinate readout over the canvas. Off until the user asks. */
+  showCursorReadout: boolean;
+  setShowCursorReadout: (show: boolean) => void;
 }
 
 /**
@@ -45,6 +48,8 @@ export const useMapWorkspaceStore = create<MapWorkspaceState>()(
       sidebarCollapsed: false,
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      showCursorReadout: false,
+      setShowCursorReadout: (show) => set({ showCursorReadout: show }),
     }),
     {
       name: 'cc-map-workspace-ui',

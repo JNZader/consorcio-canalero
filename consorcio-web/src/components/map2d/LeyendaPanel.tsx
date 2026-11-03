@@ -21,6 +21,7 @@ import {
   HAZARD_BASIN_OUTLINE_COLOR,
   type HazardLegendView,
 } from './hazardLegend';
+import { MAP_Z } from './mapZIndex';
 import { PILAR_VERDE_COLORS } from './pilarVerdeLayers';
 import type { PrecipitationRange } from './precipRanges';
 import { YPF_ESTACION_BOMBEO_COLOR, YPF_ESTACION_BOMBEO_LABEL } from './ypfEstacionBombeoLayer';
@@ -371,10 +372,17 @@ export const LeyendaPanel = memo(function LeyendaPanel({
     pilarVerdePorcentajeForestacionVisible;
 
   // `embedded` wins over `floating`: when the panel is composed inside an
-  // external layout container (e.g. the side-by-side top-left stack in 2D),
-  // we must NOT apply the `.legendPanel` absolute-positioning class — it
-  // would fight the parent's flex layout.
-  const useLegendPanelClass = floating && !embedded;
+  // external layout container, absolute positioning would fight the parent.
+  const floatingOverMap = floating && !embedded;
+  const floatingPosition: CSSProperties = {
+    position: 'absolute',
+    bottom: 'var(--mantine-spacing-md)',
+    left: 'var(--mantine-spacing-md)',
+    zIndex: MAP_Z.panel,
+    maxWidth: 300,
+    background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
+    backdropFilter: 'blur(6px)',
+  };
 
   // Inside a scrolling ancestor the legend must NOT bound itself (T5): its own
   // 80vh box was the third nested scroller and the one users actually hit.
@@ -382,8 +390,8 @@ export const LeyendaPanel = memo(function LeyendaPanel({
     ? { overflow: 'visible' }
     : { maxHeight: '80vh', overflowY: 'auto' };
 
-  const baseStyle: CSSProperties = useLegendPanelClass
-    ? scrollStyle
+  const baseStyle: CSSProperties = floatingOverMap
+    ? { ...scrollStyle, ...floatingPosition }
     : {
         ...scrollStyle,
         background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
@@ -735,7 +743,6 @@ export const LeyendaPanel = memo(function LeyendaPanel({
       shadow="md"
       p="sm"
       radius="md"
-      className={useLegendPanelClass ? styles.legendPanel : undefined}
       data-testid={dataTestId}
       style={{ ...baseStyle, ...(styleOverride ?? {}) }}
     >

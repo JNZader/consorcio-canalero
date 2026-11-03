@@ -83,72 +83,17 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
   };
 }
 
-describe('<MapUiPanels /> — side-by-side top-left layout (2D)', () => {
-  it('renders a single top-left container with flex-row layout holding BOTH panels', () => {
+describe('<MapUiPanels /> — the floating layer stack is gone', () => {
+  it('does not paint the legacy top-left layer panels over the canvas', () => {
     const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
-
-    const wrapper = container.querySelector<HTMLElement>(
-      '[data-testid="map-2d-top-left-panels"]',
-    );
-    expect(wrapper).not.toBeNull();
-
-    const style = wrapper?.getAttribute('style') ?? '';
-    expect(style).toMatch(/position:\s*absolute/i);
-    expect(style).toMatch(/top:\s*12px/i);
-    expect(style).toMatch(/left:\s*12px/i);
-    expect(style).toMatch(/display:\s*flex/i);
-    expect(style).toMatch(/flex-direction:\s*row/i);
+    expect(container.querySelector('[data-testid="map-2d-top-left-panels"]')).toBeNull();
+    expect(container.querySelector('[data-testid="layer-controls-panel-scroll"]')).toBeNull();
+    expect(screen.queryByTestId('map-2d-leyenda-panel')).not.toBeInTheDocument();
   });
 
-  it('keeps LayerControlsPanel as the only child of the top-left stack (legends live in En el mapa)', () => {
-    const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
-
-    const wrapper = container.querySelector<HTMLElement>(
-      '[data-testid="map-2d-top-left-panels"]',
-    );
-    expect(wrapper).not.toBeNull();
-    expect(wrapper!.querySelector('[data-testid="layer-controls-panel-scroll"]')).not.toBeNull();
-    expect(wrapper!.querySelector('[data-testid="map-2d-leyenda-panel"]')).toBeNull();
-    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
-  });
-
-  it('bounds LayerControlsPanel with viewport-relative maxHeight + overflow-y: auto', () => {
-    const { container } = renderWithMantine(<MapUiPanels {...buildProps()} />);
-
-    const layerWrapper = container.querySelector<HTMLElement>(
-      '[data-testid="layer-controls-panel-scroll"]',
-    );
-    expect(layerWrapper).not.toBeNull();
-    expect(layerWrapper!.style.maxHeight).toMatch(/vh/);
-    expect(layerWrapper!.style.overflowY).toBe('auto');
-  });
-
-  it('inlines the layer legend under an active row when showLegend is true', () => {
-    renderWithMantine(
-      <MapUiPanels
-        {...buildProps({
-          vectorVisibility: { roads: true },
-          consorcios: [
-            {
-              nombre: 'C.C. 269',
-              codigo: 'CC269',
-              color: '#f00',
-              tramos: 1,
-              longitud_km: 10,
-            },
-          ],
-        })}
-      />,
-    );
-    expect(screen.getByTestId('layer-inline-legend-roads')).toBeInTheDocument();
-    expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
-  });
-
-  it('omits inline legends when showLegend is false', () => {
-    renderWithMantine(
-      <MapUiPanels {...buildProps({ showLegend: false, vectorVisibility: { roads: true } })} />,
-    );
-    expect(screen.queryByTestId('layer-inline-legend-roads')).not.toBeInTheDocument();
-    expect(screen.getByText(/capa base/i)).toBeInTheDocument();
+  it('keeps the right-hand column for home and export', () => {
+    renderWithMantine(<MapUiPanels {...buildProps()} />);
+    expect(screen.getByTestId('map-right-stack')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument();
   });
 });

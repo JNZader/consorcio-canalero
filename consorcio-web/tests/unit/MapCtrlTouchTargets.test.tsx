@@ -136,22 +136,17 @@ describe("map control touch targets", () => {
 		expect(dock.style.top).toBe("");
 	});
 
-	it("MeasurementToolbar: every button opts into the coarse-pointer sizing class", () => {
+	it("Herramientas opts into the coarse-pointer sizing class", () => {
 		renderWithMantine(
 			<MeasurementToolbar
 				{...toolbarProps}
 				hasMeasurements
 				onToggleFichaDraw={() => {}}
-				onToggleFichaCanal={() => {}}
+				fichaDrawActive
 			/>,
 		);
 
-		for (const name of [
-			"Medir",
-			"Dibujar polígono",
-			"Seleccionar canal",
-			"Limpiar mediciones",
-		]) {
+		for (const name of ["Herramientas", "Dibujar polígono"]) {
 			const button = screen.getByRole("button", { name });
 			expect(button.className).toContain("mapCtrlButton");
 			expect(button.style.width).toBe("");
@@ -167,38 +162,21 @@ describe("map control touch targets", () => {
 		const dock = container.querySelector(
 			".maplibregl-ctrl-group",
 		) as HTMLElement;
-		expect(dock.className).toContain("mapCtrlDock");
-		expect(dock.className).toContain("measurementDock");
+		expect(dock.className).toContain("mapActionsDock");
 		expect(dock.style.top).toBe("");
 	});
 
-	it("renders a compact text label per button, revealed only on coarse pointers", () => {
-		renderWithMantine(
-			<MeasurementToolbar
-				{...toolbarProps}
-				hasMeasurements
-				onToggleFichaDraw={() => {}}
-				onToggleFichaCanal={() => {}}
-			/>,
-		);
+	it("renders a compact text label on Herramientas, revealed only on coarse pointers", () => {
+		renderWithMantine(<MeasurementToolbar {...toolbarProps} />);
 
-		const expected: Array<[string, string]> = [
-			["Medir", "Medir"],
-			["Dibujar polígono", "Dibujar"],
-			["Seleccionar canal", "Canal"],
-			["Limpiar mediciones", "Limpiar"],
-		];
-
-		for (const [accessibleName, labelText] of expected) {
-			const label = screen
-				.getByRole("button", { name: accessibleName })
-				.querySelector('[class*="mapCtrlButtonLabel"]') as HTMLElement;
-			expect(label).not.toBeNull();
-			expect(label.textContent).toBe(labelText);
-		}
+		const label = screen
+			.getByRole("button", { name: "Herramientas" })
+			.querySelector('[class*="mapCtrlButtonLabel"]') as HTMLElement;
+		expect(label).not.toBeNull();
+		expect(label.textContent).toBe("Herramientas");
 	});
 
-	it("the exit button label follows its dual meaning (limpiar vs cancelar)", () => {
+	it("the measuring bar names Cancelar in the button text", () => {
 		renderWithMantine(
 			<MeasurementToolbar
 				{...toolbarProps}
@@ -208,24 +186,21 @@ describe("map control touch targets", () => {
 			/>,
 		);
 
-		const label = screen
-			.getByRole("button", { name: "Cancelar medición" })
-			.querySelector('[class*="mapCtrlButtonLabel"]') as HTMLElement;
-		expect(label.textContent).toBe("Cancelar");
+		expect(screen.getByRole("button", { name: "Cancelar medición" })).toHaveTextContent(
+			"Cancelar",
+		);
 	});
 
-	it("MeasurementToolbar: the stack direction is a class, not an inline style", () => {
+	it("the measuring bar is a class, not an inline flex direction", () => {
 		const { container } = renderWithMantine(
-			<MeasurementToolbar {...toolbarProps} />,
+			<MeasurementToolbar {...toolbarProps} mode="measuring-distance" />,
 		);
 
-		// It has to be a class: the coarse breakpoint flips it column → row, and a
-		// media query cannot reach an inline `flexDirection`.
-		const group = container.querySelector(
-			'[class*="measurementGroup"]',
+		const bar = container.querySelector(
+			'[class*="measurementActionBar"]',
 		) as HTMLElement;
-		expect(group).not.toBeNull();
-		expect(group.style.flexDirection).toBe("");
+		expect(bar).not.toBeNull();
+		expect(bar.style.flexDirection).toBe("");
 	});
 
 	it("MapActionsPanel: the Exportar button still renders the label slot (hidden by CSS in this dock)", () => {
@@ -302,8 +277,12 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
 		// `.panelSheet` (z-index 1000) also anchors bottom and covers this toolbar
 		// while a sheet is open. Accepted: the modes it drives need map
 		// interaction, which the open sheet already blocks.
-		expect(/\.mapCtrlDock\s*\{[^}]*z-index:\s*16/.test(MAP_CSS)).toBe(true);
-		expect(/\.panelSheet\s*\{[^}]*z-index:\s*1000/.test(MAP_CSS)).toBe(true);
+		expect(/\.mapCtrlDock\s*\{[^}]*z-index:\s*var\(--z-map-controls\)/.test(MAP_CSS)).toBe(
+			true,
+		);
+		expect(MAP_CSS).toContain("--z-map-controls: 16");
+		expect(/\.panelSheet\s*\{[^}]*z-index:\s*var\(--z-map-panel\)/.test(MAP_CSS)).toBe(true);
+		expect(MAP_CSS).toContain("--z-map-panel: 1000");
 	});
 
 	it("scopes MapLibre's fixed 44px square to MapLibre's OWN buttons", () => {

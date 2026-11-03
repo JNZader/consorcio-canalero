@@ -1,5 +1,5 @@
 import { Center, Paper, SegmentedControl, Stack, Text, Tooltip } from '@mantine/core';
-import { type ReactNode, memo, useMemo } from 'react';
+import { memo, type ReactNode, useMemo } from 'react';
 import { IconGitCompare, IconLayers, IconPhoto } from '../ui/icons';
 
 export const MAP_VIEW_MODE = {
@@ -17,6 +17,8 @@ interface ViewModePanelProps {
   readonly hasComparison: boolean;
   readonly singleImageInfo?: { sensor: string; date: string } | null;
   readonly comparisonInfo?: { leftDate: string; rightDate: string } | null;
+  /** Skip the floating Paper when the section already sits inside the panel. */
+  readonly plain?: boolean;
 }
 
 export const ViewModePanel = memo(function ViewModePanel({
@@ -26,6 +28,7 @@ export const ViewModePanel = memo(function ViewModePanel({
   hasComparison,
   singleImageInfo,
   comparisonInfo,
+  plain = false,
 }: ViewModePanelProps) {
   const options = useMemo(() => {
     const items: Array<{ value: string; label: ReactNode }> = [
@@ -91,6 +94,24 @@ export const ViewModePanel = memo(function ViewModePanel({
 
   if (!hasSingleImage && !hasComparison) return null;
 
+  const body = (
+    <Stack gap={4}>
+      <Text size="xs" fw={600} c="dimmed">
+        Vista satelital
+      </Text>
+      <SegmentedControl
+        size="xs"
+        fullWidth
+        aria-label="Vista satelital"
+        value={viewMode}
+        onChange={(value) => onViewModeChange(value as ViewMode)}
+        data={options}
+      />
+    </Stack>
+  );
+
+  if (plain) return body;
+
   return (
     <Paper
       shadow="md"
@@ -101,18 +122,7 @@ export const ViewModePanel = memo(function ViewModePanel({
         backdropFilter: 'blur(6px)',
       }}
     >
-      <Stack gap={4}>
-        <Text size="xs" fw={600} c="dimmed">
-          Vista satelital
-        </Text>
-        <SegmentedControl
-          size="xs"
-          fullWidth
-          value={viewMode}
-          onChange={(value) => onViewModeChange(value as ViewMode)}
-          data={options}
-        />
-      </Stack>
+      {body}
     </Paper>
   );
 });

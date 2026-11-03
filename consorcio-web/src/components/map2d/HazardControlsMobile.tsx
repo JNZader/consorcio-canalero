@@ -1,12 +1,23 @@
-import { ActionIcon, Button, Checkbox, Divider, Group, Paper, Select, Stack, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  Checkbox,
+  Divider,
+  Group,
+  Paper,
+  Select,
+  Stack,
+  Text,
+} from '@mantine/core';
 import { useEffect, useRef } from 'react';
 
 import {
   HAZARD_RISK_CLASSES,
-  PRECIPITATION_PERIOD,
   type HazardControlsProps,
+  PRECIPITATION_PERIOD,
   type PrecipitationPeriod,
 } from './hazardControls.types';
+import { MAP_Z } from './mapZIndex';
 
 const MONTH_OPTIONS = [
   { value: PRECIPITATION_PERIOD.ANNUAL, label: 'Anual' },
@@ -25,7 +36,7 @@ const SHEET_STYLE = {
   overflowY: 'auto',
   position: 'fixed',
   right: 12,
-  zIndex: 4,
+  zIndex: MAP_Z.hazardMobile,
 } as const;
 
 export function HazardControlsMobile({
@@ -62,7 +73,7 @@ export function HazardControlsMobile({
         variant="filled"
         data-testid="hazard-controls-mobile-chip"
         aria-label="Expandir controles de riesgos"
-        style={{ bottom: 16, left: 16, position: 'fixed', zIndex: 4 }}
+        style={{ bottom: 16, left: 16, position: 'fixed', zIndex: MAP_Z.hazardMobile }}
         onClick={() => onCollapsedChange(false)}
       >
         Riesgos

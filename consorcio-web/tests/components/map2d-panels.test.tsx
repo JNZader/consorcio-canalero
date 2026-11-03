@@ -194,7 +194,6 @@ describe('map2d extracted panels', () => {
   });
 
   it('composes the extracted panels through MapUiPanels', async () => {
-    const user = userEvent.setup();
     const onBaseLayerChange = vi.fn();
     const onCloseInfoPanel = vi.fn();
 
@@ -250,14 +249,12 @@ describe('map2d extracted panels', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /^base/i, expanded: false })).toBeInTheDocument();
-    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^base/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('map-active-layers')).not.toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
-
-    await expandNamed(user, /^base/i);
-    await user.click(screen.getByRole('radio', { name: /satélite/i }));
-    expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument();
+    expect(onBaseLayerChange).not.toHaveBeenCalled();
     expect(onCloseInfoPanel).not.toHaveBeenCalled();
   });
 });

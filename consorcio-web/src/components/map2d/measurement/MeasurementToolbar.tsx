@@ -1,58 +1,18 @@
 /**
- * MeasurementToolbar — progressive-disclosure floating control.
+ * Herramientas — one menu for measure, analysis and export.
  *
- * Two-button max, one dropdown menu: collapses the old 3-icon row
- * (Distance / Area / Clear) into a single "Medir" trigger that opens
- * a menu with the two measurement modes, plus a conditional "Limpiar"
- * ActionIcon that only appears when there is something to clear.
+ * Idle: a single "Herramientas" trigger in the right-hand control column.
+ * Measuring: that trigger leaves the column and a small Deshacer / Guardar /
+ * Cancelar bar is portaled onto the canvas.
  *
- * Pure presentational component. State lives in the `useMeasurement`
- * hook that the parent owns. The toolbar only visualises `mode` (trigger
- * active/idle) + `hasMeasurements` (Limpiar rendered/hidden) and wires
- * three callbacks.
- *
- * Pattern reference:
- * - The `MapActionsPanel` "Exportar" trigger (commit 215316d) is the
- *   canonical Mantine `Menu.Target` + `Tooltip` + `ActionIcon` shape.
- *   We mirror it here for consistency across the map's floating
- *   controls.
- *
- * Placement:
- * - Absolute, `top: 220, right: 10` — sits right-aligned, directly below
- *   the MapLibre `top-right` control stack (NavigationControl ~110px +
- *   FullscreenControl ~30px) AND the `MapActionsPanel` Export icon at
- *   `top: 175` (added 2026-04-28 when the standalone "Marcar punto" /
- *   "Ver zonificación" panel was retired). Horizontal layout (`Group`)
- *   so the row doesn't clash visually with the fullscreen button.
- * - `zIndex: 16` matches `MapActionsPanel`'s layer so we're above the
- *   map canvas but below modals/menus.
- * - The dock offset, the button box AND the stack direction now live in
- *   `map.module.css` (`.mapCtrlDock` / `.measurementDock` / `.mapCtrlButton` /
- *   `.measurementGroup`): on a coarse pointer every control grows to the 44px
- *   WCAG target and reveals a text label — a media query cannot reach an inline
- *   style (map-fluidity T2, fix 2).
- * - COARSE POINTERS RE-LAY THIS TOOLBAR. Four 44px buttons stacked under the
- *   right-hand column would end at 436px on a 380px canvas with
- *   `overflow: hidden`, i.e. two buttons clipped off-canvas. On coarse pointers
- *   it becomes a horizontal row anchored bottom-left instead (see the fit-budget
- *   comment in `map.module.css`), which also lands it in the thumb zone.
- *
- * Accessibility:
- * - The Medir trigger carries an explicit `aria-label="Medir"`
- *   (required by Mantine `ActionIcon` — the tooltip text alone does
- *   not reach SR users).
- * - Active-mode cue: `variant="filled"` (with orange color matching
- *   the `#fd7e14` draw style from Batch B) is applied whenever
- *   `mode !== 'idle'`, so both sighted and SR users have a clear
- *   indication that a measurement is live.
- * - The Limpiar ActionIcon is conditionally rendered rather than
- *   disabled: when there is nothing to clear, showing a greyed-out
- *   button is noise — hiding it reduces chrome and mirrors how the
- *   "Exportar PDF" menu entry is gated inside `MapActionsPanel`.
+ * Analysis toggles (dibujar, canal, punto, selección múltiple) stay in the
+ * menu until the tool is active, then a pressed button sits beside
+ * Herramientas so the mode has a visible exit.
  */
 
-import { Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
-import { memo } from 'react';
+import { Box, Menu, UnstyledButton } from '@mantine/core';
+import { memo, type RefObject, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
 import styles from '../../../styles/components/map.module.css';
 import {
@@ -64,6 +24,8 @@ import {
   IconTrash,
   IconVectorTriangle,
 } from '../../ui/icons';
+import { MapExportMenuItems } from '../MapActionsPanel';
+import { MapShareQrModal } from '../MapShareLink';
 import { MAP_CTRL_GLYPH_SIZE } from '../map2dConfig';
 import type { MeasurementMode } from './useMeasurement';
 
@@ -78,61 +40,132 @@ export interface MeasurementToolbarProps {
   readonly onUndo?: () => void;
   readonly onSavePersonal?: () => void;
   /**
-   * Cancel the ACTIVE measurement without saving (map-fluidity T1). When
-   * provided, the Medir trigger turns into a toggle-OFF while measuring instead
-   * of re-opening its menu, which is what gives the mode a visible exit. Omit it
-   * (3D viewer / legacy callers) and the old menu-always behaviour is kept.
+   * Cancel the ACTIVE measurement without wiping saved ones. Omit it
+   * (3D viewer / legacy callers) and Cancelar falls back to `onClear`.
    */
   readonly onCancel?: () => void;
-  /**
-   * Ficha territorial free-draw (A5). When `onToggleFichaDraw` is provided, a
-   * "Dibujar polígono" toggle renders BESIDE the measurement buttons (design
-   * §6.2 — same floating toolbar). `fichaDrawActive` drives its active cue. The
-   * 3D viewer omits both and gets no draw button.
-   */
   readonly fichaDrawActive?: boolean;
   readonly onToggleFichaDraw?: () => void;
-  /**
-   * Draw-mode sub-controls (T3c, fix 4). MapboxDraw drops to `simple_select`
-   * after `draw.create`, so drawing a SECOND polygon used to require toggling
-   * the whole draw mode off and on again, and deleting one was an undiscoverable
-   * Backspace. These two render ONLY while `fichaDrawActive`:
-   *   - `onRedrawPolygon` → re-enters `draw_polygon` with REPLACE semantics:
-   *     `DrawControl.startDrawing` silently wipes the previous polygon off the
-   *     MAP before switching mode (R2-001 — it used to only `changeMode`, so
-   *     shapes accumulated on the canvas while the ficha analysed only the
-   *     newest one and "Borrar" then wiped both). The ficha state is replaced
-   *     when the new polygon completes, not when drawing starts;
-   *   - `onDeletePolygon` → wipes the drawn polygon and clears the ficha.
-   * Omit them (3D viewer / legacy callers) and the toolbar is unchanged.
-   */
   readonly onRedrawPolygon?: () => void;
   readonly onDeletePolygon?: () => void;
-  /**
-   * Ficha territorial canal buffer (A6). When `onToggleFichaCanal` is provided, a
-   * "Seleccionar canal" toggle renders beside the draw button (design §6.3 — same
-   * floating toolbar). `fichaCanalActive` drives its active cue. The 3D viewer
-   * omits it.
-   */
   readonly fichaCanalActive?: boolean;
   readonly onToggleFichaCanal?: () => void;
-  /**
-   * Multi-parcel selection (T4). When `onToggleFichaMultiSelect` is provided, a
-   * "Selección múltiple" toggle renders beside the canal button.
-   *
-   * It exists for TOUCH, where ctrl-click is not expressible — but it is shown
-   * on every pointer type on purpose: it is also the only DISCOVERABLE hint that
-   * accumulating parcels is possible at all, and a desktop user who prefers
-   * clicking to holding a modifier gets the same behaviour.
-   */
   readonly fichaMultiSelectActive?: boolean;
   readonly onToggleFichaMultiSelect?: () => void;
-  /**
-   * Staff-only pin placement. The 3D viewer omits both so the button is not
-   * rendered. This is NOT the retired citizen "Marcar punto" denuncia picker.
-   */
   readonly poiPlaceActive?: boolean;
   readonly onTogglePoiPlace?: () => void;
+  readonly hasApprovedZones?: boolean;
+  readonly onOpenExportPng?: () => void;
+  readonly onExportApprovedZonesPdf?: () => void;
+  readonly onExportKmz?: () => void;
+  readonly onExportMenuOpen?: () => void;
+  /** Canvas element that hosts the measuring bar. */
+  readonly portalTarget?: RefObject<HTMLElement | null>;
+}
+
+function ToolsMenuDropdown({
+  hasMeasurements,
+  onStartDistance,
+  onStartArea,
+  onClear,
+  onToggleFichaDraw,
+  onToggleFichaCanal,
+  onTogglePoiPlace,
+  onToggleFichaMultiSelect,
+  fichaMultiSelectActive,
+  showExport,
+  hasApprovedZones,
+  onOpenExportPng,
+  onExportApprovedZonesPdf,
+  onExportKmz,
+  onOpenQr,
+}: Pick<
+  MeasurementToolbarProps,
+  | 'hasMeasurements'
+  | 'onStartDistance'
+  | 'onStartArea'
+  | 'onClear'
+  | 'onToggleFichaDraw'
+  | 'onToggleFichaCanal'
+  | 'onTogglePoiPlace'
+  | 'onToggleFichaMultiSelect'
+  | 'hasApprovedZones'
+  | 'onOpenExportPng'
+  | 'onExportApprovedZonesPdf'
+  | 'onExportKmz'
+> & {
+  readonly fichaMultiSelectActive: boolean;
+  readonly showExport: boolean;
+  readonly hasApprovedZones: boolean;
+  readonly onOpenQr: () => void;
+}) {
+  return (
+    <Menu.Dropdown>
+      <Menu.Label>Medir</Menu.Label>
+      <Menu.Item leftSection={<IconRuler size={14} />} onClick={onStartDistance}>
+        Medir distancia
+      </Menu.Item>
+      <Menu.Item leftSection={<IconPolygon size={14} />} onClick={onStartArea}>
+        Medir área
+      </Menu.Item>
+      {hasMeasurements ? (
+        <Menu.Item leftSection={<IconTrash size={14} />} onClick={onClear}>
+          Limpiar mediciones
+        </Menu.Item>
+      ) : null}
+      {onToggleFichaDraw ? (
+        <Menu.Item
+          leftSection={<IconVectorTriangle size={14} />}
+          aria-label="Dibujar polígono"
+          onClick={onToggleFichaDraw}
+        >
+          Dibujar polígono
+        </Menu.Item>
+      ) : null}
+      {onToggleFichaCanal ? (
+        <Menu.Item
+          leftSection={<IconRoute size={14} />}
+          aria-label="Seleccionar canal"
+          onClick={onToggleFichaCanal}
+        >
+          Seleccionar canal
+        </Menu.Item>
+      ) : null}
+      {onTogglePoiPlace ? (
+        <Menu.Item
+          leftSection={<IconMapPin size={14} />}
+          aria-label="Marcar punto de interés"
+          onClick={onTogglePoiPlace}
+        >
+          Marcar punto de interés
+        </Menu.Item>
+      ) : null}
+      {onToggleFichaMultiSelect ? (
+        <Menu.Item
+          leftSection={<IconLayers size={14} />}
+          aria-label="Selección múltiple de parcelas"
+          aria-pressed={fichaMultiSelectActive ? 'true' : 'false'}
+          data-testid="ficha-multi-select-toggle"
+          onClick={onToggleFichaMultiSelect}
+        >
+          Selección múltiple
+        </Menu.Item>
+      ) : null}
+      {showExport && onOpenExportPng && onExportApprovedZonesPdf ? (
+        <>
+          <Menu.Divider />
+          <Menu.Label>Exportar</Menu.Label>
+          <MapExportMenuItems
+            hasApprovedZones={hasApprovedZones}
+            onOpenExportPng={onOpenExportPng}
+            onExportApprovedZonesPdf={onExportApprovedZonesPdf}
+            onExportKmz={onExportKmz}
+            onOpenQr={onOpenQr}
+          />
+        </>
+      ) : null}
+    </Menu.Dropdown>
+  );
 }
 
 export const MeasurementToolbar = memo(function MeasurementToolbar({
@@ -155,216 +188,174 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onToggleFichaMultiSelect,
   poiPlaceActive = false,
   onTogglePoiPlace,
+  hasApprovedZones = false,
+  onOpenExportPng,
+  onExportApprovedZonesPdf,
+  onExportKmz,
+  onExportMenuOpen,
+  portalTarget,
 }: MeasurementToolbarProps) {
-  // `mode` is the single interaction machine (JDB-012); it reads `ficha-dibujo`
-  // while drawing, but the "Medir" cue must only light for measurement modes.
+  const [qrOpen, setQrOpen] = useState(false);
   const isMeasuring = mode === 'measuring-distance' || mode === 'measuring-area';
+  const showExport = Boolean(onOpenExportPng && onExportApprovedZonesPdf);
 
-  // Exit affordance (map-fluidity T1). Measuring mode used to be a one-way door:
-  // the trash button was gated on `hasMeasurements`, so a user who started a
-  // measurement and drew nothing had NO visible way out. The button now shows
-  // for the whole of measuring mode and renames itself when there is nothing to
-  // wipe — it cancels the mode instead.
-  const showExitButton = hasMeasurements || isMeasuring;
-  const exitLabel = hasMeasurements ? 'Limpiar mediciones' : 'Cancelar medición';
-  const handleExit = hasMeasurements ? onClear : (onCancel ?? onClear);
-
-  // While measuring, the trigger is a toggle-OFF rather than a menu re-opener.
-  const isToggleOff = isMeasuring && !!onCancel;
-  const measureTriggerButton = (
-    <Tooltip label={isMeasuring ? 'Cancelar medición' : 'Medir'} position="left" withArrow>
-      <UnstyledButton
-        type="button"
-        aria-label="Medir"
-        aria-pressed={isMeasuring}
-        // Spread conditionally: passing an explicit `onClick={undefined}` would
-        // OVERRIDE the handler `Menu.Target` injects when it clones this node,
-        // silently breaking the dropdown in the non-measuring case.
-        {...(isToggleOff ? { onClick: onCancel } : {})}
-        className={styles.mapCtrlButton}
-        style={{
-          background: isMeasuring ? mapColorTokens.hfb923c : 'transparent',
-          color: isMeasuring ? mapColorTokens.hfff : mapColorTokens.h333,
-        }}
+  if (isMeasuring) {
+    const bar = (
+      <div
+        className={styles.measurementActionBar}
+        data-testid="measurement-action-bar"
+        role="toolbar"
+        aria-label="Medición en curso"
       >
-        <IconRuler size={MAP_CTRL_GLYPH_SIZE} />
-        {/* Coarse-pointer only (CSS): tooltips never fire on touch. */}
-        <span className={styles.mapCtrlButtonLabel}>Medir</span>
-      </UnstyledButton>
-    </Tooltip>
-  );
-
-  return (
-    <Box
-      className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapCtrlDock} ${styles.measurementDock}`}
-    >
-      {isMeasuring && (
-        <div className={styles.measurementHint} data-testid="measurement-hint">
-          {liveLabel ? <span data-testid="measurement-live">{liveLabel} · </span> : null}
-          Clic para puntos · doble clic termina · Esc cancela
-        </div>
-      )}
-      <Group gap={0} wrap="nowrap" className={styles.measurementGroup}>
-        {isToggleOff ? (
-          // Toggle-OFF: no menu, the trigger itself ends the mode.
-          measureTriggerButton
-        ) : (
-          <Menu shadow="md" width={200}>
-            <Menu.Target>{measureTriggerButton}</Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item leftSection={<IconRuler size={14} />} onClick={onStartDistance}>
-                Medir distancia
-              </Menu.Item>
-              <Menu.Item leftSection={<IconPolygon size={14} />} onClick={onStartArea}>
-                Medir área
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
-        {onUndo && mode !== 'idle' ? (
-          <UnstyledButton type="button" aria-label="Deshacer vértice" onClick={onUndo} className={styles.mapCtrlButton}>
-            <span className={styles.mapCtrlButtonLabel}>Deshacer</span>
-          </UnstyledButton>
+        {liveLabel ? <span data-testid="measurement-live">{liveLabel}</span> : null}
+        {onUndo ? (
+          <button
+            type="button"
+            className={styles.measurementActionButton}
+            aria-label="Deshacer vértice"
+            onClick={onUndo}
+          >
+            Deshacer
+          </button>
         ) : null}
         {onSavePersonal && hasMeasurements ? (
-          <UnstyledButton
+          <button
             type="button"
+            className={styles.measurementActionButton}
             aria-label="Guardar medición"
             onClick={onSavePersonal}
-            className={styles.mapCtrlButton}
           >
-            <span className={styles.mapCtrlButtonLabel}>Guardar</span>
-          </UnstyledButton>
+            Guardar
+          </button>
         ) : null}
+        <button
+          type="button"
+          className={styles.measurementActionButton}
+          aria-label="Cancelar medición"
+          onClick={onCancel ?? onClear}
+        >
+          Cancelar
+        </button>
+      </div>
+    );
+    if (portalTarget?.current) return createPortal(bar, portalTarget.current);
+    return bar;
+  }
 
-        {onToggleFichaDraw && (
-          <Tooltip label="Dibujar polígono (ficha territorial)" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Dibujar polígono"
-              aria-pressed={fichaDrawActive}
-              onClick={onToggleFichaDraw}
-              className={styles.mapCtrlButton}
-              style={{
-                background: fichaDrawActive ? mapColorTokens.hfb923c : 'transparent',
-                color: fichaDrawActive ? mapColorTokens.hfff : mapColorTokens.h333,
-              }}
-            >
-              <IconVectorTriangle size={MAP_CTRL_GLYPH_SIZE} />
-              <span className={styles.mapCtrlButtonLabel}>Dibujar</span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
+  return (
+    <Box className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapActionsDock}`}>
+      <Menu shadow="md" width={230} onOpen={onExportMenuOpen}>
+        <Menu.Target>
+          <UnstyledButton
+            type="button"
+            aria-label="Herramientas"
+            aria-pressed={false}
+            className={styles.mapCtrlButton}
+            style={{ color: mapColorTokens.h333 }}
+          >
+            <IconRuler size={MAP_CTRL_GLYPH_SIZE} />
+            <span className={styles.mapCtrlButtonLabel}>Herramientas</span>
+          </UnstyledButton>
+        </Menu.Target>
+        <ToolsMenuDropdown
+          hasMeasurements={hasMeasurements}
+          onStartDistance={onStartDistance}
+          onStartArea={onStartArea}
+          onClear={onClear}
+          onToggleFichaDraw={onToggleFichaDraw}
+          onToggleFichaCanal={onToggleFichaCanal}
+          onTogglePoiPlace={onTogglePoiPlace}
+          onToggleFichaMultiSelect={onToggleFichaMultiSelect}
+          fichaMultiSelectActive={fichaMultiSelectActive}
+          showExport={showExport}
+          hasApprovedZones={hasApprovedZones}
+          onOpenExportPng={onOpenExportPng}
+          onExportApprovedZonesPdf={onExportApprovedZonesPdf}
+          onExportKmz={onExportKmz}
+          onOpenQr={() => setQrOpen(true)}
+        />
+      </Menu>
+      <MapShareQrModal opened={qrOpen} onClose={() => setQrOpen(false)} />
 
-        {fichaDrawActive && onRedrawPolygon && (
-          <Tooltip label="Dibujar otro polígono" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Dibujar otro polígono"
-              onClick={onRedrawPolygon}
-              className={styles.mapCtrlButton}
-              data-testid="ficha-draw-new-polygon"
-              style={{ color: mapColorTokens.h333 }}
-            >
-              <IconPolygon size={MAP_CTRL_GLYPH_SIZE} />
-              <span className={styles.mapCtrlButtonLabel}>Otro</span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-
-        {fichaDrawActive && onDeletePolygon && (
-          <Tooltip label="Borrar el polígono dibujado" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Borrar el polígono dibujado"
-              onClick={onDeletePolygon}
-              className={styles.mapCtrlButton}
-              data-testid="ficha-draw-delete-polygon"
-              style={{ color: mapColorTokens.hdc2626 }}
-            >
-              <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
-              <span className={styles.mapCtrlButtonLabel}>Borrar</span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-
-        {onToggleFichaCanal && (
-          <Tooltip label="Seleccionar canal (ficha territorial)" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Seleccionar canal"
-              aria-pressed={fichaCanalActive}
-              onClick={onToggleFichaCanal}
-              className={styles.mapCtrlButton}
-              style={{
-                background: fichaCanalActive ? mapColorTokens.h06b6d4 : 'transparent',
-                color: fichaCanalActive ? mapColorTokens.hfff : mapColorTokens.h333,
-              }}
-            >
-              <IconRoute size={MAP_CTRL_GLYPH_SIZE} />
-              <span className={styles.mapCtrlButtonLabel}>Canal</span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-
-        {onTogglePoiPlace && (
-          <Tooltip label="Marcar punto de interés" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Marcar punto de interés"
-              aria-pressed={poiPlaceActive}
-              onClick={onTogglePoiPlace}
-              className={styles.mapCtrlButton}
-              style={{
-                background: poiPlaceActive ? mapColorTokens.hc45c26 : 'transparent',
-                color: poiPlaceActive ? mapColorTokens.hfff : mapColorTokens.h333,
-              }}
-            >
-              <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
-              <span className={styles.mapCtrlButtonLabel}>Punto</span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-
-        {onToggleFichaMultiSelect && (
-          <Tooltip label="Selección múltiple de parcelas (o Ctrl + clic)" position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label="Selección múltiple de parcelas"
-              aria-pressed={fichaMultiSelectActive}
-              onClick={onToggleFichaMultiSelect}
-              className={styles.mapCtrlButton}
-              style={{
-                background: fichaMultiSelectActive ? mapColorTokens.hf59f00 : 'transparent',
-                color: fichaMultiSelectActive ? mapColorTokens.hfff : mapColorTokens.h333,
-              }}
-              data-testid="ficha-multi-select-toggle"
-            >
-              <IconLayers size={MAP_CTRL_GLYPH_SIZE} />
-              <span className={styles.mapCtrlButtonLabel}>Varias</span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-
-        {showExitButton && (
-          <Tooltip label={exitLabel} position="left" withArrow>
-            <UnstyledButton
-              type="button"
-              aria-label={exitLabel}
-              onClick={handleExit}
-              className={styles.mapCtrlButton}
-              style={{ color: mapColorTokens.hdc2626 }}
-            >
-              <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
-              {/* The exit button shares the coarse-pointer label treatment: a
-                  44px trash glyph with no text reads as ambiguous on touch. */}
-              <span className={styles.mapCtrlButtonLabel}>
-                {hasMeasurements ? 'Limpiar' : 'Cancelar'}
-              </span>
-            </UnstyledButton>
-          </Tooltip>
-        )}
-      </Group>
+      {fichaDrawActive && onToggleFichaDraw ? (
+        <UnstyledButton
+          type="button"
+          aria-label="Dibujar polígono"
+          aria-pressed
+          onClick={onToggleFichaDraw}
+          className={styles.mapCtrlButton}
+          style={{ background: mapColorTokens.hfb923c, color: mapColorTokens.hfff }}
+        >
+          <IconVectorTriangle size={MAP_CTRL_GLYPH_SIZE} />
+          <span className={styles.mapCtrlButtonLabel}>Dibujar</span>
+        </UnstyledButton>
+      ) : null}
+      {fichaDrawActive && onRedrawPolygon ? (
+        <UnstyledButton
+          type="button"
+          aria-label="Dibujar otro polígono"
+          onClick={onRedrawPolygon}
+          className={styles.mapCtrlButton}
+          data-testid="ficha-draw-new-polygon"
+          style={{ color: mapColorTokens.h333 }}
+        >
+          <IconPolygon size={MAP_CTRL_GLYPH_SIZE} />
+          <span className={styles.mapCtrlButtonLabel}>Otro</span>
+        </UnstyledButton>
+      ) : null}
+      {fichaDrawActive && onDeletePolygon ? (
+        <UnstyledButton
+          type="button"
+          aria-label="Borrar el polígono dibujado"
+          onClick={onDeletePolygon}
+          className={styles.mapCtrlButton}
+          data-testid="ficha-draw-delete-polygon"
+          style={{ color: mapColorTokens.hdc2626 }}
+        >
+          <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
+          <span className={styles.mapCtrlButtonLabel}>Borrar</span>
+        </UnstyledButton>
+      ) : null}
+      {fichaCanalActive && onToggleFichaCanal ? (
+        <UnstyledButton
+          type="button"
+          aria-label="Seleccionar canal"
+          aria-pressed
+          onClick={onToggleFichaCanal}
+          className={styles.mapCtrlButton}
+          style={{ background: mapColorTokens.h06b6d4, color: mapColorTokens.hfff }}
+        >
+          <IconRoute size={MAP_CTRL_GLYPH_SIZE} />
+          <span className={styles.mapCtrlButtonLabel}>Canal</span>
+        </UnstyledButton>
+      ) : null}
+      {poiPlaceActive && onTogglePoiPlace ? (
+        <UnstyledButton
+          type="button"
+          aria-label="Marcar punto de interés"
+          aria-pressed
+          onClick={onTogglePoiPlace}
+          className={styles.mapCtrlButton}
+          style={{ background: mapColorTokens.hc45c26, color: mapColorTokens.hfff }}
+        >
+          <IconMapPin size={MAP_CTRL_GLYPH_SIZE} />
+          <span className={styles.mapCtrlButtonLabel}>Punto</span>
+        </UnstyledButton>
+      ) : null}
+      {fichaMultiSelectActive && onToggleFichaMultiSelect ? (
+        <UnstyledButton
+          type="button"
+          aria-label="Selección múltiple de parcelas"
+          aria-pressed
+          onClick={onToggleFichaMultiSelect}
+          className={styles.mapCtrlButton}
+          data-testid="ficha-multi-select-toggle"
+          style={{ background: mapColorTokens.hf59f00, color: mapColorTokens.hfff }}
+        >
+          <IconLayers size={MAP_CTRL_GLYPH_SIZE} />
+          <span className={styles.mapCtrlButtonLabel}>Varias</span>
+        </UnstyledButton>
+      ) : null}
     </Box>
   );
 });

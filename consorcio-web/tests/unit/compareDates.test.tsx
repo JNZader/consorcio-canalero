@@ -36,8 +36,8 @@ describe('comparison curtain dates', () => {
     const right = screen.getByTestId('comparison-date-right');
     expect(left).toHaveTextContent('2018-07-02');
     expect(right).toHaveTextContent('2024-07-02');
-    expect(left.getAttribute('style')).toContain('left: 12px');
-    expect(right.getAttribute('style')).toContain('right: 56px');
+    expect(left.className).toMatch(/comparisonDateLeft/);
+    expect(right.className).toMatch(/comparisonDateRight/);
     expect(screen.getByTestId('map-comparison-divider').getAttribute('style')).toContain('left: 20%');
   });
 });
