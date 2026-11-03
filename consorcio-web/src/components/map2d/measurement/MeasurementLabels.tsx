@@ -184,6 +184,7 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
               left: pos.x,
               top: pos.y,
               transform: 'translate(-50%, calc(-100% - 8px))',
+              willChange: 'left, top',
               background: 'white',
               border: '1px solid #fd7e14',
               borderRadius: 4,
