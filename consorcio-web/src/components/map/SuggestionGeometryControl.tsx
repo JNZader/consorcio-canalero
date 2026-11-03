@@ -21,12 +21,71 @@ function toFeatureCollection(
 function toMapFeatures(
   value: DrawnLineFeatureCollection | null
 ): Array<Feature<Point | LineString, GeoJsonProperties>> {
-  return (value?.features ?? []).map((feature, index) => ({
-    type: 'Feature',
-    id: `feature-${index}`,
-    geometry: feature.geometry,
-    properties: {},
-  }));
+  return (value?.features ?? [])
+    .filter((feature): feature is typeof feature & { geometry: NonNullable<typeof feature.geometry> } => Boolean(feature?.geometry))
+    .map((feature, index) => ({
+      type: 'Feature',
+      id: `feature-${index}`,
+      geometry: feature.geometry,
+      properties: {},
+    }));
+}
+
+export function toSourceFeatures(
+  value: DrawnLineFeatureCollection | null
+): Array<Feature<Point | LineString, GeoJsonProperties>> {
+  const sourceFeatures: Array<Feature<Point | LineString, GeoJsonProperties>> = [];
+
+  for (const [featureIndex, feature] of (value?.features ?? []).entries()) {
+    if (!feature?.geometry) continue;
+    if (feature.geometry.type === 'Point') {
+      sourceFeatures.push({
+        type: 'Feature',
+        id: `vertex-${featureIndex}-0`,
+        geometry: {
+          type: 'Point',
+          coordinates: feature.geometry.coordinates,
+        },
+        properties: {
+          feature_role: 'vertex',
+          featureIndex,
+          vertexIndex: 0,
+        },
+      });
+      continue;
+    }
+
+    sourceFeatures.push({
+      type: 'Feature',
+      id: `feature-${featureIndex}`,
+      geometry: {
+        type: 'LineString',
+        coordinates: feature.geometry.coordinates,
+      },
+      properties: {
+        feature_role: 'line',
+        featureIndex,
+      },
+    });
+
+    for (const [vertexIndex, coord] of feature.geometry.coordinates.entries()) {
+      sourceFeatures.push({
+        type: 'Feature',
+        id: `vertex-${featureIndex}-${vertexIndex}`,
+        geometry: {
+          type: 'Point',
+          coordinates: coord,
+        },
+        properties: {
+          feature_role: 'vertex',
+          featureIndex,
+          vertexIndex,
+        },
+      });
+    }
+  }
+
+  return sourceFeatures;
 }
 
 function buildNextValue(
@@ -58,6 +117,94 @@ function buildNextValue(
   };
 }
 
+export function undoLastSuggestionVertex(
+  value: DrawnLineFeatureCollection | null
+): DrawnLineFeatureCollection | null {
+  const current = toMapFeatures(value);
+  if (current.length === 0) return null;
+
+  const last = current[current.length - 1];
+  if (last.geometry.type === 'Point') {
+    return buildNextValue(current.slice(0, -1));
+  }
+
+  const remainingCoordinates = last.geometry.coordinates.slice(0, -1);
+  const nextFeatures = current.slice(0, -1);
+
+  if (remainingCoordinates.length >= 2) {
+    nextFeatures.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: remainingCoordinates,
+      },
+      properties: {},
+    });
+  } else if (remainingCoordinates.length === 1) {
+    nextFeatures.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: remainingCoordinates[0],
+      },
+      properties: {},
+    });
+  }
+
+  return buildNextValue(nextFeatures);
+}
+
+export function removeSuggestionVertexAt(
+  value: DrawnLineFeatureCollection | null,
+  featureIndex?: number,
+  vertexIndex?: number
+): DrawnLineFeatureCollection | null {
+  const current = toMapFeatures(value);
+  if (current.length === 0) return null;
+
+  if (
+    typeof featureIndex !== 'number' ||
+    typeof vertexIndex !== 'number' ||
+    featureIndex < 0 ||
+    featureIndex >= current.length
+  ) {
+    return undoLastSuggestionVertex(value);
+  }
+
+  const target = current[featureIndex];
+  const nextFeatures = [...current];
+
+  if (target.geometry.type === 'Point') {
+    nextFeatures.splice(featureIndex, 1);
+    return buildNextValue(nextFeatures);
+  }
+
+  const remainingCoordinates = target.geometry.coordinates.filter((_, idx) => idx !== vertexIndex);
+  if (remainingCoordinates.length >= 2) {
+    nextFeatures[featureIndex] = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: remainingCoordinates,
+      },
+      properties: {},
+    };
+  } else if (remainingCoordinates.length === 1) {
+    nextFeatures[featureIndex] = {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: remainingCoordinates[0],
+      },
+      properties: {},
+    };
+  } else {
+    nextFeatures.splice(featureIndex, 1);
+  }
+
+  return buildNextValue(nextFeatures);
+}
+
 export default function SuggestionGeometryControl({
   map,
   value,
@@ -72,7 +219,7 @@ export default function SuggestionGeometryControl({
   useEffect(() => {
     const ensureSource = () => {
       const source = map.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      const data = toFeatureCollection(toMapFeatures(valueRef.current));
+      const data = toFeatureCollection(toSourceFeatures(valueRef.current));
       if (source) {
         source.setData(data);
         return;
@@ -109,10 +256,28 @@ export default function SuggestionGeometryControl({
     }
 
     const commit = (features: Array<Feature<Point | LineString, GeoJsonProperties>>) => {
-      onChangeRef.current(buildNextValue(features));
+      const nextValue = buildNextValue(features);
+      valueRef.current = nextValue;
+      onChangeRef.current(nextValue);
     };
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
+      if (event.defaultPrevented || event.originalEvent?.defaultPrevented) {
+        return;
+      }
+
+      if (
+        typeof map.queryRenderedFeatures === 'function' &&
+        map.getLayer(`${DRAW_SOURCE_ID}-point`)
+      ) {
+        const hits = map.queryRenderedFeatures(event.point, {
+          layers: [`${DRAW_SOURCE_ID}-point`],
+        });
+        if (hits.length > 0) {
+          return;
+        }
+      }
+
       const nextCoordinate: [number, number] = [event.lngLat.lng, event.lngLat.lat];
       const current = toMapFeatures(valueRef.current);
       const last = current[current.length - 1];
@@ -154,50 +319,28 @@ export default function SuggestionGeometryControl({
       commit(nextFeatures);
     };
 
-    const handleContextMenu = (event: maplibregl.MapMouseEvent & { originalEvent: MouseEvent }) => {
+    const handleContextMenu = (
+      event: maplibregl.MapMouseEvent & { originalEvent?: MouseEvent }
+    ) => {
       event.preventDefault();
-      event.originalEvent.preventDefault();
-
-      const current = toMapFeatures(valueRef.current);
-      if (current.length === 0) return;
-
-      const last = current[current.length - 1];
-      if (last.geometry.type === 'Point') {
-        commit(current.slice(0, -1));
-        return;
-      }
-
-      const remainingCoordinates = last.geometry.coordinates.slice(0, -1);
-      const nextFeatures = current.slice(0, -1);
-
-      if (remainingCoordinates.length >= 2) {
-        nextFeatures.push({
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: remainingCoordinates,
-          },
-          properties: {},
-        });
-      } else if (remainingCoordinates.length === 1) {
-        nextFeatures.push({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: remainingCoordinates[0],
-          },
-          properties: {},
-        });
-      }
-
-      commit(nextFeatures);
+      event.originalEvent?.preventDefault?.();
+      onChangeRef.current(undoLastSuggestionVertex(valueRef.current));
     };
 
     const handlePointClick = (event: maplibregl.MapLayerMouseEvent) => {
       event.preventDefault();
-      const features = toMapFeatures(valueRef.current);
-      if (features.length === 0) return;
-      commit(features.slice(0, -1));
+      event.originalEvent?.preventDefault?.();
+      event.originalEvent?.stopPropagation?.();
+      const hitProps = event.features?.[0]?.properties as
+        | { featureIndex?: number; vertexIndex?: number }
+        | undefined;
+      onChangeRef.current(
+        removeSuggestionVertexAt(
+          valueRef.current,
+          typeof hitProps?.featureIndex === 'number' ? hitProps.featureIndex : undefined,
+          typeof hitProps?.vertexIndex === 'number' ? hitProps.vertexIndex : undefined
+        )
+      );
     };
 
     map.getCanvas().style.cursor = 'crosshair';
@@ -226,7 +369,7 @@ export default function SuggestionGeometryControl({
   useEffect(() => {
     const source = map.getSource(DRAW_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (!source) return;
-    source.setData(toFeatureCollection(toMapFeatures(value)));
+    source.setData(toFeatureCollection(toSourceFeatures(value)));
   }, [map, value]);
 
   return null;

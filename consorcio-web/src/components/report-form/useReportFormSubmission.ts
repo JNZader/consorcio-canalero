@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
 import { publicApi } from '../../lib/api';
-import { clearReportDraft, saveReportDraft } from '../../lib/formDrafts';
+import {
+  clearReportDraft,
+  fileToDraftDataUrl,
+  MAX_DRAFT_PHOTO_BYTES,
+  saveReportDraft,
+} from '../../lib/formDrafts';
 import { logger } from '../../lib/logger';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import type { Ubicacion } from './reportFormTypes';
@@ -50,17 +55,46 @@ export function useReportFormSubmission({
   return useCallback(
     async (values: ReportFormValues) => {
       if (!contactoVerificado || !userEmail) {
+        let fotoDataUrl: string | undefined;
+        let fotoOversized = false;
+
+        if (values.foto) {
+          if (values.foto.size > MAX_DRAFT_PHOTO_BYTES) {
+            fotoOversized = true;
+          } else {
+            fotoDataUrl = (await fileToDraftDataUrl(values.foto)) ?? undefined;
+          }
+        }
+
         saveReportDraft({
           tipo: values.tipo,
           descripcion: values.descripcion,
           lat: ubicacion?.lat,
           lng: ubicacion?.lng,
+          ...(fotoDataUrl
+            ? {
+                fotoDataUrl,
+                fotoName: values.foto?.name,
+                fotoType: values.foto?.type,
+              }
+            : {}),
         });
-        showNotification(
-          'Identidad no verificada',
-          'Guardamos el borrador (la foto hay que volver a adjuntarla). Verificá tu identidad con Google o creá una cuenta para enviar.',
-          'orange'
-        );
+
+        if (fotoOversized) {
+          showNotification(
+            'Identidad no verificada',
+            'Guardamos el borrador, pero la foto supera 2 MB y deberás volver a adjuntarla tras iniciar sesión.',
+            'orange'
+          );
+        } else {
+          showNotification(
+            'Identidad no verificada',
+            fotoDataUrl
+              ? 'Guardamos el borrador y la foto adjunta. Verificá tu identidad con Google o creá una cuenta para enviar.'
+              : 'Guardamos el borrador. Verificá tu identidad con Google o creá una cuenta para enviar.',
+            'orange'
+          );
+        }
         announce('Debés verificar tu identidad antes de enviar la denuncia', 'assertive');
         return;
       }

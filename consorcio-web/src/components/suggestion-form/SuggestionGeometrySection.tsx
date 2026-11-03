@@ -1,4 +1,4 @@
-import { Box, Group, Stack, Text } from '@mantine/core';
+import { Box, Button, Group, Stack, Text } from '@mantine/core';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
@@ -8,7 +8,9 @@ import { loadMapLibre } from '../../lib/maplibreLoader';
 import formStyles from '../../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
-import { GeometrySummary } from './suggestionFormUtils';
+import { IconArrowBackUp, IconCurrentLocation, IconMapPin, IconTrash } from '../ui/icons';
+import { isNonSpatialCategory } from './suggestionFormConstants';
+import { GeometrySummary, showSuggestionNotification } from './suggestionFormUtils';
 
 const SUGGESTION_GEOMETRY_LABEL_ID = 'sugerencia-geometria-label';
 const SUGGESTION_GEOMETRY_INSTRUCTIONS_ID = 'sugerencia-geometria-instrucciones';
@@ -19,18 +21,82 @@ const SUGGESTION_GEOMETRY_STATUS_ID = 'sugerencia-geometria-estado';
 /** Lifecycle of the lazily loaded map engine. Mirrors `LocationSection`. */
 type MapStatus = 'loading' | 'ready' | 'error';
 
+function removeLastVertexFromGeometry(
+  geometry: DrawnLineFeatureCollection | null
+): DrawnLineFeatureCollection | null {
+  const features = geometry?.features ?? [];
+  if (features.length === 0) return null;
+
+  const last = features[features.length - 1];
+  const prefix = features.slice(0, -1);
+
+  if (last.geometry.type === 'Point') {
+    return prefix.length > 0 ? { type: 'FeatureCollection', features: prefix } : null;
+  }
+
+  const remainingCoords = last.geometry.coordinates.slice(0, -1);
+  if (remainingCoords.length >= 2) {
+    return {
+      type: 'FeatureCollection',
+      features: [
+        ...prefix,
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: remainingCoords,
+          },
+        },
+      ],
+    };
+  }
+
+  if (remainingCoords.length === 1) {
+    return {
+      type: 'FeatureCollection',
+      features: [
+        ...prefix,
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Point',
+            coordinates: remainingCoords[0],
+          },
+        },
+      ],
+    };
+  }
+
+  return prefix.length > 0 ? { type: 'FeatureCollection', features: prefix } : null;
+}
+
 export function SuggestionGeometrySection({
   geometry,
   onChange,
+  categoria,
 }: Readonly<{
   geometry: DrawnLineFeatureCollection | null;
   onChange: (geometry: DrawnLineFeatureCollection | null) => void;
+  categoria?: string;
 }>) {
   const { zonaGeoJson, caminosGeoJson, waterways } = useFormMapLayers();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const [mapStatus, setMapStatus] = useState<MapStatus>('loading');
+  const [locatingGps, setLocatingGps] = useState(false);
+  const [showOptionalMap, setShowOptionalMap] = useState(false);
   const mapReady = mapStatus === 'ready';
+  const hasGeometry = (geometry?.features?.length ?? 0) > 0;
+  const isCollapsedByCategory =
+    isNonSpatialCategory(categoria) && !showOptionalMap && !hasGeometry;
+
+  useEffect(() => {
+    if (isNonSpatialCategory(categoria) && !hasGeometry) {
+      setShowOptionalMap(false);
+    }
+  }, [categoria, hasGeometry]);
 
   // PERF-005 — the map engine is fetched on demand (see `loadMapLibre`), so the
   // suggestion tab of `/participacion` no longer welds ~215 KB of MapLibre into
@@ -38,6 +104,7 @@ export function SuggestionGeometrySection({
   // synchronously), hence the inner IIFE plus the `cancelled` guard for an
   // unmount that races the in-flight chunk.
   useEffect(() => {
+    if (isCollapsedByCategory) return;
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     let cancelled = false;
@@ -96,7 +163,7 @@ export function SuggestionGeometrySection({
       mapInstanceRef.current = null;
       setMapStatus('loading');
     };
-  }, []);
+  }, [isCollapsedByCategory]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -107,6 +174,63 @@ export function SuggestionGeometrySection({
       logger.error('[SugerenciaMap] addReferenceLayers failed', err);
     }
   }, [zonaGeoJson, caminosGeoJson, waterways, mapReady]);
+
+  const handleLocateGps = () => {
+    if (!navigator.geolocation) {
+      showSuggestionNotification('Error', 'Tu navegador no soporta geolocalización', 'red');
+      return;
+    }
+
+    setLocatingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocatingGps(false);
+        const { latitude, longitude } = position.coords;
+        mapInstanceRef.current?.flyTo?.({
+          center: [longitude, latitude],
+          zoom: 15,
+        });
+        showSuggestionNotification(
+          'Ubicación obtenida',
+          'Se centró el mapa en tu ubicación actual',
+          'green'
+        );
+      },
+      (error) => {
+        setLocatingGps(false);
+        const errorMsg =
+          error.code === error.TIMEOUT
+            ? 'Tiempo de espera agotado al obtener tu ubicación. Podés navegar manualmente en el mapa.'
+            : 'No se pudo obtener tu ubicación. Podés navegar manualmente en el mapa.';
+        showSuggestionNotification('Error de ubicación', errorMsg, 'red');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+
+  const handleUndoLastPoint = () => {
+    onChange(removeLastVertexFromGeometry(geometry));
+  };
+
+  const handleClearGeometry = () => {
+    onChange(null);
+  };
+
+  if (isCollapsedByCategory) {
+    return (
+      <Box>
+        <Button
+          type="button"
+          variant="subtle"
+          size="sm"
+          leftSection={<IconMapPin size={16} aria-hidden="true" />}
+          onClick={() => setShowOptionalMap(true)}
+        >
+          Agregar ubicación en el mapa (opcional)
+        </Button>
+      </Box>
+    );
+  }
 
   // The status notice joins the description only while it exists, so a ready map
   // keeps exactly the previous accessible description.
@@ -131,9 +255,44 @@ export function SuggestionGeometrySection({
       </Group>
 
       <Text id={SUGGESTION_GEOMETRY_INSTRUCTIONS_ID} size="xs" c="dimmed">
-        Hacé un clic para marcar un punto. Si hacés otro clic, se convierte en línea. Clic derecho o
-        clic sobre el punto para borrar lo último.
+        Hacé un clic para marcar un punto (o tocá el mapa en el celular). Si agregás otro punto, se
+        convierte en línea. Tocá un vértice o usá «Deshacer último punto» y «Limpiar dibujo» para
+        corregir.
       </Text>
+
+      <Group gap="xs" wrap="wrap">
+        <Button
+          type="button"
+          variant="light"
+          size="xs"
+          leftSection={<IconCurrentLocation size={14} aria-hidden="true" />}
+          loading={locatingGps}
+          onClick={handleLocateGps}
+        >
+          Mi ubicación (GPS)
+        </Button>
+        <Button
+          type="button"
+          variant="default"
+          size="xs"
+          leftSection={<IconArrowBackUp size={14} aria-hidden="true" />}
+          disabled={!hasGeometry}
+          onClick={handleUndoLastPoint}
+        >
+          Deshacer último punto
+        </Button>
+        <Button
+          type="button"
+          variant="subtle"
+          color="red"
+          size="xs"
+          leftSection={<IconTrash size={14} aria-hidden="true" />}
+          disabled={!hasGeometry}
+          onClick={handleClearGeometry}
+        >
+          Limpiar dibujo
+        </Button>
+      </Group>
 
       <Box
         className={formStyles.mapContainer}
