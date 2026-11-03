@@ -33,7 +33,9 @@ import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { isCoarsePointerDevice } from '../map2d/useMapInitialization';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
+import { flythroughFrames, playFlythrough } from './canalFlythrough';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
+import { ElevationProfileDock } from '../map2d/ElevationProfileDock';
 import { terrainCameraShortcutFromEvent } from './terrainCameraShortcuts';
 import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
 import { resolveTerrainStartPitch, TERRAIN_DEFAULT_EXAGGERATION } from './terrainExaggeration';
@@ -205,6 +207,17 @@ export default function TerrainViewer3D({
   // Phase 5 (Batch F) — click results surfaced by `useTerrainInteractionEffects`.
   // Top-most first (MapLibre z-order). Empty array ⇒ `<InfoPanel>` unmounts.
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
+  const [tourDistance, setTourDistance] = useState<number | null>(null);
+  const tourLine = selectedFeatures.find(
+    (feature) =>
+      feature.geometry?.type === 'LineString' || feature.geometry?.type === 'MultiLineString'
+  );
+  const tourCoordinates =
+    tourLine?.geometry.type === 'LineString'
+      ? tourLine.geometry.coordinates
+      : tourLine?.geometry.type === 'MultiLineString'
+        ? tourLine.geometry.coordinates[0]
+        : null;
   const { layers: allGeoLayers } = useGeoLayers();
   // NOTE: `zona` was intentionally dropped from the 3D GEE layer fetch —
   // the 3D viewer no longer renders a Zona Consorcio outline (the 3D mesh
@@ -1006,10 +1019,28 @@ export default function TerrainViewer3D({
         // render the "En BPA" histórico footer for catastro-only features
         // whose `nro_cuenta` matches an enriched parcel.
         selectedFeatures={selectedFeatures}
+        canFlythrough={!!tourCoordinates && tourCoordinates.length >= 2}
+        onFlythrough={() => {
+          const map = mapRef.current;
+          if (!map || !tourCoordinates) return;
+          void playFlythrough(map, flythroughFrames(tourCoordinates), (frame) => {
+            setTourDistance(frame.distance_m);
+          });
+        }}
         onCloseInfoPanel={handleCloseInfoPanel}
         bpaEnriched={pilarVerde?.bpaEnriched ?? null}
         bpaHistory={pilarVerde?.bpaHistory ?? null}
       />
+      {tourLine &&
+      (tourLine.geometry.type === 'LineString' || tourLine.geometry.type === 'MultiLineString') &&
+      tourDistance != null ? (
+        <ElevationProfileDock
+          geometry={tourLine.geometry}
+          title="Recorrido del canal"
+          externalDistanceM={tourDistance}
+          onClose={() => setTourDistance(null)}
+        />
+      ) : null}
     </Stack>
   );
 }

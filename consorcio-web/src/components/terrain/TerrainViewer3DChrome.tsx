@@ -1,6 +1,7 @@
 import {
   Alert,
   Box,
+  Button,
   Checkbox,
   Group,
   Loader,
@@ -140,6 +141,8 @@ interface TerrainViewer3DChromeProps {
    */
   selectedFeatures?: readonly Feature[];
   onCloseInfoPanel?: () => void;
+  readonly canFlythrough?: boolean;
+  readonly onFlythrough?: () => void;
   /** Pilar Verde enriched catastro dataset — forwarded to `<InfoPanel>`. */
   bpaEnriched?: BpaEnrichedFile | null;
   /** Pilar Verde histórico lookup — forwarded to `<InfoPanel>`. */
@@ -197,6 +200,8 @@ export function TerrainViewer3DChrome({
   canalesPropuestosItems,
   selectedFeatures,
   onCloseInfoPanel,
+  canFlythrough = false,
+  onFlythrough,
   bpaEnriched,
   bpaHistory,
 }: TerrainViewer3DChromeProps) {
@@ -354,6 +359,19 @@ export function TerrainViewer3DChrome({
               </Box>
             )}
 
+            {onFlythrough ? (
+              <Button
+                size="xs"
+                variant="filled"
+                color="blue"
+                data-testid="terrain-flythrough"
+                disabled={!canFlythrough}
+                onClick={onFlythrough}
+                style={{ position: 'absolute', top: 12, right: 12, zIndex: 12 }}
+              >
+                Recorrer canal
+              </Button>
+            ) : null}
             <Box
               data-testid="terrain-status-dock"
               style={{
