@@ -48,11 +48,16 @@ export function showWarning(title: string, message: string): void {
 /**
  * Show an info notification (blue).
  */
-export function showInfo(title: string, message: string): void {
+export function showInfo(
+  title: string,
+  message: string,
+  options?: { belowHeader?: boolean }
+): void {
   notifications.show({
     title,
     message,
     color: 'blue',
+    ...(options?.belowHeader ? { className: 'cc-toast-below-header' } : {}),
   });
 }
 

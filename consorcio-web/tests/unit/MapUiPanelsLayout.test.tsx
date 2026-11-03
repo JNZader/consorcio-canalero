@@ -76,15 +76,22 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
 }
 
 describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
-  it('renders En el mapa instead of a floating Leyenda heading', () => {
+  it('does not float En el mapa or a Leyenda heading over the canvas', () => {
     renderWithMantine(<MapUiPanels {...buildProps()} />);
-    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-active-layers')).not.toBeInTheDocument();
     expect(screen.queryByText('Leyenda')).not.toBeInTheDocument();
   });
 
   it('does not float the info readout over En el mapa', () => {
-    renderWithMantine(<MapUiPanels {...buildProps()} />);
-    expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
+    const feat: Feature = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: { nombre: 'Canal Este' },
+    };
+    renderWithMantine(
+      <MapUiPanels {...buildProps({ selectedFeatures: [feat] })} />,
+    );
+    expect(screen.queryByTestId('map-active-layers')).not.toBeInTheDocument();
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
   });
 

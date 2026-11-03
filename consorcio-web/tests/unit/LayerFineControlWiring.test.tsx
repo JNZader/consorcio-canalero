@@ -138,10 +138,10 @@ describe('layerFineControl wiring (3.4)', () => {
     expect(fineControl.onLayerOrderChange).toHaveBeenCalledWith([...DEFAULT_LAYER_ORDER]);
   });
 
-  it('MapUiPanels threads layerFineControl down to LayerControlsPanel (callback reaches setter)', () => {
+  it('MapUiPanels no longer mounts the layer panel (the sidebar owns it)', () => {
     const fineControl = makeFineControl({ opacityByLayer: { soil: 0.25 } });
     renderWithMantine(<MapUiPanels {...makeMapUiPanelsProps(fineControl)} />);
-    fireEvent.click(screen.getByTestId('layer-opacity-reset-soil'));
-    expect(fineControl.onLayerOpacityChange).toHaveBeenCalledWith('soil', 1);
+    expect(screen.queryByTestId('layer-opacity-reset-soil')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('layer-controls-panel-scroll')).not.toBeInTheDocument();
   });
 });

@@ -22,6 +22,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { MAP_BOUNDS, MAP_HOME_FIT_PADDING, MAP_QUICK_PLACES } from '../../constants';
@@ -32,6 +33,7 @@ import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { HazardPrecipMonth, HazardRiskClass } from '../../hooks/useHazardUrlState';
 import { FICHA_MAX_BUFFER_M } from '../../lib/api/ficha';
 import { erroresUi } from '../../lib/userFacingError';
+import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
 import styles from '../../styles/components/map.module.css';
 import type { Etapa } from '../../types/canales';
 import type { PilarVerdeData } from '../../types/pilarVerde';
@@ -44,21 +46,14 @@ import {
 } from '../shared/canalesGrouping';
 import { VisuallyHidden } from '../ui/accessibility/primitives';
 import { marksFromRoadFlow } from './canalProfile';
-import { culvertPoints } from './profileBoundaryCrossings';
-import {
-  clearPersonalMeasurements,
-  readPersonalMeasurements,
-  savePersonalMeasurement,
-} from './measurement/personalMeasurements';
-import { usePersonalMeasurementsLayer } from './measurement/usePersonalMeasurementsLayer';
+import { coarseProfile, terrainTileReader } from './coarseDem';
 import { ElevationProfileDock } from './ElevationProfileDock';
 import { HazardMapControls } from './HazardMapControls';
-import { InfoPanel } from './InfoPanel';
 import type { HazardBasinOption } from './hazardControls.types';
 import type { HazardLegendView } from './hazardLegend';
+import { InfoPanel } from './InfoPanel';
 import { LayerControlsPanel } from './LayerControlsPanel';
 import type { LayerHealth } from './layerHealth';
-import { MapBaseSelectorPanel } from './MapBaseSelectorPanel';
 import { MapCursorReadout } from './MapCursorReadout';
 import { MapPlacesControl } from './MapPlacesControl';
 import { MapSearchBox, type MapSearchModel } from './MapSearchBox';
@@ -68,23 +63,30 @@ import { MapWorkspace, useMapWorkspaceDesktop } from './MapWorkspace';
 import type { ActiveLegendItem } from './map2dDerived';
 import { buildFamilyActiveCounts, sumFamilyActiveCounts } from './map2dDerived';
 import { requestMapGeolocate } from './mapGeolocate';
+import { MAP_Z } from './mapZIndex';
 import { MeasurementLabels } from './measurement/MeasurementLabels';
 import { MeasurementShapes } from './measurement/MeasurementShapes';
 import { MeasurementToolbar } from './measurement/MeasurementToolbar';
+import {
+  clearPersonalMeasurements,
+  readPersonalMeasurements,
+  savePersonalMeasurement,
+} from './measurement/personalMeasurements';
 import type { MeasurementState } from './measurement/useMeasurement';
+import { usePersonalMeasurementsLayer } from './measurement/usePersonalMeasurementsLayer';
 import { PuntoInteresPlaceModal } from './PuntoInteresPlaceModal';
 import type { PrecipitationRange } from './precipRanges';
+import { culvertPoints } from './profileBoundaryCrossings';
+import type { ProfileChartRow } from './profileChartRows';
 import type { ProfileRangeStats } from './profileRange';
 import type { AnalysisToolProps } from './useAnalysisToolsGate';
 import type { UseFichaInteractionResult } from './useFichaInteraction';
 import type { FichaOverlayTabsState } from './useFichaOverlayTabs';
-import { coarseProfile, terrainTileReader } from './coarseDem';
-import type { ProfileChartRow } from './profileChartRows';
-import { useSlopeColoredLine } from './useSlopeColoredLine';
 import { useMapProfileCursor } from './useMapProfileCursor';
 import type { PuntosInteresWiring } from './usePuntosInteresWiring';
 import type { QuickPlacePin } from './useQuickPlaceMarker';
 import type { RoadFlowWiring } from './useRoadFlowWiring';
+import { useSlopeColoredLine } from './useSlopeColoredLine';
 import type { ViewMode } from './ViewModePanel';
 import { ViewModePanel } from './ViewModePanel';
 
@@ -390,6 +392,8 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   // Same hook `MapWorkspace` uses for the sidebar-vs-Drawer decision, so the
   // floating top bar and the Drawer can never both own the base-layer control.
   const isDesktop = useMapWorkspaceDesktop();
+  const canvasShellRef = useRef<HTMLDivElement>(null);
+  const showCursorReadout = useMapWorkspaceStore((state) => state.showCursorReadout);
   const [pinnedProfile, setPinnedProfile] = useState<{
     geometry: LineString | MultiLineString;
     title: string;
@@ -504,6 +508,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
     viewModePanel:
       baseLayer === 'satellite' ? (
         <ViewModePanel
+          plain
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           hasSingleImage={hasSingleImage}
@@ -515,30 +520,31 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   };
 
   return (
-    <Box
-      className={styles.mapWorkspace}
-      data-testid="map-workspace"
-      /* Published so the stylesheet can collapse the grid's first (top bar)
-       row when the bar is not rendered — otherwise the `auto` row plus the
-       `gap` leave 12px of dead space above the canvas on mobile. */
-      data-topbar={isDesktop ? 'true' : 'false'}
-    >
-      {/* Desktop ONLY. On mobile the very same controls live in the layers
-        Drawer (see the `controls` tree below): a floating bar over a 360px
-        canvas cost ~149px of map and duplicated a control the Drawer already
-        owns. Both branches read `baseControls`, so there is exactly one
-        definition of what "base layer controls" means. */}
-      {isDesktop && (
-        <Box
-          className={styles.mapTopBar}
-          aria-label="Selector de capa base y vista satelital"
-          data-testid="map-top-bar"
-        >
-          <MapBaseSelectorPanel {...baseControls} />
-        </Box>
-      )}
-
+    <Box className={styles.mapWorkspace} data-testid="map-workspace">
       <MapWorkspace
+        headerSlot={
+          <MapSearchBox
+            {...mapSearch}
+            places={MAP_QUICK_PLACES.map((place) => ({ id: place.id, label: place.label }))}
+            onPickPlace={(placeId) => {
+              const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
+              if (!place) return;
+              setQuickPlace({
+                label: place.label,
+                lng: place.center[0],
+                lat: place.center[1],
+              });
+              mapRef.current?.flyTo({
+                center: place.center,
+                zoom: place.zoom,
+                duration: 800,
+              });
+            }}
+            onGeolocate={() => {
+              requestMapGeolocate(mapRef.current);
+            }}
+          />
+        }
         activeLayerCount={activeLayerCount}
         liveMessage={waterwaysError ?? geoLayersError ?? undefined}
         selection={
@@ -566,6 +572,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
         onCloseSelection={handleCloseInfoPanel}
         canvas={
           <Box
+            ref={canvasShellRef}
             className={styles.mapCanvasWrapper}
             role="application"
             aria-label="mapa interactivo del consorcio para explorar cuencas, canales e infraestructura"
@@ -581,7 +588,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               style={{ width: '100%', height: '100%', position: 'relative' }}
             >
               <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-              <MapSearchBox {...mapSearch} />
               {mapLoadError ? (
                 <Box
                   style={{
@@ -591,7 +597,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: 16,
-                    zIndex: 20,
+                    zIndex: MAP_Z.blocking,
                   }}
                 >
                   <Stack gap="sm" maw={560}>
@@ -618,7 +624,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                     position: 'absolute',
                     inset: 0,
                     pointerEvents: 'none',
-                    zIndex: 10,
+                    zIndex: MAP_Z.comparison,
                     clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
                   }}
                 />
@@ -633,38 +639,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               />
             </div>
 
-            {/* Measurement tools + ficha free-draw: one floating toolbar (JDB-012). */}
-            <MeasurementToolbar
-              mode={puntosInteres.interactionMode}
-              hasMeasurements={measurementState.measurements.length > 0}
-              liveLabel={measurementLiveLabel}
-              onStartDistance={handleStartMeasureDistance}
-              onStartArea={handleStartMeasureArea}
-              onClear={clearMeasurements}
-              onCancel={cancelMeasurement}
-              onUndo={undoMeasurement}
-              onSavePersonal={() => {
-                const last = measurementState.measurements.at(-1);
-                if (!last) return;
-                savePersonalMeasurement({ id: last.id, kind: last.kind, geometry: last.geometry });
-                setPersonalRevision((value) => value + 1);
-              }}
-              savedMeasurementsCount={savedPersonalMeasurementsCount}
-              savedMeasurementsVisible={personalVisible}
-              onTogglePersonalVisibility={() => setPersonalVisible((prev) => !prev)}
-              onClearPersonal={() => {
-                clearPersonalMeasurements();
-                setPersonalRevision((value) => value + 1);
-              }}
-              fichaDrawActive={isFichaDrawSession}
-              fichaCanalActive={isFichaCanal}
-              fichaMultiSelectActive={fichaInteraction.state.multiSelect}
-              poiPlaceActive={puntosInteres.placing}
-              onTogglePoiPlace={puntosInteres.onTogglePoiPlace}
-              /* Draw / canal / multi-select callbacks are login-gated: absent for
-               anonymous visitors, so those buttons are not rendered at all. */
-              {...analysisToolProps}
-            />
+
             <PuntoInteresPlaceModal
               opened={puntosInteres.modalOpen}
               saving={puntosInteres.saving}
@@ -769,7 +744,11 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
               onExportKmz={handleExportKmz}
               onExportMenuOpen={handleExportIntent}
-              cursorReadout={<MapCursorReadout map={mapRef.current} mapReady={mapReady} />}
+              cursorReadout={
+                showCursorReadout ? (
+                  <MapCursorReadout map={mapRef.current} mapReady={mapReady} />
+                ) : null
+              }
               placesControl={
                 <MapPlacesControl
                   onRecenter={() => {
@@ -782,23 +761,49 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                       { padding: MAP_HOME_FIT_PADDING, duration: 800 }
                     );
                   }}
-                  onFlyToPlace={(placeId) => {
-                    const place = MAP_QUICK_PLACES.find((item) => item.id === placeId);
-                    if (!place) return;
-                    setQuickPlace({
-                      label: place.label,
-                      lng: place.center[0],
-                      lat: place.center[1],
-                    });
-                    mapRef.current?.flyTo({
-                      center: place.center,
-                      zoom: place.zoom,
-                      duration: 800,
-                    });
+                />
+              }
+              toolsControl={
+                <MeasurementToolbar
+                  mode={puntosInteres.interactionMode}
+                  hasMeasurements={measurementState.measurements.length > 0}
+                  liveLabel={measurementLiveLabel}
+                  onStartDistance={handleStartMeasureDistance}
+                  onStartArea={handleStartMeasureArea}
+                  onClear={clearMeasurements}
+                  onCancel={cancelMeasurement}
+                  onUndo={undoMeasurement}
+                  savedMeasurementsCount={savedPersonalMeasurementsCount}
+                  savedMeasurementsVisible={personalVisible}
+                  onTogglePersonalVisibility={() => setPersonalVisible((prev) => !prev)}
+                  onClearPersonal={() => {
+                    clearPersonalMeasurements();
+                    setPersonalRevision((value) => value + 1);
                   }}
-                  onGeolocate={() => {
-                    requestMapGeolocate(mapRef.current);
+                  onSavePersonal={() => {
+                    const last = measurementState.measurements.at(-1);
+                    if (!last) return;
+                    savePersonalMeasurement({
+                      id: last.id,
+                      kind: last.kind,
+                      geometry: last.geometry,
+                    });
+                    setPersonalRevision((value) => value + 1);
                   }}
+                  fichaDrawActive={isFichaDrawSession}
+                  fichaCanalActive={isFichaCanal}
+                  fichaMultiSelectActive={fichaInteraction.state.multiSelect}
+                  poiPlaceActive={puntosInteres.placing}
+                  onTogglePoiPlace={puntosInteres.onTogglePoiPlace}
+                  hasApprovedZones={hasApprovedZones}
+                  onOpenExportPng={() => setExportPngModalOpen(true)}
+                  onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+                  onExportKmz={handleExportKmz}
+                  onExportMenuOpen={handleExportIntent}
+                  portalTarget={canvasShellRef}
+                  /* Draw / canal / multi-select callbacks are login-gated: absent for
+                   anonymous visitors, so those entries are not rendered at all. */
+                  {...analysisToolProps}
                 />
               }
               showLegend={showLegend}
@@ -867,8 +872,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               onExportPng={handleExportPng}
               layerHealth={layerHealth}
               layerProvenance={layerProvenance}
-              showEmbeddedMapControls={false}
-              showEmbeddedRasterLegend={false}
               roadFlowActive={roadFlow.roadFlowActive}
               roadFlowCrossings={roadFlow.crossings}
               roadFlowCobertura={roadFlow.cobertura}
@@ -917,13 +920,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
           <Stack gap="sm" data-testid="map-controls-tree">
             <LayerControlsPanel
               insideScrollContainer
-              /* Mobile ONLY. `LayerControlsPanel` renders the "Capa base"
-               selector and the `viewModePanel` slot only when these props are
-               defined, so spreading them exclusively on !isDesktop is what
-               keeps EXACTLY ONE base-layer control on screen: the floating
-               `.mapTopBar` owns it on desktop, the Drawer owns it here. Same
-               `baseControls` either way. */
-              {...(isDesktop ? {} : baseControls)}
+              {...baseControls}
               layerItems={vectorLayerItems}
               vectorVisibility={vectorVisibility}
               onLayerVisibilityChange={toggleLayer}

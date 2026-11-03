@@ -33,6 +33,7 @@ import type { LineString } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
+import { MAP_Z } from '../mapZIndex';
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
 
@@ -166,7 +167,7 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 17,
+        zIndex: MAP_Z.measurementLabel,
       }}
     >
       {visible.map((m) => {

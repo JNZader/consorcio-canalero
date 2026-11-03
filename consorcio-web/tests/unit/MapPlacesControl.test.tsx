@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MapPlacesControl } from '../../src/components/map2d/MapPlacesControl';
+import { MapSearchBox } from '../../src/components/map2d/MapSearchBox';
 
 function wrap(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -14,43 +15,62 @@ describe('MapPlacesControl', () => {
   it('recenters the consorcio', async () => {
     const user = userEvent.setup();
     const onRecenter = vi.fn();
-    wrap(<MapPlacesControl onRecenter={onRecenter} onFlyToPlace={() => {}} />);
+    wrap(<MapPlacesControl onRecenter={onRecenter} />);
     await user.click(screen.getByTestId('map-recenter-consorcio'));
     expect(onRecenter).toHaveBeenCalledOnce();
   });
 
-  it('flies to Bell Ville from lugares rápidos', async () => {
-    const user = userEvent.setup();
-    const onFlyToPlace = vi.fn();
-    wrap(<MapPlacesControl onRecenter={() => {}} onFlyToPlace={onFlyToPlace} />);
-    await user.click(screen.getByTestId('map-quick-places'));
-    await user.click(screen.getByText('Bell Ville'));
-    expect(onFlyToPlace).toHaveBeenCalledWith('bell-ville');
+  it('is a single home button, without a lugares menu', () => {
+    const { container } = wrap(<MapPlacesControl onRecenter={() => {}} />);
+    const group = container.querySelector('.maplibregl-ctrl-group');
+    expect(group?.querySelectorAll(':scope > button')).toHaveLength(1);
+    expect(screen.queryByTestId('map-quick-places')).not.toBeInTheDocument();
   });
+});
 
-  it('lists San Marcos Sud and Monte Leña', async () => {
+describe('MapSearchBox lugares rápidos', () => {
+  const places = [
+    { id: 'bell-ville', label: 'Bell Ville' },
+    { id: 'san-marcos-sud', label: 'San Marcos Sud' },
+    { id: 'monte-lena', label: 'Monte Leña' },
+  ];
+
+  function renderSearch(overrides: Partial<Parameters<typeof MapSearchBox>[0]> = {}) {
+    return wrap(
+      <MapSearchBox
+        query=""
+        onQueryChange={() => {}}
+        canalIndex={null}
+        parcels={null}
+        parcelsLoading={false}
+        onPickCanal={() => {}}
+        onPickParcel={() => {}}
+        places={places}
+        onPickPlace={() => {}}
+        onGeolocate={() => {}}
+        {...overrides}
+      />
+    );
+  }
+
+  it('offers Ubicarme and the three towns while the query is empty', async () => {
     const user = userEvent.setup();
-    wrap(<MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} />);
-    await user.click(screen.getByTestId('map-quick-places'));
+    const onPickPlace = vi.fn();
+    const onGeolocate = vi.fn();
+    renderSearch({ onPickPlace, onGeolocate });
+
+    expect(screen.getByRole('list', { name: 'Lugares rápidos' })).toBeInTheDocument();
+    await user.click(screen.getByTestId('map-geolocate'));
+    expect(onGeolocate).toHaveBeenCalledOnce();
+    await user.click(screen.getByText('Bell Ville'));
+    expect(onPickPlace).toHaveBeenCalledWith('bell-ville');
     expect(screen.getByText('San Marcos Sud')).toBeInTheDocument();
     expect(screen.getByText('Monte Leña')).toBeInTheDocument();
   });
 
-  it('offers Ubicarme inside lugares, not as a third stacked button', async () => {
-    const user = userEvent.setup();
-    const onGeolocate = vi.fn();
-    wrap(
-      <MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} onGeolocate={onGeolocate} />,
-    );
-    expect(screen.queryByTestId('map-geolocate')).not.toBeInTheDocument();
-    await user.click(screen.getByTestId('map-quick-places'));
-    await user.click(screen.getByTestId('map-geolocate'));
-    expect(onGeolocate).toHaveBeenCalledOnce();
-  });
-
-  it('does not wrap ctrl-group buttons in extra tooltip nodes', () => {
-    const { container } = wrap(<MapPlacesControl onRecenter={() => {}} onFlyToPlace={() => {}} />);
-    const group = container.querySelector('.maplibregl-ctrl-group');
-    expect(group?.querySelectorAll(':scope > button')).toHaveLength(2);
+  it('does not render the duplicated copy-link or QR buttons', () => {
+    renderSearch();
+    expect(screen.queryByTestId('map-copy-link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'QR' })).not.toBeInTheDocument();
   });
 });

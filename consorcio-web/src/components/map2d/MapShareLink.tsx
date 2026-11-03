@@ -12,10 +12,14 @@ async function copyCurrentUrl(): Promise<boolean> {
   }
 }
 
-/** Field copy of the permalink, including whatever the address bar already carries. */
-export function MapShareLink() {
-  const [opened, setOpened] = useState(false);
-  const [copied, setCopied] = useState(false);
+/** QR of the permalink. The copy/QR buttons live in Herramientas, not on the map. */
+export function MapShareQrModal({
+  opened,
+  onClose,
+}: {
+  readonly opened: boolean;
+  readonly onClose: () => void;
+}) {
   const [svg, setSvg] = useState('');
   const url = typeof window === 'undefined' ? '' : window.location.href;
 
@@ -31,6 +35,21 @@ export function MapShareLink() {
       cancelled = true;
     };
   }, [opened, url]);
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Link para el campo" size="sm">
+      <Text size="xs" mb="sm">
+        El código incluye la cámara, las capas y la selección que están en la dirección.
+      </Text>
+      <div data-testid="map-share-qr-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+    </Modal>
+  );
+}
+
+/** Field copy of the permalink, including whatever the address bar already carries. */
+export function MapShareLink() {
+  const [opened, setOpened] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   return (
     <>
@@ -54,12 +73,7 @@ export function MapShareLink() {
           QR
         </Button>
       </Group>
-      <Modal opened={opened} onClose={() => setOpened(false)} title="Link para el campo" size="sm">
-        <Text size="xs" mb="sm">
-          El código incluye la cámara, las capas y la selección que están en la dirección.
-        </Text>
-        <div data-testid="map-share-qr-svg" dangerouslySetInnerHTML={{ __html: svg }} />
-      </Modal>
+      <MapShareQrModal opened={opened} onClose={() => setOpened(false)} />
     </>
   );
 }

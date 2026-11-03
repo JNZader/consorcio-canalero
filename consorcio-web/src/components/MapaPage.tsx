@@ -5,12 +5,10 @@ import {
   Container,
   Group,
   Paper,
-  SegmentedControl,
   Skeleton,
   Stack,
   Text,
   Title,
-  Tooltip,
 } from '@mantine/core';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useGeoLayers } from '../hooks/useGeoLayers';
@@ -21,8 +19,9 @@ import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
 import { MapViewPanes, notifyMapPaneShown, shouldArmThreeD } from './map2d/MapViewPanes';
+import { MapPageViewProvider } from './map2d/mapPageViewContext';
 import { resolveTerrainAvailability, terrainAvailabilityHint } from './map2d/terrainAvailability';
-import { Icon3dCubeSphere, IconAlertTriangle, IconMap, IconPhoto, IconSatellite } from './ui/icons';
+import { IconAlertTriangle, IconPhoto, IconSatellite } from './ui/icons';
 
 // Lazy-load TerrainViewer3D (MapLibre terrain, not deck.gl).
 const TerrainViewer3D = lazy(() => import('./terrain/TerrainViewer3D'));
@@ -65,180 +64,135 @@ export function MapaContent() {
   }, [mapViewMode]);
 
   return (
-    <Box
-      style={{
-        background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
+    <MapPageViewProvider
+      value={{
+        mode: mapViewMode,
+        setMode: setMapViewMode,
+        terrainReady: terrainStatus === 'ready',
+        terrainHint: terrainStatus === 'ready' ? null : terrainHint,
+        terrainStatus,
+        onRetryTerrain: () => void reloadDem(),
       }}
-      mih="100vh"
     >
-      <Container fluid px={{ base: 'xs', md: 'md' }} py="sm" className={mapStyles.mapPageContainer}>
-        {/* Title + controls in ONE Paper (map-fluidity T1).
-            The page used to stack a full-width title Paper (~82px) on top of a
-            separate controls Paper; together with MapaMapLibre's own top bar
-            that pushed the canvas ~300px down the page and the map's bottom
-            edge off screen at 1366×768. Merging them removes one Paper's
-            padding, one margin and the oversized title block (~74px on
-            desktop, more on mobile where every row wraps) without dropping any
-            content. */}
-        <Paper shadow="sm" p="sm" mb="sm" radius="md" className={mapStyles.mapPageHeader}>
-          <Group justify="space-between" wrap="wrap" gap="sm">
-            <Group gap="sm" wrap="wrap">
-              <Stack gap={0}>
-                <Title order={2} fz="h4">
+      <Box
+        style={{
+          background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
+        }}
+        mih="100vh"
+      >
+        <Container
+          fluid
+          px={{ base: 'xs', md: 'md' }}
+          py="xs"
+          className={mapStyles.mapPageContainer}
+        >
+          {/* One compact row. 2D/3D, capa base and the satellite view live in the
+            layers panel so this bar no longer spends a second row on them. */}
+          <Paper shadow="sm" p="xs" mb="xs" radius="md" className={mapStyles.mapPageHeader}>
+            <Group justify="space-between" wrap="wrap" gap="xs">
+              <Group gap="xs" wrap="wrap">
+                <Title order={2} fz="h5">
                   Mapa Interactivo
                 </Title>
                 <Text size="xs" c="gray.6">
                   Explorá las cuencas, caminos e infraestructura del consorcio
                 </Text>
-              </Stack>
-              {multiHazardEnabled && (
-                <Badge size="sm" color="blue" variant="light">
-                  Visor de riesgos disponible
-                </Badge>
-              )}
-
-              {/* Selected satellite image info */}
-              {selectedImage ? (
-                <Group gap="xs">
-                  <IconSatellite size={20} color="var(--mantine-color-blue-6)" />
-                  <Stack gap={2}>
-                    <Text size="sm" fw={500}>
+                {multiHazardEnabled && (
+                  <Badge size="sm" color="blue" variant="light">
+                    Visor de riesgos disponible
+                  </Badge>
+                )}
+                {selectedImage ? (
+                  <Group gap={6} wrap="nowrap">
+                    <IconSatellite size={16} color="var(--mantine-color-blue-6)" />
+                    <Text size="xs" fw={500}>
                       Imagen satelital activa
                     </Text>
-                    <Group gap="xs">
-                      <Badge size="sm" color="blue" variant="light">
-                        {selectedImage.sensor}
-                      </Badge>
-                      <Text size="xs" c="dimmed">
-                        {selectedImage.target_date} - {selectedImage.visualization_description}
-                      </Text>
-                    </Group>
-                  </Stack>
-                </Group>
-              ) : (
-                <Group gap="xs">
-                  <IconPhoto size={20} color="var(--mantine-color-gray-5)" />
-                  <Text size="sm" c="dimmed">
-                    No hay imagen satelital seleccionada
-                  </Text>
-                </Group>
-              )}
-
-              {/* Image explorer button for admins */}
-              {isCommissionMember && (
-                <Button
-                  component="a"
-                  href={withBasePath('/admin/images')}
-                  variant="light"
-                  size="sm"
-                  leftSection={<IconPhoto size={16} />}
-                >
-                  {selectedImage ? 'Cambiar imagen' : 'Explorar imágenes'}
-                </Button>
-              )}
+                    <Badge size="sm" color="blue" variant="light">
+                      {selectedImage.sensor}
+                    </Badge>
+                    <Text size="xs" c="dimmed">
+                      {selectedImage.target_date} - {selectedImage.visualization_description}
+                    </Text>
+                  </Group>
+                ) : (
+                  <Group gap={6} wrap="nowrap">
+                    <IconPhoto size={16} color="var(--mantine-color-gray-5)" />
+                    <Text size="xs" c="dimmed">
+                      No hay imagen satelital seleccionada
+                    </Text>
+                  </Group>
+                )}
+                {isCommissionMember && (
+                  <Button
+                    component="a"
+                    href={withBasePath('/admin/images')}
+                    variant="light"
+                    size="xs"
+                    leftSection={<IconPhoto size={14} />}
+                  >
+                    {selectedImage ? 'Cambiar imagen' : 'Explorar imágenes'}
+                  </Button>
+                )}
+              </Group>
+              <Button
+                component="a"
+                href={withBasePath('/participacion')}
+                color="orange"
+                size="xs"
+                leftSection={<IconAlertTriangle size={16} />}
+              >
+                Reportar Incidente
+              </Button>
             </Group>
+          </Paper>
 
-            <Button
-              component="a"
-              href={withBasePath('/participacion')}
-              color="orange"
-              leftSection={<IconAlertTriangle size={18} />}
-            >
-              Reportar Incidente
-            </Button>
-          </Group>
-        </Paper>
-
-        <Group gap="sm" align="center" className={mapStyles.mapViewToggleBar} mb="sm">
-          <Tooltip label="Mapa 2D (MapLibre)" position="bottom" withArrow>
-            <Box>
-              <SegmentedControl
-                size="sm"
-                value={mapViewMode}
-                onChange={(value) => setMapViewMode(value as MapViewMode)}
-                data={[
-                  {
-                    value: '2d',
-                    label: (
-                      <Group gap={4}>
-                        <IconMap size={16} />
-                        <Text size="xs">2D</Text>
-                      </Group>
-                    ),
-                  },
-                  {
-                    value: '3d',
-                    disabled: terrainStatus !== 'ready',
-                    label: (
-                      <Group gap={4}>
-                        <Icon3dCubeSphere size={16} />
-                        <Text size="xs">3D</Text>
-                      </Group>
-                    ),
-                  },
-                ]}
-              />
-            </Box>
-          </Tooltip>
-          {terrainStatus !== 'ready' && (
-            <Group gap={6} wrap="nowrap">
-              <Text size="xs" c="dimmed" data-testid="map-3d-status">
-                {terrainHint}
-              </Text>
-              {terrainStatus === 'error' && (
-                <Button size="xs" variant="light" onClick={() => void reloadDem()}>
-                  Reintentar
-                </Button>
-              )}
-            </Group>
-          )}
-        </Group>
-
-        {/* Mapa 2D o Terreno 3D */}
-        <Paper
-          shadow="sm"
-          radius="md"
-          className={mapStyles.mapPageCanvas}
-          style={{ overflow: 'hidden' }}
-          mb="sm"
-        >
-          {/*
+          {/* Mapa 2D o Terreno 3D */}
+          <Paper
+            shadow="sm"
+            radius="md"
+            className={mapStyles.mapPageCanvas}
+            style={{ overflow: 'hidden' }}
+            mb="sm"
+          >
+            {/*
             `.canvasHeightBudget` publishes the SAME `--map-canvas-height`
             as `.mapCanvasWrapper`. UX-17 hides rather than unmounts 2D.
           */}
-          <MapViewPanes
-            className={mapStyles.canvasHeightBudget}
-            mode={mapViewMode}
-            threeDArmed={threeDArmed}
-            twoD={<MapaContenido />}
-            threeD={
-              <Suspense
-                fallback={
-                  <Box
-                    p="xl"
-                    style={{
-                      minHeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Stack align="center" gap="md">
-                      <Skeleton circle height={48} width={48} />
-                      <Text size="sm" c="dimmed">
-                        Cargando visualizador 3D...
-                      </Text>
-                    </Stack>
-                  </Box>
-                }
-              >
-                <TerrainViewer3D demLayerId={demRawLayer?.id} height="var(--map-canvas-height)" />
-              </Suspense>
-            }
-          />
-        </Paper>
-      </Container>
-    </Box>
+            <MapViewPanes
+              className={mapStyles.canvasHeightBudget}
+              mode={mapViewMode}
+              threeDArmed={threeDArmed}
+              twoD={<MapaContenido />}
+              threeD={
+                <Suspense
+                  fallback={
+                    <Box
+                      p="xl"
+                      style={{
+                        minHeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Stack align="center" gap="md">
+                        <Skeleton circle height={48} width={48} />
+                        <Text size="sm" c="dimmed">
+                          Cargando visualizador 3D...
+                        </Text>
+                      </Stack>
+                    </Box>
+                  }
+                >
+                  <TerrainViewer3D demLayerId={demRawLayer?.id} height="var(--map-canvas-height)" />
+                </Suspense>
+              }
+            />
+          </Paper>
+        </Container>
+      </Box>
+    </MapPageViewProvider>
   );
 }
 

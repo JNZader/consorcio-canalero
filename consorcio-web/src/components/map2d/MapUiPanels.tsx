@@ -1,7 +1,5 @@
-import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { memo, type ReactNode, useCallback, useState } from 'react';
-import { MAP_DEFAULT_ZOOM } from '../../constants';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { FICHA_IDLE_SELECTION_KEY } from '../../hooks/useFichaTerritorial';
 import type { UseRoadFlowCrossingsResult } from '../../hooks/useRoadFlowCrossings';
@@ -12,18 +10,12 @@ import type {
   TramoRelevamientoDetalle,
 } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
-import { useMapCameraStore } from '../../stores/mapCameraStore';
 import styles from '../../styles/components/map.module.css';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
-import { RasterLegend } from '../RasterLegend';
 import type { EtapaGate } from '../shared/canalesGrouping';
 import { ExportPngModal } from './ExportPngModal';
 import { type FichaPanelTab, FichaTerritorialPanel } from './FichaTerritorialPanel';
-import {
-  type CanalToggleEntry,
-  LayerControlsPanel,
-  type LayerFineControl,
-} from './LayerControlsPanel';
+import type { CanalToggleEntry, LayerFineControl } from './LayerControlsPanel';
 import type { LayerHealth } from './layerHealth';
 import { MapActionsPanel } from './MapActionsPanel';
 import type { LayerCategory } from './map2dDerived';
@@ -33,7 +25,7 @@ import type { RoadFlowKindVisibility } from './roadFlowLayers';
 import { TramoSurveySheet } from './TramoSurveySheet';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
-import { type ViewMode, ViewModePanel } from './ViewModePanel';
+import type { ViewMode } from './ViewModePanel';
 
 /**
  * Fallbacks for the optional cruces handlers. They exist so the panel can stay
@@ -120,8 +112,13 @@ export interface MapUiPanelsProps {
    * GeoJSON fetch on export intent instead of on every mount.
    */
   readonly onExportMenuOpen?: () => void;
-  /** Home + lugares. Stacked with Exportar (UX-19). */
+  /** Home. Stacked with Herramientas (UX-19). */
   readonly placesControl?: ReactNode;
+  /**
+   * Right-column tools. When set, replaces the standalone Exportar button:
+   * measure and export share one Herramientas menu.
+   */
+  readonly toolsControl?: ReactNode;
   /** UX-18: cursor coords, not inside the right control column. */
   readonly cursorReadout?: ReactNode;
   readonly showLegend: boolean;
@@ -241,19 +238,6 @@ export interface MapUiPanelsProps {
   readonly onExportIncludeMetadataChange: (value: boolean) => void;
   readonly onExportPng: () => void;
   /**
-   * When false, the layer selector and static legend are rendered by the parent
-   * outside the map canvas. Overlay-only mode keeps quick actions, info panels
-   * and modals inside the map.
-   */
-  readonly showEmbeddedMapControls?: boolean;
-  /**
-   * When false, the raster legend is NOT rendered inside the map canvas. The
-   * parent is expected to render `<RasterLegend floating={false} />` somewhere
-   * outside the map (typically in a bottom bar next to `LeyendaPanel`).
-   * Defaults to `true` to preserve the floating bottom-right behavior.
-   */
-  readonly showEmbeddedRasterLegend?: boolean;
-  /**
    * Cruces de camino (flujo-caminos S4). The panel's LIFECYCLE IS THE LAYER
    * TOGGLE: `roadFlowActive` mirrors `vectorVisibility.road_flow`, so ticking
    * the layer opens the panel and unticking it closes the panel. All of these
@@ -285,57 +269,14 @@ export interface MapUiPanelsProps {
 }
 
 export const MapUiPanels = memo(function MapUiPanels({
-  baseLayer,
-  onBaseLayerChange,
-  viewMode,
-  onViewModeChange,
-  hasSingleImage,
-  hasComparison,
-  singleImageInfo,
-  comparisonInfo,
-  layerItems,
-  vectorVisibility,
-  onLayerVisibilityChange,
-  showIGNOverlay,
-  onShowIGNOverlayChange,
-  showHillshade = false,
-  onShowHillshadeChange,
-  hillshadeAvailable = false,
-  demEnabled,
-  showDemOverlay,
-  onShowDemOverlayChange,
-  activeDemLayerId,
-  onActiveDemLayerIdChange,
-  demOptions,
-  satelliteLayer = null,
-  onHideSatellite,
-  rasterLoading = false,
-  demLoadError = null,
-  onRetryDem,
-  onFocusCanal,
-  rasterCompareId = null,
-  onRasterCompare,
-  canalesRelevadosItems,
-  canalesPropuestosItems,
-  etapaGate = null,
-  layerFineControl,
-  layerHealth,
-  layerProvenance,
   hasApprovedZones,
   onOpenExportPng,
   onExportApprovedZonesPdf,
   onExportKmz,
   onExportMenuOpen,
   placesControl,
+  toolsControl,
   cursorReadout,
-  showLegend,
-  consorcios,
-  activeLegendItems,
-  visibleRasterLayers,
-  hiddenClasses,
-  hiddenRanges,
-  onClassToggle,
-  onRangeToggle,
   fichaActive,
   fichaTipo,
   fichaNroCuenta,
@@ -376,8 +317,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   onExportIncludeLegendChange,
   onExportIncludeMetadataChange,
   onExportPng,
-  showEmbeddedMapControls = true,
-  showEmbeddedRasterLegend = true,
   roadFlowActive = false,
   roadFlowCrossings,
   roadFlowCobertura,
@@ -394,8 +333,6 @@ export const MapUiPanels = memo(function MapUiPanels({
   onSubmitTramoSurvey,
   onCloseTramoSurvey,
 }: MapUiPanelsProps) {
-  const mapZoom = useMapCameraStore((state) => state.camera?.zoom) ?? MAP_DEFAULT_ZOOM;
-
   // Narrow viewports (map-fluidity T2, fix 1). Same 62em breakpoint the CSS
   // module already uses, resolved synchronously on first render like
   // `MapWorkspace` does, so the ficha never flashes as a floating card on a phone.
@@ -477,131 +414,19 @@ export const MapUiPanels = memo(function MapUiPanels({
 
   return (
     <>
-      {/*
-        Side-by-side top-left stack (mirrors the 3D `TerrainLayerTogglesPanel`
-        + `TerrainLegendsPanel` split):
-
-          [LayerControlsPanel] [LeyendaPanel]
-
-        Previously `LayerControlsPanel` lived at top-left and `LeyendaPanel`
-        floated at bottom-left via the `.legendPanel` CSS class. When the
-        layer list grew tall (many BPA toggles + DEM + attributions) the two
-        panels visually collided. Bounding `LayerControlsPanel` with
-        `maxHeight + overflow-y: auto` was not enough — the two panels still
-        shared the same vertical column.
-
-        The new layout owns positioning from this outer flex-row container
-        (LeyendaPanel is rendered in `embedded` mode so its
-        `.legendPanel` absolute-positioning class is NOT applied). Each
-        panel keeps its own bounded `maxHeight` so neither overflows the
-        viewport.
-
-        RasterLegend stays at the bottom-right. The feature readout is not
-        painted here: it lives in the left sidebar.
-      */}
-      {showEmbeddedMapControls && (
-        <Box
-          data-testid="map-2d-top-left-panels"
-          style={{
-            position: 'absolute',
-            top: 12,
-            left: 12,
-            zIndex: 16,
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 8,
-            maxHeight: 'calc(100vh - 180px)',
-            overflowY: 'auto',
-            overflowX: 'hidden',
-          }}
-        >
-          <LayerControlsPanel
-            baseLayer={baseLayer}
-            onBaseLayerChange={onBaseLayerChange}
-            viewModePanel={
-              baseLayer === 'satellite' ? (
-                <ViewModePanel
-                  viewMode={viewMode}
-                  onViewModeChange={onViewModeChange}
-                  hasSingleImage={hasSingleImage}
-                  hasComparison={hasComparison}
-                  singleImageInfo={singleImageInfo}
-                  comparisonInfo={comparisonInfo}
-                />
-              ) : null
-            }
-            layerItems={layerItems}
-            mapZoom={mapZoom}
-            vectorVisibility={vectorVisibility}
-            onLayerVisibilityChange={onLayerVisibilityChange}
-            showIGNOverlay={showIGNOverlay}
-            onShowIGNOverlayChange={onShowIGNOverlayChange}
-            showHillshade={showHillshade}
-            onShowHillshadeChange={onShowHillshadeChange}
-            hillshadeAvailable={hillshadeAvailable}
-            demEnabled={demEnabled}
-            showDemOverlay={showDemOverlay}
-            onShowDemOverlayChange={onShowDemOverlayChange}
-            activeDemLayerId={activeDemLayerId}
-            onActiveDemLayerIdChange={onActiveDemLayerIdChange}
-            demOptions={demOptions}
-            satelliteLayer={satelliteLayer}
-            onHideSatellite={onHideSatellite}
-            rasterLoading={rasterLoading}
-            demLoadError={demLoadError}
-            onRetryDem={onRetryDem}
-            onFocusCanal={onFocusCanal}
-            rasterCompareId={rasterCompareId}
-            onRasterCompare={onRasterCompare}
-            canalesRelevadosItems={canalesRelevadosItems}
-            canalesPropuestosItems={canalesPropuestosItems}
-            etapaGate={etapaGate}
-            layerFineControl={layerFineControl}
-            layerHealth={layerHealth}
-            layerProvenance={layerProvenance}
-            legendPanelProps={
-              showLegend
-                ? {
-                    consorcios,
-                    customItems: activeLegendItems,
-                    pilarVerdeBpaHistoricoVisible: !!vectorVisibility.pilar_verde_bpa_historico,
-                    pilarVerdeAgroAceptadaVisible: !!vectorVisibility.pilar_verde_agro_aceptada,
-                    pilarVerdeAgroPresentadaVisible: !!vectorVisibility.pilar_verde_agro_presentada,
-                    pilarVerdeAgroZonasVisible: !!vectorVisibility.pilar_verde_agro_zonas,
-                    pilarVerdePorcentajeForestacionVisible:
-                      !!vectorVisibility.pilar_verde_porcentaje_forestacion,
-                    pilarAzulCanalesRelevadosVisible: !!vectorVisibility.canales_relevados,
-                    pilarAzulCanalesPropuestosVisible: !!vectorVisibility.canales_propuestos,
-                    pilarAzulEscuelasVisible: !!vectorVisibility.escuelas,
-                  }
-                : undefined
-            }
-          />
-        </Box>
-      )}
-
       {cursorReadout ? <div className={styles.mapCursorDock}>{cursorReadout}</div> : null}
       <div className={styles.mapRightStack} data-testid="map-right-stack">
         {placesControl}
-        <MapActionsPanel
-          hasApprovedZones={hasApprovedZones}
-          onOpenExportPng={onOpenExportPng}
-          onExportApprovedZonesPdf={onExportApprovedZonesPdf}
-          onExportKmz={onExportKmz}
-          onExportMenuOpen={onExportMenuOpen}
-        />
+        {toolsControl ?? (
+          <MapActionsPanel
+            hasApprovedZones={hasApprovedZones}
+            onOpenExportPng={onOpenExportPng}
+            onExportApprovedZonesPdf={onExportApprovedZonesPdf}
+            onExportKmz={onExportKmz}
+            onExportMenuOpen={onExportMenuOpen}
+          />
+        )}
       </div>
-
-      {showEmbeddedRasterLegend && visibleRasterLayers.length > 0 && (
-        <RasterLegend
-          layers={visibleRasterLayers}
-          hiddenClasses={hiddenClasses}
-          hiddenRanges={hiddenRanges}
-          onClassToggle={onClassToggle}
-          onRangeToggle={onRangeToggle}
-        />
-      )}
 
       <FichaTerritorialPanel
         active={fichaActive}

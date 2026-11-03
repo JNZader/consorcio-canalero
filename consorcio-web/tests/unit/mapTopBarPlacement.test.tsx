@@ -1,17 +1,10 @@
 /**
- * mapTopBarPlacement.test.tsx — portrait rework.
+ * mapTopBarPlacement.test.tsx
  *
- * The base-layer controls used to have TWO homes at once: a floating
- * `.mapTopBar` over the canvas, and (potentially) `LayerControlsPanel`'s own
- * "Base" section. On a 360px-wide phone that bar wrapped to ~149px of chrome
- * over a 500px canvas — a fifth of the map spent on a control the layers Drawer
- * could host for free.
- *
- * The bar is now DESKTOP-ONLY, gated on the very same `useMapWorkspaceDesktop()`
- * that `MapWorkspace` uses for sidebar-vs-Drawer, and the mobile branch hands
- * the identical `baseControls` to `LayerControlsPanel` instead. The invariant
- * this file defends is "exactly one base-layer control, at either breakpoint" —
- * a duplicate would be two segmented controls fighting over one piece of state.
+ * Capa base, the satellite view and the time compare used to sit in rows and
+ * cards over the canvas. They now live once, in the layers panel, at every
+ * breakpoint. A second copy would be two segmented controls fighting over one
+ * piece of state.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -179,22 +172,25 @@ describe('base-layer controls placement (portrait rework)', () => {
     expect(queries).toContain(MAP_DESKTOP_MEDIA_QUERY);
   });
 
-  it('desktop: renders the floating top bar and flags the grid row', () => {
+  it('desktop: no floating top bar — vista lives in the panel', () => {
     mockViewport(DESKTOP);
     renderMap(<MapaMapLibre />);
 
-    expect(screen.getByTestId('map-top-bar')).toBeInTheDocument();
-    expect(screen.getByTestId('map-workspace')).toHaveAttribute('data-topbar', 'true');
+    expect(screen.queryByTestId('map-top-bar')).not.toBeInTheDocument();
+    const tree = screen.getByTestId('map-controls-tree');
+    expect(tree).toContainElement(screen.getByTestId('map-vista-section'));
+    expect(screen.getByTestId('map-workspace-sidebar')).toContainElement(screen.getByTestId('map-search'));
   });
 
   it('desktop: EXACTLY ONE base-layer control on screen', () => {
     mockViewport(DESKTOP);
     renderMap(<MapaMapLibre />);
 
-    // The sidebar is expanded and its `controls` tree is mounted, so a
-    // `LayerControlsPanel` that also received `baseLayer` would show up here.
     expect(screen.getByTestId('map-controls-tree')).toBeInTheDocument();
     expect(screen.getAllByLabelText(BASE_CONTROL_LABEL)).toHaveLength(1);
+    expect(screen.getByTestId('map-vista-section')).toContainElement(
+      screen.getByLabelText(BASE_CONTROL_LABEL)
+    );
   });
 
   it('mobile: NO floating top bar — the grid row collapses', () => {
@@ -202,7 +198,7 @@ describe('base-layer controls placement (portrait rework)', () => {
     renderMap(<MapaMapLibre />);
 
     expect(screen.queryByTestId('map-top-bar')).not.toBeInTheDocument();
-    expect(screen.getByTestId('map-workspace')).toHaveAttribute('data-topbar', 'false');
+    expect(screen.getByTestId('map-workspace')).not.toHaveAttribute('data-topbar');
   });
 
   it('mobile: the base-layer control lives in the Drawer instead', () => {

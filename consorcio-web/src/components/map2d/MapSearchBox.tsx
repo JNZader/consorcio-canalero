@@ -1,12 +1,15 @@
-import { Paper, Text, TextInput } from '@mantine/core';
+import { Text, TextInput } from '@mantine/core';
 import type { Feature, GeoJsonProperties, Geometry } from 'geojson';
 import { type ReactNode, useEffect, useState } from 'react';
-import styles from '../../styles/components/map.module.css';
 import type { IndexFile } from '../../types/canales';
 import { parseCoordinateQuery } from './mapCoordinates';
 import { searchCanales, searchParcelas } from './mapSearch';
 import { readRecentSearches, rememberSearch } from './mapSearchHistory';
-import { MapShareLink } from './MapShareLink';
+
+export interface MapSearchPlace {
+  readonly id: string;
+  readonly label: string;
+}
 
 export interface MapSearchModel {
   readonly query: string;
@@ -17,6 +20,10 @@ export interface MapSearchModel {
   readonly onPickCanal: (id: string) => void;
   readonly onPickParcel: (feature: Feature<Geometry, GeoJsonProperties>) => void;
   readonly onPickCoordinate?: (lat: number, lon: number) => void;
+  /** Lugares rápidos offered while the query is empty. */
+  readonly places?: readonly MapSearchPlace[];
+  readonly onPickPlace?: (placeId: string) => void;
+  readonly onGeolocate?: () => void;
 }
 
 interface SearchOptionItem {
@@ -38,6 +45,9 @@ export function MapSearchBox({
   onPickCanal,
   onPickParcel,
   onPickCoordinate,
+  places,
+  onPickPlace,
+  onGeolocate,
 }: MapSearchModel) {
   const [recent, setRecent] = useState<string[]>(() => readRecentSearches());
   const [activeIndex, setActiveIndex] = useState<number>(-1);
@@ -144,20 +154,18 @@ export function MapSearchBox({
   }
 
   const isOpen = !dismissed && options.length > 0;
-  const activeOption = isOpen && activeIndex >= 0 && activeIndex < options.length ? options[activeIndex] : undefined;
+  const activeOption =
+    isOpen && activeIndex >= 0 && activeIndex < options.length ? options[activeIndex] : undefined;
+
+  const showPlaces =
+    query.trim().length === 0 && (Boolean(onGeolocate) || (places?.length ?? 0) > 0);
 
   return (
-    <Paper
-      shadow="sm"
-      p="xs"
-      radius="md"
-      data-testid="map-search"
-      className={styles.mapSearchBox}
-    >
+    <div data-testid="map-search">
       <TextInput
         size="xs"
-        label="Buscar canal o cuenta"
-        placeholder="Nombre, código o cuenta"
+        aria-label="Buscar canal o cuenta"
+        placeholder="Nombre, código, cuenta o lugar"
         value={query}
         onChange={(event) => {
           setDismissed(false);
@@ -248,7 +256,79 @@ export function MapSearchBox({
           Buscando parcelas…
         </Text>
       ) : null}
-      <MapShareLink />
-    </Paper>
+      {showPlaces ? (
+        <ul
+          aria-label="Lugares rápidos"
+          style={{ listStyle: 'none', margin: '8px 0 0', padding: 0 }}
+        >
+          {onGeolocate ? (
+            <li>
+              <button
+                type="button"
+                data-testid="map-geolocate"
+                onClick={onGeolocate}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 0,
+                  padding: '4px 0',
+                  cursor: 'pointer',
+                }}
+              >
+                <Text size="xs">Ubicarme</Text>
+              </button>
+            </li>
+          ) : null}
+          {places?.map((place) => (
+            <li key={place.id}>
+              <button
+                type="button"
+                data-testid={`map-place-${place.id}`}
+                onClick={() => onPickPlace?.(place.id)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 0,
+                  padding: '4px 0',
+                  cursor: 'pointer',
+                }}
+              >
+                <Text size="xs">{place.label}</Text>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {query.trim().length === 0 && recent.length > 0 ? (
+        <ul
+          aria-label="Búsquedas recientes"
+          style={{ listStyle: 'none', margin: '8px 0 0', padding: 0 }}
+        >
+          {recent.map((item) => (
+            <li key={item}>
+              <button
+                type="button"
+                onClick={() => onQueryChange(item)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 0,
+                  padding: '4px 0',
+                  cursor: 'pointer',
+                }}
+              >
+                <Text size="xs">{item}</Text>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }

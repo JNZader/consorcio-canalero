@@ -148,6 +148,19 @@ describe('notifications', () => {
         })
       );
     });
+
+    it('places the toast under the site header when asked', () => {
+      notificationModule.showInfo('Vista aplicada', 'Se reemplazó la selección de capas.', {
+        belowHeader: true,
+      });
+
+      expect(notifications.show).toHaveBeenCalledWith({
+        title: 'Vista aplicada',
+        message: 'Se reemplazó la selección de capas.',
+        color: 'blue',
+        className: 'cc-toast-below-header',
+      });
+    });
   });
 
   describe('showNotification', () => {
