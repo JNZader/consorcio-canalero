@@ -62,7 +62,6 @@ describe('<TerrainLayerTogglesPanel /> — collapsible body', () => {
 
     expect(screen.getByText(/Capas 3D/i)).toBeInTheDocument();
     expect(screen.getByText(/Overlay raster activo/i)).toBeInTheDocument();
-    expect(screen.getByText(/Capas vectoriales 3D/i)).toBeInTheDocument();
   });
 
   it('hides body sections when the header is clicked, keeps title visible', () => {
@@ -72,7 +71,6 @@ describe('<TerrainLayerTogglesPanel /> — collapsible body', () => {
     fireEvent.click(header);
 
     expect(screen.queryByText(/Overlay raster activo/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Capas vectoriales 3D/i)).not.toBeInTheDocument();
     // Title still visible.
     expect(screen.getByText(/Capas 3D/i)).toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'false');
@@ -86,7 +84,6 @@ describe('<TerrainLayerTogglesPanel /> — collapsible body', () => {
     fireEvent.click(header);
 
     expect(screen.getByText(/Overlay raster activo/i)).toBeInTheDocument();
-    expect(screen.getByText(/Capas vectoriales 3D/i)).toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'true');
   });
 
@@ -100,7 +97,7 @@ describe('<TerrainLayerTogglesPanel /> — collapsible body', () => {
     expect(header).toHaveFocus();
     await user.keyboard('{Enter}');
 
-    expect(screen.queryByText(/Capas vectoriales 3D/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Overlay raster activo/i)).not.toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'false');
   });
 

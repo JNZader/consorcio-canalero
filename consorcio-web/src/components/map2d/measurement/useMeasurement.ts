@@ -60,7 +60,7 @@ import {
   armMeasurementIdentifyGuard,
   MEASUREMENT_IDENTIFY_GUARD_MS,
 } from './measurementIdentifyGuard';
-import { dropLastVertex } from './measurementEdit';
+import { dropLastPolygonVertex, dropLastVertex } from './measurementEdit';
 import { drawnLineMeters, liveMeasurementLabel } from './measurementPreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -466,18 +466,37 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
 
   const undo = () => {
     const draw = drawRef.current;
-    const feature = draw?.getAll()?.features.find((item) => item.geometry.type === 'LineString');
-    if (!draw || !feature || feature.geometry.type !== 'LineString') return;
-    const next = dropLastVertex(feature.geometry.coordinates);
-    if (!next) return;
-    const id = String(feature.id);
-    draw.delete(id);
-    draw.add({
-      type: 'Feature',
-      id,
-      properties: {},
-      geometry: { type: 'LineString', coordinates: next },
-    });
+    if (!draw) return;
+    const features = draw.getAll()?.features ?? [];
+    const lineFeature = features.find((item) => item.geometry.type === 'LineString');
+    if (lineFeature && lineFeature.geometry.type === 'LineString') {
+      const next = dropLastVertex(lineFeature.geometry.coordinates);
+      if (!next) return;
+      const id = String(lineFeature.id);
+      draw.delete(id);
+      draw.add({
+        type: 'Feature',
+        id,
+        properties: {},
+        geometry: { type: 'LineString', coordinates: next },
+      });
+      return;
+    }
+
+    const polygonFeature = features.find((item) => item.geometry.type === 'Polygon');
+    if (polygonFeature && polygonFeature.geometry.type === 'Polygon') {
+      const ring = polygonFeature.geometry.coordinates[0] ?? [];
+      const nextRing = dropLastPolygonVertex(ring);
+      if (!nextRing) return;
+      const id = String(polygonFeature.id);
+      draw.delete(id);
+      draw.add({
+        type: 'Feature',
+        id,
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [nextRing] },
+      });
+    }
   };
 
   const updateMeasurement = (id: string, geometry: LineString | Polygon) => {

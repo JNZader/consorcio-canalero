@@ -39,6 +39,20 @@ describe('reunionesUtils', () => {
         metadata: { label: 'rotura canal - Canal Norte' },
       },
     ]);
+
+    const withSuggestions = buildReferrableOptions(
+      [],
+      [],
+      [{ id: 's1', titulo: 'Limpieza alcantarilla', estado: 'pendiente', fecha_reunion: '2026-04-10' }]
+    );
+    expect(withSuggestions).toEqual([
+      {
+        value: 's1',
+        label: 'Limpieza alcantarilla (2026-04-10)',
+        group: 'Sugerencias',
+        type: 'sugerencia',
+      },
+    ]);
   });
 
   it('builds topic payload and helper colors', () => {
@@ -60,6 +74,7 @@ describe('reunionesUtils', () => {
 
     expect(getAgendaReferenceColor('reporte')).toBe('red');
     expect(getAgendaReferenceColor('tramite')).toBe('blue');
+    expect(getAgendaReferenceColor('sugerencia')).toBe('violet');
     expect(getAgendaReferenceColor('infraestructura')).toBe('green');
     expect(getAgendaReferenceColor('otro')).toBe('gray');
     expect(hasAgendaItems(['uno'])).toBe(true);

@@ -1,6 +1,6 @@
 import { Box, SimpleGrid, Text } from '@mantine/core';
 import type { KeyboardEvent, ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AccessibleError } from './primitives';
 
 interface RadioOption {
@@ -43,6 +43,7 @@ export function AccessibleRadioGroup({
   required = false,
   columns = { base: 2, sm: 4 },
 }: AccessibleRadioGroupProps) {
+  const groupRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(() => {
     const index = options.findIndex((option) => option.value === value);
     return index >= 0 ? index : 0;
@@ -73,7 +74,7 @@ export function AccessibleRadioGroup({
     }
 
     setFocusedIndex(newIndex);
-    const button = document.querySelector(`[data-radio-index="${newIndex}"]`);
+    const button = groupRef.current?.querySelector(`[data-radio-index="${newIndex}"]`);
     if (button instanceof HTMLElement) button.focus();
   };
 
@@ -87,6 +88,7 @@ export function AccessibleRadioGroup({
       </Text>
 
       <SimpleGrid
+        ref={groupRef}
         cols={columns}
         spacing="sm"
         role="radiogroup"
@@ -121,7 +123,10 @@ export function AccessibleRadioGroup({
                 padding: '1rem',
                 border: `2px solid ${isSelected ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-gray-4)'}`,
                 borderRadius: 8,
-                background: isSelected ? 'var(--mantine-color-blue-0)' : 'transparent',
+                background: isSelected ? 'var(--mantine-color-blue-light)' : 'transparent',
+                color: isSelected
+                  ? 'var(--mantine-color-blue-light-color)'
+                  : 'var(--mantine-color-text)',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}

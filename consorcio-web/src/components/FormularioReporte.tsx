@@ -16,7 +16,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, TIPOS_DENUNCIA as TIPOS_DENUNCIA_BASE } from '../constants';
 import { useContactVerification } from '../hooks/useContactVerification';
 import { publicApi } from '../lib/api';
-import { loadReportDraft } from '../lib/formDrafts';
+import {
+  draftDataUrlToFile,
+  fileToDraftDataUrl,
+  loadReportDraft,
+  MAX_DRAFT_PHOTO_BYTES,
+  saveReportDraft,
+} from '../lib/formDrafts';
 import { logger } from '../lib/logger';
 import { useConfigStore } from '../stores/configStore';
 import {
@@ -132,7 +138,51 @@ function FormularioContenido() {
     if (typeof draft.lat === 'number' && typeof draft.lng === 'number') {
       setUbicacion({ lat: draft.lat, lng: draft.lng });
     }
-  }, [form, setUbicacion]);
+    if (draft.fotoDataUrl) {
+      const restoredFile = draftDataUrlToFile(
+        draft.fotoDataUrl,
+        draft.fotoName,
+        draft.fotoType
+      );
+      if (restoredFile) {
+        form.setFieldValue('foto', restoredFile);
+      }
+      setFotoPreview(draft.fotoDataUrl);
+    }
+  }, [form, setFotoPreview, setUbicacion]);
+
+  const handleLoginWithGoogle = useCallback(async () => {
+    const hasDraftContent = Boolean(
+      form.values.tipo || form.values.descripcion || ubicacion || form.values.foto
+    );
+    if (hasDraftContent) {
+      let fotoDataUrl =
+        form.values.foto &&
+        form.values.foto.size <= MAX_DRAFT_PHOTO_BYTES &&
+        fotoPreview?.startsWith('data:')
+          ? fotoPreview
+          : undefined;
+
+      if (!fotoDataUrl && form.values.foto && form.values.foto.size <= MAX_DRAFT_PHOTO_BYTES) {
+        fotoDataUrl = (await fileToDraftDataUrl(form.values.foto)) ?? undefined;
+      }
+
+      saveReportDraft({
+        tipo: form.values.tipo,
+        descripcion: form.values.descripcion,
+        lat: ubicacion?.lat,
+        lng: ubicacion?.lng,
+        ...(fotoDataUrl
+          ? {
+              fotoDataUrl,
+              fotoName: form.values.foto?.name,
+              fotoType: form.values.foto?.type,
+            }
+          : {}),
+      });
+    }
+    loginWithGoogle();
+  }, [form.values.descripcion, form.values.foto, form.values.tipo, fotoPreview, loginWithGoogle, ubicacion]);
 
   const handleSubmit = useReportFormSubmission({
     contactoVerificado,
@@ -180,7 +230,7 @@ function FormularioContenido() {
             userEmail={userEmail}
             userName={userName}
             loading={loading}
-            onLoginWithGoogle={loginWithGoogle}
+            onLoginWithGoogle={handleLoginWithGoogle}
             onLogout={logout}
           />
         </Stack>
@@ -200,7 +250,7 @@ function FormularioContenido() {
         {!contactoVerificado && (
           <Alert color="blue" variant="light" mb="md">
             Podés completar el reporte ahora. Al enviarlo te pedimos verificar la identidad para
-            evitar spam. Guardamos el texto y la ubicación; la foto hay que volver a adjuntarla.
+            evitar spam. Guardamos el texto, la ubicación y fotos de hasta 2 MB en tu sesión.
           </Alert>
         )}
 

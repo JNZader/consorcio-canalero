@@ -249,4 +249,38 @@ describe('ReportsPanel', () => {
     expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
     expect(screen.queryByLabelText(/ver ubicación de denuncia en el mapa/i)).not.toBeInTheDocument();
   });
+
+  it('preserves global pending KPI count when filtering by resuelto status', async () => {
+    const user = userEvent.setup();
+    vi.mocked(reportsApi.getAll)
+      .mockResolvedValueOnce({
+        items: [baseReport],
+        total: 1,
+        page: 1,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...baseReport, id: 'rep-2', estado: 'resuelto' }],
+        total: 1,
+        page: 1,
+      });
+
+    renderPanel();
+
+    expect(await screen.findByText('1 pendientes')).toBeInTheDocument();
+
+    const statusSelect = screen.getByRole('combobox', { name: /filtrar por estado de la denuncia/i });
+    await user.click(statusSelect);
+    await user.click(await screen.findByRole('option', { name: /resuelto/i }));
+
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        'resuelto',
+        undefined,
+        undefined
+      );
+    });
+    expect(screen.getByText('1 pendientes')).toBeInTheDocument();
+  });
 });

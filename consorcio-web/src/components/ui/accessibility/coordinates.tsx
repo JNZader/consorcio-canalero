@@ -4,6 +4,7 @@ import { logger } from '../../../lib/logger';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { useLiveRegion } from './liveRegion';
 import { AccessibleError } from './primitives';
+import { visuallyHiddenStyle } from './shared';
 
 interface CoordinatesInputProps {
   readonly onCoordinatesChange: (lat: number, lng: number) => void;
@@ -99,6 +100,9 @@ export function CoordinatesInput({
             value={manualLat}
             onChange={(event) => setManualLat(event.target.value)}
             aria-describedby="lat-format-help"
+            ref={(node) => {
+              if (node) node.setAttribute('aria-describedby', 'lat-format-help');
+            }}
             style={{ flex: 1 }}
             inputMode="decimal"
           />
@@ -108,6 +112,9 @@ export function CoordinatesInput({
             value={manualLng}
             onChange={(event) => setManualLng(event.target.value)}
             aria-describedby="lng-format-help"
+            ref={(node) => {
+              if (node) node.setAttribute('aria-describedby', 'lng-format-help');
+            }}
             style={{ flex: 1 }}
             inputMode="decimal"
           />
@@ -117,6 +124,9 @@ export function CoordinatesInput({
         </Group>
         <Text id="lat-format-help" size="xs" c="gray.6" mt="xs">
           Formato: números decimales (ej: -32.63000 para latitud sur)
+        </Text>
+        <Text id="lng-format-help" size="xs" c="gray.6" style={visuallyHiddenStyle}>
+          Formato: números decimales (ej: -62.68000 para longitud oeste)
         </Text>
       </Box>
 

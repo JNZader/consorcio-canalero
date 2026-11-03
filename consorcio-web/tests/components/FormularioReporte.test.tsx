@@ -368,5 +368,61 @@ describe('FormularioReporte', () => {
         expect.objectContaining({ color: 'yellow' })
       );
     });
+
+    it('persists small attached photo in sessionStorage draft when unverified user submits and restores it on mount (CIT-04)', async () => {
+      sessionStorage.clear();
+      useContactVerificationMock.mockReturnValue({
+        contactoVerificado: false,
+        userEmail: null,
+        userName: null,
+        loading: false,
+        loginWithGoogle: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      const user = userEvent.setup();
+      const { unmount } = renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(
+        screen.getByLabelText(/descripci[oó]n/i),
+        'Canal desbordado con foto adjunta antes de login'
+      );
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      await user.click(screen.getByRole('button', { name: /attach-photo/i }));
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+
+      const rawDraft = sessionStorage.getItem('cc-draft-reporte');
+      expect(rawDraft).toBeTruthy();
+      const parsedDraft = JSON.parse(rawDraft ?? '{}') as {
+        fotoDataUrl?: string;
+        fotoName?: string;
+      };
+      expect(parsedDraft.fotoDataUrl).toMatch(/^data:image\/jpeg;base64,/);
+      expect(parsedDraft.fotoName).toBe('evidence.jpg');
+
+      unmount();
+
+      // Now simulate returning from Google OAuth as verified user
+      useContactVerificationMock.mockReturnValue({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        loading: false,
+        loginWithGoogle: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      renderForm();
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+
+      expect(publicApi.createReport).toHaveBeenCalled();
+      expect(publicApi.uploadPhoto).toHaveBeenCalledWith(
+        'rep-1',
+        expect.objectContaining({ name: 'evidence.jpg' })
+      );
+      sessionStorage.clear();
+    });
   });
 });

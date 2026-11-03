@@ -49,9 +49,10 @@ const togglesBase = {
 };
 
 describe('<TerrainLayerTogglesPanel /> — toggles only (Phase 8 Fix 5)', () => {
-  it('renders the "Capas vectoriales 3D" heading', () => {
+  it('renders the "Overlay raster activo" control and omits duplicate vector sections', () => {
     renderWithMantine(<TerrainLayerTogglesPanel {...togglesBase} />);
-    expect(screen.getByText(/Capas vectoriales 3D/i)).toBeInTheDocument();
+    expect(screen.getByText(/Overlay raster activo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Capas vectoriales 3D/i)).not.toBeInTheDocument();
   });
 
   it('does NOT render the soil legend, even when soil is toggled on', () => {

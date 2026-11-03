@@ -298,9 +298,13 @@ describe('FinanzasPanel', () => {
     const row = await screen.findByRole('row', { name: /mantenimiento retroexcavadora/i });
     await user.click(within(row).getByRole('button'));
 
-    const dialog = await screen.findByRole('dialog', { name: /editar categoría de gasto/i });
+    const dialog = await screen.findByRole('dialog', { name: /editar gasto/i });
+    expect(within(dialog).getByLabelText(/descripci[oó]n/i)).toHaveValue(
+      'Mantenimiento retroexcavadora'
+    );
+    expect(within(dialog).getByLabelText(/monto \(\$\)/i)).toHaveValue('12000');
     await chooseOption(within(dialog).getByLabelText(/categor[ií]a/i), 'obras');
-    await user.click(within(dialog).getByRole('button', { name: /actualizar categoría/i }));
+    await user.click(within(dialog).getByRole('button', { name: /actualizar gasto/i }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/finanzas/gastos/g1', {

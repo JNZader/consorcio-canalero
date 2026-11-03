@@ -1,17 +1,112 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
-const ROUTES = [
+const PUBLIC_ROUTES = [
   { path: '/', name: 'Homepage' },
   { path: '/mapa', name: 'Mapa Interactivo' },
-  { path: '/participacion', name: 'Participacion' },
-  { path: '/perfil', name: 'Perfil' },
-  { path: '/dashboard', name: 'Dashboard' },
+  { path: '/participacion', name: 'Participacion (Reportes)' },
+  { path: '/participacion?tab=sugerencias', name: 'Participacion (Sugerencias)' },
   { path: '/login', name: 'Login' },
+] as const;
+
+const PROTECTED_ROUTES = [
+  { path: '/perfil', name: 'Perfil' },
+  { path: '/admin', name: 'Admin Dashboard' },
+  { path: '/admin/participacion', name: 'Admin Participacion (Reportes)' },
+  { path: '/admin/participacion?tab=sugerencias', name: 'Admin Participacion (Sugerencias)' },
+  { path: '/admin/reuniones', name: 'Admin Reuniones' },
 ] as const;
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa'] as const;
 const CRITICAL_IMPACTS = new Set(['critical', 'serious']);
+
+async function authenticateAdminSession(page: Page) {
+  await page.addInitScript(() => {
+    const mockUser = {
+      id: 'admin-a11y-1',
+      email: 'admin@consorcio10demayo.org',
+      nombre: 'Admin',
+      apellido: 'Consorcio',
+      telefono: '3534000000',
+      role: 'admin',
+    };
+    window.sessionStorage.setItem('consorcio_auth_token', 'mock-a11y-jwt-token');
+    window.sessionStorage.setItem('consorcio_auth_user', JSON.stringify(mockUser));
+    window.localStorage.setItem(
+      'cc-auth-storage',
+      JSON.stringify({
+        state: {
+          user: { id: mockUser.id, email: mockUser.email },
+          profile: {
+            id: mockUser.id,
+            email: mockUser.email,
+            nombre: 'Admin Consorcio',
+            telefono: '3534000000',
+            rol: 'admin',
+          },
+        },
+        version: 0,
+      })
+    );
+  });
+
+  await page.route('**/api/v2/**', async (route) => {
+    const url = route.request().url();
+    if (url.includes('/users/me') || url.includes('/auth/me')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'admin-a11y-1',
+          email: 'admin@consorcio10demayo.org',
+          nombre: 'Admin',
+          apellido: 'Consorcio',
+          telefono: '3534000000',
+          role: 'admin',
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/stats')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          pendiente: 2,
+          en_revision: 1,
+          en_agenda: 1,
+          tratado: 0,
+          descartado: 0,
+          total: 3,
+          ciudadanas: 2,
+          internas: 1,
+        }),
+      });
+      return;
+    }
+
+    if (
+      url.includes('/proxima-reunion') ||
+      url.includes('/reuniones') ||
+      url.includes('/mis-denuncias') ||
+      url.includes('/mis-sugerencias')
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], total: 0, page: 1, limit: 10 }),
+    });
+  });
+}
 
 async function gotoAndWait(page: Page, path: string) {
   await page.goto(path);
@@ -114,9 +209,26 @@ async function requiredMarkerText(field: Locator): Promise<string> {
 test.describe('Auditoria de Accesibilidad WCAG 2.1 AA', () => {
   test.describe.configure({ mode: 'parallel' });
 
-  for (const route of ROUTES) {
+  for (const route of PUBLIC_ROUTES) {
     test(`${route.name} - sin violaciones automaticas criticas o serias`, async ({ page }) => {
       await gotoAndWait(page, route.path);
+
+      const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
+      const criticalViolations = results.violations.filter((violation) =>
+        violation.impact ? CRITICAL_IMPACTS.has(violation.impact) : false
+      );
+
+      expect(criticalViolations).toHaveLength(0);
+    });
+  }
+
+  for (const route of PROTECTED_ROUTES) {
+    test(`${route.name} (autenticado) - sin violaciones automaticas criticas o serias`, async ({
+      page,
+    }) => {
+      await authenticateAdminSession(page);
+      await gotoAndWait(page, route.path);
+      await expect(page).not.toHaveURL(/\/login/);
 
       const results = await new AxeBuilder({ page }).withTags([...WCAG_TAGS]).analyze();
       const criticalViolations = results.violations.filter((violation) =>
@@ -411,7 +523,9 @@ test.describe('Mapa, modo oscuro, movimiento y filtros', () => {
       expect(Number.parseFloat(animationDuration)).toBeLessThanOrEqual(0.01);
     }
 
+    await authenticateAdminSession(page);
     await gotoAndWait(page, '/admin/participacion');
+    await expect(page).not.toHaveURL(/\/login/);
     await expectLabelsForInputs(page, 'input[type="text"], select');
     expect(await page.locator('[aria-live="polite"]').count()).toBeGreaterThan(0);
 

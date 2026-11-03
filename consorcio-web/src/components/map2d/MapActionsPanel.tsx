@@ -1,8 +1,8 @@
 import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo, useState } from 'react';
 import { mapColorTokens } from '../../lib/mapColorTokens';
-import { showSuccess, showWarning } from '../../lib/notifications';
 import styles from '../../styles/components/map.module.css';
+import { showSuccess, showWarning } from '../../lib/notifications';
 import { IconCopy, IconDownload, IconFileZip, IconMap, IconPhoto, IconQrcode } from '../ui/icons';
 import { MapShareQrModal } from './MapShareLink';
 import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';

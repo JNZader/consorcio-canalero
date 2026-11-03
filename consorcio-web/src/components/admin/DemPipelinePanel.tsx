@@ -11,7 +11,6 @@ import {
   Alert,
   Badge,
   Button,
-  Center,
   Container,
   Divider,
   Group,
@@ -25,11 +24,13 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useDemPipeline } from '../../hooks/useDemPipeline';
 import type { GeoLayerResponse } from '../../lib/api/demPipeline';
 import { demPipelineApi } from '../../lib/api/demPipeline';
+import { withBasePath } from '../../lib/basePath';
 import {
+  Icon3dCubeSphere,
   IconAlertTriangle,
   IconChartBar,
   IconDownload,
@@ -37,9 +38,6 @@ import {
   IconPlayerPlay,
   IconRefresh,
 } from '../ui/icons';
-
-// Lazy load the 3D viewer since it pulls in deck.gl
-const TerrainViewer3D = lazy(() => import('../terrain/TerrainViewer3D'));
 
 /** Human-readable layer type names */
 const LAYER_TYPE_LABELS: Record<string, string> = {
@@ -157,20 +155,34 @@ export default function DemPipelinePanel() {
       {/* Results */}
       {(state === 'completed' || layers.length > 0) && (
         <Stack gap="xl">
-          {/* 3D Terrain Viewer */}
-          <Paper p="lg" radius="md" withBorder>
-            <Suspense
-              fallback={
-                <Center mih={400}>
-                  <Stack align="center" gap="md">
-                    <Loader size="lg" />
-                    <Text c="dimmed">Cargando visualizador 3D...</Text>
-                  </Stack>
-                </Center>
-              }
-            >
-              <TerrainViewer3D demLayerId={demRawLayer?.id} height={500} />
-            </Suspense>
+          {/* 3D Terrain Viewer link card */}
+          <Paper p="lg" radius="md" withBorder data-testid="dem-pipeline-3d-link-card">
+            <Group justify="space-between" align="center" wrap="wrap" gap="md">
+              <div>
+                <Group gap="xs" mb={4}>
+                  <Icon3dCubeSphere size={20} />
+                  <Title order={4}>Visor 3D del Terreno</Title>
+                  {demRawLayer && (
+                    <Badge size="sm" variant="light" color="teal">
+                      DEM disponible
+                    </Badge>
+                  )}
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Explorá el modelo de elevación digital y las capas hidrográficas en el visor 3D a
+                  pantalla completa dentro del Mapa Interactivo.
+                </Text>
+              </div>
+              <Button
+                component="a"
+                href={withBasePath('/mapa?view=3d')}
+                leftSection={<Icon3dCubeSphere size={16} />}
+                variant="light"
+                data-testid="dem-pipeline-open-mapa-3d"
+              >
+                Abrir en Mapa 3D
+              </Button>
+            </Group>
           </Paper>
 
           <Divider />

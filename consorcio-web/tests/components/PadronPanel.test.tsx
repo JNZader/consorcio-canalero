@@ -168,4 +168,40 @@ describe('PadronPanel', () => {
     });
     expect(screen.getByText('Perez, Ana')).toBeInTheDocument();
   });
+
+  it('allows editing and deleting an existing consorcista', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Padrón de Consorcistas');
+
+    await user.click(screen.getByRole('button', { name: /editar consorcista perez, ana/i }));
+    const editDialog = await screen.findByRole('dialog', { name: /editar consorcista/i });
+    const emailInput = within(editDialog).getByLabelText(/email/i);
+    await user.clear(emailInput);
+    await user.type(emailInput, 'ana@example.com');
+    await user.click(within(editDialog).getByRole('button', { name: /guardar en padrón/i }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(`/padron/${consorcista.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nombre: 'Ana',
+          apellido: 'Perez',
+          cuit: '20-12345678-6',
+          email: 'ana@example.com',
+          telefono: '',
+        }),
+      });
+    });
+
+    const confirmMock = vi.fn().mockReturnValue(true);
+    window.confirm = confirmMock;
+    await user.click(screen.getByRole('button', { name: /eliminar consorcista perez, ana/i }));
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalled();
+      expect(apiFetch).toHaveBeenCalledWith(`/padron/${consorcista.id}`, {
+        method: 'DELETE',
+      });
+    });
+  });
 });

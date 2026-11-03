@@ -16,6 +16,10 @@ import { createPortal } from 'react-dom';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
 import styles from '../../../styles/components/map.module.css';
 import {
+  IconArrowBackUp,
+  IconDeviceFloppy,
+  IconEye,
+  IconEyeOff,
   IconLayers,
   IconMapPin,
   IconPolygon,
@@ -39,6 +43,10 @@ export interface MeasurementToolbarProps {
   readonly onClear: () => void;
   readonly onUndo?: () => void;
   readonly onSavePersonal?: () => void;
+  readonly savedMeasurementsCount?: number;
+  readonly savedMeasurementsVisible?: boolean;
+  readonly onTogglePersonalVisibility?: () => void;
+  readonly onClearPersonal?: () => void;
   /**
    * Cancel the ACTIVE measurement without wiping saved ones. Omit it
    * (3D viewer / legacy callers) and Cancelar falls back to `onClear`.
@@ -73,6 +81,10 @@ function ToolsMenuDropdown({
   onTogglePoiPlace,
   onToggleFichaMultiSelect,
   fichaMultiSelectActive,
+  savedMeasurementsCount,
+  savedMeasurementsVisible,
+  onTogglePersonalVisibility,
+  onClearPersonal,
   showExport,
   hasApprovedZones,
   onOpenExportPng,
@@ -93,6 +105,10 @@ function ToolsMenuDropdown({
   | 'onOpenExportPng'
   | 'onExportApprovedZonesPdf'
   | 'onExportKmz'
+  | 'savedMeasurementsCount'
+  | 'savedMeasurementsVisible'
+  | 'onTogglePersonalVisibility'
+  | 'onClearPersonal'
 > & {
   readonly fichaMultiSelectActive: boolean;
   readonly showExport: boolean;
@@ -111,6 +127,19 @@ function ToolsMenuDropdown({
       {hasMeasurements ? (
         <Menu.Item leftSection={<IconTrash size={14} />} onClick={onClear}>
           Limpiar mediciones
+        </Menu.Item>
+      ) : null}
+      {savedMeasurementsCount && savedMeasurementsCount > 0 && onTogglePersonalVisibility ? (
+        <Menu.Item
+          leftSection={savedMeasurementsVisible ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+          onClick={onTogglePersonalVisibility}
+        >
+          {savedMeasurementsVisible ? 'Ocultar guardadas' : 'Mostrar guardadas'}
+        </Menu.Item>
+      ) : null}
+      {savedMeasurementsCount && savedMeasurementsCount > 0 && onClearPersonal ? (
+        <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={onClearPersonal}>
+          Borrar guardadas
         </Menu.Item>
       ) : null}
       {onToggleFichaDraw ? (
@@ -178,6 +207,10 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onCancel,
   onUndo,
   onSavePersonal,
+  savedMeasurementsCount = 0,
+  savedMeasurementsVisible = true,
+  onTogglePersonalVisibility,
+  onClearPersonal,
   fichaDrawActive = false,
   onToggleFichaDraw,
   onRedrawPolygon,
@@ -213,8 +246,10 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             type="button"
             className={styles.measurementActionButton}
             aria-label="Deshacer vértice"
+            data-testid="measurement-undo"
             onClick={onUndo}
           >
+            <IconArrowBackUp size={MAP_CTRL_GLYPH_SIZE} />
             Deshacer
           </button>
         ) : null}
@@ -223,9 +258,44 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
             type="button"
             className={styles.measurementActionButton}
             aria-label="Guardar medición"
+            data-testid="measurement-save-personal"
             onClick={onSavePersonal}
           >
+            <IconDeviceFloppy size={MAP_CTRL_GLYPH_SIZE} />
             Guardar
+          </button>
+        ) : null}
+        {savedMeasurementsCount > 0 && onTogglePersonalVisibility ? (
+          <button
+            type="button"
+            className={styles.measurementActionButton}
+            aria-label={
+              savedMeasurementsVisible
+                ? 'Ocultar mediciones guardadas'
+                : 'Mostrar mediciones guardadas'
+            }
+            aria-pressed={savedMeasurementsVisible}
+            data-testid="measurement-toggle-personal"
+            onClick={onTogglePersonalVisibility}
+          >
+            {savedMeasurementsVisible ? (
+              <IconEye size={MAP_CTRL_GLYPH_SIZE} />
+            ) : (
+              <IconEyeOff size={MAP_CTRL_GLYPH_SIZE} />
+            )}
+            {savedMeasurementsVisible ? 'Ocultar' : 'Mostrar'}
+          </button>
+        ) : null}
+        {savedMeasurementsCount > 0 && onClearPersonal ? (
+          <button
+            type="button"
+            className={styles.measurementActionButton}
+            aria-label="Borrar mediciones guardadas"
+            data-testid="measurement-clear-personal"
+            onClick={onClearPersonal}
+          >
+            <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
+            Borrar
           </button>
         ) : null}
         <button
@@ -262,6 +332,10 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           onStartDistance={onStartDistance}
           onStartArea={onStartArea}
           onClear={onClear}
+          savedMeasurementsCount={savedMeasurementsCount}
+          savedMeasurementsVisible={savedMeasurementsVisible}
+          onTogglePersonalVisibility={onTogglePersonalVisibility}
+          onClearPersonal={onClearPersonal}
           onToggleFichaDraw={onToggleFichaDraw}
           onToggleFichaCanal={onToggleFichaCanal}
           onTogglePoiPlace={onTogglePoiPlace}

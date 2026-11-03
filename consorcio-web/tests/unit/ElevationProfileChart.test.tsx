@@ -427,8 +427,24 @@ describe('<ElevationProfileChart />', () => {
     expect(await screen.findByTestId('elevation-profile-cursor')).toHaveTextContent('110,0 m');
     expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.71, lat: -32.61 });
     const chart = screen.getByTestId('elevation-profile-chart');
+    expect(chart).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('cota mín 110,0 m, máx 120,0 m')
+    );
+    expect(chart).toHaveAttribute(
+      'aria-describedby',
+      'elevation-profile-extrema-desc elevation-profile-tramo-desc'
+    );
     chart.focus();
     fireEvent.keyDown(chart, { key: 'ArrowLeft' });
+    expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.7, lat: -32.6 });
+    fireEvent.keyDown(chart, { key: 'End' });
+    expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.71, lat: -32.61 });
+    fireEvent.keyDown(chart, { key: 'Home' });
+    expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.7, lat: -32.6 });
+    fireEvent.keyDown(chart, { key: 'PageUp' });
+    expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.71, lat: -32.61 });
+    fireEvent.keyDown(chart, { key: 'PageDown' });
     expect(onHoverLngLat).toHaveBeenCalledWith({ lon: -62.7, lat: -32.6 });
   });
 
@@ -437,5 +453,46 @@ describe('<ElevationProfileChart />', () => {
       <ElevationProfileChart geometry={{ type: 'Point', coordinates: [-62.7, -32.6] }} />,
     );
     expect(screen.queryByTestId('elevation-profile')).not.toBeInTheDocument();
+  });
+
+  it('omits solera and survey comparison placeholders when unbacked by data, and shows survey toggle when pairedSurvey is provided (MAP-06)', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValue({
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
+    });
+    const { rerender } = renderWithMantine(
+      <ElevationProfileChart geometry={line} autoLoad flowDirection="digitizado" />,
+    );
+    await screen.findByTestId('elevation-profile-extrema');
+    expect(screen.queryByTestId('solera-missing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('survey-compare-missing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('survey-compare-toggle')).not.toBeInTheDocument();
+
+    rerender(
+      <MantineProvider env="test">
+        <ElevationProfileChart
+          geometry={line}
+          autoLoad
+          flowDirection="digitizado"
+          pairedSurvey={{
+            id: 's-1',
+            label: 'Relevamiento 2025',
+            samples: [
+              { distance_m: 0, elevation_m: 119.8 },
+              { distance_m: 15, elevation_m: 117.9 },
+            ],
+          }}
+        />
+      </MantineProvider>,
+    );
+    expect(await screen.findByTestId('survey-compare-toggle')).toBeInTheDocument();
   });
 });

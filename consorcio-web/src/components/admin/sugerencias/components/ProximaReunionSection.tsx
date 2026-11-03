@@ -37,11 +37,20 @@ export function ProximaReunionSection({
             key={sug.id}
             p="sm"
             radius="sm"
+            role="button"
+            tabIndex={0}
+            aria-label={`Ver detalle de ${sug.titulo}`}
             style={{
               background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-6))',
               cursor: 'pointer',
             }}
             onClick={() => onViewDetail(sug)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onViewDetail(sug);
+              }
+            }}
           >
             <Group justify="space-between">
               <div style={{ flex: 1 }}>

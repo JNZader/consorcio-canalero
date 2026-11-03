@@ -37,7 +37,12 @@ function getGeometryBounds(
   geometry: FeatureCollection
 ): [[number, number], [number, number]] | null {
   const coords: [number, number][] = [];
-  for (const feature of geometry.features) {
+  for (const feature of geometry.features ?? []) {
+    if (!feature?.geometry) continue;
+    if (feature.geometry.type === 'Point') {
+      coords.push([feature.geometry.coordinates[0] as number, feature.geometry.coordinates[1] as number]);
+      continue;
+    }
     if (feature.geometry.type !== 'LineString') continue;
     for (const coord of feature.geometry.coordinates) {
       coords.push([coord[0] as number, coord[1] as number]);
@@ -60,11 +65,24 @@ function addSuggestionGeometry(map: maplibregl.Map, geometry: FeatureCollection 
     id: 'sugerencia-geom-line',
     type: 'line',
     source: 'sugerencia-geom',
+    filter: ['==', '$type', 'LineString'],
     paint: {
       'line-color': mapColorTokens.h7B1FA2,
       'line-width': 4,
       'line-opacity': 0.95,
       'line-dasharray': [8, 6],
+    },
+  });
+  map.addLayer({
+    id: 'sugerencia-geom-point',
+    type: 'circle',
+    source: 'sugerencia-geom',
+    filter: ['==', '$type', 'Point'],
+    paint: {
+      'circle-radius': 8,
+      'circle-color': mapColorTokens.hdc2626,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': mapColorTokens.hffffff,
     },
   });
 
@@ -74,6 +92,9 @@ function addSuggestionGeometry(map: maplibregl.Map, geometry: FeatureCollection 
     map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
   } catch {}
 }
+
+export const ESRI_WORLD_IMAGERY_TILES =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
 export function SugerenciaGeometryMap({
   geometry,
@@ -98,24 +119,24 @@ export function SugerenciaGeometryMap({
       await bootMapLibreWorker();
       if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
       const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: {
-        version: 8,
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '&copy; OpenStreetMap',
+        container: mapContainerRef.current,
+        style: {
+          version: 8,
+          sources: {
+            basemap: {
+              type: 'raster',
+              tiles: [ESRI_WORLD_IMAGERY_TILES],
+              tileSize: 256,
+              attribution: 'Tiles &copy; Esri',
+            },
           },
+          layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
         },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-      },
-      center: [MAP_CENTER[1], MAP_CENTER[0]],
-      zoom: 12,
-      minZoom: MAP_MIN_ZOOM,
-      maxBounds: MAP_MAX_BOUNDS,
-    });
+        center: [MAP_CENTER[1], MAP_CENTER[0]],
+        zoom: 12,
+        minZoom: MAP_MIN_ZOOM,
+        maxBounds: MAP_MAX_BOUNDS,
+      });
 
     map.on('load', () => {
       addCanalLayers(map, canales);

@@ -1,13 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
 import { coarseProfile, terrainRgbMeters, tilePixel } from '../../src/components/map2d/coarseDem';
-import { slopeColor, slopeLineFeatures, slopeSegments } from '../../src/components/map2d/slopeColor';
+import {
+  SLOPE_COLOR_STOPS,
+  slopeColor,
+  slopeLineFeatures,
+  slopeSegments,
+  slopeSeverityLabel,
+} from '../../src/components/map2d/slopeColor';
 
-describe('slope color', () => {
-  it('stays green when the trace is flat and red when it is steep', () => {
-    expect(slopeColor(0)).toBe('#16a34a');
-    expect(slopeColor(5)).toBe('#dc2626');
-    expect(slopeColor(-5)).toBe('#dc2626');
+describe('slope color (A11Y-07 colorblind-safe Okabe-Ito ramp)', () => {
+  it('uses Okabe-Ito blue when flat, amber around 2%, and vermilion from 5% up', () => {
+    expect(slopeColor(0)).toBe(SLOPE_COLOR_STOPS.LOW);
+    expect(slopeColor(2)).toBe(SLOPE_COLOR_STOPS.MEDIUM);
+    expect(slopeColor(5)).toBe(SLOPE_COLOR_STOPS.HIGH);
+    expect(slopeColor(-5)).toBe(SLOPE_COLOR_STOPS.HIGH);
+    expect(slopeSeverityLabel(0.5)).toBe('Baja');
+    expect(slopeSeverityLabel(3)).toBe('Media');
+    expect(slopeSeverityLabel(-6)).toBe('Alta');
   });
 
   it('colors each chart step and the matching map segment', () => {
@@ -17,8 +27,8 @@ describe('slope color', () => {
       { distance_m: 130, elevation_m: 110, lon: 0.002, lat: 0 },
     ];
     const pieces = slopeSegments(samples);
-    expect(pieces[0]?.color).toBe('#16a34a');
-    expect(pieces[1]?.color).not.toBe('#16a34a');
+    expect(pieces[0]?.color).toBe(SLOPE_COLOR_STOPS.LOW);
+    expect(pieces[1]?.color).not.toBe(SLOPE_COLOR_STOPS.LOW);
     expect(slopeLineFeatures(samples)).toHaveLength(2);
   });
 });

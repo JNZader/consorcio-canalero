@@ -129,6 +129,8 @@ interface InfoPanelProps {
   readonly profileHover?: { lon: number; lat: number } | null;
   /** Permalink already asked for this canal's curve. */
   readonly elevationProfileAutoLoad?: boolean;
+  /** True while the bottom profile dock is open, so the sidebar does not duplicate the trigger. */
+  readonly elevationProfileActive?: boolean;
   /** Record the canal slug in the shareable URL once the curve is requested. */
   readonly onElevationProfileShare?: () => void;
   /**
@@ -466,6 +468,7 @@ export const InfoPanel = memo(function InfoPanel({
   onOpenCanalProfile,
   profileHover = null,
   elevationProfileAutoLoad = false,
+  elevationProfileActive = false,
   onElevationProfileShare,
   embedded = false,
 }: InfoPanelProps) {
@@ -590,18 +593,24 @@ export const InfoPanel = memo(function InfoPanel({
       <Stack gap="sm">
         {profileGeometry ? (
           <>
-            <UnstyledButton
-              type="button"
-              data-testid="elevation-profile"
-              onClick={() => {
-                onOpenElevationProfile?.(profileGeometry);
-                onElevationProfileShare?.();
-              }}
-            >
-              <Text size="xs" c="blue">
-                Perfil de elevación
+            {elevationProfileActive ? (
+              <Text size="xs" c="dimmed" data-testid="elevation-profile" data-active="true">
+                Perfil abierto en el panel inferior
               </Text>
-            </UnstyledButton>
+            ) : (
+              <UnstyledButton
+                type="button"
+                data-testid="elevation-profile"
+                onClick={() => {
+                  onOpenElevationProfile?.(profileGeometry);
+                  onElevationProfileShare?.();
+                }}
+              >
+                <Text size="xs" c="blue">
+                  Perfil de elevación
+                </Text>
+              </UnstyledButton>
+            )}
             {hoverTramo ? (
               <Text size="xs" data-testid="elevation-profile-tramo">
                 Tramo: {hoverTramo}
@@ -615,7 +624,7 @@ export const InfoPanel = memo(function InfoPanel({
               feature={resolved[detailIdx]}
               bpaEnriched={bpaEnriched}
               onDeletePuntoInteres={onDeletePuntoInteres}
-              onOpenCanalProfile={onOpenCanalProfile}
+              onOpenCanalProfile={elevationProfileActive ? undefined : onOpenCanalProfile}
             />
           </div>
         ) : null}

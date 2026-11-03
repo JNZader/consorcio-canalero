@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import Footer from './Footer';
 import Header from './Header';
+import { LiveRegionProvider } from './ui/accessibility';
 
 interface RootLayoutProps {
   /** Page title (will be suffixed with site name) */
@@ -129,12 +130,14 @@ export function RootLayout({
 
       {!hideHeader && <Header />}
 
-      <main id="main-content" className="flex-1" tabIndex={-1} aria-busy="false">
-        <div className="sr-only" aria-live="polite" aria-atomic="true">
-          Contenido cargado
-        </div>
-        {children}
-      </main>
+      <LiveRegionProvider>
+        <main id="main-content" className="flex-1" tabIndex={-1} aria-busy="false">
+          <div className="sr-only" aria-live="polite" aria-atomic="true">
+            Contenido cargado
+          </div>
+          {children}
+        </main>
+      </LiveRegionProvider>
 
       {!hideFooter && <Footer />}
     </>

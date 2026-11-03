@@ -195,13 +195,6 @@ describe('map2d extracted panels', () => {
 
   it('composes the extracted panels through MapUiPanels', async () => {
     const onBaseLayerChange = vi.fn();
-    const onCloseInfoPanel = vi.fn();
-
-    const feature: Feature = {
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [-62.68, -32.62] },
-      properties: { nombre: 'Activo 1' },
-    };
 
     renderWithMantine(
       <MapUiPanels
@@ -235,8 +228,6 @@ describe('map2d extracted panels', () => {
         hiddenRanges={{}}
         onClassToggle={() => {}}
         onRangeToggle={() => {}}
-        selectedFeatures={[feature]}
-        onCloseInfoPanel={onCloseInfoPanel}
         exportPngModalOpen={false}
         onCloseExportPngModal={() => {}}
         exportTitle="Mapa"
@@ -255,6 +246,5 @@ describe('map2d extracted panels', () => {
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument();
     expect(onBaseLayerChange).not.toHaveBeenCalled();
-    expect(onCloseInfoPanel).not.toHaveBeenCalled();
   });
 });

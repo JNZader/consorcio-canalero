@@ -98,6 +98,30 @@ describe('useReunionesController — initial load', () => {
     ]);
   });
 
+  it('includes scheduled/pending sugerencias in referrable entities when available', async () => {
+    stubApi({
+      'GET /sugerencias?limit=50': () => ({
+        items: [
+          {
+            id: 's1',
+            titulo: 'Limpiar canal secundario',
+            estado: 'pendiente',
+            fecha_reunion: '2026-04-10',
+          },
+        ],
+      }),
+    });
+
+    const { result } = await mountController();
+
+    expect(result.current.availableEntities).toContainEqual({
+      value: 's1',
+      label: 'Limpiar canal secundario (2026-04-10)',
+      group: 'Sugerencias',
+      type: 'sugerencia',
+    });
+  });
+
   it('degrades to an empty list when /reuniones fails', async () => {
     stubApi({ 'GET /reuniones': () => Promise.reject(new Error('500')) });
 

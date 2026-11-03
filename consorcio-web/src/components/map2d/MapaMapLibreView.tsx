@@ -67,7 +67,11 @@ import { MAP_Z } from './mapZIndex';
 import { MeasurementLabels } from './measurement/MeasurementLabels';
 import { MeasurementShapes } from './measurement/MeasurementShapes';
 import { MeasurementToolbar } from './measurement/MeasurementToolbar';
-import { savePersonalMeasurement } from './measurement/personalMeasurements';
+import {
+  clearPersonalMeasurements,
+  readPersonalMeasurements,
+  savePersonalMeasurement,
+} from './measurement/personalMeasurements';
 import type { MeasurementState } from './measurement/useMeasurement';
 import { usePersonalMeasurementsLayer } from './measurement/usePersonalMeasurementsLayer';
 import { PuntoInteresPlaceModal } from './PuntoInteresPlaceModal';
@@ -75,7 +79,6 @@ import type { PrecipitationRange } from './precipRanges';
 import { culvertPoints } from './profileBoundaryCrossings';
 import type { ProfileChartRow } from './profileChartRows';
 import type { ProfileRangeStats } from './profileRange';
-import { TimeCompareBar } from './TimeCompareBar';
 import type { AnalysisToolProps } from './useAnalysisToolsGate';
 import type { UseFichaInteractionResult } from './useFichaInteraction';
 import type { FichaOverlayTabsState } from './useFichaOverlayTabs';
@@ -401,7 +404,10 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   const [coarseSamples, setCoarseSamples] = useState<readonly ProfileChartRow[] | null>(null);
   const [mapCursorDistance, setMapCursorDistance] = useState<number | null>(null);
   const [personalRevision, setPersonalRevision] = useState(0);
-  usePersonalMeasurementsLayer(mapRef, mapReady, personalRevision);
+  const [personalVisible, setPersonalVisible] = useState(true);
+  const savedPersonalMeasurementsCount =
+    personalRevision >= 0 ? readPersonalMeasurements().length : 0;
+  usePersonalMeasurementsLayer(mapRef, mapReady, personalRevision, personalVisible);
   const draftKey = measurementDraftLine
     ? `${measurementDraftLine.coordinates.length}:${measurementDraftLine.coordinates.at(-1)?.join(',') ?? ''}`
     : '';
@@ -557,6 +563,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               }
               profileHover={elevationProfileHover}
               elevationProfileAutoLoad={elevationProfileAutoLoad}
+              elevationProfileActive={dockGeometry != null}
               onElevationProfileShare={onElevationProfileShare}
             />
           ) : null
@@ -631,6 +638,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 rightDate={comparisonInfo?.rightDate ?? null}
               />
             </div>
+
 
             <PuntoInteresPlaceModal
               opened={puntosInteres.modalOpen}
@@ -765,6 +773,13 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   onClear={clearMeasurements}
                   onCancel={cancelMeasurement}
                   onUndo={undoMeasurement}
+                  savedMeasurementsCount={savedPersonalMeasurementsCount}
+                  savedMeasurementsVisible={personalVisible}
+                  onTogglePersonalVisibility={() => setPersonalVisible((prev) => !prev)}
+                  onClearPersonal={() => {
+                    clearPersonalMeasurements();
+                    setPersonalRevision((value) => value + 1);
+                  }}
                   onSavePersonal={() => {
                     const last = measurementState.measurements.at(-1);
                     if (!last) return;
@@ -815,17 +830,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   return { ...prev, [layerType]: next };
                 })
               }
-              selectedFeatures={selectedFeatures}
-              onCloseInfoPanel={handleCloseInfoPanel}
-              onElevationProfileHover={setElevationProfileHover}
-              onElevationProfileRange={setElevationProfileRange}
-              onOpenElevationProfile={(geometry) => openProfile(geometry, 'Perfil de elevación')}
-              onOpenCanalProfile={(request) =>
-                openProfile(request.geometry, `Perfil de ${request.title}`, request.flowDirection)
-              }
-              profileHover={elevationProfileHover}
-              elevationProfileAutoLoad={elevationProfileAutoLoad}
-              onElevationProfileShare={onElevationProfileShare}
               fichaActive={fichaInteraction.request !== null}
               fichaTipo={fichaInteraction.tipo}
               fichaNroCuenta={fichaInteraction.nroCuenta}
@@ -857,8 +861,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               bpaEnriched={pilarVerde?.bpaEnriched}
               bpaLoading={bpaJoinLoading}
               bpaError={bpaJoinError}
-              bpaHistory={pilarVerde?.bpaHistory}
-              onDeletePuntoInteres={deleteSelectedPunto}
               exportPngModalOpen={exportPngModalOpen}
               onCloseExportPngModal={() => setExportPngModalOpen(false)}
               exportTitle={exportTitle}
@@ -918,7 +920,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
           <Stack gap="sm" data-testid="map-controls-tree">
             <LayerControlsPanel
               insideScrollContainer
-              timeSection={<TimeCompareBar onViewModeChange={(mode) => setViewMode(mode)} />}
               {...baseControls}
               layerItems={vectorLayerItems}
               vectorVisibility={vectorVisibility}

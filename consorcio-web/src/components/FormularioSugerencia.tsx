@@ -21,7 +21,7 @@ import { MAX_LENGTHS, validators } from '../lib/validators';
 import type { DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { SuggestionGeometrySection } from './suggestion-form/SuggestionGeometrySection';
 import { SuggestionStepIndicator } from './suggestion-form/SuggestionStepIndicator';
-import { CATEGORIAS } from './suggestion-form/suggestionFormConstants';
+import { CATEGORIAS, isNonSpatialCategory } from './suggestion-form/suggestionFormConstants';
 import { getStep2Badge, SuccessScreen } from './suggestion-form/suggestionFormUtils';
 import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState';
 import { LiveRegionProvider, VisuallyHidden } from './ui/accessibility';
@@ -44,6 +44,7 @@ function FormularioContenido() {
   });
 
   const [pendingRateLimitCheck, setPendingRateLimitCheck] = useState(false);
+  const [showOptionalMap, setShowOptionalMap] = useState(false);
 
   // useCallback both callbacks because they're consumed by `useEffect`
   // dep arrays inside `useContactVerification` and `useSuggestionFormState`.
@@ -102,6 +103,15 @@ function FormularioContenido() {
       setGeometry(draft.geometry as DrawnLineFeatureCollection);
     }
   }, [form, setGeometry]);
+
+  const isNonSpatial = isNonSpatialCategory(form.values.categoria);
+  const hasGeometry = (geometry?.features?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (isNonSpatial && !hasGeometry) {
+      setShowOptionalMap(false);
+    }
+  }, [isNonSpatial, hasGeometry]);
 
   if (enviado) {
     return <SuccessScreen remainingToday={remainingToday} onReset={resetSuccess} />;
@@ -214,7 +224,35 @@ function FormularioContenido() {
               }}
             />
 
-            <SuggestionGeometrySection geometry={geometry} onChange={setGeometry} />
+            {isNonSpatial && !showOptionalMap && !hasGeometry ? (
+              <Box>
+                <Button
+                  type="button"
+                  variant="subtle"
+                  size="sm"
+                  onClick={() => setShowOptionalMap(true)}
+                >
+                  Agregar ubicación en el mapa (opcional)
+                </Button>
+              </Box>
+            ) : (
+              <Stack gap="xs">
+                {isNonSpatial && !hasGeometry && (
+                  <Box>
+                    <Button
+                      type="button"
+                      variant="subtle"
+                      color="gray"
+                      size="xs"
+                      onClick={() => setShowOptionalMap(false)}
+                    >
+                      Ocultar ubicación en el mapa
+                    </Button>
+                  </Box>
+                )}
+                <SuggestionGeometrySection geometry={geometry} onChange={setGeometry} />
+              </Stack>
+            )}
 
             <Button type="submit" size="lg" fullWidth mt="md" disabled={remainingToday === 0}>
               Enviar Sugerencia

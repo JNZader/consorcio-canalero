@@ -11,6 +11,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { Link } from '@tanstack/react-router';
 import { signOut } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import type { StoreUser } from '../stores/authStore';
@@ -68,7 +69,7 @@ function DesktopLoadingSkeleton() {
 function DesktopLoginButton() {
   return (
     <Box style={{ minWidth: 120, display: 'flex', justifyContent: 'flex-end' }}>
-      <Button component="a" href={withBasePath('/login')} style={{ minWidth: 120 }}>
+      <Button component={Link} to="/login" style={{ minWidth: 120 }}>
         Iniciar Sesión
       </Button>
     </Box>
@@ -81,8 +82,8 @@ function StaffMenuItems() {
     <>
       <Menu.Item
         leftSection={<IconChartBar size={14} />}
-        component="a"
-        href={withBasePath('/admin')}
+        component={Link}
+        to="/admin"
       >
         Panel de Control
       </Menu.Item>
@@ -131,8 +132,8 @@ function DesktopUserMenu({
 
           <Menu.Item
             leftSection={<IconUser size={14} />}
-            component="a"
-            href={withBasePath('/perfil')}
+            component={Link}
+            to="/perfil"
           >
             Mi Perfil
           </Menu.Item>
@@ -160,8 +161,8 @@ function MobileStaffButtons({
 
   return (
     <Button
-      component="a"
-      href={withBasePath('/admin')}
+      component={Link}
+      to="/admin"
       variant="subtle"
       color="gray"
       fullWidth
@@ -196,7 +197,7 @@ function MobileUserMenu({
 
   if (!user) {
     return (
-      <Button component="a" href={withBasePath('/login')} fullWidth onClick={onMobileClose}>
+      <Button component={Link} to="/login" fullWidth onClick={onMobileClose}>
         Iniciar Sesión
       </Button>
     );
@@ -229,8 +230,8 @@ function MobileUserMenu({
         <MobileStaffButtons isStaff={isStaff} onMobileClose={onMobileClose} />
 
         <Button
-          component="a"
-          href={withBasePath('/perfil')}
+          component={Link}
+          to="/perfil"
           variant="subtle"
           color="gray"
           fullWidth

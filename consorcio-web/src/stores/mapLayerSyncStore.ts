@@ -647,8 +647,9 @@ export const useMapLayerSyncStore = create<
       restoreCatalogDefaults: (view) =>
         set((state) => {
           const nextVectors = { ...state[view].visibleVectors };
+          const defaults = view === 'map3d' ? defaultMap3dVisibleVectors : defaultVisibleVectors;
           for (const id of MAP2D_CATALOG_VECTOR_IDS) {
-            nextVectors[id] = defaultVisibleVectors[id] ?? false;
+            nextVectors[id] = defaults[id] ?? false;
           }
           return {
             [view]: {

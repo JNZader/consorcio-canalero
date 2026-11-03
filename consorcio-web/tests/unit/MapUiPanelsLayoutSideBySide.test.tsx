@@ -68,8 +68,6 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
     hiddenRanges: {},
     onClassToggle: noop,
     onRangeToggle: noop,
-    selectedFeatures: [],
-    onCloseInfoPanel: noop,
     exportPngModalOpen: false,
     onCloseExportPngModal: noop,
     exportTitle: '',

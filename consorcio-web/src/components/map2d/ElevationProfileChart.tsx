@@ -56,8 +56,9 @@ import {
   profileSliceStats,
   sliceProfile,
 } from './profileRange';
-import { slopeSegments } from './slopeColor';
-import { soleraCover } from './soleraProfile';
+import { SLOPE_COLOR_STOPS, slopeSegments, slopeSeverityLabel } from './slopeColor';
+import { type SurveyProfile, soleraCover } from './soleraProfile';
+import { useLiveRegion } from '../ui/accessibility';
 
 function downloadProfileCsv(csv: string) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -164,6 +165,7 @@ export function ElevationProfileChart({
   parcelFeatures = null,
   culverts = null,
   coarseSamples = null,
+  pairedSurvey = null,
   onActivated,
   autoLoad = false,
 }: {
@@ -181,16 +183,19 @@ export function ElevationProfileChart({
   readonly parcelFeatures?: readonly Feature<Geometry, GeoJsonProperties>[] | null;
   readonly culverts?: readonly { lon: number; lat: number; label: string }[] | null;
   readonly coarseSamples?: readonly ProfileChartRow[] | null;
+  readonly pairedSurvey?: SurveyProfile | null;
   /** The operator asked for the curve, or a permalink already did. */
   onActivated?: () => void;
   /** Sample on mount. The ficha leaves this false and keeps its own button. */
   autoLoad?: boolean;
 }) {
+  const { announce } = useLiveRegion();
   const startLoaded = autoLoad && hasProfileParts(geometry);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(
     startLoaded ? 'loading' : 'idle'
   );
   const [compareDems, setCompareDems] = useState(false);
+  const [compareSurvey, setCompareSurvey] = useState(false);
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
@@ -382,6 +387,18 @@ export function ElevationProfileChart({
         } / ${grade.max_down_slope_pct != null ? formatSlopePct(grade.max_down_slope_pct) : '—'} · prom ${formatSlopePct(grade.mean_slope_pct)}`
       : `Tramo ${formatProfileDistance(spanM)}`;
 
+  const profileSummaryLabel = [
+    'Perfil de elevación',
+    spanM > 0 ? `longitud ${formatProfileDistance(spanM)}` : null,
+    minZ != null && maxZ != null
+      ? `cota mín ${formatEs(minZ, 1)} m, máx ${formatEs(maxZ, 1)} m`
+      : null,
+    grade.mean_slope_pct != null ? `pendiente media ${formatSlopePct(grade.mean_slope_pct)}` : null,
+    'Flechas para mover el cursor, RePág y AvPág saltan 10 muestras, Inicio y fin van a los extremos',
+  ]
+    .filter(Boolean)
+    .join('. ');
+
   return (
     <Stack gap={6} data-testid="elevation-profile">
       {status === 'idle' && !autoLoad ? (
@@ -423,7 +440,7 @@ export function ElevationProfileChart({
             data-testid="elevation-profile-compare-dems"
           />
           {graphHeader ? (
-            <Text size="xs" data-testid="elevation-profile-extrema">
+            <Text id="elevation-profile-extrema-desc" size="xs" data-testid="elevation-profile-extrema">
               {graphHeader}
             </Text>
           ) : (
@@ -431,29 +448,27 @@ export function ElevationProfileChart({
               Sin muestras válidas sobre el DEM.
             </Text>
           )}
-          <Text size="xs" data-testid="elevation-profile-tramo-stats">
+          <Text id="elevation-profile-tramo-desc" size="xs" data-testid="elevation-profile-tramo-stats">
             {tramoHeader}
           </Text>
-          {flowDirection ? (
-            cover.ok ? (
-              <Text size="xs" data-testid="solera-cover">
-                Tapada media{' '}
-                {formatEs(
-                  cover.rows.reduce((sum, row) => sum + row.cover_m, 0) / cover.rows.length,
-                  1
-                )}{' '}
-                m
-              </Text>
-            ) : (
-              <Text size="xs" c="dimmed" data-testid="solera-missing">
-                Sin cota de solera relevada ni de proyecto.
-              </Text>
-            )
-          ) : null}
-          {flowDirection ? (
-            <Text size="xs" c="dimmed" data-testid="survey-compare-missing">
-              No hay otro relevamiento para comparar este perfil.
+          {flowDirection && cover.ok ? (
+            <Text size="xs" data-testid="solera-cover">
+              Tapada media{' '}
+              {formatEs(
+                cover.rows.reduce((sum, row) => sum + row.cover_m, 0) / cover.rows.length,
+                1
+              )}{' '}
+              m
             </Text>
+          ) : null}
+          {flowDirection && pairedSurvey && pairedSurvey.samples.length > 0 ? (
+            <Checkbox
+              size="xs"
+              label={`Comparar relevamiento (${pairedSurvey.label})`}
+              checked={compareSurvey}
+              onChange={(event) => setCompareSurvey(event.currentTarget.checked)}
+              data-testid="survey-compare-toggle"
+            />
           ) : null}
           {flowDirection ? (
             <Stack gap={4} data-testid="canal-slope-notes">
@@ -548,7 +563,12 @@ export function ElevationProfileChart({
                 data-axis={usesKilometreAxis(spanM) ? 'km' : 'm'}
                 role="slider"
                 tabIndex={0}
-                aria-label="Perfil de elevación. Flechas para mover el cursor. Inicio y fin van a los extremos."
+                aria-label={profileSummaryLabel}
+                aria-describedby={
+                  graphHeader
+                    ? 'elevation-profile-extrema-desc elevation-profile-tramo-desc'
+                    : 'elevation-profile-tramo-desc'
+                }
                 aria-valuemin={0}
                 aria-valuemax={Math.max(0, chartRows.length - 1)}
                 aria-valuenow={shownIndex ?? 0}
@@ -557,22 +577,44 @@ export function ElevationProfileChart({
                   if (chartRows.length === 0) {
                     return;
                   }
-                  const current = shownIndex ?? 0;
+                  const current = Math.min(Math.max(0, shownIndex ?? 0), chartRows.length - 1);
                   let next = current;
                   if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
                     next = Math.min(chartRows.length - 1, current + 1);
                   } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
                     next = Math.max(0, current - 1);
+                  } else if (event.key === 'PageUp') {
+                    next = Math.min(chartRows.length - 1, current + 10);
+                  } else if (event.key === 'PageDown') {
+                    next = Math.max(0, current - 10);
                   } else if (event.key === 'Home') {
                     next = 0;
                   } else if (event.key === 'End') {
                     next = chartRows.length - 1;
+                  } else if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    const picked = lngLatAtIndex(chartRows, current);
+                    if (picked) {
+                      onPickLngLat?.(picked);
+                    }
+                    return;
                   } else {
                     return;
                   }
                   event.preventDefault();
                   setHoverIndex(next);
                   onHoverLngLat?.(lngLatAtIndex(chartRows, next));
+                  const nextRow = chartRows[next];
+                  if (nextRow) {
+                    announce(
+                      formatCursorReadout(
+                        nextRow.distance_m,
+                        nextRow.elevation_m,
+                        localSlopePct(chartRows, next)
+                      ),
+                      'polite'
+                    );
+                  }
                 }}
                 onPointerDown={(event) => {
                   if (event.pointerType === 'mouse') {
@@ -871,6 +913,17 @@ export function ElevationProfileChart({
                       </Text>
                     );
                   })}
+                  {slopePieces.length > 0 ? (
+                    <Text size="xs" c="dimmed" data-testid="elevation-profile-slope-legend">
+                      Pendiente:{' '}
+                      <span style={{ color: SLOPE_COLOR_STOPS.LOW }}>Baja (&lt;2%)</span> ·{' '}
+                      <span style={{ color: SLOPE_COLOR_STOPS.MEDIUM }}>Media (2–5%)</span> ·{' '}
+                      <span style={{ color: SLOPE_COLOR_STOPS.HIGH }}>Alta (≥5%)</span>
+                      {hoverRow && shownIndex != null
+                        ? ` (${slopeSeverityLabel(localSlopePct(chartRows, shownIndex) ?? 0)})`
+                        : ''}
+                    </Text>
+                  ) : null}
                 </Stack>
               ) : null}
             </div>

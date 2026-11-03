@@ -485,4 +485,49 @@ describe("<MeasurementToolbar />", () => {
 		).not.toBeInTheDocument();
 		expect(screen.getAllByRole("button")).toHaveLength(1);
 	});
+
+	it("renders visible SVG icons on Deshacer, Guardar, and saved measurements controls (MAP-01 / MAP-03)", async () => {
+		const user = userEvent.setup();
+		const onUndo = vi.fn();
+		const onSavePersonal = vi.fn();
+		const onTogglePersonalVisibility = vi.fn();
+		const onClearPersonal = vi.fn();
+
+		renderWithMantine(
+			<MeasurementToolbar
+				mode="measuring-distance"
+				hasMeasurements={true}
+				onStartDistance={() => {}}
+				onStartArea={() => {}}
+				onClear={() => {}}
+				onCancel={() => {}}
+				onUndo={onUndo}
+				onSavePersonal={onSavePersonal}
+				savedMeasurementsCount={2}
+				savedMeasurementsVisible={true}
+				onTogglePersonalVisibility={onTogglePersonalVisibility}
+				onClearPersonal={onClearPersonal}
+			/>,
+		);
+
+		const undoBtn = screen.getByTestId("measurement-undo");
+		const saveBtn = screen.getByTestId("measurement-save-personal");
+		const toggleBtn = screen.getByTestId("measurement-toggle-personal");
+		const clearBtn = screen.getByTestId("measurement-clear-personal");
+
+		expect(undoBtn.querySelector("svg")).not.toBeNull();
+		expect(saveBtn.querySelector("svg")).not.toBeNull();
+		expect(toggleBtn.querySelector("svg")).not.toBeNull();
+		expect(clearBtn.querySelector("svg")).not.toBeNull();
+
+		await user.click(undoBtn);
+		await user.click(saveBtn);
+		await user.click(toggleBtn);
+		await user.click(clearBtn);
+
+		expect(onUndo).toHaveBeenCalledTimes(1);
+		expect(onSavePersonal).toHaveBeenCalledTimes(1);
+		expect(onTogglePersonalVisibility).toHaveBeenCalledTimes(1);
+		expect(onClearPersonal).toHaveBeenCalledTimes(1);
+	});
 });

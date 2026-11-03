@@ -114,5 +114,7 @@ export { default as IconClipboardCheck } from '@tabler/icons-react/dist/esm/icon
 export { default as IconMapSearch } from '@tabler/icons-react/dist/esm/icons/IconMapSearch.mjs';
 
 // Measurement tools icons (SDD map-measurement-tools)
+export { default as IconArrowBackUp } from '@tabler/icons-react/dist/esm/icons/IconArrowBackUp.mjs';
+export { default as IconDeviceFloppy } from '@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs';
 export { default as IconRuler } from '@tabler/icons-react/dist/esm/icons/IconRuler.mjs';
 export { default as IconRulerMeasure } from '@tabler/icons-react/dist/esm/icons/IconRulerMeasure.mjs';

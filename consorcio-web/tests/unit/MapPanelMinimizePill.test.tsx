@@ -142,8 +142,6 @@ function panelProps(
 		hiddenRanges: {},
 		onClassToggle: () => {},
 		onRangeToggle: () => {},
-		selectedFeatures: FEATURES,
-		onCloseInfoPanel: () => {},
 		fichaActive: false,
 		fichaTipo: "parcela",
 		fichaNroCuenta: null,

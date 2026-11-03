@@ -362,4 +362,28 @@ describe('FormularioSugerencia', () => {
       });
     });
   });
+
+  describe('Category-Driven Map Visibility (CIT-03)', () => {
+    it('hides the canal map behind an optional toggle when selecting an administrative category', async () => {
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
+
+      const user = userEvent.setup();
+      renderForm();
+
+      // Default category: map is shown
+      expect(screen.getByText('geometry-section')).toBeInTheDocument();
+
+      await user.click(screen.getByPlaceholderText(/seleccioná una categoría/i));
+      await user.click(await screen.findByText(/temas administrativos/i));
+
+      expect(screen.queryByText('geometry-section')).not.toBeInTheDocument();
+      const toggleBtn = screen.getByRole('button', {
+        name: /agregar ubicación en el mapa \(opcional\)/i,
+      });
+      expect(toggleBtn).toBeInTheDocument();
+
+      await user.click(toggleBtn);
+      expect(screen.getByText('geometry-section')).toBeInTheDocument();
+    });
+  });
 });

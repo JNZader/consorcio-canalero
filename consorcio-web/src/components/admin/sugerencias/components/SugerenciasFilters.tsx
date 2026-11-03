@@ -20,12 +20,13 @@ export function SugerenciasFilters({
 }>) {
   return (
     <Paper shadow="sm" p="md" radius="md" mb="md">
-      <Group>
+      <Group role="search" aria-label="Filtros de búsqueda de sugerencias">
         <TextInput
           placeholder="Buscar..."
           value={searchInputValue}
           onChange={(e) => onSearchInputChange(e.target.value)}
           style={{ flex: 1 }}
+          aria-label="Buscar sugerencias por título o descripción"
         />
         <Select
           placeholder="Estado"
@@ -34,6 +35,7 @@ export function SugerenciasFilters({
           onChange={setFilterEstado}
           clearable
           w={150}
+          aria-label="Filtrar por estado de la sugerencia"
         />
         <Select
           placeholder="Tipo"
@@ -46,8 +48,9 @@ export function SugerenciasFilters({
           onChange={setFilterTipo}
           clearable
           w={150}
+          aria-label="Filtrar por tipo de sugerencia"
         />
-        <Button variant="light" onClick={onRefresh}>
+        <Button variant="light" onClick={onRefresh} aria-label="Actualizar lista de sugerencias">
           Actualizar
         </Button>
       </Group>

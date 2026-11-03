@@ -5,17 +5,18 @@ import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import { MAP_PRESETS, type MapPresetId } from './mapPresets';
 
 interface MapPresetChipsProps {
+  readonly view?: 'map2d' | 'map3d';
   readonly onApplyRaster?: (presetId: MapPresetId) => void;
 }
 
 /**
  * Thematic view chips (UX PDF R1 / UX-26). Named as tasks, not family names.
  */
-export function MapPresetChips({ onApplyRaster }: MapPresetChipsProps) {
+export function MapPresetChips({ view = 'map2d', onApplyRaster }: MapPresetChipsProps) {
   const applyPreset = useMapLayerSyncStore((state) => state.applyPreset);
   const undoCatalogPreset = useMapLayerSyncStore((state) => state.undoCatalogPreset);
-  const activePresetId = useMapLayerSyncStore((state) => state.presetByView.map2d);
-  const canUndo = useMapLayerSyncStore((state) => state.catalogUndoByView.map2d != null);
+  const activePresetId = useMapLayerSyncStore((state) => state.presetByView[view]);
+  const canUndo = useMapLayerSyncStore((state) => state.catalogUndoByView[view] != null);
 
   return (
     <Stack gap={4} data-testid="map-preset-chips">
@@ -34,7 +35,7 @@ export function MapPresetChips({ onApplyRaster }: MapPresetChipsProps) {
               title={preset.description}
               aria-pressed={pressed}
               onClick={() => {
-                applyPreset('map2d', preset.id);
+                applyPreset(view, preset.id);
                 onApplyRaster?.(preset.id);
                 showInfo('Vista aplicada', 'Se reemplazó la selección de capas.', {
                   belowHeader: true,
@@ -50,7 +51,7 @@ export function MapPresetChips({ onApplyRaster }: MapPresetChipsProps) {
             size="xs"
             variant="subtle"
             data-testid="map-preset-undo"
-            onClick={() => undoCatalogPreset('map2d')}
+            onClick={() => undoCatalogPreset(view)}
           >
             Deshacer
           </Button>

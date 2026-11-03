@@ -1,24 +1,25 @@
-import { Badge } from '@mantine/core';
-import { CATEGORY_OPTIONS, STATUS_OPTIONS } from '../../../constants';
+import { CATEGORY_OPTIONS } from '../../../constants';
 import type { Report } from '../../../lib/api';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 export function getStatusBadge(status: string): React.ReactNode {
-  const option = STATUS_OPTIONS.find((o) => o.value === status);
-  return (
-    <Badge color={option?.color || 'gray'} variant="light">
-      {option?.label || status}
-    </Badge>
-  );
+  return <StatusBadge status={status} />;
 }
 
 export function getCategoryLabel(category: string): string {
   return CATEGORY_OPTIONS.find((c) => c.value === category)?.label || category;
 }
 
+export interface ReportStatusCounts {
+  pendiente: number;
+  en_revision: number;
+}
+
 export function filterReports(
   reports: Report[],
   filterCategory: string | null,
-  searchQuery: string
+  searchQuery: string,
+  globalStats?: ReportStatusCounts | null
 ) {
   let pending = 0;
   let inReview = 0;
@@ -37,5 +38,9 @@ export function filterReports(
     return true;
   });
 
-  return { filteredReports, pendingCount: pending, inReviewCount: inReview };
+  return {
+    filteredReports,
+    pendingCount: globalStats ? globalStats.pendiente : pending,
+    inReviewCount: globalStats ? globalStats.en_revision : inReview,
+  };
 }

@@ -16,7 +16,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
@@ -30,7 +30,6 @@ interface ProfileFormValues {
 }
 
 interface PasswordFormValues {
-  currentPassword: string;
   newPassword: string;
   confirmPassword: string;
 }
@@ -52,7 +51,6 @@ function ProfileContent() {
 
   const passwordForm = useForm<PasswordFormValues>({
     initialValues: {
-      currentPassword: '',
       newPassword: '',
       confirmPassword: '',
     },
@@ -66,13 +64,20 @@ function ProfileContent() {
     },
   });
 
-  // Update form when profile loads
-  if (profile && !profileForm.values.nombre && profile.nombre) {
-    profileForm.setFieldValue('nombre', profile.nombre);
-  }
-  if (profile && !profileForm.values.telefono && profile.telefono) {
-    profileForm.setFieldValue('telefono', profile.telefono);
-  }
+  const profileId = (profile as { id?: string } | null)?.id;
+  const profileNombre = profile?.nombre ?? '';
+  const profileTelefono = profile?.telefono ?? '';
+
+  // Initialize form when profile loads without mutating state during render
+  useEffect(() => {
+    if (profile) {
+      profileForm.setValues({
+        nombre: profileNombre,
+        telefono: profileTelefono,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId, profileNombre, profileTelefono]);
 
   const handleProfileSubmit = async (values: ProfileFormValues) => {
     if (!user) return;

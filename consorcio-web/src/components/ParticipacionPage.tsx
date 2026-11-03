@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { isConfiguredSupportPhone, SUPPORT_PHONE } from '../constants';
 import { FormularioContenido } from './FormularioReporte';
 import { FormularioSugerenciaContent } from './FormularioSugerencia';
+import { LiveRegionProvider } from './ui/accessibility';
 import { IconClipboardList, IconInfoCircle, IconLightbulb } from './ui/icons';
 
 const DEFAULT_TAB = 'reportes';
@@ -102,7 +103,16 @@ function ProponerContent() {
           </List>
         </Alert>
 
-        <Alert color="green" title="Tipos de sugerencias" icon={<IconLightbulb size={20} />}>
+        <Alert
+          color="green"
+          title="Tipos de sugerencias"
+          icon={<IconLightbulb size={20} />}
+          styles={{
+            label: { color: 'rgb(20, 83, 45)' },
+            title: { color: 'rgb(20, 83, 45)' },
+            root: { color: 'rgb(20, 83, 45)' },
+          }}
+        >
           <List size="sm" spacing="xs">
             <List.Item>Mejoras en infraestructura (canales, caminos, alcantarillas)</List.Item>
             <List.Item>Propuestas para servicios del consorcio</List.Item>
@@ -140,40 +150,42 @@ export function ParticipacionContent() {
   };
 
   return (
-    <Box
-      style={{ background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}
-      mih="100vh"
-      py="xl"
-    >
-      <Container size="md">
-        {/* Header unico: abarca las dos acciones */}
-        <Stack align="center" mb="xl">
-          <Title order={1}>Participación</Title>
-          <Text c="gray.6" ta="center" maw={560}>
-            Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo lo
-            que envíes llega al equipo del consorcio y a la comisión.
-          </Text>
-        </Stack>
+    <LiveRegionProvider>
+      <Box
+        style={{ background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}
+        mih="100vh"
+        py="xl"
+      >
+        <Container size="md">
+          {/* Header unico: abarca las dos acciones */}
+          <Stack align="center" mb="xl">
+            <Title order={1}>Participación</Title>
+            <Text c="gray.6" ta="center" maw={560}>
+              Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo lo
+              que envíes llega al equipo del consorcio y a la comisión.
+            </Text>
+          </Stack>
 
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tabs.List mb="xl" grow>
-            <Tabs.Tab value="reportes" leftSection={<IconClipboardList size={16} />}>
-              Reportar un problema
-            </Tabs.Tab>
-            <Tabs.Tab value="sugerencias" leftSection={<IconLightbulb size={16} />}>
-              Proponer una mejora
-            </Tabs.Tab>
-          </Tabs.List>
+          <Tabs value={activeTab} onChange={handleTabChange}>
+            <Tabs.List mb="xl" grow>
+              <Tabs.Tab value="reportes" leftSection={<IconClipboardList size={16} />}>
+                Reportar un problema
+              </Tabs.Tab>
+              <Tabs.Tab value="sugerencias" leftSection={<IconLightbulb size={16} />}>
+                Proponer una mejora
+              </Tabs.Tab>
+            </Tabs.List>
 
-          <Tabs.Panel value="reportes">
-            {visitedTabs.has('reportes') && <ReportarContent />}
-          </Tabs.Panel>
-          <Tabs.Panel value="sugerencias">
-            {visitedTabs.has('sugerencias') && <ProponerContent />}
-          </Tabs.Panel>
-        </Tabs>
-      </Container>
-    </Box>
+            <Tabs.Panel value="reportes">
+              {visitedTabs.has('reportes') && <ReportarContent />}
+            </Tabs.Panel>
+            <Tabs.Panel value="sugerencias">
+              {visitedTabs.has('sugerencias') && <ProponerContent />}
+            </Tabs.Panel>
+          </Tabs>
+        </Container>
+      </Box>
+    </LiveRegionProvider>
   );
 }
 

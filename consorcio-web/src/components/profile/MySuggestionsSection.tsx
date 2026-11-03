@@ -33,15 +33,9 @@ import { sugerenciasApi } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { erroresUi, textoError } from '../../lib/userFacingError';
+import { StatusBadge } from '../ui/StatusBadge';
 
 const PAGE_SIZE = 5;
-
-const STATUS_BADGE: Record<string, { color: string; label: string }> = {
-  pendiente: { color: 'yellow', label: 'Pendiente' },
-  revisada: { color: 'blue', label: 'Revisada' },
-  implementada: { color: 'green', label: 'Implementada' },
-  descartada: { color: 'red', label: 'Descartada' },
-};
 
 const CATEGORIA_LABEL: Record<string, string> = {
   infraestructura: 'Infraestructura',
@@ -153,13 +147,7 @@ export function MySuggestionsSection() {
                         <Text fw={600} size="sm" truncate>
                           {sug.titulo}
                         </Text>
-                        <Badge
-                          color={STATUS_BADGE[sug.estado]?.color || 'gray'}
-                          size="sm"
-                          variant="light"
-                        >
-                          {STATUS_BADGE[sug.estado]?.label || sug.estado}
-                        </Badge>
+                        <StatusBadge status={sug.estado} size="sm" />
                       </Group>
                       {sug.categoria && (
                         <Text size="xs" c="dimmed">
@@ -202,15 +190,12 @@ function SuggestionDetailModal({ sugerencia, onClose }: SuggestionDetailModalPro
   if (!sugerencia) {
     return <Modal opened={false} onClose={onClose} title="" />;
   }
-  const status = STATUS_BADGE[sugerencia.estado];
 
   return (
     <Modal opened onClose={onClose} title={sugerencia.titulo} size="lg" centered>
       <Stack gap="md">
         <Group gap="xs">
-          <Badge color={status?.color || 'gray'} variant="light" size="lg">
-            {status?.label || sugerencia.estado}
-          </Badge>
+          <StatusBadge status={sugerencia.estado} size="lg" />
           <Text size="xs" c="dimmed">
             Enviada el {formatDate(sugerencia.created_at, { includeTime: true })}
           </Text>

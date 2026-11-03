@@ -1729,10 +1729,37 @@ text.precipBarLabels {
 .mapCursorDock {
   position: absolute;
   left: 90px;
-  bottom: 10px;
+  bottom: calc(10px + var(--map-bottom-dock-offset, 0px));
   z-index: var(--z-map-controls);
   pointer-events: none;
   padding: 2px 6px;
+}
+
+.mapSearchBox {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 12;
+  width: min(320px, calc(100% - 24px));
+}
+
+/* Bottom dock coordination (Audit §2.2 / T1.6): when ElevationProfileDock is
+   mounted inside the canvas wrapper, lift bottom-anchored panels above it so
+   they never cover the profile dock or its close/minimize buttons. */
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .fichaPanel,
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .roadFlowPanel,
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .fichaPanelPill,
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .roadFlowPanelPill {
+  bottom: calc(var(--mantine-spacing-md) + var(--map-bottom-dock-offset, 260px));
+}
+
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .roadFlowDisclaimerChip {
+  bottom: calc(var(--mantine-spacing-md) + 44px + var(--map-bottom-dock-offset, 260px));
+}
+
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .fichaPanel:not(.fichaPanelCompact),
+.mapCanvasWrapper:has([data-testid='elevation-profile-dock']) .roadFlowPanel {
+  max-height: calc(100% - 124px - var(--map-bottom-dock-offset, 260px));
 }
 
 /* Sentinel month row: 6 columns × 2 rows so Dic is never clipped. */
@@ -1820,5 +1847,9 @@ text.precipBarLabels {
 @media (max-width: 47.9375em) {
   .terrainChromeHeader {
     display: none !important;
+  }
+
+  .mapSearchBox {
+    top: 64px;
   }
 }

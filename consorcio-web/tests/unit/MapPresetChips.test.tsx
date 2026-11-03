@@ -61,4 +61,19 @@ describe('MapPresetChips', () => {
     expect(useMapLayerSyncStore.getState().map2d.visibleVectors.roads).toBe(true);
     expect(useMapLayerSyncStore.getState().catalogUndoByView.map2d).toBeNull();
   });
+
+  it('targets map3d when view="map3d" without mutating map2d preset state (MAP-05)', async () => {
+    const user = userEvent.setup();
+    render(
+      <MantineProvider env="test">
+        <MapPresetChips view="map3d" />
+      </MantineProvider>
+    );
+    await user.click(screen.getByTestId('map-preset-agua'));
+    expect(useMapLayerSyncStore.getState().presetByView.map3d).toBe('agua');
+    expect(useMapLayerSyncStore.getState().presetByView.map2d).toBeNull();
+    expect(useMapLayerSyncStore.getState().map3d.visibleVectors.waterways).toBe(true);
+    await user.click(screen.getByTestId('map-preset-undo'));
+    expect(useMapLayerSyncStore.getState().catalogUndoByView.map3d).toBeNull();
+  });
 });

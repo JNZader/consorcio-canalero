@@ -22,10 +22,14 @@ export const reportsApi = {
           status?: string;
           cuenca?: string;
           tipo?: string;
+          categoria?: string;
+          search?: string;
           assigned_to?: string;
         } = 1,
     limit = 10,
-    status?: string
+    status?: string,
+    categoria?: string,
+    search?: string
   ): Promise<{ items: Report[]; total: number; page: number }> => {
     const searchParams = new URLSearchParams();
 
@@ -33,12 +37,16 @@ export const reportsApi = {
       searchParams.set('page', pageOrParams.toString());
       searchParams.set('limit', limit.toString());
       if (status) searchParams.set('status', status);
+      if (categoria) searchParams.set('categoria', categoria);
+      if (search) searchParams.set('search', search);
     } else {
       if (pageOrParams.page) searchParams.set('page', pageOrParams.page.toString());
       if (pageOrParams.limit) searchParams.set('limit', pageOrParams.limit.toString());
       if (pageOrParams.status) searchParams.set('status', pageOrParams.status);
       if (pageOrParams.cuenca) searchParams.set('cuenca', pageOrParams.cuenca);
       if (pageOrParams.tipo) searchParams.set('tipo', pageOrParams.tipo);
+      if (pageOrParams.categoria) searchParams.set('categoria', pageOrParams.categoria);
+      if (pageOrParams.search) searchParams.set('search', pageOrParams.search);
       if (pageOrParams.assigned_to) searchParams.set('assigned_to', pageOrParams.assigned_to);
     }
 

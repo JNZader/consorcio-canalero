@@ -172,15 +172,13 @@ describe('base-layer controls placement (portrait rework)', () => {
     expect(queries).toContain(MAP_DESKTOP_MEDIA_QUERY);
   });
 
-  it('desktop: no floating top bar — vista and tiempo live in the panel', () => {
+  it('desktop: no floating top bar — vista lives in the panel', () => {
     mockViewport(DESKTOP);
     renderMap(<MapaMapLibre />);
 
     expect(screen.queryByTestId('map-top-bar')).not.toBeInTheDocument();
     const tree = screen.getByTestId('map-controls-tree');
     expect(tree).toContainElement(screen.getByTestId('map-vista-section'));
-    expect(tree).toContainElement(screen.getByTestId('map-tiempo-section'));
-    expect(tree).toContainElement(screen.getByTestId('time-compare-bar'));
     expect(screen.getByTestId('map-workspace-sidebar')).toContainElement(screen.getByTestId('map-search'));
   });
 

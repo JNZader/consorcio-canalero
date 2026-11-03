@@ -165,7 +165,7 @@ export function AgendaModal({
                 />
                 <MultiSelect
                   label="Vincular con (@)"
-                  placeholder="Escribí para buscar reportes, trámites o activos..."
+                  placeholder="Escribí para buscar reportes, trámites o sugerencias..."
                   data={availableEntities}
                   searchable
                   nothingFoundMessage="No se encontró nada..."

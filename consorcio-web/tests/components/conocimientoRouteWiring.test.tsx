@@ -17,6 +17,7 @@ import { type ComponentPropsWithoutRef, forwardRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AdminLayoutContent } from '../../src/components/admin/AdminLayout';
+import { useAuthStore } from '../../src/stores/authStore';
 
 // The real module is spread back in: this file also imports `routeTree.gen`,
 // which needs `createRoute` / `createRootRoute` / `redirect` to be genuine. Only
@@ -40,6 +41,16 @@ vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
 describe('the mailbox page is reachable', () => {
   it('is linked from the admin navigation', () => {
+    useAuthStore.setState({
+      user: { id: 'admin-1', email: 'admin@consorcio.org' } as any,
+      profile: {
+        id: 'admin-1',
+        user_id: 'admin-1',
+        rol: 'admin',
+        nombre: 'Admin',
+        apellido: 'Sistema',
+      } as any,
+    });
     render(
       <MantineProvider env="test">
         <AdminLayoutContent>

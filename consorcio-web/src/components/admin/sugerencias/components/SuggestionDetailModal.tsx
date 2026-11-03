@@ -2,7 +2,6 @@ import {
   Badge,
   Box,
   Button,
-  Collapse,
   Divider,
   Group,
   Modal,
@@ -11,7 +10,6 @@ import {
   Stack,
   Text,
   Textarea,
-  Timeline,
   Title,
 } from '@mantine/core';
 import { DatePicker, DatesProvider } from '@mantine/dates';
@@ -23,22 +21,14 @@ dayjs.locale('es');
 
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
-import { IconHistory } from '../../../ui/icons';
 import { CATEGORIA_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
-import type { SeguimientoEntry } from '../sugerenciasPanelTypes';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
-
-const SUGGESTION_HISTORY_REGION_ID = 'suggestion-history-region';
 
 export function SuggestionDetailModal({
   opened,
   onClose,
   selectedSugerencia,
   canales,
-  historial,
-  loadingHistorial,
-  showHistorial,
-  setShowHistorial,
   newEstado,
   setNewEstado,
   publicComment,
@@ -68,10 +58,6 @@ export function SuggestionDetailModal({
     data: import('geojson').FeatureCollection;
     style: { color?: string; weight?: number; opacity?: number };
   }>;
-  historial: SeguimientoEntry[];
-  loadingHistorial: boolean;
-  showHistorial: boolean;
-  setShowHistorial: (value: boolean) => void;
   newEstado: string;
   setNewEstado: (value: string) => void;
   publicComment: string;
@@ -175,72 +161,6 @@ export function SuggestionDetailModal({
               </Text>
             </div>
           ) : null}
-
-          <Paper
-            p="md"
-            style={{
-              background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
-            }}
-            radius="md"
-          >
-            <Group justify="space-between" mb="sm">
-              <Group gap="xs">
-                <IconHistory size={18} />
-                <Text size="sm" fw={600}>
-                  Historial de Gestión
-                </Text>
-              </Group>
-              <Button
-                variant="subtle"
-                size="xs"
-                onClick={() => setShowHistorial(!showHistorial)}
-                loading={loadingHistorial}
-                aria-expanded={showHistorial}
-                aria-controls={SUGGESTION_HISTORY_REGION_ID}
-              >
-                {showHistorial ? 'Ocultar' : 'Mostrar'} ({historial.length})
-              </Button>
-            </Group>
-
-            <Collapse
-              id={SUGGESTION_HISTORY_REGION_ID}
-              expanded={showHistorial}
-              role="region"
-              aria-label="Historial de gestión de la sugerencia"
-            >
-              {historial.length === 0 ? (
-                <Text size="sm" c="dimmed" ta="center" py="md">
-                  {loadingHistorial ? 'Cargando historial...' : 'Sin historial disponible'}
-                </Text>
-              ) : (
-                <Timeline active={0} lineWidth={2}>
-                  {historial.map((entry) => (
-                    <Timeline.Item
-                      key={entry.id}
-                      title={`Cambio a ${entry.estado_nuevo.replace('_', ' ').toUpperCase()}`}
-                    >
-                      <Text size="xs" fw={500}>
-                        {entry.comentario_publico}
-                      </Text>
-                      {entry.comentario_interno && (
-                        <Text size="xs" c="blue" fs="italic">
-                          Interno: {entry.comentario_interno}
-                        </Text>
-                      )}
-                      <Text size="xs" c="dimmed" mt={2}>
-                        {formatDate(entry.fecha)}
-                      </Text>
-                    </Timeline.Item>
-                  ))}
-                  <Timeline.Item title="Sugerencia Creada">
-                    <Text size="xs" mt={2}>
-                      Ingresada al sistema
-                    </Text>
-                  </Timeline.Item>
-                </Timeline>
-              )}
-            </Collapse>
-          </Paper>
 
           {selectedSugerencia.estado === 'pendiente' && (
             <Paper
