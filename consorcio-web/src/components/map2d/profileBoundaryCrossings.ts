@@ -51,12 +51,44 @@ export function parcelBoundaryMarks(
       typeof sample.lon === 'number' && typeof sample.lat === 'number'
   );
   if (line.length < 2 || !parcels || parcels.length === 0) return [];
+
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const pt of line) {
+    if (pt.lon < minLon) minLon = pt.lon;
+    if (pt.lon > maxLon) maxLon = pt.lon;
+    if (pt.lat < minLat) minLat = pt.lat;
+    if (pt.lat > maxLat) maxLat = pt.lat;
+  }
+
   const marks: ProfileCrossing[] = [];
   for (const parcel of parcels) {
+    const rings = ringsOf(parcel.geometry);
+    if (rings.length === 0) continue;
+
+    let pMinLon = Infinity;
+    let pMaxLon = -Infinity;
+    let pMinLat = Infinity;
+    let pMaxLat = -Infinity;
+    for (const ring of rings) {
+      for (const pt of ring) {
+        if (!pt) continue;
+        if (pt[0]! < pMinLon) pMinLon = pt[0]!;
+        if (pt[0]! > pMaxLon) pMaxLon = pt[0]!;
+        if (pt[1]! < pMinLat) pMinLat = pt[1]!;
+        if (pt[1]! > pMaxLat) pMaxLat = pt[1]!;
+      }
+    }
+    if (pMaxLon < minLon || pMinLon > maxLon || pMaxLat < minLat || pMinLat > maxLat) {
+      continue;
+    }
+
     const label = cuentaOf(parcel.properties)
       ? `Parcela ${cuentaOf(parcel.properties)}`
       : 'Límite de parcela';
-    for (const ring of ringsOf(parcel.geometry)) {
+    for (const ring of rings) {
       for (let edge = 1; edge < ring.length; edge += 1) {
         const c = ring[edge - 1];
         const d = ring[edge];
