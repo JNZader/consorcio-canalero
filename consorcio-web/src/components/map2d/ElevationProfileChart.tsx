@@ -11,6 +11,7 @@ import { Alert, Button, Checkbox, Group, Skeleton, Stack, Text } from '@mantine/
 import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Area,
   Line,
   LineChart,
   ReferenceArea,
@@ -25,8 +26,6 @@ import {
   fetchElevationProfile,
 } from '../../lib/api/elevationProfile';
 import { mapColorTokens } from '../../lib/mapColorTokens';
-import { culvertMarks, parcelBoundaryMarks } from './profileBoundaryCrossings';
-import { slopeSegments } from './slopeColor';
 import {
   canalSlopeNotes,
   crossingsOnProfile,
@@ -34,13 +33,14 @@ import {
   type FlowSense,
   type ProfileCrossing,
 } from './canalProfile';
+import { culvertMarks, parcelBoundaryMarks } from './profileBoundaryCrossings';
 import { buildProfileChartRows, type ProfileChartRow } from './profileChartRows';
 import { indexFromPlotX, nearestIndexByDistance } from './profileCursorSync';
 import {
+  elevationAxisDomain,
   formatAxisDistance,
   formatCursorReadout,
   formatElevationM,
-  elevationAxisDomain,
   formatEs,
   formatProfileDistance,
   formatRelief,
@@ -56,6 +56,8 @@ import {
   profileSliceStats,
   sliceProfile,
 } from './profileRange';
+import { slopeSegments } from './slopeColor';
+import { soleraCover } from './soleraProfile';
 
 function downloadProfileCsv(csv: string) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -339,6 +341,7 @@ export function ElevationProfileChart({
   const slopeNotes = flowDirection
     ? canalSlopeNotes(chartRows, flowDirection, { sedimentPct, adversePct })
     : [];
+  const cover = soleraCover(chartRows);
   const profileCrossings = crossingsOnProfile(chartRows, [
     ...crossings,
     ...parcelBoundaryMarks(chartRows, parcelFeatures),
@@ -431,6 +434,27 @@ export function ElevationProfileChart({
           <Text size="xs" data-testid="elevation-profile-tramo-stats">
             {tramoHeader}
           </Text>
+          {flowDirection ? (
+            cover.ok ? (
+              <Text size="xs" data-testid="solera-cover">
+                Tapada media{' '}
+                {formatEs(
+                  cover.rows.reduce((sum, row) => sum + row.cover_m, 0) / cover.rows.length,
+                  1
+                )}{' '}
+                m
+              </Text>
+            ) : (
+              <Text size="xs" c="dimmed" data-testid="solera-missing">
+                Sin cota de solera relevada ni de proyecto.
+              </Text>
+            )
+          ) : null}
+          {flowDirection ? (
+            <Text size="xs" c="dimmed" data-testid="survey-compare-missing">
+              No hay otro relevamiento para comparar este perfil.
+            </Text>
+          ) : null}
           {flowDirection ? (
             <Stack gap={4} data-testid="canal-slope-notes">
               <Group gap="xs">
@@ -746,6 +770,28 @@ export function ElevationProfileChart({
                         fill={mapColorTokens.hdc2626}
                         stroke={mapColorTokens.hffffff}
                         shape={triangleMarker('up')}
+                      />
+                    ) : null}
+                    {cover.ok ? (
+                      <Area
+                        data={cover.rows}
+                        dataKey="cover_m"
+                        stroke="none"
+                        fill="#94a3b8"
+                        fillOpacity={0.35}
+                        isAnimationActive={false}
+                        legendType="none"
+                      />
+                    ) : null}
+                    {cover.ok ? (
+                      <Line
+                        data={cover.rows}
+                        type="linear"
+                        dataKey="solera"
+                        name="Solera"
+                        stroke="#0f766e"
+                        dot={false}
+                        isAnimationActive={false}
                       />
                     ) : null}
                     <Line
