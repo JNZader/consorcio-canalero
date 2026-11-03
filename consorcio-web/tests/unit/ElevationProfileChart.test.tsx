@@ -495,4 +495,48 @@ describe('<ElevationProfileChart />', () => {
     );
     expect(await screen.findByTestId('survey-compare-toggle')).toBeInTheDocument();
   });
+
+  it('compacts and collapses parcel crossings when there are more than 3', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120, lon: -62.7, lat: -32.6 },
+        { distance_m: 250, elevation_m: 119.5, lon: -62.7025, lat: -32.6 },
+        { distance_m: 500, elevation_m: 119, lon: -62.705, lat: -32.6 },
+        { distance_m: 750, elevation_m: 118.5, lon: -62.7075, lat: -32.6 },
+        { distance_m: 1000, elevation_m: 118, lon: -62.71, lat: -32.6 },
+      ],
+      length_m: 1000,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m).',
+    });
+    const crossings = [
+      { lon: -62.7, lat: -32.6, label: 'Parcela 1' },
+      { lon: -62.7025, lat: -32.6, label: 'Parcela 2' },
+      { lon: -62.705, lat: -32.6, label: 'Parcela 3' },
+      { lon: -62.7075, lat: -32.6, label: 'Parcela 4' },
+      { lon: -62.71, lat: -32.6, label: 'Parcela 5' },
+    ];
+    renderWithMantine(
+      <ElevationProfileChart
+        geometry={line}
+        autoLoad
+        crossings={crossings}
+      />
+    );
+    await screen.findByTestId('elevation-profile-extrema');
+    const crossingsEl = await screen.findByTestId('profile-crossings');
+    expect(crossingsEl).toHaveTextContent('Cruces (5):');
+    expect(crossingsEl).toHaveTextContent('Parcela 1');
+    expect(crossingsEl).toHaveTextContent('…');
+
+    const toggle = screen.getByTestId('profile-crossings-toggle');
+    expect(toggle).toHaveTextContent('+2 más');
+
+    fireEvent.click(toggle);
+    expect(crossingsEl).toHaveTextContent('Parcela 5');
+    expect(toggle).toHaveTextContent('Menos');
+  });
 });
