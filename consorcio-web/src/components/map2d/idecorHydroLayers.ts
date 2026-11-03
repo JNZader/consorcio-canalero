@@ -51,9 +51,15 @@ export function syncIdecorHydroLayers(
 ): void {
   if (!hasStyleApi(map)) return;
   for (const layer of IDECOR_HYDRO_LAYERS) {
+    const on = !!visible[layer.id];
+    const sourceExists = !!map.getSource(layer.id);
+    // PERF: Lazy-mount IDECOR layers — do not download GeoJSON (up to 789 KB)
+    // until the user actually turns on the layer.
+    if (!on && !sourceExists) continue;
+
     const style = MARTIN_SOURCES[layer.table]?.style;
     if (!style) continue;
-    if (!map.getSource(layer.id)) {
+    if (!sourceExists) {
       map.addSource(layer.id, {
         type: 'geojson',
         data: layer.geojsonUrl,
@@ -84,7 +90,6 @@ export function syncIdecorHydroLayers(
         },
       });
     }
-    const on = !!visible[layer.id];
     if (layer.kind === 'fill') setLayerVisibility(map, fillId, on);
     setLayerVisibility(map, lineId, on);
   }

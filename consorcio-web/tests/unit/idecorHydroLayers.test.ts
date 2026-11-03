@@ -63,21 +63,27 @@ describe('syncIdecorHydroLayers', () => {
     ).not.toThrow();
   });
 
-  it('adds GeoJSON sources and keeps every overlay hidden until its toggle is on', () => {
-    const { map, sources, layers } = fakeMap();
+  it('lazy-mounts GeoJSON sources only when a layer is toggled on', () => {
+    const { map, sources, layers, sourceAdds } = fakeMap();
     syncIdecorHydroLayers(map, {});
 
-    for (const layer of IDECOR_HYDRO_LAYERS) {
-      expect(sources.get(layer.id)?.type).toBe('geojson');
-      expect(sources.get(layer.id)?.data).toBe(layer.geojsonUrl);
-      expect(layers.get(`${layer.id}-line`)?.source).toBe(layer.id);
-      expect(layers.get(`${layer.id}-line`)?.visibility).toBe('none');
-      if (layer.kind === 'fill') {
-        expect(layers.get(`${layer.id}-fill`)?.visibility).toBe('none');
-      } else {
-        expect(layers.has(`${layer.id}-fill`)).toBe(false);
-      }
-    }
+    // Nothing added while all toggles are off (saves 789 KB download)
+    expect(sources.size).toBe(0);
+    expect(layers.size).toBe(0);
+
+    // Toggle one layer on
+    syncIdecorHydroLayers(map, { idecor_cuencas: true });
+    expect(sourceAdds()).toBe(1);
+    expect(sources.get('idecor_cuencas')?.type).toBe('geojson');
+    expect(sources.get('idecor_cuencas')?.data).toBe('/capas/idecor/cuencas.geojson');
+    expect(layers.get('idecor_cuencas-fill')?.visibility).toBe('visible');
+    expect(layers.get('idecor_cuencas-line')?.visibility).toBe('visible');
+
+    // Toggle it off: stays in sources, becomes hidden
+    syncIdecorHydroLayers(map, { idecor_cuencas: false });
+    expect(sourceAdds()).toBe(1);
+    expect(layers.get('idecor_cuencas-fill')?.visibility).toBe('none');
+    expect(layers.get('idecor_cuencas-line')?.visibility).toBe('none');
   });
 
   it('shows only the toggled overlay and does not add the source twice', () => {
@@ -86,10 +92,9 @@ describe('syncIdecorHydroLayers', () => {
     syncIdecorHydroLayers(map, { idecor_cuencas: true });
     syncIdecorHydroLayers(map, { idecor_cuencas: true });
 
-    expect(sourceAdds()).toBe(IDECOR_HYDRO_LAYERS.length);
-    expect(sources.size).toBe(IDECOR_HYDRO_LAYERS.length);
+    expect(sourceAdds()).toBe(1);
+    expect(sources.size).toBe(1);
     expect(layers.get('idecor_cuencas-fill')?.visibility).toBe('visible');
     expect(layers.get('idecor_cuencas-line')?.visibility).toBe('visible');
-    expect(layers.get('idecor_cursos-line')?.visibility).toBe('none');
   });
 });

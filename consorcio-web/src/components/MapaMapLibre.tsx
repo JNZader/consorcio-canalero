@@ -249,12 +249,14 @@ export default function MapaMapLibre() {
     enabled: exportIntent,
   });
   const { basins, error: basinsError, loading: basinsLoading, reload: reloadBasins } = useBasins();
+  // 2D paint loads waterways directly in MapLibre. The GeoJSON in React
+  // memory is only for KMZ export — same latch as catastro and soil (`exportIntent`).
   const {
     waterways,
     error: waterwaysError,
     reload: reloadWaterways,
   } = useWaterways({
-    enabled: mapVectorIdle,
+    enabled: exportIntent,
   });
   const {
     layers: allGeoLayers,
