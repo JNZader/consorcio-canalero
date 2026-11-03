@@ -1,6 +1,5 @@
 import { Box } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import type { Feature, LineString, MultiLineString } from 'geojson';
 import { memo, type ReactNode, useCallback, useState } from 'react';
 import { MAP_DEFAULT_ZOOM } from '../../constants';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
@@ -15,7 +14,7 @@ import type {
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import styles from '../../styles/components/map.module.css';
-import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
+import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import { RasterLegend } from '../RasterLegend';
 import type { EtapaGate } from '../shared/canalesGrouping';
 import { ExportPngModal } from './ExportPngModal';
@@ -28,7 +27,6 @@ import {
 import type { LayerHealth } from './layerHealth';
 import { MapActionsPanel } from './MapActionsPanel';
 import type { LayerCategory } from './map2dDerived';
-import type { ProfileRangeStats } from './profileRange';
 import { RoadFlowDisclaimerChip } from './RoadFlowDisclaimer';
 import { RoadFlowPanel } from './RoadFlowPanel';
 import type { RoadFlowKindVisibility } from './roadFlowLayers';
@@ -135,24 +133,6 @@ export interface MapUiPanelsProps {
   readonly onClassToggle: (layerType: string, classIndex: number, visible: boolean) => void;
   readonly onRangeToggle: (layerType: string, rangeIndex: number, visible: boolean) => void;
   /**
-   * Phase 8 — array of all features returned by MapLibre at the click
-   * point. InfoPanel renders one stacked section per feature in order
-   * (top-most first).
-   */
-  readonly selectedFeatures: readonly Feature[];
-  readonly onCloseInfoPanel: () => void;
-  readonly onElevationProfileHover?: (hover: { lon: number; lat: number } | null) => void;
-  readonly onElevationProfileRange?: (range: ProfileRangeStats | null) => void;
-  readonly onOpenElevationProfile?: (geometry: LineString | MultiLineString) => void;
-  readonly onOpenCanalProfile?: (request: {
-    geometry: LineString | MultiLineString;
-    title: string;
-    flowDirection: 'digitizado' | 'inverso';
-  }) => void;
-  readonly profileHover?: { lon: number; lat: number } | null;
-  readonly elevationProfileAutoLoad?: boolean;
-  readonly onElevationProfileShare?: () => void;
-  /**
    * Ficha territorial (A4) — the container owns the fetch (`useFichaTerritorial`)
    * and threads its state down here; `InfoPanel` stays pure. When
    * `fichaActive` is false the sibling panel renders nothing.
@@ -251,9 +231,6 @@ export interface MapUiPanelsProps {
   readonly bpaLoading?: boolean;
   /** BPA group failure message (R4-001) — forwarded to the ficha badges. */
   readonly bpaError?: string | null;
-  /** Optional Pilar Verde historical BPA lookup — powers the BpaCard histórico footer. */
-  readonly bpaHistory?: BpaHistoryFile | null;
-  readonly onDeletePuntoInteres?: (id: string) => void;
   readonly exportPngModalOpen: boolean;
   readonly onCloseExportPngModal: () => void;
   readonly exportTitle: string;

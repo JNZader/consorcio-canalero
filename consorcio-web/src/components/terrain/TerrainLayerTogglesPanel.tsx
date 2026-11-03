@@ -26,28 +26,12 @@
  * for both the swatch colors AND the toggle controls.
  */
 
-import { Box, Checkbox, CloseButton, Paper, Select, Slider, Stack, Text, Tooltip } from '@mantine/core';
-import { useMemo } from 'react';
+import { Box, CloseButton, Paper, Select, Slider, Stack, Text } from '@mantine/core';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
-import { WATERWAY_DEFS } from '../../hooks/useWaterways';
 import styles from '../../styles/components/map.module.css';
-import { getActiveAttributions } from '../map2d/layerAttributions';
-import { CanalesLayerSection } from '../shared/CanalesLayerSection';
-import type { CanalToggleEntry } from '../shared/canalesGrouping';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import {
-  PILAR_VERDE_ITEMS,
-  PRIORITY_3D_VECTOR_LAYERS,
-  UNSUPPORTED_3D_VECTOR_LAYERS,
-} from './terrainLayerConfig';
 
-/**
- * Labels for the 5 Pilar Verde checkboxes. Kept inline here because they are
- * user-facing strings with specific Rioplatense phrasing ("% Forestación
- * obligatoria") that doesn't belong in the store; the store only knows the
- * layer ids. Order mirrors `PILAR_VERDE_LAYER_IDS` from `mapLayerSyncStore`.
- */
 /**
  * When `true`, the panel renders WITHOUT the absolute-positioning styles
  * (top/right/width/maxHeight) so the parent can place it inline (e.g. in a
@@ -64,27 +48,17 @@ interface TerrainLayerTogglesPanelProps {
   readonly onActiveRasterLayerChange: (layerId: string | null) => void;
   readonly overlayOpacity: number;
   readonly onOverlayOpacityChange: (value: number) => void;
-  readonly vectorLayerVisibility: Record<string, boolean>;
-  readonly onVectorLayerToggle: (layerId: string, visible: boolean) => void;
   /** Optional — when omitted, no close button is rendered (used in embedded mode). */
   readonly onClose?: () => void;
   readonly hasApprovedZones: boolean;
-  /**
-   * Number of canal/road conflict points returned by ``useConflictos``.
-   * When 0, the panel hides the "Puntos conflicto" row entirely (the
-   * toggle would have nothing to switch).
-   */
-  readonly intersectionsLength?: number;
-  readonly canalesRelevadosItems?: readonly CanalToggleEntry[];
-  readonly canalesPropuestosItems?: readonly CanalToggleEntry[];
   /**
    * When `true`, the panel renders inline (no `position: absolute`, no fixed
    * width/maxHeight). The parent is expected to place it inside a layout
    * grid below the map. Defaults to `false` (legacy floating overlay).
    */
   readonly embedded?: boolean;
-  /** When false, only raster overlay controls remain (UX PDF T1c). */
-  readonly showVectorSections?: boolean;
+  /** Whether to render the inline overlay opacity slider (false when LayerControlsPanel fine control handles __dem opacity). */
+  readonly showOpacitySlider?: boolean;
 }
 
 export function TerrainLayerTogglesPanel({
@@ -94,15 +68,10 @@ export function TerrainLayerTogglesPanel({
   onActiveRasterLayerChange,
   overlayOpacity,
   onOverlayOpacityChange,
-  vectorLayerVisibility,
-  onVectorLayerToggle,
   onClose,
   hasApprovedZones,
-  intersectionsLength = 0,
-  canalesRelevadosItems,
-  canalesPropuestosItems,
   embedded = false,
-  showVectorSections = true,
+  showOpacitySlider = true,
 }: TerrainLayerTogglesPanelProps) {
   const rasterOptions = rasterLayers.map((layer) => ({
     value: layer.id,
@@ -115,22 +84,6 @@ export function TerrainLayerTogglesPanel({
   const allRasterOptions = selectedImageOption
     ? [noneOverlayOption, selectedImageOption, ...rasterOptions]
     : [noneOverlayOption, ...rasterOptions];
-
-  const relevadosMasterOn = !!vectorLayerVisibility.canales_relevados;
-  const propuestosMasterOn = !!vectorLayerVisibility.canales_propuestos;
-
-  // Mirror the 2D `LayerControlsPanel` attribution footer — when a layer
-  // backed by IDECor data (Pilar Verde family) is visible, render the
-  // "Datos: IDECor — Gobierno de Córdoba" credit. Reuses the map-agnostic
-  // `getActiveAttributions` helper so 2D/3D stay in lockstep with the
-  // attribution registry.
-  const activeAttributions = useMemo(() => {
-    const visibleSet = new Set<string>();
-    for (const [id, visible] of Object.entries(vectorLayerVisibility)) {
-      if (visible) visibleSet.add(id);
-    }
-    return getActiveAttributions(visibleSet);
-  }, [vectorLayerVisibility]);
 
   return (
     <Paper
@@ -205,194 +158,26 @@ export function TerrainLayerTogglesPanel({
             />
           </Box>
 
-          {/* pb reserves room for the Slider's mark labels — they render
-              absolutely ~20px below the track and were overlapping the
-              "Capas vectoriales 3D" section title. */}
-          <Box pb={20}>
-            <Text size="xs" fw={600} mb={4}>
-              Opacidad del overlay
-            </Text>
-            <Slider
-              size="xs"
-              min={0}
-              max={100}
-              step={5}
-              value={Math.round(overlayOpacity * 100)}
-              onChange={(value) => onOverlayOpacityChange(value / 100)}
-              label={(value) => `${value}%`}
-              marks={[
-                { value: 0, label: '0%' },
-                { value: 50, label: '50%' },
-                { value: 100, label: '100%' },
-              ]}
-            />
-          </Box>
-
-          {showVectorSections ? (
-            <>
-          {/*
-            Base vector layers — wrapped in its own CollapsibleSection so the
-            three category blocks (this one, Pilar Verde, Canales) share the
-            same collapse/expand affordance and keep the 3D chrome uniform.
-            Default: expanded, same as its siblings.
-          */}
-          <CollapsibleSection
-            title="Capas vectoriales 3D"
-            testId="terrain-3d-capas-vectoriales"
-            titleSize="xs"
-            titleWeight={600}
-          >
-            <Stack gap={4}>
-              {PRIORITY_3D_VECTOR_LAYERS.map((layer) => {
-                // Conflict points only meaningful when the backend reports
-                // at least one intersection. Same gating rule the 2D
-                // viewer applies (``map2dDerived.ts:230``).
-                if (layer.id === 'puntos_conflicto' && intersectionsLength === 0) {
-                  return null;
-                }
-                // Hidrografía gets sub-toggles so the user can choose which
-                // individual waterway to show (Río Tercero, Canal Desviador,
-                // etc.) — matches the 2D viewer.
-                if (layer.id === 'waterways') {
-                  const masterOn = vectorLayerVisibility.waterways ?? false;
-                  return (
-                    <Stack key={layer.id} gap={2}>
-                      <Checkbox
-                        size="xs"
-                        checked={masterOn}
-                        onChange={(event) =>
-                          onVectorLayerToggle(layer.id, event.currentTarget.checked)
-                        }
-                        label={layer.label}
-                      />
-                      <Stack gap={2} pl="md">
-                        {WATERWAY_DEFS.map((def) => {
-                          const subKey = `waterways_${def.id}`;
-                          return (
-                            <Checkbox
-                              key={subKey}
-                              size="xs"
-                              checked={vectorLayerVisibility[subKey] ?? true}
-                              onChange={(event) => {
-                                const next = event.currentTarget.checked;
-                                onVectorLayerToggle(subKey, next);
-                                if (next && !masterOn) {
-                                  onVectorLayerToggle(layer.id, true);
-                                }
-                              }}
-                              label={def.nombre}
-                            />
-                          );
-                        })}
-                      </Stack>
-                    </Stack>
-                  );
-                }
-                return (
-                  <Checkbox
-                    key={layer.id}
-                    size="xs"
-                    checked={vectorLayerVisibility[layer.id] ?? false}
-                    disabled={layer.status !== 'supported'}
-                    onChange={(event) => onVectorLayerToggle(layer.id, event.currentTarget.checked)}
-                    label={
-                      layer.status === 'supported'
-                        ? layer.label
-                        : `${layer.label} (${layer.status === 'planned' ? 'pendiente' : layer.status})`
-                    }
-                  />
-                );
-              })}
-              {UNSUPPORTED_3D_VECTOR_LAYERS.map((layer) => (
-                <Tooltip
-                  key={layer.id}
-                  label="No disponible en 3D"
-                  withArrow
-                  events={{ hover: true, focus: true, touch: true }}
-                >
-                  <Box
-                    tabIndex={0}
-                    role="group"
-                    aria-label={`${layer.label}: no disponible en 3D`}
-                    data-testid={`terrain-unsupported-${layer.id}`}
-                  >
-                    <Checkbox size="xs" checked={false} disabled label={layer.label} />
-                  </Box>
-                </Tooltip>
-              ))}
-            </Stack>
-          </CollapsibleSection>
-
-          {/*
-            Pilar Verde section — mirrors the 2D `LayerControlsPanel` "Capas"
-            section's Pilar Verde entries but scoped to its own
-            CollapsibleSection so the 3D chrome stays tight. All 5 checkboxes
-            default OFF (source of truth: `PILAR_VERDE_DEFAULT_VISIBILITY`).
-          */}
-          <CollapsibleSection
-            title="Pilar Verde"
-            testId="terrain-3d-toggles-pilar-verde"
-            titleSize="xs"
-            titleWeight={600}
-          >
-            <Stack gap={4}>
-              {PILAR_VERDE_ITEMS.map(({ id, label }) => (
-                <Checkbox
-                  key={id}
-                  size="xs"
-                  label={label}
-                  checked={!!vectorLayerVisibility[id]}
-                  onChange={(event) => onVectorLayerToggle(id, event.currentTarget.checked)}
-                />
-              ))}
-            </Stack>
-          </CollapsibleSection>
-
-          {/*
-            Canales section — 2 master toggles only. Per-canal (43) checkboxes
-            are DEFERRED to v2 per spec; users who want per-canal control
-            switch to the 2D viewer. The etapas filter (Alta → Largo plazo)
-            now lives EXCLUSIVELY in the LeyendaPanel as interactive
-            checkboxes — see `<TerrainLegendsPanel propuestasEtapasVisibility />`
-            for the single source of truth. This collapses what used to be
-            a duplicated subsection (filter here + chips in legend) into one.
-          */}
-          <CollapsibleSection
-            title="Canales"
-            testId="terrain-3d-toggles-canales"
-            titleSize="xs"
-            titleWeight={600}
-          >
-            <Stack gap={4}>
-              <CanalesLayerSection
-                side="relevados"
-                entries={canalesRelevadosItems}
-                masterFlag="canales_relevados"
-                masterOn={relevadosMasterOn}
-                vectorVisibility={vectorLayerVisibility}
-                onLayerVisibilityChange={onVectorLayerToggle}
+          {showOpacitySlider ? (
+            <Box pb={20}>
+              <Text size="xs" fw={600} mb={4}>
+                Opacidad del overlay
+              </Text>
+              <Slider
+                size="xs"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(overlayOpacity * 100)}
+                onChange={(value) => onOverlayOpacityChange(value / 100)}
+                label={(value) => `${value}%`}
+                marks={[
+                  { value: 0, label: '0%' },
+                  { value: 50, label: '50%' },
+                  { value: 100, label: '100%' },
+                ]}
               />
-              <CanalesLayerSection
-                side="propuestos"
-                entries={canalesPropuestosItems}
-                masterFlag="canales_propuestos"
-                masterOn={propuestosMasterOn}
-                vectorVisibility={vectorLayerVisibility}
-                onLayerVisibilityChange={onVectorLayerToggle}
-              />
-            </Stack>
-          </CollapsibleSection>
-
-          {activeAttributions.length > 0 && (
-            <Stack gap={2} mt="xs" data-testid="terrain-3d-toggles-attributions">
-              {activeAttributions.map((text) => (
-                <Text key={text} size="xs" c="dimmed">
-                  {text}
-                </Text>
-              ))}
-            </Stack>
-          )}
-            </>
+            </Box>
           ) : null}
         </Stack>
       </CollapsibleSection>

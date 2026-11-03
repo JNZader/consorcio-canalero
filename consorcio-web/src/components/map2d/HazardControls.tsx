@@ -76,7 +76,7 @@ export function HazardControls({
         role="region"
         aria-label="Controles de riesgos"
         data-testid="hazard-controls-desktop-collapsed"
-        style={{ ...GLASS_STYLE, left: 16, position: 'absolute', top: 96, zIndex: 3 }}
+        style={{ ...GLASS_STYLE, left: 16, position: 'absolute', top: 132, zIndex: 3 }}
       >
         <Button
           size="compact-sm"
@@ -98,7 +98,7 @@ export function HazardControls({
       role="region"
       aria-label="Controles de riesgos"
       data-testid="hazard-controls-desktop"
-      style={{ ...GLASS_STYLE, left: 16, maxWidth: 280, position: 'absolute', top: 96, zIndex: 3 }}
+      style={{ ...GLASS_STYLE, left: 16, maxWidth: 280, position: 'absolute', top: 132, zIndex: 3 }}
     >
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">

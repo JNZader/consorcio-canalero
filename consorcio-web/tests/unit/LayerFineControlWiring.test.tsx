@@ -73,8 +73,6 @@ function makeMapUiPanelsProps(fineControl: LayerFineControl): MapUiPanelsProps {
     hiddenRanges: {},
     onClassToggle: () => {},
     onRangeToggle: () => {},
-    selectedFeatures: [],
-    onCloseInfoPanel: () => {},
     exportPngModalOpen: false,
     onCloseExportPngModal: () => {},
     exportTitle: '',

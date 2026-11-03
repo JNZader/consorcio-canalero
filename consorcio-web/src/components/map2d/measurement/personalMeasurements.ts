@@ -48,3 +48,13 @@ export function savePersonalMeasurement(entry: PersonalMeasurement): PersonalMea
   }
   return next;
 }
+
+export function clearPersonalMeasurements(): PersonalMeasurement[] {
+  memory = [];
+  try {
+    store()?.removeItem(KEY);
+  } catch {
+    /* private mode */
+  }
+  return memory;
+}

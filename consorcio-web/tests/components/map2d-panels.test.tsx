@@ -196,13 +196,6 @@ describe('map2d extracted panels', () => {
   it('composes the extracted panels through MapUiPanels', async () => {
     const user = userEvent.setup();
     const onBaseLayerChange = vi.fn();
-    const onCloseInfoPanel = vi.fn();
-
-    const feature: Feature = {
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [-62.68, -32.62] },
-      properties: { nombre: 'Activo 1' },
-    };
 
     renderWithMantine(
       <MapUiPanels
@@ -236,8 +229,6 @@ describe('map2d extracted panels', () => {
         hiddenRanges={{}}
         onClassToggle={() => {}}
         onRangeToggle={() => {}}
-        selectedFeatures={[feature]}
-        onCloseInfoPanel={onCloseInfoPanel}
         exportPngModalOpen={false}
         onCloseExportPngModal={() => {}}
         exportTitle="Mapa"
@@ -258,6 +249,5 @@ describe('map2d extracted panels', () => {
     await expandNamed(user, /^base/i);
     await user.click(screen.getByRole('radio', { name: /satélite/i }));
     expect(onBaseLayerChange).toHaveBeenCalledWith('satellite');
-    expect(onCloseInfoPanel).not.toHaveBeenCalled();
   });
 });

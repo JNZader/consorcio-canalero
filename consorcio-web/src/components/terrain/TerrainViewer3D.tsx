@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bootMapLibreWorker } from '../../lib/maplibreLoader';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Alert, Button, Stack } from '@mantine/core';
-import type { Feature } from 'geojson';
+import type { Feature, LineString, MultiLineString } from 'geojson';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { useApprovedZones } from '../../hooks/useApprovedZones';
 import { useBasins } from '../../hooks/useBasins';
@@ -35,7 +35,6 @@ import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { flythroughFrames, playFlythrough } from './canalFlythrough';
 import { TerrainViewer3DChrome } from './TerrainViewer3DChrome';
-import { ElevationProfileDock } from '../map2d/ElevationProfileDock';
 import { terrainCameraShortcutFromEvent } from './terrainCameraShortcuts';
 import { applyTerrainDepthCues, removeTerrainHillshade } from './terrainDepthCues';
 import { resolveTerrainStartPitch, TERRAIN_DEFAULT_EXAGGERATION } from './terrainExaggeration';
@@ -46,6 +45,7 @@ import {
   resolveDefaultTerrainRasterId,
 } from './terrainLayerConfig';
 import { buildTerrainMapStyle } from './terrainMapStyle';
+import { applyLayerOpacity, applyLayerOrder } from '../map2d/layerRenderRegistry';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   buildCuencasCollection,
@@ -208,6 +208,11 @@ export default function TerrainViewer3D({
   // Top-most first (MapLibre z-order). Empty array ⇒ `<InfoPanel>` unmounts.
   const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>([]);
   const [tourDistance, setTourDistance] = useState<number | null>(null);
+  const [pinnedProfile, setPinnedProfile] = useState<{
+    geometry: LineString | MultiLineString;
+    title: string;
+    flowDirection: 'digitizado' | 'inverso' | null;
+  } | null>(null);
   const tourLine = selectedFeatures.find(
     (feature) =>
       feature.geometry?.type === 'LineString' || feature.geometry?.type === 'MultiLineString'
@@ -240,12 +245,18 @@ export default function TerrainViewer3D({
   // (or the catastro/soil layer) on, ``enabled`` flips to true and the
   // query runs. Default 2D callers keep eager behaviour by omitting the
   // option (see hook signatures).
-  const sharedMap3dVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
+  const sharedMap2dVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
+  const sharedMap3dVectors = useMapLayerSyncStore((state) => state.map3d.visibleVectors);
   const pilarVerdeNeeded = !!(
+    sharedMap2dVectors.pilar_verde_bpa_historico ||
     sharedMap3dVectors.pilar_verde_bpa_historico ||
+    sharedMap2dVectors.pilar_verde_agro_aceptada ||
     sharedMap3dVectors.pilar_verde_agro_aceptada ||
+    sharedMap2dVectors.pilar_verde_agro_presentada ||
     sharedMap3dVectors.pilar_verde_agro_presentada ||
+    sharedMap2dVectors.pilar_verde_agro_zonas ||
     sharedMap3dVectors.pilar_verde_agro_zonas ||
+    sharedMap2dVectors.pilar_verde_porcentaje_forestacion ||
     sharedMap3dVectors.pilar_verde_porcentaje_forestacion
   );
   const catastroLoading = false;
@@ -315,8 +326,13 @@ export default function TerrainViewer3D({
   const selectedImage = useSelectedImageListener();
   const sharedActiveRasterType = useMapLayerSyncStore((state) => state.map3d.activeRasterType);
   const sharedVisibleVectors = useMapLayerSyncStore((state) => state.map2d.visibleVectors);
+  const sharedMap3dState = useMapLayerSyncStore((state) => state.map3d);
   const setSharedActiveRasterType = useMapLayerSyncStore((state) => state.setActiveRasterType);
   const setSharedVectorVisibility = useMapLayerSyncStore((state) => state.setVectorVisibility);
+  const setLayerOpacity = useMapLayerSyncStore((state) => state.setLayerOpacity);
+  const setLayerOrder = useMapLayerSyncStore((state) => state.setLayerOrder);
+  const setLabelSizeScale = useMapLayerSyncStore((state) => state.setLabelSizeScale);
+  const setLineWidthScale = useMapLayerSyncStore((state) => state.setLineWidthScale);
   // Pilar Azul etapas filter — the 5 etapas record + single-etapa setter are
   // shared between 2D and 3D via the same `mapLayerSyncStore` slice, so
   // flipping an etapa here updates both viewers simultaneously. The
@@ -468,11 +484,10 @@ export default function TerrainViewer3D({
   const handleVectorLayerToggle = (layerId: string, visible: boolean) => {
     setVectorLayerVisibility((prev) => ({ ...prev, [layerId]: visible }));
     setSharedVectorVisibility('map2d', layerId, visible);
+    setSharedVectorVisibility('map3d', layerId, visible);
   };
 
   useEffect(() => {
-    // zona excluded like in the seed above — 3D never renders it and letting
-    // it leak in would silently follow a future 2D default flip.
     const {
       cuencas: _ignoredCuencas,
       zona: _ignoredZona,
@@ -836,12 +851,22 @@ export default function TerrainViewer3D({
       },
       vectorLayerVisibility as TerrainVectorLayerVisibility
     );
+    applyLayerOpacity(
+      map as unknown as Parameters<typeof applyLayerOpacity>[0],
+      sharedMap3dState.opacityByLayer
+    );
+    applyLayerOrder(
+      map as unknown as Parameters<typeof applyLayerOrder>[0],
+      sharedMap3dState.orderByLayer
+    );
   }, [
     approvedZonesCollection,
     basins,
     cuencasCollection,
     roadsCollection,
     ready,
+    sharedMap3dState.opacityByLayer,
+    sharedMap3dState.orderByLayer,
     soilArchiveKey,
     vectorLayerVisibility,
     waterwaysCollection,
@@ -1030,17 +1055,64 @@ export default function TerrainViewer3D({
         onCloseInfoPanel={handleCloseInfoPanel}
         bpaEnriched={pilarVerde?.bpaEnriched ?? null}
         bpaHistory={pilarVerde?.bpaHistory ?? null}
+        layerFineControl={{
+          opacityByLayer: {
+            ...sharedMap3dState.opacityByLayer,
+            __dem: overlayOpacity,
+          },
+          onLayerOpacityChange: (layerId, multiplier) => {
+            if (layerId === '__dem') {
+              setOverlayOpacity(multiplier);
+              return;
+            }
+            setLayerOpacity('map3d', layerId, multiplier);
+          },
+          orderByLayer: sharedMap3dState.orderByLayer,
+          onLayerOrderChange: (orderedIds) => setLayerOrder('map3d', orderedIds),
+          labelSizeScale: sharedMap3dState.labelSizeScale,
+          onLabelSizeScaleChange: (scale) => setLabelSizeScale('map3d', scale),
+          lineWidthScale: sharedMap3dState.lineWidthScale,
+          onLineWidthScaleChange: (scale) => setLineWidthScale('map3d', scale),
+        }}
+        profileRequest={
+          pinnedProfile
+            ? {
+                geometry: pinnedProfile.geometry,
+                title: pinnedProfile.title,
+                flowDirection: pinnedProfile.flowDirection,
+                externalDistanceM: tourDistance,
+              }
+            : tourLine &&
+                (tourLine.geometry.type === 'LineString' ||
+                  tourLine.geometry.type === 'MultiLineString') &&
+                tourDistance != null
+              ? {
+                  geometry: tourLine.geometry,
+                  title: 'Recorrido del canal',
+                  flowDirection: null,
+                  externalDistanceM: tourDistance,
+                }
+              : null
+        }
+        onOpenElevationProfile={(geometry) =>
+          setPinnedProfile({
+            geometry,
+            title: 'Perfil de elevación',
+            flowDirection: null,
+          })
+        }
+        onOpenCanalProfile={(request) =>
+          setPinnedProfile({
+            geometry: request.geometry,
+            title: `Perfil de ${request.title}`,
+            flowDirection: request.flowDirection,
+          })
+        }
+        onCloseElevationProfile={() => {
+          setPinnedProfile(null);
+          setTourDistance(null);
+        }}
       />
-      {tourLine &&
-      (tourLine.geometry.type === 'LineString' || tourLine.geometry.type === 'MultiLineString') &&
-      tourDistance != null ? (
-        <ElevationProfileDock
-          geometry={tourLine.geometry}
-          title="Recorrido del canal"
-          externalDistanceM={tourDistance}
-          onClose={() => setTourDistance(null)}
-        />
-      ) : null}
     </Stack>
   );
 }

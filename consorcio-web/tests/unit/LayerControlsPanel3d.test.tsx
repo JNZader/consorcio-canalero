@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LayerControlsPanel } from '../../src/components/map2d/LayerControlsPanel';
 import { LAYER_CATEGORY } from '../../src/components/map2d/map2dDerived';
 import { buildTerrainLayerControlItems } from '../../src/components/terrain/terrainLayerConfig';
+import { useMapLayerSyncStore } from '../../src/stores/mapLayerSyncStore';
 
 function wrap(ui: ReactNode) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -136,5 +137,16 @@ describe('LayerControlsPanel variant 3d', () => {
       />,
     );
     expect(onActiveDemLayerIdChange).not.toHaveBeenCalled();
+  });
+
+  it('applies presets to map3d when variant is 3d (MAP-05)', async () => {
+    const user = userEvent.setup();
+    useMapLayerSyncStore.setState({
+      presetByView: { map2d: null, map3d: null },
+    });
+    wrap(<LayerControlsPanel {...baseProps} variant="3d" />);
+    await user.click(screen.getByTestId('map-preset-agua'));
+    expect(useMapLayerSyncStore.getState().presetByView.map3d).toBe('agua');
+    expect(useMapLayerSyncStore.getState().presetByView.map2d).toBeNull();
   });
 });

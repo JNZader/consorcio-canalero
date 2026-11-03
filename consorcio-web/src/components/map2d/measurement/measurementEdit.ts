@@ -20,6 +20,19 @@ export function dropLastVertex(coordinates: readonly (readonly number[])[]): num
   return coordinates.slice(0, -1).map((pair) => [pair[0]!, pair[1]!]);
 }
 
+export function dropLastPolygonVertex(
+  ring: readonly (readonly number[])[]
+): number[][] | null {
+  if (ring.length < 3) return null;
+  const first = ring[0]!;
+  const last = ring[ring.length - 1]!;
+  const isClosed = ring.length >= 4 && first[0] === last[0] && first[1] === last[1];
+  const openVertices = (isClosed ? ring.slice(0, -1) : ring).map((pair) => [pair[0]!, pair[1]!]);
+  if (openVertices.length <= 3) return null;
+  const trimmed = openVertices.slice(0, -1);
+  return isClosed ? [...trimmed, [trimmed[0]![0]!, trimmed[0]![1]!]] : trimmed;
+}
+
 export function moveLineVertex(line: LineString, index: number, next: readonly [number, number]): LineString {
   const coordinates = line.coordinates.map((pair, current) =>
     current === index ? [next[0], next[1]] : [pair[0]!, pair[1]!]

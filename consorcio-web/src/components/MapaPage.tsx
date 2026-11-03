@@ -2,12 +2,10 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Container,
   Group,
   Paper,
   SegmentedControl,
-  SimpleGrid,
   Skeleton,
   Stack,
   Text,
@@ -19,7 +17,6 @@ import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
-import { useDashboardStats } from '../lib/query';
 import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map.module.css';
 import { MapaContenido } from './MapaInteractivo';
@@ -37,12 +34,9 @@ type MapViewMode = '2d' | '3d';
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
 export function MapaContent() {
-  // Verificar permisos - solo miembros de la comision (admin/operador) ven las estadisticas
+  // Verificar permisos - solo miembros de la comision (admin/operador) ven las acciones internas
   const isCommissionMember = useCanAccess(['admin', 'operador']);
   const multiHazardEnabled = useMultiHazardGate();
-
-  // Obtener estadisticas reales del API (auth-aware hook)
-  const { stats, isLoading: statsLoading } = useDashboardStats('30d');
 
   // Get selected satellite image
   const selectedImage = useSelectedImageListener();
@@ -69,25 +63,6 @@ export function MapaContent() {
     setThreeDArmed((prev) => shouldArmThreeD(prev, mapViewMode));
     if (mapViewMode === '2d') notifyMapPaneShown();
   }, [mapViewMode]);
-
-  // Construir estadisticas dinamicas desde la API (solo denuncias)
-  const dynamicStats =
-    isCommissionMember && stats
-      ? [
-          {
-            id: 'denuncias',
-            value: stats.denuncias?.pendiente?.toString() || '0',
-            label: 'Denuncias activas',
-            color: 'red',
-          },
-          {
-            id: 'resueltas',
-            value: stats.denuncias?.resuelto?.toString() || '0',
-            label: 'Resueltas este mes',
-            color: 'green',
-          },
-        ]
-      : [];
 
   return (
     <Box
@@ -262,30 +237,6 @@ export function MapaContent() {
             }
           />
         </Paper>
-
-        {/* Estadisticas rapidas - Solo visible para miembros de la comision */}
-        {isCommissionMember && (
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-            {statsLoading
-              ? // Skeleton mientras cargan los datos
-                Array.from({ length: 2 }).map((_, i) => (
-                  <Card key={`skeleton-${i}`} shadow="sm" padding="md" radius="md">
-                    <Skeleton height={24} width={80} mb="xs" />
-                    <Skeleton height={16} width={100} />
-                  </Card>
-                ))
-              : dynamicStats.map((stat) => (
-                  <Card key={stat.id} shadow="sm" padding="md" radius="md">
-                    <Text size="xl" fw={700} c={stat.color}>
-                      {stat.value}
-                    </Text>
-                    <Text size="sm" c="gray.6">
-                      {stat.label}
-                    </Text>
-                  </Card>
-                ))}
-          </SimpleGrid>
-        )}
       </Container>
     </Box>
   );

@@ -22,10 +22,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const drawChangeMode = vi.fn();
 const drawDeleteAll = vi.fn();
+const drawDelete = vi.fn();
+const drawAdd = vi.fn();
 const drawGetAll = vi.fn(() => ({ type: 'FeatureCollection', features: [] as Feature[] }));
 const drawInstances: Array<{
   changeMode: typeof drawChangeMode;
   deleteAll: typeof drawDeleteAll;
+  delete: typeof drawDelete;
+  add: typeof drawAdd;
   getAll: typeof drawGetAll;
 }> = [];
 
@@ -33,6 +37,8 @@ vi.mock('@mapbox/mapbox-gl-draw', () => {
   class MapboxDrawMock {
     changeMode = drawChangeMode;
     deleteAll = drawDeleteAll;
+    delete = drawDelete;
+    add = drawAdd;
     getAll = drawGetAll;
     constructor() {
       drawInstances.push(this);
@@ -149,6 +155,8 @@ describe('useMeasurement', () => {
   beforeEach(() => {
     drawChangeMode.mockClear();
     drawDeleteAll.mockClear();
+    drawDelete.mockClear();
+    drawAdd.mockClear();
     drawGetAll.mockReset();
     drawGetAll.mockReturnValue({ type: 'FeatureCollection', features: [] });
     drawInstances.length = 0;
@@ -432,5 +440,39 @@ describe('useMeasurement', () => {
     expect(result.current.liveLabel).toMatch(/^123 m · rumbo \d+°$/);
     expect(result.current.draftLine).toBeNull();
     await waitFor(() => expect(result.current.draftLine?.type).toBe('LineString'));
+  });
+
+  it('undo() drops the last non-closing vertex of an active Polygon while keeping the ring closed (MAP-02)', async () => {
+    const { map } = createMapMock();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only coercion of mock map
+    const { result } = renderHook(() => useMeasurement(map as any));
+
+    act(() => result.current.startArea());
+    await waitFor(() => expect(drawInstances).toHaveLength(1));
+
+    drawGetAll.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [buildPolygonFeature()],
+    });
+
+    act(() => result.current.undo());
+
+    expect(drawDelete).toHaveBeenCalledWith('poly-1');
+    expect(drawAdd).toHaveBeenCalledWith({
+      type: 'Feature',
+      id: 'poly-1',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-62.5, -32.5],
+            [-62.4, -32.5],
+            [-62.4, -32.4],
+            [-62.5, -32.5],
+          ],
+        ],
+      },
+    });
   });
 });

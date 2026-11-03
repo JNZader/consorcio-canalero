@@ -13,7 +13,6 @@
 
 import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
-import type { Feature } from 'geojson';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -56,8 +55,6 @@ function buildProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
     hiddenRanges: {},
     onClassToggle: noop,
     onRangeToggle: noop,
-    selectedFeatures: [],
-    onCloseInfoPanel: noop,
     fichaActive: false,
     fichaTipo: 'parcela',
     fichaNroCuenta: null,
@@ -86,14 +83,7 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
   });
 
   it('does not float the info readout over En el mapa', () => {
-    const feat: Feature = {
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [0, 0] },
-      properties: { nombre: 'Canal Este' },
-    };
-    renderWithMantine(
-      <MapUiPanels {...buildProps({ selectedFeatures: [feat] })} />,
-    );
+    renderWithMantine(<MapUiPanels {...buildProps()} />);
     expect(screen.getByTestId('map-active-layers')).toBeInTheDocument();
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
   });
@@ -107,34 +97,22 @@ describe('<MapUiPanels /> — Phase 8 legend / InfoPanel layout', () => {
 });
 
 describe('<MapUiPanels /> — InfoPanel + ficha coexistence', () => {
-  const feat: Feature = {
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: [0, 0] },
-    properties: { nombre: 'Canal Este' },
-  };
-
-  it('does not shrink the ficha when a feature is also selected', () => {
-    renderWithMantine(
-      <MapUiPanels {...buildProps({ selectedFeatures: [feat], fichaActive: true })} />
-    );
+  it('does not shrink the ficha when rendered in MapUiPanels', () => {
+    renderWithMantine(<MapUiPanels {...buildProps({ fichaActive: true })} />);
 
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
     expect(screen.getByTestId('ficha-territorial-panel').className).not.toContain('fichaPanelCompact');
   });
 
-  it('does not paint a floating info card when only a feature is selected', () => {
-    renderWithMantine(
-      <MapUiPanels {...buildProps({ selectedFeatures: [feat], fichaActive: false })} />
-    );
+  it('does not paint a floating info card when ficha is inactive', () => {
+    renderWithMantine(<MapUiPanels {...buildProps({ fichaActive: false })} />);
 
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ficha-territorial-panel')).not.toBeInTheDocument();
   });
 
   it('keeps the full max-height when ONLY the ficha is open', () => {
-    renderWithMantine(
-      <MapUiPanels {...buildProps({ selectedFeatures: [], fichaActive: true })} />
-    );
+    renderWithMantine(<MapUiPanels {...buildProps({ fichaActive: true })} />);
 
     expect(screen.queryByTestId('map-2d-info-panel')).not.toBeInTheDocument();
     expect(screen.getByTestId('ficha-territorial-panel').className).not.toContain(

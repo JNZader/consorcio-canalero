@@ -163,8 +163,6 @@ function panelProps(overrides: Partial<MapUiPanelsProps> = {}): MapUiPanelsProps
     hiddenRanges: {},
     onClassToggle: () => {},
     onRangeToggle: () => {},
-    selectedFeatures: [],
-    onCloseInfoPanel: () => {},
     fichaActive: false,
     fichaTipo: 'parcela',
     fichaNroCuenta: null,

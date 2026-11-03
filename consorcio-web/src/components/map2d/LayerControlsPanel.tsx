@@ -518,6 +518,7 @@ export function LayerControlsPanel({
       {viewModePanel}
 
       <MapPresetChips
+        view={is3d ? 'map3d' : 'map2d'}
         onApplyRaster={(presetId) => {
           const rasterId = pickPresetRasterId(presetId, demOptions);
           if (!rasterId) return;
@@ -552,7 +553,7 @@ export function LayerControlsPanel({
           onLayerVisibilityChange(id, false);
         }}
         onClearAll={() => {
-          hideAllCatalogLayers('map2d');
+          hideAllCatalogLayers(is3d ? 'map3d' : 'map2d');
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
           onShowHillshadeChange?.(false);
@@ -560,7 +561,7 @@ export function LayerControlsPanel({
           onHideSatellite?.();
         }}
         onRestore={() => {
-          restoreCatalogDefaults('map2d');
+          restoreCatalogDefaults(is3d ? 'map3d' : 'map2d');
           onShowIGNOverlayChange(false);
           onShowDemOverlayChange(false);
         }}

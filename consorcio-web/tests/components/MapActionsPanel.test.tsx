@@ -70,8 +70,6 @@ function buildMapUiPanelsProps(overrides: Partial<MapUiPanelsProps> = {}): MapUi
     hiddenRanges: {},
     onClassToggle: noop,
     onRangeToggle: noop,
-    selectedFeatures: [],
-    onCloseInfoPanel: noop,
     fichaActive: false,
     fichaTipo: 'parcela',
     fichaNroCuenta: null,

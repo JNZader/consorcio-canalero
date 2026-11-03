@@ -137,39 +137,12 @@ describe('MapaPage', () => {
       });
     });
 
-    describe('stats section', () => {
-      it('should render stats cards for commission members', () => {
+    describe('viewport budget (no duplicate KPI cards below map)', () => {
+      it('does not render duplicate below-the-fold KPI cards on /mapa', () => {
         renderWithMantine(<MapaContent />);
-        
-        // Stats should be visible after loading
-        expect(screen.getByText(/Denuncias activas/i)).toBeInTheDocument();
-        expect(screen.getByText(/Resueltas este mes/i)).toBeInTheDocument();
-      });
 
-      it('should display correct stats values', () => {
-        renderWithMantine(<MapaContent />);
-        expect(screen.getByText('5')).toBeInTheDocument();
-        expect(screen.getByText('3')).toBeInTheDocument();
-      });
-
-      it('should hide stats for non-commission members', () => {
-        // The default mock returns true for useCanAccess
-        renderWithMantine(<MapaContent />);
-        
-        // Stats should be visible by default
-        expect(screen.getByText(/Denuncias activas/i)).toBeInTheDocument();
-      });
-    });
-
-    describe('loading state', () => {
-      it('should show skeleton while loading', () => {
-        mockDashboardStats.mockReturnValue({ stats: null, isLoading: true });
-
-        const { container } = renderWithMantine(<MapaContent />);
-
-        expect(screen.getByText(/Mapa Interactivo/i)).toBeInTheDocument();
-        expect(container.querySelectorAll('.mantine-Skeleton-root')).toHaveLength(4);
         expect(screen.queryByText(/Denuncias activas/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Resueltas este mes/i)).not.toBeInTheDocument();
       });
     });
 
@@ -234,14 +207,6 @@ describe('MapaPage', () => {
     });
 
     describe('dynamic data flow', () => {
-      it('should display stats from API response', () => {
-        renderWithMantine(<MapaContent />);
-        
-        // Stats should be visible
-        expect(screen.getByText('5')).toBeInTheDocument();
-        expect(screen.getByText('3')).toBeInTheDocument();
-      });
-
       it('should display selected image details', () => {
         renderWithMantine(<MapaContent />);
         
@@ -265,11 +230,6 @@ describe('MapaPage', () => {
     });
 
     describe('permission-based rendering', () => {
-      it('should render stats section when user is commission member', () => {
-        renderWithMantine(<MapaContent />);
-        expect(screen.getByText(/Denuncias activas/i)).toBeInTheDocument();
-      });
-
       it('should show image explorer when user is commission member', () => {
         renderWithMantine(<MapaContent />);
         expect(screen.getByRole('link', { name: /Cambiar imagen/i })).toBeInTheDocument();

@@ -7,7 +7,14 @@
 import { ActionIcon, Group, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
-import { lazy, type PointerEvent as ReactPointerEvent, Suspense, useRef, useState } from 'react';
+import {
+  lazy,
+  type PointerEvent as ReactPointerEvent,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { ProfileChartRow } from './profileChartRows';
 import {
   clampDockHeight,
@@ -56,7 +63,18 @@ export function ElevationProfileDock({
   const narrow = useMediaQuery('(max-width: 62em)', false, { getInitialValueInEffect: false });
   const [height, setHeight] = useState(PROFILE_DOCK_DEFAULT_PX);
   const [collapsed, setCollapsed] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const dragOrigin = useRef<{ y: number; height: number } | null>(null);
+  const effectiveHeight = collapsed ? 44 : height;
+
+  useEffect(() => {
+    const parent = sectionRef.current?.parentElement;
+    if (!parent) return;
+    parent.style.setProperty('--map-bottom-dock-offset', `${effectiveHeight}px`);
+    return () => {
+      parent.style.removeProperty('--map-bottom-dock-offset');
+    };
+  }, [effectiveHeight]);
 
   function onHandlePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -81,6 +99,7 @@ export function ElevationProfileDock({
 
   return (
     <section
+      ref={sectionRef}
       data-testid="elevation-profile-dock"
       data-collapsed={collapsed ? 'true' : 'false'}
       data-sheet={narrow ? 'true' : 'false'}
@@ -91,7 +110,7 @@ export function ElevationProfileDock({
         right: 0,
         bottom: 0,
         zIndex: 18,
-        height: collapsed ? 44 : height,
+        height: effectiveHeight,
         maxHeight: narrow ? '70vh' : PROFILE_DOCK_MAX_PX,
         display: 'flex',
         flexDirection: 'column',

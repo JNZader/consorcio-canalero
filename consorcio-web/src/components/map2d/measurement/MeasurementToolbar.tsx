@@ -56,6 +56,10 @@ import { memo } from 'react';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
 import styles from '../../../styles/components/map.module.css';
 import {
+  IconArrowBackUp,
+  IconDeviceFloppy,
+  IconEye,
+  IconEyeOff,
   IconLayers,
   IconMapPin,
   IconPolygon,
@@ -77,6 +81,10 @@ export interface MeasurementToolbarProps {
   readonly onClear: () => void;
   readonly onUndo?: () => void;
   readonly onSavePersonal?: () => void;
+  readonly savedMeasurementsCount?: number;
+  readonly savedMeasurementsVisible?: boolean;
+  readonly onTogglePersonalVisibility?: () => void;
+  readonly onClearPersonal?: () => void;
   /**
    * Cancel the ACTIVE measurement without saving (map-fluidity T1). When
    * provided, the Medir trigger turns into a toggle-OFF while measuring instead
@@ -145,6 +153,10 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onCancel,
   onUndo,
   onSavePersonal,
+  savedMeasurementsCount = 0,
+  savedMeasurementsVisible = true,
+  onTogglePersonalVisibility,
+  onClearPersonal,
   fichaDrawActive = false,
   onToggleFichaDraw,
   onRedrawPolygon,
@@ -222,19 +234,81 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           </Menu>
         )}
         {onUndo && mode !== 'idle' ? (
-          <UnstyledButton type="button" aria-label="Deshacer vértice" onClick={onUndo} className={styles.mapCtrlButton}>
-            <span className={styles.mapCtrlButtonLabel}>Deshacer</span>
-          </UnstyledButton>
+          <Tooltip label="Deshacer vértice" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Deshacer vértice"
+              data-testid="measurement-undo"
+              onClick={onUndo}
+              className={styles.mapCtrlButton}
+              style={{ color: mapColorTokens.h333 }}
+            >
+              <IconArrowBackUp size={MAP_CTRL_GLYPH_SIZE} />
+              <span className={styles.mapCtrlButtonLabel}>Deshacer</span>
+            </UnstyledButton>
+          </Tooltip>
         ) : null}
         {onSavePersonal && hasMeasurements ? (
-          <UnstyledButton
-            type="button"
-            aria-label="Guardar medición"
-            onClick={onSavePersonal}
-            className={styles.mapCtrlButton}
+          <Tooltip label="Guardar medición" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Guardar medición"
+              data-testid="measurement-save-personal"
+              onClick={onSavePersonal}
+              className={styles.mapCtrlButton}
+              style={{ color: mapColorTokens.h333 }}
+            >
+              <IconDeviceFloppy size={MAP_CTRL_GLYPH_SIZE} />
+              <span className={styles.mapCtrlButtonLabel}>Guardar</span>
+            </UnstyledButton>
+          </Tooltip>
+        ) : null}
+        {savedMeasurementsCount > 0 && onTogglePersonalVisibility ? (
+          <Tooltip
+            label={
+              savedMeasurementsVisible
+                ? 'Ocultar mediciones guardadas'
+                : 'Mostrar mediciones guardadas'
+            }
+            position="left"
+            withArrow
           >
-            <span className={styles.mapCtrlButtonLabel}>Guardar</span>
-          </UnstyledButton>
+            <UnstyledButton
+              type="button"
+              aria-label={
+                savedMeasurementsVisible
+                  ? 'Ocultar mediciones guardadas'
+                  : 'Mostrar mediciones guardadas'
+              }
+              aria-pressed={savedMeasurementsVisible}
+              data-testid="measurement-toggle-personal"
+              onClick={onTogglePersonalVisibility}
+              className={styles.mapCtrlButton}
+              style={{ color: mapColorTokens.h333 }}
+            >
+              {savedMeasurementsVisible ? (
+                <IconEye size={MAP_CTRL_GLYPH_SIZE} />
+              ) : (
+                <IconEyeOff size={MAP_CTRL_GLYPH_SIZE} />
+              )}
+              <span className={styles.mapCtrlButtonLabel}>Guardadas</span>
+            </UnstyledButton>
+          </Tooltip>
+        ) : null}
+        {savedMeasurementsCount > 0 && onClearPersonal ? (
+          <Tooltip label="Borrar mediciones guardadas" position="left" withArrow>
+            <UnstyledButton
+              type="button"
+              aria-label="Borrar mediciones guardadas"
+              data-testid="measurement-clear-personal"
+              onClick={onClearPersonal}
+              className={styles.mapCtrlButton}
+              style={{ color: mapColorTokens.hdc2626 }}
+            >
+              <IconTrash size={MAP_CTRL_GLYPH_SIZE} />
+              <span className={styles.mapCtrlButtonLabel}>Borrar guardadas</span>
+            </UnstyledButton>
+          </Tooltip>
         ) : null}
 
         {onToggleFichaDraw && (
