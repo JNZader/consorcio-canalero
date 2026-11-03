@@ -54,6 +54,67 @@ function asSelectedImage(
   };
 }
 
+export const MONTHS_ES = [
+  'Ene',
+  'Feb',
+  'Mar',
+  'Abr',
+  'May',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dic',
+] as const;
+
+export function monthOptions(year: number, today = new Date()): number[] {
+  const last = year < today.getFullYear() ? 12 : today.getMonth() + 1;
+  const months: number[] = [];
+  for (let month = 1; month <= last; month += 1) months.push(month);
+  return months;
+}
+
+/** One XYZ tile around the consorcio, used as a date-selector thumbnail. */
+export function tileThumbnailUrl(
+  template: string,
+  lon = -64.18,
+  lat = -32.41,
+  zoom = 11
+): string | null {
+  if (!template.includes('{z}') || !template.includes('{x}') || !template.includes('{y}')) {
+    return null;
+  }
+  const n = 2 ** zoom;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  );
+  return template.replace('{z}', String(zoom)).replace('{x}', String(x)).replace('{y}', String(y));
+}
+
+export async function fetchMonthlySentinel(year: number, month: number): Promise<SelectedImage> {
+  const body = await apiFetch<GeeTileBody>(
+    `/geo/gee/images/sentinel2/monthly?year=${year}&month=${month}`,
+    { timeout: GEE_TIMEOUT }
+  );
+  const mm = String(month).padStart(2, '0');
+  return asSelectedImage(body, {
+    target_date: `${year}-${mm}-15`,
+    sensor: 'Sentinel-2',
+    visualization: 'rgb',
+    visualization_description: `Sentinel-2 ${MONTHS_ES[month - 1]} ${year}`,
+    collection: 'COPERNICUS/S2_SR_HARMONIZED',
+    images_count: 0,
+    days_buffer: 14,
+    max_cloud: 40,
+    mode: 'composite',
+    selected_at: new Date().toISOString(),
+  });
+}
+
 export async function fetchAnnualSentinel(year: number): Promise<SelectedImage> {
   const body = await apiFetch<GeeTileBody>(`/geo/gee/images/sentinel2/annual?year=${year}`, {
     timeout: GEE_TIMEOUT,
