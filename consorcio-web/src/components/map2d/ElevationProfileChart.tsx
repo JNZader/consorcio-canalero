@@ -56,7 +56,7 @@ import {
   profileSliceStats,
   sliceProfile,
 } from './profileRange';
-import { SLOPE_COLOR_STOPS, slopeSegments, slopeSeverityLabel } from './slopeColor';
+import { SLOPE_COLOR_STOPS, slopeSeverityLabel } from './slopeColor';
 import { type SurveyProfile, soleraCover } from './soleraProfile';
 import { useLiveRegion } from '../ui/accessibility';
 
@@ -260,7 +260,6 @@ export function ElevationProfileChart({
 
   const serverRows = buildProfileChartRows(profile?.puntos ?? []);
   const chartRows = serverRows.length >= 2 ? serverRows : (coarseSamples ?? []);
-  const slopePieces = slopeSegments(chartRows);
   rowsRef.current = [...chartRows];
   useEffect(() => {
     if (status !== 'ready' || !profile) {
@@ -774,7 +773,11 @@ export function ElevationProfileChart({
                         stroke={mapColorTokens.h868e96}
                         strokeDasharray="2 2"
                         ifOverflow="hidden"
-                        label={{ value: hit.label, position: 'insideTop', fontSize: 10 }}
+                        label={
+                          profileCrossings.length <= 8
+                            ? { value: hit.label, position: 'insideTop', fontSize: 10 }
+                            : undefined
+                        }
                       />
                     ))}
                     {hoverRow ? (
@@ -841,24 +844,11 @@ export function ElevationProfileChart({
                       dataKey="elevation_m"
                       name="GLO-30"
                       stroke="var(--mantine-color-blue-6)"
-                      strokeWidth={slopePieces.length > 0 ? 0 : 2}
+                      strokeWidth={2}
                       dot={false}
                       connectNulls={false}
                       isAnimationActive={false}
-                      legendType={slopePieces.length > 0 ? 'none' : 'line'}
                     />
-                    {slopePieces.map((piece, index) => (
-                      <Line
-                        key={`slope-${index}`}
-                        data={piece.points}
-                        dataKey="elevation_m"
-                        stroke={piece.color}
-                        strokeWidth={2}
-                        dot={false}
-                        isAnimationActive={false}
-                        legendType="none"
-                      />
-                    ))}
                     {visibleSeries.some((series) => series.key === 'elevation_mde_ar') ? (
                       <Line
                         type="linear"
@@ -913,7 +903,7 @@ export function ElevationProfileChart({
                       </Text>
                     );
                   })}
-                  {slopePieces.length > 0 ? (
+                  {chartRows.length >= 2 ? (
                     <Text size="xs" c="dimmed" data-testid="elevation-profile-slope-legend">
                       Pendiente:{' '}
                       <span style={{ color: SLOPE_COLOR_STOPS.LOW }}>Baja (&lt;2%)</span> ·{' '}
