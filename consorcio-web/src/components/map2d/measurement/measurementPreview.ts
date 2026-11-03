@@ -3,6 +3,7 @@ import length from '@turf/length';
 import type { Feature, LineString, Polygon } from 'geojson';
 
 import { formatArea, formatDistance } from './measurementFormat';
+import { formatRumbo, rumboDegrees } from './measurementEdit';
 import type { MeasurementMode } from './useMeasurement';
 
 /** Meters of the line the user drew. A nearby canal or road is not consulted. */
@@ -19,7 +20,14 @@ export function liveMeasurementLabel(
       | Feature<LineString>
       | undefined;
     if (!line || line.geometry.coordinates.length < 2) return null;
-    return formatDistance(drawnLineMeters(line.geometry));
+    const coords = line.geometry.coordinates;
+    const last = coords[coords.length - 1];
+    const prev = coords[coords.length - 2];
+    const rumbo =
+      last && prev && last.length >= 2 && prev.length >= 2
+        ? ` · ${formatRumbo(rumboDegrees([prev[0]!, prev[1]!], [last[0]!, last[1]!]))}`
+        : '';
+    return `${formatDistance(drawnLineMeters(line.geometry))}${rumbo}`;
   }
   if (mode === 'measuring-area') {
     const polygon = features.find((feature) => feature.geometry.type === 'Polygon') as

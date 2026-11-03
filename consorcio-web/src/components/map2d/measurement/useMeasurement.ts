@@ -60,6 +60,7 @@ import {
   armMeasurementIdentifyGuard,
   MEASUREMENT_IDENTIFY_GUARD_MS,
 } from './measurementIdentifyGuard';
+import { dropLastVertex } from './measurementEdit';
 import { drawnLineMeters, liveMeasurementLabel } from './measurementPreview';
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -131,6 +132,8 @@ export interface UseMeasurementReturn {
   startArea: () => void;
   clear: () => void;
   cancel: () => void;
+  undo: () => void;
+  updateMeasurement: (id: string, geometry: LineString | Polygon) => void;
 }
 
 const DRAFT_LINE_DEBOUNCE_MS = 400;
@@ -461,6 +464,31 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     });
   };
 
+  const undo = () => {
+    const draw = drawRef.current;
+    const feature = draw?.getAll()?.features.find((item) => item.geometry.type === 'LineString');
+    if (!draw || !feature || feature.geometry.type !== 'LineString') return;
+    const next = dropLastVertex(feature.geometry.coordinates);
+    if (!next) return;
+    const id = String(feature.id);
+    draw.delete(id);
+    draw.add({
+      type: 'Feature',
+      id,
+      properties: {},
+      geometry: { type: 'LineString', coordinates: next },
+    });
+  };
+
+  const updateMeasurement = (id: string, geometry: LineString | Polygon) => {
+    setMeasurementState((prev) => ({
+      ...prev,
+      measurements: prev.measurements.map((entry) =>
+        entry.id === id ? { ...entry, geometry } : entry
+      ),
+    }));
+  };
+
   const clear = () => {
     // Tearing down the draw releases the slot and removes its layers/sources
     // — LineDrawControl will re-mount and restore its features from props.
@@ -475,5 +503,5 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
     setMeasurementState((prev) => ({ ...prev, mode: 'idle' }));
   };
 
-  return { state, liveLabel, draftLine, startDistance, startArea, clear, cancel };
+  return { state, liveLabel, draftLine, startDistance, startArea, clear, cancel, undo, updateMeasurement };
 }
