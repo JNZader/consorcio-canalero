@@ -9,6 +9,7 @@ descartado se mueve a `archive/` con un `ARCHIVED.md` que dice **qué pasó** y
 | Change | Estado |
 |---|---|
 | `auto-corridor-basin-analysis` | 11/12 — falta la verificación de UX operativa (4.3) |
+| `frontend-ux-a11y-consolidation` | 17/17 — Waves 1–4 (`T1.1`–`T4.4`: mapa 2D/3D, mediciones, perfil de elevación, participación ciudadana, cohesión/estado de Admin y accesibilidad WCAG 2.1 AA) completadas |
 | `stabilize-critical-contracts-ci-gates` | 16/30 — contratos y gates; buena parte de lo abierto ya se resolvió fuera del tracking, conviene reconciliar antes de seguir |
 
 ## Convención
