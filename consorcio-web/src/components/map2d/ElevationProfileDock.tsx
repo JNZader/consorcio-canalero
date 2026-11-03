@@ -36,6 +36,7 @@ export function ElevationProfileDock({
   crossings = [],
   parcelFeatures = null,
   culverts = null,
+  coarseSamples = null,
 }: {
   readonly geometry: LineString | MultiLineString;
   readonly title: string;
@@ -50,6 +51,7 @@ export function ElevationProfileDock({
   readonly crossings?: readonly { lon: number; lat: number; label: string }[];
   readonly parcelFeatures?: readonly Feature<Geometry, GeoJsonProperties>[] | null;
   readonly culverts?: readonly { lon: number; lat: number; label: string }[] | null;
+  readonly coarseSamples?: readonly ProfileChartRow[] | null;
 }) {
   const narrow = useMediaQuery('(max-width: 62em)', false, { getInitialValueInEffect: false });
   const [height, setHeight] = useState(PROFILE_DOCK_DEFAULT_PX);
@@ -173,6 +175,7 @@ export function ElevationProfileDock({
               crossings={crossings}
               parcelFeatures={parcelFeatures}
               culverts={culverts}
+              coarseSamples={coarseSamples}
             />
           </Suspense>
         </div>
