@@ -202,6 +202,12 @@ PLATFORM = "linux/amd64"
 # Debian deja trixie y sid unfixed. No hay paquete mas nuevo en trixie, asi
 # que la fila se congela. CVE-2026-111497 (libbrotli1) si tiene fix y se
 # remedia en Dockerfile.geo.
+#
+# Sube 53 -> 55 el 2026-11-03. La base v2 de Trivy 0.70.0 indexa
+# CVE-2026-117610 y CVE-2026-118370 sobre libexpat1 2.9.0-1~deb13u1,
+# ambos HIGH affected, sin FixedVersion. Debian trixie y sid siguen
+# unfixed; Installed == Candidate en apt de la imagen. Sin remediacion
+# de paquete disponible, ambas filas entran a la deuda congelada.
 DEADLINE_CEILINGS = {
     "CRITICAL": "2026-12-12T00:00:00Z",
     "HIGH": "2026-12-12T00:00:00Z",
