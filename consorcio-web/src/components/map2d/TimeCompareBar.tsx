@@ -1,4 +1,4 @@
-import { Button, Group, NativeSelect, Paper, SegmentedControl, Text } from '@mantine/core';
+import { Button, Group, NativeSelect, SegmentedControl, Text } from '@mantine/core';
 import { useState } from 'react';
 import { useImageComparison } from '../../hooks/useImageComparison';
 import type { SelectedImage } from '../../hooks/useSelectedImage';
@@ -10,10 +10,11 @@ import {
   fetchMonthlySentinel,
   MONTHS_ES,
   monthOptions,
-  tileThumbnailUrl,
   type TimeProduct,
+  tileThumbnailUrl,
   yearOptions,
 } from '../../lib/api/timeLayers';
+import styles from '../../styles/components/map.module.css';
 import type { ViewMode } from './ViewModePanel';
 
 interface TimeCompareBarProps {
@@ -102,20 +103,11 @@ export function TimeCompareBar({ onViewModeChange }: TimeCompareBarProps) {
     }
   }
 
+  const availableMonths = monthOptions(Number(afterValue));
+  const activeMonth = availableMonths.includes(month) ? month : (availableMonths.at(-1) ?? 1);
+
   return (
-    <Paper
-      shadow="sm"
-      p="xs"
-      radius="md"
-      data-testid="time-compare-bar"
-      style={{
-        position: 'absolute',
-        left: 12,
-        bottom: 28,
-        zIndex: 12,
-        maxWidth: 'min(560px, calc(100% - 24px))',
-      }}
-    >
+    <div data-testid="time-compare-bar">
       <Group gap="xs" align="flex-end" wrap="wrap">
         <SegmentedControl
           size="xs"
@@ -155,52 +147,46 @@ export function TimeCompareBar({ onViewModeChange }: TimeCompareBarProps) {
       {product === 's2' ? (
         <div style={{ marginTop: 8 }}>
           <Text size="xs" component="label" htmlFor="s2-month-slider">
-            Mes {MONTHS_ES[month - 1]} {afterValue}
+            Mes {MONTHS_ES[activeMonth - 1]} {afterValue}
           </Text>
           <input
             id="s2-month-slider"
             data-testid="s2-month-slider"
             type="range"
             min={1}
-            max={monthOptions(Number(afterValue)).length}
-            value={month}
+            max={availableMonths.length}
+            value={availableMonths.indexOf(activeMonth) + 1}
             disabled={busy}
             onChange={(event) => {
-              void showMonth(Number(event.currentTarget.value));
+              const next = availableMonths[Number(event.currentTarget.value) - 1];
+              if (next) void showMonth(next);
             }}
-            aria-valuetext={`${MONTHS_ES[month - 1]} ${afterValue}`}
+            aria-valuetext={`${MONTHS_ES[activeMonth - 1]} ${afterValue}`}
             style={{ width: '100%' }}
           />
-          <Group gap={4} wrap="wrap" aria-label="Miniaturas del año">
-            {monthOptions(Number(afterValue)).map((item) => {
+          {/* Six columns so Ene–Dic always wrap onto two rows. A single
+              44px-wide row used to clip Dic against the canvas edge. */}
+          <div className={styles.monthGrid} role="group" aria-label="Miniaturas del año">
+            {MONTHS_ES.map((label, index) => {
+              const item = index + 1;
+              const enabled = availableMonths.includes(item);
               const src = thumbs[`${afterValue}-${item}`];
               return (
                 <button
-                  key={item}
+                  key={label}
                   type="button"
                   data-testid={`s2-month-${item}`}
-                  aria-pressed={item === month}
+                  aria-pressed={item === activeMonth}
                   onClick={() => void showMonth(item)}
-                  disabled={busy}
-                  style={{
-                    width: 44,
-                    border: item === month ? '2px solid #2563eb' : '1px solid #ccc',
-                    background: 'transparent',
-                    padding: 0,
-                    cursor: 'pointer',
-                  }}
+                  disabled={!enabled || busy}
+                  title={enabled ? label : `${label} todavía no tiene imagen`}
+                  className={styles.monthCell}
                 >
-                  {src ? (
-                    <img src={src} alt="" width={40} height={28} />
-                  ) : (
-                    <span style={{ display: 'block', fontSize: 10, padding: '6px 0' }}>
-                      {MONTHS_ES[item - 1]}
-                    </span>
-                  )}
+                  {src ? <img src={src} alt="" width={40} height={28} /> : label}
                 </button>
               );
             })}
-          </Group>
+          </div>
         </div>
       ) : null}
       {error ? (
@@ -212,6 +198,6 @@ export function TimeCompareBar({ onViewModeChange }: TimeCompareBarProps) {
           Comparar fechas
         </Text>
       )}
-    </Paper>
+    </div>
   );
 }

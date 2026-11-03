@@ -8,6 +8,7 @@ import { ActionIcon, Group, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
 import { lazy, type PointerEvent as ReactPointerEvent, Suspense, useRef, useState } from 'react';
+import { MAP_Z } from './mapZIndex';
 import type { ProfileChartRow } from './profileChartRows';
 import {
   clampDockHeight,
@@ -90,7 +91,7 @@ export function ElevationProfileDock({
         left: 0,
         right: 0,
         bottom: 0,
-        zIndex: 18,
+        zIndex: MAP_Z.profile,
         height: collapsed ? 44 : height,
         maxHeight: narrow ? '70vh' : PROFILE_DOCK_MAX_PX,
         display: 'flex',

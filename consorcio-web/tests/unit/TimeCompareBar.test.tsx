@@ -106,6 +106,22 @@ describe('TimeCompareBar', () => {
     expect(stored.visualization).toBe('occurrence');
   });
 
+  it('keeps every month, including Dic, in a wrapping row', () => {
+    renderBar();
+    for (let month = 1; month <= 12; month += 1) {
+      expect(screen.getByTestId(`s2-month-${month}`)).toBeInTheDocument();
+    }
+    const dic = screen.getByTestId('s2-month-12');
+    const year = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    if (currentMonth < 12) {
+      expect(dic).toBeDisabled();
+    } else {
+      expect(dic).toBeEnabled();
+    }
+    expect(year).toBeGreaterThan(2000);
+  });
+
   it('tells an anonymous visitor that the comparison needs an operator', async () => {
     const user = userEvent.setup();
     vi.mocked(fetchAnnualSentinel).mockRejectedValue(

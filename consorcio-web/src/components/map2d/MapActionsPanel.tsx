@@ -1,9 +1,10 @@
 import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { mapColorTokens } from '../../lib/mapColorTokens';
 import { showSuccess, showWarning } from '../../lib/notifications';
 import styles from '../../styles/components/map.module.css';
-import { IconCopy, IconDownload, IconFileZip, IconMap, IconPhoto } from '../ui/icons';
+import { IconCopy, IconDownload, IconFileZip, IconMap, IconPhoto, IconQrcode } from '../ui/icons';
+import { MapShareQrModal } from './MapShareLink';
 import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';
 
 interface MapActionsPanelProps {
@@ -26,6 +27,54 @@ interface MapActionsPanelProps {
    * so a plain map visitor never pays for it.
    */
   readonly onExportMenuOpen?: () => void;
+}
+
+/** Export + permalink entries. Shared by the standalone Exportar menu and Herramientas. */
+export function MapExportMenuItems({
+  hasApprovedZones,
+  onOpenExportPng,
+  onExportApprovedZonesPdf,
+  onExportKmz,
+}: Omit<MapActionsPanelProps, 'onExportMenuOpen'>) {
+  const [qrOpen, setQrOpen] = useState(false);
+  return (
+    <>
+      <Menu.Item leftSection={<IconPhoto size={14} />} onClick={onOpenExportPng}>
+        Exportar PNG
+      </Menu.Item>
+      {hasApprovedZones && (
+        <Menu.Item leftSection={<IconMap size={14} />} onClick={onExportApprovedZonesPdf}>
+          Exportar PDF
+        </Menu.Item>
+      )}
+      {onExportKmz && (
+        <Menu.Item leftSection={<IconFileZip size={14} />} onClick={onExportKmz}>
+          Exportar KMZ
+        </Menu.Item>
+      )}
+      <Menu.Item
+        leftSection={<IconCopy size={14} />}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(window.location.href);
+            showSuccess('Enlace copiado', 'La vista actual está en el portapapeles');
+          } catch {
+            showWarning('No se pudo copiar', 'Copiá la URL de la barra de direcciones');
+          }
+        }}
+      >
+        Copiar enlace a esta vista
+      </Menu.Item>
+      <Menu.Item
+        leftSection={<IconQrcode size={14} />}
+        data-testid="map-share-qr"
+        onClick={() => setQrOpen(true)}
+      >
+        QR
+      </Menu.Item>
+      <MapShareQrModal opened={qrOpen} onClose={() => setQrOpen(false)} />
+    </>
+  );
 }
 
 /**
@@ -80,32 +129,12 @@ export const MapActionsPanel = memo(function MapActionsPanel({
           </Tooltip>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Item leftSection={<IconPhoto size={14} />} onClick={onOpenExportPng}>
-            Exportar PNG
-          </Menu.Item>
-          {hasApprovedZones && (
-            <Menu.Item leftSection={<IconMap size={14} />} onClick={onExportApprovedZonesPdf}>
-              Exportar PDF
-            </Menu.Item>
-          )}
-          {onExportKmz && (
-            <Menu.Item leftSection={<IconFileZip size={14} />} onClick={onExportKmz}>
-              Exportar KMZ
-            </Menu.Item>
-          )}
-          <Menu.Item
-            leftSection={<IconCopy size={14} />}
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(window.location.href);
-                showSuccess('Enlace copiado', 'La vista actual está en el portapapeles');
-              } catch {
-                showWarning('No se pudo copiar', 'Copiá la URL de la barra de direcciones');
-              }
-            }}
-          >
-            Copiar enlace a esta vista
-          </Menu.Item>
+          <MapExportMenuItems
+            hasApprovedZones={hasApprovedZones}
+            onOpenExportPng={onOpenExportPng}
+            onExportApprovedZonesPdf={onExportApprovedZonesPdf}
+            onExportKmz={onExportKmz}
+          />
         </Menu.Dropdown>
       </Menu>
     </Box>

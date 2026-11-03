@@ -39,6 +39,7 @@ import { getActiveAttributions } from './layerAttributions';
 import { filterCanalEntries } from './layerControlWidgets';
 import { buildHealthBannerText, type LayerHealth } from './layerHealth';
 import { MapPresetChips } from './MapPresetChips';
+import { MapVistaSection } from './MapVistaSection';
 import {
   buildFamilyActiveCounts,
   LAYER_CATEGORY,
@@ -228,6 +229,8 @@ interface LayerControlsPanelProps {
   readonly onFocusCanal?: (id: string) => void;
   /** CART-06: current map zoom; defaults to opening camera. */
   readonly mapZoom?: number;
+  /** Time compare controls. Rendered as the panel's Tiempo section. */
+  readonly timeSection?: ReactNode;
 }
 
 const GLASS_BG = 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))';
@@ -275,6 +278,7 @@ export function LayerControlsPanel({
   legendPanelProps,
   onFocusCanal,
   mapZoom = MAP_DEFAULT_ZOOM,
+  timeSection,
 }: LayerControlsPanelProps) {
   const liveZoom = useMapCameraStore((state) => state.camera?.zoom);
   const effectiveZoom = liveZoom ?? mapZoom;
@@ -393,9 +397,7 @@ export function LayerControlsPanel({
   ];
 
   const defaultDemLayerId =
-    demOptions.find((option) => option.tipo === 'dem_raw')?.value ??
-    demOptions[0]?.value ??
-    null;
+    demOptions.find((option) => option.tipo === 'dem_raw')?.value ?? demOptions[0]?.value ?? null;
 
   useEffect(() => {
     if (is3d) return;
@@ -404,7 +406,14 @@ export function LayerControlsPanel({
     if (!activeLayerExists) {
       onActiveDemLayerIdChange(defaultDemLayerId);
     }
-  }, [activeDemLayerId, demOptions, defaultDemLayerId, is3d, onActiveDemLayerIdChange, showDemOverlay]);
+  }, [
+    activeDemLayerId,
+    demOptions,
+    defaultDemLayerId,
+    is3d,
+    onActiveDemLayerIdChange,
+    showDemOverlay,
+  ]);
 
   const handleDemOverlayChange = (visible: boolean) => {
     if (visible && !activeDemLayerId && defaultDemLayerId) {
@@ -447,8 +456,8 @@ export function LayerControlsPanel({
     demEnabled,
     showDemOverlay,
     onShowDemOverlayChange,
-    baseLayer,
-    onBaseLayerChange,
+    baseLayer: undefined,
+    onBaseLayerChange: undefined,
     showIGNOverlay,
     onShowIGNOverlayChange,
     hillshadeAvailable,
@@ -515,7 +524,21 @@ export function LayerControlsPanel({
             }),
       }}
     >
-      {viewModePanel}
+      <MapVistaSection
+        baseLayer={is3d ? undefined : baseLayer}
+        onBaseLayerChange={is3d ? undefined : onBaseLayerChange}
+        viewModePanel={is3d ? undefined : viewModePanel}
+        showCursorToggle={!is3d}
+      />
+
+      {timeSection ? (
+        <Stack gap={4} data-testid="map-tiempo-section">
+          <Text size="xs" fw={600}>
+            Tiempo
+          </Text>
+          {timeSection}
+        </Stack>
+      ) : null}
 
       <MapPresetChips
         onApplyRaster={(presetId) => {

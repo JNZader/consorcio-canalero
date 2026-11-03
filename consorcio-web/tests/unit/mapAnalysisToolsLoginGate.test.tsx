@@ -21,6 +21,7 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, renderHook, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -198,34 +199,42 @@ afterEach(() => {
 });
 
 describe('map analysis tools — login gate', () => {
-  it('anonymous: the three analysis buttons are ABSENT from the DOM', () => {
+  it('anonymous: the three analysis buttons are ABSENT from the DOM', async () => {
     setAuth(ANONYMOUS);
     renderMap();
 
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Herramientas' }));
     expect(screen.queryByLabelText('Dibujar polígono')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seleccionar canal')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ficha-multi-select-toggle')).not.toBeInTheDocument();
   });
 
-  it('anonymous: medir, descargar and capas are untouched', () => {
+  it('anonymous: medir, descargar and capas are untouched', async () => {
     setAuth(ANONYMOUS);
     renderMap();
 
-    expect(screen.getByLabelText('Medir')).toBeInTheDocument();
-    expect(screen.getByLabelText('Exportar')).toBeInTheDocument();
+    const user = userEvent.setup();
+    expect(screen.getByLabelText('Herramientas')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Exportar')).not.toBeInTheDocument();
     expect(screen.getByTestId('map-controls-tree')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Herramientas' }));
+    expect(screen.getByText('Medir distancia')).toBeInTheDocument();
+    expect(screen.getByText('Exportar PNG')).toBeInTheDocument();
   });
 
-  it('authenticated: the three analysis buttons are rendered', () => {
+  it('authenticated: the three analysis buttons are rendered', async () => {
     setAuth(LOGGED_IN);
     renderMap();
 
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Herramientas' }));
     expect(screen.getByLabelText('Dibujar polígono')).toBeInTheDocument();
     expect(screen.getByLabelText('Seleccionar canal')).toBeInTheDocument();
     expect(screen.getByTestId('ficha-multi-select-toggle')).toBeInTheDocument();
   });
 
-  it('a REHYDRATED-but-unconfirmed user does not paint the tools (anti-flash)', () => {
+  it('a REHYDRATED-but-unconfirmed user does not paint the tools (anti-flash)', async () => {
     // The regression this pins: a gate that read `!!user` would be green on an
     // anonymous visitor and still flash here, because `persist` hands us a
     // truthy user before the session is confirmed. Showing the tools first and
@@ -234,6 +243,8 @@ describe('map analysis tools — login gate', () => {
     setAuth(PERSIST_REHYDRATED);
     renderMap();
 
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Herramientas' }));
     expect(screen.queryByLabelText('Dibujar polígono')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seleccionar canal')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ficha-multi-select-toggle')).not.toBeInTheDocument();

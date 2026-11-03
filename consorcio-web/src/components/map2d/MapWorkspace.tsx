@@ -1,7 +1,16 @@
-import { ActionIcon, Badge, Box, Burger, Group, SegmentedControl, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Burger,
+  Group,
+  SegmentedControl,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
-import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useDrawerHistoryClose } from '../../hooks/useDrawerHistoryClose';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
@@ -85,6 +94,11 @@ interface MapWorkspaceProps {
   activeLayerCount?: number;
   /** UX-06: polite status for layer load failures. */
   liveMessage?: string;
+  /**
+   * Search (and any other control) pinned to the panel header, outside the
+   * scrolling body. Hidden while the desktop sidebar is collapsed.
+   */
+  headerSlot?: ReactNode;
 }
 
 type SidebarTab = 'capas' | 'info';
@@ -114,6 +128,7 @@ export function MapWorkspace({
   onCloseSelection,
   activeLayerCount,
   liveMessage,
+  headerSlot = null,
 }: MapWorkspaceProps) {
   const isDesktop = useMapWorkspaceDesktop();
   const sidebarCollapsed = useMapWorkspaceStore((state) => state.sidebarCollapsed);
@@ -194,7 +209,12 @@ export function MapWorkspace({
       <Box className={styles.workspaceCanvas} data-testid="map-workspace-canvas">
         {canvas}
       </Box>
-      <div className={styles.visuallyHidden} role="status" aria-live="polite" data-testid="map-live-region">
+      <div
+        className={styles.visuallyHidden}
+        role="status"
+        aria-live="polite"
+        data-testid="map-live-region"
+      >
         {liveMessage ?? ''}
       </div>
 
@@ -240,69 +260,76 @@ export function MapWorkspace({
             headerCollapsed ? styles.workspaceSidebarHeaderCollapsed : ''
           }`}
         >
-          {!headerCollapsed && hasSelection && (
-            <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-              <SegmentedControl
-                size="xs"
-                value={tab}
-                onChange={(value) => setTab(value as SidebarTab)}
-                data={[
-                  { label: 'Capas', value: 'capas' },
-                  { label: 'Información', value: 'info' },
-                ]}
-                aria-label="Sección del panel"
-                data-testid="map-workspace-tabs"
-              />
+          <Group justify="space-between" wrap="nowrap" gap="xs" w="100%">
+            {!headerCollapsed && hasSelection && (
+              <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                <SegmentedControl
+                  size="xs"
+                  value={tab}
+                  onChange={(value) => setTab(value as SidebarTab)}
+                  data={[
+                    { label: 'Capas', value: 'capas' },
+                    { label: 'Información', value: 'info' },
+                  ]}
+                  aria-label="Sección del panel"
+                  data-testid="map-workspace-tabs"
+                />
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  onClick={onCloseSelection}
+                  aria-label="Cerrar panel de información"
+                  data-testid="map-workspace-selection-close"
+                >
+                  <IconX size={18} />
+                </ActionIcon>
+              </Group>
+            )}
+            {!headerCollapsed && !hasSelection && (
+              <Group gap="xs" wrap="nowrap">
+                <IconLayers size={18} />
+                <Text fw={600} size="sm">
+                  {isDesktop ? 'Capas' : 'Capas y leyenda'}
+                </Text>
+                {countBadge}
+              </Group>
+            )}
+            {isDesktop ? (
+              <Tooltip
+                label={sidebarCollapsed ? 'Expandir panel' : 'Colapsar panel'}
+                position="right"
+                withArrow
+              >
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  onClick={toggleSidebar}
+                  aria-label={
+                    sidebarCollapsed ? 'Expandir panel de capas' : 'Colapsar panel de capas'
+                  }
+                  aria-expanded={!sidebarCollapsed}
+                  data-testid="map-workspace-collapse"
+                >
+                  {sidebarCollapsed ? <IconArrowRight size={18} /> : <IconArrowLeft size={18} />}
+                </ActionIcon>
+              </Tooltip>
+            ) : (
               <ActionIcon
                 variant="subtle"
                 color="gray"
-                onClick={onCloseSelection}
-                aria-label="Cerrar panel de información"
-                data-testid="map-workspace-selection-close"
+                onClick={drawer.close}
+                aria-label="Cerrar panel de capas y leyenda"
+                data-testid="map-workspace-drawer-close"
               >
                 <IconX size={18} />
               </ActionIcon>
-            </Group>
-          )}
-          {!headerCollapsed && !hasSelection && (
-            <Group gap="xs" wrap="nowrap">
-              <IconLayers size={18} />
-              <Text fw={600} size="sm">
-                {isDesktop ? 'Capas' : 'Capas y leyenda'}
-              </Text>
-              {countBadge}
-            </Group>
-          )}
-          {isDesktop ? (
-            <Tooltip
-              label={sidebarCollapsed ? 'Expandir panel' : 'Colapsar panel'}
-              position="right"
-              withArrow
-            >
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                onClick={toggleSidebar}
-                aria-label={
-                  sidebarCollapsed ? 'Expandir panel de capas' : 'Colapsar panel de capas'
-                }
-                aria-expanded={!sidebarCollapsed}
-                data-testid="map-workspace-collapse"
-              >
-                {sidebarCollapsed ? <IconArrowRight size={18} /> : <IconArrowLeft size={18} />}
-              </ActionIcon>
-            </Tooltip>
-          ) : (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              onClick={drawer.close}
-              aria-label="Cerrar panel de capas y leyenda"
-              data-testid="map-workspace-drawer-close"
-            >
-              <IconX size={18} />
-            </ActionIcon>
-          )}
+            )}
+          </Group>
+          {!headerCollapsed && headerSlot ? (
+            <Box className={styles.workspaceSidebarSearch} w="100%">
+              {headerSlot}
+            </Box>
+          ) : null}
         </Box>
         <Box className={styles.workspaceSidebarBody}>
           <div hidden={showInfo}>{controls}</div>

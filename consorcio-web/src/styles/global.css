@@ -1,3 +1,8 @@
+/* Map preset toast: sit under the sticky site header instead of covering it. */
+.cc-toast-below-header {
+  margin-top: 4.5rem;
+}
+
 /* Self-hosted Latin fonts only: no external CDN and no legacy WOFF fallbacks. */
 @font-face {
   font-family: 'Inter';
