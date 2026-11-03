@@ -35,8 +35,8 @@ export function MapExportMenuItems({
   onOpenExportPng,
   onExportApprovedZonesPdf,
   onExportKmz,
-}: Omit<MapActionsPanelProps, 'onExportMenuOpen'>) {
-  const [qrOpen, setQrOpen] = useState(false);
+  onOpenQr,
+}: Omit<MapActionsPanelProps, 'onExportMenuOpen'> & { readonly onOpenQr: () => void }) {
   return (
     <>
       <Menu.Item leftSection={<IconPhoto size={14} />} onClick={onOpenExportPng}>
@@ -68,11 +68,10 @@ export function MapExportMenuItems({
       <Menu.Item
         leftSection={<IconQrcode size={14} />}
         data-testid="map-share-qr"
-        onClick={() => setQrOpen(true)}
+        onClick={onOpenQr}
       >
         QR
       </Menu.Item>
-      <MapShareQrModal opened={qrOpen} onClose={() => setQrOpen(false)} />
     </>
   );
 }
@@ -104,6 +103,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
   onExportKmz,
   onExportMenuOpen,
 }: MapActionsPanelProps) {
+  const [qrOpen, setQrOpen] = useState(false);
   return (
     <Box className={`maplibregl-ctrl maplibregl-ctrl-group ${styles.mapActionsDock}`}>
       <Menu shadow="md" width={200} onOpen={onExportMenuOpen}>
@@ -134,9 +134,11 @@ export const MapActionsPanel = memo(function MapActionsPanel({
             onOpenExportPng={onOpenExportPng}
             onExportApprovedZonesPdf={onExportApprovedZonesPdf}
             onExportKmz={onExportKmz}
+            onOpenQr={() => setQrOpen(true)}
           />
         </Menu.Dropdown>
       </Menu>
+      <MapShareQrModal opened={qrOpen} onClose={() => setQrOpen(false)} />
     </Box>
   );
 });

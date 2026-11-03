@@ -11,7 +11,7 @@
  */
 
 import { Box, Menu, UnstyledButton } from '@mantine/core';
-import { memo, type RefObject } from 'react';
+import { memo, type RefObject, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
 import styles from '../../../styles/components/map.module.css';
@@ -25,6 +25,7 @@ import {
   IconVectorTriangle,
 } from '../../ui/icons';
 import { MapExportMenuItems } from '../MapActionsPanel';
+import { MapShareQrModal } from '../MapShareLink';
 import { MAP_CTRL_GLYPH_SIZE } from '../map2dConfig';
 import type { MeasurementMode } from './useMeasurement';
 
@@ -77,6 +78,7 @@ function ToolsMenuDropdown({
   onOpenExportPng,
   onExportApprovedZonesPdf,
   onExportKmz,
+  onOpenQr,
 }: Pick<
   MeasurementToolbarProps,
   | 'hasMeasurements'
@@ -91,7 +93,12 @@ function ToolsMenuDropdown({
   | 'onOpenExportPng'
   | 'onExportApprovedZonesPdf'
   | 'onExportKmz'
-> & { readonly fichaMultiSelectActive: boolean; readonly showExport: boolean }) {
+> & {
+  readonly fichaMultiSelectActive: boolean;
+  readonly showExport: boolean;
+  readonly hasApprovedZones: boolean;
+  readonly onOpenQr: () => void;
+}) {
   return (
     <Menu.Dropdown>
       <Menu.Label>Medir</Menu.Label>
@@ -149,10 +156,11 @@ function ToolsMenuDropdown({
           <Menu.Divider />
           <Menu.Label>Exportar</Menu.Label>
           <MapExportMenuItems
-            hasApprovedZones={hasApprovedZones ?? false}
+            hasApprovedZones={hasApprovedZones}
             onOpenExportPng={onOpenExportPng}
             onExportApprovedZonesPdf={onExportApprovedZonesPdf}
             onExportKmz={onExportKmz}
+            onOpenQr={onOpenQr}
           />
         </>
       ) : null}
@@ -187,6 +195,7 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
   onExportMenuOpen,
   portalTarget,
 }: MeasurementToolbarProps) {
+  const [qrOpen, setQrOpen] = useState(false);
   const isMeasuring = mode === 'measuring-distance' || mode === 'measuring-area';
   const showExport = Boolean(onOpenExportPng && onExportApprovedZonesPdf);
 
@@ -263,8 +272,10 @@ export const MeasurementToolbar = memo(function MeasurementToolbar({
           onOpenExportPng={onOpenExportPng}
           onExportApprovedZonesPdf={onExportApprovedZonesPdf}
           onExportKmz={onExportKmz}
+          onOpenQr={() => setQrOpen(true)}
         />
       </Menu>
+      <MapShareQrModal opened={qrOpen} onClose={() => setQrOpen(false)} />
 
       {fichaDrawActive && onToggleFichaDraw ? (
         <UnstyledButton

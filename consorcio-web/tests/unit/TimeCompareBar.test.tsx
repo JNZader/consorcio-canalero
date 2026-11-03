@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,12 +23,17 @@ vi.mock('../../src/lib/api/timeLayers', async () => {
   return {
     ...actual,
     fetchAnnualSentinel: vi.fn(),
+    fetchMonthlySentinel: vi.fn(),
     fetchJrcYear: vi.fn(),
     fetchJrcOccurrence: vi.fn(),
   };
 });
 
-import { fetchAnnualSentinel, fetchJrcOccurrence } from '../../src/lib/api/timeLayers';
+import {
+  fetchAnnualSentinel,
+  fetchJrcOccurrence,
+  fetchMonthlySentinel,
+} from '../../src/lib/api/timeLayers';
 
 function image(year: number, sensor: SelectedImage['sensor'] = 'Sentinel-2'): SelectedImage {
   return {
@@ -59,6 +64,7 @@ describe('TimeCompareBar', () => {
   beforeEach(() => {
     vi.mocked(window.localStorage.setItem).mockClear();
     vi.mocked(fetchAnnualSentinel).mockReset();
+    vi.mocked(fetchMonthlySentinel).mockReset();
     vi.mocked(fetchJrcOccurrence).mockReset();
   });
 
@@ -104,6 +110,24 @@ describe('TimeCompareBar', () => {
     const stored = JSON.parse(writes('consorcio_selected_image').at(-1) ?? '{}');
     expect(stored.sensor).toBe('JRC');
     expect(stored.visualization).toBe('occurrence');
+  });
+
+  it('falls back to the latest available month after switching to the current year', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchMonthlySentinel).mockImplementation(async (year, month) => image(year));
+    renderBar();
+
+    await user.selectOptions(screen.getByLabelText('Después'), '2024');
+    await user.click(screen.getByTestId('s2-month-12'));
+    expect(fetchMonthlySentinel).toHaveBeenCalledWith(2024, 12);
+
+    await user.selectOptions(screen.getByLabelText('Después'), String(new Date().getFullYear()));
+    const label = screen.getByText(/^Mes /);
+    if (new Date().getMonth() < 11) {
+      expect(label).not.toHaveTextContent('Dic');
+    }
+    fireEvent.change(screen.getByTestId('s2-month-slider'), { target: { value: '2' } });
+    expect(fetchMonthlySentinel).toHaveBeenCalled();
   });
 
   it('keeps every month, including Dic, in a wrapping row', () => {

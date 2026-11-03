@@ -57,7 +57,7 @@ export function showInfo(
     title,
     message,
     color: 'blue',
-    className: options?.belowHeader ? 'cc-toast-below-header' : undefined,
+    ...(options?.belowHeader ? { className: 'cc-toast-below-header' } : {}),
   });
 }
 
