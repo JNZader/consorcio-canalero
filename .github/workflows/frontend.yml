@@ -423,6 +423,42 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  visual:
+    name: Visual regression (Playwright)
+    # Misma ventana que accessibility: PR hacia main o dispatch, y solo si
+    # cambió el frontend. Push a main y el cron de mutación no la disparan.
+    if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    # La imagen fija Chromium, fuentes y FreeType. Las baselines de
+    # tests/visual/__screenshots__ se generan en ESTA imagen (tag = versión
+    # fijada de @playwright/test en package-lock.json). Si se sube Playwright,
+    # hay que subir el tag y regenerar las capturas. Ver
+    # consorcio-web/docs/visual-regression.md.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
+    timeout-minutes: 30
+    needs: [changes, typecheck, smoke]
+    env:
+      CI: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run visual regression and mobile e2e
+        run: npm run test:visual
+      - name: Upload visual report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-visual-${{ github.run_id }}
+          path: |
+            consorcio-web/tests/visual/playwright-report/
+            consorcio-web/tests/visual/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
   build:
     name: Build
     if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
@@ -528,7 +564,7 @@ jobs:
     name: Frontend CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [changes, lint, test, typecheck, smoke, mutation, mutation-gate, accessibility, build, image]
+    needs: [changes, lint, test, typecheck, smoke, mutation, mutation-gate, accessibility, visual, build, image]
     if: ${{ always() }}
     permissions:
       contents: read
@@ -543,6 +579,7 @@ jobs:
       FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
       BASE_REF: ${{ github.base_ref }}
       ACCESSIBILITY_RESULT: ${{ needs.accessibility.result }}
+      VISUAL_RESULT: ${{ needs.visual.result }}
       BUILD_RESULT: ${{ needs.build.result }}
       IMAGE_RESULT: ${{ needs.image.result }}
     steps:
@@ -572,5 +609,6 @@ jobs:
           require mutation "$MUTATION_RESULT"
           require mutation-gate "$MUTATION_GATE_RESULT"
           require accessibility "$ACCESSIBILITY_RESULT"
+          require visual "$VISUAL_RESULT"
           require build "$BUILD_RESULT"
           require image "$IMAGE_RESULT"

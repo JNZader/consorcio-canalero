@@ -599,6 +599,7 @@ def test_frontend_pr_and_manual_runs_reach_applicable_quality_gates() -> None:
     # main) o a demanda. Pagarla en cada PR a develop fue parte de lo que hizo
     # que bloquearan la cuenta.
     assert release_gate in _job_block(frontend, "accessibility")
+    assert release_gate in _job_block(frontend, "visual")
     # La mutacion ordinaria corre solo en el PR de release. Un dispatch queda
     # reservado al productor full para no lanzar dos Stryker a la vez.
     mutation_guards = re.findall(r"(?m)^    if: (.+)$", _job_block(frontend, "mutation"))
@@ -1292,6 +1293,7 @@ def test_ci_gate_is_the_single_required_check_of_each_branch_workflow() -> None:
             "mutation",
             "mutation-gate",
             "accessibility",
+            "visual",
             "build",
             "image",
         },
@@ -1431,6 +1433,7 @@ def test_light_jobs_never_depend_on_release_only_jobs() -> None:
         "image-geo-worker",
         "image-security-policy",
         "accessibility",
+        "visual",
     }
     # `ci-gate` es la excepcion legitima: corre con `always()`, asi que un
     # `needs` salteado no lo apaga, y justamente necesita verlos a todos.
