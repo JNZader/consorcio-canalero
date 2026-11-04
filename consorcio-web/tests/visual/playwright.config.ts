@@ -38,6 +38,13 @@ export default defineConfig({
     deviceScaleFactor: 1,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    launchOptions: {
+      args: [
+        '--font-render-hinting=none',
+        '--disable-font-subpixel-positioning',
+        '--disable-lcd-text',
+      ],
+    },
   },
   webServer: {
     command: `npm run dev -- --host 127.0.0.1 --port ${PORT} --strictPort`,

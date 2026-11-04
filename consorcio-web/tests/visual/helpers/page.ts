@@ -17,6 +17,22 @@ const STABLE_CSS = `
     scroll-behavior: auto !important;
     caret-color: transparent !important;
   }
+
+  /*
+   * En Actions el stack de enlaces del footer medía ~63px más que en la
+   * misma imagen corrida a mano: el gap dejaba de ser 8px y "Argentina"
+   * se separaba de "Mapa". Estas reglas fijan ese stack para que las dos
+   * corridas midan el mismo alto, sin cambiar el componente.
+   */
+  footer nav .mantine-Stack-root {
+    gap: 8px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    justify-content: flex-start !important;
+  }
+  footer nav a {
+    margin: 0 !important;
+  }
 `;
 
 /**
