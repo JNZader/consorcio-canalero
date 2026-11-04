@@ -12,6 +12,7 @@ import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString 
 import { useEffect, useRef, useState } from 'react';
 import {
   Area,
+  CartesianGrid,
   Line,
   LineChart,
   ReferenceArea,
@@ -61,7 +62,11 @@ import {
   SLOPE_COLOR_STOPS,
   slopeSeverityLabel,
 } from './slopeColor';
-import { type SurveyProfile, soleraCover } from './soleraProfile';
+import {
+  type SurveyProfile,
+  simulateCanalSolera,
+  soleraCover,
+} from './soleraProfile';
 import { useLiveRegion } from '../ui/accessibility';
 
 function dedupeCrossings(
@@ -214,6 +219,7 @@ export function ElevationProfileChart({
   );
   const [compareDems, setCompareDems] = useState(false);
   const [compareSurvey, setCompareSurvey] = useState(false);
+  const [simulateCanal, setSimulateCanal] = useState(false);
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
@@ -376,7 +382,14 @@ export function ElevationProfileChart({
     chartRows.length >= 2
       ? chartRows[chartRows.length - 1]!.distance_m - chartRows[0]!.distance_m
       : (profile?.length_m ?? 0);
-  const hoverRow = shownIndex != null ? chartRows[shownIndex] : undefined;
+  const simulatedCanal = simulateCanal ? simulateCanalSolera(chartRows, flowDirection) : null;
+  const chartRowsWithSolera = simulatedCanal?.ok
+    ? chartRows.map((row, idx) => ({
+        ...row,
+        simulatedSolera: simulatedCanal.rows[idx]?.simulatedSolera ?? null,
+      }))
+    : chartRows;
+  const hoverRow = shownIndex != null ? chartRowsWithSolera[shownIndex] : undefined;
   const cursorLabel = hoverRow
     ? formatCursorReadout(
         hoverRow.distance_m,
@@ -607,7 +620,7 @@ export function ElevationProfileChart({
               ) : null}
               <ResponsiveContainer width="100%" height={168}>
                 <LineChart
-                  data={chartRows}
+                  data={chartRowsWithSolera}
                   margin={{ top: 16, right: 8, left: 0, bottom: 0 }}
                   onMouseDown={(event) => {
                     const distance = distanceAtIndex(chartRows, event.activeIndex);
@@ -650,6 +663,12 @@ export function ElevationProfileChart({
                     dragged.current = false;
                   }}
                 >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="var(--mantine-color-default-border)"
+                    opacity={0.35}
+                  />
                   <XAxis
                     dataKey="distance_m"
                     tickFormatter={(value) => formatAxisDistance(Number(value), spanM)}
@@ -662,6 +681,21 @@ export function ElevationProfileChart({
                     width={40}
                     fontSize={10}
                   />
+                  {simulatedCanal?.ok ? (
+                    <ReferenceLine
+                      y={simulatedCanal.stats.zEnd}
+                      stroke="#0f766e"
+                      strokeDasharray="5 5"
+                      strokeOpacity={0.6}
+                      ifOverflow="hidden"
+                      label={{
+                        value: `Descarga ${formatEs(simulatedCanal.stats.zEnd, 1)} m`,
+                        position: 'insideBottomRight',
+                        fontSize: 10,
+                        fill: '#0f766e',
+                      }}
+                    />
+                  ) : null}
                   {uniqueCrossings.map((hit) => (
                     <ReferenceLine
                       key={`${hit.label}-${hit.distance_m}`}
@@ -778,6 +812,19 @@ export function ElevationProfileChart({
                       isAnimationActive={false}
                     />
                   ) : null}
+                  {simulatedCanal?.ok ? (
+                    <Line
+                      type="linear"
+                      dataKey="simulatedSolera"
+                      name="Rasante proyectada"
+                      stroke="#0f766e"
+                      strokeWidth={2}
+                      strokeDasharray="4 2"
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  ) : null}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -825,6 +872,15 @@ export function ElevationProfileChart({
                   1
                 )}{' '}
                 m
+              </Text>
+            ) : null}
+            {simulatedCanal?.ok ? (
+              <Text size="xs" c="teal" fw={500} data-testid="simulated-canal-stats">
+                Rasante proyectada ({simulatedCanal.stats.orientation === 'inverso' ? 'según flujo inverso' : flowDirection ? 'según flujo' : 'inicio → fin'}):{' '}
+                {formatEs(simulatedCanal.stats.zStart, 1)} m → {formatEs(simulatedCanal.stats.zEnd, 1)} m (Δ {formatSignedDeltaM(simulatedCanal.stats.deltaZ)}) · pend.{' '}
+                {formatSlopePct(simulatedCanal.stats.slopePct)} ({formatEs(Math.abs(simulatedCanal.stats.slopePerMil), 2)} ‰) · corte máx{' '}
+                {formatEs(simulatedCanal.stats.maxCut_m, 1)} m ({formatProfileDistance(simulatedCanal.stats.dMaxCut_m)}) · prom {formatEs(simulatedCanal.stats.meanCut_m, 1)} m
+                {simulatedCanal.stats.minCut_m < -0.1 ? ` · terraplén máx ${formatEs(Math.abs(simulatedCanal.stats.minCut_m), 1)} m` : ''}
               </Text>
             ) : null}
             {flowDirection ? (
@@ -931,6 +987,13 @@ export function ElevationProfileChart({
                 onChange={(event) => setCompareDems(event.currentTarget.checked)}
                 data-testid="elevation-profile-compare-dems"
               />
+              <Checkbox
+                size="xs"
+                label="Simular rasante"
+                checked={simulateCanal}
+                onChange={(event) => setSimulateCanal(event.currentTarget.checked)}
+                data-testid="elevation-profile-simulate-canal"
+              />
               {flowDirection && pairedSurvey && pairedSurvey.samples.length > 0 ? (
                 <Checkbox
                   size="xs"
@@ -1010,6 +1073,27 @@ export function ElevationProfileChart({
                   </Group>
                 );
               })}
+              {simulatedCanal?.ok ? (
+                <Group gap={4} wrap="nowrap" align="center">
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 10,
+                      height: 3,
+                      backgroundColor: '#0f766e',
+                      borderRadius: 1,
+                    }}
+                  />
+                  <Text size="xs" style={{ color: '#0f766e', fontWeight: 500 }}>
+                    Rasante
+                    {hoverRow && hoverRow.simulatedSolera != null
+                      ? ` ${formatElevationM(hoverRow.simulatedSolera)} (corte ${formatSignedDeltaM(
+                          (hoverRow.elevation_m ?? 0) - hoverRow.simulatedSolera
+                        )})`
+                      : ''}
+                  </Text>
+                </Group>
+              ) : null}
               {chartRows.length >= 2 ? (
                 <Text size="xs" c="dimmed" data-testid="elevation-profile-slope-legend" style={{ marginLeft: 4 }}>
                   · Pendiente ({slopeScale.regimeLabel}):{' '}

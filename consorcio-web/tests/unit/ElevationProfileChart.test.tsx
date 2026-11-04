@@ -539,4 +539,38 @@ describe('<ElevationProfileChart />', () => {
     expect(crossingsEl).toHaveTextContent('Parcela 5');
     expect(toggle).toHaveTextContent('Menos');
   });
+
+  it('toggles projected canal solera simulation and displays cut/slope statistics', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 118.6 },
+        { distance_m: 1100, elevation_m: 125.4 }, // obstacle / eucalyptus
+        { distance_m: 5000, elevation_m: 117.8 },
+      ],
+      length_m: 5000,
+      min_elevation_m: 117.8,
+      max_elevation_m: 125.4,
+      source: 'dem_filled.tif',
+      cell_m: 30,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m).',
+    });
+    const user = userEvent.setup();
+    renderWithMantine(
+      <ElevationProfileChart
+        geometry={line}
+        autoLoad
+        flowDirection="digitizado"
+      />
+    );
+    await screen.findByTestId('elevation-profile-extrema');
+    expect(screen.queryByTestId('simulated-canal-stats')).not.toBeInTheDocument();
+
+    const simToggle = screen.getByTestId('elevation-profile-simulate-canal');
+    await user.click(simToggle);
+
+    const stats = await screen.findByTestId('simulated-canal-stats');
+    expect(stats).toHaveTextContent('Rasante proyectada');
+    expect(stats).toHaveTextContent('118,6 m → 117,8 m');
+    expect(stats).toHaveTextContent('corte máx 7,0 m');
+  });
 });
