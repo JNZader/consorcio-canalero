@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { coarseProfile, terrainRgbMeters, tilePixel } from '../../src/components/map2d/coarseDem';
 import {
+  CANAL_SLOPE_SCALE,
+  DEFAULT_SLOPE_SCALE,
+  profileSlopeScale,
   SLOPE_COLOR_STOPS,
   slopeColor,
   slopeLineFeatures,
   slopeSegments,
   slopeSeverityLabel,
+  TRANSICION_SLOPE_SCALE,
 } from '../../src/components/map2d/slopeColor';
 
 describe('slope color (A11Y-07 colorblind-safe Okabe-Ito ramp)', () => {
@@ -30,6 +34,46 @@ describe('slope color (A11Y-07 colorblind-safe Okabe-Ito ramp)', () => {
     expect(pieces[0]?.color).toBe(SLOPE_COLOR_STOPS.LOW);
     expect(pieces[1]?.color).not.toBe(SLOPE_COLOR_STOPS.LOW);
     expect(slopeLineFeatures(samples)).toHaveLength(2);
+  });
+
+  it('adaptively classifies flat canal profiles into the Canal / Llanura regime', () => {
+    // 1 km canal with gentle slope (0.05 m per 100 m = 0.05 %)
+    const canalSamples = [
+      { distance_m: 0, elevation_m: 114.0 },
+      { distance_m: 200, elevation_m: 113.9 },
+      { distance_m: 400, elevation_m: 113.8 },
+      { distance_m: 600, elevation_m: 113.7 },
+      { distance_m: 800, elevation_m: 113.6 },
+      { distance_m: 1000, elevation_m: 113.5 },
+    ];
+    const scale = profileSlopeScale(canalSamples);
+    expect(scale.regime).toBe('canal');
+    expect(scale.regimeLabel).toBe('Canal / Llanura');
+    expect(scale.lowMax).toBe(0.05);
+    expect(scale.mediumMax).toBe(0.2);
+
+    expect(slopeSeverityLabel(0.02, scale)).toBe('Baja');
+    expect(slopeSeverityLabel(0.1, scale)).toBe('Media');
+    expect(slopeSeverityLabel(0.25, scale)).toBe('Alta');
+
+    expect(slopeColor(0.05, scale)).toBe(SLOPE_COLOR_STOPS.MEDIUM);
+    expect(slopeColor(0.25, scale)).toBe(SLOPE_COLOR_STOPS.HIGH);
+  });
+
+  it('adaptively classifies transition profiles and steep terrain profiles', () => {
+    const transitionSamples = [
+      { distance_m: 0, elevation_m: 100 },
+      { distance_m: 100, elevation_m: 101 }, // 1 % slope
+      { distance_m: 200, elevation_m: 102 }, // 1 % slope
+    ];
+    expect(profileSlopeScale(transitionSamples).regime).toBe('transicion');
+
+    const steepSamples = [
+      { distance_m: 0, elevation_m: 100 },
+      { distance_m: 100, elevation_m: 105 }, // 5 % slope
+      { distance_m: 200, elevation_m: 110 },
+    ];
+    expect(profileSlopeScale(steepSamples).regime).toBe('terreno');
   });
 });
 

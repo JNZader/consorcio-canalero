@@ -56,7 +56,11 @@ import {
   profileSliceStats,
   sliceProfile,
 } from './profileRange';
-import { SLOPE_COLOR_STOPS, slopeSeverityLabel } from './slopeColor';
+import {
+  profileSlopeScale,
+  SLOPE_COLOR_STOPS,
+  slopeSeverityLabel,
+} from './slopeColor';
 import { type SurveyProfile, soleraCover } from './soleraProfile';
 import { useLiveRegion } from '../ui/accessibility';
 
@@ -350,6 +354,7 @@ export function ElevationProfileChart({
   const shownIndex = hoverIndex ?? externalIndex;
   const visibleSeries = SERIES.filter((series) => chartRows.some((row) => row[series.key] != null));
   const grade = profileGrade(chartRows);
+  const slopeScale = profileSlopeScale(chartRows);
   const elevations = chartRows
     .map((row) => row.elevation_m)
     .filter((value): value is number => value != null);
@@ -1007,12 +1012,12 @@ export function ElevationProfileChart({
               })}
               {chartRows.length >= 2 ? (
                 <Text size="xs" c="dimmed" data-testid="elevation-profile-slope-legend" style={{ marginLeft: 4 }}>
-                  · Pendiente:{' '}
-                  <span style={{ color: SLOPE_COLOR_STOPS.LOW, fontWeight: 500 }}>Baja (&lt;2%)</span> ·{' '}
-                  <span style={{ color: SLOPE_COLOR_STOPS.MEDIUM, fontWeight: 500 }}>Media (2–5%)</span> ·{' '}
-                  <span style={{ color: SLOPE_COLOR_STOPS.HIGH, fontWeight: 500 }}>Alta (≥5%)</span>
+                  · Pendiente ({slopeScale.regimeLabel}):{' '}
+                  <span style={{ color: SLOPE_COLOR_STOPS.LOW, fontWeight: 500 }}>{slopeScale.lowLabel}</span> ·{' '}
+                  <span style={{ color: SLOPE_COLOR_STOPS.MEDIUM, fontWeight: 500 }}>{slopeScale.mediumLabel}</span> ·{' '}
+                  <span style={{ color: SLOPE_COLOR_STOPS.HIGH, fontWeight: 500 }}>{slopeScale.highLabel}</span>
                   {hoverRow && shownIndex != null
-                    ? ` (${slopeSeverityLabel(localSlopePct(chartRows, shownIndex) ?? 0)})`
+                    ? ` (${slopeSeverityLabel(localSlopePct(chartRows, shownIndex) ?? 0, slopeScale)})`
                     : ''}
                 </Text>
               ) : null}
