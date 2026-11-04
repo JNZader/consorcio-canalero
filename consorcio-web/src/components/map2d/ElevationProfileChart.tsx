@@ -60,6 +60,20 @@ import { SLOPE_COLOR_STOPS, slopeSeverityLabel } from './slopeColor';
 import { type SurveyProfile, soleraCover } from './soleraProfile';
 import { useLiveRegion } from '../ui/accessibility';
 
+function dedupeCrossings(
+  crossings: readonly { distance_m: number; label: string }[]
+): { distance_m: number; label: string }[] {
+  const deduped: { distance_m: number; label: string }[] = [];
+  for (const hit of crossings) {
+    const prev = deduped[deduped.length - 1];
+    if (prev && prev.label === hit.label && Math.abs(prev.distance_m - hit.distance_m) < 5) {
+      continue;
+    }
+    deduped.push(hit);
+  }
+  return deduped;
+}
+
 function downloadProfileCsv(csv: string) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -200,6 +214,7 @@ export function ElevationProfileChart({
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [expandedCrossings, setExpandedCrossings] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [sedimentPct, setSedimentPct] = useState(DEFAULT_SLOPE_THRESHOLDS.sedimentPct);
@@ -351,6 +366,7 @@ export function ElevationProfileChart({
     ...parcelBoundaryMarks(chartRows, parcelFeatures),
     ...culvertMarks(culverts),
   ]);
+  const uniqueCrossings = dedupeCrossings(profileCrossings);
   const spanM =
     chartRows.length >= 2
       ? chartRows[chartRows.length - 1]!.distance_m - chartRows[0]!.distance_m
@@ -523,18 +539,35 @@ export function ElevationProfileChart({
               )}
             </Stack>
           ) : null}
-          {parcelFeatures && culverts && profileCrossings.length === 0 ? (
+          {parcelFeatures && culverts && uniqueCrossings.length === 0 ? (
             <Text size="xs" c="dimmed" data-testid="profile-crossings-empty">
               Sin límites de parcela ni alcantarillas sobre este tramo.
             </Text>
           ) : null}
-          {profileCrossings.length > 0 ? (
-            <Text size="xs" data-testid="profile-crossings">
-              Cruces:{' '}
-              {profileCrossings
-                .map((hit) => `${hit.label} ${formatProfileDistance(hit.distance_m)}`)
-                .join(' · ')}
-            </Text>
+          {uniqueCrossings.length > 0 ? (
+            <Group gap={6} align="center" wrap="wrap">
+              <Text size="xs" data-testid="profile-crossings">
+                Cruces ({uniqueCrossings.length}):{' '}
+                {(expandedCrossings || uniqueCrossings.length <= 3
+                  ? uniqueCrossings
+                  : uniqueCrossings.slice(0, 3)
+                )
+                  .map((hit) => `${hit.label} ${formatProfileDistance(hit.distance_m)}`)
+                  .join(' · ')}
+                {!expandedCrossings && uniqueCrossings.length > 3 ? ' …' : ''}
+              </Text>
+              {uniqueCrossings.length > 3 ? (
+                <Button
+                  variant="subtle"
+                  size="compact-xs"
+                  onClick={() => setExpandedCrossings((prev) => !prev)}
+                  style={{ fontSize: 11, padding: '0 4px', height: 18 }}
+                  data-testid="profile-crossings-toggle"
+                >
+                  {expandedCrossings ? 'Menos' : `+${uniqueCrossings.length - 3} más`}
+                </Button>
+              ) : null}
+            </Group>
           ) : null}
           {selection && range ? (
             <Group gap={6} wrap="nowrap" align="flex-start">
@@ -766,7 +799,7 @@ export function ElevationProfileChart({
                       width={40}
                       fontSize={10}
                     />
-                    {profileCrossings.map((hit) => (
+                    {uniqueCrossings.map((hit) => (
                       <ReferenceLine
                         key={`${hit.label}-${hit.distance_m}`}
                         x={hit.distance_m}
@@ -774,7 +807,7 @@ export function ElevationProfileChart({
                         strokeDasharray="2 2"
                         ifOverflow="hidden"
                         label={
-                          profileCrossings.length <= 8
+                          uniqueCrossings.length <= 8
                             ? { value: hit.label, position: 'insideTop', fontSize: 10 }
                             : undefined
                         }

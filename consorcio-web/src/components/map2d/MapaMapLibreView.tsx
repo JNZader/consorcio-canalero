@@ -631,6 +631,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
             <MeasurementLabels
               map={measurementMap}
               measurements={measurementState.measurements}
+              activeProfileGeometry={dockGeometry}
               onProfileLine={(line) => {
                 if (line) {
                   openProfile(line, 'Perfil de la medición');

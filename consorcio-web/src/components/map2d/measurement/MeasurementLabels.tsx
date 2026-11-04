@@ -29,7 +29,7 @@
  *     elsewhere in the measurement subdirectory.
  */
 
-import type { LineString } from 'geojson';
+import type { LineString, MultiLineString } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
@@ -45,6 +45,8 @@ export interface MeasurementLabelsProps {
   readonly measurements: readonly MeasurementEntry[];
   /** The dock owns the chart. `null` closes it. */
   readonly onProfileLine?: (line: LineString | null) => void;
+  /** Active profile geometry, keeps label in sync when dock closes externally */
+  readonly activeProfileGeometry?: LineString | MultiLineString | null;
 }
 
 /** The line the operator drew. An area, or a line with one vertex, has no profile. */
@@ -104,9 +106,15 @@ function getVisibleMeasurements(
   return visible;
 }
 
-export function MeasurementLabels({ map, measurements, onProfileLine }: MeasurementLabelsProps) {
+export function MeasurementLabels({
+  map,
+  measurements,
+  onProfileLine,
+  activeProfileGeometry,
+}: MeasurementLabelsProps) {
   const [positions, setPositions] = useState<Record<string, PixelPosition>>({});
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(new Set());
   const openEntry = measurements.find((entry) => entry.id === profileId) ?? null;
   const openLine = openEntry ? distanceLine(openEntry) : null;
 
@@ -116,6 +124,13 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
       onProfileLine?.(null);
     }
   }, [onProfileLine, openLine, profileId]);
+
+  // If dock was closed externally (dockGeometry became null), reset local profileId
+  useEffect(() => {
+    if (activeProfileGeometry === null && profileId !== null) {
+      setProfileId(null);
+    }
+  }, [activeProfileGeometry, profileId]);
 
   function closeProfile() {
     setProfileId(null);
@@ -139,7 +154,15 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
     const update = () => {
       const next: Record<string, PixelPosition> = {};
       for (const m of measurements) {
-        const pt = map.project(m.labelPosition);
+        // For a distance LineString, anchor at the final endpoint of the tramo
+        // so the badge never obstructs the canal path and terrain features.
+        const anchor =
+          m.kind === 'distance' &&
+          m.geometry?.type === 'LineString' &&
+          m.geometry.coordinates.length > 0
+            ? (m.geometry.coordinates[m.geometry.coordinates.length - 1] as [number, number])
+            : m.labelPosition;
+        const pt = map.project(anchor);
         next[m.id] = { x: pt.x, y: pt.y };
       }
       setPositions(next);
@@ -159,7 +182,9 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
   if (!map) return null;
 
   const zoom = map.getZoom();
-  const visible = getVisibleMeasurements(measurements, positions, zoom);
+  const visible = getVisibleMeasurements(measurements, positions, zoom).filter(
+    (m) => !dismissedIds.has(m.id)
+  );
 
   return (
     <div
@@ -175,6 +200,8 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
         if (!pos) return null;
         const text = m.kind === 'distance' ? formatDistance(m.value) : formatArea(m.value);
         const line = distanceLine(m);
+        const isProfileActive = profileId === m.id || (activeProfileGeometry != null && line != null);
+
         return (
           <div
             key={m.id}
@@ -183,42 +210,77 @@ export function MeasurementLabels({ map, measurements, onProfileLine }: Measurem
               position: 'absolute',
               left: pos.x,
               top: pos.y,
-              transform: 'translate(-50%, calc(-100% - 8px))',
+              transform: 'translate(-50%, calc(-100% - 10px))',
               willChange: 'left, top',
-              background: 'white',
-              border: '1px solid #fd7e14',
-              borderRadius: 4,
-              padding: '2px 6px',
-              fontSize: 12,
+              background: 'rgba(255, 255, 255, 0.96)',
+              backdropFilter: 'blur(4px)',
+              border: '1.5px solid #fd7e14',
+              borderRadius: 6,
+              padding: '3px 8px',
+              fontSize: 11,
               fontWeight: 600,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
               whiteSpace: 'nowrap',
               color: mapColorTokens.h333,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              pointerEvents: 'auto',
             }}
           >
-            {text}
+            <span>{text}</span>
             {line ? (
               <button
                 type="button"
-                aria-pressed={profileId === m.id}
+                aria-label="Perfil de elevación"
+                aria-pressed={isProfileActive}
                 onClick={() => toggleProfile(m.id)}
+                title={isProfileActive ? 'Cerrar perfil de elevación' : 'Abrir perfil de elevación'}
                 style={{
                   pointerEvents: 'auto',
-                  display: 'block',
-                  marginTop: 2,
-                  padding: 0,
-                  border: 0,
-                  background: 'transparent',
-                  color: '#1c7ed6',
-                  fontSize: 11,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '1px 6px',
+                  border: isProfileActive ? '1px solid #74c0fc' : '1px solid #ced4da',
+                  borderRadius: 4,
+                  background: isProfileActive ? '#e7f5ff' : '#f8f9fa',
+                  color: isProfileActive ? '#1971c2' : '#495057',
+                  fontSize: 10,
                   fontWeight: 600,
                   cursor: 'pointer',
-                  textDecoration: 'underline',
+                  lineHeight: '14px',
                 }}
               >
-                Perfil de elevación
+                {isProfileActive ? 'Perfil abierto' : 'Perfil'}
               </button>
             ) : null}
+            <button
+              type="button"
+              aria-label={`Ocultar cartelito ${m.id}`}
+              title="Ocultar cartelito"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDismissedIds((prev) => new Set([...prev, m.id]));
+              }}
+              style={{
+                pointerEvents: 'auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 15,
+                height: 15,
+                padding: 0,
+                border: 0,
+                borderRadius: '50%',
+                background: 'transparent',
+                color: '#868e96',
+                fontSize: 11,
+                lineHeight: 1,
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
           </div>
         );
       })}

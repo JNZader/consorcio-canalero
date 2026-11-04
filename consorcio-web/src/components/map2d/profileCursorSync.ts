@@ -78,9 +78,9 @@ export function indexFromPlotX(
   return nearestIndexByDistance(samples, distance);
 }
 
-export const PROFILE_DOCK_DEFAULT_PX = 260;
+export const PROFILE_DOCK_DEFAULT_PX = 280;
 export const PROFILE_DOCK_MIN_PX = 220;
-export const PROFILE_DOCK_MAX_PX = 360;
+export const PROFILE_DOCK_MAX_PX = 420;
 
 export function clampDockHeight(height: number): number {
   return Math.min(PROFILE_DOCK_MAX_PX, Math.max(PROFILE_DOCK_MIN_PX, Math.round(height)));

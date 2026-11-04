@@ -34,28 +34,38 @@ describe('computeLineLabelAnchor', () => {
     expect(computeLineLabelAnchor(line)).toEqual([-62.68, -32.63]);
   });
 
-  it('returns geographic midpoint for two coordinates', () => {
-    // Simple east-west line at constant latitude for predictable midpoint
+  it('returns endpoint by default so label does not obstruct tramo', () => {
     const line = makeLineString([
       [-62.7, -32.6],
       [-62.5, -32.6],
     ]);
     const [lng, lat] = computeLineLabelAnchor(line);
+    expect(lng).toBe(-62.5);
+    expect(lat).toBe(-32.6);
+  });
+
+  it('returns geographic midpoint for two coordinates when requested', () => {
+    // Simple east-west line at constant latitude for predictable midpoint
+    const line = makeLineString([
+      [-62.7, -32.6],
+      [-62.5, -32.6],
+    ]);
+    const [lng, lat] = computeLineLabelAnchor(line, 'midpoint');
     expect(lng).toBeCloseTo(-62.6, 4);
     expect(lat).toBeCloseTo(-32.6, 4);
   });
 
-  it('returns geographic midpoint for two coordinates (north-south)', () => {
+  it('returns geographic midpoint for two coordinates (north-south) when requested', () => {
     const line = makeLineString([
       [-62.6, -32.8],
       [-62.6, -32.4],
     ]);
-    const [lng, lat] = computeLineLabelAnchor(line);
+    const [lng, lat] = computeLineLabelAnchor(line, 'midpoint');
     expect(lng).toBeCloseTo(-62.6, 4);
     expect(lat).toBeCloseTo(-32.6, 4);
   });
 
-  it('places midpoint on the polyline for zig-zag with 3+ vertices', () => {
+  it('places midpoint on the polyline for zig-zag with 3+ vertices when requested', () => {
     // A "V" shape: start at A, go deep to B, come back near start at C.
     // Geographic midpoint(A, C) is close to A/C, but the true distance
     // midpoint should be at B (the tip of the V), because B is roughly
@@ -65,7 +75,7 @@ describe('computeLineLabelAnchor', () => {
     const c: [number, number] = [-62.7, -32.5]; // back near A vertically
 
     const line = makeLineString([a, b, c]);
-    const [lng, lat] = computeLineLabelAnchor(line);
+    const [lng, lat] = computeLineLabelAnchor(line, 'midpoint');
 
     // The old midpoint(a, c) would be ~[-62.7, -32.55].
     // The true distance midpoint should be much closer to b.
@@ -76,7 +86,7 @@ describe('computeLineLabelAnchor', () => {
     expect(distToB).toBeLessThan(distToOldMid);
   });
 
-  it('interpolates along the correct segment for a 4-vertex polyline', () => {
+  it('interpolates along the correct segment for a 4-vertex polyline when requested', () => {
     // Segment 1: 100 m (approx at this latitude for small offsets)
     // Segment 2: 100 m
     // Segment 3: 100 m
@@ -91,7 +101,7 @@ describe('computeLineLabelAnchor', () => {
     const p3: [number, number] = [p2[0] + dLngPer100m, p2[1]];
 
     const line = makeLineString([p0, p1, p2, p3]);
-    const [lng] = computeLineLabelAnchor(line);
+    const [lng] = computeLineLabelAnchor(line, 'midpoint');
 
     // Should be somewhere inside segment 2 (between p1 and p2)
     expect(lng).toBeGreaterThan(p1[0]);
