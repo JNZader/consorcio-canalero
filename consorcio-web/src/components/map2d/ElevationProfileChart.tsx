@@ -447,130 +447,339 @@ export function ElevationProfileChart({
       ) : null}
       {(status === 'ready' && profile) || chartRows.length >= 2 ? (
         <>
-          <Checkbox
-            size="xs"
-            label="Comparar DEMs (GEE)"
-            checked={compareDems}
-            onChange={(event) => setCompareDems(event.currentTarget.checked)}
-            data-testid="elevation-profile-compare-dems"
-          />
-          {graphHeader ? (
-            <Text id="elevation-profile-extrema-desc" size="xs" data-testid="elevation-profile-extrema">
-              {graphHeader}
-            </Text>
-          ) : (
-            <Text size="xs" c="dimmed">
-              Sin muestras válidas sobre el DEM.
-            </Text>
-          )}
-          <Text id="elevation-profile-tramo-desc" size="xs" data-testid="elevation-profile-tramo-stats">
-            {tramoHeader}
-          </Text>
-          {flowDirection && cover.ok ? (
-            <Text size="xs" data-testid="solera-cover">
-              Tapada media{' '}
-              {formatEs(
-                cover.rows.reduce((sum, row) => sum + row.cover_m, 0) / cover.rows.length,
-                1
-              )}{' '}
-              m
-            </Text>
-          ) : null}
-          {flowDirection && pairedSurvey && pairedSurvey.samples.length > 0 ? (
-            <Checkbox
-              size="xs"
-              label={`Comparar relevamiento (${pairedSurvey.label})`}
-              checked={compareSurvey}
-              onChange={(event) => setCompareSurvey(event.currentTarget.checked)}
-              data-testid="survey-compare-toggle"
-            />
-          ) : null}
-          {flowDirection ? (
-            <Stack gap={4} data-testid="canal-slope-notes">
-              <Group gap="xs">
-                <Text size="xs" c="dimmed">
-                  Sedimento si |pend.| &lt;
-                </Text>
-                <Text
-                  size="xs"
-                  component="input"
-                  type="number"
-                  step={0.05}
-                  min={0}
-                  aria-label="Umbral de sedimento"
-                  value={sedimentPct}
-                  onChange={(event) => setSedimentPct(Number(event.currentTarget.value))}
-                  style={{ width: 64 }}
-                />
-                <Text size="xs" c="dimmed">
-                  % · contra el drenaje si sube más de
-                </Text>
-                <Text
-                  size="xs"
-                  component="input"
-                  type="number"
-                  step={0.05}
-                  min={0}
-                  aria-label="Umbral contra el drenaje"
-                  value={adversePct}
-                  onChange={(event) => setAdversePct(Number(event.currentTarget.value))}
-                  style={{ width: 64 }}
-                />
-                <Text size="xs" c="dimmed">
-                  %
-                </Text>
-              </Group>
-              {slopeNotes.length === 0 ? (
-                <Text size="xs">
-                  Sin tramos contra el drenaje ni de sedimento con estos umbrales.
-                </Text>
-              ) : (
-                slopeNotes.map((note) => (
-                  <Text
-                    key={`${note.kind}-${note.from_m}`}
-                    size="xs"
-                    c={note.kind === 'adverse' ? 'red' : 'orange'}
-                  >
-                    {note.kind === 'adverse' ? '▲ Contra el drenaje' : '— Riesgo de sedimento'}{' '}
-                    {formatProfileDistance(note.from_m)}–{formatProfileDistance(note.to_m)} ·{' '}
-                    {formatSlopePct(note.slope_pct)}
-                  </Text>
-                ))
-              )}
-            </Stack>
-          ) : null}
-          {parcelFeatures && culverts && uniqueCrossings.length === 0 ? (
-            <Text size="xs" c="dimmed" data-testid="profile-crossings-empty">
-              Sin límites de parcela ni alcantarillas sobre este tramo.
-            </Text>
-          ) : null}
-          {uniqueCrossings.length > 0 ? (
-            <Group gap={6} align="center" wrap="wrap">
-              <Text size="xs" data-testid="profile-crossings">
-                Cruces ({uniqueCrossings.length}):{' '}
-                {(expandedCrossings || uniqueCrossings.length <= 3
-                  ? uniqueCrossings
-                  : uniqueCrossings.slice(0, 3)
-                )
-                  .map((hit) => `${hit.label} ${formatProfileDistance(hit.distance_m)}`)
-                  .join(' · ')}
-                {!expandedCrossings && uniqueCrossings.length > 3 ? ' …' : ''}
-              </Text>
-              {uniqueCrossings.length > 3 ? (
-                <Button
-                  variant="subtle"
-                  size="compact-xs"
-                  onClick={() => setExpandedCrossings((prev) => !prev)}
-                  style={{ fontSize: 11, padding: '0 4px', height: 18 }}
-                  data-testid="profile-crossings-toggle"
+          {chartRows.some((row) => row.elevation_m != null) ? (
+            <div
+              data-testid="elevation-profile-chart"
+              data-axis={usesKilometreAxis(spanM) ? 'km' : 'm'}
+              role="slider"
+              tabIndex={0}
+              aria-label={profileSummaryLabel}
+              aria-describedby={
+                graphHeader
+                  ? 'elevation-profile-extrema-desc elevation-profile-tramo-desc'
+                  : 'elevation-profile-tramo-desc'
+              }
+              aria-valuemin={0}
+              aria-valuemax={Math.max(0, chartRows.length - 1)}
+              aria-valuenow={shownIndex ?? 0}
+              aria-valuetext={cursorLabel ?? 'Sin cursor'}
+              onKeyDown={(event) => {
+                if (chartRows.length === 0) {
+                  return;
+                }
+                const current = Math.min(Math.max(0, shownIndex ?? 0), chartRows.length - 1);
+                let next = current;
+                if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+                  next = Math.min(chartRows.length - 1, current + 1);
+                } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                  next = Math.max(0, current - 1);
+                } else if (event.key === 'PageUp') {
+                  next = Math.min(chartRows.length - 1, current + 10);
+                } else if (event.key === 'PageDown') {
+                  next = Math.max(0, current - 10);
+                } else if (event.key === 'Home') {
+                  next = 0;
+                } else if (event.key === 'End') {
+                  next = chartRows.length - 1;
+                } else if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  const picked = lngLatAtIndex(chartRows, current);
+                  if (picked) {
+                    onPickLngLat?.(picked);
+                  }
+                  return;
+                } else {
+                  return;
+                }
+                event.preventDefault();
+                setHoverIndex(next);
+                onHoverLngLat?.(lngLatAtIndex(chartRows, next));
+                const nextRow = chartRows[next];
+                if (nextRow) {
+                  announce(
+                    formatCursorReadout(
+                      nextRow.distance_m,
+                      nextRow.elevation_m,
+                      localSlopePct(chartRows, next)
+                    ),
+                    'polite'
+                  );
+                }
+              }}
+              onPointerDown={(event) => {
+                if (event.pointerType === 'mouse') {
+                  return;
+                }
+                event.currentTarget.setPointerCapture(event.pointerId);
+                const rect = event.currentTarget.getBoundingClientRect();
+                const index = indexFromPlotX(
+                  event.clientX,
+                  rect.left + 40,
+                  rect.width - 48,
+                  chartRows
+                );
+                dragStart.current = index == null ? null : (chartRows[index]?.distance_m ?? null);
+                dragged.current = false;
+                if (index != null) {
+                  setHoverIndex(index);
+                  onHoverLngLat?.(lngLatAtIndex(chartRows, index));
+                }
+              }}
+              onPointerMove={(event) => {
+                if (event.pointerType === 'mouse' || dragStart.current == null) {
+                  return;
+                }
+                const rect = event.currentTarget.getBoundingClientRect();
+                const index = indexFromPlotX(
+                  event.clientX,
+                  rect.left + 40,
+                  rect.width - 48,
+                  chartRows
+                );
+                const distance = index == null ? null : (chartRows[index]?.distance_m ?? null);
+                if (index != null) {
+                  setHoverIndex(index);
+                  onHoverLngLat?.(lngLatAtIndex(chartRows, index));
+                }
+                if (distance != null && distance !== dragStart.current) {
+                  dragged.current = true;
+                  setRange({ a: dragStart.current, b: distance });
+                }
+              }}
+              onPointerUp={(event) => {
+                if (event.pointerType === 'mouse') {
+                  return;
+                }
+                const rect = event.currentTarget.getBoundingClientRect();
+                const index = indexFromPlotX(
+                  event.clientX,
+                  rect.left + 40,
+                  rect.width - 48,
+                  chartRows
+                );
+                const distance = index == null ? null : (chartRows[index]?.distance_m ?? null);
+                if (dragged.current && dragStart.current != null && distance != null) {
+                  const next = { a: dragStart.current, b: distance };
+                  setRange(next);
+                  onRangeCoordinates?.(
+                    profileSliceStats(sliceProfile(chartRows, next.a, next.b))
+                  );
+                }
+                dragStart.current = null;
+                dragged.current = false;
+              }}
+              style={{
+                position: 'relative',
+                width: '100%',
+                minWidth: 0,
+                height: 168,
+                touchAction: 'none',
+              }}
+            >
+              {cursorLabel && cursorFrac != null ? (
+                <div
+                  data-testid="elevation-profile-cursor"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: `calc(40px + (100% - 48px) * ${cursorFrac})`,
+                    transform:
+                      cursorFrac < 0.12
+                        ? 'translateX(0)'
+                        : cursorFrac > 0.88
+                          ? 'translateX(-100%)'
+                          : 'translateX(-50%)',
+                    fontSize: 11,
+                    lineHeight: '14px',
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                    color: 'var(--mantine-color-text)',
+                  }}
                 >
-                  {expandedCrossings ? 'Menos' : `+${uniqueCrossings.length - 3} más`}
-                </Button>
+                  {cursorLabel}
+                </div>
               ) : null}
-            </Group>
+              <ResponsiveContainer width="100%" height={168}>
+                <LineChart
+                  data={chartRows}
+                  margin={{ top: 16, right: 8, left: 0, bottom: 0 }}
+                  onMouseDown={(event) => {
+                    const distance = distanceAtIndex(chartRows, event.activeIndex);
+                    dragStart.current = distance;
+                    dragged.current = false;
+                  }}
+                  onMouseMove={(event) => {
+                    const index = sampleIndex(event.activeIndex);
+                    setHoverIndex(index);
+                    onHoverLngLat?.(lngLatAtIndex(chartRows, event.activeIndex));
+                    const distance = distanceAtIndex(chartRows, event.activeIndex);
+                    if (dragStart.current == null || distance == null) {
+                      return;
+                    }
+                    if (distance !== dragStart.current) {
+                      dragged.current = true;
+                      setRange({ a: dragStart.current, b: distance });
+                    }
+                  }}
+                  onMouseUp={(event) => {
+                    const distance = distanceAtIndex(chartRows, event.activeIndex);
+                    if (dragged.current && dragStart.current != null && distance != null) {
+                      const next = { a: dragStart.current, b: distance };
+                      setRange(next);
+                      const stats = profileSliceStats(sliceProfile(chartRows, next.a, next.b));
+                      onRangeCoordinates?.(stats);
+                    } else {
+                      const point = lngLatAtIndex(chartRows, event.activeIndex);
+                      if (point) {
+                        onPickLngLat?.(point);
+                      }
+                    }
+                    dragStart.current = null;
+                    dragged.current = false;
+                  }}
+                  onMouseLeave={() => {
+                    setHoverIndex(null);
+                    onHoverLngLat?.(null);
+                    dragStart.current = null;
+                    dragged.current = false;
+                  }}
+                >
+                  <XAxis
+                    dataKey="distance_m"
+                    tickFormatter={(value) => formatAxisDistance(Number(value), spanM)}
+                    fontSize={10}
+                    minTickGap={28}
+                  />
+                  <YAxis
+                    domain={yDomain}
+                    tickFormatter={(value) => formatEs(Number(value), 0)}
+                    width={40}
+                    fontSize={10}
+                  />
+                  {uniqueCrossings.map((hit) => (
+                    <ReferenceLine
+                      key={`${hit.label}-${hit.distance_m}`}
+                      x={hit.distance_m}
+                      stroke={mapColorTokens.h868e96}
+                      strokeDasharray="2 2"
+                      ifOverflow="hidden"
+                      label={
+                        uniqueCrossings.length <= 8
+                          ? { value: hit.label, position: 'insideTop', fontSize: 10 }
+                          : undefined
+                      }
+                    />
+                  ))}
+                  {hoverRow ? (
+                    <ReferenceLine
+                      x={hoverRow.distance_m}
+                      stroke={mapColorTokens.h868e96}
+                      strokeDasharray="3 3"
+                      ifOverflow="hidden"
+                    />
+                  ) : null}
+                  {range ? (
+                    <ReferenceArea
+                      x1={Math.min(range.a, range.b)}
+                      x2={Math.max(range.a, range.b)}
+                      fill={mapColorTokens.hf97316}
+                      fillOpacity={0.18}
+                      ifOverflow="visible"
+                    />
+                  ) : null}
+                  {extrema?.min_point ? (
+                    <ReferenceDot
+                      x={extrema.min_point.distance_m}
+                      y={extrema.min_point.elevation_m}
+                      r={6}
+                      fill={mapColorTokens.h2563eb}
+                      stroke={mapColorTokens.hffffff}
+                      shape={triangleMarker('down')}
+                    />
+                  ) : null}
+                  {extrema?.max_point ? (
+                    <ReferenceDot
+                      x={extrema.max_point.distance_m}
+                      y={extrema.max_point.elevation_m}
+                      r={6}
+                      fill={mapColorTokens.hdc2626}
+                      stroke={mapColorTokens.hffffff}
+                      shape={triangleMarker('up')}
+                    />
+                  ) : null}
+                  {cover.ok ? (
+                    <Area
+                      data={cover.rows}
+                      dataKey="cover_m"
+                      stroke="none"
+                      fill="#94a3b8"
+                      fillOpacity={0.35}
+                      isAnimationActive={false}
+                      legendType="none"
+                    />
+                  ) : null}
+                  {cover.ok ? (
+                    <Line
+                      data={cover.rows}
+                      type="linear"
+                      dataKey="solera"
+                      name="Solera"
+                      stroke="#0f766e"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  ) : null}
+                  <Line
+                    type="linear"
+                    dataKey="elevation_m"
+                    name="GLO-30"
+                    stroke="var(--mantine-color-blue-6)"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                  {visibleSeries.some((series) => series.key === 'elevation_mde_ar') ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_mde_ar"
+                      name="MDE-Ar"
+                      stroke="var(--mantine-color-orange-6)"
+                      dot={false}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />
+                  ) : null}
+                  {visibleSeries.some((series) => series.key === 'elevation_aw3d30') ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_aw3d30"
+                      name="AW3D30"
+                      stroke="var(--mantine-color-teal-6)"
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  ) : null}
+                  {visibleSeries.some((series) => series.key === 'elevation_nasadem') ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_nasadem"
+                      name="NASADEM"
+                      stroke="var(--mantine-color-violet-6)"
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  ) : null}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           ) : null}
+
           {selection && range ? (
-            <Group gap={6} wrap="nowrap" align="flex-start">
+            <Group gap={6} wrap="nowrap" align="center" px="xs" py={4} style={{ background: 'var(--mantine-color-orange-light)', borderRadius: 4 }}>
               <Text size="xs" data-testid="elevation-profile-selection" style={{ flex: 1 }}>
                 {`Selección (${formatProfileDistance(Math.min(range.a, range.b))}–${formatProfileDistance(Math.max(range.a, range.b))}) ${formatProfileDistance(selection.length_m)} · ${formatRelief(selection.ascent_m, selection.descent_m)}`}
                 {selection.delta_m != null ? ` · Δ ${formatSignedDeltaM(selection.delta_m)}` : ''}
@@ -581,6 +790,7 @@ export function ElevationProfileChart({
               <Button
                 size="compact-xs"
                 variant="subtle"
+                color="orange"
                 onClick={clearRange}
                 data-testid="elevation-profile-clear"
               >
@@ -588,418 +798,251 @@ export function ElevationProfileChart({
               </Button>
             </Group>
           ) : null}
-          {chartRows.some((row) => row.elevation_m != null) ? (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
-              <div
-                data-testid="elevation-profile-chart"
-                data-axis={usesKilometreAxis(spanM) ? 'km' : 'm'}
-                role="slider"
-                tabIndex={0}
-                aria-label={profileSummaryLabel}
-                aria-describedby={
-                  graphHeader
-                    ? 'elevation-profile-extrema-desc elevation-profile-tramo-desc'
-                    : 'elevation-profile-tramo-desc'
-                }
-                aria-valuemin={0}
-                aria-valuemax={Math.max(0, chartRows.length - 1)}
-                aria-valuenow={shownIndex ?? 0}
-                aria-valuetext={cursorLabel ?? 'Sin cursor'}
-                onKeyDown={(event) => {
-                  if (chartRows.length === 0) {
-                    return;
-                  }
-                  const current = Math.min(Math.max(0, shownIndex ?? 0), chartRows.length - 1);
-                  let next = current;
-                  if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-                    next = Math.min(chartRows.length - 1, current + 1);
-                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-                    next = Math.max(0, current - 1);
-                  } else if (event.key === 'PageUp') {
-                    next = Math.min(chartRows.length - 1, current + 10);
-                  } else if (event.key === 'PageDown') {
-                    next = Math.max(0, current - 10);
-                  } else if (event.key === 'Home') {
-                    next = 0;
-                  } else if (event.key === 'End') {
-                    next = chartRows.length - 1;
-                  } else if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    const picked = lngLatAtIndex(chartRows, current);
-                    if (picked) {
-                      onPickLngLat?.(picked);
-                    }
-                    return;
-                  } else {
-                    return;
-                  }
-                  event.preventDefault();
-                  setHoverIndex(next);
-                  onHoverLngLat?.(lngLatAtIndex(chartRows, next));
-                  const nextRow = chartRows[next];
-                  if (nextRow) {
-                    announce(
-                      formatCursorReadout(
-                        nextRow.distance_m,
-                        nextRow.elevation_m,
-                        localSlopePct(chartRows, next)
-                      ),
-                      'polite'
-                    );
-                  }
-                }}
-                onPointerDown={(event) => {
-                  if (event.pointerType === 'mouse') {
-                    return;
-                  }
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const index = indexFromPlotX(
-                    event.clientX,
-                    rect.left + 40,
-                    rect.width - 48,
-                    chartRows
-                  );
-                  dragStart.current = index == null ? null : (chartRows[index]?.distance_m ?? null);
-                  dragged.current = false;
-                  if (index != null) {
-                    setHoverIndex(index);
-                    onHoverLngLat?.(lngLatAtIndex(chartRows, index));
-                  }
-                }}
-                onPointerMove={(event) => {
-                  if (event.pointerType === 'mouse' || dragStart.current == null) {
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const index = indexFromPlotX(
-                    event.clientX,
-                    rect.left + 40,
-                    rect.width - 48,
-                    chartRows
-                  );
-                  const distance = index == null ? null : (chartRows[index]?.distance_m ?? null);
-                  if (index != null) {
-                    setHoverIndex(index);
-                    onHoverLngLat?.(lngLatAtIndex(chartRows, index));
-                  }
-                  if (distance != null && distance !== dragStart.current) {
-                    dragged.current = true;
-                    setRange({ a: dragStart.current, b: distance });
-                  }
-                }}
-                onPointerUp={(event) => {
-                  if (event.pointerType === 'mouse') {
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const index = indexFromPlotX(
-                    event.clientX,
-                    rect.left + 40,
-                    rect.width - 48,
-                    chartRows
-                  );
-                  const distance = index == null ? null : (chartRows[index]?.distance_m ?? null);
-                  if (dragged.current && dragStart.current != null && distance != null) {
-                    const next = { a: dragStart.current, b: distance };
-                    setRange(next);
-                    onRangeCoordinates?.(
-                      profileSliceStats(sliceProfile(chartRows, next.a, next.b))
-                    );
-                  }
-                  dragStart.current = null;
-                  dragged.current = false;
-                }}
-                style={{
-                  position: 'relative',
-                  flex: '1 1 180px',
-                  minWidth: 0,
-                  height: 168,
-                  touchAction: 'none',
-                }}
-              >
-                {cursorLabel && cursorFrac != null ? (
-                  <div
-                    data-testid="elevation-profile-cursor"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: `calc(40px + (100% - 48px) * ${cursorFrac})`,
-                      transform:
-                        cursorFrac < 0.12
-                          ? 'translateX(0)'
-                          : cursorFrac > 0.88
-                            ? 'translateX(-100%)'
-                            : 'translateX(-50%)',
-                      fontSize: 11,
-                      lineHeight: '14px',
-                      whiteSpace: 'nowrap',
-                      pointerEvents: 'none',
-                      zIndex: 1,
-                      color: 'var(--mantine-color-text)',
-                    }}
-                  >
-                    {cursorLabel}
-                  </div>
-                ) : null}
-                <ResponsiveContainer width="100%" height={168}>
-                  <LineChart
-                    data={chartRows}
-                    margin={{ top: 16, right: 8, left: 0, bottom: 0 }}
-                    onMouseDown={(event) => {
-                      const distance = distanceAtIndex(chartRows, event.activeIndex);
-                      dragStart.current = distance;
-                      dragged.current = false;
-                    }}
-                    onMouseMove={(event) => {
-                      const index = sampleIndex(event.activeIndex);
-                      setHoverIndex(index);
-                      onHoverLngLat?.(lngLatAtIndex(chartRows, event.activeIndex));
-                      const distance = distanceAtIndex(chartRows, event.activeIndex);
-                      if (dragStart.current == null || distance == null) {
-                        return;
-                      }
-                      if (distance !== dragStart.current) {
-                        dragged.current = true;
-                        setRange({ a: dragStart.current, b: distance });
-                      }
-                    }}
-                    onMouseUp={(event) => {
-                      const distance = distanceAtIndex(chartRows, event.activeIndex);
-                      if (dragged.current && dragStart.current != null && distance != null) {
-                        const next = { a: dragStart.current, b: distance };
-                        setRange(next);
-                        const stats = profileSliceStats(sliceProfile(chartRows, next.a, next.b));
-                        onRangeCoordinates?.(stats);
-                      } else {
-                        const point = lngLatAtIndex(chartRows, event.activeIndex);
-                        if (point) {
-                          onPickLngLat?.(point);
-                        }
-                      }
-                      dragStart.current = null;
-                      dragged.current = false;
-                    }}
-                    onMouseLeave={() => {
-                      setHoverIndex(null);
-                      onHoverLngLat?.(null);
-                      dragStart.current = null;
-                      dragged.current = false;
-                    }}
-                  >
-                    <XAxis
-                      dataKey="distance_m"
-                      tickFormatter={(value) => formatAxisDistance(Number(value), spanM)}
-                      fontSize={10}
-                      minTickGap={28}
-                    />
-                    <YAxis
-                      domain={yDomain}
-                      tickFormatter={(value) => formatEs(Number(value), 0)}
-                      width={40}
-                      fontSize={10}
-                    />
-                    {uniqueCrossings.map((hit) => (
-                      <ReferenceLine
-                        key={`${hit.label}-${hit.distance_m}`}
-                        x={hit.distance_m}
-                        stroke={mapColorTokens.h868e96}
-                        strokeDasharray="2 2"
-                        ifOverflow="hidden"
-                        label={
-                          uniqueCrossings.length <= 8
-                            ? { value: hit.label, position: 'insideTop', fontSize: 10 }
-                            : undefined
-                        }
-                      />
-                    ))}
-                    {hoverRow ? (
-                      <ReferenceLine
-                        x={hoverRow.distance_m}
-                        stroke={mapColorTokens.h868e96}
-                        strokeDasharray="3 3"
-                        ifOverflow="hidden"
-                      />
-                    ) : null}
-                    {range ? (
-                      <ReferenceArea
-                        x1={Math.min(range.a, range.b)}
-                        x2={Math.max(range.a, range.b)}
-                        fill={mapColorTokens.hf97316}
-                        fillOpacity={0.18}
-                        ifOverflow="visible"
-                      />
-                    ) : null}
-                    {extrema?.min_point ? (
-                      <ReferenceDot
-                        x={extrema.min_point.distance_m}
-                        y={extrema.min_point.elevation_m}
-                        r={6}
-                        fill={mapColorTokens.h2563eb}
-                        stroke={mapColorTokens.hffffff}
-                        shape={triangleMarker('down')}
-                      />
-                    ) : null}
-                    {extrema?.max_point ? (
-                      <ReferenceDot
-                        x={extrema.max_point.distance_m}
-                        y={extrema.max_point.elevation_m}
-                        r={6}
-                        fill={mapColorTokens.hdc2626}
-                        stroke={mapColorTokens.hffffff}
-                        shape={triangleMarker('up')}
-                      />
-                    ) : null}
-                    {cover.ok ? (
-                      <Area
-                        data={cover.rows}
-                        dataKey="cover_m"
-                        stroke="none"
-                        fill="#94a3b8"
-                        fillOpacity={0.35}
-                        isAnimationActive={false}
-                        legendType="none"
-                      />
-                    ) : null}
-                    {cover.ok ? (
-                      <Line
-                        data={cover.rows}
-                        type="linear"
-                        dataKey="solera"
-                        name="Solera"
-                        stroke="#0f766e"
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    ) : null}
-                    <Line
-                      type="linear"
-                      dataKey="elevation_m"
-                      name="GLO-30"
-                      stroke="var(--mantine-color-blue-6)"
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                    {visibleSeries.some((series) => series.key === 'elevation_mde_ar') ? (
-                      <Line
-                        type="linear"
-                        dataKey="elevation_mde_ar"
-                        name="MDE-Ar"
-                        stroke="var(--mantine-color-orange-6)"
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                    ) : null}
-                    {visibleSeries.some((series) => series.key === 'elevation_aw3d30') ? (
-                      <Line
-                        type="linear"
-                        dataKey="elevation_aw3d30"
-                        name="AW3D30"
-                        stroke="var(--mantine-color-teal-6)"
-                        dot={false}
-                        connectNulls
-                        isAnimationActive={false}
-                      />
-                    ) : null}
-                    {visibleSeries.some((series) => series.key === 'elevation_nasadem') ? (
-                      <Line
-                        type="linear"
-                        dataKey="elevation_nasadem"
-                        name="NASADEM"
-                        stroke="var(--mantine-color-violet-6)"
-                        dot={false}
-                        connectNulls
-                        isAnimationActive={false}
-                      />
-                    ) : null}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              {visibleSeries.length > 0 ? (
-                <Stack gap={2} data-testid="elevation-profile-legend" style={{ flex: '0 0 auto' }}>
-                  <Text size="xs" fw={600}>
-                    DEMs
+
+          <Stack gap={3}>
+            {graphHeader ? (
+              <Text id="elevation-profile-extrema-desc" size="xs" data-testid="elevation-profile-extrema">
+                {graphHeader}
+              </Text>
+            ) : (
+              <Text size="xs" c="dimmed">
+                Sin muestras válidas sobre el DEM.
+              </Text>
+            )}
+            <Text id="elevation-profile-tramo-desc" size="xs" data-testid="elevation-profile-tramo-stats">
+              {tramoHeader}
+            </Text>
+            {flowDirection && cover.ok ? (
+              <Text size="xs" data-testid="solera-cover">
+                Tapada media{' '}
+                {formatEs(
+                  cover.rows.reduce((sum, row) => sum + row.cover_m, 0) / cover.rows.length,
+                  1
+                )}{' '}
+                m
+              </Text>
+            ) : null}
+            {flowDirection ? (
+              <Stack gap={4} data-testid="canal-slope-notes">
+                <Group gap="xs">
+                  <Text size="xs" c="dimmed">
+                    Sedimento si |pend.| &lt;
                   </Text>
-                  {visibleSeries.map((series) => {
-                    const value = seriesValue(hoverRow, series.key);
-                    return (
-                      <Text key={series.key} size="xs" style={{ color: series.color }}>
-                        {series.name}
-                        {value != null
-                          ? ` ${formatElevationM(value)}`
-                          : hoverRow
-                            ? ' sin dato'
-                            : ''}
-                      </Text>
-                    );
-                  })}
-                  {chartRows.length >= 2 ? (
-                    <Text size="xs" c="dimmed" data-testid="elevation-profile-slope-legend">
-                      Pendiente:{' '}
-                      <span style={{ color: SLOPE_COLOR_STOPS.LOW }}>Baja (&lt;2%)</span> ·{' '}
-                      <span style={{ color: SLOPE_COLOR_STOPS.MEDIUM }}>Media (2–5%)</span> ·{' '}
-                      <span style={{ color: SLOPE_COLOR_STOPS.HIGH }}>Alta (≥5%)</span>
-                      {hoverRow && shownIndex != null
-                        ? ` (${slopeSeverityLabel(localSlopePct(chartRows, shownIndex) ?? 0)})`
-                        : ''}
+                  <Text
+                    size="xs"
+                    component="input"
+                    type="number"
+                    step={0.05}
+                    min={0}
+                    aria-label="Umbral de sedimento"
+                    value={sedimentPct}
+                    onChange={(event) => setSedimentPct(Number(event.currentTarget.value))}
+                    style={{ width: 64 }}
+                  />
+                  <Text size="xs" c="dimmed">
+                    % · contra el drenaje si sube más de
+                  </Text>
+                  <Text
+                    size="xs"
+                    component="input"
+                    type="number"
+                    step={0.05}
+                    min={0}
+                    aria-label="Umbral contra el drenaje"
+                    value={adversePct}
+                    onChange={(event) => setAdversePct(Number(event.currentTarget.value))}
+                    style={{ width: 64 }}
+                  />
+                  <Text size="xs" c="dimmed">
+                    %
+                  </Text>
+                </Group>
+                {slopeNotes.length === 0 ? (
+                  <Text size="xs">
+                    Sin tramos contra el drenaje ni de sedimento con estos umbrales.
+                  </Text>
+                ) : (
+                  slopeNotes.map((note) => (
+                    <Text
+                      key={`${note.kind}-${note.from_m}`}
+                      size="xs"
+                      c={note.kind === 'adverse' ? 'red' : 'orange'}
+                    >
+                      {note.kind === 'adverse' ? '▲ Contra el drenaje' : '— Riesgo de sedimento'}{' '}
+                      {formatProfileDistance(note.from_m)}–{formatProfileDistance(note.to_m)} ·{' '}
+                      {formatSlopePct(note.slope_pct)}
                     </Text>
-                  ) : null}
-                </Stack>
+                  ))
+                )}
+              </Stack>
+            ) : null}
+            {parcelFeatures && culverts && uniqueCrossings.length === 0 ? (
+              <Text size="xs" c="dimmed" data-testid="profile-crossings-empty">
+                Sin límites de parcela ni alcantarillas sobre este tramo.
+              </Text>
+            ) : null}
+            {uniqueCrossings.length > 0 ? (
+              <Group gap={6} align="center" wrap="wrap">
+                <Text size="xs" data-testid="profile-crossings">
+                  Cruces ({uniqueCrossings.length}):{' '}
+                  {(expandedCrossings || uniqueCrossings.length <= 3
+                    ? uniqueCrossings
+                    : uniqueCrossings.slice(0, 3)
+                  )
+                    .map((hit) => `${hit.label} ${formatProfileDistance(hit.distance_m)}`)
+                    .join(' · ')}
+                  {!expandedCrossings && uniqueCrossings.length > 3 ? ' …' : ''}
+                </Text>
+                {uniqueCrossings.length > 3 ? (
+                  <Button
+                    variant="subtle"
+                    size="compact-xs"
+                    onClick={() => setExpandedCrossings((prev) => !prev)}
+                    style={{ fontSize: 11, padding: '0 4px', height: 18 }}
+                    data-testid="profile-crossings-toggle"
+                  >
+                    {expandedCrossings ? 'Menos' : `+${uniqueCrossings.length - 3} más`}
+                  </Button>
+                ) : null}
+              </Group>
+            ) : null}
+          </Stack>
+
+          <Group
+            justify="space-between"
+            align="center"
+            wrap="wrap"
+            gap="xs"
+            pt={4}
+            style={{
+              borderTop: '1px solid var(--mantine-color-default-border)',
+            }}
+          >
+            <Group gap="md" align="center" wrap="wrap">
+              <Checkbox
+                size="xs"
+                label="Comparar DEMs (GEE)"
+                checked={compareDems}
+                onChange={(event) => setCompareDems(event.currentTarget.checked)}
+                data-testid="elevation-profile-compare-dems"
+              />
+              {flowDirection && pairedSurvey && pairedSurvey.samples.length > 0 ? (
+                <Checkbox
+                  size="xs"
+                  label={`Comparar relevamiento (${pairedSurvey.label})`}
+                  checked={compareSurvey}
+                  onChange={(event) => setCompareSurvey(event.currentTarget.checked)}
+                  data-testid="survey-compare-toggle"
+                />
               ) : null}
-            </div>
-          ) : null}
-          <Group gap={6}>
-            <Button
-              size="compact-xs"
-              variant="subtle"
-              aria-expanded={tableOpen}
-              onClick={() => setTableOpen((open) => !open)}
-              data-testid="elevation-profile-table-toggle"
-            >
-              Tabla de datos
-            </Button>
-            <Button
-              size="compact-xs"
-              variant="subtle"
-              data-testid="elevation-profile-csv"
-              onClick={() => downloadProfileCsv(profileToCsv(chartRows))}
-            >
-              Descargar CSV
-            </Button>
+            </Group>
+            <Group gap={4} align="center" wrap="nowrap">
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                aria-expanded={tableOpen}
+                onClick={() => setTableOpen((open) => !open)}
+                data-testid="elevation-profile-table-toggle"
+              >
+                Tabla de datos
+              </Button>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                data-testid="elevation-profile-csv"
+                onClick={() => downloadProfileCsv(profileToCsv(chartRows))}
+              >
+                Descargar CSV
+              </Button>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                aria-expanded={aboutOpen}
+                onClick={() => setAboutOpen((open) => !open)}
+                data-testid="elevation-profile-about-toggle"
+              >
+                Sobre los datos
+              </Button>
+            </Group>
           </Group>
+
+          {visibleSeries.length > 0 ? (
+            <Group
+              gap="xs"
+              data-testid="elevation-profile-legend"
+              wrap="wrap"
+              align="center"
+              style={{
+                padding: '2px 6px',
+                background: 'light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.03))',
+                borderRadius: 4,
+              }}
+            >
+              <Text size="xs" fw={600} c="dimmed">
+                DEMs:
+              </Text>
+              {visibleSeries.map((series) => {
+                const value = seriesValue(hoverRow, series.key);
+                return (
+                  <Group key={series.key} gap={4} wrap="nowrap" align="center">
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: 10,
+                        height: 3,
+                        backgroundColor: series.color,
+                        borderRadius: 1,
+                      }}
+                    />
+                    <Text key={series.key} size="xs" style={{ color: series.color, fontWeight: 500 }}>
+                      {series.name}
+                      {value != null
+                        ? ` ${formatElevationM(value)}`
+                        : hoverRow
+                          ? ' sin dato'
+                          : ''}
+                    </Text>
+                  </Group>
+                );
+              })}
+              {chartRows.length >= 2 ? (
+                <Text size="xs" c="dimmed" data-testid="elevation-profile-slope-legend" style={{ marginLeft: 4 }}>
+                  · Pendiente:{' '}
+                  <span style={{ color: SLOPE_COLOR_STOPS.LOW, fontWeight: 500 }}>Baja (&lt;2%)</span> ·{' '}
+                  <span style={{ color: SLOPE_COLOR_STOPS.MEDIUM, fontWeight: 500 }}>Media (2–5%)</span> ·{' '}
+                  <span style={{ color: SLOPE_COLOR_STOPS.HIGH, fontWeight: 500 }}>Alta (≥5%)</span>
+                  {hoverRow && shownIndex != null
+                    ? ` (${slopeSeverityLabel(localSlopePct(chartRows, shownIndex) ?? 0)})`
+                    : ''}
+                </Text>
+              ) : null}
+            </Group>
+          ) : null}
+
           <div hidden={!tableOpen} data-testid="elevation-profile-table">
-            <table>
-              <caption>Cotas del perfil, distancia y elevación</caption>
+            <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+              <caption style={{ textAlign: 'left', fontWeight: 600, paddingBottom: 4 }}>
+                Cotas del perfil, distancia y elevación
+              </caption>
               <thead>
-                <tr>
-                  <th scope="col">Distancia (m)</th>
-                  <th scope="col">Cota (m)</th>
+                <tr style={{ borderBottom: '1px solid var(--mantine-color-default-border)', textAlign: 'left' }}>
+                  <th scope="col" style={{ padding: '2px 8px 2px 0' }}>Distancia (m)</th>
+                  <th scope="col" style={{ padding: '2px 8px 2px 0' }}>Cota (m)</th>
                 </tr>
               </thead>
               <tbody>
                 {chartRows.map((row) => (
-                  <tr key={row.distance_m}>
-                    <td>{formatEs(row.distance_m, 1)}</td>
-                    <td>{row.elevation_m == null ? '—' : formatEs(row.elevation_m, 1)}</td>
+                  <tr key={row.distance_m} style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                    <td style={{ padding: '2px 8px 2px 0' }}>{formatEs(row.distance_m, 1)}</td>
+                    <td style={{ padding: '2px 8px 2px 0' }}>{row.elevation_m == null ? '—' : formatEs(row.elevation_m, 1)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div>
-            <Button
-              size="compact-xs"
-              variant="subtle"
-              aria-expanded={aboutOpen}
-              onClick={() => setAboutOpen((open) => !open)}
-              data-testid="elevation-profile-about-toggle"
-            >
-              Sobre los datos
-            </Button>
-            <Stack gap={2} hidden={!aboutOpen} style={aboutOpen ? undefined : { display: 'none' }}>
+
+          <div hidden={!aboutOpen} style={aboutOpen ? undefined : { display: 'none' }}>
+            <Stack gap={2}>
               <Text size="xs" c="dimmed" data-testid="elevation-profile-disclaimer">
                 {profile?.disclaimer ??
                   'Estimación gruesa con la tesela DEM del mapa. Al soltar el trazo se afina.'}
