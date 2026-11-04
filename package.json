@@ -19,6 +19,7 @@
     "test:contract:backend": "cd gee-backend && python3 -m pytest tests/new/ -q",
     "test:smoke:frontend": "cd consorcio-web && npm run test:run -- tests/unit/api.test.ts",
     "test:a11y": "cd consorcio-web && npm run test:a11y",
+    "test:visual": "cd consorcio-web && npm run test:visual",
     "test:e2e:local": "cd consorcio-web && npm run test:e2e:local",
     "test:e2e:prod": "cd consorcio-web && npm run test:e2e:prod",
     "lint": "npm run lint:backend && npm run lint:frontend",

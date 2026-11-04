@@ -26,6 +26,7 @@ export default defineConfig({
       'dist',
       'tests/accessibility/**', // E2E tests handled by Playwright
       'tests/e2e/**',
+      'tests/visual/**', // Visual regression + mobile e2e, Playwright only
     ],
 
     // Coverage configuration
@@ -72,7 +73,7 @@ export default defineConfig({
       '@constants': resolve(rootDir, './src/constants'),
       'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url': resolve(
         rootDir,
-        './tests/stubs/maplibre-worker-url.ts',
+        './tests/stubs/maplibre-worker-url.ts'
       ),
     },
   },

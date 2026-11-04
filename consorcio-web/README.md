@@ -200,6 +200,10 @@ Servidor disponible en `http://localhost:5173`.
 | `npm run lint` | Linting con Biome |
 | `npm run lint:fix` | Lint + autofix |
 | `npx playwright test` | Tests E2E |
+| `npm run test:visual` | Regresión visual y e2e mobile (Playwright) |
+| `npm run test:visual:docker -- --update-snapshots` | Regenera baselines en la imagen de CI |
+
+La regresión visual y cómo actualizar las baselines están en [docs/visual-regression.md](docs/visual-regression.md).
 
 ---
 
