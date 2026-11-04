@@ -220,7 +220,7 @@
 .canvasHeightBudget,
 .mapSkeletonWrapper,
 .workspaceSidebar {
-  --map-canvas-height: clamp(420px, calc(100dvh - 160px), 980px);
+  --map-canvas-height: clamp(420px, calc(100dvh - 140px), 1920px);
 }
 
 /* Loading skeleton (T3c, fix 5a). It used to reuse `.mapWrapper` (16/9 aspect,

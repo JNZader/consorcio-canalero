@@ -79,5 +79,48 @@ describe('solera and survey comparison', () => {
       expect(result.stats.deltaZ).toBe(-2.0);
       expect(result.stats.slopePct).toBe(-0.2);
     });
+
+    it('Option B: applies design slope and anchor depth to drain depressions (lagunas)', () => {
+      // 5 km trace modeled on user screenshot:
+      // start at 118.7m, low point at 3 km (117.5m), outlet at 5 km (118.0m)
+      const samples = [
+        { distance_m: 0, elevation_m: 118.7 },
+        { distance_m: 600, elevation_m: 120.4 }, // parcel ridge
+        { distance_m: 3000, elevation_m: 117.5 }, // laguna low point
+        { distance_m: 5000, elevation_m: 118.0 }, // outlet near arroyo
+      ];
+
+      // Shallow outlet cut (0.2m): not deep enough to drain the 117.5m depression at 0.3‰
+      const shallow = simulateCanalSolera(samples, {
+        anchor: 'descarga',
+        depthAtAnchor_m: 0.2,
+        designSlopePerMil: 0.3,
+      });
+      expect(shallow.ok).toBe(true);
+      if (!shallow.ok) return;
+
+      expect(shallow.stats.zEnd).toBe(117.8); // 118.0 - 0.2
+      // Solera at 3000m (2000m from outlet): 117.8 + (0.3/1000 * 2000) = 118.4m
+      // Ground is at 117.5m, so solera is ABOVE ground by 0.9m!
+      expect(shallow.stats.isDraining).toBe(false);
+      expect(shallow.stats.maxEmbankment_m).toBeCloseTo(0.9, 1);
+      expect(shallow.stats.requiredDeepening_m).toBeCloseTo(0.9, 1);
+
+      // Deep outlet cut (1.5m into arroyo box): solera at outlet = 116.5m
+      const deep = simulateCanalSolera(samples, {
+        anchor: 'descarga',
+        depthAtAnchor_m: 1.5,
+        designSlopePerMil: 0.3,
+      });
+      expect(deep.ok).toBe(true);
+      if (!deep.ok) return;
+
+      expect(deep.stats.zEnd).toBe(116.5); // 118.0 - 1.5
+      // Solera at 3000m: 116.5 + (0.3/1000 * 2000) = 117.1m
+      // Ground is 117.5m, solera is 117.1m => cut of +0.4m (fully drains!)
+      expect(deep.stats.isDraining).toBe(true);
+      expect(deep.stats.maxEmbankment_m).toBe(0);
+      expect(deep.stats.maxCut_m).toBeCloseTo(20.4 - 17.82, 0); // ridge cut ~2.6m
+    });
   });
 });

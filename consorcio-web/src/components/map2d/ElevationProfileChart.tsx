@@ -7,7 +7,17 @@
  * sit in a legend beside the plot. Disclaimers fold into "Sobre los datos".
  */
 
-import { Alert, Button, Checkbox, Group, Skeleton, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  NumberInput,
+  SegmentedControl,
+  Skeleton,
+  Stack,
+  Text,
+} from '@mantine/core';
 import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -220,6 +230,9 @@ export function ElevationProfileChart({
   const [compareDems, setCompareDems] = useState(false);
   const [compareSurvey, setCompareSurvey] = useState(false);
   const [simulateCanal, setSimulateCanal] = useState(false);
+  const [soleraAnchor, setSoleraAnchor] = useState<'descarga' | 'cabecera'>('descarga');
+  const [soleraDepthM, setSoleraDepthM] = useState(1.2);
+  const [soleraSlopePerMil, setSoleraSlopePerMil] = useState(0.3);
   const [profile, setProfile] = useState<ElevationProfileResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<{ a: number; b: number } | null>(null);
@@ -382,7 +395,14 @@ export function ElevationProfileChart({
     chartRows.length >= 2
       ? chartRows[chartRows.length - 1]!.distance_m - chartRows[0]!.distance_m
       : (profile?.length_m ?? 0);
-  const simulatedCanal = simulateCanal ? simulateCanalSolera(chartRows, flowDirection) : null;
+  const simulatedCanal = simulateCanal
+    ? simulateCanalSolera(chartRows, {
+        flowDirection,
+        anchor: soleraAnchor,
+        depthAtAnchor_m: soleraDepthM,
+        designSlopePerMil: soleraSlopePerMil,
+      })
+    : null;
   const chartRowsWithSolera = simulatedCanal?.ok
     ? chartRows.map((row, idx) => ({
         ...row,
@@ -689,7 +709,7 @@ export function ElevationProfileChart({
                       strokeOpacity={0.6}
                       ifOverflow="hidden"
                       label={{
-                        value: `Descarga ${formatEs(simulatedCanal.stats.zEnd, 1)} m`,
+                        value: `Solera descarga ${formatEs(simulatedCanal.stats.zEnd, 1)} m`,
                         position: 'insideBottomRight',
                         fontSize: 10,
                         fill: '#0f766e',
@@ -875,12 +895,25 @@ export function ElevationProfileChart({
               </Text>
             ) : null}
             {simulatedCanal?.ok ? (
-              <Text size="xs" c="teal" fw={500} data-testid="simulated-canal-stats">
-                Rasante proyectada ({simulatedCanal.stats.orientation === 'inverso' ? 'según flujo inverso' : flowDirection ? 'según flujo' : 'inicio → fin'}):{' '}
-                {formatEs(simulatedCanal.stats.zStart, 1)} m → {formatEs(simulatedCanal.stats.zEnd, 1)} m (Δ {formatSignedDeltaM(simulatedCanal.stats.deltaZ)}) · pend.{' '}
+              <Text
+                size="xs"
+                c={simulatedCanal.stats.isDraining ? 'teal' : 'orange'}
+                fw={500}
+                data-testid="simulated-canal-stats"
+              >
+                Rasante proyectada ({simulatedCanal.stats.anchor === 'descarga' ? 'anclada en descarga' : 'anclada en cabecera'}):{' '}
+                Cabecera {formatEs(simulatedCanal.stats.zStart, 1)} m → Descarga {formatEs(simulatedCanal.stats.zEnd, 1)} m (Δ {formatSignedDeltaM(simulatedCanal.stats.deltaZ)}) · pend.{' '}
                 {formatSlopePct(simulatedCanal.stats.slopePct)} ({formatEs(Math.abs(simulatedCanal.stats.slopePerMil), 2)} ‰) · corte máx{' '}
                 {formatEs(simulatedCanal.stats.maxCut_m, 1)} m ({formatProfileDistance(simulatedCanal.stats.dMaxCut_m)}) · prom {formatEs(simulatedCanal.stats.meanCut_m, 1)} m
-                {simulatedCanal.stats.minCut_m < -0.1 ? ` · terraplén máx ${formatEs(Math.abs(simulatedCanal.stats.minCut_m), 1)} m` : ''}
+                {!simulatedCanal.stats.isDraining ? (
+                  <span style={{ color: 'var(--mantine-color-red-6)', fontWeight: 600 }}>
+                    {' '}· ⚠️ Requiere terraplén máx {formatEs(simulatedCanal.stats.maxEmbankment_m, 1)} m en {formatProfileDistance(simulatedCanal.stats.dMaxEmbankment_m)} (no desagua por gravedad: profundizá la descarga {formatEs(simulatedCanal.stats.requiredDeepening_m, 1)} m más o bajá la pendiente)
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--mantine-color-teal-7)', fontWeight: 600 }}>
+                    {' '}· ✅ 100% en corte (drenaje continuo por gravedad)
+                  </span>
+                )}
               </Text>
             ) : null}
             {flowDirection ? (
@@ -1034,6 +1067,90 @@ export function ElevationProfileChart({
             </Group>
           </Group>
 
+          {simulateCanal && simulatedCanal?.ok ? (
+            <Group
+              gap="xs"
+              align="center"
+              wrap="wrap"
+              px="xs"
+              py={4}
+              data-testid="simulated-canal-controls"
+              style={{
+                background: 'light-dark(rgba(15,118,110,0.06), rgba(15,118,110,0.12))',
+                borderRadius: 4,
+                border: '1px solid rgba(15,118,110,0.2)',
+              }}
+            >
+              <Text size="xs" fw={600} c="teal">
+                Diseño hidráulico:
+              </Text>
+              <Group gap={4} align="center">
+                <Text size="xs" c="dimmed">
+                  Anclar en:
+                </Text>
+                <SegmentedControl
+                  size="xs"
+                  value={soleraAnchor}
+                  onChange={(val) => setSoleraAnchor(val as 'descarga' | 'cabecera')}
+                  data={[
+                    { label: 'Descarga', value: 'descarga' },
+                    { label: 'Cabecera', value: 'cabecera' },
+                  ]}
+                />
+              </Group>
+              <Group gap={4} align="center">
+                <Text size="xs" c="dimmed">
+                  {soleraAnchor === 'descarga' ? 'Corte en descarga:' : 'Corte en cabecera:'}
+                </Text>
+                <NumberInput
+                  size="xs"
+                  style={{ width: 85 }}
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  decimalScale={1}
+                  fixedDecimalScale
+                  value={soleraDepthM}
+                  onChange={(val) => setSoleraDepthM(typeof val === 'number' ? val : 1.2)}
+                  suffix=" m"
+                  aria-label="Profundidad de corte en el punto de anclaje"
+                />
+              </Group>
+              <Group gap={4} align="center">
+                <Text size="xs" c="dimmed">
+                  Pendiente de diseño:
+                </Text>
+                <NumberInput
+                  size="xs"
+                  style={{ width: 90 }}
+                  min={0.05}
+                  max={10}
+                  step={0.05}
+                  decimalScale={2}
+                  fixedDecimalScale
+                  value={soleraSlopePerMil}
+                  onChange={(val) => setSoleraSlopePerMil(typeof val === 'number' ? val : 0.3)}
+                  suffix=" ‰"
+                  aria-label="Pendiente de diseño en por mil"
+                />
+              </Group>
+              <Group gap={4} align="center">
+                {[0.2, 0.3, 0.5, 1.0].map((preset) => (
+                  <Button
+                    key={preset}
+                    size="compact-xs"
+                    variant={soleraSlopePerMil === preset ? 'filled' : 'subtle'}
+                    color="teal"
+                    onClick={() => setSoleraSlopePerMil(preset)}
+                    style={{ fontSize: 10, padding: '0 6px', height: 22 }}
+                  >
+                    {formatEs(preset, 1)} ‰
+                  </Button>
+                ))}
+              </Group>
+            </Group>
+          ) : null}
+
           {visibleSeries.length > 0 ? (
             <Group
               gap="xs"
@@ -1087,9 +1204,11 @@ export function ElevationProfileChart({
                   <Text size="xs" style={{ color: '#0f766e', fontWeight: 500 }}>
                     Rasante
                     {hoverRow && hoverRow.simulatedSolera != null
-                      ? ` ${formatElevationM(hoverRow.simulatedSolera)} (corte ${formatSignedDeltaM(
-                          (hoverRow.elevation_m ?? 0) - hoverRow.simulatedSolera
-                        )})`
+                      ? ` ${formatElevationM(hoverRow.simulatedSolera)} (${
+                          (hoverRow.elevation_m ?? 0) >= hoverRow.simulatedSolera
+                            ? `corte +${formatEs((hoverRow.elevation_m ?? 0) - hoverRow.simulatedSolera, 1)} m`
+                            : `⚠️ terraplén ${formatEs(hoverRow.simulatedSolera - (hoverRow.elevation_m ?? 0), 1)} m`
+                        })`
                       : ''}
                   </Text>
                 </Group>
