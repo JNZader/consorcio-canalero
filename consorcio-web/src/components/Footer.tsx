@@ -13,12 +13,7 @@ import styles from '../styles/components/footer.module.css';
 export const FooterContent = memo(function FooterContent() {
   const showAdmin = useCanAccess(['admin', 'operador']);
   return (
-    <Box
-      component="footer"
-      role="contentinfo"
-      py="xl"
-      className={styles.footer}
-    >
+    <Box component="footer" role="contentinfo" py="xl" className={styles.footer}>
       <Container size="xl">
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start" wrap="wrap">
@@ -37,21 +32,52 @@ export const FooterContent = memo(function FooterContent() {
                   <Text size="sm" fw={600} c="gray.2">
                     Enlaces
                   </Text>
-                  <Text component={Link} to="/" c="gray.3" size="sm">
+                  <Text
+                    component={Link}
+                    to="/"
+                    c="gray.3"
+                    size="sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', minHeight: 36 }}
+                  >
                     Inicio
                   </Text>
-                  <Text component={Link} to="/mapa" c="gray.3" size="sm">
+                  <Text
+                    component={Link}
+                    to="/mapa"
+                    c="gray.3"
+                    size="sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', minHeight: 36 }}
+                  >
                     Mapa
                   </Text>
-                  <Text component={Link} to="/participacion" c="gray.3" size="sm">
+                  <Text
+                    component={Link}
+                    to="/participacion"
+                    c="gray.3"
+                    size="sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', minHeight: 36 }}
+                  >
                     Participación
                   </Text>
                   {showAdmin ? (
-                    <Text component={Link} to="/admin" preload={false} c="gray.3" size="sm">
+                    <Text
+                      component={Link}
+                      to="/admin"
+                      preload={false}
+                      c="gray.3"
+                      size="sm"
+                      style={{ display: 'inline-flex', alignItems: 'center', minHeight: 36 }}
+                    >
                       Admin
                     </Text>
                   ) : null}
-                  <Text component={Link} to="/privacidad" c="gray.3" size="sm">
+                  <Text
+                    component={Link}
+                    to="/privacidad"
+                    c="gray.3"
+                    size="sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', minHeight: 36 }}
+                  >
                     Privacidad
                   </Text>
                 </Stack>

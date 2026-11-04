@@ -102,11 +102,7 @@ export const HeaderContent = memo(function HeaderContent() {
       <Container size="xl" py="sm">
         <Group justify="space-between">
           {/* Logo */}
-          <UnstyledButton
-            component={Link}
-            to="/"
-            aria-label="Consorcio Canalero 10 de Mayo"
-          >
+          <UnstyledButton component={Link} to="/">
             <Group gap="xs">
               <Text
                 size="xl"

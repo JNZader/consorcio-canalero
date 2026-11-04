@@ -666,10 +666,21 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 40px;
 }
 
+/* Mobile coarse pointer adjustments */
+@media (pointer: coarse) {
+  /* Prevent iOS Safari automatic zoom on focus when font-size < 16px */
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Dark-scheme contrast overrides for text colors used directly via Mantine vars. */
 :root[data-mantine-color-scheme='dark'] {
   --mantine-color-gray-6: #a3a3a3;
   --mantine-color-dimmed: #a3a3a3;
+  --mantine-color-placeholder: #a3a3a3;
   --mantine-color-institucional-7: #7bc2ac;
   color-scheme: dark;
   --lightningcss-light: ;

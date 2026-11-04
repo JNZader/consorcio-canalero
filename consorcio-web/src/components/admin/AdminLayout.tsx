@@ -98,11 +98,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
   const userRole = useUserRole();
   const effectiveRole: UserRole = userRole ?? 'operador';
   const roleLabel =
-    userRole === 'operador'
-      ? 'Operador'
-      : userRole === 'admin'
-        ? 'Administrador'
-        : 'Admin';
+    userRole === 'operador' ? 'Operador' : userRole === 'admin' ? 'Administrador' : 'Admin';
   const displayName = profile?.nombre || roleLabel;
   const avatarInitials = profile?.nombre
     ? profile.nombre
@@ -161,8 +157,8 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
         }}
       >
         <Container size="xl" h="100%">
-          <Group h="100%" justify="space-between">
-            <Group gap="md">
+          <Group h="100%" justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, overflow: 'hidden' }}>
               <Burger
                 opened={opened}
                 onClick={() => setOpened(!opened)}
@@ -171,13 +167,14 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                 aria-label={opened ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}
                 aria-expanded={opened}
               />
-              <UnstyledButton component={Link} to="/admin">
-                <Group gap="xs">
+              <UnstyledButton component={Link} to="/admin" style={{ minWidth: 0 }}>
+                <Group gap="xs" wrap="nowrap">
                   <Text
                     size="xl"
                     fw={700}
                     variant="gradient"
                     gradient={{ from: 'institucional.8', to: 'acento.5', deg: 45 }}
+                    truncate
                   >
                     Consorcio Canalero
                   </Text>
@@ -188,13 +185,15 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
               </UnstyledButton>
             </Group>
 
-            <Group gap="sm">
+            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
               <ThemeToggle />
 
               <Menu shadow="lg" width={220} position="bottom-end">
                 <Menu.Target>
                   <UnstyledButton
-                    aria-label={`Cuenta ${roleLabel}`}
+                    aria-label={
+                      displayName ? `Cuenta ${roleLabel} - ${displayName}` : `Cuenta ${roleLabel}`
+                    }
                     style={{
                       padding: 'var(--mantine-spacing-xs) var(--mantine-spacing-sm)',
                       borderRadius: 'var(--mantine-radius-md)',
@@ -309,8 +308,9 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
         </AppShell.Section>
       </AppShell.Navbar>
 
-      {/* Main content */}
+      {/* Main content - div to prevent duplicate main landmark inside RootLayout */}
       <AppShell.Main
+        component="div"
         style={{
           background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
           minHeight: '100vh',

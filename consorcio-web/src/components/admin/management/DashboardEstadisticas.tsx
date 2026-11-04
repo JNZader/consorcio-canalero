@@ -245,7 +245,9 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
                   Presupuesto Ejecutado
                 </Text>
                 <Text size="xl" fw={700}>
-                  {financeSummary
+                  {financeSummary &&
+                  Number.isFinite(financeSummary.total_gastos) &&
+                  Number.isFinite(financeSummary.total_ingresos)
                     ? `${formatCurrency(financeSummary.total_gastos)} / ${formatCurrency(financeSummary.total_ingresos)}`
                     : 'Sin datos'}
                 </Text>
