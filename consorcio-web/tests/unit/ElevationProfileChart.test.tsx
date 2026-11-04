@@ -540,6 +540,36 @@ describe('<ElevationProfileChart />', () => {
     expect(toggle).toHaveTextContent('Menos');
   });
 
+  it('dedupes shared parcel boundaries occurring at the same location', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        { distance_m: 0, elevation_m: 120, lon: -62.7, lat: -32.6 },
+        { distance_m: 500, elevation_m: 119, lon: -62.705, lat: -32.6 },
+      ],
+      length_m: 500,
+      min_elevation_m: 119,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m).',
+    });
+    // Two adjacent parcels sharing the exact same boundary at lon: -62.7, lat: -32.6
+    const crossings = [
+      { lon: -62.7, lat: -32.6, label: 'Parcela 360302085877' },
+      { lon: -62.7, lat: -32.6, label: 'Parcela 360316781817' },
+    ];
+    renderWithMantine(
+      <ElevationProfileChart
+        geometry={line}
+        autoLoad
+        crossings={crossings}
+      />
+    );
+    await screen.findByTestId('elevation-profile-extrema');
+    const crossingsEl = await screen.findByTestId('profile-crossings');
+    expect(crossingsEl).toHaveTextContent('Cruces (1):');
+  });
+
   it('toggles projected canal solera simulation and displays cut/slope statistics', async () => {
     vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
       puntos: [

@@ -82,10 +82,14 @@ import { useLiveRegion } from '../ui/accessibility';
 function dedupeCrossings(
   crossings: readonly { distance_m: number; label: string }[]
 ): { distance_m: number; label: string }[] {
+  const sorted = [...crossings].sort((a, b) => a.distance_m - b.distance_m);
   const deduped: { distance_m: number; label: string }[] = [];
-  for (const hit of crossings) {
+  for (const hit of sorted) {
     const prev = deduped[deduped.length - 1];
-    if (prev && prev.label === hit.label && Math.abs(prev.distance_m - hit.distance_m) < 5) {
+    if (prev && Math.abs(prev.distance_m - hit.distance_m) < 20) {
+      if (!prev.label.includes('Parcela') && hit.label.includes('Parcela')) {
+        deduped[deduped.length - 1] = hit;
+      }
       continue;
     }
     deduped.push(hit);
@@ -701,22 +705,7 @@ export function ElevationProfileChart({
                     width={40}
                     fontSize={10}
                   />
-                  {simulatedCanal?.ok ? (
-                    <ReferenceLine
-                      y={simulatedCanal.stats.zEnd}
-                      stroke="#0f766e"
-                      strokeDasharray="5 5"
-                      strokeOpacity={0.6}
-                      ifOverflow="hidden"
-                      label={{
-                        value: `Solera descarga ${formatEs(simulatedCanal.stats.zEnd, 1)} m`,
-                        position: 'insideBottomRight',
-                        fontSize: 10,
-                        fill: '#0f766e',
-                      }}
-                    />
-                  ) : null}
-                  {uniqueCrossings.map((hit) => (
+                  {uniqueCrossings.map((hit, idx) => (
                     <ReferenceLine
                       key={`${hit.label}-${hit.distance_m}`}
                       x={hit.distance_m}
@@ -725,7 +714,13 @@ export function ElevationProfileChart({
                       ifOverflow="hidden"
                       label={
                         uniqueCrossings.length <= 8
-                          ? { value: hit.label, position: 'insideTop', fontSize: 10 }
+                          ? {
+                              value: hit.label,
+                              position: 'insideTop',
+                              fontSize: 9,
+                              dy: (idx % 2 === 0) ? 0 : 13,
+                              fill: mapColorTokens.h868e96,
+                            }
                           : undefined
                       }
                     />
