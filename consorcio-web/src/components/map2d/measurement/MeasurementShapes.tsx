@@ -45,6 +45,7 @@ function buildFeatureCollection(measurements: readonly MeasurementEntry[]): Feat
 }
 
 interface StylePaintHost {
+  // biome-ignore lint/suspicious/noConfusingVoidType: matches maplibre-gl isStyleLoaded signature
   isStyleLoaded: () => boolean | void;
   loaded?: () => boolean;
   once: (event: string, handler: () => void) => void;
@@ -109,6 +110,34 @@ export interface MeasurementShapesProps {
   readonly onMoveVertex?: (id: string, geometry: LineString) => void;
 }
 
+function createVertexMarkerElement(index: number, total: number): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'measurement-vertex-handle';
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', `Vértice ${index + 1} de ${total}`);
+  el.style.width = '10px';
+  el.style.height = '10px';
+  el.style.borderRadius = '50%';
+  el.style.backgroundColor = '#7c3aed';
+  el.style.border = '2px solid #ffffff';
+  el.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.45)';
+  el.style.cursor = 'grab';
+  el.style.boxSizing = 'border-box';
+  el.style.transition = 'transform 0.12s ease, box-shadow 0.12s ease';
+
+  el.addEventListener('mouseenter', () => {
+    el.style.transform = 'scale(1.35)';
+    el.style.boxShadow = '0 0 0 3px rgba(124, 58, 237, 0.25), 0 2px 4px rgba(0, 0, 0, 0.4)';
+  });
+  el.addEventListener('mouseleave', () => {
+    el.style.transform = 'scale(1)';
+    el.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.45)';
+  });
+
+  return el;
+}
+
 export function MeasurementShapes({ map, measurements, onMoveVertex }: MeasurementShapesProps): null {
   useEffect(() => {
     if (!map) return;
@@ -143,14 +172,26 @@ export function MeasurementShapes({ map, measurements, onMoveVertex }: Measureme
     const markers: Marker[] = [];
     for (const entry of measurements) {
       if (entry.geometry.type !== 'LineString') continue;
+      const total = entry.geometry.coordinates.length;
       entry.geometry.coordinates.forEach((coord, index) => {
         if (coord.length < 2) return;
-        const marker = new Marker({ draggable: true, color: '#7c3aed' })
+        const el = createVertexMarkerElement(index, total);
+        const marker = new Marker({ element: el, draggable: true })
           .setLngLat([coord[0]!, coord[1]!])
           .addTo(map);
+
+        marker.on('dragstart', () => {
+          el.style.cursor = 'grabbing';
+          el.style.transform = 'scale(1.4)';
+        });
         marker.on('dragend', () => {
+          el.style.cursor = 'grab';
+          el.style.transform = 'scale(1)';
           const lngLat = marker.getLngLat();
-          onMoveVertex(entry.id, moveLineVertex(entry.geometry as LineString, index, [lngLat.lng, lngLat.lat]));
+          onMoveVertex(
+            entry.id,
+            moveLineVertex(entry.geometry as LineString, index, [lngLat.lng, lngLat.lat]),
+          );
         });
         markers.push(marker);
       });

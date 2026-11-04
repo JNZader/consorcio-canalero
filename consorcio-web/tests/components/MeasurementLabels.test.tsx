@@ -271,4 +271,63 @@ describe('<MeasurementLabels />', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
     expect(onProfileLine).toHaveBeenLastCalledWith(null);
   });
+
+  it('allows dismissing a label so it stops obstructing the map', () => {
+    const mock = createMapMock();
+    const measurements: MeasurementEntry[] = [
+      buildDistance('m1', 1500, [-62.5, -32.5]),
+      buildDistance('m2', 2500, [-62.7, -32.7]),
+    ];
+    render(
+      <MeasurementLabels
+        map={mock.map as unknown as maplibregl.Map}
+        measurements={measurements}
+      />,
+    );
+
+    expect(screen.getByText('1.5 km')).toBeInTheDocument();
+    expect(screen.getByText('2.5 km')).toBeInTheDocument();
+
+    const closeBtn = screen.getByRole('button', { name: 'Ocultar cartelito m1' });
+    fireEvent.click(closeBtn);
+
+    expect(screen.queryByText('1.5 km')).not.toBeInTheDocument();
+    expect(screen.getByText('2.5 km')).toBeInTheDocument();
+  });
+
+  it('resets local profile toggle when activeProfileGeometry closes externally', () => {
+    const mock = createMapMock();
+    const line = {
+      type: 'LineString' as const,
+      coordinates: [
+        [-62.5, -32.5],
+        [-62.4, -32.4],
+      ],
+    };
+    const { rerender } = render(
+      <MeasurementLabels
+        map={mock.map as unknown as maplibregl.Map}
+        measurements={[{ ...buildDistance('m1', 1500, [-62.5, -32.5]), geometry: line }]}
+        activeProfileGeometry={line}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Perfil de elevación' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    rerender(
+      <MeasurementLabels
+        map={mock.map as unknown as maplibregl.Map}
+        measurements={[{ ...buildDistance('m1', 1500, [-62.5, -32.5]), geometry: line }]}
+        activeProfileGeometry={null}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Perfil de elevación' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
 });

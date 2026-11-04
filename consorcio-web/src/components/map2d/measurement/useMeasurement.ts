@@ -146,12 +146,15 @@ function coerceId(raw: unknown, fallback: string): string {
   return fallback;
 }
 
-export function computeLineLabelAnchor(line: Feature<LineString>): [number, number] {
+export function computeLineLabelAnchor(
+  line: Feature<LineString>,
+  placement: 'end' | 'midpoint' = 'end'
+): [number, number] {
   const coords = line.geometry.coordinates;
   if (coords.length === 0) return [0, 0];
-  if (coords.length === 1) {
-    const [lng, lat] = coords[0];
-    return [lng, lat];
+  if (coords.length === 1 || placement === 'end') {
+    const last = coords[coords.length - 1];
+    return [last[0], last[1]];
   }
 
   if (coords.length === 2) {
@@ -502,9 +505,16 @@ export function useMeasurement(map: maplibregl.Map | null): UseMeasurementReturn
   const updateMeasurement = (id: string, geometry: LineString | Polygon) => {
     setMeasurementState((prev) => ({
       ...prev,
-      measurements: prev.measurements.map((entry) =>
-        entry.id === id ? { ...entry, geometry } : entry
-      ),
+      measurements: prev.measurements.map((entry) => {
+        if (entry.id !== id) return entry;
+        if (geometry.type === 'LineString') {
+          const feat: Feature<LineString> = { type: 'Feature', geometry, properties: {} };
+          const value = Math.round(length(feat, { units: 'meters' }));
+          const labelPosition = computeLineLabelAnchor(feat);
+          return { ...entry, geometry, value, labelPosition };
+        }
+        return { ...entry, geometry };
+      }),
     }));
   };
 
