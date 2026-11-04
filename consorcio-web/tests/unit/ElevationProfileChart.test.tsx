@@ -570,7 +570,10 @@ describe('<ElevationProfileChart />', () => {
 
     const stats = await screen.findByTestId('simulated-canal-stats');
     expect(stats).toHaveTextContent('Rasante proyectada');
-    expect(stats).toHaveTextContent('118,6 m → 117,8 m');
-    expect(stats).toHaveTextContent('corte máx 7,0 m');
+    expect(stats).toHaveTextContent('Cabecera 118,1 m → Descarga 116,6 m');
+    expect(stats).toHaveTextContent('0,30 ‰');
+    expect(stats).toHaveTextContent('corte máx 7,6 m');
+    expect(stats).toHaveTextContent('100% en corte (drenaje continuo por gravedad)');
+    expect(screen.getByTestId('simulated-canal-controls')).toBeInTheDocument();
   });
 });
