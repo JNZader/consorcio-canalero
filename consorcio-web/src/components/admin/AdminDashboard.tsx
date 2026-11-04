@@ -303,7 +303,9 @@ export default function AdminDashboard() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Panel de Gestión Integral</Title>
+          <Title order={1} size="h2">
+            Panel de Gestión Integral
+          </Title>
           <Text c="gray.6">Inteligencia de datos y monitoreo satelital</Text>
         </div>
         <Group>
@@ -314,7 +316,7 @@ export default function AdminDashboard() {
             onClick={handleExportDashboardData}
             loading={exporting}
           >
-            Descargar datos del dashboard (JSON)
+            Descargar datos (JSON)
           </Button>
         </Group>
       </Group>
@@ -351,7 +353,7 @@ export default function AdminDashboard() {
                 onChange={setBasinsFile}
                 accept=".geojson,.json,application/geo+json,application/json"
                 placeholder="Seleccionar GeoJSON"
-                aria-label="Archivo GeoJSON de subcuencas a importar"
+                aria-label="Seleccionar GeoJSON de subcuencas a importar"
                 styles={{ placeholder: { color: '#495057' } }}
                 clearable
               />
@@ -374,7 +376,7 @@ export default function AdminDashboard() {
                 onChange={setApprovedZonesFile}
                 accept=".geojson,.json,application/geo+json,application/json"
                 placeholder="Seleccionar GeoJSON"
-                aria-label="Archivo GeoJSON de zonificación a importar"
+                aria-label="Seleccionar GeoJSON de zonificación a importar"
                 styles={{ placeholder: { color: '#495057' } }}
                 clearable
               />

@@ -18,20 +18,22 @@ export default function FinanzasPanel() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Administración Financiera</Title>
-          <Text c="dimmed">Seguimiento de gastos y ejecucion presupuestaria</Text>
+          <Title order={1} size="h2">
+            Administración Financiera
+          </Title>
+          <Text c="dimmed">Seguimiento de gastos y ejecución presupuestaria</Text>
         </div>
         <Button
           leftSection={<IconPlus size={18} />}
           onClick={controller.gastoModal.open}
-          color="red"
+          color="red.8"
         >
           Registrar Gasto
         </Button>
         <Button
           leftSection={<IconPlus size={18} />}
           onClick={controller.ingresoModal.open}
-          color="green"
+          color="green.9"
         >
           Registrar Ingreso
         </Button>

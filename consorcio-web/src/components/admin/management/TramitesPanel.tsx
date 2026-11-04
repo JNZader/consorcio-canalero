@@ -262,7 +262,9 @@ export default function TramitesPanel() {
     <Container size="xl" py="md">
       <Group justify="space-between" mb="xl">
         <div>
-          <Title order={2}>Gestión de Trámites</Title>
+          <Title order={1} size="h2">
+            Gestión de Trámites
+          </Title>
           <Text c="dimmed">Seguimiento de trámites del Consorcio Canalero</Text>
         </div>
         <Button leftSection={<IconPlus size={18} />} onClick={open}>
@@ -282,7 +284,13 @@ export default function TramitesPanel() {
         </Alert>
       ) : (
         <Paper withBorder radius="md">
-          <Table.ScrollContainer minWidth={680} type="native">
+          <Table.ScrollContainer
+            minWidth={680}
+            type="native"
+            tabIndex={0}
+            role="region"
+            aria-label="Listado de trámites con desplazamiento horizontal"
+          >
             <Table verticalSpacing="sm" aria-label="Tabla de trámites">
               <Table.Thead>
                 <Table.Tr>
