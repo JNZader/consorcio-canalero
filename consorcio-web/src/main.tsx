@@ -37,6 +37,7 @@ scheduleIdle(() => {
 
 // Mantine styles first, then global overrides.
 import './styles/mantine-imports';
+import { RouterErrorFallback } from './components/RouterErrorFallback';
 import './styles/global.css';
 
 // Create the router instance
@@ -47,6 +48,7 @@ const router = createRouter({
   basepath,
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 30_000,
+  defaultErrorComponent: RouterErrorFallback,
 });
 
 // Recover once from stale lazy-chunk errors after a new deploy.

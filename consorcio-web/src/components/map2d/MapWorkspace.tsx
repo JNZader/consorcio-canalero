@@ -192,7 +192,7 @@ export function MapWorkspace({
 
   const countBadge =
     activeLayerCount !== undefined ? (
-      <Badge size="sm" variant="light" color="blue">
+      <Badge size="sm" variant="light" color="blue" style={{ flexShrink: 0 }}>
         {activeLayerCount} activas
       </Badge>
     ) : null;
@@ -286,9 +286,9 @@ export function MapWorkspace({
               </Group>
             )}
             {!headerCollapsed && !hasSelection && (
-              <Group gap="xs" wrap="nowrap">
-                <IconLayers size={18} />
-                <Text fw={600} size="sm">
+              <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                <IconLayers size={18} style={{ flexShrink: 0 }} />
+                <Text fw={600} size="sm" truncate>
                   {isDesktop ? 'Capas' : 'Capas y leyenda'}
                 </Text>
                 {countBadge}

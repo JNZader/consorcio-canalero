@@ -209,7 +209,7 @@ export function LoginFormContent() {
           </Text>
         </Box>
 
-        <Title order={2} ta="center" mb="md">
+        <Title order={1} size="h2" ta="center" mb="md">
           {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
         </Title>
 

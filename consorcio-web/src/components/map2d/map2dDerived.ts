@@ -13,7 +13,7 @@ export type ActiveLegendItem = {
 };
 
 function pushApprovedZoneLegendItems(items: ActiveLegendItem[], approvedZones: FeatureCollection) {
-  for (const feature of approvedZones.features) {
+  for (const feature of approvedZones.features ?? []) {
     items.push({
       color: (feature.properties?.__color as string | undefined) || mapColorTokens.h1971c2,
       label: String(feature.properties?.nombre || 'Cuenca'),
@@ -200,13 +200,15 @@ export function buildVectorLayerItems(params: {
       category: LAYER_CATEGORY.HIDROGRAFIA,
       // Subcuencas públicas a pedido del consorcio (2026-07-30): el endpoint
       // backend (`/geo/basins`) siempre fue público, solo faltaba mostrarlas.
-      show: !!basins && basins.features.length > 0,
+      show: Boolean(basins?.features && basins.features.length > 0),
     },
     {
       id: 'approved_zones',
       label: 'Cuencas',
       category: LAYER_CATEGORY.HIDROGRAFIA,
-      show: !!approvedZonesCollection,
+      show: Boolean(
+        approvedZonesCollection?.features && approvedZonesCollection.features.length > 0
+      ),
     },
     {
       id: 'waterways',
@@ -243,7 +245,7 @@ export function buildVectorLayerItems(params: {
       // Label normalised with the 3D viewer (PRIORITY_3D_VECTOR_LAYERS).
       label: ROAD_LAYER_LABEL,
       category: LAYER_CATEGORY.TERRITORIO,
-      show: !!roadsCollection && roadsCollection.features.length > 0,
+      show: Boolean(roadsCollection?.features && roadsCollection.features.length > 0),
     },
     {
       id: 'red_vial_oficial',

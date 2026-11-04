@@ -41,7 +41,7 @@ export default function ForgotPasswordForm() {
   return (
     <Center mih="80vh">
       <Paper shadow="md" p="xl" radius="md" w={400}>
-        <Title order={2} ta="center" mb="md">
+        <Title order={1} size="h2" ta="center" mb="md">
           Recuperar Contraseña
         </Title>
 
