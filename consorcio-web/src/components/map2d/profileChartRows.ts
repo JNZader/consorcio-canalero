@@ -50,6 +50,8 @@ export type ProfileChartRow = {
   elevation_nasadem: number | null;
   lon?: number;
   lat?: number;
+  simulatedSolera?: number | null;
+  solera_m?: number | null;
 };
 
 function rowOf(punto: ElevationProfilePoint): ProfileChartRow {
