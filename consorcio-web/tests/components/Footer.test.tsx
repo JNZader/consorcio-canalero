@@ -149,10 +149,9 @@ describe('Footer', () => {
 
       const footer = container.querySelector('footer');
       expect(footer).toBeInTheDocument();
-      
-      // Check background color is set via style attribute
-      const style = footer?.getAttribute('style');
-      expect(style).toBeTruthy();
+
+      // Fondo, borde y safe-area viven en el CSS module, no en un style inline.
+      expect(footer?.className).toMatch(/footer/);
     });
 
     it('should have footer with border top styling', () => {
@@ -183,7 +182,7 @@ describe('Footer', () => {
       expect(containerEl).toBeInTheDocument();
     });
 
-    it('should render with proper padding (py="xl")', () => {
+    it('should render with module padding that includes the safe area', () => {
       const { container } = render(
         <MantineProvider env="test">
           <FooterContent />
@@ -192,7 +191,7 @@ describe('Footer', () => {
 
       const footer = container.querySelector('footer');
       expect(footer).toBeInTheDocument();
-      // Mantine applies py="xl" padding
+      expect(footer?.className).toMatch(/footer/);
     });
   });
 

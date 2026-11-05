@@ -1,4 +1,8 @@
 .footer {
   background: var(--mantine-color-gray-8);
   border-top: 1px solid var(--mantine-color-gray-7);
+  padding-top: var(--mantine-spacing-xl);
+  padding-bottom: calc(var(--mantine-spacing-xl) + env(safe-area-inset-bottom, 0px));
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }

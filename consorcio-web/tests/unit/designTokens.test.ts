@@ -69,6 +69,13 @@ describe('design tokens', () => {
     expect(rainfallCss).toContain(`max-width: ${breakpoints.md}`);
   });
 
+  it('sizes the embedded report map from the xs token', () => {
+    const formCss = readFileSync('src/styles/components/form.module.css', 'utf8');
+    expect(formCss).toContain(`max-width: ${breakpoints.xs}`);
+    expect(formCss).toContain('touch-action: pan-x pan-y');
+    expect(formCss).toContain('env(safe-area-inset-bottom, 0px)');
+  });
+
   it('does not leave the old width literals in shared CSS or TS media queries', () => {
     const shared = [
       'src/styles/global.css',

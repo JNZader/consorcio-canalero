@@ -9,12 +9,73 @@ import {
 import { logger } from '../../lib/logger';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import type { Ubicacion } from './reportFormTypes';
-import { showNotification, uploadPhotoIfExists } from './reportFormUtils';
+import {
+  isOfflineSubmitError,
+  OFFLINE_SUBMIT_MESSAGE,
+  showNotification,
+  uploadPhotoIfExists,
+} from './reportFormUtils';
 
 interface ReportFormValues {
   tipo: string;
   descripcion: string;
   foto: File | null;
+}
+
+interface SubmitFailureHandlers {
+  announce: (msg: string, priority?: 'polite' | 'assertive') => void;
+  onLimitReached: () => void;
+  onOfflineFailure?: () => void;
+  onOtherFailure?: () => void;
+}
+
+/** Deja el intento en sessionStorage por si la página se recarga sin red. */
+async function rememberReportDraft(values: ReportFormValues, ubicacion: Ubicacion | null) {
+  let fotoDataUrl: string | undefined;
+  if (values.foto && values.foto.size <= MAX_DRAFT_PHOTO_BYTES) {
+    fotoDataUrl = (await fileToDraftDataUrl(values.foto)) ?? undefined;
+  }
+  saveReportDraft({
+    tipo: values.tipo,
+    descripcion: values.descripcion,
+    lat: ubicacion?.lat,
+    lng: ubicacion?.lng,
+    ...(fotoDataUrl
+      ? {
+          fotoDataUrl,
+          fotoName: values.foto?.name,
+          fotoType: values.foto?.type,
+        }
+      : {}),
+  });
+}
+
+async function reportSubmitFailure(
+  error: unknown,
+  values: ReportFormValues,
+  ubicacion: Ubicacion | null,
+  handlers: SubmitFailureHandlers
+) {
+  logger.error('Error enviando denuncia:', error);
+  if (isOfflineSubmitError(error)) {
+    await rememberReportDraft(values, ubicacion);
+    handlers.onOfflineFailure?.();
+    handlers.announce(`${OFFLINE_SUBMIT_MESSAGE} Podés reintentar.`, 'assertive');
+    return;
+  }
+  handlers.onOtherFailure?.();
+  const message =
+    error instanceof Error ? error.message : 'No se pudo enviar la denuncia. Intentá nuevamente.';
+  // 429 → backend dice que llegaste al límite. Sincronizamos UI.
+  if (
+    message.includes('429') ||
+    message.toLowerCase().includes('límite') ||
+    message.toLowerCase().includes('limite')
+  ) {
+    handlers.onLimitReached();
+  }
+  showNotification('Error', message, 'red');
+  handlers.announce(textoError(erroresUi.enviarDenuncia), 'assertive');
 }
 
 interface UseReportFormSubmissionParams {
@@ -36,6 +97,10 @@ interface UseReportFormSubmissionParams {
   onSubmitSuccess: () => void;
   /** Llamado si el server devuelve 429 — fija remaining=0. */
   onLimitReached: () => void;
+  /** POST offline (503 del service worker o fallo de red). El form no se vacía. */
+  onOfflineFailure?: () => void;
+  /** Otro error de envío: cierra el aviso de sin conexión si estaba abierto. */
+  onOtherFailure?: () => void;
 }
 
 export function useReportFormSubmission({
@@ -51,6 +116,8 @@ export function useReportFormSubmission({
   remainingToday,
   onSubmitSuccess,
   onLimitReached,
+  onOfflineFailure,
+  onOtherFailure,
 }: Readonly<UseReportFormSubmissionParams>) {
   return useCallback(
     async (values: ReportFormValues) => {
@@ -152,21 +219,12 @@ export function useReportFormSubmission({
         setUbicacion(null);
         setFotoPreview(null);
       } catch (error) {
-        logger.error('Error enviando denuncia:', error);
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'No se pudo enviar la denuncia. Intentá nuevamente.';
-        // 429 → backend dice que llegaste al límite. Sincronizamos UI.
-        if (
-          message.includes('429') ||
-          message.toLowerCase().includes('límite') ||
-          message.toLowerCase().includes('limite')
-        ) {
-          onLimitReached();
-        }
-        showNotification('Error', message, 'red');
-        announce(textoError(erroresUi.enviarDenuncia), 'assertive');
+        await reportSubmitFailure(error, values, ubicacion, {
+          announce,
+          onLimitReached,
+          onOfflineFailure,
+          onOtherFailure,
+        });
       } finally {
         setEnviando(false);
       }
@@ -176,6 +234,8 @@ export function useReportFormSubmission({
       contactoVerificado,
       form,
       onLimitReached,
+      onOfflineFailure,
+      onOtherFailure,
       onSubmitSuccess,
       remainingToday,
       setEnviando,

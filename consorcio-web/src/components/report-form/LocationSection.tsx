@@ -8,6 +8,7 @@ import { mapColorTokens } from '../../lib/mapColorTokens';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibreLoader';
 import { showError } from '../../lib/notifications';
 import formStyles from '../../styles/components/form.module.css';
+import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
 
@@ -143,6 +144,13 @@ export function LocationSection({
         zoom: initialZoom,
         minZoom: MAP_MIN_ZOOM,
         maxBounds: MAP_MAX_BOUNDS,
+        // El mapa principal APAGA cooperativeGestures en puntero grueso para
+        // que un dedo panee. Acá es al revés: el mapa está metido en un
+        // formulario que scrollea. Un dedo mueve la página; dos dedos mueven
+        // el mapa. La atribución compacta no se come la altura chica del móvil.
+        cooperativeGestures: true,
+        attributionControl: { compact: true },
+        locale: { ...MAP_LOCALE_ES },
       });
 
       map.on('click', (e) => {
@@ -328,8 +336,9 @@ export function LocationSection({
         )}
       </Box>
       <Text id={LOCATION_HELP_ID} size="xs" c="gray.6" mt="xs">
-        Hacé clic dentro del área del consorcio para marcar la ubicación del incidente. Referencia:
-        límite del consorcio (rojo), hidrografía (azul), caminos (amarillo).
+        Tocá o hacé clic dentro del área del consorcio para marcar la ubicación del incidente. Con
+        un dedo se desplaza la página; con dos dedos se mueve el mapa. Referencia: límite del
+        consorcio (rojo), hidrografía (azul), caminos (amarillo).
       </Text>
     </>
   );

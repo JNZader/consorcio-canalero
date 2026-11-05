@@ -1,11 +1,12 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FormularioContenido } from '../../src/components/FormularioReporte';
 import { publicApi } from '../../src/lib/api';
+import { QueryError } from '../../src/lib/queryError';
 
 const useContactVerificationMock = vi.fn();
 
@@ -103,6 +104,7 @@ vi.mock('../../src/lib/api', () => ({
 vi.mock('@mantine/notifications', () => ({
   notifications: {
     show: vi.fn(),
+    hide: vi.fn(),
   },
 }));
 
@@ -423,6 +425,65 @@ describe('FormularioReporte', () => {
         expect.objectContaining({ name: 'evidence.jpg' })
       );
       sessionStorage.clear();
+    });
+  });
+
+  describe('Offline submit', () => {
+    const descripcion = 'Canal desbordado por lluvias intensas en el sector norte';
+
+    async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(screen.getByLabelText(/descripci[oó]n/i), descripcion);
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+      await user.click(screen.getByRole('button', { name: /attach-photo/i }));
+      await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
+    }
+
+    it('shows an inline retry and a toast without clearing the report', async () => {
+      sessionStorage.clear();
+      vi.mocked(publicApi.createReport).mockRejectedValueOnce(
+        new QueryError('API Error: 503', 503, '/denuncias')
+      );
+      const user = userEvent.setup();
+      renderForm();
+      await fillAndSubmit(user);
+
+      expect(await screen.findByRole('alert', { name: /sin conexión/i })).toHaveTextContent(
+        /los datos siguen en el formulario/i
+      );
+      expect(screen.getByLabelText(/descripci[oó]n/i)).toHaveValue(descripcion);
+      expect(screen.getByAltText(/vista previa de la foto adjunta/i)).toBeInTheDocument();
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'reporte-sin-conexion',
+          title: 'Sin conexión',
+          color: 'orange',
+          autoClose: false,
+        })
+      );
+
+      const payload = vi.mocked(publicApi.createReport).mock.calls[0]?.[0];
+      await user.click(screen.getByRole('button', { name: /reintentar envío/i }));
+      expect(publicApi.createReport).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(publicApi.createReport).mock.calls[1]?.[0]).toEqual(payload);
+      await waitFor(() => {
+        expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
+      });
+      expect(notifications.hide).toHaveBeenCalledWith('reporte-sin-conexion');
+    });
+
+    it('keeps a normal error as a toast and does not show the offline retry', async () => {
+      vi.mocked(publicApi.createReport).mockRejectedValueOnce(new QueryError('dato inválido', 422));
+      const user = userEvent.setup();
+      renderForm();
+      await fillAndSubmit(user);
+
+      expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/descripci[oó]n/i)).toHaveValue(descripcion);
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Error', color: 'red' })
+      );
     });
   });
 });

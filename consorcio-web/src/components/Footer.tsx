@@ -13,7 +13,7 @@ import styles from '../styles/components/footer.module.css';
 export const FooterContent = memo(function FooterContent() {
   const showAdmin = useCanAccess(['admin', 'operador']);
   return (
-    <Box component="footer" role="contentinfo" py="xl" className={styles.footer}>
+    <Box component="footer" role="contentinfo" className={styles.footer}>
       <Container size="xl">
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start" wrap="wrap">

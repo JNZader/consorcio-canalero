@@ -28,6 +28,8 @@ export type NotificationColor =
 export interface NotificationExtras {
   readonly icon?: ReactNode;
   readonly autoClose?: number | false;
+  /** Identificador estable para actualizar o cerrar el mismo toast. */
+  readonly id?: string;
   /** Sitúa el toast debajo del header del sitio. */
   readonly belowHeader?: boolean;
 }
@@ -50,6 +52,7 @@ function emit(
     color,
     ...(options?.icon !== undefined ? { icon: options.icon } : {}),
     ...(options?.autoClose !== undefined ? { autoClose: options.autoClose } : {}),
+    ...(options?.id !== undefined ? { id: options.id } : {}),
     ...(options?.belowHeader ? { className: 'cc-toast-below-header' } : {}),
   });
 }
@@ -101,6 +104,11 @@ export function showNotification(
  */
 export function showToast(input: ToastInput): void {
   emit(input.title, input.message, input.color, input);
+}
+
+/** Cierra un toast abierto con `id`. No hace nada si ya no está. */
+export function hideToast(id: string): void {
+  notifications.hide(id);
 }
 
 /**
