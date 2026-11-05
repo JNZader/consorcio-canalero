@@ -107,7 +107,11 @@ function ProponerContent() {
           </List>
         </Alert>
 
-        <Alert color="exito" title="Tipos de sugerencias" icon={<IconLightbulb size={20} />}>
+        <Alert
+          color="institucional"
+          title="Tipos de sugerencias"
+          icon={<IconLightbulb size={20} />}
+        >
           <List size="sm" spacing="xs">
             <List.Item>Mejoras en infraestructura (canales, caminos, alcantarillas)</List.Item>
             <List.Item>Propuestas para servicios del consorcio</List.Item>

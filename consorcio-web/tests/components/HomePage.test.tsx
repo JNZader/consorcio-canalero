@@ -76,12 +76,15 @@ describe('HomePage', () => {
         renderWithMantine(<HomeContent />);
         const verMapaBtn = screen.getByRole('link', { name: /Ver Mapa/i });
         expect(verMapaBtn).toHaveAttribute('href', '/mapa');
+        expect(verMapaBtn).toHaveAttribute('data-variant', 'white');
+        expect(verMapaBtn.getAttribute('style') ?? '').not.toContain('dark-9');
       });
 
       it('should render Reportar Problema button with correct href', () => {
         renderWithMantine(<HomeContent />);
         const reportarBtn = screen.getByRole('link', { name: /Reportar Problema/i });
         expect(reportarBtn).toHaveAttribute('href', '/participacion');
+        expect(reportarBtn).toHaveAttribute('data-variant', 'outline');
       });
     });
 
