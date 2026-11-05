@@ -16,7 +16,7 @@
  * Neither `tests/unit/mapPanelFadeClearance.test.ts` (CSS as text) nor any
  * jsdom/happy-dom test can catch that: it is a LAYOUT fact. This spec measures
  * it in real engines, on the real stylesheet, with no app and no backend —
- * `setContent` builds the two panel shapes out of `map.module.css` itself.
+ * `setContent` builds the two panel shapes out of `map/classNames` itself.
  *
  * Two independent assertions per shape:
  *   1. geometry — at the bottom of the scroll there are >= 24px (the fade's own
@@ -27,14 +27,11 @@
  *      geometry rationale above ever stops being the reason.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { expect, type Page, test } from '@playwright/test';
 
-import { type Page, expect, test } from '@playwright/test';
+import { readMapCss } from '../helpers/mapCss';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CSS = readFileSync(join(HERE, '../../src/styles/components/map.module.css'), 'utf8')
+const CSS = readMapCss()
   // `:global(...)` is CSS-modules syntax, invalid to a browser parser. Those
   // rules target MapLibre/Mantine internals and match nothing in this harness;
   // unwrapping them just keeps the parser from dropping neighbours.

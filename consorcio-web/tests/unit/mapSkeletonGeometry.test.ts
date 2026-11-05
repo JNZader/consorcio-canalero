@@ -16,9 +16,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { MAP_DESKTOP_MEDIA_QUERY } from '../../src/components/map2d/MapWorkspace';
+import { readMapCss } from '../helpers/mapCss';
 
-const cssPath = join(process.cwd(), 'src/styles/components/map.module.css');
-const css = readFileSync(cssPath, 'utf8');
+const css = readMapCss();
 const componentPath = join(process.cwd(), 'src/components/MapaInteractivo.tsx');
 const component = readFileSync(componentPath, 'utf8');
 
@@ -120,7 +120,10 @@ describe('map skeleton geometry (T3c fix 5a)', () => {
    */
   it('derives the portrait breakpoint from MAP_DESKTOP_MEDIA_QUERY', () => {
     const minWidth = MAP_DESKTOP_MEDIA_QUERY.match(/min-width:\s*([\d.]+)em/);
-    expect(minWidth, `la constante tiene que declarar un min-width en em, es «${MAP_DESKTOP_MEDIA_QUERY}»`).not.toBeNull();
+    expect(
+      minWidth,
+      `la constante tiene que declarar un min-width en em, es «${MAP_DESKTOP_MEDIA_QUERY}»`
+    ).not.toBeNull();
 
     const desktopFloorEm = Number.parseFloat(minWidth?.[1] ?? '');
     expect(Number.isFinite(desktopFloorEm)).toBe(true);
@@ -130,10 +133,10 @@ describe('map skeleton geometry (T3c fix 5a)', () => {
     const prelude = css.match(
       /@media \(pointer: coarse\) and \(orientation: portrait\) and \(max-width: ([^)]+)\)/
     );
-    expect(prelude, 'falta el bloque portrait en map.module.css').not.toBeNull();
+    expect(prelude, 'falta el bloque portrait en las hojas del mapa').not.toBeNull();
     expect(
       prelude?.[1],
-      `el max-width de portrait tiene que ser el complemento exacto de ${desktopFloorEm}em (el min-width de MAP_DESKTOP_MEDIA_QUERY); si moviste la constante, movi tambien map.module.css`
+      `el max-width de portrait tiene que ser el complemento exacto de ${desktopFloorEm}em (el min-width de MAP_DESKTOP_MEDIA_QUERY); si moviste la constante, movi tambien src/styles/components/map`
     ).toBe(expectedPortraitCeiling);
 
     // Y el complemento NO puede ser el propio piso de escritorio: ahi las dos

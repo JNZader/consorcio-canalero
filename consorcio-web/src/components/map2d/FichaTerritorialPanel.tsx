@@ -42,7 +42,7 @@ import { Fragment, lazy, memo, type ReactNode, Suspense, useEffect, useState } f
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
 import { useCanAccess } from '../../stores/authStore';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CanalBufferControl } from './CanalBufferControl';
@@ -68,7 +68,7 @@ export interface FichaTerritorialPanelProps {
   /**
    * True when the InfoPanel is open at the same time. Caps this panel's height
    * so both panels share the right-hand column instead of overlapping (see
-   * `.fichaPanelCompact` in `map.module.css` for the budget derivation).
+   * `.fichaPanelCompact` in `map/classNames` for the budget derivation).
    */
   readonly compact?: boolean;
   /**

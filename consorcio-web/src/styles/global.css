@@ -310,7 +310,9 @@ body {
 /* IconButton: el piso de 44px vale solo con puntero grueso.
    En mouse el ActionIcon conserva su densidad. */
 @media (pointer: coarse) {
-  .cc-icon-button {
+  /* (0, 2, 0): le gana al piso de 40px de `.mantine-ActionIcon-root`, que
+     está más abajo en esta hoja y si no se quedaría con el mínimo. */
+  :is(button, a).cc-icon-button {
     min-height: var(--cc-touch-min, 44px);
     min-width: var(--cc-touch-min, 44px);
   }

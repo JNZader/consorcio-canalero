@@ -1,7 +1,14 @@
-import { ActionIcon, Button, Group, Slider, Stack, Text } from '@mantine/core';
+import { Button, Group, Slider, Stack, Text } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 
+import styles from '../../styles/components/map/classNames';
+import { IconButton } from '../ui/IconButton';
 import { IconEye, IconEyeOff, IconX } from '../ui/icons';
+
+/** Teléfono parado: la barra queda en la zona del pulgar, dentro del drawer. */
+export const ACTIVE_LAYERS_MOBILE_QUERY = '(pointer: coarse) and (max-width: 47.9375em)';
 
 export interface ActiveLayerRow {
   id: string;
@@ -27,34 +34,60 @@ export function ActiveLayersSection({
   opacityByLayer = {},
   onLayerOpacityChange,
 }: ActiveLayersSectionProps) {
+  const coarseMobile = useMediaQuery(ACTIVE_LAYERS_MOBILE_QUERY, false, {
+    getInitialValueInEffect: false,
+  });
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = coarseMobile && !expanded;
+
   return (
-    <Stack gap={4} data-testid="map-active-layers">
+    <Stack
+      gap={4}
+      className={styles.activeLayers}
+      data-testid="map-active-layers"
+      data-collapsed={collapsed ? 'true' : 'false'}
+    >
       <Group justify="space-between" wrap="nowrap">
-        <Text size="xs" fw={600}>
-          En el mapa ({rows.length})
-        </Text>
-        <Group gap={4} wrap="nowrap">
-          <Button size="xs" variant="subtle" data-testid="map-active-restore" onClick={onRestore}>
-            Volver a lo predeterminado
-          </Button>
-          <Button
-            size="xs"
-            variant="subtle"
-            color="red"
-            data-testid="map-active-clear"
-            disabled={rows.length === 0}
-            onClick={onClearAll}
+        {coarseMobile ? (
+          <button
+            type="button"
+            className={styles.activeLayersToggle}
+            aria-expanded={!collapsed}
+            aria-controls="map-active-layers-body"
+            data-testid="map-active-layers-toggle"
+            onClick={() => setExpanded((value) => !value)}
           >
-            Apagar todo
-          </Button>
-        </Group>
+            En el mapa ({rows.length})
+          </button>
+        ) : (
+          <Text size="xs" fw={600}>
+            En el mapa ({rows.length})
+          </Text>
+        )}
+        {collapsed ? null : (
+          <Group gap={4} wrap="nowrap">
+            <Button size="xs" variant="subtle" data-testid="map-active-restore" onClick={onRestore}>
+              Volver a lo predeterminado
+            </Button>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="red"
+              data-testid="map-active-clear"
+              disabled={rows.length === 0}
+              onClick={onClearAll}
+            >
+              Apagar todo
+            </Button>
+          </Group>
+        )}
       </Group>
-      {rows.length === 0 ? (
-        <Text size="xs" c="dimmed">
+      {collapsed ? null : rows.length === 0 ? (
+        <Text size="xs" c="dimmed" id="map-active-layers-body">
           Nada prendido. Usá un preset o el catálogo.
         </Text>
       ) : (
-        <Stack gap={2}>
+        <Stack gap={2} className={styles.activeLayersBody} id="map-active-layers-body">
           {rows.map((row) => {
             const opacity = opacityByLayer[row.id] ?? 1;
             return (
@@ -64,7 +97,7 @@ export function ActiveLayersSection({
                     {row.label}
                   </Text>
                   {onLayerOpacityChange ? (
-                    <ActionIcon
+                    <IconButton
                       size="md"
                       variant="subtle"
                       color="gray"
@@ -73,9 +106,9 @@ export function ActiveLayersSection({
                       onClick={() => onLayerOpacityChange(row.id, opacity === 0 ? 1 : 0)}
                     >
                       {opacity === 0 ? <IconEyeOff size={12} /> : <IconEye size={12} />}
-                    </ActionIcon>
+                    </IconButton>
                   ) : null}
-                  <ActionIcon
+                  <IconButton
                     size="md"
                     variant="subtle"
                     color="gray"
@@ -84,7 +117,7 @@ export function ActiveLayersSection({
                     onClick={() => onRemove(row.id)}
                   >
                     <IconX size={12} />
-                  </ActionIcon>
+                  </IconButton>
                 </Group>
                 {onLayerOpacityChange ? (
                   <Slider

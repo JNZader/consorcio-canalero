@@ -81,6 +81,37 @@ test.describe('e2e mobile 360', () => {
       .toBeGreaterThan(before.y + 40);
   });
 
+  test('mapa: el panel de capas atrapa el foco y Escape vuelve al botón', async ({ page }) => {
+    await openStableRoute(page, '/mapa', 'light', MOBILE);
+    await expect(page.getByRole('heading', { name: 'Mapa Interactivo' })).toBeVisible();
+
+    const burger = page.getByTestId('map-workspace-burger');
+    await burger.click();
+    const dialog = page.getByRole('dialog', { name: 'Panel de capas y leyenda' });
+    await expect(dialog).toBeVisible();
+    await expect
+      .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+      .toBe(true);
+
+    const close = page.getByTestId('map-workspace-drawer-close');
+    await close.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect
+      .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+      .toBe(true);
+
+    await close.focus();
+    await page.keyboard.press('Tab');
+    await expect
+      .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+      .toBe(true);
+
+    await close.focus();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(burger).toBeFocused();
+  });
+
   test('login: el formulario se puede usar y no desborda en horizontal', async ({ page }) => {
     await openStableRoute(page, '/login', 'light', MOBILE);
     await expect(page.getByRole('heading', { name: 'Iniciar Sesión' })).toBeVisible();

@@ -38,7 +38,7 @@
 
 import { Box, Text } from '@mantine/core';
 
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 
 export const ROAD_FLOW_DISCLAIMER_TEST_ID = 'road-flow-disclaimer';
 

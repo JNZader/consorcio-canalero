@@ -1,16 +1,7 @@
-import {
-  ActionIcon,
-  Button,
-  Checkbox,
-  Divider,
-  Group,
-  Paper,
-  Select,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Button, Checkbox, Divider, Group, Paper, Select, Stack, Text } from '@mantine/core';
 import { useEffect, useRef } from 'react';
 
+import { IconButton } from '../ui/IconButton';
 import {
   HAZARD_RISK_CLASSES,
   type HazardControlsProps,
@@ -101,14 +92,14 @@ export function HazardControlsMobile({
               Análisis por cuenca
             </Text>
           </div>
-          <ActionIcon
+          <IconButton
             variant="subtle"
             color="gray"
             aria-label="Contraer controles de riesgos"
             onClick={() => onCollapsedChange(true)}
           >
             ↓
-          </ActionIcon>
+          </IconButton>
         </Group>
         <Select
           size="sm"

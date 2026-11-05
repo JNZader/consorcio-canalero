@@ -6,7 +6,7 @@
  * The buttons used to hard-code `width: 29, height: 29` INLINE, which no media
  * query can reach: they were stuck under the 44px WCAG 2.5.5 target on touch,
  * and their only label was a hover-only tooltip. Sizing, the dock offsets and
- * the coarse-pointer label now live in `map.module.css`, so these assertions are
+ * the coarse-pointer label now live in `map/classNames`, so these assertions are
  * class-level (happy-dom does not evaluate `@media (pointer: coarse)`).
  *
  * ── WHAT THIS FILE STRUCTURALLY CANNOT SEE ─────────────────────────────────
@@ -39,28 +39,16 @@ import { describe, expect, it } from "vitest";
 import { MAP_CTRL_GLYPH_SIZE } from "../../src/components/map2d/map2dConfig";
 import { MapActionsPanel } from "../../src/components/map2d/MapActionsPanel";
 import { MeasurementToolbar } from "../../src/components/map2d/measurement/MeasurementToolbar";
+import { coarsePointerBlocks, readMapCss } from "../helpers/mapCss";
 
 /** The stylesheet source. happy-dom evaluates no `@media`, and CSS Modules give
  * the test no computed geometry at all, so the coarse-pointer LAYOUT contract is
  * asserted against the source text + arithmetic instead of a rendered box. */
-const MAP_CSS = readFileSync(
-	resolve(process.cwd(), "src/styles/components/map.module.css"),
-	"utf-8",
-);
+const MAP_CSS = readMapCss();
 
-/** The `@media (pointer: coarse)` block (the one WITHOUT a width qualifier). */
+/** The `@media (pointer: coarse)` blocks (the ones WITHOUT a width qualifier). */
 function coarseBlock(): string {
-	const start = MAP_CSS.indexOf("@media (pointer: coarse) {");
-	expect(start).toBeGreaterThan(-1);
-	let depth = 0;
-	for (let i = MAP_CSS.indexOf("{", start); i < MAP_CSS.length; i += 1) {
-		if (MAP_CSS[i] === "{") depth += 1;
-		if (MAP_CSS[i] === "}") {
-			depth -= 1;
-			if (depth === 0) return MAP_CSS.slice(start, i + 1);
-		}
-	}
-	throw new Error("unterminated @media (pointer: coarse) block");
+	return coarsePointerBlocks(MAP_CSS);
 }
 
 /** The `@media (pointer: coarse) and (min-width: 62.0625em)` block. */
@@ -287,11 +275,10 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
 
 	it("scopes MapLibre's fixed 44px square to MapLibre's OWN buttons", () => {
 		const coarse = coarseBlock();
-		expect(coarse).toContain(
-			":global(.maplibregl-ctrl-group) button:not(.mapCtrlButton)",
-		);
-		// The old, over-broad selector is gone.
-		expect(coarse).not.toContain(":global(.maplibregl-ctrl-group button)");
+		expect(coarse).toContain(".maplibregl-ctrl-group button:not(.mapCtrlButton)");
+		// The old, over-broad selector (every button in the group, including ours) is gone.
+		expect(coarse).not.toContain(".maplibregl-ctrl-group button {");
+		expect(coarse).not.toContain(".maplibregl-ctrl-group button,");
 	});
 
 	it("reaches the 44px target through min-width/min-height, NOT width/height", () => {
@@ -311,8 +298,8 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
 		// max(29px, 44px) on both axes. Pin those, and nothing else — the dead
 		// half stays in the stylesheet as documented intent (see its comment)
 		// and must never be asserted as behaviour again.
-		expect(rule).toMatch(/min-width:\s*44px/);
-		expect(rule).toMatch(/min-height:\s*44px/);
+		expect(rule).toMatch(/min-width:\s*var\(--cc-touch-min,\s*44px\)/);
+		expect(rule).toMatch(/min-height:\s*var\(--cc-touch-min,\s*44px\)/);
 		expect(rule).toMatch(/gap:\s*1px/);
 	});
 });
@@ -323,8 +310,6 @@ describe("coarse-pointer control layout fits the 380px canvas", () => {
  * the bottom toolbar sat almost on top of the scale bar.
  */
 describe("coarse-pointer right column is one uniform icon family", () => {
-	const TOUCH = 44;
-
 	it("the Exportar button drops its visible label inside the actions dock", () => {
 		const coarse = coarseBlock();
 		// Scoped to the dock: the bottom toolbar KEEPS its captions.
@@ -342,8 +327,8 @@ describe("coarse-pointer right column is one uniform icon family", () => {
 		const rule =
 			/\.mapActionsDock\s+\.mapCtrlButton\s*\{([^}]*)\}/.exec(coarse)?.[1] ??
 			"";
-		expect(rule).toMatch(new RegExp(`width:\\s*${TOUCH}px`));
-		expect(rule).toMatch(new RegExp(`min-width:\\s*${TOUCH}px`));
+		expect(rule).toMatch(/width:\s*var\(--cc-touch-min,\s*44px\)/);
+		expect(rule).toMatch(/min-width:\s*var\(--cc-touch-min,\s*44px\)/);
 		expect(rule).toMatch(/padding:\s*0/);
 	});
 
@@ -416,7 +401,7 @@ describe("the control column is one icon family", () => {
 	 * latter is wanted here, so the search skips bodies without a `mask-image`.
 	 */
 	function iconRule(ctrl: string): string {
-		const selector = `.mapCanvasWrapper :global(.maplibregl-ctrl button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon)`;
+		const selector = `.mapCanvasWrapper .maplibregl-ctrl button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon`;
 		let from = 0;
 		for (;;) {
 			const at = MAP_CSS.indexOf(selector, from);
@@ -447,7 +432,7 @@ describe("the control column is one icon family", () => {
 	it("covers BOTH map surfaces, not just the standalone page", () => {
 		for (const ctrl of NATIVE_CTRLS) {
 			expect(MAP_CSS).toContain(
-				`.workspaceCanvas :global(.maplibregl-ctrl button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon)`,
+				`.workspaceCanvas .maplibregl-ctrl button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon`,
 			);
 		}
 	});
@@ -456,9 +441,7 @@ describe("the control column is one icon family", () => {
 		// Upstream is `.maplibregl-ctrl button.maplibregl-ctrl-zoom-in
 		// .maplibregl-ctrl-icon` = (0,3,1). Overriding the bare `.maplibregl-ctrl-icon`
 		// would only tie, and the winner would depend on injection order.
-		expect(MAP_CSS).not.toMatch(
-			/\.mapCanvasWrapper :global\(\.maplibregl-ctrl-icon\)/,
-		);
+		expect(MAP_CSS).not.toContain(".mapCanvasWrapper .maplibregl-ctrl-icon {");
 		for (const ctrl of NATIVE_CTRLS) {
 			expect(MAP_CSS).toContain(`button.maplibregl-ctrl-${ctrl} .maplibregl-ctrl-icon`);
 		}
@@ -620,7 +603,7 @@ describe("panel + layer-row touch targets (B2-2.3)", () => {
 			/\.infoPanel,\s*\.fichaPanel,\s*\.panelSheet\s*\{([^}]*)\}/.exec(
 				coarse,
 			)?.[1] ?? "";
-		expect(rule).toMatch(new RegExp(`--panel-close-size:\\s*${TOUCH}px`));
+		expect(rule).toMatch(/--panel-close-size:\s*var\(--cc-touch-min,\s*44px\)/);
 	});
 
 	it("feeds both Mantine size vars from it, via descendant selectors", () => {
@@ -650,12 +633,12 @@ describe("panel + layer-row touch targets (B2-2.3)", () => {
 
 	it("sizes the layer checkboxes by variable at both pointer types", () => {
 		expect(MAP_CSS).toMatch(
-			/\.layerTogglesRoot :global\(\.mantine-Checkbox-root\)\s*\{[^}]*--checkbox-size:\s*24px/,
+			/\.layerTogglesRoot \.mantine-Checkbox-root\s*\{[^}]*--checkbox-size:\s*24px/,
 		);
 		const coarse = coarseBlock();
 		const box = /--checkbox-size:\s*(\d+)px/.exec(coarse)?.[1];
 		const label =
-			/\.layerTogglesRoot :global\(\.mantine-Checkbox-label\)\s*\{([^}]*)\}/.exec(
+			/\.layerTogglesRoot \.mantine-Checkbox-label\s*\{([^}]*)\}/.exec(
 				coarse,
 			)?.[1] ?? "";
 		const padding = Number(/padding-block:\s*(\d+)px/.exec(label)?.[1]);
@@ -664,24 +647,24 @@ describe("panel + layer-row touch targets (B2-2.3)", () => {
 		expect(padding).toBe(8);
 		// Lo que el dedo toca es la ETIQUETA: 28 + 8 + 8 = 44.
 		expect(Number(box) + 2 * padding).toBe(TOUCH);
-		expect(label).toMatch(new RegExp(`min-height:\\s*${TOUCH}px`));
+		expect(label).toMatch(/min-height:\s*var\(--cc-touch-min,\s*44px\)/);
 	});
 
 	it("drives the slider thumb through --slider-size (the thumb var is inline)", () => {
 		const coarse = coarseBlock();
 		const size = Number(
-			/\.layerTogglesRoot :global\(\.mantine-Slider-root\)\s*\{[^}]*--slider-size:\s*(\d+)px/.exec(
+			/\.layerTogglesRoot \.mantine-Slider-root\s*\{[^}]*--slider-size:\s*(\d+)px/.exec(
 				coarse,
 			)?.[1],
 		);
 		// Mantine: `--slider-thumb-size: calc(var(--slider-size) * 2)`.
-		expect(size * 2).toBe(28);
+		expect(size * 2).toBe(TOUCH);
 		// `!important` LOAD-BEARING: Slider es el unico de los cuatro controles con
 		// `size` en sus `defaultProps` ('md'), asi que su varsResolver SIEMPRE emite
 		// `--slider-size` inline aunque el JSX no pase `size`. Sin `!important` esta
 		// regla pierde contra el inline y el thumb se queda en 16px en tactil.
 		expect(coarse).toMatch(
-			/\.layerTogglesRoot :global\(\.mantine-Slider-root\)\s*\{[^}]*--slider-size:\s*14px !important/,
+			/\.layerTogglesRoot \.mantine-Slider-root\s*\{[^}]*--slider-size:\s*22px !important/,
 		);
 		// En escritorio no hay regla: manda el default `md` (0.5rem) → thumb 16px.
 		// Y nunca se DECLARA el thumb: Mantine lo escribe inline y solo `!important`

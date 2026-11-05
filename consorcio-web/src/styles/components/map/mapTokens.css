@@ -1,0 +1,20 @@
+/* Stacking tokens. Mirrored by `MAP_Z` in mapZIndex.ts. */
+:root {
+  --z-map-hazard: 3;
+  --z-map-hazard-mobile: 4;
+  --z-map-comparison: 10;
+  --z-map-overlay: 12;
+  --z-map-date-badge: 14;
+  --z-map-divider: 15;
+  --z-map-controls: 16;
+  --z-map-measurement-label: 17;
+  --z-map-profile: 18;
+  --z-map-blocking: 20;
+  --z-map-page-chrome: 25;
+  --z-map-panel: 1000;
+  --z-map-drawer-overlay: 1150;
+  --z-map-drawer: 1200;
+  --z-map-burger: 1250;
+  --z-map-gesture: 1300;
+}
+

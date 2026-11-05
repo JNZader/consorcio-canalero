@@ -1,24 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const MAP_CSS = readFileSync(
-  resolve(process.cwd(), 'src/styles/components/map.module.css'),
-  'utf-8',
-);
+import { coarsePointerBlocks, readMapCss } from '../helpers/mapCss';
+
+const MAP_CSS = readMapCss();
 
 function coarseBlock(): string {
-  const start = MAP_CSS.indexOf('@media (pointer: coarse) {');
-  expect(start).toBeGreaterThan(-1);
-  let depth = 0;
-  for (let i = MAP_CSS.indexOf('{', start); i < MAP_CSS.length; i += 1) {
-    if (MAP_CSS[i] === '{') depth += 1;
-    if (MAP_CSS[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return MAP_CSS.slice(start, i + 1);
-    }
-  }
-  throw new Error('unterminated @media (pointer: coarse) block');
+  return coarsePointerBlocks(MAP_CSS);
 }
 
 function pxOf(css: string, selector: string, prop: string): number {
@@ -55,7 +42,7 @@ describe('mapRightStack (UX-19)', () => {
 
   it('lays the stack as a bottom row on landscape phones (390px viewport)', () => {
     const start = MAP_CSS.indexOf(
-      '@media (pointer: coarse) and (orientation: landscape) and (max-height: 30em)',
+      '@media (pointer: coarse) and (orientation: landscape) and (max-height: 30em)'
     );
     expect(start).toBeGreaterThan(-1);
     const block = MAP_CSS.slice(start, start + 1800);

@@ -44,11 +44,12 @@
  * Sheet: pinned header next to the handle. Exactly one close affordance.
  */
 
-import { ActionIcon, CloseButton, Paper, Text, UnstyledButton } from '@mantine/core';
+import { CloseButton, Paper, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronDown } from '@tabler/icons-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
+import { IconButton } from '../ui/IconButton';
 
 /** Height caps of the bottom sheet, in cycle order. */
 export const SHEET_STAGES = ['peek', 'medio', 'alto'] as const;
@@ -190,7 +191,7 @@ export function MapPanelShell({
   }
 
   const minimizeButton = canMinimize ? (
-    <ActionIcon
+    <IconButton
       variant="subtle"
       color="gray"
       className={styles.panelActionIcon}
@@ -199,7 +200,7 @@ export function MapPanelShell({
       data-testid={`${testId}-minimize`}
     >
       <IconChevronDown size={16} />
-    </ActionIcon>
+    </IconButton>
   ) : null;
 
   if (!sheet) {
@@ -242,7 +243,7 @@ export function MapPanelShell({
       className={className}
       data-testid={testId}
       data-sheet="true"
-      /* PUBLIC CONTRACT with map.module.css — do not rename or drop. The
+      /* PUBLIC CONTRACT with map/classNames — do not rename or drop. The
          measurement dock lifts itself clear of a PARTIAL sheet via
          `.mapCanvasWrapper:has(.panelSheet[data-stage='peek'|'medio'])`. It
          cannot key off the modifier classes because `medio` deliberately has

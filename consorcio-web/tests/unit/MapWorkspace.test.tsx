@@ -328,7 +328,7 @@ describe('<MapWorkspace />', () => {
     expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'true');
     expect(screen.getByTestId('selection-body')).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
@@ -344,10 +344,53 @@ describe('<MapWorkspace />', () => {
       </MantineProvider>
     );
     expect(screen.getByTestId('controls-marker')).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     await waitFor(() =>
       expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false')
     );
+  });
+
+  it('mobile: traps Tab inside the layers dialog, Escape closes it, and focus returns to the burger', async () => {
+    mockViewport(false);
+    renderWithMantine(
+      <MapWorkspace
+        canvas={canvas}
+        controls={
+          <div>
+            <button type="button">Primero</button>
+            <button type="button">Último</button>
+          </div>
+        }
+      />
+    );
+
+    const burger = screen.getByTestId('map-workspace-burger');
+    burger.focus();
+    fireEvent.click(burger);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    const last = screen.getByRole('button', { name: 'Último' });
+    last.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(screen.getByTestId('map-workspace-drawer-close')).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(last).toHaveFocus();
+
+    const outside = document.createElement('button');
+    outside.type = 'button';
+    outside.textContent = 'fuera';
+    document.body.appendChild(outside);
+    outside.focus();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    outside.remove();
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false')
+    );
+    expect(burger).toHaveFocus();
   });
 
   it('desktop: never touches the history stack (no Drawer to dismiss)', () => {

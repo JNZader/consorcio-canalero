@@ -11,7 +11,7 @@ import type {
 } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
 import { mediaMaxWidth } from '../../lib/breakpoints';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import type { EtapaGate } from '../shared/canalesGrouping';
 import { ExportPngModal } from './ExportPngModal';

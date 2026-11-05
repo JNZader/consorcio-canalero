@@ -1,7 +1,7 @@
 import { Box, Menu, Tooltip, UnstyledButton } from '@mantine/core';
 import { memo, useState } from 'react';
 import { mapColorTokens } from '../../lib/mapColorTokens';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { showSuccess, showWarning } from '../../lib/notifications';
 import { IconCopy, IconDownload, IconFileZip, IconMap, IconPhoto, IconQrcode } from '../ui/icons';
 import { MapShareQrModal } from './MapShareLink';
@@ -87,7 +87,7 @@ export function MapExportMenuItems({
  * keep our hand-rolled style in sync with upstream MapLibre changes.
  *
  * Position: sits in `.mapRightStack` under the native MapLibre column
- * (UX-19). Button size lives in `map.module.css` (`.mapActionsDock` /
+ * (UX-19). Button size lives in `map/classNames` (`.mapActionsDock` /
  * `.mapCtrlButton`) because a coarse pointer grows every control to the 44px
  * WCAG target.
  *
@@ -118,7 +118,7 @@ export const MapActionsPanel = memo(function MapActionsPanel({
               <IconDownload size={MAP_CTRL_GLYPH_SIZE} />
               {/* The shared coarse-pointer caption slot. It is deliberately
                   HIDDEN for this button (`.mapActionsDock .mapCtrlButtonLabel`
-                  in `map.module.css`): a labeled, wider box in the right-hand
+                  in `map/classNames`): a labeled, wider box in the right-hand
                   column broke the uniform 44×44 grid of the MapLibre controls it
                   docks under. The markup stays so the two toolbars keep one
                   component contract, and the touch user is not left with a bare

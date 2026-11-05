@@ -62,7 +62,7 @@ Fuente única: `src/lib/breakpoints.ts`, la escala de Mantine (`xs` 36em,
 
 `@media` no lee custom properties. Desde TypeScript: `mediaMinWidth('sm')`
 (mobile-first). En CSS el `em` queda escrito; `tests/unit/designTokens.test.ts`
-exige que coincida con el token. `map.module.css` no se reescribe acá.
+exige que coincida con el token. Las hojas en `src/styles/components/map/` no se reescriben acá.
 
 ## Hex nuevos
 

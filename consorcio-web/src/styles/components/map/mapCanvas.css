@@ -1,0 +1,59 @@
+/* Canvas height budget.
+   Desktop chrome ABOVE the canvas, after Vista / Tiempo / search moved into
+   the layers panel and the page header collapsed to one row:
+     site Header ~61px + Container py-xs 8px + compact header Paper ~44px
+     + mb-xs 8px + breathing room ~39px → 160px subtracted.
+   The old `min-height: 560px` floor is what actually broke 1366×768: at 768px
+   viewport height the calc resolves lower but a high floor pushed the map's
+   bottom edge off screen. 420px keeps the map usable while letting the calc
+   win on short laptops. */
+/* The budget is published as a custom property so it has exactly ONE definition
+   per breakpoint. `.canvasHeightBudget` exists for consumers that cannot be
+   targeted by a media query: `TerrainViewer3D` takes its height as a PROP that
+   lands on an inline style deep inside `TerrainViewer3DChrome`, so `MapaPage`
+   wraps it in this class and passes `height="var(--map-canvas-height)"`. That
+   keeps 2D ↔ 3D height parity at BOTH breakpoints — the previous inline
+   `clamp(...)` literal only matched desktop. */
+.mapCanvasWrapper,
+.canvasHeightBudget,
+.mapSkeletonWrapper,
+.workspaceSidebar {
+  --map-canvas-height: clamp(420px, calc(100dvh - 140px), 1920px);
+}
+
+/* Loading skeleton (T3c, fix 5a). It used to reuse `.mapWrapper` (16/9 aspect,
+   max 700px) while the mounted map uses `--map-canvas-height`, so the page
+   visibly jumped the moment MapLibre finished loading. Same budget = no shift. */
+.mapSkeletonWrapper {
+  position: relative;
+  width: 100%;
+  min-height: 420px;
+  height: var(--map-canvas-height);
+}
+
+.mapCanvasWrapper {
+  position: relative;
+  min-width: 0;
+  min-height: 420px;
+  height: var(--map-canvas-height);
+  overflow: hidden;
+  border-radius: var(--mantine-radius-md);
+}
+
+.captureMode .leaflet-control-container {
+  display: none;
+}
+
+/* Cooperative-gestures hint overlay (task 1.6). MapLibre paints a dimmed
+   screen with centered text when the user tries to wheel-zoom without Ctrl.
+   Force a dark scrim + white text so it stays legible over BOTH light and
+   dark base maps, and sit above the floating panels. */
+.mapCanvasWrapper .maplibregl-cooperative-gesture-screen,
+.workspaceCanvas .maplibregl-cooperative-gesture-screen {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: var(--mantine-font-size-md);
+  font-weight: 600;
+  z-index: var(--z-map-gesture);
+}
+

@@ -20,6 +20,7 @@ import {
   TOUCH_MIN,
 } from '../../src/lib/theme';
 import { Z_INDEX, Z_INDEX_VAR } from '../../src/lib/zIndex';
+import { readMapCss } from '../helpers/mapCss';
 
 function luma(hex: string): number {
   const channel = (offset: number) => Number.parseInt(hex.slice(offset, offset + 2), 16);
@@ -58,7 +59,7 @@ describe('design tokens', () => {
   });
 
   it('pins the map CSS literals to those tokens', () => {
-    const mapCss = readFileSync('src/styles/components/map.module.css', 'utf8');
+    const mapCss = readMapCss();
     const rainfallCss = readFileSync(
       'src/components/map2d/rainfall/RainfallAnswerCard.module.css',
       'utf8'

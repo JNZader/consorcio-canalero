@@ -1,0 +1,15 @@
+/* Hojas del mapa, en el orden del antiguo map.module.css.
+   Los nombres de clase quedan globales a propósito: varias hojas
+   se citan entre sí (canvas, paneles, docks) y un hash por archivo
+   rompería esos selectores. */
+@import './mapTokens.css';
+@import './mapShell.css';
+@import './mapWorkspace.css';
+@import './mapCanvas.css';
+@import './mapPanels.css';
+@import './mapLayers.css';
+@import './mapControls.css';
+@import './mapDock.css';
+@import './mapPage.css';
+@import './mapChrome.css';
+@import './mapActiveLayers.css';

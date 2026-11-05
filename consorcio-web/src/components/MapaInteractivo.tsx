@@ -1,7 +1,7 @@
 import { Alert, Box, Center, Skeleton, Stack, Text } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 import { erroresUi } from '../lib/userFacingError';
-import styles from '../styles/components/map.module.css';
+import styles from '../styles/components/map/classNames';
 import { ErrorBoundary } from './ErrorBoundary';
 
 // Lazy load del componente de mapa con MapLibre GL

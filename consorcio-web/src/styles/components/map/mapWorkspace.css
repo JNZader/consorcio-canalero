@@ -1,0 +1,145 @@
+/* ── Responsive controls shell (MapWorkspace) ─────────────────────────────── */
+/* Desktop: [ collapsible sidebar | canvas ]. Collapsing the sidebar returns
+   the freed width to the canvas. Mobile switches to canvas + Drawer (handled
+   by the component via useMediaQuery, not CSS). */
+/* Single-tree root (see MapWorkspace.tsx). The canvas is DOM-first (index 0)
+   in BOTH modes so its fiber never remounts across the 48em breakpoint. */
+.workspaceRoot {
+  width: 100%;
+  max-height: calc(100dvh - var(--map-chrome-h, 7.5rem));
+  overflow: hidden;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Desktop: [ sidebar | canvas ]. The sidebar comes AFTER the canvas in the
+   DOM, so `order` pulls it visually to the LEFT. Collapsing returns the freed
+   width to the canvas. */
+.workspaceRoot[data-desktop='true'] {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: var(--mantine-spacing-sm);
+  align-items: start;
+}
+
+.workspaceRoot[data-desktop='true'][data-collapsed='true'] {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.workspaceRoot[data-desktop='true'] .workspaceSidebar {
+  order: 1;
+}
+
+.workspaceRoot[data-desktop='true'] .workspaceCanvas {
+  order: 2;
+}
+
+/* Mobile: canvas full-width; the burger floats over it as an absolute overlay. */
+.workspaceRoot[data-desktop='false'] {
+  position: relative;
+}
+
+.workspaceSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  /* Same budget as `.mapCanvasWrapper`, via the shared var — the sidebar and canvas are
+     grid siblings and must resolve to the same height. */
+  height: var(--map-canvas-height);
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+  overflow: hidden;
+}
+
+.workspaceSidebarHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+  padding: var(--mantine-spacing-xs);
+  border-bottom: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+}
+
+.workspaceSidebarSearch {
+  min-width: 0;
+}
+
+.workspaceSidebarHeaderCollapsed {
+  align-items: center;
+  justify-content: center;
+  border-bottom: none;
+}
+
+.workspaceSidebarBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mantine-spacing-xs);
+}
+
+/* FIX 2: hide the body (keeps `controls` MOUNTED so panel state survives)
+   instead of conditional-rendering it away when the sidebar is collapsed. */
+.workspaceSidebar[data-collapsed='true'] .workspaceSidebarBody {
+  display: none;
+}
+
+.workspaceCanvas {
+  position: relative;
+  min-width: 0;
+}
+
+.workspaceDrawerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-map-drawer-overlay);
+  background: rgb(0 0 0 / 0.35);
+}
+
+/* MAP-11: same sidebar host as desktop. Hidden until the burger opens it as a
+   75% overlay so LayerControlsPanel is never remounted across 48em. */
+.workspaceRoot[data-desktop='false'] .workspaceSidebar {
+  display: none;
+}
+
+.workspaceRoot[data-desktop='false'][data-drawer-open='true'] .workspaceSidebar {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: var(--z-map-drawer);
+  width: var(--map-mobile-drawer-size, 75%);
+  height: 100%;
+  max-height: var(--map-canvas-height);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+.workspaceBurger {
+  position: absolute;
+  top: var(--mantine-spacing-sm);
+  left: var(--mantine-spacing-sm);
+  z-index: var(--z-map-burger);
+  background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
+  border-radius: var(--mantine-radius-sm);
+  box-shadow: var(--mantine-shadow-sm);
+  padding: 4px;
+}
+
+/* The drawer has its own close button. Leaving the burger on top of the open
+   drawer covered the search box in the panel header. */
+.workspaceRoot[data-drawer-open='true'] .workspaceBurger {
+  display: none;
+}
+

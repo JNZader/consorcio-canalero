@@ -1,0 +1,37 @@
+.mapWrapper {
+  aspect-ratio: 16/9;
+  min-height: 400px;
+  max-height: 700px;
+  width: 100%;
+  position: relative;
+}
+
+.mapWorkspace {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  width: 100%;
+}
+
+/* ── Legacy bottom-bar (3D terrain chrome ONLY) ───────────────────────────── */
+/* The 2D map moved to MapWorkspace (below), but the 3D terrain view
+   (TerrainViewer3DChrome.tsx) still uses this two-column bottom bar and is
+   OUT OF SCOPE for the 2D redesign. Keep these classes so the 3D view keeps
+   its styling. */
+.mapBottomBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--mantine-spacing-md);
+  align-items: stretch;
+}
+
+.mapBottomBarItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  min-width: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+

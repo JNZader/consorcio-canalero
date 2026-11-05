@@ -16,7 +16,7 @@ import { isValidElement, useEffect, useState } from 'react';
 import { MAP_DEFAULT_ZOOM } from '../../constants';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { RasterLegend } from '../RasterLegend';
 import {
   type CanalToggleEntry,

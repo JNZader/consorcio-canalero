@@ -89,7 +89,7 @@ describe('TramoSurveySheet — the bottom sheet', () => {
     setup();
     const shell = screen.getByTestId('tramo-survey-sheet');
     expect(shell).toBeTruthy();
-    // `data-stage` is MapPanelShell's own public contract with map.module.css
+    // `data-stage` is MapPanelShell's own public contract with map/classNames
     // (`MapPanelShell.tsx:246`) — asserted here rather than adding a parallel
     // attribute that would then have to be kept in sync with it.
     expect(shell.getAttribute('data-sheet')).toBe('true');

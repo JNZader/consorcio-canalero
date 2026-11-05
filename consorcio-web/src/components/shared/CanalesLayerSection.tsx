@@ -14,7 +14,7 @@
  * lives in a grid); from "Canales relevados" downward they are identical.
  *
  * CONTRATO DE ANCESTRO (B2-2.3): las casillas de aca NO llevan `size`. El alto
- * sale de `--checkbox-size`, que publica `.layerTogglesRoot` (map.module.css)
+ * sale de `--checkbox-size`, que publica `.layerTogglesRoot` (map/classNames)
  * sobre la raiz del panel que las contiene — 24px en escritorio, 28px + etiqueta
  * de 44px en tactil. Un viewer que renderice esta seccion SIN esa clase en algun
  * ancestro va a mostrar los canales en el default de Mantine mientras sus

@@ -16,7 +16,7 @@ import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
 import { useCanAccess } from '../stores/authStore';
-import mapStyles from '../styles/components/map.module.css';
+import mapStyles from '../styles/components/map/classNames';
 import { MapaContenido } from './MapaInteractivo';
 import { MapViewPanes, notifyMapPaneShown, shouldArmThreeD } from './map2d/MapViewPanes';
 import { MapPageViewProvider } from './map2d/mapPageViewContext';

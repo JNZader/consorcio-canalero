@@ -33,7 +33,7 @@ import type { HazardPrecipMonth, HazardRiskClass } from '../../hooks/useHazardUr
 import { FICHA_MAX_BUFFER_M } from '../../lib/api/ficha';
 import { erroresUi } from '../../lib/userFacingError';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import type { Etapa } from '../../types/canales';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import type { DrawControlHandle } from '../map/DrawControl';

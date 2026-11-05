@@ -1,7 +1,7 @@
 /**
  * Escala de apilado del cromo de la app.
  *
- * El mapa tiene la suya (`MAP_Z` y `--z-map-*` en `map.module.css`) y no
+ * El mapa tiene la suya (`MAP_Z` y `--z-map-*` en `map/classNames`) y no
  * entra acá. Los números son los literales que ya usaba cada capa: este
  * módulo les pone nombre y el resolver los publica como `--z-*`.
  * Cambiar un número mueve el stacking; no es parte de definir el token.

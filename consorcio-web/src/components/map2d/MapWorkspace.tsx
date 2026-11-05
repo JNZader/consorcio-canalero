@@ -1,13 +1,4 @@
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Burger,
-  Group,
-  SegmentedControl,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Badge, Box, Burger, Group, SegmentedControl, Text, Tooltip } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -15,8 +6,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useDrawerHistoryClose } from '../../hooks/useDrawerHistoryClose';
 import { mediaMinWidth } from '../../lib/breakpoints';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
+import { IconButton } from '../ui/IconButton';
 import { IconArrowLeft, IconArrowRight, IconLayers, IconX } from '../ui/icons';
+import { useDialogFocusTrap } from './useDialogFocusTrap';
 
 /**
  * Width of the mobile layers overlay. Deliberately NOT 100%: see the overlay
@@ -44,7 +37,7 @@ export const MOBILE_DRAWER_SIZE = '75%';
  *
  * ── OJO: el contrato es UNIDIRECCIONAL ─────────────────────────────────────
  * El ancho sale de `breakpoints.sm` (`mediaMinWidth('sm')` = 48em).
- * `map.module.css` hardcodea el COMPLEMENTO EXACTO de ese `min-width` en el
+ * `map/classNames` hardcodea el COMPLEMENTO EXACTO de ese `min-width` en el
  * bloque de portrait: `@media … and (max-width: 47.9375em)`, o sea 48em menos
  * 0.0625em (1px), para que las dos queries nunca sean verdaderas a la vez. El
  * CSS no puede importar esta constante (`@media` no lee custom properties),
@@ -142,7 +135,12 @@ export function MapWorkspace({
   const overlayOpen = !isDesktop && drawerOpened;
   const headerCollapsed = isDesktop && sidebarCollapsed;
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const burgerRef = useRef<HTMLButtonElement>(null);
   const hasSelection = selection != null && selectionKey != null;
+  useDialogFocusTrap(overlayOpen, sidebarRef, burgerRef, () => {
+    if (hasSelection) onCloseSelection?.();
+    else closeDrawer();
+  });
   const [tab, setTab] = useState<SidebarTab>(hasSelection ? 'info' : 'capas');
   const [seenKey, setSeenKey] = useState<unknown>(selectionKey);
   if (seenKey !== selectionKey) {
@@ -173,19 +171,17 @@ export function MapWorkspace({
   }, [showInfo, selectionKey, isDesktop, overlayOpen]);
 
   useEffect(() => {
-    if (!overlayOpen && !hasSelection) return;
+    // En el overlay móvil Escape lo atiende la trampa (document). Acá queda
+    // el caso de escritorio: hay una ficha abierta y el sidebar no es modal.
+    if (overlayOpen || !hasSelection) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isFromTextEntry(event.target)) return;
-      if (hasSelection) {
-        onCloseSelection?.();
-        return;
-      }
-      if (overlayOpen) closeDrawer();
+      onCloseSelection?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [overlayOpen, hasSelection, onCloseSelection, closeDrawer]);
+  }, [overlayOpen, hasSelection, onCloseSelection]);
 
   useDrawerHistoryClose({
     opened: overlayOpen,
@@ -209,7 +205,11 @@ export function MapWorkspace({
       data-testid="map-workspace-root"
       style={{ '--map-mobile-drawer-size': MOBILE_DRAWER_SIZE } as CSSProperties}
     >
-      <Box className={styles.workspaceCanvas} data-testid="map-workspace-canvas">
+      <Box
+        className={styles.workspaceCanvas}
+        data-testid="map-workspace-canvas"
+        inert={overlayOpen ? true : undefined}
+      >
         {canvas}
       </Box>
       <div
@@ -225,6 +225,7 @@ export function MapWorkspace({
         <>
           <Tooltip label="Capas y leyenda" position="right" withArrow>
             <Burger
+              ref={burgerRef}
               opened={drawerOpened}
               onClick={drawer.toggle}
               className={styles.workspaceBurger}
@@ -277,7 +278,7 @@ export function MapWorkspace({
                   aria-label="Sección del panel"
                   data-testid="map-workspace-tabs"
                 />
-                <ActionIcon
+                <IconButton
                   variant="subtle"
                   color="gray"
                   onClick={onCloseSelection}
@@ -285,7 +286,7 @@ export function MapWorkspace({
                   data-testid="map-workspace-selection-close"
                 >
                   <IconX size={18} />
-                </ActionIcon>
+                </IconButton>
               </Group>
             )}
             {!headerCollapsed && !hasSelection && (
@@ -303,7 +304,7 @@ export function MapWorkspace({
                 position="right"
                 withArrow
               >
-                <ActionIcon
+                <IconButton
                   variant="subtle"
                   color="gray"
                   onClick={toggleSidebar}
@@ -314,10 +315,10 @@ export function MapWorkspace({
                   data-testid="map-workspace-collapse"
                 >
                   {sidebarCollapsed ? <IconArrowRight size={18} /> : <IconArrowLeft size={18} />}
-                </ActionIcon>
+                </IconButton>
               </Tooltip>
             ) : (
-              <ActionIcon
+              <IconButton
                 variant="subtle"
                 color="gray"
                 onClick={drawer.close}
@@ -325,7 +326,7 @@ export function MapWorkspace({
                 data-testid="map-workspace-drawer-close"
               >
                 <IconX size={18} />
-              </ActionIcon>
+              </IconButton>
             )}
           </Group>
           {!headerCollapsed && headerSlot ? (
