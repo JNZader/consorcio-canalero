@@ -69,8 +69,7 @@ describe('public SEO and offline basemap', () => {
     const vite = readFileSync(join(webRoot, 'vite.config.ts'), 'utf8');
     const arcgis = vite.slice(vite.indexOf('arcgis-tiles'), vite.indexOf('arcgis-tiles') + 500);
     expect(arcgis).toContain('statuses: [0, 200]');
-    expect(vite).toContain('**/vendor-maplibre-*.js');
-    expect(vite).toContain('**/MapaMapLibre-*.js');
-    expect(vite).toContain('**/TerrainViewer3D-*.js');
+    expect(vite).toContain('MAP_ENGINE_NETWORK_ONLY');
+    expect(vite).toContain('excludeMapFromPrecacheManifest');
   });
 });

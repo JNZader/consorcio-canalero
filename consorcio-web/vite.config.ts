@@ -2,6 +2,16 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import {
+  GEE_IMAGE_NETWORK_ONLY,
+  GLYPH_SPRITE_NETWORK_ONLY,
+  MAP_ENGINE_NETWORK_ONLY,
+  MARTIN_TILE_NETWORK_ONLY,
+  PRECACHE_GLOB_IGNORES,
+  PRECACHE_GLOB_PATTERNS,
+  TERRAIN_TILE_NETWORK_ONLY,
+  excludeMapFromPrecacheManifest,
+} from './pwaPrecachePolicy';
 import { filterHtmlModulePreloadDeps } from './vite.modulePreload';
 
 // ---------------------------------------------------------------------------
@@ -204,58 +214,17 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // ``geojson`` removed from precache pattern — those files are
-        // 0.5–3 MB each and only loaded by users who actually open the
-        // map. PWA precache used to bloat every install by ~7 MB on
-        // first visit, including users who only use the form / admin
-        // routes and never touch the map.
-        //
-        // ``ico`` removed from the pattern too — ``favicon.ico`` was the only
-        // match and it does not belong in the install-time critical path.
-        globPatterns: ['**/*.{js,css,html,png,svg,json}'],
-        globIgnores: [
-          // PERF — the service worker registers during the LCP window on a
-          // cold mobile visit, and every byte listed here competes with the
-          // route chunk and the fonts for the same link. The three groups
-          // below are the ones that were pure dead weight.
-          //
-          // 1. Static data payloads: ``data/pilar-verde/bpa_enriched.json``
-          //    alone is ~490 KB and is only read by the Pilar Verde panel.
-          //    Fetched on demand at runtime.
-          'data/**/*.json',
-          // 2. The large PWA icons (~355 KB for the two 512s). The OS reads
-          //    them from ``manifest.webmanifest`` when the user installs the
-          //    app — the precache never serves that request. ``icon-192``
-          //    stays (48 KB, used as the in-browser install prompt icon).
-          '**/icon-512*.png',
-          // 3. Belt-and-braces — any new ``.geojson`` that lands in the
-          // build directory also stays out of precache. Runtime loads
-          // them on demand via the public viewer hooks.
-          '**/*.geojson',
-          'data/suelos_cu.geojson',
-          // version.json is the freshness probe — never precache it,
-          // otherwise the SW happily serves the build's own SHA forever
-          // and the in-app "Reload to update" banner never fires.
-          'version.json',
-          // Pages consumes dist/_worker.js as the advanced-mode worker.
-          // Precaching it would ship the worker source to every client and
-          // a stale copy would not be the file Pages executes.
-          '_worker.js',
-          // Map stacks stay out of the install precache (auditoría v6,
-          // PERF-07). The first visit to /mapa fetches them and the runtime
-          // CacheFirst below keeps them for later offline use. Precaching
-          // them made every install pay ~1 MB before the visitor opened a map.
-          '**/vendor-maplibre-*.js',
-          '**/MapaMapLibre-*.js',
-          '**/MapaPage-*.js',
-          '**/TerrainViewer3D-*.js',
-          '**/vendor-map-draw-*.js',
-          '**/vendor-pmtiles-*.js',
-          '**/vendor-charts-*.js',
-          '**/vendor-mantine-charts-*.js',
-          '**/vendor-mantine-dropzone-*.js',
-          '**/vendor-mantine-dates-*.js',
-        ],
+        // ``geojson`` stays out of the pattern — those files are 0.5–3 MB
+        // each and only the map loads them. ``woff2`` is in: the shell's
+        // self-hosted faces are ~25 KB each and an offline `/` without them
+        // paints the fallback. ``ico`` stays out — the install flow reads
+        // icons from the manifest. The ignore list and the manifest transform
+        // live in ``pwaPrecachePolicy.ts``: the MapLibre worker is emitted as
+        // ``maplibre-gl-worker-*.js`` (not ``vendor-maplibre-*.js``), and the
+        // vendor CSS used to miss the ``.js``-only ignores.
+        globPatterns: [...PRECACHE_GLOB_PATTERNS],
+        globIgnores: [...PRECACHE_GLOB_IGNORES],
+        manifestTransforms: [excludeMapFromPrecacheManifest],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/health/, /^\/version\.json$/],
         runtimeCaching: [
@@ -266,6 +235,29 @@ export default defineConfig({
             urlPattern: /\/version\.json(\?.*)?$/i,
             handler: 'NetworkOnly',
           },
+          // Map engine, glyphs/sprites, Martin MVT, GEE pixels and terrain-rgb
+          // stay on the network. Precaching them (or CacheFirst for 30 days)
+          // filled Cache Storage with tiles the shell never paints.
+          {
+            urlPattern: MAP_ENGINE_NETWORK_ONLY,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: GEE_IMAGE_NETWORK_ONLY,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: GLYPH_SPRITE_NETWORK_ONLY,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: MARTIN_TILE_NETWORK_ONLY,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: TERRAIN_TILE_NETWORK_ONLY,
+            handler: 'NetworkOnly',
+          },
           // Geo raster tiles — Phase 3 / F3-H. Was NetworkOnly which
           // gave a black map on flaky mobile / offline; the original
           // concern (stale tiles after a backend rendering change)
@@ -274,6 +266,7 @@ export default defineConfig({
           // misses for the new SHA and revalidates against network.
           // StaleWhileRevalidate gives the user an immediate render
           // from cache while the new tile fetches in the background.
+          // terrain-rgb is registered above and wins first.
           {
             urlPattern: /\/api\/v2\/geo\/layers\/[^/]+\/tiles\/.*/i,
             handler: 'StaleWhileRevalidate',
@@ -326,16 +319,16 @@ export default defineConfig({
             },
           },
 
-          // Heavy lazy vendor chunks — do not precache on install; cache after first use.
+          // Charts and the admin date picker. Not the shell. Dropzone is
+          // precached (denuncia photo field). Map chunks are NetworkOnly above.
           {
-            urlPattern:
-              /\/assets\/(vendor-(maplibre|map-draw|pmtiles|charts|mantine-(charts|dropzone|dates))|MapaMapLibre|MapaPage|TerrainViewer3D)-.*\.js$/i,
+            urlPattern: /\/assets\/vendor-(?:charts|mantine-charts|mantine-dates)-[^/]+\.js$/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'lazy-vendor-chunks',
               expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                maxEntries: 8,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
               },
               cacheableResponse: {
                 statuses: [0, 200],
