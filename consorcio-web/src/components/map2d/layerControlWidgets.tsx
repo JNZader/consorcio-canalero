@@ -1,5 +1,6 @@
-import { ActionIcon, Badge, Button, Group, Slider, Text, Tooltip } from '@mantine/core';
+import { Badge, Button, Group, Slider, Text, Tooltip } from '@mantine/core';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
+import { IconButton } from '../ui/IconButton';
 import { IconRefresh } from '../ui/icons';
 import type { LayerHealth } from './layerHealth';
 import { type LayerCategory, normalizeSearchText } from './map2dDerived';
@@ -54,7 +55,7 @@ export function LayerOpacityControl({
         {percent}%
       </Text>
       <Tooltip label="Restablecer opacidad" withArrow>
-        <ActionIcon
+        <IconButton
           variant="subtle"
           size="sm"
           color="gray"
@@ -63,7 +64,7 @@ export function LayerOpacityControl({
           onClick={() => onChange(layerId, 1)}
         >
           <IconRefresh size={12} />
-        </ActionIcon>
+        </IconButton>
       </Tooltip>
     </Group>
   );

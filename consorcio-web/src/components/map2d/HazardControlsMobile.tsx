@@ -9,6 +9,7 @@ import {
   type PrecipitationPeriod,
 } from './hazardControls.types';
 import { MAP_Z } from './mapZIndex';
+import { useMapSheetDialog } from './useMapSheetDialog';
 
 const MONTH_OPTIONS = [
   { value: PRECIPITATION_PERIOD.ANNUAL, label: 'Anual' },
@@ -45,6 +46,7 @@ export function HazardControlsMobile({
   onFichaMinimize,
 }: HazardControlsProps) {
   const fichaWasOpen = useRef(false);
+  const chipRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (fichaOpen && !fichaWasOpen.current) onFichaMinimize?.();
@@ -52,91 +54,105 @@ export function HazardControlsMobile({
   }, [fichaOpen, onFichaMinimize]);
 
   const effectiveCollapsed = collapsed || fichaOpen;
+  const sheetDialog = useMapSheetDialog<HTMLDivElement>(
+    !effectiveCollapsed,
+    () => onCollapsedChange(true),
+    MAP_Z.hazardMobile,
+    chipRef
+  );
   const basinOptions = [
     { value: 'all', label: 'Mostrar todo' },
     ...basins.map((basin) => ({ value: basin.id, label: basin.label })),
   ];
 
-  if (effectiveCollapsed) {
-    return (
+  return (
+    <>
       <Button
+        ref={chipRef}
+        hidden={!effectiveCollapsed}
         radius="xl"
         variant="filled"
         data-testid="hazard-controls-mobile-chip"
         aria-label="Expandir controles de riesgos"
-        style={{ bottom: 16, left: 16, position: 'fixed', zIndex: MAP_Z.hazardMobile }}
+        style={
+          effectiveCollapsed
+            ? { bottom: 16, left: 16, position: 'fixed', zIndex: MAP_Z.hazardMobile }
+            : undefined
+        }
         onClick={() => onCollapsedChange(false)}
       >
         Riesgos
       </Button>
-    );
-  }
-
-  return (
-    <Paper
-      shadow="xl"
-      p="md"
-      radius="lg"
-      role="region"
-      aria-label="Controles de riesgos móviles"
-      data-testid="hazard-controls-mobile-sheet"
-      style={SHEET_STYLE}
-    >
-      <Stack gap="sm">
-        <Group justify="space-between" wrap="nowrap">
-          <div>
-            <Text fw={600} size="sm">
-              Riesgos
-            </Text>
-            <Text c="dimmed" size="xs">
-              Análisis por cuenca
-            </Text>
-          </div>
-          <IconButton
-            variant="subtle"
-            color="gray"
-            aria-label="Contraer controles de riesgos"
-            onClick={() => onCollapsedChange(true)}
-          >
-            ↓
-          </IconButton>
-        </Group>
-        <Select
-          size="sm"
-          label="Cuenca"
-          aria-label="Seleccionar cuenca"
-          value={selectedBasinId ?? 'all'}
-          onChange={(value) => onBasinChange(!value || value === 'all' ? null : value)}
-          data={basinOptions}
-        />
-        <Divider />
-        <Stack gap={4}>
-          <Text fw={500} size="xs">
-            Clases de riesgo
-          </Text>
-          {HAZARD_RISK_CLASSES.map((riskClass) => (
-            <Checkbox
-              key={riskClass}
-              label={riskClass}
-              checked={visibleRiskClasses.includes(riskClass)}
-              onChange={(event) => onRiskClassChange(riskClass, event.currentTarget.checked)}
+      {effectiveCollapsed ? null : (
+        <Paper
+          ref={sheetDialog.ref}
+          shadow="xl"
+          p="md"
+          radius="lg"
+          role={sheetDialog.modal ? 'dialog' : 'region'}
+          aria-modal={sheetDialog.modal ? true : undefined}
+          tabIndex={sheetDialog.modal ? -1 : undefined}
+          aria-label="Controles de riesgos móviles"
+          data-testid="hazard-controls-mobile-sheet"
+          style={SHEET_STYLE}
+        >
+          <Stack gap="sm">
+            <Group justify="space-between" wrap="nowrap">
+              <div>
+                <Text fw={600} size="sm">
+                  Riesgos
+                </Text>
+                <Text c="dimmed" size="xs">
+                  Análisis por cuenca
+                </Text>
+              </div>
+              <IconButton
+                variant="subtle"
+                color="gray"
+                aria-label="Contraer controles de riesgos"
+                onClick={() => onCollapsedChange(true)}
+              >
+                ↓
+              </IconButton>
+            </Group>
+            <Select
+              size="sm"
+              label="Cuenca"
+              aria-label="Seleccionar cuenca"
+              value={selectedBasinId ?? 'all'}
+              onChange={(value) => onBasinChange(!value || value === 'all' ? null : value)}
+              data={basinOptions}
             />
-          ))}
-        </Stack>
-        <Select
-          size="sm"
-          label="Precipitación normal"
-          aria-label="Periodo de precipitación"
-          value={precipitationPeriod}
-          onChange={(value) => {
-            if (value) onPrecipitationPeriodChange(value as PrecipitationPeriod);
-          }}
-          data={MONTH_OPTIONS}
-        />
-        <Button variant="light" onClick={onReset}>
-          Restablecer
-        </Button>
-      </Stack>
-    </Paper>
+            <Divider />
+            <Stack gap={4}>
+              <Text fw={500} size="xs">
+                Clases de riesgo
+              </Text>
+              {HAZARD_RISK_CLASSES.map((riskClass) => (
+                <Checkbox
+                  key={riskClass}
+                  label={riskClass}
+                  checked={visibleRiskClasses.includes(riskClass)}
+                  onChange={(event) => onRiskClassChange(riskClass, event.currentTarget.checked)}
+                />
+              ))}
+            </Stack>
+            <Select
+              size="sm"
+              label="Precipitación normal"
+              aria-label="Periodo de precipitación"
+              value={precipitationPeriod}
+              onChange={(value) => {
+                if (value) onPrecipitationPeriodChange(value as PrecipitationPeriod);
+              }}
+              data={MONTH_OPTIONS}
+            />
+            <Button variant="light" onClick={onReset}>
+              Restablecer
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+    </>
   );
 }

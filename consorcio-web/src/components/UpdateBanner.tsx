@@ -23,7 +23,7 @@
  * Rendered once at the app root (next to ``<Notifications>``), but NOT on the
  * first React commit — see ``UpdateBanner`` at the bottom of this file.
  */
-import { ActionIcon, Button, Group, Paper, Portal, Text } from '@mantine/core';
+import { Button, Group, Paper, Portal, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
 
 import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
@@ -31,6 +31,7 @@ import { useVersionCheck } from '../hooks/useVersionCheck';
 import { logger } from '../lib/logger';
 import { useRegisterSW } from '../lib/useRegisterSw';
 import { Z_INDEX } from '../lib/zIndex';
+import { IconButton } from './ui/IconButton';
 
 const SW_UPDATE_POLL_MS = 60 * 1000; // 1 minute
 
@@ -132,7 +133,7 @@ function UpdateBannerInner() {
           >
             {isUpdating ? 'Actualizando' : 'Actualizar'}
           </Button>
-          <ActionIcon
+          <IconButton
             variant="subtle"
             color="gray"
             size="sm"
@@ -141,7 +142,7 @@ function UpdateBannerInner() {
             onClick={() => setDismissedSha(latestSha ?? 'sw-refresh')}
           >
             ✕
-          </ActionIcon>
+          </IconButton>
         </Group>
       </Paper>
     </Portal>

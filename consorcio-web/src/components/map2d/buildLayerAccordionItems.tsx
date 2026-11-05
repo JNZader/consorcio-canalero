@@ -1,6 +1,5 @@
 import {
   Accordion,
-  ActionIcon,
   Box,
   Button,
   Checkbox,
@@ -20,6 +19,7 @@ import type { ComponentType } from 'react';
 import { isValidElement, type ReactNode } from 'react';
 import { CanalesLayerSection } from '../shared/CanalesLayerSection';
 import type { CanalToggleEntry } from '../shared/canalesGrouping';
+import { IconButton } from '../ui/IconButton';
 import {
   IconChartBar,
   IconDroplet,
@@ -632,7 +632,7 @@ export function buildLayerAccordionItems(input: LayerAccordionInput): ReactNode[
                 {Math.round(layerFineControl.labelSizeScale * 100)}%
               </Text>
               <Tooltip label="Restablecer tamaño" withArrow>
-                <ActionIcon
+                <IconButton
                   variant="subtle"
                   size="sm"
                   color="gray"
@@ -641,7 +641,7 @@ export function buildLayerAccordionItems(input: LayerAccordionInput): ReactNode[
                   onClick={() => layerFineControl.onLabelSizeScaleChange(1)}
                 >
                   <IconRefresh size={12} />
-                </ActionIcon>
+                </IconButton>
               </Tooltip>
             </Group>
             <Text size="xs" fw={600} c="dimmed">
@@ -662,7 +662,7 @@ export function buildLayerAccordionItems(input: LayerAccordionInput): ReactNode[
                 {Math.round(layerFineControl.lineWidthScale * 100)}%
               </Text>
               <Tooltip label="Restablecer grosor" withArrow>
-                <ActionIcon
+                <IconButton
                   variant="subtle"
                   size="sm"
                   color="gray"
@@ -671,7 +671,7 @@ export function buildLayerAccordionItems(input: LayerAccordionInput): ReactNode[
                   onClick={() => layerFineControl.onLineWidthScaleChange(1)}
                 >
                   <IconRefresh size={12} />
-                </ActionIcon>
+                </IconButton>
               </Tooltip>
             </Group>
           </Stack>
