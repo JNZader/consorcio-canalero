@@ -7,7 +7,6 @@ import {
   Paper,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -25,6 +24,7 @@ import { IconButton } from '../../ui/IconButton';
 import { IconEdit, IconPlus, IconSearch, IconTrash, IconUser } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
 import { PageHeader } from '../../ui/PageHeader';
+import { ResponsiveRecordList } from '../../ui/ResponsiveRecordList';
 
 const PADRON_NOMBRE_ERROR_ID = 'padron-nombre-error';
 const PADRON_APELLIDO_ERROR_ID = 'padron-apellido-error';
@@ -264,65 +264,51 @@ export default function PadronPanel() {
       </Paper>
 
       <Paper withBorder radius="md">
-        <Table.ScrollContainer minWidth={680} type="native">
-          <Table verticalSpacing="sm" highlightOnHover aria-label="Tabla de consorcistas">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Consorcista</Table.Th>
-                <Table.Th>CUIT</Table.Th>
-                <Table.Th>Email</Table.Th>
-                <Table.Th>Teléfono</Table.Th>
-                <Table.Th>Acciones</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {consorcistas.map((c) => (
-                <Table.Tr key={c.id}>
-                  <Table.Td>
-                    <Group gap="sm" wrap="nowrap">
-                      <IconUser size={16} color="gray" aria-hidden="true" />
-                      <Text fw={500} size="sm">
-                        {c.apellido}, {c.nombre}
-                      </Text>
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{c.cuit}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c={c.email ? undefined : 'dimmed'}>
-                      {c.email || '—'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c={c.telefono ? undefined : 'dimmed'}>
-                      {c.telefono || '—'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      <IconButton
-                        variant="subtle"
-                        aria-label={`Editar consorcista ${c.apellido}, ${c.nombre}`}
-                        onClick={() => handleOpenEdit(c)}
-                      >
-                        <IconEdit size={16} />
-                      </IconButton>
-                      <IconButton
-                        variant="subtle"
-                        color="red"
-                        aria-label={`Eliminar consorcista ${c.apellido}, ${c.nombre}`}
-                        onClick={() => requestDelete(c)}
-                      >
-                        <IconTrash size={16} />
-                      </IconButton>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+        <ResponsiveRecordList
+          label="Tabla de consorcistas"
+          columns={['Consorcista', 'CUIT', 'Email', 'Teléfono', 'Acciones']}
+          minWidth={680}
+          highlightOnHover
+          verticalSpacing="sm"
+          virtualize
+          records={consorcistas.map((c) => ({
+            id: c.id,
+            cells: [
+              <Group key="nombre" gap="sm" wrap="wrap">
+                <IconUser size={16} color="gray" aria-hidden="true" />
+                <Text fw={500} size="sm">
+                  {c.apellido}, {c.nombre}
+                </Text>
+              </Group>,
+              <Text key="cuit" size="sm">
+                {c.cuit}
+              </Text>,
+              <Text key="email" size="sm" c={c.email ? undefined : 'dimmed'}>
+                {c.email || '—'}
+              </Text>,
+              <Text key="telefono" size="sm" c={c.telefono ? undefined : 'dimmed'}>
+                {c.telefono || '—'}
+              </Text>,
+              <Group key="acciones" gap="xs" wrap="wrap">
+                <IconButton
+                  variant="subtle"
+                  aria-label={`Editar consorcista ${c.apellido}, ${c.nombre}`}
+                  onClick={() => handleOpenEdit(c)}
+                >
+                  <IconEdit size={16} />
+                </IconButton>
+                <IconButton
+                  variant="subtle"
+                  color="red"
+                  aria-label={`Eliminar consorcista ${c.apellido}, ${c.nombre}`}
+                  onClick={() => requestDelete(c)}
+                >
+                  <IconTrash size={16} />
+                </IconButton>
+              </Group>,
+            ],
+          }))}
+        />
       </Paper>
 
       {/* Modal Nuevo / Editar Consorcista */}

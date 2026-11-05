@@ -9,7 +9,6 @@ import {
   SimpleGrid,
   Skeleton,
   Stack,
-  Table,
   Text,
   Title,
 } from '@mantine/core';
@@ -26,6 +25,7 @@ import { useConfigStore } from '../../stores/configStore';
 import { IconDownload } from '../ui/icons';
 import { LoadingState } from '../ui/LoadingState';
 import { PageHeader } from '../ui/PageHeader';
+import { ResponsiveRecordList } from '../ui/ResponsiveRecordList';
 import { StatusBadge } from '../ui/StatusBadge';
 import { createDashboardJsonExport } from './adminDashboardExport';
 import { PilarVerdeWidgetConnected } from './pilarVerdeWidget/PilarVerdeWidget';
@@ -476,36 +476,24 @@ export default function AdminDashboard() {
           </Group>
 
           {recentReports.length > 0 ? (
-            <Table.ScrollContainer minWidth={400}>
-              <Table verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Tipo</Table.Th>
-                    <Table.Th>Estado</Table.Th>
-                    <Table.Th>Fecha</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {recentReports.map((report) => (
-                    <Table.Tr key={report.id}>
-                      <Table.Td>
-                        <Text size="sm" lineClamp={1}>
-                          {report.tipo.replace('_', ' ')}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <StatusBadge status={report.estado} size="sm" />
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs" c="gray.6">
-                          {formatDate(report.created_at)}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+            <ResponsiveRecordList
+              label="Últimos reportes vecinales"
+              columns={['Tipo', 'Estado', 'Fecha']}
+              minWidth={400}
+              verticalSpacing="xs"
+              records={recentReports.map((report) => ({
+                id: report.id,
+                cells: [
+                  <Text key="tipo" size="sm" lineClamp={1}>
+                    {report.tipo.replace('_', ' ')}
+                  </Text>,
+                  <StatusBadge key="estado" status={report.estado} size="sm" />,
+                  <Text key="fecha" size="xs" c="gray.6">
+                    {formatDate(report.created_at)}
+                  </Text>,
+                ],
+              }))}
+            />
           ) : (
             <Text c="gray.6" ta="center" py="xl">
               No hay reportes recientes

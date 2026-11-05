@@ -8,6 +8,7 @@ Red de seguridad de las rutas públicas **antes** de cambiar el look. No llama a
 
 - `tests/visual/visual.spec.ts` — `toHaveScreenshot` de `/`, `/mapa`, `/participacion` (las dos pestañas), `/privacidad`, la página 404 y `/login`. Viewports 360, 768 y 1280, en claro y oscuro.
 - `tests/visual/mobile.spec.ts` — a 360×800 con touch: cambio de pestañas y stepper en `/participacion`, y el formulario de `/login` usable y sin overflow horizontal.
+- `tests/visual/admin-mobile.spec.ts` — a 360×800 con touch: sesión de admin sintética (sin credenciales) y navegación del shell a reportes, sugerencias y padrón. No afirma valores de datos. No genera capturas.
 
 En cada ruta a 360 px, `expectNoHorizontalOverflow` (`tests/visual/helpers/overflow.ts`) falla si el documento se desplaza de costado.
 
