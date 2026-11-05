@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { MAP_Z } from '../../src/components/map2d/mapZIndex';
+import { readMapCss } from '../helpers/mapCss';
 
-const css = readFileSync(join(process.cwd(), 'src/styles/components/map.module.css'), 'utf8');
+const css = readMapCss();
 
 const CSS_TOKEN: Record<keyof typeof MAP_Z, string> = {
   hazard: '--z-map-hazard',

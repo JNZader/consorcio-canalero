@@ -2,7 +2,7 @@ import { Box, Checkbox, Group, Paper, Stack, Text } from '@mantine/core';
 import { memo } from 'react';
 import { LAYER_LEGEND_CONFIG } from '../config/rasterLegend';
 import { mapColorTokens } from '../lib/mapColorTokens';
-import styles from '../styles/components/map.module.css';
+import styles from '../styles/components/map/classNames';
 
 interface RasterLegendProps {
   /** Currently visible raster layer types */

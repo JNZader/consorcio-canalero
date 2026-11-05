@@ -231,7 +231,7 @@ export function scopeSentence(choice: RainfallScopeChoice): string {
  * THE BUDGET IS AN ESTIMATE, AND SAYING SO IS THE POINT. jsdom has no layout
  * and the real width depends on the loaded font, so this cannot be a
  * measurement; it is a character budget derived from the panel's own geometry —
- * 348 px of card (`map.module.css`: `min(380px, 100% - 72px)`) minus ~32 px of
+ * 348 px of card (`map/classNames`: `min(380px, 100% - 72px)`) minus ~32 px of
  * `Paper p="md"` padding leaves ~316 px, each segment spends ~20 px on its own
  * padding, and Inter at the `size="xs"` 12 px runs ~6.2 px per character. It
  * errs toward the select on purpose: a select that was not strictly necessary

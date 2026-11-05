@@ -1,0 +1,62 @@
+/* ── Sheet y pill anclados al viewport en tactil angosto (B2-2.2) ─────────── */
+/* Solo `pointer: coarse` + `max-width: 62em`, o sea exactamente donde
+   `MapUiPanels` cambia las tarjetas por el bottom sheet. El `.panelPill` de
+   escritorio NO se toca: ahi la pildora tiene que quedarse pegada al canvas,
+   donde estaba la tarjeta.
+
+   `fixed` en vez de `absolute`: anclada al canvas, la pildora se iba con el
+   scroll de la pagina y en un telefono quedaba fuera de pantalla justo cuando el
+   usuario minimizaba el panel para ver el mapa. Al viewport siempre esta a un
+   toque.
+
+   `env(safe-area-inset-bottom)` en las tres cajas de abajo: en un iPhone con
+   home indicator los ultimos ~34px son zona de gesto del sistema, y un control
+   ahi es intocable.
+
+   `index.html` declara `viewport-fit=cover`, así que en un teléfono con
+   notch o home indicator estos `env(safe-area-inset-*)` dejan de ser 0.
+   El sheet, la píldora y el dock de medición ya los suman. El header, el
+   footer y la barra de envío del formulario de denuncia también. */
+@media (pointer: coarse) and (max-width: 62em) {
+  .panelSheetPill {
+    position: fixed;
+    bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    min-height: calc(var(--cc-touch-min, 44px) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .panelSheet {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .measurementDock {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ── El dock se sube por encima del sheet PARCIAL (rework portrait) ───────
+     CSS puro: `.panelSheet` y `.measurementDock` son hermanos dentro de
+     `.mapCanvasWrapper`, asi que el padre se entera del estado del sheet con
+     `:has()` — sin estado en React, sin prop nueva, sin z-index.
+
+     Se ancla en `[data-stage]`, NO en la clase modificadora: la etapa del medio
+     NO TIENE clase propia (es la forma base de `.panelSheet`, ver
+     MapPanelShell.tsx), asi que un selector por clase no la podria nombrar. El
+     atributo si esta en las tres etapas y es contrato publico del shell.
+
+     Los porcentajes empatan con los `max-height` del sheet (25% / 45%) y ambos
+     resuelven contra la MISMA caja (`.mapCanvasWrapper`, el bloque contenedor
+     posicionado), asi que el dock queda 12px por encima del borde superior del
+     sheet. `env(safe-area-inset-bottom)` se conserva porque el sheet tambien lo
+     tiene: sin el, los dos se desalinean con `viewport-fit=cover`.
+
+     `alto` (85%) NO se levanta A PROPOSITO — ver el bloque de arriba: no queda
+     mapa que operar y el dock chocaria la cabecera de la pagina. */
+  .mapCanvasWrapper:has(.panelSheet[data-stage='peek']) .measurementDock {
+    bottom: calc(25% + 12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mapCanvasWrapper:has(.panelSheet[data-stage='medio']) .measurementDock {
+    bottom: calc(45% + 12px + env(safe-area-inset-bottom, 0px));
+  }
+}
+

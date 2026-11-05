@@ -27,8 +27,9 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ActionIcon, Box, Group, Stack, Text, Tooltip } from '@mantine/core';
+import { Box, Group, Stack, Text, Tooltip } from '@mantine/core';
 
+import { IconButton } from '../ui/IconButton';
 import { IconArrowsSort, IconGripVertical } from '../ui/icons';
 import {
   DEFAULT_LAYER_ORDER,
@@ -186,7 +187,7 @@ function SortableLayerRow({ id, label, active }: SortableLayerRowProps) {
         cursor: 'grab',
       }}
     >
-      <ActionIcon
+      <IconButton
         variant="subtle"
         size="sm"
         color="gray"
@@ -196,7 +197,7 @@ function SortableLayerRow({ id, label, active }: SortableLayerRowProps) {
         {...listeners}
       >
         <IconGripVertical size={14} />
-      </ActionIcon>
+      </IconButton>
       <Text size="xs" style={{ flex: 1 }}>
         {label}
       </Text>
@@ -261,7 +262,7 @@ export function LayerOrderSection({
   };
 
   const resetButton = (
-    <ActionIcon
+    <IconButton
       variant="subtle"
       size="sm"
       color="gray"
@@ -280,7 +281,7 @@ export function LayerOrderSection({
       }}
     >
       <IconArrowsSort size={14} />
-    </ActionIcon>
+    </IconButton>
   );
 
   return (

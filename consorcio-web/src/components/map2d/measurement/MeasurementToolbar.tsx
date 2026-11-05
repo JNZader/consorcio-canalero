@@ -14,7 +14,7 @@ import { Box, Menu, UnstyledButton } from '@mantine/core';
 import { memo, type RefObject, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
-import styles from '../../../styles/components/map.module.css';
+import styles from '../../../styles/components/map/classNames';
 import {
   IconArrowBackUp,
   IconDeviceFloppy,

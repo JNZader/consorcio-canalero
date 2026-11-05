@@ -37,7 +37,7 @@ export const CATASTRO_FILL_OPACITY = 0.12;
  * The column mixes controls we render (`MapActionsPanel`, `MeasurementToolbar`)
  * with the ones MapLibre renders itself (zoom, compass, fullscreen). MapLibre's
  * are sprites on a `<span>`, so they cannot take a React prop: their size comes
- * from `--map-ctrl-glyph-size` in `map.module.css`, and this constant is the
+ * from `--map-ctrl-glyph-size` in `map/classNames`, and this constant is the
  * mirror image of that variable for the icons that DO take a prop.
  *
  * NOT for `CanalBufferControl`: its `IconRoute` is a heading icon inside the

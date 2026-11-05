@@ -4,7 +4,7 @@
  *
  * `@media` no puede leer custom properties: en CSS el valor `em` queda
  * escrito y `tests/unit/designTokens.test.ts` exige que coincida con esta
- * escala. `map.module.css` no se reescribe en este cambio; el test es el
+ * escala. `map/classNames` no se reescribe en este cambio; el test es el
  * nexo. Desde TypeScript hay que usar los helpers, no un literal.
  *
  * `48em` (sm) son 768px con la raíz de 16px del navegador. El complemento

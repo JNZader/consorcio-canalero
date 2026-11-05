@@ -358,7 +358,7 @@ export function useMapInteractionEffects({
       // still opens its InfoPanel card; suppressing them wholesale made those
       // cards unreachable on any rural click now that catastro defaults to ON.
       // The two panels are laid out so they coexist (InfoPanel top-right, ficha
-      // bottom-right, both capped — see `map.module.css` `.infoPanelCompact` /
+      // bottom-right, both capped — see `map/classNames` `.infoPanelCompact` /
       // `.fichaPanelCompact`), which is what the blanket suppression was really
       // trying to solve.
       const featuresForInfoPanel: FeatureWithLayer[] = parcela

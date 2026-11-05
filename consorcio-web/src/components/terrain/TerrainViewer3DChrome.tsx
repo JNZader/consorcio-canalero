@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import type { Feature, LineString, MultiLineString } from 'geojson';
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
-import mapStyles from '../../styles/components/map.module.css';
+import mapStyles from '../../styles/components/map/classNames';
 import type { Etapa } from '../../types/canales';
 import type { BpaEnrichedFile, BpaHistoryFile } from '../../types/pilarVerde';
 import { ElevationProfileDock } from '../map2d/ElevationProfileDock';

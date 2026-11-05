@@ -21,17 +21,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(join(process.cwd(), 'src/styles/components/map.module.css'), 'utf8');
-const shell = readFileSync(
-  join(process.cwd(), 'src/components/map2d/MapPanelShell.tsx'),
-  'utf8'
-);
+import { readMapCss } from '../helpers/mapCss';
+
+const css = readMapCss();
+const shell = readFileSync(join(process.cwd(), 'src/components/map2d/MapPanelShell.tsx'), 'utf8');
 
 /** The narrow-touch block is the only place the sheet and the dock coexist. */
 function coarseNarrowBlock(): string {
-  const match = css.match(
-    /@media \(pointer: coarse\) and \(max-width: 62em\)\s*\{([\s\S]*?)\n\}/
-  );
+  const match = css.match(/@media \(pointer: coarse\) and \(max-width: 62em\)\s*\{([\s\S]*?)\n\}/);
   expect(match, 'el bloque coarse + 62em tiene que existir').not.toBeNull();
   return match?.[1] ?? '';
 }

@@ -12,7 +12,7 @@ import {
 import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
 import { mapColorTokens } from '../../lib/mapColorTokens';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CANALES_COLORS } from './canalesLayers';

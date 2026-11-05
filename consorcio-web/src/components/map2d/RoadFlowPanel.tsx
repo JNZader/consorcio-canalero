@@ -28,7 +28,7 @@ import { Alert, Loader, SegmentedControl, Stack, Text } from '@mantine/core';
 import type { UseRoadFlowCrossingsResult } from '../../hooks/useRoadFlowCrossings';
 import type { CoberturaResponse } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { MapPanelShell } from './MapPanelShell';
 import { RelevamientoCobertura } from './RelevamientoCobertura';
 import { RoadFlowRankedList } from './RoadFlowRankedList';

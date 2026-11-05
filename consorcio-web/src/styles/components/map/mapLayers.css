@@ -1,0 +1,9 @@
+/* ── Filas de capas: casillas y slider tocables (B2-2.3) ──────────────────── */
+/* Mismo motivo que arriba: `size="xs"` fijaba 16px inline y ninguna media query
+   lo alcanzaba. El tamano vive ahora en `--checkbox-size` / `--slider-size`, y
+   se aplica por descendencia sobre la clase estatica de Mantine para ganarle en
+   especificidad a la declaracion que el propio componente trae en su raiz. */
+.layerTogglesRoot .mantine-Checkbox-root {
+  --checkbox-size: 24px;
+}
+

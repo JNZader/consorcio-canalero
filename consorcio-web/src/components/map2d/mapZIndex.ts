@@ -2,7 +2,7 @@
  * Stacking order for the 2D map chrome.
  *
  * The stylesheet mirrors every value as `--z-map-*` on `:root`
- * (`map.module.css`). Inline styles must read this object so a panel cannot
+ * (`map/classNames`). Inline styles must read this object so a panel cannot
  * invent a new layer. `tests/unit/mapZIndex.test.ts` pins the two copies
  * together.
  */

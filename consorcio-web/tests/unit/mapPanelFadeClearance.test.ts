@@ -22,11 +22,11 @@
  * `tests/accessibility/mapPanelFade.spec.ts`.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(join(process.cwd(), 'src/styles/components/map.module.css'), 'utf8');
+import { readMapCss } from '../helpers/mapCss';
+
+const css = readMapCss();
 
 /** Body of a rule, by its exact selector list. */
 function ruleBody(selector: string): string {

@@ -1,0 +1,618 @@
+/* ── Floating panels vs the right-hand control column ─────────────────────── */
+/* The map's controls live in a single 29px-wide column pinned at `right: 10px`
+   (MapLibre nav + fullscreen at z-index 2, `MapActionsPanel` at top:144 and
+   `MeasurementToolbar` at top:180, both z-index 16). Both floating panels sit at
+   z-index 1000, so anchoring them at `right: 16px` parked them ON TOP of that
+   column: opening either panel made Exportar / Medir / Dibujar / Canal /
+   fullscreen / zoom unclickable.
+
+   Fix: on desktop both panels stop at `right: 56px`, which clears the column
+   (10px offset + 29px button + 17px gutter) and leaves every control reachable
+   while a panel is open. Widths shrink by the same amount so the panels do not
+   grow to compensate. Narrow viewports normally swap these cards for the bottom
+   sheet below (`.panelSheet`); the `@media (max-width: 62em)` overrides further
+   down are the no-`matchMedia` fallback for that swap. */
+/* ── Pointer-events guard for the floating desktop cards (map-fluidity). ─────
+   The cards are positioned over the map. The ROOT keeps `pointer-events: none`
+   so empty/background areas pass clicks through to the map canvas. The actual
+   scrollable content lives in `.panelCardBody`, which re-enables pointer events
+   so its scrollbar, interactive controls, and the Recharts tooltip all work.
+   The mobile bottom sheet (`.panelSheet`) is NOT changed — it is the touch
+   reading surface and must keep its pointer events. */
+.infoPanel {
+  position: absolute;
+  top: calc(var(--mantine-spacing-md) + 108px);
+  right: 56px;
+  z-index: var(--z-map-panel);
+  width: min(360px, calc(100% - 72px));
+  max-width: 360px;
+  max-height: calc(100% - 124px);
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.fichaPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  right: 56px;
+  z-index: var(--z-map-panel);
+  width: min(380px, calc(100% - 72px));
+  max-width: 380px;
+  max-height: calc(100% - 124px);
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Cruces de camino (flujo-caminos, S4). Anclado abajo a la IZQUIERDA a
+   proposito: `.infoPanel` y `.fichaPanel` comparten `right: 56px` y se reparten
+   esa columna entre si, asi que un tercer panel ahi los taparia. La columna
+   izquierda arriba la ocupan los controles de capas (`map-2d-top-left-panels`,
+   `maxHeight: calc(100vh - 180px)`), por eso este se ancla al borde INFERIOR:
+   los dos pueden estar abiertos sin pisarse.
+
+   Todo lo demas (pointer-events, scroller `.panelCardBody`, degradado, tamano
+   del boton de cerrar) lo hereda por estar listado junto a `.fichaPanel` en las
+   reglas agrupadas de mas abajo — no hay una segunda copia de esas reglas. */
+.roadFlowPanel {
+  position: absolute;
+  bottom: var(--mantine-spacing-md);
+  left: var(--mantine-spacing-md);
+  z-index: var(--z-map-panel);
+  width: min(340px, calc(100% - 72px));
+  max-width: 340px;
+  max-height: calc(100% - 124px);
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.roadFlowPanelPill {
+  bottom: var(--mantine-spacing-md);
+  right: auto;
+  left: var(--mantine-spacing-md);
+}
+
+/* Floating home of the disclaimer while neither the ranked list nor the survey
+   sheet is on screen (owner ratification 2026-08-23 — "el disclaimer acompaña
+   SIEMPRE"). It sits ABOVE the panel pill's own slot so the two never overlap
+   when the panel is minimized, and it is `pointer-events: none` because there
+   is nothing on it to operate: no close, no fold, no link. */
+.roadFlowDisclaimerChip {
+  position: absolute;
+  bottom: calc(var(--mantine-spacing-md) + 44px);
+  left: var(--mantine-spacing-md);
+  z-index: var(--z-map-panel);
+  max-width: min(340px, calc(100% - 72px));
+  padding: 6px 10px;
+  border-radius: var(--mantine-radius-md);
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  box-shadow: var(--mantine-shadow-sm);
+  pointer-events: none;
+}
+
+/* Scrollable body of the floating desktop cards. It owns `overflow-y: auto`
+   (removed from the root in R3-001) and re-enables pointer events so the native
+   scrollbar, buttons, links, inputs, pills, and the Recharts SVG tooltip all
+   remain reachable. Wrapping both the minimize button and `children` here means
+   we no longer need a long descendant allowlist: everything inside this wrapper
+   gets pointer events by default. */
+/* The cap comes from the FLEX chain, not from a percentage: the roots above
+   are `max-height`-capped flex columns and `min-height: 0` lets this item
+   shrink below its content height, which is what activates `overflow-y: auto`.
+   A `max-height: 100%` here would silently resolve to `none` — percentages
+   resolve against the parent's `height`, and these roots only have `auto`
+   height under a `max-height` — leaving the card without a scrollbar. */
+/* UX-16: close + minimize stay outside the scroller and receive clicks. */
+.panelCardHeader {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  margin-bottom: 4px;
+}
+
+.panelCardBody {
+  min-height: 0;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+/* A catastro click opens the ficha (bottom-right) AND, when the click also hit
+   a canal / escuela / BPA / suelo / camino feature, the InfoPanel (top-right).
+   With their solo max-heights (`calc(100% - 124px)` each) the two rects overlap
+   and the InfoPanel ends up buried under the ficha. `MapUiPanels` adds these
+   modifiers whenever BOTH are rendered so they share the column instead.
+
+   Vertical budget derivation (canvas-relative):
+     InfoPanel top offset   = 16px (spacing-md) + 108px       = 124px
+     ficha bottom inset     = 16px (spacing-md)               =  16px
+     gap kept between them                                    =  12px
+     shared budget          = 100% - 124px - 16px - 12px = 100% - 152px
+   Split 45 / 55 (the ficha is the denser card: charts + bins + breakdown):
+     InfoPanel  45% of 152px = 68.4px → calc(45% - 70px)
+     ficha      55% of 152px = 83.6px → calc(55% - 82px)
+   The two max-heights sum to `100% - 152px`, so the 12px gap always holds.
+   Both panels stay scrollable internally (`overflow-y: auto` above).
+
+   Two-class selectors so these win over the narrow-viewport overrides below
+   regardless of source order. */
+.infoPanel.infoPanelCompact {
+  max-height: calc(45% - 70px);
+}
+
+.fichaPanel.fichaPanelCompact {
+  max-height: calc(55% - 82px);
+}
+
+/* ── Guillotina de contenido en los paneles de escritorio ─────────────────── */
+/* `.panelCardBody` es el scroller de las tarjetas de escritorio y su fondo es
+   opaco al 96%, asi que una tabla o un desglose cortado por el borde inferior
+   termina exactamente igual que si terminara ahi: la ultima fila queda entera,
+   con su linea inferior, y nada dice que abajo hay mas. Es la "guillotina" — el
+   usuario no scrollea porque no sabe que hay que scrollear.
+
+   El degradado sticky es la afordancia estandar: la fila que se va se desvanece
+   contra el fondo del panel en vez de cortarse en seco.
+
+   Los colores NO son inventados: son los MISMOS `light-dark(...)` que declaran
+   `.infoPanel` y `.fichaPanel` arriba (0.96), o el borde del degradado se veria
+   como una banda distinta al panel.
+
+   SIN `margin-top` NEGATIVO, Y EL SCROLLER SIN `padding-bottom`. Las dos cosas
+   van juntas y son la CURA de un bug real: el ultimo renglon de la ficha se veia
+   "cortado a la mitad" en las cuatro solapas. No habia recorte — el degradado se
+   lo comia.
+
+   La restriccion que manda es la del bloque contenedor: una caja `sticky` NUNCA
+   sale de su bloque contenedor, y el de este pseudo-elemento es la CAJA DE
+   CONTENIDO del scroller, no su caja de padding. O sea que, scrolleado hasta el
+   fondo, el degradado queda apoyado en el borde inferior de la caja de
+   CONTENIDO. Un `padding-bottom` en el scroller no compra despeje: sube ese
+   borde exactamente los mismos pixeles que agrega abajo, asi que el degradado
+   sigue cayendo sobre el ultimo renglon y ademas deja una franja opaca por
+   debajo donde el contenido pasa SIN velo. Medido con este mismo CSS en
+   Chromium y en Firefox, tarjeta y sheet: con `margin-top: -24px` +
+   `padding-bottom: 24px` el degradado se apoyaba en [contentBoxBottom - 24,
+   contentBoxBottom] y el renglon final entraba entero adentro (solape ≈17.6px,
+   el alto completo de la linea). Sin margen negativo y sin padding: solape 0.
+
+   Por eso el pseudo-elemento es un ESPACIADOR DE VERDAD de 24px al final del
+   flujo. El contenido termina 24px antes del borde del scrollport, el degradado
+   ocupa justo esos 24px vacios y queda al ras del borde visible — que es donde
+   el contenido se recorta y donde la afordancia tiene que estar. La canaleta
+   debajo del ultimo renglon no cambia: son los mismos 24px de antes.
+
+   `bottom: 0`, no un valor negativo, por la MISMA restriccion: un `bottom`
+   negativo se vuelve a recortar contra el bloque contenedor, asi que no sirve
+   para empujar el degradado por debajo del ultimo renglon.
+
+   `margin-inline` negativo lo sangra a traves del padding lateral (16px de cada
+   lado, que viene del `Paper p="md"` del shell) para que el degradado llegue a
+   los dos bordes; la caja resultante mide exactamente el ancho de la caja de
+   padding, asi que no genera scroll horizontal (`overflow-y: auto` obliga a
+   `overflow-x: auto`).
+
+   Fijado por `tests/unit/mapPanelFadeClearance.test.ts` (el CSS como texto) y
+   por `tests/accessibility/mapPanelFade.spec.ts`, que mide la geometria en
+   motores de verdad — un test en happy-dom no maqueta nada. */
+.panelCardBody::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 24px;
+  margin-inline: calc(-1 * var(--mantine-spacing-md));
+  background: linear-gradient(
+    to top,
+    light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96)),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* CERO padding inferior en la TARJETA, y el `!important` es A PROPOSITO y NO
+   decorativo: `MapPanelShell` monta las dos tarjetas como `<Paper p="md">`, y
+   en Mantine 8 una style prop no responsiva se emite como estilo INLINE
+   (`parseStyleProps` → `inlineStyles`), o sea un `padding` shorthand inline de
+   16px. Ninguna regla de hoja de estilos le gana sin `!important`. Mismo
+   criterio que `--slider-size` mas abajo.
+
+   El scroller interno `.panelCardBody` no tiene padding propio: el despeje del
+   ultimo renglon lo da el espaciador de 24px del `::after` de arriba. Un
+   `padding-bottom` en la tarjeta ADEMAS de eso levantaria el degradado del borde
+   visible (el `sticky` se apoya en la caja de contenido del scroller) y dejaria
+   una franja de contenido sin velo justo abajo — que es exactamente el bug que
+   se arreglo. */
+.infoPanel,
+.fichaPanel {
+  padding-bottom: 0 !important;
+}
+
+/* Same rule for the cruces card, declared on its OWN selector: the grouped
+   selector above is pinned as TEXT by `tests/unit/mapPanelFadeClearance.test.ts`
+   (it is the contract that the fade never gets a compensating padding), and
+   widening a pinned contract to carry a third panel would weaken the pin for
+   the two it was written for. */
+.roadFlowPanel {
+  padding-bottom: 0 !important;
+}
+
+@media (max-width: 62em) {
+  /* Narrow viewports: the page chrome wraps to several rows, so the canvas has
+     to give back more height than on desktop (measured ~300px above the canvas
+     after the header merge). The floor drops to 380px so the map's bottom edge
+     stays on screen on short phones instead of forcing a page scroll. */
+  .mapCanvasWrapper,
+  .canvasHeightBudget,
+  .mapSkeletonWrapper,
+  .workspaceSidebar {
+    --map-canvas-height: clamp(380px, calc(100dvh - 180px), 860px);
+  }
+
+  .mapCanvasWrapper,
+  .mapSkeletonWrapper {
+    min-height: 380px;
+  }
+
+  .workspaceSidebar {
+    /* height inherits the mobile --map-canvas-height defined above */
+  }
+
+  /* FALLBACK ONLY. `MapUiPanels` swaps both panels for `.panelSheet` at this
+     same 62em breakpoint via `matchMedia`, so in a normal browser these rules
+     never match anything — the sheet replaces the cards outright. They are kept
+     deliberately for the environments where the swap cannot happen (no
+     `matchMedia`: old embedders, SSR/pre-render snapshots, some test harnesses).
+     There the floating cards still render at narrow widths and the desktop
+     `right: 56px` inset (which exists to clear the control column) would only
+     waste width, so the edge anchor is restored.
+     NOTE: this block MUST stay after the `.infoPanel` / `.fichaPanel` base
+     rules — it used to sit above them and, at equal specificity, the later base
+     rules silently won, so the mobile override never applied. */
+  .infoPanel,
+  .fichaPanel {
+    right: var(--mantine-spacing-md);
+    width: min(360px, calc(100% - 32px));
+  }
+
+  .roadFlowPanel {
+    left: var(--mantine-spacing-md);
+    width: min(360px, calc(100% - 32px));
+  }
+
+  /* 3D terrain bottom bar (out-of-scope legacy) */
+  .mapBottomBar {
+    grid-template-columns: 1fr;
+  }
+
+  .mapBottomBarItem {
+    max-height: 50vh;
+  }
+}
+
+/* ── Reflow en telefono PARADO (rework portrait) ──────────────────────────── */
+/* Mismo tratamiento que el horizontal de mas abajo (B2-2.1), por el mismo
+   motivo: el chrome vertical se comia el canvas. Medido contra produccion en
+   360×800, el canvas arrancaba en y≈442 (cabecera del sitio ≈61 + el Paper del
+   titulo + el banner satelital + una top bar de 149px de alto, porque en 360px
+   de ancho TODO envuelve) y media 500px → terminaba en y≈942, muy afuera de los
+   800 del viewport. Dos palancas, ninguna oculta nada:
+     1. la top bar ya no existe en movil (vive en el Drawer, ver `.mapTopBar`);
+     2. el titulo + Reportar + el banner satelital bajan DEBAJO del mapa con
+        `order`, igual que en horizontal.
+
+   Las tres condiciones son load-bearing:
+     `pointer: coarse`      — deja afuera una ventana de escritorio angosta.
+     `orientation: portrait`— es el caso que rompe.
+     `max-width: 47.9375em` — 767px, el complemento EXACTO y exclusivo del
+        `min-width: 48em` con el que `MapWorkspace` decide `isDesktop`. NO 48em:
+        a exactamente 768px las dos queries darian verdadero a la vez y el
+        presupuesto de abajo pisaria a un layout que SI tiene top bar. NO 62em
+        (el breakpoint del bottom sheet): capturaria tablets paradas, que entran
+        en modo escritorio y tienen alto de sobra. */
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 47.9375em) {
+  .mapPageContainer {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* `order` mueve la caja sin tocar el DOM: mover el Paper en el JSX remontaria
+     el canvas de MapLibre. El 2D/3D se queda arriba (MOB-05); el titulo cae ultimo. */
+  .mapPageContainer {
+    position: relative;
+  }
+
+  /* MOB-05: 2D/3D overlays the canvas so it stays visible without stealing
+     the 96px height budget the e2e canary measures. left 72px clears the 44px burger. */
+  .mapPageContainer > .mapViewToggleBar {
+    position: absolute;
+    top: 8px;
+    left: 72px;
+    z-index: var(--z-map-page-chrome);
+    margin-bottom: 0 !important;
+  }
+
+  .mapPageContainer > .mapPageCanvas {
+    order: 1;
+  }
+
+  .mapPageContainer > .mapPageHeader {
+    order: 2;
+  }
+
+  /* Presupuesto de alto propio. Arriba del canvas queda SOLO la cabecera del
+     sitio mas el padding del Container:
+       cabecera del sitio                          61px
+       Container py="sm" (arriba)                  12px
+       mb="sm" del Paper del mapa                  12px
+       holgura                                     11px
+                                                   ────
+                                                   96px
+     La holgura es a proposito: deja ver un pedacito de lo que quedo debajo del
+     mapa, o sea la afordancia de que la pagina scrollea (el titulo y el CTA
+     Reportar siguen ahi). Sin `min-height` propio: los pisos de 420/380px del
+     bloque de 62em siguen valiendo, y en 800px de alto el calc (704px) los pasa
+     comodo. */
+  .mapCanvasWrapper,
+  .canvasHeightBudget,
+  .mapSkeletonWrapper,
+  .workspaceSidebar {
+    --map-canvas-height: calc(100dvh - 96px);
+  }
+}
+
+/* ── Mobile bottom sheet (map-fluidity T2, fix 1) ──────────────────────────── */
+/* On a ~390px phone the floating cards above are ~358px wide and up to ~396px
+   tall on a ~520px canvas: opening either one covers the map almost entirely.
+   Below 62em `MapUiPanels` therefore swaps BOTH panels for this bottom sheet:
+   anchored to the canvas' bottom edge, full width, capped at 45% of the canvas
+   height (so the top 55% of the map stays visible) and internally scrollable.
+   A handle bar toggles 45% ⇄ 85% — a tap toggle instead of a pointer-drag
+   gesture, which is far more robust and needs no gesture code.
+
+   NOTE: the sheet REPLACES `.infoPanel` / `.fichaPanel` (it is not additive), so
+   none of the desktop offsets above apply while a sheet is rendered.
+
+   The 45% / 85% figures are a CAP, not a size: `max-height` only, never
+   `height`. With a fixed `height` a short InfoPanel (one canal feature, ~120px
+   of content) still ate 45% of the canvas and padded the rest with empty
+   backdrop. Content-sized + capped means a small panel occupies only what it
+   needs while a tall ficha still stops at the cap and scrolls internally. */
+.panelSheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  z-index: var(--z-map-panel);
+  width: 100%;
+  max-width: none;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
+  background: light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97));
+  backdrop-filter: blur(6px);
+}
+
+/* Peek — the DEFAULT opening stage (T3a, fix 3). ~25% of the canvas: the pinned
+   header plus the first summary line. The map stays ~75% visible until the user
+   asks for more by tapping the handle (peek → medio 45% → alto 85% → peek). */
+.panelSheetPeek {
+  max-height: 25%;
+}
+
+.panelSheetExpanded {
+  max-height: 85%;
+}
+
+/* The scrollable region — the header bar stays pinned while the body scrolls. */
+.panelSheetBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Misma guillotina, misma cura, DECLARACION APARTE a proposito: el sheet es la
+   forma movil y las tarjetas la de escritorio, y cada una tiene que poder
+   revertirse sin arrastrar a la otra.
+
+   Dos diferencias reales, no cosmeticas:
+     · el fondo es el del SHEET (0.97), no el de las tarjetas (0.96);
+     · sin `margin-inline` negativo. `.panelSheetBody` es un div PELADO (el
+       padding vive en el `Paper` que lo envuelve), asi que su caja de contenido
+       ya es su caja de padding: sangrarlo 16px generaria overflow horizontal de
+       verdad, no un sangrado.
+
+   Igual que arriba: SIN `margin-top` negativo y sin `padding-bottom` propio. El
+   `sticky` se apoya en la caja de CONTENIDO de este div, asi que un padding aca
+   subiria el degradado en vez de despejarlo (el bug del renglon "cortado" era
+   este mismo, medido en las tres etapas del sheet). El pseudo-elemento es el
+   espaciador: 24px vacios al final del flujo. La canaleta debajo del ultimo
+   renglon no cambia — esos 24px mas los 16px del `Paper` que envuelve.
+
+   Fijado por `tests/unit/mapPanelFadeClearance.test.ts` y medido en las tres
+   etapas por `tests/accessibility/mapPanelFade.spec.ts`. */
+.panelSheetBody::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 24px;
+  background: linear-gradient(
+    to top,
+    light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97)),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* Pinned header strip: the expand/collapse handle PLUS the close control
+   (map-fluidity T2, fix R3-005). The panels' own `Title + CloseButton` row lives
+   inside `children`, i.e. inside the scrollable body — on a tall ficha the close
+   button scrolled out of reach and the sheet could only be dismissed by
+   scrolling back up. In sheet mode the panels therefore drop their inline close
+   button and hand `onClose` to the shell, which renders it here, outside the
+   scroll region. Exactly one close affordance in either shape. */
+.panelSheetHeader {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* Pinned header controls: minimize + close, stacked to the right of the handle
+   (T3a, fix 2 added the minimize affordance next to the existing close). */
+.panelSheetActions {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panelSheetHandle {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 0 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* The grab affordance itself — a short rounded bar, the platform convention. */
+.panelSheetGrabber {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-2));
+}
+
+/* ── Minimize-to-pill (T3a, fix 2) ────────────────────────────────────────── */
+/* Panning the map with a panel open meant panning around the panel. Both panels
+   now minimize — by an explicit button, or automatically when the user starts
+   DRAGGING the map — into a pill that keeps the selection alive and gives the
+   canvas back. Restoring is always an explicit tap: auto-restoring on dragend
+   would make the panel flicker in and out during a normal pan.
+
+   Desktop pill: a chip anchored where the card was (same `right: 56px` inset
+   that clears the map control column). The per-panel anchor classes below keep
+   the two pills from stacking on top of each other when BOTH are minimized. */
+.panelPill {
+  position: absolute;
+  right: 56px;
+  z-index: var(--z-map-panel);
+  max-width: min(260px, calc(100% - 72px));
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  backdrop-filter: blur(6px);
+  box-shadow: var(--mantine-shadow-md);
+  cursor: pointer;
+}
+
+.infoPanelPill {
+  top: calc(var(--mantine-spacing-md) + 108px);
+}
+
+.fichaPanelPill {
+  bottom: var(--mantine-spacing-md);
+}
+
+/* Sheet pill: a slim bar on the canvas' bottom edge. Only ONE sheet is ever
+   rendered on a narrow viewport, so it needs no per-panel anchor. */
+.panelSheetPill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-map-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
+  background: light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97));
+  backdrop-filter: blur(6px);
+  box-shadow: var(--mantine-shadow-md);
+  cursor: pointer;
+}
+
+/* ── Tamano del cerrar/minimizar de los paneles (B2-2.3) ──────────────────── */
+/* UNA sola fuente de verdad para el alto del chrome de cierre. Antes cada
+   control traia `size="sm"` en el JSX, o sea 22px fijos en tactil — la mitad del
+   objetivo WCAG 2.5.5 (44px). Ahora el tamano es esta variable y los controles
+   se sirven de ella, asi que la media query de abajo los agranda a los tres de
+   una sola vez.
+
+   Los selectores son descendientes A PROPOSITO: Mantine declara `--cb-size` /
+   `--ai-size` en la clase raiz del propio componente, asi que una regla de una
+   sola clase empata en especificidad y el ganador dependeria del orden de
+   inyeccion de las hojas. `.panelSheet .panelCloseButton` gana siempre. */
+.infoPanel,
+.fichaPanel,
+.panelSheet {
+  --panel-close-size: 22px;
+}
+
+/* Same 22px for the cruces card. Separate selector for the same reason as the
+   padding rule above — `tests/unit/MapCtrlTouchTargets.test.tsx` pins the three
+   shapes named in the grouped selector. */
+.roadFlowPanel {
+  --panel-close-size: 22px;
+}
+
+.infoPanel .panelCloseButton,
+.fichaPanel .panelCloseButton,
+.panelSheet .panelCloseButton {
+  --cb-size: var(--panel-close-size);
+}
+
+.roadFlowPanel .panelCloseButton {
+  --cb-size: var(--panel-close-size);
+}
+
+.infoPanel .panelActionIcon,
+.fichaPanel .panelActionIcon,
+.panelSheet .panelActionIcon {
+  --ai-size: var(--panel-close-size);
+}
+
+.roadFlowPanel .panelActionIcon {
+  --ai-size: var(--panel-close-size);
+}
+
+/* Floating-card minimize button. The card's own `Title + CloseButton` row is
+   rendered by the PANEL (inside `children`), so the shell cannot sit a sibling
+   next to that close button in flow — it anchors here instead, on the same line
+   and immediately to its left.
+
+   Los dos offsets se DERIVAN de `--panel-close-size`, no se calculan a mano: el
+   comentario anterior afirmaba un cerrar de 28×28 y un minimizar de 24 (de ahi
+   `right: 44px; top: 14px`), pero `size="sm"` son 22px en AMBOS
+   (`--cb-size-sm` = `--ai-size-sm` = 1.375rem) — el boton estaba 6px corrido y
+   1px alto. Con minimizar y cerrar del mismo alto, `top` es simplemente el
+   padding de la Paper (`p="md"` = 16px) y `right` ese padding mas el ancho del
+   cerrar. Cambia la variable y los dos offsets siguen. */
+.panelCardMinimize {
+  position: absolute;
+  right: calc(var(--mantine-spacing-md) + var(--panel-close-size));
+  top: var(--mantine-spacing-md);
+  z-index: 1;
+}
+

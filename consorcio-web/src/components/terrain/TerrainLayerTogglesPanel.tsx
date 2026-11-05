@@ -29,7 +29,7 @@
 import { Box, CloseButton, Paper, Select, Slider, Stack, Text } from '@mantine/core';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 
 /**

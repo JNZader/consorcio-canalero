@@ -1,0 +1,45 @@
+/* Capas activas en el teléfono: barra al alcance del pulgar, dentro del
+   drawer (no flota sobre el mapa). Colapsada no tapa el catálogo ni el
+   indicador de inicio. */
+
+@media (pointer: coarse) and (max-width: 47.9375em) {
+  .layerTogglesRoot {
+    min-height: 100%;
+  }
+
+  .workspaceSidebarBody {
+    scroll-padding-bottom: calc(var(--cc-touch-min, 44px) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .activeLayers {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-top: auto;
+    background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+    border-top: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+    padding: var(--mantine-spacing-xs);
+    padding-bottom: calc(var(--mantine-spacing-xs) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .activeLayersBody {
+    max-height: min(42dvh, 280px);
+    overflow-y: auto;
+  }
+}
+
+.activeLayersToggle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--mantine-spacing-xs);
+  min-height: var(--cc-touch-min, 44px);
+}

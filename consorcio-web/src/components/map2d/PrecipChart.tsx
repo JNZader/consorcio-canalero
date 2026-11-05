@@ -51,7 +51,7 @@ import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 
 import type { FichaPrecipitacion } from '../../lib/api/ficha';
 import { mapColorTokens } from '../../lib/mapColorTokens';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { LowConfidenceBadge } from './fichaShared';
 
 /** Short calendar-month labels, index 0 = January. Display only. */
@@ -236,7 +236,7 @@ export const PrecipChart = memo(function PrecipChart({
                       CSS custom properties are never substituted — the value
                       is dropped and the text falls back to black, invisible
                       on the dark ficha panel. A stylesheet rule (see
-                      `.precipBarLabels` in map.module.css) is how var() gets
+                      `.precipBarLabels` in map/classNames) is how var() gets
                       resolved — same approach @mantine/charts uses. */}
                   <LabelList
                     dataKey="mm"

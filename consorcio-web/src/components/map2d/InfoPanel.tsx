@@ -35,7 +35,7 @@ import type { Feature, LineString, MultiLineString } from 'geojson';
 import { memo, useEffect, useMemo, useState } from 'react';
 
 import type { PuntoInteresProperties } from '../../lib/api/puntosInteres';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import type { CanalFeatureProperties } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { BpaEnrichedFile, BpaHistoryFile, ParcelEnriched } from '../../types/pilarVerde';
@@ -78,7 +78,7 @@ interface InfoPanelProps {
   /**
    * True when the ficha territorial is open at the same time. Caps this panel's
    * height so both panels share the right-hand column instead of overlapping
-   * (see `.infoPanelCompact` in `map.module.css` for the budget derivation).
+   * (see `.infoPanelCompact` in `map/classNames` for the budget derivation).
    */
   readonly compact?: boolean;
   /**

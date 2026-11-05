@@ -3,7 +3,7 @@
  *
  * Este archivo existe por un fallo de método, no por una regresión suelta.
  * `tests/unit/MapCtrlTouchTargets.test.tsx` fija el CSS de la columna de
- * controles con REGEX SOBRE EL TEXTO de `map.module.css`, y el texto no tiene
+ * controles con REGEX SOBRE EL TEXTO de `map/classNames`, y el texto no tiene
  * cascada: una declaración presente y una declaración que GANA se leen igual.
  * Así se shippeó un `display: flex` muerto en `.mapCtrlButton` — nuestros
  * botones viven dentro del `.maplibregl-ctrl-group` de MapLibre, cuya regla
@@ -235,7 +235,7 @@ function declareCentringSuite(label: string, tags: string[]) {
       expect(divided.length, 'algún botón tiene que llevar el separador').toBeGreaterThan(0);
 
       for (const sample of divided) {
-        // El acoplamiento que documenta `map.module.css`: lo que el borde saca
+        // El acoplamiento que documenta `map/classNames`: lo que el borde saca
         // arriba se devuelve abajo, o el desvío cambia de signo.
         expect(sample.paddingBottom, `${sample.id} — padding que compensa el separador`).toBe(
           sample.borderTop

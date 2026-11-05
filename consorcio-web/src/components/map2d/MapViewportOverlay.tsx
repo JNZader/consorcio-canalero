@@ -1,6 +1,6 @@
 import { Box, Loader, Stack, Text } from '@mantine/core';
 import { memo, type PointerEventHandler } from 'react';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { IconGitCompare } from '../ui/icons';
 import { MAP_Z } from './mapZIndex';
 

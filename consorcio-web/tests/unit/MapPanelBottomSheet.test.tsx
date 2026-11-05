@@ -17,12 +17,11 @@
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { Feature } from "geojson";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InfoPanel } from "../../src/components/map2d/InfoPanel";
+import { readMapCss } from "../helpers/mapCss";
 import { MapPanelShell } from "../../src/components/map2d/MapPanelShell";
 import {
 	MapUiPanels,
@@ -313,10 +312,7 @@ describe("map panels — mobile bottom sheet", () => {
 	// InfoPanel still ate 45% of the canvas and padded the rest with empty
 	// backdrop; `max-height` lets it size to content and still stop at the cap.
 	it("caps the sheet instead of forcing its height", () => {
-		const css = readFileSync(
-			resolve(process.cwd(), "src/styles/components/map.module.css"),
-			"utf-8",
-		);
+		const css = readMapCss();
 		const sheet = /\.panelSheet\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
 		const expanded = /\.panelSheetExpanded\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
 

@@ -1,7 +1,7 @@
 import { Box, UnstyledButton } from '@mantine/core';
 
 import { mapColorTokens } from '../../lib/mapColorTokens';
-import styles from '../../styles/components/map.module.css';
+import styles from '../../styles/components/map/classNames';
 import { IconHome } from '../ui/icons';
 import { MAP_CTRL_GLYPH_SIZE } from './map2dConfig';
 
