@@ -245,3 +245,25 @@ describe('sheets móviles del mapa', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
+
+describe('resize del perfil', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('pointercancel suelta el arrastre para que no quede un resize fantasma', () => {
+    mockNarrow(false);
+    renderWithMantine(
+      <ElevationProfileDock geometry={line} title="Perfil de elevación" onClose={vi.fn()} />
+    );
+    const handle = screen.getByTestId('elevation-profile-resize');
+    const dock = screen.getByTestId('elevation-profile-dock');
+    fireEvent.pointerDown(handle, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 140, pointerId: 1 });
+    const whileDragging = dock.style.height;
+    fireEvent.pointerCancel(handle, { pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientY: 20, pointerId: 1 });
+    expect(dock.style.height).toBe(whileDragging);
+    expect(whileDragging).not.toBe('');
+  });
+});

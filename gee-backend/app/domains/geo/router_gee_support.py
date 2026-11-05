@@ -836,6 +836,17 @@ async def get_historic_flood_tiles_impl(
                 visualization="vv_flood",
             )
 
+        # An error dict used to be returned as HTTP 200, so monitors never
+        # saw the miss (R1-004). Both the optical lookup and the SAR
+        # fallback failed: this is not a tile payload.
+        if "error" in result:
+            raise NotFoundError(
+                message="No se encontró una imagen para esta inundación",
+                code="HISTORIC_FLOOD_IMAGE_NOT_FOUND",
+                resource_type="historic_flood",
+                resource_id=flood_id,
+            )
+
         # Tag composite so a persisted flood selection regenerates with the
         # median (cloud-free) path on reload instead of drifting back to mosaic.
         # Check the RESULT sensor, not the requested one, so the SAR fallback

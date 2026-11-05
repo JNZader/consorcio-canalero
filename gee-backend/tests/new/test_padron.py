@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domains.padron.models import Consorcista, EstadoConsorcista
@@ -391,6 +392,28 @@ class TestPadronService:
         assert exc_info.value.status_code == 409  # type: ignore[union-attr]
         assert "CUIT" in str(exc_info.value.detail)
 
+    def test_create_cuit_race_is_409_not_500(self, db: Session, service: PadronService):
+        data = _create_data_with_unique_cuit()
+
+        def lost_race(session, payload):
+            raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+        service.repo.create = lost_race  # type: ignore[method-assign]
+        with pytest.raises(Exception) as exc_info:
+            service.create(db, data)
+        assert exc_info.value.status_code == 409  # type: ignore[union-attr]
+
+    def test_update_cuit_race_is_409_not_500(self, db: Session, service: PadronService):
+        created = service.create(db, _create_data_with_unique_cuit())
+
+        def lost_race(session, consorcista_id, payload):
+            raise IntegrityError("UPDATE", {}, Exception("duplicate key"))
+
+        service.repo.update = lost_race  # type: ignore[method-assign]
+        with pytest.raises(Exception) as exc_info:
+            service.update(db, created.id, ConsorcistaUpdate(cuit=_unique_cuit()))
+        assert exc_info.value.status_code == 409  # type: ignore[union-attr]
+
     def test_get_by_id_raises_on_missing(self, db: Session, service: PadronService):
         with pytest.raises(Exception) as exc_info:
             service.get_by_id(db, uuid.uuid4())
@@ -512,3 +535,20 @@ class TestCsvImport:
 
         result = service.import_csv(db, csv_content, "test.csv")
         assert result["created"] == 1
+
+    def test_failed_row_does_not_block_a_later_valid_cuit(
+        self, db: Session, service: PadronService
+    ):
+        cuit = _unique_cuit()
+        csv_content = (
+            "nombre,apellido,cuit,hectareas\n"
+            f"Ana,Garcia,{cuit},no-es-numero\n"
+            f"Ana,Garcia,{cuit},12\n"
+        ).encode("utf-8")
+
+        result = service.import_csv(db, csv_content, "test.csv")
+
+        assert result["created"] == 1
+        assert result["skipped"] == 1
+        assert "duplicado" not in result["errors"][0]["error"]
+        assert service.repo.get_by_cuit(db, cuit) is not None

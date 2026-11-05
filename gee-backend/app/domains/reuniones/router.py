@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.domains.reuniones.schemas import (
     AgendaItemCreate,
     AgendaItemResponse,
+    AgendaItemUpdate,
     ReunionCreate,
     ReunionCreateResponse,
     ReunionListResponse,
@@ -148,6 +149,19 @@ def add_agenda_item(
 ):
     """Agregar un tema a la agenda (requiere operador)."""
     return service.add_agenda_item(db, reunion_id, payload)
+
+
+@router.patch("/{reunion_id}/agenda/{item_id}", response_model=AgendaItemResponse)
+def update_agenda_item(
+    reunion_id: uuid.UUID,
+    item_id: uuid.UUID,
+    payload: AgendaItemUpdate,
+    db: Session = Depends(get_db),
+    service: ReunionService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Actualizar un tema (incluye marcarlo completado)."""
+    return service.update_agenda_item(db, reunion_id, item_id, payload)
 
 
 @router.delete("/{reunion_id}/agenda/{item_id}", status_code=204)

@@ -11,9 +11,11 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -48,6 +50,15 @@ class Denuncia(UUIDMixin, TimestampMixin, Base):
     """Denuncia ciudadana — citizen report about canal infrastructure."""
 
     __tablename__ = "denuncias"
+    __table_args__ = (
+        Index(
+            "uq_denuncias_user_idempotency",
+            "user_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL AND deleted_at IS NULL"),
+        ),
+    )
 
     tipo: Mapped[str] = mapped_column(String(100), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
@@ -86,6 +97,10 @@ class Denuncia(UUIDMixin, TimestampMixin, Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # Stable across a lost response. Unique per live row of the same user
+    # so a retry returns the denuncia already stored instead of inserting
+    # another one. Soft-delete releases the key (partial index).
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
 
     # Relationships
     historial: Mapped[list["DenunciaHistorial"]] = relationship(

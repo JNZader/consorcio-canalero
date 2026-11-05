@@ -89,7 +89,7 @@ export function ElevationProfileDock({
   }, [effectiveHeight]);
 
   function onHandlePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     dragOrigin.current = { y: event.clientY, height };
   }
 
@@ -148,6 +148,7 @@ export function ElevationProfileDock({
           onPointerDown={onHandlePointerDown}
           onPointerMove={onHandlePointerMove}
           onPointerUp={onHandlePointerUp}
+          onPointerCancel={onHandlePointerUp}
           onKeyDown={(event) => {
             if (event.key === 'ArrowUp') {
               nudgeHeight(20);

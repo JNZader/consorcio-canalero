@@ -330,7 +330,8 @@ _CANARY_COMMAND = (
     "playwright test -c tests/e2e/playwright.config.ts "
     "tests/e2e/mapa-maplibre.spec.ts "
     "tests/e2e/mapa-viewport-movil.spec.ts "
-    "tests/e2e/ficha-territorial.spec.ts"
+    "tests/e2e/ficha-territorial.spec.ts "
+    "tests/e2e/mapa-hazard-citizen.spec.ts"
 )
 _HARNESS_CONFIG_REL = "tests/e2e/playwright.rainfall-harness.config.ts"
 _HARNESS_SCRIPT_NAME = "test:e2e:rainfall-harness"

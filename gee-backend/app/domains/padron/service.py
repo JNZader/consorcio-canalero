@@ -107,7 +107,17 @@ class PadronService:
                 status_code=409,
                 detail=f"Ya existe un consorcista con CUIT {data.cuit}",
             )
-        consorcista = self.repo.create(db, data)
+        try:
+            # Savepoint: a concurrent insert of the same CUIT rolls back only
+            # this statement. The session stays usable and the client gets 409
+            # instead of an unhandled IntegrityError (500).
+            with db.begin_nested():
+                consorcista = self.repo.create(db, data)
+        except IntegrityError:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Ya existe un consorcista con CUIT {data.cuit}",
+            ) from None
         db.commit()
         db.refresh(consorcista)
         return consorcista
@@ -143,7 +153,17 @@ class PadronService:
                     detail=f"Ya existe un consorcista con CUIT {update_fields['cuit']}",
                 )
 
-        updated = self.repo.update(db, consorcista_id, data)
+        try:
+            with db.begin_nested():
+                updated = self.repo.update(db, consorcista_id, data)
+        except IntegrityError:
+            cuit = update_fields.get("cuit")
+            detail = (
+                f"Ya existe un consorcista con CUIT {cuit}"
+                if cuit
+                else "Ya existe un consorcista con esos datos"
+            )
+            raise HTTPException(status_code=409, detail=detail) from None
         if updated is None:
             # Unreachable: ``get_by_id`` above would have raised 404 first.
             raise HTTPException(status_code=404, detail="Consorcista no encontrado")
@@ -219,8 +239,6 @@ class PadronService:
                     )
                     continue
 
-                seen_cuits.add(cuit)
-
                 schema = ConsorcistaCreate(
                     nombre=payload["nombre"],
                     apellido=payload["apellido"],
@@ -239,6 +257,10 @@ class PadronService:
                 with db.begin_nested():
                     self.repo.create(db, schema)
                 created += 1
+                # Only a row that actually landed may poison later rows.
+                # A failed CUIT (bad hectáreas, constraint, …) must stay
+                # available for a later valid row in the same file (N4).
+                seen_cuits.add(cuit)
             except IntegrityError:
                 # Real duplicate at the DB level (e.g. concurrent insert or
                 # unique constraint the pre-checks missed) — report it as a

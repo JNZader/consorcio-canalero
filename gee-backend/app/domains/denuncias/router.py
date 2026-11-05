@@ -3,7 +3,7 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -100,12 +100,28 @@ def _require_user():
 # ──────────────────────────────────────────────
 
 
+def _idempotency_key(raw: str | None) -> str | None:
+    """Normalize the retry key. Absent means a fresh create."""
+    if raw is None:
+        return None
+    key = raw.strip()
+    if not key:
+        return None
+    if len(key) > 80 or any(not (char.isalnum() or char in "-_") for char in key):
+        raise HTTPException(
+            status_code=422,
+            detail="Idempotency-Key inválida. Usá hasta 80 caracteres [A-Za-z0-9_-].",
+        )
+    return key
+
+
 @router.post("", response_model=DenunciaCreateResponse, status_code=201)
 def create_denuncia(
     payload: DenunciaCreate,
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     user=Depends(_require_user()),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     """
     Crear una denuncia (requiere ciudadano autenticado).
@@ -123,7 +139,12 @@ def create_denuncia(
             "contacto_email": user.email,
         }
     )
-    denuncia = service.create(db, payload_data, user_id=uuid.UUID(str(user.id)))
+    denuncia = service.create(
+        db,
+        payload_data,
+        user_id=uuid.UUID(str(user.id)),
+        idempotency_key=_idempotency_key(idempotency_key),
+    )
     return DenunciaCreateResponse(
         id=denuncia.id,
         message="Denuncia creada exitosamente. Gracias por colaborar.",

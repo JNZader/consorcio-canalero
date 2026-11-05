@@ -79,17 +79,31 @@ import {
 } from './soleraProfile';
 import { useLiveRegion } from '../ui/accessibility';
 
-function dedupeCrossings(
+/** Metres inside which two parcel hits are the same crossing. */
+export const CROSSING_DEDUPE_M = 20;
+
+function isParcelaLabel(label: string): boolean {
+  return label.includes('Parcela');
+}
+
+/**
+ * Collapse only parcel hits that land on top of each other.
+ * A culvert and a parcel 10 m apart are two labels; the old 20 m window
+ * kept one of them.
+ */
+export function dedupeCrossings(
   crossings: readonly { distance_m: number; label: string }[]
 ): { distance_m: number; label: string }[] {
   const sorted = [...crossings].sort((a, b) => a.distance_m - b.distance_m);
   const deduped: { distance_m: number; label: string }[] = [];
   for (const hit of sorted) {
     const prev = deduped[deduped.length - 1];
-    if (prev && Math.abs(prev.distance_m - hit.distance_m) < 20) {
-      if (!prev.label.includes('Parcela') && hit.label.includes('Parcela')) {
-        deduped[deduped.length - 1] = hit;
-      }
+    if (
+      prev &&
+      Math.abs(prev.distance_m - hit.distance_m) < CROSSING_DEDUPE_M &&
+      isParcelaLabel(prev.label) &&
+      isParcelaLabel(hit.label)
+    ) {
       continue;
     }
     deduped.push(hit);
@@ -765,7 +779,7 @@ export function ElevationProfileChart({
                   {cover.ok ? (
                     <Area
                       data={cover.rows}
-                      dataKey="cover_m"
+                      dataKey="cover_band"
                       stroke="none"
                       fill={mapColorTokens.h94a3b8}
                       fillOpacity={0.35}

@@ -11,6 +11,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from app.core.logging import get_logger
+from app.core.redis_client import redis_from_url_kwargs
 
 if TYPE_CHECKING:
     import redis.asyncio
@@ -103,8 +104,7 @@ class DistributedRateLimiter:
 
                 self._redis = aioredis.from_url(
                     self.redis_url,
-                    encoding="utf-8",
-                    decode_responses=True,
+                    **redis_from_url_kwargs(decode_responses=True, encoding="utf-8"),
                 )
                 # Test connection
                 await self._redis.ping()

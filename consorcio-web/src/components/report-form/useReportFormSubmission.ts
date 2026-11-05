@@ -130,6 +130,10 @@ export function useReportFormSubmission({
   // turno, antes de cualquier await, y se suelta recién cuando el POST
   // terminó o el borrador offline quedó escrito.
   const inFlightRef = useRef(false);
+  // One key per payload. A lost response retries with the same key so the
+  // server returns the row it already stored. A new payload, or a success,
+  // mints another key.
+  const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   return useCallback(
     async (values: ReportFormValues) => {
@@ -213,12 +217,24 @@ export function useReportFormSubmission({
         // The endpoint needs the denuncia's id in the URL for step 2.
         // The server fills `user_id` + `contacto_email` from the JWT —
         // we only pass the form fields. Photo failure is non-fatal.
-        const result = await publicApi.createReport({
+        const fingerprint = JSON.stringify({
           tipo: values.tipo,
           descripcion: values.descripcion,
-          latitud: ubicacion.lat,
-          longitud: ubicacion.lng,
+          lat: ubicacion.lat,
+          lng: ubicacion.lng,
         });
+        if (attemptRef.current?.fingerprint !== fingerprint) {
+          attemptRef.current = { fingerprint, key: crypto.randomUUID() };
+        }
+        const result = await publicApi.createReport(
+          {
+            tipo: values.tipo,
+            descripcion: values.descripcion,
+            latitud: ubicacion.lat,
+            longitud: ubicacion.lng,
+          },
+          attemptRef.current.key
+        );
 
         await uploadPhotoIfExists(result.id, values.foto, announce);
 
@@ -229,6 +245,7 @@ export function useReportFormSubmission({
         );
         announce('Denuncia enviada exitosamente. Gracias por colaborar.');
         clearReportDraft();
+        attemptRef.current = null;
         onSubmitSuccess();
 
         form.reset();

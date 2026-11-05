@@ -34,6 +34,7 @@ const agendaItem = {
   id: 'a1',
   titulo: 'Limpieza canal norte',
   descripcion: 'Estado de avance',
+  completado: false,
   referencias: [],
 };
 
@@ -220,6 +221,26 @@ describe('useReunionesController — agenda', () => {
     });
 
     expect(loggerMock.error).toHaveBeenCalledWith('Error adding agenda topic:', expect.anything());
+  });
+});
+
+describe('useReunionesController — completar tema', () => {
+  it('patches completado and reloads the agenda', async () => {
+    const { result } = await mountController();
+    await act(async () => {
+      result.current.handleViewAgenda(reunion);
+    });
+    await waitFor(() => expect(result.current.agenda).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.handleToggleComplete(result.current.agenda[0]);
+    });
+
+    const call = apiFetchMock.mock.calls.find(
+      ([url, options]) => url === '/reuniones/r1/agenda/a1' && options?.method === 'PATCH'
+    );
+    expect(call).toBeTruthy();
+    expect(JSON.parse(call?.[1].body)).toEqual({ completado: true });
   });
 });
 

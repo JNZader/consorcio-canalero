@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -138,6 +139,37 @@ async def test_gee_health_cache_hit_avoids_a_second_call(
     assert third["status"] == "healthy"
     assert number.calls == 2
     assert order == ["init", "init"]
+
+
+def test_gee_probe_threads_are_daemon_and_shutdown_does_not_wait(monkeypatch) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    flags: list[bool] = []
+
+    def block() -> None:
+        flags.append(threading.current_thread().daemon)
+        started.set()
+        release.wait(2)
+
+    future = health._gee_probe_executor.submit(block)
+    assert started.wait(1)
+    assert flags == [True]
+    release.set()
+    future.result(timeout=2)
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        health._gee_probe_executor,
+        "shutdown",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    health.shutdown_gee_probe()
+    assert calls == [{"wait": False, "cancel_futures": True}]
+
+
+def test_lifespan_releases_the_gee_probe() -> None:
+    source = (Path(__file__).resolve().parents[2] / "app" / "main.py").read_text(encoding="utf-8")
+    assert "shutdown_gee_probe()" in source
 
 
 @pytest.mark.asyncio

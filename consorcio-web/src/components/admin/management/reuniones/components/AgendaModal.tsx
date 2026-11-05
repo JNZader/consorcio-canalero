@@ -1,6 +1,7 @@
 import {
   Badge,
   Button,
+  Checkbox,
   Divider,
   Group,
   Modal,
@@ -35,6 +36,8 @@ export function AgendaModal({
   form,
   onAddTopic,
   onDeleteTopic,
+  onToggleComplete,
+  togglingAgendaItemId,
   deletingAgendaItemId,
   availableEntities,
   loadingEntities,
@@ -48,6 +51,8 @@ export function AgendaModal({
   form: UseFormReturnType<AgendaFormValues>;
   onAddTopic: (values: AgendaFormValues) => void | Promise<void>;
   onDeleteTopic: (item: AgendaItem) => void | Promise<void>;
+  onToggleComplete: (item: AgendaItem) => void | Promise<void>;
+  togglingAgendaItemId: string | null;
   deletingAgendaItemId: string | null;
   availableEntities: EntityOption[];
   loadingEntities: boolean;
@@ -104,6 +109,14 @@ export function AgendaModal({
                       <Text size="sm" c="dimmed" mb="xs">
                         {item.descripcion}
                       </Text>
+
+                      <Checkbox
+                        mt="xs"
+                        label="Completado"
+                        checked={item.completado === true}
+                        disabled={togglingAgendaItemId !== null}
+                        onChange={() => onToggleComplete(item)}
+                      />
 
                       {item.referencias && item.referencias.length > 0 && (
                         <Group gap="xs" mt="xs">

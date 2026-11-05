@@ -50,6 +50,8 @@ export default function ReunionesPanel() {
         form={controller.itemForm}
         onAddTopic={controller.handleAddTopic}
         onDeleteTopic={controller.handleDeleteTopic}
+        onToggleComplete={controller.handleToggleComplete}
+        togglingAgendaItemId={controller.togglingAgendaItemId}
         deletingAgendaItemId={controller.deletingAgendaItemId}
         availableEntities={controller.availableEntities}
         loadingEntities={controller.loadingEntities}

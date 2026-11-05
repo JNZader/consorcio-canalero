@@ -16,6 +16,7 @@ import time
 from typing import TYPE_CHECKING, Any, Optional
 
 from app.core.logging import get_logger
+from app.core.redis_client import redis_from_url_kwargs
 
 if TYPE_CHECKING:
     import redis.asyncio
@@ -77,8 +78,7 @@ class JSONCache:
 
                 self._redis = aioredis.from_url(
                     self.redis_url,
-                    encoding="utf-8",
-                    decode_responses=True,
+                    **redis_from_url_kwargs(decode_responses=True, encoding="utf-8"),
                 )
                 await self._redis.ping()
                 self._redis_available = True
@@ -294,7 +294,7 @@ class BytesCache:
 
                 self._redis = redis.Redis.from_url(
                     self.redis_url,
-                    decode_responses=False,  # raw bytes
+                    **redis_from_url_kwargs(decode_responses=False),
                 )
                 self._redis.ping()
                 self._redis_available = True

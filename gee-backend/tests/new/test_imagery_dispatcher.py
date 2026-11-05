@@ -413,6 +413,23 @@ async def test_historic_flood_unknown_id_raises_not_found(anchors) -> None:
     assert excinfo.value.code == "FLOOD_NOT_FOUND"
 
 
+async def test_historic_flood_error_body_is_not_a_200(anchors) -> None:
+    """Optical and SAR both failed: do not return the error dict as success."""
+    from app.core.exceptions import NotFoundError
+
+    explorer_obj = _FloodExplorer(
+        {"error": "sin optica"},
+        {"error": "sin sar"},
+    )
+
+    with pytest.raises(NotFoundError) as excinfo:
+        await _historic("feb_2017", explorer_obj, anchors)
+
+    assert excinfo.value.status_code == 404
+    assert excinfo.value.code == "HISTORIC_FLOOD_IMAGE_NOT_FOUND"
+    assert "error" not in getattr(excinfo.value, "details", {})
+
+
 async def test_historic_flood_wraps_unexpected_failures(anchors) -> None:
     class _Boom:
         def get_image(self, **kwargs):

@@ -126,11 +126,26 @@ class DenunciaRepository:
 
     # ── WRITE ─────────────────────────────────
 
+    def get_active_by_idempotency(
+        self,
+        db: Session,
+        user_id: uuid.UUID,
+        idempotency_key: str,
+    ) -> Optional[Denuncia]:
+        """Return the live denuncia stored for this retry key, or None."""
+        stmt = select(Denuncia).where(
+            Denuncia.user_id == user_id,
+            Denuncia.idempotency_key == idempotency_key,
+            Denuncia.deleted_at.is_(None),
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
     def create(
         self,
         db: Session,
         data: DenunciaCreate,
         user_id: Optional[uuid.UUID] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Denuncia:
         """Insert a new denuncia with PostGIS point geometry."""
         denuncia = Denuncia(
@@ -144,6 +159,7 @@ class DenunciaRepository:
             contacto_telefono=data.contacto_telefono,
             contacto_email=data.contacto_email,
             user_id=user_id,
+            idempotency_key=idempotency_key,
         )
         db.add(denuncia)
         db.flush()
