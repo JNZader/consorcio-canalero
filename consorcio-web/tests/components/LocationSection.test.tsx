@@ -274,6 +274,13 @@ describe('<LocationSection /> lazy map engine', () => {
     expect(onLocationSelect).toHaveBeenCalledWith(-32.6, -62.7);
   });
 
+  it('destroys the map once when the section unmounts', async () => {
+    const { unmount } = renderWithMantine(<LocationSection {...baseProps} />);
+    await waitFor(() => expect(mapInstances).toHaveLength(1));
+    unmount();
+    expect(mapInstances[0]?.remove).toHaveBeenCalledTimes(1);
+  });
+
   it('never builds a map when the section unmounts before the chunk resolves', async () => {
     const { unmount } = renderWithMantine(<LocationSection {...baseProps} />);
     unmount();

@@ -35,6 +35,7 @@ const { loadMapLibreMock, MockMap } = vi.hoisted(() => {
 
 vi.mock('../../src/lib/maplibreLoader', () => ({
 	loadMapLibre: () => loadMapLibreMock(),
+	bootMapLibreWorker: () => Promise.resolve(),
 }));
 
 vi.mock('../../src/hooks/useFormMapLayers', () => ({
@@ -71,7 +72,7 @@ describe('<SuggestionGeometrySection /> — lazy engine failure', () => {
 		const map = screen.getByRole('application', { name: /canal en mapa/i });
 		expect(map).toHaveAttribute('aria-busy', 'true');
 
-		await waitFor(() => expect(screen.getByText(/no se pudo cargar el mapa/i)).toBeInTheDocument());
+		await waitFor(() => expect(screen.getByText(/no pudimos cargar el mapa/i)).toBeInTheDocument());
 
 		// Busy is released — the wait is OVER, it just did not succeed.
 		expect(map).toHaveAttribute('aria-busy', 'false');
