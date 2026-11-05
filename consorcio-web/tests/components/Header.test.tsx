@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HeaderContent } from '../../src/components/Header';
+import { cssVariablesResolver, mantineTheme } from '../../src/lib/theme';
 import { MantineProvider } from '@mantine/core';
 
 // Mock router
@@ -51,6 +52,18 @@ describe('Header', () => {
     );
 
     expect(screen.getByText('Consorcio Canalero')).toBeInTheDocument();
+  });
+
+  it('paints the wordmark with the river token', () => {
+    render(
+      <MantineProvider env="test" theme={mantineTheme} cssVariablesResolver={cssVariablesResolver}>
+        <HeaderContent />
+      </MantineProvider>
+    );
+
+    expect(screen.getByText('Consorcio Canalero').getAttribute('style')).toContain(
+      'var(--cc-color-wordmark)'
+    );
   });
 
   it('should render logo link to home', () => {

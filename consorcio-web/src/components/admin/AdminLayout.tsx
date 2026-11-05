@@ -164,13 +164,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
               />
               <UnstyledButton component={Link} to="/admin" style={{ minWidth: 0 }}>
                 <Group gap="xs" wrap="nowrap">
-                  <Text
-                    size="xl"
-                    fw={700}
-                    variant="gradient"
-                    gradient={{ from: 'institucional.8', to: 'acento.5', deg: 45 }}
-                    truncate
-                  >
+                  <Text size="xl" fw={700} truncate style={{ color: 'var(--cc-color-wordmark)' }}>
                     Consorcio Canalero
                   </Text>
                   <Text size="xs" c="gray.6" visibleFrom="sm">

@@ -140,10 +140,9 @@ describe('theme', () => {
       expect(mantineTheme.colors!.institucional!.length).toBe(10);
     });
 
-    it('should have acento color palette', () => {
-      expect(mantineTheme.colors!.acento).toBeDefined();
-      expect(Array.isArray(mantineTheme.colors!.acento)).toBe(true);
-      expect(mantineTheme.colors!.acento!.length).toBe(10);
+    it('does not ship a gold accent palette', () => {
+      expect(mantineTheme.colors!.acento).toBeUndefined();
+      expect(JSON.stringify(mantineTheme.colors)).not.toContain('#f7be24');
     });
 
     it('should have agua color palette', () => {
@@ -311,7 +310,7 @@ describe('theme', () => {
     });
 
     it('should have all color palettes with 10 colors', () => {
-      const palettes = ['institucional', 'acento', 'agua', 'alerta', 'exito'] as const;
+      const palettes = ['institucional', 'agua', 'alerta', 'exito'] as const;
       palettes.forEach((pal) => {
         expect(mantineTheme.colors![pal]!.length).toBe(10);
       });
