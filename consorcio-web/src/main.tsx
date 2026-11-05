@@ -12,8 +12,10 @@ import { type ReactNode, StrictMode, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { UpdateBanner } from './components/UpdateBanner';
 import { sharedColorSchemeManager } from './lib/mantine';
+import { installPwaPromptListener } from './lib/pwaInstall';
 import { queryClient } from './lib/query';
 import { cssVariablesResolver, mantineTheme } from './lib/theme';
 import { Z_INDEX } from './lib/zIndex';
@@ -35,6 +37,8 @@ scheduleIdle(() => {
   void import('./lib/sentry').then((mod) => mod.initSentry());
   void import('./lib/logtail').then((mod) => mod.initLogtail());
 });
+
+installPwaPromptListener();
 
 // Mantine styles first, then global overrides.
 import './styles/mantine-imports';
@@ -125,6 +129,7 @@ function App() {
           colorSchemeManager={sharedColorSchemeManager}
         >
           <Notifications position="top-right" zIndex={Z_INDEX.toast} />
+          <PwaInstallPrompt />
           <UpdateBanner />
           <AuthInitializer>
             <RouterProvider router={router} />

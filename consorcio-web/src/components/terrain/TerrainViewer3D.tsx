@@ -605,6 +605,10 @@ export default function TerrainViewer3D({
       maxPitch: 75,
       hash: 'v',
       locale: { ...MAP_LOCALE_ES },
+      // Igual que el mapa 2D: en puntero fino, Ctrl+rueda para no robar el
+      // scroll de la página. En táctil el lienzo es la superficie principal
+      // (un dedo lo mueve). Los overlays (dock, drawer, perfil) no capturan
+      // ese gesto: ver `terrainStatusDock` y `workspaceDrawerOverlay`.
       cooperativeGestures: !isCoarsePointerDevice(),
       attributionControl: false,
       // Bound the tile cache so panning around doesn't keep hundreds of

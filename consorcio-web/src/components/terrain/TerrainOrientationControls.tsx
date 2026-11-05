@@ -7,6 +7,8 @@ interface TerrainOrientationControlsProps {
   readonly onLookWest: () => void;
   readonly onReset: () => void;
   readonly showKeyboardShortcuts?: boolean;
+  /** En el drawer de 360px los botones envuelven y heredan el piso táctil. */
+  readonly layout?: 'inline' | 'touch';
 }
 
 export function TerrainOrientationControls({
@@ -16,7 +18,9 @@ export function TerrainOrientationControls({
   onLookWest,
   onReset,
   showKeyboardShortcuts = true,
+  layout = 'inline',
 }: TerrainOrientationControlsProps) {
+  const touch = layout === 'touch';
   return (
     <Group gap="xs" align="center" wrap="wrap">
       <Text size="xs" c="dimmed">
@@ -24,31 +28,32 @@ export function TerrainOrientationControls({
       </Text>
       {showKeyboardShortcuts && (
         <Text size="xs" c="dimmed">
-          Atajos con el mapa enfocado: <kbd>N</kbd> norte · <kbd>U</kbd> cenital · <kbd>R</kbd> reset
+          Atajos con el mapa enfocado: <kbd>N</kbd> norte · <kbd>U</kbd> cenital · <kbd>R</kbd>{' '}
+          reset
         </Text>
       )}
       <Tooltip label="Norte arriba (N)" withArrow>
-        <Button size="xs" variant="default" onClick={onNorth}>
+        <Button size={touch ? 'sm' : 'xs'} variant="default" onClick={onNorth}>
           Norte
         </Button>
       </Tooltip>
       <Tooltip label="Vista cenital (U)" withArrow>
-        <Button size="xs" variant="default" onClick={onNadir}>
+        <Button size={touch ? 'sm' : 'xs'} variant="default" onClick={onNadir}>
           Cenital
         </Button>
       </Tooltip>
       <Tooltip label="Vista oblicua (pitch 60°)" withArrow>
-        <Button size="xs" variant="default" onClick={onOblique}>
+        <Button size={touch ? 'sm' : 'xs'} variant="default" onClick={onOblique}>
           Oblicua
         </Button>
       </Tooltip>
       <Tooltip label="Mirar desde el oeste" withArrow>
-        <Button size="xs" variant="default" onClick={onLookWest}>
+        <Button size={touch ? 'sm' : 'xs'} variant="default" onClick={onLookWest}>
           Desde el oeste
         </Button>
       </Tooltip>
       <Tooltip label="Norte + cenital (R)" withArrow>
-        <Button size="xs" variant="default" onClick={onReset}>
+        <Button size={touch ? 'sm' : 'xs'} variant="default" onClick={onReset}>
           Reset
         </Button>
       </Tooltip>

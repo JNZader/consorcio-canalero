@@ -9,9 +9,8 @@
  * "Serie diaria" sheet uses, so the screen and the workbook cannot tell
  * different stories.
  *
- * `recharts` directly rather than `@mantine/charts` (design D8): the Lluvia tab
- * already loads the `vendor-charts` chunk, while `vendor-mantine-charts` is
- * admin-only — zero incremental vendor bytes on the ficha route.
+ * `recharts` directly (design D8): es la única librería de gráficos.
+ * El tab Lluvia y el dashboard admin comparten el chunk `vendor-charts`.
  *
  * WHAT THIS COMPONENT REFUSES TO DO
  * ─────────────────────────────────

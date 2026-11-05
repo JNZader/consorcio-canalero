@@ -182,7 +182,16 @@ export function ElevationProfileDock({
         </Group>
       </Group>
       {collapsed ? null : (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 8px 8px' }}>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'auto',
+            overscrollBehavior: 'contain',
+            touchAction: 'pan-y',
+            padding: '0 8px calc(8px + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
           <Suspense fallback={null}>
             <ElevationProfileChart
               geometry={geometry}

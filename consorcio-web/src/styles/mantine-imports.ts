@@ -1,28 +1,81 @@
 /**
- * Imports centralizados de estilos CSS de Mantine.
+ * Único punto de entrada de CSS de Mantine.
  *
- * Este archivo es el UNICO lugar donde se importan los estilos de Mantine.
- * El MantineProvider de `main.tsx` importa los estilos desde aqui.
+ * El bundle monolítico `@mantine/core/styles.css` arrastraba componentes
+ * que esta app no renderiza (ColorPicker, Spotlight, Tour, …). Acá entran
+ * la base (baseline, variables, global) y el CSS de cada componente usado,
+ * más los internos que esos componentes montan sin importarlos
+ * (Input, Combobox, Overlay, Popover, ModalBase, Pill).
  *
- * Esto evita la duplicacion de imports CSS y asegura consistencia.
+ * Dates y Dropzone siguen al lado del único componente que los usa.
+ * Notifications conserva su CSS de paquete; la tarjeta vive en Notification.css.
  */
 
-// Estilos core de Mantine — bundle monolítico.
-//
-// Phase 3 / F3-D considered swapping this for granular per-component
-// imports (``@mantine/core/styles/Button.css`` etc.) to drop the
-// uncompressed 228 KB down to whatever subset we actually use. The
-// audit listed 43 distinct components across 105 files — each
-// migration is mechanically safe but the surface for a forgotten
-// import (e.g. a Tooltip that suddenly renders without animation
-// because its CSS wasn't included) is large. Skipped: 228 KB raw =
-// ~30 KB gzipped + the SW caches it for a year. Re-evaluate when
-// Mantine v9 ships its rumoured CSS-tree-shaking story.
-import '@mantine/core/styles.css';
+import '@mantine/core/styles/baseline.css';
+import '@mantine/core/styles/default-css-variables.css';
+import '@mantine/core/styles/global.css';
 
-// Estilos de notificaciones (usado por el MantineProvider de main.tsx)
+import '@mantine/core/styles/Accordion.css';
+import '@mantine/core/styles/ActionIcon.css';
+import '@mantine/core/styles/Alert.css';
+import '@mantine/core/styles/Anchor.css';
+import '@mantine/core/styles/AppShell.css';
+import '@mantine/core/styles/Avatar.css';
+import '@mantine/core/styles/Badge.css';
+import '@mantine/core/styles/Burger.css';
+import '@mantine/core/styles/Button.css';
+import '@mantine/core/styles/Card.css';
+import '@mantine/core/styles/Center.css';
+import '@mantine/core/styles/Checkbox.css';
+import '@mantine/core/styles/CheckboxIndicator.css';
+import '@mantine/core/styles/CloseButton.css';
+import '@mantine/core/styles/Code.css';
+import '@mantine/core/styles/ColorSwatch.css';
+import '@mantine/core/styles/Combobox.css';
+import '@mantine/core/styles/Container.css';
+import '@mantine/core/styles/Divider.css';
+import '@mantine/core/styles/Drawer.css';
+import '@mantine/core/styles/Flex.css';
+import '@mantine/core/styles/FloatingIndicator.css';
+import '@mantine/core/styles/Grid.css';
+import '@mantine/core/styles/Group.css';
+import '@mantine/core/styles/Image.css';
+import '@mantine/core/styles/InlineInput.css';
+import '@mantine/core/styles/Input.css';
+import '@mantine/core/styles/List.css';
+import '@mantine/core/styles/Loader.css';
+import '@mantine/core/styles/LoadingOverlay.css';
+import '@mantine/core/styles/Menu.css';
+import '@mantine/core/styles/Modal.css';
+import '@mantine/core/styles/ModalBase.css';
+import '@mantine/core/styles/NavLink.css';
+import '@mantine/core/styles/Notification.css';
+import '@mantine/core/styles/NumberInput.css';
+import '@mantine/core/styles/Overlay.css';
+import '@mantine/core/styles/Pagination.css';
+import '@mantine/core/styles/Paper.css';
+import '@mantine/core/styles/PasswordInput.css';
+import '@mantine/core/styles/Pill.css';
+import '@mantine/core/styles/PillsInput.css';
+import '@mantine/core/styles/Popover.css';
+import '@mantine/core/styles/Progress.css';
+import '@mantine/core/styles/Radio.css';
+import '@mantine/core/styles/RadioIndicator.css';
+import '@mantine/core/styles/ScrollArea.css';
+import '@mantine/core/styles/SegmentedControl.css';
+import '@mantine/core/styles/SimpleGrid.css';
+import '@mantine/core/styles/Skeleton.css';
+import '@mantine/core/styles/Slider.css';
+import '@mantine/core/styles/Stack.css';
+import '@mantine/core/styles/Switch.css';
+import '@mantine/core/styles/Table.css';
+import '@mantine/core/styles/Tabs.css';
+import '@mantine/core/styles/Text.css';
+import '@mantine/core/styles/ThemeIcon.css';
+import '@mantine/core/styles/Timeline.css';
+import '@mantine/core/styles/Title.css';
+import '@mantine/core/styles/Tooltip.css';
+import '@mantine/core/styles/UnstyledButton.css';
+import '@mantine/core/styles/VisuallyHidden.css';
+
 import '@mantine/notifications/styles.css';
-
-// Dropzone CSS lives next to PhotoSection — importing it here made the
-// entry bundle static-import vendor-mantine-dropzone on every route.
-// Dates CSS lives next to SuggestionDetailModal for the same reason.

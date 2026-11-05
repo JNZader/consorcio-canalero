@@ -16,6 +16,7 @@ import { Link } from '@tanstack/react-router';
 import { lazy, memo, Suspense, useEffect, useRef } from 'react';
 import { Z_INDEX } from '../lib/zIndex';
 import styles from '../styles/components/header.module.css';
+import { PwaInstallMenuButton } from './PwaInstallPrompt';
 import ThemeToggle from './ThemeToggle';
 
 // Lazy load UserMenu para reducir el bundle inicial
@@ -128,6 +129,7 @@ export const HeaderContent = memo(function HeaderContent() {
                 </Button>
               ))}
 
+              <PwaInstallMenuButton />
               <ThemeToggle />
 
               {/* UserMenu lazy loaded - auth code se carga solo cuando necesario */}
@@ -180,6 +182,7 @@ export const HeaderContent = memo(function HeaderContent() {
                   {link.label}
                 </Button>
               ))}
+              <PwaInstallMenuButton fullWidth onDone={close} />
             </Stack>
           </nav>
 

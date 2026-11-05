@@ -305,6 +305,17 @@ const reportesRoute = createRoute({
   component: () => null,
 });
 
+// Alias en inglés. `/reportes` (arriba) y el 301 del edge se quedan:
+// este camino es el que un enlace viejo en inglés todavía pide.
+const reportsAliasRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/reports',
+  beforeLoad: () => {
+    throw redirect({ to: '/participacion' });
+  },
+  component: () => null,
+});
+
 const sugerenciasRoute = createRoute({
   getParentRoute: () => rootRouteWithComponent,
   path: '/sugerencias',
@@ -718,6 +729,7 @@ export const routeTree = rootRouteWithComponent.addChildren([
   mapaRoute,
   participacionRoute,
   reportesRoute,
+  reportsAliasRoute,
   sugerenciasRoute,
   // Auth
   authCallbackRoute,

@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { shouldReplaceWithPlain404 } from '../../public/_worker.js';
+import {
+  isKnownSpaPath,
+  shouldReplaceWithPlain404,
+  shouldServeRouteNotFound,
+} from '../../public/_worker.js';
 
 describe('Cloudflare Pages routing (SPA + FE-01)', () => {
   it('does not ship a root 404.html (that disables the Pages SPA fallback)', () => {
@@ -46,11 +50,29 @@ describe('Cloudflare Pages routing (SPA + FE-01)', () => {
     expect(shouldReplaceWithPlain404('/version.json', 200, 'application/json')).toBe(false);
   });
 
+  it('turns an unknown HTML route into a real 404 and keeps the SPA routes', () => {
+    expect(shouldServeRouteNotFound('/esta-ruta-no-existe', 200, 'text/html')).toBe(true);
+    expect(shouldServeRouteNotFound('/admin/no-existe', 200, 'text/html; charset=utf-8')).toBe(
+      true
+    );
+    expect(shouldServeRouteNotFound('/mapa/', 200, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/reports', 200, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/reportes', 200, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/sugerencias', 200, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/admin/reports', 200, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/admin/sugerencias', 200, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/mapa', 404, 'text/html')).toBe(false);
+    expect(shouldServeRouteNotFound('/assets/missing.js', 200, 'text/html')).toBe(false);
+    expect(isKnownSpaPath('/participacion')).toBe(true);
+    expect(isKnownSpaPath('/no-existe')).toBe(false);
+  });
+
   it('ships the plain-404 worker inside the Pages build output', () => {
     const worker = readFileSync(join(process.cwd(), 'public/_worker.js'), 'utf8');
     expect(worker).toMatch(/export default/);
     expect(worker).toMatch(/env\.ASSETS\.fetch/);
     expect(worker).toMatch(/shouldReplaceWithPlain404/);
+    expect(worker).toMatch(/shouldServeRouteNotFound/);
   });
 
   it('registers a one-shot vite:preloadError reload in main.tsx', () => {

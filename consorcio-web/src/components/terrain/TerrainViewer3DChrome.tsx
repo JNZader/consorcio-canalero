@@ -355,13 +355,14 @@ export function TerrainViewer3DChrome({
           <Paper
             radius="md"
             withBorder
+            className={mapStyles.terrainMapHost}
             style={{
               height: typeof height === 'number' ? `${height}px` : height,
               position: 'relative',
               overflow: 'hidden',
             }}
           >
-            <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+            <div ref={mapContainerRef} className={mapStyles.terrainMapCanvas} />
 
             {!ready && (
               <Box
@@ -384,30 +385,18 @@ export function TerrainViewer3DChrome({
 
             {onFlythrough ? (
               <Button
-                size="xs"
+                size="sm"
                 variant="filled"
+                className={mapStyles.terrainFlythrough}
                 data-testid="terrain-flythrough"
                 disabled={!canFlythrough}
                 onClick={onFlythrough}
-                style={{ position: 'absolute', top: 12, right: 12, zIndex: 12 }}
               >
                 Recorrer canal
               </Button>
             ) : null}
-            <Box
-              data-testid="terrain-status-dock"
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0,0,0,0.72)',
-                padding: '4px 10px',
-                zIndex: 10,
-                pointerEvents: 'none',
-              }}
-            >
-              <Text size="xs" c="white">
+            <Box data-testid="terrain-status-dock" className={mapStyles.terrainStatusDock}>
+              <Text size="xs" c="white" lineClamp={2}>
                 <Text span fw={600}>
                   Terreno 3D
                 </Text>
@@ -447,39 +436,40 @@ export function TerrainViewer3DChrome({
           >
             {!isDesktop && (
               <Paper withBorder p="xs" radius="sm" data-testid="terrain-3d-mobile-controls">
-                <Stack gap="xs">
+                <Stack gap="sm">
                   <Text size="xs" fw={700} c="dimmed" tt="uppercase">
                     Vista 3D
                   </Text>
-                  <Group justify="space-between" align="center">
-                    <Checkbox
-                      size="xs"
-                      checked={terrainSmoothingEnabled}
-                      onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
-                      label="Suavizar terreno"
-                    />
-                    <SegmentedControl
-                      size="xs"
-                      value={terrainSmoothingThreshold}
-                      onChange={(value) =>
-                        onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
-                      }
-                      disabled={!terrainSmoothingEnabled}
-                      data={[
-                        { value: 'low', label: 'Suave' },
-                        { value: 'med', label: 'Medio' },
-                        { value: 'high', label: 'Fuerte' },
-                      ]}
-                      aria-label="Intensidad del suavizado"
-                    />
-                  </Group>
+                  <Checkbox
+                    size="md"
+                    checked={terrainSmoothingEnabled}
+                    onChange={(event) => onTerrainSmoothingChange(event.currentTarget.checked)}
+                    label="Suavizar terreno"
+                  />
+                  <SegmentedControl
+                    fullWidth
+                    size="sm"
+                    value={terrainSmoothingThreshold}
+                    onChange={(value) =>
+                      onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
+                    }
+                    disabled={!terrainSmoothingEnabled}
+                    data={[
+                      { value: 'low', label: 'Suave' },
+                      { value: 'med', label: 'Medio' },
+                      { value: 'high', label: 'Fuerte' },
+                    ]}
+                    aria-label="Intensidad del suavizado"
+                  />
                   <TerrainExaggerationControls
+                    layout="touch"
                     value={exaggeration}
                     onChange={onExaggerationChange}
                     min={minExaggeration}
                     max={maxExaggeration}
                   />
                   <TerrainOrientationControls
+                    layout="touch"
                     onNorth={onNorth}
                     onNadir={onNadir}
                     onOblique={onOblique}

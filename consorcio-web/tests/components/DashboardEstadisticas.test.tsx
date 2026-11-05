@@ -5,12 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardEstadisticas } from '../../src/components/admin/management/DashboardEstadisticas';
 import { apiFetch, statsApi } from '../../src/lib/api';
 
-vi.mock('@mantine/charts', () => ({
-  BarChart: () => <div data-testid="bar-chart" />,
-  LineChart: () => <div data-testid="line-chart" />,
-  DonutChart: () => <div data-testid="donut-chart" />,
-}));
-
 vi.mock('../../src/lib/query', () => ({
   useDashboardStats: vi.fn(),
   useMonitoringDashboard: vi.fn(),

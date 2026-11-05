@@ -87,6 +87,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--mantine-spacing-xs);
 }
 
@@ -106,6 +107,9 @@
   inset: 0;
   z-index: var(--z-map-drawer-overlay);
   background: rgb(0 0 0 / 0.35);
+  /* El velo tapa el mapa. Un dedo vertical scrollea la página; el toque
+     corto sigue cerrando el panel. Sin esto el overlay se come el gesto. */
+  touch-action: pan-y;
 }
 
 /* MAP-11: same sidebar host as desktop. Hidden until the burger opens it as a
