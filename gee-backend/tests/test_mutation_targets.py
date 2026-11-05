@@ -86,6 +86,9 @@ class TestDenunciaServiceList:
             limit=50,
             estado="resuelta",
             cuenca="cuenca_1",
+            tipo="desborde",
+            categoria="desborde",
+            search="canal",
         )
 
         repo.get_all.assert_called_once()
@@ -94,6 +97,9 @@ class TestDenunciaServiceList:
         assert kwargs["limit"] == 50
         assert kwargs["estado_filter"] == "resuelta"
         assert kwargs["cuenca_filter"] == "cuenca_1"
+        assert kwargs["tipo_filter"] == "desborde"
+        assert kwargs["categoria_filter"] == "desborde"
+        assert kwargs["search"] == "canal"
 
     def test_list_by_user_passes_user_id(self):
         svc, repo = _make_denuncia_service()

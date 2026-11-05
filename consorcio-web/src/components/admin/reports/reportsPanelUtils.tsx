@@ -15,32 +15,13 @@ export interface ReportStatusCounts {
   en_revision: number;
 }
 
-export function filterReports(
-  reports: Report[],
-  filterCategory: string | null,
-  searchQuery: string,
-  globalStats?: ReportStatusCounts | null
-) {
-  let pending = 0;
-  let inReview = 0;
-
-  const filteredReports = reports.filter((report) => {
-    if (report.estado === 'pendiente') pending++;
-    if (report.estado === 'en_revision') inReview++;
-    if (filterCategory && report.categoria !== filterCategory) return false;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        report.descripcion.toLowerCase().includes(query) ||
-        report.ubicacion_texto?.toLowerCase().includes(query)
-      );
-    }
-    return true;
-  });
-
-  return {
-    filteredReports,
-    pendingCount: globalStats ? globalStats.pendiente : pending,
-    inReviewCount: globalStats ? globalStats.en_revision : inReview,
-  };
+/** Badge fallback from the rows already returned when `/denuncias/stats` is unavailable. */
+export function countReportStatuses(reports: Report[]): ReportStatusCounts {
+  let pendiente = 0;
+  let en_revision = 0;
+  for (const report of reports) {
+    if (report.estado === 'pendiente') pendiente++;
+    if (report.estado === 'en_revision') en_revision++;
+  }
+  return { pendiente, en_revision };
 }

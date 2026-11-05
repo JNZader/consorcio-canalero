@@ -3,7 +3,7 @@
 import uuid
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.domains.monitoring.models import (
@@ -31,14 +31,41 @@ class MonitoringRepository:
         limit: int = 20,
         estado_filter: Optional[str] = None,
         categoria_filter: Optional[str] = None,
+        tipo_filter: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[list[Sugerencia], int]:
-        """Paginated list of sugerencias with optional filters."""
+        """Paginated list of sugerencias with optional filters.
+
+        ``tipo`` matches the stats cards: ``ciudadana`` has no ``usuario_id``,
+        ``interna`` has one. Any other value matches nothing. ``search`` is
+        ILIKE over título, descripción, categoría and contacto (padrón shape).
+
+        Returns (items, total_count) for the filtered set, before paging.
+        """
         base = select(Sugerencia)
 
         if estado_filter:
             base = base.where(Sugerencia.estado == estado_filter)
         if categoria_filter:
             base = base.where(Sugerencia.categoria == categoria_filter)
+        tipo_value = tipo_filter.strip() if tipo_filter else ""
+        if tipo_value == "ciudadana":
+            base = base.where(Sugerencia.usuario_id.is_(None))
+        elif tipo_value == "interna":
+            base = base.where(Sugerencia.usuario_id.is_not(None))
+        elif tipo_value:
+            base = base.where(false())
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            base = base.where(
+                or_(
+                    Sugerencia.titulo.ilike(pattern),
+                    Sugerencia.descripcion.ilike(pattern),
+                    Sugerencia.categoria.ilike(pattern),
+                    Sugerencia.contacto_nombre.ilike(pattern),
+                    Sugerencia.contacto_email.ilike(pattern),
+                )
+            )
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total: int = db.execute(count_stmt).scalar_one()

@@ -379,14 +379,28 @@ def list_denuncias(
     estado: Optional[str] = None,
     status: Optional[str] = None,
     cuenca: Optional[str] = None,
+    tipo: Optional[str] = None,
+    categoria: Optional[str] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[DenunciaListResponse]:
-    """Listar denuncias con paginacion y filtros (requiere operador)."""
+    """Listar denuncias con paginacion y filtros (requiere operador).
+
+    ``search``, ``tipo`` y ``categoria`` se aplican en la consulta.
+    ``total`` y ``pages`` describen el conjunto filtrado.
+    """
     effective_estado = estado or status
     items, total = service.list_denuncias(
-        db, page=page, limit=limit, estado=effective_estado, cuenca=cuenca
+        db,
+        page=page,
+        limit=limit,
+        estado=effective_estado,
+        cuenca=cuenca,
+        tipo=tipo,
+        categoria=categoria,
+        search=search,
     )
     return PaginatedResponse[DenunciaListResponse].create(
         items=[DenunciaListResponse.model_validate(d) for d in items],
