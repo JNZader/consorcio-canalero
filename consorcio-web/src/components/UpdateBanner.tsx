@@ -1,5 +1,3 @@
-// eslint-disable-next-line import/no-unresolved -- virtual module from vite-plugin-pwa
-import { useRegisterSW } from 'virtual:pwa-register/react';
 /**
  * UpdateBanner — bottom-center banner shown when a new deploy is detected.
  *
@@ -31,6 +29,7 @@ import { useEffect, useState } from 'react';
 import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useVersionCheck } from '../hooks/useVersionCheck';
 import { logger } from '../lib/logger';
+import { useRegisterSW } from '../lib/useRegisterSw';
 import { Z_INDEX } from '../lib/zIndex';
 
 const SW_UPDATE_POLL_MS = 60 * 1000; // 1 minute

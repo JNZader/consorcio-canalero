@@ -202,10 +202,10 @@ body {
   }
 }
 
-/* En 360px las pestañas de Participación no entran en una línea:
-   "Proponer una mejora" se salía ~2px del cliente y el documento
-   scrolleaba de costado. El texto baja de renglón en vez de ensanchar. */
-@media (max-width: 47.9375em) {
+/* breakpoints.xs (36em). En un teléfono las pestañas de Participación no
+   entran en una línea: "Proponer una mejora" se salía ~2px del cliente.
+   El texto baja de renglón en vez de ensanchar el documento. */
+@media (max-width: 36em) {
   .mantine-Tabs-tab {
     min-width: 0;
     height: auto;
