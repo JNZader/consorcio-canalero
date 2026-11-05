@@ -58,7 +58,7 @@ const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
  * Tema personalizado para la aplicacion del Consorcio Canalero.
  *
  * Paleta "Río más limpio": un solo verde de marca, superficies claras
- * quietas y un oscuro verdoso. El dorado queda en el logo.
+ * quietas y un oscuro verdoso. El wordmark usa ese verde.
  */
 export const mantineTheme = createTheme({
   // Respect user's OS-level reduced motion preference for all Mantine
@@ -123,8 +123,7 @@ export const mantineTheme = createTheme({
     xl: '2rem',
   },
 
-  // Paletas de colores - "Tierra y Agua"
-  // Inspirada en los rios y campos de la pampa cordobesa
+  // Escalas de Río más limpio. El verde de marca es institucional[5].
   // Optimizado para contraste WCAG AA (4.5:1 para texto, 3:1 para elementos grandes)
   colors: {
     // Paletas Mantine base ajustadas para que variantes `filled` y `light`
@@ -207,19 +206,6 @@ export const mantineTheme = createTheme({
       '#0d4d38',
       '#0a3d2d',
       INSTITUCIONAL_9,
-    ],
-    // Paleta de acento - Dorado Trigal
-    acento: [
-      '#fef9e7',
-      '#fdf0c4',
-      '#fce59c',
-      '#fbd971',
-      '#f9cb4a',
-      '#f7be24',
-      '#e5ad14',
-      '#c9960f',
-      '#a87c0c',
-      '#866409',
     ],
     // Paleta para estados de agua/inundacion
     agua: [
@@ -407,6 +393,7 @@ const Z_INDEX_ENTRIES = Object.entries(Z_INDEX_VAR) as [keyof typeof Z_INDEX, `-
 export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
   const variables: Record<`--${string}`, string> = {
     '--cc-color-primary': 'var(--mantine-color-institucional-5)',
+    '--cc-color-wordmark': 'var(--mantine-color-institucional-7)',
     '--cc-color-surface': 'var(--mantine-color-body)',
     '--cc-color-text': 'var(--mantine-color-text)',
     '--cc-color-text-muted': 'var(--mantine-color-dimmed)',
@@ -454,6 +441,7 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-danger': 'var(--mantine-color-alerta-4)',
       '--cc-color-warning': 'var(--mantine-color-orange-4)',
       '--cc-color-success': 'var(--mantine-color-exito-4)',
+      '--cc-color-wordmark': 'var(--mantine-color-institucional-3)',
       '--mantine-color-dimmed': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
       '--mantine-color-placeholder': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
       // gray-6 del tema es un gris oscuro pensado para texto sobre claro.

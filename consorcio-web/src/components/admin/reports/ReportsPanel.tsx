@@ -184,7 +184,12 @@ export default function ReportsPanel() {
       {/* El titulo vive en el contenedor (`ParticipacionPanel`); aca solo
           quedan los contadores propios de la bandeja de denuncias. */}
       <Group justify="flex-end" mb="md">
-        <Badge size="lg" color="yellow" variant="light" styles={{ label: { color: '#7a4100' } }}>
+        <Badge
+          size="lg"
+          color="yellow"
+          variant="light"
+          styles={{ label: { color: 'var(--cc-color-warning)' } }}
+        >
           {pendingCount} pendientes
         </Badge>
         <Badge size="lg" color="blue" variant="light">

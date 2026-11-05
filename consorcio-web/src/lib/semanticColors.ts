@@ -1,5 +1,5 @@
 /**
- * Colores de la paleta Tierra y Agua para avisos.
+ * Colores semánticos de Río más limpio para avisos.
  * Los botones de acción usan el `primaryColor` del tema (`institucional`)
  * y sus variantes; estos nombres son solo para alertas y toasts.
  */

@@ -106,12 +106,7 @@ export const HeaderContent = memo(function HeaderContent() {
           {/* Logo */}
           <UnstyledButton component={Link} to="/">
             <Group gap="xs">
-              <Text
-                size="xl"
-                fw={700}
-                variant="gradient"
-                gradient={{ from: 'institucional.8', to: 'acento.5', deg: 45 }}
-              >
+              <Text size="xl" fw={700} style={{ color: 'var(--cc-color-wordmark)' }}>
                 Consorcio Canalero
               </Text>
               <Text size="xs" c="gray.6" visibleFrom="sm">

@@ -120,6 +120,9 @@ describe('design tokens', () => {
     const resolved = cssVariablesResolver(theme);
 
     expect(resolved.variables['--cc-color-primary']).toBe('var(--mantine-color-institucional-5)');
+    expect(resolved.variables['--cc-color-wordmark']).toBe('var(--mantine-color-institucional-7)');
+    expect(resolved.dark['--cc-color-wordmark']).toBe('var(--mantine-color-institucional-3)');
+    expect(resolved.light['--cc-color-wordmark']).toBeUndefined();
     expect(resolved.variables['--cc-color-surface']).toBe('var(--mantine-color-body)');
     expect(resolved.variables['--cc-color-text']).toBe('var(--mantine-color-text)');
     expect(resolved.variables['--cc-color-text-muted']).toBe('var(--mantine-color-dimmed)');
@@ -170,6 +173,30 @@ describe('design tokens', () => {
     expect(globalCss).toContain('bottom: 0;');
     const homeCss = readFileSync('src/styles/components/home.module.css', 'utf8');
     expect(homeCss).not.toContain('acento');
+    const brandSurfaces = [
+      'src/lib/theme.ts',
+      'src/lib/semanticColors.ts',
+      'src/components/Header.tsx',
+      'src/components/LoginForm.tsx',
+      'src/components/admin/AdminLayout.tsx',
+      'src/components/admin/reports/ReportsPanel.tsx',
+      'src/styles/components/home.module.css',
+    ];
+    for (const file of brandSurfaces) {
+      const source = readFileSync(file, 'utf8');
+      expect(source, file).not.toMatch(/acento|Dorado|dorado|Tierra y Agua|#f7be24|#7a4100/);
+    }
+    expect(readFileSync('src/components/Header.tsx', 'utf8')).toContain('var(--cc-color-wordmark)');
+    expect(readFileSync('src/components/LoginForm.tsx', 'utf8')).toContain(
+      'var(--cc-color-wordmark)'
+    );
+    expect(readFileSync('src/components/admin/AdminLayout.tsx', 'utf8')).toContain(
+      'var(--cc-color-wordmark)'
+    );
+    expect(readFileSync('src/components/admin/reports/ReportsPanel.tsx', 'utf8')).toContain(
+      'var(--cc-color-warning)'
+    );
+    expect(mantineTheme.colors!.acento).toBeUndefined();
     expect(statSync('src/lib/zIndex.ts').isFile()).toBe(true);
   });
 });
