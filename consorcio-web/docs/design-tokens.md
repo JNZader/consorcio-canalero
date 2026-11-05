@@ -64,6 +64,31 @@ Fuente única: `src/lib/breakpoints.ts`, la escala de Mantine (`xs` 36em,
 (mobile-first). En CSS el `em` queda escrito; `tests/unit/designTokens.test.ts`
 exige que coincida con el token. Las hojas en `src/styles/components/map/` no se reescriben acá.
 
+## Colores de mapa
+
+Los hex cartográficos viven en `theme.ts` (`mapColorTokens`). El resolver
+los publica como `--cc-map-<hex>` (minúsculas, sin `#`: `--cc-map-2563eb`).
+Dos claves que solo cambian de mayúsculas comparten esa variable.
+
+MapLibre no resuelve `var()` en `paint`. `src/lib/mapColorTokens.ts`
+reexporta el objeto para las capas. En el DOM, `mapColorVar(token)` o
+`mapChromeVars`.
+
+Las rampas científicas (raster, pendiente Okabe–Ito, cuencas) usan el mismo
+hex en claro y en oscuro: son datos. El cromo del rótulo de medición sí
+sigue el esquema:
+
+| Token | Claro | Oscuro |
+|---|---|---|
+| `--cc-map-label-surface` | blanco al 96% | `dark-7` al 94% |
+| `--cc-map-label-text` | `#333` | `--cc-color-text` |
+| `--cc-map-label-border` | `#fd7e14` | el mismo |
+| `--cc-map-profile-border` | `blue-3` | `blue-4` |
+| `--cc-map-profile-surface` | `blue-0` | `dark-5` |
+| `--cc-map-profile-text` | `blue-6` | `blue-2` |
+
+El logo de Google conserva sus hex de marca dentro del registro.
+
 ## Hex nuevos
 
 `npm run lint` corre `scripts/lint-no-new-hex.mjs`. Compara literales de
@@ -72,8 +97,8 @@ y falla si un archivo suma un hex. No reescribe los que ya están.
 
 Excepciones:
 
-- `/* hex-color-allow-file */` en las primeras 20 líneas (`theme.ts`,
-  `mapColorTokens.ts`, `slopeColor.ts`).
+- `/* hex-color-allow-file */` en las primeras 20 líneas. La paleta de UI
+  y la de mapa están en `theme.ts`.
 - `// hex-color-allow` en la línea del literal o en la anterior.
 
 Para aceptar un hex nuevo a propósito:

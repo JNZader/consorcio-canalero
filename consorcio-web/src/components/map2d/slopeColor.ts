@@ -1,5 +1,5 @@
-/* hex-color-allow-file: paleta de la leyenda de pendiente. */
 import type { Feature } from 'geojson';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import type { ProfileSample } from './profileRange';
 
 function mix(from: string, to: string, t: number): string {
@@ -15,9 +15,9 @@ function mix(from: string, to: string, t: number): string {
 }
 
 export const SLOPE_COLOR_STOPS = {
-  LOW: '#0072b2',
-  MEDIUM: '#e69f00',
-  HIGH: '#d55e00',
+  LOW: mapColorTokens.h0072b2,
+  MEDIUM: mapColorTokens.he69f00,
+  HIGH: mapColorTokens.hd55e00,
 } as const;
 
 export const SLOPE_SEVERITY_LABELS = {

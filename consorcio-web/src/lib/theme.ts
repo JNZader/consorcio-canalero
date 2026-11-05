@@ -1,11 +1,11 @@
-/* hex-color-allow-file: paleta del tema. Los hex de UI se definen acá, no en los componentes. */
+/* hex-color-allow-file: paleta del tema. Los hex de UI y de mapa se definen acá, no en los componentes. */
 /**
  * Configuracion centralizada del tema Mantine.
  *
  * Este archivo define el tema compartido del MantineProvider de `main.tsx`
  * para evitar duplicacion de codigo. `cssVariablesResolver` publica la capa
- * semántica (`--cc-*`, `--z-*`) sin reemplazar las variables de Mantine:
- * el provider las fusiona.
+ * semántica (`--cc-*`, `--cc-map-*`, `--z-*`) sin reemplazar las variables
+ * de Mantine: el provider las fusiona.
  */
 
 import {
@@ -15,7 +15,6 @@ import {
   type VariantColorsResolver,
 } from '@mantine/core';
 import { aboveBreakpoint, belowBreakpoint, breakpoints } from './breakpoints';
-import { mapColorTokens } from './mapColorTokens';
 import { Z_INDEX, Z_INDEX_VAR } from './zIndex';
 
 /** Verde río. `institucional[5]`. `index.html` y el manifest PWA usan este hex. */
@@ -50,6 +49,222 @@ export const variantColorResolver: VariantColorsResolver = (input) => {
     hoverColor: 'var(--mantine-color-white)',
   };
 };
+
+/**
+ * Paleta cartográfica. Los valores son los hex que ya pintaba el mapa.
+ * `cssVariablesResolver` los publica como `--cc-map-<hex>`.
+ * No reasigna rampas científicas ni las marcas (el logo de Google conserva su hex).
+ */
+export const mapColorTokens = {
+  h000000: '#000000',
+  h00000066: '#00000066',
+  h0072b2: '#0072b2',
+  h006064: '#006064',
+  h00695C: '#00695C',
+  h00838F: '#00838F',
+  h00897B: '#00897B',
+  h00ACC1: '#00ACC1',
+  h045a8d: '#045a8d',
+  h06b6d4: '#06b6d4',
+  h08306b: '#08306b',
+  h0891b2: '#0891b2',
+  h0B3D91: '#0B3D91',
+  h0c2c84: '#0c2c84',
+  h0D47A1: '#0D47A1',
+  h0e7490: '#0e7490',
+  h0EA5E9: '#0EA5E9',
+  h0f172a: '#0f172a',
+  h0f766e: '#0f766e',
+  h10B981: '#10B981',
+  h111111: '#111111',
+  h111827: '#111827',
+  h14532D: '#14532D',
+  h14b8a6: '#14b8a6',
+  h1565C0: '#1565C0',
+  h166534: '#166534',
+  h16A34A: '#16A34A',
+  h1971c2: '#1971c2',
+  h1976d2: '#1976d2',
+  h1ABC9C: '#1ABC9C',
+  h1b5e20: '#1b5e20',
+  h1c7ed6: '#1c7ed6',
+  h1D4ED8: '#1D4ED8',
+  h1d4ed8: '#1d4ed8',
+  h1d91c0: '#1d91c0',
+  h1E3A8A: '#1E3A8A',
+  h1E40AF: '#1E40AF',
+  h1E88E5: '#1E88E5',
+  h212121: '#212121',
+  h2166ac: '#2166ac',
+  h2171b5: '#2171b5',
+  h2196F3: '#2196F3',
+  h22C55E: '#22C55E',
+  h22c55e: '#22c55e',
+  h2563eb: '#2563eb',
+  h2563EB: '#2563EB',
+  h27AE60: '#27AE60',
+  h2b83ba: '#2b83ba',
+  h2b8cbe: '#2b8cbe',
+  h2e7d32: '#2e7d32',
+  h2ECC71: '#2ECC71',
+  h333: '#333',
+  h333399: '#333399',
+  h334155: '#334155',
+  h3388ff: '#3388ff',
+  h3498DB: '#3498DB',
+  h34A853: '#34A853',
+  h3b82f6: '#3b82f6',
+  h3B82F6: '#3B82F6',
+  h41b6c4: '#41b6c4',
+  h4285F4: '#4285F4',
+  h42A5F5: '#42A5F5',
+  h4C1D95: '#4C1D95',
+  h4CAF50: '#4CAF50',
+  h5C6BC0: '#5C6BC0',
+  h60A5FA: '#60A5FA',
+  h64B5F6: '#64B5F6',
+  h67a9cf: '#67a9cf',
+  h689f38: '#689f38',
+  h6baed6: '#6baed6',
+  h6d4c41: '#6d4c41',
+  h74a9cf: '#74a9cf',
+  h78716c: '#78716c',
+  h78c679: '#78c679',
+  h7B1FA2: '#7B1FA2',
+  h7c3aed: '#7c3aed',
+  h7fcdbb: '#7fcdbb',
+  h868e96: '#868e96',
+  h86EFAC: '#86EFAC',
+  h87CEEB: '#87CEEB',
+  h888888: '#888888',
+  h8b5cf6: '#8b5cf6',
+  h8B5CF6: '#8B5CF6',
+  h8d6e63: '#8d6e63',
+  h94a3b8: '#94a3b8',
+  h991B1B: '#991B1B',
+  h993404: '#993404',
+  h9B59B6: '#9B59B6',
+  h9C27B0: '#9C27B0',
+  h9e9e9e: '#9e9e9e',
+  ha1d99b: '#a1d99b',
+  ha50026: '#a50026',
+  ha63603: '#a63603',
+  hA855F7: '#A855F7',
+  habdda4: '#abdda4',
+  haddd8e: '#addd8e',
+  hB10026: '#B10026',
+  hb2182b: '#b2182b',
+  hB45309: '#B45309',
+  hb91c1c: '#b91c1c',
+  hbd0026: '#bd0026',
+  hbdc9e1: '#bdc9e1',
+  hc026d3: '#c026d3',
+  hc0ca33: '#c0ca33',
+  hc2410c: '#c2410c',
+  hc45c26: '#c45c26',
+  hc62828: '#c62828',
+  hc6dbef: '#c6dbef',
+  hc7e9b4: '#c7e9b4',
+  hc8d6e5: '#c8d6e5',
+  hccc: '#ccc',
+  hd1e5f0: '#d1e5f0',
+  hD32F2F: '#D32F2F',
+  hD35400: '#D35400',
+  hd55e00: '#d55e00',
+  hd7191c: '#d7191c',
+  hd84315: '#d84315',
+  hd8e1ea: '#d8e1ea',
+  hd95f0e: '#d95f0e',
+  hd9f0a3: '#d9f0a3',
+  hdc2626: '#dc2626',
+  hDC2626: '#DC2626',
+  hDCFCE7: '#DCFCE7',
+  hddd6fe: '#ddd6fe',
+  he03131: '#e03131',
+  he0a100: '#e0a100',
+  hE31A1C: '#E31A1C',
+  he6550d: '#e6550d',
+  he69f00: '#e69f00',
+  hE74C3C: '#E74C3C',
+  he8590c: '#e8590c',
+  hEA4335: '#EA4335',
+  hea580c: '#ea580c',
+  heab308: '#eab308',
+  hEDE9FE: '#EDE9FE',
+  hef4444: '#ef4444',
+  hef6c00: '#ef6c00',
+  hef8a62: '#ef8a62',
+  hf03b20: '#f03b20',
+  hf08c00: '#f08c00',
+  hf1eef6: '#f1eef6',
+  hF39C12: '#F39C12',
+  hf46d43: '#f46d43',
+  hF59E0B: '#F59E0B',
+  hf59f00: '#f59f00',
+  hf7f7f7: '#f7f7f7',
+  hf7fbff: '#f7fbff',
+  hf97316: '#f97316',
+  hF97316: '#F97316',
+  hf9a825: '#f9a825',
+  hfacc15: '#facc15',
+  hfb8c00: '#fb8c00',
+  hfb923c: '#fb923c',
+  hFBBC05: '#FBBC05',
+  hFC4E2A: '#FC4E2A',
+  hFCD34D: '#FCD34D',
+  hfd7e14: '#fd7e14',
+  hfd8d3c: '#fd8d3c',
+  hFD8D3C: '#FD8D3C',
+  hfdae61: '#fdae61',
+  hfdbe85: '#fdbe85',
+  hfddbc7: '#fddbc7',
+  hfe9929: '#fe9929',
+  hFEB24C: '#FEB24C',
+  hfec44f: '#fec44f',
+  hfecc5c: '#fecc5c',
+  hfee391: '#fee391',
+  hfeedde: '#feedde',
+  hFF0000: '#FF0000',
+  hFF6D00: '#FF6D00',
+  hFF8F00: '#FF8F00',
+  hFF9800: '#FF9800',
+  hFFA500: '#FFA500',
+  hFFEB3B: '#FFEB3B',
+  hffedd5: '#ffedd5',
+  hfff: '#fff',
+  hffffb2: '#ffffb2',
+  hffffbf: '#ffffbf',
+  hffffcc: '#ffffcc',
+  hffffd4: '#ffffd4',
+  hffffff: '#ffffff',
+  hFFFFFF: '#FFFFFF',
+  hffffff55: '#ffffff55',
+} as const;
+
+export type MapColorToken = keyof typeof mapColorTokens;
+
+/** Nombre CSS `--cc-map-<hex>`. Claves que solo cambian de caja comparten variable. */
+export function mapCssVariable(token: MapColorToken): `--cc-map-${string}` {
+  return `--cc-map-${token.slice(1).toLowerCase()}`;
+}
+
+/** `var(--cc-map-…)` para el DOM. MapLibre sigue leyendo el hex en `mapColorTokens`. */
+export function mapColorVar(token: MapColorToken): `var(--cc-map-${string})` {
+  return `var(${mapCssVariable(token)})`;
+}
+
+/**
+ * Cromo del mapa que sigue a Río limpio y al oscuro.
+ * Las rampas científicas no: `--cc-map-<hex>` vale igual en los dos esquemas.
+ */
+export const mapChromeVars = {
+  labelSurface: 'var(--cc-map-label-surface)',
+  labelText: 'var(--cc-map-label-text)',
+  labelBorder: 'var(--cc-map-label-border)',
+  profileBorder: 'var(--cc-map-profile-border)',
+  profileSurface: 'var(--cc-map-profile-surface)',
+  profileText: 'var(--cc-map-profile-text)',
+} as const;
 
 const SCALE = ['xs', 'sm', 'md', 'lg', 'xl'] as const;
 const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
@@ -259,7 +474,7 @@ export const mantineTheme = createTheme({
     dimmedColorLight: '#4b5563',
     // #a3a3a3 sobre dark-7 6.6:1, sobre dark-6 5.9:1, sobre dark-4 4.6:1.
     dimmedColorDark: '#a3a3a3',
-    /** Hex de mapa y estilos en línea. Mismo objeto que `mapColorTokens`. */
+    /** Hex de mapa. Mismo objeto que reexporta `mapColorTokens.ts`. */
     mapColors: mapColorTokens,
     touchMin: TOUCH_MIN,
     zIndex: Z_INDEX,
@@ -387,8 +602,9 @@ const Z_INDEX_ENTRIES = Object.entries(Z_INDEX_VAR) as [keyof typeof Z_INDEX, `-
 
 /**
  * Capa semántica. Mantine fusiona este objeto con el suyo, así que acá
- * solo se agregan `--cc-*` y `--z-*`. Los alias apuntan a variables de
- * Mantine para seguir claro/oscuro sin duplicar el hex.
+ * solo se agregan `--cc-*`, `--cc-map-*` y `--z-*`. Los alias de cromo
+ * apuntan a variables de Mantine para seguir claro/oscuro sin duplicar
+ * el hex. Las rampas del mapa salen con el mismo hex en los dos esquemas.
  */
 export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
   const variables: Record<`--${string}`, string> = {
@@ -426,6 +642,14 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
     variables[cssVar] = String(Z_INDEX[token]);
   }
 
+  const seenMapVars = new Set<string>();
+  for (const token of Object.keys(mapColorTokens) as MapColorToken[]) {
+    const cssVar = mapCssVariable(token);
+    if (seenMapVars.has(cssVar)) continue;
+    seenMapVars.add(cssVar);
+    variables[cssVar] = mapColorTokens[token];
+  }
+
   return {
     variables,
     light: {
@@ -435,6 +659,12 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-success': 'var(--mantine-color-exito-6)',
       '--mantine-color-dimmed': String(theme.other.dimmedColorLight ?? '#4b5563'),
       '--mantine-color-placeholder': String(theme.other.dimmedColorLight ?? '#4b5563'),
+      '--cc-map-label-surface': 'rgba(255, 255, 255, 0.96)',
+      '--cc-map-label-text': mapColorTokens.h333,
+      '--cc-map-label-border': mapColorTokens.hfd7e14,
+      '--cc-map-profile-border': 'var(--mantine-color-blue-3)',
+      '--cc-map-profile-surface': 'var(--mantine-color-blue-0)',
+      '--cc-map-profile-text': 'var(--mantine-color-blue-6)',
     },
     dark: {
       '--cc-color-surface-raised': 'var(--mantine-color-dark-6)',
@@ -446,6 +676,12 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--mantine-color-placeholder': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
       // gray-6 del tema es un gris oscuro pensado para texto sobre claro.
       '--mantine-color-gray-6': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
+      '--cc-map-label-surface': 'color-mix(in srgb, var(--mantine-color-dark-7) 94%, transparent)',
+      '--cc-map-label-text': 'var(--cc-color-text)',
+      '--cc-map-label-border': mapColorTokens.hfd7e14,
+      '--cc-map-profile-border': 'var(--mantine-color-blue-4)',
+      '--cc-map-profile-surface': 'var(--mantine-color-dark-5)',
+      '--cc-map-profile-text': 'var(--mantine-color-blue-2)',
     },
   };
 };

@@ -767,7 +767,7 @@ export function ElevationProfileChart({
                       data={cover.rows}
                       dataKey="cover_m"
                       stroke="none"
-                      fill="#94a3b8"
+                      fill={mapColorTokens.h94a3b8}
                       fillOpacity={0.35}
                       isAnimationActive={false}
                       legendType="none"
@@ -779,7 +779,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="solera"
                       name="Solera"
-                      stroke="#0f766e"
+                      stroke={mapColorTokens.h0f766e}
                       dot={false}
                       isAnimationActive={false}
                     />
@@ -832,7 +832,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="simulatedSolera"
                       name="Rasante proyectada"
-                      stroke="#0f766e"
+                      stroke={mapColorTokens.h0f766e}
                       strokeWidth={2}
                       strokeDasharray="4 2"
                       dot={false}
@@ -1190,11 +1190,11 @@ export function ElevationProfileChart({
                       display: 'inline-block',
                       width: 10,
                       height: 3,
-                      backgroundColor: '#0f766e',
+                      backgroundColor: mapColorTokens.h0f766e,
                       borderRadius: 1,
                     }}
                   />
-                  <Text size="xs" style={{ color: '#0f766e', fontWeight: 500 }}>
+                  <Text size="xs" style={{ color: mapColorTokens.h0f766e, fontWeight: 500 }}>
                     Rasante
                     {hoverRow && hoverRow.simulatedSolera != null
                       ? ` ${formatElevationM(hoverRow.simulatedSolera)} (${

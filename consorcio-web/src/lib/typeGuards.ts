@@ -9,6 +9,7 @@
 
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { LayerStyle, Usuario } from '../types';
+import { mapColorTokens } from './mapColorTokens';
 
 // ===========================================
 // USER / AUTH TYPE GUARDS
@@ -108,7 +109,7 @@ export function isValidLayerStyle(value: unknown): value is LayerStyle {
  */
 export function parseLayerStyle(
   value: string | LayerStyle | unknown,
-  defaultColor = '#3388ff'
+  defaultColor = mapColorTokens.h3388ff
 ): LayerStyle {
   const defaultStyle: LayerStyle = {
     color: defaultColor,
@@ -134,7 +135,7 @@ export function parseLayerStyle(
  */
 export function getStyleColor(
   estilo: string | LayerStyle | unknown,
-  defaultColor = '#3388ff'
+  defaultColor = mapColorTokens.h3388ff
 ): string {
   const style = parseLayerStyle(estilo, defaultColor);
   return style.color;
