@@ -247,6 +247,7 @@ function FormularioContenido() {
     onLimitReached: handleLimitReached,
     onOfflineFailure: handleOfflineFailure,
     onOtherFailure: handleOtherFailure,
+    onAttemptStart: clearOfflineToast,
   });
 
   useEffect(() => {
@@ -369,13 +370,14 @@ function FormularioContenido() {
                     mt="sm"
                     variant="light"
                     color="orange"
+                    disabled={enviando}
                     onClick={() => retryRef.current()}
                   >
                     Reintentar envío
                   </Button>
                 </Alert>
               )}
-              <SubmitButton disabled={remainingToday === 0} />
+              <SubmitButton disabled={remainingToday === 0} loading={enviando} />
             </Box>
           </Stack>
         </form>

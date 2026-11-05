@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { publicApi } from '../../lib/api';
 import {
   clearReportDraft,
@@ -101,6 +101,11 @@ interface UseReportFormSubmissionParams {
   onOfflineFailure?: () => void;
   /** Otro error de envío: cierra el aviso de sin conexión si estaba abierto. */
   onOtherFailure?: () => void;
+  /**
+   * Arranque real del POST (después de las validaciones). El formulario
+   * esconde el toast de reintento: vive en un portal, fuera del overlay.
+   */
+  onAttemptStart?: () => void;
 }
 
 export function useReportFormSubmission({
@@ -118,7 +123,14 @@ export function useReportFormSubmission({
   onLimitReached,
   onOfflineFailure,
   onOtherFailure,
+  onAttemptStart,
 }: Readonly<UseReportFormSubmissionParams>) {
+  // `enviando` en estado no alcanza: el segundo tap (doble clic o el toast)
+  // reusa el callback que todavía ve `false`. El ref se toma en el mismo
+  // turno, antes de cualquier await, y se suelta recién cuando el POST
+  // terminó o el borrador offline quedó escrito.
+  const inFlightRef = useRef(false);
+
   return useCallback(
     async (values: ReportFormValues) => {
       if (!contactoVerificado || !userEmail) {
@@ -189,10 +201,14 @@ export function useReportFormSubmission({
         return;
       }
 
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       setEnviando(true);
-      announce('Enviando denuncia...');
 
       try {
+        onAttemptStart?.();
+        announce('Enviando denuncia...');
+
         // Two-step flow: create the denuncia FIRST, then attach the photo.
         // The endpoint needs the denuncia's id in the URL for step 2.
         // The server fills `user_id` + `contacto_email` from the JWT —
@@ -226,6 +242,7 @@ export function useReportFormSubmission({
           onOtherFailure,
         });
       } finally {
+        inFlightRef.current = false;
         setEnviando(false);
       }
     },
@@ -233,6 +250,7 @@ export function useReportFormSubmission({
       announce,
       contactoVerificado,
       form,
+      onAttemptStart,
       onLimitReached,
       onOfflineFailure,
       onOtherFailure,
