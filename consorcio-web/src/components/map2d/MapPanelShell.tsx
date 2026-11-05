@@ -50,6 +50,8 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 
 import styles from '../../styles/components/map/classNames';
 import { IconButton } from '../ui/IconButton';
+import { MAP_Z } from './mapZIndex';
+import { useMapSheetDialog } from './useMapSheetDialog';
 
 /** Height caps of the bottom sheet, in cycle order. */
 export const SHEET_STAGES = ['peek', 'medio', 'alto'] as const;
@@ -159,6 +161,16 @@ export function MapPanelShell({
   }
 
   const canMinimize = !!onToggleMinimize;
+  // En móvil la sheet es un diálogo modal, igual que el drawer de capas.
+  // Si hay otra sheet delante (o el drawer tapa el lienzo), esta no atrapa.
+  const sheetDialog = useMapSheetDialog<HTMLDivElement>(
+    sheet && !minimized,
+    () => {
+      if (onClose) onClose();
+      else onToggleMinimize?.();
+    },
+    MAP_Z.panel
+  );
 
   // Restaurar desde la pildora: la pildora en sheet es `position: fixed` (B2-2.2),
   // asi que sigue tocable con la pagina scrolleada — pero el panel que restaura
@@ -237,12 +249,17 @@ export function MapPanelShell({
 
   return (
     <Paper
+      ref={sheetDialog.ref}
       shadow="md"
       p="md"
       radius="md"
       className={className}
       data-testid={testId}
       data-sheet="true"
+      role={sheetDialog.modal ? 'dialog' : undefined}
+      aria-modal={sheetDialog.modal ? true : undefined}
+      aria-label={sheetDialog.modal ? sheetLabel : undefined}
+      tabIndex={sheetDialog.modal ? -1 : undefined}
       /* PUBLIC CONTRACT with map/classNames — do not rename or drop. The
          measurement dock lifts itself clear of a PARTIAL sheet via
          `.mapCanvasWrapper:has(.panelSheet[data-stage='peek'|'medio'])`. It

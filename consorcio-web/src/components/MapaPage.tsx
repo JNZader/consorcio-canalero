@@ -94,7 +94,7 @@ export function MapaContent() {
                 <Title order={1} fz="h5">
                   Mapa Interactivo
                 </Title>
-                <Text size="xs" c="gray.6">
+                <Text size="sm" c="dimmed">
                   Explorá las cuencas, caminos e infraestructura del consorcio
                 </Text>
                 {multiHazardEnabled && (
@@ -117,8 +117,8 @@ export function MapaContent() {
                   </Group>
                 ) : (
                   <Group gap={6} wrap="nowrap">
-                    <IconPhoto size={16} color="var(--mantine-color-gray-5)" />
-                    <Text size="xs" c="dimmed">
+                    <IconPhoto size={16} color="var(--cc-color-text-muted)" />
+                    <Text size="sm" c="dimmed">
                       No hay imagen satelital seleccionada
                     </Text>
                   </Group>
@@ -138,7 +138,7 @@ export function MapaContent() {
               <Button
                 component="a"
                 href={withBasePath('/participacion')}
-                size="xs"
+                size="sm"
                 leftSection={<IconAlertTriangle size={16} />}
               >
                 Reportar Incidente

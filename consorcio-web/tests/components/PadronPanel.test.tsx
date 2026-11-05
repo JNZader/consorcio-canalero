@@ -169,6 +169,18 @@ describe('PadronPanel', () => {
     expect(screen.getByText('Perez, Ana')).toBeInTheDocument();
   });
 
+  it('encodes search characters that would break the query string', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Padrón de Consorcistas');
+
+    await user.type(screen.getByRole('textbox', { name: /buscar consorcistas/i }), 'a&b#c');
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith('/padron?search=a%26b%23c');
+    });
+  });
+
   it('allows editing and deleting an existing consorcista', async () => {
     const user = userEvent.setup();
     renderPanel();

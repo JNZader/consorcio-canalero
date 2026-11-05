@@ -9,7 +9,6 @@
 
 import * as maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { bootMapLibreWorker } from '../../lib/maplibreLoader';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Alert, Button, Stack } from '@mantine/core';
 import type { Feature, LineString, MultiLineString } from 'geojson';
@@ -29,8 +28,7 @@ import { logger } from '../../lib/logger';
 import { ensureSoilPmtilesArchive, getSoilPmtilesArchiveKey } from '../../lib/soilPmtiles';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { selectEtapaGate, useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
-import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
-import { isCoarsePointerDevice } from '../map2d/useMapInitialization';
+import { applyLayerOpacity, applyLayerOrder } from '../map2d/layerRenderRegistry';
 import { groupCanalesByFolder } from '../shared/canalesGrouping';
 import { IconAlertTriangle } from '../ui/icons';
 import { flythroughFrames, playFlythrough } from './canalFlythrough';
@@ -44,8 +42,8 @@ import {
   pickActiveTerrainRasterLayer,
   resolveDefaultTerrainRasterId,
 } from './terrainLayerConfig';
+import { createTerrainMapLibreMap, destroyMapLibreMap } from './terrainMapLifecycle';
 import { buildTerrainMapStyle } from './terrainMapStyle';
-import { applyLayerOpacity, applyLayerOrder } from '../map2d/layerRenderRegistry';
 import { syncTerrainVectorLayers } from './terrainVectorLayerEffects';
 import {
   buildCuencasCollection,
@@ -579,134 +577,130 @@ export default function TerrainViewer3D({
     setReady(false);
     setErrorMessage(null);
 
+    const abort = new AbortController();
     let cancelled = false;
     let created: maplibregl.Map | undefined;
     let cleanupCanvasListeners: (() => void) | undefined;
     void (async () => {
-      await bootMapLibreWorker();
       if (cancelled || !mapContainer.current) return;
-      const map = new maplibregl.Map({
-      container: mapContainer.current,
-      style: buildTerrainMapStyle({
-        terrainRgbUrl,
-        textureUrl: initialTextureUrl,
-        overlayOpacity: overlayOpacityRef.current,
-      }),
-      center: startCenter,
-      zoom: startZoom,
-      minZoom: MAP_MIN_ZOOM,
-      maxBounds: MAP_MAX_BOUNDS,
-      pitch: startPitch,
-      bearing: startBearing,
       // 75° still gives a clear pitched view but drastically reduces
       // overdraw in the horizon band: at 85° the fragment count of the
       // terrain mesh balloons because almost every distant tile takes
       // up only a few pixels each. -25% overdraw across pan/zoom.
-      maxPitch: 75,
-      hash: 'v',
-      locale: { ...MAP_LOCALE_ES },
-      // Igual que el mapa 2D: en puntero fino, Ctrl+rueda para no robar el
-      // scroll de la página. En táctil el lienzo es la superficie principal
-      // (un dedo lo mueve). Los overlays (dock, drawer, perfil) no capturan
-      // ese gesto: ver `terrainStatusDock` y `workspaceDrawerOverlay`.
-      cooperativeGestures: !isCoarsePointerDevice(),
-      attributionControl: false,
-      // Bound the tile cache so panning around doesn't keep hundreds of
-      // raster-dem + texture tiles in GPU memory. Default is unbounded;
-      // 50 fits the typical viewport pyramid + a small history without
-      // letting the cache grow into 150-250 MB on long sessions.
-      // ``maxTileCacheSize: 50`` keeps the in-flight pyramid bounded —
-      // it also naturally caps prefetch lookahead, so we don't need to
-      // touch ``prefetchZoomDelta`` (which isn't exposed in this
-      // MapLibre version's types anyway).
-      maxTileCacheSize: 50,
-      // antialias intentionally left unset under canvasContextAttributes.
-      // MapLibre 5 defaults to ``antialias: false`` (no MSAA at all), which
-      // keeps the viewer usable on older GPUs — multisampling is expensive
-      // and the 3D terrain is the heaviest paint on this page. Pitched
-      // terrain at 200× exaggeration will alias on retina screens; if a
-      // "Calidad alta" toggle is ever needed, set
-      // ``canvasContextAttributes: { antialias: true }`` only when the user
-      // opts in.
-      // fadeDuration also stays at default — overriding it to 0 silences
-      // vector layer transitions and causes LOD flicker between zoom
-      // levels.
-    });
-
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
-    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
-
-    map.on('load', () => {
-      applyTerrainDepthCues(map);
-      setReady(true);
-    });
-    map.on('moveend', () => {
-      const c = map.getCenter();
-      useMapCameraStore.getState().setCamera({
-        lng: c.lng,
-        lat: c.lat,
-        zoom: map.getZoom(),
-        bearing: map.getBearing(),
-        pitch: map.getPitch(),
-      });
-    });
-
-    map.on('error', (event) => {
-      const msg =
-        typeof event.error === 'string'
-          ? event.error
-          : event.error instanceof Error
-            ? event.error.message
-            : '';
-
-      // Tile-level HTTP errors (4xx/5xx on individual tiles) are transient —
-      // don't block the entire 3D view. GEE map IDs expire after ~24–72 h,
-      // so a 503 from earthengine.googleapis.com is expected if the session
-      // was generated much earlier. Just log and continue.
-      const isTileError =
-        'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
-
-      if (isTileError) {
-        logger.warn('TerrainViewer3D: tile load error (may be a stale GEE map ID)', event.error);
+      //
+      // maxTileCacheSize 50 keeps the in-flight pyramid bounded so panning
+      // doesn't keep hundreds of raster-dem + texture tiles in GPU memory.
+      // It also caps prefetch lookahead; ``prefetchZoomDelta`` isn't in this
+      // MapLibre version's types.
+      //
+      // antialias stays unset. MapLibre 5 defaults to ``antialias: false``
+      // (no MSAA), which keeps the viewer usable on older GPUs. fadeDuration
+      // also stays at default — overriding it to 0 silences vector layer
+      // transitions and causes LOD flicker between zoom levels.
+      //
+      // Gestos: `primary-surface` en el adaptador. En puntero fino,
+      // Ctrl+rueda. En táctil el lienzo es la superficie principal (un dedo
+      // lo mueve). Los overlays no capturan ese gesto.
+      const map = await createTerrainMapLibreMap(
+        maplibregl,
+        {
+          container: mapContainer.current,
+          style: buildTerrainMapStyle({
+            terrainRgbUrl,
+            textureUrl: initialTextureUrl,
+            overlayOpacity: overlayOpacityRef.current,
+          }),
+          center: startCenter,
+          zoom: startZoom,
+          minZoom: MAP_MIN_ZOOM,
+          maxBounds: MAP_MAX_BOUNDS,
+          pitch: startPitch,
+          bearing: startBearing,
+          maxPitch: 75,
+          maxTileCacheSize: 50,
+        },
+        abort.signal
+      );
+      if (!map || cancelled || abort.signal.aborted || !mapContainer.current) {
+        destroyMapLibreMap(map);
         return;
       }
+      created = map;
+      mapRef.current = map;
 
-      logger.error('MapLibre terrain error', event.error);
-      setErrorMessage(msg || 'Error desconocido cargando el terreno 3D');
-    });
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+      map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+      map.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
-    try {
-      const canvas = map.getCanvas();
-      if (canvas && typeof canvas.addEventListener === 'function') {
-        const onContextLost = (event: Event) => {
-          event.preventDefault();
-          logger.warn('TerrainViewer3D: WebGL context lost, awaiting restoration');
-        };
-        const onContextRestored = () => {
-          logger.info('TerrainViewer3D: WebGL context restored');
-          setTerrainBootId((prev) => prev + 1);
-        };
-        canvas.addEventListener('webglcontextlost', onContextLost);
-        canvas.addEventListener('webglcontextrestored', onContextRestored);
-        cleanupCanvasListeners = () => {
-          canvas.removeEventListener('webglcontextlost', onContextLost);
-          canvas.removeEventListener('webglcontextrestored', onContextRestored);
-        };
+      map.on('load', () => {
+        applyTerrainDepthCues(map);
+        setReady(true);
+      });
+      map.on('moveend', () => {
+        const c = map.getCenter();
+        useMapCameraStore.getState().setCamera({
+          lng: c.lng,
+          lat: c.lat,
+          zoom: map.getZoom(),
+          bearing: map.getBearing(),
+          pitch: map.getPitch(),
+        });
+      });
+
+      map.on('error', (event) => {
+        const msg =
+          typeof event.error === 'string'
+            ? event.error
+            : event.error instanceof Error
+              ? event.error.message
+              : '';
+
+        // Tile-level HTTP errors (4xx/5xx on individual tiles) are transient —
+        // don't block the entire 3D view. GEE map IDs expire after ~24–72 h,
+        // so a 503 from earthengine.googleapis.com is expected if the session
+        // was generated much earlier. Just log and continue.
+        const isTileError =
+          'tile' in event || /AJAXError/i.test(msg) || /earthengine\.googleapis\.com/i.test(msg);
+
+        if (isTileError) {
+          logger.warn('TerrainViewer3D: tile load error (may be a stale GEE map ID)', event.error);
+          return;
+        }
+
+        logger.error('MapLibre terrain error', event.error);
+        setErrorMessage(msg || 'Error desconocido cargando el terreno 3D');
+      });
+
+      try {
+        const canvas = map.getCanvas();
+        if (canvas && typeof canvas.addEventListener === 'function') {
+          const onContextLost = (event: Event) => {
+            event.preventDefault();
+            logger.warn('TerrainViewer3D: WebGL context lost, awaiting restoration');
+          };
+          const onContextRestored = () => {
+            logger.info('TerrainViewer3D: WebGL context restored');
+            setTerrainBootId((prev) => prev + 1);
+          };
+          canvas.addEventListener('webglcontextlost', onContextLost);
+          canvas.addEventListener('webglcontextrestored', onContextRestored);
+          cleanupCanvasListeners = () => {
+            canvas.removeEventListener('webglcontextlost', onContextLost);
+            canvas.removeEventListener('webglcontextrestored', onContextRestored);
+          };
+        }
+      } catch {
+        // Defensive: test environments / canvas stubs may not support DOM event listeners
       }
-    } catch {
-      // Defensive: test environments / canvas stubs may not support DOM event listeners
-    }
-
-    created = map;
-    mapRef.current = map;
     })();
 
     return () => {
       cancelled = true;
+      abort.abort();
       cleanupCanvasListeners?.();
-      created?.remove();
+      destroyMapLibreMap(created);
+      created = undefined;
       mapRef.current = null;
       setReady(false);
     };
@@ -862,10 +856,7 @@ export default function TerrainViewer3D({
       map as unknown as Parameters<typeof applyLayerOpacity>[0],
       sharedOpacityByLayer
     );
-    applyLayerOrder(
-      map as unknown as Parameters<typeof applyLayerOrder>[0],
-      sharedOrderByLayer
-    );
+    applyLayerOrder(map as unknown as Parameters<typeof applyLayerOrder>[0], sharedOrderByLayer);
   }, [
     approvedZonesCollection,
     basins,

@@ -1,8 +1,13 @@
 import { Badge, Box, Button, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { showNotification as notify } from '../../lib/notifications';
+import formStyles from '../../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import { IconCheck } from '../ui/icons';
+
+export const OFFLINE_SUBMIT_TITLE = 'Sin conexión';
+export const OFFLINE_SUBMIT_MESSAGE =
+  'No pudimos enviar la sugerencia. Puede que estés sin conexión. Los datos siguen en el formulario.';
 
 export function showSuggestionNotification(
   title: string,
@@ -72,11 +77,11 @@ export function SuccessScreen({
   return (
     <Paper shadow="md" p="xl" radius="md" role="status" aria-live="polite">
       <Stack align="center" gap="lg">
-        <IconCheck size={64} color="var(--mantine-color-green-6)" aria-hidden="true" />
+        <IconCheck size={64} color="var(--cc-color-success)" aria-hidden="true" />
         <Title order={2} ta="center">
           Gracias por tu sugerencia
         </Title>
-        <Text c="gray.6" ta="center">
+        <Text c="dimmed" ta="center">
           Tu propuesta fue recibida y será considerada en las próximas reuniones de la comisión.
         </Text>
         {showRemainingBadge && (
@@ -85,7 +90,11 @@ export function SuccessScreen({
             {remainingToday === 1 ? '' : 's'} en las próximas 24 horas
           </Badge>
         )}
-        <Button onClick={onReset}>Enviar otra sugerencia</Button>
+        <Box className={formStyles.submitBar} w="100%">
+          <Button onClick={onReset} size="lg" fullWidth className="touch-target-min">
+            Enviar otra sugerencia
+          </Button>
+        </Box>
       </Stack>
     </Paper>
   );

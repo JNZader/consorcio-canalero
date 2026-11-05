@@ -26,6 +26,7 @@ import {
 } from '../lib/formDrafts';
 import { logger } from '../lib/logger';
 import { hideToast, showToast } from '../lib/notifications';
+import { semanticColor } from '../lib/semanticColors';
 import { useConfigStore } from '../stores/configStore';
 import formStyles from '../styles/components/form.module.css';
 import {
@@ -66,12 +67,18 @@ function showOfflineToast(onRetry: () => void) {
   showToast({
     id: REPORTE_OFFLINE_TOAST_ID,
     title: OFFLINE_SUBMIT_TITLE,
-    color: 'orange',
+    color: semanticColor.warning,
     autoClose: false,
     message: (
       <Stack gap="xs">
         <Text size="sm">{OFFLINE_SUBMIT_MESSAGE}</Text>
-        <Button type="button" size="xs" variant="light" color="orange" onClick={onRetry}>
+        <Button
+          type="button"
+          size="sm"
+          variant="light"
+          color={semanticColor.warning}
+          onClick={onRetry}
+        >
           Reintentar
         </Button>
       </Stack>
@@ -247,6 +254,7 @@ function FormularioContenido() {
     onLimitReached: handleLimitReached,
     onOfflineFailure: handleOfflineFailure,
     onOtherFailure: handleOtherFailure,
+    onAttemptStart: clearOfflineToast,
   });
 
   useEffect(() => {
@@ -267,7 +275,7 @@ function FormularioContenido() {
       <Title order={2} mb="md">
         Nuevo Reporte
       </Title>
-      <Text c="gray.6" mb="xl">
+      <Text c="dimmed" mb="xl">
         Reportá problemas en la red de canales y caminos rurales
       </Text>
 
@@ -369,13 +377,14 @@ function FormularioContenido() {
                     mt="sm"
                     variant="light"
                     color="orange"
+                    disabled={enviando}
                     onClick={() => retryRef.current()}
                   >
                     Reintentar envío
                   </Button>
                 </Alert>
               )}
-              <SubmitButton disabled={remainingToday === 0} />
+              <SubmitButton disabled={remainingToday === 0} loading={enviando} />
             </Box>
           </Stack>
         </form>

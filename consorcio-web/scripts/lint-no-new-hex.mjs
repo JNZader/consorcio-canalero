@@ -7,7 +7,7 @@
  *
  * Excepciones, en el fuente:
  *   - `hex-color-allow-file` en las primeras 20 líneas (paleta del tema,
- *     `mapColorTokens`, leyendas conocidas).
+ *     UI y mapa, en `theme.ts`).
  *   - `hex-color-allow` en la misma línea del literal o en la anterior.
  *
  * No mira tests, comentarios ni `.css`. Actualizar la línea de base, a mano
@@ -232,7 +232,7 @@ function main() {
   }
   console.error('Hex nuevo en .ts/.tsx. Usá un token, o un comentario de excepción:');
   console.error('  // hex-color-allow');
-  console.error('  /* hex-color-allow-file */  (paleta del tema, mapColorTokens, leyendas)');
+  console.error('  /* hex-color-allow-file */  (paleta del tema: UI y mapa)');
   for (const violation of violations) {
     console.error(
       `  ${violation.file}: ${violation.hex} ×${violation.count} (permitido ${violation.allowed})`

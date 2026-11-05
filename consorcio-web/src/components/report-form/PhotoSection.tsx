@@ -56,10 +56,10 @@ export function PhotoSection({ fotoPreview, onDrop, onRemove }: Readonly<PhotoSe
           <Text size="xl" ta="center" aria-hidden="true">
             &#128247;
           </Text>
-          <Text id={PHOTO_INSTRUCTIONS_ID} size="sm" c="gray.6" ta="center">
+          <Text id={PHOTO_INSTRUCTIONS_ID} size="sm" c="dimmed" ta="center">
             Tocá para sacar una foto o elegir una de tu galería
           </Text>
-          <Text id={PHOTO_LIMIT_ID} size="xs" c="gray.6" ta="center">
+          <Text id={PHOTO_LIMIT_ID} size="xs" c="dimmed" ta="center">
             Max 5MB
           </Text>
         </div>

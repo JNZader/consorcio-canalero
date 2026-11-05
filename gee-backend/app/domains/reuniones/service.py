@@ -8,15 +8,19 @@ from sqlalchemy.orm import Session
 
 from app.domains.reuniones.models import (
     AgendaItem,
+    EstadoReunion,
     Reunion,
+    TipoReunion,
     VALID_TRANSITIONS,
 )
+from app.shared.enum_params import require_choice
 from app.domains.reuniones.repository import (
     AgendaItemRepository,
     ReunionRepository,
 )
 from app.domains.reuniones.schemas import (
     AgendaItemCreate,
+    AgendaItemUpdate,
     ReunionCreate,
     ReunionUpdate,
 )
@@ -50,6 +54,8 @@ class ReunionService:
         estado: Optional[str] = None,
         tipo: Optional[str] = None,
     ) -> tuple[list[Reunion], int]:
+        estado = require_choice(estado, EstadoReunion, "estado")
+        tipo = require_choice(tipo, TipoReunion, "tipo")
         return self.repo.get_all(
             db,
             page=page,
@@ -127,6 +133,25 @@ class ReunionService:
         db.commit()
         db.refresh(item)
         return item
+
+    def update_agenda_item(
+        self,
+        db: Session,
+        reunion_id: uuid.UUID,
+        item_id: uuid.UUID,
+        data: AgendaItemUpdate,
+    ) -> AgendaItem:
+        """Update an agenda item. ``completado`` is how the PDF leaves "No"."""
+        self.get_by_id(db, reunion_id)
+        item = self.agenda_repo.get_by_id(db, item_id)
+        if item is None or item.reunion_id != reunion_id:
+            raise HTTPException(status_code=404, detail="Agenda item no encontrado")
+        updated = self.agenda_repo.update(db, item_id, data)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Agenda item no encontrado")
+        db.commit()
+        db.refresh(updated)
+        return updated
 
     def delete_agenda_item(
         self,

@@ -4,7 +4,7 @@ import uuid
 from typing import Optional
 
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.domains.denuncias.models import (
@@ -43,11 +43,20 @@ class DenunciaRepository:
         limit: int = 20,
         estado_filter: Optional[str] = None,
         cuenca_filter: Optional[str] = None,
+        tipo_filter: Optional[str] = None,
+        categoria_filter: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[list[Denuncia], int]:
         """
         Paginated list of denuncias with optional filters.
 
-        Returns (items, total_count).
+        ``tipo`` and ``categoria`` are equality filters on ``denuncias.tipo``.
+        The admin panel sends the category select as ``categoria``; other
+        clients send ``tipo``. ``search`` is a case-insensitive substring
+        match (same ILIKE shape as the padrón list) over descripción, tipo,
+        cuenca and contacto.
+
+        Returns (items, total_count) for the filtered set, before paging.
         """
         base = select(Denuncia).where(Denuncia.deleted_at.is_(None))
 
@@ -55,6 +64,21 @@ class DenunciaRepository:
             base = base.where(Denuncia.estado == estado_filter)
         if cuenca_filter:
             base = base.where(Denuncia.cuenca == cuenca_filter)
+        if tipo_filter and tipo_filter.strip():
+            base = base.where(Denuncia.tipo == tipo_filter.strip())
+        if categoria_filter and categoria_filter.strip():
+            base = base.where(Denuncia.tipo == categoria_filter.strip())
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            base = base.where(
+                or_(
+                    Denuncia.descripcion.ilike(pattern),
+                    Denuncia.tipo.ilike(pattern),
+                    Denuncia.cuenca.ilike(pattern),
+                    Denuncia.contacto_email.ilike(pattern),
+                    Denuncia.contacto_telefono.ilike(pattern),
+                )
+            )
 
         # Total count (separate query for accuracy with LIMIT)
         count_stmt = select(func.count()).select_from(base.subquery())
@@ -102,11 +126,26 @@ class DenunciaRepository:
 
     # ── WRITE ─────────────────────────────────
 
+    def get_active_by_idempotency(
+        self,
+        db: Session,
+        user_id: uuid.UUID,
+        idempotency_key: str,
+    ) -> Optional[Denuncia]:
+        """Return the live denuncia stored for this retry key, or None."""
+        stmt = select(Denuncia).where(
+            Denuncia.user_id == user_id,
+            Denuncia.idempotency_key == idempotency_key,
+            Denuncia.deleted_at.is_(None),
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
     def create(
         self,
         db: Session,
         data: DenunciaCreate,
         user_id: Optional[uuid.UUID] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Denuncia:
         """Insert a new denuncia with PostGIS point geometry."""
         denuncia = Denuncia(
@@ -120,6 +159,7 @@ class DenunciaRepository:
             contacto_telefono=data.contacto_telefono,
             contacto_email=data.contacto_email,
             user_id=user_id,
+            idempotency_key=idempotency_key,
         )
         db.add(denuncia)
         db.flush()
@@ -173,21 +213,28 @@ class DenunciaRepository:
     # ── STATS ─────────────────────────────────
 
     def get_stats(self, db: Session) -> dict:
-        """Aggregate counts by estado, tipo, and cuenca."""
+        """Aggregate counts by estado, tipo, and cuenca.
+
+        Soft-deleted rows (ARCO) are excluded, same as the list endpoints.
+        """
+        visible = Denuncia.deleted_at.is_(None)
+
         # By estado
         estado_rows = db.execute(
-            select(Denuncia.estado, func.count()).group_by(Denuncia.estado)
+            select(Denuncia.estado, func.count()).where(visible).group_by(Denuncia.estado)
         ).all()
         por_estado = {row[0]: row[1] for row in estado_rows}
 
         # By tipo
-        tipo_rows = db.execute(select(Denuncia.tipo, func.count()).group_by(Denuncia.tipo)).all()
+        tipo_rows = db.execute(
+            select(Denuncia.tipo, func.count()).where(visible).group_by(Denuncia.tipo)
+        ).all()
         por_tipo = {row[0]: row[1] for row in tipo_rows}
 
         # By cuenca
         cuenca_rows = db.execute(
             select(Denuncia.cuenca, func.count())
-            .where(Denuncia.cuenca.isnot(None))
+            .where(visible, Denuncia.cuenca.isnot(None))
             .group_by(Denuncia.cuenca)
         ).all()
         por_cuenca = {row[0]: row[1] for row in cuenca_rows}

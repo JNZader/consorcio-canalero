@@ -100,7 +100,7 @@ export function LoadingState({
     >
       <Stack align="center" gap="md">
         <Loader size="lg" type="dots" aria-hidden="true" />
-        <Text c="gray.6" size="sm">
+        <Text c="dimmed" size="sm">
           {message}
         </Text>
       </Stack>

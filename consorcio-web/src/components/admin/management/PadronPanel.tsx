@@ -70,7 +70,7 @@ export default function PadronPanel() {
     setLoading(true);
     try {
       const response = await apiFetch<Consorcista[] | { items: Consorcista[] }>(
-        `/padron?search=${search}`
+        `/padron?${new URLSearchParams({ search }).toString()}`
       );
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setConsorcistas(data);

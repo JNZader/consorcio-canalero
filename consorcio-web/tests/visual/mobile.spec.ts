@@ -81,6 +81,39 @@ test.describe('e2e mobile 360', () => {
       .toBeGreaterThan(before.y + 40);
   });
 
+  test('participación: el mapa de la sugerencia scrollea sin atrapar el dedo', async ({ page }) => {
+    await openStableRoute(page, '/participacion?tab=sugerencias', 'light', MOBILE);
+    await expect(page.getByRole('heading', { name: 'Enviar Sugerencia' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    const map = page.getByRole('application', { name: 'Canal en mapa' });
+    const canvas = map.locator('canvas');
+    await expect(canvas).toBeVisible();
+    await map.evaluate((element) => {
+      element.scrollIntoView({ block: 'center', behavior: 'instant' });
+    });
+
+    const before = await page.evaluate(() => ({
+      y: window.scrollY,
+      room: document.documentElement.scrollHeight - window.scrollY - window.innerHeight,
+    }));
+    expect(before.room).toBeGreaterThan(80);
+
+    const box = await canvas.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    await touchSwipe(
+      page,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+      { x: box.x + box.width / 2, y: Math.max(8, box.y + box.height / 2 - 280) }
+    );
+
+    await expect
+      .poll(async () => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(before.y + 40);
+  });
+
   test('mapa: el panel de capas atrapa el foco y Escape vuelve al botón', async ({ page }) => {
     await openStableRoute(page, '/mapa', 'light', MOBILE);
     await expect(page.getByRole('heading', { name: 'Mapa Interactivo' })).toBeVisible();

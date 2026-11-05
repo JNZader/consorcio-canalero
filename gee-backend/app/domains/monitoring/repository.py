@@ -1,10 +1,13 @@
 """Repository layer — all database access for the monitoring domain."""
 
 import uuid
+from datetime import date
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import Session
+
+from app.shared.local_date import hoy_argentina
 
 from app.domains.monitoring.models import (
     AnalisisGee,
@@ -31,14 +34,41 @@ class MonitoringRepository:
         limit: int = 20,
         estado_filter: Optional[str] = None,
         categoria_filter: Optional[str] = None,
+        tipo_filter: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[list[Sugerencia], int]:
-        """Paginated list of sugerencias with optional filters."""
+        """Paginated list of sugerencias with optional filters.
+
+        ``tipo`` matches the stats cards: ``ciudadana`` has no ``usuario_id``,
+        ``interna`` has one. Any other value matches nothing. ``search`` is
+        ILIKE over título, descripción, categoría and contacto (padrón shape).
+
+        Returns (items, total_count) for the filtered set, before paging.
+        """
         base = select(Sugerencia)
 
         if estado_filter:
             base = base.where(Sugerencia.estado == estado_filter)
         if categoria_filter:
             base = base.where(Sugerencia.categoria == categoria_filter)
+        tipo_value = tipo_filter.strip() if tipo_filter else ""
+        if tipo_value == "ciudadana":
+            base = base.where(Sugerencia.usuario_id.is_(None))
+        elif tipo_value == "interna":
+            base = base.where(Sugerencia.usuario_id.is_not(None))
+        elif tipo_value:
+            base = base.where(false())
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            base = base.where(
+                or_(
+                    Sugerencia.titulo.ilike(pattern),
+                    Sugerencia.descripcion.ilike(pattern),
+                    Sugerencia.categoria.ilike(pattern),
+                    Sugerencia.contacto_nombre.ilike(pattern),
+                    Sugerencia.contacto_email.ilike(pattern),
+                )
+            )
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total: int = db.execute(count_stmt).scalar_one()
@@ -143,12 +173,25 @@ class MonitoringRepository:
             "internas": internas,
         }
 
-    def get_proxima_reunion(self, db: Session) -> list[Sugerencia]:
-        """Return sugerencias in 'revisada' (en_agenda) state, ordered by creation."""
+    def get_proxima_reunion(self, db: Session, *, hoy: date | None = None) -> list[Sugerencia]:
+        """Sugerencias agendadas desde hoy (ART), ordenadas por ``fecha_reunion``.
+
+        Agendar escribe ``fecha_reunion`` sin cambiar ``estado``. Filtrar solo
+        ``revisada`` por ``created_at`` dejaba afuera las agendadas y mezclaba
+        filas sin fecha.
+        """
+        today = hoy if hoy is not None else hoy_argentina()
         stmt = (
             select(Sugerencia)
-            .where(Sugerencia.estado == EstadoSugerencia.REVISADA)
-            .order_by(Sugerencia.created_at.desc(), Sugerencia.id.desc())
+            .where(
+                Sugerencia.fecha_reunion.is_not(None),
+                Sugerencia.fecha_reunion >= today,
+            )
+            .order_by(
+                Sugerencia.fecha_reunion.asc(),
+                Sugerencia.created_at.asc(),
+                Sugerencia.id.asc(),
+            )
             .limit(20)
         )
         return list(db.execute(stmt).scalars().all())
@@ -222,9 +265,12 @@ class MonitoringRepository:
         from app.domains.tramites.models import Tramite
         from app.domains.finanzas.models import Gasto, Ingreso
 
-        # Denuncias by estado
+        # Denuncias by estado. ARCO soft-deletes stay in the table and must
+        # not inflate the operator dashboard.
         denuncia_rows = db.execute(
-            select(Denuncia.estado, func.count()).group_by(Denuncia.estado)
+            select(Denuncia.estado, func.count())
+            .where(Denuncia.deleted_at.is_(None))
+            .group_by(Denuncia.estado)
         ).all()
         denuncias_por_estado = {row[0]: row[1] for row in denuncia_rows}
         total_denuncias = sum(denuncias_por_estado.values())

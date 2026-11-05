@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class SettingResponse(BaseModel):
@@ -26,6 +26,10 @@ class SettingUpdate(BaseModel):
 
     valor: Any = Field(..., description="New value (JSON-compatible)")
     descripcion: Optional[str] = Field(default=None, description="Optional description override")
+    expected_updated_at: Optional[AwareDatetime] = Field(
+        default=None,
+        description="updated_at leido por el cliente. Si no coincide, el PUT responde 409.",
+    )
 
 
 class SettingsByCategoryResponse(BaseModel):

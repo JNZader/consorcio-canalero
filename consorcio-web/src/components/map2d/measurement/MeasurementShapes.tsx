@@ -119,8 +119,8 @@ function createVertexMarkerElement(index: number, total: number): HTMLElement {
   el.style.width = '10px';
   el.style.height = '10px';
   el.style.borderRadius = '50%';
-  el.style.backgroundColor = '#7c3aed';
-  el.style.border = '2px solid #ffffff';
+  el.style.backgroundColor = mapColorTokens.h7c3aed;
+  el.style.border = `2px solid ${mapColorTokens.hffffff}`;
   el.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.45)';
   el.style.cursor = 'grab';
   el.style.boxSizing = 'border-box';

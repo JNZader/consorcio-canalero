@@ -1,12 +1,30 @@
 """Business-logic layer for settings domain."""
 
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
+from fastapi import HTTPException
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
-from app.domains.settings.models import SystemSettings
+from app.domains.settings.models import CategoriaSettings, SystemSettings
 from app.domains.settings.repository import SettingsRepository
+from app.domains.settings.schemas import ImagenComparacionParams, ImagenMapaParams
+from app.shared.audit_log import write_audit_entry_sync
+from app.shared.enum_params import require_choice
+
+# Keys whose stored JSON is unpacked into a typed public response. Garbage
+# here used to 500 the public branding and map-image reads permanently.
+_TEXT_SETTING_KEYS = frozenset(
+    {
+        "general/nombre_organizacion",
+        "branding/logo_url",
+        "branding/color_primario",
+        "branding/color_secundario",
+    }
+)
 
 
 # Default settings seeded on first deployment
@@ -199,6 +217,40 @@ _BRANDING_CACHE_TIME: float = 0.0
 _BRANDING_CACHE_TTL: float = 600.0  # 10 minutes
 
 
+def _as_optional_str(value: Any) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    return None
+
+
+def _require_setting_model(valor: Any, model: type[BaseModel], key: str) -> None:
+    if valor is None:
+        return
+    try:
+        model.model_validate(valor)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Setting '{key}' no tiene la forma esperada",
+        ) from exc
+
+
+def _reject_bad_setting_valor(key: str, valor: Any) -> None:
+    """Refuse shapes that the typed public readers cannot render."""
+    if key in _TEXT_SETTING_KEYS:
+        if valor is not None and not isinstance(valor, str):
+            raise HTTPException(status_code=422, detail=f"Setting '{key}' debe ser texto")
+        return
+    if key == "mapa/imagen_principal":
+        _require_setting_model(valor, ImagenMapaParams, key)
+    elif key == "mapa/imagen_comparacion":
+        _require_setting_model(valor, ImagenComparacionParams, key)
+
+
+def _same_instant(left: datetime, right: datetime) -> bool:
+    return left.astimezone(timezone.utc) == right.astimezone(timezone.utc)
+
+
 class SettingsService:
     """Orchestrates repository calls with business rules."""
 
@@ -222,15 +274,37 @@ class SettingsService:
         key: str,
         valor: Any,
         descripcion: Optional[str] = None,
+        *,
+        actor_id: uuid.UUID | None = None,
+        expected_updated_at: datetime | None = None,
     ) -> Optional[SystemSettings]:
-        """Update an existing setting. Returns None if key not found."""
+        """Update an existing setting. Returns None if key not found.
+
+        The row is locked with ``FOR UPDATE``. When the caller echoes
+        ``expected_updated_at`` from a previous read and it no longer matches,
+        the write is rejected with 409 instead of silently replacing the blob.
+        """
         global _BRANDING_CACHE
-        existing = self.repo.get_by_key(db, key)
+        _reject_bad_setting_valor(key, valor)
+        existing = self.repo.get_by_key(db, key, for_update=True)
         if existing is None:
             return None
+        if expected_updated_at is not None and not _same_instant(
+            existing.updated_at, expected_updated_at
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="El setting fue modificado por otro operador",
+            )
         existing.valor = valor
         if descripcion is not None:
             existing.descripcion = descripcion
+        write_audit_entry_sync(
+            db,
+            user_id=actor_id,
+            action="settings.update",
+            resource=f"clave={key}",
+        )
         db.flush()
         db.commit()
         db.refresh(existing)
@@ -248,6 +322,7 @@ class SettingsService:
     ) -> SystemSettings:
         """Insert or update a setting by key."""
         global _BRANDING_CACHE
+        _reject_bad_setting_valor(key, valor)
         setting = self.repo.upsert(
             db,
             clave=key,
@@ -268,10 +343,12 @@ class SettingsService:
         if _BRANDING_CACHE is not None and (now - _BRANDING_CACHE_TIME) < _BRANDING_CACHE_TTL:
             return _BRANDING_CACHE
         data = {
-            "nombre_organizacion": self.get_setting(db, "general/nombre_organizacion"),
-            "logo_url": self.get_setting(db, "branding/logo_url"),
-            "color_primario": self.get_setting(db, "branding/color_primario"),
-            "color_secundario": self.get_setting(db, "branding/color_secundario"),
+            "nombre_organizacion": _as_optional_str(
+                self.get_setting(db, "general/nombre_organizacion")
+            ),
+            "logo_url": _as_optional_str(self.get_setting(db, "branding/logo_url")),
+            "color_primario": _as_optional_str(self.get_setting(db, "branding/color_primario")),
+            "color_secundario": _as_optional_str(self.get_setting(db, "branding/color_secundario")),
         }
         _BRANDING_CACHE = data
         _BRANDING_CACHE_TIME = now
@@ -283,7 +360,10 @@ class SettingsService:
 
     def get_settings_by_category(self, db: Session, categoria: str) -> list[SystemSettings]:
         """Return all settings in a category."""
-        return self.repo.get_by_category(db, categoria)
+        parsed = require_choice(categoria, CategoriaSettings, "categoria")
+        if parsed is None:
+            raise HTTPException(status_code=422, detail="categoria invalida")
+        return self.repo.get_by_category(db, parsed)
 
     @classmethod
     def seed_defaults(cls, db: Session) -> int:

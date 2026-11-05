@@ -21,6 +21,7 @@ export interface AgendaItem {
   id: string;
   titulo: string;
   descripcion: string;
+  completado?: boolean;
   referencias: AgendaReference[];
 }
 

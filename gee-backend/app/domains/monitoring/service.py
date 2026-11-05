@@ -10,9 +10,17 @@ from typing import Any, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.domains.monitoring.models import AnalisisGee, Sugerencia
+from app.domains.monitoring.models import (
+    AnalisisGee,
+    EstadoSugerencia,
+    Sugerencia,
+    TipoAnalisis,
+    VALID_TRANSITIONS,
+)
 from app.domains.monitoring.repository import MonitoringRepository
 from app.domains.monitoring.schemas import SugerenciaCreate, SugerenciaUpdate
+from app.shared.audit_log import write_audit_entry_sync
+from app.shared.enum_params import require_choice
 from app.shared.submission_limit import (
     enforce_submission_limit,
     get_submission_status,
@@ -150,13 +158,18 @@ class MonitoringService:
         limit: int = 20,
         estado: Optional[str] = None,
         categoria: Optional[str] = None,
+        tipo: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[list[Sugerencia], int]:
+        estado = require_choice(estado, EstadoSugerencia, "estado")
         return self.repo.get_all_sugerencias(
             db,
             page=page,
             limit=limit,
             estado_filter=estado,
             categoria_filter=categoria,
+            tipo_filter=tipo,
+            search=search,
         )
 
     def list_sugerencias_by_user(
@@ -203,7 +216,24 @@ class MonitoringService:
         db: Session,
         sugerencia_id: uuid.UUID,
         data: SugerenciaUpdate,
+        *,
+        operator_id: uuid.UUID | None = None,
     ) -> Sugerencia:
+        current = self.get_sugerencia(db, sugerencia_id)
+        nuevo = data.estado
+        if nuevo is not None and nuevo != current.estado:
+            allowed = VALID_TRANSITIONS.get(current.estado, set())
+            if nuevo not in allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Transicion de estado invalida: {current.estado} -> {nuevo}",
+                )
+            write_audit_entry_sync(
+                db,
+                user_id=operator_id,
+                action="sugerencia.estado",
+                resource=f"id={sugerencia_id} {current.estado}->{nuevo}",
+            )
         sugerencia = self.repo.update_sugerencia(db, sugerencia_id, data)
         if sugerencia is None:
             raise HTTPException(status_code=404, detail="Sugerencia no encontrada")
@@ -259,6 +289,7 @@ class MonitoringService:
         limit: int = 20,
         tipo: Optional[str] = None,
     ) -> tuple[list[AnalisisGee], int]:
+        tipo = require_choice(tipo, TipoAnalisis, "tipo")
         return self.repo.get_analysis_history(db, page=page, limit=limit, tipo_filter=tipo)
 
     def save_analysis(self, db: Session, data: dict[str, Any]) -> AnalisisGee:

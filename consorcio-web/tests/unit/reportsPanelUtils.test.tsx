@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterReports, getCategoryLabel, getStatusBadge } from '../../src/components/admin/reports/reportsPanelUtils';
+import { countReportStatuses, getCategoryLabel, getStatusBadge } from '../../src/components/admin/reports/reportsPanelUtils';
 
 const baseReport = {
   id: 'rep-1',
@@ -16,25 +16,14 @@ const baseReport = {
 };
 
 describe('reportsPanelUtils', () => {
-  it('filters reports and counts pending/in-review stats', () => {
+  it('counts pending and in-review rows on the returned page', () => {
     const reports = [
       baseReport,
       { ...baseReport, id: 'rep-2', estado: 'en_revision', descripcion: 'Otro caso' },
+      { ...baseReport, id: 'rep-3', estado: 'resuelto', descripcion: 'Cerrado' },
     ];
 
-    const result = filterReports(reports, null, 'canal');
-    expect(result.filteredReports).toHaveLength(1);
-    expect(result.pendingCount).toBe(1);
-    expect(result.inReviewCount).toBe(1);
-
-    const withGlobalStats = filterReports(
-      [{ ...baseReport, estado: 'resuelto' }],
-      null,
-      '',
-      { pendiente: 12, en_revision: 8 }
-    );
-    expect(withGlobalStats.pendingCount).toBe(12);
-    expect(withGlobalStats.inReviewCount).toBe(8);
+    expect(countReportStatuses(reports)).toEqual({ pendiente: 1, en_revision: 1 });
   });
 
   it('returns a friendly category label', () => {

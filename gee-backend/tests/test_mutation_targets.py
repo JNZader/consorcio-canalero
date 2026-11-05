@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,6 +26,7 @@ from fastapi import HTTPException
 
 from app.domains.denuncias.models import EstadoDenuncia
 from app.domains.denuncias.service import DenunciaService
+from app.domains.monitoring.schemas import SugerenciaUpdate
 from app.domains.monitoring.service import MonitoringService
 
 
@@ -84,16 +86,22 @@ class TestDenunciaServiceList:
             db=MagicMock(),
             page=3,
             limit=50,
-            estado="resuelta",
+            estado="resuelto",
             cuenca="cuenca_1",
+            tipo="desborde",
+            categoria="desborde",
+            search="canal",
         )
 
         repo.get_all.assert_called_once()
         kwargs = repo.get_all.call_args.kwargs
         assert kwargs["page"] == 3
         assert kwargs["limit"] == 50
-        assert kwargs["estado_filter"] == "resuelta"
+        assert kwargs["estado_filter"] == "resuelto"
         assert kwargs["cuenca_filter"] == "cuenca_1"
+        assert kwargs["tipo_filter"] == "desborde"
+        assert kwargs["categoria_filter"] == "desborde"
+        assert kwargs["search"] == "canal"
 
     def test_list_by_user_passes_user_id(self):
         svc, repo = _make_denuncia_service()
@@ -322,20 +330,23 @@ class TestMonitoringServiceAgendar:
 class TestMonitoringServiceUpdateSugerencia:
     def test_raises_404_when_not_found(self):
         svc, repo = _make_monitoring_service()
-        repo.update_sugerencia.return_value = None
+        repo.get_sugerencia_by_id.return_value = None
 
         with pytest.raises(HTTPException) as exc:
-            svc.update_sugerencia(MagicMock(), uuid.uuid4(), MagicMock())
+            svc.update_sugerencia(MagicMock(), uuid.uuid4(), SugerenciaUpdate())
 
         assert exc.value.status_code == 404
 
     def test_returns_updated_row(self):
         svc, repo = _make_monitoring_service()
-        s = MagicMock()
-        repo.update_sugerencia.return_value = s
+        current = SimpleNamespace(id=uuid.uuid4(), estado="pendiente")
+        repo.get_sugerencia_by_id.return_value = current
+        repo.update_sugerencia.return_value = current
 
-        result = svc.update_sugerencia(MagicMock(), uuid.uuid4(), MagicMock())
-        assert result is s
+        result = svc.update_sugerencia(
+            MagicMock(), current.id, SugerenciaUpdate(respuesta="nota interna")
+        )
+        assert result is current
 
 
 class TestMonitoringServiceGetAnalysis:

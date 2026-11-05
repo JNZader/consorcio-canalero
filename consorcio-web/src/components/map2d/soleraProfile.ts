@@ -9,6 +9,12 @@ export interface SoleraRow {
   readonly terreno: number;
   readonly solera: number;
   readonly cover_m: number;
+  /**
+   * Inclusive elevation range of the cover, on the same axis as the
+   * terrain. Plotting ``cover_m`` (about 0–3 m) on an axis near 600 m
+   * draws the band off the chart.
+   */
+  readonly cover_band: readonly [number, number];
 }
 
 export type SoleraRead =
@@ -22,11 +28,14 @@ export function soleraCover(samples: readonly SoleraSample[]): SoleraRead {
     if (sample.elevation_m == null || sample.solera_m == null || !Number.isFinite(sample.solera_m)) {
       continue;
     }
+    const low = Math.min(sample.solera_m, sample.elevation_m);
+    const high = Math.max(sample.solera_m, sample.elevation_m);
     rows.push({
       distance_m: sample.distance_m,
       terreno: sample.elevation_m,
       solera: sample.solera_m,
       cover_m: sample.elevation_m - sample.solera_m,
+      cover_band: [low, high],
     });
   }
   if (rows.length < 2) return { ok: false, reason: 'missing' };

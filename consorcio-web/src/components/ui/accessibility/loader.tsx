@@ -39,7 +39,7 @@ export function AccessibleLoader({
             }}
             aria-hidden="true"
           />
-          <Text size="sm" c="gray.6">
+          <Text size="sm" c="dimmed">
             {loadingText}...
           </Text>
         </Stack>

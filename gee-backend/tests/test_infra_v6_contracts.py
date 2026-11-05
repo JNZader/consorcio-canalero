@@ -546,7 +546,8 @@ def test_pages_prod_smoke_checks_deep_routes_without_calling_the_api() -> None:
     for path in ("'/'", "'/mapa'", "'/login'", "'/participacion'", "'/admin'"):
         assert path in routing
     assert "text/plain" in routing
-    assert "soft-404 /esta-ruta-no-existe" in routing
+    assert "404 /esta-ruta-no-existe" in routing
+    assert "assertRouteNotFound" in routing
 
 
 def test_robots_and_not_found_are_not_indexed() -> None:

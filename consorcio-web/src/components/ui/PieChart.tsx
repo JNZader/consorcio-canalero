@@ -99,7 +99,7 @@ export default function PieChart({ data, size = 180, showLegend = true, title }:
                     {slice.label}
                   </Text>
                 </Group>
-                <Text size="xs" fw={600} c="gray.6">
+                <Text size="xs" fw={600} c="dimmed">
                   {slice.percentage.toFixed(1)}%
                 </Text>
               </Group>

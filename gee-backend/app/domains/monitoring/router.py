@@ -90,13 +90,25 @@ def list_sugerencias(
     limit: int = Query(default=20, ge=1, le=100),
     estado: Optional[str] = None,
     categoria: Optional[str] = None,
+    tipo: Optional[str] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[SugerenciaListResponse]:
-    """Listar sugerencias con paginacion y filtros (requiere operador)."""
+    """Listar sugerencias con paginacion y filtros (requiere operador).
+
+    ``search`` y ``tipo`` (``ciudadana`` / ``interna``) se aplican en la
+    consulta. ``total`` y ``pages`` describen el conjunto filtrado.
+    """
     items, total = service.list_sugerencias(
-        db, page=page, limit=limit, estado=estado, categoria=categoria
+        db,
+        page=page,
+        limit=limit,
+        estado=estado,
+        categoria=categoria,
+        tipo=tipo,
+        search=search,
     )
     return PaginatedResponse[SugerenciaListResponse].create(
         items=[SugerenciaListResponse.model_validate(s) for s in items],
@@ -221,10 +233,15 @@ def update_sugerencia(
     payload: SugerenciaUpdate,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
-    _user=Depends(_require_operator()),
+    user=Depends(_require_operator()),
 ):
     """Actualizar estado/respuesta de una sugerencia (requiere operador)."""
-    return service.update_sugerencia(db, sugerencia_id, payload)
+    return service.update_sugerencia(
+        db,
+        sugerencia_id,
+        payload,
+        operator_id=uuid.UUID(str(user.id)),
+    )
 
 
 @router.post(

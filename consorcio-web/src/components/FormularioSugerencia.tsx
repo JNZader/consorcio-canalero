@@ -16,16 +16,53 @@ import {
 import { useForm } from '@mantine/form';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useContactVerification } from '../hooks/useContactVerification';
-import { loadSuggestionDraft } from '../lib/formDrafts';
+import { loadSuggestionDraft, saveSuggestionDraft } from '../lib/formDrafts';
+import { hideToast, showToast } from '../lib/notifications';
 import { MAX_LENGTHS, validators } from '../lib/validators';
+import formStyles from '../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from './map/LineDrawControl';
 import { SuggestionGeometrySection } from './suggestion-form/SuggestionGeometrySection';
 import { SuggestionStepIndicator } from './suggestion-form/SuggestionStepIndicator';
 import { CATEGORIAS, isNonSpatialCategory } from './suggestion-form/suggestionFormConstants';
-import { getStep2Badge, SuccessScreen } from './suggestion-form/suggestionFormUtils';
+import {
+  getStep2Badge,
+  OFFLINE_SUBMIT_MESSAGE,
+  OFFLINE_SUBMIT_TITLE,
+  SuccessScreen,
+} from './suggestion-form/suggestionFormUtils';
 import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState';
-import { LiveRegionProvider, VisuallyHidden } from './ui/accessibility';
+import { LiveRegionProvider, useLiveRegion, VisuallyHidden } from './ui/accessibility';
 import { ContactVerificationSection } from './verification';
+
+const SUGERENCIA_OFFLINE_TOAST_ID = 'sugerencia-sin-conexion';
+
+function showOfflineToast(onRetry: () => void) {
+  showToast({
+    id: SUGERENCIA_OFFLINE_TOAST_ID,
+    title: OFFLINE_SUBMIT_TITLE,
+    color: 'orange',
+    autoClose: false,
+    message: (
+      <Stack gap="xs">
+        <Text size="sm">{OFFLINE_SUBMIT_MESSAGE}</Text>
+        <Button
+          type="button"
+          size="sm"
+          className="touch-target-min"
+          variant="light"
+          color="orange"
+          onClick={onRetry}
+        >
+          Reintentar
+        </Button>
+      </Stack>
+    ),
+  });
+}
+
+function clearOfflineToast() {
+  hideToast(SUGERENCIA_OFFLINE_TOAST_ID);
+}
 
 const SUGGESTION_TITLE_ERROR_ID = 'suggestion-title-error';
 const SUGGESTION_DESCRIPTION_ERROR_ID = 'suggestion-description-error';
@@ -45,6 +82,9 @@ function FormularioContenido() {
 
   const [pendingRateLimitCheck, setPendingRateLimitCheck] = useState(false);
   const [showOptionalMap, setShowOptionalMap] = useState(false);
+  const [envioOffline, setEnvioOffline] = useState(false);
+  const retryRef = useRef<() => void>(() => {});
+  const { announce } = useLiveRegion();
 
   // useCallback both callbacks because they're consumed by `useEffect`
   // dep arrays inside `useContactVerification` and `useSuggestionFormState`.
@@ -67,6 +107,21 @@ function FormularioContenido() {
   const { contactoVerificado, userEmail, userName, loading, loginWithGoogle, logout } =
     verification;
 
+  const handleOfflineFailure = useCallback(() => {
+    setEnvioOffline(true);
+    showOfflineToast(() => retryRef.current());
+  }, []);
+
+  const handleOtherFailure = useCallback(() => {
+    setEnvioOffline(false);
+    clearOfflineToast();
+  }, []);
+
+  const handleSubmitSuccess = useCallback(() => {
+    setEnvioOffline(false);
+    clearOfflineToast();
+  }, []);
+
   const suggestionState = useSuggestionFormState({
     contactoVerificado,
     userEmail,
@@ -75,6 +130,11 @@ function FormularioContenido() {
     form,
     pendingRateLimitCheck,
     onRateLimitChecked: handleRateLimitChecked,
+    announce,
+    onOfflineFailure: handleOfflineFailure,
+    onOtherFailure: handleOtherFailure,
+    onAttemptStart: clearOfflineToast,
+    onSubmitSuccess: handleSubmitSuccess,
   });
 
   const {
@@ -104,6 +164,33 @@ function FormularioContenido() {
     }
   }, [form, setGeometry]);
 
+  const handleLoginWithGoogle = useCallback(() => {
+    const hasDraftContent =
+      Boolean(form.values.titulo || form.values.descripcion || form.values.categoria) ||
+      (geometry?.features?.length ?? 0) > 0;
+    if (hasDraftContent) {
+      saveSuggestionDraft({
+        titulo: form.values.titulo,
+        descripcion: form.values.descripcion,
+        categoria: form.values.categoria,
+        geometry,
+      });
+    }
+    loginWithGoogle();
+  }, [
+    form.values.categoria,
+    form.values.descripcion,
+    form.values.titulo,
+    geometry,
+    loginWithGoogle,
+  ]);
+
+  useEffect(() => {
+    retryRef.current = () => {
+      void form.onSubmit(handleSubmit)();
+    };
+  }, [form, handleSubmit]);
+
   const isNonSpatial = isNonSpatialCategory(form.values.categoria);
   const hasGeometry = (geometry?.features?.length ?? 0) > 0;
 
@@ -129,7 +216,7 @@ function FormularioContenido() {
       <Title order={2} mb="md">
         Enviar Sugerencia
       </Title>
-      <Text c="gray.6" mb="xl">
+      <Text c="dimmed" mb="xl">
         Proponé temas o mejoras para que la comisión las considere en sus próximas reuniones
       </Text>
 
@@ -152,14 +239,14 @@ function FormularioContenido() {
           userEmail={userEmail}
           userName={userName}
           loading={loading}
-          onLoginWithGoogle={loginWithGoogle}
+          onLoginWithGoogle={handleLoginWithGoogle}
           onLogout={handleCambiarContacto}
           verificationExplanation="Para evitar spam, necesitamos verificar tu identidad. Límite: 5 sugerencias cada 24 horas."
           privacyNote="Solo usamos tu email para identificarte y notificarte sobre tu sugerencia."
         />
       </Box>
 
-      <Divider my="lg" />
+      <Divider my="xl" />
 
       <Box pos="relative">
         <SuggestionStepIndicator
@@ -172,12 +259,12 @@ function FormularioContenido() {
         {!contactoVerificado && (
           <Alert color="institucional" variant="light" mb="md">
             Podés completar la sugerencia ahora. Al enviarla te pedimos verificar la identidad para
-            evitar spam.
+            evitar spam. Guardamos el texto y el trazo del mapa en tu sesión.
           </Alert>
         )}
 
         <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
-          <Stack gap="md">
+          <Stack gap="lg">
             {remainingToday === 0 && contactoVerificado && (
               <Alert color="alerta" variant="light" role="alert" aria-live="assertive">
                 Llegaste al límite de 5 sugerencias cada 24 horas. Volvé más tarde.
@@ -230,6 +317,8 @@ function FormularioContenido() {
                   type="button"
                   variant="subtle"
                   size="sm"
+                  fullWidth
+                  className="touch-target-min"
                   onClick={() => setShowOptionalMap(true)}
                 >
                   Agregar ubicación en el mapa (opcional)
@@ -242,7 +331,8 @@ function FormularioContenido() {
                     <Button
                       type="button"
                       variant="subtle"
-                      size="xs"
+                      size="sm"
+                      className="touch-target-min"
                       onClick={() => setShowOptionalMap(false)}
                     >
                       Ocultar ubicación en el mapa
@@ -253,9 +343,41 @@ function FormularioContenido() {
               </Stack>
             )}
 
-            <Button type="submit" size="lg" fullWidth mt="md" disabled={remainingToday === 0}>
-              Enviar Sugerencia
-            </Button>
+            <Box className={formStyles.submitBar}>
+              {envioOffline && (
+                <Alert
+                  color="orange"
+                  variant="light"
+                  role="alert"
+                  aria-live="assertive"
+                  title={OFFLINE_SUBMIT_TITLE}
+                  mb="sm"
+                >
+                  <Text size="sm">{OFFLINE_SUBMIT_MESSAGE}</Text>
+                  <Button
+                    type="button"
+                    mt="sm"
+                    variant="light"
+                    color="orange"
+                    className="touch-target-min"
+                    disabled={enviando}
+                    onClick={() => retryRef.current()}
+                  >
+                    Reintentar envío
+                  </Button>
+                </Alert>
+              )}
+              <Button
+                type="submit"
+                size="lg"
+                fullWidth
+                className="touch-target-min"
+                loading={enviando}
+                disabled={remainingToday === 0 || enviando}
+              >
+                Enviar Sugerencia
+              </Button>
+            </Box>
           </Stack>
         </form>
       </Box>

@@ -4,7 +4,18 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.domains.capas.models import FuenteCapa, TipoCapa
+from app.shared.enum_params import choice_or_raise
+from app.shared.patch_fields import forbid_explicit_nulls
+
+
+def _required_choice(value: object, choices: type, field: str) -> str:
+    parsed = choice_or_raise(value, choices, field)
+    if parsed is None:
+        raise ValueError(f"{field} invalido")
+    return parsed
 
 
 # ──────────────────────────────────────────────
@@ -44,6 +55,16 @@ class CapaCreate(BaseModel):
     orden: int = Field(default=0, ge=0)
     es_publica: bool = False
 
+    @field_validator("tipo")
+    @classmethod
+    def validate_tipo(cls, v: str) -> str:
+        return _required_choice(v, TipoCapa, "tipo")
+
+    @field_validator("fuente")
+    @classmethod
+    def validate_fuente(cls, v: str) -> str:
+        return _required_choice(v, FuenteCapa, "fuente")
+
 
 # ──────────────────────────────────────────────
 # UPDATE
@@ -63,6 +84,26 @@ class CapaUpdate(BaseModel):
     visible: Optional[bool] = None
     orden: Optional[int] = Field(default=None, ge=0)
     es_publica: Optional[bool] = None
+
+    @field_validator("tipo")
+    @classmethod
+    def validate_tipo(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, TipoCapa, "tipo")
+
+    @field_validator("fuente")
+    @classmethod
+    def validate_fuente(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, FuenteCapa, "fuente")
+
+    _reject_nulls = forbid_explicit_nulls(
+        "nombre",
+        "tipo",
+        "fuente",
+        "estilo",
+        "visible",
+        "orden",
+        "es_publica",
+    )
 
 
 # ──────────────────────────────────────────────

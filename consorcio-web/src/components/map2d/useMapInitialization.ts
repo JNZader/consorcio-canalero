@@ -3,13 +3,14 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { TILE_LAYERS } from '../../constants/mapStyles';
 import { logger } from '../../lib/logger';
+import { createMapLibreMap, destroyMapLibreMap } from '../../lib/maplibreLifecycle';
 import { listenMapEvent, unlistenMapEvent } from '../../lib/maplibreListen';
-import { bootMapLibreWorker } from '../../lib/maplibreLoader';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import { type ClassifiedMapError, classifyMapError } from './mapErrorClassify';
 import { MAP_LOCALE_ES } from './mapLibreLocale';
 import { MAP_GLYPHS_URL } from './roadLabelLayer';
 
+export { isCoarsePointerDevice } from '../../lib/maplibreLifecycle';
 export { MAP_LOCALE_ES } from './mapLibreLocale';
 
 interface UseMapInitializationParams {
@@ -27,7 +28,7 @@ interface UseMapInitializationParams {
    * Observer for every MapLibre `error`, already classified (tile vs real).
    *
    * DELIBERATELY NOT IN THE INIT EFFECT'S DEPENDENCY ARRAY. That effect's
-   * cleanup calls `map.remove()`, so adding a callback that changes identity
+   * cleanup calls `destroyMapLibreMap`, so adding a callback that changes identity
    * between renders would tear down and rebuild the whole map — losing the
    * viewport, every source and the WebGL context — on each render. The callback
    * is therefore read through a ref that a separate effect keeps current.
@@ -64,28 +65,6 @@ export function installMapNativeDragGuards(container: HTMLElement): () => void {
   };
 }
 
-/**
- * True when the primary pointer is coarse (finger/stylus), i.e. a touch device.
- *
- * Cooperative gestures exist to stop the DESKTOP wheel from hijacking page
- * scroll. On touch they do the opposite of what we want: MapLibre requires TWO
- * fingers to pan, so a one-finger drag scrolls the page and the map becomes
- * unpannable with the gesture every user tries first. We therefore enable the
- * handler only for fine pointers.
- *
- * Read ONCE at map construction (the option is not reactive in MapLibre);
- * falls back to `false` (= cooperative gestures ON) when `matchMedia` is
- * unavailable, which keeps the safer desktop behaviour as the default.
- */
-export function isCoarsePointerDevice(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  try {
-    return window.matchMedia('(pointer: coarse)').matches;
-  } catch {
-    return false;
-  }
-}
-
 export function useMapInitialization({
   maplibre,
   containerRef,
@@ -97,7 +76,7 @@ export function useMapInitialization({
   onMapError,
 }: UseMapInitializationParams) {
   // See the `onMapError` doc comment: a REF, never a dependency of the init
-  // effect below — that effect's cleanup calls `map.remove()`.
+  // effect below — that effect's cleanup calls `destroyMapLibreMap`.
   const onMapErrorRef = useRef(onMapError);
   useEffect(() => {
     onMapErrorRef.current = onMapError;
@@ -106,7 +85,7 @@ export function useMapInitialization({
   // Snapshot the opening camera ONCE. `MapaMapLibre` also publishes live
   // center/zoom into `mapCameraStore` on `moveend`. If those values stay in
   // this effect's deps, any later render (query, hash `#v`, layer toggle)
-  // tears the map down (`map.remove()` → WebGL context lost) and rebuilds it.
+  // tears the map down (`destroyMapLibreMap` → WebGL context lost) and rebuilds it.
   // Pan/zoom belong on the MapLibre instance, not in React init.
   const originRef = useRef({ centerLat, centerLng, zoom });
 
@@ -114,6 +93,7 @@ export function useMapInitialization({
     if (!containerRef.current) return;
 
     const removeNativeDragGuards = installMapNativeDragGuards(containerRef.current);
+    const abort = new AbortController();
     let cancelled = false;
     let map: maplibregl.Map | undefined;
     const onContextLost = (event: { preventDefault?: () => void }) => {
@@ -126,86 +106,89 @@ export function useMapInitialization({
 
     void (async () => {
       try {
-        await bootMapLibreWorker();
         if (cancelled || !containerRef.current) return;
-        map = new maplibre.Map({
-          container: containerRef.current,
-          style: {
-            version: 8,
-            glyphs: MAP_GLYPHS_URL,
-            sources: {
-              'osm-base': {
-                type: 'raster',
-                tiles: [TILE_LAYERS.osm.url],
-                tileSize: 256,
-                attribution: TILE_LAYERS.osm.attribution,
-                maxzoom: 19,
-              },
-              'satellite-base': {
-                type: 'raster',
-                tiles: [TILE_LAYERS.satellite.url],
-                tileSize: 256,
-                attribution: TILE_LAYERS.satellite.attribution,
-              },
-            },
-            layers: [
-              {
-                id: 'osm-tiles',
-                type: 'raster',
-                source: 'osm-base',
-                layout: { visibility: 'visible' },
-                paint: { 'raster-opacity': 1 },
-              },
-              {
-                id: 'satellite-tiles',
-                type: 'raster',
-                source: 'satellite-base',
-                layout: { visibility: 'none' },
-                paint: { 'raster-opacity': 1 },
-              },
-              {
-                id: 'vector-layers-start',
-                type: 'background',
-                paint: {
-                  'background-color': 'rgba(0,0,0,0)',
-                  'background-opacity': 0,
+        // Gestos de superficie principal: en puntero fino, Ctrl+rueda para no
+        // robar el scroll. En táctil un dedo panea (`primary-surface`).
+        const created = await createMapLibreMap({
+          maplibre,
+          gestures: 'primary-surface',
+          signal: abort.signal,
+          options: {
+            container: containerRef.current,
+            style: {
+              version: 8,
+              glyphs: MAP_GLYPHS_URL,
+              sources: {
+                'osm-base': {
+                  type: 'raster',
+                  tiles: [TILE_LAYERS.osm.url],
+                  tileSize: 256,
+                  attribution: TILE_LAYERS.osm.attribution,
+                  maxzoom: 19,
+                },
+                'satellite-base': {
+                  type: 'raster',
+                  tiles: [TILE_LAYERS.satellite.url],
+                  tileSize: 256,
+                  attribution: TILE_LAYERS.satellite.attribution,
                 },
               },
-            ],
+              layers: [
+                {
+                  id: 'osm-tiles',
+                  type: 'raster',
+                  source: 'osm-base',
+                  layout: { visibility: 'visible' },
+                  paint: { 'raster-opacity': 1 },
+                },
+                {
+                  id: 'satellite-tiles',
+                  type: 'raster',
+                  source: 'satellite-base',
+                  layout: { visibility: 'none' },
+                  paint: { 'raster-opacity': 1 },
+                },
+                {
+                  id: 'vector-layers-start',
+                  type: 'background',
+                  paint: {
+                    'background-color': 'rgba(0,0,0,0)',
+                    'background-opacity': 0,
+                  },
+                },
+              ],
+            },
+            center: [originRef.current.centerLng, originRef.current.centerLat],
+            zoom: originRef.current.zoom,
+            minZoom: MAP_MIN_ZOOM,
+            maxBounds: MAP_MAX_BOUNDS,
+            // KEPT UNCONDITIONALLY ON PURPOSE (T3c, fix 5b). PNG/PDF export reads the
+            // canvas back with `getCanvas().toDataURL()`, which returns a blank image
+            // unless the backbuffer is preserved. WebGL context attributes are frozen
+            // at context creation: MapLibre cannot flip this after `new Map()`, so
+            // "enable it only on export intent" would mean tearing the map down and
+            // rebuilding it mid-session (losing viewport, sources and draw state) the
+            // first time a user opens the Export menu. The cost is a modest GPU
+            // memory/compositing overhead on one canvas; the alternative is a broken
+            // export or a map that reloads under the user. Do not "optimize" this away
+            // without moving export to an offscreen render.
+            // MapLibre 5: WebGL options live under `canvasContextAttributes` (top-level
+            // `preserveDrawingBuffer` was removed in 5.0.0).
+            canvasContextAttributes: { preserveDrawingBuffer: true },
+            // UX PDF R9: arrows and +/- when the canvas is focused (MapLibre default,
+            // set explicitly so a later "optimization" cannot disable it).
+            keyboard: true,
+            /* Collapsed behind the info button so the credit line does not
+               cover the scale or the cursor readout. */
+            attributionControl: { compact: true },
+            hash: 'v',
+            locale: { ...MAP_LOCALE_ES },
           },
-          center: [originRef.current.centerLng, originRef.current.centerLat],
-          zoom: originRef.current.zoom,
-          minZoom: MAP_MIN_ZOOM,
-          maxBounds: MAP_MAX_BOUNDS,
-          // KEPT UNCONDITIONALLY ON PURPOSE (T3c, fix 5b). PNG/PDF export reads the
-          // canvas back with `getCanvas().toDataURL()`, which returns a blank image
-          // unless the backbuffer is preserved. WebGL context attributes are frozen
-          // at context creation: MapLibre cannot flip this after `new Map()`, so
-          // "enable it only on export intent" would mean tearing the map down and
-          // rebuilding it mid-session (losing viewport, sources and draw state) the
-          // first time a user opens the Export menu. The cost is a modest GPU
-          // memory/compositing overhead on one canvas; the alternative is a broken
-          // export or a map that reloads under the user. Do not "optimize" this away
-          // without moving export to an offscreen render.
-          // MapLibre 5: WebGL options live under `canvasContextAttributes` (top-level
-          // `preserveDrawingBuffer` was removed in 5.0.0).
-          canvasContextAttributes: { preserveDrawingBuffer: true },
-          // Desktop wheel must NOT hijack the page scroll: cooperative gestures
-          // require Ctrl+wheel to zoom and show a hint otherwise (see change
-          // `rediseno-ux-mapa`). On TOUCH the same handler forces two-finger pan,
-          // which makes the map unresponsive to the one-finger drag every user
-          // tries first — so it is enabled for FINE pointers only.
-          cooperativeGestures: !isCoarsePointerDevice(),
-          // UX PDF R9: arrows and +/- when the canvas is focused (MapLibre default,
-          // set explicitly so a later "optimization" cannot disable it).
-          keyboard: true,
-          /* Collapsed behind the info button so the credit line does not
-             cover the scale or the cursor readout. */
-          attributionControl: { compact: true },
-          hash: 'v',
-          locale: { ...MAP_LOCALE_ES },
         });
+        if (!created) return;
+        map = created;
       } catch (error) {
+        if (cancelled || abort.signal.aborted) return;
         const detail = error instanceof Error ? error.message : 'Error desconocido';
         onMapErrorRef.current?.({
           kind: 'other',
@@ -218,8 +201,8 @@ export function useMapInitialization({
         logger.error('MapaMapLibre failed to construct', error);
         return;
       }
-      if (cancelled) {
-        map.remove();
+      if (!map || cancelled || abort.signal.aborted || !containerRef.current) {
+        destroyMapLibreMap(map);
         return;
       }
 
@@ -246,12 +229,13 @@ export function useMapInitialization({
 
     return () => {
       cancelled = true;
+      abort.abort();
       if (map) {
         if (typeof map.off === 'function') {
           unlistenMapEvent(map, 'webglcontextlost', onContextLost);
           unlistenMapEvent(map, 'webglcontextrestored', onContextRestored);
         }
-        map.remove();
+        destroyMapLibreMap(map);
       }
       removeNativeDragGuards();
       mapRef.current = null;

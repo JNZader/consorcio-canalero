@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, NotFoundError
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.intelligence.router import router as intel_router
@@ -163,6 +163,26 @@ def _gee_async(handler):
     return endpoint
 
 
+def _retired_time_layer(handler):
+    """JRC and annual/monthly Sentinel-2 have no frontend consumer.
+
+    #637 removed the UI. Leaving the handlers live kept spending Earth
+    Engine quota on a surface nobody paints. The routes stay so an old
+    client gets 404 instead of a tile URL, and they return before
+    ``ensure_gee``.
+    """
+
+    async def endpoint(*args, **kwargs):
+        raise NotFoundError(
+            message="Esta capa temporal ya no está publicada.",
+            code="TIME_LAYER_RETIRED",
+        )
+
+    endpoint.__name__ = getattr(handler, "__name__", "retired_time_layer")
+    endpoint.__signature__ = inspect.signature(handler)
+    return endpoint
+
+
 def _gee_simple(handler):
     async def endpoint(*args, **kwargs):
         return await handler(*args, **kwargs)
@@ -183,10 +203,10 @@ get_estadisticas_caminos = _gee_async(get_estadisticas_caminos_impl)
 get_gee_layer = _gee_async(get_gee_layer_impl)
 get_available_image_dates = _gee_async(get_available_image_dates_impl)
 get_sentinel2_image = _gee_async(get_sentinel2_image_impl)
-get_sentinel2_annual = _gee_async(get_sentinel2_annual_impl)
-get_sentinel2_monthly = _gee_async(get_sentinel2_monthly_impl)
-get_jrc_occurrence = _gee_async(get_jrc_occurrence_impl)
-get_jrc_year = _gee_async(get_jrc_year_impl)
+get_sentinel2_annual = _retired_time_layer(_gee_async(get_sentinel2_annual_impl))
+get_sentinel2_monthly = _retired_time_layer(_gee_async(get_sentinel2_monthly_impl))
+get_jrc_occurrence = _retired_time_layer(_gee_async(get_jrc_occurrence_impl))
+get_jrc_year = _retired_time_layer(_gee_async(get_jrc_year_impl))
 get_sentinel1_image = _gee_async(get_sentinel1_image_impl)
 get_satellite_image = _gee_async(get_satellite_image_impl)
 get_image_scenes = _gee_async(get_image_scenes_impl)

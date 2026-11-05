@@ -52,7 +52,7 @@ class TestJoinBpa:
         parcels = join_bpa(catastro, bpa_2025, aceptada, presentada)
         la_sentina = next(p for p in parcels if p["nro_cuenta"] == "150115736126")
         assert la_sentina["bpa_2025"] is not None
-        assert la_sentina["bpa_2025"]["n_explotacion"] == "La Sentina"
+        assert "n_explotacion" not in la_sentina["bpa_2025"]
         # 21 practicas present (spec enumeration)
         assert len(la_sentina["bpa_2025"]["practicas"]) == 21
         # 4 ejes
@@ -178,8 +178,8 @@ class TestBuildBpaHistory:
         ]
         history = build_bpa_history({2024: bpa_2024, 2023: bpa_2023})
         assert history["150115736126"] == {
-            "2024": "La Sentina",
-            "2023": "La Sentina S.A.",
+            "2024": True,
+            "2023": True,
         }
 
     def test_excludes_2025(self):
@@ -195,10 +195,10 @@ class TestBuildBpaHistory:
         history = build_bpa_history({2025: bpa_2025})
         assert history == {}
 
-    def test_cuenta_without_name_is_skipped(self):
+    def test_cuenta_without_name_still_records_presence(self):
         bpa_2024 = [{"properties": {"cuenta": "150115736126", "n_explotacion": None}}]
         history = build_bpa_history({2024: bpa_2024})
-        assert history == {}
+        assert history == {"150115736126": {"2024": True}}
 
     def test_missing_years_never_appear_as_null(self):
         bpa_2024 = [
@@ -206,7 +206,7 @@ class TestBuildBpaHistory:
         ]
         history = build_bpa_history({2024: bpa_2024, 2023: [], 2022: []})
         # The spec says missing years MUST NOT appear as null.
-        assert history["150115736126"] == {"2024": "La Sentina"}
+        assert history["150115736126"] == {"2024": True}
         assert "2023" not in history["150115736126"]
 
 

@@ -35,6 +35,20 @@ def _window_start() -> datetime:
     return datetime.now(timezone.utc) - timedelta(hours=SUBMISSION_WINDOW_HOURS)
 
 
+def _visible_clauses(model: Type, user_id_attr: InstrumentedAttribute, user_id: uuid.UUID) -> list:
+    """Rows that still occupy a quota slot.
+
+    ARCO soft-delete (``deleted_at``) removes the row from the citizen's
+    view and must not keep burning the 5/24h slot. Models without that
+    column (sugerencias) count every row in the window.
+    """
+    clauses: list = [user_id_attr == user_id, model.created_at >= _window_start()]
+    deleted_at = getattr(model, "deleted_at", None)
+    if deleted_at is not None:
+        clauses.append(deleted_at.is_(None))
+    return clauses
+
+
 def _oldest_in_window(
     db: Session,
     *,
@@ -44,7 +58,7 @@ def _oldest_in_window(
 ) -> datetime | None:
     stmt = (
         select(model.created_at)
-        .where(user_id_attr == user_id, model.created_at >= _window_start())
+        .where(*_visible_clauses(model, user_id_attr, user_id))
         .order_by(model.created_at.asc())
         .limit(1)
     )
@@ -65,11 +79,10 @@ def get_submission_status(
     current window expires (i.e., when one slot frees up). When the
     user has nothing in the window, it's 0.
     """
-    cutoff = _window_start()
     used: int = db.execute(
         select(func.count())
         .select_from(model)
-        .where(user_id_attr == user_id, model.created_at >= cutoff)
+        .where(*_visible_clauses(model, user_id_attr, user_id))
     ).scalar_one()
 
     remaining = max(0, DAILY_SUBMISSION_LIMIT - used)

@@ -4,7 +4,7 @@
  * with the same handle. Collapse leaves a one-line bar so the map stays usable.
  */
 
-import { ActionIcon, Group, Text } from '@mantine/core';
+import { Group, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import type { Feature, GeoJsonProperties, Geometry, LineString, MultiLineString } from 'geojson';
 import {
@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react';
 import { mediaMaxWidth } from '../../lib/breakpoints';
+import { IconButton } from '../ui/IconButton';
 import { MAP_Z } from './mapZIndex';
 import type { ProfileChartRow } from './profileChartRows';
 import {
@@ -25,6 +26,7 @@ import {
   PROFILE_DOCK_MIN_PX,
 } from './profileCursorSync';
 import type { ProfileRangeStats } from './profileRange';
+import { useMapSheetDialog } from './useMapSheetDialog';
 
 const ElevationProfileChart = lazy(async () => {
   const mod = await import('./ElevationProfileChart');
@@ -65,7 +67,15 @@ export function ElevationProfileDock({
   const narrow = useMediaQuery(mediaMaxWidth('md'), false, { getInitialValueInEffect: false });
   const [height, setHeight] = useState(PROFILE_DOCK_DEFAULT_PX);
   const [collapsed, setCollapsed] = useState(false);
+  const narrowSheet = narrow && !collapsed;
   const sectionRef = useRef<HTMLElement | null>(null);
+  const sheetDialog = useMapSheetDialog<HTMLElement>(
+    narrowSheet,
+    onClose,
+    MAP_Z.profile,
+    undefined,
+    sectionRef
+  );
   const dragOrigin = useRef<{ y: number; height: number } | null>(null);
   const effectiveHeight = collapsed ? 44 : height;
 
@@ -79,7 +89,7 @@ export function ElevationProfileDock({
   }, [effectiveHeight]);
 
   function onHandlePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     dragOrigin.current = { y: event.clientY, height };
   }
 
@@ -106,6 +116,9 @@ export function ElevationProfileDock({
       data-collapsed={collapsed ? 'true' : 'false'}
       data-sheet={narrow ? 'true' : 'false'}
       aria-label={title}
+      {...(sheetDialog.modal
+        ? { role: 'dialog' as const, 'aria-modal': true as const, tabIndex: -1 as const }
+        : undefined)}
       style={{
         position: 'absolute',
         left: 0,
@@ -122,52 +135,56 @@ export function ElevationProfileDock({
         boxShadow: '0 -2px 10px rgba(0,0,0,0.12)',
       }}
     >
-      <button
-        type="button"
-        data-testid="elevation-profile-resize"
-        role="slider"
-        aria-label="Cambiar alto del perfil"
-        aria-valuemin={PROFILE_DOCK_MIN_PX}
-        aria-valuemax={PROFILE_DOCK_MAX_PX}
-        aria-valuenow={height}
-        onPointerDown={onHandlePointerDown}
-        onPointerMove={onHandlePointerMove}
-        onPointerUp={onHandlePointerUp}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowUp') {
-            nudgeHeight(20);
-          }
-          if (event.key === 'ArrowDown') {
-            nudgeHeight(-20);
-          }
-        }}
-        style={{
-          flex: '0 0 auto',
-          height: narrow ? 28 : 14,
-          border: 0,
-          background: 'transparent',
-          cursor: 'ns-resize',
-          touchAction: 'none',
-        }}
-      >
-        <span
-          style={{
-            display: 'block',
-            width: 36,
-            height: 4,
-            margin: '4px auto 0',
-            borderRadius: 4,
-            background: 'var(--mantine-color-gray-5)',
+      {/* Colapsado en el teléfono el asa competía con los 44px de cerrar/expandir. */}
+      {narrow && collapsed ? null : (
+        <button
+          type="button"
+          data-testid="elevation-profile-resize"
+          role="slider"
+          aria-label="Cambiar alto del perfil"
+          aria-valuemin={PROFILE_DOCK_MIN_PX}
+          aria-valuemax={PROFILE_DOCK_MAX_PX}
+          aria-valuenow={height}
+          onPointerDown={onHandlePointerDown}
+          onPointerMove={onHandlePointerMove}
+          onPointerUp={onHandlePointerUp}
+          onPointerCancel={onHandlePointerUp}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowUp') {
+              nudgeHeight(20);
+            }
+            if (event.key === 'ArrowDown') {
+              nudgeHeight(-20);
+            }
           }}
-        />
-      </button>
+          style={{
+            flex: '0 0 auto',
+            height: narrow ? 'var(--cc-touch-min, 44px)' : 14,
+            border: 0,
+            background: 'transparent',
+            cursor: 'ns-resize',
+            touchAction: 'none',
+          }}
+        >
+          <span
+            style={{
+              display: 'block',
+              width: 36,
+              height: 4,
+              margin: '4px auto 0',
+              borderRadius: 4,
+              background: 'var(--mantine-color-gray-5)',
+            }}
+          />
+        </button>
+      )}
       <Group justify="space-between" wrap="nowrap" px="sm" gap="xs">
         <Text size="xs" fw={700}>
           {title}
           {estimate ? ' · estimación mientras dibujás' : ''}
         </Text>
         <Group gap={4} wrap="nowrap">
-          <ActionIcon
+          <IconButton
             size="sm"
             variant="subtle"
             aria-expanded={!collapsed}
@@ -175,10 +192,10 @@ export function ElevationProfileDock({
             onClick={() => setCollapsed((value) => !value)}
           >
             {collapsed ? '▴' : '▾'}
-          </ActionIcon>
-          <ActionIcon size="sm" variant="subtle" aria-label="Cerrar perfil" onClick={onClose}>
+          </IconButton>
+          <IconButton size="sm" variant="subtle" aria-label="Cerrar perfil" onClick={onClose}>
             ×
-          </ActionIcon>
+          </IconButton>
         </Group>
       </Group>
       {collapsed ? null : (

@@ -141,6 +141,14 @@ async def lifespan(app: FastAPI):
         await get_cache().close()
     except Exception as e:
         logger.warning("Error closing JSON cache", error=str(e))
+    try:
+        # A probe that already passed its deadline can still be inside
+        # ee.Number.getInfo(). Waiting for that thread blocks container stop.
+        from app.core.health import shutdown_gee_probe
+
+        shutdown_gee_probe()
+    except Exception as e:
+        logger.warning("Error releasing GEE health probe", error=str(e))
     logger.info("Shutdown complete")
 
 

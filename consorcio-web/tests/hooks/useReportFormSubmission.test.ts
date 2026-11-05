@@ -138,7 +138,8 @@ describe('useReportFormSubmission', () => {
         tipo: 'desborde',
         latitud: -32.6,
         longitud: -62.7,
-      })
+      }),
+      expect.any(String)
     );
     expect(reset).toHaveBeenCalled();
     expect(setUbicacion).toHaveBeenCalledWith(null);
@@ -239,5 +240,155 @@ describe('useReportFormSubmission', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Error', color: 'alerta' })
     );
+  });
+
+  it('ignores a second call while the first submission is still in flight', async () => {
+    let release: (value: { id: string; message: string }) => void = () => {};
+    vi.mocked(publicApi.createReport).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const setEnviando = vi.fn();
+    const onAttemptStart = vi.fn();
+    const payload = { tipo: 'desborde', descripcion: 'descripcion valida', foto: null };
+
+    const { result } = renderHook(() =>
+      useReportFormSubmission({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        ubicacion: { lat: -32.6, lng: -62.7 },
+        announce: vi.fn(),
+        form: { values: payload, reset: vi.fn() },
+        setEnviando,
+        setUbicacion: vi.fn(),
+        setFotoPreview: vi.fn(),
+        ...baseRateLimitProps,
+        onAttemptStart,
+      })
+    );
+
+    let first: Promise<void> = Promise.resolve();
+    await act(async () => {
+      first = result.current(payload);
+      await result.current(payload);
+    });
+
+    expect(publicApi.createReport).toHaveBeenCalledTimes(1);
+    expect(onAttemptStart).toHaveBeenCalledTimes(1);
+    expect(setEnviando.mock.calls.filter(([value]) => value === true)).toHaveLength(1);
+    expect(setEnviando).not.toHaveBeenCalledWith(false);
+
+    await act(async () => {
+      release({ id: 'rep-1', message: 'ok' });
+      await first;
+    });
+
+    expect(publicApi.createReport).toHaveBeenCalledTimes(1);
+    expect(setEnviando).toHaveBeenLastCalledWith(false);
+  });
+
+  it('writes the offline draft once and only then accepts another submit', async () => {
+    let rejectCreate: (error: unknown) => void = () => {};
+    vi.mocked(publicApi.createReport).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectCreate = reject;
+        })
+    );
+    const onOfflineFailure = vi.fn();
+    const setEnviando = vi.fn();
+    const payload = {
+      tipo: 'desborde',
+      descripcion: 'Canal tapado cerca del puente',
+      foto: null,
+    };
+    sessionStorage.clear();
+
+    const { result } = renderHook(() =>
+      useReportFormSubmission({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        ubicacion: { lat: -32.6, lng: -62.7 },
+        announce: vi.fn(),
+        form: { values: payload, reset: vi.fn() },
+        setEnviando,
+        setUbicacion: vi.fn(),
+        setFotoPreview: vi.fn(),
+        ...baseRateLimitProps,
+        onOfflineFailure,
+      })
+    );
+
+    let first: Promise<void> = Promise.resolve();
+    await act(async () => {
+      first = result.current(payload);
+      await result.current(payload);
+    });
+
+    expect(publicApi.createReport).toHaveBeenCalledTimes(1);
+    expect(onOfflineFailure).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('cc-draft-reporte')).toBeNull();
+
+    await act(async () => {
+      rejectCreate(new QueryError('API Error: 503', 503, '/denuncias'));
+      await first;
+    });
+
+    expect(onOfflineFailure).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(sessionStorage.getItem('cc-draft-reporte') ?? '{}')).toMatchObject({
+      tipo: 'desborde',
+      descripcion: 'Canal tapado cerca del puente',
+      lat: -32.6,
+      lng: -62.7,
+    });
+    expect(setEnviando).toHaveBeenLastCalledWith(false);
+
+    vi.mocked(publicApi.createReport).mockResolvedValue({ id: 'rep-2', message: 'ok' });
+    await act(async () => {
+      await result.current(payload);
+    });
+    expect(publicApi.createReport).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses the idempotency key when a lost response is retried', async () => {
+    vi.mocked(publicApi.createReport).mockRejectedValueOnce(new QueryError('API Error: 503', 503));
+    const payload = { tipo: 'desborde', descripcion: 'descripcion valida', foto: null };
+    const { result } = renderHook(() =>
+      useReportFormSubmission({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        ubicacion: { lat: -32.6, lng: -62.7 },
+        announce: vi.fn(),
+        form: { values: payload, reset: vi.fn() },
+        setEnviando: vi.fn(),
+        setUbicacion: vi.fn(),
+        setFotoPreview: vi.fn(),
+        ...baseRateLimitProps,
+        onOfflineFailure: vi.fn(),
+      })
+    );
+
+    await act(async () => {
+      await result.current(payload);
+    });
+    vi.mocked(publicApi.createReport).mockResolvedValue({ id: 'rep-1', message: 'ok' });
+    await act(async () => {
+      await result.current(payload);
+    });
+
+    const firstKey = vi.mocked(publicApi.createReport).mock.calls[0]?.[1];
+    const retryKey = vi.mocked(publicApi.createReport).mock.calls[1]?.[1];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(retryKey).toBe(firstKey);
+
+    await act(async () => {
+      await result.current(payload);
+    });
+    expect(vi.mocked(publicApi.createReport).mock.calls[2]?.[1]).not.toBe(firstKey);
   });
 });

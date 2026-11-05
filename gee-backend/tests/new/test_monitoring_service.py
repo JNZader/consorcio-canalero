@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from app.domains.monitoring.schemas import SugerenciaUpdate
 from app.domains.monitoring.service import MonitoringService
 
 
@@ -233,8 +234,23 @@ class TestSugerenciaService:
 
     def test_list_sugerencias(self, service, mock_repo):
         mock_repo.get_all_sugerencias.return_value = ([], 0)
-        items, total = service.list_sugerencias(MagicMock())
+        items, total = service.list_sugerencias(
+            MagicMock(),
+            page=2,
+            limit=5,
+            estado="pendiente",
+            categoria="infraestructura",
+            tipo="ciudadana",
+            search="barro",
+        )
         assert total == 0
+        kwargs = mock_repo.get_all_sugerencias.call_args.kwargs
+        assert kwargs["page"] == 2
+        assert kwargs["limit"] == 5
+        assert kwargs["estado_filter"] == "pendiente"
+        assert kwargs["categoria_filter"] == "infraestructura"
+        assert kwargs["tipo_filter"] == "ciudadana"
+        assert kwargs["search"] == "barro"
 
     def test_create_sugerencia(self, service, mock_repo):
         db = MagicMock()
@@ -247,15 +263,17 @@ class TestSugerenciaService:
 
     def test_update_sugerencia_found(self, service, mock_repo):
         db = MagicMock()
-        sug = SimpleNamespace(id=uuid.uuid4())
+        sug = SimpleNamespace(id=uuid.uuid4(), estado="pendiente")
+        mock_repo.get_sugerencia_by_id.return_value = sug
         mock_repo.update_sugerencia.return_value = sug
-        result = service.update_sugerencia(db, sug.id, MagicMock())
+        result = service.update_sugerencia(db, sug.id, SugerenciaUpdate(respuesta="nota"))
+        assert result is sug
         db.commit.assert_called_once()
 
     def test_update_sugerencia_not_found(self, service, mock_repo):
-        mock_repo.update_sugerencia.return_value = None
+        mock_repo.get_sugerencia_by_id.return_value = None
         with pytest.raises(HTTPException) as exc_info:
-            service.update_sugerencia(MagicMock(), uuid.uuid4(), MagicMock())
+            service.update_sugerencia(MagicMock(), uuid.uuid4(), SugerenciaUpdate())
         assert exc_info.value.status_code == 404
 
     def test_get_sugerencias_stats(self, service, mock_repo):

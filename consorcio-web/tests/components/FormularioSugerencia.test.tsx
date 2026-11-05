@@ -1,12 +1,16 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { isValidElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FormularioSugerenciaContent } from '../../src/components/FormularioSugerencia';
 import { sugerenciasApi } from '../../src/lib/api';
+import { SUGGESTION_DRAFT_KEY } from '../../src/lib/formDrafts';
+import { QueryError } from '../../src/lib/queryError';
+import formStyles from '../../src/styles/components/form.module.css';
 
 const useContactVerificationMock = vi.fn();
 
@@ -15,7 +19,18 @@ vi.mock('../../src/hooks/useContactVerification', () => ({
 }));
 
 vi.mock('../../src/components/verification', () => ({
-  ContactVerificationSection: () => <div>verification-section</div>,
+  ContactVerificationSection: ({
+    onLoginWithGoogle,
+  }: {
+    onLoginWithGoogle?: () => void;
+  }) => (
+    <div>
+      <div>verification-section</div>
+      <button type="button" onClick={() => onLoginWithGoogle?.()}>
+        Continuar con Google
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../../src/lib/api', () => ({
@@ -38,6 +53,7 @@ vi.mock('../../src/components/suggestion-form/SuggestionGeometrySection', () => 
 vi.mock('@mantine/notifications', () => ({
   notifications: {
     show: vi.fn(),
+    hide: vi.fn(),
   },
 }));
 
@@ -54,6 +70,18 @@ const createTestQueryClient = () =>
       mutations: { retry: false },
     },
   });
+
+function findOnClick(node: ReactNode): (() => void) | undefined {
+  if (!isValidElement(node)) return undefined;
+  const props = node.props as { onClick?: () => void; children?: ReactNode };
+  if (typeof props.onClick === 'function') return props.onClick;
+  const children = Array.isArray(props.children) ? props.children : [props.children];
+  for (const child of children) {
+    const found = findOnClick(child);
+    if (found) return found;
+  }
+  return undefined;
+}
 
 const renderForm = () => {
   const queryClient = createTestQueryClient();
@@ -114,7 +142,11 @@ describe('FormularioSugerencia', () => {
 
       expect(screen.getByText(/verificá tu identidad para enviar/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toBeEnabled();
-      expect(screen.getByText(/podés completar la sugerencia ahora/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toHaveClass('touch-target-min');
+      expect(screen.getByRole('button', { name: /enviar sugerencia/i }).parentElement).toHaveClass(
+        formStyles.submitBar
+      );
+      expect(screen.getByText(/guardamos el texto y el trazo del mapa/i)).toBeInTheDocument();
     });
 
     it.each([
@@ -384,6 +416,174 @@ describe('FormularioSugerencia', () => {
 
       await user.click(toggleBtn);
       expect(screen.getByText('geometry-section')).toBeInTheDocument();
+    });
+  });
+
+  describe('Mobile parity with the report form', () => {
+    const titulo = 'Mejorar drenaje principal';
+    const descripcion = 'Propongo limpiar y ensanchar el drenaje antes de la temporada de lluvias';
+
+    async function fill(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByLabelText(/t[ií]tulo de la sugerencia/i), titulo);
+      await user.type(
+        screen.getByPlaceholderText(/Explicá tu sugerencia con el mayor detalle posible/i),
+        descripcion
+      );
+    }
+
+    it('saves the draft before Google login and leaves an empty form alone', async () => {
+      sessionStorage.clear();
+      const loginWithGoogle = vi.fn();
+      useContactVerificationMock.mockReturnValue({
+        contactoVerificado: false,
+        userEmail: null,
+        userName: null,
+        loading: false,
+        loginWithGoogle,
+        logout: vi.fn(),
+      });
+
+      const user = userEvent.setup();
+      const { unmount } = renderForm();
+      await user.click(screen.getByRole('button', { name: /continuar con google/i }));
+      expect(loginWithGoogle).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.getItem(SUGGESTION_DRAFT_KEY)).toBeNull();
+
+      await fill(user);
+      await user.click(screen.getByRole('button', { name: /continuar con google/i }));
+      expect(loginWithGoogle).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(sessionStorage.getItem(SUGGESTION_DRAFT_KEY) ?? 'null')).toMatchObject({
+        titulo,
+        descripcion,
+      });
+      unmount();
+    });
+
+    it('shows an inline retry and a toast without clearing the suggestion', async () => {
+      sessionStorage.clear();
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
+      vi.mocked(sugerenciasApi.create).mockRejectedValueOnce(
+        new QueryError('API Error: 503', 503, '/sugerencias')
+      );
+
+      const user = userEvent.setup();
+      renderForm();
+      await fill(user);
+      await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
+
+      expect(await screen.findByRole('alert', { name: /sin conexión/i })).toHaveTextContent(
+        /los datos siguen en el formulario/i
+      );
+      expect(screen.getByLabelText(/t[ií]tulo de la sugerencia/i)).toHaveValue(titulo);
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'sugerencia-sin-conexion',
+          title: 'Sin conexión',
+          color: 'orange',
+          autoClose: false,
+        })
+      );
+
+      await user.click(screen.getByRole('button', { name: /reintentar envío/i }));
+      expect(sugerenciasApi.create).toHaveBeenCalledTimes(2);
+      await waitFor(() => {
+        expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
+      });
+      expect(notifications.hide).toHaveBeenCalledWith('sugerencia-sin-conexion');
+    });
+
+    it('keeps a normal error as a toast and does not show the offline retry', async () => {
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
+      vi.mocked(sugerenciasApi.create).mockRejectedValueOnce(new QueryError('dato inválido', 422));
+
+      const user = userEvent.setup();
+      renderForm();
+      await fill(user);
+      await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
+
+      await waitFor(() => {
+        expect(notifications.show).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Error', color: 'alerta' })
+        );
+      });
+      expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/t[ií]tulo de la sugerencia/i)).toHaveValue(titulo);
+    });
+
+    it('ignores a second submit and a toast retry while the POST is in flight', async () => {
+      sessionStorage.clear();
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
+      let releaseRetry: (value: { id: string }) => void = () => {};
+      vi.mocked(sugerenciasApi.create)
+        .mockRejectedValueOnce(new QueryError('API Error: 503', 503, '/sugerencias'))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              releaseRetry = resolve;
+            })
+        );
+
+      const user = userEvent.setup();
+      renderForm();
+      await fill(user);
+      await user.click(screen.getByRole('button', { name: /enviar sugerencia/i }));
+
+      const alertRetry = await screen.findByRole('button', { name: /reintentar envío/i });
+      const toastCall = vi
+        .mocked(notifications.show)
+        .mock.calls.find((call) => (call[0] as { id?: string } | undefined)?.id === 'sugerencia-sin-conexion');
+      const retryFromToast = findOnClick(
+        (toastCall?.[0] as { message?: ReactNode } | undefined)?.message
+      );
+      expect(retryFromToast).toEqual(expect.any(Function));
+
+      await act(async () => {
+        retryFromToast?.();
+        retryFromToast?.();
+        alertRetry.click();
+      });
+
+      expect(sugerenciasApi.create).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('button', { name: /reintentar envío/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toBeDisabled();
+
+      await act(async () => {
+        releaseRetry({ id: 'sug-2' });
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
+      });
+      expect(sugerenciasApi.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('disables submit and ignores a second submit while the POST is in flight', async () => {
+      useContactVerificationMock.mockReturnValue(verifiedContactState);
+      let release: (value: { id: string }) => void = () => {};
+      vi.mocked(sugerenciasApi.create).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+
+      const user = userEvent.setup();
+      renderForm();
+      await fill(user);
+
+      const submit = screen.getByRole('button', { name: /enviar sugerencia/i });
+      const form = submit.closest('form');
+      expect(form).not.toBeNull();
+      fireEvent.submit(form as HTMLFormElement);
+      fireEvent.submit(form as HTMLFormElement);
+
+      expect(sugerenciasApi.create).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: /enviar sugerencia/i })).toBeDisabled();
+
+      await act(async () => {
+        release({ id: 'sug-1' });
+      });
+      await screen.findByText(/Gracias por tu sugerencia/i);
+      expect(sugerenciasApi.create).toHaveBeenCalledTimes(1);
     });
   });
 });

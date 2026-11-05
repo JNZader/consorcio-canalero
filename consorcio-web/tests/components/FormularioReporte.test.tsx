@@ -1,11 +1,13 @@
 import { MantineProvider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { isValidElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FormularioContenido } from '../../src/components/FormularioReporte';
 import { publicApi } from '../../src/lib/api';
+import * as formDrafts from '../../src/lib/formDrafts';
 import { QueryError } from '../../src/lib/queryError';
 
 const useContactVerificationMock = vi.fn();
@@ -113,6 +115,18 @@ vi.mock('../../src/lib/logger', () => ({
     error: vi.fn(),
   },
 }));
+
+function findOnClick(node: ReactNode): (() => void) | undefined {
+  if (!isValidElement(node)) return undefined;
+  const props = node.props as { onClick?: () => void; children?: ReactNode };
+  if (typeof props.onClick === 'function') return props.onClick;
+  const children = Array.isArray(props.children) ? props.children : [props.children];
+  for (const child of children) {
+    const found = findOnClick(child);
+    if (found) return found;
+  }
+  return undefined;
+}
 
 const renderForm = () =>
   render(
@@ -315,7 +329,8 @@ describe('FormularioReporte', () => {
           descripcion: expect.any(String),
           latitud: expect.any(Number),
           longitud: expect.any(Number),
-        })
+        }),
+        expect.any(String)
       );
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
@@ -345,7 +360,8 @@ describe('FormularioReporte', () => {
         expect.objectContaining({
           tipo: expect.any(String),
           descripcion: expect.any(String),
-        })
+        }),
+        expect.any(String)
       );
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
@@ -484,6 +500,96 @@ describe('FormularioReporte', () => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Error', color: 'alerta' })
       );
+    });
+
+    it('disables submit and ignores a second submit while the POST is in flight', async () => {
+      let release: (value: { id: string; message: string }) => void = () => {};
+      vi.mocked(publicApi.createReport).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.click(screen.getByRole('button', { name: /select-type/i }));
+      await user.type(screen.getByLabelText(/descripci[oó]n/i), descripcion);
+      await user.click(screen.getByRole('button', { name: /ingresar coordenadas manualmente/i }));
+      await user.click(screen.getByRole('button', { name: /set-coordinates/i }));
+
+      const submit = screen.getByRole('button', { name: /enviar reporte/i });
+      const form = submit.closest('form');
+      expect(form).not.toBeNull();
+      fireEvent.submit(form as HTMLFormElement);
+      fireEvent.submit(form as HTMLFormElement);
+
+      expect(publicApi.createReport).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: /enviar reporte/i })).toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent(/enviando reporte/i);
+
+      await act(async () => {
+        release({ id: 'rep-1', message: 'ok' });
+      });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /enviar reporte/i })).toBeEnabled();
+      });
+      expect(publicApi.createReport).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores Alert and toast Reintentar while a retry is still in flight', async () => {
+      sessionStorage.clear();
+      const saveDraft = vi.spyOn(formDrafts, 'saveReportDraft');
+      let releaseRetry: (value: { id: string; message: string }) => void = () => {};
+      vi.mocked(publicApi.createReport)
+        .mockRejectedValueOnce(new QueryError('API Error: 503', 503, '/denuncias'))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              releaseRetry = resolve;
+            })
+        );
+
+      const user = userEvent.setup();
+      renderForm();
+      await fillAndSubmit(user);
+
+      const alertRetry = await screen.findByRole('button', { name: /reintentar envío/i });
+      expect(alertRetry).toBeEnabled();
+      const toastCall = vi
+        .mocked(notifications.show)
+        .mock.calls.find((call) => (call[0] as { id?: string } | undefined)?.id === 'reporte-sin-conexion');
+      const retryFromToast = findOnClick(
+        (toastCall?.[0] as { message?: ReactNode } | undefined)?.message
+      );
+      expect(retryFromToast).toEqual(expect.any(Function));
+
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+      expect(saveDraft.mock.calls[0]?.[0]).toMatchObject({ descripcion });
+
+      await act(async () => {
+        retryFromToast?.();
+        retryFromToast?.();
+        alertRetry.click();
+      });
+
+      expect(publicApi.createReport).toHaveBeenCalledTimes(2);
+      expect(notifications.hide).toHaveBeenCalledWith('reporte-sin-conexion');
+      expect(screen.getByRole('button', { name: /reintentar envío/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /enviar reporte/i })).toBeDisabled();
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(sessionStorage.getItem('cc-draft-reporte') ?? 'null')).toMatchObject({
+        descripcion,
+      });
+
+      await act(async () => {
+        releaseRetry({ id: 'rep-2', message: 'ok' });
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
+      });
+      expect(publicApi.createReport).toHaveBeenCalledTimes(2);
+      saveDraft.mockRestore();
     });
   });
 });

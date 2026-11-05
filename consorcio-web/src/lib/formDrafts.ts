@@ -149,7 +149,16 @@ export function loadSuggestionDraft(): SuggestionDraft | null {
 }
 
 export function saveSuggestionDraft(draft: SuggestionDraft): void {
-  sessionStorage.setItem(SUGGESTION_DRAFT_KEY, JSON.stringify(draft));
+  try {
+    sessionStorage.setItem(SUGGESTION_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    const { geometry: _geometry, ...minimal } = draft;
+    try {
+      sessionStorage.setItem(SUGGESTION_DRAFT_KEY, JSON.stringify(minimal));
+    } catch {
+      // Ignore storage failure
+    }
+  }
 }
 
 export function clearSuggestionDraft(): void {

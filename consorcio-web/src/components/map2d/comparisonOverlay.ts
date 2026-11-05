@@ -2,19 +2,19 @@ import type { FeatureCollection, LineString, Point } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 
 import type { WATERWAY_DEFS } from '../../hooks/useWaterways';
+import { destroyMapLibreMap } from '../../lib/maplibreLifecycle';
 import { getSoilPmtilesArchiveKey } from '../../lib/soilPmtiles';
 import type { CanalFeatureProperties, Etapa } from '../../types/canales';
 import type { EscuelaFeatureProperties } from '../../types/escuelas';
 import type { PilarVerdeData } from '../../types/pilarVerde';
 import {
+  applyLayerOpacity,
+  applyLayerOrder,
   LAYER_RENDER_REGISTRY,
   RENDERABLE_UI_LAYER_IDS,
   type RenderableUiLayerId,
-  applyLayerOpacity,
-  applyLayerOrder,
 } from './layerRenderRegistry';
 import { buildWaterwayLayerConfigs } from './map2dConfig';
-import { MAP_GLYPHS_URL } from './roadLabelLayer';
 import { setLayerVisibility } from './map2dUtils';
 import {
   syncAgroAceptadaLayer,
@@ -37,8 +37,9 @@ import {
   syncYpfEstacionBombeoLayer,
   syncZonaLayer,
 } from './mapLayerEffectHelpers';
-import type { RoadFlowKindVisibility } from './roadFlowLayers';
 import { syncMartinSuggestionLayers } from './mapRasterOverlayHelpers';
+import type { RoadFlowKindVisibility } from './roadFlowLayers';
+import { MAP_GLYPHS_URL } from './roadLabelLayer';
 
 const COMPARISON_SOURCE_ID = 'comparison-left';
 const COMPARISON_LAYER_ID = 'comparison-left-layer';
@@ -240,7 +241,10 @@ export function syncComparisonVectorLayers(
     !!visible.sentido_camino
   );
 
-  applyLayerOpacity(map as unknown as Parameters<typeof applyLayerOpacity>[0], inputs.opacityByLayer);
+  applyLayerOpacity(
+    map as unknown as Parameters<typeof applyLayerOpacity>[0],
+    inputs.opacityByLayer
+  );
   applyLayerOrder(map as unknown as Parameters<typeof applyLayerOrder>[0], inputs.orderByLayer);
 }
 
@@ -347,7 +351,7 @@ export function createComparisonOverlayController({
       baseMap.off('move', syncView);
       baseMap.off('resize', handleResize);
       overlayMap.off('load', handleLoad);
-      overlayMap.remove();
+      destroyMapLibreMap(overlayMap);
     },
   };
 }

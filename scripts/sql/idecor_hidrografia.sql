@@ -49,5 +49,10 @@ SELECT id, nombre, geometria FROM idecor_cuencas;
 CREATE OR REPLACE VIEW vt_idecor_canales_riego AS
 SELECT id, nombre, geometria FROM idecor_canales_riego;
 
-GRANT SELECT ON vt_idecor_consorcios, vt_idecor_cursos, vt_idecor_cuencas, vt_idecor_canales_riego
-    TO PUBLIC;
+-- CREATE OR REPLACE VIEW keeps grants already issued. A previous run of
+-- this file granted SELECT to PUBLIC, which contradicts
+-- scripts/provision_martin_reader.sql (SELECT only for martin_role).
+-- Re-running this script takes PUBLIC off the views. Martin receives
+-- SELECT from the provision script, not from here.
+REVOKE ALL ON vt_idecor_consorcios, vt_idecor_cursos, vt_idecor_cuencas, vt_idecor_canales_riego
+    FROM PUBLIC;

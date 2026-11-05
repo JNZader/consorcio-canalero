@@ -179,12 +179,12 @@ export function LoginFormContent() {
       <Paper shadow="md" p="xl" radius="md" w={400}>
         <Box ta="center" mb="xl">
           <Group justify="center" gap="xs" mb="xs">
-            <IconWaveSine size={24} color="var(--mantine-color-blue-6)" />
-            <Text size="xl" fw={700} c="blue">
+            <IconWaveSine size={24} color="var(--cc-color-wordmark)" />
+            <Text size="xl" fw={700} style={{ color: 'var(--cc-color-wordmark)' }}>
               Consorcio Canalero
             </Text>
           </Group>
-          <Text c="gray.6" size="sm">
+          <Text c="dimmed" size="sm">
             10 de Mayo - Departamento Unión
           </Text>
         </Box>

@@ -18,7 +18,12 @@ describe('solera and survey comparison', () => {
       { distance_m: 30, elevation_m: 99, solera_m: 97.5 },
     ]);
     expect(present.ok).toBe(true);
-    if (present.ok) expect(present.rows[0]?.cover_m).toBe(2);
+    if (present.ok) {
+      expect(present.rows[0]?.cover_m).toBe(2);
+      // The band is the absolute elevations (~100 m), not the 0–3 m difference.
+      expect(present.rows[0]?.cover_band).toEqual([98, 100]);
+      expect(present.rows[1]?.cover_band).toEqual([97.5, 99]);
+    }
   });
 
   it('refuses a second profile that was never stored', () => {

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.cache import get_cache
 from app.core.exceptions import AppException, NotFoundError, get_safe_error_detail
 from app.core.logging import get_logger
+from app.core.singleflight import SingleFlight
 from app.db.session import get_db
 from app.domains.geo.rainfall import catalog_view
 from app.domains.geo.rainfall.repository import read_events
@@ -40,6 +41,54 @@ async def _run_blocking(func, *args, **kwargs):
     structlog binding, etc.) so logging stays consistent.
     """
     return await asyncio.to_thread(func, *args, **kwargs)
+
+
+def satellite_image_flight_key(
+    *,
+    sensor: str,
+    target_date: date,
+    days_buffer: int,
+    max_cloud: int,
+    visualization: str,
+    mode: str,
+) -> str:
+    """Identity of one Earth Engine image product.
+
+    Public callers cannot send a bbox. The composite is clipped to the
+    server-side zona, so the key is every argument that changes the tile:
+    sensor, date, day buffer, cloud threshold, visualization and scene versus
+    composite. The same string is the JSON cache key.
+    """
+    return (
+        f"gee:image:{sensor}:{target_date.isoformat()}:{days_buffer}:"
+        f"{max_cloud}:{visualization}:{mode}"
+    )
+
+
+def gee_layer_flight_key(layer_name: str) -> str:
+    """Identity of one Earth Engine vector layer. Same string as the cache key."""
+    return f"gee:layer:{layer_name}"
+
+
+# One map for every public GEE product. Two uvicorn workers share the Redis
+# lock inside ``SingleFlight``; callers on the same loop share the task.
+_gee_flights = SingleFlight()
+
+
+async def _coalesce_gee_miss(cache, key: str, compute):
+    """Run ``compute`` once for an in-flight cache miss and share its result.
+
+    The caller already saw a miss. The leader checks again so a peer that
+    finished while this task waited for the flight does not call Earth Engine.
+    """
+
+    async def _load():
+        again = await cache.get(key)
+        if again is not None:
+            return again
+        return await compute()
+
+    return await _gee_flights.do(key, _load, cache=cache)
 
 
 # The three `HISTORIC_FLOODS` anchors that used to live here are gone as of
@@ -207,21 +256,22 @@ async def get_estadisticas_caminos_impl(*, ensure_gee) -> JSONResponse:
 
 async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
     cache = get_cache()
-    cache_key = f"gee:layer:{layer_name}"
+    cache_key = gee_layer_flight_key(layer_name)
     cached = await cache.get(cache_key)
     if cached is not None:
         return JSONResponse(
             content=cached,
             headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
         )
-    svc = ensure_gee()
-    try:
+
+    async def _compute():
+        svc = ensure_gee()
         geojson = await _run_blocking(svc["get_layer_geojson"], layer_name)
         await cache.set(cache_key, geojson, ttl_seconds=GEE_LAYER_TTL)
-        return JSONResponse(
-            content=geojson,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
-        )
+        return geojson
+
+    try:
+        geojson = await _coalesce_gee_miss(cache, cache_key, _compute)
     except ValueError as e:
         raise NotFoundError(
             message=get_safe_error_detail(e, "capa"),
@@ -229,6 +279,8 @@ async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
             resource_type="layer",
             resource_id=layer_name,
         )
+    except AppException:
+        raise
     except Exception as e:
         logger.error("Error obteniendo capa GEE", layer=layer_name, error=str(e))
         raise AppException(
@@ -236,6 +288,10 @@ async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
             code="GEE_LAYER_ERROR",
             status_code=500,
         )
+    return JSONResponse(
+        content=geojson,
+        headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+    )
 
 
 async def get_available_image_dates_impl(
@@ -471,12 +527,20 @@ async def get_satellite_image_impl(
     ensure_gee=None,
 ):
     cache = get_cache()
-    cache_key = f"gee:image:{sensor}:{target_date.isoformat()}:{days_buffer}:{max_cloud}:{visualization}:{mode}"
+    cache_key = satellite_image_flight_key(
+        sensor=sensor,
+        target_date=target_date,
+        days_buffer=days_buffer,
+        max_cloud=max_cloud,
+        visualization=visualization,
+        mode=mode,
+    )
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
-    svc = ensure_gee()
-    try:
+
+    async def _compute():
+        svc = ensure_gee()
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
             explorer.get_image,
@@ -494,6 +558,9 @@ async def get_satellite_image_impl(
             )
         await cache.set(cache_key, result, ttl_seconds=GEE_SENTINEL2_TTL)
         return result
+
+    try:
+        return await _coalesce_gee_miss(cache, cache_key, _compute)
     except AppException:
         raise
     except Exception as e:
@@ -767,6 +834,17 @@ async def get_historic_flood_tiles_impl(
                 target_date=flood_date,
                 days_buffer=days_buffer,
                 visualization="vv_flood",
+            )
+
+        # An error dict used to be returned as HTTP 200, so monitors never
+        # saw the miss (R1-004). Both the optical lookup and the SAR
+        # fallback failed: this is not a tile payload.
+        if "error" in result:
+            raise NotFoundError(
+                message="No se encontró una imagen para esta inundación",
+                code="HISTORIC_FLOOD_IMAGE_NOT_FOUND",
+                resource_type="historic_flood",
+                resource_id=flood_id,
             )
 
         # Tag composite so a persisted flood selection regenerates with the

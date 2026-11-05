@@ -1,16 +1,25 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DrawnLineFeatureCollection } from '../../src/components/map/LineDrawControl';
 import { SuggestionGeometrySection } from '../../src/components/suggestion-form/SuggestionGeometrySection';
+import formStyles from '../../src/styles/components/form.module.css';
 
-const { addReferenceLayersMock, MockMap } = vi.hoisted(() => {
+const { addReferenceLayersMock, mapInstances, mapOptions, MockMap } = vi.hoisted(() => {
   const addReferenceLayersMock = vi.fn();
+  const mapOptions: Array<Record<string, unknown>> = [];
+  const mapInstances: MockMap[] = [];
 
   class MockMap {
     readonly handlers = new Map<string, (event?: unknown) => void>();
     readonly remove = vi.fn();
+    readonly flyTo = vi.fn();
+
+    constructor(options?: Record<string, unknown>) {
+      mapOptions.push(options ?? {});
+      mapInstances.push(this);
+    }
 
     on(event: string, handler: (event?: unknown) => void) {
       this.handlers.set(event, handler);
@@ -23,7 +32,7 @@ const { addReferenceLayersMock, MockMap } = vi.hoisted(() => {
     }
   }
 
-  return { addReferenceLayersMock, MockMap };
+  return { addReferenceLayersMock, mapInstances, mapOptions, MockMap };
 });
 
 vi.mock('maplibre-gl', () => ({
@@ -70,6 +79,11 @@ const featureGeometry = {
 } satisfies DrawnLineFeatureCollection;
 
 describe('<SuggestionGeometrySection />', () => {
+  beforeEach(() => {
+    mapOptions.length = 0;
+    mapInstances.length = 0;
+  });
+
   it('labels the suggestion map and connects instructions, summary and reference text', () => {
     renderWithMantine(<SuggestionGeometrySection geometry={null} onChange={() => {}} />);
 
@@ -78,6 +92,9 @@ describe('<SuggestionGeometrySection />', () => {
     );
     expect(screen.getByRole('application', { name: /canal en mapa/i })).toHaveAccessibleDescription(
       /opcional: marcá un punto/i,
+    );
+    expect(screen.getByRole('application', { name: /canal en mapa/i })).toHaveAccessibleDescription(
+      /con un dedo se desplaza la página/i,
     );
     expect(screen.getByRole('application', { name: /canal en mapa/i })).toHaveAccessibleDescription(
       /referencia: límite del consorcio/i,
@@ -100,9 +117,13 @@ describe('<SuggestionGeometrySection />', () => {
       <SuggestionGeometrySection geometry={featureGeometry} onChange={onChange} />,
     );
 
-    expect(screen.getByRole('button', { name: /mi ubicación \(gps\)/i })).toBeEnabled();
+    const gps = screen.getByRole('button', { name: /mi ubicación \(gps\)/i });
+    expect(gps).toBeEnabled();
+    expect(gps).toHaveClass('touch-target-min');
     const undoBtn = screen.getByRole('button', { name: /deshacer último punto/i });
     const clearBtn = screen.getByRole('button', { name: /limpiar dibujo/i });
+    expect(undoBtn).toHaveClass('touch-target-min');
+    expect(clearBtn).toHaveClass('touch-target-min');
 
     expect(undoBtn).toBeEnabled();
     expect(clearBtn).toBeEnabled();
@@ -137,9 +158,33 @@ describe('<SuggestionGeometrySection />', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('button', { name: /agregar ubicación en el mapa \(opcional\)/i }),
-    ).toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: /agregar ubicación en el mapa \(opcional\)/i });
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveClass('touch-target-min');
     expect(screen.queryByRole('application', { name: /canal en mapa/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps one-finger scroll on the page and shrinks the map like the report form', async () => {
+    renderWithMantine(<SuggestionGeometrySection geometry={null} onChange={() => {}} />);
+
+    const map = screen.getByRole('application', { name: /canal en mapa/i });
+    expect(map).toHaveClass(formStyles.mapContainer);
+    expect(map).toHaveClass(formStyles.mapContainerLarge);
+
+    await waitFor(() => expect(mapOptions).toHaveLength(1));
+    expect(mapOptions[0]?.cooperativeGestures).toBe(true);
+    expect(mapOptions[0]?.attributionControl).toEqual({ compact: true });
+    expect(mapOptions[0]?.locale).toMatchObject({
+      'CooperativeGesturesHandler.MobileHelpText': 'Usá dos dedos para mover el mapa',
+    });
+  });
+
+  it('destroys the map once on unmount', async () => {
+    const { unmount } = renderWithMantine(
+      <SuggestionGeometrySection geometry={null} onChange={() => {}} />,
+    );
+    await waitFor(() => expect(mapInstances).toHaveLength(1));
+    unmount();
+    expect(mapInstances[0]?.remove).toHaveBeenCalledTimes(1);
   });
 });

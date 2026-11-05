@@ -7,6 +7,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.domains.padron.models import EstadoConsorcista
+from app.shared.enum_params import choice_or_raise
+from app.shared.patch_fields import forbid_explicit_nulls
+
 
 _NON_DIGITS = re.compile(r"\D")
 
@@ -95,6 +99,14 @@ class ConsorcistaCreate(BaseModel):
     def validate_cuit(cls, v: str) -> str:
         return _normalize_cuit(v)
 
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, v: str) -> str:
+        parsed = choice_or_raise(v, EstadoConsorcista, "estado")
+        if parsed is None:
+            raise ValueError("estado invalido")
+        return parsed
+
 
 # ──────────────────────────────────────────────
 # UPDATE
@@ -125,6 +137,13 @@ class ConsorcistaUpdate(BaseModel):
         if v is None:
             return v
         return _normalize_cuit(v)
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, EstadoConsorcista, "estado")
+
+    _reject_nulls = forbid_explicit_nulls("nombre", "apellido", "cuit", "estado")
 
 
 # ──────────────────────────────────────────────

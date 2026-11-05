@@ -1,10 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { describe, expect, it } from 'vitest';
-
 import * as maplibregl from 'maplibre-gl';
+import { describe, expect, it } from 'vitest';
 import { bootMapLibreWorker, loadMapLibre } from '../../src/lib/maplibreLoader';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,21 +33,41 @@ describe('MapLibre GL JS v6', () => {
     bootMapLibreWorker();
   });
 
-  it('every remaining Map boot awaits the worker (or loadMapLibre)', () => {
-    const files = [
+  it('every remaining Map boot awaits the worker (or the shared lifecycle)', () => {
+    const direct = [
       'components/admin/CanalesPublicacionMap.tsx',
       'components/admin/sugerencias/components/SugerenciaGeometryMap.tsx',
-      'components/terrain/TerrainViewer3D.tsx',
       'components/admin/images/useImageExplorerMap.tsx',
+    ];
+    const shared = [
+      'components/terrain/TerrainViewer3D.tsx',
       'components/map2d/useMapInitialization.ts',
       'components/report-form/LocationSection.tsx',
       'components/suggestion-form/SuggestionGeometrySection.tsx',
     ];
     const fireAndForget = /bootMapLibreWorker\(\);\s*\n\s*(?:const|let) map = new /;
-    for (const rel of files) {
+    const directNew = /new maplibregl\.Map\(|new maplibre\.Map\(/;
+    for (const rel of direct) {
       const src = readFileSync(join(here, '../../src', rel), 'utf8');
       expect(src, rel).not.toMatch(fireAndForget);
-      expect(src, rel).toMatch(/await (?:bootMapLibreWorker|loadMapLibre)\(/);
+      expect(src, rel).toMatch(/await bootMapLibreWorker\(/);
     }
+    for (const rel of shared) {
+      const src = readFileSync(join(here, '../../src', rel), 'utf8');
+      expect(src, rel).not.toMatch(directNew);
+      expect(src, rel).toMatch(
+        /await (?:loadMapLibre|createMapLibreMap|createTerrainMapLibreMap)\(/
+      );
+    }
+    const lifecycle = readFileSync(join(here, '../../src/lib/maplibreLifecycle.ts'), 'utf8');
+    expect(lifecycle).toMatch(/await bootMapLibreWorker\(/);
+    expect(lifecycle).not.toMatch(/setWorkerUrl\s*\(/);
+    expect(lifecycle.match(/new maplibre\.Map\(/g)).toHaveLength(1);
+    const terrainAdapter = readFileSync(
+      join(here, '../../src/components/terrain/terrainMapLifecycle.ts'),
+      'utf8'
+    );
+    expect(terrainAdapter).toMatch(/createMapLibreMap\(/);
+    expect(terrainAdapter).not.toMatch(directNew);
   });
 });

@@ -1,6 +1,9 @@
 """FastAPI router for the settings domain."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -17,6 +20,16 @@ from app.domains.settings.service import SettingsService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 public_settings_router = APIRouter(prefix="/public/settings", tags=["public"])
+
+
+def _coerce_imagen(model: type[ImagenMapaParams] | type[ImagenComparacionParams], raw: object):
+    """Stored map-image JSON that no longer matches the schema reads as unset."""
+    if not raw:
+        return None
+    try:
+        return model.model_validate(raw)
+    except ValidationError:
+        return None
 
 
 def get_service() -> SettingsService:
@@ -79,7 +92,14 @@ def update_setting(
     _user=Depends(_require_admin()),
 ):
     """Update a setting value (require admin)."""
-    updated = service.update_setting(db, clave, payload.valor, payload.descripcion)
+    updated = service.update_setting(
+        db,
+        clave,
+        payload.valor,
+        payload.descripcion,
+        actor_id=uuid.UUID(str(_user.id)),
+        expected_updated_at=payload.expected_updated_at,
+    )
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Setting '{clave}' no encontrado")
     return updated
@@ -129,8 +149,8 @@ def get_public_mapa_imagen(
     principal_raw = service.get_setting(db, "mapa/imagen_principal")
     comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
 
-    principal = ImagenMapaParams(**principal_raw) if principal_raw else None
-    comparacion = ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
+    principal = _coerce_imagen(ImagenMapaParams, principal_raw)
+    comparacion = _coerce_imagen(ImagenComparacionParams, comparacion_raw)
 
     return ImagenMapaResponse(
         imagen_principal=principal,
@@ -156,7 +176,7 @@ def save_mapa_imagen_principal(
 
     # Return full response
     comparacion_raw = service.get_setting(db, "mapa/imagen_comparacion")
-    comparacion = ImagenComparacionParams(**comparacion_raw) if comparacion_raw else None
+    comparacion = _coerce_imagen(ImagenComparacionParams, comparacion_raw)
     return ImagenMapaResponse(
         imagen_principal=payload,
         imagen_comparacion=comparacion,
@@ -181,7 +201,7 @@ def save_mapa_imagen_comparacion(
 
     # Return full response
     principal_raw = service.get_setting(db, "mapa/imagen_principal")
-    principal = ImagenMapaParams(**principal_raw) if principal_raw else None
+    principal = _coerce_imagen(ImagenMapaParams, principal_raw)
     return ImagenMapaResponse(
         imagen_principal=principal,
         imagen_comparacion=payload,
