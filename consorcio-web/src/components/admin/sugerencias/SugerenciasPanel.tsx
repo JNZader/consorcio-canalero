@@ -15,7 +15,7 @@ import { SugerenciasFilters } from './components/SugerenciasFilters';
 import { SugerenciasTableContent } from './components/SugerenciasTableContent';
 import { SuggestionDetailModal } from './components/SuggestionDetailModal';
 import { ITEMS_PER_PAGE } from './constants';
-import { filterSugerenciasByQuery, getStatusBadge } from './sugerenciasPanelUtils';
+import { getStatusBadge } from './sugerenciasPanelUtils';
 
 export default function SugerenciasPanel() {
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
@@ -243,11 +243,6 @@ export default function SugerenciasPanel() {
   // + writing a respuesta. The state setter `setIncorporating` and the
   // related backend endpoint were removed in the same pass.
 
-  // Filter sugerencias by search query
-  const filteredSugerencias = useMemo(() => {
-    return filterSugerenciasByQuery(sugerencias, searchQuery);
-  }, [sugerencias, searchQuery]);
-
   return (
     <Container size="xl" py="md">
       {/* Stats Cards */}
@@ -297,7 +292,7 @@ export default function SugerenciasPanel() {
       <Paper shadow="sm" p="lg" radius="md">
         <SugerenciasTableContent
           loading={loading}
-          sugerencias={filteredSugerencias}
+          sugerencias={sugerencias}
           totalPages={totalPages}
           page={page}
           onPageChange={setPage}

@@ -247,4 +247,68 @@ describe('SugerenciasPanel', () => {
       expect.objectContaining({ title: 'Sugerencia agendada', color: 'institucional' })
     );
   });
+
+  it('renders the server search page when the row text omits the query', async () => {
+    const user = userEvent.setup();
+    const remoteMatch = {
+      ...suggestion,
+      id: 'sug-remote',
+      titulo: 'Fila devuelta por el servidor',
+      descripcion: 'sin coincidencia local',
+    };
+    vi.mocked(sugerenciasApi.getAll)
+      .mockResolvedValueOnce({ items: [suggestion], total: 30, page: 1, limit: 10 })
+      .mockResolvedValueOnce({ items: [remoteMatch], total: 1, page: 1, limit: 10 });
+
+    renderPanel();
+    expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
+
+    await user.type(
+      screen.getByRole('textbox', { name: /buscar sugerencias por título o descripción/i }),
+      'bomba-lejana'
+    );
+
+    expect(
+      await screen.findByText('Fila devuelta por el servidor', {}, { timeout: 2000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No hay sugerencias')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith({
+        page: 1,
+        limit: 10,
+        estado: undefined,
+        tipo: undefined,
+        search: 'bomba-lejana',
+      });
+    });
+  });
+
+  it('sends tipo to the server and renders that page', async () => {
+    const user = userEvent.setup();
+    const remoteMatch = {
+      ...suggestion,
+      id: 'sug-interna',
+      tipo: 'interna' as const,
+      titulo: 'Tema interno devuelto por el servidor',
+    };
+    vi.mocked(sugerenciasApi.getAll)
+      .mockResolvedValueOnce({ items: [suggestion], total: 4, page: 1, limit: 10 })
+      .mockResolvedValueOnce({ items: [remoteMatch], total: 1, page: 1, limit: 10 });
+
+    renderPanel();
+    await screen.findByText('Limpiar desagues secundarios');
+
+    await user.click(screen.getByRole('combobox', { name: /filtrar por tipo de sugerencia/i }));
+    await user.click(await screen.findByRole('option', { name: /^interna$/i }));
+
+    expect(await screen.findByText('Tema interno devuelto por el servidor')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith({
+        page: 1,
+        limit: 10,
+        estado: undefined,
+        tipo: 'interna',
+      });
+    });
+  });
 });

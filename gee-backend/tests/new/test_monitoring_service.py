@@ -233,8 +233,23 @@ class TestSugerenciaService:
 
     def test_list_sugerencias(self, service, mock_repo):
         mock_repo.get_all_sugerencias.return_value = ([], 0)
-        items, total = service.list_sugerencias(MagicMock())
+        items, total = service.list_sugerencias(
+            MagicMock(),
+            page=2,
+            limit=5,
+            estado="pendiente",
+            categoria="infraestructura",
+            tipo="ciudadana",
+            search="barro",
+        )
         assert total == 0
+        kwargs = mock_repo.get_all_sugerencias.call_args.kwargs
+        assert kwargs["page"] == 2
+        assert kwargs["limit"] == 5
+        assert kwargs["estado_filter"] == "pendiente"
+        assert kwargs["categoria_filter"] == "infraestructura"
+        assert kwargs["tipo_filter"] == "ciudadana"
+        assert kwargs["search"] == "barro"
 
     def test_create_sugerencia(self, service, mock_repo):
         db = MagicMock()

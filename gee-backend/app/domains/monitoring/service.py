@@ -150,6 +150,8 @@ class MonitoringService:
         limit: int = 20,
         estado: Optional[str] = None,
         categoria: Optional[str] = None,
+        tipo: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[list[Sugerencia], int]:
         return self.repo.get_all_sugerencias(
             db,
@@ -157,6 +159,8 @@ class MonitoringService:
             limit=limit,
             estado_filter=estado,
             categoria_filter=categoria,
+            tipo_filter=tipo,
+            search=search,
         )
 
     def list_sugerencias_by_user(

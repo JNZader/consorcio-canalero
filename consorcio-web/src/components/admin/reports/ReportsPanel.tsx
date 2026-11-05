@@ -1,6 +1,6 @@
 import { Badge, Container, Group, Paper } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { showError, showSuccess } from '../../../lib/notifications';
@@ -11,7 +11,7 @@ import { ReportsFilters } from './components/ReportsFilters';
 import { ReportsTableContent } from './components/ReportsTableContent';
 import { ITEMS_PER_PAGE } from './constants';
 import type { SeguimientoEntry } from './reportsPanelTypes';
-import { filterReports, getStatusBadge, type ReportStatusCounts } from './reportsPanelUtils';
+import { countReportStatuses, getStatusBadge, type ReportStatusCounts } from './reportsPanelUtils';
 
 export default function ReportsPanel() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -87,11 +87,7 @@ export default function ReportsPanel() {
           en_revision: statsResponse.en_revision,
         });
       } else if (!filterStatus && !filterCategory && !searchQuery) {
-        const unfilteredCounts = filterReports(data.items, null, '');
-        setGlobalStats({
-          pendiente: unfilteredCounts.pendingCount,
-          en_revision: unfilteredCounts.inReviewCount,
-        });
+        setGlobalStats(countReportStatuses(data.items));
       }
       announceRef.current(`${data.items.length} reportes cargados`);
     } catch (error) {
@@ -180,10 +176,8 @@ export default function ReportsPanel() {
     }
   };
 
-  // Memoized filtering and stats calculation (single pass)
-  const { filteredReports, pendingCount, inReviewCount } = useMemo(() => {
-    return filterReports(reports, filterCategory, searchQuery, globalStats);
-  }, [reports, filterCategory, searchQuery, globalStats]);
+  const pendingCount = globalStats?.pendiente ?? 0;
+  const inReviewCount = globalStats?.en_revision ?? 0;
 
   return (
     <Container size="xl" py="md">
@@ -215,7 +209,7 @@ export default function ReportsPanel() {
       <Paper shadow="sm" p="lg" radius="md">
         <ReportsTableContent
           loading={loading}
-          filteredReports={filteredReports}
+          filteredReports={reports}
           totalPages={totalPages}
           page={page}
           onPageChange={setPage}

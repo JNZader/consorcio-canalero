@@ -283,4 +283,61 @@ describe('ReportsPanel', () => {
     });
     expect(screen.getByText('1 pendientes')).toBeInTheDocument();
   });
+
+  it('renders the server search page when the row text omits the query', async () => {
+    const user = userEvent.setup();
+    const remoteMatch = {
+      ...baseReport,
+      id: 'rep-remote',
+      descripcion: 'fila que solo el servidor asocio',
+      ubicacion_texto: 'otra calle',
+    };
+    vi.mocked(reportsApi.getAll)
+      .mockResolvedValueOnce({ items: [baseReport], total: 40, page: 1 })
+      .mockResolvedValueOnce({ items: [remoteMatch], total: 1, page: 1 });
+
+    renderPanel();
+    expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
+
+    await user.type(
+      screen.getByRole('textbox', { name: /buscar denuncias por descripción o ubicación/i }),
+      'hidrante-lejano'
+    );
+
+    expect(await screen.findByText('fila que solo el servidor asocio', {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.queryByText('No hay denuncias')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        undefined,
+        undefined,
+        'hidrante-lejano'
+      );
+    });
+  });
+
+  it('keeps a category page returned by the server', async () => {
+    const user = userEvent.setup();
+    const remoteMatch = {
+      ...baseReport,
+      id: 'rep-cat',
+      categoria: 'desborde',
+      descripcion: 'coincide en el servidor',
+    };
+    vi.mocked(reportsApi.getAll)
+      .mockResolvedValueOnce({ items: [baseReport], total: 1, page: 1 })
+      .mockResolvedValueOnce({ items: [remoteMatch], total: 1, page: 1 });
+
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+
+    await user.click(screen.getByRole('combobox', { name: /filtrar por categoría de la denuncia/i }));
+    await user.click(await screen.findByRole('option', { name: /inundación/i }));
+
+    expect(await screen.findByText('coincide en el servidor')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(1, 10, undefined, 'inundacion', undefined);
+    });
+  });
 });

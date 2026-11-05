@@ -40,6 +40,9 @@ class DenunciaService:
         limit: int = 20,
         estado: Optional[str] = None,
         cuenca: Optional[str] = None,
+        tipo: Optional[str] = None,
+        categoria: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> tuple[list[Denuncia], int]:
         return self.repo.get_all(
             db,
@@ -47,6 +50,9 @@ class DenunciaService:
             limit=limit,
             estado_filter=estado,
             cuenca_filter=cuenca,
+            tipo_filter=tipo,
+            categoria_filter=categoria,
+            search=search,
         )
 
     def list_by_user(
