@@ -129,11 +129,13 @@ export function FotoField({ fotoPreview, onDrop, onRemove }: Readonly<FotoFieldP
 
 interface SubmitButtonProps {
   disabled: boolean;
+  /** True mientras el POST o la escritura del borrador offline no terminaron. */
+  loading?: boolean;
 }
 
-export function SubmitButton({ disabled }: Readonly<SubmitButtonProps>) {
+export function SubmitButton({ disabled, loading = false }: Readonly<SubmitButtonProps>) {
   return (
-    <Button type="submit" size="lg" fullWidth disabled={disabled}>
+    <Button type="submit" size="lg" fullWidth disabled={disabled || loading} loading={loading}>
       Enviar Reporte
     </Button>
   );
