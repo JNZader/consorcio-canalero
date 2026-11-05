@@ -6,7 +6,6 @@ import {
   NativeSelect,
   Paper,
   Stack,
-  Table,
   Text,
   Textarea,
   TextInput,
@@ -24,6 +23,7 @@ import { IconButton } from '../../ui/IconButton';
 import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
 import { PageHeader } from '../../ui/PageHeader';
+import { ResponsiveRecordList } from '../../ui/ResponsiveRecordList';
 
 interface TramiteListItem {
   id: string;
@@ -273,59 +273,43 @@ export default function TramitesPanel() {
         />
       ) : (
         <Paper withBorder radius="md">
-          <Table.ScrollContainer
+          <ResponsiveRecordList
+            label="Tabla de trámites"
+            scrollLabel="Listado de trámites con desplazamiento horizontal"
+            columns={['Trámite', 'Estado', 'Prioridad', 'Fecha de ingreso', 'Acciones']}
             minWidth={680}
-            type="native"
-            tabIndex={0}
-            role="region"
-            aria-label="Listado de trámites con desplazamiento horizontal"
-          >
-            <Table verticalSpacing="sm" aria-label="Tabla de trámites">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Trámite</Table.Th>
-                  <Table.Th>Estado</Table.Th>
-                  <Table.Th>Prioridad</Table.Th>
-                  <Table.Th>Fecha de ingreso</Table.Th>
-                  <Table.Th>Acciones</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {tramites.map((tramite) => (
-                  <Table.Tr key={tramite.id}>
-                    <Table.Td>
-                      <Stack gap={0}>
-                        <Text fw={500} size="sm">
-                          {tramite.titulo}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {tramite.tipo} · {tramite.solicitante}
-                        </Text>
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge variant="light">{formatTramiteEstado(tramite.estado)}</Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{tramite.prioridad}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{formatDate(tramite.fecha_ingreso)}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <IconButton
-                        variant="light"
-                        onClick={() => fetchDetalle(tramite.id)}
-                        aria-label={`Ver seguimiento de ${tramite.titulo}`}
-                      >
-                        <IconHistory size={16} />
-                      </IconButton>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+            verticalSpacing="sm"
+            records={tramites.map((tramite) => ({
+              id: tramite.id,
+              cells: [
+                <Stack key="tramite" gap={0}>
+                  <Text fw={500} size="sm">
+                    {tramite.titulo}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {tramite.tipo} · {tramite.solicitante}
+                  </Text>
+                </Stack>,
+                <Badge key="estado" variant="light">
+                  {formatTramiteEstado(tramite.estado)}
+                </Badge>,
+                <Text key="prioridad" size="sm">
+                  {tramite.prioridad}
+                </Text>,
+                <Text key="fecha" size="sm">
+                  {formatDate(tramite.fecha_ingreso)}
+                </Text>,
+                <IconButton
+                  key="acciones"
+                  variant="light"
+                  onClick={() => fetchDetalle(tramite.id)}
+                  aria-label={`Ver seguimiento de ${tramite.titulo}`}
+                >
+                  <IconHistory size={16} />
+                </IconButton>,
+              ],
+            }))}
+          />
         </Paper>
       )}
 

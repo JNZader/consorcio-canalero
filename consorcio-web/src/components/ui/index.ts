@@ -9,5 +9,11 @@ export { IconButton } from './IconButton';
 export * from './icons';
 export { LoadingState } from './LoadingState';
 export { PageHeader } from './PageHeader';
+export {
+  RECORD_VIRTUALIZE_THRESHOLD,
+  type ResponsiveRecord,
+  ResponsiveRecordList,
+  type ResponsiveRecordListProps,
+} from './ResponsiveRecordList';
 export { StatCard } from './StatCard';
 export { StatusBadge } from './StatusBadge';

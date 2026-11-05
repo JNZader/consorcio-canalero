@@ -20,11 +20,10 @@ import {
   Progress,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   Title,
 } from '@mantine/core';
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useDemPipeline } from '../../hooks/useDemPipeline';
 import type { GeoLayerResponse } from '../../lib/api/demPipeline';
 import { demPipelineApi } from '../../lib/api/demPipeline';
@@ -39,6 +38,7 @@ import {
   IconRefresh,
 } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
+import { ResponsiveRecordList } from '../ui/ResponsiveRecordList';
 
 /** Human-readable layer type names */
 const LAYER_TYPE_LABELS: Record<string, string> = {
@@ -197,24 +197,17 @@ export default function DemPipelinePanel() {
                 </Badge>
               </Group>
 
-              <Table.ScrollContainer minWidth={500}>
-                <Table striped highlightOnHover>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Capa</Table.Th>
-                      <Table.Th>Tipo</Table.Th>
-                      <Table.Th>Formato</Table.Th>
-                      <Table.Th>Fecha</Table.Th>
-                      <Table.Th>Acciones</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {layers.map((layer) => (
-                      <LayerRow key={layer.id} layer={layer} />
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
+              <ResponsiveRecordList
+                label="Capas generadas"
+                columns={['Capa', 'Tipo', 'Formato', 'Fecha', 'Acciones']}
+                minWidth={500}
+                striped
+                highlightOnHover
+                records={layers.map((layer) => ({
+                  id: layer.id,
+                  cells: layerCells(layer),
+                }))}
+              />
             </Paper>
           )}
 
@@ -251,48 +244,38 @@ export default function DemPipelinePanel() {
   );
 }
 
-/** Individual layer row with download button */
-function LayerRow({ layer }: { readonly layer: GeoLayerResponse }) {
-  const handleDownload = useCallback(() => {
-    const url = demPipelineApi.getLayerFileUrl(layer.id);
-    window.open(url, '_blank');
-  }, [layer.id]);
-
+function layerCells(layer: GeoLayerResponse): ReactNode[] {
   const label = LAYER_TYPE_LABELS[layer.tipo] || layer.tipo;
   const formatBadge = layer.formato === 'geojson' ? 'GeoJSON' : 'GeoTIFF';
 
-  return (
-    <Table.Tr>
-      <Table.Td>
-        <Text size="sm" fw={500}>
-          {layer.nombre}
-        </Text>
-      </Table.Td>
-      <Table.Td>
-        <Badge size="sm" variant="light">
-          {label}
-        </Badge>
-      </Table.Td>
-      <Table.Td>
-        <Badge size="sm" variant="outline" color={layer.formato === 'geojson' ? 'teal' : 'blue'}>
-          {formatBadge}
-        </Badge>
-      </Table.Td>
-      <Table.Td>
-        <Text size="xs" c="dimmed">
-          {new Date(layer.created_at).toLocaleDateString('es-AR')}
-        </Text>
-      </Table.Td>
-      <Table.Td>
-        <Button
-          size="xs"
-          variant="subtle"
-          leftSection={<IconDownload size={14} />}
-          onClick={handleDownload}
-        >
-          Descargar
-        </Button>
-      </Table.Td>
-    </Table.Tr>
-  );
+  return [
+    <Text key="nombre" size="sm" fw={500}>
+      {layer.nombre}
+    </Text>,
+    <Badge key="tipo" size="sm" variant="light">
+      {label}
+    </Badge>,
+    <Badge
+      key="formato"
+      size="sm"
+      variant="outline"
+      color={layer.formato === 'geojson' ? 'teal' : 'blue'}
+    >
+      {formatBadge}
+    </Badge>,
+    <Text key="fecha" size="xs" c="dimmed">
+      {new Date(layer.created_at).toLocaleDateString('es-AR')}
+    </Text>,
+    <Button
+      key="acciones"
+      size="xs"
+      variant="subtle"
+      leftSection={<IconDownload size={14} />}
+      onClick={() => {
+        window.open(demPipelineApi.getLayerFileUrl(layer.id), '_blank');
+      }}
+    >
+      Descargar
+    </Button>,
+  ];
 }

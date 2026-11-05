@@ -1,6 +1,7 @@
-import { Paper, Table, Text } from '@mantine/core';
+import { Paper, Text } from '@mantine/core';
 import { IconButton } from '../../../../ui/IconButton';
 import { IconEdit } from '../../../../ui/icons';
+import { ResponsiveRecordList } from '../../../../ui/ResponsiveRecordList';
 import type { Ingreso } from '../finanzasTypes';
 import { renderCategoriaBadge } from '../finanzasUtils';
 
@@ -10,52 +11,36 @@ export function IngresosTable({
 }: Readonly<{ ingresos: Ingreso[]; onEdit: (ingreso: Ingreso) => void }>) {
   return (
     <Paper withBorder radius="md">
-      <Table.ScrollContainer minWidth={680} type="native">
-        <Table verticalSpacing="sm" aria-label="Libro de ingresos">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Fecha</Table.Th>
-              <Table.Th>Descripción</Table.Th>
-              <Table.Th>Categoría</Table.Th>
-              <Table.Th>Monto</Table.Th>
-              <Table.Th>Consorcista</Table.Th>
-              <Table.Th>Acciones</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {ingresos.map((ingreso) => (
-              <Table.Tr key={ingreso.id}>
-                <Table.Td>{new Date(ingreso.fecha).toLocaleDateString()}</Table.Td>
-                <Table.Td>
-                  <Text size="sm" fw={500}>
-                    {ingreso.descripcion}
-                  </Text>
-                </Table.Td>
-                <Table.Td>{renderCategoriaBadge(ingreso.categoria)}</Table.Td>
-                <Table.Td>
-                  <Text fw={700} c="green.7">
-                    +${ingreso.monto.toLocaleString()}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  <Text size="xs" c="dimmed">
-                    {ingreso.consorcista_id || '-'}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  <IconButton
-                    variant="subtle"
-                    onClick={() => onEdit(ingreso)}
-                    aria-label={`Editar ingreso: ${ingreso.descripcion}`}
-                  >
-                    <IconEdit size={16} />
-                  </IconButton>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      <ResponsiveRecordList
+        label="Libro de ingresos"
+        columns={['Fecha', 'Descripción', 'Categoría', 'Monto', 'Consorcista', 'Acciones']}
+        minWidth={680}
+        verticalSpacing="sm"
+        records={ingresos.map((ingreso) => ({
+          id: ingreso.id,
+          cells: [
+            new Date(ingreso.fecha).toLocaleDateString(),
+            <Text key="descripcion" size="sm" fw={500}>
+              {ingreso.descripcion}
+            </Text>,
+            renderCategoriaBadge(ingreso.categoria),
+            <Text key="monto" fw={700} c="green.7">
+              +${ingreso.monto.toLocaleString()}
+            </Text>,
+            <Text key="consorcista" size="xs" c="dimmed">
+              {ingreso.consorcista_id || '-'}
+            </Text>,
+            <IconButton
+              key="acciones"
+              variant="subtle"
+              onClick={() => onEdit(ingreso)}
+              aria-label={`Editar ingreso: ${ingreso.descripcion}`}
+            >
+              <IconEdit size={16} />
+            </IconButton>,
+          ],
+        }))}
+      />
     </Paper>
   );
 }
