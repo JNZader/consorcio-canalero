@@ -6,7 +6,7 @@
 # ----------------------------------------------
 # Stage 1: Dependencies - Install npm packages
 # ----------------------------------------------
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS deps
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS deps
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN npm ci --prefer-offline --no-audit
 # ----------------------------------------------
 # Stage 2: Development - For local development
 # ----------------------------------------------
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS development
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS development
 
 WORKDIR /app
 
@@ -54,7 +54,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 # ----------------------------------------------
 # Stage 3: Builder - Build the application
 # ----------------------------------------------
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS builder
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS builder
 
 WORKDIR /app
 
