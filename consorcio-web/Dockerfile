@@ -36,7 +36,7 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Copy source files
 COPY package.json package-lock.json ./
-COPY vite.config.ts vite.modulePreload.ts tsconfig.json biome.json index.html ./
+COPY vite.config.ts pwaPrecachePolicy.ts vite.modulePreload.ts tsconfig.json biome.json index.html ./
 COPY public ./public
 COPY src ./src
 
@@ -63,7 +63,7 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Copy all source files
 COPY package.json package-lock.json ./
-COPY vite.config.ts vite.modulePreload.ts tsconfig.json biome.json index.html ./
+COPY vite.config.ts pwaPrecachePolicy.ts vite.modulePreload.ts tsconfig.json biome.json index.html ./
 COPY scripts/gen-version.mjs ./scripts/gen-version.mjs
 COPY public ./public
 COPY src ./src
