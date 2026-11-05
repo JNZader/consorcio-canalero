@@ -158,6 +158,9 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* La barra de instalación es fixed. Este padding deja scrollear el footer
+     por encima cuando la barra está montada. Sin la variable, es 0. */
+  padding-bottom: var(--cc-install-bar, 0px);
 }
 
 /* ================================
@@ -256,7 +259,7 @@ body {
 }
 
 [data-mantine-color-scheme="dark"] {
-  /* #a3a3a3: 6.8:1 sobre dark-7, 6.0:1 sobre dark-6, 4.5:1 sobre dark-4. */
+  /* #a3a3a3: 6.6:1 sobre dark-7, 5.9:1 sobre dark-6, 4.6:1 sobre dark-4. */
   --mantine-color-dimmed: #a3a3a3;
   --mantine-color-placeholder: #a3a3a3;
   --mantine-color-gray-6: #a3a3a3;
@@ -303,9 +306,44 @@ body {
   color: var(--mantine-color-red-6);
 }
 
-/* Alertas de error con borde indicador */
-[role="alert"] {
-  border-left: 4px solid var(--mantine-color-red-6);
+/* La barra sigue al color del Alert. Una regla roja sobre todo
+   [role=alert] rayaba de rojo los avisos institucionales. */
+.mantine-Alert-root.mantine-Alert-root {
+  border-inline-start: 3px solid var(--alert-color);
+}
+
+/* UnstyledButton llega después en el bundle y pisa el fondo, el borde,
+   el padding y el color del Button (misma especificidad, gana el último).
+   Sin esto el filled queda transparente y el rótulo hereda el color del
+   hero: texto oscuro sobre verde oscuro. (0, 1, 1) le gana a la clase sola.
+   En alto contraste manda el borde de sistema, más abajo. */
+@media not (forced-colors: active) {
+  button.mantine-Button-root,
+  a.mantine-Button-root {
+    background-color: var(--button-bg, var(--mantine-primary-color-filled));
+    color: var(--button-color, var(--mantine-color-white));
+    border: var(--button-bd, 1px solid transparent);
+    height: var(--button-height, var(--button-height-sm));
+    padding-inline: var(--button-padding-x, var(--button-padding-x-sm));
+    font-size: var(--button-fz, var(--mantine-font-size-sm));
+  }
+}
+
+/* Barra de instalación. z-index del header: por debajo del drawer (1000)
+   y fuera del nav, pegada al safe area inferior. */
+.cc-install-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-header, 100);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  border-radius: 0;
+  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  border-top: 1px solid light-dark(var(--mantine-color-institucional-2), var(--mantine-color-dark-4));
+  box-shadow: var(--mantine-shadow-sm);
 }
 
 /* Touch targets minimos (44x44px) - WCAG 2.5.5. El token es --cc-touch-min. */
@@ -377,9 +415,9 @@ body {
   z-index: var(--z-overlay, 10001) !important;
 }
 
-/* Mejoras para modo oscuro en Leaflet */
+/* Mejoras para modo oscuro en Leaflet. Mismos tonos que el dark del tema. */
 [data-mantine-color-scheme="dark"] .leaflet-container {
-  background-color: #1a1b1e;
+  background-color: var(--mantine-color-dark-7);
 }
 
 [data-mantine-color-scheme="dark"] .leaflet-tile-pane {
@@ -388,26 +426,26 @@ body {
 
 [data-mantine-color-scheme="dark"] .leaflet-control-layers,
 [data-mantine-color-scheme="dark"] .leaflet-control-zoom {
-  background-color: #25262b;
-  border-color: #373a40;
+  background-color: var(--mantine-color-dark-6);
+  border-color: var(--mantine-color-dark-4);
 }
 
 [data-mantine-color-scheme="dark"] .leaflet-control-layers-toggle {
-  background-color: #25262b;
+  background-color: var(--mantine-color-dark-6);
 }
 
 [data-mantine-color-scheme="dark"] .leaflet-control-layers label {
-  color: #c1c2c5;
+  color: var(--mantine-color-dark-0);
 }
 
 [data-mantine-color-scheme="dark"] .leaflet-control-zoom a {
-  background-color: #25262b;
-  color: #c1c2c5;
-  border-color: #373a40;
+  background-color: var(--mantine-color-dark-6);
+  color: var(--mantine-color-dark-0);
+  border-color: var(--mantine-color-dark-4);
 }
 
 [data-mantine-color-scheme="dark"] .leaflet-control-zoom a:hover {
-  background-color: #373a40;
+  background-color: var(--mantine-color-dark-5);
 }
 
 /* ================================
@@ -500,11 +538,11 @@ body {
 }
 
 [data-mantine-color-scheme="dark"] ::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
+  background: var(--mantine-color-dark-4);
 }
 
 [data-mantine-color-scheme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
+  background: var(--mantine-color-dark-3);
 }
 
 /* ================================

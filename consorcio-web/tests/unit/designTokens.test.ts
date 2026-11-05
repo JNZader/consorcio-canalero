@@ -161,6 +161,15 @@ describe('design tokens', () => {
     expect(globalCss).toContain('z-index: var(--z-overlay, 10001)');
     expect(globalCss).toContain('z-index: var(--z-skip-link, 100000)');
     expect(globalCss).toContain('var(--cc-touch-min, 44px)');
+    expect(globalCss).toContain('@media not (forced-colors: active)');
+    expect(globalCss).toContain('button.mantine-Button-root');
+    expect(globalCss).toContain('var(--button-bg, var(--mantine-primary-color-filled))');
+    expect(globalCss).toContain('var(--button-color, var(--mantine-color-white))');
+    expect(globalCss).not.toMatch(/\[role="alert"\]\s*\{[^}]*red-6/);
+    expect(globalCss).toContain('.cc-install-bar');
+    expect(globalCss).toContain('bottom: 0;');
+    const homeCss = readFileSync('src/styles/components/home.module.css', 'utf8');
+    expect(homeCss).not.toContain('acento');
     expect(statSync('src/lib/zIndex.ts').isFile()).toBe(true);
   });
 });

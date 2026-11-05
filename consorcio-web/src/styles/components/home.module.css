@@ -60,18 +60,16 @@
   background: linear-gradient(135deg, var(--mantine-color-institucional-9) 0%, var(--mantine-color-dark-9) 100%);
 }
 
-.statCard {
-  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
-  border-left: 4px solid var(--mantine-color-institucional-6);
+/* Paper pinta el fondo con el color del body y gana a una sola clase.
+   Doble clase deja la tarjeta un tono por encima del fondo. */
+.statCard.statCard,
+.featureCardSurface.featureCardSurface {
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
 }
 
 .statCardHelp {
   cursor: help;
-}
-
-.featureCardSurface {
-  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
-  border-left: 4px solid var(--mantine-color-acento-5);
 }
 
 .bandMuted {
