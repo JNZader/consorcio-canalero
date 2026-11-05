@@ -109,7 +109,7 @@ export function ReportDetailModal({
               <Text size="sm" fw={500}>
                 Fecha
               </Text>
-              <Text size="sm" c="gray.6">
+              <Text size="sm" c="dimmed">
                 {formatDate(selectedReport.created_at, { includeTime: true })}
               </Text>
             </div>
@@ -147,19 +147,19 @@ export function ReportDetailModal({
                 Ubicación
               </Text>
               {selectedReport.ubicacion_texto && (
-                <Text size="sm" c="gray.6">
+                <Text size="sm" c="dimmed">
                   {selectedReport.ubicacion_texto}
                 </Text>
               )}
               {selectedReport.latitud != null && selectedReport.longitud != null && (
                 <Group gap="xs" align="center" mt={4}>
-                  <Text size="xs" c="gray.6">
+                  <Text size="sm" c="dimmed">
                     Coordenadas: {selectedReport.latitud}, {selectedReport.longitud}
                   </Text>
                   <Button
                     component="a"
                     variant="light"
-                    size="xs"
+                    size="sm"
                     leftSection={<IconMap size={14} aria-hidden="true" />}
                     href={`/mapa?${new URLSearchParams({
                       report: '1',
@@ -210,7 +210,7 @@ export function ReportDetailModal({
               <Text size="sm" fw={500}>
                 Contacto
               </Text>
-              <Text size="sm" c="gray.6">
+              <Text size="sm" c="dimmed">
                 {selectedReport.contacto_nombre}
                 {selectedReport.contacto_telefono && ` - ${selectedReport.contacto_telefono}`}
               </Text>

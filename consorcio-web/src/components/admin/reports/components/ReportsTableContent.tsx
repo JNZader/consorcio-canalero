@@ -58,7 +58,7 @@ export function ReportsTableContent({
             <Text key="descripcion" size="sm" lineClamp={2} style={{ maxWidth: 300 }}>
               {report.descripcion}
             </Text>,
-            <Text key="ubicacion" size="sm" c="gray.6" lineClamp={1} style={{ maxWidth: 200 }}>
+            <Text key="ubicacion" size="sm" c="dimmed" lineClamp={1} style={{ maxWidth: 200 }}>
               {report.ubicacion_texto || 'Sin dirección'}
             </Text>,
             getStatusBadge(report.estado),

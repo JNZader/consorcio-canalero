@@ -65,14 +65,14 @@ export function ParticipacionStepHeader({
           {title}
         </Text>
         {subtitle && (
-          <Text size="xs" c="gray.6">
+          <Text size="sm" c="dimmed">
             {subtitle}
           </Text>
         )}
       </Box>
       {badge}
       {showCheckIcon && (
-        <IconShieldCheck size={20} color="var(--mantine-color-green-6)" aria-hidden="true" />
+        <IconShieldCheck size={20} color="var(--cc-color-success)" aria-hidden="true" />
       )}
     </Group>
   );

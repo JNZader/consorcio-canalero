@@ -1,22 +1,12 @@
 {
-  "src/components/admin/AdminDashboard.tsx": {
-    "#495057": 3
-  },
-  "src/components/admin/reports/ReportsPanel.tsx": {
-    "#7a4100": 1
-  },
   "src/components/map2d/ElevationProfileChart.tsx": {
     "#0f766e": 4,
     "#94a3b8": 1
   },
   "src/components/map2d/measurement/MeasurementLabels.tsx": {
     "#1971c2": 1,
-    "#495057": 1,
     "#74c0fc": 1,
-    "#868e96": 1,
-    "#ced4da": 1,
     "#e7f5ff": 1,
-    "#f8f9fa": 1,
     "#fd7e14": 1
   },
   "src/components/map2d/measurement/MeasurementShapes.tsx": {

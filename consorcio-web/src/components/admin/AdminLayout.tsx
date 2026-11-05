@@ -167,7 +167,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                   <Text size="xl" fw={700} truncate style={{ color: 'var(--cc-color-wordmark)' }}>
                     Consorcio Canalero
                   </Text>
-                  <Text size="xs" c="gray.6" visibleFrom="sm">
+                  <Text size="sm" c="dimmed" visibleFrom="sm">
                     {roleLabel}
                   </Text>
                 </Group>

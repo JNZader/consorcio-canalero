@@ -109,7 +109,7 @@ export const HeaderContent = memo(function HeaderContent() {
               <Text size="xl" fw={700} style={{ color: 'var(--cc-color-wordmark)' }}>
                 Consorcio Canalero
               </Text>
-              <Text size="xs" c="gray.6" visibleFrom="sm">
+              <Text size="sm" c="dimmed" visibleFrom="sm">
                 10 de Mayo
               </Text>
             </Group>

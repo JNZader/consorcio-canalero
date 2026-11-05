@@ -256,9 +256,9 @@ export function HomeContent() {
                     <Text size="lg" fw={600}>
                       {stat.label}
                     </Text>
-                    {hasTooltip && <IconInfoCircle size={16} color="var(--mantine-color-gray-5)" />}
+                    {hasTooltip && <IconInfoCircle size={16} color="var(--cc-color-text-muted)" />}
                   </Group>
-                  <Text size="sm" c="gray.6" ta="center">
+                  <Text size="sm" c="dimmed" ta="center">
                     {stat.sublabel}
                   </Text>
                 </Stack>
@@ -292,7 +292,7 @@ export function HomeContent() {
             <Title order={2} ta="center">
               Funcionalidades
             </Title>
-            <Text size="lg" c="gray.6" ta="center" maw={600}>
+            <Text size="lg" c="dimmed" ta="center" maw={600}>
               Herramientas para la gestión territorial y la participación ciudadana
             </Text>
           </Stack>
@@ -314,7 +314,7 @@ export function HomeContent() {
                 <Text fw={600} mb="xs">
                   {feature.title}
                 </Text>
-                <Text size="sm" c="gray.6">
+                <Text size="sm" c="dimmed">
                   {feature.description}
                 </Text>
               </Card>
@@ -357,7 +357,7 @@ export function HomeContent() {
                 <Title order={2} ta="center">
                   Preguntas frecuentes
                 </Title>
-                <Text size="lg" c="gray.6" ta="center" maw={600}>
+                <Text size="lg" c="dimmed" ta="center" maw={600}>
                   Lo que la mayoría de los vecinos pregunta antes de su primer reporte.
                 </Text>
               </Stack>
@@ -368,7 +368,7 @@ export function HomeContent() {
                       <Text fw={600}>{item.q}</Text>
                     </Accordion.Control>
                     <Accordion.Panel>
-                      <Text size="md" c="gray.7">
+                      <Text size="md" c="dimmed">
                         {item.a}
                       </Text>
                     </Accordion.Panel>
@@ -384,14 +384,14 @@ export function HomeContent() {
               <Title order={2} ta="center">
                 Contactanos
               </Title>
-              <Text size="md" c="gray.6" ta="center" maw={500}>
+              <Text size="md" c="dimmed" ta="center" maw={500}>
                 ¿Dudas que no resolvió el FAQ? Escribinos directo — respondemos en días hábiles
                 dentro de las 48 horas.
               </Text>
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" w="100%" maw={600}>
                 <Card padding="lg" radius="md" shadow="sm" withBorder>
                   <Stack gap={4} align="center">
-                    <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
+                    <Text size="sm" c="dimmed" tt="uppercase" fw={600}>
                       Email
                     </Text>
                     <Text
@@ -409,7 +409,7 @@ export function HomeContent() {
                 {isConfiguredSupportPhone(SUPPORT_PHONE) && (
                   <Card padding="lg" radius="md" shadow="sm" withBorder>
                     <Stack gap={4} align="center">
-                      <Text size="sm" c="gray.6" tt="uppercase" fw={600}>
+                      <Text size="sm" c="dimmed" tt="uppercase" fw={600}>
                         Teléfono
                       </Text>
                       <Text
@@ -422,7 +422,7 @@ export function HomeContent() {
                       >
                         {SUPPORT_PHONE}
                       </Text>
-                      <Text size="xs" c="gray.6">
+                      <Text size="sm" c="dimmed">
                         Lun a Vie 8:00–14:00
                       </Text>
                     </Stack>

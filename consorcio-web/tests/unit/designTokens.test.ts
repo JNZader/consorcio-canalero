@@ -199,4 +199,51 @@ describe('design tokens', () => {
     expect(mantineTheme.colors!.acento).toBeUndefined();
     expect(statSync('src/lib/zIndex.ts').isFile()).toBe(true);
   });
+
+  it('uses dimmed and --cc-* for muted chrome instead of gray literals', () => {
+    const chrome = [
+      'src/components/Header.tsx',
+      'src/components/LoginForm.tsx',
+      'src/components/HomePage.tsx',
+      'src/components/MapaPage.tsx',
+      'src/components/ParticipacionPage.tsx',
+      'src/components/FormularioReporte.tsx',
+      'src/components/FormularioSugerencia.tsx',
+      'src/components/UserMenu.tsx',
+      'src/components/admin/AdminLayout.tsx',
+      'src/components/admin/AdminDashboard.tsx',
+      'src/components/admin/ProtectedRoute.tsx',
+      'src/components/admin/reports/components/ReportDetailModal.tsx',
+      'src/components/admin/reports/components/ReportsTableContent.tsx',
+      'src/components/admin/sugerencias/components/SuggestionDetailModal.tsx',
+      'src/components/ui/EmptyState.tsx',
+      'src/components/ui/LoadingState.tsx',
+      'src/components/ui/StatCard.tsx',
+      'src/components/ui/ParticipacionStepHeader.tsx',
+      'src/components/report-form/LocationSection.tsx',
+      'src/components/report-form/PhotoSection.tsx',
+      'src/components/map2d/measurement/MeasurementLabels.tsx',
+    ];
+    for (const file of chrome) {
+      const source = readFileSync(file, 'utf8');
+      expect(source, file).not.toMatch(/c="gray\.|gray\.6|#868e96|#495057|#7a4100/);
+    }
+
+    const header = readFileSync('src/components/Header.tsx', 'utf8');
+    expect(header).toContain('size="sm" c="dimmed"');
+    expect(header).toContain('var(--cc-color-wordmark)');
+
+    const labels = readFileSync('src/components/map2d/measurement/MeasurementLabels.tsx', 'utf8');
+    expect(labels).toContain('var(--cc-color-text-muted)');
+    expect(labels).toContain('var(--cc-color-border)');
+    expect(labels).toContain('var(--cc-color-surface-raised)');
+
+    expect(readFileSync('src/components/HomePage.tsx', 'utf8')).toContain(
+      'var(--cc-color-text-muted)'
+    );
+    expect(readFileSync('src/components/ui/ParticipacionStepHeader.tsx', 'utf8')).toContain(
+      'var(--cc-color-success)'
+    );
+    expect(readFileSync('src/components/MapaPage.tsx', 'utf8')).toContain('size="sm" c="dimmed"');
+  });
 });

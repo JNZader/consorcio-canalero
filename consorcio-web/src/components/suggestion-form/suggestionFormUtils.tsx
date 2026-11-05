@@ -77,11 +77,11 @@ export function SuccessScreen({
   return (
     <Paper shadow="md" p="xl" radius="md" role="status" aria-live="polite">
       <Stack align="center" gap="lg">
-        <IconCheck size={64} color="var(--mantine-color-green-6)" aria-hidden="true" />
+        <IconCheck size={64} color="var(--cc-color-success)" aria-hidden="true" />
         <Title order={2} ta="center">
           Gracias por tu sugerencia
         </Title>
-        <Text c="gray.6" ta="center">
+        <Text c="dimmed" ta="center">
           Tu propuesta fue recibida y será considerada en las próximas reuniones de la comisión.
         </Text>
         {showRemainingBadge && (

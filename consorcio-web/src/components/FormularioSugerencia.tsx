@@ -216,7 +216,7 @@ function FormularioContenido() {
       <Title order={2} mb="md">
         Enviar Sugerencia
       </Title>
-      <Text c="gray.6" mb="xl">
+      <Text c="dimmed" mb="xl">
         Proponé temas o mejoras para que la comisión las considere en sus próximas reuniones
       </Text>
 

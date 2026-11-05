@@ -53,7 +53,7 @@ function UnauthorizedState({
             <Text id="protected-route-unauthorized-title" size="xl" fw={600} mb="xs">
               Acceso Denegado
             </Text>
-            <Text id="protected-route-unauthorized-message" c="gray.6" size="sm">
+            <Text id="protected-route-unauthorized-message" c="dimmed" size="sm">
               {message}
             </Text>
           </Box>
