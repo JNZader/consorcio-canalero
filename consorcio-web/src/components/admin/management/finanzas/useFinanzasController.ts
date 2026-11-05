@@ -1,9 +1,9 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
+import { showError, showSuccess } from '../../../../lib/notifications';
 import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import { GASTO_CATEGORIES, INGRESO_CATEGORIES } from './constants';
 import type { Balance, Gasto, Ingreso } from './finanzasTypes';
@@ -59,7 +59,8 @@ export function useFinanzasController() {
     validate: {
       categoria: validateCategoria,
       descripcion: (val) => (!val ? 'Descripción requerida' : validateDescripcion(val)),
-      monto: (val) => (val === undefined || val <= 0 ? 'El monto debe ser mayor a 0' : validateMonto(val)),
+      monto: (val) =>
+        val === undefined || val <= 0 ? 'El monto debe ser mayor a 0' : validateMonto(val),
     },
   });
 
@@ -110,18 +111,13 @@ export function useFinanzasController() {
       gastoModal.close();
       form.reset();
       await fetchFinanzas();
-      notifications.show({
-        title: 'Gasto registrado',
-        message: 'El gasto fue guardado correctamente',
-        color: 'green',
-      });
+      showSuccess('Gasto registrado', 'El gasto fue guardado correctamente');
     } catch (error) {
       logger.error('Error creating gasto:', error);
-      notifications.show({
-        title: 'No se pudo registrar el gasto',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo registrar el gasto',
+        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -160,18 +156,13 @@ export function useFinanzasController() {
       editGastoModal.close();
       setEditingGasto(null);
       await fetchFinanzas();
-      notifications.show({
-        title: 'Categoría actualizada',
-        message: 'La categoría del gasto fue actualizada',
-        color: 'green',
-      });
+      showSuccess('Categoría actualizada', 'La categoría del gasto fue actualizada');
     } catch (error) {
       logger.error('Error updating category:', error);
-      notifications.show({
-        title: 'No se pudo actualizar la categoría',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo actualizar la categoría',
+        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -184,18 +175,13 @@ export function useFinanzasController() {
       ingresoModal.close();
       ingresoForm.reset();
       await fetchFinanzas();
-      notifications.show({
-        title: 'Ingreso registrado',
-        message: 'El ingreso fue guardado correctamente',
-        color: 'green',
-      });
+      showSuccess('Ingreso registrado', 'El ingreso fue guardado correctamente');
     } catch (error) {
       logger.error('Error creating ingreso:', error);
-      notifications.show({
-        title: 'No se pudo registrar el ingreso',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo registrar el ingreso',
+        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -223,18 +209,13 @@ export function useFinanzasController() {
       editIngresoModal.close();
       setEditingIngreso(null);
       await fetchFinanzas();
-      notifications.show({
-        title: 'Ingreso actualizado',
-        message: 'Los datos del ingreso fueron actualizados',
-        color: 'green',
-      });
+      showSuccess('Ingreso actualizado', 'Los datos del ingreso fueron actualizados');
     } catch (error) {
       logger.error('Error updating ingreso:', error);
-      notifications.show({
-        title: 'No se pudo actualizar el ingreso',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo actualizar el ingreso',
+        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -269,11 +250,10 @@ export function useFinanzasController() {
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       logger.error('Error downloading financial summary PDF:', error);
-      notifications.show({
-        title: 'No se pudo descargar el resumen',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo descargar el resumen',
+        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setExportingSummaryPdf(false);
     }

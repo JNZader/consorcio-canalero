@@ -151,7 +151,7 @@ describe('configStore — guard de una sola carga', () => {
   });
 
   it('no vuelve a pedir la configuracion una vez inicializada', async () => {
-    // `main.tsx` y `AppProvider` llaman los dos a fetchConfig en el arranque.
+    // `main.tsx` llama a fetchConfig en el arranque.
     // Sin el guard de `initialized`, el segundo reemite el pedido apenas el
     // primero termina.
     getSystemConfig.mockResolvedValue({ consorcio_area_ha: 1 });

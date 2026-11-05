@@ -1,5 +1,6 @@
-import { ActionIcon, Tooltip, useMantineColorScheme } from '@mantine/core';
+import { Tooltip, useMantineColorScheme } from '@mantine/core';
 import { useCallback, useEffect, useState, useTransition } from 'react';
+import { IconButton } from './ui/IconButton';
 import { IconMoon, IconSun } from './ui/icons';
 
 export default function ThemeToggle() {
@@ -25,7 +26,7 @@ export default function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <ActionIcon
+      <IconButton
         variant="subtle"
         size="lg"
         radius="md"
@@ -33,13 +34,13 @@ export default function ThemeToggle() {
         aria-label="Cargando preferencia de tema"
       >
         <div style={{ width: 18, height: 18 }} />
-      </ActionIcon>
+      </IconButton>
     );
   }
 
   return (
     <Tooltip label={isDark ? 'Modo claro' : 'Modo oscuro'}>
-      <ActionIcon
+      <IconButton
         onClick={handleToggle}
         variant="subtle"
         size="lg"
@@ -49,7 +50,7 @@ export default function ThemeToggle() {
         loading={isPending}
       >
         {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
-      </ActionIcon>
+      </IconButton>
     </Tooltip>
   );
 }

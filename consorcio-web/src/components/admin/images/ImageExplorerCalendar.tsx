@@ -1,5 +1,6 @@
-import { ActionIcon, Group, Loader, Paper, Select, Text, UnstyledButton } from '@mantine/core';
+import { Group, Loader, Paper, Select, Text, UnstyledButton } from '@mantine/core';
 
+import { IconButton } from '../../ui/IconButton';
 import { IconArrowLeft, IconArrowRight } from '../../ui/icons';
 import { DAY_NAMES, MONTH_NAMES } from './imageExplorerUtils';
 
@@ -137,9 +138,9 @@ export function ImageExplorerCalendar(props: ImageExplorerCalendarProps) {
   return (
     <Paper p="md" withBorder radius="md">
       <Group justify="space-between" mb="sm">
-        <ActionIcon variant="subtle" onClick={onPrevMonth} aria-label="Mes anterior">
+        <IconButton variant="subtle" onClick={onPrevMonth} aria-label="Mes anterior">
           <IconArrowLeft size={18} />
-        </ActionIcon>
+        </IconButton>
         <Group gap="xs">
           <Select
             aria-label="Seleccionar mes"
@@ -169,14 +170,14 @@ export function ImageExplorerCalendar(props: ImageExplorerCalendarProps) {
             comboboxProps={{ withinPortal: true }}
           />
         </Group>
-        <ActionIcon
+        <IconButton
           variant="subtle"
           onClick={onNextMonth}
           disabled={!canGoNext}
           aria-label="Mes siguiente"
         >
           <IconArrowRight size={18} />
-        </ActionIcon>
+        </IconButton>
       </Group>
       <div
         style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}

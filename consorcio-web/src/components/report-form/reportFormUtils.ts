@@ -1,11 +1,11 @@
-import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
 import { publicApi } from '../../lib/api';
 import { logger } from '../../lib/logger';
+import { showNotification as notify } from '../../lib/notifications';
 import type { Ubicacion } from './reportFormTypes';
 
 export function showNotification(title: string, message: string, color: string) {
-  notifications.show({ title, message, color });
+  notify(title, message, color);
 }
 
 export function getBadgeVariant(

@@ -1,19 +1,9 @@
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Center,
-  Group,
-  Loader,
-  Pagination,
-  Table,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Badge, Box, Group, Pagination, Table, Text, Tooltip } from '@mantine/core';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
-import { EmptyState } from '../../../ui/EmptyState';
+import { IconButton } from '../../../ui/IconButton';
 import { IconInfoCircle } from '../../../ui/icons';
+import { LoadingState } from '../../../ui/LoadingState';
 import { getCategoriaLabel } from '../sugerenciasPanelUtils';
 
 export function SugerenciasTableContent({
@@ -34,21 +24,13 @@ export function SugerenciasTableContent({
   getStatusBadge: (status: string) => React.ReactNode;
 }>) {
   if (loading) {
-    return (
-      <Center py="xl" role="status" aria-busy="true" aria-live="polite">
-        <Group align="center">
-          <Loader aria-hidden="true" />
-          <Text size="sm" c="gray.6">
-            Cargando sugerencias...
-          </Text>
-        </Group>
-      </Center>
-    );
+    return <LoadingState compact message="Cargando sugerencias..." />;
   }
 
   if (sugerencias.length === 0) {
     return (
-      <EmptyState
+      <LoadingState
+        status="empty"
         title="No hay sugerencias"
         description="No se encontraron sugerencias con los filtros aplicados"
       />
@@ -102,13 +84,13 @@ export function SugerenciasTableContent({
                 <Table.Td>{getStatusBadge(sug.estado)}</Table.Td>
                 <Table.Td>
                   <Tooltip label="Ver detalle">
-                    <ActionIcon
+                    <IconButton
                       variant="light"
                       onClick={() => onViewDetail(sug)}
                       aria-label={`Ver detalle de sugerencia: ${sug.titulo}`}
                     >
                       <IconInfoCircle size={18} />
-                    </ActionIcon>
+                    </IconButton>
                   </Tooltip>
                 </Table.Td>
               </Table.Tr>

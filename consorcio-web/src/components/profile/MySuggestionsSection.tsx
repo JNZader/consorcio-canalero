@@ -19,7 +19,6 @@ import {
   Card,
   Center,
   Group,
-  Loader,
   Modal,
   Pagination,
   Paper,
@@ -33,6 +32,7 @@ import { sugerenciasApi } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { erroresUi, textoError } from '../../lib/userFacingError';
+import { LoadingState } from '../ui/LoadingState';
 import { StatusBadge } from '../ui/StatusBadge';
 
 const PAGE_SIZE = 5;
@@ -91,11 +91,7 @@ export function MySuggestionsSection() {
           )}
         </Group>
 
-        {loading && (
-          <Center py="md" role="status" aria-live="polite" aria-busy="true">
-            <Loader size="sm" aria-label="Cargando tus sugerencias" />
-          </Center>
-        )}
+        {loading && <LoadingState compact message="Cargando tus sugerencias" />}
 
         {!loading && error && (
           <Alert color="red" variant="light" role="alert" aria-live="assertive">

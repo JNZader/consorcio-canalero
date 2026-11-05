@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Badge,
   Button,
   Divider,
@@ -13,6 +12,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
+import { IconButton } from '../../../../ui/IconButton';
 import { IconLink, IconPlus, IconTrash } from '../../../../ui/icons';
 import type { AgendaItem, EntityOption, Reunion } from '../reunionesTypes';
 import { getAgendaReferenceColor, hasAgendaItems } from '../reunionesUtils';
@@ -122,7 +122,7 @@ export function AgendaModal({
                         </Group>
                       )}
                     </div>
-                    <ActionIcon
+                    <IconButton
                       color="red"
                       variant="subtle"
                       aria-label={`Eliminar tema ${index + 1}: ${item.titulo}`}
@@ -132,7 +132,7 @@ export function AgendaModal({
                       disabled={deletingAgendaItemId !== null && deletingAgendaItemId !== item.id}
                     >
                       <IconTrash size={16} />
-                    </ActionIcon>
+                    </IconButton>
                   </Group>
                 </Paper>
               ))}

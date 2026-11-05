@@ -6,7 +6,6 @@ import {
   Container,
   Divider,
   Group,
-  Loader,
   Paper,
   PasswordInput,
   Stack,
@@ -15,14 +14,15 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { updatePassword, useAuth } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
+import { showError, showSuccess } from '../lib/notifications';
 import { MyReportsSection } from './profile/MyReportsSection';
 import { MySuggestionsSection } from './profile/MySuggestionsSection';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
+import { LoadingState } from './ui/LoadingState';
 
 interface ProfileFormValues {
   nombre: string;
@@ -92,18 +92,11 @@ function ProfileContent() {
         }),
       });
 
-      notifications.show({
-        title: 'Perfil actualizado',
-        message: 'Tus datos se guardaron correctamente',
-        color: 'green',
+      showSuccess('Perfil actualizado', 'Tus datos se guardaron correctamente', {
         icon: <IconCheck size={16} />,
       });
     } catch (_error) {
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo actualizar el perfil',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo actualizar el perfil');
     } finally {
       setSaving(false);
     }
@@ -118,20 +111,16 @@ function ProfileContent() {
         throw new Error(result.error);
       }
 
-      notifications.show({
-        title: 'Contraseña actualizada',
-        message: 'Tu contraseña se cambió correctamente',
-        color: 'green',
+      showSuccess('Contraseña actualizada', 'Tu contraseña se cambió correctamente', {
         icon: <IconCheck size={16} />,
       });
 
       passwordForm.reset();
     } catch (error) {
-      notifications.show({
-        title: 'Error',
-        message: error instanceof Error ? error.message : 'No se pudo cambiar la contraseña',
-        color: 'red',
-      });
+      showError(
+        'Error',
+        error instanceof Error ? error.message : 'No se pudo cambiar la contraseña'
+      );
     } finally {
       setChangingPassword(false);
     }
@@ -140,10 +129,7 @@ function ProfileContent() {
   if (loading) {
     return (
       <Container size="sm" py="xl">
-        <Stack align="center" gap="md">
-          <Loader size="lg" />
-          <Text c="dimmed">Cargando perfil...</Text>
-        </Stack>
+        <LoadingState compact message="Cargando perfil..." />
       </Container>
     );
   }

@@ -1,19 +1,9 @@
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Center,
-  Group,
-  Loader,
-  Pagination,
-  Table,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Badge, Box, Group, Pagination, Table, Text, Tooltip } from '@mantine/core';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
-import { EmptyState } from '../../../ui/EmptyState';
+import { IconButton } from '../../../ui/IconButton';
 import { IconInfoCircle, IconMap } from '../../../ui/icons';
+import { LoadingState } from '../../../ui/LoadingState';
 import { getCategoryLabel } from '../reportsPanelUtils';
 
 export function ReportsTableContent({
@@ -34,21 +24,13 @@ export function ReportsTableContent({
   getStatusBadge: (status: string) => React.ReactNode;
 }>) {
   if (loading) {
-    return (
-      <Center py="xl" role="status" aria-busy="true" aria-live="polite">
-        <Group align="center">
-          <Loader aria-hidden="true" />
-          <Text size="sm" c="gray.6">
-            Cargando denuncias...
-          </Text>
-        </Group>
-      </Center>
-    );
+    return <LoadingState compact message="Cargando denuncias..." />;
   }
 
   if (filteredReports.length === 0) {
     return (
-      <EmptyState
+      <LoadingState
+        status="empty"
         title="No hay denuncias"
         description="No se encontraron denuncias con los filtros aplicados"
       />
@@ -92,17 +74,17 @@ export function ReportsTableContent({
                 <Table.Td>
                   <Group gap="xs" wrap="nowrap">
                     <Tooltip label="Ver detalle">
-                      <ActionIcon
+                      <IconButton
                         variant="light"
                         onClick={() => onViewDetail(report)}
                         aria-label={`Ver detalle de denuncia del ${formatDate(report.created_at)}`}
                       >
                         <IconInfoCircle size={18} />
-                      </ActionIcon>
+                      </IconButton>
                     </Tooltip>
                     {report.latitud != null && report.longitud != null && (
                       <Tooltip label="Ver en mapa">
-                        <ActionIcon
+                        <IconButton
                           variant="light"
                           color="blue"
                           component="a"
@@ -115,7 +97,7 @@ export function ReportsTableContent({
                           aria-label={`Ver ubicación de denuncia en el mapa, coordenadas ${report.latitud}, ${report.longitud}`}
                         >
                           <IconMap size={18} />
-                        </ActionIcon>
+                        </IconButton>
                       </Tooltip>
                     )}
                   </Group>

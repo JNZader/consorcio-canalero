@@ -8,11 +8,11 @@
  * - Loading/error state management
  */
 
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BasinsGeoJSON, GeoJobResponse, GeoLayerResponse } from '../lib/api/demPipeline';
 import { demPipelineApi } from '../lib/api/demPipeline';
 import { logger } from '../lib/logger';
+import { showError, showInfo, showSuccess } from '../lib/notifications';
 import { erroresUi, textoError } from '../lib/userFacingError';
 
 type PipelineState = 'idle' | 'submitting' | 'polling' | 'completed' | 'failed';
@@ -83,11 +83,7 @@ export function useDemPipeline(): UseDemPipelineResult {
           if (jobData.estado === 'completed') {
             stopPolling();
             setState('completed');
-            notifications.show({
-              title: 'Pipeline completado',
-              message: 'El análisis DEM se completó exitosamente.',
-              color: 'green',
-            });
+            showSuccess('Pipeline completado', 'El análisis DEM se completó exitosamente.');
             // Fetch results
             await fetchLayers();
             await fetchBasins();
@@ -95,11 +91,7 @@ export function useDemPipeline(): UseDemPipelineResult {
             stopPolling();
             setError(jobData.error || 'Error desconocido en el pipeline');
             setState('failed');
-            notifications.show({
-              title: 'Pipeline fallido',
-              message: jobData.error || 'Error en el procesamiento DEM.',
-              color: 'red',
-            });
+            showError('Pipeline fallido', jobData.error || 'Error en el procesamiento DEM.');
           }
         } catch (err) {
           logger.error('Error polling DEM pipeline status:', err);
@@ -125,21 +117,13 @@ export function useDemPipeline(): UseDemPipelineResult {
           min_basin_area_ha: minBasinAreaHa,
         });
         setJobId(response.job_id);
-        notifications.show({
-          title: 'Pipeline iniciado',
-          message: 'El pipeline DEM fue despachado. Esperando resultados...',
-          color: 'blue',
-        });
+        showInfo('Pipeline iniciado', 'El pipeline DEM fue despachado. Esperando resultados...');
         pollStatus(response.job_id);
       } catch (err) {
         const message = err instanceof Error ? err.message : textoError(erroresUi.iniciarPipeline);
         setError(message);
         setState('failed');
-        notifications.show({
-          title: erroresUi.iniciarPipeline.titulo,
-          message,
-          color: 'red',
-        });
+        showError(erroresUi.iniciarPipeline.titulo, message);
       }
     },
     [pollStatus]

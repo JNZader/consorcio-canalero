@@ -1,9 +1,9 @@
 import { Badge, Container, Group, Paper } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { showError, showSuccess } from '../../../lib/notifications';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { useLiveRegion } from '../../ui/accessibility';
 import { ReportDetailModal } from './components/ReportDetailModal';
@@ -11,11 +11,7 @@ import { ReportsFilters } from './components/ReportsFilters';
 import { ReportsTableContent } from './components/ReportsTableContent';
 import { ITEMS_PER_PAGE } from './constants';
 import type { SeguimientoEntry } from './reportsPanelTypes';
-import {
-  filterReports,
-  getStatusBadge,
-  type ReportStatusCounts,
-} from './reportsPanelUtils';
+import { filterReports, getStatusBadge, type ReportStatusCounts } from './reportsPanelUtils';
 
 export default function ReportsPanel() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -100,11 +96,7 @@ export default function ReportsPanel() {
       announceRef.current(`${data.items.length} reportes cargados`);
     } catch (error) {
       logger.error('Error loading reports:', error);
-      notifications.show({
-        title: erroresUi.cargarDenuncias.titulo,
-        message: erroresUi.cargarDenuncias.detalle,
-        color: 'red',
-      });
+      showError(erroresUi.cargarDenuncias.titulo, erroresUi.cargarDenuncias.detalle);
       announceRef.current(textoError(erroresUi.cargarDenuncias));
     } finally {
       setLoading(false);
@@ -175,21 +167,13 @@ export default function ReportsPanel() {
         }),
       });
 
-      notifications.show({
-        title: 'Reporte actualizado',
-        message: 'El historial de gestión ha sido registrado',
-        color: 'green',
-      });
+      showSuccess('Reporte actualizado', 'El historial de gestión ha sido registrado');
       announceRef.current('Reporte actualizado correctamente');
       closeDetail();
       loadReports();
     } catch (error) {
       logger.error(erroresUi.actualizarDenuncia.titulo, error);
-      notifications.show({
-        title: erroresUi.actualizarDenuncia.titulo,
-        message: erroresUi.actualizarDenuncia.detalle,
-        color: 'red',
-      });
+      showError(erroresUi.actualizarDenuncia.titulo, erroresUi.actualizarDenuncia.detalle);
       announceRef.current(textoError(erroresUi.actualizarDenuncia));
     } finally {
       setUpdating(false);

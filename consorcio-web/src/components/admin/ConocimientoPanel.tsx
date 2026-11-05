@@ -44,7 +44,6 @@ import {
   Title,
 } from '@mantine/core';
 import { useState } from 'react';
-
 import { useConocimientoNormas } from '../../hooks/useConocimientoNormas';
 import { useConocimientoQA } from '../../hooks/useConocimientoQA';
 import {
@@ -69,6 +68,7 @@ import {
   IconSearch,
   IconSend,
 } from '../ui/icons';
+import { PageHeader } from '../ui/PageHeader';
 import ProtectedRoute from './ProtectedRoute';
 
 /**
@@ -563,13 +563,12 @@ export function ConocimientoBandeja() {
 
   return (
     <Stack gap="lg" p="md">
-      <Box>
-        <Title order={2}>Consultas al corpus normativo</Title>
-        <Text size="sm" c="dimmed">
-          Las preguntas se encolan y las responde un procesador por lotes. La respuesta aparece acá
-          cuando esté lista; nada se contesta al instante.
-        </Text>
-      </Box>
+      <PageHeader
+        mb={0}
+        title="Consultas al corpus normativo"
+        subtitleSize="sm"
+        subtitle="Las preguntas se encolan y las responde un procesador por lotes. La respuesta aparece acá cuando esté lista; nada se contesta al instante."
+      />
 
       {sesionExpirada ? <SesionExpirada /> : null}
       {errorDeServicio ? <EstadoDelServicio error={errorDeServicio} /> : null}
@@ -835,13 +834,12 @@ export function NormasBusqueda() {
 
   return (
     <Stack gap="lg" p="md" data-testid="normas-panel">
-      <Box>
-        <Title order={2}>Búsqueda en el corpus normativo</Title>
-        <Text size="sm" c="dimmed">
-          Devuelve unidades del corpus tal como están ingestadas, no respuestas. Cada resultado
-          indica de qué versión del corpus sale.
-        </Text>
-      </Box>
+      <PageHeader
+        mb={0}
+        title="Búsqueda en el corpus normativo"
+        subtitleSize="sm"
+        subtitle="Devuelve unidades del corpus tal como están ingestadas, no respuestas. Cada resultado indica de qué versión del corpus sale."
+      />
 
       {sesionExpirada ? <SesionExpirada /> : null}
       {errorDeServicio ? (

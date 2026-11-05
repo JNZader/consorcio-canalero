@@ -10,7 +10,6 @@ import { LoadingState } from '../../src/components/ui/LoadingState';
 import PieChart from '../../src/components/ui/PieChart';
 import { StatCard } from '../../src/components/ui/StatCard';
 import { StatusBadge } from '../../src/components/ui/StatusBadge';
-import { SectionHeader } from '../../src/components/ui/SectionHeader';
 import { IconHome } from '@tabler/icons-react';
 
 function renderWithMantine(component: React.ReactNode) {
@@ -197,57 +196,4 @@ describe('UI Components', () => {
     });
   });
 
-  describe('SectionHeader', () => {
-    it('should render title', () => {
-      renderWithMantine(<SectionHeader title="Section Title" />);
-      expect(screen.getByText('Section Title')).toBeInTheDocument();
-    });
-
-    it('should render icon when provided', () => {
-      renderWithMantine(
-        <SectionHeader title="Test" icon={<IconHome data-testid="header-icon" />} />
-      );
-      expect(screen.getByTestId('header-icon')).toBeInTheDocument();
-    });
-
-    it('should render action element', () => {
-      renderWithMantine(
-        <SectionHeader title="Test" action={<button>Action</button>} />
-      );
-      expect(screen.getByText('Action')).toBeInTheDocument();
-    });
-
-    it('should render action link with href and label', () => {
-      const { container } = renderWithMantine(
-        <SectionHeader title="Test" actionHref="/path" actionLabel="View All" />
-      );
-      const link = container.querySelector('a[href="/path"]');
-      expect(link).toBeInTheDocument();
-      expect(link?.textContent).toContain('View All');
-    });
-
-    it('should not render link without label', () => {
-      const { container } = renderWithMantine(<SectionHeader title="Test" actionHref="/path" />);
-      expect(container.querySelector('a[href="/path"]')).not.toBeInTheDocument();
-    });
-
-    it('should not render link without href', () => {
-      const { container } = renderWithMantine(<SectionHeader title="Test" actionLabel="View All" />);
-      expect(container.querySelector('a')).not.toBeInTheDocument();
-    });
-
-    it('should render both icon and action', () => {
-      const { container } = renderWithMantine(
-        <SectionHeader
-          title="Test"
-          icon={<IconHome data-testid="header-icon" />}
-          actionHref="/path"
-          actionLabel="More"
-        />
-      );
-      expect(screen.getByTestId('header-icon')).toBeInTheDocument();
-      const link = container.querySelector('a[href="/path"]');
-      expect(link).toBeInTheDocument();
-    });
-  });
 });

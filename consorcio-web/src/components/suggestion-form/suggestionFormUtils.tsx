@@ -1,6 +1,6 @@
 import { Badge, Box, Button, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
+import { showNotification as notify } from '../../lib/notifications';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import { IconCheck } from '../ui/icons';
 
@@ -10,7 +10,7 @@ export function showSuggestionNotification(
   color: string,
   icon?: ReactNode
 ) {
-  notifications.show({ title, message, color, icon });
+  notify(title, message, color, icon !== undefined ? { icon } : undefined);
 }
 
 export function getStepBackgroundColor(isComplete: boolean, isDisabled?: boolean): string {

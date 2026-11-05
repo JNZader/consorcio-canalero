@@ -73,7 +73,6 @@ const postedBody = (path: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   stubApi();
-  window.confirm = vi.fn().mockReturnValue(true);
   window.URL.createObjectURL = vi.fn().mockReturnValue('blob:pdf');
   window.URL.revokeObjectURL = vi.fn();
   vi.mocked(global.fetch).mockResolvedValue({
@@ -236,13 +235,20 @@ describe('useReunionesController — delete agenda topic', () => {
 
   it('does nothing when the user cancels the confirmation', async () => {
     const { result } = await mountWithAgenda();
-    window.confirm = vi.fn().mockReturnValue(false);
     apiFetchMock.mockClear();
 
-    await act(async () => {
-      await result.current.handleDeleteTopic(agendaItem);
+    act(() => {
+      result.current.handleDeleteTopic(agendaItem);
     });
 
+    expect(result.current.topicPendingDelete?.id).toBe(agendaItem.id);
+    expect(apiFetchMock).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.cancelDeleteTopic();
+    });
+
+    expect(result.current.topicPendingDelete).toBeNull();
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(result.current.deletingAgendaItemId).toBeNull();
   });
@@ -250,8 +256,11 @@ describe('useReunionesController — delete agenda topic', () => {
   it('deletes, reloads and notifies on success', async () => {
     const { result } = await mountWithAgenda();
 
+    act(() => {
+      result.current.handleDeleteTopic(agendaItem);
+    });
     await act(async () => {
-      await result.current.handleDeleteTopic(agendaItem);
+      await result.current.confirmDeleteTopic();
     });
 
     expect(apiFetchMock).toHaveBeenCalledWith('/reuniones/r1/agenda/a1', { method: 'DELETE' });
@@ -265,8 +274,11 @@ describe('useReunionesController — delete agenda topic', () => {
     const { result } = await mountWithAgenda();
     stubApi({ 'DELETE /reuniones/r1/agenda/a1': () => Promise.reject(new Error('409')) });
 
+    act(() => {
+      result.current.handleDeleteTopic(agendaItem);
+    });
     await act(async () => {
-      await result.current.handleDeleteTopic(agendaItem);
+      await result.current.confirmDeleteTopic();
     });
 
     expect(notifications.show).toHaveBeenCalledWith(

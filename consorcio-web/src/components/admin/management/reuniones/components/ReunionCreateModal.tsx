@@ -1,5 +1,6 @@
-import { ActionIcon, Button, Group, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Button, Group, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
+import { IconButton } from '../../../../ui/IconButton';
 import { IconTrash } from '../../../../ui/icons';
 
 const REUNION_TITLE_ERROR_ID = 'reunion-title-error';
@@ -105,7 +106,7 @@ export function ReunionCreateModal({
                     aria-label={`Punto ${index + 1} del orden del día`}
                     style={{ flex: 1 }}
                   />
-                  <ActionIcon
+                  <IconButton
                     type="button"
                     color="red"
                     variant="subtle"
@@ -113,7 +114,7 @@ export function ReunionCreateModal({
                     aria-label={`Eliminar punto ${index + 1}`}
                   >
                     <IconTrash size={16} />
-                  </ActionIcon>
+                  </IconButton>
                 </Group>
               ))}
             </Stack>
