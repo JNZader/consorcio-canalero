@@ -8,6 +8,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.finanzas.models import CATEGORIAS_GASTO
+from app.shared.patch_fields import forbid_explicit_nulls
 
 
 # ──────────────────────────────────────────────
@@ -39,6 +40,8 @@ class GastoUpdate(BaseModel):
     comprobante_url: Optional[str] = None
     proveedor: Optional[str] = Field(default=None, max_length=200)
 
+    _reject_nulls = forbid_explicit_nulls("descripcion", "monto", "categoria", "fecha")
+
 
 class GastoResponse(BaseModel):
     """Full gasto detail."""
@@ -52,7 +55,7 @@ class GastoResponse(BaseModel):
     fecha: date
     comprobante_url: Optional[str] = None
     proveedor: Optional[str] = None
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -100,6 +103,8 @@ class IngresoUpdate(BaseModel):
     consorcista_id: Optional[uuid.UUID] = None
     comprobante_url: Optional[str] = None
 
+    _reject_nulls = forbid_explicit_nulls("descripcion", "monto", "categoria", "fecha")
+
 
 class IngresoResponse(BaseModel):
     """Full ingreso detail."""
@@ -113,7 +118,7 @@ class IngresoResponse(BaseModel):
     fecha: date
     consorcista_id: Optional[uuid.UUID] = None
     comprobante_url: Optional[str] = None
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 

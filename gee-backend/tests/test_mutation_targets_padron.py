@@ -175,7 +175,8 @@ class TestConsorcistaSchemas:
         """The ``v is None`` short-circuit: a PATCH that does not touch the CUIT
         must not be validated as if it carried an empty one."""
         assert ConsorcistaUpdate(nombre="Ana").cuit is None
-        assert ConsorcistaUpdate(cuit=None).cuit is None
+        with pytest.raises(ValidationError):
+            ConsorcistaUpdate(cuit=None)
 
     def test_update_normalises_a_present_cuit(self) -> None:
         assert ConsorcistaUpdate(cuit="30100000004").cuit == "30-10000000-4"
@@ -419,15 +420,17 @@ class TestUpdate:
         db.commit.assert_called_once()
         db.refresh.assert_called_once_with(updated)
 
-    def test_an_explicit_null_cuit_also_skips_the_uniqueness_check(self) -> None:
+    def test_an_explicit_null_cuit_is_422(self) -> None:
         svc, repo, db = _service()
         repo.get_by_id.return_value = SimpleNamespace(id=uuid.uuid4())
-        repo.update.return_value = object()
+        data = ConsorcistaUpdate.model_construct(cuit=None)
 
-        svc.update(db, uuid.uuid4(), ConsorcistaUpdate(cuit=None))
+        with pytest.raises(HTTPException) as exc:
+            svc.update(db, uuid.uuid4(), data)
 
+        assert exc.value.status_code == 422
         repo.get_by_cuit.assert_not_called()
-        repo.update.assert_called_once()
+        repo.update.assert_not_called()
 
     def test_a_free_cuit_is_accepted(self) -> None:
         svc, repo, db = _service()

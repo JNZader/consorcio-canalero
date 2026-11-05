@@ -361,6 +361,7 @@ class TestPresupuestoAndReports:
     def test_create_presupuesto_commits_and_refreshes(self) -> None:
         svc, repo, db = _service()
         created = object()
+        repo.get_by_anio_rubro.return_value = None
         repo.create_presupuesto.return_value = created
         data = PresupuestoCreate(anio=2026, rubro="obras", monto_proyectado=Decimal("100000.00"))
 
@@ -368,6 +369,18 @@ class TestPresupuestoAndReports:
         repo.create_presupuesto.assert_called_once_with(db, data)
         db.commit.assert_called_once()
         db.refresh.assert_called_once_with(created)
+
+    def test_create_presupuesto_existing_anio_rubro_is_409(self) -> None:
+        svc, repo, db = _service()
+        repo.get_by_anio_rubro.return_value = object()
+        data = PresupuestoCreate(anio=2026, rubro="obras", monto_proyectado=Decimal("100000.00"))
+
+        with pytest.raises(HTTPException) as exc:
+            svc.create_presupuesto(db, data)
+
+        assert exc.value.status_code == 409
+        repo.create_presupuesto.assert_not_called()
+        db.commit.assert_not_called()
 
     def test_budget_execution_is_a_straight_passthrough(self) -> None:
         svc, repo, db = _service()

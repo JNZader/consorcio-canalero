@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy import (
     Date,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -66,6 +67,7 @@ class Ingreso(UUIDMixin, TimestampMixin, Base):
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
     consorcista_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("consorcistas.id", ondelete="SET NULL"),
         nullable=True,
     )
     comprobante_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -83,6 +85,7 @@ class Presupuesto(UUIDMixin, TimestampMixin, Base):
     """Annual budget line item — presupuesto por rubro."""
 
     __tablename__ = "presupuestos_v2"
+    __table_args__ = (Index("ix_presupuestos_v2_anio_rubro", "anio", "rubro", unique=True),)
 
     anio: Mapped[int] = mapped_column(Integer, nullable=False)
     rubro: Mapped[str] = mapped_column(String(100), nullable=False)

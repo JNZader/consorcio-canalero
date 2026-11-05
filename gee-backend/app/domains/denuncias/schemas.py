@@ -4,7 +4,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.domains.denuncias.models import EstadoDenuncia
+from app.shared.enum_params import choice_or_raise
+from app.shared.patch_fields import forbid_explicit_nulls
 
 
 # ──────────────────────────────────────────────
@@ -42,6 +46,13 @@ class DenunciaUpdate(BaseModel):
         description="Comentario para el historial de cambios",
     )
 
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, EstadoDenuncia, "estado")
+
+    _reject_nulls = forbid_explicit_nulls("estado")
+
 
 # ──────────────────────────────────────────────
 # RESPONSES
@@ -58,7 +69,7 @@ class HistorialResponse(BaseModel):
     estado_anterior: str
     estado_nuevo: str
     comentario: Optional[str] = None
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
 
 

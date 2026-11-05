@@ -233,10 +233,15 @@ def update_sugerencia(
     payload: SugerenciaUpdate,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
-    _user=Depends(_require_operator()),
+    user=Depends(_require_operator()),
 ):
     """Actualizar estado/respuesta de una sugerencia (requiere operador)."""
-    return service.update_sugerencia(db, sugerencia_id, payload)
+    return service.update_sugerencia(
+        db,
+        sugerencia_id,
+        payload,
+        operator_id=uuid.UUID(str(user.id)),
+    )
 
 
 @router.post(

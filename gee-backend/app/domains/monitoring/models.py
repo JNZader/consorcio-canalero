@@ -29,6 +29,29 @@ class EstadoSugerencia(str, enum.Enum):
     DESCARTADA = "descartada"
 
 
+# An operator may close a sugerencia without putting it on the agenda.
+# Implemented and discarded rows can move back one step; they cannot jump
+# across each other.
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    EstadoSugerencia.PENDIENTE: {
+        EstadoSugerencia.REVISADA,
+        EstadoSugerencia.IMPLEMENTADA,
+        EstadoSugerencia.DESCARTADA,
+    },
+    EstadoSugerencia.REVISADA: {
+        EstadoSugerencia.PENDIENTE,
+        EstadoSugerencia.IMPLEMENTADA,
+        EstadoSugerencia.DESCARTADA,
+    },
+    EstadoSugerencia.IMPLEMENTADA: {
+        EstadoSugerencia.REVISADA,
+    },
+    EstadoSugerencia.DESCARTADA: {
+        EstadoSugerencia.PENDIENTE,
+    },
+}
+
+
 class TipoAnalisis(str, enum.Enum):
     INUNDACION = "inundacion"
     VEGETACION = "vegetacion"
@@ -104,10 +127,10 @@ class AnalisisGee(UUIDMixin, TimestampMixin, Base):
     hectareas_afectadas: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     porcentaje_area: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     parametros: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    usuario_id: Mapped[uuid.UUID] = mapped_column(
+    usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=False,
+        nullable=True,
     )
 
     def __repr__(self) -> str:

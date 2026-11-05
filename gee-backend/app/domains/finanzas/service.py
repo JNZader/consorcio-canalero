@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domains.finanzas.models import (
@@ -20,7 +21,10 @@ from app.domains.finanzas.schemas import (
     IngresoCreate,
     IngresoUpdate,
     PresupuestoCreate,
+    PresupuestoUpdate,
 )
+
+_PRESUPUESTO_CONFLICT = "Ya existe un presupuesto para ese anio y rubro"
 
 
 class FinanzasService:
@@ -161,10 +165,33 @@ class FinanzasService:
         db: Session,
         data: PresupuestoCreate,
     ) -> Presupuesto:
-        presupuesto = self.repo.create_presupuesto(db, data)
+        if self.repo.get_by_anio_rubro(db, data.anio, data.rubro) is not None:
+            raise HTTPException(status_code=409, detail=_PRESUPUESTO_CONFLICT)
+        try:
+            with db.begin_nested():
+                presupuesto = self.repo.create_presupuesto(db, data)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail=_PRESUPUESTO_CONFLICT) from exc
         db.commit()
         db.refresh(presupuesto)
         return presupuesto
+
+    def update_presupuesto(
+        self,
+        db: Session,
+        presupuesto_id: uuid.UUID,
+        data: PresupuestoUpdate,
+    ) -> Presupuesto:
+        try:
+            with db.begin_nested():
+                updated = self.repo.update_presupuesto(db, presupuesto_id, data)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail=_PRESUPUESTO_CONFLICT) from exc
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+        db.commit()
+        db.refresh(updated)
+        return updated
 
     # ── REPORTS ─────────────────────────────────
 

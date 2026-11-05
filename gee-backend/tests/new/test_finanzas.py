@@ -144,19 +144,27 @@ class TestIngresoModel:
         assert ingreso.created_at is not None
 
     def test_ingreso_with_consorcista(self, db: Session, user_with_id: uuid.UUID):
-        consorcista_uuid = uuid.uuid4()
+        from app.domains.padron.models import Consorcista
+
+        consorcista = Consorcista(
+            nombre="Ana",
+            apellido="Diaz",
+            cuit=f"20-{uuid.uuid4().hex[:8]}",
+        )
+        db.add(consorcista)
+        db.flush()
         ingreso = Ingreso(
             descripcion="Cuota from consorcista",
             monto=Decimal("2500.00"),
             categoria="cuotas",
             fecha=date(2026, 3, 1),
-            consorcista_id=consorcista_uuid,
+            consorcista_id=consorcista.id,
             usuario_id=user_with_id,
         )
         db.add(ingreso)
         db.flush()
 
-        assert ingreso.consorcista_id == consorcista_uuid
+        assert ingreso.consorcista_id == consorcista.id
 
 
 class TestPresupuestoModel:

@@ -121,8 +121,20 @@ class PadronService:
         """Update an existing consorcista, checking CUIT uniqueness if changed."""
         self.get_by_id(db, consorcista_id)
 
-        # Check CUIT uniqueness if being updated
+        # Check CUIT uniqueness if being updated. Explicit null on a NOT NULL
+        # column is 422 here as well as in the schema, so a bypassed validator
+        # still cannot flush an IntegrityError.
         update_fields = data.model_dump(exclude_unset=True)
+        blocked = [
+            name
+            for name in ("nombre", "apellido", "cuit", "estado")
+            if name in update_fields and update_fields[name] is None
+        ]
+        if blocked:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No se puede anular: {', '.join(blocked)}",
+            )
         if "cuit" in update_fields and update_fields["cuit"] is not None:
             existing = self.repo.get_by_cuit(db, update_fields["cuit"])
             if existing is not None and existing.id != consorcista_id:

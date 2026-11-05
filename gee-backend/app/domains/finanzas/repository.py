@@ -171,6 +171,15 @@ class FinanzasRepository:
         stmt = base.order_by(Presupuesto.anio.desc(), Presupuesto.rubro)
         return list(db.execute(stmt).scalars().all())
 
+    def get_by_anio_rubro(
+        self,
+        db: Session,
+        anio: int,
+        rubro: str,
+    ) -> Optional[Presupuesto]:
+        stmt = select(Presupuesto).where(Presupuesto.anio == anio, Presupuesto.rubro == rubro)
+        return db.execute(stmt).scalar_one_or_none()
+
     def create_presupuesto(
         self,
         db: Session,

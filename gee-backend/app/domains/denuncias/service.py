@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.domains.denuncias.models import (
     Denuncia,
+    EstadoDenuncia,
     VALID_TRANSITIONS,
 )
 from app.domains.denuncias.repository import DenunciaRepository
 from app.domains.denuncias.schemas import DenunciaCreate, DenunciaUpdate
+from app.shared.enum_params import require_choice
 from app.shared.submission_limit import (
     enforce_submission_limit,
     get_submission_status,
@@ -44,6 +46,7 @@ class DenunciaService:
         categoria: Optional[str] = None,
         search: Optional[str] = None,
     ) -> tuple[list[Denuncia], int]:
+        estado = require_choice(estado, EstadoDenuncia, "estado")
         return self.repo.get_all(
             db,
             page=page,

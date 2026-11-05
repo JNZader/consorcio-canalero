@@ -1,7 +1,6 @@
 """Business-logic layer for tramites domain."""
 
 import uuid
-from datetime import date
 from typing import Optional
 
 from fastapi import HTTPException
@@ -11,8 +10,12 @@ from app.domains.tramites.models import (
     Tramite,
     TramiteSeguimiento,
     EstadoTramite,
+    PrioridadTramite,
+    TipoTramite,
     VALID_TRANSITIONS,
 )
+from app.shared.enum_params import require_choice
+from app.shared.local_date import hoy_argentina
 from app.domains.tramites.repository import TramiteRepository
 from app.domains.tramites.schemas import (
     TramiteCreate,
@@ -45,6 +48,9 @@ class TramiteService:
         tipo: Optional[str] = None,
         prioridad: Optional[str] = None,
     ) -> tuple[list[Tramite], int]:
+        estado = require_choice(estado, EstadoTramite, "estado")
+        tipo = require_choice(tipo, TipoTramite, "tipo")
+        prioridad = require_choice(prioridad, PrioridadTramite, "prioridad")
         return self.repo.get_all(
             db,
             page=page,
@@ -103,12 +109,19 @@ class TramiteService:
                 usuario_id=operator_id,
             )
 
-            # Set fecha_resolucion on terminal-ish states
+            # Resolution date is the consorcio's calendar day, not the
+            # container's UTC date. Reopening (back to ingresado / en_tramite)
+            # clears a date left behind by a previous rechazo.
             if data.estado in (
                 EstadoTramite.APROBADO,
                 EstadoTramite.RECHAZADO,
             ):
-                tramite.fecha_resolucion = date.today()
+                tramite.fecha_resolucion = hoy_argentina()
+            elif data.estado in (
+                EstadoTramite.INGRESADO,
+                EstadoTramite.EN_TRAMITE,
+            ):
+                tramite.fecha_resolucion = None
 
         updated = self.repo.update(db, tramite_id, data)
         db.commit()
