@@ -457,16 +457,9 @@ export default defineConfig({
               name: 'vendor-mantine-dates',
               test: /node_modules\/@mantine\/dates(\/|$)/,
             },
-            // PERF-005 — charts and dropzone were a single ``vendor-mantine-extras``
-            // chunk. They have DISJOINT consumers: dropzone is the photo picker in
-            // ``/participacion``, charts only shows up in admin dashboards. Bundled
-            // together, opening the report form downloaded ~113 KB of charting code
-            // that page never renders. One chunk per library keeps each route paying
-            // only for what it uses.
-            {
-              name: 'vendor-mantine-charts',
-              test: /node_modules\/@mantine\/charts(\/|$)/,
-            },
+            // PERF-005 — dropzone is the photo picker in ``/participacion``.
+            // Charts are recharts only (``vendor-charts``); ``@mantine/charts``
+            // no longer ships, so the admin dashboard shares that chunk.
             {
               name: 'vendor-mantine-dropzone',
               test: /node_modules\/@mantine\/dropzone(\/|$)/,

@@ -1,4 +1,3 @@
-import { BarChart, DonutChart, LineChart } from '@mantine/charts';
 import { Badge, Grid, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { apiFetch, statsApi } from '../../../lib/api';
@@ -11,6 +10,7 @@ import {
   IconPieChart,
   IconReportMoney,
 } from '../../ui/icons';
+import { FinanceBudgetChart, FloodHistoryChart, ReportStatusChart } from './DashboardCharts';
 
 interface FinanceBalanceSummary {
   total_ingresos: number;
@@ -342,18 +342,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
               </Title>
             </Group>
             {financeData.length > 0 ? (
-              <BarChart
-                h={300}
-                data={financeData}
-                dataKey="rubro"
-                series={[
-                  { name: 'proyectado', color: 'gray.4', label: 'Proyectado' },
-                  { name: 'real', color: 'blue.6', label: 'Real' },
-                ]}
-                tickLine="y"
-                gridAxis="xy"
-                valueFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-              />
+              <FinanceBudgetChart data={financeData} />
             ) : (
               <Stack align="center" justify="center" h={300}>
                 <Text c="dimmed">Sin datos de presupuesto por rubro</Text>
@@ -373,14 +362,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
             {hasReportChartData ? (
               <>
                 <Stack align="center" justify="center" h={250}>
-                  <DonutChart
-                    size={180}
-                    thickness={25}
-                    data={reportStats}
-                    withLabelsLine
-                    labelsType="percent"
-                    withLabels
-                  />
+                  <ReportStatusChart data={reportStats} />
                 </Stack>
                 <Stack gap={4} mt="md">
                   {reportStats.map((s) => (
@@ -413,16 +395,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
               </Title>
             </Group>
             {floodHistoryData.length > 0 ? (
-              <LineChart
-                h={300}
-                data={floodHistoryData}
-                dataKey="fecha"
-                series={[{ name: 'anegamiento', color: 'cyan.6', label: 'Anegamiento (%)' }]}
-                curveType="monotone"
-                tickLine="y"
-                gridAxis="xy"
-                valueFormatter={(value) => `${value}%`}
-              />
+              <FloodHistoryChart data={floodHistoryData} />
             ) : (
               <Stack align="center" justify="center" h={300}>
                 <Text c="dimmed">Sin datos de evolución satelital</Text>

@@ -72,6 +72,27 @@ function assertSpa(path, { response, body }) {
   }
 }
 
+function assertRouteNotFound(path, { response, body }) {
+  const type = header(response, 'content-type').toLowerCase();
+  if (response.status !== 404) {
+    throw new Error(`${path} deberia ser 404 y fue ${response.status} (${type})`);
+  }
+  if (!type.includes('text/html')) {
+    throw new Error(`${path} deberia ser HTML y fue ${type || '<vacio>'}`);
+  }
+  if (!body.includes('id="root"')) {
+    throw new Error(`${path} no sirvio el shell para que el cliente pinte Not Found`);
+  }
+  const cache = header(response, 'cache-control').toLowerCase();
+  if (cache.includes('immutable') || cache.includes('max-age=31536000')) {
+    throw new Error(`${path} cachea el 404 como asset inmutable (${cache})`);
+  }
+  const robots = header(response, 'x-robots-tag').toLowerCase();
+  if (!robots.includes('noindex')) {
+    throw new Error(`${path} no marco X-Robots-Tag noindex (${robots || '<vacio>'})`);
+  }
+}
+
 function assertPlain404(path, { response, body }) {
   const type = header(response, 'content-type').toLowerCase();
   if (response.status !== 404) {
@@ -114,11 +135,10 @@ async function check(base) {
     });
   }
 
-  // SEO-02: una ruta que la app no conoce sigue en 200 con el shell. Eso es
-  // el soft-404 del fallback SPA. NotFound pone robots noindex en el cliente;
-  // acá se verifica que el edge no la convierta en un 404 duro.
-  await run('soft-404 /esta-ruta-no-existe', async () => {
-    assertSpa(
+  // Una ruta que la app no conoce llega como shell (el cliente pinta Not
+  // Found) pero el status es 404. El soft-404 de HTTP 200 queda afuera.
+  await run('404 /esta-ruta-no-existe', async () => {
+    assertRouteNotFound(
       '/esta-ruta-no-existe',
       await fetchManual(`${origin}/esta-ruta-no-existe`),
     );
@@ -184,6 +204,10 @@ async function check(base) {
     if (asset.body.includes('id="root"') || asset.body.trim().startsWith('<!doctype')) {
       throw new Error(`${assetPath} sirvio HTML en vez del modulo`);
     }
+  });
+
+  await run('SPA /reports', async () => {
+    assertSpa('/reports', await fetchManual(`${origin}/reports`));
   });
 
   await run('301 /reportes', async () => {

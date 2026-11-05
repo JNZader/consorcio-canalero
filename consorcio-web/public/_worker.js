@@ -11,6 +11,10 @@
  * archivo → index.html 200). Un chunk viejo cae en ese mismo fallback y el
  * navegador intenta evaluar HTML (FE-01). Si la URL es un archivo estático y
  * la respuesta es HTML 200 o un 404 HTML, devolvemos 404 `text/plain`.
+ *
+ * Una ruta HTML que la app no tiene registrada también llegaba como 200 con
+ * el shell (soft-404). Esa se devuelve con el mismo HTML y status 404, para
+ * que el cliente pinte Not Found y un crawler vea el código real.
  */
 
 const STATIC_ASSET =
@@ -43,15 +47,88 @@ export function plainNotFound() {
   });
 }
 
+/**
+ * Rutas que el router de la SPA conoce. Una URL que no está acá y que el
+ * fallback de Pages sirvió como `index.html` 200 es un soft-404: la
+ * devolvemos con el mismo shell (para que el cliente pinte Not Found) pero
+ * con status 404. `/reports` es el alias cliente hacia Participación;
+ * `/reportes` y `/sugerencias` además redirigen 301 en `_redirects`.
+ */
+const SPA_ROUTES = new Set([
+  '/',
+  '/index.html',
+  '/login',
+  '/privacidad',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/mapa',
+  '/participacion',
+  '/reportes',
+  '/sugerencias',
+  '/reports',
+  '/auth/callback',
+  '/dashboard',
+  '/perfil',
+  '/admin',
+  '/admin/images',
+  '/admin/participacion',
+  '/admin/reports',
+  '/admin/sugerencias',
+  '/admin/tramites',
+  '/admin/reuniones',
+  '/admin/padron',
+  '/admin/finanzas',
+  '/admin/dem-pipeline',
+  '/admin/conocimiento',
+  '/admin/canales',
+]);
+
+export function normalizePathname(pathname) {
+  let path = pathname || '/';
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Un escape roto se compara tal cual.
+  }
+  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  return path;
+}
+
+export function isKnownSpaPath(pathname) {
+  return SPA_ROUTES.has(normalizePathname(pathname));
+}
+
+export function shouldServeRouteNotFound(pathname, status, contentType) {
+  if (isStaticAssetPath(pathname)) return false;
+  if (status !== 200) return false;
+  const type = (contentType || '').toLowerCase();
+  if (!type.includes('text/html')) return false;
+  return !isKnownSpaPath(pathname);
+}
+
+export function htmlNotFound(response) {
+  const headers = new Headers(response.headers);
+  headers.set('cache-control', 'no-store');
+  headers.set('x-robots-tag', 'noindex');
+  return new Response(response.body, {
+    status: 404,
+    statusText: 'Not Found',
+    headers,
+  });
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
     const response = await env.ASSETS.fetch(request);
-    if (
-      !shouldReplaceWithPlain404(pathname, response.status, response.headers.get('content-type'))
-    ) {
-      return response;
+    const contentType = response.headers.get('content-type');
+    if (shouldReplaceWithPlain404(pathname, response.status, contentType)) {
+      return plainNotFound();
     }
-    return plainNotFound();
+    if (shouldServeRouteNotFound(pathname, response.status, contentType)) {
+      return htmlNotFound(response);
+    }
+    return response;
   },
 };

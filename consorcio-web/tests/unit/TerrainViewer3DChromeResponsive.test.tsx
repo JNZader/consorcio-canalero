@@ -78,4 +78,17 @@ describe('TerrainViewer3DChrome responsive layout', () => {
       screen.getByText('Arrastrá con 2 dedos para rotar e inclinar')
     ).toBeInTheDocument();
   });
+
+  it('places the flythrough off the nav corner and leaves the status dock non-interactive', () => {
+    vi.mocked(useMapWorkspaceDesktop).mockReturnValue(false);
+
+    wrap(<TerrainViewer3DChrome {...defaultProps} onFlythrough={vi.fn()} canFlythrough />);
+
+    const flythrough = screen.getByTestId('terrain-flythrough');
+    expect(flythrough.className).toMatch(/terrainFlythrough/);
+    expect(flythrough.getAttribute('style') ?? '').not.toMatch(/top:\s*12px/);
+    const dock = screen.getByTestId('terrain-status-dock');
+    expect(dock.className).toMatch(/terrainStatusDock/);
+    expect(screen.getByText('Suavizar terreno')).toBeInTheDocument();
+  });
 });

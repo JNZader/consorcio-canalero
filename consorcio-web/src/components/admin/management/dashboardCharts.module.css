@@ -1,0 +1,42 @@
+.chart {
+  width: 100%;
+  height: 300px;
+}
+
+.chart :global(.recharts-cartesian-axis-tick text),
+.chart :global(.recharts-pie-label text) {
+  fill: var(--mantine-color-dimmed);
+}
+
+.chart :global(.recharts-cartesian-grid line) {
+  stroke: var(--mantine-color-default-border);
+}
+
+.donut {
+  width: 180px;
+  height: 180px;
+}
+
+.barProyectado {
+  fill: var(--mantine-color-gray-4);
+}
+
+.barReal {
+  fill: var(--mantine-color-blue-6);
+}
+
+.lineAnegamiento {
+  stroke: var(--mantine-color-cyan-6);
+}
+
+.sliceRed {
+  fill: var(--mantine-color-red-6);
+}
+
+.sliceOrange {
+  fill: var(--mantine-color-orange-6);
+}
+
+.sliceGreen {
+  fill: var(--mantine-color-green-6);
+}

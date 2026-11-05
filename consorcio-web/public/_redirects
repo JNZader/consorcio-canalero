@@ -10,13 +10,14 @@
 # `/* /index.html 200` ni `/* / 200`.
 #
 # Sin `404.html` de raiz, Cloudflare Pages trata el proyecto como SPA y
-# sirve `/` (el index) con 200 para cualquier ruta que no sea un archivo.
-# Un `404.html` de raiz apaga ese fallback: `/mapa`, `/participacion` y
-# `/admin` pasan a responder 404. El splat `/* /index.html 200` no lo
-# rescata, porque Pages redirige `/index.html` → `/` con 308 (pretty URLs)
-# y la regla entra en bucle o se descarta.
+# sirve `/` (el index) para cualquier ruta que no sea un archivo. Ese
+# fallback llega en 200. `public/_worker.js` lo deja en 200 solo para las
+# rutas que el router conoce; el resto sale 404 con el mismo shell (el
+# cliente pinta Not Found). Un `404.html` de raiz apaga el fallback:
+# `/mapa`, `/participacion` y `/admin` pasan a responder 404 sin shell.
+# El splat `/* /index.html 200` no lo rescata, porque Pages redirige
+# `/index.html` → `/` con 308 (pretty URLs) y la regla entra en bucle.
 #
 # Los chunks y demas assets que ya no existen NO deben caer en ese shell
-# (FE-01). Lo resuelve `public/_worker.js` (copiado a `dist/_worker.js`):
-# si la URL tiene extension de archivo estatico y el cuerpo es HTML,
-# responde 404 `text/plain`.
+# (FE-01). Lo resuelve el mismo `_worker.js`: si la URL tiene extension
+# de archivo estatico y el cuerpo es HTML, responde 404 `text/plain`.
