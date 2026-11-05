@@ -22,8 +22,10 @@
  *     chip does not cover the vertex or the segment it describes.
  *
  * Styling:
- *   - `#fd7e14` border matches the orange measurement draw line color
- *     from Batch B, so the label reads as part of the same feature.
+ *   - The border uses `--cc-map-label-border` (the orange measurement
+ *     accent) so the label reads as part of the same feature.
+ *   - Surface, text and the profile button follow `mapChromeVars`, which
+ *     switches with Río limpio / dark.
  *   - Inline styles only — deliberately avoids a CSS module to keep the
  *     batch small and consistent with the inline-style approach used
  *     elsewhere in the measurement subdirectory.
@@ -32,7 +34,7 @@
 import type { LineString, MultiLineString } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useState } from 'react';
-import { mapColorTokens } from '../../../lib/mapColorTokens';
+import { mapChromeVars } from '../../../lib/mapColorTokens';
 import { MAP_Z } from '../mapZIndex';
 import { formatArea, formatDistance } from './measurementFormat';
 import type { MeasurementEntry } from './useMeasurement';
@@ -212,16 +214,16 @@ export function MeasurementLabels({
               top: pos.y,
               transform: 'translate(-50%, calc(-100% - 10px))',
               willChange: 'left, top',
-              background: 'rgba(255, 255, 255, 0.96)',
+              background: mapChromeVars.labelSurface,
               backdropFilter: 'blur(4px)',
-              border: '1.5px solid #fd7e14',
+              border: `1.5px solid ${mapChromeVars.labelBorder}`,
               borderRadius: 6,
               padding: '3px 8px',
               fontSize: 11,
               fontWeight: 600,
               boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
               whiteSpace: 'nowrap',
-              color: mapColorTokens.h333,
+              color: mapChromeVars.labelText,
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -242,11 +244,13 @@ export function MeasurementLabels({
                   alignItems: 'center',
                   padding: '1px 6px',
                   border: isProfileActive
-                    ? '1px solid #74c0fc'
+                    ? `1px solid ${mapChromeVars.profileBorder}`
                     : '1px solid var(--cc-color-border)',
                   borderRadius: 4,
-                  background: isProfileActive ? '#e7f5ff' : 'var(--cc-color-surface-raised)',
-                  color: isProfileActive ? '#1971c2' : 'var(--cc-color-text-muted)',
+                  background: isProfileActive
+                    ? mapChromeVars.profileSurface
+                    : 'var(--cc-color-surface-raised)',
+                  color: isProfileActive ? mapChromeVars.profileText : 'var(--cc-color-text-muted)',
                   fontSize: 10,
                   fontWeight: 600,
                   cursor: 'pointer',

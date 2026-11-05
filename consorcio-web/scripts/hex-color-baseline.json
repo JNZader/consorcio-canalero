@@ -1,24 +1,4 @@
 {
-  "src/components/map2d/ElevationProfileChart.tsx": {
-    "#0f766e": 4,
-    "#94a3b8": 1
-  },
-  "src/components/map2d/measurement/MeasurementLabels.tsx": {
-    "#1971c2": 1,
-    "#74c0fc": 1,
-    "#e7f5ff": 1,
-    "#fd7e14": 1
-  },
-  "src/components/map2d/measurement/MeasurementShapes.tsx": {
-    "#7c3aed": 1,
-    "#ffffff": 1
-  },
-  "src/components/map2d/measurement/usePersonalMeasurementsLayer.ts": {
-    "#7c3aed": 2
-  },
-  "src/lib/typeGuards.ts": {
-    "#3388ff": 2
-  },
   "src/routeTree.gen.tsx": {
     "#f8faf9": 1
   },

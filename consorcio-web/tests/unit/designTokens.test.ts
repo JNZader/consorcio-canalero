@@ -13,6 +13,13 @@ import {
   mediaMinWidth,
 } from '../../src/lib/breakpoints';
 import {
+  type MapColorToken,
+  mapChromeVars,
+  mapColorTokens,
+  mapColorVar,
+  mapCssVariable,
+} from '../../src/lib/mapColorTokens';
+import {
   cssVariablesResolver,
   INSTITUCIONAL_9,
   mantineTheme,
@@ -245,5 +252,52 @@ describe('design tokens', () => {
       'var(--cc-color-success)'
     );
     expect(readFileSync('src/components/MapaPage.tsx', 'utf8')).toContain('size="sm" c="dimmed"');
+  });
+
+  it('publishes map colors as --cc-map-* from the theme registry', () => {
+    const theme = mergeMantineTheme(DEFAULT_THEME, mantineTheme);
+    const resolved = cssVariablesResolver(theme);
+    const published = new Map<string, string>();
+
+    for (const [token, hex] of Object.entries(mapColorTokens) as [MapColorToken, string][]) {
+      const cssVar = mapCssVariable(token);
+      const previous = published.get(cssVar);
+      if (previous === undefined) {
+        published.set(cssVar, hex);
+        expect(resolved.variables[cssVar], cssVar).toBe(hex);
+      } else {
+        expect(previous.toLowerCase(), token).toBe(hex.toLowerCase());
+        expect(resolved.variables[cssVar], cssVar).toBe(previous);
+      }
+      expect(resolved.light[cssVar], cssVar).toBeUndefined();
+      expect(resolved.dark[cssVar], cssVar).toBeUndefined();
+    }
+
+    expect(published.size).toBeGreaterThan(160);
+    expect(resolved.variables['--cc-map-2563eb']).toBe(mapColorTokens.h2563eb);
+    expect(resolved.variables['--cc-map-0072b2']).toBe(mapColorTokens.h0072b2);
+    expect(resolved.variables['--cc-map-fd7e14']).toBe(mapColorTokens.hfd7e14);
+    expect(mantineTheme.other?.mapColors).toBe(mapColorTokens);
+
+    expect(resolved.light['--cc-map-label-surface']).toBe('rgba(255, 255, 255, 0.96)');
+    expect(resolved.light['--cc-map-label-text']).toBe(mapColorTokens.h333);
+    expect(resolved.light['--cc-map-label-border']).toBe(mapColorTokens.hfd7e14);
+    expect(resolved.light['--cc-map-profile-border']).toBe('var(--mantine-color-blue-3)');
+    expect(resolved.light['--cc-map-profile-surface']).toBe('var(--mantine-color-blue-0)');
+    expect(resolved.light['--cc-map-profile-text']).toBe('var(--mantine-color-blue-6)');
+    expect(resolved.dark['--cc-map-label-text']).toBe('var(--cc-color-text)');
+    expect(resolved.dark['--cc-map-label-border']).toBe(mapColorTokens.hfd7e14);
+    expect(resolved.dark['--cc-map-profile-surface']).toBe('var(--mantine-color-dark-5)');
+    expect(resolved.dark['--cc-map-profile-text']).toBe('var(--mantine-color-blue-2)');
+    expect(resolved.dark['--cc-map-label-surface']).toContain('var(--mantine-color-dark-7)');
+    expect(mapChromeVars.labelText).toBe('var(--cc-map-label-text)');
+    expect(mapColorVar('h2563EB')).toBe('var(--cc-map-2563eb)');
+
+    const registry = readFileSync('src/lib/mapColorTokens.ts', 'utf8');
+    expect(registry).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(registry).not.toContain('hex-color-allow-file');
+    expect(readFileSync('src/components/map2d/slopeColor.ts', 'utf8')).not.toContain(
+      'hex-color-allow-file'
+    );
   });
 });

@@ -19,12 +19,12 @@
  */
 
 import { Box, Checkbox, Divider, Group, Paper, Stack, Text } from '@mantine/core';
-
 import {
   SOIL_CAPABILITY_COLORS,
   SOIL_CAPABILITY_LABELS,
   SOIL_CAPABILITY_ORDER,
 } from '../../hooks/useSoilMap';
+import { mapColorTokens } from '../../lib/mapColorTokens';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CANALES_COLORS } from '../map2d/canalesLayers';
 import { PILAR_VERDE_COLORS } from '../map2d/pilarVerdeLayers';
@@ -364,7 +364,7 @@ export function TerrainLegendsPanel({
                         width: 12,
                         height: 12,
                         backgroundColor: chip.color,
-                        border: '1px solid #166534', // hex-color-allow: leyenda BPA
+                        border: `1px solid ${mapColorTokens.h166534}`,
                         borderRadius: 2,
                       }}
                     />

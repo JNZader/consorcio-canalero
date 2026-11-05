@@ -1,6 +1,7 @@
 import type { Feature } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useEffect } from 'react';
+import { mapColorTokens } from '../../../lib/mapColorTokens';
 import { ensureGeoJsonSource } from '../map2dUtils';
 import { readPersonalMeasurements } from './personalMeasurements';
 
@@ -46,7 +47,7 @@ export function usePersonalMeasurementsLayer(
         type: 'fill',
         source: SOURCE,
         filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 },
+        paint: { 'fill-color': mapColorTokens.h7c3aed, 'fill-opacity': 0.18 },
       });
     }
     if (!map.getLayer(LAYER)) {
@@ -54,7 +55,7 @@ export function usePersonalMeasurementsLayer(
         id: LAYER,
         type: 'line',
         source: SOURCE,
-        paint: { 'line-color': '#7c3aed', 'line-width': 3 },
+        paint: { 'line-color': mapColorTokens.h7c3aed, 'line-width': 3 },
       });
     }
   }, [mapReady, mapRef, revision, visible]);
