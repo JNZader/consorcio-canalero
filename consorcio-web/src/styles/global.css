@@ -202,6 +202,25 @@ body {
   }
 }
 
+/* En 360px las pestañas de Participación no entran en una línea:
+   "Proponer una mejora" se salía ~2px del cliente y el documento
+   scrolleaba de costado. El texto baja de renglón en vez de ensanchar. */
+@media (max-width: 47.9375em) {
+  .mantine-Tabs-tab {
+    min-width: 0;
+    height: auto;
+    white-space: normal;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .mantine-Tabs-tabLabel {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+}
+
 /* Focus visible mejorado - Alta visibilidad en cualquier fondo */
 :focus-visible {
   outline: 3px solid var(--mantine-color-blue-5);
