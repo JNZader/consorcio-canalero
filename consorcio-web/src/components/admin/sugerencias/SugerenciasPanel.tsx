@@ -1,12 +1,12 @@
 import { Container, Paper, SimpleGrid } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCanales } from '../../../hooks/useCanales';
 import { apiFetch, type Sugerencia, type SugerenciasStats, sugerenciasApi } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
 import { mapColorTokens } from '../../../lib/mapColorTokens';
+import { showError, showInfo, showSuccess } from '../../../lib/notifications';
 import { useLiveRegion } from '../../ui/accessibility';
 import { IconBuilding, IconCalendar, IconCheck, IconClock, IconUsers } from '../../ui/icons';
 import { ProximaReunionSection } from './components/ProximaReunionSection';
@@ -135,11 +135,7 @@ export default function SugerenciasPanel() {
       announceRef.current(`${data.items.length} sugerencias cargadas`);
     } catch (error) {
       logger.error('Error loading sugerencias:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudieron cargar las sugerencias',
-        color: 'red',
-      });
+      showError('Error', 'No se pudieron cargar las sugerencias');
       announceRef.current('No se pudieron cargar las sugerencias');
     } finally {
       setLoading(false);
@@ -178,11 +174,7 @@ export default function SugerenciasPanel() {
       openDetail();
     } catch (error) {
       logger.error('Error loading sugerencia detail:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo cargar el detalle de la sugerencia',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo cargar el detalle de la sugerencia');
     }
   };
 
@@ -206,22 +198,17 @@ export default function SugerenciasPanel() {
         }),
       });
 
-      notifications.show({
-        title: 'Sugerencia actualizada',
-        message: 'Los cambios de la sugerencia fueron guardados correctamente',
-        color: 'green',
-        icon: <IconCheck size={16} />,
-      });
+      showSuccess(
+        'Sugerencia actualizada',
+        'Los cambios de la sugerencia fueron guardados correctamente',
+        { icon: <IconCheck size={16} /> }
+      );
       announceRef.current('Sugerencia actualizada correctamente');
       closeDetail();
       refreshAll();
     } catch (error) {
       logger.error('Error updating sugerencia:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo actualizar la sugerencia',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo actualizar la sugerencia');
       announceRef.current('No se pudo actualizar la sugerencia');
     } finally {
       setUpdating(false);
@@ -235,10 +222,7 @@ export default function SugerenciasPanel() {
     try {
       const fechaStr = agendarFecha.toISOString().split('T')[0];
       await sugerenciasApi.agendar(selectedSugerencia.id, fechaStr);
-      notifications.show({
-        title: 'Sugerencia agendada',
-        message: `Agendada para el ${formatDate(fechaStr)}`,
-        color: 'blue',
+      showInfo('Sugerencia agendada', `Agendada para el ${formatDate(fechaStr)}`, {
         icon: <IconCalendar size={16} />,
       });
       announceRef.current(`Sugerencia agendada para el ${formatDate(fechaStr)}`);
@@ -246,11 +230,7 @@ export default function SugerenciasPanel() {
       refreshAll();
     } catch (error) {
       logger.error('Error agendando sugerencia:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo agendar la sugerencia',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo agendar la sugerencia');
       announceRef.current('No se pudo agendar la sugerencia');
     } finally {
       setAgendando(false);

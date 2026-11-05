@@ -32,7 +32,7 @@ export interface AuthResult {
 /**
  * Hook para manejar el estado de autenticacion.
  * NOTA: Este hook ahora usa Zustand internamente para compartir estado global.
- * El store se inicializa automaticamente en AppProvider/MantineProvider.
+ * El store se inicializa automaticamente en el MantineProvider de `main.tsx`.
  */
 export function useAuth() {
   const { user, session, profile, loading, error } = useAuthStore();

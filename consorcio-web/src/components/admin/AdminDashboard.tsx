@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Container,
   Divider,
@@ -14,18 +13,19 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { lazy, Suspense, useState } from 'react';
 import { CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
 import { API_URL, getAuthToken } from '../../lib/api';
 import { withBasePath } from '../../lib/basePath';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
+import { showError, showNotification, showSuccess } from '../../lib/notifications';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import { useConfigStore } from '../../stores/configStore';
 import { IconDownload } from '../ui/icons';
 import { LoadingState } from '../ui/LoadingState';
+import { PageHeader } from '../ui/PageHeader';
 import { StatusBadge } from '../ui/StatusBadge';
 import { createDashboardJsonExport } from './adminDashboardExport';
 import { PilarVerdeWidgetConnected } from './pilarVerdeWidget/PilarVerdeWidget';
@@ -94,11 +94,7 @@ export default function AdminDashboard() {
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       logger.error('Export error:', error);
-      notifications.show({
-        title: erroresUi.exportarDashboard.titulo,
-        message: erroresUi.exportarDashboard.detalle,
-        color: 'red',
-      });
+      showError(erroresUi.exportarDashboard.titulo, erroresUi.exportarDashboard.detalle);
     } finally {
       setExporting(false);
     }
@@ -111,11 +107,11 @@ export default function AdminDashboard() {
     onSuccess?: () => void
   ) => {
     if (!file) {
-      notifications.show({
-        title: 'Archivo requerido',
-        message: 'Seleccioná un archivo GeoJSON antes de importar.',
-        color: 'yellow',
-      });
+      showNotification(
+        'Archivo requerido',
+        'Seleccioná un archivo GeoJSON antes de importar.',
+        'yellow'
+      );
       return;
     }
 
@@ -141,11 +137,10 @@ export default function AdminDashboard() {
       );
     }
 
-    notifications.show({
-      title: successTitle,
-      message: `Se importaron ${payload?.importedCount ?? 0} features correctamente.`,
-      color: 'green',
-    });
+    showSuccess(
+      successTitle,
+      `Se importaron ${payload?.importedCount ?? 0} features correctamente.`
+    );
     onSuccess?.();
   };
 
@@ -160,11 +155,10 @@ export default function AdminDashboard() {
       );
     } catch (error) {
       logger.error('Basins import error:', error);
-      notifications.show({
-        title: erroresUi.importarSubcuencas.titulo,
-        message: error instanceof Error ? error.message : 'No se pudo importar el archivo.',
-        color: 'red',
-      });
+      showError(
+        erroresUi.importarSubcuencas.titulo,
+        error instanceof Error ? error.message : 'No se pudo importar el archivo.'
+      );
     } finally {
       setImportingBasins(false);
     }
@@ -181,11 +175,10 @@ export default function AdminDashboard() {
       );
     } catch (error) {
       logger.error('Approved zones import error:', error);
-      notifications.show({
-        title: erroresUi.importarZonificacion.titulo,
-        message: error instanceof Error ? error.message : 'No se pudo importar el archivo.',
-        color: 'red',
-      });
+      showError(
+        erroresUi.importarZonificacion.titulo,
+        error instanceof Error ? error.message : 'No se pudo importar el archivo.'
+      );
     } finally {
       setImportingApprovedZones(false);
     }
@@ -213,18 +206,13 @@ export default function AdminDashboard() {
       document.body.removeChild(a);
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 
-      notifications.show({
-        title: 'Bundle exportado',
-        message: 'Se descargó el bundle geoespacial correctamente.',
-        color: 'green',
-      });
+      showSuccess('Bundle exportado', 'Se descargó el bundle geoespacial correctamente.');
     } catch (error) {
       logger.error('Bundle export error:', error);
-      notifications.show({
-        title: erroresUi.exportarBundle.titulo,
-        message: error instanceof Error ? error.message : 'No se pudo exportar el bundle.',
-        color: 'red',
-      });
+      showError(
+        erroresUi.exportarBundle.titulo,
+        error instanceof Error ? error.message : 'No se pudo exportar el bundle.'
+      );
     } finally {
       setExportingBundle(false);
     }
@@ -232,11 +220,11 @@ export default function AdminDashboard() {
 
   const handleImportBundle = async () => {
     if (!bundleFile) {
-      notifications.show({
-        title: 'Archivo requerido',
-        message: 'Seleccioná un archivo ZIP antes de importar.',
-        color: 'yellow',
-      });
+      showNotification(
+        'Archivo requerido',
+        'Seleccioná un archivo ZIP antes de importar.',
+        'yellow'
+      );
       return;
     }
 
@@ -264,19 +252,17 @@ export default function AdminDashboard() {
         );
       }
 
-      notifications.show({
-        title: 'Bundle importado',
-        message: `Vectores restaurados y ${payload?.layersImported ?? 0} capas importadas.`,
-        color: 'green',
-      });
+      showSuccess(
+        'Bundle importado',
+        `Vectores restaurados y ${payload?.layersImported ?? 0} capas importadas.`
+      );
       setBundleFile(null);
     } catch (error) {
       logger.error('Bundle import error:', error);
-      notifications.show({
-        title: erroresUi.importarBundle.titulo,
-        message: error instanceof Error ? error.message : 'No se pudo importar el bundle.',
-        color: 'red',
-      });
+      showError(
+        erroresUi.importarBundle.titulo,
+        error instanceof Error ? error.message : 'No se pudo importar el bundle.'
+      );
     } finally {
       setImportingBundle(false);
     }
@@ -289,26 +275,26 @@ export default function AdminDashboard() {
   if (reportsError) {
     return (
       <Container size="xl" py="xl">
-        <Alert color="red" title={erroresUi.cargarDashboard.titulo}>
-          {erroresUi.cargarDashboard.detalle}
-          <Button mt="sm" size="xs" onClick={handleRetry}>
-            Reintentar
-          </Button>
-        </Alert>
+        <LoadingState
+          status="error"
+          title={erroresUi.cargarDashboard.titulo}
+          message={erroresUi.cargarDashboard.detalle}
+          action={
+            <Button mt="sm" size="xs" onClick={handleRetry}>
+              Reintentar
+            </Button>
+          }
+        />
       </Container>
     );
   }
 
   return (
     <Container size="xl" py="md">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Title order={1} size="h2">
-            Panel de Gestión Integral
-          </Title>
-          <Text c="gray.6">Inteligencia de datos y monitoreo satelital</Text>
-        </div>
-        <Group>
+      <PageHeader
+        title="Panel de Gestión Integral"
+        subtitle="Inteligencia de datos y monitoreo satelital"
+        actions={
           <Button
             variant="filled"
             color="violet"
@@ -318,8 +304,8 @@ export default function AdminDashboard() {
           >
             Descargar datos (JSON)
           </Button>
-        </Group>
-      </Group>
+        }
+      />
 
       {/* Componente de Visualizacion Avanzada */}
       <Suspense fallback={<Skeleton height={200} radius="md" />}>

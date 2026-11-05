@@ -3,9 +3,9 @@
  * Coverage target: 100%
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import * as notificationModule from '../../src/lib/notifications';
 import { notifications } from '@mantine/notifications';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as notificationModule from '../../src/lib/notifications';
 
 // Mock mantine notifications
 vi.mock('@mantine/notifications', () => ({
@@ -290,7 +290,28 @@ describe('notifications', () => {
       expect(typeof notificationModule.showWarning).toBe('function');
       expect(typeof notificationModule.showInfo).toBe('function');
       expect(typeof notificationModule.showNotification).toBe('function');
+      expect(typeof notificationModule.showToast).toBe('function');
       expect(typeof notificationModule.showErrorFromException).toBe('function');
+    });
+
+    it('forwards icon and autoClose without adding empty fields', () => {
+      const icon = 'check';
+      notificationModule.showSuccess('Ok', 'Listo', { icon, autoClose: 4000 });
+      expect(notifications.show).toHaveBeenCalledWith({
+        title: 'Ok',
+        message: 'Listo',
+        color: 'green',
+        icon,
+        autoClose: 4000,
+      });
+    });
+
+    it('shows a toast without a title', () => {
+      notificationModule.showToast({ color: 'red', message: 'No se pudo guardar' });
+      expect(notifications.show).toHaveBeenCalledWith({
+        message: 'No se pudo guardar',
+        color: 'red',
+      });
     });
   });
 });

@@ -14,13 +14,13 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { notifications } from '@mantine/notifications';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
 import { logger } from '../lib/logger';
 import { parseLoginSearch } from '../lib/loginSearch';
+import { showError, showInfo, showSuccess } from '../lib/notifications';
 import { erroresUi } from '../lib/userFacingError';
 import { MIN_PASSWORD_LENGTH, validateEmail, validatePassword } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
@@ -87,10 +87,7 @@ export function LoginFormContent() {
         const result = await signInWithEmail(values.email, values.password);
 
         if (result.success) {
-          notifications.show({
-            title: 'Bienvenido',
-            message: 'Inicio de sesión exitoso',
-            color: 'green',
+          showSuccess('Bienvenido', 'Inicio de sesión exitoso', {
             icon: <IconCheck size={16} />,
           });
           // Redirigir al destino guardado (si existe y es seguro) o al admin
@@ -101,12 +98,11 @@ export function LoginFormContent() {
           const destination = isSafeRelative ? rawRedirect : '/admin';
           globalThis.location.href = withBasePath(destination);
         } else {
-          notifications.show({
-            title: erroresUi.iniciarSesion.titulo,
-            message: result.error || erroresUi.iniciarSesion.detalle,
-            color: 'red',
-            icon: <IconAlertCircle size={16} />,
-          });
+          showError(
+            erroresUi.iniciarSesion.titulo,
+            result.error || erroresUi.iniciarSesion.detalle,
+            { icon: <IconAlertCircle size={16} /> }
+          );
         }
       } else {
         // Registrar nuevo usuario
@@ -116,38 +112,28 @@ export function LoginFormContent() {
           if (result.needsEmailConfirmation) {
             // Mostrar mensaje de confirmacion de email
             setShowEmailConfirmation(true);
-            notifications.show({
-              title: 'Cuenta creada',
-              message: 'Revisá tu email para confirmar tu cuenta',
-              color: 'blue',
+            showInfo('Cuenta creada', 'Revisá tu email para confirmar tu cuenta', {
               icon: <IconMail size={16} />,
               autoClose: 10000,
             });
           } else {
-            notifications.show({
-              title: 'Cuenta creada',
-              message: 'Tu cuenta fue creada exitosamente. Ya podés iniciar sesión.',
-              color: 'green',
-              icon: <IconCheck size={16} />,
-            });
+            showSuccess(
+              'Cuenta creada',
+              'Tu cuenta fue creada exitosamente. Ya podés iniciar sesión.',
+              { icon: <IconCheck size={16} /> }
+            );
             setMode('login');
             form.reset();
           }
         } else {
-          notifications.show({
-            title: erroresUi.crearCuenta.titulo,
-            message: result.error || erroresUi.crearCuenta.detalle,
-            color: 'red',
+          showError(erroresUi.crearCuenta.titulo, result.error || erroresUi.crearCuenta.detalle, {
             icon: <IconAlertCircle size={16} />,
           });
         }
       }
     } catch (error) {
       logger.error('Error en autenticación:', error);
-      notifications.show({
-        title: erroresUi.iniciarSesion.titulo,
-        message: 'Ocurrió un error inesperado. Intentá de nuevo.',
-        color: 'red',
+      showError(erroresUi.iniciarSesion.titulo, 'Ocurrió un error inesperado. Intentá de nuevo.', {
         icon: <IconAlertCircle size={16} />,
       });
     } finally {
@@ -162,10 +148,7 @@ export function LoginFormContent() {
       const result = await signInWithGoogle();
 
       if (!result.success) {
-        notifications.show({
-          title: erroresUi.google.titulo,
-          message: result.error || erroresUi.google.detalle,
-          color: 'red',
+        showError(erroresUi.google.titulo, result.error || erroresUi.google.detalle, {
           icon: <IconAlertCircle size={16} />,
         });
         setLoading(false);
@@ -173,10 +156,7 @@ export function LoginFormContent() {
       // Si es exitoso, el backend redirigira automaticamente
     } catch (error) {
       logger.error(erroresUi.google.titulo, error);
-      notifications.show({
-        title: erroresUi.google.titulo,
-        message: erroresUi.google.detalle,
-        color: 'red',
+      showError(erroresUi.google.titulo, erroresUi.google.detalle, {
         icon: <IconAlertCircle size={16} />,
       });
       setLoading(false);

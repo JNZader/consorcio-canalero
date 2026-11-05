@@ -38,6 +38,7 @@ import {
   IconPlayerPlay,
   IconRefresh,
 } from '../ui/icons';
+import { PageHeader } from '../ui/PageHeader';
 
 /** Human-readable layer type names */
 const LAYER_TYPE_LABELS: Record<string, string> = {
@@ -73,23 +74,19 @@ export default function DemPipelinePanel() {
 
   return (
     <Container size="xl" py="md">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Group gap="xs">
-            <IconGlobe size={24} />
-            <Title order={2}>DEM Pipeline</Title>
-          </Group>
-          <Text c="dimmed" size="sm">
-            Análisis de elevación digital: descarga desde GEE, análisis de terreno y delineación de
-            cuencas
-          </Text>
-        </div>
-        {state !== 'idle' && (
-          <Button variant="subtle" leftSection={<IconRefresh size={16} />} onClick={reset}>
-            Reiniciar
-          </Button>
-        )}
-      </Group>
+      <PageHeader
+        title="DEM Pipeline"
+        subtitleSize="sm"
+        subtitle="Análisis de elevación digital: descarga desde GEE, análisis de terreno y delineación de cuencas"
+        icon={<IconGlobe size={24} />}
+        actions={
+          state !== 'idle' ? (
+            <Button variant="subtle" leftSection={<IconRefresh size={16} />} onClick={reset}>
+              Reiniciar
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Submit form */}
       {(state === 'idle' || state === 'failed') && (

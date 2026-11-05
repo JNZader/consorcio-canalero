@@ -1,4 +1,5 @@
-import { ActionIcon, Paper, Table, Text } from '@mantine/core';
+import { Paper, Table, Text } from '@mantine/core';
+import { IconButton } from '../../../../ui/IconButton';
 import { IconEdit } from '../../../../ui/icons';
 import type { Gasto } from '../finanzasTypes';
 import { renderCategoriaBadge } from '../finanzasUtils';
@@ -38,13 +39,13 @@ export function GastosTable({
                 </Table.Td>
                 <Table.Td>{gasto.proveedor || '-'}</Table.Td>
                 <Table.Td>
-                  <ActionIcon
+                  <IconButton
                     variant="subtle"
                     onClick={() => onEdit(gasto)}
                     aria-label={`Editar gasto: ${gasto.descripcion}`}
                   >
                     <IconEdit size={16} />
-                  </ActionIcon>
+                  </IconButton>
                 </Table.Td>
               </Table.Tr>
             ))}

@@ -294,6 +294,15 @@ body {
   }
 }
 
+/* IconButton: el piso de 44px vale solo con puntero grueso.
+   En mouse el ActionIcon conserva su densidad. */
+@media (pointer: coarse) {
+  .cc-icon-button {
+    min-height: var(--cc-touch-min, 44px);
+    min-width: var(--cc-touch-min, 44px);
+  }
+}
+
 /* ================================
    FIX LEAFLET
    ================================ */

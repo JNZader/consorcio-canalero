@@ -1,5 +1,4 @@
 import { Badge, Box, Button, Collapse, Group, Text } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
@@ -7,6 +6,7 @@ import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/
 import { logger } from '../../lib/logger';
 import { mapColorTokens } from '../../lib/mapColorTokens';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibreLoader';
+import { showError } from '../../lib/notifications';
 import formStyles from '../../styles/components/form.module.css';
 import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
@@ -151,11 +151,10 @@ export function LocationSection({
         // latest data, even though the click handler was registered once
         // at mount time when the data wasn't loaded yet.
         if (!isInsideZona(zonaGeoJsonRef.current, [lng, lat])) {
-          notifications.show({
-            title: 'Fuera del área',
-            message: 'La ubicación seleccionada está fuera del área del consorcio.',
-            color: 'red',
-          });
+          showError(
+            'Fuera del área',
+            'La ubicación seleccionada está fuera del área del consorcio.'
+          );
           return;
         }
         onLocationSelectRef.current(lat, lng);

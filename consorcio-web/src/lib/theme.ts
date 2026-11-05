@@ -2,7 +2,7 @@
 /**
  * Configuracion centralizada del tema Mantine.
  *
- * Este archivo define el tema compartido entre AppProvider y MantineProvider
+ * Este archivo define el tema compartido del MantineProvider de `main.tsx`
  * para evitar duplicacion de codigo. `cssVariablesResolver` publica la capa
  * semántica (`--cc-*`, `--z-*`) sin reemplazar las variables de Mantine:
  * el provider las fusiona.

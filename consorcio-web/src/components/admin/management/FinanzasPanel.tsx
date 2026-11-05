@@ -1,6 +1,7 @@
-import { Button, Container, Group, Tabs, Text, Title } from '@mantine/core';
+import { Button, Container, Tabs } from '@mantine/core';
 import { IconArrowUpRight, IconCoin, IconPlus, IconReceipt } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
+import { PageHeader } from '../../ui/PageHeader';
 import { EditGastoModal } from './finanzas/components/EditGastoModal';
 import { EditIngresoModal } from './finanzas/components/EditIngresoModal';
 import { FinanzasSummaryTab } from './finanzas/components/FinanzasSummaryTab';
@@ -16,28 +17,28 @@ export default function FinanzasPanel() {
 
   return (
     <Container size="xl" py="md">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Title order={1} size="h2">
-            Administración Financiera
-          </Title>
-          <Text c="dimmed">Seguimiento de gastos y ejecución presupuestaria</Text>
-        </div>
-        <Button
-          leftSection={<IconPlus size={18} />}
-          onClick={controller.gastoModal.open}
-          color="red.8"
-        >
-          Registrar Gasto
-        </Button>
-        <Button
-          leftSection={<IconPlus size={18} />}
-          onClick={controller.ingresoModal.open}
-          color="green.9"
-        >
-          Registrar Ingreso
-        </Button>
-      </Group>
+      <PageHeader
+        title="Administración Financiera"
+        subtitle="Seguimiento de gastos y ejecución presupuestaria"
+        actions={
+          <>
+            <Button
+              leftSection={<IconPlus size={18} />}
+              onClick={controller.gastoModal.open}
+              color="red.8"
+            >
+              Registrar Gasto
+            </Button>
+            <Button
+              leftSection={<IconPlus size={18} />}
+              onClick={controller.ingresoModal.open}
+              color="green.9"
+            >
+              Registrar Ingreso
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={controller.activeTab} onChange={controller.setActiveTab}>
         <Tabs.List mb="lg">

@@ -1,6 +1,8 @@
-import { Button, Container, Group, Text, Title } from '@mantine/core';
+import { Button, Container } from '@mantine/core';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { IconCalendar } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
+import { PageHeader } from '../../ui/PageHeader';
 import { AgendaModal } from './reuniones/components/AgendaModal';
 import { ReunionCreateModal } from './reuniones/components/ReunionCreateModal';
 import { ReunionesGrid } from './reuniones/components/ReunionesGrid';
@@ -15,19 +17,19 @@ export default function ReunionesPanel() {
 
   return (
     <Container size="xl" py="md">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Title order={2}>Reuniones de Comisión</Title>
-          <Text c="dimmed">Planificación de orden del día y actas</Text>
-        </div>
-        <Button
-          leftSection={<IconCalendar size={18} />}
-          onClick={controller.createModal.open}
-          color="violet"
-        >
-          Nueva Reunión
-        </Button>
-      </Group>
+      <PageHeader
+        title="Reuniones de Comisión"
+        subtitle="Planificación de orden del día y actas"
+        actions={
+          <Button
+            leftSection={<IconCalendar size={18} />}
+            onClick={controller.createModal.open}
+            color="violet"
+          >
+            Nueva Reunión
+          </Button>
+        }
+      />
 
       <ReunionCreateModal
         opened={controller.createOpened}
@@ -55,6 +57,20 @@ export default function ReunionesPanel() {
         deletingAgendaItemId={controller.deletingAgendaItemId}
         availableEntities={controller.availableEntities}
         loadingEntities={controller.loadingEntities}
+      />
+
+      <ConfirmDialog
+        opened={controller.topicPendingDelete !== null}
+        title="Eliminar tema"
+        message={
+          controller.topicPendingDelete
+            ? `¿Eliminar el tema "${controller.topicPendingDelete.titulo}" de la agenda? Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        onConfirm={() => void controller.confirmDeleteTopic()}
+        onClose={controller.cancelDeleteTopic}
+        loading={controller.deletingAgendaItemId !== null}
       />
     </Container>
   );

@@ -6,12 +6,12 @@
  *
  */
 
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { signOut } from '../lib/auth';
 import { authAdapter } from '../lib/auth/index';
 import { consumeLocalLogoutWarning } from '../lib/auth/storage';
 import { logger } from '../lib/logger';
+import { showError, showInfo, showNotification } from '../lib/notifications';
 import { useAuthStore } from '../stores/authStore';
 
 export interface UseContactVerificationOptions {
@@ -75,11 +75,7 @@ export function useContactVerification(
       // El redirect sucede automaticamente
     } catch (error) {
       logger.error('Error en login con Google:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo iniciar sesión con Google',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo iniciar sesión con Google');
       setLoading(false);
     }
   }, []);
@@ -89,19 +85,11 @@ export function useContactVerification(
     try {
       const result = await signOut();
       const warning = result?.warning ? (consumeLocalLogoutWarning() ?? result.warning) : null;
-      notifications.show(
-        warning
-          ? {
-              title: 'Sesión cerrada localmente',
-              message: warning,
-              color: 'yellow',
-            }
-          : {
-              title: 'Sesión cerrada',
-              message: 'Cerraste sesión correctamente',
-              color: 'blue',
-            }
-      );
+      if (warning) {
+        showNotification('Sesión cerrada localmente', warning, 'yellow');
+      } else {
+        showInfo('Sesión cerrada', 'Cerraste sesión correctamente');
+      }
     } catch (error) {
       logger.error('No se pudo cerrar la sesión en el servidor', error);
     }

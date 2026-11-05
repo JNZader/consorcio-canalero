@@ -2,7 +2,7 @@
  * Imports centralizados de estilos CSS de Mantine.
  *
  * Este archivo es el UNICO lugar donde se importan los estilos de Mantine.
- * Todos los providers (AppProvider, MantineProvider) deben importar desde aqui.
+ * El MantineProvider de `main.tsx` importa los estilos desde aqui.
  *
  * Esto evita la duplicacion de imports CSS y asegura consistencia.
  */
@@ -20,7 +20,7 @@
 // Mantine v9 ships its rumoured CSS-tree-shaking story.
 import '@mantine/core/styles.css';
 
-// Estilos de notificaciones (usado en AppProvider y MantineProvider)
+// Estilos de notificaciones (usado por el MantineProvider de main.tsx)
 import '@mantine/notifications/styles.css';
 
 // Dropzone CSS lives next to PhotoSection — importing it here made the

@@ -20,7 +20,6 @@ import {
   Card,
   Center,
   Group,
-  Loader,
   Modal,
   Pagination,
   Paper,
@@ -37,6 +36,7 @@ import { logger } from '../../lib/logger';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import type { Report, ReportHistory } from '../../types';
 import { AuthenticatedImage } from '../shared/AuthenticatedImage';
+import { LoadingState } from '../ui/LoadingState';
 import { getStatusConfig, StatusBadge } from '../ui/StatusBadge';
 
 const PAGE_SIZE = 5;
@@ -94,11 +94,7 @@ export function MyReportsSection() {
           )}
         </Group>
 
-        {loading && (
-          <Center py="md" role="status" aria-live="polite" aria-busy="true">
-            <Loader size="sm" aria-label="Cargando tus denuncias" />
-          </Center>
-        )}
+        {loading && <LoadingState compact message="Cargando tus denuncias" />}
 
         {!loading && error && (
           <Alert color="red" variant="light" role="alert" aria-live="assertive">

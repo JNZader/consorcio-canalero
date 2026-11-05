@@ -10,10 +10,10 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { Link } from '@tanstack/react-router';
 import { signOut } from '../lib/auth';
 import { withBasePath } from '../lib/basePath';
+import { showError } from '../lib/notifications';
 import type { StoreUser } from '../stores/authStore';
 import { useAuthLoading, useAuthStore } from '../stores/authStore';
 import type { Usuario } from '../types';
@@ -131,11 +131,7 @@ function DesktopUserMenu({
 
           {isStaff && <StaffMenuItems />}
 
-          <Menu.Item
-            leftSection={<IconUser size={14} />}
-            component={Link}
-            to="/perfil"
-          >
+          <Menu.Item leftSection={<IconUser size={14} />} component={Link} to="/perfil">
             Mi Perfil
           </Menu.Item>
 
@@ -280,14 +276,13 @@ export default function UserMenu({ variant, onMobileClose }: UserMenuProps) {
         throw new Error(result.error || 'No se pudo cerrar la sesión.');
       }
       // A remote-revocation warning is persisted by signOut and displayed
-      // by AppProvider after this hard navigation completes.
+      // after this hard navigation completes.
       globalThis.location.replace(withBasePath('/'));
     } catch (error) {
-      notifications.show({
-        title: 'No se pudo cerrar la sesión',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo cerrar la sesión',
+        error instanceof Error ? error.message : 'Intentá nuevamente.'
+      );
     }
   };
 

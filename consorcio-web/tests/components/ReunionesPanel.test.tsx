@@ -391,15 +391,6 @@ describe('ReunionesPanel', () => {
       return {};
     });
 
-    const confirmSpy = vi
-      .fn()
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      value: confirmSpy,
-    });
-
     renderPanel();
     await screen.findByText('Reuniones de Comisión');
     await user.click(screen.getByRole('button', { name: /gestionar agenda/i }));
@@ -409,15 +400,21 @@ describe('ReunionesPanel', () => {
     });
 
     await user.click(deleteButton);
-    expect(confirmSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Reparacion compuerta')
-    );
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Eliminar tema' });
+    expect(confirmDialog).toHaveTextContent('Reparacion compuerta');
     expect(apiFetch).not.toHaveBeenCalledWith(
       '/reuniones/r1/agenda/a1',
       expect.objectContaining({ method: 'DELETE' })
     );
 
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Eliminar tema' })).not.toBeInTheDocument();
+    });
+
     await user.click(deleteButton);
+    const confirmAgain = await screen.findByRole('dialog', { name: 'Eliminar tema' });
+    await user.click(within(confirmAgain).getByRole('button', { name: 'Eliminar' }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/reuniones/r1/agenda/a1', {

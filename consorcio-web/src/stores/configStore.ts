@@ -60,9 +60,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   fetchConfig: async () => {
     // Avoid multiple simultaneous fetches AND skip re-fetch once initialized.
-    // `main.tsx` and `AppProvider` both call this on boot; without the
-    // `initialized` guard the second caller re-issues the request once the
-    // first one completes.
+    // `main.tsx` calls this on boot; without the `initialized` guard a second
+    // call re-issues the request once the first one completes.
     const state = get();
     if (state.loading || state.initialized) return;
 

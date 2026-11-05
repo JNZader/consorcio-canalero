@@ -1,6 +1,7 @@
-import { Container, Tabs, Text, Title } from '@mantine/core';
+import { Container, Tabs } from '@mantine/core';
 import { useState } from 'react';
 import { IconClipboardList, IconLightbulb } from '../../ui/icons';
+import { PageHeader } from '../../ui/PageHeader';
 import ReportsPanel from '../reports/ReportsPanel';
 import SugerenciasPanel from '../sugerencias/SugerenciasPanel';
 
@@ -45,14 +46,13 @@ export default function ParticipacionPanel() {
 
   return (
     <Container size="xl" py="md">
-      <div>
-        <Title order={2}>Participación Ciudadana</Title>
-        <Text c="gray.6">
-          Denuncias y sugerencias de los vecinos y de la comisión, en un solo lugar
-        </Text>
-      </div>
+      <PageHeader
+        title="Participación Ciudadana"
+        subtitle="Denuncias y sugerencias de los vecinos y de la comisión, en un solo lugar"
+        mb="lg"
+      />
 
-      <Tabs value={activeTab} onChange={handleTabChange} mt="lg">
+      <Tabs value={activeTab} onChange={handleTabChange}>
         <Tabs.List mb="lg">
           <Tabs.Tab value="reportes" leftSection={<IconClipboardList size={16} />}>
             Reportes

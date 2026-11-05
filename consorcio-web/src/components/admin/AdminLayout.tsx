@@ -11,11 +11,11 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { signOut } from '../../lib/auth';
 import { consumeLocalLogoutWarning } from '../../lib/auth/storage';
+import { showError, showNotification } from '../../lib/notifications';
 import { type UserRole, useAuthStore, useUserRole } from '../../stores/authStore';
 import ThemeToggle from '../ThemeToggle';
 import {
@@ -124,18 +124,13 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
       await navigate({ to: ADMIN_ACCOUNT_MENU_ITEMS.logout.to, replace: true });
       const warning = consumeLocalLogoutWarning() ?? result.warning;
       if (warning) {
-        notifications.show({
-          title: 'Sesión cerrada localmente',
-          message: warning,
-          color: 'yellow',
-        });
+        showNotification('Sesión cerrada localmente', warning, 'yellow');
       }
     } catch (error) {
-      notifications.show({
-        title: 'No se pudo cerrar la sesión',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo cerrar la sesión',
+        error instanceof Error ? error.message : 'Intentá nuevamente.'
+      );
     }
   };
 

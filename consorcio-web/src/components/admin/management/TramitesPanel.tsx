@@ -1,10 +1,7 @@
 import {
-  ActionIcon,
-  Alert,
   Badge,
   Button,
   Container,
-  Group,
   Modal,
   NativeSelect,
   Paper,
@@ -14,18 +11,19 @@ import {
   Textarea,
   TextInput,
   Timeline,
-  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
 import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { showError, showSuccess } from '../../../lib/notifications';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
+import { IconButton } from '../../ui/IconButton';
 import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
+import { PageHeader } from '../../ui/PageHeader';
 
 interface TramiteListItem {
   id: string;
@@ -111,11 +109,10 @@ export default function TramitesPanel() {
       openHistory();
     } catch (err) {
       logger.error('Error fetching trámite detail:', err);
-      notifications.show({
-        title: 'No se pudo cargar el seguimiento',
-        message: err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo cargar el seguimiento',
+        err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.'
+      );
     }
   };
 
@@ -162,18 +159,13 @@ export default function TramitesPanel() {
       close();
       form.reset();
       await fetchTramites();
-      notifications.show({
-        title: 'Trámite registrado',
-        message: 'El trámite fue guardado correctamente',
-        color: 'green',
-      });
+      showSuccess('Trámite registrado', 'El trámite fue guardado correctamente');
     } catch (err) {
       logger.error('Error creating trámite:', err);
-      notifications.show({
-        title: 'No se pudo registrar el trámite',
-        message: err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo registrar el trámite',
+        err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -239,18 +231,13 @@ export default function TramitesPanel() {
       document.body.removeChild(anchor);
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 
-      notifications.show({
-        title: 'PDF descargado',
-        message: `Se descargó el expediente de ${selectedTramite.titulo}`,
-        color: 'green',
-      });
+      showSuccess('PDF descargado', `Se descargó el expediente de ${selectedTramite.titulo}`);
     } catch (error) {
       logger.error('Error downloading trámite PDF:', error);
-      notifications.show({
-        title: 'No se pudo descargar el trámite',
-        message: error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.',
-        color: 'red',
-      });
+      showError(
+        'No se pudo descargar el trámite',
+        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setDownloadingPdf(false);
     }
@@ -260,28 +247,30 @@ export default function TramitesPanel() {
 
   return (
     <Container size="xl" py="md">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Title order={1} size="h2">
-            Gestión de Trámites
-          </Title>
-          <Text c="dimmed">Seguimiento de trámites del Consorcio Canalero</Text>
-        </div>
-        <Button leftSection={<IconPlus size={18} />} onClick={open}>
-          Nuevo Trámite
-        </Button>
-      </Group>
+      <PageHeader
+        title="Gestión de Trámites"
+        subtitle="Seguimiento de trámites del Consorcio Canalero"
+        actions={
+          <Button leftSection={<IconPlus size={18} />} onClick={open}>
+            Nuevo Trámite
+          </Button>
+        }
+      />
 
       {loadError ? (
         // FE-6: mismo cartel persistente con Reintentar que AdminDashboard usa
         // para `cargarDashboard`. Un fallo de carga NO se muestra como tabla
         // vacía: el operador ve que falló y puede reintentar sin recargar.
-        <Alert color="red" title={erroresUi.cargarTramites.titulo}>
-          {erroresUi.cargarTramites.detalle}
-          <Button mt="sm" size="xs" onClick={fetchTramites}>
-            Reintentar
-          </Button>
-        </Alert>
+        <LoadingState
+          status="error"
+          title={erroresUi.cargarTramites.titulo}
+          message={erroresUi.cargarTramites.detalle}
+          action={
+            <Button mt="sm" size="xs" onClick={fetchTramites}>
+              Reintentar
+            </Button>
+          }
+        />
       ) : (
         <Paper withBorder radius="md">
           <Table.ScrollContainer
@@ -324,14 +313,14 @@ export default function TramitesPanel() {
                       <Text size="sm">{formatDate(tramite.fecha_ingreso)}</Text>
                     </Table.Td>
                     <Table.Td>
-                      <ActionIcon
+                      <IconButton
                         variant="light"
                         color="blue"
                         onClick={() => fetchDetalle(tramite.id)}
                         aria-label={`Ver seguimiento de ${tramite.titulo}`}
                       >
                         <IconHistory size={16} />
-                      </ActionIcon>
+                      </IconButton>
                     </Table.Td>
                   </Table.Tr>
                 ))}

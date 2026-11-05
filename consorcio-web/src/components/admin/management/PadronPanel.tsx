@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Button,
   Container,
   FileInput,
@@ -11,19 +10,21 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
+import { showNotification, showSuccess } from '../../../lib/notifications';
 import { erroresUi } from '../../../lib/userFacingError';
 import { isValidCUIT } from '../../../lib/validators';
 import { useUserRole } from '../../../stores/authStore';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import { IconButton } from '../../ui/IconButton';
 import { IconEdit, IconPlus, IconSearch, IconTrash, IconUser } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
+import { PageHeader } from '../../ui/PageHeader';
 
 const PADRON_NOMBRE_ERROR_ID = 'padron-nombre-error';
 const PADRON_APELLIDO_ERROR_ID = 'padron-apellido-error';
@@ -60,6 +61,10 @@ export default function PadronPanel() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState<PadronImportResult | null>(null);
+  const [consorcistaPendingDelete, setConsorcistaPendingDelete] = useState<Consorcista | null>(
+    null
+  );
+  const [deleting, setDeleting] = useState(false);
 
   const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
@@ -125,21 +130,19 @@ export default function PadronPanel() {
           method: 'PATCH',
           body: JSON.stringify(values),
         });
-        notifications.show({
-          title: 'Consorcista actualizado',
-          message: `${values.apellido}, ${values.nombre} fue actualizado en el padrón`,
-          color: 'green',
-        });
+        showSuccess(
+          'Consorcista actualizado',
+          `${values.apellido}, ${values.nombre} fue actualizado en el padrón`
+        );
       } else {
         await apiFetch('/padron', {
           method: 'POST',
           body: JSON.stringify(values),
         });
-        notifications.show({
-          title: 'Consorcista registrado',
-          message: `${values.apellido}, ${values.nombre} fue agregado al padrón`,
-          color: 'green',
-        });
+        showSuccess(
+          'Consorcista registrado',
+          `${values.apellido}, ${values.nombre} fue agregado al padrón`
+        );
       }
       close();
       setEditingConsorcista(null);
@@ -154,22 +157,23 @@ export default function PadronPanel() {
     }
   };
 
-  const handleDelete = async (consorcista: Consorcista) => {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      const confirmed = window.confirm(
-        `¿Eliminar al consorcista "${consorcista.apellido}, ${consorcista.nombre}"? Esta acción no se puede deshacer.`
-      );
-      if (!confirmed) return;
-    }
+  const requestDelete = (consorcista: Consorcista) => {
+    setConsorcistaPendingDelete(consorcista);
+  };
+
+  const confirmDelete = async () => {
+    const consorcista = consorcistaPendingDelete;
+    if (!consorcista) return;
+    setDeleting(true);
     try {
       await apiFetch(`/padron/${consorcista.id}`, {
         method: 'DELETE',
       });
-      notifications.show({
-        title: 'Consorcista eliminado',
-        message: `${consorcista.apellido}, ${consorcista.nombre} fue eliminado del padrón`,
-        color: 'green',
-      });
+      showSuccess(
+        'Consorcista eliminado',
+        `${consorcista.apellido}, ${consorcista.nombre} fue eliminado del padrón`
+      );
+      setConsorcistaPendingDelete(null);
       fetchConsorcistas();
     } catch (err) {
       handleError(err, {
@@ -177,16 +181,18 @@ export default function PadronPanel() {
         fallbackMessage: erroresUi.cargarPadron.detalle,
         context: 'PadronPanel.handleDelete',
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
   const handleImportPadron = async () => {
     if (!importFile) {
-      notifications.show({
-        title: 'Archivo requerido',
-        message: 'Seleccioná un archivo CSV, XLS o XLSX para importar',
-        color: 'yellow',
-      });
+      showNotification(
+        'Archivo requerido',
+        'Seleccioná un archivo CSV, XLS o XLSX para importar',
+        'yellow'
+      );
       return;
     }
 
@@ -204,11 +210,11 @@ export default function PadronPanel() {
       setImportResult(result);
       await fetchConsorcistas();
 
-      notifications.show({
-        title: 'Importación completada',
-        message: `Procesadas ${result.processed} filas; registros creados: ${result.created}; filas omitidas: ${result.skipped}`,
-        color: result.errors.length > 0 ? 'yellow' : 'green',
-      });
+      showNotification(
+        'Importación completada',
+        `Procesadas ${result.processed} filas; registros creados: ${result.created}; filas omitidas: ${result.skipped}`,
+        result.errors.length > 0 ? 'yellow' : 'green'
+      );
     } catch (err) {
       handleError(err, {
         title: erroresUi.importarPadron.titulo,
@@ -224,20 +230,22 @@ export default function PadronPanel() {
 
   return (
     <Container size="xl" py="md">
-      <Group justify="space-between" mb="xl">
-        <div>
-          <Title order={2}>Padrón de Consorcistas</Title>
-          <Text c="dimmed">Administración de socios y datos del padrón</Text>
-        </div>
-        <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate} color="blue">
-          Nuevo Consorcista
-        </Button>
-        {canImportPadron && (
-          <Button variant="outline" onClick={openImport}>
-            Importar CSV/XLS
-          </Button>
-        )}
-      </Group>
+      <PageHeader
+        title="Padrón de Consorcistas"
+        subtitle="Administración de socios y datos del padrón"
+        actions={
+          <>
+            <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate} color="blue">
+              Nuevo Consorcista
+            </Button>
+            {canImportPadron && (
+              <Button variant="outline" onClick={openImport}>
+                Importar CSV/XLS
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <Paper shadow="sm" p="md" radius="md" mb="md">
         <TextInput
@@ -293,22 +301,22 @@ export default function PadronPanel() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <ActionIcon
+                      <IconButton
                         variant="subtle"
                         color="blue"
                         aria-label={`Editar consorcista ${c.apellido}, ${c.nombre}`}
                         onClick={() => handleOpenEdit(c)}
                       >
                         <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
+                      </IconButton>
+                      <IconButton
                         variant="subtle"
                         color="red"
                         aria-label={`Eliminar consorcista ${c.apellido}, ${c.nombre}`}
-                        onClick={() => void handleDelete(c)}
+                        onClick={() => requestDelete(c)}
                       >
                         <IconTrash size={16} />
-                      </ActionIcon>
+                      </IconButton>
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -422,6 +430,22 @@ export default function PadronPanel() {
           </Stack>
         </Modal>
       )}
+
+      <ConfirmDialog
+        opened={consorcistaPendingDelete !== null}
+        title="Eliminar consorcista"
+        message={
+          consorcistaPendingDelete
+            ? `¿Eliminar al consorcista "${consorcistaPendingDelete.apellido}, ${consorcistaPendingDelete.nombre}"? Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        onConfirm={() => void confirmDelete()}
+        onClose={() => {
+          if (!deleting) setConsorcistaPendingDelete(null);
+        }}
+        loading={deleting}
+      />
     </Container>
   );
 }

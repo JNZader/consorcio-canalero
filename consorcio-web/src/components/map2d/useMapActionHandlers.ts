@@ -1,4 +1,3 @@
-import { notifications } from '@mantine/notifications';
 import type { FeatureCollection } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { type RefObject, useCallback } from 'react';
@@ -9,6 +8,7 @@ import { buildKmz, findMissingVisibleLayerKeys } from '../../lib/kmzExport/kmzBu
 import { triggerKmzDownload } from '../../lib/kmzExport/triggerKmzDownload';
 import { logger } from '../../lib/logger';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import { showError, showNotification, showSuccess } from '../../lib/notifications';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import type { CanalesFeatureCollection } from '../../types/canales';
@@ -220,11 +220,7 @@ export function useMapExportHandlers({
     link.download = formatExportFilename(exportTitle, 'png');
     link.click();
     setExportPngModalOpen(false);
-    notifications.show({
-      title: 'Exportación completada',
-      message: 'PNG descargado correctamente',
-      color: 'green',
-    });
+    showSuccess('Exportación completada', 'PNG descargado correctamente');
   }, [exportTitle, mapRef, setExportPngModalOpen, zonaCollection]);
 
   const handleExportApprovedZonesPdf = useCallback(async () => {
@@ -366,11 +362,7 @@ export function useMapExportHandlers({
       window.URL.revokeObjectURL(url);
     } catch (error) {
       logger.error('PDF export failed', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo generar el PDF',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo generar el PDF');
     }
   }, [
     activeLegendItems,
@@ -429,21 +421,16 @@ export function useMapExportHandlers({
       // silently, so a layer still downloading (or one whose fetch failed) was
       // dropped behind a green "descargado correctamente". Say it instead.
       const missing = findMissingVisibleLayerKeys(kmzVisibleLayers, exportSources ?? {});
-      notifications.show({
-        title: 'Exportación completada',
-        message:
-          missing.length > 0
-            ? 'KMZ descargado — algunas capas aún cargaban y no se incluyeron'
-            : 'KMZ descargado correctamente',
-        color: missing.length > 0 ? 'yellow' : 'green',
-      });
+      showNotification(
+        'Exportación completada',
+        missing.length > 0
+          ? 'KMZ descargado — algunas capas aún cargaban y no se incluyeron'
+          : 'KMZ descargado correctamente',
+        missing.length > 0 ? 'yellow' : 'green'
+      );
     } catch (error) {
       logger.error('KMZ export failed', error);
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo generar el KMZ',
-        color: 'red',
-      });
+      showError('Error', 'No se pudo generar el KMZ');
     }
   }, [exportSources, kmzPropuestasEtapasVisibility, kmzVisibleLayers]);
 

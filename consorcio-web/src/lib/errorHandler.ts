@@ -2,8 +2,8 @@
  * Shared error handling utilities for the Consorcio Canalero application.
  */
 
-import { notifications } from '@mantine/notifications';
 import { logger } from './logger';
+import { showToast } from './notifications';
 
 /**
  * Standard error messages in Spanish for common HTTP status codes.
@@ -109,7 +109,7 @@ export function handleError(error: unknown, options: HandleErrorOptions = {}): s
   }
 
   if (showNotification) {
-    notifications.show({
+    showToast({
       title,
       message,
       color,

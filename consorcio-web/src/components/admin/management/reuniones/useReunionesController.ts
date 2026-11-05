@@ -1,9 +1,9 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
+import { showError, showSuccess } from '../../../../lib/notifications';
 import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import type { AgendaItem, EntityOption, Reunion } from './reunionesTypes';
 import {
@@ -19,6 +19,7 @@ export function useReunionesController() {
   const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [deletingAgendaItemId, setDeletingAgendaItemId] = useState<string | null>(null);
+  const [topicPendingDelete, setTopicPendingDelete] = useState<AgendaItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [newChecklistPoint, setNewChecklistPoint] = useState('');
   const [availableEntities, setAvailableEntities] = useState<EntityOption[]>([]);
@@ -161,11 +162,7 @@ export function useReunionesController() {
         }),
       });
 
-      notifications.show({
-        title: 'Reunión creada',
-        message: 'La reunión fue registrada correctamente',
-        color: 'green',
-      });
+      showSuccess('Reunión creada', 'La reunión fue registrada correctamente');
 
       reunionForm.reset();
       setNewChecklistPoint('');
@@ -173,11 +170,7 @@ export function useReunionesController() {
       await fetchReuniones();
     } catch (err) {
       logger.error('Error creating reunion:', err);
-      notifications.show({
-        title: 'No se pudo crear la reunión',
-        message: 'Revisá los datos e intentá nuevamente',
-        color: 'red',
-      });
+      showError('No se pudo crear la reunión', 'Revisá los datos e intentá nuevamente');
     } finally {
       setSubmitting(false);
     }
@@ -199,12 +192,19 @@ export function useReunionesController() {
     }
   };
 
-  const handleDeleteTopic = async (item: AgendaItem) => {
+  const handleDeleteTopic = (item: AgendaItem) => {
     if (!selectedReunion) return;
-    const confirmed = window.confirm(
-      `¿Eliminar el tema "${item.titulo}" de la agenda? Esta acción no se puede deshacer.`
-    );
-    if (!confirmed) return;
+    setTopicPendingDelete(item);
+  };
+
+  const cancelDeleteTopic = () => {
+    if (deletingAgendaItemId) return;
+    setTopicPendingDelete(null);
+  };
+
+  const confirmDeleteTopic = async () => {
+    if (!selectedReunion || !topicPendingDelete) return;
+    const item = topicPendingDelete;
 
     setDeletingAgendaItemId(item.id);
     try {
@@ -212,18 +212,11 @@ export function useReunionesController() {
         method: 'DELETE',
       });
       await fetchAgenda(selectedReunion.id);
-      notifications.show({
-        title: 'Tema eliminado',
-        message: 'La agenda se actualizo correctamente',
-        color: 'green',
-      });
+      setTopicPendingDelete(null);
+      showSuccess('Tema eliminado', 'La agenda se actualizo correctamente');
     } catch (error) {
       logger.error('Error deleting agenda topic:', error);
-      notifications.show({
-        title: 'No se pudo eliminar el tema',
-        message: 'Intentá nuevamente.',
-        color: 'red',
-      });
+      showError('No se pudo eliminar el tema', 'Intentá nuevamente.');
     } finally {
       setDeletingAgendaItemId(null);
     }
@@ -262,6 +255,7 @@ export function useReunionesController() {
     selectedReunion,
     agenda,
     deletingAgendaItemId,
+    topicPendingDelete,
     submitting,
     newChecklistPoint,
     setNewChecklistPoint,
@@ -278,6 +272,8 @@ export function useReunionesController() {
     handleCreateReunion,
     handleAddTopic,
     handleDeleteTopic,
+    cancelDeleteTopic,
+    confirmDeleteTopic,
     handleExportPDF,
   };
 }

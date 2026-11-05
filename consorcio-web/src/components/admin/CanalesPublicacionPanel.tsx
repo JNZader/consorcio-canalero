@@ -9,13 +9,10 @@ import {
   Switch,
   Text,
   TextInput,
-  Title,
   UnstyledButton,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import type { FeatureCollection } from 'geojson';
 import { useEffect, useState } from 'react';
-
 import {
   CANAL_ORIGEN,
   type CanalLineCollection,
@@ -38,7 +35,9 @@ import {
   type CanalHit,
   type CanalHitLayer,
 } from '../../lib/canalesPublicacionOverlap';
+import { showToast } from '../../lib/notifications';
 import { LoadingState } from '../ui/LoadingState';
+import { PageHeader } from '../ui/PageHeader';
 import {
   CanalesPublicacionMap,
   EMPTY_LINE_COLLECTION,
@@ -158,7 +157,7 @@ export default function CanalesPublicacionPanel() {
         if (!cancelled && collection) applySrPa(collection);
       })
       .catch(() => {
-        notifications.show({ color: 'red', message: 'No se pudo cargar el catálogo de canales' });
+        showToast({ color: 'red', message: 'No se pudo cargar el catálogo de canales' });
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -195,7 +194,7 @@ export default function CanalesPublicacionPanel() {
         );
       }
     } catch {
-      notifications.show({ color: 'red', message: 'No se pudo guardar' });
+      showToast({ color: 'red', message: 'No se pudo guardar' });
     } finally {
       setSavingId(null);
     }
@@ -214,7 +213,7 @@ export default function CanalesPublicacionPanel() {
         current ? patchConsorcioFeature(current, row.id, { publicado: patched.publicado }) : current
       );
     } catch {
-      notifications.show({ color: 'red', message: 'No se pudo guardar' });
+      showToast({ color: 'red', message: 'No se pudo guardar' });
     } finally {
       setSavingId(null);
     }
@@ -256,15 +255,12 @@ export default function CanalesPublicacionPanel() {
 
   return (
     <Stack gap="md">
-      <div>
-        <Title order={2}>Publicación de canales</Title>
-        <Text c="dimmed" size="sm">
-          Verde/gris = KMZ del consorcio (lo que se publica). Naranja punteado = obras lineales
-          rurales APRHI (SR PA). Violeta = capa vieja de existentes, no es el padrón APRHI. Clic en
-          un cruce lista todos los trazos al costado. Clic en APRHI lista la obra (código CA); no
-          publica. El ciudadano sigue viendo el KMZ.
-        </Text>
-      </div>
+      <PageHeader
+        mb={0}
+        title="Publicación de canales"
+        subtitleSize="sm"
+        subtitle="Verde/gris = KMZ del consorcio (lo que se publica). Naranja punteado = obras lineales rurales APRHI (SR PA). Violeta = capa vieja de existentes, no es el padrón APRHI. Clic en un cruce lista todos los trazos al costado. Clic en APRHI lista la obra (código CA); no publica. El ciudadano sigue viendo el KMZ."
+      />
 
       <Group gap="md" wrap="wrap">
         <Text size="sm" fw={600}>

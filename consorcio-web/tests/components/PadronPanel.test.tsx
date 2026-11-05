@@ -194,11 +194,13 @@ describe('PadronPanel', () => {
       });
     });
 
-    const confirmMock = vi.fn().mockReturnValue(true);
-    window.confirm = confirmMock;
     await user.click(screen.getByRole('button', { name: /eliminar consorcista perez, ana/i }));
+    const confirmDialog = await screen.findByRole('dialog', { name: /eliminar consorcista/i });
+    expect(apiFetch).not.toHaveBeenCalledWith(`/padron/${consorcista.id}`, {
+      method: 'DELETE',
+    });
+    await user.click(within(confirmDialog).getByRole('button', { name: /^eliminar$/i }));
     await waitFor(() => {
-      expect(confirmMock).toHaveBeenCalled();
       expect(apiFetch).toHaveBeenCalledWith(`/padron/${consorcista.id}`, {
         method: 'DELETE',
       });
