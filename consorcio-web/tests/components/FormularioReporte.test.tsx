@@ -329,7 +329,8 @@ describe('FormularioReporte', () => {
           descripcion: expect.any(String),
           latitud: expect.any(Number),
           longitud: expect.any(Number),
-        })
+        }),
+        expect.any(String)
       );
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
@@ -359,7 +360,8 @@ describe('FormularioReporte', () => {
         expect.objectContaining({
           tipo: expect.any(String),
           descripcion: expect.any(String),
-        })
+        }),
+        expect.any(String)
       );
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(

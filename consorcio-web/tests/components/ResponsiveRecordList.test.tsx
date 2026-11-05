@@ -5,6 +5,7 @@ import { type ComponentProps, afterEach, describe, expect, it, vi } from 'vitest
 import {
   RECORD_VIRTUALIZE_THRESHOLD,
   ResponsiveRecordList,
+  nextVirtualRecordIndex,
   type ResponsiveRecord,
 } from '../../src/components/ui/ResponsiveRecordList';
 
@@ -117,6 +118,29 @@ describe('ResponsiveRecordList', () => {
     expect(mounted.length).toBeGreaterThan(0);
     expect(mounted.length).toBeLessThan(count);
     expect(screen.queryByText(`Persona ${count - 1}`)).not.toBeInTheDocument();
+  });
+
+  it('keyboard targets stay inside the list, including rows outside the window', () => {
+    const count = RECORD_VIRTUALIZE_THRESHOLD + 20;
+    expect(nextVirtualRecordIndex(0, 'ArrowDown', count)).toBe(1);
+    expect(nextVirtualRecordIndex(2, 'End', count)).toBe(count - 1);
+    expect(nextVirtualRecordIndex(count - 1, 'Home', count)).toBe(0);
+    expect(nextVirtualRecordIndex(4, 'Tab', count)).toBe(5);
+    expect(nextVirtualRecordIndex(count - 1, 'Tab', count)).toBe('leave');
+    expect(nextVirtualRecordIndex(0, 'Tab', count, true)).toBe('leave');
+    expect(nextVirtualRecordIndex(3, 'Tab', count, true)).toBe(2);
+  });
+
+  it('End from the virtualized list reaches the last row', async () => {
+    mockViewport(false);
+    const user = userEvent.setup();
+    const count = RECORD_VIRTUALIZE_THRESHOLD + 20;
+    const view = renderList(count, { virtualize: true });
+    const scroller = view.container.querySelector<HTMLElement>('[tabindex="0"]');
+    expect(scroller).toBeTruthy();
+    scroller?.focus();
+    await user.keyboard('{End}');
+    expect(await screen.findByText(`Persona ${count - 1}`)).toBeInTheDocument();
   });
 
   it('renders every row when the list is under the threshold', () => {

@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domains.denuncias.models import (
@@ -79,8 +80,19 @@ class DenunciaService:
         db: Session,
         data: DenunciaCreate,
         user_id: Optional[uuid.UUID] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Denuncia:
-        """Create a denuncia and commit."""
+        """Create a denuncia and commit.
+
+        The same ``idempotency_key`` for the same user and the same payload
+        returns the row already stored. A lost response can be retried
+        without a second denuncia and without spending another quota slot.
+        """
+        if user_id is not None and idempotency_key:
+            existing = self.repo.get_active_by_idempotency(db, user_id, idempotency_key)
+            if existing is not None:
+                self._require_same_attempt(existing, data)
+                return existing
         if user_id is not None:
             enforce_submission_limit(
                 db,
@@ -88,10 +100,39 @@ class DenunciaService:
                 user_id_attr=Denuncia.user_id,
                 user_id=user_id,
             )
-        denuncia = self.repo.create(db, data, user_id=user_id)
+        try:
+            with db.begin_nested():
+                denuncia = self.repo.create(
+                    db,
+                    data,
+                    user_id=user_id,
+                    idempotency_key=idempotency_key,
+                )
+        except IntegrityError:
+            if user_id is not None and idempotency_key:
+                existing = self.repo.get_active_by_idempotency(db, user_id, idempotency_key)
+                if existing is not None:
+                    self._require_same_attempt(existing, data)
+                    return existing
+            raise
         db.commit()
         db.refresh(denuncia)
         return denuncia
+
+    @staticmethod
+    def _require_same_attempt(existing: Denuncia, data: DenunciaCreate) -> None:
+        same = (
+            existing.tipo == data.tipo
+            and existing.descripcion == data.descripcion
+            and abs(existing.latitud - data.latitud) < 1e-7
+            and abs(existing.longitud - data.longitud) < 1e-7
+        )
+        if same:
+            return
+        raise HTTPException(
+            status_code=409,
+            detail="Esa clave de idempotencia ya se usó con otro contenido.",
+        )
 
     def get_rate_limit_status(self, db: Session, user_id: uuid.UUID) -> dict:
         """Quota left for a citizen — used by `GET /denuncias/rate-limit`."""

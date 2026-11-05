@@ -140,7 +140,12 @@ class RedisCircuitStore(CircuitStore):
     def __init__(self, redis_url: str):
         import redis as _redis
 
-        self._client = _redis.Redis.from_url(redis_url, decode_responses=True)
+        from app.core.redis_client import redis_from_url_kwargs
+
+        self._client = _redis.Redis.from_url(
+            redis_url,
+            **redis_from_url_kwargs(decode_responses=True),
+        )
 
     def _key(self, role: str) -> str:
         return f"rainfall:circuit:{role}"

@@ -141,10 +141,14 @@ export const publicApi = {
    * The server auto-fills `user_id` and `contacto_email` from the JWT —
    * the payload only needs the stuff the citizen typed into the form.
    */
-  createReport: (data: PublicReportCreate): Promise<PublicReportResponse> =>
+  createReport: (
+    data: PublicReportCreate,
+    idempotencyKey?: string
+  ): Promise<PublicReportResponse> =>
     apiFetch('/denuncias', {
       method: 'POST',
       body: JSON.stringify(data),
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
     }),
 
   /**

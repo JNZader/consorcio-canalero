@@ -6,7 +6,7 @@ import {
   useVirtualizer,
   type Virtualizer,
 } from '@tanstack/react-virtual';
-import { type ReactNode, useRef } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { mediaBelow } from '../../lib/breakpoints';
 
 /**
@@ -17,6 +17,44 @@ const COMPACT_QUERY = mediaBelow('sm');
 
 /** A partir de este tamaño el padrón deja de montar todas las filas. */
 export const RECORD_VIRTUALIZE_THRESHOLD = 40;
+
+const ROW_FOCUSABLE = 'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/** Where keyboard navigation should land. `leave` means Tab may exit the list. */
+export function nextVirtualRecordIndex(
+  current: number,
+  key: string,
+  count: number,
+  shiftKey = false
+): number | 'leave' | null {
+  if (count <= 0) return null;
+  if (key === 'ArrowDown') return Math.min(count - 1, current + 1);
+  if (key === 'ArrowUp') return Math.max(0, current - 1);
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  if (key === 'Tab') {
+    if (shiftKey) return current <= 0 ? 'leave' : current - 1;
+    return current >= count - 1 ? 'leave' : current + 1;
+  }
+  return null;
+}
+
+function indexFromFocus(root: HTMLElement | null, fallback: number): number {
+  const active = document.activeElement;
+  if (!root || !(active instanceof HTMLElement) || !root.contains(active) || active === root) {
+    return fallback;
+  }
+  const marked = active.closest<HTMLElement>('[data-index]');
+  if (!marked) return fallback;
+  const index = Number(marked.dataset.index);
+  return Number.isInteger(index) ? index : fallback;
+}
+
+function focusVirtualRecord(root: HTMLElement, index: number) {
+  const row = root.querySelector<HTMLElement>(`[data-index="${index}"]`);
+  const inner = row?.querySelector<HTMLElement>(ROW_FOCUSABLE);
+  (inner ?? row)?.focus();
+}
 
 const CARD_ROW_ESTIMATE = 196;
 const TABLE_ROW_ESTIMATE = 52;
@@ -230,6 +268,11 @@ export function ResponsiveRecordList({
   const shouldVirtualize = virtualize && records.length >= RECORD_VIRTUALIZE_THRESHOLD;
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLTableSectionElement>(null);
+  const activeIndexRef = useRef(-1);
+  const pendingFocus = useRef<number | null>(null);
+  // The row the keyboard asked for. It stays mounted until the virtual
+  // window catches up, so End/Tab reach a row that was off-screen.
+  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
 
   const virtualizer = useVirtualizer({
     count: records.length,
@@ -254,6 +297,65 @@ export function ResponsiveRecordList({
       }),
   });
 
+  const visibleKey = virtualizer
+    .getVirtualItems()
+    .map((item) => item.index)
+    .join(',');
+
+  useEffect(() => {
+    if (!shouldVirtualize) return;
+    const index = pendingFocus.current;
+    if (index == null) return;
+    const visible = virtualizer.getVirtualItems().some((item) => item.index === index);
+    if (!visible) return;
+    const root = scrollRef.current;
+    if (!root) return;
+    const row = root.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (!row) return;
+    pendingFocus.current = null;
+    focusVirtualRecord(root, index);
+    const inWindow = visibleKey.split(',').includes(String(index));
+    if (inWindow) setPinnedIndex(null);
+  }, [shouldVirtualize, visibleKey, virtualizer]);
+
+  function revealRecord(index: number) {
+    const next = Math.max(0, Math.min(records.length - 1, index));
+    activeIndexRef.current = next;
+    pendingFocus.current = next;
+    setPinnedIndex(next);
+    virtualizer.scrollToIndex(next, { align: 'auto' });
+  }
+
+  function onListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!shouldVirtualize) return;
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+    ) {
+      return;
+    }
+    const current = indexFromFocus(scrollRef.current, activeIndexRef.current);
+    const next = nextVirtualRecordIndex(current, event.key, records.length, event.shiftKey);
+    if (next == null || next === 'leave') return;
+    if (event.key === 'Tab') {
+      const root = scrollRef.current;
+      const focusables = root
+        ? [...root.querySelectorAll<HTMLElement>(ROW_FOCUSABLE)].filter(
+            (node) => !node.hasAttribute('disabled')
+          )
+        : [];
+      const edge = event.shiftKey ? focusables[0] : focusables[focusables.length - 1];
+      const onEdge =
+        document.activeElement === root ||
+        document.activeElement === edge ||
+        focusables.length === 0;
+      if (!onEdge) return;
+    }
+    event.preventDefault();
+    revealRecord(next);
+  }
+
   if (!shouldVirtualize) {
     if (compact) {
       return <StaticCards label={label} columns={columns} records={records} />;
@@ -272,13 +374,28 @@ export function ResponsiveRecordList({
     );
   }
 
-  const items = virtualizer.getVirtualItems();
+  const virtualItems = virtualizer.getVirtualItems();
+  const items =
+    pinnedIndex != null && !virtualItems.some((item) => item.index === pinnedIndex)
+      ? [
+          ...virtualItems,
+          {
+            key: `pin-${pinnedIndex}`,
+            index: pinnedIndex,
+            start: pinnedIndex * (compact ? 88 : 41),
+            end: (pinnedIndex + 1) * (compact ? 88 : 41),
+            size: compact ? 88 : 41,
+            lane: 0,
+          },
+        ]
+      : virtualItems;
 
   if (compact) {
     return (
       <Box
         ref={scrollRef}
         tabIndex={0}
+        onKeyDown={onListKeyDown}
         data-layout="cards"
         style={{ height: '70dvh', maxHeight: '70dvh', overflow: 'auto' }}
       >
@@ -296,6 +413,7 @@ export function ResponsiveRecordList({
                 data-index={item.index}
                 ref={virtualizer.measureElement}
                 role="listitem"
+                tabIndex={-1}
                 aria-setsize={records.length}
                 aria-posinset={item.index + 1}
                 style={{
@@ -315,14 +433,17 @@ export function ResponsiveRecordList({
     );
   }
 
-  const paddingTop = items.length > 0 ? items[0].start : 0;
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
   const paddingBottom =
-    items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1].end : 0;
+    virtualItems.length > 0
+      ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+      : 0;
 
   return (
     <Box
       ref={scrollRef}
       tabIndex={0}
+      onKeyDown={onListKeyDown}
       aria-label={scrollLabel ?? label}
       style={{ height: '70dvh', maxHeight: '70dvh', overflow: 'auto' }}
     >
@@ -353,6 +474,7 @@ export function ResponsiveRecordList({
                 data-index={item.index}
                 data-record-id={record.id}
                 ref={virtualizer.measureElement}
+                tabIndex={-1}
                 aria-rowindex={item.index + 2}
               >
                 <DataCells record={record} />

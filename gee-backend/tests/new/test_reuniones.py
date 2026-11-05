@@ -20,6 +20,7 @@ from app.domains.reuniones.repository import (
 )
 from app.domains.reuniones.schemas import (
     AgendaItemCreate,
+    AgendaItemUpdate,
     AgendaReferenciaCreate,
     ReunionCreate,
     ReunionUpdate,
@@ -465,3 +466,40 @@ class TestReunionService:
                 AgendaItemCreate(titulo="Test", orden=0),
             )
         assert exc_info.value.status_code == 404
+
+    def test_marcar_completado_persiste_y_el_pdf_lo_lee(
+        self,
+        db: Session,
+        service: ReunionService,
+        sample_reunion: Reunion,
+    ):
+        from app.shared.pdf.base import BrandingInfo
+        from app.shared.pdf.builders import build_reunion_pdf
+
+        item = service.add_agenda_item(
+            db,
+            sample_reunion.id,
+            AgendaItemCreate(titulo="Reparar compuerta", descripcion="Presupuesto", orden=1),
+        )
+        assert item.completado is False
+
+        updated = service.update_agenda_item(
+            db,
+            sample_reunion.id,
+            item.id,
+            AgendaItemUpdate(completado=True),
+        )
+        assert updated.completado is True
+
+        reunion = service.get_by_id(db, sample_reunion.id)
+        completed = [agenda for agenda in reunion.agenda_items if agenda.completado]
+        assert completed, "el PDF imprime Si solo si el item queda completado"
+        pdf = build_reunion_pdf(
+            reunion,
+            BrandingInfo(
+                nombre_organizacion="Consorcio",
+                logo_path=None,
+                color_primario="#0f766e",
+            ),
+        )
+        assert pdf.getvalue().startswith(b"%PDF")

@@ -13,6 +13,7 @@ from app.domains.reuniones.models import (
 )
 from app.domains.reuniones.schemas import (
     AgendaItemCreate,
+    AgendaItemUpdate,
     ReunionCreate,
     ReunionUpdate,
 )
@@ -167,6 +168,21 @@ class AgendaItemRepository:
             )
             db.add(ref)
 
+        db.flush()
+        return item
+
+    def update(
+        self,
+        db: Session,
+        item_id: uuid.UUID,
+        data: AgendaItemUpdate,
+    ) -> Optional[AgendaItem]:
+        """Apply a partial update, including ``completado``."""
+        item = self.get_by_id(db, item_id)
+        if item is None:
+            return None
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(item, field, value)
         db.flush()
         return item
 

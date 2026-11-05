@@ -20,6 +20,7 @@ from app.domains.reuniones.repository import (
 )
 from app.domains.reuniones.schemas import (
     AgendaItemCreate,
+    AgendaItemUpdate,
     ReunionCreate,
     ReunionUpdate,
 )
@@ -132,6 +133,25 @@ class ReunionService:
         db.commit()
         db.refresh(item)
         return item
+
+    def update_agenda_item(
+        self,
+        db: Session,
+        reunion_id: uuid.UUID,
+        item_id: uuid.UUID,
+        data: AgendaItemUpdate,
+    ) -> AgendaItem:
+        """Update an agenda item. ``completado`` is how the PDF leaves "No"."""
+        self.get_by_id(db, reunion_id)
+        item = self.agenda_repo.get_by_id(db, item_id)
+        if item is None or item.reunion_id != reunion_id:
+            raise HTTPException(status_code=404, detail="Agenda item no encontrado")
+        updated = self.agenda_repo.update(db, item_id, data)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Agenda item no encontrado")
+        db.commit()
+        db.refresh(updated)
+        return updated
 
     def delete_agenda_item(
         self,

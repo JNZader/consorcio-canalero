@@ -75,6 +75,42 @@ describe('Cloudflare Pages routing (SPA + FE-01)', () => {
     expect(worker).toMatch(/shouldServeRouteNotFound/);
   });
 
+  it('keeps SPA_ROUTES in lockstep with the router', () => {
+    const routeTree = readFileSync(join(process.cwd(), 'src/routeTree.gen.tsx'), 'utf8');
+    const worker = readFileSync(join(process.cwd(), 'public/_worker.js'), 'utf8');
+    const routeBlock = worker.split('const SPA_ROUTES = new Set([')[1]?.split(']);')[0] ?? '';
+    const declared = new Set([...routeBlock.matchAll(/'([^']*)'/g)].map((match) => match[1]));
+    const blocks = [
+      ...routeTree.matchAll(/const (\w+) = createRoute\(\{([\s\S]*?)\n\}\);/g),
+    ];
+    const routes = new Map<string, { parent: string; path: string }>();
+    for (const match of blocks) {
+      const parent = match[2].match(/getParentRoute: \(\) => (\w+)/)?.[1];
+      const path = match[2].match(/\n\s+path: '([^']*)'/)?.[1];
+      if (parent && path !== undefined) routes.set(match[1], { parent, path });
+    }
+    const full = new Map<string, string>();
+    const resolve = (name: string): string => {
+      const cached = full.get(name);
+      if (cached !== undefined) return cached;
+      const route = routes.get(name);
+      if (!route) return '';
+      const parentPath = route.parent === 'rootRouteWithComponent' ? '' : resolve(route.parent);
+      const joined =
+        route.path === '/'
+          ? parentPath || '/'
+          : `${parentPath}${route.path.startsWith('/') ? route.path : `/${route.path}`}`;
+      full.set(name, joined);
+      return joined;
+    };
+    const fromRouter = new Set([...routes.keys()].map(resolve));
+    for (const path of fromRouter) {
+      expect(declared.has(path), path).toBe(true);
+    }
+    const extras = [...declared].filter((path) => path !== '/index.html' && !fromRouter.has(path));
+    expect(extras).toEqual([]);
+  });
+
   it('registers a one-shot vite:preloadError reload in main.tsx', () => {
     const main = readFileSync(join(process.cwd(), 'src/main.tsx'), 'utf8');
     expect(main).toMatch(/vite:preloadError/);

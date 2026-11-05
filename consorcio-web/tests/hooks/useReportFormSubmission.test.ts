@@ -138,7 +138,8 @@ describe('useReportFormSubmission', () => {
         tipo: 'desborde',
         latitud: -32.6,
         longitud: -62.7,
-      })
+      }),
+      expect.any(String)
     );
     expect(reset).toHaveBeenCalled();
     expect(setUbicacion).toHaveBeenCalledWith(null);
@@ -351,5 +352,43 @@ describe('useReportFormSubmission', () => {
       await result.current(payload);
     });
     expect(publicApi.createReport).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses the idempotency key when a lost response is retried', async () => {
+    vi.mocked(publicApi.createReport).mockRejectedValueOnce(new QueryError('API Error: 503', 503));
+    const payload = { tipo: 'desborde', descripcion: 'descripcion valida', foto: null };
+    const { result } = renderHook(() =>
+      useReportFormSubmission({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        ubicacion: { lat: -32.6, lng: -62.7 },
+        announce: vi.fn(),
+        form: { values: payload, reset: vi.fn() },
+        setEnviando: vi.fn(),
+        setUbicacion: vi.fn(),
+        setFotoPreview: vi.fn(),
+        ...baseRateLimitProps,
+        onOfflineFailure: vi.fn(),
+      })
+    );
+
+    await act(async () => {
+      await result.current(payload);
+    });
+    vi.mocked(publicApi.createReport).mockResolvedValue({ id: 'rep-1', message: 'ok' });
+    await act(async () => {
+      await result.current(payload);
+    });
+
+    const firstKey = vi.mocked(publicApi.createReport).mock.calls[0]?.[1];
+    const retryKey = vi.mocked(publicApi.createReport).mock.calls[1]?.[1];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(retryKey).toBe(firstKey);
+
+    await act(async () => {
+      await result.current(payload);
+    });
+    expect(vi.mocked(publicApi.createReport).mock.calls[2]?.[1]).not.toBe(firstKey);
   });
 });

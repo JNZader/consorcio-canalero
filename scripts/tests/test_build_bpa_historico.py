@@ -9,9 +9,9 @@ Invariants anchored here:
 1. Only parcels with ``años_bpa >= 1`` appear.
 2. Feature geometry is sourced from the matching catastro feature.
 3. Each feature's properties include ``nro_cuenta``, ``años_bpa``,
-   ``años_lista``, ``n_explotacion_ultima``, ``bpa_activa_2025``.
-4. ``n_explotacion_ultima`` is the 2025 name when present, else the most
-   recent year's name from the historical series.
+   ``años_lista`` and ``bpa_activa_2025``.
+4. ``n_explotacion_ultima`` is not published (Ley 25.326). The 2025 flag
+   is the only signal of a current registration.
 5. Parcels lacking a catastro geometry are silently dropped (not an error).
 """
 
@@ -98,9 +98,9 @@ class TestBuildBpaHistoricoFeatures:
             "nro_cuenta": "A",
             "años_bpa": 3,
             "años_lista": ["2019", "2020", "2025"],
-            "n_explotacion_ultima": "La Sentina 2025",
             "bpa_activa_2025": True,
         }
+        assert "n_explotacion_ultima" not in props
 
     def test_n_explotacion_ultima_falls_back_to_last_historical_year(self):
         catastro = [_catastro_feature("A")]
@@ -115,7 +115,7 @@ class TestBuildBpaHistoricoFeatures:
         ]
         collection = build_bpa_historico_features(parcels, catastro)
         props = collection["features"][0]["properties"]
-        assert props["n_explotacion_ultima"] == "New Name"
+        assert "n_explotacion_ultima" not in props
         assert props["bpa_activa_2025"] is False
 
     def test_parcels_missing_catastro_geometry_are_dropped(self):

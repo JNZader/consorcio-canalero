@@ -19,6 +19,7 @@ export function useReunionesController() {
   const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
   const [deletingAgendaItemId, setDeletingAgendaItemId] = useState<string | null>(null);
+  const [togglingAgendaItemId, setTogglingAgendaItemId] = useState<string | null>(null);
   const [topicPendingDelete, setTopicPendingDelete] = useState<AgendaItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [newChecklistPoint, setNewChecklistPoint] = useState('');
@@ -192,6 +193,23 @@ export function useReunionesController() {
     }
   };
 
+  const handleToggleComplete = async (item: AgendaItem) => {
+    if (!selectedReunion || togglingAgendaItemId) return;
+    setTogglingAgendaItemId(item.id);
+    try {
+      await apiFetch(`/reuniones/${selectedReunion.id}/agenda/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ completado: item.completado !== true }),
+      });
+      await fetchAgenda(selectedReunion.id);
+    } catch (error) {
+      logger.error('Error updating agenda topic:', error);
+      showError('No se pudo actualizar el tema', 'Intentá nuevamente.');
+    } finally {
+      setTogglingAgendaItemId(null);
+    }
+  };
+
   const handleDeleteTopic = (item: AgendaItem) => {
     if (!selectedReunion) return;
     setTopicPendingDelete(item);
@@ -255,6 +273,7 @@ export function useReunionesController() {
     selectedReunion,
     agenda,
     deletingAgendaItemId,
+    togglingAgendaItemId,
     topicPendingDelete,
     submitting,
     newChecklistPoint,
@@ -272,6 +291,7 @@ export function useReunionesController() {
     handleCreateReunion,
     handleAddTopic,
     handleDeleteTopic,
+    handleToggleComplete,
     cancelDeleteTopic,
     confirmDeleteTopic,
     handleExportPDF,

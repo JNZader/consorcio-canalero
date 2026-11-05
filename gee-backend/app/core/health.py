@@ -1,8 +1,9 @@
 """Health check functions for external services."""
 
 import asyncio
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, InvalidStateError
 from pathlib import Path
 from typing import Any, Dict
 
@@ -38,9 +39,55 @@ _gee_probe_cache: dict[str, Any] | None = None
 _gee_probe_cached_at = 0.0
 _gee_probe_lock: asyncio.Lock | None = None
 _gee_probe_lock_loop: asyncio.AbstractEventLoop | None = None
-# A hung getInfo must not occupy the default pool. One worker: the next
-# probe waits behind it and the 5s deadline still returns.
-_gee_probe_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gee-health")
+
+
+class _DaemonProbeExecutor:
+    """Runs each probe on a daemon thread.
+
+    ``asyncio.wait_for`` abandons the await when the probe exceeds its
+    deadline, but ``getInfo()`` keeps running. A non-daemon thread blocks
+    interpreter shutdown, so a hung Earth Engine call stops the container
+    from exiting (R1-006). Daemon threads do not. ``shutdown`` does not
+    wait for them.
+    """
+
+    def submit(self, fn, /, *args, **kwargs):
+        future: Future = Future()
+
+        def run() -> None:
+            try:
+                result = fn(*args, **kwargs)
+            except BaseException as exc:
+                _settle_future(future, exc)
+                return
+            _settle_future(future, result)
+
+        threading.Thread(target=run, name="gee-health", daemon=True).start()
+        return future
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        return None
+
+
+def _settle_future(future: Future, outcome: object) -> None:
+    """Ignore a probe that ``wait_for`` already cancelled."""
+    try:
+        if isinstance(outcome, BaseException):
+            future.set_exception(outcome)
+        else:
+            future.set_result(outcome)
+    except InvalidStateError:
+        return
+
+
+# A hung getInfo must not occupy the default pool. Each call gets its own
+# daemon thread; the 5s deadline still returns while that thread runs.
+_gee_probe_executor = _DaemonProbeExecutor()
+
+
+def shutdown_gee_probe() -> None:
+    """Drop a hung probe without waiting for Earth Engine to answer."""
+    _gee_probe_executor.shutdown(wait=False, cancel_futures=True)
 
 
 def check_database_health_sync() -> Dict[str, Any]:
