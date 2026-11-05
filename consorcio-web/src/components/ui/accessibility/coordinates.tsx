@@ -122,10 +122,10 @@ export function CoordinatesInput({
             Establecer
           </Button>
         </Group>
-        <Text id="lat-format-help" size="xs" c="gray.6" mt="xs">
+        <Text id="lat-format-help" size="xs" c="dimmed" mt="xs">
           Formato: números decimales (ej: -32.63000 para latitud sur)
         </Text>
-        <Text id="lng-format-help" size="xs" c="gray.6" style={visuallyHiddenStyle}>
+        <Text id="lng-format-help" size="xs" c="dimmed" style={visuallyHiddenStyle}>
           Formato: números decimales (ej: -62.68000 para longitud oeste)
         </Text>
       </Box>

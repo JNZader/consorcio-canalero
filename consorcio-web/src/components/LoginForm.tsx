@@ -184,7 +184,7 @@ export function LoginFormContent() {
               Consorcio Canalero
             </Text>
           </Group>
-          <Text c="gray.6" size="sm">
+          <Text c="dimmed" size="sm">
             10 de Mayo - Departamento Unión
           </Text>
         </Box>

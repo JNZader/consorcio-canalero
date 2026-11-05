@@ -161,7 +161,7 @@ export function ParticipacionContent() {
           {/* Header unico: abarca las dos acciones */}
           <Stack align="center" mb="xl">
             <Title order={1}>Participación</Title>
-            <Text c="gray.6" ta="center" maw={560}>
+            <Text c="dimmed" ta="center" maw={560}>
               Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo
               lo que envíes llega al equipo del consorcio y a la comisión.
             </Text>

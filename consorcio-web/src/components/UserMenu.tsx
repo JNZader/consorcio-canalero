@@ -214,7 +214,7 @@ function MobileUserMenu({
           <Text size="sm" fw={500}>
             {getDisplayName(profile, user)}
           </Text>
-          <Text size="xs" c="gray.6">
+          <Text size="sm" c="dimmed">
             {getRoleLabel(profile?.rol)}
           </Text>
         </Box>

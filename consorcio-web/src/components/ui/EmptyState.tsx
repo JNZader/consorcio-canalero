@@ -30,7 +30,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
         {title}
       </Text>
       {description && (
-        <Text id={descriptionId} size="sm" c="gray.6" ta="center" maw={300}>
+        <Text id={descriptionId} size="sm" c="dimmed" ta="center" maw={300}>
           {description}
         </Text>
       )}

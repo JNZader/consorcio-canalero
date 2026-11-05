@@ -7,6 +7,7 @@ import { logger } from '../../lib/logger';
 import { mapColorTokens } from '../../lib/mapColorTokens';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibreLoader';
 import { showError } from '../../lib/notifications';
+import { semanticColor } from '../../lib/semanticColors';
 import formStyles from '../../styles/components/form.module.css';
 import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { CoordinatesInput } from '../ui/accessibility';
@@ -327,7 +328,7 @@ export function LocationSection({
               padding: 'var(--mantine-spacing-md)',
             }}
           >
-            <Text size="sm" c={mapStatus === 'error' ? 'red' : 'gray.6'}>
+            <Text size="sm" c={mapStatus === 'error' ? semanticColor.danger : 'dimmed'}>
               {mapStatus === 'error'
                 ? 'No se pudo cargar el mapa. Ingresá las coordenadas manualmente o recargá la página.'
                 : 'Cargando mapa…'}
@@ -335,7 +336,7 @@ export function LocationSection({
           </Box>
         )}
       </Box>
-      <Text id={LOCATION_HELP_ID} size="xs" c="gray.6" mt="xs">
+      <Text id={LOCATION_HELP_ID} size="xs" c="dimmed" mt="xs">
         Tocá o hacé clic dentro del área del consorcio para marcar la ubicación del incidente. Con
         un dedo se desplaza la página; con dos dedos se mueve el mapa. Referencia: límite del
         consorcio (rojo), hidrografía (azul), caminos (amarillo).

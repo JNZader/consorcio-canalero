@@ -280,7 +280,7 @@ export default function AdminDashboard() {
           title={erroresUi.cargarDashboard.titulo}
           message={erroresUi.cargarDashboard.detalle}
           action={
-            <Button mt="sm" size="xs" onClick={handleRetry}>
+            <Button mt="sm" size="sm" onClick={handleRetry}>
               Reintentar
             </Button>
           }
@@ -317,7 +317,7 @@ export default function AdminDashboard() {
         <Group justify="space-between" align="flex-start" mb="md">
           <div>
             <Title order={4}>Importación geoespacial</Title>
-            <Text c="gray.6" size="sm">
+            <Text c="dimmed" size="sm">
               Reemplaza subcuencas operativas y carga una nueva zonificación aprobada desde archivos
               GeoJSON exportados.
             </Text>
@@ -329,7 +329,7 @@ export default function AdminDashboard() {
             <Stack gap="sm">
               <div>
                 <Text fw={600}>Subcuencas operativas</Text>
-                <Text size="sm" c="gray.6">
+                <Text size="sm" c="dimmed">
                   Importa <code>zonas_operativas.geojson</code> y reemplaza las subcuencas actuales.
                 </Text>
               </div>
@@ -339,7 +339,6 @@ export default function AdminDashboard() {
                 accept=".geojson,.json,application/geo+json,application/json"
                 placeholder="Seleccionar GeoJSON"
                 aria-label="Seleccionar GeoJSON de subcuencas a importar"
-                styles={{ placeholder: { color: '#495057' } }}
                 clearable
               />
               <Button onClick={handleImportBasins} loading={importingBasins} disabled={!basinsFile}>
@@ -352,7 +351,7 @@ export default function AdminDashboard() {
             <Stack gap="sm">
               <div>
                 <Text fw={600}>Zonificación aprobada</Text>
-                <Text size="sm" c="gray.6">
+                <Text size="sm" c="dimmed">
                   Importa <code>zonificacion_aprobada.geojson</code> como nueva versión aprobada.
                 </Text>
               </div>
@@ -362,7 +361,6 @@ export default function AdminDashboard() {
                 accept=".geojson,.json,application/geo+json,application/json"
                 placeholder="Seleccionar GeoJSON"
                 aria-label="Seleccionar GeoJSON de zonificación a importar"
-                styles={{ placeholder: { color: '#495057' } }}
                 clearable
               />
               <Button
@@ -381,7 +379,7 @@ export default function AdminDashboard() {
         <Stack gap="md">
           <div>
             <Title order={4}>Bundle geo</Title>
-            <Text c="gray.6" size="sm">
+            <Text c="dimmed" size="sm">
               Exporta o importa un paquete completo con subcuencas, zonificación aprobada y capas
               geo respaldadas por archivos.
             </Text>
@@ -404,7 +402,6 @@ export default function AdminDashboard() {
               placeholder="Seleccionar bundle ZIP"
               aria-label="Seleccionar bundle ZIP a importar"
               clearable
-              styles={{ placeholder: { color: '#495057' } }}
               style={{ flex: 1, minWidth: 260 }}
             />
 
@@ -427,7 +424,7 @@ export default function AdminDashboard() {
             Monitoreo Satelital por Cuenca
           </Title>
           {monitoringLoading ? (
-            <Text c="gray.6" ta="center" py="md">
+            <Text c="dimmed" ta="center" py="md">
               Cargando datos...
             </Text>
           ) : rankingCuencas.length > 0 ? (
@@ -444,7 +441,7 @@ export default function AdminDashboard() {
                       <Text size="sm" fw={500}>
                         {nombre}
                       </Text>
-                      <Text size="sm" c="gray.6">
+                      <Text size="sm" c="dimmed">
                         {cuenca.area_anegada_ha.toFixed(1)} ha (
                         {cuenca.porcentaje_problematico.toFixed(2)}%)
                       </Text>
@@ -455,7 +452,7 @@ export default function AdminDashboard() {
               })}
             </Stack>
           ) : (
-            <Text c="gray.6" ta="center" py="md">
+            <Text c="dimmed" ta="center" py="md">
               Sin datos de inundación disponibles
             </Text>
           )}
@@ -469,7 +466,7 @@ export default function AdminDashboard() {
               component="a"
               href={withBasePath('/admin/participacion')}
               variant="subtle"
-              size="xs"
+              size="sm"
             >
               Ver todos
             </Button>
@@ -488,14 +485,14 @@ export default function AdminDashboard() {
                     {report.tipo.replace('_', ' ')}
                   </Text>,
                   <StatusBadge key="estado" status={report.estado} size="sm" />,
-                  <Text key="fecha" size="xs" c="gray.6">
+                  <Text key="fecha" size="sm" c="dimmed">
                     {formatDate(report.created_at)}
                   </Text>,
                 ],
               }))}
             />
           ) : (
-            <Text c="gray.6" ta="center" py="xl">
+            <Text c="dimmed" ta="center" py="xl">
               No hay reportes recientes
             </Text>
           )}

@@ -23,7 +23,7 @@ export function StatCard({ title, value, unit, icon, color = 'blue', trend }: St
     >
       <Group justify="space-between" align="flex-start">
         <Stack gap="xs">
-          <Text size="xs" c="gray.6" tt="uppercase" fw={700} style={{ letterSpacing: '0.5px' }}>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={700} style={{ letterSpacing: '0.5px' }}>
             {title}
           </Text>
 
@@ -49,7 +49,7 @@ export function StatCard({ title, value, unit, icon, color = 'blue', trend }: St
           </Group>
 
           {unit && (
-            <Text size="xs" c="gray.6" fw={500}>
+            <Text size="xs" c="dimmed" fw={500}>
               {unit}
             </Text>
           )}

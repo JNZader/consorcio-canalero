@@ -122,7 +122,7 @@ export function SuggestionDetailModal({
               <Text size="sm" fw={500}>
                 Fecha
               </Text>
-              <Text size="sm" c="gray.6">
+              <Text size="sm" c="dimmed">
                 {formatDate(selectedSugerencia.created_at)}
               </Text>
             </div>
@@ -133,7 +133,7 @@ export function SuggestionDetailModal({
               <Text size="sm" fw={500}>
                 Contacto
               </Text>
-              <Text size="sm" c="gray.6">
+              <Text size="sm" c="dimmed">
                 {selectedSugerencia.contacto_nombre}
                 {selectedSugerencia.contacto_email && ` - ${selectedSugerencia.contacto_email}`}
                 {selectedSugerencia.contacto_telefono &&
