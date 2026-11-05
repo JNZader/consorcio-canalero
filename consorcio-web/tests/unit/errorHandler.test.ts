@@ -87,7 +87,7 @@ describe('errorHandler', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Error',
         message: 'Test error',
-        color: 'red',
+        color: 'alerta',
         autoClose: 5000,
       });
     });
@@ -132,11 +132,11 @@ describe('errorHandler', () => {
     });
 
     it('should use custom color', () => {
-      handleError(new Error('Test error'), { color: 'blue' });
+      handleError(new Error('Test error'), { color: 'institucional' });
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          color: 'blue',
+          color: 'institucional',
         })
       );
     });

@@ -107,7 +107,6 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
               <Tooltip label="Comparar: imagen izquierda (antes)">
                 <Button
                   variant={comparison?.left?.tile_url === result?.tile_url ? 'light' : 'outline'}
-                  color="blue"
                   size="sm"
                   onClick={onSetLeftImage}
                 >
@@ -117,7 +116,6 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
               <Tooltip label="Comparar: imagen derecha (después)">
                 <Button
                   variant={comparison?.right?.tile_url === result?.tile_url ? 'light' : 'outline'}
-                  color="green"
                   size="sm"
                   onClick={onSetRightImage}
                 >

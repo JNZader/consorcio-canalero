@@ -26,13 +26,7 @@ export default function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <IconButton
-        variant="subtle"
-        size="lg"
-        radius="md"
-        color="gray"
-        aria-label="Cargando preferencia de tema"
-      >
+      <IconButton variant="subtle" size="lg" radius="md" aria-label="Cargando preferencia de tema">
         <div style={{ width: 18, height: 18 }} />
       </IconButton>
     );
@@ -45,7 +39,6 @@ export default function ThemeToggle() {
         variant="subtle"
         size="lg"
         radius="md"
-        color="gray"
         aria-label={ariaLabel}
         loading={isPending}
       >

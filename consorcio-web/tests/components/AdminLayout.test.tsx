@@ -93,7 +93,7 @@ describe('AdminLayout account navigation', () => {
       expect(notificationsShowMock).toHaveBeenCalledWith({
         title: 'Sesión cerrada localmente',
         message: 'remote revocation unconfirmed',
-        color: 'yellow',
+        color: 'orange',
       });
       expect(navigateMock).toHaveBeenCalledWith({ to: '/login', replace: true });
     });
@@ -107,7 +107,7 @@ describe('AdminLayout account navigation', () => {
 
     await waitFor(() => {
       expect(notificationsShowMock).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'unexpected logout failure', color: 'red' })
+        expect.objectContaining({ message: 'unexpected logout failure', color: 'alerta' })
       );
     });
     expect(navigateMock).not.toHaveBeenCalled();

@@ -213,7 +213,7 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /usar mi ubicación gps/i }));
 
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Error', color: 'red' })
+        expect.objectContaining({ title: 'Error', color: 'alerta' })
       );
     });
 
@@ -231,7 +231,7 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /usar mi ubicación gps/i }));
 
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ color: 'red' })
+        expect.objectContaining({ color: 'alerta' })
       );
     });
   });
@@ -319,7 +319,7 @@ describe('FormularioReporte', () => {
       );
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ color: 'yellow' })
+        expect.objectContaining({ color: 'orange' })
       );
     });
 
@@ -349,7 +349,7 @@ describe('FormularioReporte', () => {
       );
       expect(publicApi.uploadPhoto).toHaveBeenCalledTimes(1);
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Aviso', color: 'yellow' })
+        expect.objectContaining({ title: 'Aviso', color: 'orange' })
       );
     });
 
@@ -367,7 +367,7 @@ describe('FormularioReporte', () => {
       await user.click(screen.getByRole('button', { name: /enviar reporte/i }));
 
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ color: 'yellow' })
+        expect.objectContaining({ color: 'orange' })
       );
     });
 
@@ -482,7 +482,7 @@ describe('FormularioReporte', () => {
       expect(screen.queryByRole('alert', { name: /sin conexión/i })).not.toBeInTheDocument();
       expect(screen.getByLabelText(/descripci[oó]n/i)).toHaveValue(descripcion);
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Error', color: 'red' })
+        expect.objectContaining({ title: 'Error', color: 'alerta' })
       );
     });
   });

@@ -156,7 +156,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
         <Paper shadow="md" p="xl" radius="md" w={400}>
           <Stack gap="md">
             <Alert
-              color="yellow"
+              color="orange"
               icon={<IconAlertCircle size={16} />}
               title="No pudimos verificar el enlace"
             >
@@ -183,7 +183,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
     return (
       <Center mih="80vh">
         <Paper shadow="md" p="xl" radius="md" w={400}>
-          <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace inválido">
+          <Alert color="alerta" icon={<IconAlertCircle size={16} />} title="Enlace inválido">
             <Text size="sm">
               Este enlace de recuperación es inválido o expiró. Solicitá uno nuevo desde la página
               de login.
@@ -212,7 +212,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
 
         {success ? (
           <Stack gap="md">
-            <Alert color="green" icon={<IconCheck size={16} />} title="Contraseña actualizada">
+            <Alert color="exito" icon={<IconCheck size={16} />} title="Contraseña actualizada">
               <Text size="sm">
                 Tu contraseña fue restablecida. Ya podés iniciar sesión con tu nueva contraseña.
               </Text>
@@ -228,7 +228,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
             </Text>
 
             {error && (
-              <Alert color="red" icon={<IconAlertCircle size={16} />} mb="md">
+              <Alert color="alerta" icon={<IconAlertCircle size={16} />} mb="md">
                 {error}
               </Alert>
             )}

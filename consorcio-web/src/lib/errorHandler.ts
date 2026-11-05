@@ -4,6 +4,7 @@
 
 import { logger } from './logger';
 import { showToast } from './notifications';
+import { semanticColor } from './semanticColors';
 
 /**
  * Standard error messages in Spanish for common HTTP status codes.
@@ -77,7 +78,7 @@ interface HandleErrorOptions {
   fallbackMessage?: string;
   /** Whether to show a notification (default: true) */
   showNotification?: boolean;
-  /** Notification color (default: 'red') */
+  /** Color del toast. Por defecto, el peligro de la paleta. */
   color?: string;
   /** Whether to log to console (default: true) */
   logToConsole?: boolean;
@@ -96,7 +97,7 @@ export function handleError(error: unknown, options: HandleErrorOptions = {}): s
     title = 'Error',
     fallbackMessage = 'Ocurrió un error inesperado',
     showNotification = true,
-    color = 'red',
+    color = semanticColor.danger,
     logToConsole = true,
     context,
   } = options;

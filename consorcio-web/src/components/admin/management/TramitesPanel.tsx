@@ -315,7 +315,6 @@ export default function TramitesPanel() {
                     <Table.Td>
                       <IconButton
                         variant="light"
-                        color="blue"
                         onClick={() => fetchDetalle(tramite.id)}
                         aria-label={`Ver seguimiento de ${tramite.titulo}`}
                       >

@@ -54,7 +54,7 @@ describe('suggestionFormUtils', () => {
   it('shows notifications through Mantine', () => {
     showSuggestionNotification('Titulo', 'Mensaje', 'green');
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Titulo', message: 'Mensaje', color: 'green' })
+      expect.objectContaining({ title: 'Titulo', message: 'Mensaje', color: 'exito' })
     );
   });
 

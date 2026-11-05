@@ -44,7 +44,11 @@ function ReportarContent() {
       <FormularioContenido />
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-        <Alert color="blue" title="Información importante" icon={<IconInfoCircle size={20} />}>
+        <Alert
+          color="institucional"
+          title="Información importante"
+          icon={<IconInfoCircle size={20} />}
+        >
           <List size="sm" spacing="xs">
             <List.Item>Los reportes son revisados en un plazo de 24-48 horas hábiles.</List.Item>
             <List.Item>
@@ -54,7 +58,7 @@ function ReportarContent() {
           </List>
         </Alert>
 
-        <Alert color="red" title="Emergencias" icon={<Text>!</Text>}>
+        <Alert color="alerta" title="Emergencias" icon={<Text>!</Text>}>
           <Text size="sm" mb="md">
             Si la situación es urgente (inundación activa, peligro inminente), comunicate
             directamente:
@@ -64,7 +68,7 @@ function ReportarContent() {
               <Button
                 component="a"
                 href={`tel:${SUPPORT_PHONE}`}
-                color="red"
+                color="alerta"
                 variant="light"
                 fullWidth
               >
@@ -93,7 +97,7 @@ function ProponerContent() {
       <FormularioSugerenciaContent />
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-        <Alert color="blue" title="Como funciona" icon={<IconInfoCircle size={20} />}>
+        <Alert color="institucional" title="Como funciona" icon={<IconInfoCircle size={20} />}>
           <List size="sm" spacing="xs">
             <List.Item>Iniciá sesión con tu email para enviar sugerencias.</List.Item>
             <List.Item>Podés enviar hasta 5 sugerencias cada 24 horas.</List.Item>
@@ -103,16 +107,7 @@ function ProponerContent() {
           </List>
         </Alert>
 
-        <Alert
-          color="green"
-          title="Tipos de sugerencias"
-          icon={<IconLightbulb size={20} />}
-          styles={{
-            label: { color: 'rgb(20, 83, 45)' },
-            title: { color: 'rgb(20, 83, 45)' },
-            root: { color: 'rgb(20, 83, 45)' },
-          }}
-        >
+        <Alert color="exito" title="Tipos de sugerencias" icon={<IconLightbulb size={20} />}>
           <List size="sm" spacing="xs">
             <List.Item>Mejoras en infraestructura (canales, caminos, alcantarillas)</List.Item>
             <List.Item>Propuestas para servicios del consorcio</List.Item>
@@ -152,7 +147,9 @@ export function ParticipacionContent() {
   return (
     <LiveRegionProvider>
       <Box
-        style={{ background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}
+        style={{
+          background: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
+        }}
         mih="100vh"
         py="xl"
       >
@@ -161,8 +158,8 @@ export function ParticipacionContent() {
           <Stack align="center" mb="xl">
             <Title order={1}>Participación</Title>
             <Text c="gray.6" ta="center" maw={560}>
-              Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo lo
-              que envíes llega al equipo del consorcio y a la comisión.
+              Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo
+              lo que envíes llega al equipo del consorcio y a la comisión.
             </Text>
           </Stack>
 

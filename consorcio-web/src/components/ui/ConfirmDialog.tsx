@@ -36,7 +36,7 @@ export function ConfirmDialog({
         <Button variant="default" onClick={onClose} disabled={loading}>
           {cancelLabel}
         </Button>
-        <Button color={destructive ? 'red' : 'institucional'} onClick={onConfirm} loading={loading}>
+        <Button color={destructive ? 'red' : undefined} onClick={onConfirm} loading={loading}>
           {confirmLabel}
         </Button>
       </Group>

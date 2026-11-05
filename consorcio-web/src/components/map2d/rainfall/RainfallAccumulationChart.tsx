@@ -340,7 +340,7 @@ export function RainfallAccumulationChart({
 
       {stale && (
         <Alert
-          color="yellow"
+          color="orange"
           variant="light"
           icon={<IconAlertTriangle size={16} />}
           title={

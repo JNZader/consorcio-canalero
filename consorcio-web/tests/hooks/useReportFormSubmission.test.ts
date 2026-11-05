@@ -237,7 +237,7 @@ describe('useReportFormSubmission', () => {
     expect(onOtherFailure).toHaveBeenCalledTimes(1);
     expect(reset).not.toHaveBeenCalled();
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Error', color: 'red' })
+      expect.objectContaining({ title: 'Error', color: 'alerta' })
     );
   });
 });

@@ -47,7 +47,7 @@ export default function ForgotPasswordForm() {
 
         {sent ? (
           <Stack gap="md">
-            <Alert color="green" icon={<IconCheck size={16} />} title="Email enviado">
+            <Alert color="exito" icon={<IconCheck size={16} />} title="Email enviado">
               <Text size="sm">
                 Si existe una cuenta con el email <strong>{form.values.email}</strong>, recibirás un
                 enlace para restablecer tu contraseña. Revisá tu bandeja de entrada y la carpeta de
@@ -72,7 +72,7 @@ export default function ForgotPasswordForm() {
             </Text>
 
             {error && (
-              <Alert color="red" icon={<IconAlertCircle size={16} />} mb="md">
+              <Alert color="alerta" icon={<IconAlertCircle size={16} />} mb="md">
                 {error}
               </Alert>
             )}

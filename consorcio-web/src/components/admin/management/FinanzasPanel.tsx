@@ -22,18 +22,10 @@ export default function FinanzasPanel() {
         subtitle="Seguimiento de gastos y ejecución presupuestaria"
         actions={
           <>
-            <Button
-              leftSection={<IconPlus size={18} />}
-              onClick={controller.gastoModal.open}
-              color="red.8"
-            >
+            <Button leftSection={<IconPlus size={18} />} onClick={controller.gastoModal.open}>
               Registrar Gasto
             </Button>
-            <Button
-              leftSection={<IconPlus size={18} />}
-              onClick={controller.ingresoModal.open}
-              color="green.9"
-            >
+            <Button leftSection={<IconPlus size={18} />} onClick={controller.ingresoModal.open}>
               Registrar Ingreso
             </Button>
           </>

@@ -91,7 +91,7 @@ export function MapaContent() {
           <Paper shadow="sm" p="xs" mb="xs" radius="md" className={mapStyles.mapPageHeader}>
             <Group justify="space-between" wrap="wrap" gap="xs">
               <Group gap="xs" wrap="wrap">
-                <Title order={2} fz="h5">
+                <Title order={1} fz="h5">
                   Mapa Interactivo
                 </Title>
                 <Text size="xs" c="gray.6">
@@ -138,7 +138,6 @@ export function MapaContent() {
               <Button
                 component="a"
                 href={withBasePath('/participacion')}
-                color="orange"
                 size="xs"
                 leftSection={<IconAlertTriangle size={16} />}
               >

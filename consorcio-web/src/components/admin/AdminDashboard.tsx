@@ -297,7 +297,6 @@ export default function AdminDashboard() {
         actions={
           <Button
             variant="filled"
-            color="violet"
             leftSection={<IconDownload size={18} />}
             onClick={handleExportDashboardData}
             loading={exporting}
@@ -370,7 +369,6 @@ export default function AdminDashboard() {
                 onClick={handleImportApprovedZones}
                 loading={importingApprovedZones}
                 disabled={!approvedZonesFile}
-                color="teal"
               >
                 Importar zonificación
               </Button>
@@ -392,7 +390,6 @@ export default function AdminDashboard() {
           <Group align="flex-end">
             <Button
               variant="filled"
-              color="indigo.9"
               leftSection={<IconDownload size={18} />}
               onClick={handleExportBundle}
               loading={exportingBundle}

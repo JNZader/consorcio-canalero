@@ -42,11 +42,11 @@ import { lazy, type ReactNode, Suspense, useEffect, useState } from 'react';
 
 import { useRainfallAnalysis, useRainfallScopes } from '../../../hooks/useRainfallAnalysis';
 import {
+  downloadRainfallCsv,
+  downloadRainfallXlsx,
   type RainfallAnalysisResponse,
   type RainfallMetric,
   type RainfallScopeChoice,
-  downloadRainfallCsv,
-  downloadRainfallXlsx,
 } from '../../../lib/api/rainfall';
 import { useCanAccess } from '../../../stores/authStore';
 import { CollapsibleSection } from '../../ui/CollapsibleSection';
@@ -56,14 +56,15 @@ const RainfallAccumulationChart = lazy(async () => {
   const mod = await import('./RainfallAccumulationChart');
   return { default: mod.RainfallAccumulationChart };
 });
+
 import { RainfallAnswerCard } from './RainfallAnswerCard';
 import { RainfallMetricGroup, RainfallMetricList, snapshotMetrics } from './RainfallMetricList';
 import {
-  RAINFALL_SCOPE_LABELS,
   compactAntecedent,
   deriveFreshness,
   describeMetricState,
   hoistProvenance,
+  RAINFALL_SCOPE_LABELS,
   scopeChoiceLabels,
   shouldUseSegmentedScope,
 } from './rainfallFormat';
@@ -267,7 +268,7 @@ function UnavailableAlert({
 }) {
   return (
     <Alert
-      color="yellow"
+      color="orange"
       variant="light"
       data-testid="rainfall-unavailable"
       data-showing-year={showingFallback ? String(previousYear) : undefined}
@@ -315,10 +316,12 @@ function AnalysisStatus({
   if (data?.type === 'queued' && !gaveUp && !isError) {
     return (
       <Alert
-        color="blue"
+        color="institucional"
         variant="light"
         data-testid="rainfall-queued"
-        data-queued-labels={data.queued.labels.length > 0 ? data.queued.labels.join(', ') : undefined}
+        data-queued-labels={
+          data.queued.labels.length > 0 ? data.queued.labels.join(', ') : undefined
+        }
         data-showing-year={showingFallback ? String(previousYear) : undefined}
       >
         <Text size="xs">

@@ -23,7 +23,7 @@ export function ImageExplorerMap({
   return (
     <>
       {error && (
-        <Alert color="red" icon={<IconAlertTriangle />} title="Error">
+        <Alert color="alerta" icon={<IconAlertTriangle />} title="Error">
           {error}
         </Alert>
       )}

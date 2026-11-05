@@ -296,7 +296,7 @@ describe('FormularioSugerencia', () => {
 
       await waitFor(() => {
         expect(notifications.show).toHaveBeenCalledWith(
-          expect.objectContaining({ title: 'Error', color: 'red' })
+          expect.objectContaining({ title: 'Error', color: 'alerta' })
         );
         expect(screen.getByText(/llegaste al l[ií]mite de 5 sugerencias cada 24 horas/i)).toBeInTheDocument();
       });
@@ -327,7 +327,7 @@ describe('FormularioSugerencia', () => {
 
       await waitFor(() => {
         expect(notifications.show).toHaveBeenCalledWith(
-          expect.objectContaining({ color: 'red' })
+          expect.objectContaining({ color: 'alerta' })
         );
       });
     });

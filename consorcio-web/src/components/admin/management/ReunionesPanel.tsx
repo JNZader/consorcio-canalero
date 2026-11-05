@@ -21,11 +21,7 @@ export default function ReunionesPanel() {
         title="Reuniones de Comisión"
         subtitle="Planificación de orden del día y actas"
         actions={
-          <Button
-            leftSection={<IconCalendar size={18} />}
-            onClick={controller.createModal.open}
-            color="violet"
-          >
+          <Button leftSection={<IconCalendar size={18} />} onClick={controller.createModal.open}>
             Nueva Reunión
           </Button>
         }

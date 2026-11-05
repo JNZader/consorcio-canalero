@@ -97,7 +97,7 @@ export function MyReportsSection() {
         {loading && <LoadingState compact message="Cargando tus denuncias" />}
 
         {!loading && error && (
-          <Alert color="red" variant="light" role="alert" aria-live="assertive">
+          <Alert color="alerta" variant="light" role="alert" aria-live="assertive">
             {error}
           </Alert>
         )}

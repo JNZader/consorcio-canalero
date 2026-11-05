@@ -225,7 +225,7 @@ describe('TramitesPanel', () => {
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'PDF descargado', color: 'green' })
+        expect.objectContaining({ title: 'PDF descargado', color: 'exito' })
       );
       expect(downloadButton).toBeEnabled();
     });
@@ -265,7 +265,7 @@ describe('TramitesPanel', () => {
         expect.objectContaining({
           title: 'No se pudo descargar el trámite',
           message: expect.stringContaining('503'),
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -316,7 +316,7 @@ describe('TramitesPanel', () => {
         expect.objectContaining({
           title: 'No se pudo cargar el seguimiento',
           message: 'Trámite no encontrado',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -368,7 +368,7 @@ describe('TramitesPanel', () => {
         expect.objectContaining({
           title: 'No se pudo registrar el trámite',
           message: 'Ya existe un expediente con ese título',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });

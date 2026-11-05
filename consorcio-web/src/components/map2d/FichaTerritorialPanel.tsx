@@ -37,27 +37,29 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { Fragment, lazy, Suspense, type ReactNode, memo, useEffect, useState } from 'react';
+import { Fragment, lazy, memo, type ReactNode, Suspense, useEffect, useState } from 'react';
 
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
 import { FichaApiError } from '../../lib/api/ficha';
-import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import { useCanAccess } from '../../stores/authStore';
 import styles from '../../styles/components/map.module.css';
+import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CanalBufferControl } from './CanalBufferControl';
 import { FichaResumen } from './FichaResumen';
 import { fmtHa } from './fichaShared';
 import { MapPanelShell } from './MapPanelShell';
+import { PilarVerdeBadges } from './PilarVerdeBadges';
 import type { CanalAnalysisMode } from './useFichaInteraction';
 import type { ParcelaDisplayProps } from './useMapInteractionEffects';
-import { PilarVerdeBadges } from './PilarVerdeBadges';
+
 const PrecipChart = lazy(async () => {
   const mod = await import('./PrecipChart');
   return { default: mod.PrecipChart };
 });
-import { RainfallDetailPanel } from './rainfall/RainfallDetailPanel';
+
 import { RiesgoBins } from './RiesgoBins';
+import { RainfallDetailPanel } from './rainfall/RainfallDetailPanel';
 import { SuelosBreakdown } from './SuelosBreakdown';
 
 export interface FichaTerritorialPanelProps {
@@ -415,7 +417,7 @@ function FichaErrorAlert({
 
   return (
     <Alert
-      color="red"
+      color="alerta"
       variant="light"
       title={isRateLimited ? 'Demasiados pedidos' : 'No disponible'}
       data-testid="ficha-error"
@@ -837,9 +839,7 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       prioritizeRainfall={prioritizeRainfall}
     />
   );
-  const panelContent = prioritizeRainfall
-    ? [panelBody, panelContext]
-    : [panelContext, panelBody];
+  const panelContent = prioritizeRainfall ? [panelBody, panelContext] : [panelContext, panelBody];
 
   return (
     <MapPanelShell

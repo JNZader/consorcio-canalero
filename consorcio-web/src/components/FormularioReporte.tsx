@@ -304,7 +304,7 @@ function FormularioContenido() {
         />
 
         {!contactoVerificado && (
-          <Alert color="blue" variant="light" mb="md">
+          <Alert color="institucional" variant="light" mb="md">
             Podés completar el reporte ahora. Al enviarlo te pedimos verificar la identidad para
             evitar spam. Guardamos el texto, la ubicación y fotos de hasta 2 MB en tu sesión.
           </Alert>
@@ -319,7 +319,7 @@ function FormularioContenido() {
         )}
 
         {remainingToday === 0 && contactoVerificado && (
-          <Alert color="red" variant="light" mb="md" role="alert" aria-live="assertive">
+          <Alert color="alerta" variant="light" mb="md" role="alert" aria-live="assertive">
             Llegaste al límite de 5 reportes cada 24 horas. Volvé más tarde.
           </Alert>
         )}

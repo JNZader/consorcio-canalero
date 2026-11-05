@@ -150,7 +150,7 @@ describe('useFinanzasController — gastos', () => {
     expect(result.current.form.values.descripcion).toBe('');
     expect(apiFetchMock).toHaveBeenCalledWith('/finanzas/gastos');
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Gasto registrado', color: 'green' })
+      expect.objectContaining({ title: 'Gasto registrado', color: 'exito' })
     );
   });
 
@@ -170,10 +170,10 @@ describe('useFinanzasController — gastos', () => {
 
     expect(result.current.gastoOpened).toBe(true);
     expect(notifications.show).not.toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'green' })
+      expect.objectContaining({ color: 'exito' })
     );
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo registrar el gasto', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo registrar el gasto', color: 'alerta' })
     );
     expect(loggerMock.error).toHaveBeenCalledWith('Error creating gasto:', expect.anything());
     expect(result.current.submitting).toBe(false);
@@ -231,7 +231,7 @@ describe('useFinanzasController — gastos', () => {
     expect(bodyOf('/finanzas/gastos/g1', 'PATCH')).toEqual({ categoria: 'obras' });
     expect(result.current.editGastoOpened).toBe(false);
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Categoría actualizada', color: 'green' })
+      expect.objectContaining({ title: 'Categoría actualizada', color: 'exito' })
     );
   });
 
@@ -254,7 +254,7 @@ describe('useFinanzasController — gastos', () => {
     expect(result.current.editGastoOpened).toBe(true);
     expect(loggerMock.error).toHaveBeenCalledWith('Error updating category:', expect.anything());
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo actualizar la categoría', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo actualizar la categoría', color: 'alerta' })
     );
     expect(result.current.submitting).toBe(false);
   });
@@ -281,7 +281,7 @@ describe('useFinanzasController — ingresos', () => {
     expect(result.current.ingresoOpened).toBe(false);
     expect(apiFetchMock).toHaveBeenCalledWith('/finanzas/ingresos');
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Ingreso registrado', color: 'green' })
+      expect.objectContaining({ title: 'Ingreso registrado', color: 'exito' })
     );
   });
 
@@ -296,10 +296,10 @@ describe('useFinanzasController — ingresos', () => {
 
     expect(result.current.ingresoOpened).toBe(true);
     expect(notifications.show).not.toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'green' })
+      expect.objectContaining({ color: 'exito' })
     );
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo registrar el ingreso', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo registrar el ingreso', color: 'alerta' })
     );
     expect(loggerMock.error).toHaveBeenCalledWith('Error creating ingreso:', expect.anything());
     expect(result.current.submitting).toBe(false);
@@ -334,7 +334,7 @@ describe('useFinanzasController — ingresos', () => {
     expect(result.current.editIngresoOpened).toBe(false);
     expect(result.current.editingIngreso).toBeNull();
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Ingreso actualizado', color: 'green' })
+      expect.objectContaining({ title: 'Ingreso actualizado', color: 'exito' })
     );
   });
 
@@ -358,7 +358,7 @@ describe('useFinanzasController — ingresos', () => {
     expect(result.current.editingIngreso).toEqual(ingreso);
     expect(loggerMock.error).toHaveBeenCalledWith('Error updating ingreso:', expect.anything());
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo actualizar el ingreso', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo actualizar el ingreso', color: 'alerta' })
     );
     expect(result.current.submitting).toBe(false);
   });
@@ -414,7 +414,7 @@ describe('useFinanzasController — summary PDF', () => {
         title: 'No se pudo descargar el resumen',
         message:
           'No pudimos descargar el resumen financiero. Respuesta 503. Volvé a intentar en unos segundos.',
-        color: 'red',
+        color: 'alerta',
       })
     );
     expect(result.current.exportingSummaryPdf).toBe(false);

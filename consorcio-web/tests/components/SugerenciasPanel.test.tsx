@@ -180,7 +180,7 @@ describe('SugerenciasPanel', () => {
       );
     });
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Sugerencia actualizada', color: 'green' })
+      expect.objectContaining({ title: 'Sugerencia actualizada', color: 'exito' })
     );
   });
 
@@ -214,7 +214,7 @@ describe('SugerenciasPanel', () => {
         expect.objectContaining({
           title: 'Error',
           message: 'No se pudieron cargar las sugerencias',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -244,7 +244,7 @@ describe('SugerenciasPanel', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Sugerencia agendada', color: 'blue' })
+      expect.objectContaining({ title: 'Sugerencia agendada', color: 'institucional' })
     );
   });
 });

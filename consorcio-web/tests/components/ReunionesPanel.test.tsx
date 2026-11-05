@@ -119,7 +119,7 @@ describe('ReunionesPanel', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Reunión creada',
-        color: 'green',
+        color: 'exito',
       })
     );
   });
@@ -284,7 +284,7 @@ describe('ReunionesPanel', () => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'No se pudo crear la reunión',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -340,7 +340,7 @@ describe('ReunionesPanel', () => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'No se pudo crear la reunión',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -433,7 +433,7 @@ describe('ReunionesPanel', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Tema eliminado',
-        color: 'green',
+        color: 'exito',
       })
     );
   });

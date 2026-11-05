@@ -122,7 +122,7 @@ describe('useSuggestionFormState', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Error', color: 'red' })
+      expect.objectContaining({ title: 'Error', color: 'alerta' })
     );
     // El hook reflejó el 429 forzando remaining=0 para que el botón
     // se deshabilite localmente en vez de seguir pegándole al server.

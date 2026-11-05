@@ -475,7 +475,7 @@ export function ElevationProfileChart({
       ) : null}
       {status === 'error' ? (
         <Alert
-          color="yellow"
+          color="orange"
           data-testid="elevation-profile-error"
           title="No se pudo armar el perfil"
         >
@@ -857,7 +857,6 @@ export function ElevationProfileChart({
               <Button
                 size="compact-xs"
                 variant="subtle"
-                color="orange"
                 onClick={clearRange}
                 data-testid="elevation-profile-clear"
               >
@@ -1135,7 +1134,6 @@ export function ElevationProfileChart({
                     key={preset}
                     size="compact-xs"
                     variant={soleraSlopePerMil === preset ? 'filled' : 'subtle'}
-                    color="teal"
                     onClick={() => setSoleraSlopePerMil(preset)}
                     style={{ fontSize: 10, padding: '0 6px', height: 22 }}
                   >

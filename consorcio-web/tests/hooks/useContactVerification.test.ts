@@ -142,7 +142,7 @@ describe('useContactVerification', () => {
       expect.objectContaining({
         title: 'Error',
         message: 'No se pudo iniciar sesión con Google',
-        color: 'red',
+        color: 'alerta',
       })
     );
   });
@@ -160,7 +160,7 @@ describe('useContactVerification', () => {
       expect.objectContaining({
         title: 'Sesión cerrada',
         message: 'Cerraste sesión correctamente',
-        color: 'blue',
+        color: 'institucional',
       })
     );
   });
@@ -179,7 +179,7 @@ describe('useContactVerification', () => {
     expect(mockNotificationsShow).toHaveBeenCalledWith({
       title: 'Sesión cerrada localmente',
       message: 'remote revocation unconfirmed',
-      color: 'yellow',
+      color: 'orange',
     });
   });
 

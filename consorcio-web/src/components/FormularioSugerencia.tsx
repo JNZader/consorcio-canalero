@@ -170,7 +170,7 @@ function FormularioContenido() {
         />
 
         {!contactoVerificado && (
-          <Alert color="blue" variant="light" mb="md">
+          <Alert color="institucional" variant="light" mb="md">
             Podés completar la sugerencia ahora. Al enviarla te pedimos verificar la identidad para
             evitar spam.
           </Alert>
@@ -179,7 +179,7 @@ function FormularioContenido() {
         <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
           <Stack gap="md">
             {remainingToday === 0 && contactoVerificado && (
-              <Alert color="red" variant="light" role="alert" aria-live="assertive">
+              <Alert color="alerta" variant="light" role="alert" aria-live="assertive">
                 Llegaste al límite de 5 sugerencias cada 24 horas. Volvé más tarde.
               </Alert>
             )}
@@ -242,7 +242,6 @@ function FormularioContenido() {
                     <Button
                       type="button"
                       variant="subtle"
-                      color="gray"
                       size="xs"
                       onClick={() => setShowOptionalMap(false)}
                     >

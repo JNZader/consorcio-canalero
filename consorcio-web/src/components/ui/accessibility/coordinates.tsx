@@ -166,7 +166,7 @@ export function CoordinatesInput({
       <AccessibleError id="coords-error" error={error} />
 
       {currentLat && currentLng && (
-        <Alert color="green" variant="light">
+        <Alert color="exito" variant="light">
           <Text size="sm">
             <strong>Ubicación seleccionada:</strong> {currentLat.toFixed(5)},{' '}
             {currentLng.toFixed(5)}

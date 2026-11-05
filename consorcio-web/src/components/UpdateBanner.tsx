@@ -118,8 +118,6 @@ function UpdateBannerInner() {
           </Text>
           <Button
             size="compact-sm"
-            color="acento"
-            c="dark.9"
             loading={isUpdating}
             disabled={isUpdating}
             onClick={() => {

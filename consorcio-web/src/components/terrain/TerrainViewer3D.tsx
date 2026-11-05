@@ -956,7 +956,7 @@ export default function TerrainViewer3D({
 
   if (!demLayerId) {
     return (
-      <Alert icon={<IconAlertTriangle size={16} />} title="Sin capa DEM" color="yellow">
+      <Alert icon={<IconAlertTriangle size={16} />} title="Sin capa DEM" color="orange">
         No hay capa DEM para el 3D. Ejecutá el pipeline de terreno primero.
       </Alert>
     );
@@ -968,7 +968,7 @@ export default function TerrainViewer3D({
         <Alert
           icon={<IconAlertTriangle size={16} />}
           title="Error cargando el terreno 3D"
-          color="red"
+          color="alerta"
         >
           {errorMessage}
           <Button
