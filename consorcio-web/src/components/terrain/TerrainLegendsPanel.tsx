@@ -26,9 +26,9 @@ import {
   SOIL_CAPABILITY_ORDER,
 } from '../../hooks/useSoilMap';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
-import { RasterLegend } from '../RasterLegend';
 import { CANALES_COLORS } from '../map2d/canalesLayers';
 import { PILAR_VERDE_COLORS } from '../map2d/pilarVerdeLayers';
+import { RasterLegend } from '../RasterLegend';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 
 interface TerrainLegendsPanelProps {
@@ -364,7 +364,7 @@ export function TerrainLegendsPanel({
                         width: 12,
                         height: 12,
                         backgroundColor: chip.color,
-                        border: '1px solid #166534',
+                        border: '1px solid #166534', // hex-color-allow: leyenda BPA
                         borderRadius: 2,
                       }}
                     />

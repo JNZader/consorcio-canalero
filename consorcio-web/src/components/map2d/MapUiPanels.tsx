@@ -10,6 +10,7 @@ import type {
   TramoRelevamientoDetalle,
 } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
+import { mediaMaxWidth } from '../../lib/breakpoints';
 import styles from '../../styles/components/map.module.css';
 import type { BpaEnrichedFile } from '../../types/pilarVerde';
 import type { EtapaGate } from '../shared/canalesGrouping';
@@ -333,12 +334,12 @@ export const MapUiPanels = memo(function MapUiPanels({
   onSubmitTramoSurvey,
   onCloseTramoSurvey,
 }: MapUiPanelsProps) {
-  // Narrow viewports (map-fluidity T2, fix 1). Same 62em breakpoint the CSS
-  // module already uses, resolved synchronously on first render like
+  // Narrow viewports (map-fluidity T2, fix 1). Same `breakpoints.md` (62em)
+  // the CSS module already uses, resolved synchronously on first render like
   // `MapWorkspace` does, so the ficha never flashes as a floating card on a phone.
   // The feature readout lives in the left sidebar, so it no longer shares this
   // column and the ficha keeps its full height.
-  const isNarrow = useMediaQuery('(max-width: 62em)', false, {
+  const isNarrow = useMediaQuery(mediaMaxWidth('md'), false, {
     getInitialValueInEffect: false,
   });
 

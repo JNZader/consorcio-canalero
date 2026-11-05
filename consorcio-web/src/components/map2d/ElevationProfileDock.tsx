@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { mediaMaxWidth } from '../../lib/breakpoints';
 import { MAP_Z } from './mapZIndex';
 import type { ProfileChartRow } from './profileChartRows';
 import {
@@ -61,7 +62,7 @@ export function ElevationProfileDock({
   readonly culverts?: readonly { lon: number; lat: number; label: string }[] | null;
   readonly coarseSamples?: readonly ProfileChartRow[] | null;
 }) {
-  const narrow = useMediaQuery('(max-width: 62em)', false, { getInitialValueInEffect: false });
+  const narrow = useMediaQuery(mediaMaxWidth('md'), false, { getInitialValueInEffect: false });
   const [height, setHeight] = useState(PROFILE_DOCK_DEFAULT_PX);
   const [collapsed, setCollapsed] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);

@@ -13,6 +13,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 import { useDrawerHistoryClose } from '../../hooks/useDrawerHistoryClose';
+import { mediaMinWidth } from '../../lib/breakpoints';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
 import styles from '../../styles/components/map.module.css';
 import { IconArrowLeft, IconArrowRight, IconLayers, IconX } from '../ui/icons';
@@ -42,17 +43,19 @@ export const MOBILE_DRAWER_SIZE = '75%';
  * para no aplastar el mapa; el telefono acostado sigue en burger + overlay.
  *
  * ── OJO: el contrato es UNIDIRECCIONAL ─────────────────────────────────────
- * `map.module.css` hardcodea el COMPLEMENTO EXACTO de este `min-width` en el
+ * El ancho sale de `breakpoints.sm` (`mediaMinWidth('sm')` = 48em).
+ * `map.module.css` hardcodea el COMPLEMENTO EXACTO de ese `min-width` en el
  * bloque de portrait: `@media … and (max-width: 47.9375em)`, o sea 48em menos
  * 0.0625em (1px), para que las dos queries nunca sean verdaderas a la vez. El
- * CSS no puede importar esta constante, asi que cambiar el 48em de aca sin
- * cambiar el 47.9375em de alla reabre el solape en 768px exacto: un viewport
+ * CSS no puede importar esta constante (`@media` no lee custom properties),
+ * asi que cambiar el token sin cambiar el 47.9375em de alla reabre el solape
+ * en 768px exacto: un viewport
  * que SI pinta la top bar recibiendo el presupuesto de alto que asume que no
  * hay ninguna. `tests/unit/mapSkeletonGeometry.test.ts` deriva el complemento
  * DESDE esta constante y lo compara contra el CSS justamente para que ese
  * cambio rompa el test en vez de quedar verde.
  */
-export const MAP_DESKTOP_MEDIA_QUERY = '(min-width: 48em) and (min-height: 40em)';
+export const MAP_DESKTOP_MEDIA_QUERY = `${mediaMinWidth('sm')} and (min-height: 40em)`;
 
 /**
  * `true` when the 2D map shell is in desktop mode.

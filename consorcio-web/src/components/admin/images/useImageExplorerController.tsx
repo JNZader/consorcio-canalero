@@ -1,9 +1,9 @@
 import { useMediaQuery } from '@mantine/hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
 import { useImageComparison } from '../../../hooks/useImageComparison';
 import { useSelectedImage } from '../../../hooks/useSelectedImage';
 import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
+import { mediaMinWidth } from '../../../lib/breakpoints';
 import { logger } from '../../../lib/logger';
 import type {
   HistoricFloodEvent,
@@ -111,7 +111,12 @@ function isImageScene(value: unknown): value is ImageSceneLike {
 const API_BASE = '/geo/gee/images';
 
 export function useImageExplorerController() {
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  // Escritorio desde `sm` (48em). El literal `max-width: 768px` no estaba en
+  // la escala de Mantine y a 768px exacto no coincidía con el shell de admin.
+  const isDesktop = useMediaQuery(mediaMinWidth('sm'), true, {
+    getInitialValueInEffect: false,
+  });
+  const isMobile = !isDesktop;
   const now = new Date();
 
   const [loading, setLoading] = useState(false);

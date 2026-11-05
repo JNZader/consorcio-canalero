@@ -23,7 +23,7 @@ describe('coarse pointer touch targets (MOB-01 / A11Y-04)', () => {
     const block = coarseBlock();
     expect(block).toMatch(/^\s*button,/m);
     expect(block).not.toContain(':not(.mantine-ActionIcon-root)');
-    expect(block).toContain('min-height: 44px');
-    expect(block).toContain('min-width: 44px');
+    expect(block).toContain('min-height: var(--cc-touch-min, 44px)');
+    expect(block).toContain('min-width: var(--cc-touch-min, 44px)');
   });
 });

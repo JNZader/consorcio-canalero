@@ -15,7 +15,8 @@ import { useCallback, useEffect } from 'react';
 import { consumeLocalLogoutWarning } from '../lib/auth/storage';
 import { sharedColorSchemeManager } from '../lib/mantine';
 import { queryClient } from '../lib/query';
-import { mantineTheme } from '../lib/theme';
+import { cssVariablesResolver, mantineTheme } from '../lib/theme';
+import { Z_INDEX } from '../lib/zIndex';
 import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 // CSS centralizado - ver src/styles/mantine-imports.ts
@@ -119,10 +120,11 @@ export default function AppProvider({ children, withQuery = true }: AppProviderP
   const content = (
     <Provider
       theme={mantineTheme}
+      cssVariablesResolver={cssVariablesResolver}
       defaultColorScheme="auto"
       colorSchemeManager={sharedColorSchemeManager}
     >
-      <Notifications position="top-right" zIndex={10002} />
+      <Notifications position="top-right" zIndex={Z_INDEX.toast} />
       <ConfigInitializer>
         <AuthInitializer>
           <AuthExpiredHandler>

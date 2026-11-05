@@ -547,7 +547,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
                     width: 12,
                     height: 12,
                     backgroundColor: chip.color,
-                    border: '1px solid #166534',
+                    border: '1px solid #166534', // hex-color-allow: leyenda BPA
                     borderRadius: 2,
                   }}
                 />
@@ -697,7 +697,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               width: 12,
               height: 12,
               backgroundColor: mapColorTokens.h1976d2,
-              border: '2px solid #ffffff',
+              border: '2px solid #ffffff', // hex-color-allow: leyenda escuelas
               borderRadius: '50%',
               boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
             }}
@@ -723,7 +723,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
               width: 12,
               height: 12,
               backgroundColor: YPF_ESTACION_BOMBEO_COLOR,
-              border: '2px solid #ffffff',
+              border: '2px solid #ffffff', // hex-color-allow: leyenda YPF
               borderRadius: '50%',
               boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
             }}

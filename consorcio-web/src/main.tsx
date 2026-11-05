@@ -15,7 +15,8 @@ import { HelmetProvider } from 'react-helmet-async';
 import { UpdateBanner } from './components/UpdateBanner';
 import { sharedColorSchemeManager } from './lib/mantine';
 import { queryClient } from './lib/query';
-import { mantineTheme } from './lib/theme';
+import { cssVariablesResolver, mantineTheme } from './lib/theme';
+import { Z_INDEX } from './lib/zIndex';
 import { routeTree } from './routeTree.gen';
 import { useAuthStore } from './stores/authStore';
 import { useConfigStore } from './stores/configStore';
@@ -119,10 +120,11 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <MantineProvider
           theme={mantineTheme}
+          cssVariablesResolver={cssVariablesResolver}
           defaultColorScheme="auto"
           colorSchemeManager={sharedColorSchemeManager}
         >
-          <Notifications position="top-right" zIndex={10002} />
+          <Notifications position="top-right" zIndex={Z_INDEX.toast} />
           <UpdateBanner />
           <AuthInitializer>
             <RouterProvider router={router} />
