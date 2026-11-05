@@ -1,5 +1,6 @@
 """Business-logic layer for settings domain."""
 
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -215,6 +216,18 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
 _BRANDING_CACHE: dict[str, Any] | None = None
 _BRANDING_CACHE_TIME: float = 0.0
 _BRANDING_CACHE_TTL: float = 600.0  # 10 minutes
+# Bumped on every drop, under the same lock that publishes a fill. A reader
+# that already left to query settings must not write that snapshot back.
+_BRANDING_CACHE_GENERATION: int = 0
+_BRANDING_CACHE_LOCK = threading.Lock()
+
+
+def _invalidate_branding_cache() -> None:
+    """Drop the cached branding dict. The next read reloads it."""
+    global _BRANDING_CACHE, _BRANDING_CACHE_GENERATION
+    with _BRANDING_CACHE_LOCK:
+        _BRANDING_CACHE = None
+        _BRANDING_CACHE_GENERATION += 1
 
 
 def _as_optional_str(value: Any) -> str | None:
@@ -284,7 +297,6 @@ class SettingsService:
         ``expected_updated_at`` from a previous read and it no longer matches,
         the write is rejected with 409 instead of silently replacing the blob.
         """
-        global _BRANDING_CACHE
         _reject_bad_setting_valor(key, valor)
         existing = self.repo.get_by_key(db, key, for_update=True)
         if existing is None:
@@ -309,7 +321,7 @@ class SettingsService:
         db.commit()
         db.refresh(existing)
         if key.startswith("branding/") or key.startswith("general/"):
-            _BRANDING_CACHE = None
+            _invalidate_branding_cache()
         return existing
 
     def upsert_setting(
@@ -321,7 +333,6 @@ class SettingsService:
         descripcion: Optional[str] = None,
     ) -> SystemSettings:
         """Insert or update a setting by key."""
-        global _BRANDING_CACHE
         _reject_bad_setting_valor(key, valor)
         setting = self.repo.upsert(
             db,
@@ -333,15 +344,19 @@ class SettingsService:
         db.commit()
         db.refresh(setting)
         if key.startswith("branding/") or key.startswith("general/"):
-            _BRANDING_CACHE = None
+            _invalidate_branding_cache()
         return setting
 
     def get_branding(self, db: Session) -> dict[str, Any]:
-        """Return public branding dictionary with in-memory TTL caching."""
+        """Return a copy of the public branding dict, cached in memory with a TTL."""
         global _BRANDING_CACHE, _BRANDING_CACHE_TIME
         now = time.time()
-        if _BRANDING_CACHE is not None and (now - _BRANDING_CACHE_TIME) < _BRANDING_CACHE_TTL:
-            return _BRANDING_CACHE
+        with _BRANDING_CACHE_LOCK:
+            cached = _BRANDING_CACHE
+            generation = _BRANDING_CACHE_GENERATION
+            if cached is not None and (now - _BRANDING_CACHE_TIME) < _BRANDING_CACHE_TTL:
+                return dict(cached)
+
         data = {
             "nombre_organizacion": _as_optional_str(
                 self.get_setting(db, "general/nombre_organizacion")
@@ -350,9 +365,11 @@ class SettingsService:
             "color_primario": _as_optional_str(self.get_setting(db, "branding/color_primario")),
             "color_secundario": _as_optional_str(self.get_setting(db, "branding/color_secundario")),
         }
-        _BRANDING_CACHE = data
-        _BRANDING_CACHE_TIME = now
-        return data
+        with _BRANDING_CACHE_LOCK:
+            if _BRANDING_CACHE_GENERATION == generation:
+                _BRANDING_CACHE = dict(data)
+                _BRANDING_CACHE_TIME = now
+        return dict(data)
 
     def get_all_settings(self, db: Session) -> list[SystemSettings]:
         """Return all settings."""
