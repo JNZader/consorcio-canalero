@@ -5,28 +5,33 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PhotoSection } from '../../src/components/report-form/PhotoSection';
 
+const dropzoneProps = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }));
+
 vi.mock('@mantine/dropzone', () => ({
   IMAGE_MIME_TYPE: ['image/jpeg'],
   Dropzone: ({
     children,
     onDrop,
-    accept: _accept,
-    maxSize: _maxSize,
-    maxFiles: _maxFiles,
     ...props
   }: {
     children: React.ReactNode;
     onDrop: (files: File[]) => void;
+    'aria-labelledby'?: string;
+    'aria-describedby'?: string;
     [key: string]: unknown;
-  }) => (
-    <button
-      type="button"
-      onClick={() => onDrop([new File(['img'], 'evidence.jpg', { type: 'image/jpeg' })])}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
+  }) => {
+    dropzoneProps.current = props;
+    return (
+      <button
+        type="button"
+        aria-labelledby={props['aria-labelledby']}
+        aria-describedby={props['aria-describedby']}
+        onClick={() => onDrop([new File(['img'], 'evidence.jpg', { type: 'image/jpeg' })])}
+      >
+        {children}
+      </button>
+    );
+  },
 }));
 
 function renderWithMantine(ui: React.ReactNode) {
@@ -47,8 +52,14 @@ describe('<PhotoSection />', () => {
 
     const dropzone = screen.getByRole('button', { name: /foto \(opcional\)/i });
     expect(dropzone).toHaveAccessibleDescription(
-      'Arrastrá una foto o hacé clic para seleccionar Max 5MB',
+      'Tocá para sacar una foto o elegir una de tu galería Max 5MB',
     );
+    expect(dropzoneProps.current?.accept).toEqual(['image/*']);
+    expect(dropzoneProps.current?.inputProps).toMatchObject({
+      accept: 'image/*',
+      capture: 'environment',
+    });
+    expect(dropzone).not.toHaveAccessibleDescription(/arrastrá/i);
 
     await user.click(dropzone);
     expect(onDrop).toHaveBeenCalledWith([expect.any(File)]);

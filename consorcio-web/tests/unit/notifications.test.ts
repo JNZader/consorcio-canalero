@@ -11,6 +11,7 @@ import * as notificationModule from '../../src/lib/notifications';
 vi.mock('@mantine/notifications', () => ({
   notifications: {
     show: vi.fn(),
+    hide: vi.fn(),
   },
 }));
 
@@ -291,6 +292,7 @@ describe('notifications', () => {
       expect(typeof notificationModule.showInfo).toBe('function');
       expect(typeof notificationModule.showNotification).toBe('function');
       expect(typeof notificationModule.showToast).toBe('function');
+      expect(typeof notificationModule.hideToast).toBe('function');
       expect(typeof notificationModule.showErrorFromException).toBe('function');
     });
 
@@ -312,6 +314,26 @@ describe('notifications', () => {
         message: 'No se pudo guardar',
         color: 'red',
       });
+    });
+
+    it('keeps an id so the same toast can be closed', () => {
+      notificationModule.showToast({
+        id: 'reporte-sin-conexion',
+        color: 'orange',
+        title: 'Sin conexión',
+        message: 'Reintentá',
+        autoClose: false,
+      });
+      expect(notifications.show).toHaveBeenCalledWith({
+        id: 'reporte-sin-conexion',
+        color: 'orange',
+        title: 'Sin conexión',
+        message: 'Reintentá',
+        autoClose: false,
+      });
+
+      notificationModule.hideToast('reporte-sin-conexion');
+      expect(notifications.hide).toHaveBeenCalledWith('reporte-sin-conexion');
     });
   });
 });

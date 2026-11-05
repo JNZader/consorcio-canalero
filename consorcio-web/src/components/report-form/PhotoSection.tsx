@@ -1,6 +1,9 @@
-import { ActionIcon, Box, Group, Image, Text } from '@mantine/core';
-import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
+import { Box, Group, Image, Text } from '@mantine/core';
+import { Dropzone } from '@mantine/dropzone';
 import '@mantine/dropzone/styles.css';
+import { IconButton } from '../ui/IconButton';
+
+const PHOTO_ACCEPT = ['image/*'] as const;
 
 const PHOTO_LABEL_ID = 'foto-label';
 const PHOTO_INSTRUCTIONS_ID = 'foto-instrucciones';
@@ -23,17 +26,17 @@ export function PhotoSection({ fotoPreview, onDrop, onRemove }: Readonly<PhotoSe
           h={200}
           fit="cover"
         />
-        <ActionIcon
-          pos="absolute"
-          top={8}
-          right={8}
-          color="red"
-          variant="filled"
-          onClick={onRemove}
-          aria-label="Eliminar foto adjunta"
-        >
-          X
-        </ActionIcon>
+        <Box pos="absolute" top={8} right={8}>
+          <IconButton
+            type="button"
+            color="red"
+            variant="filled"
+            onClick={onRemove}
+            aria-label="Eliminar foto adjunta"
+          >
+            X
+          </IconButton>
+        </Box>
       </Box>
     );
   }
@@ -41,9 +44,10 @@ export function PhotoSection({ fotoPreview, onDrop, onRemove }: Readonly<PhotoSe
   return (
     <Dropzone
       onDrop={onDrop}
-      accept={IMAGE_MIME_TYPE}
+      accept={[...PHOTO_ACCEPT]}
       maxSize={5 * 1024 * 1024}
       maxFiles={1}
+      inputProps={{ capture: 'environment', accept: 'image/*' }}
       aria-labelledby={PHOTO_LABEL_ID}
       aria-describedby={`${PHOTO_INSTRUCTIONS_ID} ${PHOTO_LIMIT_ID}`}
     >
@@ -53,7 +57,7 @@ export function PhotoSection({ fotoPreview, onDrop, onRemove }: Readonly<PhotoSe
             &#128247;
           </Text>
           <Text id={PHOTO_INSTRUCTIONS_ID} size="sm" c="gray.6" ta="center">
-            Arrastrá una foto o hacé clic para seleccionar
+            Tocá para sacar una foto o elegir una de tu galería
           </Text>
           <Text id={PHOTO_LIMIT_ID} size="xs" c="gray.6" ta="center">
             Max 5MB

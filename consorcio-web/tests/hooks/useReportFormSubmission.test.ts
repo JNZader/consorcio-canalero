@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useReportFormSubmission } from '../../src/components/report-form/useReportFormSubmission';
 import { publicApi } from '../../src/lib/api';
+import { QueryError } from '../../src/lib/queryError';
 
 vi.mock('@mantine/notifications', () => ({
   notifications: { show: vi.fn() },
@@ -145,5 +146,98 @@ describe('useReportFormSubmission', () => {
     expect(setEnviando).toHaveBeenCalledWith(true);
     expect(setEnviando).toHaveBeenLastCalledWith(false);
     expect(onSubmitSuccess).toHaveBeenCalled();
+  });
+
+  it('keeps the form and asks for a retry when the service worker returns 503', async () => {
+    vi.mocked(publicApi.createReport).mockRejectedValue(
+      new QueryError('API Error: 503', 503, '/denuncias')
+    );
+    const announce = vi.fn();
+    const reset = vi.fn();
+    const setUbicacion = vi.fn();
+    const setFotoPreview = vi.fn();
+    const onOfflineFailure = vi.fn();
+    const onSubmitSuccess = vi.fn();
+    sessionStorage.clear();
+
+    const { result } = renderHook(() =>
+      useReportFormSubmission({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        ubicacion: { lat: -32.6, lng: -62.7 },
+        announce,
+        form: {
+          values: { tipo: 'desborde', descripcion: 'descripcion valida', foto: null },
+          reset,
+        },
+        setEnviando: vi.fn(),
+        setUbicacion,
+        setFotoPreview,
+        ...baseRateLimitProps,
+        onSubmitSuccess,
+        onOfflineFailure,
+      })
+    );
+
+    await act(async () => {
+      await result.current({
+        tipo: 'desborde',
+        descripcion: 'Canal tapado cerca del puente',
+        foto: null,
+      });
+    });
+
+    expect(reset).not.toHaveBeenCalled();
+    expect(setUbicacion).not.toHaveBeenCalled();
+    expect(setFotoPreview).not.toHaveBeenCalled();
+    expect(onSubmitSuccess).not.toHaveBeenCalled();
+    expect(onOfflineFailure).toHaveBeenCalledTimes(1);
+    expect(notifications.show).not.toHaveBeenCalled();
+    expect(announce).toHaveBeenCalledWith(
+      expect.stringContaining('siguen en el formulario'),
+      'assertive'
+    );
+    expect(JSON.parse(sessionStorage.getItem('cc-draft-reporte') ?? '{}')).toMatchObject({
+      tipo: 'desborde',
+      descripcion: 'Canal tapado cerca del puente',
+      lat: -32.6,
+      lng: -62.7,
+    });
+  });
+
+  it('does not keep the offline state for a normal server error', async () => {
+    vi.mocked(publicApi.createReport).mockRejectedValue(new QueryError('dato inválido', 422));
+    const onOfflineFailure = vi.fn();
+    const onOtherFailure = vi.fn();
+    const reset = vi.fn();
+
+    const { result } = renderHook(() =>
+      useReportFormSubmission({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        ubicacion: { lat: -32.6, lng: -62.7 },
+        announce: vi.fn(),
+        form: { values: { tipo: '', descripcion: '', foto: null }, reset },
+        setEnviando: vi.fn(),
+        setUbicacion: vi.fn(),
+        setFotoPreview: vi.fn(),
+        ...baseRateLimitProps,
+        onOfflineFailure,
+        onOtherFailure,
+      })
+    );
+
+    await act(async () => {
+      await result.current({ tipo: 'desborde', descripcion: 'descripcion valida', foto: null });
+    });
+
+    expect(onOfflineFailure).not.toHaveBeenCalled();
+    expect(onOtherFailure).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Error', color: 'red' })
+    );
   });
 });

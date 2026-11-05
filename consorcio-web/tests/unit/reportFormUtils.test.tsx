@@ -8,8 +8,10 @@ import {
   getErrorString,
   handleGeoError,
   handleGeoSuccess,
+  isOfflineSubmitError,
   uploadPhotoIfExists,
 } from '../../src/components/report-form/reportFormUtils';
+import { QueryError } from '../../src/lib/queryError';
 
 vi.mock('@mantine/notifications', () => ({
   notifications: { show: vi.fn() },
@@ -91,6 +93,19 @@ describe('reportFormUtils', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Aviso', color: 'yellow' })
     );
+  });
+
+  it('recognizes the service worker 503 and a failed fetch as offline', () => {
+    expect(isOfflineSubmitError(new QueryError('API Error: 503', 503, '/denuncias'))).toBe(true);
+    expect(isOfflineSubmitError(new Error('Service Unavailable'))).toBe(true);
+    expect(isOfflineSubmitError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isOfflineSubmitError(new TypeError('NetworkError when attempting to fetch resource.'))).toBe(
+      true
+    );
+    expect(isOfflineSubmitError(new QueryError('dato inválido', 422))).toBe(false);
+    expect(isOfflineSubmitError(new QueryError('límite', 429))).toBe(false);
+    expect(isOfflineSubmitError(new Error('otra cosa'))).toBe(false);
+    expect(isOfflineSubmitError(null)).toBe(false);
   });
 
   it('extracts string errors only', () => {

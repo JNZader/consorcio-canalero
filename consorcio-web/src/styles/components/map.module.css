@@ -1439,14 +1439,10 @@
    home indicator los ultimos ~34px son zona de gesto del sistema, y un control
    ahi es intocable.
 
-   OJO — HOY ESTO ES INERTE. Las variables `env(safe-area-inset-*)` solo tienen
-   valor distinto de cero con `viewport-fit=cover` en el meta viewport, que este
-   proyecto NO declara: por ahora las tres reglas resuelven al fallback `0px` y
-   no cambian nada. Quedan escritas a proposito, para que el dia que se agregue
-   `viewport-fit=cover` el sheet y la pildora ya esten despejados.
-   FOLLOW-UP: agregar `viewport-fit=cover` obliga a re-auditar TODO lo anclado a
-   los bordes del canvas (`.legendPanel`, `.measurementDock`, `.mapCtrlDock`),
-   no solo estas tres — por eso no se hace en este batch. */
+   `index.html` declara `viewport-fit=cover`, así que en un teléfono con
+   notch o home indicator estos `env(safe-area-inset-*)` dejan de ser 0.
+   El sheet, la píldora y el dock de medición ya los suman. El header, el
+   footer y la barra de envío del formulario de denuncia también. */
 @media (pointer: coarse) and (max-width: 62em) {
   .panelSheetPill {
     position: fixed;
@@ -1477,7 +1473,7 @@
      resuelven contra la MISMA caja (`.mapCanvasWrapper`, el bloque contenedor
      posicionado), asi que el dock queda 12px por encima del borde superior del
      sheet. `env(safe-area-inset-bottom)` se conserva porque el sheet tambien lo
-     tiene: sin el, los dos se desalinean el dia que entre `viewport-fit=cover`.
+     tiene: sin el, los dos se desalinean con `viewport-fit=cover`.
 
      `alto` (85%) NO se levanta A PROPOSITO — ver el bloque de arriba: no queda
      mapa que operar y el dock chocaria la cabecera de la pagina. */

@@ -3,6 +3,13 @@
   margin-top: 4.5rem;
 }
 
+/* viewport-fit=cover: el contenedor de toasts es fixed. El margen suma el
+   inset sin pisar el `top` que pone Mantine. Con inset 0 no se mueve. */
+.mantine-Notifications-root {
+  margin-top: env(safe-area-inset-top, 0px);
+  margin-right: env(safe-area-inset-right, 0px);
+}
+
 /* Self-hosted Latin fonts only: no external CDN and no legacy WOFF fallbacks. */
 @font-face {
   font-family: 'Inter';
@@ -598,7 +605,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .skip-link:focus {
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   outline: 3px solid var(--mantine-color-yellow-4);
   outline-offset: 2px;
 }

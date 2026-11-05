@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LocationSection } from '../../src/components/report-form/LocationSection';
 
-const { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMarker } = vi.hoisted(
-  () => {
+const { addReferenceLayersMock, mapInstances, mapOptions, markerInstances, MockMap, MockMarker } =
+  vi.hoisted(() => {
   const addReferenceLayersMock = vi.fn();
   const mapInstances: MockMap[] = [];
+  const mapOptions: Array<Record<string, unknown>> = [];
   const markerInstances: MockMarker[] = [];
 
   class MockMap {
@@ -16,7 +17,8 @@ const { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMark
     readonly remove = vi.fn();
     readonly flyTo = vi.fn();
 
-    constructor() {
+    constructor(options?: Record<string, unknown>) {
+      mapOptions.push(options ?? {});
       mapInstances.push(this);
     }
 
@@ -58,7 +60,7 @@ const { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMark
     }
   }
 
-  return { addReferenceLayersMock, mapInstances, markerInstances, MockMap, MockMarker };
+  return { addReferenceLayersMock, mapInstances, mapOptions, markerInstances, MockMap, MockMarker };
   },
 );
 
@@ -215,7 +217,19 @@ describe('<LocationSection />', () => {
 describe('<LocationSection /> lazy map engine', () => {
   beforeEach(() => {
     mapInstances.length = 0;
+    mapOptions.length = 0;
     markerInstances.length = 0;
+  });
+
+  it('keeps one-finger scroll on the page and a compact attribution', async () => {
+    renderWithMantine(<LocationSection {...baseProps} />);
+
+    await waitFor(() => expect(mapOptions).toHaveLength(1));
+    expect(mapOptions[0]?.cooperativeGestures).toBe(true);
+    expect(mapOptions[0]?.attributionControl).toEqual({ compact: true });
+    expect(mapOptions[0]?.locale).toMatchObject({
+      'CooperativeGesturesHandler.MobileHelpText': 'Usá dos dedos para mover el mapa',
+    });
   });
 
   it('does not construct the map synchronously and builds it once the chunk resolves', async () => {

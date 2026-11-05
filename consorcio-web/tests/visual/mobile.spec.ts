@@ -42,14 +42,10 @@ test.describe('e2e mobile 360', () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  // El mapa de la sección de ubicación (LocationSection) se construye sin
-  // `cooperativeGestures`. MapLibre deja `touch-action: none` en el canvas y
-  // un dedo que arranca sobre el mapa no mueve la página. Se corrige en un
-  // PR posterior del plan mobile-first; hasta entonces queda en fixme para
-  // que la red de seguridad no falle por un defecto ya conocido.
-  // Quitar `fixme` cuando el gesto de un dedo sobre el mapa aumente
-  // `window.scrollY` (la aserción de abajo ya describe ese comportamiento).
-  test.fixme('participación: la sección de ubicación scrollea sin que el mapa atrape el scroll', async ({
+  // LocationSection arma el mapa con `cooperativeGestures` (y `touch-action:
+  // pan-x pan-y`). Un dedo que arranca sobre el canvas tiene que desplazar
+  // la página; dos dedos mueven el mapa.
+  test('participación: la sección de ubicación scrollea sin que el mapa atrape el scroll', async ({
     page,
   }) => {
     await openStableRoute(page, '/participacion', 'light', MOBILE);

@@ -2,6 +2,7 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Divider,
   Group,
   LoadingOverlay,
@@ -24,7 +25,9 @@ import {
   saveReportDraft,
 } from '../lib/formDrafts';
 import { logger } from '../lib/logger';
+import { hideToast, showToast } from '../lib/notifications';
 import { useConfigStore } from '../stores/configStore';
+import formStyles from '../styles/components/form.module.css';
 import {
   DescripcionField,
   FotoField,
@@ -32,7 +35,14 @@ import {
   TipoProblemaField,
   UbicacionField,
 } from './report-form/ReportFormFields';
-import { getErrorString } from './report-form/reportFormUtils';
+import {
+  getErrorString,
+  OFFLINE_SUBMIT_MESSAGE,
+  OFFLINE_SUBMIT_TITLE,
+} from './report-form/reportFormUtils';
+
+const REPORTE_OFFLINE_TOAST_ID = 'reporte-sin-conexion';
+
 import { StepHeader } from './report-form/StepHeader';
 import { useReportFormSubmission } from './report-form/useReportFormSubmission';
 import { useReportLocation } from './report-form/useReportLocation';
@@ -52,6 +62,27 @@ const TIPOS_DENUNCIA = TIPOS_DENUNCIA_BASE.map((tipo) => ({
   icon: TIPO_ICONS[tipo.value] ?? <IconFileDescription size={24} />,
 }));
 
+function showOfflineToast(onRetry: () => void) {
+  showToast({
+    id: REPORTE_OFFLINE_TOAST_ID,
+    title: OFFLINE_SUBMIT_TITLE,
+    color: 'orange',
+    autoClose: false,
+    message: (
+      <Stack gap="xs">
+        <Text size="sm">{OFFLINE_SUBMIT_MESSAGE}</Text>
+        <Button type="button" size="xs" variant="light" color="orange" onClick={onRetry}>
+          Reintentar
+        </Button>
+      </Stack>
+    ),
+  });
+}
+
+function clearOfflineToast() {
+  hideToast(REPORTE_OFFLINE_TOAST_ID);
+}
+
 function FormularioContenido() {
   const config = useConfigStore((state) => state.config);
   const defaultCenter = config?.map.center
@@ -59,6 +90,8 @@ function FormularioContenido() {
     : MAP_CENTER;
   const defaultZoom = config?.map.zoom ? config.map.zoom + 1 : 12;
   const [enviando, setEnviando] = useState(false);
+  const [envioOffline, setEnvioOffline] = useState(false);
+  const retryRef = useRef<() => void>(() => {});
   // `null` = no consultado todavía (sin login). El backend rechazaría
   // /denuncias/rate-limit con 401 — sólo pegamos cuando hay JWT.
   const [remainingToday, setRemainingToday] = useState<number | null>(null);
@@ -121,10 +154,22 @@ function FormularioContenido() {
 
   const handleSubmitSuccess = useCallback(() => {
     setRemainingToday((prev) => (prev === null ? null : Math.max(0, prev - 1)));
+    setEnvioOffline(false);
+    clearOfflineToast();
   }, []);
 
   const handleLimitReached = useCallback(() => {
     setRemainingToday(0);
+  }, []);
+
+  const handleOfflineFailure = useCallback(() => {
+    setEnvioOffline(true);
+    showOfflineToast(() => retryRef.current());
+  }, []);
+
+  const handleOtherFailure = useCallback(() => {
+    setEnvioOffline(false);
+    clearOfflineToast();
   }, []);
 
   const restoredDraft = useRef(false);
@@ -139,11 +184,7 @@ function FormularioContenido() {
       setUbicacion({ lat: draft.lat, lng: draft.lng });
     }
     if (draft.fotoDataUrl) {
-      const restoredFile = draftDataUrlToFile(
-        draft.fotoDataUrl,
-        draft.fotoName,
-        draft.fotoType
-      );
+      const restoredFile = draftDataUrlToFile(draft.fotoDataUrl, draft.fotoName, draft.fotoType);
       if (restoredFile) {
         form.setFieldValue('foto', restoredFile);
       }
@@ -182,7 +223,14 @@ function FormularioContenido() {
       });
     }
     loginWithGoogle();
-  }, [form.values.descripcion, form.values.foto, form.values.tipo, fotoPreview, loginWithGoogle, ubicacion]);
+  }, [
+    form.values.descripcion,
+    form.values.foto,
+    form.values.tipo,
+    fotoPreview,
+    loginWithGoogle,
+    ubicacion,
+  ]);
 
   const handleSubmit = useReportFormSubmission({
     contactoVerificado,
@@ -197,7 +245,15 @@ function FormularioContenido() {
     remainingToday,
     onSubmitSuccess: handleSubmitSuccess,
     onLimitReached: handleLimitReached,
+    onOfflineFailure: handleOfflineFailure,
+    onOtherFailure: handleOtherFailure,
   });
+
+  useEffect(() => {
+    retryRef.current = () => {
+      void form.onSubmit(handleSubmit)();
+    };
+  }, [form, handleSubmit]);
 
   return (
     <Paper shadow="md" p="xl" radius="md" pos="relative">
@@ -297,7 +353,30 @@ function FormularioContenido() {
 
             <FotoField fotoPreview={fotoPreview} onDrop={handleDrop} onRemove={handleRemoveFoto} />
 
-            <SubmitButton disabled={remainingToday === 0} />
+            <Box className={formStyles.submitBar}>
+              {envioOffline && (
+                <Alert
+                  color="orange"
+                  variant="light"
+                  role="alert"
+                  aria-live="assertive"
+                  title={OFFLINE_SUBMIT_TITLE}
+                  mb="sm"
+                >
+                  <Text size="sm">{OFFLINE_SUBMIT_MESSAGE}</Text>
+                  <Button
+                    type="button"
+                    mt="sm"
+                    variant="light"
+                    color="orange"
+                    onClick={() => retryRef.current()}
+                  >
+                    Reintentar envío
+                  </Button>
+                </Alert>
+              )}
+              <SubmitButton disabled={remainingToday === 0} />
+            </Box>
           </Stack>
         </form>
       </Box>

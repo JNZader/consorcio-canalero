@@ -11,7 +11,7 @@ Red de seguridad de las rutas públicas **antes** de cambiar el look. No llama a
 
 En cada ruta a 360 px, `expectNoHorizontalOverflow` (`tests/visual/helpers/overflow.ts`) falla si el documento se desplaza de costado.
 
-El gesto sobre el mapa embebido de la sección de ubicación está en `test.fixme`: MapLibre captura el dedo (`touch-action: none`) y la página no scrollea. Ese comportamiento se corrige en un PR posterior del plan mobile-first; al arreglarlo hay que sacar el `fixme` para que la aserción vuelva a correr.
+El mapa embebido de la denuncia usa gestos cooperativos: un dedo sobre el canvas desplaza la página. `tests/visual/mobile.spec.ts` lo afirma (el swipe tiene que aumentar `window.scrollY`).
 
 ## Dónde se comparan las capturas
 
