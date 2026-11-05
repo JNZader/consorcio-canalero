@@ -248,18 +248,18 @@ class TestTramiteUpdate:
         assert u.comentario is None
 
     def test_partial_update(self):
-        u = TramiteUpdate(estado="en_proceso")
-        assert u.estado == "en_proceso"
+        u = TramiteUpdate(estado="en_tramite")
+        assert u.estado == "en_tramite"
         assert u.resolucion is None
 
     def test_full_update(self):
         u = TramiteUpdate(
-            estado="resuelto",
+            estado="aprobado",
             resolucion="Obra completada según especificación.",
             prioridad="baja",
             comentario="Cerrado por el operador.",
         )
-        assert u.estado == "resuelto"
+        assert u.estado == "aprobado"
         assert u.resolucion == "Obra completada según especificación."
         assert u.prioridad == "baja"
         assert u.comentario == "Cerrado por el operador."

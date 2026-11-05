@@ -173,9 +173,9 @@ class TestCuitValidation:
         with pytest.raises(ValidationError):
             ConsorcistaUpdate(cuit="20-12345678-0")
 
-    def test_update_cuit_none_is_valid(self):
-        data = ConsorcistaUpdate(cuit=None)
-        assert data.cuit is None
+    def test_update_cuit_none_is_rejected(self):
+        with pytest.raises(ValidationError):
+            ConsorcistaUpdate(cuit=None)
 
     def test_normalize_cuit_function(self):
         assert _normalize_cuit("20-12345678-6") == "20-12345678-6"

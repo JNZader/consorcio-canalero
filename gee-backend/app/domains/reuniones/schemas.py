@@ -4,7 +4,18 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+
+from app.domains.reuniones.models import EstadoReunion, TipoReunion
+from app.shared.enum_params import choice_or_raise
+from app.shared.patch_fields import forbid_explicit_nulls
+
+
+def _required_choice(value: object, choices: type, field: str) -> str:
+    parsed = choice_or_raise(value, choices, field)
+    if parsed is None:
+        raise ValueError(f"{field} invalido")
+    return parsed
 
 
 # ──────────────────────────────────────────────
@@ -16,7 +27,7 @@ class ReunionCreate(BaseModel):
     """Payload to create a reunion (requires operator)."""
 
     titulo: str = Field(..., min_length=3, max_length=200)
-    fecha_reunion: datetime
+    fecha_reunion: AwareDatetime
     lugar: str = Field(default="Sede Consorcio", max_length=200)
     descripcion: Optional[str] = None
     tipo: str = Field(
@@ -25,17 +36,41 @@ class ReunionCreate(BaseModel):
     )
     orden_del_dia_items: list[str] = Field(default_factory=list)
 
+    @field_validator("tipo")
+    @classmethod
+    def validate_tipo(cls, v: str) -> str:
+        return _required_choice(v, TipoReunion, "tipo")
+
 
 class ReunionUpdate(BaseModel):
     """Operator payload to update a reunion."""
 
     titulo: Optional[str] = Field(default=None, min_length=3, max_length=200)
-    fecha_reunion: Optional[datetime] = None
+    fecha_reunion: Optional[AwareDatetime] = None
     lugar: Optional[str] = Field(default=None, max_length=200)
     descripcion: Optional[str] = None
     tipo: Optional[str] = None
     estado: Optional[str] = None
     orden_del_dia_items: Optional[list[str]] = None
+
+    @field_validator("tipo")
+    @classmethod
+    def validate_tipo(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, TipoReunion, "tipo")
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, EstadoReunion, "estado")
+
+    _reject_nulls = forbid_explicit_nulls(
+        "titulo",
+        "fecha_reunion",
+        "lugar",
+        "tipo",
+        "estado",
+        "orden_del_dia_items",
+    )
 
 
 # ──────────────────────────────────────────────
@@ -67,6 +102,8 @@ class AgendaItemUpdate(BaseModel):
     descripcion: Optional[str] = None
     orden: Optional[int] = Field(default=None, ge=0)
     completado: Optional[bool] = None
+
+    _reject_nulls = forbid_explicit_nulls("titulo", "orden", "completado")
 
 
 # ──────────────────────────────────────────────
@@ -115,7 +152,7 @@ class ReunionResponse(BaseModel):
     tipo: str
     estado: str
     orden_del_dia_items: list = []
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
     agenda_items: list[AgendaItemResponse] = []

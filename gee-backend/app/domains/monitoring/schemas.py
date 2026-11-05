@@ -6,6 +6,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.domains.monitoring.models import EstadoSugerencia
+from app.shared.enum_params import choice_or_raise
+from app.shared.patch_fields import forbid_explicit_nulls
+
 
 # ──────────────────────────────────────────────
 # SUGERENCIA
@@ -50,6 +54,13 @@ class SugerenciaUpdate(BaseModel):
     notas_internas: Optional[str] = None
     categoria: Optional[str] = None
     geometry: Optional[dict[str, Any]] = None
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, EstadoSugerencia, "estado")
+
+    _reject_nulls = forbid_explicit_nulls("estado")
 
 
 class SugerenciaResponse(BaseModel):
@@ -152,7 +163,7 @@ class AnalisisGeeResponse(BaseModel):
     hectareas_afectadas: Optional[float] = None
     porcentaje_area: Optional[float] = None
     parametros: dict[str, Any]
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 

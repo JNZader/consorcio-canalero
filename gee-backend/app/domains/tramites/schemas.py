@@ -4,7 +4,18 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.domains.tramites.models import EstadoTramite, PrioridadTramite, TipoTramite
+from app.shared.enum_params import choice_or_raise
+from app.shared.patch_fields import forbid_explicit_nulls
+
+
+def _required_choice(value: object, choices: type, field: str) -> str:
+    parsed = choice_or_raise(value, choices, field)
+    if parsed is None:
+        raise ValueError(f"{field} invalido")
+    return parsed
 
 
 # ──────────────────────────────────────────────
@@ -28,6 +39,16 @@ class TramiteCreate(BaseModel):
     )
     fecha_ingreso: Optional[date] = None
 
+    @field_validator("tipo")
+    @classmethod
+    def validate_tipo(cls, v: str) -> str:
+        return _required_choice(v, TipoTramite, "tipo")
+
+    @field_validator("prioridad")
+    @classmethod
+    def validate_prioridad(cls, v: str) -> str:
+        return _required_choice(v, PrioridadTramite, "prioridad")
+
 
 # ──────────────────────────────────────────────
 # UPDATE (operator)
@@ -44,6 +65,18 @@ class TramiteUpdate(BaseModel):
         default=None,
         description="Comentario para el seguimiento de cambios",
     )
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, EstadoTramite, "estado")
+
+    @field_validator("prioridad")
+    @classmethod
+    def validate_prioridad(cls, v: Optional[str]) -> Optional[str]:
+        return choice_or_raise(v, PrioridadTramite, "prioridad")
+
+    _reject_nulls = forbid_explicit_nulls("estado", "prioridad")
 
 
 # ──────────────────────────────────────────────
@@ -72,7 +105,7 @@ class SeguimientoResponse(BaseModel):
     estado_anterior: str
     estado_nuevo: str
     comentario: str
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
 
 
@@ -91,7 +124,7 @@ class TramiteResponse(BaseModel):
     fecha_ingreso: date
     fecha_resolucion: Optional[date] = None
     resolucion: Optional[str] = None
-    usuario_id: uuid.UUID
+    usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
     seguimiento: list[SeguimientoResponse] = []

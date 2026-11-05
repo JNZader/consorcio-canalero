@@ -197,21 +197,28 @@ class DenunciaRepository:
     # ── STATS ─────────────────────────────────
 
     def get_stats(self, db: Session) -> dict:
-        """Aggregate counts by estado, tipo, and cuenca."""
+        """Aggregate counts by estado, tipo, and cuenca.
+
+        Soft-deleted rows (ARCO) are excluded, same as the list endpoints.
+        """
+        visible = Denuncia.deleted_at.is_(None)
+
         # By estado
         estado_rows = db.execute(
-            select(Denuncia.estado, func.count()).group_by(Denuncia.estado)
+            select(Denuncia.estado, func.count()).where(visible).group_by(Denuncia.estado)
         ).all()
         por_estado = {row[0]: row[1] for row in estado_rows}
 
         # By tipo
-        tipo_rows = db.execute(select(Denuncia.tipo, func.count()).group_by(Denuncia.tipo)).all()
+        tipo_rows = db.execute(
+            select(Denuncia.tipo, func.count()).where(visible).group_by(Denuncia.tipo)
+        ).all()
         por_tipo = {row[0]: row[1] for row in tipo_rows}
 
         # By cuenca
         cuenca_rows = db.execute(
             select(Denuncia.cuenca, func.count())
-            .where(Denuncia.cuenca.isnot(None))
+            .where(visible, Denuncia.cuenca.isnot(None))
             .group_by(Denuncia.cuenca)
         ).all()
         por_cuenca = {row[0]: row[1] for row in cuenca_rows}

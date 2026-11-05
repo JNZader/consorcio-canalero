@@ -21,6 +21,7 @@ from app.domains.finanzas.schemas import (
     IngresoUpdate,
     PresupuestoCreate,
     PresupuestoResponse,
+    PresupuestoUpdate,
 )
 from app.domains.finanzas.service import FinanzasService
 from app.shared.pagination import PaginatedResponse
@@ -184,6 +185,18 @@ def create_presupuesto(
 ):
     """Crear una linea de presupuesto (requiere operador)."""
     return service.create_presupuesto(db, payload)
+
+
+@router.patch("/presupuesto/{presupuesto_id}", response_model=PresupuestoResponse)
+def update_presupuesto(
+    presupuesto_id: uuid.UUID,
+    payload: PresupuestoUpdate,
+    db: Session = Depends(get_db),
+    service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
+):
+    """Corregir el monto de una linea de presupuesto (requiere operador)."""
+    return service.update_presupuesto(db, presupuesto_id, payload)
 
 
 # ──────────────────────────────────────────────

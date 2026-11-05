@@ -8,9 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.domains.reuniones.models import (
     AgendaItem,
+    EstadoReunion,
     Reunion,
+    TipoReunion,
     VALID_TRANSITIONS,
 )
+from app.shared.enum_params import require_choice
 from app.domains.reuniones.repository import (
     AgendaItemRepository,
     ReunionRepository,
@@ -50,6 +53,8 @@ class ReunionService:
         estado: Optional[str] = None,
         tipo: Optional[str] = None,
     ) -> tuple[list[Reunion], int]:
+        estado = require_choice(estado, EstadoReunion, "estado")
+        tipo = require_choice(tipo, TipoReunion, "tipo")
         return self.repo.get_all(
             db,
             page=page,
