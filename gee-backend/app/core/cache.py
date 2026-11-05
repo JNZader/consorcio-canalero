@@ -22,6 +22,15 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Delete the lock only when the token still matches. A plain GET+DEL drops a
+# lock that expired and was taken by the next owner.
+_RELEASE_LOCK_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
+
 
 class JSONCache:
     """Thin async Redis-backed JSON cache.
@@ -136,6 +145,42 @@ class JSONCache:
             logger.warning("Redis SETEX failed", key=key, error=str(exc))
             await self._mark_redis_unavailable()
             return False
+
+    def _lock_key(self, key: str) -> str:
+        return self._full_key(f"lock:{key}")
+
+    async def acquire_lock(self, key: str, token: str, ttl_seconds: int) -> bool | None:
+        """Try to own ``key`` for ``ttl_seconds``.
+
+        ``True`` when this token holds the lock, ``False`` when another owner
+        does, ``None`` when Redis is unavailable. The lock key is separate
+        from the cached value so a flight cannot be mistaken for a hit.
+        """
+        if ttl_seconds <= 0 or not token:
+            return None
+        client = await self._get_redis()
+        if client is None:
+            return None
+        try:
+            owned = await client.set(self._lock_key(key), token, nx=True, ex=ttl_seconds)
+        except Exception as exc:
+            logger.warning("Redis lock acquire failed", key=key, error=str(exc))
+            await self._mark_redis_unavailable()
+            return None
+        return True if owned else False
+
+    async def release_lock(self, key: str, token: str) -> None:
+        """Drop the lock when ``token`` is still the owner."""
+        if not token:
+            return
+        client = await self._get_redis()
+        if client is None:
+            return
+        try:
+            await client.eval(_RELEASE_LOCK_SCRIPT, 1, self._lock_key(key), token)
+        except Exception as exc:
+            logger.warning("Redis lock release failed", key=key, error=str(exc))
+            await self._mark_redis_unavailable()
 
     async def delete(self, key: str) -> bool:
         """Delete a single cached key. Returns True when the key existed."""
