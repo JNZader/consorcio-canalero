@@ -8,7 +8,12 @@
  * el provider las fusiona.
  */
 
-import { type CSSVariablesResolver, createTheme } from '@mantine/core';
+import {
+  type CSSVariablesResolver,
+  createTheme,
+  defaultVariantColorsResolver,
+  type VariantColorsResolver,
+} from '@mantine/core';
 import { aboveBreakpoint, belowBreakpoint, breakpoints } from './breakpoints';
 import { mapColorTokens } from './mapColorTokens';
 import { Z_INDEX, Z_INDEX_VAR } from './zIndex';
@@ -25,14 +30,35 @@ export const INSTITUCIONAL_9 = '#082d21';
 /** Piso táctil (WCAG 2.5.5). */
 export const TOUCH_MIN = '44px';
 
+/**
+ * Rótulo blanco en los filled del primario.
+ * `autoContrast` no puede volverlos negros sobre el verde.
+ * Un tono explícito (`institucional.1`) sigue el resolver de Mantine.
+ */
+export const variantColorResolver: VariantColorsResolver = (input) => {
+  const resolved = defaultVariantColorsResolver(input);
+  const name = input.color || input.theme.primaryColor;
+  const primaryFilled =
+    input.variant === 'filled' &&
+    typeof name === 'string' &&
+    !name.includes('.') &&
+    (name === 'institucional' || name === input.theme.primaryColor);
+  if (!primaryFilled) return resolved;
+  return {
+    ...resolved,
+    color: 'var(--mantine-color-white)',
+    hoverColor: 'var(--mantine-color-white)',
+  };
+};
+
 const SCALE = ['xs', 'sm', 'md', 'lg', 'xl'] as const;
 const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
 
 /**
  * Tema personalizado para la aplicacion del Consorcio Canalero.
  *
- * Paleta de colores "Tierra y Agua" inspirada en los rios y campos
- * de la pampa cordobesa.
+ * Paleta "Río más limpio": un solo verde de marca, superficies claras
+ * quietas y un oscuro verdoso. El dorado queda en el logo.
  */
 export const mantineTheme = createTheme({
   // Respect user's OS-level reduced motion preference for all Mantine
@@ -40,8 +66,12 @@ export const mantineTheme = createTheme({
   // this via @media prefers-reduced-motion, this covers Mantine internals).
   respectReducedMotion: true,
 
-  // Usar paleta institucional como primaria
+  // Usar paleta institucional como primaria.
+  // El filled usa el tono 6 en claro y en oscuro: blanco sobre #16654a
+  // pasa AA. El tono 5 es el verde de marca y se queda corto con blanco.
   primaryColor: 'institucional',
+  primaryShade: { light: 6, dark: 6 },
+  variantColorResolver,
 
   // Misma escala que los defaults de Mantine. Fuente única para
   // `visibleFrom` / `hiddenFrom` y para los helpers de `breakpoints.ts`.
@@ -135,19 +165,34 @@ export const mantineTheme = createTheme({
       '#5f210d',
       '#5f210d',
     ],
-    // Paleta base Mantine ajustada: gray.6 por defecto (#868e96) no alcanza
-    // contraste AA sobre blanco para texto chico; mantenemos escala compatible.
+    // Papel claro, con un verde apenas insinuado. gray-6 se queda en
+    // #4b5563: es el texto chico y pasa AA sobre blanco y sobre gray-0.
     gray: [
-      '#f8f9fa',
-      '#f1f3f5',
-      '#e9ecef',
-      '#dee2e6',
-      '#ced4da',
-      '#adb5bd',
+      '#f5f8f6',
+      '#e9efeb',
+      '#dde6e0',
+      '#cfd9d3',
+      '#b7c4bd',
+      '#8d9b94',
       '#4b5563',
-      '#495057',
-      '#343a40',
-      '#212529',
+      '#3f4a44',
+      '#2c3530',
+      '#1b221e',
+    ],
+    // Oscuro del río. Mantine 9 trae un neutro (#242424 en el tono 7)
+    // que se corta contra el hero verde. El texto atenuado (#a3a3a3)
+    // sigue en AA sobre los tonos 4, 6 y 7.
+    dark: [
+      '#e4eee8',
+      '#c5d4cb',
+      '#9fb0a6',
+      '#7f978c',
+      '#293c34',
+      '#22332c',
+      '#1b2a24',
+      '#14201b',
+      '#101a16',
+      '#0b1411',
     ],
     // Paleta institucional - Verde-Azulado Rio
     // Ajustada para mejor contraste en modo oscuro
@@ -226,7 +271,7 @@ export const mantineTheme = createTheme({
     // gray-6 sobre blanco 7.6:1 y sobre gray-0 7.2:1. #6b7280 se quedaba en 4.8:1
     // sobre blanco y bajaba de 4.5:1 sobre gray-1.
     dimmedColorLight: '#4b5563',
-    // #a3a3a3 sobre dark-7 6.8:1, sobre dark-6 6.0:1, sobre dark-4 4.5:1.
+    // #a3a3a3 sobre dark-7 6.6:1, sobre dark-6 5.9:1, sobre dark-4 4.6:1.
     dimmedColorDark: '#a3a3a3',
     /** Hex de mapa y estilos en línea. Mismo objeto que `mapColorTokens`. */
     mapColors: mapColorTokens,

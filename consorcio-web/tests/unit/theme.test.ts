@@ -3,8 +3,9 @@
  * Coverage target: 100%
  */
 
-import { describe, it, expect } from 'vitest';
-import { mantineTheme, theme } from '../../src/lib/theme';
+import { DEFAULT_THEME, mergeMantineTheme } from '@mantine/core';
+import { describe, expect, it } from 'vitest';
+import { mantineTheme, theme, variantColorResolver } from '../../src/lib/theme';
 
 describe('theme', () => {
   describe('mantineTheme object', () => {
@@ -18,6 +19,44 @@ describe('theme', () => {
 
     it('should have primaryColor set', () => {
       expect(mantineTheme.primaryColor).toBe('institucional');
+    });
+
+    it('uses shade 6 for filled buttons so the label stays white', () => {
+      expect(mantineTheme.primaryShade).toEqual({ light: 6, dark: 6 });
+      expect(mantineTheme.colors!.institucional![5]).toBe('#2d8f68');
+      expect(mantineTheme.colors!.institucional![6]).toBe('#16654a');
+      const merged = mergeMantineTheme(DEFAULT_THEME, mantineTheme);
+      expect(
+        variantColorResolver({ theme: merged, variant: 'filled', color: 'institucional' }).color
+      ).toBe('var(--mantine-color-white)');
+      expect(
+        variantColorResolver({
+          theme: merged,
+          variant: 'filled',
+          color: 'institucional',
+          autoContrast: true,
+        }).color
+      ).toBe('var(--mantine-color-white)');
+      expect(
+        variantColorResolver({
+          theme: merged,
+          variant: 'filled',
+          color: 'institucional.0',
+          autoContrast: true,
+        }).color
+      ).toBe('var(--mantine-color-black)');
+    });
+
+    it('tints dark surfaces green instead of neutral #242424', () => {
+      const dark = mantineTheme.colors!.dark!;
+      expect(dark).toHaveLength(10);
+      expect(dark[7]).not.toBe('#242424');
+      const body = dark[7]!;
+      const red = Number.parseInt(body.slice(1, 3), 16);
+      const green = Number.parseInt(body.slice(3, 5), 16);
+      const blue = Number.parseInt(body.slice(5, 7), 16);
+      expect(green).toBeGreaterThan(red);
+      expect(green).toBeGreaterThan(blue);
     });
 
     it('should have primaryColor as string', () => {
