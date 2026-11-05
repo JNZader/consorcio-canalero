@@ -31,6 +31,11 @@ const VIEWER = readFileSync(
 
 const HOOK = readFileSync(resolve(process.cwd(), 'src/hooks/useGEELayers.ts'), 'utf-8');
 
+const TERRAIN_LIFECYCLE = readFileSync(
+  resolve(process.cwd(), 'src/components/terrain/terrainMapLifecycle.ts'),
+  'utf-8'
+);
+
 /**
  * The file with comments removed.
  *
@@ -81,6 +86,7 @@ describe('TerrainViewer3D does not leak GEE jargon to public visitors', () => {
     expect(VIEWER).toContain('Error cargando el terreno 3D');
     expect(VIEWER).toContain('terrain-retry');
     expect(VIEWER).toContain('Reintentar');
-    expect(VIEWER).toContain('MAP_LOCALE_ES');
+    expect(VIEWER).toContain('createTerrainMapLibreMap');
+    expect(TERRAIN_LIFECYCLE).toContain('MAP_LOCALE_ES');
   });
 });

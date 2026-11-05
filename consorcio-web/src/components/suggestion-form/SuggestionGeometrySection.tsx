@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, useFormMapLayers } from '../../hooks/useFormMapLayers';
 import { logger } from '../../lib/logger';
+import { createMapLibreMap, destroyMapLibreMap } from '../../lib/maplibreLifecycle';
 import { loadMapLibre } from '../../lib/maplibreLoader';
 import formStyles from '../../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
-import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { IconArrowBackUp, IconCurrentLocation, IconMapPin, IconTrash } from '../ui/icons';
 import { isNonSpatialCategory } from './suggestionFormConstants';
 import { GeometrySummary, showSuggestionNotification } from './suggestionFormUtils';
@@ -107,6 +107,7 @@ export function SuggestionGeometrySection({
     if (isCollapsedByCategory) return;
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
+    const abort = new AbortController();
     let cancelled = false;
     let map: maplibregl.Map | null = null;
 
@@ -127,33 +128,53 @@ export function SuggestionGeometrySection({
 
       if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
-      map = new maplibregl.Map({
-        container: mapContainerRef.current,
-        style: {
-          version: 8,
-          sources: {
-            basemap: {
-              type: 'raster',
-              tiles: [
-                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-              ],
-              tileSize: 256,
-              attribution: 'Tiles &copy; Esri',
+      // Igual que la denuncia: `embedded-form`. Un dedo mueve la página;
+      // dos dedos mueven el mapa.
+      let created: maplibregl.Map | null = null;
+      try {
+        created = await createMapLibreMap({
+          maplibre: maplibregl,
+          gestures: 'embedded-form',
+          signal: abort.signal,
+          options: {
+            container: mapContainerRef.current,
+            style: {
+              version: 8,
+              sources: {
+                basemap: {
+                  type: 'raster',
+                  tiles: [
+                    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                  ],
+                  tileSize: 256,
+                  attribution: 'Tiles &copy; Esri',
+                },
+              },
+              layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
             },
+            center: [MAP_CENTER[1], MAP_CENTER[0]],
+            zoom: 12,
+            minZoom: MAP_MIN_ZOOM,
+            maxBounds: MAP_MAX_BOUNDS,
           },
-          layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-        },
-        center: [MAP_CENTER[1], MAP_CENTER[0]],
-        zoom: 12,
-        minZoom: MAP_MIN_ZOOM,
-        maxBounds: MAP_MAX_BOUNDS,
-        // Igual que el mapa de la denuncia: el trazo vive dentro de un
-        // formulario que scrollea. Un dedo mueve la página; dos dedos mueven
-        // el mapa. La atribución compacta no se come la altura del móvil.
-        cooperativeGestures: true,
-        attributionControl: { compact: true },
-        locale: { ...MAP_LOCALE_ES },
-      });
+        });
+      } catch (err) {
+        if (cancelled || abort.signal.aborted) return;
+        logger.error('[SugerenciaMap] no se pudo crear el mapa', err);
+        setMapStatus('error');
+        return;
+      }
+      if (
+        !created ||
+        cancelled ||
+        abort.signal.aborted ||
+        !mapContainerRef.current ||
+        mapInstanceRef.current
+      ) {
+        destroyMapLibreMap(created);
+        return;
+      }
+      map = created;
 
       map.on('load', () => {
         if (cancelled) return;
@@ -164,7 +185,8 @@ export function SuggestionGeometrySection({
 
     return () => {
       cancelled = true;
-      map?.remove();
+      abort.abort();
+      destroyMapLibreMap(map);
       map = null;
       mapInstanceRef.current = null;
       setMapStatus('loading');
@@ -329,9 +351,13 @@ export function SuggestionGeometrySection({
               padding: 'var(--mantine-spacing-md)',
             }}
           >
-            <Text size="sm" c={mapStatus === 'error' ? 'red' : 'dimmed'}>
+            <Text
+              size="sm"
+              role={mapStatus === 'error' ? 'alert' : undefined}
+              c={mapStatus === 'error' ? 'alerta.8' : 'dimmed'}
+            >
               {mapStatus === 'error'
-                ? 'No se pudo cargar el mapa. El trazo es opcional: podés enviar la sugerencia igual describiendo la ubicación en el texto, o recargar la página para reintentar.'
+                ? 'No pudimos cargar el mapa. El trazo es opcional: podés enviar la sugerencia igual describiendo la ubicación en el texto, o recargar la página para reintentar.'
                 : 'Cargando mapa…'}
             </Text>
           </Box>

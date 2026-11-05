@@ -6,9 +6,10 @@ import type { DrawnLineFeatureCollection } from '../../src/components/map/LineDr
 import { SuggestionGeometrySection } from '../../src/components/suggestion-form/SuggestionGeometrySection';
 import formStyles from '../../src/styles/components/form.module.css';
 
-const { addReferenceLayersMock, mapOptions, MockMap } = vi.hoisted(() => {
+const { addReferenceLayersMock, mapInstances, mapOptions, MockMap } = vi.hoisted(() => {
   const addReferenceLayersMock = vi.fn();
   const mapOptions: Array<Record<string, unknown>> = [];
+  const mapInstances: MockMap[] = [];
 
   class MockMap {
     readonly handlers = new Map<string, (event?: unknown) => void>();
@@ -17,6 +18,7 @@ const { addReferenceLayersMock, mapOptions, MockMap } = vi.hoisted(() => {
 
     constructor(options?: Record<string, unknown>) {
       mapOptions.push(options ?? {});
+      mapInstances.push(this);
     }
 
     on(event: string, handler: (event?: unknown) => void) {
@@ -30,7 +32,7 @@ const { addReferenceLayersMock, mapOptions, MockMap } = vi.hoisted(() => {
     }
   }
 
-  return { addReferenceLayersMock, mapOptions, MockMap };
+  return { addReferenceLayersMock, mapInstances, mapOptions, MockMap };
 });
 
 vi.mock('maplibre-gl', () => ({
@@ -79,6 +81,7 @@ const featureGeometry = {
 describe('<SuggestionGeometrySection />', () => {
   beforeEach(() => {
     mapOptions.length = 0;
+    mapInstances.length = 0;
   });
 
   it('labels the suggestion map and connects instructions, summary and reference text', () => {
@@ -174,5 +177,14 @@ describe('<SuggestionGeometrySection />', () => {
     expect(mapOptions[0]?.locale).toMatchObject({
       'CooperativeGesturesHandler.MobileHelpText': 'Usá dos dedos para mover el mapa',
     });
+  });
+
+  it('destroys the map once on unmount', async () => {
+    const { unmount } = renderWithMantine(
+      <SuggestionGeometrySection geometry={null} onChange={() => {}} />,
+    );
+    await waitFor(() => expect(mapInstances).toHaveLength(1));
+    unmount();
+    expect(mapInstances[0]?.remove).toHaveBeenCalledTimes(1);
   });
 });

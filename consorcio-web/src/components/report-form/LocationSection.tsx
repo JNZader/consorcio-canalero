@@ -5,11 +5,10 @@ import { MAP_CENTER, MAP_MAX_BOUNDS, MAP_MIN_ZOOM } from '../../constants';
 import { addReferenceLayers, isInsideZona, useFormMapLayers } from '../../hooks/useFormMapLayers';
 import { logger } from '../../lib/logger';
 import { mapColorTokens } from '../../lib/mapColorTokens';
+import { createMapLibreMap, destroyMapLibreMap } from '../../lib/maplibreLifecycle';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibreLoader';
 import { showError } from '../../lib/notifications';
-import { semanticColor } from '../../lib/semanticColors';
 import formStyles from '../../styles/components/form.module.css';
-import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { CoordinatesInput } from '../ui/accessibility';
 import type { Ubicacion } from './reportFormTypes';
 
@@ -105,6 +104,7 @@ export function LocationSection({
     // synchronously), so the await lives in an inner IIFE and `cancelled`
     // guards the case where the section unmounts while the chunk is still
     // in flight.
+    const abort = new AbortController();
     let cancelled = false;
     let map: maplibregl.Map | null = null;
 
@@ -127,32 +127,52 @@ export function LocationSection({
       const initialCenter = initialCenterRef.current;
       const initialZoom = initialZoomRef.current;
 
-      map = new maplibregl.Map({
-        container: mapContainerRef.current,
-        style: {
-          version: 8,
-          sources: {
-            basemap: {
-              type: 'raster',
-              tiles: [SATELLITE_TILES],
-              tileSize: 256,
-              attribution: 'Tiles &copy; Esri',
+      // `embedded-form`: el mapa está metido en un formulario que scrollea.
+      // Un dedo mueve la página; dos dedos mueven el mapa. La atribución
+      // compacta y el locale en español los pone el ciclo de vida compartido.
+      let created: maplibregl.Map | null = null;
+      try {
+        created = await createMapLibreMap({
+          maplibre: maplibregl,
+          gestures: 'embedded-form',
+          signal: abort.signal,
+          options: {
+            container: mapContainerRef.current,
+            style: {
+              version: 8,
+              sources: {
+                basemap: {
+                  type: 'raster',
+                  tiles: [SATELLITE_TILES],
+                  tileSize: 256,
+                  attribution: 'Tiles &copy; Esri',
+                },
+              },
+              layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
             },
+            center: [initialCenter[1], initialCenter[0]],
+            zoom: initialZoom,
+            minZoom: MAP_MIN_ZOOM,
+            maxBounds: MAP_MAX_BOUNDS,
           },
-          layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-        },
-        center: [initialCenter[1], initialCenter[0]],
-        zoom: initialZoom,
-        minZoom: MAP_MIN_ZOOM,
-        maxBounds: MAP_MAX_BOUNDS,
-        // El mapa principal APAGA cooperativeGestures en puntero grueso para
-        // que un dedo panee. Acá es al revés: el mapa está metido en un
-        // formulario que scrollea. Un dedo mueve la página; dos dedos mueven
-        // el mapa. La atribución compacta no se come la altura chica del móvil.
-        cooperativeGestures: true,
-        attributionControl: { compact: true },
-        locale: { ...MAP_LOCALE_ES },
-      });
+        });
+      } catch (error) {
+        if (cancelled || abort.signal.aborted) return;
+        logger.error('No se pudo crear el mapa', error);
+        setMapStatus('error');
+        return;
+      }
+      if (
+        !created ||
+        cancelled ||
+        abort.signal.aborted ||
+        !mapContainerRef.current ||
+        mapInstanceRef.current
+      ) {
+        destroyMapLibreMap(created);
+        return;
+      }
+      map = created;
 
       map.on('click', (e) => {
         const { lng, lat } = e.lngLat;
@@ -177,7 +197,8 @@ export function LocationSection({
 
     return () => {
       cancelled = true;
-      map?.remove();
+      abort.abort();
+      destroyMapLibreMap(map);
       map = null;
       mapInstanceRef.current = null;
       markerRef.current = null;
@@ -328,9 +349,13 @@ export function LocationSection({
               padding: 'var(--mantine-spacing-md)',
             }}
           >
-            <Text size="sm" c={mapStatus === 'error' ? semanticColor.danger : 'dimmed'}>
+            <Text
+              size="sm"
+              role={mapStatus === 'error' ? 'alert' : undefined}
+              c={mapStatus === 'error' ? 'alerta.8' : 'dimmed'}
+            >
               {mapStatus === 'error'
-                ? 'No se pudo cargar el mapa. Ingresá las coordenadas manualmente o recargá la página.'
+                ? 'No pudimos cargar el mapa. Ingresá las coordenadas manualmente o recargá la página.'
                 : 'Cargando mapa…'}
             </Text>
           </Box>

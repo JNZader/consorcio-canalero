@@ -1,9 +1,9 @@
 /**
  * MapaMapLibre — 2D interactive map using MapLibre GL JS.
  *
- * Replaces MapaLeaflet.tsx with an imperative MapLibre map following the
- * EXACT same pattern as TerrainViewer3D.tsx: raw new maplibregl.Map({})
- * mounted in a useEffect, all data wired reactively via subsequent useEffects.
+ * Imperative MapLibre map. Construction and teardown go through
+ * createMapLibreMap / destroyMapLibreMap (see useMapInitialization).
+ * Data is wired reactively via subsequent useEffects.
  *
  * Drop-in replacement: same external interface (no props — standalone component).
  * MapaInteractivo.tsx only needs a 1-line lazy import change to activate this.
@@ -66,8 +66,8 @@ import { buildLayerProvenance } from './map2d/layerProvenance';
 import { MapaMapLibreView } from './map2d/MapaMapLibreView';
 import { DEFAULT_BASE_LAYER, GEE_LAYER_NAMES, SOURCE_IDS } from './map2d/map2dConfig';
 import type { ClassifiedMapError } from './map2d/mapErrorClassify';
-import { MAP2D_HILLSHADE_Z_FACTOR, reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import { selectionPermalinkToken } from './map2d/mapPermalink';
+import { MAP2D_HILLSHADE_Z_FACTOR, reloadIgnSource } from './map2d/mapRasterOverlayHelpers';
 import type { ProfileRangeStats } from './map2d/profileRange';
 import { useLayerHealth } from './map2d/useLayerHealth';
 import { useMapaMapLibreStage } from './map2d/useMapaMapLibreStage';
