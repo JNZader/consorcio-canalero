@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { notificationColor, semanticColor } from '../../src/lib/semanticColors';
+import { INSTITUCIONAL_9, mantineTheme } from '../../src/lib/theme';
 
 function channel(hex: string, offset: number): number {
   const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
@@ -34,17 +35,22 @@ describe('semantic colors', () => {
   });
 
   it('keeps small text on the surfaces it actually sits on at AA', () => {
+    const gray = mantineTheme.colors!.gray!;
+    const dark = mantineTheme.colors!.dark!;
+    expect(dark[7]).not.toBe('#242424');
     expect(contrast('#4b5563', '#ffffff')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#4b5563', '#f8f9fa')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#4b5563', '#f1f3f5')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#a3a3a3', '#1A1B1E')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#a3a3a3', '#25262b')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#a3a3a3', '#373A40')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#e9ecef', '#082d21')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#4b5563', gray[0]!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#4b5563', gray[1]!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#a3a3a3', dark[7]!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#a3a3a3', dark[6]!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#a3a3a3', dark[4]!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(gray[2]!, INSTITUCIONAL_9)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(dark[0]!, dark[7]!)).toBeGreaterThanOrEqual(4.5);
     expect(contrast('#7f2516', '#fde0db')).toBeGreaterThanOrEqual(4.5);
     expect(contrast('#124521', '#c8ebd0')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#fef2f0', '#1A1B1E')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#e9f7ec', '#1A1B1E')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#fef2f0', dark[7]!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#e9f7ec', dark[7]!)).toBeGreaterThanOrEqual(4.5);
     expect(contrast('#ffffff', '#16654a')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#082d21', '#ffffff')).toBeGreaterThanOrEqual(4.5);
   });
 });

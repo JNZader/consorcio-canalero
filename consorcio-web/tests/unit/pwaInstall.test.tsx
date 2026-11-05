@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -51,11 +51,18 @@ describe('pwa install prompt', () => {
       </MantineProvider>
     );
 
-    expect(screen.getByTestId('pwa-install-banner')).toBeInTheDocument();
+    const banner = screen.getByTestId('pwa-install-banner');
+    expect(banner).toHaveClass('cc-install-bar');
+    expect(document.documentElement.style.getPropertyValue('--cc-install-bar')).toContain(
+      'safe-area-inset-bottom'
+    );
     expect(screen.getByTestId('pwa-install-menu')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('pwa-install-dismiss'));
     expect(screen.queryByTestId('pwa-install-banner')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--cc-install-bar')).toBe('');
+    });
     expect(screen.getByTestId('pwa-install-menu')).toBeInTheDocument();
     expect(localStorage.setItem).toHaveBeenCalledWith('cc-pwa-install-dismissed', '1');
 

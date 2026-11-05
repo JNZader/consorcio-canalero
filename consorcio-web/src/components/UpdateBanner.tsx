@@ -96,19 +96,16 @@ function UpdateBannerInner() {
         aria-live="polite"
         data-testid="update-banner"
         style={{
-          // ``position: fixed`` + ``bottom`` + a translate-anchored centre
-          // works fine on desktop, but on phones the safe-area inset eats
-          // bottom space (especially in PWA-installed mode), so we anchor
-          // a few extra pixels up and let the maxWidth shrink with the
-          // viewport so the banner never overflows.
+          // ``--cc-install-offset`` lo publica la barra de instalación
+          // mientras está visible, así este aviso queda encima y no la tapa.
           position: 'fixed',
-          bottom: 'max(16px, env(safe-area-inset-bottom, 0px) + 16px)',
+          bottom: 'var(--cc-install-offset, max(16px, env(safe-area-inset-bottom, 0px) + 16px))',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: Z_INDEX.overlay,
           width: 'min(440px, calc(100vw - 24px))',
           background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
-          borderLeft: '4px solid var(--mantine-color-acento-5)',
+          borderTop: '3px solid var(--mantine-color-institucional-5)',
         }}
       >
         <Group justify="space-between" wrap="nowrap" gap="xs" align="center">

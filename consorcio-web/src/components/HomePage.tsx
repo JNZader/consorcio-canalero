@@ -213,8 +213,10 @@ export function HomeContent() {
               Sistema colaborativo de gestión territorial para el monitoreo de cuencas, caminos
               rurales e infraestructura hídrica
             </Text>
+            {/* El filled del primario se funde con el hero. Par de alto
+                contraste: blanco con texto institucional-9, y contorno blanco. */}
             <Group mt="md">
-              <Button size="lg" component={Link} to="/mapa" variant="white" c="dark.9">
+              <Button size="lg" component={Link} to="/mapa" variant="white" color="institucional.9">
                 Ver Mapa
               </Button>
               <Button
@@ -443,7 +445,13 @@ export function HomeContent() {
               Reportá problemas en la infraestructura hídrica y colaborá con el mantenimiento de
               caminos y canales
             </Text>
-            <Button size="lg" component={Link} to="/participacion" variant="white" c="dark.9">
+            <Button
+              size="lg"
+              component={Link}
+              to="/participacion"
+              variant="white"
+              color="institucional.9"
+            >
               Realizar un Reporte
             </Button>
           </Stack>
