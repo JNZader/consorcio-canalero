@@ -149,7 +149,7 @@ export default defineConfig({
         // still display portrait via the device's own orientation
         // rules.
         orientation: 'any',
-        theme_color: '#2d9970',
+        theme_color: '#2d8f68',
         background_color: '#0f1f1a',
         lang: 'es-AR',
         dir: 'ltr',

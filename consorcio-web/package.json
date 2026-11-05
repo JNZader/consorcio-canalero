@@ -9,7 +9,7 @@
     "gen:version": "node scripts/gen-version.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "preview": "vite preview",
-    "lint": "biome lint ./src",
+    "lint": "biome lint ./src && node scripts/lint-no-new-hex.mjs",
     "lint:fix": "biome lint --write ./src",
     "format": "biome format --write ./src",
     "format:check": "biome format ./src",

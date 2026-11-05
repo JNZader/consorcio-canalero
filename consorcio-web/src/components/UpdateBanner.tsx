@@ -31,6 +31,7 @@ import { useEffect, useState } from 'react';
 import { useDeferredIdleMount } from '../hooks/useDeferredIdleMount';
 import { useVersionCheck } from '../hooks/useVersionCheck';
 import { logger } from '../lib/logger';
+import { Z_INDEX } from '../lib/zIndex';
 
 const SW_UPDATE_POLL_MS = 60 * 1000; // 1 minute
 
@@ -105,7 +106,7 @@ function UpdateBannerInner() {
           bottom: 'max(16px, env(safe-area-inset-bottom, 0px) + 16px)',
           left: '50%',
           transform: 'translateX(-50%)',
-          zIndex: 10001,
+          zIndex: Z_INDEX.overlay,
           width: 'min(440px, calc(100vw - 24px))',
           background: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
           borderLeft: '4px solid var(--mantine-color-acento-5)',

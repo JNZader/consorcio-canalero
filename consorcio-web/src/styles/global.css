@@ -276,10 +276,10 @@ body {
   border-left: 4px solid var(--mantine-color-red-6);
 }
 
-/* Touch targets minimos (44x44px) - WCAG 2.5.5 */
+/* Touch targets minimos (44x44px) - WCAG 2.5.5. El token es --cc-touch-min. */
 .touch-target-min {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: var(--cc-touch-min, 44px);
+  min-width: var(--cc-touch-min, 44px);
 }
 
 /* Espaciado para evitar clics accidentales en movil */
@@ -287,8 +287,8 @@ body {
   button,
   [role="button"],
   a.mantine-Button-root {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: var(--cc-touch-min, 44px);
+    min-width: var(--cc-touch-min, 44px);
     padding-top: 10px;
     padding-bottom: 10px;
   }
@@ -302,7 +302,7 @@ body {
 .leaflet-container {
   font-family: inherit;
   position: relative;
-  z-index: 0 !important;
+  z-index: var(--z-base, 0) !important;
 }
 
 .leaflet-control-layers {
@@ -322,16 +322,16 @@ body {
 
 /* Fix CRITICO: Mantine date picker sobre Leaflet */
 .mantine-Portal {
-  z-index: 9999 !important;
+  z-index: var(--z-portal, 9999) !important;
 }
 
 .mantine-Popover-dropdown {
-  z-index: 10000 !important;
+  z-index: var(--z-popover, 10000) !important;
 }
 
 .mantine-DatePickerInput-dropdown,
 .mantine-DatePicker-calendar {
-  z-index: 10001 !important;
+  z-index: var(--z-overlay, 10001) !important;
 }
 
 /* Mejoras para modo oscuro en Leaflet */
@@ -583,7 +583,7 @@ h1, h2, h3, h4, h5, h6 {
   text-decoration: none;
   font-weight: 600;
   font-size: 1rem;
-  z-index: 100000;
+  z-index: var(--z-skip-link, 100000);
   border-radius: 0 0 8px 0;
   transition: top 0.2s ease;
 }

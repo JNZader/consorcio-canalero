@@ -1,5 +1,6 @@
 import { Alert, Box, Text } from '@mantine/core';
 import type { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react';
+import { Z_INDEX } from '../../../lib/zIndex';
 import { visuallyHiddenStyle } from './shared';
 
 interface VisuallyHiddenProps extends ComponentPropsWithoutRef<'span'> {
@@ -65,7 +66,7 @@ export function SkipLinks({ links = DEFAULT_SKIP_LINKS }: SkipLinksProps) {
     <Box
       component="nav"
       aria-label="Enlaces de salto"
-      style={{ position: 'absolute', top: 0, left: 0, zIndex: 10000 }}
+      style={{ position: 'absolute', top: 0, left: 0, zIndex: Z_INDEX.popover }}
     >
       {links.map((link, index) => (
         <a
@@ -82,7 +83,7 @@ export function SkipLinks({ links = DEFAULT_SKIP_LINKS }: SkipLinksProps) {
             fontWeight: 500,
             borderRadius: '0 0 4px 4px',
             transition: 'top 0.2s',
-            zIndex: 10000,
+            zIndex: Z_INDEX.popover,
           }}
           onFocus={(event) => {
             event.currentTarget.style.top = '0';

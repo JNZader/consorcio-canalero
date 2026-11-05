@@ -13,7 +13,8 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Link } from '@tanstack/react-router';
-import { Suspense, lazy, memo, useEffect, useRef } from 'react';
+import { lazy, memo, Suspense, useEffect, useRef } from 'react';
+import { Z_INDEX } from '../lib/zIndex';
 import styles from '../styles/components/header.module.css';
 import ThemeToggle from './ThemeToggle';
 
@@ -158,7 +159,7 @@ export const HeaderContent = memo(function HeaderContent() {
         padding="md"
         title="Menú"
         hiddenFrom="sm"
-        zIndex={1000}
+        zIndex={Z_INDEX.drawer}
         id="mobile-nav-drawer"
         trapFocus
         returnFocus

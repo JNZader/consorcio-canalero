@@ -1,3 +1,4 @@
+/* hex-color-allow-file: paleta de la leyenda de pendiente. */
 import type { Feature } from 'geojson';
 import type { ProfileSample } from './profileRange';
 

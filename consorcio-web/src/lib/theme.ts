@@ -1,12 +1,32 @@
+/* hex-color-allow-file: paleta del tema. Los hex de UI se definen acá, no en los componentes. */
 /**
  * Configuracion centralizada del tema Mantine.
  *
  * Este archivo define el tema compartido entre AppProvider y MantineProvider
- * para evitar duplicacion de codigo.
+ * para evitar duplicacion de codigo. `cssVariablesResolver` publica la capa
+ * semántica (`--cc-*`, `--z-*`) sin reemplazar las variables de Mantine:
+ * el provider las fusiona.
  */
 
-import { createTheme } from '@mantine/core';
+import { type CSSVariablesResolver, createTheme } from '@mantine/core';
+import { aboveBreakpoint, belowBreakpoint, breakpoints } from './breakpoints';
 import { mapColorTokens } from './mapColorTokens';
+import { Z_INDEX, Z_INDEX_VAR } from './zIndex';
+
+/** Verde río. `institucional[5]`. `index.html` y el manifest PWA usan este hex. */
+export const PRIMARY_GREEN = '#2d8f68';
+
+/**
+ * `institucional[9]`. Más oscuro que [8] (`#0a3d2d`).
+ * Antes repetía [7] (`#0d4d38`).
+ */
+export const INSTITUCIONAL_9 = '#082d21';
+
+/** Piso táctil (WCAG 2.5.5). */
+export const TOUCH_MIN = '44px';
+
+const SCALE = ['xs', 'sm', 'md', 'lg', 'xl'] as const;
+const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
 
 /**
  * Tema personalizado para la aplicacion del Consorcio Canalero.
@@ -22,6 +42,10 @@ export const mantineTheme = createTheme({
 
   // Usar paleta institucional como primaria
   primaryColor: 'institucional',
+
+  // Misma escala que los defaults de Mantine. Fuente única para
+  // `visibleFrom` / `hiddenFrom` y para los helpers de `breakpoints.ts`.
+  breakpoints,
 
   // Tipografia.
   //
@@ -133,11 +157,11 @@ export const mantineTheme = createTheme({
       '#a3d4c4',
       '#7bc2ac',
       '#5ab394',
-      '#2d8f68',
+      PRIMARY_GREEN,
       '#16654a',
       '#0d4d38',
       '#0a3d2d',
-      '#0d4d38',
+      INSTITUCIONAL_9,
     ],
     // Paleta de acento - Dorado Trigal
     acento: [
@@ -204,6 +228,8 @@ export const mantineTheme = createTheme({
     dimmedColorDark: '#a3a3a3', // neutral-400 - ratio 5.5:1 sobre #242424
     /** Hex de mapa y estilos en línea. Mismo objeto que `mapColorTokens`. */
     mapColors: mapColorTokens,
+    touchMin: TOUCH_MIN,
+    zIndex: Z_INDEX,
   },
 
   // Sombras personalizadas — dark mode gets stronger shadows since
@@ -323,6 +349,65 @@ export const mantineTheme = createTheme({
     },
   },
 });
+
+const Z_INDEX_ENTRIES = Object.entries(Z_INDEX_VAR) as [keyof typeof Z_INDEX, `--z-${string}`][];
+
+/**
+ * Capa semántica. Mantine fusiona este objeto con el suyo, así que acá
+ * solo se agregan `--cc-*` y `--z-*`. Los alias apuntan a variables de
+ * Mantine para seguir claro/oscuro sin duplicar el hex.
+ */
+export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
+  const variables: Record<`--${string}`, string> = {
+    '--cc-color-primary': 'var(--mantine-color-institucional-5)',
+    '--cc-color-surface': 'var(--mantine-color-body)',
+    '--cc-color-text': 'var(--mantine-color-text)',
+    '--cc-color-text-muted': 'var(--mantine-color-dimmed)',
+    '--cc-color-border': 'var(--mantine-color-default-border)',
+    '--cc-font-family': 'var(--mantine-font-family)',
+    '--cc-font-family-heading': 'var(--mantine-font-family-headings)',
+    '--cc-touch-min': String(theme.other.touchMin ?? TOUCH_MIN),
+    '--cc-breakpoint-sm-max': belowBreakpoint('sm'),
+    '--cc-breakpoint-md-above': aboveBreakpoint('md'),
+  };
+
+  for (const size of SCALE) {
+    variables[`--cc-space-${size}`] = `var(--mantine-spacing-${size})`;
+    variables[`--cc-radius-${size}`] = `var(--mantine-radius-${size})`;
+    variables[`--cc-shadow-${size}`] = `var(--mantine-shadow-${size})`;
+    variables[`--cc-font-size-${size}`] = `var(--mantine-font-size-${size})`;
+    variables[`--cc-line-height-${size}`] = `var(--mantine-line-height-${size})`;
+  }
+
+  for (const heading of HEADINGS) {
+    variables[`--cc-font-size-${heading}`] = `var(--mantine-${heading}-font-size)`;
+    variables[`--cc-line-height-${heading}`] = `var(--mantine-${heading}-line-height)`;
+  }
+
+  for (const [token, value] of Object.entries(theme.breakpoints)) {
+    variables[`--cc-breakpoint-${token}`] = String(value);
+  }
+
+  for (const [token, cssVar] of Z_INDEX_ENTRIES) {
+    variables[cssVar] = String(Z_INDEX[token]);
+  }
+
+  return {
+    variables,
+    light: {
+      '--cc-color-surface-raised': 'var(--mantine-color-gray-0)',
+      '--cc-color-danger': 'var(--mantine-color-alerta-6)',
+      '--cc-color-warning': 'var(--mantine-color-orange-6)',
+      '--cc-color-success': 'var(--mantine-color-exito-6)',
+    },
+    dark: {
+      '--cc-color-surface-raised': 'var(--mantine-color-dark-6)',
+      '--cc-color-danger': 'var(--mantine-color-alerta-4)',
+      '--cc-color-warning': 'var(--mantine-color-orange-4)',
+      '--cc-color-success': 'var(--mantine-color-exito-4)',
+    },
+  };
+};
 
 // Alias para compatibilidad
 export const theme = mantineTheme;

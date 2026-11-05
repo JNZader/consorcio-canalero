@@ -1,3 +1,4 @@
+/* hex-color-allow-file: registro cartográfico. Los hex de mapa viven en este módulo. */
 /**
  * Colores de mapa y de estilos en línea.
  * Los valores son los mismos hex que pintaba el código: el tema de Mantine
