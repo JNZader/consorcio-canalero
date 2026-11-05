@@ -8,6 +8,7 @@ import { loadMapLibre } from '../../lib/maplibreLoader';
 import formStyles from '../../styles/components/form.module.css';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
 import SuggestionGeometryControl from '../map/SuggestionGeometryControl';
+import { MAP_LOCALE_ES } from '../map2d/mapLibreLocale';
 import { IconArrowBackUp, IconCurrentLocation, IconMapPin, IconTrash } from '../ui/icons';
 import { isNonSpatialCategory } from './suggestionFormConstants';
 import { GeometrySummary, showSuggestionNotification } from './suggestionFormUtils';
@@ -89,8 +90,7 @@ export function SuggestionGeometrySection({
   const [showOptionalMap, setShowOptionalMap] = useState(false);
   const mapReady = mapStatus === 'ready';
   const hasGeometry = (geometry?.features?.length ?? 0) > 0;
-  const isCollapsedByCategory =
-    isNonSpatialCategory(categoria) && !showOptionalMap && !hasGeometry;
+  const isCollapsedByCategory = isNonSpatialCategory(categoria) && !showOptionalMap && !hasGeometry;
 
   useEffect(() => {
     if (isNonSpatialCategory(categoria) && !hasGeometry) {
@@ -147,6 +147,12 @@ export function SuggestionGeometrySection({
         zoom: 12,
         minZoom: MAP_MIN_ZOOM,
         maxBounds: MAP_MAX_BOUNDS,
+        // Igual que el mapa de la denuncia: el trazo vive dentro de un
+        // formulario que scrollea. Un dedo mueve la página; dos dedos mueven
+        // el mapa. La atribución compacta no se come la altura del móvil.
+        cooperativeGestures: true,
+        attributionControl: { compact: true },
+        locale: { ...MAP_LOCALE_ES },
       });
 
       map.on('load', () => {
@@ -223,6 +229,8 @@ export function SuggestionGeometrySection({
           type="button"
           variant="subtle"
           size="sm"
+          fullWidth
+          className="touch-target-min"
           leftSection={<IconMapPin size={16} aria-hidden="true" />}
           onClick={() => setShowOptionalMap(true)}
         >
@@ -245,27 +253,28 @@ export function SuggestionGeometrySection({
 
   return (
     <Stack gap="xs">
-      <Group justify="space-between" align="center">
+      <Stack gap={4}>
         <Text id={SUGGESTION_GEOMETRY_LABEL_ID} size="sm" fw={500}>
           Canal en mapa
         </Text>
         <Box id={SUGGESTION_GEOMETRY_SUMMARY_ID} role="status" aria-live="polite">
           <GeometrySummary geometry={geometry} />
         </Box>
-      </Group>
+      </Stack>
 
       <Text id={SUGGESTION_GEOMETRY_INSTRUCTIONS_ID} size="xs" c="dimmed">
         Hacé un clic para marcar un punto (o tocá el mapa en el celular). Si agregás otro punto, se
-        convierte en línea. Tocá un vértice o usá «Deshacer último punto» y «Limpiar dibujo» para
-        corregir.
+        convierte en línea. Con un dedo se desplaza la página; con dos dedos se mueve el mapa. Tocá
+        un vértice o usá «Deshacer último punto» y «Limpiar dibujo» para corregir.
       </Text>
 
-      <Group gap="xs" wrap="wrap">
+      <Group gap="sm" wrap="wrap">
         <Button
           type="button"
           variant="light"
-          size="xs"
-          leftSection={<IconCurrentLocation size={14} aria-hidden="true" />}
+          size="sm"
+          className="touch-target-min"
+          leftSection={<IconCurrentLocation size={16} aria-hidden="true" />}
           loading={locatingGps}
           onClick={handleLocateGps}
         >
@@ -274,8 +283,9 @@ export function SuggestionGeometrySection({
         <Button
           type="button"
           variant="default"
-          size="xs"
-          leftSection={<IconArrowBackUp size={14} aria-hidden="true" />}
+          size="sm"
+          className="touch-target-min"
+          leftSection={<IconArrowBackUp size={16} aria-hidden="true" />}
           disabled={!hasGeometry}
           onClick={handleUndoLastPoint}
         >
@@ -285,8 +295,9 @@ export function SuggestionGeometrySection({
           type="button"
           variant="subtle"
           color="red"
-          size="xs"
-          leftSection={<IconTrash size={14} aria-hidden="true" />}
+          size="sm"
+          className="touch-target-min"
+          leftSection={<IconTrash size={16} aria-hidden="true" />}
           disabled={!hasGeometry}
           onClick={handleClearGeometry}
         >
@@ -295,7 +306,7 @@ export function SuggestionGeometrySection({
       </Group>
 
       <Box
-        className={formStyles.mapContainer}
+        className={`${formStyles.mapContainer} ${formStyles.mapContainerLarge}`}
         role="application"
         aria-labelledby={SUGGESTION_GEOMETRY_LABEL_ID}
         aria-describedby={describedBy}
