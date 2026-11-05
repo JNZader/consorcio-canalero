@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sugerenciasApi } from '../../lib/api';
 import { clearSuggestionDraft, saveSuggestionDraft } from '../../lib/formDrafts';
 import { logger } from '../../lib/logger';
+import { isOfflineSubmitError } from '../../lib/offlineSubmit';
 import type { DrawnLineFeatureCollection } from '../map/LineDrawControl';
-import { buildSugerenciaPayload, showSuggestionNotification } from './suggestionFormUtils';
+import {
+  buildSugerenciaPayload,
+  OFFLINE_SUBMIT_MESSAGE,
+  showSuggestionNotification,
+} from './suggestionFormUtils';
 
 interface SuggestionValues {
   titulo: string;
@@ -19,6 +24,15 @@ interface UseSuggestionFormStateParams {
   form: { reset: () => void };
   pendingRateLimitCheck?: boolean;
   onRateLimitChecked?: () => void;
+  announce?: (msg: string, priority?: 'polite' | 'assertive') => void;
+  /** POST offline (503 del service worker o fallo de red). El form no se vacía. */
+  onOfflineFailure?: () => void;
+  /** Otro error de envío: cierra el aviso de sin conexión si estaba abierto. */
+  onOtherFailure?: () => void;
+  /** Arranque real del POST. El formulario esconde el toast de reintento. */
+  onAttemptStart?: () => void;
+  /** Tras un create exitoso, además del decremento local. */
+  onSubmitSuccess?: () => void;
 }
 
 export function useSuggestionFormState({
@@ -29,11 +43,20 @@ export function useSuggestionFormState({
   form,
   pendingRateLimitCheck = false,
   onRateLimitChecked,
+  announce,
+  onOfflineFailure,
+  onOtherFailure,
+  onAttemptStart,
+  onSubmitSuccess,
 }: Readonly<UseSuggestionFormStateParams>) {
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [remainingToday, setRemainingToday] = useState<number | null>(null);
   const [geometry, setGeometry] = useState<DrawnLineFeatureCollection | null>(null);
+  // `enviando` en estado no alcanza: el segundo tap (doble clic o el toast)
+  // reusa el callback que todavía ve `false`. El ref se toma en el mismo
+  // turno, antes de cualquier await.
+  const inFlightRef = useRef(false);
 
   const checkRateLimit = useCallback(async () => {
     // El endpoint exige auth — si el usuario no verificó contacto/login
@@ -94,15 +117,19 @@ export function useSuggestionFormState({
         return;
       }
 
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       setEnviando(true);
 
       try {
+        onAttemptStart?.();
         await sugerenciasApi.create(buildSugerenciaPayload(values, userEmail, userName, geometry));
         showSuggestionNotification(
           'Sugerencia enviada',
           'Tu propuesta fue recibida. La comisión la verá en su próxima reunión.',
           'green'
         );
+        announce?.('Sugerencia enviada. La comisión la verá en su próxima reunión.');
         // Decrement locally — la base sigue siendo source of truth, pero
         // refrescar con un GET extra es desperdicio: el delta es siempre
         // -1. Si el usuario refresca la página, el badge se sincroniza
@@ -110,9 +137,22 @@ export function useSuggestionFormState({
         setRemainingToday((prev) => (prev === null ? null : Math.max(0, prev - 1)));
         setEnviado(true);
         clearSuggestionDraft();
+        onSubmitSuccess?.();
         form.reset();
         setGeometry(null);
       } catch (error) {
+        if (isOfflineSubmitError(error)) {
+          saveSuggestionDraft({
+            titulo: values.titulo,
+            descripcion: values.descripcion,
+            categoria: values.categoria,
+            geometry,
+          });
+          onOfflineFailure?.();
+          announce?.(`${OFFLINE_SUBMIT_MESSAGE} Podés reintentar.`, 'assertive');
+          return;
+        }
+        onOtherFailure?.();
         const message = error instanceof Error ? error.message : 'No se pudo enviar la sugerencia';
         // 429 → backend dice "te quedaste sin cupo". Reflejamos en UI
         // forzando `remainingToday=0` para que el badge muestre "0
@@ -126,10 +166,23 @@ export function useSuggestionFormState({
         }
         showSuggestionNotification('Error', message, 'red');
       } finally {
+        inFlightRef.current = false;
         setEnviando(false);
       }
     },
-    [contactoVerificado, form, geometry, remainingToday, userEmail, userName]
+    [
+      announce,
+      contactoVerificado,
+      form,
+      geometry,
+      onAttemptStart,
+      onOfflineFailure,
+      onOtherFailure,
+      onSubmitSuccess,
+      remainingToday,
+      userEmail,
+      userName,
+    ]
   );
 
   const resetSuccess = useCallback(() => {
