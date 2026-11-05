@@ -110,7 +110,7 @@ describe('PadronPanel', () => {
       });
     });
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Consorcista registrado', color: 'green' })
+      expect.objectContaining({ title: 'Consorcista registrado', color: 'exito' })
     );
   });
 
@@ -145,7 +145,7 @@ describe('PadronPanel', () => {
       expect.objectContaining({
         title: 'Importación completada',
         message: 'Procesadas 3 filas; registros creados: 2; filas omitidas: 1',
-        color: 'yellow',
+        color: 'orange',
       })
     );
   });

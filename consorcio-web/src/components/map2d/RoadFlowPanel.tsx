@@ -25,10 +25,9 @@
  */
 
 import { Alert, Loader, SegmentedControl, Stack, Text } from '@mantine/core';
-
+import type { UseRoadFlowCrossingsResult } from '../../hooks/useRoadFlowCrossings';
 import type { CoberturaResponse } from '../../lib/api/relevamiento';
 import type { RoadFlowCrossingFeature } from '../../lib/api/roadFlow';
-import type { UseRoadFlowCrossingsResult } from '../../hooks/useRoadFlowCrossings';
 import styles from '../../styles/components/map.module.css';
 import { MapPanelShell } from './MapPanelShell';
 import { RelevamientoCobertura } from './RelevamientoCobertura';
@@ -121,9 +120,7 @@ export function RoadFlowPanel({
           data-testid="road-flow-kind-filter"
           value={visibilityToKindFilter(kinds)}
           onChange={(value) =>
-            onKindsChange(
-              kindFilterToVisibility(value as RoadFlowKindFilter, kinds.conduccion)
-            )
+            onKindsChange(kindFilterToVisibility(value as RoadFlowKindFilter, kinds.conduccion))
           }
           data={[
             { value: ROAD_FLOW_KIND_FILTER.AMBOS, label: 'Ambos' },
@@ -145,7 +142,7 @@ export function RoadFlowPanel({
         ) : null}
 
         {isError && !sinCobertura ? (
-          <Alert color="red" data-testid="road-flow-error">
+          <Alert color="alerta" data-testid="road-flow-error">
             {error?.message ?? 'No se pudieron leer los cruces de camino.'}
           </Alert>
         ) : null}

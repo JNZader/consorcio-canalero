@@ -137,6 +137,10 @@ describe('design tokens', () => {
     expect(resolved.light['--cc-color-danger']).toBe('var(--mantine-color-alerta-6)');
     expect(resolved.light['--cc-color-warning']).toBe('var(--mantine-color-orange-6)');
     expect(resolved.light['--cc-color-success']).toBe('var(--mantine-color-exito-6)');
+    expect(resolved.light['--mantine-color-dimmed']).toBe('#4b5563');
+    expect(resolved.light['--mantine-color-placeholder']).toBe('#4b5563');
+    expect(resolved.dark['--mantine-color-dimmed']).toBe('#a3a3a3');
+    expect(resolved.dark['--mantine-color-gray-6']).toBe('#a3a3a3');
     expect(resolved.dark['--cc-color-surface-raised']).toBe('var(--mantine-color-dark-6)');
     expect(resolved.variables['--mantine-color-white']).toBeUndefined();
 
@@ -146,6 +150,9 @@ describe('design tokens', () => {
 
     const globalCss = readFileSync('src/styles/global.css', 'utf8');
     const headerCss = readFileSync('src/styles/components/header.module.css', 'utf8');
+    const footerCss = readFileSync('src/styles/components/footer.module.css', 'utf8');
+    expect(footerCss).toContain('var(--mantine-color-institucional-9)');
+    expect(footerCss).toContain('var(--mantine-color-gray-2)');
     expect(headerCss).toContain('z-index: var(--z-header, 100)');
     expect(globalCss).toContain('z-index: var(--z-base, 0)');
     expect(globalCss).toContain('z-index: var(--z-portal, 9999)');

@@ -101,7 +101,7 @@ describe('useMapActionHandlers', () => {
     expect(click).toHaveBeenCalledTimes(1);
     expect(setExportPngModalOpen).toHaveBeenCalledWith(false);
     expect(notificationsShow).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Exportación completada', color: 'green' }),
+      expect.objectContaining({ title: 'Exportación completada', color: 'exito' }),
     );
 
     createElement.mockRestore();
@@ -696,7 +696,7 @@ describe('useMapActionHandlers', () => {
       expect(triggerKmzDownloadMock).not.toHaveBeenCalled();
       // Error path notifies the user (mirror handleExportApprovedZonesPdf).
       expect(notificationsShow).toHaveBeenCalledWith(
-        expect.objectContaining({ color: 'red' }),
+        expect.objectContaining({ color: 'alerta' }),
       );
       consoleErrorSpy.mockRestore();
     });
@@ -725,7 +725,7 @@ describe('useMapActionHandlers', () => {
       });
 
       const greenCalls = notificationsShow.mock.calls.filter(
-        ([arg]) => (arg as { color?: string })?.color === 'green'
+        ([arg]) => (arg as { color?: string })?.color === 'exito'
       );
       expect(greenCalls.length).toBeGreaterThanOrEqual(1);
       expect(greenCalls[0][0]).toEqual(
@@ -755,7 +755,7 @@ describe('useMapActionHandlers', () => {
 
       expect(triggerKmzDownloadMock).toHaveBeenCalledTimes(1);
       const yellowCalls = notificationsShow.mock.calls.filter(
-        ([arg]) => (arg as { color?: string })?.color === 'yellow'
+        ([arg]) => (arg as { color?: string })?.color === 'orange'
       );
       expect(yellowCalls.length).toBe(1);
       expect((yellowCalls[0][0] as { message: string }).message).toMatch(/aún cargaban/);

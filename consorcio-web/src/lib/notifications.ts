@@ -15,11 +15,15 @@
 
 import { notifications } from '@mantine/notifications';
 import type { ReactNode } from 'react';
+import { notificationColor, semanticColor } from './semanticColors';
 
 export type NotificationColor =
+  | 'exito'
+  | 'alerta'
+  | 'institucional'
+  | 'orange'
   | 'green'
   | 'red'
-  | 'orange'
   | 'blue'
   | 'yellow'
   | 'gray'
@@ -49,7 +53,7 @@ function emit(
   notifications.show({
     ...(title !== undefined ? { title } : {}),
     message,
-    color,
+    color: notificationColor(color),
     ...(options?.icon !== undefined ? { icon: options.icon } : {}),
     ...(options?.autoClose !== undefined ? { autoClose: options.autoClose } : {}),
     ...(options?.id !== undefined ? { id: options.id } : {}),
@@ -61,28 +65,28 @@ function emit(
  * Show a success notification (green).
  */
 export function showSuccess(title: string, message: string, options?: NotificationExtras): void {
-  emit(title, message, 'green', options);
+  emit(title, message, semanticColor.success, options);
 }
 
 /**
  * Show an error notification (red).
  */
 export function showError(title: string, message: string, options?: NotificationExtras): void {
-  emit(title, message, 'red', options);
+  emit(title, message, semanticColor.danger, options);
 }
 
 /**
  * Show a warning notification (orange).
  */
 export function showWarning(title: string, message: string, options?: NotificationExtras): void {
-  emit(title, message, 'orange', options);
+  emit(title, message, semanticColor.warning, options);
 }
 
 /**
  * Show an info notification (blue).
  */
 export function showInfo(title: string, message: string, options?: NotificationExtras): void {
-  emit(title, message, 'blue', options);
+  emit(title, message, semanticColor.info, options);
 }
 
 /**

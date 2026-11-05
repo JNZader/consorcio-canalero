@@ -70,7 +70,7 @@ export function ContactVerificationSection({
   // Estado verificado
   if (contactoVerificado) {
     return (
-      <Alert color="green" icon={<IconShieldCheck size={20} />} title="Identidad verificada">
+      <Alert color="exito" icon={<IconShieldCheck size={20} />} title="Identidad verificada">
         <Group justify="space-between" align="center">
           <Stack gap={4}>
             {userName && (
@@ -103,7 +103,7 @@ export function ContactVerificationSection({
   // Google es el unico metodo de verificacion disponible.
   return (
     <Stack gap="md">
-      <Alert color="blue" variant="light">
+      <Alert color="institucional" variant="light">
         <Text size="sm">{verificationExplanation}</Text>
       </Alert>
 

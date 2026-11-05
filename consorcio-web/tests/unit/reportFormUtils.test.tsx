@@ -57,7 +57,7 @@ describe('reportFormUtils', () => {
     expect(setUbicacion).toHaveBeenCalledWith({ lat: -32.12345, lng: -62.54321 });
     expect(setObteniendoUbicacion).toHaveBeenCalledWith(false);
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Ubicación obtenida', color: 'green' })
+      expect.objectContaining({ title: 'Ubicación obtenida', color: 'exito' })
     );
     expect(announce).toHaveBeenCalledWith(expect.stringContaining('latitud -32.1234'));
   });
@@ -70,7 +70,7 @@ describe('reportFormUtils', () => {
 
     expect(setObteniendoUbicacion).toHaveBeenCalledWith(false);
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Error de ubicación', color: 'red' })
+      expect.objectContaining({ title: 'Error de ubicación', color: 'alerta' })
     );
     expect(announce).toHaveBeenCalledWith(expect.stringContaining('No se pudo obtener'), 'assertive');
   });
@@ -91,7 +91,7 @@ describe('reportFormUtils', () => {
     expect(result).toBeUndefined();
     expect(logger.error).toHaveBeenCalled();
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Aviso', color: 'yellow' })
+      expect.objectContaining({ title: 'Aviso', color: 'orange' })
     );
   });
 

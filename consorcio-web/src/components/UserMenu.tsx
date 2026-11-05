@@ -161,7 +161,6 @@ function MobileStaffButtons({
       component={Link}
       to="/admin"
       variant="subtle"
-      color="gray"
       fullWidth
       justify="flex-start"
       leftSection={<IconChartBar size={16} />}
@@ -230,7 +229,6 @@ function MobileUserMenu({
           component={Link}
           to="/perfil"
           variant="subtle"
-          color="gray"
           fullWidth
           justify="flex-start"
           leftSection={<IconUser size={16} />}

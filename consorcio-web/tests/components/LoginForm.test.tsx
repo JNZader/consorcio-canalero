@@ -209,7 +209,7 @@ describe('LoginForm', () => {
       expect(signInWithEmail).toHaveBeenCalledWith('test@example.com', 'password123');
     });
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Bienvenido', color: 'green' })
+      expect.objectContaining({ title: 'Bienvenido', color: 'exito' })
     );
     expect(mockLocation.href).toBe('/admin');
   });
@@ -243,7 +243,7 @@ describe('LoginForm', () => {
         expect.objectContaining({
           title: 'No pudimos iniciar sesión',
           message: 'Email o contraseña incorrectos',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -286,7 +286,7 @@ describe('LoginForm', () => {
     });
     expect(screen.getByText(/confirmá tu email/i)).toBeInTheDocument();
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Cuenta creada', color: 'blue' })
+      expect.objectContaining({ title: 'Cuenta creada', color: 'institucional' })
     );
   });
 
@@ -309,7 +309,7 @@ describe('LoginForm', () => {
       expect(screen.getByRole('heading', { name: /iniciar sesión/i })).toBeInTheDocument();
     });
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Cuenta creada', color: 'green' })
+      expect.objectContaining({ title: 'Cuenta creada', color: 'exito' })
     );
   });
 
@@ -330,7 +330,7 @@ describe('LoginForm', () => {
       expect.objectContaining({
         title: 'No pudimos conectar con Google',
         message: 'No se pudo conectar con Google',
-        color: 'red',
+        color: 'alerta',
       })
     );
   });
@@ -349,7 +349,7 @@ describe('LoginForm', () => {
       expect.objectContaining({
         title: 'No pudimos iniciar sesión',
         message: 'Ocurrió un error inesperado. Intentá de nuevo.',
-        color: 'red',
+        color: 'alerta',
       })
     );
   });

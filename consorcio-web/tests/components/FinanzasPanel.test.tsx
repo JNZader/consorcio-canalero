@@ -163,7 +163,7 @@ describe('FinanzasPanel', () => {
       expect.anything()
     );
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Gasto registrado', color: 'green' })
+      expect.objectContaining({ title: 'Gasto registrado', color: 'exito' })
     );
   });
 
@@ -196,7 +196,7 @@ describe('FinanzasPanel', () => {
     settlePost();
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Gasto registrado', color: 'green' })
+        expect.objectContaining({ title: 'Gasto registrado', color: 'exito' })
       );
     });
     await waitFor(() =>
@@ -259,7 +259,7 @@ describe('FinanzasPanel', () => {
       expect(JSON.parse(String(postCall?.[1]?.body))).toEqual(contracts.finanzas.ingreso_create);
     });
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Ingreso registrado', color: 'green' })
+      expect.objectContaining({ title: 'Ingreso registrado', color: 'exito' })
     );
   });
 
@@ -375,7 +375,7 @@ describe('FinanzasPanel', () => {
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'No se pudo descargar el resumen',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });

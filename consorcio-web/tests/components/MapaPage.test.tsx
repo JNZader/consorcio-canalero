@@ -171,8 +171,9 @@ describe('MapaPage', () => {
     describe('accessibility', () => {
       it('should have proper heading hierarchy', () => {
         renderWithMantine(<MapaContent />);
-        const h2 = screen.getByRole('heading', { level: 2 });
-        expect(h2).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { level: 1, name: /Mapa Interactivo/i })
+        ).toBeInTheDocument();
       });
 
       it('should have semantic button structure', () => {

@@ -214,14 +214,7 @@ export function HomeContent() {
               rurales e infraestructura hídrica
             </Text>
             <Group mt="md">
-              <Button
-                size="lg"
-                component={Link}
-                to="/mapa"
-                variant="filled"
-                color="acento"
-                c="dark.9"
-              >
+              <Button size="lg" component={Link} to="/mapa" variant="white" c="dark.9">
                 Ver Mapa
               </Button>
               <Button
@@ -450,14 +443,7 @@ export function HomeContent() {
               Reportá problemas en la infraestructura hídrica y colaborá con el mantenimiento de
               caminos y canales
             </Text>
-            <Button
-              size="lg"
-              component={Link}
-              to="/participacion"
-              variant="filled"
-              color="acento"
-              c="dark.9"
-            >
+            <Button size="lg" component={Link} to="/participacion" variant="white" c="dark.9">
               Realizar un Reporte
             </Button>
           </Stack>

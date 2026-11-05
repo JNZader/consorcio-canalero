@@ -42,7 +42,6 @@ export function ReunionesGrid({
           <Button
             fullWidth
             variant="light"
-            color="violet"
             onClick={() => onViewAgenda(reunion)}
             leftSection={<IconMessageDots size={16} />}
           >

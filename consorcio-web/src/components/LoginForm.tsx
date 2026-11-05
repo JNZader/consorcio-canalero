@@ -194,7 +194,12 @@ export function LoginFormContent() {
         </Title>
 
         {showEmailConfirmation && (
-          <Alert color="blue" icon={<IconMail size={16} />} mb="md" title="Confirmá tu email">
+          <Alert
+            color="institucional"
+            icon={<IconMail size={16} />}
+            mb="md"
+            title="Confirmá tu email"
+          >
             <Text size="sm">
               Te enviamos un email de confirmación a <strong>{form.values.email}</strong>. Revisá tu
               bandeja de entrada y hacé clic en el enlace para activar tu cuenta.

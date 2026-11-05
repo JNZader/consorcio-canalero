@@ -222,10 +222,12 @@ export const mantineTheme = createTheme({
 
   // Colores personalizados para mejor contraste WCAG AA
   other: {
-    // Color dimmed con mejor contraste en modo oscuro
-    // #a0a0a0 tiene ratio 5.5:1 sobre #242424 (supera 4.5:1 requerido)
-    dimmedColorLight: '#6b7280', // gray-500 - ratio 5.9:1 sobre blanco
-    dimmedColorDark: '#a3a3a3', // neutral-400 - ratio 5.5:1 sobre #242424
+    // Texto chico / atenuado. AA 4.5:1 medido con gamma (no el promedio lineal).
+    // gray-6 sobre blanco 7.6:1 y sobre gray-0 7.2:1. #6b7280 se quedaba en 4.8:1
+    // sobre blanco y bajaba de 4.5:1 sobre gray-1.
+    dimmedColorLight: '#4b5563',
+    // #a3a3a3 sobre dark-7 6.8:1, sobre dark-6 6.0:1, sobre dark-4 4.5:1.
+    dimmedColorDark: '#a3a3a3',
     /** Hex de mapa y estilos en línea. Mismo objeto que `mapColorTokens`. */
     mapColors: mapColorTokens,
     touchMin: TOUCH_MIN,
@@ -399,12 +401,18 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-danger': 'var(--mantine-color-alerta-6)',
       '--cc-color-warning': 'var(--mantine-color-orange-6)',
       '--cc-color-success': 'var(--mantine-color-exito-6)',
+      '--mantine-color-dimmed': String(theme.other.dimmedColorLight ?? '#4b5563'),
+      '--mantine-color-placeholder': String(theme.other.dimmedColorLight ?? '#4b5563'),
     },
     dark: {
       '--cc-color-surface-raised': 'var(--mantine-color-dark-6)',
       '--cc-color-danger': 'var(--mantine-color-alerta-4)',
       '--cc-color-warning': 'var(--mantine-color-orange-4)',
       '--cc-color-success': 'var(--mantine-color-exito-4)',
+      '--mantine-color-dimmed': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
+      '--mantine-color-placeholder': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
+      // gray-6 del tema es un gris oscuro pensado para texto sobre claro.
+      '--mantine-color-gray-6': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
     },
   };
 };

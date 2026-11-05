@@ -12,7 +12,7 @@ export function RouterErrorFallback({ error, reset }: RouterErrorFallbackProps) 
     <Container size="sm" py="xl">
       <Paper shadow="md" p="xl" radius="md" withBorder role="alert">
         <Stack gap="md">
-          <Alert color="red" title={erroresUi.seccion.titulo} variant="light">
+          <Alert color="alerta" title={erroresUi.seccion.titulo} variant="light">
             <Text size="sm">{erroresUi.seccion.detalle}</Text>
           </Alert>
 
@@ -24,7 +24,7 @@ export function RouterErrorFallback({ error, reset }: RouterErrorFallbackProps) 
 
           <Group justify="flex-start" mt="sm">
             {reset && (
-              <Button onClick={() => reset()} variant="light" color="red">
+              <Button onClick={() => reset()} variant="light" color="alerta">
                 Reintentar
               </Button>
             )}

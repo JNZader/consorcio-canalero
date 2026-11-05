@@ -179,7 +179,7 @@ function TramoSurveyStatus({
   if (error) {
     return (
       <Stack gap="xs">
-        <Alert color="red" data-testid="tramo-survey-load-error">
+        <Alert color="alerta" data-testid="tramo-survey-load-error">
           {error.message || 'No se pudo leer el relevamiento de este tramo.'}
         </Alert>
         {onRetry ? (
@@ -338,7 +338,7 @@ function TramoSurveyForm({
       ) : null}
 
       {error ? (
-        <Alert color="red" data-testid="tramo-survey-error">
+        <Alert color="alerta" data-testid="tramo-survey-error">
           {error}
         </Alert>
       ) : null}

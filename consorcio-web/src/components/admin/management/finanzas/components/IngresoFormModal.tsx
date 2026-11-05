@@ -70,7 +70,7 @@ export function IngresoFormModal({
             />
           </SimpleGrid>
           <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
-          <Button type="submit" fullWidth mt="md" color="green" loading={submitting}>
+          <Button type="submit" fullWidth mt="md" loading={submitting}>
             Guardar Ingreso
           </Button>
         </Stack>

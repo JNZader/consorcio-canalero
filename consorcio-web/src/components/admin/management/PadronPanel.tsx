@@ -235,7 +235,7 @@ export default function PadronPanel() {
         subtitle="Administración de socios y datos del padrón"
         actions={
           <>
-            <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate} color="blue">
+            <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate}>
               Nuevo Consorcista
             </Button>
             {canImportPadron && (
@@ -303,7 +303,6 @@ export default function PadronPanel() {
                     <Group gap="xs" wrap="nowrap">
                       <IconButton
                         variant="subtle"
-                        color="blue"
                         aria-label={`Editar consorcista ${c.apellido}, ${c.nombre}`}
                         onClick={() => handleOpenEdit(c)}
                       >

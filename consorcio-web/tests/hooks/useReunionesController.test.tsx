@@ -265,7 +265,7 @@ describe('useReunionesController — delete agenda topic', () => {
 
     expect(apiFetchMock).toHaveBeenCalledWith('/reuniones/r1/agenda/a1', { method: 'DELETE' });
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Tema eliminado', color: 'green' })
+      expect.objectContaining({ title: 'Tema eliminado', color: 'exito' })
     );
     expect(result.current.deletingAgendaItemId).toBeNull();
   });
@@ -282,7 +282,7 @@ describe('useReunionesController — delete agenda topic', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo eliminar el tema', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo eliminar el tema', color: 'alerta' })
     );
     expect(loggerMock.error).toHaveBeenCalledWith(
       'Error deleting agenda topic:',
@@ -331,7 +331,7 @@ describe('useReunionesController — create meeting', () => {
     expect(body.orden_del_dia_items).toEqual(['Punto A', 'Punto B']);
     expect(body.fecha_reunion).toBe(new Date('2026-04-01T10:00').toISOString());
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Reunión creada', color: 'green' })
+      expect.objectContaining({ title: 'Reunión creada', color: 'exito' })
     );
     expect(result.current.createOpened).toBe(false);
     expect(result.current.reunionForm.values.titulo).toBe('');
@@ -356,7 +356,7 @@ describe('useReunionesController — create meeting', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'No se pudo crear la reunión', color: 'red' })
+      expect.objectContaining({ title: 'No se pudo crear la reunión', color: 'alerta' })
     );
     expect(result.current.createOpened).toBe(true);
   });

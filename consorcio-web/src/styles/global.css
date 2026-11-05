@@ -219,10 +219,13 @@ body {
     0 0 0 5px var(--mantine-color-blue-4);
 }
 
-/* Sobrescribir color dimmed de Mantine para mejor contraste WCAG AA */
-/* El color dimmed por defecto tiene ratio ~4.0:1, necesitamos 4.5:1 minimo */
+/* Texto atenuado y placeholder. gray-6 (#4b5563): 7.6:1 sobre blanco y 7.2:1
+   sobre gray-0. El dimmed anterior (#6b7280) medía 4.8:1 sobre blanco y 4.3:1
+   sobre gray-1, por debajo de AA en texto chico. El resolver del tema publica
+   los mismos valores; esto cubre el CSS antes de que monte el provider. */
 :root {
-  --mantine-color-dimmed: #6b7280; /* gray-500 - ratio 5.9:1 sobre blanco */
+  --mantine-color-dimmed: #4b5563;
+  --mantine-color-placeholder: #4b5563;
   --mantine-color-gray-6: #4b5563; /* accessible gray for text + subtle nav */
   --mantine-color-orange-filled: #c2410c; /* white text ratio > 4.5:1 */
   --mantine-color-orange-filled-hover: #9a3412;
@@ -234,7 +237,10 @@ body {
 }
 
 [data-mantine-color-scheme="dark"] {
-  --mantine-color-dimmed: #a3a3a3; /* neutral-400 - ratio 5.5:1 sobre #1a1a1a */
+  /* #a3a3a3: 6.8:1 sobre dark-7, 6.0:1 sobre dark-6, 4.5:1 sobre dark-4. */
+  --mantine-color-dimmed: #a3a3a3;
+  --mantine-color-placeholder: #a3a3a3;
+  --mantine-color-gray-6: #a3a3a3;
 }
 
 /* Clase auxiliar para texto secundario accesible */

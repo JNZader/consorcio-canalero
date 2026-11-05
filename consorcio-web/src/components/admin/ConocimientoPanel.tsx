@@ -297,7 +297,7 @@ function BloqueRedireccion({
   const sufijo = parcial ? 'parcial-' : '';
   const safe = isSafeUrl(redireccion.superficie);
   return (
-    <Alert color="blue" variant="light" icon={<IconInfoCircle size={16} />}>
+    <Alert color="institucional" variant="light" icon={<IconInfoCircle size={16} />}>
       <Stack gap={4}>
         <Text size="sm" data-testid={`redireccion-${sufijo}motivo`}>
           {redireccion.motivo}
@@ -497,7 +497,7 @@ function esSesionExpirada(error: unknown): error is ConocimientoApiError {
 export function SesionExpirada() {
   return (
     <Alert
-      color="red"
+      color="alerta"
       variant="light"
       icon={<IconAlertTriangle size={16} />}
       title="Tu sesión expiró"
@@ -587,7 +587,7 @@ export function ConocimientoBandeja() {
             data-testid="pregunta-input"
           />
           {otroErrorEnvio ? (
-            <Alert color="red" variant="light" data-testid="error-envio">
+            <Alert color="alerta" variant="light" data-testid="error-envio">
               {mensajeDeErrorEnvio(otroErrorEnvio)}
             </Alert>
           ) : null}
@@ -622,7 +622,7 @@ export function ConocimientoBandeja() {
       </Group>
 
       {otroErrorListado ? (
-        <Alert color="red" variant="light" data-testid="error-bandeja">
+        <Alert color="alerta" variant="light" data-testid="error-bandeja">
           {otroErrorListado.message}
         </Alert>
       ) : null}
@@ -760,7 +760,7 @@ function RechazoDeExportacion({ error }: Readonly<{ error: ConocimientoApiError 
 
   return (
     <Alert
-      color="red"
+      color="alerta"
       variant="light"
       icon={<IconAlertTriangle size={16} />}
       title="El borrador no se exportó"
@@ -876,7 +876,7 @@ export function NormasBusqueda() {
             </Button>
           </Group>
           {otroErrorBusqueda ? (
-            <Alert color="red" variant="light" data-testid="normas-error">
+            <Alert color="alerta" variant="light" data-testid="normas-error">
               {otroErrorBusqueda.message}
             </Alert>
           ) : null}
@@ -919,7 +919,7 @@ export function NormasBusqueda() {
           </Group>
           {rechazo ? <RechazoDeExportacion error={rechazo} /> : null}
           {otroErrorExportacion ? (
-            <Alert color="red" variant="light" data-testid="pedido-error">
+            <Alert color="alerta" variant="light" data-testid="pedido-error">
               {otroErrorExportacion.message}
             </Alert>
           ) : null}

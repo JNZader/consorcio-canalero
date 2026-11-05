@@ -41,7 +41,7 @@ function MapaErrorFallback() {
       }}
     >
       <Stack gap="sm" maw={560} p="md">
-        <Alert color="red" title={erroresUi.cargarMapa.titulo} variant="light" radius="md">
+        <Alert color="alerta" title={erroresUi.cargarMapa.titulo} variant="light" radius="md">
           <Text size="sm">{erroresUi.cargarMapa.detalle}</Text>
         </Alert>
         <Box component="section" role="region" aria-label="descripción textual del mapa">

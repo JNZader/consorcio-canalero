@@ -178,7 +178,7 @@ describe('ReportsPanel', () => {
     });
 
     expect(notifications.show).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Reporte actualizado', color: 'green' })
+      expect.objectContaining({ title: 'Reporte actualizado', color: 'exito' })
     );
     expect(announceMock).toHaveBeenCalledWith('Reporte actualizado correctamente');
     expect(reportsApi.getAll).toHaveBeenCalledTimes(2);
@@ -196,7 +196,7 @@ describe('ReportsPanel', () => {
         expect.objectContaining({
           title: 'No pudimos cargar las denuncias',
           message: 'Actualizá la página. Si sigue igual, esperá un momento y volvé a entrar.',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -228,7 +228,7 @@ describe('ReportsPanel', () => {
         expect.objectContaining({
           title: 'No pudimos guardar el cambio de la denuncia',
           message: 'Revisá la conexión y volvé a intentar.',
-          color: 'red',
+          color: 'alerta',
         })
       );
     });

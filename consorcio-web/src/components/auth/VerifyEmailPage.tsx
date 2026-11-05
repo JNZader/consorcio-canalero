@@ -1,8 +1,8 @@
 import { Alert, Button, Center, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  type EmailCodeExchangeResult,
   completeEmailCodeExchange,
+  type EmailCodeExchangeResult,
   exchangeEmailCode,
   verifyEmailWithToken,
 } from '../../lib/auth';
@@ -112,7 +112,7 @@ export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
             <Title order={2} ta="center">
               Correo verificado
             </Title>
-            <Alert color="green" icon={<IconCheck size={16} />}>
+            <Alert color="exito" icon={<IconCheck size={16} />}>
               Tu cuenta ya está activa. Podés iniciar sesión.
             </Alert>
             <Button component="a" href={withBasePath('/login')} fullWidth>
@@ -124,7 +124,7 @@ export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
         {state === 'retryable-error' && (
           <Stack gap="md">
             <Alert
-              color="yellow"
+              color="orange"
               icon={<IconAlertCircle size={16} />}
               title="No pudimos verificar el enlace"
             >
@@ -141,7 +141,7 @@ export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
 
         {state === 'terminal-error' && (
           <Stack gap="md">
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Enlace inválido">
+            <Alert color="alerta" icon={<IconAlertCircle size={16} />} title="Enlace inválido">
               {error}
             </Alert>
             <Button component="a" href={withBasePath('/login')} variant="subtle" fullWidth>

@@ -86,7 +86,6 @@ export function ReportsTableContent({
                       <Tooltip label="Ver en mapa">
                         <IconButton
                           variant="light"
-                          color="blue"
                           component="a"
                           href={`/mapa?${new URLSearchParams({
                             report: '1',

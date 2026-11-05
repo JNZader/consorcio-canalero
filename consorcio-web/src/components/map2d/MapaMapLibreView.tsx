@@ -576,7 +576,7 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   }}
                 >
                   <Stack gap="sm" maw={560}>
-                    <Alert color="red" title={erroresUi.cargarMapa.titulo} variant="light">
+                    <Alert color="alerta" title={erroresUi.cargarMapa.titulo} variant="light">
                       <Text size="sm">{mapLoadError}</Text>
                     </Alert>
                     <Box
@@ -613,7 +613,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 rightDate={comparisonInfo?.rightDate ?? null}
               />
             </div>
-
 
             <PuntoInteresPlaceModal
               opened={puntosInteres.modalOpen}

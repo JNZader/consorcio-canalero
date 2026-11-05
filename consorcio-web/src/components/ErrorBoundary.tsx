@@ -185,7 +185,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <Paper shadow="md" p="xl" radius="md" withBorder>
           <Stack gap="md">
-            <Alert color="red" title={erroresUi.seccion.titulo} variant="light">
+            <Alert color="alerta" title={erroresUi.seccion.titulo} variant="light">
               <Text size="sm">{erroresUi.seccion.detalle}</Text>
             </Alert>
 
@@ -235,12 +235,12 @@ export function ErrorFallback({
   onRetry?: () => void;
 }>) {
   return (
-    <Alert color="red" title={erroresUi.seccion.titulo} variant="light">
+    <Alert color="alerta" title={erroresUi.seccion.titulo} variant="light">
       <Text size="sm" mb="sm">
         {message}
       </Text>
       {onRetry && (
-        <Button size="xs" variant="light" color="red" onClick={onRetry}>
+        <Button size="xs" variant="light" color="alerta" onClick={onRetry}>
           Reintentar
         </Button>
       )}

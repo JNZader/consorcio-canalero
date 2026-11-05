@@ -27,7 +27,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Success',
         message: 'Operation completed',
-        color: 'green',
+        color: 'exito',
       });
     });
 
@@ -47,7 +47,7 @@ describe('notifications', () => {
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          color: 'green',
+          color: 'exito',
         })
       );
     });
@@ -58,7 +58,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: '',
         message: '',
-        color: 'green',
+        color: 'exito',
       });
     });
 
@@ -81,7 +81,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Error',
         message: 'Something went wrong',
-        color: 'red',
+        color: 'alerta',
       });
     });
 
@@ -90,7 +90,7 @@ describe('notifications', () => {
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -136,7 +136,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Info',
         message: 'Process completed',
-        color: 'blue',
+        color: 'institucional',
       });
     });
 
@@ -145,7 +145,7 @@ describe('notifications', () => {
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          color: 'blue',
+          color: 'institucional',
         })
       );
     });
@@ -158,7 +158,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Vista aplicada',
         message: 'Se reemplazó la selección de capas.',
-        color: 'blue',
+        color: 'institucional',
         className: 'cc-toast-below-header',
       });
     });
@@ -171,30 +171,30 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Title',
         message: 'Message',
-        color: 'yellow',
+        color: 'orange',
       });
     });
 
-    it('should support all color options', () => {
-      const colors: Array<'green' | 'red' | 'orange' | 'blue' | 'yellow' | 'gray'> = [
-        'green',
-        'red',
-        'orange',
-        'blue',
-        'yellow',
-        'gray',
-      ];
+    it('maps legacy colors onto the palette', () => {
+      const cases = [
+        ['green', 'exito'],
+        ['red', 'alerta'],
+        ['orange', 'orange'],
+        ['blue', 'institucional'],
+        ['yellow', 'orange'],
+        ['gray', 'gray'],
+      ] as const;
 
-      colors.forEach((color) => {
+      for (const [input, expected] of cases) {
         vi.clearAllMocks();
-        notificationModule.showNotification('Title', 'Message', color);
+        notificationModule.showNotification('Title', 'Message', input);
 
         expect(notifications.show).toHaveBeenCalledWith(
           expect.objectContaining({
-            color,
+            color: expected,
           })
         );
-      });
+      }
     });
 
     it('should pass all parameters correctly', () => {
@@ -216,7 +216,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Error Title',
         message: 'Test error message',
-        color: 'red',
+        color: 'alerta',
       });
     });
 
@@ -256,7 +256,7 @@ describe('notifications', () => {
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          color: 'red',
+          color: 'alerta',
         })
       );
     });
@@ -302,7 +302,7 @@ describe('notifications', () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: 'Ok',
         message: 'Listo',
-        color: 'green',
+        color: 'exito',
         icon,
         autoClose: 4000,
       });
@@ -312,7 +312,7 @@ describe('notifications', () => {
       notificationModule.showToast({ color: 'red', message: 'No se pudo guardar' });
       expect(notifications.show).toHaveBeenCalledWith({
         message: 'No se pudo guardar',
-        color: 'red',
+        color: 'alerta',
       });
     });
 

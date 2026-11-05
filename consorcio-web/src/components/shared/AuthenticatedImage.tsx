@@ -1,5 +1,5 @@
-import { Alert, Center, Image, Loader } from '@mantine/core';
 import type { ImageProps } from '@mantine/core';
+import { Alert, Center, Image, Loader } from '@mantine/core';
 import { useEffect, useState } from 'react';
 
 import { fetchAuthenticatedBlob } from '../../lib/api';
@@ -59,7 +59,7 @@ export function AuthenticatedImage({ alt, src, ...imageProps }: AuthenticatedIma
 
   if (state.error || !state.objectUrl) {
     return (
-      <Alert color="red" role="alert">
+      <Alert color="alerta" role="alert">
         No se pudo cargar la imagen protegida.
       </Alert>
     );

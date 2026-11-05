@@ -263,7 +263,9 @@ export function TerrainViewer3DChrome({
             <SegmentedControl
               size="xs"
               value={terrainSmoothingThreshold}
-              onChange={(value) => onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')}
+              onChange={(value) =>
+                onTerrainSmoothingThresholdChange(value as 'low' | 'med' | 'high')
+              }
               disabled={!terrainSmoothingEnabled}
               data={[
                 { value: 'low', label: 'Suave' },
@@ -295,17 +297,17 @@ export function TerrainViewer3DChrome({
       )}
 
       {heavyWarning ? (
-        <Alert color="yellow" py={6} data-testid="terrain-heavy-layers-warning">
+        <Alert color="orange" py={6} data-testid="terrain-heavy-layers-warning">
           {heavyWarning}
         </Alert>
       ) : null}
       {loadLines.loading.map((line) => (
-        <Alert key={line} color="blue" py={6} data-testid="terrain-layer-loading">
+        <Alert key={line} color="institucional" py={6} data-testid="terrain-layer-loading">
           {line}
         </Alert>
       ))}
       {loadLines.errors.map((line) => (
-        <Alert key={line} color="red" py={6} data-testid="terrain-layer-error">
+        <Alert key={line} color="alerta" py={6} data-testid="terrain-layer-error">
           {line}
         </Alert>
       ))}
@@ -334,9 +336,7 @@ export function TerrainViewer3DChrome({
             />
           ) : null
         }
-        selectionKey={
-          selectedFeatures && selectedFeatures.length > 0 ? selectedFeatures : null
-        }
+        selectionKey={selectedFeatures && selectedFeatures.length > 0 ? selectedFeatures : null}
         onCloseSelection={onCloseInfoPanel}
         activeLayerCount={sumFamilyActiveCounts(
           buildFamilyActiveCounts({
@@ -386,7 +386,6 @@ export function TerrainViewer3DChrome({
               <Button
                 size="xs"
                 variant="filled"
-                color="blue"
                 data-testid="terrain-flythrough"
                 disabled={!canFlythrough}
                 onClick={onFlythrough}
@@ -417,9 +416,7 @@ export function TerrainViewer3DChrome({
                   {exaggerationCanvasLabel(exaggeration)}
                 </Text>
                 {terrainSmoothingEnabled ? ' · suavizado' : ''}
-                {selectedImage
-                  ? ` · ${selectedImage.sensor} ${selectedImage.target_date}`
-                  : ''}
+                {selectedImage ? ` · ${selectedImage.sensor} ${selectedImage.target_date}` : ''}
                 {hoveredFeature ? (
                   <Text span data-testid="terrain-feature-readout">{` · ${hoveredFeature}`}</Text>
                 ) : (
@@ -517,11 +514,8 @@ export function TerrainViewer3DChrome({
                 showDemOverlay={Boolean(activeRasterLayerId)}
                 onShowDemOverlayChange={(visible) => {
                   const fallbackId =
-                    selectedImageOption?.value ??
-                    resolveDefaultTerrainRasterId({ rasterLayers });
-                  onActiveRasterLayerChange(
-                    visible ? (activeRasterLayerId ?? fallbackId) : null
-                  );
+                    selectedImageOption?.value ?? resolveDefaultTerrainRasterId({ rasterLayers });
+                  onActiveRasterLayerChange(visible ? (activeRasterLayerId ?? fallbackId) : null);
                 }}
                 activeDemLayerId={activeRasterLayerId ?? null}
                 onActiveDemLayerIdChange={onActiveRasterLayerChange}

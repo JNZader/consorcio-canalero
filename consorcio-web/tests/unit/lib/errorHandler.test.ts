@@ -151,7 +151,7 @@ describe('errorHandler', () => {
         expect.objectContaining({
           title: 'Error',
           message: 'Test error',
-          color: 'red',
+          color: 'alerta',
         })
       );
       expect(logger.error).toHaveBeenCalled();
@@ -210,11 +210,11 @@ describe('errorHandler', () => {
 
     it('should use custom color for notification', () => {
       const error = new Error('Test error');
-      handleError(error, { color: 'yellow' });
+      handleError(error, { color: 'orange' });
 
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({
-          color: 'yellow',
+          color: 'orange',
         })
       );
     });

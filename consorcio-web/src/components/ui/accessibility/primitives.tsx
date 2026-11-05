@@ -33,13 +33,13 @@ export function AccessibleError({ id, error, className }: AccessibleErrorProps) 
   return (
     <Alert
       id={id}
-      color="red"
+      color="alerta"
       variant="light"
       mt="xs"
       role="alert"
       aria-live="assertive"
       className={className}
-      styles={{ root: { borderLeft: '4px solid var(--mantine-color-red-6)' } }}
+      styles={{ root: { borderLeft: '4px solid var(--mantine-color-alerta-8)' } }}
     >
       <Text size="sm">{error}</Text>
     </Alert>

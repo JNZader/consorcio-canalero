@@ -52,7 +52,7 @@ export function LoadingState({
 
   if (status === 'error') {
     return (
-      <Alert color="red" variant="light" title={title} role="alert">
+      <Alert color="alerta" variant="light" title={title} role="alert">
         <Text size="sm">{description ?? message}</Text>
         {action}
       </Alert>

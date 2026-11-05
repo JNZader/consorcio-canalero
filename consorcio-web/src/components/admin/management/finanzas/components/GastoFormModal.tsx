@@ -62,7 +62,7 @@ export function GastoFormModal({
             />
           </SimpleGrid>
           <TextInput type="date" label="Fecha" required {...form.getInputProps('fecha')} />
-          <Button type="submit" fullWidth mt="md" color="red" loading={submitting}>
+          <Button type="submit" fullWidth mt="md" loading={submitting}>
             Guardar Gasto
           </Button>
         </Stack>

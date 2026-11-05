@@ -115,7 +115,7 @@ export default function DemPipelinePanel() {
             </Group>
 
             {error && (
-              <Alert icon={<IconAlertTriangle size={16} />} color="red" title="Error">
+              <Alert icon={<IconAlertTriangle size={16} />} color="alerta" title="Error">
                 {error}
               </Alert>
             )}
