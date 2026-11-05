@@ -21,18 +21,15 @@
  * hermanos siguen la variable: incoherente y, en tactil, sin objetivo de 44px.
  * Hoy la ponen `LayerControlsPanel` (2D) y `TerrainLayerTogglesPanel` (3D).
  */
-import { ActionIcon, Checkbox, Select, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
+import { Checkbox, Select, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
 import { useState } from 'react';
 
 import { ALL_ETAPAS } from '../../types/canales';
 import { normalizeSearchText } from '../map2d/map2dDerived';
-import { IconEye, IconEyeOff } from '../ui/icons';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
-import {
-  type CanalToggleEntry,
-  computeBulkState,
-  flattenCanalEntries,
-} from './canalesGrouping';
+import { IconButton } from '../ui/IconButton';
+import { IconEye, IconEyeOff } from '../ui/icons';
+import { type CanalToggleEntry, computeBulkState, flattenCanalEntries } from './canalesGrouping';
 
 interface CanalesLayerSectionProps {
   side: 'relevados' | 'propuestos';
@@ -182,9 +179,7 @@ export function CanalesLayerSection({
 }: CanalesLayerSectionProps) {
   const bulk = computeBulkState(entries, vectorVisibility);
   const masterChecked = !!masterOn && bulk.allOn;
-  const masterLabel = masterChecked
-    ? `Apagar todos los ${side}`
-    : `Encender todos los ${side}`;
+  const masterLabel = masterChecked ? `Apagar todos los ${side}` : `Encender todos los ${side}`;
   if (!entries || entries.length === 0) return null;
   const activateMaster = () => {
     if (!masterOn) onLayerVisibilityChange(masterFlag, true);
@@ -320,12 +315,16 @@ function GroupRow({
       data-testid={`canal-toggle-${id}`}
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}
     >
-      <UnstyledButton type="button" onClick={onFocus} style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+      <UnstyledButton
+        type="button"
+        onClick={onFocus}
+        style={{ flex: 1, minWidth: 0, textAlign: 'left' }}
+      >
         <Text size="xs" lineClamp={1}>
           {label}
         </Text>
       </UnstyledButton>
-      <ActionIcon
+      <IconButton
         size="sm"
         variant="subtle"
         color={visible ? 'gray' : 'red'}
@@ -333,7 +332,7 @@ function GroupRow({
         onClick={onToggle}
       >
         {visible ? <IconEye size={14} /> : <IconEyeOff size={14} />}
-      </ActionIcon>
+      </IconButton>
     </div>
   );
 }
