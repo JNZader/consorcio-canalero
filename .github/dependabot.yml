@@ -113,11 +113,11 @@ updates:
       - "automated"
     versioning-strategy: increase
     ignore:
-      # @vitejs/plugin-react@6.1.2 (latest) peerOptional is
-      # oxc-transform-react@^0.152.0, which is <0.153.0. 0.154 makes
-      # `npm ci` fail with ERESOLVE. Drop this once the plugin accepts >=0.154.
+      # @vitejs/plugin-react@6.2.1 peerOptional is
+      # oxc-transform-react@>=0.152.0 <0.157.0. 0.157 makes `npm ci`
+      # fail with ERESOLVE. Drop this once the plugin accepts >=0.157.
       - dependency-name: "oxc-transform-react"
-        versions: [">=0.153.0"]
+        versions: [">=0.157.0"]
       # Alias of the JS compiler API that Stryker's sandbox preprocessor
       # imports. TypeScript 7 does not export that API; 6.0.3 does.
       # `typescript` itself stays on 7.x for tsc.
