@@ -738,6 +738,31 @@ def test_geo_dockerfile_upgrades_libbrotli_past_cve_2026_111497() -> None:
     assert "libbrotli1" in gate_lines
 
 
+def test_geo_dockerfile_upgrades_apt_past_cve_2026_109518() -> None:
+    hotfix = _geo_hotfix_body("# Security hotfix (CVE-2026-109518")
+
+    assert hotfix.count('fixed_version="3.2.1ubuntu0.1"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("--only-upgrade") < hotfix.index("dpkg-query --show")
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="3.2.1ubuntu0.1"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    for package in ("apt", "libapt-pkg7.0"):
+        assert package in install_lines
+        assert package in gate_lines
+
+
 def test_backend_dockerfile_hotfix_blocks_are_ordered_before_site_packages_copy() -> None:
     dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
     production = dockerfile.split(" AS production", 1)[1]

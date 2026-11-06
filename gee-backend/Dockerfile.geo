@@ -80,6 +80,36 @@ RUN set -eu; \
     done; \
     rm -rf /var/lib/apt/lists/*
 
+# Security hotfix (CVE-2026-109518): the pinned gdal ubuntu-small digest still
+# carries apt 3.2.0. Trivy reports apt and libapt-pkg7.0 HIGH with
+# Status=fixed at 3.2.1ubuntu0.1, and the geo-worker policy rejects any
+# finding that already has a fix. --only-upgrade stays on packages the base
+# already installed. REMOVE this block when the pinned digest carries
+# apt >= 3.2.1ubuntu0.1.
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    apt \
+    libapt-pkg7.0; \
+    fixed_version="3.2.1ubuntu0.1"; \
+    for package in \
+        apt \
+        libapt-pkg7.0; \
+    do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        if [ "$package_state" != "installed" ]; then \
+            echo "security upgrade did not install $package" >&2; \
+            exit 1; \
+        fi; \
+        if ! dpkg --compare-versions "$installed_version" ge "$fixed_version"; then \
+            echo "$package remains below $fixed_version: $installed_version" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
