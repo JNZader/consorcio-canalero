@@ -5,18 +5,18 @@
 #   requirements.lock       runtime closure  (backend image, deploy)
 #   requirements-dev.lock   runtime + dev    (CI: lint/typecheck/test/mutation)
 #
-# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.14 = the
+# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.15 = the
 # backend image's interpreter and CI). Pass --overrides so
 # fastapi-users-db-sqlalchemy's stale sqlalchemy<2.1 pin does not block Wave C5
-# (see overrides.txt). --universal keeps cp312 wheels in the hash set so the
-# geo-worker (Ubuntu 24.04 / Python 3.12 on the GDAL base) can install the same
-# lock; resolution itself is Python 3.14 so numpy 2.5 / scipy 1.18 / rasterio
-# 1.5 / pyproj 3.8 (requires-python >=3.12) are eligible.
+# (see overrides.txt). --universal keeps cp314 wheels in the hash set so the
+# geo-worker (Ubuntu 26.04 / Python 3.14 on the GDAL base, seen as
+# libpython3.14 in the image scan) can install the same lock. Resolution
+# itself is Python 3.15.
 #
-#   uv pip compile requirements.txt --python-version 3.14 --universal \
+#   uv pip compile requirements.txt --python-version 3.15 --universal \
 #       --generate-hashes --overrides overrides.txt \
 #       --output-file requirements.lock
-#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.14 \
+#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.15 \
 #       --universal --generate-hashes --overrides overrides.txt \
 #       --output-file requirements-dev.lock
 #

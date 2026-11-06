@@ -3,13 +3,11 @@
 #
 # One weekly PR per ecosystem for minor+patch, and a separate PR for majors.
 # github-actions and docker only accept cooldown.default-days.
-# The python image ignores 3.15+ with a Bundler requirement (">= 3.15.a").
-# Globs and full tags are not valid docker ignore versions. ">= 3.15" misses
-# 3.15.0rc* because those sort below 3.15 (#512). 3.15.2 is stable, but the
-# backend image stays on 3.14: one hashed lock is resolved for 3.14 so the
-# geo-worker (Python 3.12 on the OSGeo GDAL image) can install it, and the
-# production stage paths are python3.14. ipython majors are ignored
-# (#523); their minors and patches still group.
+# The python image ignores 3.16+ with a Bundler requirement (">= 3.16.a").
+# Globs and full tags are not valid docker ignore versions. ">= 3.16" misses
+# 3.16.0rc* because those sort below 3.16. ">= 3.16.a" matches the
+# prereleases and 3.16.0+ and leaves 3.15.x patches. ipython majors are
+# ignored (#523); their minors and patches still group.
 
 version: 2
 
@@ -159,14 +157,10 @@ updates:
       - "docker"
       - "automated"
     ignore:
-      # Docker `versions` only accepts Bundler requirements. "*rc*" and
-      # "3.15.0rc2-slim-trixie" fail the config check. ">= 3.15" is valid but
-      # does not match 3.15.0rc* (they sort below 3.15). ">= 3.15.a" is the
-      # lower bound Dependabot itself emits for a semver-minor ignore: it
-      # matches 3.15.0rc1/rc2/rc3 and 3.15.0+ and leaves 3.14.x patches.
-      # 3.14 stays pinned by hand.
+      # Docker `versions` only accepts Bundler requirements. ">= 3.16.a"
+      # matches 3.16 prereleases and 3.16.0+ and leaves 3.15.x patches.
       - dependency-name: "python"
-        versions: [">= 3.15.a"]
+        versions: [">= 3.16.a"]
     groups:
       docker-minor-patch:
         patterns:
