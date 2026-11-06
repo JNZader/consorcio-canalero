@@ -10,4 +10,4 @@
 #   pip install -r requirements-geo.txt -r requirements-ml.txt
 #   python scripts/train_water_unet.py --epochs 50
 torch>=2.0.0
-segmentation-models-pytorch>=0.3.0
+segmentation-models-pytorch>=0.6.0
