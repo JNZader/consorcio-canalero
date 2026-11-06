@@ -18,7 +18,7 @@ El mapa embebido de la denuncia usa gestos cooperativos: un dedo sobre el canvas
 
 El job `visual` de `.github/workflows/frontend.yml` corre dentro de:
 
-`mcr.microsoft.com/playwright:v1.64.1-noble`
+`mcr.microsoft.com/playwright:v1.65.0-noble`
 
 Ese tag es la versión fijada de `@playwright/test` en `package-lock.json`. Las baselines viven en `tests/visual/__screenshots__/` y solo matchean si se generan en esa imagen (mismo Chromium, mismas fuentes). Un `--update-snapshots` en macOS o en el Chromium del sistema no sirve para CI.
 

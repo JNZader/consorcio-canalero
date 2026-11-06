@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Regresión visual y e2e mobile de las rutas públicas.
  *
  * Las baselines se generan y se comparan en la imagen
- * `mcr.microsoft.com/playwright:v1.64.1-noble` (la misma que usa el job
+ * `mcr.microsoft.com/playwright:v1.65.0-noble` (la misma que usa el job
  * `visual` de `.github/workflows/frontend.yml`). Tiene que coincidir con
  * `@playwright/test` en package-lock.json. Ver docs/visual-regression.md.
  */
