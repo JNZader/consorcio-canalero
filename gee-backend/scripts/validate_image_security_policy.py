@@ -213,19 +213,18 @@ DEADLINE_CEILINGS = {
     "HIGH": "2026-12-12T00:00:00Z",
     "absolute_sunset": "2026-12-12T00:00:00Z",
 }
-# 2026-11-06: the backend base is python:3.14.10-slim-trixie. 3.14.10
-# distrusts the compromised eMudhra intermediate CAs in ssl
-# (CVE-2026-115557, https://www.python.org/downloads/release/python-31410/).
-# 3.15.2 is the newest stable CPython. This image stays on 3.14 because the
-# hashed lock is resolved for 3.14 so the geo-worker (Python 3.12 on the
-# OSGeo GDAL image) can install the same closure, and the production stage
-# removes site-packages under python3.14.
+# 2026-11-06: the backend base is python:3.15.2-slim-trixie, the newest
+# stable CPython image. 3.14.10's ssl distrust of the eMudhra CAs
+# (CVE-2026-115557) is included in 3.15. The geo-worker image is Ubuntu
+# 26.04 with Python 3.14 (libpython3.14 in the Trivy report). The lock is
+# universal and was dry-run installed on both 3.14.10 and 3.15.2. The
+# production stage removes site-packages under python3.15.
 ROLE_BINDINGS = {
     "backend": {
         "dockerfile": "gee-backend/Dockerfile",
         "base_image": (
-            "python:3.14.10-slim-trixie@"
-            "sha256:af8a5aa14780025dbfbcfbc81bd8a91ebd87711dd5b0f48ed71090949dd7cb1d"
+            "python:3.15.2-slim-trixie@"
+            "sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
         ),
         "allowed_repositories": [
             "local/consorcio-backend",
