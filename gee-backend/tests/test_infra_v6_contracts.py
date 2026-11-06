@@ -528,6 +528,9 @@ def test_sast_workflow_runs_gitleaks_and_semgrep_with_a_baseline() -> None:
     assert "--error" in sast
     assert "semgrep==1.180.0" in sast
     assert "fetch-depth: 0" in sast
+    semgrep_job = sast.split("\n  semgrep:\n", 1)[1]
+    assert "python-version: '3.14'" in semgrep_job
+    assert "python-version: '3.15" not in semgrep_job
 
 
 def test_pages_prod_smoke_checks_deep_routes_without_calling_the_api() -> None:
