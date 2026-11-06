@@ -8,7 +8,10 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, develop]
+    # cursor/** so a PR stacked on another cursor/ branch runs Gitleaks and
+    # Semgrep before that parent is in main. pull_request stays read-only
+    # for forks; this is not pull_request_target.
+    branches: [main, develop, "cursor/**"]
   workflow_dispatch:
 
 concurrency:
@@ -74,6 +77,8 @@ jobs:
             --baseline-commit "$baseline" \
             --error \
             --metrics=off \
+            --jobs 1 \
+            --max-memory 2000 \
             --exclude node_modules \
             --exclude .venv \
             --exclude venv
