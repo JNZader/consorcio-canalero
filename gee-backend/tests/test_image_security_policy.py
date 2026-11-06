@@ -468,13 +468,17 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # 53 -> 55 el 2026-11-03: CVE-2026-117610 y CVE-2026-118370 sobre libexpat1
     # 2.9.0-1~deb13u1, HIGH affected, sin FixedVersion. Debian trixie y sid
     # siguen unfixed; no hay remediacion de paquete disponible.
-    assert len(backend_findings) == 55
-    assert sum(finding["count"] for finding in backend_findings) == 55
+    # 55 -> 53 el 2026-11-06: el gate del job 127687487454 (run 42154703699,
+    # SHA 1c21ddce) reporto unexpected vacio y missing exactamente esas dos
+    # filas despues de instalar expat 2.10.0. CVE-2026-113351 y CVE-2026-76844
+    # no aparecen. No se agrega ninguna fila.
+    assert len(backend_findings) == 53
+    assert sum(finding["count"] for finding in backend_findings) == 53
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 54
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 52
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 54
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 52
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -516,7 +520,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     installed_by_package = {
         finding["pkg_id"].partition("@")[0]: finding["installed"] for finding in backend_findings
     }
-    assert installed_by_package["libexpat1"] == "2.9.0-1~deb13u1"
+    assert "libexpat1" not in installed_by_package
     assert installed_by_package["perl-base"] == "5.40.1-6+deb13u1"
     assert installed_by_package["util-linux"] == "2.41.5-0+deb13u1"
     rows_by_cve = {
@@ -531,8 +535,6 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     util_linux = sorted(UTIL_LINUX_PACKAGES)
     assert rows_by_cve == {
         "CVE-2025-69720": ncurses,
-        "CVE-2026-117610": ["libexpat1"],
-        "CVE-2026-118370": ["libexpat1"],
         "CVE-2026-119373": ["libsqlite3-0"],
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
@@ -559,13 +561,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         ("CVE-2026-9538", "perl-base@5.40.1-6+deb13u1")
     ]
     expat = [finding for finding in backend_findings if finding["pkg_id"].startswith("libexpat1@")]
-    assert [finding["cve"] for finding in expat] == ["CVE-2026-117610", "CVE-2026-118370"]
-    assert expat[0]["installed"] == "2.9.0-1~deb13u1"
-    assert expat[0]["fixed"] == ""
-    assert expat[0]["status"] == "affected"
-    assert expat[1]["installed"] == "2.9.0-1~deb13u1"
-    assert expat[1]["fixed"] == ""
-    assert expat[1]["status"] == "affected"
+    assert expat == []
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
         "sha256:0ba6983d0bceb084726d88971a7bd78ab31a848f313fac59fa58edf8aa94977a"
