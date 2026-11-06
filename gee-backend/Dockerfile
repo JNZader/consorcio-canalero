@@ -72,6 +72,7 @@ FROM python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38a
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         dpkg-dev \
+        g++ \
         gcc \
         libc6-dev \
         make \
