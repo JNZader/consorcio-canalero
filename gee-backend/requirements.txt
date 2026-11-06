@@ -31,10 +31,14 @@
 # packages (see that file's own notes).
 # ─────────────────────────────────────────────────────────────────────────────
 
-# FastAPI
-# 0.143 makes FastAPI's OpenTelemetry exporter opt-in. This app does not use
-# that auto-config, so the bump is safe. Stay below 0.144 until the next review.
-fastapi>=0.115.0,!=0.137.0,!=0.137.1,<0.144.0
+# FastAPI 0.162. The 0.143 OpenTelemetry exporter stays opt-in; this app
+# does not set FASTAPI_OTEL_AUTO_CONFIGURE. 0.145 removed openapi_prefix
+# and Query/Body **extra (this tree uses neither). 0.146 deprecates
+# FastAPI(root_path=); the only root_path here is a filesystem path.
+# 0.147–0.162 change omitted form booleans, empty form strings, and JSON
+# null versus omitted Body. Routes use Query defaults and File(...), not
+# form models. The cap below 0.144 is gone.
+fastapi>=0.162.0,!=0.137.0,!=0.137.1
 uvicorn[standard]>=0.34.0
 python-dotenv>=1.2.4
 pydantic[email]>=2.14.1

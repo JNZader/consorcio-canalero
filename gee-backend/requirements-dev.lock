@@ -1284,9 +1284,9 @@ faker==40.44.0 \
     # via
     #   -r requirements-dev.txt
     #   factory-boy
-fastapi==0.143.5 \
-    --hash=sha256:09cc38ed8c6a95f407783ef4d98ceeb350e192fe8fbb8ed711070bcd5208fdfa \
-    --hash=sha256:0b5c8e52d243cd2f015376b41e78db5bee585578782481abd145e1ab5a62a3ba
+fastapi==0.162.0 \
+    --hash=sha256:3785963de305dd09912426cb81f2d230fce98ab3521cdfe97265c8d14983128c \
+    --hash=sha256:6a22c1e2e6e32e0633ee7e170f00009a29b8228b16feb219ee42f32fd8d88a8f
     # via
     #   -r requirements.txt
     #   -r requirements.txt
