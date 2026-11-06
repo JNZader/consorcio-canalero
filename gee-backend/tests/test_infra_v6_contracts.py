@@ -147,11 +147,11 @@ def test_known_image_digests_are_the_ones_resolved_for_this_change() -> None:
     )
     assert (
         web.count(
-            "node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4"
+            "node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216"
         )
         == 3
     )
-    assert not re.search(r"^FROM node:(22|25)-alpine\s", web, re.M)
+    assert not re.search(r"^FROM node:(22|25|26)-alpine\s", web, re.M)
     assert (
         "alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8"
         in backup
@@ -275,8 +275,9 @@ def test_stock_caddyfile_has_no_rate_limit_directive() -> None:
 
 def test_pages_node_pin_is_at_the_repo_root() -> None:
     """Pages reads .node-version from the repo root, before `cd consorcio-web`."""
-    assert _read(".node-version").strip() == "22.23.3"
-    assert _read("consorcio-web/.node-version").strip() == "22.23.3"
+    assert _read(".node-version").strip() == "26.13.0"
+    assert _read("consorcio-web/.node-version").strip() == "26.13.0"
+    assert _read("consorcio-web/.nvmrc").strip() == "26.13.0"
 
 
 def test_recharts_react_is_is_a_direct_dependency() -> None:

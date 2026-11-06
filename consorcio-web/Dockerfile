@@ -6,7 +6,7 @@
 # ----------------------------------------------
 # Stage 1: Dependencies - Install npm packages
 # ----------------------------------------------
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS deps
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS deps
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN npm ci --prefer-offline --no-audit
 # ----------------------------------------------
 # Stage 2: Development - For local development
 # ----------------------------------------------
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS development
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS development
 
 WORKDIR /app
 
@@ -54,7 +54,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 # ----------------------------------------------
 # Stage 3: Builder - Build the application
 # ----------------------------------------------
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS builder
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS builder
 
 WORKDIR /app
 
@@ -88,7 +88,7 @@ RUN npm prune --production
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.30.6-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949 AS runtime
+FROM nginx:1.30.6-alpine@sha256:e9b2d7624fd7957f4ed44ae0a272d93fb73aeb8512ba8916f8118ae6143fd115 AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \

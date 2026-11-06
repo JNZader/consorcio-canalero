@@ -5,7 +5,10 @@
 # github-actions and docker only accept cooldown.default-days.
 # The python image ignores 3.15+ with a Bundler requirement (">= 3.15.a").
 # Globs and full tags are not valid docker ignore versions. ">= 3.15" misses
-# 3.15.0rc* because those sort below 3.15 (#512). ipython majors are ignored
+# 3.15.0rc* because those sort below 3.15 (#512). 3.15.2 is stable, but the
+# backend image stays on 3.14: one hashed lock is resolved for 3.14 so the
+# geo-worker (Python 3.12 on the OSGeo GDAL image) can install it, and the
+# production stage paths are python3.14. ipython majors are ignored
 # (#523); their minors and patches still group.
 
 version: 2
