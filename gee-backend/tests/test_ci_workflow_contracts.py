@@ -1407,11 +1407,10 @@ def test_pull_requests_to_develop_reach_ci() -> None:
         ".github/workflows/backend.yml",
         ".github/workflows/frontend.yml",
         ".github/workflows/codeql.yml",
+        ".github/workflows/sast.yml",
     ):
         header = _read(path).split("\njobs:", 1)[0]
-        assert re.search(
-            r'(?m)^    branches: \[main, develop, "cursor/\*\*"\]$', header
-        ), path
+        assert re.search(r'(?m)^    branches: \[main, develop, "cursor/\*\*"\]$', header), path
 
     deploy = _read(".github/workflows/deploy.yml").split("\njobs:", 1)[0]
     assert "develop" not in deploy
