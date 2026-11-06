@@ -444,7 +444,7 @@ def _encolar_en_buzon(db: Session, usuario_id: Any, pregunta: str):
         item = buzon.encolar(db, usuario_id=usuario_id, pregunta=pregunta)
     except buzon.PreguntaInvalida as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"error": "pregunta_invalida", "detalle": str(exc)},
         ) from exc
     db.commit()
@@ -497,7 +497,7 @@ async def encolar_pregunta(
         # carry the offending INPUT in `ctx`, and echoing a rejected body back is
         # how a malformed-input handler becomes a reflection surface.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "error": "cuerpo_invalido",
                 "detalle": "the body must be a JSON object with a single `pregunta` string",
@@ -744,7 +744,7 @@ async def buscar_normas(
     except (ValidationError, ValueError) as exc:
         # Summarized, never echoed: pydantic's errors carry the offending input.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "error": "cuerpo_invalido",
                 "detalle": (
@@ -763,7 +763,7 @@ def _exportar_pedido(db: Session, pedido_id: str) -> str:
     except editor.PedidoNoSoportado as exc:
         # The reason is ours, not the caller's input, so it is safe to return.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"error": "pedido_no_soportado", "detalle": exc.motivo},
         ) from exc
     except editor.ExportacionRechazada as exc:

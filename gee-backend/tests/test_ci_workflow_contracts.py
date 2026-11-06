@@ -1028,7 +1028,7 @@ def test_backend_runtime_manifest_owns_geopandas_and_skips_bad_fastapi_patches()
     assert requirements.count("geopandas>=1.0.0") == 1
     assert "geopandas" not in geo_requirements.lower()
     assert "-r requirements.txt" in dev_requirements
-    assert "fastapi>=0.115.0,!=0.137.0,!=0.137.1" in requirements
+    assert "fastapi>=0.162.0,!=0.137.0,!=0.137.1" in requirements
 
     for path in ("gee-backend/Dockerfile.geo", "gee-backend/Dockerfile.worker"):
         dockerfile = _read(path)
