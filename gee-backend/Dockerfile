@@ -62,6 +62,24 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Run with hot reload
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+# zlib 1.4 and expat 2.10.0 from the upstream release tarballs, packed as
+# zlib1g and libexpat1. Trixie still ships 1.3.1 and 2.9.0. SONAME stays
+# libz.so.1 and libexpat.so.1, so OSMesa and CPython keep loading them.
+# zlib 1.4 changes deflateReset, raw-deflate completion, and gzopen("x").
+# Build tools stay in this stage; production only receives the .debs.
+FROM python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75 AS upstream-c-libs
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        dpkg-dev \
+        gcc \
+        libc6-dev \
+        make \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/upstream-c-libs/build.sh /tmp/build-upstream-c-libs.sh
+RUN bash /tmp/build-upstream-c-libs.sh
+
 # --- Production stage (clean, no gcc) ---
 FROM python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75 AS production
 
@@ -277,6 +295,49 @@ RUN set -eu; \
         fi; \
     done; \
     rm -rf /var/lib/apt/lists/*
+
+# Replace trixie's zlib1g and libexpat1 after every apt transaction. A later
+# apt install of the distro packages would put the vulnerable libraries back,
+# so they are held. The Python check loads the SONAMEs the process will use.
+COPY --from=upstream-c-libs /out/zlib1g.deb /out/libexpat1.deb /tmp/upstream-c-libs/
+RUN set -eu; \
+    dpkg -i /tmp/upstream-c-libs/zlib1g.deb /tmp/upstream-c-libs/libexpat1.deb; \
+    rm -rf /tmp/upstream-c-libs; \
+    ldconfig; \
+    apt-mark hold zlib1g libexpat1; \
+    dpkg-query -W zlib1g | grep -q '1:1.4-1+consorcio1'; \
+    dpkg-query -W libexpat1 | grep -q '2.10.0-1+consorcio1'; \
+    python - << 'PY'
+import ctypes
+import pathlib
+import zlib
+
+runtime = zlib.ZLIB_RUNTIME_VERSION
+if runtime != "1.4":
+    raise SystemExit(f"loaded zlib runtime {runtime!r}, expected 1.4")
+zlib.compress(b"consorcio")
+expat = ctypes.CDLL("libexpat.so.1")
+expat.XML_ExpatVersion.restype = ctypes.c_char_p
+expat_version = expat.XML_ExpatVersion().decode()
+if "2.10.0" not in expat_version:
+    raise SystemExit(f"loaded expat {expat_version!r}, expected 2.10.0")
+maps = pathlib.Path("/proc/self/maps").read_text(encoding="utf-8", errors="replace")
+loaded = sorted({line.split()[-1] for line in maps.splitlines() if "libz.so" in line or "libexpat.so" in line})
+print("loaded", loaded)
+if not any(path.endswith("libz.so.1.4") for path in loaded):
+    raise SystemExit(f"libz 1.4 was not the mapped file: {loaded}")
+if not any(path.endswith("libexpat.so.1.13.1") for path in loaded):
+    raise SystemExit(f"libexpat 2.10.0 was not the mapped file: {loaded}")
+PY
+    leftovers="$(
+        find /usr /lib \( -name 'libz.so.1.*' -o -name 'libexpat.so.1.*' \) -print \
+            | sed 's|^/lib/|/usr/lib/|' \
+            | sort -u
+    )"
+    printf '%s\n' "$leftovers"
+    test "$(printf '%s\n' "$leftovers" | wc -l)" -eq 2
+    printf '%s\n' "$leftovers" | grep -q 'libz.so.1.4$'
+    printf '%s\n' "$leftovers" | grep -q 'libexpat.so.1.13.1$'
 
 # COPY merges directories, so remove the base image's packaging artifacts
 # before importing the prepared build tree. Otherwise stale setuptools

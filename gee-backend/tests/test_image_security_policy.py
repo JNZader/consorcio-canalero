@@ -1464,3 +1464,34 @@ def test_snapshot_outputs_sorted_counter_and_report_provenance(tmp_path: Path) -
     assert snapshot["baseline_generated_from"]["report_sha256"] == (
         "sha256:" + hashlib.sha256(report_bytes).hexdigest()
     )
+
+
+def test_upstream_zlib_and_expat_replace_the_trixie_packages() -> None:
+    """zlib 1.4 and expat 2.10.0 are built from pinned upstream tarballs.
+
+    They are installed as zlib1g and libexpat1 so dpkg drops the trixie
+    libraries. The recipe must not pull sid or testing binaries.
+    """
+    script = (REPO_ROOT / "gee-backend/docker/upstream-c-libs/build.sh").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
+    assert "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584" in script
+    assert "5466a341f9c692ef7a958a6881311be597f8e1ce345984cf78414f54793dea4c" in script
+    assert "1:1.4-1+consorcio1" in script
+    assert "2.10.0-1+consorcio1" in script
+    assert "zlib-1.4.tar.gz" in script
+    assert "expat-2.10.0.tar.gz" in script
+    for forbidden in ("debian sid", "deb.debian.org/debian sid", " unstable", "testing"):
+        assert forbidden not in script
+        assert forbidden not in dockerfile
+    assert (
+        "dpkg -i /tmp/upstream-c-libs/zlib1g.deb /tmp/upstream-c-libs/libexpat1.deb" in dockerfile
+    )
+    assert "apt-mark hold zlib1g libexpat1" in dockerfile
+    assert "ZLIB_RUNTIME_VERSION" in dockerfile
+    compiled = subprocess.run(
+        ["bash", "-n", str(REPO_ROOT / "gee-backend/docker/upstream-c-libs/build.sh")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert compiled.returncode == 0, compiled.stderr
