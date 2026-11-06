@@ -42,7 +42,7 @@
     "prepare": "echo 'Run: make setup'"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=26.13.0",
     "npm": ">=10.0.0"
   },
   "keywords": [

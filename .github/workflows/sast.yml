@@ -8,7 +8,10 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, develop]
+    # cursor/** so a PR stacked on another cursor/ branch runs Gitleaks and
+    # Semgrep before that parent is in main. pull_request stays read-only
+    # for forks; this is not pull_request_target.
+    branches: [main, develop, "cursor/**"]
   workflow_dispatch:
 
 concurrency:
@@ -50,6 +53,10 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
+          # semgrep 1.180.0's engine dies on CPython 3.15 (exit -11 within a
+          # second of starting rules, including with --jobs 1 --max-memory
+          # 2000). The same pin passes on 3.14, which is what main runs.
+          # The application images stay on 3.15.2.
           python-version: '3.14'
       - name: Install Semgrep
         run: pip install semgrep==1.180.0

@@ -14,7 +14,10 @@ on:
   # para siempre en "Expected — waiting for status". El filtrado se mudo
   # adentro, al job `changes`.
   pull_request:
-    branches: [main, develop]
+    # cursor/** so a PR stacked on another cursor/ branch runs the same
+    # gates before that parent is in main. pull_request stays read-only
+    # for forks; this is not pull_request_target.
+    branches: [main, develop, "cursor/**"]
   schedule:
     # Lunes y jueves 06:00 ART (09:00 UTC) — refresca la baseline incremental
     # de mutación que reusan los PRs. Solo dispara el job `mutation-full`.
@@ -93,7 +96,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -109,7 +112,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -129,7 +132,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -145,7 +148,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -195,7 +198,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -324,7 +327,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -404,7 +407,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -435,7 +438,7 @@ jobs:
     # hay que subir el tag y regenerar las capturas. Ver
     # consorcio-web/docs/visual-regression.md.
     container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --ipc=host
     timeout-minutes: 30
     needs: [changes, typecheck, smoke]
@@ -474,7 +477,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
+          node-version: '26.13.0'
           cache: 'npm'
           cache-dependency-path: consorcio-web/package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -487,7 +490,7 @@ jobs:
       # El 404 de los assets lo hace dist/_worker.js, no functions/.
       - name: Check Cloudflare Pages routing
         run: |
-          npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.150.0
+          npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.158.0
           WRANGLER_BIN="$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" \
             node scripts/check-pages-routing.mjs --fixture
           WRANGLER_BIN="$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" \

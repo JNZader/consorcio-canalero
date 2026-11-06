@@ -41,8 +41,8 @@ UTIL_LINUX_PACKAGES = (
     "util-linux",
 )
 BACKEND_BASE = (
-    "python:3.14.8-slim-trixie@"
-    "sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a"
+    "python:3.15.2-slim-trixie@"
+    "sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
 )
 GEO_BASE = (
     "ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@"
@@ -468,13 +468,17 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # 53 -> 55 el 2026-11-03: CVE-2026-117610 y CVE-2026-118370 sobre libexpat1
     # 2.9.0-1~deb13u1, HIGH affected, sin FixedVersion. Debian trixie y sid
     # siguen unfixed; no hay remediacion de paquete disponible.
-    assert len(backend_findings) == 55
-    assert sum(finding["count"] for finding in backend_findings) == 55
+    # 55 -> 53 el 2026-11-06: el gate del job 127687487454 (run 42154703699,
+    # SHA 1c21ddce) reporto unexpected vacio y missing exactamente esas dos
+    # filas despues de instalar expat 2.10.0. CVE-2026-113351 y CVE-2026-76844
+    # no aparecen. No se agrega ninguna fila.
+    assert len(backend_findings) == 53
+    assert sum(finding["count"] for finding in backend_findings) == 53
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 54
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 52
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 54
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 52
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -516,7 +520,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     installed_by_package = {
         finding["pkg_id"].partition("@")[0]: finding["installed"] for finding in backend_findings
     }
-    assert installed_by_package["libexpat1"] == "2.9.0-1~deb13u1"
+    assert "libexpat1" not in installed_by_package
     assert installed_by_package["perl-base"] == "5.40.1-6+deb13u1"
     assert installed_by_package["util-linux"] == "2.41.5-0+deb13u1"
     rows_by_cve = {
@@ -531,8 +535,6 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     util_linux = sorted(UTIL_LINUX_PACKAGES)
     assert rows_by_cve == {
         "CVE-2025-69720": ncurses,
-        "CVE-2026-117610": ["libexpat1"],
-        "CVE-2026-118370": ["libexpat1"],
         "CVE-2026-119373": ["libsqlite3-0"],
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
@@ -559,13 +561,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         ("CVE-2026-9538", "perl-base@5.40.1-6+deb13u1")
     ]
     expat = [finding for finding in backend_findings if finding["pkg_id"].startswith("libexpat1@")]
-    assert [finding["cve"] for finding in expat] == ["CVE-2026-117610", "CVE-2026-118370"]
-    assert expat[0]["installed"] == "2.9.0-1~deb13u1"
-    assert expat[0]["fixed"] == ""
-    assert expat[0]["status"] == "affected"
-    assert expat[1]["installed"] == "2.9.0-1~deb13u1"
-    assert expat[1]["fixed"] == ""
-    assert expat[1]["status"] == "affected"
+    assert expat == []
     assert geo["findings"] == []
     assert backend_provenance["report_sha256"] == (
         "sha256:0ba6983d0bceb084726d88971a7bd78ab31a848f313fac59fa58edf8aa94977a"
@@ -736,6 +732,31 @@ def test_geo_dockerfile_upgrades_libbrotli_past_cve_2026_111497() -> None:
     }
     assert "libbrotli1" in install_lines
     assert "libbrotli1" in gate_lines
+
+
+def test_geo_dockerfile_upgrades_apt_past_cve_2026_109518() -> None:
+    hotfix = _geo_hotfix_body("# Security hotfix (CVE-2026-109518")
+
+    assert hotfix.count('fixed_version="3.2.1ubuntu0.1"') == 1
+    assert hotfix.count("dpkg-query --show --showformat=") == 1
+    assert "${db:Status-Status}|${Version}" in hotfix
+    assert 'package_state="${package_record%%|*}"' in hotfix
+    assert 'dpkg --compare-versions "$installed_version" ge "$fixed_version"' in hotfix
+    assert hotfix.index("--only-upgrade") < hotfix.index("dpkg-query --show")
+    assert hotfix.index("dpkg-query --show") < hotfix.index("dpkg --compare-versions")
+    assert hotfix.index("dpkg --compare-versions") < hotfix.index("rm -rf /var/lib/apt/lists/*")
+    install_block, version_gate = hotfix.split('fixed_version="3.2.1ubuntu0.1"', 1)
+    install_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in install_block.splitlines()
+    }
+    gate_lines = {
+        line.strip().removesuffix("\\").strip().removesuffix(";")
+        for line in version_gate.splitlines()
+    }
+    for package in ("apt", "libapt-pkg7.0"):
+        assert package in install_lines
+        assert package in gate_lines
 
 
 def test_backend_dockerfile_hotfix_blocks_are_ordered_before_site_packages_copy() -> None:
@@ -1439,3 +1460,34 @@ def test_snapshot_outputs_sorted_counter_and_report_provenance(tmp_path: Path) -
     assert snapshot["baseline_generated_from"]["report_sha256"] == (
         "sha256:" + hashlib.sha256(report_bytes).hexdigest()
     )
+
+
+def test_upstream_zlib_and_expat_replace_the_trixie_packages() -> None:
+    """zlib 1.4 and expat 2.10.0 are built from pinned upstream tarballs.
+
+    They are installed as zlib1g and libexpat1 so dpkg drops the trixie
+    libraries. The recipe must not pull sid or testing binaries.
+    """
+    script = (REPO_ROOT / "gee-backend/docker/upstream-c-libs/build.sh").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "gee-backend/Dockerfile").read_text(encoding="utf-8")
+    assert "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584" in script
+    assert "5466a341f9c692ef7a958a6881311be597f8e1ce345984cf78414f54793dea4c" in script
+    assert "1:1.4-1+consorcio1" in script
+    assert "2.10.0-1+consorcio1" in script
+    assert "zlib-1.4.tar.gz" in script
+    assert "expat-2.10.0.tar.gz" in script
+    for forbidden in ("debian sid", "deb.debian.org/debian sid", " unstable", "testing"):
+        assert forbidden not in script
+        assert forbidden not in dockerfile
+    assert (
+        "dpkg -i /tmp/upstream-c-libs/zlib1g.deb /tmp/upstream-c-libs/libexpat1.deb" in dockerfile
+    )
+    assert "apt-mark hold zlib1g libexpat1" in dockerfile
+    assert "ZLIB_RUNTIME_VERSION" in dockerfile
+    compiled = subprocess.run(
+        ["bash", "-n", str(REPO_ROOT / "gee-backend/docker/upstream-c-libs/build.sh")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert compiled.returncode == 0, compiled.stderr

@@ -69,9 +69,9 @@ def _line_range(target: str) -> tuple[str, int, int]:
 
 
 NGINX_RUNTIME_IMAGE = (
-    "nginx:1.30.6-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949"
+    "nginx:1.30.6-alpine@sha256:e9b2d7624fd7957f4ed44ae0a272d93fb73aeb8512ba8916f8118ae6143fd115"
 )
-PYTHON_RUNTIME_IMAGE = "python:3.14.8-slim-trixie@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a"
+PYTHON_RUNTIME_IMAGE = "python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
 SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
 WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
@@ -509,7 +509,7 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
     assert "ENV VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow" in production
 
     cleanup = production.index("RUN rm -rf")
-    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.14/site-packages")
+    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.15/site-packages")
     for stale_artifact in (
         "setuptools",
         "setuptools-*.dist-info",
@@ -520,13 +520,13 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
         "distutils-precedence.pth",
     ):
         assert (
-            f"/usr/local/lib/python3.14/site-packages/{stale_artifact}"
+            f"/usr/local/lib/python3.15/site-packages/{stale_artifact}"
             in production[cleanup:packages_copy]
         )
     assert cleanup < packages_copy
     after_copy = production[packages_copy:]
-    assert "/usr/local/lib/python3.14/ensurepip" in after_copy
-    assert "/usr/local/lib/python3.14/site-packages/pip" in after_copy
+    assert "/usr/local/lib/python3.15/ensurepip" in after_copy
+    assert "/usr/local/lib/python3.15/site-packages/pip" in after_copy
     assert production.rsplit("USER ", 1)[1].startswith("app\n")
     assert 'CMD ["python", "-m", "app.server"]' in production
 
@@ -1028,7 +1028,7 @@ def test_backend_runtime_manifest_owns_geopandas_and_skips_bad_fastapi_patches()
     assert requirements.count("geopandas>=1.0.0") == 1
     assert "geopandas" not in geo_requirements.lower()
     assert "-r requirements.txt" in dev_requirements
-    assert "fastapi>=0.115.0,!=0.137.0,!=0.137.1" in requirements
+    assert "fastapi>=0.162.0,!=0.137.0,!=0.137.1" in requirements
 
     for path in ("gee-backend/Dockerfile.geo", "gee-backend/Dockerfile.worker"):
         dockerfile = _read(path)
@@ -1407,9 +1407,10 @@ def test_pull_requests_to_develop_reach_ci() -> None:
         ".github/workflows/backend.yml",
         ".github/workflows/frontend.yml",
         ".github/workflows/codeql.yml",
+        ".github/workflows/sast.yml",
     ):
         header = _read(path).split("\njobs:", 1)[0]
-        assert re.search(r"(?m)^    branches: \[main, develop\]$", header), path
+        assert re.search(r'(?m)^    branches: \[main, develop, "cursor/\*\*"\]$', header), path
 
     deploy = _read(".github/workflows/deploy.yml").split("\njobs:", 1)[0]
     assert "develop" not in deploy

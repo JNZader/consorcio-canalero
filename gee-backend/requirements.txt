@@ -5,18 +5,18 @@
 #   requirements.lock       runtime closure  (backend image, deploy)
 #   requirements-dev.lock   runtime + dev    (CI: lint/typecheck/test/mutation)
 #
-# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.14 = the
+# Regenerate after ANY edit here or in requirements-dev.txt (uv, py3.15 = the
 # backend image's interpreter and CI). Pass --overrides so
 # fastapi-users-db-sqlalchemy's stale sqlalchemy<2.1 pin does not block Wave C5
-# (see overrides.txt). --universal keeps cp312 wheels in the hash set so the
-# geo-worker (Ubuntu 24.04 / Python 3.12 on the GDAL base) can install the same
-# lock; resolution itself is Python 3.14 so numpy 2.5 / scipy 1.18 / rasterio
-# 1.5 / pyproj 3.8 (requires-python >=3.12) are eligible.
+# (see overrides.txt). --universal keeps cp314 wheels in the hash set so the
+# geo-worker (Ubuntu 26.04 / Python 3.14 on the GDAL base, seen as
+# libpython3.14 in the image scan) can install the same lock. Resolution
+# itself is Python 3.15.
 #
-#   uv pip compile requirements.txt --python-version 3.14 --universal \
+#   uv pip compile requirements.txt --python-version 3.15 --universal \
 #       --generate-hashes --overrides overrides.txt \
 #       --output-file requirements.lock
-#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.14 \
+#   uv pip compile requirements.txt requirements-dev.txt --python-version 3.15 \
 #       --universal --generate-hashes --overrides overrides.txt \
 #       --output-file requirements-dev.lock
 #
@@ -31,10 +31,14 @@
 # packages (see that file's own notes).
 # ─────────────────────────────────────────────────────────────────────────────
 
-# FastAPI
-# 0.143 makes FastAPI's OpenTelemetry exporter opt-in. This app does not use
-# that auto-config, so the bump is safe. Stay below 0.144 until the next review.
-fastapi>=0.115.0,!=0.137.0,!=0.137.1,<0.144.0
+# FastAPI 0.162. The 0.143 OpenTelemetry exporter stays opt-in; this app
+# does not set FASTAPI_OTEL_AUTO_CONFIGURE. 0.145 removed openapi_prefix
+# and Query/Body **extra (this tree uses neither). 0.146 deprecates
+# FastAPI(root_path=); the only root_path here is a filesystem path.
+# 0.147–0.162 change omitted form booleans, empty form strings, and JSON
+# null versus omitted Body. Routes use Query defaults and File(...), not
+# form models. The cap below 0.144 is gone.
+fastapi>=0.162.0,!=0.137.0,!=0.137.1
 uvicorn[standard]>=0.34.0
 python-dotenv>=1.2.4
 pydantic[email]>=2.14.1
@@ -51,7 +55,7 @@ google-auth>=2.37.0
 # [asyncio] pulls greenlet into the hashed lock — required because CI/Docker
 # install with --no-deps (fastapi-users override); without it, import of
 # sqlalchemy.ext.asyncio fails on a clean lock install.
-sqlalchemy[asyncio]>=2.1.6,<2.2.0
+sqlalchemy[asyncio]>=2.1.8,<2.2.0
 # Explicit: hashed --no-deps installs do not pull extras at install time.
 # greenlet must be a first-class lock entry (also via sqlalchemy[asyncio]).
 greenlet>=3.0.0

@@ -134,7 +134,7 @@ La plataforma cubre cuatro áreas amplias:
 | Tooling | Ruff, Biome, Docker Compose, GitHub Actions |
 | Hosting | Cloudflare Pages, Hetzner, GHCR |
 
-Las versiones reflejan los manifiestos en `gee-backend/requirements.txt` y `consorcio-web/package.json`. Los contenedores del backend se construyen sobre `python:3.14.8-slim-trixie`; el geo worker se construye sobre la imagen GDAL de OSGeo para tener el tooling raster/vectorial nativo.
+Las versiones reflejan los manifiestos en `gee-backend/requirements.txt` y `consorcio-web/package.json`. Los contenedores del backend se construyen sobre `python:3.15.2-slim-trixie`; el geo worker se construye sobre la imagen GDAL de OSGeo para tener el tooling raster/vectorial nativo.
 
 ## Arquitectura
 
