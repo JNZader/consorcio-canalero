@@ -41,8 +41,8 @@ UTIL_LINUX_PACKAGES = (
     "util-linux",
 )
 BACKEND_BASE = (
-    "python:3.14.10-slim-trixie@"
-    "sha256:af8a5aa14780025dbfbcfbc81bd8a91ebd87711dd5b0f48ed71090949dd7cb1d"
+    "python:3.15.2-slim-trixie@"
+    "sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
 )
 GEO_BASE = (
     "ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@"

@@ -71,7 +71,7 @@ def _line_range(target: str) -> tuple[str, int, int]:
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.6-alpine@sha256:e9b2d7624fd7957f4ed44ae0a272d93fb73aeb8512ba8916f8118ae6143fd115"
 )
-PYTHON_RUNTIME_IMAGE = "python:3.14.10-slim-trixie@sha256:af8a5aa14780025dbfbcfbc81bd8a91ebd87711dd5b0f48ed71090949dd7cb1d"
+PYTHON_RUNTIME_IMAGE = "python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
 SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
 WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
@@ -509,7 +509,7 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
     assert "ENV VTK_DEFAULT_OPENGL_WINDOW=vtkOSOpenGLRenderWindow" in production
 
     cleanup = production.index("RUN rm -rf")
-    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.14/site-packages")
+    packages_copy = production.index("COPY --from=build /usr/local/lib/python3.15/site-packages")
     for stale_artifact in (
         "setuptools",
         "setuptools-*.dist-info",
@@ -520,13 +520,13 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
         "distutils-precedence.pth",
     ):
         assert (
-            f"/usr/local/lib/python3.14/site-packages/{stale_artifact}"
+            f"/usr/local/lib/python3.15/site-packages/{stale_artifact}"
             in production[cleanup:packages_copy]
         )
     assert cleanup < packages_copy
     after_copy = production[packages_copy:]
-    assert "/usr/local/lib/python3.14/ensurepip" in after_copy
-    assert "/usr/local/lib/python3.14/site-packages/pip" in after_copy
+    assert "/usr/local/lib/python3.15/ensurepip" in after_copy
+    assert "/usr/local/lib/python3.15/site-packages/pip" in after_copy
     assert production.rsplit("USER ", 1)[1].startswith("app\n")
     assert 'CMD ["python", "-m", "app.server"]' in production
 

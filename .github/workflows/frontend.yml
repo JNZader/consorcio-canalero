@@ -14,7 +14,10 @@ on:
   # para siempre en "Expected — waiting for status". El filtrado se mudo
   # adentro, al job `changes`.
   pull_request:
-    branches: [main, develop]
+    # cursor/** so a PR stacked on another cursor/ branch runs the same
+    # gates before that parent is in main. pull_request stays read-only
+    # for forks; this is not pull_request_target.
+    branches: [main, develop, "cursor/**"]
   schedule:
     # Lunes y jueves 06:00 ART (09:00 UTC) — refresca la baseline incremental
     # de mutación que reusan los PRs. Solo dispara el job `mutation-full`.
