@@ -300,14 +300,15 @@ RUN set -eu; \
 # apt install of the distro packages would put the vulnerable libraries back,
 # so they are held. The Python check loads the SONAMEs the process will use.
 COPY --from=upstream-c-libs /out/zlib1g.deb /out/libexpat1.deb /tmp/upstream-c-libs/
-RUN set -eu; \
-    dpkg -i /tmp/upstream-c-libs/zlib1g.deb /tmp/upstream-c-libs/libexpat1.deb; \
-    rm -rf /tmp/upstream-c-libs; \
-    ldconfig; \
-    apt-mark hold zlib1g libexpat1; \
-    dpkg-query -W zlib1g | grep -q '1:1.4-1+consorcio1'; \
-    dpkg-query -W libexpat1 | grep -q '2.10.0-1+consorcio1'; \
-    python - << 'PY'
+RUN <<'EOS'
+set -eu
+dpkg -i /tmp/upstream-c-libs/zlib1g.deb /tmp/upstream-c-libs/libexpat1.deb
+rm -rf /tmp/upstream-c-libs
+ldconfig
+apt-mark hold zlib1g libexpat1
+dpkg-query -W zlib1g | grep -q '1:1.4-1+consorcio1'
+dpkg-query -W libexpat1 | grep -q '2.10.0-1+consorcio1'
+python - << 'PY'
 import ctypes
 import pathlib
 import zlib
@@ -329,15 +330,16 @@ if not any(path.endswith("libz.so.1.4") for path in loaded):
 if not any(path.endswith("libexpat.so.1.13.1") for path in loaded):
     raise SystemExit(f"libexpat 2.10.0 was not the mapped file: {loaded}")
 PY
-    leftovers="$(
-        find /usr /lib \( -name 'libz.so.1.*' -o -name 'libexpat.so.1.*' \) -print \
-            | sed 's|^/lib/|/usr/lib/|' \
-            | sort -u
-    )"
-    printf '%s\n' "$leftovers"
-    test "$(printf '%s\n' "$leftovers" | wc -l)" -eq 2
-    printf '%s\n' "$leftovers" | grep -q 'libz.so.1.4$'
-    printf '%s\n' "$leftovers" | grep -q 'libexpat.so.1.13.1$'
+leftovers="$(
+    find /usr /lib \( -name 'libz.so.1.*' -o -name 'libexpat.so.1.*' \) -print \
+        | sed 's|^/lib/|/usr/lib/|' \
+        | sort -u
+)"
+printf '%s\n' "$leftovers"
+test "$(printf '%s\n' "$leftovers" | wc -l)" -eq 2
+printf '%s\n' "$leftovers" | grep -q 'libz.so.1.4$'
+printf '%s\n' "$leftovers" | grep -q 'libexpat.so.1.13.1$'
+EOS
 
 # COPY merges directories, so remove the base image's packaging artifacts
 # before importing the prepared build tree. Otherwise stale setuptools
