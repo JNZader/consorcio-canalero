@@ -162,7 +162,6 @@ class TestBulkEndpoint:
         assert first.status_code == 200
         assert conflict.status_code == 409
 
-
 class TestSortParameter:
     def test_sort_by_estado_returns_200(self, app_client, seeded):
         app, client = app_client

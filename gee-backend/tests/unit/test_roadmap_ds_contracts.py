@@ -40,3 +40,10 @@ def test_hash_de_lote_no_depende_del_orden() -> None:
     assert payload_hash([one, two], "en_revision", None) == payload_hash(
         [two, one], "en_revision", None
     )
+
+
+def test_celery_include_registers_denuncia_status_mail() -> None:
+    """R1-002: every prefork child must import denuncias.tasks at boot."""
+    from app.core.celery_app import celery_app
+
+    assert "app.domains.denuncias.tasks" in (celery_app.conf.include or [])
