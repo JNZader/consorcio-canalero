@@ -346,30 +346,31 @@
     order: 1;
   }
 
-  /* El header queda en el orden del DOM, arriba del mapa, para que
-     Reportar incidente entre en 360 y 390 sin un segundo botón. */
+  /* #682 / MOB: el header queda ARRIBA del mapa (order: 0) para que
+     Reportar Incidente entre en 360/390 sin un segundo botón. El canary
+     portrait ya no exige título debajo — eso queda solo en landscape. */
   .mapPageContainer > .mapPageHeader {
     order: 0;
   }
 
-  /* Presupuesto de alto propio. Arriba del canvas queda SOLO la cabecera del
-     sitio mas el padding del Container:
-       cabecera del sitio                          61px
-       Container py="sm" (arriba)                  12px
-       mb="sm" del Paper del mapa                  12px
-       holgura                                     11px
+  /* Presupuesto de alto con el header del mapa TODAVÍA en el flujo arriba.
+     Medido en el canary prod 2026-11-08 (360×800, tip 7a3b98d8): el canvas
+     arrancaba en y≈249 (cabecera sitio + Paper del título/banner/Reportar).
+     Con `100dvh - 220` el lienzo medía ~580px → terminaba en y≈829, fuera
+     del viewport (canary `expectFitsViewport` rojo).
+       cabecera del sitio + py Container           ~73px
+       Paper título + banner + Reportar            ~176px
+       mb del Paper del mapa + holgura             ~31px
                                                    ────
-                                                   96px
-     La holgura es a proposito: deja ver un pedacito de lo que quedo debajo del
-     mapa, o sea la afordancia de que la pagina scrollea (el titulo y el CTA
-     Reportar siguen ahi). Sin `min-height` propio: los pisos de 420/380px del
-     bloque de 62em siguen valiendo, y en 800px de alto el calc (704px) los pasa
-     comodo. */
+                                                   ~280px
+     280px deja el canvas ≤ viewport en 360×800 con banner satelital activo.
+     Sin `min-height` propio: los pisos de 420/380px del bloque 62em no aplican
+     aquí porque este media query ya fija el presupuesto. */
   .mapCanvasWrapper,
   .canvasHeightBudget,
   .mapSkeletonWrapper,
   .workspaceSidebar {
-    --map-canvas-height: calc(100dvh - 220px);
+    --map-canvas-height: calc(100dvh - 280px);
   }
 }
 
