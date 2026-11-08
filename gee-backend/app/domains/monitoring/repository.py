@@ -36,6 +36,8 @@ class MonitoringRepository:
         categoria_filter: Optional[str] = None,
         tipo_filter: Optional[str] = None,
         search: Optional[str] = None,
+        sort: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> tuple[list[Sugerencia], int]:
         """Paginated list of sugerencias with optional filters.
 
@@ -74,11 +76,20 @@ class MonitoringRepository:
         total: int = db.execute(count_stmt).scalar_one()
 
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(Sugerencia.created_at.desc(), Sugerencia.id.desc())
-            .offset(offset)
-            .limit(limit)
+        from app.shared.list_sort import order_clause
+
+        primary, tie = order_clause(
+            sort,
+            order,
+            {
+                "created_at": Sugerencia.created_at,
+                "estado": Sugerencia.estado,
+                "categoria": Sugerencia.categoria,
+            },
+            default=Sugerencia.created_at,
+            tie=Sugerencia.id,
         )
+        items_stmt = base.order_by(primary, tie).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total

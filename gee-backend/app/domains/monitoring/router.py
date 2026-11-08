@@ -92,6 +92,8 @@ def list_sugerencias(
     categoria: Optional[str] = None,
     tipo: Optional[str] = None,
     search: Optional[str] = None,
+    sort: Optional[str] = None,
+    order: Optional[str] = None,
     db: Session = Depends(get_db),
     service: MonitoringService = Depends(get_service),
     _user=Depends(_require_operator()),
@@ -109,6 +111,8 @@ def list_sugerencias(
         categoria=categoria,
         tipo=tipo,
         search=search,
+        sort=sort,
+        order=order,
     )
     return PaginatedResponse[SugerenciaListResponse].create(
         items=[SugerenciaListResponse.model_validate(s) for s in items],

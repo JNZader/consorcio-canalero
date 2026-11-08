@@ -46,6 +46,8 @@ class DenunciaService:
         tipo: Optional[str] = None,
         categoria: Optional[str] = None,
         search: Optional[str] = None,
+        sort: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> tuple[list[Denuncia], int]:
         estado = require_choice(estado, EstadoDenuncia, "estado")
         return self.repo.get_all(
@@ -57,6 +59,8 @@ class DenunciaService:
             tipo_filter=tipo,
             categoria_filter=categoria,
             search=search,
+            sort=sort,
+            order=order,
         )
 
     def list_by_user(
@@ -155,6 +159,9 @@ class DenunciaService:
         and recording changes in historial.
         """
         denuncia = self.get_by_id(db, denuncia_id)
+        previous_estado = denuncia.estado
+        previous_respuesta = denuncia.respuesta
+        self._validate_assignee(db, data)
 
         # State transition validation
         if data.estado is not None and data.estado != denuncia.estado:
@@ -179,6 +186,103 @@ class DenunciaService:
         if updated is None:
             # Unreachable: ``get_by_id`` above would have raised 404 first.
             raise HTTPException(status_code=404, detail="Denuncia no encontrada")
+        attended = (
+            updated.estado == EstadoDenuncia.RESUELTO and updated.estado != previous_estado
+        ) or (
+            bool((updated.respuesta or "").strip())
+            and (updated.respuesta or "") != (previous_respuesta or "")
+        )
+        from app.domains.denuncias.notify import maybe_enqueue_status_email
+
+        maybe_enqueue_status_email(db, updated, became_attended=attended)
         db.commit()
         db.refresh(updated)
         return updated
+
+    def _validate_assignee(self, db: Session, data: DenunciaUpdate) -> None:
+        if "asignado_a" not in data.model_fields_set or data.asignado_a is None:
+            return
+        from app.auth.models import User, UserRole
+
+        user = db.get(User, data.asignado_a)
+        if user is None or user.role not in (UserRole.OPERADOR, UserRole.ADMIN):
+            raise HTTPException(
+                status_code=400, detail="El asignado tiene que ser operador o admin"
+            )
+
+    def bulk_update(
+        self,
+        db: Session,
+        *,
+        ids: list[uuid.UUID],
+        estado: str,
+        comentario: Optional[str],
+        idempotency_key: str,
+        operator_id: uuid.UUID,
+    ) -> list[dict]:
+        from sqlalchemy import select
+
+        from app.domains.denuncias.models import DenunciaBulkReceipt
+        from app.domains.denuncias.notify import payload_hash
+
+        digest = payload_hash(ids, estado, comentario)
+        existing = db.execute(
+            select(DenunciaBulkReceipt).where(
+                DenunciaBulkReceipt.operador_id == operator_id,
+                DenunciaBulkReceipt.idempotency_key == idempotency_key,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if existing.payload_hash != digest:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Esa clave de idempotencia ya se usó con otro lote.",
+                )
+            return list(existing.resultado)
+
+        resultados: list[dict] = []
+        for denuncia_id in ids:
+            try:
+                current = self.get_by_id(db, denuncia_id)
+                if current.estado == estado:
+                    resultados.append({"id": str(denuncia_id), "ok": True, "error": None})
+                    continue
+                self.update(
+                    db,
+                    denuncia_id,
+                    DenunciaUpdate(estado=estado, comentario=comentario),
+                    operator_id=operator_id,
+                )
+                resultados.append({"id": str(denuncia_id), "ok": True, "error": None})
+            except HTTPException as exc:
+                db.rollback()
+                detail = exc.detail if isinstance(exc.detail, str) else "No se pudo actualizar"
+                resultados.append({"id": str(denuncia_id), "ok": False, "error": detail})
+
+        receipt = DenunciaBulkReceipt(
+            id=uuid.uuid4(),
+            idempotency_key=idempotency_key,
+            operador_id=operator_id,
+            payload_hash=digest,
+            resultado=resultados,
+        )
+        db.add(receipt)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Dos requests concurrentes con la misma clave: la unique
+            # uq_denuncia_bulk_operator_key deja una sola fila. Los estados
+            # ya aplicados son el mismo destino (idempotentes) y el aviso
+            # por correo deduplica por celery_task_id, así que la respuesta
+            # correcta es el recibo que ganó, no un 500.
+            db.rollback()
+            winner = db.execute(
+                select(DenunciaBulkReceipt).where(
+                    DenunciaBulkReceipt.operador_id == operator_id,
+                    DenunciaBulkReceipt.idempotency_key == idempotency_key,
+                )
+            ).scalar_one_or_none()
+            if winner is not None:
+                return list(winner.resultado)
+            raise
+        return resultados

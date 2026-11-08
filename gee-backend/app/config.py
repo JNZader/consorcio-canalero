@@ -417,6 +417,9 @@ class Settings(BaseSettings):
     # SMTP — opt-in. Empty SMTP_HOST disables the integration; UserManager
     # falls back to logging the verification / reset token so dev still
     # works without an external provider.
+    # Aviso por correo cuando una denuncia pasa a resuelta o recibe respuesta.
+    # Apagado por defecto: la UI no promete el mail mientras esto sea false.
+    denuncia_status_email_enabled: bool = False
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

@@ -14,10 +14,11 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDMixin
@@ -101,6 +102,12 @@ class Denuncia(UUIDMixin, TimestampMixin, Base):
     # so a retry returns the denuncia already stored instead of inserting
     # another one. Soft-delete releases the key (partial index).
     idempotency_key: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    asignado_a: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Relationships
     historial: Mapped[list["DenunciaHistorial"]] = relationship(
@@ -141,3 +148,30 @@ class DenunciaHistorial(UUIDMixin, Base):
 
     def __repr__(self) -> str:
         return f"<DenunciaHistorial {self.id} {self.estado_anterior}->{self.estado_nuevo}>"
+
+
+class DenunciaBulkReceipt(Base):
+    """Resultado guardado de una acción masiva, por operador y clave."""
+
+    __tablename__ = "denuncia_bulk_receipts"
+    # Espejo de uq_denuncia_bulk_operator_key (zz_denuncia_asignacion): una
+    # clave de idempotencia vive una sola vez por operador. Sin esto el
+    # modelo y la migración cuentan historias distintas (el drift de DOM-1).
+    __table_args__ = (
+        UniqueConstraint("operador_id", "idempotency_key", name="uq_denuncia_bulk_operator_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    operador_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    resultado: Mapped[list] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

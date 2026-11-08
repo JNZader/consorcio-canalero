@@ -46,6 +46,8 @@ class DenunciaRepository:
         tipo_filter: Optional[str] = None,
         categoria_filter: Optional[str] = None,
         search: Optional[str] = None,
+        sort: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> tuple[list[Denuncia], int]:
         """
         Paginated list of denuncias with optional filters.
@@ -86,11 +88,20 @@ class DenunciaRepository:
 
         # Paginated items
         offset = (page - 1) * limit
-        items_stmt = (
-            base.order_by(Denuncia.created_at.desc(), Denuncia.id.desc())
-            .offset(offset)
-            .limit(limit)
+        from app.shared.list_sort import order_clause
+
+        primary, tie = order_clause(
+            sort,
+            order,
+            {
+                "created_at": Denuncia.created_at,
+                "estado": Denuncia.estado,
+                "tipo": Denuncia.tipo,
+            },
+            default=Denuncia.created_at,
+            tie=Denuncia.id,
         )
+        items_stmt = base.order_by(primary, tie).offset(offset).limit(limit)
         items = list(db.execute(items_stmt).scalars().all())
 
         return items, total

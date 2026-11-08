@@ -12,12 +12,16 @@ from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.denuncias.models import Denuncia
 from app.domains.denuncias.schemas import (
+    BulkDenunciaRequest,
+    BulkDenunciaResponse,
+    BulkItemResult,
     DenunciaCreate,
     DenunciaCreateResponse,
     DenunciaListResponse,
     DenunciaResponse,
     DenunciaStatsResponse,
     DenunciaUpdate,
+    OperadorOption,
 )
 from app.shared.quota import SubmissionStatusResponse
 from app.domains.denuncias.service import DenunciaService
@@ -403,6 +407,8 @@ def list_denuncias(
     tipo: Optional[str] = None,
     categoria: Optional[str] = None,
     search: Optional[str] = None,
+    sort: Optional[str] = None,
+    order: Optional[str] = None,
     db: Session = Depends(get_db),
     service: DenunciaService = Depends(get_service),
     _user=Depends(_require_operator()),
@@ -422,12 +428,58 @@ def list_denuncias(
         tipo=tipo,
         categoria=categoria,
         search=search,
+        sort=sort,
+        order=order,
     )
     return PaginatedResponse[DenunciaListResponse].create(
         items=[DenunciaListResponse.model_validate(d) for d in items],
         total=total,
         page=page,
         limit=limit,
+    )
+
+
+@router.get("/operadores", response_model=list[OperadorOption])
+def list_operadores(
+    db: Session = Depends(get_db),
+    _user=Depends(_require_operator()),
+) -> list[OperadorOption]:
+    """Operadores y admins asignables. No devuelve teléfono ni otros datos."""
+    from sqlalchemy import select
+
+    from app.auth.models import User, UserRole
+
+    rows = db.execute(
+        select(User).where(User.role.in_([UserRole.OPERADOR, UserRole.ADMIN])).order_by(User.email)
+    ).scalars()
+    options: list[OperadorOption] = []
+    for user in rows:
+        nombre = f"{user.nombre} {user.apellido}".strip() or user.email
+        options.append(OperadorOption(id=user.id, nombre=nombre, email=user.email))
+    return options
+
+
+@router.post("/bulk", response_model=BulkDenunciaResponse)
+def bulk_update_denuncias(
+    payload: BulkDenunciaRequest,
+    db: Session = Depends(get_db),
+    service: DenunciaService = Depends(get_service),
+    user=Depends(_require_operator()),
+) -> BulkDenunciaResponse:
+    """Cambia el estado de varias denuncias. La misma clave no reenvía avisos."""
+    rows = service.bulk_update(
+        db,
+        ids=payload.ids,
+        estado=payload.estado,
+        comentario=payload.comentario,
+        idempotency_key=payload.idempotency_key,
+        operator_id=uuid.UUID(str(user.id)),
+    )
+    return BulkDenunciaResponse(
+        resultados=[
+            BulkItemResult(id=uuid.UUID(row["id"]), ok=row["ok"], error=row.get("error"))
+            for row in rows
+        ]
     )
 
 

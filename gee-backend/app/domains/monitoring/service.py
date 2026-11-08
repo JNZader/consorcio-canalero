@@ -160,6 +160,8 @@ class MonitoringService:
         categoria: Optional[str] = None,
         tipo: Optional[str] = None,
         search: Optional[str] = None,
+        sort: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> tuple[list[Sugerencia], int]:
         estado = require_choice(estado, EstadoSugerencia, "estado")
         return self.repo.get_all_sugerencias(
@@ -170,6 +172,8 @@ class MonitoringService:
             categoria_filter=categoria,
             tipo_filter=tipo,
             search=search,
+            sort=sort,
+            order=order,
         )
 
     def list_sugerencias_by_user(

@@ -41,6 +41,7 @@ class DenunciaUpdate(BaseModel):
 
     estado: Optional[str] = None
     respuesta: Optional[str] = None
+    asignado_a: Optional[uuid.UUID] = None
     comentario: Optional[str] = Field(
         default=None,
         description="Comentario para el historial de cambios",
@@ -89,6 +90,7 @@ class DenunciaResponse(BaseModel):
     contacto_email: Optional[str] = None
     foto_url: Optional[str] = None
     user_id: Optional[uuid.UUID] = None
+    asignado_a: Optional[uuid.UUID] = None
     respuesta: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -108,6 +110,7 @@ class DenunciaListResponse(BaseModel):
     cuenca: Optional[str] = None
     estado: str
     foto_url: Optional[str] = None
+    asignado_a: Optional[uuid.UUID] = None
     created_at: datetime
 
 
@@ -117,6 +120,34 @@ class DenunciaCreateResponse(BaseModel):
     id: uuid.UUID
     message: str
     estado: str
+
+
+class OperadorOption(BaseModel):
+    id: uuid.UUID
+    nombre: str
+    email: str
+
+
+class BulkDenunciaRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    estado: str
+    comentario: Optional[str] = None
+    idempotency_key: str = Field(min_length=8, max_length=80)
+
+    @field_validator("estado")
+    @classmethod
+    def validate_estado(cls, value: str) -> str:
+        return choice_or_raise(value, EstadoDenuncia, "estado") or value
+
+
+class BulkItemResult(BaseModel):
+    id: uuid.UUID
+    ok: bool
+    error: Optional[str] = None
+
+
+class BulkDenunciaResponse(BaseModel):
+    resultados: list[BulkItemResult]
 
 
 class DenunciaStatsResponse(BaseModel):
