@@ -7,7 +7,10 @@
 > carpetas de exploración puntuales pueden quedar sin commitear) — y la memoria
 > persistente de sesión (engram, proyecto `consorcio-canalero`).
 >
-> Última actualización: **2026-10-24** · Mantiene: @javier
+> Última actualización del arco de producto, RAG y box: **2026-10-24** · Mantiene: @javier
+>
+> Plan de design system y componentes (2026-11-08): [`docs/ROADMAP_DS.md`](ROADMAP_DS.md).
+> Sustituye las olas de la PR #681. Este archivo no las agenda.
 >
 > Estrategia de producto (canalero · caminero · ficha nacional · MBAgro crop-ops):
 > `docs/strategy/exploracion-productos-2026-09.md`. Incluye GeoCuenca INTA (visor GEE Salado). No fusionar MBAgro. No pelear el visor gratis de Salado.
