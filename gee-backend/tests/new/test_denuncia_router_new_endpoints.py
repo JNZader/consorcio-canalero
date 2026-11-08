@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from types import SimpleNamespace
 
 import os
+
 os.environ.setdefault("UPLOADS_ROOT", "/tmp/uploads-test-denuncia-router")
 
 
@@ -45,8 +46,8 @@ def app_client(db_session_factory):
 @pytest.fixture
 def seeded(db_session_factory):
     """One operator and three denuncias in pendiente."""
-    from app.auth.models import User, UserRole
-    from app.domains.denuncias.models import Denuncia, EstadoDenuncia
+    # Los modelos ya están importados a nivel de módulo (líneas 12-17)
+    # para que Base.metadata los registre antes del create_all.
 
     session = db_session_factory()
     try:
