@@ -514,7 +514,8 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     if not features:
         raise HTTPException(status_code=400, detail="El archivo no contiene subcuencas")
 
-    replaced_count = db.execute(delete(ZonaOperativa)).rowcount or 0
+    delete_result = db.execute(delete(ZonaOperativa))
+    replaced_count = int(getattr(delete_result, "rowcount", 0) or 0)
 
     imported_count = 0
     cuencas: Counter[str] = Counter()

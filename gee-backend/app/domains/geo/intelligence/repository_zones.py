@@ -36,7 +36,7 @@ class IntelligenceRepositoryZonesMixin:
         self, db: Session, base_stmt, *, page: int, limit: int, order_by
     ) -> tuple[list[Any], int]:
         total: int = db.execute(select(func.count()).select_from(base_stmt.subquery())).scalar_one()
-        items = list(
+        items: list[Any] = list(
             db.execute(base_stmt.order_by(order_by).offset((page - 1) * limit).limit(limit))
             .scalars()
             .all()
@@ -120,7 +120,7 @@ class IntelligenceRepositoryZonesMixin:
 
         result = db.execute(delete(ZonaOperativa).where(ZonaOperativa.cuenca == cuenca))
         db.flush()
-        return result.rowcount
+        return int(getattr(result, "rowcount", 0) or 0)
 
     def get_zonas_as_geojson(
         self,

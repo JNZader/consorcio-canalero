@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import date
 from typing import Any, Optional
 
@@ -16,6 +17,11 @@ from app.domains.geo.intelligence.models import (
 
 
 class IntelligenceRepositoryMetricsMixin:
+    # Provided by IntelligenceRepositoryZonesMixin once the mixins are combined
+    # on the concrete IntelligenceRepository.
+    _paginated_results: Callable[..., tuple[list[Any], int]]
+    get_zona_by_id: Callable[..., Optional[ZonaOperativa]]
+
     def _empty_dict_from_matview(self, db: Session, sql: str) -> dict[str, Any]:
         row = db.execute(text(sql)).mappings().first()
         return dict(row) if row is not None else {}

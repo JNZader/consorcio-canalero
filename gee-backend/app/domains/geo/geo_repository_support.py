@@ -30,7 +30,7 @@ def paginated_results(
         items_stmt = base_stmt.order_by(*order_by).offset(offset).limit(limit)
     else:
         items_stmt = base_stmt.order_by(order_by).offset(offset).limit(limit)
-    items = list(db.execute(items_stmt).scalars().all())
+    items: list[Any] = list(db.execute(items_stmt).scalars().all())
     return items, total
 
 
@@ -58,7 +58,7 @@ def compute_raster_zone_features(
     from app.domains.geo.zonal_stats import compute_stats_for_zones
 
     features: dict[str, Any] = {}
-    zone_data = [(str(zona_id), zona_wkt, zona_name)]
+    zone_data: list[tuple[str, str, str | None]] = [(str(zona_id), zona_wkt, zona_name)]
 
     for tipo in ["hand", "twi", "slope", "flow_acc"]:
         layer = (

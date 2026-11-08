@@ -506,8 +506,13 @@ def _coverage_fractions(
     for start in range(0, rows.size, _EDGE_CHUNK):
         chunk_rows = rows[start : start + _EDGE_CHUNK]
         chunk_cols = cols[start : start + _EDGE_CHUNK]
-        x0, y0 = transform * (chunk_cols.astype(np.float64), chunk_rows.astype(np.float64))
-        x1, y1 = transform * (chunk_cols + 1.0, chunk_rows + 1.0)
+        # Affine * (ndarray, ndarray) is valid element-wise at runtime; the
+        # affine stubs type __mul__ too narrowly for the array form.
+        x0, y0 = transform * (  # type: ignore[operator]
+            chunk_cols.astype(np.float64),
+            chunk_rows.astype(np.float64),
+        )
+        x1, y1 = transform * (chunk_cols + 1.0, chunk_rows + 1.0)  # type: ignore[operator]
         cells = shapely.box(
             np.minimum(x0, x1), np.minimum(y0, y1), np.maximum(x0, x1), np.maximum(y0, y1)
         )

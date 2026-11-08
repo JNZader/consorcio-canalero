@@ -154,7 +154,7 @@ class GeoLayer(UUIDMixin, TimestampMixin, Base):
         default=FormatoGeoLayer.GEOTIFF,
     )
     srid: Mapped[int] = mapped_column(Integer, nullable=False, default=4326)
-    bbox: Mapped[Optional[dict]] = mapped_column(
+    bbox: Mapped[Optional[list]] = mapped_column(
         JSON,
         nullable=True,
         comment="Bounding box [minx, miny, maxx, maxy]",

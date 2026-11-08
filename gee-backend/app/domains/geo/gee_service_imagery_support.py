@@ -745,7 +745,7 @@ def build_sentinel1_payload(
     mosaic = collection.select("VV").mosaic().clip(explorer.zona)
     if visualization == "vv_flood":
         image = mosaic.lt(-15).selfMask()
-        vis_params = {"palette": ["00FFFF"]}
+        vis_params: Dict[str, Any] = {"palette": ["00FFFF"]}
         description = "Deteccion de agua (SAR < -15 dB)"
     else:
         image = mosaic

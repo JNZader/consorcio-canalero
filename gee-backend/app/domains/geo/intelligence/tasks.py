@@ -401,53 +401,6 @@ def task_evaluate_alerts() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Materialized View Refresh
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Canal Network Analysis (Suggestions Engine)
-# ---------------------------------------------------------------------------
-
-
-@celery_app.task(queue="geo", name="geo.intelligence.run_canal_analysis")
-def run_canal_analysis() -> dict:
-    """Run the full canal network analysis and generate suggestions.
-
-    Dispatches suggestions.run_full_analysis() which orchestrates
-    hotspots, gaps, routes, bottlenecks, and maintenance priority.
-    Returns the batch_id for retrieving results.
-    """
-    db = _get_db()
-    try:
-        from app.domains.geo.intelligence import suggestions
-
-        result = suggestions.run_full_analysis(db)
-        batch_id = str(result["batch_id"])
-        logger.info(
-            "canal_analysis.completed",
-            batch_id=batch_id,
-            total=result["total_suggestions"],
-        )
-        return {
-            "status": "completed",
-            "batch_id": batch_id,
-            "total_suggestions": result["total_suggestions"],
-            "by_tipo": result["by_tipo"],
-        }
-    except Exception:
-        logger.error("canal_analysis.failed", exc_info=True)
-        raise
-    finally:
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# Materialized View Refresh
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Road × flow crossings (flujo-caminos Fase A)
 # ---------------------------------------------------------------------------
 
@@ -497,6 +450,11 @@ def compute_road_flow_crossings(area_id: str, job_id: str | None = None) -> dict
         session_factory=_get_deps()["SessionLocal"],
         now=lambda: datetime.now(timezone.utc),
     )
+
+
+# ---------------------------------------------------------------------------
+# Materialized View Refresh
+# ---------------------------------------------------------------------------
 
 
 @celery_app.task(queue="geo", name="geo.intelligence.refresh_materialized_views")

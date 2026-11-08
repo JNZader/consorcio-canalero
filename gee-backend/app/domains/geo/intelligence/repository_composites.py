@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from typing import Any, Optional
 
 from sqlalchemy import func, select
@@ -14,6 +15,10 @@ from app.domains.geo.intelligence.models import (
 
 
 class IntelligenceRepositoryCompositesMixin:
+    # Provided by IntelligenceRepositoryZonesMixin once the mixins are combined
+    # on the concrete IntelligenceRepository.
+    _paginated_results: Callable[..., tuple[list[Any], int]]
+
     def bulk_upsert_composite_stats(self, db: Session, stats: list[dict[str, Any]]) -> int:
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -34,7 +39,7 @@ class IntelligenceRepositoryCompositesMixin:
         )
         result = db.execute(stmt)
         db.flush()
-        return result.rowcount
+        return int(getattr(result, "rowcount", 0) or 0)
 
     def get_composite_stats_by_area(
         self, db: Session, area_id: str, tipo: Optional[str] = None
