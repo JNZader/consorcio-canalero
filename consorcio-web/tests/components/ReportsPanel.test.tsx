@@ -61,6 +61,10 @@ function renderPanel() {
 describe('ReportsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // La URL es estado compartido entre tests (el panel hace replaceState);
+    // sin reset, el query string de un test contamina el `readBandejaQuery`
+    // del siguiente.
+    window.history.replaceState({}, '', '/');
 
     vi.mocked(reportsApi.getAll).mockResolvedValue({
       items: [baseReport],
@@ -278,7 +282,9 @@ describe('ReportsPanel', () => {
         10,
         'resuelto',
         undefined,
-        undefined
+        undefined,
+        'created_at',
+        'desc'
       );
     });
     expect(screen.getByText('1 pendientes')).toBeInTheDocument();
@@ -312,7 +318,9 @@ describe('ReportsPanel', () => {
         10,
         undefined,
         undefined,
-        'hidrante-lejano'
+        'hidrante-lejano',
+        'created_at',
+        'desc'
       );
     });
   });
@@ -337,7 +345,87 @@ describe('ReportsPanel', () => {
 
     expect(await screen.findByText('coincide en el servidor')).toBeInTheDocument();
     await waitFor(() => {
-      expect(reportsApi.getAll).toHaveBeenLastCalledWith(1, 10, undefined, 'inundacion', undefined);
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        undefined,
+        'inundacion',
+        undefined,
+        'created_at',
+        'desc'
+      );
+    });
+  });
+
+  it('toggles order direction from the sortable header and syncs the URL', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+
+    // Fecha arranca activa en desc: mismo key invierte a asc.
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Fecha' }));
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        'created_at',
+        'asc'
+      );
+    });
+    expect(window.location.search).toContain('order=asc');
+
+    // Vuelve a desc: el default se omite de la URL (convención de sort=created_at).
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Fecha' }));
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        'created_at',
+        'desc'
+      );
+    });
+    expect(window.location.search).not.toContain('order=');
+
+    // Key nuevo: arranca siempre en desc y también va a la URL.
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Estado' }));
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        'estado',
+        'desc'
+      );
+    });
+    expect(window.location.search).toContain('sort=estado');
+  });
+
+  it('applies sort and order picked from the Ordenar select', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+
+    await user.click(screen.getByRole('combobox', { name: /ordenar la lista de denuncias/i }));
+    await user.click(await screen.findByRole('option', { name: 'Más antiguas' }));
+
+    await waitFor(() => {
+      expect(reportsApi.getAll).toHaveBeenLastCalledWith(
+        1,
+        10,
+        undefined,
+        undefined,
+        undefined,
+        'created_at',
+        'asc'
+      );
     });
   });
 });

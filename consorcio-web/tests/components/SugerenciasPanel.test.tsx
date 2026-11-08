@@ -88,6 +88,10 @@ const renderPanel = () => {
 describe('SugerenciasPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // La URL es estado compartido entre tests (el panel hace replaceState);
+    // sin reset, el query string de un test contamina el `readSugerenciaQuery`
+    // del siguiente.
+    window.history.replaceState({}, '', '/');
 
     vi.mocked(sugerenciasApi.get).mockResolvedValue(suggestion);
     vi.mocked(sugerenciasApi.getAll).mockResolvedValue({
@@ -278,6 +282,8 @@ describe('SugerenciasPanel', () => {
         limit: 10,
         estado: undefined,
         tipo: undefined,
+        sort: 'created_at',
+        order: 'desc',
         search: 'bomba-lejana',
       });
     });
@@ -308,7 +314,29 @@ describe('SugerenciasPanel', () => {
         limit: 10,
         estado: undefined,
         tipo: 'interna',
+        sort: 'created_at',
+        order: 'desc',
       });
     });
+  });
+
+  it('sorts by estado from the header and sends sort/order to the server', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByText('Limpiar desagues secundarios');
+
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Estado' }));
+
+    await waitFor(() => {
+      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith({
+        page: 1,
+        limit: 10,
+        estado: undefined,
+        tipo: undefined,
+        sort: 'estado',
+        order: 'desc',
+      });
+    });
+    expect(window.location.search).toContain('sort=estado');
   });
 });

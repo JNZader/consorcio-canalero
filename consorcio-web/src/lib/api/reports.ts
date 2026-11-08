@@ -25,11 +25,15 @@ export const reportsApi = {
           categoria?: string;
           search?: string;
           assigned_to?: string;
+          sort?: string;
+          order?: string;
         } = 1,
     limit = 10,
     status?: string,
     categoria?: string,
-    search?: string
+    search?: string,
+    sort?: string,
+    order?: string
   ): Promise<{ items: Report[]; total: number; page: number }> => {
     const searchParams = new URLSearchParams();
 
@@ -39,6 +43,8 @@ export const reportsApi = {
       if (status) searchParams.set('status', status);
       if (categoria) searchParams.set('categoria', categoria);
       if (search) searchParams.set('search', search);
+      if (sort) searchParams.set('sort', sort);
+      if (order) searchParams.set('order', order);
     } else {
       if (pageOrParams.page) searchParams.set('page', pageOrParams.page.toString());
       if (pageOrParams.limit) searchParams.set('limit', pageOrParams.limit.toString());
@@ -48,6 +54,8 @@ export const reportsApi = {
       if (pageOrParams.categoria) searchParams.set('categoria', pageOrParams.categoria);
       if (pageOrParams.search) searchParams.set('search', pageOrParams.search);
       if (pageOrParams.assigned_to) searchParams.set('assigned_to', pageOrParams.assigned_to);
+      if (pageOrParams.sort) searchParams.set('sort', pageOrParams.sort);
+      if (pageOrParams.order) searchParams.set('order', pageOrParams.order);
     }
 
     return apiFetch(`/denuncias?${searchParams.toString()}`);
@@ -61,6 +69,12 @@ export const reportsApi = {
   /**
    * Actualizar estado de denuncia.
    */
+  bulkUpdate: (ids: string[], estado: string, idempotencyKey: string): Promise<{ resultados: Array<{ id: string; ok: boolean; error?: string | null }> }> =>
+    apiFetch('/denuncias/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids, estado, idempotency_key: idempotencyKey }),
+    }),
+
   updateStatus: (id: string, estado: string, notas?: string): Promise<Report> =>
     apiFetch(`/denuncias/${id}`, {
       method: 'PATCH',
